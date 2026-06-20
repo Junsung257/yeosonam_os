@@ -633,11 +633,13 @@ function TodayWorkQueue({
   unmatchedCount,
   pendingActionsCount,
   pendingPackagesCount,
+  dataIssueCount = 0,
 }: {
   stats: DashboardStats | null;
   unmatchedCount: number | null;
   pendingActionsCount: number;
   pendingPackagesCount: number;
+  dataIssueCount?: number;
 }) {
   const rows = [
     {
@@ -685,7 +687,9 @@ function TodayWorkQueue({
       tone: 'neutral',
     },
   ] as const;
-  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const hasDataIssue = dataIssueCount > 0;
+  const totalWork = rows.reduce((sum, row) => sum + row.count, 0);
+  const total = totalWork + dataIssueCount;
   const activeRows = rows.filter(row => row.count > 0);
   const visibleRows = activeRows.length > 0 ? activeRows : rows;
   const priorityRow = activeRows[0];
@@ -693,16 +697,21 @@ function TodayWorkQueue({
   const clearRowsCount = rows.length - activeRows.length;
   const workQueueHealthItems = [
     { label: '활성 업무', value: `${activeRows.length}/${rows.length}`, tone: activeRows.length > 0 ? 'warn' : 'good' },
-    { label: '위험/주의', value: `${urgentRows.length}개`, tone: urgentRows.length > 0 ? 'danger' : 'good' },
+    { label: '위험/주의', value: `${urgentRows.length + (hasDataIssue ? 1 : 0)}개`, tone: urgentRows.length > 0 || hasDataIssue ? 'danger' : 'good' },
     { label: '정리됨', value: `${clearRowsCount}개`, tone: clearRowsCount === rows.length ? 'good' : 'neutral' },
   ] as const;
   const workQueueSummaryId = 'admin-today-work-summary';
   const workQueueLeadId = 'admin-today-work-lead';
+  const activeWorkSummary = activeRows.length > 0
+    ? activeRows.map(row => `${row.label} ${row.count}건, 운영 리스크 ${row.operationRisk}, 이유 ${row.reason}`).join(', ')
+    : '새로고침으로 데이터 상태를 먼저 확인';
   const workQueueSummaryText = total > 0
-    ? `오늘 처리할 일이 ${total}건 있습니다. 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 업무 ${urgentRows.length}개입니다. ${activeRows.map(row => `${row.label} ${row.count}건, 운영 리스크 ${row.operationRisk}, 이유 ${row.reason}`).join(', ')} 순서로 확인할 수 있습니다.`
+    ? `오늘 처리할 일이 ${total}건 있습니다. 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 업무 ${urgentRows.length + (hasDataIssue ? 1 : 0)}개입니다. ${hasDataIssue ? `데이터 확인 필요 ${dataIssueCount}건이 있어 새로고침 후 확인이 필요합니다. ` : ''}${activeWorkSummary} 순서로 확인할 수 있습니다.`
     : '오늘 처리할 일이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
   const workQueueLeadText = priorityRow
     ? `우선 처리: ${priorityRow.label} ${priorityRow.count}건. 운영 리스크: ${priorityRow.operationRisk}. 이유: ${priorityRow.reason}. 다음 액션은 ${priorityRow.action}입니다.`
+    : hasDataIssue
+      ? `데이터 일부 미확인 ${dataIssueCount}건. 새로고침 후 예약, 입금, 상품 큐를 다시 확인하세요.`
     : '대기 중인 운영 작업이 없습니다.';
   const toneClass = {
     danger: 'border-red-200 bg-red-50 text-red-700',
@@ -733,6 +742,15 @@ function TodayWorkQueue({
       >
         {workQueueLeadText}
       </p>
+      {hasDataIssue && (
+        <div
+          className="mt-2 rounded-admin-sm border border-amber-200 bg-amber-50 px-3 py-2 text-admin-xs text-amber-800"
+          data-testid="admin-today-work-data-issue"
+        >
+          <p className="font-bold">데이터 일부를 확인하지 못했습니다.</p>
+          <p className="mt-0.5 text-amber-700">상단 새로고침으로 다시 불러온 뒤, 큐별 업무를 확인하세요.</p>
+        </div>
+      )}
       <div
         className="mt-3 grid grid-cols-3 gap-2"
         data-testid="admin-today-work-health"
@@ -2094,7 +2112,7 @@ export default function AdminPage({
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="admin-dashboard-loading-state">
         {/* 헤더 스켈레톤 */}
         <div className="flex items-center justify-between animate-pulse">
           <div className="space-y-1.5">
@@ -2103,11 +2121,32 @@ export default function AdminPage({
           </div>
           <div className="h-8 bg-admin-surface-2 rounded w-24" />
         </div>
-        {/* ActionBoard 스켈레톤 */}
-        <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 animate-pulse">
-          <div className="h-4 bg-admin-surface-2 rounded w-24 mb-3" />
-          <div className="space-y-2">
-            {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-admin-surface-2 rounded" />)}
+        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4 shadow-admin-xs">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-admin-base font-bold text-text-primary">오늘 처리할 일을 불러오는 중입니다.</p>
+              <p className="mt-1 text-admin-xs text-admin-muted-2">기다리는 동안 핵심 운영 화면은 바로 열 수 있습니다.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { href: '/admin/bookings', label: '예약 확인' },
+                { href: '/admin/payments', label: '입금 확인' },
+                { href: '/admin/packages', label: '상품 검수' },
+              ].map(item => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="rounded-admin-sm border border-admin-border-mid bg-white px-3 py-2 text-admin-xs font-semibold text-admin-text-2 shadow-admin-xs hover:bg-admin-bg"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4" aria-hidden="true">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-24 animate-pulse rounded-admin-md bg-admin-surface-2" />
+            ))}
           </div>
         </div>
         {/* TwoTrackKPI 스켈레톤 — 2열 */}
@@ -2152,11 +2191,39 @@ export default function AdminPage({
       </p>
       {/* BUG-4: fetch 실패 배너 */}
       {fetchErrors.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex items-center justify-between">
-          <span className="text-admin-xs text-amber-800">
-            일부 데이터 로드 실패 ({fetchErrors.join(', ')}) — 새로고침 후 재시도
-          </span>
-          <button onClick={() => setFetchErrors([])} className="text-amber-600 text-[11px] hover:underline ml-4">닫기</button>
+        <div
+          id="admin-dashboard-fetch-errors"
+          className="flex flex-col gap-3 rounded-admin-md border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="admin-dashboard-fetch-errors"
+        >
+          <div className="min-w-0">
+            <p className="text-admin-sm font-bold text-amber-900">일부 데이터를 확인하지 못했습니다.</p>
+            <p className="mt-0.5 text-admin-xs text-amber-800">
+              {fetchErrors.join(', ')} 데이터가 비어 있을 수 있어 오늘 업무 큐를 새로고침 후 다시 확인하세요.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const m = period === '3m' ? 3 : period === '12m' ? 12 : 6;
+                setIsRefreshing(true);
+                loadAll(m);
+              }}
+              disabled={isRefreshing || isLoading}
+              className="rounded-admin-sm bg-amber-700 px-3 py-2 text-admin-xs font-semibold text-white shadow-admin-xs hover:bg-amber-800 disabled:opacity-50"
+              data-testid="admin-dashboard-fetch-retry"
+            >
+              다시 불러오기
+            </button>
+            <button
+              type="button"
+              onClick={() => setFetchErrors([])}
+              className="rounded-admin-sm border border-amber-300 bg-white px-3 py-2 text-admin-xs font-semibold text-amber-800 hover:bg-amber-100"
+            >
+              닫기
+            </button>
+          </div>
         </div>
       )}
 
@@ -2224,6 +2291,7 @@ export default function AdminPage({
           unmatchedCount={unmatchedCount}
           pendingActionsCount={pendingActions.length}
           pendingPackagesCount={pendingPackages.length}
+          dataIssueCount={fetchErrors.length}
         />
         <BookingOpsPanel
           compact
