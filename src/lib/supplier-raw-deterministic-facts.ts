@@ -476,6 +476,16 @@ function extractFlightSegment(rawText: string, labels: string[]) {
 
 type SourceFlightSegment = NonNullable<ReturnType<typeof extractFlightSegment>>;
 
+function normalizeFlightTimeToken(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const compact = value.replace(/\s+/g, '');
+  const colon = compact.match(/^(\d{1,2}):(\d{2})$/);
+  if (colon) return `${colon[1].padStart(2, '0')}:${colon[2]}`;
+  const fourDigit = compact.match(/^(\d{2})(\d{2})$/);
+  if (fourDigit) return `${fourDigit[1]}:${fourDigit[2]}`;
+  return null;
+}
+
 function mergeFlightRows(rawText: string, ...groups: SourceFlightSegment[][]): SourceFlightSegment[] {
   const merged: SourceFlightSegment[] = [];
   const informativeAirport = (value: string | null | undefined) => Boolean(value && value !== '미정' && !/^[A-Z]{2}$/.test(value));
@@ -625,6 +635,33 @@ function extractInlineRouteFlightRows(rawText: string): Array<NonNullable<Return
         code: match[3],
         departure: { time: match[4], airport: cleanAirport(match[1]) },
         arrival: { time: match[5], airport: cleanAirport(match[2]) },
+      });
+    }
+
+    const iataAnnotatedRouteRe = /^([\p{Script=Hangul}A-Za-z/()\s]{1,30}?)\s*→\s*([\p{Script=Hangul}A-Za-z/()\s]{1,30}?)\s*(?:[([][^)\]]+[)\]])?\s+([A-Z]{2}\d{2,4})\s+(\d{1,2}:?\d{2})\s*[-~\/]\s*(\d{1,2}:?\d{2})(?:\s*\+?\s*\d+)?$/u;
+    const iataAnnotated = normalizedLine.match(iataAnnotatedRouteRe);
+    if (iataAnnotated) {
+      const departureTime = normalizeFlightTimeToken(iataAnnotated[4]);
+      const arrivalTime = normalizeFlightTimeToken(iataAnnotated[5]);
+      if (departureTime && arrivalTime) {
+        rows.push({
+          code: iataAnnotated[3],
+          departure: { time: departureTime, airport: cleanAirport(iataAnnotated[1]) },
+          arrival: { time: arrivalTime, airport: cleanAirport(iataAnnotated[2]) },
+        });
+        continue;
+      }
+    }
+
+    const compactRouteSegmentRe = /([\p{Script=Hangul}A-Za-z/()[\]\s]{1,40}?)\s*[-→]\s*([\p{Script=Hangul}A-Za-z/()[\]\s]{1,40}?)\s+([A-Z]{2}\d{2,4})\s+(\d{1,2}:?\d{2})\s*[-→~\/]\s*(\d{1,2}:?\d{2})(?:\s*\+?\s*\d+)?/gu;
+    for (const match of normalizedLine.matchAll(compactRouteSegmentRe)) {
+      const departureTime = normalizeFlightTimeToken(match[4]);
+      const arrivalTime = normalizeFlightTimeToken(match[5]);
+      if (!departureTime || !arrivalTime) continue;
+      rows.push({
+        code: match[3],
+        departure: { time: departureTime, airport: cleanAirport(match[1]) },
+        arrival: { time: arrivalTime, airport: cleanAirport(match[2]) },
       });
     }
   }

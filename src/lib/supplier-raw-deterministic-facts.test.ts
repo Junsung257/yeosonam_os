@@ -918,6 +918,27 @@ describe('Korean catalog table flight recovery', () => {
     });
   });
 
+  it('recovers compact arrow route rows with four-digit flight times from HWP HTML extraction', () => {
+    const raw = [
+      '부산 → 방콕 ( PUS → BKK) BX725 1800-2145',
+      '방콕 → 부산 [BKK → PUS] BX726 2255-0620',
+      '방콕 파타야 PKG 3박5일',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX725',
+      departure: { airport: '부산', time: '18:00' },
+      arrival: { time: '21:45' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX726',
+      departure: { airport: '방콕', time: '22:55' },
+      arrival: { time: '06:20' },
+    });
+  });
+
   it('recovers flight times from compact code plus stacked time rows', () => {
     const raw = [
       '서안 구채구 신선지 4박6일',
