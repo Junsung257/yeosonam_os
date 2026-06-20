@@ -718,8 +718,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* ── 메인 영역 ────────────────────────────────── */}
       <div
-        className={`flex-1 flex flex-col min-h-screen transition-all duration-200 ${
-          sidebarMode === 'slim' ? 'md:ml-14' : 'md:ml-52'
+        className={`flex min-h-screen min-w-0 flex-1 flex-col overflow-x-clip transition-all duration-200 ${
+          sidebarMode === 'slim'
+            ? 'md:ml-14 md:w-[calc(100%-3.5rem)]'
+            : 'md:ml-52 md:w-[calc(100%-13rem)]'
         }`}
       >
         {/* 상단바 */}

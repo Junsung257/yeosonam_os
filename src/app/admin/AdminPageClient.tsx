@@ -10,6 +10,7 @@ import {
   GROUP_INQUIRY_PRODUCT_LABEL,
 } from '@/lib/group-inquiry-handoff';
 import { trackEngagement } from '@/lib/tracker';
+import { BookingOpsPanel } from '@/components/admin/booking-ops/BookingOpsPanel';
 const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
 const AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
 
@@ -888,7 +889,7 @@ function OperatorCommandBar({
     : '운영 커맨드에 대기 중인 작업이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
 
   return (
-    <section aria-labelledby="admin-operator-command-title" aria-describedby={`${commandSummaryId} ${commandNextActionReasonId}`} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs">
+    <section aria-labelledby="admin-operator-command-title" aria-describedby={`${commandSummaryId} ${commandNextActionReasonId}`} className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="min-w-0 lg:w-[220px]">
           <p id="admin-operator-command-title" className="text-[11px] font-semibold uppercase tracking-wider text-admin-muted-2">Action queue</p>
@@ -910,7 +911,7 @@ function OperatorCommandBar({
         <p id={commandSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {commandSummaryText}
         </p>
-        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <div className="grid w-full min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:max-w-full xl:overflow-x-auto xl:pb-1 no-scrollbar">
           {actions.map(action => {
             const isActive = action.count > 0;
             const actionDescriptionId = `admin-operator-command-${action.priority}-description`;
@@ -941,7 +942,7 @@ function OperatorCommandBar({
                     },
                   });
                 }}
-                className={`flex min-w-[184px] items-start justify-between gap-3 rounded-admin-md border px-3 py-2 transition-all duration-160 ${
+                className={`flex min-w-0 items-start justify-between gap-3 rounded-admin-md border px-3 py-2 transition-all duration-160 xl:min-w-[184px] ${
                   isActive
                     ? 'border-admin-border-strong bg-admin-bg text-admin-text hover:shadow-admin-sm'
                   : 'border-admin-border bg-white text-admin-muted hover:border-admin-border-mid'
@@ -2217,12 +2218,19 @@ export default function AdminPage({
       </div>
 
       {/* Zone 0: first screen starts with work to clear, not charts or finance summaries. */}
-      <TodayWorkQueue
-        stats={stats}
-        unmatchedCount={unmatchedCount}
-        pendingActionsCount={pendingActions.length}
-        pendingPackagesCount={pendingPackages.length}
-      />
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
+        <TodayWorkQueue
+          stats={stats}
+          unmatchedCount={unmatchedCount}
+          pendingActionsCount={pendingActions.length}
+          pendingPackagesCount={pendingPackages.length}
+        />
+        <BookingOpsPanel
+          compact
+          limit={4}
+          className="min-w-0 xl:sticky xl:top-[92px]"
+        />
+      </div>
 
       <OperatorCommandBar
         stats={stats}
