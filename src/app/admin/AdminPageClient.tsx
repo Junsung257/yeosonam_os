@@ -1511,6 +1511,16 @@ function SocialMetricsWidget() {
     setChannels(newChannels);
     setHistory(newHistory);
     localStorage.setItem('yeosonam_social_metrics', JSON.stringify({ channels: newChannels, history: newHistory }));
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin',
+      metadata: {
+        surface: 'social_channel_metrics',
+        action: 'social_metrics_saved',
+        channel_count: newChannels.length,
+        month: monthKey,
+      },
+    });
     setShowForm(false);
   };
 
@@ -1528,7 +1538,11 @@ function SocialMetricsWidget() {
           SNS 채널 현황
           <span className="text-[10px] text-admin-muted-2 font-normal" title="이 데이터는 이 브라우저에만 저장됩니다. 기기가 바뀌면 초기화됩니다.">⚠ 로컬</span>
         </h2>
-        <button onClick={() => { setShowForm(!showForm); setFormValues(channels.map(c => String(c.current))); }}
+        <button
+          type="button"
+          onClick={() => { setShowForm(!showForm); setFormValues(channels.map(c => String(c.current))); }}
+          aria-expanded={showForm}
+          aria-label={showForm ? 'SNS 채널 지표 편집 닫기' : 'SNS 채널 지표 편집 열기'}
           className="px-2 py-1 bg-white border border-admin-border-strong rounded text-[11px] text-admin-muted hover:bg-admin-bg transition">
           지표 업데이트
         </button>
@@ -1572,31 +1586,47 @@ function SocialMetricsWidget() {
         <div className="mt-3 pt-3 border-t border-admin-border space-y-2">
           {channels.map((ch, i) => (
             <div key={i} className="flex items-center gap-2">
-              <input type="text" value={ch.name}
+              <input
+                type="text"
+                value={ch.name}
+                aria-label={`${ch.name || `채널 ${i + 1}`} 채널명`}
                 onChange={e => {
                   const next = [...channels];
                   next[i] = { ...next[i], name: e.target.value };
                   setChannels(next);
                 }}
                 className="w-20 border border-admin-border-mid rounded px-2 py-1 text-admin-xs text-admin-muted focus:ring-1 focus:ring-[#005d90]" />
-              <input type="number" value={formValues[i]}
+              <input
+                type="number"
+                value={formValues[i]}
+                aria-label={`${ch.name || `채널 ${i + 1}`} 현재 지표`}
                 onChange={e => { const next = [...formValues]; next[i] = e.target.value; setFormValues(next); }}
                 className="flex-1 border border-admin-border-mid rounded px-2 py-1 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
               {channels.length > 1 && (
-                <button onClick={() => {
-                  setChannels(channels.filter((_, idx) => idx !== i));
-                  setFormValues(formValues.filter((_, idx) => idx !== i));
-                }} className="text-admin-muted-2 hover:text-red-500 text-admin-sm">x</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChannels(channels.filter((_, idx) => idx !== i));
+                    setFormValues(formValues.filter((_, idx) => idx !== i));
+                  }}
+                  aria-label={`${ch.name || `채널 ${i + 1}`} 삭제`}
+                  className="text-admin-xs font-semibold text-admin-muted-2 hover:text-red-500"
+                >
+                  삭제
+                </button>
               )}
             </div>
           ))}
-          <button onClick={() => {
-            setChannels([...channels, { name: `채널${channels.length + 1}`, current: 0, prev: 0 }]);
-            setFormValues([...formValues, '0']);
-          }} className="w-full py-1 border border-dashed border-admin-border-strong rounded text-[11px] text-admin-muted-2 hover:text-admin-muted hover:border-slate-400 transition">
+          <button
+            type="button"
+            onClick={() => {
+              setChannels([...channels, { name: `채널${channels.length + 1}`, current: 0, prev: 0 }]);
+              setFormValues([...formValues, '0']);
+            }}
+            className="w-full py-1 border border-dashed border-admin-border-strong rounded text-[11px] text-admin-muted-2 hover:text-admin-muted hover:border-slate-400 transition">
             + 채널 추가
           </button>
-          <button onClick={handleSave} className="w-full py-1.5 bg-brand text-white rounded text-admin-xs hover:bg-blue-700 transition">저장</button>
+          <button type="button" onClick={handleSave} className="w-full py-1.5 bg-brand text-white rounded text-admin-xs hover:bg-blue-700 transition">저장</button>
         </div>
       )}
     </div>
