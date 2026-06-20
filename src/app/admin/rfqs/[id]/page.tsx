@@ -78,6 +78,11 @@ interface RfqMessage {
 
 type Tab = 'info' | 'bids' | 'proposals' | 'messages';
 
+type RfqNotice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 // ── 상수 ─────────────────────────────────────────────────────────────────────
 const TIER_COLORS: Record<string, string> = {
   GOLD: 'bg-yellow-100 text-yellow-800',
@@ -147,6 +152,7 @@ export default function AdminRfqDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('info');
   const [transitioning, setTransitioning] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [notice, setNotice] = useState<RfqNotice | null>(null);
 
   useEffect(() => {
     fetchAll();
@@ -201,8 +207,9 @@ export default function AdminRfqDetailPage() {
       });
       if (!res.ok) throw new Error('상태 변경 실패');
       await fetchAll();
+      setNotice({ tone: 'success', message: 'RFQ 상태가 변경되었습니다.' });
     } catch {
-      alert('상태 변경 중 오류가 발생했습니다.');
+      setNotice({ tone: 'error', message: '상태 변경 중 오류가 발생했습니다.' });
     } finally {
       setTransitioning(null);
     }
@@ -216,8 +223,9 @@ export default function AdminRfqDetailPage() {
       if (!res.ok) throw new Error('분석 실패');
       const data = await res.json();
       setReport(data);
+      setNotice({ tone: 'success', message: 'AI 분석이 완료되었습니다.' });
     } catch {
-      alert('AI 분석 중 오류가 발생했습니다.');
+      setNotice({ tone: 'error', message: 'AI 분석 중 오류가 발생했습니다.' });
     } finally {
       setAnalyzing(false);
     }
@@ -275,6 +283,20 @@ export default function AdminRfqDetailPage() {
           {rfq.status}
         </span>
       </div>
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`rounded-admin-md border px-4 py-3 text-admin-sm ${
+            notice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       {/* 탭 */}
       <div className="flex gap-1 bg-admin-surface-2 rounded-admin-md p-1 w-fit">
