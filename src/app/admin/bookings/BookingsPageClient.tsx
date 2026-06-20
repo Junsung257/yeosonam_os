@@ -1092,6 +1092,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const [bookings, setBookings]             = useState<Booking[]>(initialBookings ?? []);
   // 서버 pre-fetch 데이터가 있으면 로딩 스피너 스킵
   const [isLoading, setIsLoading]           = useState(!initialBookings?.length);
+  const [loadError, setLoadError]           = useState<string | null>(null);
   const [processing, setProcessing]         = useState<string | null>(null);
 
   // ── 마스터 데이터 훅 (모듈 캐시 — 중복 fetch 없음) ─────────────────────────
@@ -1662,15 +1663,27 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     }
     _skipInitialFetch.current = false;
     setIsLoading(true);
+    setLoadError(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
     try {
       // 감사(2026-05-11): lite=1 — 어드민 목록용 50 컬럼만 fetch (110+ → 50, 페이로드 −50%).
       const p = new URLSearchParams({ lite: '1' });
       if (lifecycleTab === 'trash') p.set('include_deleted', 'only');
       // 그 외 탭: 전체 로드 후 클라이언트 필터링
-      const res  = await fetch(`/api/bookings?${p}`);
+      const res  = await fetch(`/api/bookings?${p}`, { signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setBookings(data.bookings ?? []);
-    } finally { setIsLoading(false); }
+    } catch (error) {
+      setBookings([]);
+      setLoadError(error instanceof DOMException && error.name === 'AbortError'
+        ? '요청 시간이 초과되었습니다.'
+        : error instanceof Error ? error.message : '예약 목록을 불러오지 못했습니다.');
+    } finally {
+      window.clearTimeout(timeoutId);
+      setIsLoading(false);
+    }
   }, [lifecycleTab]);
 
   useEffect(() => { load(); }, [load]);
@@ -2537,7 +2550,28 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
       {/* 테이블 */}
       {isLoading ? (
-        <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[12px] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div className="flex flex-col gap-2 border-b border-admin-border-mid px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 text-left">
+              <p className="text-admin-sm font-bold text-admin-text-2">예약 목록을 불러오는 중입니다.</p>
+              <p className="mt-0.5 text-admin-xs text-admin-muted-2">연결이 느려도 신규 예약 등록과 입금 확인은 바로 열 수 있습니다.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/admin/bookings/new"
+                className="inline-flex min-h-[36px] items-center justify-center rounded-admin-md bg-brand px-3 py-1.5 text-admin-xs font-bold text-white hover:bg-[#1B64DA]"
+              >
+                예약 등록
+              </Link>
+              <Link
+                href="/admin/payments"
+                className="inline-flex min-h-[36px] items-center justify-center rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-1.5 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-surface-2"
+              >
+                입금 확인
+              </Link>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
           <table className="w-full" aria-hidden="true"><tbody>
             {[...Array(10)].map((_, i) => (
               <tr key={i} style={{ height: ROW_H }} className="border-b border-admin-border-mid">
@@ -2547,6 +2581,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               </tr>
             ))}
           </tbody></table>
+          </div>
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex items-center justify-center">
@@ -2570,9 +2605,57 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             <p className="text-admin-muted-2 text-admin-sm mb-5">
               {isTrash ? '최근 삭제된 예약이 없습니다.' : rawSearch ? '다른 검색어로 시도하거나 필터를 초기화하세요.' : activeTab ? '현재 필터 조건에 해당하는 예약이 없습니다.' : '아직 등록된 예약이 없습니다.'}
             </p>
+            {loadError && (
+              <div
+                role="status"
+                className="mb-4 rounded-admin-md border border-amber-200 bg-amber-50 px-3 py-2 text-left text-admin-xs text-amber-800"
+              >
+                <p className="font-bold">예약 목록을 불러오지 못했습니다.</p>
+                <p className="mt-0.5">잠시 후 다시 시도하거나 다른 운영 화면에서 상태를 확인하세요. ({loadError})</p>
+              </div>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2">
+            {loadError && (
+              <button
+                type="button"
+                onClick={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/bookings',
+                    metadata: {
+                      surface: 'booking_empty_state',
+                      action: 'reload_clicked',
+                      lifecycle_tab: lifecycleTab,
+                      error: loadError,
+                    },
+                  });
+                  load();
+                }}
+                className="inline-flex min-h-[42px] items-center justify-center rounded-admin-md bg-slate-950 px-4 py-2 text-admin-sm font-bold text-white transition-colors hover:bg-slate-800"
+              >
+                다시 불러오기
+              </button>
+            )}
             {(rawSearch || activeTab) && (
-              <button onClick={() => { setRawSearch(''); setActiveTab(''); setDoneSubTab(''); }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-admin-surface-2 hover:bg-slate-200 text-admin-text-2 text-admin-sm font-medium rounded-lg transition-colors">
+              <button
+                type="button"
+                onClick={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/bookings',
+                    metadata: {
+                      surface: 'booking_empty_state',
+                      action: 'filters_reset',
+                      had_search: Boolean(rawSearch),
+                      active_tab: activeTab || null,
+                      lifecycle_tab: lifecycleTab,
+                    },
+                  });
+                  setRawSearch('');
+                  setActiveTab('');
+                  setDoneSubTab('');
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white text-admin-sm font-bold rounded-admin-md transition-colors">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -2580,14 +2663,80 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               </button>
             )}
             {!rawSearch && !isTrash && !activeTab && (
-              <Link href="/admin/bookings/new"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-[#1B64DA] text-white text-admin-sm font-medium rounded-lg transition-colors">
+              <Link
+                href="/admin/bookings/new"
+                onClick={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/bookings',
+                    metadata: {
+                      surface: 'booking_empty_state',
+                      action: 'new_booking_opened',
+                      lifecycle_tab: lifecycleTab,
+                    },
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-[#1B64DA] text-white text-admin-sm font-bold rounded-admin-md transition-colors">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
                 첫 예약 등록
               </Link>
             )}
+            {!isTrash && (
+              <Link
+                href="/admin/customers"
+                onClick={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/bookings',
+                    metadata: {
+                      surface: 'booking_empty_state',
+                      action: 'customers_opened',
+                      lifecycle_tab: lifecycleTab,
+                    },
+                  });
+                }}
+                className="inline-flex min-h-[42px] items-center justify-center rounded-admin-md border border-admin-border-strong bg-white px-4 py-2 text-admin-sm font-bold text-admin-text-2 transition-colors hover:bg-admin-bg"
+              >
+                고객 먼저 확인
+              </Link>
+            )}
+            <Link
+              href="/admin/payments"
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                  page_url: '/admin/bookings',
+                  metadata: {
+                    surface: 'booking_empty_state',
+                    action: 'payments_opened',
+                    lifecycle_tab: lifecycleTab,
+                  },
+                });
+              }}
+              className="inline-flex min-h-[42px] items-center justify-center rounded-admin-md border border-admin-border-mid bg-admin-bg px-4 py-2 text-admin-sm font-semibold text-admin-text-2 transition-colors hover:bg-admin-surface-2"
+            >
+              입금/정산 보기
+            </Link>
+            <Link
+              href="/admin/concierge"
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                  page_url: '/admin/bookings',
+                  metadata: {
+                    surface: 'booking_empty_state',
+                    action: 'concierge_opened',
+                    lifecycle_tab: lifecycleTab,
+                  },
+                });
+              }}
+              className="inline-flex min-h-[42px] items-center justify-center rounded-admin-md border border-admin-border-mid bg-admin-bg px-4 py-2 text-admin-sm font-semibold text-admin-text-2 transition-colors hover:bg-admin-surface-2"
+            >
+              상담에서 찾기
+            </Link>
+            </div>
           </div>
         </div>
       ) : (
