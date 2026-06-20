@@ -110,6 +110,7 @@ export default function ApplicationsPage() {
   const [filter, setFilter] = useState<string>('');
   const [inviteFilter, setInviteFilter] = useState<string>(''); // ''=all, 'invited', 'open'
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: 'error' | 'success'; message: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
@@ -197,11 +198,12 @@ export default function ApplicationsPage() {
           pin: typeof aff.pin === 'string' ? aff.pin : '',
         });
       }
+      setNotice(null);
       setApproveTarget(null);
       requestAnimationFrame(() => approveSuccessRef.current?.focus());
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '처리 실패');
+      setNotice({ tone: 'error', message: err instanceof Error ? err.message : '처리 실패' });
     } finally {
       setProcessingId(null);
     }
@@ -219,9 +221,10 @@ export default function ApplicationsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       closeRejectDialog();
+      setNotice({ tone: 'success', message: '파트너 신청을 거절 처리했습니다.' });
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '처리 실패');
+      setNotice({ tone: 'error', message: err instanceof Error ? err.message : '처리 실패' });
     } finally {
       setProcessingId(null);
     }
@@ -395,6 +398,20 @@ export default function ApplicationsPage() {
                 닫기
               </button>
             </div>
+          </div>
+        )}
+
+        {notice && (
+          <div
+            role={notice.tone === 'error' ? 'alert' : 'status'}
+            aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+            className={`rounded-admin-md border px-4 py-3 text-admin-sm font-medium ${
+              notice.tone === 'error'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            }`}
+          >
+            {notice.message}
           </div>
         )}
 
