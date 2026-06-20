@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, type KeyboardEvent a
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Phone, Search, X } from 'lucide-react';
+import { Phone, RotateCcw, Search, Sparkles, Users, X } from 'lucide-react';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -527,6 +527,7 @@ export default function PackagesClient() {
   const emptyStateAppliedFilterItems = filterSummaryItems
     .filter((item) => item.label !== '결과')
     .slice(0, 5);
+  const emptyStateRecoveryActions = mobileAppliedFilterItems.slice(0, 3);
   const zeroResultRelaxTargets = [
     month ? '출발월' : null,
     selectedIntentInfo ? '여행 목적' : null,
@@ -1461,19 +1462,19 @@ export default function PackagesClient() {
               </Link>
             </>
           ) : (
-            <div className="flex flex-col items-center gap-4 py-16 px-6">
+            <div className="flex flex-col items-center gap-4 py-12 px-4">
               <Search className="h-14 w-14 text-slate-200" aria-hidden="true" strokeWidth={1.4} />
               <div className="text-center space-y-1">
                 <p className="text-[15px] font-semibold text-text-primary">
                   {activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '조건에 맞는 상품이 없습니다'}
                 </p>
-                <p className="text-[13px] text-text-secondary">필터를 초기화하거나 직접 문의해 보세요</p>
+                <p className="text-[13px] text-text-secondary">조건을 조금 넓히거나 상담으로 바로 이어갈 수 있습니다</p>
               </div>
               <div
                 id={packageEmptyStateSummaryId}
                 data-testid="packages-empty-state-summary"
                 aria-label={packageEmptyStateSummaryText}
-                className="w-full max-w-md rounded-lg border border-[#E5E7EB] bg-white p-3 text-left"
+                className="w-full max-w-xl rounded-2xl border border-[#E5E7EB] bg-white p-4 text-left shadow-sm"
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[13px] font-extrabold text-text-primary">적용 조건</p>
@@ -1493,26 +1494,55 @@ export default function PackagesClient() {
                 <p className="mt-3 text-[12px] font-semibold leading-relaxed text-text-secondary">
                   {packageZeroResultRecoveryText}
                 </p>
+                {emptyStateRecoveryActions.length > 0 && (
+                  <div
+                    data-testid="packages-empty-state-recovery-actions"
+                    className="mt-3 flex flex-wrap gap-1.5"
+                  >
+                    {emptyStateRecoveryActions.map((item) => (
+                      <button
+                        key={`empty-recover-${item.key}`}
+                        type="button"
+                        onClick={() => handleMobileFilterClear(item.key)}
+                        aria-label={item.clearLabel}
+                        className="inline-flex min-h-8 items-center rounded-full border border-[#D7E3F3] bg-[#F8FAFC] px-3 text-[12px] font-extrabold text-text-primary transition hover:border-brand/60 hover:text-brand"
+                      >
+                        {item.label} 빼기
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="grid w-full max-w-xl grid-cols-1 gap-2 mt-1 sm:grid-cols-3">
                 {hasActivePackageFilters && (
                   <button
                     type="button"
                     onClick={resetPackageFilters}
                     aria-label="패키지 필터 조건 모두 초기화"
                     aria-describedby={packageFilterDescriptionIds}
-                    className="px-4 py-2 text-[13px] font-medium text-brand bg-brand-light rounded-full hover:bg-blue-100 transition"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand-light px-4 text-[13px] font-extrabold text-brand transition hover:bg-blue-100"
                   >
+                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
                     조건 초기화
                   </button>
                 )}
                 <Link
+                  href="/concierge"
+                  data-testid="packages-empty-state-ai"
+                  aria-describedby={emptyStateInquiryDescriptionIds}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#D7E3F3] bg-white px-4 text-[13px] font-extrabold text-text-primary transition hover:border-brand/60 hover:text-brand"
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  AI 상담
+                </Link>
+                <Link
                   href={groupInquiryHref}
                   data-testid="packages-empty-state-group-inquiry"
                   aria-describedby={emptyStateInquiryDescriptionIds}
-                  className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
                 >
-                  조건 유지하고 상담
+                  <Users className="h-4 w-4" aria-hidden="true" />
+                  견적 문의
                 </Link>
               </div>
             </div>
