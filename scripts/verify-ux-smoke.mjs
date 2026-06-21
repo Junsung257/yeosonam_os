@@ -7,10 +7,21 @@ const rawArgs = process.argv.slice(2);
 const args = new Set(rawArgs);
 const jsonOutput = args.has('--json');
 const selfTest = args.has('--self-test');
+const projectArg = readOption('--project=');
+const fileArg = readOption('--file=');
+const grepArg = readOption('--grep=');
+const workersArg = readOption('--workers=');
 const configPath = 'playwright.ux-smoke.config.ts';
 const testDir = 'tests/ux-smoke';
 const criticalRoutesPath = 'tests/ux-smoke/critical-routes.spec.ts';
 const keyboardPath = 'tests/ux-smoke/keyboard.spec.ts';
+const knownProjects = new Set(['mobile', 'tablet', 'desktop']);
+const knownTestFiles = new Map([
+  ['critical-routes', criticalRoutesPath],
+  ['routes', criticalRoutesPath],
+  ['keyboard', keyboardPath],
+]);
+const allowedArgs = new Set(['--json', '--self-test']);
 
 const criticalRoutes = [
   '/',
@@ -64,14 +75,33 @@ function makeReport({ status, passed, failed, notes = '', checks = [] }) {
   };
 }
 
-const allowedArgs = new Set(['--json', '--self-test']);
-const invalidArgs = rawArgs.filter((arg) => arg.startsWith('--') && !allowedArgs.has(arg));
+const invalidArgs = rawArgs.filter((arg) => {
+  if (!arg.startsWith('--')) return false;
+  if (allowedArgs.has(arg)) return false;
+  return !arg.startsWith('--project=')
+    && !arg.startsWith('--file=')
+    && !arg.startsWith('--grep=')
+    && !arg.startsWith('--workers=');
+});
 if (invalidArgs.length > 0) {
   const report = makeReport({
     status: 'fail',
     passed: 0,
     failed: 1,
     notes: `unknown verify:ux-smoke argument: ${invalidArgs.join(', ')}`,
+  });
+  if (jsonOutput) console.log(JSON.stringify(report, null, 2));
+  else console.error(report.checks[0].notes);
+  process.exit(1);
+}
+
+const optionErrors = validateRunOptions();
+if (optionErrors.length > 0) {
+  const report = makeReport({
+    status: 'fail',
+    passed: 0,
+    failed: 1,
+    notes: optionErrors.join('; '),
   });
   if (jsonOutput) console.log(JSON.stringify(report, null, 2));
   else console.error(report.checks[0].notes);
@@ -96,12 +126,7 @@ if (selfTest) {
   process.exit(report.failed > 0 ? 1 : 0);
 }
 
-const result = spawnSync(process.execPath, [
-  './node_modules/playwright/cli.js',
-  'test',
-  '-c',
-  configPath,
-], {
+const result = spawnSync(process.execPath, buildPlaywrightArgs(), {
   cwd: process.cwd(),
   encoding: 'utf8',
   maxBuffer: 40 * 1024 * 1024,
@@ -126,6 +151,41 @@ if (jsonOutput) {
 }
 
 process.exit(failed > 0 ? 1 : 0);
+
+function buildPlaywrightArgs() {
+  const playwrightArgs = [
+    './node_modules/playwright/cli.js',
+    'test',
+    '-c',
+    configPath,
+  ];
+
+  if (fileArg) playwrightArgs.push(knownTestFiles.get(fileArg));
+  if (projectArg) playwrightArgs.push(`--project=${projectArg}`);
+  if (grepArg) playwrightArgs.push('--grep', grepArg);
+  if (workersArg) playwrightArgs.push(`--workers=${workersArg}`);
+
+  return playwrightArgs;
+}
+
+function validateRunOptions() {
+  const errors = [];
+  if (projectArg && !knownProjects.has(projectArg)) {
+    errors.push(`unknown UX smoke project: ${projectArg}`);
+  }
+  if (fileArg && !knownTestFiles.has(fileArg)) {
+    errors.push(`unknown UX smoke file: ${fileArg}`);
+  }
+  if (workersArg && !/^[1-9]\d*$/.test(workersArg)) {
+    errors.push(`invalid UX smoke workers value: ${workersArg}`);
+  }
+  return errors;
+}
+
+function readOption(prefix) {
+  const match = rawArgs.find((arg) => arg.startsWith(prefix));
+  return match ? match.slice(prefix.length).trim() : '';
+}
 
 function buildSelfTestChecks() {
   const configSource = readIfExists(configPath);
@@ -171,6 +231,12 @@ function buildSelfTestChecks() {
       name: 'keyboard smoke covers conversion and admin workflows',
       source: keyboardSource,
       markers: keyboardCoverageMarkers,
+    }),
+    markerCheck({
+      id: 'ux-smoke-segmented-runner',
+      name: 'UX smoke runner supports segmented local verification',
+      source: readIfExists('scripts/verify-ux-smoke.mjs'),
+      markers: ['--project=', '--file=', '--grep=', '--workers=', 'knownTestFiles', 'buildPlaywrightArgs'],
     }),
   ];
 }

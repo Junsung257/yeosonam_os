@@ -1403,12 +1403,31 @@ export default function PackagesClient() {
     });
   }, [trackPackageFilter]);
 
+  const closeMoreFiltersFromEscape = useCallback(() => {
+    setShowMoreFilters((current) => {
+      if (!current) return current;
+      trackPackageFilter('more_filters_panel', 'closed_escape');
+      return false;
+    });
+  }, [trackPackageFilter]);
+
   const handleMoreFiltersEscape = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Escape') return;
     event.preventDefault();
-    setShowMoreFilters(false);
-    trackPackageFilter('more_filters_panel', 'closed_escape');
-  }, [trackPackageFilter]);
+    event.stopPropagation();
+    closeMoreFiltersFromEscape();
+  }, [closeMoreFiltersFromEscape]);
+
+  useEffect(() => {
+    if (!showMoreFilters) return undefined;
+    const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeMoreFiltersFromEscape();
+    };
+    window.addEventListener('keydown', handleDocumentKeyDown, true);
+    return () => window.removeEventListener('keydown', handleDocumentKeyDown, true);
+  }, [closeMoreFiltersFromEscape, showMoreFilters]);
 
   useEffect(() => {
     if (showMoreFilters) {
