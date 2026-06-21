@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -35,9 +35,6 @@ const PACKAGES_STICKY_PHONE_DESCRIPTION_ID = 'packages-sticky-phone-description'
 const PACKAGES_STICKY_GROUP_DESCRIPTION_ID = 'packages-sticky-group-description';
 const PACKAGES_STICKY_KAKAO_DESCRIPTION_ID = 'packages-sticky-kakao-description';
 const PACKAGES_FILTER_READINESS_SUMMARY_ID = 'packages-filter-readiness-summary';
-const srStatusProps = (enabled: boolean) => (
-  enabled ? { role: 'status', 'aria-live': 'polite', 'aria-atomic': true } as const : {}
-);
 
 interface Package {
   id: string;
@@ -389,7 +386,6 @@ export default function PackagesClient() {
     : compareIds.length === 1
       ? '비교 상품 1개가 선택되었습니다. 하나 더 선택하면 비교할 수 있습니다.'
       : '비교 상품 2개가 선택되었습니다. 비교하기를 열 수 있습니다.';
-  const compareStatusLive = compareIds.length > 0;
   const compareHelpText = compareIds.length >= 2
     ? '선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 비교 모달에서 확인할 수 있습니다.'
     : '비교할 상품을 최대 2개까지 선택할 수 있습니다. 이미 2개를 고른 뒤 다른 상품을 누르면 가장 오래된 선택이 교체됩니다.';
@@ -574,15 +570,9 @@ export default function PackagesClient() {
       .slice(0, 4),
     [filterSummaryItems],
   );
-  const stickyPhoneDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`
-    : `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
-  const stickyGroupDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`
-    : `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
-  const stickyKakaoDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`
-    : `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
+  const stickyPhoneDescriptionIds = `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
+  const stickyGroupDescriptionIds = `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
+  const stickyKakaoDescriptionIds = `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
   const handoffSummary = useMemo(() => [
     q ? `검색어: ${q}` : null,
     ...filterSummaryItems
@@ -749,6 +739,7 @@ export default function PackagesClient() {
       : '마음에 드는 상품이 부족하면 상담으로 대체 일정과 조건을 함께 확인하세요.';
   const packageCtaDecisionMetadata = useMemo(() => ({
     selectedIntent: effectiveIntent,
+    intent: selectedIntent,
     hub,
     result_count: filteredPackages.length,
     visible_count: visiblePackages.length,
@@ -772,6 +763,7 @@ export default function PackagesClient() {
     primaryFilterMissingLabels,
     primaryFilterReadyCount,
     effectiveIntent,
+    selectedIntent,
     visiblePackages.length,
   ]);
 
@@ -1421,7 +1413,7 @@ export default function PackagesClient() {
   useEffect(() => {
     if (showMoreFilters) {
       moreFiltersWasOpenRef.current = true;
-      const focusTimer = window.setTimeout(() => moreFiltersFirstControlRef.current?.focus(), 0);
+      const focusTimer = window.setTimeout(() => moreFiltersFirstControlRef.current?.focus({ preventScroll: true }), 80);
       return () => window.clearTimeout(focusTimer);
     }
     if (moreFiltersWasOpenRef.current) {
@@ -1446,7 +1438,13 @@ export default function PackagesClient() {
       <a href={consultTelHref || groupInquiryHref} className="sr-only">
         여행 상품 문의
       </a>
-      <p id={compareStatusId} className="sr-only" {...srStatusProps(compareStatusLive)}>
+      <p
+        id={compareStatusId}
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {compareStatusText}
       </p>
       <p id={compareHelpId} className="sr-only">
@@ -1648,7 +1646,7 @@ export default function PackagesClient() {
               결과 {filteredPackages.length}개
             </span>
             <span className="shrink-0 rounded-full border border-[#DCE5F0] bg-white px-2.5 py-1 text-[11px] font-bold text-text-primary">
-              적용 {mobileAppliedFilterItems.length}
+              적용 조건 {mobileAppliedFilterItems.length}
             </span>
             {mobileAppliedFilterItems.map((item) => (
               <button
@@ -1727,27 +1725,28 @@ export default function PackagesClient() {
             className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar"
             data-testid="packages-filter-readiness-chips"
           >
-            {primaryFilterChecklist.map((item) => (
-              item.complete ? (
+            {primaryFilterChecklist.map((item) => {
+              const filterReadinessChipLabel = `${item.complete ? '완료' : '추천'} · ${item.label}`;
+              return item.complete ? (
                 <span
                   key={`primary-filter:${item.label}`}
                   className="shrink-0 rounded-full border border-brand/20 bg-brand-light px-2.5 py-1 text-[11px] font-bold text-brand"
                 >
-                  완료 · {item.label}
+                  {item.complete ? '완료' : '추천'} · {item.label}
                 </span>
               ) : (
                 <button
                   key={`primary-filter:${item.label}`}
                   type="button"
                   onClick={() => focusPrimaryFilterControl(item.key)}
-                  aria-label={`${item.label} 조건 선택하기`}
+                  aria-label={`${filterReadinessChipLabel} 조건 선택하기`}
                   aria-describedby={packageFilterDescriptionIds}
                   className="shrink-0 rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-secondary transition hover:border-brand/50 hover:bg-brand-light hover:text-brand"
                 >
-                  추천 · {item.label}
+                  {item.complete ? '완료' : '추천'} · {item.label}
                 </button>
-              )
-            ))}
+              );
+            })}
           </div>
           <p
             data-testid="packages-filter-next-action"
@@ -1815,14 +1814,18 @@ export default function PackagesClient() {
         id={packageResultSummaryId}
         data-testid="packages-result-summary"
         className="sr-only"
-        {...srStatusProps(packageResultSummaryLive)}
+        role={packageResultSummaryLive ? 'status' : undefined}
+        aria-live="polite"
+        aria-atomic="true"
       >
         {packageResultSummaryText}
       </p>
       <p
         id={packageFilterReadinessSummaryId}
         className="sr-only"
-        {...srStatusProps(filterReadinessLive)}
+        role={filterReadinessLive ? 'status' : undefined}
+        aria-live="polite"
+        aria-atomic="true"
       >
         {primaryFilterReadinessText}
       </p>
@@ -2136,28 +2139,30 @@ export default function PackagesClient() {
           <p id={PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} className="sr-only">
             현재 패키지 목록 조건을 상담 문구로 정리해 카카오톡 상담창으로 이어갑니다.
           </p>
-          {stickyHandoffItems.length > 0 && (
-            <div
-              id={PACKAGES_STICKY_HANDOFF_SUMMARY_ID}
-              className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
-              aria-label="상담 전달 조건"
-              data-testid="packages-sticky-handoff-summary"
+          <div
+            id={PACKAGES_STICKY_HANDOFF_SUMMARY_ID}
+            className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
+            aria-label="상담 전달 조건"
+            data-testid="packages-sticky-handoff-summary"
+          >
+            <span
+              data-testid="packages-sticky-filter-readiness"
+              className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand"
             >
-              <span
-                data-testid="packages-sticky-filter-readiness"
-                className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand"
-              >
-                준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
+              준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
+            </span>
+            {stickyHandoffItems.length > 0 ? stickyHandoffItems.map((item) => (
+              <span key={`${item.label}:${item.value}`} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-text-body shadow-sm">
+                <span className="text-text-secondary">{item.label}</span>
+                <span className="mx-1 text-[#CBD5E1]">/</span>
+                {item.value}
               </span>
-              {stickyHandoffItems.map((item) => (
-                <span key={`${item.label}:${item.value}`} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-text-body shadow-sm">
-                  <span className="text-text-secondary">{item.label}</span>
-                  <span className="mx-1 text-[#CBD5E1]">/</span>
-                  {item.value}
-                </span>
-              ))}
-            </div>
-          )}
+            )) : (
+              <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-text-body shadow-sm">
+                조건 기반 상담
+              </span>
+            )}
+          </div>
           <p
             id={PACKAGES_STICKY_NEXT_ACTION_ID}
             data-testid="packages-sticky-next-action"
@@ -2245,7 +2250,10 @@ export default function PackagesClient() {
       </div>
 
       {compareIds.length >= 2 && (
-        <div className="fixed bottom-[calc(15rem+env(safe-area-inset-bottom))] left-1/2 z-[60] max-h-[min(48dvh,24rem)] w-[min(calc(100vw-2rem),680px)] -translate-x-1/2 overflow-y-auto md:bottom-[88px]">
+        <div
+          className="fixed bottom-32 bottom-[var(--packages-compare-bottom)] left-1/2 z-[60] max-h-[min(48dvh,24rem)] w-[min(calc(100vw-2rem),680px)] -translate-x-1/2 overflow-y-auto md:bottom-[88px]"
+          style={{ '--packages-compare-bottom': 'calc(15rem + env(safe-area-inset-bottom))' } as CSSProperties}
+        >
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
             <p
               id={compareHandoffSummaryId}
