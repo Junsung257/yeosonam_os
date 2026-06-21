@@ -35,6 +35,7 @@ import {
   loadLatestV3DraftForPackage,
 } from '@/lib/product-registration-v3/customer-payload';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
+import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -121,9 +122,16 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
     });
   }
 
+  const workingPkg = { ...(pkg as Record<string, unknown>) };
+  const repair = buildSourceBackedPriceDateRepair(pkg as Parameters<typeof buildSourceBackedPriceDateRepair>[0]);
+  if (repair.status === 'repaired') {
+    workingPkg.price_dates = repair.priceDates;
+  }
+
   const result = evaluateVerifyChecks({
-    ...(pkg as Record<string, unknown>),
+    ...workingPkg,
     status: 'approved',
+    audit_status: 'clean',
   } as Parameters<typeof evaluateVerifyChecks>[0]);
 
   const auditReport = {
@@ -131,11 +139,13 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
     fixable: result.fixable,
     source: 'package-approval-source-verify',
     version: 3,
+    source_price_date_repair: repair,
   };
 
   await supabaseAdmin
     .from('travel_packages')
     .update({
+      ...(repair.status === 'repaired' ? { price_dates: repair.priceDates } : {}),
       audit_status: result.status,
       audit_report: auditReport,
       audit_checked_at: new Date().toISOString(),
@@ -143,11 +153,12 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
     })
     .eq('id', packageId);
 
-  if (result.status === 'blocked') {
-    return ApiErrors.conflict('Latest source-vs-saved audit blocks customer publication.', {
-      code: 'SOURCE_AUDIT_BLOCKS_PUBLICATION',
+  if (result.status === 'blocked' || result.status === 'warnings') {
+    return ApiErrors.conflict('Latest source-vs-saved audit is not clean enough for customer publication.', {
+      code: result.status === 'blocked' ? 'SOURCE_AUDIT_BLOCKS_PUBLICATION' : 'SOURCE_AUDIT_WARNINGS_REQUIRE_REVIEW',
       packageId,
       source_verify: result,
+      source_price_date_repair: repair,
     });
   }
 

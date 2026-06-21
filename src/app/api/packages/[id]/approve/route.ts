@@ -11,6 +11,7 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import type { SourceEvidenceMap } from '@/lib/source-evidence';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
+import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { withAdminGuard } from '@/lib/admin-guard';
 import {
   evaluateV3CustomerNoticeGate,
@@ -68,20 +69,28 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
 
   if (action === 'approve') {
     const force = body.force === true;
-    const sourceVerify = evaluateVerifyChecks({
+    const sourcePriceDateRepair = buildSourceBackedPriceDateRepair(pkg as Parameters<typeof buildSourceBackedPriceDateRepair>[0]);
+    const pkgForSourceVerify = {
       ...(pkg as Record<string, unknown>),
+      ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
+    };
+    const sourceVerify = evaluateVerifyChecks({
+      ...pkgForSourceVerify,
       status: 'active',
+      audit_status: 'clean',
     } as Parameters<typeof evaluateVerifyChecks>[0]);
     const sourceAuditReport = {
       checks: sourceVerify.checks,
       fixable: sourceVerify.fixable,
       source: 'approve-source-verify',
       version: 3,
+      source_price_date_repair: sourcePriceDateRepair,
     };
     if (sourceVerify.status === 'blocked') {
       await supabaseAdmin
         .from('travel_packages')
         .update({
+          ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
           audit_status: 'blocked',
           audit_report: sourceAuditReport,
           audit_checked_at: new Date().toISOString(),
@@ -100,6 +109,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       await supabaseAdmin
         .from('travel_packages')
         .update({
+          ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
           audit_status: 'warnings',
           audit_report: sourceAuditReport,
           audit_checked_at: new Date().toISOString(),
@@ -115,7 +125,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       );
     }
     const verifiedPkgForDelivery = {
-      ...(pkg as Record<string, unknown>),
+      ...pkgForSourceVerify,
       status: 'active',
       audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
       audit_report: sourceAuditReport,
@@ -265,6 +275,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
           customer_notes: v3NoticeGate.payload.customer_notes,
         } : {}),
         marketing_copies: updatedCopies,
+        ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
         audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
         audit_report: sourceAuditReport,
         audit_checked_at: new Date().toISOString(),
