@@ -61,6 +61,34 @@ const NEXT_ACTION_LABELS: Record<string, string> = {
   contracted: '계약 확인',
 };
 
+const ACTION_QUEUE_STATUSES = [
+  {
+    status: 'draft',
+    label: '요건 검수',
+    description: '목적지, 인원, 예산 조건 확인',
+  },
+  {
+    status: 'published',
+    label: '입찰 초대',
+    description: '공고 등록 후 파트너 참여 유도',
+  },
+  {
+    status: 'bidding',
+    label: '마감 확인',
+    description: '입찰 수와 마감 임박 건 점검',
+  },
+  {
+    status: 'analyzing',
+    label: 'AI 분석 확인',
+    description: '제안 비교와 리스크 검토',
+  },
+  {
+    status: 'awaiting_selection',
+    label: '고객 선택',
+    description: '선택 대기 고객 후속 안내',
+  },
+];
+
 function getRequirementText(rfq: GroupRfq, key: string): string | null {
   const value = rfq.custom_requirements?.[key];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -124,12 +152,21 @@ export default function AdminRfqsPage() {
 
   // KPI 집계
   const total = rfqs.length;
+  const draftCount = rfqs.filter((r) => r.status === 'draft').length;
   const publishedCount = rfqs.filter((r) => r.status === 'published').length;
   const biddingCount = rfqs.filter((r) => r.status === 'bidding').length;
   const awaitingCount = rfqs.filter((r) => r.status === 'awaiting_selection').length;
   const analyzingCount = rfqs.filter((r) => r.status === 'analyzing').length;
-  const pendingCount = publishedCount + biddingCount + awaitingCount;
+  const pendingCount = draftCount + publishedCount + biddingCount + analyzingCount + awaitingCount;
   const contractedCount = rfqs.filter((r) => r.status === 'contracted').length;
+  const actionQueue = ACTION_QUEUE_STATUSES.map((item) => ({
+    ...item,
+    count: rfqs.filter((r) => r.status === item.status).length,
+  }));
+  const nextQueueItem = actionQueue.find((item) => item.count > 0);
+  const actionQueueSummary = nextQueueItem
+    ? `RFQ 액션 큐에 처리할 건이 ${pendingCount}건 있습니다. 최우선은 ${nextQueueItem.label} ${nextQueueItem.count}건입니다.`
+    : '현재 처리할 RFQ 액션 큐가 없습니다.';
 
   return (
     <div className="space-y-5">
@@ -150,6 +187,55 @@ export default function AdminRfqsPage() {
         <PatternKpiCard label="AI 분석중" value={analyzingCount.toLocaleString()} icon={Sparkles} />
         <PatternKpiCard label="계약 완료" value={contractedCount.toLocaleString()} icon={CheckCircle2} tone="positive" />
       </div>
+
+      <section
+        aria-labelledby="rfq-action-queue-title"
+        aria-describedby="rfq-action-queue-summary"
+        className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p id="rfq-action-queue-title" className="text-admin-xs font-semibold uppercase text-admin-muted">
+              Action queue
+            </p>
+            <p className="mt-1 text-admin-sm font-bold text-admin-text">
+              {nextQueueItem
+                ? `${nextQueueItem.label} ${nextQueueItem.count}건부터 처리`
+                : '대기 중인 RFQ 작업 없음'}
+            </p>
+            <p id="rfq-action-queue-summary" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {actionQueueSummary}
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {actionQueue.map((item) => {
+              const isActive = statusFilter === item.status;
+
+              return (
+                <button
+                  key={item.status}
+                  type="button"
+                  onClick={() => setStatusFilter(item.status)}
+                  aria-pressed={isActive}
+                  className={`rounded-admin-sm border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
+                    isActive
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                      : 'border-admin-border-mid bg-admin-surface hover:bg-admin-surface-2'
+                  }`}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="text-admin-xs font-semibold text-admin-muted">{item.label}</span>
+                    <span className="font-mono text-admin-sm font-bold text-admin-text">{item.count}</span>
+                  </span>
+                  <span className="mt-1 block text-[11px] font-medium leading-4 text-admin-muted">
+                    {item.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
 
       {/* 탭 필터 */}
       <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit flex-wrap">
