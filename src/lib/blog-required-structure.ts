@@ -32,6 +32,19 @@ function countListItems(markdown: string): number {
   return (markdown.match(/(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g) || []).length;
 }
 
+function stripHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function inferDecisionBlockKind(markdown: string, input: BlogDecisionBlockInput): BlogDecisionBlockKind | null {
   const haystack = `${input.destination || ''} ${input.primaryKeyword || ''} ${markdown.slice(0, 1800)}`.toLowerCase();
 
@@ -149,6 +162,40 @@ function checklistBlock(kind: BlogDecisionBlockKind, destination: string): strin
   ].join('\n');
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function markdownTableToHtml(markdownTable: string): string {
+  const rows = markdownTable
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('|') && line.endsWith('|'))
+    .map((line) => line.slice(1, -1).split('|').map((cell) => cell.trim()));
+  const [header, _separator, ...body] = rows;
+  if (!header || body.length === 0) return '';
+
+  const thead = `<thead><tr>${header.map((cell) => `<th>${escapeHtml(cell)}</th>`).join('')}</tr></thead>`;
+  const tbody = `<tbody>${body
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`)
+    .join('')}</tbody>`;
+  return `<table>${thead}${tbody}</table>`;
+}
+
+function checklistBlockToHtml(markdownChecklist: string): string {
+  const lines = markdownChecklist.split('\n');
+  const heading = lines.find((line) => line.startsWith('## '))?.replace(/^##\s+/, '').trim() || '출발 전 최종 체크리스트';
+  const items = lines
+    .filter((line) => /^\s*-\s+\S/.test(line))
+    .map((line) => line.replace(/^\s*-\s+/, '').trim());
+  if (items.length === 0) return '';
+  return `<h2>${escapeHtml(heading)}</h2><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+}
+
 export function ensureRequiredBlogDecisionBlocks(markdown: string, input: BlogDecisionBlockInput = {}): string {
   if (!markdown.trim()) return markdown;
 
@@ -173,4 +220,27 @@ export function ensureRequiredBlogDecisionBlocks(markdown: string, input: BlogDe
   }
 
   return next.trim();
+}
+
+export function ensureRequiredBlogDecisionBlocksHtml(html: string, input: BlogDecisionBlockInput = {}): string {
+  if (!html.trim() || /<table\b/i.test(html)) return html;
+
+  const plain = stripHtml(html);
+  const destination = cleanText(input.destination, '여행지');
+  const keyword = cleanText(input.primaryKeyword, destination);
+  const kind = inferDecisionBlockKind(plain, input);
+  if (!kind) return html;
+
+  const blocks = [`<h2>빠른 판단표</h2>${markdownTableToHtml(decisionTable(kind, destination, keyword))}`];
+  const listItems = (html.match(/<li\b/gi) || []).length;
+  if (
+    listItems < 5 &&
+    /preparation|checklist|준비|준비물|체크리스트|guide|가이드|총정리|weather|날씨|cost|비용|budget|예산/i.test(
+      `${kind} ${keyword} ${plain.slice(0, 1000)}`,
+    )
+  ) {
+    blocks.push(checklistBlockToHtml(checklistBlock(kind, destination)));
+  }
+
+  return `${html.trimEnd()}\n${blocks.filter(Boolean).join('\n')}`;
 }

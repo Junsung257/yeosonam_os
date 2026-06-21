@@ -1,5 +1,6 @@
 import { applyHtmlAccents, applyMarkdownAccents } from '@/lib/blog-accent';
 import { proxyBlogImageUrlsInHtml } from '@/lib/blog-image-proxy';
+import { ensureRequiredBlogDecisionBlocksHtml } from '@/lib/blog-required-structure';
 
 export interface RenderBlogContentOptions {
   stripDecorativeBold?: boolean;
@@ -442,7 +443,7 @@ export async function renderBlogContentToHtml(
     const normalizedHtml = normalizeRenderedHeadingArtifacts(
       normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(source))),
     );
-    return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
+    return proxyBlogImageUrlsInHtml(applyHtmlAccents(ensureRequiredBlogDecisionBlocksHtml(normalizedHtml)));
   }
 
   const normalizedSource = normalizeStoredBlogMarkdownStructure(source);

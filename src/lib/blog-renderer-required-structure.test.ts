@@ -17,4 +17,19 @@ describe('blog renderer required structure', () => {
     expect(html).toContain('기온');
     expect(report.passed).toBe(true);
   });
+
+  it('adds required decision tables to legacy stored HTML posts', async () => {
+    const source = [
+      '<h2>보라카이 7월 날씨</h2>',
+      '<p>보라카이 7월 날씨는 기온, 강수량, 습도 차이를 같이 보고 옷차림과 준비물을 정해야 합니다.</p>',
+    ].join('');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).toContain('<table>');
+    expect(html).toContain('빠른 판단표');
+    expect(html).toContain('강수량');
+    expect(report.passed).toBe(true);
+  });
 });
