@@ -379,6 +379,21 @@ export default function AdminRfqDetailPage() {
   const transitionDecisionText = requirementMissingLabels.length > 0
     ? `전환 전 ${requirementMissingLabels.join(', ')} 항목을 보완하면 공고 품질 리스크가 낮아집니다.`
     : '핵심 요건이 준비되어 다음 상태로 전환할 수 있습니다.';
+  const sortedProposals = [...proposals].sort((a, b) => {
+    const rankA = a.rank ?? Number.POSITIVE_INFINITY;
+    const rankB = b.rank ?? Number.POSITIVE_INFINITY;
+    if (rankA !== rankB) return rankA - rankB;
+    return (b.ai_review?.score ?? 0) - (a.ai_review?.score ?? 0);
+  });
+  const recommendedProposal = sortedProposals[0] ?? null;
+  const lowestRealPrice = proposals
+    .map((proposal) => proposal.real_total_price)
+    .filter((price) => Number.isFinite(price) && price > 0)
+    .reduce<number | null>((lowest, price) => (lowest == null || price < lowest ? price : lowest), null);
+  const proposalIssueCount = proposals.reduce((sum, proposal) => sum + (proposal.ai_review?.issues?.length ?? 0), 0);
+  const proposalSummaryText = recommendedProposal
+    ? `추천 후보는 ${recommendedProposal.tenant_name || '랜드사'} ${recommendedProposal.ai_review?.score ?? '점수 없음'}점입니다. 최저 실질 총액은 ${lowestRealPrice ? `₩${fmt(lowestRealPrice)}` : '미정'}이고, AI 검토 리스크는 ${proposalIssueCount}건입니다.`
+    : '제출된 제안서가 없어 비교 요약을 만들 수 없습니다.';
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -686,12 +701,26 @@ export default function AdminRfqDetailPage() {
       {/* ── Tab 3: 제안서 비교 ───────────────────────────────────────────────── */}
       {activeTab === 'proposals' && (
         <div id="admin-rfq-proposals-panel" role="tabpanel" aria-labelledby="admin-rfq-proposals-tab" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex flex-col gap-3 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-admin-xs font-semibold uppercase text-admin-muted">Proposal summary</p>
+              <p
+                data-testid="admin-rfq-proposal-summary"
+                aria-label={proposalSummaryText}
+                className="mt-1 text-admin-sm font-semibold text-admin-text"
+              >
+                {recommendedProposal
+                  ? `추천 ${recommendedProposal.tenant_name || '랜드사'} · 최저 실질가 ${lowestRealPrice ? `₩${fmt(lowestRealPrice)}` : '미정'} · 리스크 ${proposalIssueCount}건`
+                  : '제출된 제안서 없음'}
+              </p>
+              <p className="mt-1 text-admin-xs text-admin-muted">{proposalSummaryText}</p>
+            </div>
             <button
               type="button"
               onClick={runAnalysis}
               disabled={analyzing}
               className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-admin-md text-sm font-medium transition-colors"
+              aria-describedby="admin-rfq-proposals-tab"
             >
               {analyzing ? '분석 중...' : '🤖 AI 분석 실행'}
             </button>
