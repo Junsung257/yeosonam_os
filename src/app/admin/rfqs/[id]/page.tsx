@@ -376,6 +376,9 @@ export default function AdminRfqDetailPage() {
   const requirementReadinessText = requirementMissingLabels.length > 0
     ? `요건 준비 ${requirementReadyCount}/${requirementReadinessItems.length}. 남은 항목은 ${requirementMissingLabels.join(', ')}입니다.`
     : `요건 준비 ${requirementReadyCount}/${requirementReadinessItems.length}. 공고 전환에 필요한 핵심 요건이 준비되었습니다.`;
+  const transitionDecisionText = requirementMissingLabels.length > 0
+    ? `전환 전 ${requirementMissingLabels.join(', ')} 항목을 보완하면 공고 품질 리스크가 낮아집니다.`
+    : '핵심 요건이 준비되어 다음 상태로 전환할 수 있습니다.';
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -581,20 +584,37 @@ export default function AdminRfqDetailPage() {
 
           {/* 상태 전환 (테스트) */}
           <div className="bg-white border shadow-admin-xs rounded-admin-md p-5">
-            <h2 className="font-semibold text-admin-text mb-3">
-              상태 전환
-              <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded">테스트용</span>
-            </h2>
-            <div className="flex gap-2 flex-wrap">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="font-semibold text-admin-text">
+                상태 전환
+                <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded">테스트용</span>
+              </h2>
+              <p
+                id="admin-rfq-transition-decision"
+                data-testid="admin-rfq-transition-decision"
+                className={`rounded-admin-xs px-2.5 py-1 text-admin-xs font-semibold ${
+                  requirementMissingLabels.length > 0
+                    ? 'bg-status-warningBg text-status-warningFg'
+                    : 'bg-status-successBg text-status-successFg'
+                }`}
+              >
+                {transitionDecisionText}
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-describedby="admin-rfq-transition-decision">
               {STATUS_TRANSITIONS.map((t) => (
                 <button
                   key={t.action}
                   type="button"
                   onClick={() => transition(t.status)}
                   disabled={transitioning === t.status}
-                  className="text-sm border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors"
+                  className="rounded-lg border border-indigo-300 px-3 py-2 text-left text-sm text-indigo-700 transition-colors hover:bg-indigo-50 disabled:opacity-50"
+                  aria-describedby="admin-rfq-transition-decision"
                 >
-                  테스트: {t.label}
+                  <span className="block font-semibold">테스트: {t.label}</span>
+                  <span className="mt-1 block text-xs text-indigo-700/70">
+                    {t.status === rfq.status ? '현재 상태입니다.' : transitionDecisionText}
+                  </span>
                 </button>
               ))}
             </div>
