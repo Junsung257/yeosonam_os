@@ -117,6 +117,19 @@ const missionSlimToneClass: Record<AdminMissionTone, string> = {
   info: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
 };
 
+const PAGE_TITLE_FALLBACKS: Array<{ prefix: string; label: string; exact?: boolean }> = [
+  { prefix: '/admin', label: '대시보드', exact: true },
+  { prefix: '/admin/bookings', label: '예약 관리' },
+  { prefix: '/admin/packages', label: '상품 관리' },
+  { prefix: '/admin/payments', label: '입금 관리' },
+  { prefix: '/admin/rfqs', label: '단체 RFQ' },
+  { prefix: '/admin/customers', label: '고객 관리' },
+  { prefix: '/admin/upload', label: '상품 업로드' },
+  { prefix: '/admin/blog', label: '블로그 OS' },
+  { prefix: '/admin/marketing', label: '마케팅' },
+  { prefix: '/admin/jarvis', label: '자비스 AI' },
+];
+
 function formatMissionComputedAt(value: string | undefined) {
   if (!value) return null;
   const date = new Date(value);
@@ -417,10 +430,15 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     [pathname],
   );
 
-  const currentPage = useMemo(
-    () => visibleGroups.flatMap((g) => g.items as NavItem[]).find((item) => isActive(item))?.label || '대시보드',
-    [isActive, visibleGroups],
-  );
+  const currentPage = useMemo(() => {
+    const navLabel = visibleGroups.flatMap((g) => g.items as NavItem[]).find((item) => isActive(item))?.label;
+    if (navLabel) return navLabel;
+
+    const fallback = PAGE_TITLE_FALLBACKS.find(item => (
+      item.exact ? pathname === item.prefix : pathname === item.prefix || pathname.startsWith(`${item.prefix}/`)
+    ));
+    return fallback?.label || '대시보드';
+  }, [isActive, pathname, visibleGroups]);
 
   const favoriteItems = useMemo(
     () => favs.map((href) => allAdminNavItems.find((it) => it.href === href)).filter(Boolean) as NavItem[],
@@ -740,9 +758,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             >
               <MenuIcon size={18} />
             </button>
-            <h1 className="text-admin-h3 tracking-tight text-admin-text truncate">
+            <div className="text-admin-h3 tracking-tight text-admin-text truncate" aria-label={`현재 화면: ${currentPage}`}>
               {currentPage}
-            </h1>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">

@@ -540,7 +540,7 @@ function PaymentOpsQueue({
           <p className="text-admin-xs text-admin-muted-2">입금 확인, 수동 매칭, 출금 묶기를 우선순위별로 바로 엽니다.</p>
         </div>
         <span className="hidden rounded-full bg-admin-bg px-3 py-1 text-admin-xs font-semibold text-admin-muted md:inline-flex">
-          Command queue
+          결제 큐
         </span>
       </div>
       <p id={paymentQueueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
@@ -717,7 +717,7 @@ function PaymentFocusBar({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p id="payment-focus-title" className="text-[11px] font-semibold uppercase tracking-wider text-admin-muted-2">
-            Command queue
+            결제 큐
           </p>
           <h2 className="mt-1 text-admin-base font-bold text-admin-text-2">
             {activeLabel} · 현재 {filteredCount}건

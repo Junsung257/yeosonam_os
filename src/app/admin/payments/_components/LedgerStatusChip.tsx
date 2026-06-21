@@ -5,7 +5,7 @@
  *
  * Phase 2a 이중쓰기 정합성 라이브 칩.
  *  - 정합 OK   → 초록 "원장 OK"
- *  - drift N건 → 빨간 "Drift N건"
+ *  - 차이 N건 → 빨간 "차이 N건"
  *  - 로딩 / 오류는 회색
  * 클릭 시 /admin/payments/reconcile 페이지로 이동.
  *
@@ -51,9 +51,14 @@ export default function LedgerStatusChip() {
 
   if (error) {
     return (
-      <span className="px-2 py-0.5 text-[11px] rounded bg-admin-surface-2 text-admin-muted-2 border border-admin-border-mid">
-        원장 ?
-      </span>
+      <Link
+        href="/admin/payments/reconcile"
+        className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 transition hover:bg-amber-100"
+        title="원장 상태를 확인하지 못했습니다. 정합성 화면에서 다시 확인하세요."
+        aria-label="원장 상태 확인 필요, 정합성 화면으로 이동"
+      >
+        원장 확인 필요
+      </Link>
     );
   }
   if (!state) {
@@ -74,9 +79,9 @@ export default function LedgerStatusChip() {
           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
           : 'bg-red-50 text-red-700 border-red-200 animate-pulse'
       }`}
-      title={isOk ? '원장 정합 OK' : `drift ${state.drift_count}건 / 절대합 ${state.total_abs_drift.toLocaleString()}원`}
+      title={isOk ? '원장 정합 OK' : `차이 ${state.drift_count}건 / 절대합 ${state.total_abs_drift.toLocaleString()}원`}
     >
-      {isOk ? '원장 OK' : `Drift ${state.drift_count}건`}
+      {isOk ? '원장 OK' : `차이 ${state.drift_count}건`}
     </Link>
   );
 }

@@ -274,7 +274,7 @@ export default function AdminRfqsPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p id="rfq-action-queue-title" className="text-admin-xs font-semibold uppercase text-admin-muted">
-              Action queue
+              RFQ 큐
             </p>
             <p className="mt-1 text-admin-sm font-bold text-admin-text">
               {nextQueueItem

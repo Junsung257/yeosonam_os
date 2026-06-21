@@ -4,12 +4,12 @@
  * /admin/payments/reconcile
  *
  * Phase 2a 이중쓰기 정합성 모니터링.
- *   - drift 0건 / drift N건 (절대합 표시)
- *   - 최근 7일 ledger 활동 일별 차트
- *   - drift 발생 시 booking 상위 20건 + 직접 상세 링크
+ *   - 차이 0건 / 차이 N건 (절대합 표시)
+ *   - 최근 7일 원장 활동 일별 차트
+ *   - 차이 발생 시 예약 상위 20건 + 직접 상세 링크
  *
  * 정상: 초록 배지 "정합 OK"
- * 이상: 빨간 배지 "drift N건 / NN,NNN원" + drift 테이블
+ * 이상: 빨간 배지 "차이 N건 / NN,NNN원" + 차이 테이블
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -71,6 +71,7 @@ export default function LedgerReconcilePage() {
   if (loading && !data) {
     return (
       <div className="p-6 space-y-3 max-w-3xl">
+        <h1 className="text-xl font-bold text-admin-text-2">원장 정합성 점검</h1>
         <div className="h-5 bg-admin-surface-2 rounded animate-pulse w-36" />
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 flex items-center gap-3">
@@ -84,6 +85,7 @@ export default function LedgerReconcilePage() {
   if (error) {
     return (
       <div className="p-6">
+        <h1 className="mb-2 text-xl font-bold text-admin-text-2">원장 정합성 점검</h1>
         <p className="text-red-600 text-sm">오류: {error}</p>
         <button onClick={load} className="mt-2 px-3 py-1 text-sm bg-admin-surface-2 rounded">재시도</button>
       </div>
@@ -98,7 +100,7 @@ export default function LedgerReconcilePage() {
     <div className="p-6 max-w-5xl mx-auto">
       <header className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-admin-text-2">원장 정합성 (Phase 2a)</h1>
+          <h1 className="text-xl font-bold text-admin-text-2">원장 정합성 점검</h1>
           <p className="text-xs text-admin-muted mt-0.5">
             bookings.paid_amount / total_paid_out vs SUM(ledger_entries) 일일 대조
           </p>
@@ -123,7 +125,7 @@ export default function LedgerReconcilePage() {
         <div className="flex items-baseline justify-between">
           <div>
             <p className={`text-sm font-medium ${isOk ? 'text-green-700' : 'text-red-700'}`}>
-              {isOk ? '✓ 정합 OK' : '⚠ Drift 발견'}
+              {isOk ? '✓ 정합 OK' : '⚠ 원장 차이 발견'}
             </p>
             <p className={`text-3xl font-bold mt-1 tabular-nums ${isOk ? 'text-green-800' : 'text-red-800'}`}>
               {isOk ? '0건' : `${data.drift_count.toLocaleString()}건`}
@@ -135,7 +137,7 @@ export default function LedgerReconcilePage() {
             )}
           </div>
           <div className="text-right text-xs text-admin-muted">
-            <div>마지막 ledger 활동</div>
+            <div>마지막 원장 활동</div>
             <div className="font-medium text-admin-text-2">{fmtDate(data.last_entry_at)}</div>
             <div className="mt-1.5">최종 점검</div>
             <div className="font-medium text-admin-text-2">{fmtDate(data.checked_at)}</div>
@@ -145,7 +147,7 @@ export default function LedgerReconcilePage() {
 
       {/* 최근 7일 차트 */}
       <section className="mb-6">
-        <h2 className="text-sm font-bold text-admin-text-2 mb-2">최근 7일 ledger 활동</h2>
+        <h2 className="text-sm font-bold text-admin-text-2 mb-2">최근 7일 원장 활동</h2>
         {data.daily.length === 0 ? (
           <p className="text-xs text-admin-muted-2">기록 없음 (이중쓰기 시작 후 첫 거래 대기 중)</p>
         ) : (
@@ -177,19 +179,19 @@ export default function LedgerReconcilePage() {
         )}
       </section>
 
-      {/* drift 테이블 */}
+      {/* 차이 테이블 */}
       {!isOk && (
         <section>
-          <h2 className="text-sm font-bold text-red-700 mb-2">Drift 상위 20건</h2>
+          <h2 className="text-sm font-bold text-red-700 mb-2">차이 큰 예약 상위 20건</h2>
           <div className="bg-white border rounded overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-admin-bg text-admin-muted">
                 <tr>
-                  <th className="text-left p-2">Booking</th>
+                  <th className="text-left p-2">예약</th>
                   <th className="text-left p-2">계정</th>
-                  <th className="text-right p-2">bookings 잔액</th>
-                  <th className="text-right p-2">ledger 합계</th>
-                  <th className="text-right p-2">drift</th>
+                  <th className="text-right p-2">예약 잔액</th>
+                  <th className="text-right p-2">원장 합계</th>
+                  <th className="text-right p-2">차이</th>
                 </tr>
               </thead>
               <tbody>
@@ -215,7 +217,7 @@ export default function LedgerReconcilePage() {
             </table>
           </div>
           <p className="text-xs text-admin-muted mt-2">
-            drift &gt; 0 = bookings 가 ledger 보다 많음 (ledger 누락) · drift &lt; 0 = ledger 가 더 많음 (잔액 보정 누락)
+            차이 &gt; 0 = 예약 잔액이 원장보다 많음 (원장 누락) · 차이 &lt; 0 = 원장이 더 많음 (잔액 보정 누락)
           </p>
         </section>
       )}

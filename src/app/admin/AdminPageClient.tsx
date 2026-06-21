@@ -32,6 +32,10 @@ const ADMIN_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
   selectedProducts: [GROUP_INQUIRY_PRODUCT_LABEL],
 });
 
+function trimSentenceEnd(value: string): string {
+  return value.replace(/[.!?。]+$/u, '');
+}
+
 // ── 타입 ──────────────────────────────────────────────────
 
 interface DashboardStats {
@@ -704,9 +708,11 @@ function TodayWorkQueue({
   const workQueueLeadId = 'admin-today-work-lead';
   const activeWorkSummary = activeRows.length > 0
     ? activeRows.map(row => `${row.label} ${row.count}건, 운영 리스크 ${row.operationRisk}, 이유 ${row.reason}`).join(', ')
-    : '새로고침으로 데이터 상태를 먼저 확인';
+    : '새로고침으로 데이터 상태를 먼저 확인하세요.';
   const workQueueSummaryText = total > 0
-    ? `오늘 처리할 일이 ${total}건 있습니다. 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 업무 ${urgentRows.length + (hasDataIssue ? 1 : 0)}개입니다. ${hasDataIssue ? `데이터 확인 필요 ${dataIssueCount}건이 있어 새로고침 후 확인이 필요합니다. ` : ''}${activeWorkSummary} 순서로 확인할 수 있습니다.`
+    ? activeRows.length > 0
+      ? `오늘 처리할 일이 ${total}건 있습니다. 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 업무 ${urgentRows.length + (hasDataIssue ? 1 : 0)}개입니다. ${hasDataIssue ? `데이터 확인 필요 ${dataIssueCount}건이 있어 새로고침 후 확인이 필요합니다. ` : ''}${activeWorkSummary} 순서로 확인할 수 있습니다.`
+      : `데이터 확인 필요 ${dataIssueCount}건이 있습니다. ${activeWorkSummary}`
     : '오늘 처리할 일이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
   const workQueueLeadText = priorityRow
     ? `우선 처리: ${priorityRow.label} ${priorityRow.count}건. 운영 리스크: ${priorityRow.operationRisk}. 이유: ${priorityRow.reason}. 다음 액션은 ${priorityRow.action}입니다.`
@@ -742,6 +748,34 @@ function TodayWorkQueue({
       >
         {workQueueLeadText}
       </p>
+      {priorityRow && (
+        <Link
+          href={priorityRow.href}
+          data-testid="admin-today-work-first-action"
+          aria-label={`${priorityRow.label} ${priorityRow.count}건 첫 업무 처리`}
+          className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-admin-sm bg-slate-950 px-3 text-admin-xs font-black text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+          onClick={() => {
+            trackEngagement({
+              event_type: ANALYTICS_EVENTS.adminActionCompleted,
+              page_url: '/admin',
+              metadata: {
+                surface: 'today_work_queue',
+                action: 'first_action_opened',
+                label: priorityRow.label,
+                href: priorityRow.href,
+                count: priorityRow.count,
+                operation_risk: priorityRow.operationRisk,
+                reason: priorityRow.reason,
+                next_action: priorityRow.action,
+                decision_summary: `${priorityRow.label}: ${priorityRow.count}건, ${priorityRow.operationRisk}, ${priorityRow.action}`,
+                has_waiting_work: true,
+              },
+            });
+          }}
+        >
+          첫 업무 처리
+        </Link>
+      )}
       {hasDataIssue && (
         <div
           className="mt-2 rounded-admin-sm border border-amber-200 bg-amber-50 px-3 py-2 text-admin-xs text-amber-800"
@@ -807,7 +841,7 @@ function TodayWorkQueue({
               className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
             >
               <p id={rowDescriptionId} className="sr-only">
-                {row.target} 현재 {row.count}건이며 운영 리스크는 {row.operationRisk}, 처리 이유는 {row.reason}입니다. 다음 액션은 {row.count > 0 ? row.action : '상태 확인'}입니다.
+                {trimSentenceEnd(row.target)}. 현재 {row.count}건이며 운영 리스크는 {row.operationRisk}, 처리 이유는 {trimSentenceEnd(row.reason)}. 다음 액션은 {row.count > 0 ? row.action : '상태 확인'}입니다.
               </p>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -910,7 +944,7 @@ function OperatorCommandBar({
     <section aria-labelledby="admin-operator-command-title" aria-describedby={`${commandSummaryId} ${commandNextActionReasonId}`} className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="min-w-0 lg:w-[220px]">
-          <p id="admin-operator-command-title" className="text-[11px] font-semibold uppercase tracking-wider text-admin-muted-2">Action queue</p>
+          <p id="admin-operator-command-title" className="text-[11px] font-semibold uppercase tracking-wider text-admin-muted-2">운영 큐</p>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-admin-lg font-black text-admin-text tabular-nums">{total}</span>
             <span className="text-admin-xs font-semibold text-admin-muted">오늘 처리 후보</span>
@@ -925,6 +959,35 @@ function OperatorCommandBar({
           >
             {commandNextActionReasonText}
           </p>
+          {nextAction.count > 0 && (
+            <Link
+              href={nextAction.href}
+              data-testid="admin-operator-command-first-action"
+              aria-label={`${nextAction.label} ${nextAction.count}건 첫 업무 처리`}
+              className="mt-2 inline-flex h-8 items-center justify-center rounded-admin-xs bg-slate-950 px-3 text-[11px] font-black text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                  page_url: '/admin',
+                  metadata: {
+                    surface: 'operator_command_bar',
+                    action: 'first_action_opened',
+                    label: nextAction.label,
+                    href: nextAction.href,
+                    count: nextAction.count,
+                    operation_risk: nextAction.operationRisk,
+                    reason: nextAction.reason,
+                    next_action: `${nextAction.label} 열기`,
+                    decision_summary: `${nextAction.label}: ${nextAction.count}건, ${nextAction.operationRisk}`,
+                    has_waiting_work: true,
+                    priority: nextAction.priority,
+                  },
+                });
+              }}
+            >
+              첫 업무 처리
+            </Link>
+          )}
         </div>
         <p id={commandSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {commandSummaryText}
@@ -967,7 +1030,7 @@ function OperatorCommandBar({
                 }`}
               >
                 <p id={actionDescriptionId} className="sr-only">
-                  {action.target} 현재 {action.count}건입니다. 운영 리스크는 {action.operationRisk}, 처리 이유는 {action.reason}입니다.
+                  {trimSentenceEnd(action.target)}. 현재 {action.count}건입니다. 운영 리스크는 {action.operationRisk}, 처리 이유는 {trimSentenceEnd(action.reason)}.
                 </p>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">

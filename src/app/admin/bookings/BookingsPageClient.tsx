@@ -1013,7 +1013,7 @@ function BookingWorkQueue({
           <p className="text-admin-xs text-admin-muted-2">급한 업무를 선택하면 해당 예약만 바로 모아봅니다.</p>
         </div>
         <span className="hidden rounded-full bg-admin-bg px-3 py-1 text-admin-xs font-semibold text-admin-muted md:inline-flex">
-          Action queue
+          예약 큐
         </span>
       </div>
       <p id={queueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
