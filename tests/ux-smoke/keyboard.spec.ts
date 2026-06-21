@@ -406,6 +406,28 @@ test.describe('keyboard access smoke', () => {
   });
 
   test('AI consultation entry controls are keyboard focusable', async ({ page }) => {
+    await page.route('**/api/concierge/cart**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) });
+    });
+    await page.route('**/api/concierge/search', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          results: [
+            {
+              product_id: 'ux-smoke-ai-entry-1',
+              product_name: '빠른 시작 결과 포커스 상품',
+              api_name: 'internal',
+              product_type: 'PACKAGE',
+              product_category: 'FIXED',
+              price: 980000,
+              description: '빠른 시작 검색 후 결과 영역 포커스 검증용 상품입니다.',
+            },
+          ],
+        }),
+      });
+    });
     await page.goto('/concierge', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
@@ -417,6 +439,10 @@ test.describe('keyboard access smoke', () => {
     await intentPrompt.focus();
     await page.keyboard.press('Enter');
     await expect(intentPrompt, 'concierge intent prompt should expose selected state after keyboard activation').toHaveAttribute('aria-pressed', 'true');
+    const resultsSection = page.locator('[data-testid="concierge-results-section"]');
+    await expect(resultsSection, 'concierge quick start should move focus to recommendation results').toBeFocused({ timeout: 10_000 });
+    await expect(resultsSection).toHaveAttribute('tabindex', '-1');
+    await expectCanFocus(page.locator('[data-testid="concierge-result-add"]:visible').first(), 'concierge result add button after quick start');
   });
 
   test('concierge mobile cart sheet opens from keyboard and exposes dialog state', async ({ page }) => {

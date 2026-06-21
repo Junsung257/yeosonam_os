@@ -520,9 +520,11 @@ function ConciergePageContent() {
   const [shareToast, setShareToast] = useState('');
   const [activePrompt, setActivePrompt] = useState<IntentPrompt | null>(urlPrompt);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchOutcomeRef = useRef<HTMLElement | null>(null);
   const customerNameRef = useRef<HTMLInputElement>(null);
   const cartSheetReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const handoffAutoSearchStartedRef = useRef(false);
+  const shouldFocusSearchOutcomeRef = useRef(false);
   const activeSearchRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const sessionId = getOrCreateSessionId();
 
@@ -603,6 +605,7 @@ function ConciergePageContent() {
       inputRef.current?.focus();
       return;
     }
+    shouldFocusSearchOutcomeRef.current = true;
     setLoading(true);
     setHasSearched(true);
     setResults([]);
@@ -669,6 +672,21 @@ function ConciergePageContent() {
       }
     }
   }, [cart]);
+
+  const focusSearchOutcome = useCallback(() => {
+    const target = searchOutcomeRef.current;
+    if (!target) return;
+    target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    target.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    if (!shouldFocusSearchOutcomeRef.current || loading) return;
+    if (!hasSearched && !searchError && results.length === 0) return;
+    shouldFocusSearchOutcomeRef.current = false;
+    const focusTimer = window.setTimeout(focusSearchOutcome, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [focusSearchOutcome, hasSearched, loading, results.length, searchError]);
 
   useEffect(() => {
     if (!urlPrompt || handoffAutoSearchStartedRef.current) return;
@@ -1396,7 +1414,13 @@ function ConciergePageContent() {
             )}
 
             {searchError && (
-              <div id="concierge-search-error" className="mt-4 flex items-start gap-2 rounded-[14px] border border-danger/20 bg-danger-light p-3 text-[13px] text-danger" role="alert">
+              <div
+                ref={(node) => { searchOutcomeRef.current = node; }}
+                id="concierge-search-error"
+                tabIndex={-1}
+                className="mt-4 flex items-start gap-2 rounded-[14px] border border-danger/20 bg-danger-light p-3 text-[13px] text-danger"
+                role="alert"
+              >
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                 <p>{searchError}</p>
               </div>
@@ -1413,7 +1437,9 @@ function ConciergePageContent() {
 
           {hasSearched && !loading && !searchError && results.length === 0 && (
             <section
+              ref={(node) => { searchOutcomeRef.current = node; }}
               data-testid="concierge-empty-results"
+              tabIndex={-1}
               aria-describedby={`${resultSummaryId} ${handoffReadinessSummaryId}`}
               className="rounded-[20px] border border-[#D1DCE8] bg-white p-5 text-center shadow-card"
             >
@@ -1475,7 +1501,14 @@ function ConciergePageContent() {
           )}
 
           {results.length > 0 && (
-            <section className="space-y-3" aria-labelledby="concierge-results-title" aria-describedby={resultSummaryId}>
+            <section
+              ref={(node) => { searchOutcomeRef.current = node; }}
+              data-testid="concierge-results-section"
+              tabIndex={-1}
+              className="space-y-3"
+              aria-labelledby="concierge-results-title"
+              aria-describedby={resultSummaryId}
+            >
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <h2 id="concierge-results-title" className="text-[20px] font-extrabold text-text-primary">추천 결과 {results.length}건</h2>
