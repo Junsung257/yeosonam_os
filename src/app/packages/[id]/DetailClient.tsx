@@ -1333,6 +1333,66 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     { label: '출발', value: selectedDate ?? selectedTier?.period_label ?? (formData.date || firstScreenDepartureLabel) },
     { label: '가격', value: stickyPriceSummaryText },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
+  const focusFirstReservationMissingField = () => {
+    setReservationSubmitAttempted(true);
+    window.requestAnimationFrame(() => {
+      if (reservationNameMissing) {
+        reservationNameInputRef.current?.focus();
+        return;
+      }
+      if (reservationPhoneMissing) {
+        reservationPhoneInputRef.current?.focus();
+        return;
+      }
+      if (reservationConsentMissing) {
+        reservationConsentInputRef.current?.focus();
+      }
+    });
+  };
+  const openReservationKakaoFallback = async () => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      product_id: id,
+      product_name: pkg.title,
+      cta_type: 'detail_reservation_error_kakao',
+      page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+      intent: handoffIntent,
+      budget: handoffBudgetForCta,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedHandoffProducts,
+      ready_count: reservationSubmitReadyCount,
+      missing_fields: reservationSubmitMissingLabels,
+      decision_summary: reservationSubmitDecisionSummaryText,
+      handoff_preview: reservationSubmitHandoffPreviewText,
+      next_action: '예약 문의 전송 실패 후 같은 조건으로 카카오톡 상담을 이어갑니다.',
+      metadata: {
+        source: 'detail_reservation_error_kakao',
+        selectedDate,
+        selectedTier: selectedTier?.period_label ?? null,
+        productType: pkg.product_type ?? null,
+      },
+    });
+    const copied = await openKakaoChannel({
+      internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
+      productTitle: selectedProductName,
+      intent: handoffIntent,
+      budget: handoffBudgetForCta,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedHandoffProducts,
+      departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+      escalationSummary: [
+        '예약 문의 폼 전송이 실패해 카카오톡 상담으로 이어갑니다.',
+        reservationSubmitHandoffPreviewText,
+        handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : null,
+      ].filter(Boolean).join('\n'),
+    });
+    if (copied) {
+      setClipboardToast(true);
+      setTimeout(() => setClipboardToast(false), 4000);
+    }
+  };
   // currentDay는 일정표 days.map 루프 내에서 정의됨
 
   return (
@@ -3225,15 +3285,35 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     )}
                   </div>
                   {reservationSubmitError && (
-                    <p
-                      ref={reservationSubmitErrorRef}
-                      id="reservation-submit-error"
-                      className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold leading-relaxed text-red-700 outline-none focus:ring-2 focus:ring-red-200"
-                      role="alert"
-                      tabIndex={-1}
-                    >
-                      {reservationSubmitError}
-                    </p>
+                    <div className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold leading-relaxed text-red-700">
+                      <p
+                        ref={reservationSubmitErrorRef}
+                        id="reservation-submit-error"
+                        className="outline-none focus:ring-2 focus:ring-red-200"
+                        role="alert"
+                        tabIndex={-1}
+                      >
+                        {reservationSubmitError}
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void openReservationKakaoFallback()}
+                          aria-describedby={reservationSubmitDescriptionIds}
+                          className="h-9 rounded-full bg-[#FEE500] px-3 text-[12px] font-extrabold text-[#3C1E1E]"
+                        >
+                          카톡으로 이어가기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={focusFirstReservationMissingField}
+                          aria-describedby={reservationSubmitDescriptionIds}
+                          className="h-9 rounded-full border border-red-100 bg-white px-3 text-[12px] font-extrabold text-red-700"
+                        >
+                          입력 다시 확인
+                        </button>
+                      </div>
+                    </div>
                   )}
                   <div
                     id={reservationSubmitReadinessId}
