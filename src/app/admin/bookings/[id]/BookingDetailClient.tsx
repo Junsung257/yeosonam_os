@@ -402,13 +402,16 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       cancelRefundInputRef.current?.focus();
     }, 0);
     const fallbackReturnTarget = cancelTriggerRef.current;
+    const getReturnTarget = () => (
+      previousActiveElement?.isConnected ? previousActiveElement : cancelTriggerRef.current
+    ) ?? fallbackReturnTarget;
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
       window.setTimeout(() => {
-        const returnTarget = previousActiveElement?.isConnected ? previousActiveElement : fallbackReturnTarget;
+        const returnTarget = getReturnTarget();
         returnTarget?.focus();
       }, 0);
     };
