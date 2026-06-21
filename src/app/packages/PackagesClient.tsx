@@ -91,6 +91,12 @@ type MobileAppliedFilterItem = {
   value: string;
   clearLabel: string;
 };
+type PrimaryFilterKey = 'month' | 'hub' | 'intent' | 'budget';
+type PrimaryFilterChecklistItem = {
+  key: PrimaryFilterKey;
+  label: string;
+  complete: boolean;
+};
 
 function normalizeIntentId(value: string | null): IntentId | null {
   return INTENT_OPTIONS.some(opt => opt.id === value) ? (value as IntentId) : null;
@@ -303,6 +309,10 @@ export default function PackagesClient() {
   const moreFiltersToggleRef = useRef<HTMLButtonElement | null>(null);
   const moreFiltersFirstControlRef = useRef<HTMLSelectElement | null>(null);
   const moreFiltersWasOpenRef = useRef(false);
+  const monthFilterRef = useRef<HTMLSelectElement | null>(null);
+  const hubFilterRef = useRef<HTMLSelectElement | null>(null);
+  const purposeFilterRef = useRef<HTMLSelectElement | null>(null);
+  const budgetFilterRef = useRef<HTMLSelectElement | null>(null);
 
   const destination = searchParams.get('destination') || '';
   const rawFilter = searchParams.get('filter') || '';
@@ -500,11 +510,11 @@ export default function PackagesClient() {
   const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null) || inferredDestinationFromQuery;
   const handoffIntent = effectiveIntent ? INTENT_HANDOFF_LABELS[effectiveIntent] : null;
   const handoffPartyType = effectiveIntent ? INTENT_PARTY_TYPE[effectiveIntent] ?? null : null;
-  const primaryFilterChecklist = useMemo(() => [
-    { label: '출발월', complete: Boolean(month) },
-    { label: '출발지', complete: Boolean(hub) },
-    { label: '여행 목적', complete: Boolean(effectiveIntent) },
-    { label: '예산', complete: Boolean(handoffBudget) },
+  const primaryFilterChecklist = useMemo<PrimaryFilterChecklistItem[]>(() => [
+    { key: 'month', label: '출발월', complete: Boolean(month) },
+    { key: 'hub', label: '출발지', complete: Boolean(hub) },
+    { key: 'intent', label: '여행 목적', complete: Boolean(effectiveIntent) },
+    { key: 'budget', label: '예산', complete: Boolean(handoffBudget) },
   ], [effectiveIntent, handoffBudget, hub, month]);
   const primaryFilterReadyCount = primaryFilterChecklist.filter((item) => item.complete).length;
   const primaryFilterMissingLabels = primaryFilterChecklist
@@ -931,6 +941,17 @@ export default function PackagesClient() {
     effectiveIntent,
   ]);
 
+  const focusPrimaryFilterControl = useCallback((key: PrimaryFilterKey) => {
+    const target = {
+      month: monthFilterRef.current,
+      hub: hubFilterRef.current,
+      intent: purposeFilterRef.current,
+      budget: budgetFilterRef.current,
+    }[key];
+    trackPackageFilter('primary_filter_prompt', key);
+    target?.focus();
+  }, [trackPackageFilter]);
+
   const handleIntentSelect = useCallback((intent: IntentId) => {
     const nextIntent = selectedIntent === intent ? null : intent;
     const params = new URLSearchParams(searchParams.toString());
@@ -1267,6 +1288,7 @@ export default function PackagesClient() {
             aria-describedby={packageFilterDescriptionIds}
           >
             <select
+              ref={monthFilterRef}
               aria-label="출발월"
               aria-describedby={packageFilterDescriptionIds}
               aria-controls="packages-list"
@@ -1280,6 +1302,7 @@ export default function PackagesClient() {
               ))}
             </select>
             <select
+              ref={hubFilterRef}
               aria-label="출발지"
               aria-describedby={packageFilterDescriptionIds}
               aria-controls="packages-list"
@@ -1296,6 +1319,7 @@ export default function PackagesClient() {
               ))}
             </select>
             <select
+              ref={purposeFilterRef}
               aria-label="여행 목적"
               aria-describedby={packageFilterDescriptionIds}
               aria-controls="packages-list"
@@ -1309,6 +1333,7 @@ export default function PackagesClient() {
               ))}
             </select>
             <select
+              ref={budgetFilterRef}
               aria-label="예산"
               aria-describedby={packageFilterDescriptionIds}
               aria-controls="packages-list"
@@ -1482,16 +1507,25 @@ export default function PackagesClient() {
             data-testid="packages-filter-readiness-chips"
           >
             {primaryFilterChecklist.map((item) => (
-              <span
-                key={`primary-filter:${item.label}`}
-                className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
-                  item.complete
-                    ? 'border-brand/20 bg-brand-light text-brand'
-                    : 'border-[#E5E7EB] bg-[#F8FAFC] text-text-secondary'
-                }`}
-              >
-                {item.complete ? '완료' : '추천'} · {item.label}
-              </span>
+              item.complete ? (
+                <span
+                  key={`primary-filter:${item.label}`}
+                  className="shrink-0 rounded-full border border-brand/20 bg-brand-light px-2.5 py-1 text-[11px] font-bold text-brand"
+                >
+                  완료 · {item.label}
+                </span>
+              ) : (
+                <button
+                  key={`primary-filter:${item.label}`}
+                  type="button"
+                  onClick={() => focusPrimaryFilterControl(item.key)}
+                  aria-label={`${item.label} 조건 선택하기`}
+                  aria-describedby={packageFilterDescriptionIds}
+                  className="shrink-0 rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-secondary transition hover:border-brand/50 hover:bg-brand-light hover:text-brand"
+                >
+                  추천 · {item.label}
+                </button>
+              )
             ))}
           </div>
           <p
