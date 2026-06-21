@@ -203,6 +203,24 @@ function parsePartyCount(value: string | null): number | undefined {
   return Number.isFinite(count) && count > 0 ? count : undefined;
 }
 
+function inferHandoffPartyCount(values: Array<string | null | undefined>): number | undefined {
+  const source = values
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join(' ')
+    .toLowerCase();
+  if (!source) return undefined;
+
+  const explicitCount = parsePartyCount(source);
+  if (explicitCount) return explicitCount;
+
+  if (/couple|허니문|honeymoon|신혼|커플/.test(source)) return 2;
+  if (/company_workshop|워크샵|workshop/.test(source)) return 20;
+  if (/senior_family|가족|효도|family|parent|filial/.test(source)) return 4;
+  if (/golf|골프|club|동호회|모임/.test(source)) return 4;
+  if (/company|단체|group/.test(source)) return 10;
+  return undefined;
+}
+
 function getSummaryValue(extracted: RfqExtracted, key: string): string {
   switch (key) {
     case 'destination':
@@ -330,7 +348,7 @@ export default function GroupInquiryPage() {
     setHandoffQuery(query?.trim() ?? '');
 
     const parsedBudget = parseKoreanBudget(budget);
-    const parsedPeople = parsePartyCount(normalizedPartyType) ?? parsePartyCount(query);
+    const parsedPeople = inferHandoffPartyCount([normalizedPartyType, partyType, intent, query]);
     const nextExtracted: RfqExtracted = {
       destination: destination ?? undefined,
       adult_count: parsedPeople,
