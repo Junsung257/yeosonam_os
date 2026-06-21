@@ -87,8 +87,9 @@ function toIso(year: number, month: number, day: number): string | null {
 }
 
 function inferYear(month: number, todayYear?: number): number {
+  if (typeof todayYear === 'number' && Number.isInteger(todayYear) && todayYear >= 2000) return todayYear;
   const now = new Date();
-  const base = todayYear ?? now.getFullYear();
+  const base = now.getFullYear();
   return month < now.getMonth() + 1 ? base + 1 : base;
 }
 

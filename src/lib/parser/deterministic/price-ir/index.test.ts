@@ -811,6 +811,50 @@ describe('extractPriceIR single travel-period product price', () => {
   });
 });
 
+describe('extractPriceIR explicit year handling', () => {
+  it('does not roll past-month supplier periods into the next year when year is provided', () => {
+    const rawText = `
+ZE 푸꾸옥 2색골프
+정규요금 2.12배포
+1,359,-
+일,월,화
+1,459,-
+수,목
+3/1~3/31
+1,419,-
+금
+1,379,-
+토
+출발확정
+1,319,-
+수,목
+3/29~4/30
+1,489,-
+토
+(4박)
+1,459,-
+일
+(4박)
+
+PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 3박5일
+2026.2.1
+매일출발 판 매 가 요금표참조
+출 발 일
+(성인/아동 동일)
+`;
+
+    const result = extractPriceIR(rawText, {
+      year: 2026,
+      title: 'PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 3박5일',
+      durationDays: 5,
+    });
+
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(result.rows.some(row => row.date.startsWith('2027-'))).toBe(false);
+    expect(result.rows.some(row => row.date.startsWith('2026-03-'))).toBe(true);
+  });
+});
+
 describe('extractPriceIR labeled departure date list price', () => {
   it('recovers source-backed prices from 출발일 list plus 요금표 adult child line', () => {
     const rawText = `
