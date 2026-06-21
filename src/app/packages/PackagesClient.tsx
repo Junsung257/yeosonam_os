@@ -712,6 +712,16 @@ export default function PackagesClient() {
   const packageListDecisionSummaryText = `목록 판단 요약: 결과 ${filteredPackages.length}개, 비교 선택 ${compareIds.length}개, 다음 액션 ${packageFilterNextActionText}. ${packageListNextActionDetailText}`;
   const packageListDescriptionIds = `${packageResultSummaryId} ${packageFilterReadinessSummaryId} ${packageListDecisionSummaryId}`;
   const emptyStateInquiryDescriptionIds = `${packageEmptyStateSummaryId} ${packageResultSummaryId} ${packageFilterReadinessSummaryId}`;
+  const hasScarcePackageResults = filteredPackages.length > 0 && filteredPackages.length <= 3;
+  const scarceResultRecoverySummaryId = 'packages-scarce-result-recovery-summary';
+  const scarceResultRecoveryText = hasScarcePackageResults
+    ? `조건에 맞는 상품이 ${filteredPackages.length}개뿐입니다. 선택지가 적으면 AI 상담이나 견적 문의로 같은 조건의 대체 상품까지 확인할 수 있습니다.`
+    : '';
+  const scarceResultNextActionText = primaryFilterMissingLabels.length > 0
+    ? `${primaryFilterMissingLabels[0]} 조건을 추가하면 상담 전달 정확도가 올라갑니다.`
+    : emptyStateRecoveryActions.length > 0
+      ? `${emptyStateRecoveryActions[0].label} 조건을 잠시 빼면 더 많은 후보를 볼 수 있습니다.`
+      : '마음에 드는 상품이 부족하면 상담으로 대체 일정과 조건을 함께 확인하세요.';
   const packageCtaDecisionMetadata = useMemo(() => ({
     selectedIntent: effectiveIntent,
     hub,
@@ -771,6 +781,43 @@ export default function PackagesClient() {
     handoffPartyType,
     packageCtaDecisionMetadata,
     effectiveIntent,
+    selectedProductNames,
+  ]);
+
+  const trackScarceResultRecoveryCta = useCallback((ctaType: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: ctaType,
+      page_url: '/packages',
+      intent: effectiveIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      ready_count: packageCtaDecisionMetadata.ready_count,
+      missing_fields: packageCtaDecisionMetadata.missing_fields,
+      decision_summary: packageCtaDecisionMetadata.decision_summary,
+      handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+      next_action: scarceResultNextActionText,
+      result_summary: packageCtaDecisionMetadata.result_summary,
+      applied_filters: packageCtaDecisionMetadata.applied_filters,
+      metadata: {
+        source: ctaType,
+        scarce_result: true,
+        scarce_result_count: filteredPackages.length,
+        recovery_actions: emptyStateRecoveryActions.map((item) => item.key),
+        ...packageCtaDecisionMetadata,
+      },
+    });
+  }, [
+    effectiveIntent,
+    emptyStateRecoveryActions,
+    filteredPackages.length,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    packageCtaDecisionMetadata,
+    scarceResultNextActionText,
     selectedProductNames,
   ]);
 
@@ -1761,6 +1808,64 @@ export default function PackagesClient() {
           )}
         </div>
       ) : (
+        <>
+        {hasScarcePackageResults && (
+          <section
+            id={scarceResultRecoverySummaryId}
+            data-testid="packages-scarce-result-recovery"
+            aria-label={`${scarceResultRecoveryText} ${scarceResultNextActionText}`}
+            className="mx-4 mb-2 rounded-[16px] border border-blue-100 bg-[#EFF6FF] p-4 md:mx-auto md:max-w-7xl md:px-5"
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <p className="text-[13px] font-extrabold text-[#1D4ED8]">
+                  선택지가 적어요
+                </p>
+                <p className="mt-1 text-[12px] font-semibold leading-5 text-[#1E3A8A]">
+                  {scarceResultRecoveryText}
+                </p>
+                <p className="mt-1 text-[12px] font-bold leading-5 text-[#475569]">
+                  {scarceResultNextActionText}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row md:shrink-0">
+                {emptyStateRecoveryActions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      trackScarceResultRecoveryCta('packages_scarce_result_relax_filter');
+                      handleMobileFilterClear(emptyStateRecoveryActions[0].key);
+                    }}
+                    aria-label={emptyStateRecoveryActions[0].clearLabel}
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-blue-200 bg-white px-4 text-[13px] font-extrabold text-[#1D4ED8] transition hover:border-brand/60 hover:text-brand"
+                  >
+                    {emptyStateRecoveryActions[0].label} 빼기
+                  </button>
+                )}
+                <Link
+                  href={conciergeHref}
+                  onClick={() => trackScarceResultRecoveryCta('packages_scarce_result_ai')}
+                  data-testid="packages-scarce-result-ai"
+                  aria-describedby={`${scarceResultRecoverySummaryId} ${packageListDescriptionIds}`}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-blue-200 bg-white px-4 text-[13px] font-extrabold text-[#1D4ED8] transition hover:border-brand/60 hover:text-brand"
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  AI 상담
+                </Link>
+                <Link
+                  href={groupInquiryHref}
+                  onClick={() => trackScarceResultRecoveryCta('packages_scarce_result_group_inquiry')}
+                  data-testid="packages-scarce-result-group-inquiry"
+                  aria-describedby={`${scarceResultRecoverySummaryId} ${packageListDescriptionIds}`}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
+                >
+                  <Users className="h-4 w-4" aria-hidden="true" />
+                  견적 문의
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
         <div className="px-4 py-4 space-y-3 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
           {visiblePackages.map(pkg => {
             const score = scoreByPkgId[pkg.id] ?? null;
@@ -1815,6 +1920,7 @@ export default function PackagesClient() {
           );
           })}
         </div>
+        </>
       )}
       {filteredPackages.length > visiblePackages.length && (
         <div className="px-4 pb-6 md:max-w-7xl md:mx-auto md:px-8">
