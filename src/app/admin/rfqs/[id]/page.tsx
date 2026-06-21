@@ -401,6 +401,14 @@ export default function AdminRfqDetailPage() {
   const bidSummaryText = bids.length > 0
     ? `입찰 ${bids.length}건 중 제출 ${submittedBidCount}건, 진행/대기 ${pendingBidCount}건, 마감 초과 ${timeoutBidCount}건입니다. ${topTrustBid ? `신뢰도 최고 후보는 ${topTrustBid.tenant_name || topTrustBid.tenant_id.slice(0, 8)} ${topTrustBid.trust_score}점입니다.` : '신뢰도 점수는 아직 없습니다.'}`
     : '입찰 내역이 없습니다.';
+  const customerMessageCount = messages.filter((message) => message.sender_type === 'customer').length;
+  const tenantMessageCount = messages.filter((message) => message.sender_type === 'tenant').length;
+  const blockedMessageCount = messages.filter((message) => message.pii_blocked).length;
+  const hiddenMessageCount = messages.filter((message) => !message.is_visible_to_customer).length;
+  const latestMessage = [...messages].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+  const messageSummaryText = messages.length > 0
+    ? `메시지 ${messages.length}건 중 고객 ${customerMessageCount}건, 랜드사 ${tenantMessageCount}건입니다. PII 차단 ${blockedMessageCount}건, 고객 비공개 ${hiddenMessageCount}건이 있고, 최근 메시지는 ${latestMessage ? fmtDate(latestMessage.created_at) : '없음'}입니다.`
+    : '메시지 내역이 없습니다.';
   const proposalSummaryText = recommendedProposal
     ? `추천 후보는 ${recommendedProposal.tenant_name || '랜드사'} ${recommendedProposal.ai_review?.score ?? '점수 없음'}점입니다. 최저 실질 총액은 ${lowestRealPrice ? `₩${fmt(lowestRealPrice)}` : '미정'}이고, AI 검토 리스크는 ${proposalIssueCount}건입니다.`
     : '제출된 제안서가 없어 비교 요약을 만들 수 없습니다.';
@@ -869,6 +877,38 @@ export default function AdminRfqDetailPage() {
       {/* ── Tab 4: 메시지 ───────────────────────────────────────────────────── */}
       {activeTab === 'messages' && (
         <div id="admin-rfq-messages-panel" role="tabpanel" aria-labelledby="admin-rfq-messages-tab" className="space-y-3">
+          <div className="flex flex-col gap-3 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-admin-xs font-semibold uppercase text-admin-muted">Message summary</p>
+              <p
+                data-testid="admin-rfq-message-summary"
+                aria-label={messageSummaryText}
+                className="mt-1 text-admin-sm font-semibold text-admin-text"
+              >
+                고객 {customerMessageCount}건 · 랜드사 {tenantMessageCount}건 · PII 차단 {blockedMessageCount}건
+              </p>
+              <p className="mt-1 text-admin-xs text-admin-muted">{messageSummaryText}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-admin-xs text-admin-muted sm:grid-cols-4">
+              <div className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
+                <span className="block font-semibold text-admin-text">{messages.length}</span>
+                전체 메시지
+              </div>
+              <div className="rounded-admin-sm bg-indigo-50 px-3 py-2 text-indigo-700">
+                <span className="block font-semibold">{customerMessageCount}</span>
+                고객
+              </div>
+              <div className="rounded-admin-sm bg-blue-50 px-3 py-2 text-blue-700">
+                <span className="block font-semibold">{tenantMessageCount}</span>
+                랜드사
+              </div>
+              <div className="rounded-admin-sm bg-status-warningBg px-3 py-2 text-status-warningFg">
+                <span className="block font-semibold">{hiddenMessageCount}</span>
+                비공개
+              </div>
+            </div>
+          </div>
+
           {messages.length === 0 ? (
             <div className="text-center py-12 text-admin-muted-2 text-sm bg-white border shadow-admin-xs rounded-admin-md">
               메시지가 없습니다
