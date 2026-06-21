@@ -209,6 +209,59 @@ function formatBudgetSummary(priceMin: string, priceMax: string): string | null 
   return null;
 }
 
+const PACKAGE_DESTINATION_HINTS = [
+  '동남아',
+  '다낭',
+  '나트랑',
+  '푸꾸옥',
+  '달랏',
+  '방콕',
+  '파타야',
+  '치앙마이',
+  '세부',
+  '보홀',
+  '마닐라',
+  '코타키나발루',
+  '싱가포르',
+  '대만',
+  '타이베이',
+  '일본',
+  '오사카',
+  '후쿠오카',
+  '삿포로',
+  '괌',
+  '사이판',
+  '하와이',
+  '유럽',
+  '호주',
+];
+
+function inferPackageIntentFromQuery(query: string): IntentId | null {
+  if (/노쇼핑|쇼핑\s*없/.test(query)) return 'no_shopping';
+  if (/부모님|가족|효도|아이|자녀|시니어|60대|70대/.test(query)) return 'family';
+  if (/최저가|저렴|가성비|예산|100만|150만|200만/.test(query)) return 'budget';
+  if (/상담|추천해|골라/.test(query)) return 'consult';
+  return null;
+}
+
+function inferPackageDestinationFromQuery(query: string): string | null {
+  return PACKAGE_DESTINATION_HINTS.find((destination) => query.includes(destination)) ?? null;
+}
+
+function inferPackageBudgetFromQuery(query: string): string | null {
+  const rangeMatch = query.match(/(\d{2,4})\s*(?:~|-|에서)\s*(\d{2,4})\s*(?:만원|만\s*원|만)/);
+  if (rangeMatch) return `${rangeMatch[1]}~${rangeMatch[2]}만원`;
+
+  const manwonMatch = query.match(/(\d{2,4})\s*(?:만원|만\s*원|만)/);
+  if (manwonMatch) return `${manwonMatch[1]}만원`;
+
+  const wonMatch = query.match(/(\d{6,9})\s*원/);
+  if (!wonMatch) return null;
+  const won = Number(wonMatch[1]);
+  if (!Number.isFinite(won) || won <= 0) return null;
+  return won >= 10_000 ? `${Math.round(won / 10_000).toLocaleString('ko-KR')}만원` : `${won.toLocaleString('ko-KR')}원`;
+}
+
 function packageIntentScore(pkg: Package, intent: IntentId | null): number {
   if (!intent || intent === 'consult') return 0;
   const haystack = [
@@ -331,6 +384,11 @@ export default function PackagesClient() {
   const compareNextActionText = compareIds.length >= 2
     ? '다음: 두 상품 차이를 확인한 뒤 선택 상품 그대로 상담에 전달합니다.'
     : '다음: 비교할 상품을 하나 더 선택하면 상세 비교와 상담 전달이 쉬워집니다.';
+  const inferredIntentFromQuery = useMemo(() => inferPackageIntentFromQuery(q), [q]);
+  const inferredDestinationFromQuery = useMemo(() => inferPackageDestinationFromQuery(q), [q]);
+  const inferredBudgetFromQuery = useMemo(() => inferPackageBudgetFromQuery(q), [q]);
+  const effectiveIntent = selectedIntent ?? inferredIntentFromQuery;
+  const effectiveIntentInfo = INTENT_OPTIONS.find(opt => opt.id === effectiveIntent) ?? null;
 
   const navigateWithHub = useCallback(
     (nextHub: DepartureHubId) => {
@@ -374,7 +432,7 @@ export default function PackagesClient() {
   }) => {
     const packageId = input.packageId ?? recommendedIds[0] ?? initialPackages[0]?.id;
     if (!packageId) return;
-    const intentKey = input.intent ?? selectedIntent;
+    const intentKey = input.intent ?? effectiveIntent;
     fetch('/api/tracking/score-signal', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -387,7 +445,7 @@ export default function PackagesClient() {
         session_id: getSessionId(),
       }),
     }).catch(() => {});
-  }, [initialPackages, recommendedIds, selectedIntent]);
+  }, [effectiveIntent, initialPackages, recommendedIds]);
 
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
@@ -402,7 +460,7 @@ export default function PackagesClient() {
     const sortFn = sortBy === 'price_asc' ? (a: Package, b: Package) => packageMinPrice(a) - packageMinPrice(b)
       : sortBy === 'price_desc' ? (a: Package, b: Package) => packageMinPrice(b) - packageMinPrice(a)
       : (a: Package, b: Package) => {
-        const intentDiff = packageIntentScore(b, selectedIntent) - packageIntentScore(a, selectedIntent);
+        const intentDiff = packageIntentScore(b, effectiveIntent) - packageIntentScore(a, effectiveIntent);
         if (intentDiff !== 0) return intentDiff;
         const aRec = recommendedSet.has(a.id);
         const bRec = recommendedSet.has(b.id);
@@ -412,22 +470,23 @@ export default function PackagesClient() {
       };
     list.sort(sortFn);
     return list;
-  }, [initialPackages, activeFilter, sortBy, urgency, category, recommendedSet, selectedIntent]);
+  }, [initialPackages, activeFilter, sortBy, urgency, category, recommendedSet, effectiveIntent]);
 
   const filterSummaryItems = useMemo(() => {
     const items: { label: string; value: string }[] = [
       { label: '출발지', value: HUB_SUMMARY_LABELS[hub] },
     ];
     if (month) items.push({ label: '출발월', value: formatMonthSummary(month) });
-    const budget = formatBudgetSummary(priceMin, priceMax);
+    const budget = formatBudgetSummary(priceMin, priceMax) ?? inferredBudgetFromQuery;
     if (budget) items.push({ label: '예산', value: budget });
-    if (activeFilter !== FILTER_OPTIONS[0]) items.push({ label: '지역', value: activeFilter });
+    const summaryDestination = activeFilter !== FILTER_OPTIONS[0] ? activeFilter : inferredDestinationFromQuery;
+    if (summaryDestination) items.push({ label: '지역', value: summaryDestination });
     if (category) items.push({ label: '테마', value: CATEGORY_SUMMARY_LABELS[category] ?? category });
     if (urgency === '1') items.push({ label: '상태', value: '마감임박' });
-    if (selectedIntentInfo) items.push({ label: '목적', value: selectedIntentInfo.label });
+    if (effectiveIntentInfo) items.push({ label: '목적', value: effectiveIntentInfo.label });
     items.push({ label: '결과', value: `${filteredPackages.length}개` });
     return items;
-  }, [activeFilter, category, filteredPackages.length, hub, month, priceMax, priceMin, selectedIntentInfo, urgency]);
+  }, [activeFilter, category, effectiveIntentInfo, filteredPackages.length, hub, inferredBudgetFromQuery, inferredDestinationFromQuery, month, priceMax, priceMin, urgency]);
 
   const selectedProductNames = useMemo(
     () => comparePackages
@@ -437,16 +496,16 @@ export default function PackagesClient() {
     [comparePackages],
   );
 
-  const handoffBudget = useMemo(() => formatBudgetSummary(priceMin, priceMax), [priceMax, priceMin]);
-  const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null);
-  const handoffIntent = selectedIntent ? INTENT_HANDOFF_LABELS[selectedIntent] : null;
-  const handoffPartyType = selectedIntent ? INTENT_PARTY_TYPE[selectedIntent] ?? null : null;
+  const handoffBudget = useMemo(() => formatBudgetSummary(priceMin, priceMax) ?? inferredBudgetFromQuery, [inferredBudgetFromQuery, priceMax, priceMin]);
+  const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null) || inferredDestinationFromQuery;
+  const handoffIntent = effectiveIntent ? INTENT_HANDOFF_LABELS[effectiveIntent] : null;
+  const handoffPartyType = effectiveIntent ? INTENT_PARTY_TYPE[effectiveIntent] ?? null : null;
   const primaryFilterChecklist = useMemo(() => [
     { label: '출발월', complete: Boolean(month) },
     { label: '출발지', complete: Boolean(hub) },
-    { label: '여행 목적', complete: Boolean(selectedIntent) },
+    { label: '여행 목적', complete: Boolean(effectiveIntent) },
     { label: '예산', complete: Boolean(handoffBudget) },
-  ], [handoffBudget, hub, month, selectedIntent]);
+  ], [effectiveIntent, handoffBudget, hub, month]);
   const primaryFilterReadyCount = primaryFilterChecklist.filter((item) => item.complete).length;
   const primaryFilterMissingLabels = primaryFilterChecklist
     .filter((item) => !item.complete)
@@ -500,14 +559,14 @@ export default function PackagesClient() {
   const groupInquiryHref = useMemo(() => {
     return buildGroupInquiryHandoffHref({
       source: 'packages',
-      intent: selectedIntent ?? undefined,
+      intent: effectiveIntent ?? undefined,
       partyType: handoffPartyType ?? undefined,
       query: q || handoffSummary || '패키지 목록 상담',
       destination: handoffDestination,
       budget: handoffBudget,
       selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
     });
-  }, [handoffBudget, handoffDestination, handoffPartyType, handoffSummary, q, selectedIntent, selectedProductNames]);
+  }, [effectiveIntent, handoffBudget, handoffDestination, handoffPartyType, handoffSummary, q, selectedProductNames]);
   const conciergeQuery = useMemo(() => {
     const baseQuery = q || handoffSummary || '패키지 목록 AI 상담';
     const parts = [baseQuery];
@@ -522,20 +581,20 @@ export default function PackagesClient() {
   const conciergeHref = useMemo(() => {
     return buildConciergeHandoffHref({
       source: 'packages',
-      intent: selectedIntent ? CONCIERGE_INTENT_BY_PACKAGE_INTENT[selectedIntent] : 'package_search',
+      intent: effectiveIntent ? CONCIERGE_INTENT_BY_PACKAGE_INTENT[effectiveIntent] : 'package_search',
       partyType: handoffPartyType ?? undefined,
       query: conciergeQuery,
       destination: handoffDestination,
       budget: handoffBudget,
       selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
     });
-  }, [conciergeQuery, handoffBudget, handoffDestination, handoffPartyType, selectedIntent, selectedProductNames]);
+  }, [conciergeQuery, effectiveIntent, handoffBudget, handoffDestination, handoffPartyType, selectedProductNames]);
   const buildPackageDetailHref = useCallback((pkg: Package) => {
     const params = new URLSearchParams();
     const productName = pkg.display_title || pkg.products?.display_name || pkg.title;
-    const detailIntent = selectedIntent ?? (category || null);
-    const detailPartyType = selectedIntent
-      ? INTENT_PARTY_TYPE[selectedIntent] ?? null
+    const detailIntent = effectiveIntent ?? (category || null);
+    const detailPartyType = effectiveIntent
+      ? INTENT_PARTY_TYPE[effectiveIntent] ?? null
       : category === 'golf'
         ? 'golf_group'
         : category === 'honeymoon'
@@ -556,7 +615,7 @@ export default function PackagesClient() {
 
     const qs = params.toString();
     return `/packages/${encodeURIComponent(pkg.id)}${qs ? `?${qs}` : ''}`;
-  }, [activeFilter, category, destination, handoffBudget, searchParams, selectedIntent]);
+  }, [activeFilter, category, destination, effectiveIntent, handoffBudget, searchParams]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
@@ -589,7 +648,7 @@ export default function PackagesClient() {
   const emptyStateRecoveryActions = mobileAppliedFilterItems.slice(0, 3);
   const zeroResultRelaxTargets = [
     month ? '출발월' : null,
-    selectedIntentInfo ? '여행 목적' : null,
+    effectiveIntentInfo ? '여행 목적' : null,
     handoffBudget ? '예산' : null,
     activeFilter !== FILTER_OPTIONS[0] ? '지역' : null,
     hub !== DEFAULT_DEPARTURE_HUB ? '출발지' : null,
@@ -622,7 +681,7 @@ export default function PackagesClient() {
   const packageListDescriptionIds = `${packageResultSummaryId} ${packageFilterReadinessSummaryId} ${packageListDecisionSummaryId}`;
   const emptyStateInquiryDescriptionIds = `${packageEmptyStateSummaryId} ${packageResultSummaryId} ${packageFilterReadinessSummaryId}`;
   const packageCtaDecisionMetadata = useMemo(() => ({
-    selectedIntent,
+    selectedIntent: effectiveIntent,
     hub,
     result_count: filteredPackages.length,
     visible_count: visiblePackages.length,
@@ -645,7 +704,7 @@ export default function PackagesClient() {
     packageResultSummaryText,
     primaryFilterMissingLabels,
     primaryFilterReadyCount,
-    selectedIntent,
+    effectiveIntent,
     visiblePackages.length,
   ]);
 
@@ -654,7 +713,7 @@ export default function PackagesClient() {
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
       cta_type: ctaType,
       page_url: '/packages',
-      intent: selectedIntent,
+      intent: effectiveIntent,
       budget: handoffBudget,
       destination: handoffDestination,
       party_type: handoffPartyType,
@@ -679,7 +738,7 @@ export default function PackagesClient() {
     handoffDestination,
     handoffPartyType,
     packageCtaDecisionMetadata,
-    selectedIntent,
+    effectiveIntent,
     selectedProductNames,
   ]);
 
@@ -688,7 +747,7 @@ export default function PackagesClient() {
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
       cta_type: source,
       page_url: '/packages',
-      intent: selectedIntent,
+      intent: effectiveIntent,
       budget: handoffBudget,
       destination: handoffDestination,
       party_type: handoffPartyType,
@@ -704,20 +763,20 @@ export default function PackagesClient() {
         source,
         compare_ids: compareIds,
         compare_count: compareIds.length,
-        selectedIntent,
+        selectedIntent: effectiveIntent,
         hub,
         next_action: compareNextActionText,
         cta_readiness: compareCtaReadinessText,
       },
     });
-  }, [compareCtaReadinessText, compareIds, compareNextActionText, handoffBudget, handoffDestination, handoffPartyType, hub, packageAppliedFilterSummaryText, packageHandoffPreviewText, packageListDecisionSummaryText, packageResultSummaryText, primaryFilterMissingLabels, primaryFilterReadyCount, selectedIntent, selectedProductNames]);
+  }, [compareCtaReadinessText, compareIds, compareNextActionText, effectiveIntent, handoffBudget, handoffDestination, handoffPartyType, hub, packageAppliedFilterSummaryText, packageHandoffPreviewText, packageListDecisionSummaryText, packageResultSummaryText, primaryFilterMissingLabels, primaryFilterReadyCount, selectedProductNames]);
 
   const openPackagesKakao = useCallback((source: string) => {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
       cta_type: source,
       page_url: '/packages',
-      intent: selectedIntent,
+      intent: effectiveIntent,
       budget: handoffBudget,
       destination: handoffDestination,
       party_type: handoffPartyType,
@@ -750,7 +809,7 @@ export default function PackagesClient() {
     handoffPartyType,
     handoffSummary,
     packageCtaDecisionMetadata,
-    selectedIntent,
+    effectiveIntent,
     selectedProductNames,
   ]);
 
@@ -762,11 +821,11 @@ export default function PackagesClient() {
       trackScoreSignal({
         packageId: pkg.id,
         signalType: 'recommend_badge_view',
-        groupKey: selectedIntent ? `intent:${selectedIntent}` : undefined,
+        groupKey: effectiveIntent ? `intent:${effectiveIntent}` : undefined,
         rank: score.rankInGroup,
       });
     }
-  }, [scoreByPkgId, selectedIntent, trackScoreSignal, visiblePackages]);
+  }, [effectiveIntent, scoreByPkgId, trackScoreSignal, visiblePackages]);
 
   const minPriceByPkgId = useMemo(() => {
     const map = new Map<string, number>();
@@ -810,18 +869,18 @@ export default function PackagesClient() {
       event_source: 'list',
       product_id: id,
       product_name: tracking?.productName ?? id,
-      intent: selectedIntent,
+      intent: effectiveIntent,
       rank: tracking?.rank ?? null,
       price: tracking?.price ?? null,
       metadata: {
         source: 'list',
         rank: tracking?.rank ?? null,
         price: tracking?.price ?? null,
-        selectedIntent,
+        selectedIntent: effectiveIntent,
         hub,
       },
     });
-  }, [hub, selectedIntent, visiblePackageTrackingById]);
+  }, [effectiveIntent, hub, visiblePackageTrackingById]);
 
   const trackPackageFilter = useCallback((filterName: string, value: string) => {
     trackEngagement({
@@ -829,7 +888,7 @@ export default function PackagesClient() {
       filter_name: filterName,
       filter_value: value,
       page_url: '/packages',
-      intent: selectedIntent,
+      intent: effectiveIntent,
       budget: handoffBudget,
       destination: handoffDestination,
       party_type: handoffPartyType,
@@ -843,7 +902,7 @@ export default function PackagesClient() {
       metadata: {
         filterName,
         value,
-        selectedIntent,
+        selectedIntent: effectiveIntent,
         hub,
         resultCount: filteredPackages.length,
         ready_count: primaryFilterReadyCount,
@@ -868,7 +927,7 @@ export default function PackagesClient() {
     packageResultSummaryText,
     primaryFilterMissingLabels,
     primaryFilterReadyCount,
-    selectedIntent,
+    effectiveIntent,
   ]);
 
   const handleIntentSelect = useCallback((intent: IntentId) => {
@@ -1693,7 +1752,7 @@ export default function PackagesClient() {
                 comparisonRank={score?.rankInGroup}
                 comparisonGroupSize={score?.groupSize}
                 hotelGradeLabel={score?.hotelGradeLabel}
-                trackingIntent={selectedIntent}
+                trackingIntent={effectiveIntent}
                 catalogGroupCount={pkg.catalog_id ? catalogGroupSizeMap.get(pkg.catalog_id) : undefined}
               />
             </div>
@@ -1766,7 +1825,7 @@ export default function PackagesClient() {
                   event_type: ANALYTICS_EVENTS.stickyCtaClicked,
                   cta_type: 'packages_mobile_phone',
                   page_url: '/packages',
-                  intent: selectedIntent,
+                  intent: effectiveIntent,
                   budget: handoffBudget,
                   destination: handoffDestination,
                   party_type: handoffPartyType,
@@ -1797,7 +1856,7 @@ export default function PackagesClient() {
                 event_type: ANALYTICS_EVENTS.stickyCtaClicked,
                 cta_type: 'packages_mobile_group_inquiry',
                 page_url: '/packages',
-                intent: selectedIntent,
+                intent: effectiveIntent,
                 budget: handoffBudget,
                 destination: handoffDestination,
                 party_type: handoffPartyType,
@@ -1893,8 +1952,8 @@ export default function PackagesClient() {
                 trackScoreSignal({
                   packageId: compareIds[0],
                   signalType: 'comparison_open',
-                  groupKey: selectedIntent
-                    ? `intent:${selectedIntent};compare:${compareIds.join(',')}`
+                  groupKey: effectiveIntent
+                    ? `intent:${effectiveIntent};compare:${compareIds.join(',')}`
                     : `compare:${compareIds.join(',')}`,
                 });
               }}
