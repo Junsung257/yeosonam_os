@@ -44,6 +44,7 @@ const HTML_TAG_RE = /<[a-z][\s\S]*>/i;
 const MARKDOWN_IMAGE_RE = /!\[[^\]]*]\([^)]+\)/g;
 const MARKDOWN_HEADING_RE = /(^|\n)\s{0,3}#{1,6}\s+\S/g;
 const MARKDOWN_TABLE_ROW_RE = /(^|\n)\s{0,3}\|.+\|\s*(?=\n|$)/g;
+const LONG_PLAIN_PARAGRAPH_RE = /<p>([^<]{520,})<\/p>/g;
 const RENDERED_IMAGE_RE = /<img\b/gi;
 const RENDERED_HEADING_RE = /<h[2-4]\b/gi;
 const RENDERED_TABLE_RE = /<table\b/gi;
@@ -386,6 +387,56 @@ function normalizeAnchorTextWhitespace(html: string): string {
   });
 }
 
+function splitPlainTextIntoReadableParagraphs(text: string, maxLength = 420): string[] {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return [normalized];
+
+  const sentences = normalized
+    .split(/(?<=[.!?。！？])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const source = sentences.length > 1 ? sentences : normalized.split(/(?<=,|，|;|；)\s+/).filter(Boolean);
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const sentence of source) {
+    if (!current) {
+      current = sentence;
+      continue;
+    }
+    if ((current + ' ' + sentence).length > maxLength) {
+      chunks.push(current);
+      current = sentence;
+    } else {
+      current = `${current} ${sentence}`;
+    }
+  }
+  if (current) chunks.push(current);
+
+  return chunks.flatMap((chunk) => {
+    if (chunk.length <= maxLength * 1.25) return [chunk];
+    const fallback: string[] = [];
+    let rest = chunk;
+    while (rest.length > maxLength) {
+      const slice = rest.slice(0, maxLength);
+      const cut = Math.max(slice.lastIndexOf(' '), slice.lastIndexOf(','));
+      const end = cut > 160 ? cut : maxLength;
+      fallback.push(rest.slice(0, end).trim());
+      rest = rest.slice(end).trim();
+    }
+    if (rest) fallback.push(rest);
+    return fallback;
+  });
+}
+
+function splitLongPlainHtmlParagraphs(html: string): string {
+  return html.replace(LONG_PLAIN_PARAGRAPH_RE, (_match, body) => {
+    const parts = splitPlainTextIntoReadableParagraphs(body);
+    if (parts.length <= 1) return `<p>${body}</p>`;
+    return parts.map((part) => `<p>${part}</p>`).join('\n');
+  });
+}
+
 function normalizeRenderedHeadingArtifacts(html: string): string {
   const seenCore = new Set<string>();
   return html
@@ -443,7 +494,8 @@ export async function renderBlogContentToHtml(
     const normalizedHtml = normalizeRenderedHeadingArtifacts(
       normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(source))),
     );
-    return proxyBlogImageUrlsInHtml(applyHtmlAccents(ensureRequiredBlogDecisionBlocksHtml(normalizedHtml)));
+    const readableHtml = splitLongPlainHtmlParagraphs(normalizedHtml);
+    return proxyBlogImageUrlsInHtml(applyHtmlAccents(ensureRequiredBlogDecisionBlocksHtml(readableHtml)));
   }
 
   const normalizedSource = normalizeStoredBlogMarkdownStructure(source);
@@ -457,7 +509,7 @@ export async function renderBlogContentToHtml(
   const normalizedHtml = normalizeRenderedHeadingArtifacts(
     normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(String(rawHtml)))),
   );
-  return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
+  return proxyBlogImageUrlsInHtml(applyHtmlAccents(splitLongPlainHtmlParagraphs(normalizedHtml)));
 }
 
 async function isReachableUrl(url: string, timeoutMs = 1200): Promise<boolean> {
