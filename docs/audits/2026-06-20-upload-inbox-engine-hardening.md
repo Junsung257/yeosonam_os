@@ -2,6 +2,34 @@
 
 This audit records the current evidence after hardening the supplier upload engine against the 2026-06-20 upload-inbox extracted source batch.
 
+## 2026-06-21 Follow-up: Report-Based Registration Resume
+
+The extraction/offline audit pass exposed one operational gap: after a safe offline audit, there was no concrete script that resumed from `offline-source-audit.json` and registered only eligible sources. Reopening the whole folder repeats HWP/PDF extraction, can retry known blocked sources, and makes it harder to prove which products moved from source audit to live mobile/A4 proof.
+
+The new resume path is:
+
+```text
+extraction report
+  -> offline-source-audit.json
+  -> register-upload-inbox-from-report.ts
+  -> saved package ids
+  -> attraction photo fill
+  -> targeted mobile/A4 strict audit
+```
+
+Dry run against the latest full audit:
+
+```text
+sourceFiles: 129
+eligibleFiles: 117
+skipped blocked/review sources: 12
+registered: 0
+savedPackageIds: 0
+mobileLandingVerified: false
+```
+
+This dry run does not touch Supabase. Registration still requires a DB preflight pass and service-role environment. `mobileLandingVerified=true` remains forbidden until saved package ids exist and the targeted mobile/A4 audit passes.
+
 ## Scope
 
 - Source report: `scratch/upload-inbox-batch-reports/2026-06-20T12-08-52-357Z/report.json`

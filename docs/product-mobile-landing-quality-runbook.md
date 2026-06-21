@@ -184,17 +184,17 @@ The offline summary must report both candidate counts and occurrence counts by a
 
 Every offline master candidate must include `photoSearchPlan` and `descriptionSeed`. `photoSearchPlan` is the media backfill plan only: it should use the normalized attraction name, known English/local aliases, and destination context. Do not use long supplier description sentences as photo aliases. `descriptionSeed` may keep source labels and hashes for review/evidence, but the final mobile description still needs external verification or an approved internal master before customer publication.
 
-When REST recovers, resume from the extracted text queue instead of reopening HWP/HWPX files:
+When REST recovers, resume from the offline-audited extracted text queue instead of reopening HWP/HWPX files:
 
 ```bash
-npx tsx scripts/register-upload-inbox-from-extract-report.ts --report=scratch/upload-inbox-batch-reports/{run}/report.json --register --fill-attraction-photos --audit-mobile --limit=2000
+npx tsx scripts/register-upload-inbox-from-report.ts --audit=scratch/upload-inbox-batch-reports/{run}/offline-source-audit.json --register --fill-attraction-photos --audit-mobile
 ```
 
-This resume command must run DB preflight first. If the preflight returns `DB_HEALTHCHECK_TIMEOUT`, no product registration or mobile proof has started. If it saves products successfully, `--fill-attraction-photos` should backfill media for referenced attractions first, and the `--audit-mobile` step must pass for the saved package ids before anything is marked customer-ready.
+This resume command must run DB preflight first. If the preflight fails, no product registration or mobile proof has started. It must skip sources where any product remains blocked by `offline-source-audit.json`, so price-missing, itinerary-missing, and destination-unresolved documents are not retried as customer products. If it saves products successfully, `--fill-attraction-photos` should backfill media for referenced attractions first, and the `--audit-mobile` step must pass for the saved package ids before anything is marked customer-ready.
 
 For unattended recovery, add `--wait-db --wait-db-timeout-ms=900000 --wait-db-interval-ms=30000`. This keeps retrying the DB preflight and starts registration only after the preflight is OK. If the wait expires, the output summary remains non-customer-ready with the failed preflight attempts recorded.
 
-If `--report` is omitted, the resume command must select the valid extraction report with the most file rows, not a summary-only or small smoke-test JSON that happened to be written later. The final `summary.json` is authoritative for resume status: `mobileLandingVerified=true` is allowed only when saved package ids exist and the targeted mobile/A4 audit passes. Otherwise `mobileLandingVerificationReason` must explain whether there were no saved ids, the audit was not requested, or the audit failed.
+If `--audit` is omitted, the resume command must fail with usage instructions rather than guessing from the latest file. The final `summary.json` is authoritative for resume status: `mobileLandingVerified=true` is allowed only when saved package ids exist and the targeted mobile/A4 audit passes. Otherwise `mobileLandingVerificationReason` must explain whether there were no saved ids, the audit was not requested, or the audit failed.
 
 For targeted saved-package proof, the mobile readiness audit accepts saved ids directly:
 
