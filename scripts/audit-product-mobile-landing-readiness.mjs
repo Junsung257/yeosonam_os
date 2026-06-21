@@ -41,8 +41,22 @@ const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
+function isPlaceholderSecret(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return !normalized
+    || normalized === 'xxx'
+    || normalized === 'placeholder'
+    || normalized.includes('your_')
+    || normalized.includes('replace_me');
+}
+
 if (!url || !serviceKey) {
   console.error('Missing NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.');
+  process.exit(1);
+}
+
+if (isPlaceholderSecret(serviceKey)) {
+  console.error('Invalid Supabase admin configuration: service role key is a placeholder.');
   process.exit(1);
 }
 
