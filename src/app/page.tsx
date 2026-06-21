@@ -784,6 +784,13 @@ export default async function HomePage() {
           <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">📋 관광사업자 등록</span>
           <span className="text-[11px] text-text-secondary border border-[#E5E7EB] px-2.5 py-1 rounded-full">🔒 안전 결제</span>
         </div>
+        <Link
+          href={HOME_FOOTER_GROUP_INQUIRY_HREF}
+          data-testid="home-footer-group-inquiry-primary"
+          className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-bold text-white transition hover:opacity-90"
+        >
+          단체 견적 받기
+        </Link>
         <p className="text-[11px] text-text-secondary/50 mt-2">yeosonam.co.kr</p>
         <div className="mt-3 flex justify-center gap-4">
           <Link href="/packages" className="text-[13px] text-text-body hover:text-brand transition-colors">전체 상품</Link>
