@@ -1005,7 +1005,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     query: groupInquiryQuery,
     destination: handoffDestination,
     budget: handoffBudgetForCta,
-    selectedProducts: selectedHandoffProducts,
+    selectedProducts: [selectedProductName],
   });
   const conciergeHandoffHref = buildConciergeHandoffHref({
     source: 'package_detail',
@@ -1014,7 +1014,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     query: conciergeHandoffQuery,
     destination: handoffDestination,
     budget: handoffBudgetForCta,
-    selectedProducts: selectedHandoffProducts,
+    selectedProducts: [selectedProductName],
   });
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
   const durationLabel = formatPackageDuration(pkg);
@@ -3013,7 +3013,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
           <div
             data-testid="package-detail-sticky-action-grid"
-            className="grid grid-cols-[0.8fr_0.95fr_0.8fr_1.2fr] gap-2 md:flex md:items-center md:gap-2.5"
+            className="grid grid-cols-[0.9fr_0.9fr_1.2fr] gap-2 md:flex md:items-center md:gap-2.5"
           >
           {/* 카톡 — secondary, 빠른 채팅 (리드 저장 + 카카오 채널 오픈) */}
           <button
@@ -3038,6 +3038,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 metadata: {
                   source: 'detail_mobile_sticky_kakao',
                   selectedDate,
+                  destination: pkg.destination ?? null,
+                  selected_products: [selectedProductName],
                   productType: pkg.product_type ?? null,
                   selectedTier: selectedTier?.period_label ?? null,
                   readiness: detailHandoffReadinessText,
@@ -3124,6 +3126,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 metadata: {
                   source: 'detail_sticky_ai_consult',
                   selectedDate,
+                  destination: pkg.destination ?? null,
+                  selected_products: [selectedProductName],
                   productType: pkg.product_type ?? null,
                   selectedTier: selectedTier?.period_label ?? null,
                   readiness: detailHandoffReadinessText,
@@ -3163,6 +3167,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 metadata: {
                   source: 'detail_sticky_group_inquiry',
                   selectedDate,
+                  destination: pkg.destination ?? null,
+                  selected_products: [selectedProductName],
                   productType: pkg.product_type ?? null,
                   selectedTier: selectedTier?.period_label ?? null,
                   readiness: detailHandoffReadinessText,
@@ -3187,7 +3193,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <button
             type="button"
             onClick={(event) => openInquiryForm('detail_sticky_cta', event.currentTarget)}
-            className="h-11 w-full shrink-0 rounded-full bg-slate-950 px-3 text-sm font-bold text-white shadow-lg transition-all active:scale-[0.98] md:w-auto md:px-5 lg:px-6"
+            className="col-span-3 h-11 w-full shrink-0 rounded-full bg-slate-950 px-3 text-sm font-bold text-white shadow-lg transition-all active:scale-[0.98] md:col-span-1 md:w-auto md:px-5 lg:px-6"
             aria-label={stickyReservationActionLabel}
             aria-haspopup="dialog"
             aria-expanded={showForm}

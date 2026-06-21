@@ -524,7 +524,8 @@ function CardBody({
   const travelMetaItems = buildTravelMeta(pkg, duration, nextDate, airlineName);
   const themeLabel = cleanPipeLabel(pkg.product_type) ?? (pkg.is_airtel ? '에어텔' : pkg.product_highlights?.[0] ?? null);
   const proofItems = [
-    departureOptionCount > 0 ? `출발일 ${departureOptionCount}개` : nextDate ? `출발 ${nextDate}` : null,
+    duration && `기간 ${duration}`,
+    departureOptionCount > 0 ? `출발일 ${departureOptionCount}개` : nextDate && `출발 ${nextDate}`,
     confirmedDepartureCount > 0 ? `확정 ${confirmedDepartureCount}회` : null,
     airlineName,
     hasReviews ? `후기 ${Number(pkg.avg_rating).toFixed(1)}(${pkg.review_count})` : null,
@@ -535,8 +536,11 @@ function CardBody({
     confirmedDepartureCount > 0 ? '확정 출발 포함' : null,
     hasReviews ? `후기 ${Number(pkg.avg_rating).toFixed(1)}` : null,
     availableSeats > 5 ? `잔여 ${availableSeats}석` : null,
-    rankBadge ?? null,
+    rankBadge && rankBadge,
   ].filter((item): item is string => Boolean(item)).slice(0, 4);
+  const supportingTrustBadges = trustBadges.filter((badge) => (
+    badge !== rankBadge && !badge.startsWith('후기 ')
+  ));
   const proofSummaryText = proofItems.length > 0
     ? `검증 근거: ${proofItems.join(', ')}`
     : '검증 근거: 상세에서 출발일과 포함 조건 확인';
@@ -589,7 +593,17 @@ function CardBody({
         data-testid="package-card-travel-meta"
         className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-text-secondary"
       >
-        {travelMetaItems.map((item) => (
+        {duration && (
+          <span className="min-w-0 max-w-full rounded-full bg-bg-section px-2 py-0.5 truncate">
+            {duration}
+          </span>
+        )}
+        {nextDate && (
+          <span className="min-w-0 max-w-full rounded-full bg-bg-section px-2 py-0.5 truncate">
+            {nextDate}
+          </span>
+        )}
+        {travelMetaItems.filter((item) => item !== duration && item !== nextDate).map((item) => (
           <span key={item} className="min-w-0 max-w-full rounded-full bg-bg-section px-2 py-0.5 truncate">
             {item}
           </span>
@@ -696,8 +710,18 @@ function CardBody({
         data-testid="package-card-trust-badges"
         className="mt-2 flex min-h-[22px] flex-wrap items-center gap-1.5"
       >
-        {trustBadges.length > 0 ? (
-          trustBadges.map((badge) => (
+        {hasReviews && (
+          <span className="max-w-full rounded-full bg-success-light px-2 py-0.5 text-[10px] font-extrabold text-success truncate">
+            후기 {Number(pkg.avg_rating).toFixed(1)}
+          </span>
+        )}
+        {rankBadge && (
+          <span className="max-w-full rounded-full bg-success-light px-2 py-0.5 text-[10px] font-extrabold text-success truncate">
+            {rankBadge}
+          </span>
+        )}
+        {supportingTrustBadges.length > 0 ? (
+          supportingTrustBadges.map((badge) => (
             <span
               key={badge}
               className="max-w-full rounded-full bg-success-light px-2 py-0.5 text-[10px] font-extrabold text-success truncate"
@@ -705,11 +729,11 @@ function CardBody({
               {badge}
             </span>
           ))
-        ) : (
+        ) : !hasReviews && !rankBadge ? (
           <span className="rounded-full bg-bg-section px-2 py-0.5 text-[10px] font-bold text-text-secondary">
             상세 조건 확인
           </span>
-        )}
+        ) : null}
         <SeatBadge pkg={pkg} />
       </div>
 
