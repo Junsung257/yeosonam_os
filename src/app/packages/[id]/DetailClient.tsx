@@ -926,6 +926,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const handoffDestinationFromQuery = getHandoffSearchParam(searchParams, 'destination');
   const handoffPartyTypeFromQuery = getHandoffSearchParam(searchParams, 'party_type');
   const handoffProductsFromQuery = getHandoffSearchParam(searchParams, 'selected_products');
+  const handoffQueryFromQuery = getHandoffSearchParam(searchParams, 'query');
   const productTypeLabel = formatProductTypeLabel(pkg.product_type);
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
   const selectedProductPriceOptions = getCustomerPriceOptionsForDate(pkg.product_prices, selectedDate);
@@ -944,13 +945,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const handoffBudgetForCta = selectedTier?.adult_price ? handoffBudget : handoffBudgetFromQuery ?? handoffBudget;
   const handoffDestination = handoffDestinationFromQuery ?? pkg.destination ?? null;
   const departureHandoffLabel = selectedDate || selectedTier?.departure_dates?.[0] || selectedTier?.period_label || formData.date;
+  const groupInquiryQuery = [
+    handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : null,
+    departureHandoffLabel
+      ? `${selectedProductName} ${departureHandoffLabel} 출발 예약 문의`
+      : `${selectedProductName} 예약 문의`,
+  ].filter(Boolean).join('\n');
+  const conciergeHandoffQuery = [
+    handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : null,
+    departureHandoffLabel
+      ? `${selectedProductName} ${departureHandoffLabel} 출발 조건 AI 상담`
+      : `${selectedProductName} 조건 AI 상담`,
+  ].filter(Boolean).join('\n');
   const groupInquiryHref = buildGroupInquiryHandoffHref({
     source: 'package_detail',
     intent: handoffIntent,
     partyType: handoffPartyType ?? undefined,
-    query: departureHandoffLabel
-      ? `${selectedProductName} ${departureHandoffLabel} 출발 예약 문의`
-      : `${selectedProductName} 예약 문의`,
+    query: groupInquiryQuery,
     destination: handoffDestination,
     budget: handoffBudgetForCta,
     selectedProducts: selectedHandoffProducts,
@@ -959,9 +970,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     source: 'package_detail',
     intent: handoffIntent,
     partyType: handoffPartyType ?? undefined,
-    query: departureHandoffLabel
-      ? `${selectedProductName} ${departureHandoffLabel} 출발 조건 AI 상담`
-      : `${selectedProductName} 조건 AI 상담`,
+    query: conciergeHandoffQuery,
     destination: handoffDestination,
     budget: handoffBudgetForCta,
     selectedProducts: selectedHandoffProducts,
@@ -2609,6 +2618,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             party_type: handoffPartyType,
             selected_products: selectedHandoffProducts,
             departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+            escalationSummary: handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : undefined,
           });
         }}
       />
@@ -2942,6 +2952,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 party_type: handoffPartyType,
                 selected_products: selectedHandoffProducts,
                 departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+                escalationSummary: handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : undefined,
               });
               if (copied) {
                 setClipboardToast(true);

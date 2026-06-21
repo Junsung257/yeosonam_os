@@ -605,6 +605,7 @@ export default function PackagesClient() {
     params.set('source', 'packages');
     if (detailIntent) params.set('intent', detailIntent);
     if (detailPartyType) params.set('party_type', detailPartyType);
+    if (q) params.set('query', q);
     if (handoffBudget) params.set('budget', handoffBudget);
     if (detailDestination) params.set('destination', detailDestination);
     if (productName) params.set('selected_products', productName);
@@ -615,7 +616,7 @@ export default function PackagesClient() {
 
     const qs = params.toString();
     return `/packages/${encodeURIComponent(pkg.id)}${qs ? `?${qs}` : ''}`;
-  }, [activeFilter, category, destination, effectiveIntent, handoffBudget, searchParams]);
+  }, [activeFilter, category, destination, effectiveIntent, handoffBudget, q, searchParams]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
