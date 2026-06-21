@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import nextDynamic from 'next/dynamic';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Check, Home, Hotel, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, Home, Hotel, Sparkles } from 'lucide-react';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { normalizeOptionalTourName, groupOptionalToursByRegion } from '@/lib/itinerary-render';
@@ -589,6 +589,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [showStickyCta, setShowStickyCta] = useState(false);
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
+  const [fallbackRecommendationOpen, setFallbackRecommendationOpen] = useState(false);
+  const [fallbackPackingOpen, setFallbackPackingOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const openInquiryForm = useCallback((source: string, trigger?: HTMLButtonElement | null) => {
     reservationTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLButtonElement ? document.activeElement : null);
@@ -970,6 +972,34 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const nextAvailableDepartureDateRaw = allPriceDates
     .filter(d => d.date >= todayForDeparture)
     .sort((a, b) => a.date.localeCompare(b.date))[0]?.date ?? null;
+  const fallbackRecommendationPanelId = `package-detail-fallback-recommendation-${id}`;
+  const fallbackPackingPanelId = `package-detail-fallback-packing-${id}`;
+  const formattedDisplayPrice = Number.isFinite(displayPrice) && displayPrice < Infinity
+    ? `₩${Math.round(displayPrice).toLocaleString()}부터`
+    : null;
+  const fallbackEvidenceFacts = [
+    pkg.destination ? { label: '목적지', value: pkg.destination } : null,
+    nextAvailableDepartureDateRaw ? { label: '출발 가능', value: nextAvailableDepartureDateRaw } : null,
+    formattedDisplayPrice ? { label: '예산 기준', value: formattedDisplayPrice } : null,
+    productTypeLabel ? { label: '상품 성격', value: productTypeLabel } : null,
+    (pkg.min_people || pkg.min_participants) ? { label: '최소 출발', value: `${pkg.min_people || pkg.min_participants}명` } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item)).slice(0, 4);
+  const fallbackEvidenceReasons = [
+    ...(pkg.product_highlights ?? []).slice(0, 3),
+    ...(pkg.inclusions ?? []).slice(0, 2).map((item) => `포함: ${item}`),
+    ...(pkg.excludes ?? []).slice(0, 2).map((item) => `추가 확인: ${item}`),
+    ...initialNotices.slice(0, 1).map((notice) => `약관 확인: ${notice.title}`),
+  ]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const fallbackPackingTips = [
+    pkg.departure_airport ? `${pkg.departure_airport} 출발 동선 확인` : null,
+    days.length > 0 ? `${days.length}일 일정 기준으로 복장과 상비약 준비` : null,
+    (pkg.optional_tours?.length ?? 0) > 0 ? '선택 관광 비용과 결제 수단 확인' : null,
+    (pkg.excludes?.length ?? 0) > 0 ? '불포함 비용을 현지 예산에 반영' : null,
+    initialNotices.length > 0 ? '취소/결제 약관을 출발 전 확인' : null,
+  ].filter((item): item is string => Boolean(item)).slice(0, 5);
   const selectedDepartureDateForHandoff =
     selectedDate || selectedTier?.departure_dates?.[0] || nextConfirmedDateRaw || nextAvailableDepartureDateRaw || formData.date || null;
   const selectedDepartureLabelForDisplay =
@@ -1877,6 +1907,66 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         );
       })()}
 
+      {scoreRows.length === 0 && (fallbackEvidenceFacts.length > 0 || fallbackEvidenceReasons.length > 0) && (
+        <section className="px-4 mt-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-extrabold tracking-[0.14em] text-slate-400">검토 포인트</p>
+                <h3 className="mt-1 text-[18px] font-black leading-tight text-slate-950">상담 전에 확인할 핵심 근거</h3>
+              </div>
+              <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-extrabold text-slate-600">상품 기준</span>
+            </div>
+            {fallbackEvidenceFacts.length > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {fallbackEvidenceFacts.map((item) => (
+                  <div key={`${item.label}-${item.value}`} className="rounded-xl bg-slate-50 px-3 py-2">
+                    <p className="text-[10px] font-bold text-slate-500">{item.label}</p>
+                    <p className="mt-0.5 truncate text-[13px] font-extrabold text-slate-900">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {fallbackEvidenceReasons.length > 0 && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setFallbackRecommendationOpen((value) => !value)}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-left"
+                  data-testid="recommendation-card-rationale-toggle"
+                  aria-expanded={fallbackRecommendationOpen}
+                  aria-controls={fallbackRecommendationPanelId}
+                >
+                  <span>
+                    <span className="block text-[13px] font-extrabold text-slate-900">선택 근거 보기</span>
+                    <span className="block text-[11px] font-semibold text-slate-500">포함/불포함, 특전, 약관을 함께 확인합니다.</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${fallbackRecommendationOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                </button>
+                {fallbackRecommendationOpen && (
+                  <div
+                    id={fallbackRecommendationPanelId}
+                    data-testid="recommendation-card-rationale-panel"
+                    role="region"
+                    aria-label="상품 선택 근거"
+                    className="mt-2 rounded-xl border border-slate-100 bg-white px-3 py-2.5"
+                  >
+                    <ul className="space-y-1.5">
+                      {fallbackEvidenceReasons.map((item) => (
+                        <li key={item} className="flex gap-2 text-[12px] font-semibold leading-relaxed text-slate-700">
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" aria-hidden="true" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* ═══ 여행 적합도 (monthly_normals/fitness_scores 둘 다 있어야 의미 있음) ═══ */}
       {climateData && Array.isArray(climateData.monthly_normals) && Array.isArray(climateData.fitness_scores) && (
         <TravelFitnessCard
@@ -1889,6 +1979,56 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           representativeMonth={representativeMonth}
           departureDistribution={departureDistribution}
         />
+      )}
+      {(!climateData || !Array.isArray(climateData.monthly_normals)) && fallbackPackingTips.length > 0 && (
+        <section className="px-4 mt-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-extrabold tracking-[0.14em] text-slate-400">준비 체크</p>
+                <h3 className="mt-1 text-[18px] font-black leading-tight text-slate-950">예약 전 챙길 것</h3>
+                <p className="mt-1 text-[12px] font-semibold leading-relaxed text-slate-500">
+                  출발 동선, 현지 비용, 약관처럼 예약 전에 놓치기 쉬운 항목을 정리했습니다.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
+                {fallbackPackingTips.length}개
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFallbackPackingOpen((value) => !value)}
+              className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-left"
+              data-testid="packing-tips-toggle"
+              aria-expanded={fallbackPackingOpen}
+              aria-controls={fallbackPackingPanelId}
+            >
+              <span>
+                <span className="block text-[13px] font-extrabold text-slate-900">준비 항목 보기</span>
+                <span className="block text-[11px] font-semibold text-slate-500">출발, 비용, 약관 기준 체크리스트</span>
+              </span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${fallbackPackingOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+            {fallbackPackingOpen && (
+              <div
+                id={fallbackPackingPanelId}
+                data-testid="packing-tips-panel"
+                role="region"
+                aria-label="예약 전 준비 체크리스트"
+                className="mt-2 rounded-xl border border-slate-100 bg-white px-3 py-2.5"
+              >
+                <ul className="space-y-1.5">
+                  {fallbackPackingTips.map((item) => (
+                    <li key={item} className="flex gap-2 text-[12px] font-semibold leading-relaxed text-slate-700">
+                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" aria-hidden="true" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </section>
       )}
       {/* ═══ 시차 카드 — utc_offset_minutes 만 있으면 독립 노출 (2026-05-16 박제)
            기존: fitness_scores 게이트에 묶여 monthly_normals 미시드 destination 에서 시차도 사라짐.
