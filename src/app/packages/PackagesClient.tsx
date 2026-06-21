@@ -1232,7 +1232,7 @@ export default function PackagesClient() {
   if (isLoading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-white pb-36 md:pb-0">
+    <div className={`min-h-screen bg-white ${compareIds.length > 0 ? 'pb-[calc(23rem+env(safe-area-inset-bottom))] md:pb-28' : 'pb-36 md:pb-0'}`}>
       <GlobalNav />
       <a href={consultTelHref || groupInquiryHref} className="sr-only">
         여행 상품 문의
@@ -1940,7 +1940,7 @@ export default function PackagesClient() {
       </div>
 
       {compareIds.length > 0 && (
-        <div className="fixed bottom-32 md:bottom-[88px] left-1/2 z-40 w-[min(calc(100vw-2rem),680px)] -translate-x-1/2">
+        <div className="fixed bottom-[calc(8rem+env(safe-area-inset-bottom))] left-1/2 z-40 max-h-[min(60dvh,24rem)] w-[min(calc(100vw-2rem),680px)] -translate-x-1/2 overflow-y-auto md:bottom-[88px]">
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
             <p
               id={compareHandoffSummaryId}
