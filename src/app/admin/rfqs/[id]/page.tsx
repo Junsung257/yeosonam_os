@@ -366,6 +366,16 @@ export default function AdminRfqDetailPage() {
   const selectedProducts = getRequirementList(rfq, 'selected_products');
   const hasHandoffContext = Boolean(handoffQuery || handoffSource || selectedProducts.length > 0);
   const nextAction = getRfqNextAction(rfq, bids, proposals, hasHandoffContext);
+  const requirementReadinessItems = [
+    { label: '목적지', value: rfq.destination || '미입력', complete: Boolean(rfq.destination) },
+    { label: '인원', value: `${rfq.adult_count + rfq.child_count}명`, complete: rfq.adult_count + rfq.child_count > 0 },
+    { label: '예산', value: rfq.budget_per_person > 0 ? `₩${fmt(rfq.budget_per_person)}` : '미입력', complete: rfq.budget_per_person > 0 },
+  ];
+  const requirementReadyCount = requirementReadinessItems.filter((item) => item.complete).length;
+  const requirementMissingLabels = requirementReadinessItems.filter((item) => !item.complete).map((item) => item.label);
+  const requirementReadinessText = requirementMissingLabels.length > 0
+    ? `요건 준비 ${requirementReadyCount}/${requirementReadinessItems.length}. 남은 항목은 ${requirementMissingLabels.join(', ')}입니다.`
+    : `요건 준비 ${requirementReadyCount}/${requirementReadinessItems.length}. 공고 전환에 필요한 핵심 요건이 준비되었습니다.`;
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -401,7 +411,7 @@ export default function AdminRfqDetailPage() {
 
       <section
         aria-labelledby="admin-rfq-next-action-title"
-        aria-describedby="admin-rfq-next-action-reason admin-rfq-next-action-status"
+        aria-describedby="admin-rfq-next-action-reason admin-rfq-requirement-readiness admin-rfq-next-action-status"
         className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4 shadow-admin-xs"
       >
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -415,7 +425,7 @@ export default function AdminRfqDetailPage() {
             </p>
             <p className="mt-1 text-admin-xs text-admin-text-2">{nextAction.detail}</p>
             <p id="admin-rfq-next-action-status" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-              {`현재 다음 단계는 ${nextAction.label}입니다. ${nextAction.reason}`}
+              {`현재 다음 단계는 ${nextAction.label}입니다. ${nextAction.reason} ${requirementReadinessText}`}
             </p>
           </div>
           <button
@@ -426,6 +436,34 @@ export default function AdminRfqDetailPage() {
             해당 탭 보기
             <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
+        </div>
+        <div
+          id="admin-rfq-requirement-readiness"
+          data-testid="admin-rfq-requirement-readiness"
+          aria-label={requirementReadinessText}
+          className="mt-4 rounded-admin-sm border border-admin-border-mid bg-admin-surface-2 px-3 py-2"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-admin-xs font-bold text-admin-text">
+              요건 준비 {requirementReadyCount}/{requirementReadinessItems.length}
+            </p>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+              requirementMissingLabels.length > 0 ? 'bg-white text-admin-muted ring-1 ring-admin-border-mid' : 'bg-status-successBg text-status-successFg'
+            }`}
+            >
+              {requirementMissingLabels.length > 0 ? '보완 필요' : '공고 전환 가능'}
+            </span>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {requirementReadinessItems.map((item) => (
+              <div key={item.label} className="rounded-admin-xs bg-admin-surface px-2.5 py-2">
+                <p className="text-[11px] font-semibold text-admin-muted">{item.label}</p>
+                <p className={`mt-0.5 truncate text-admin-xs font-bold ${item.complete ? 'text-admin-text-2' : 'text-status-dangerFg'}`}>
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
         <dl className="mt-4 grid gap-2 text-admin-xs sm:grid-cols-3">
           {[
