@@ -547,6 +547,7 @@ function PackageOpsQueue({
   deadlineCount,
   gapCount,
   onQueueSelect,
+  onQueueClear,
 }: {
   activeQueue?: PackageQueueKey | null;
   pendingCount: number;
@@ -555,6 +556,7 @@ function PackageOpsQueue({
   deadlineCount: number;
   gapCount: number;
   onQueueSelect: (queue: PackageQueueSelectKey) => void;
+  onQueueClear: () => void;
 }) {
   type QueueTone = 'amber' | 'blue' | 'emerald' | 'red';
   const cards: Array<{ id: PackageQueueKey; label: string; count: number; detail: string; target: string; reason: string; operationRisk: string; tone: QueueTone }> = [
@@ -615,8 +617,25 @@ function PackageOpsQueue({
       >
         {packageQueueLeadText}
       </p>
+      {selectedQueueCard && (
+        <div
+          data-testid="admin-package-active-queue-filter"
+          className="mb-3 flex flex-col gap-2 rounded-admin-sm border border-admin-border-mid bg-admin-bg px-3 py-2 text-admin-xs sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="font-semibold text-admin-text-2">
+            적용 중: {selectedQueueCard.label} · {selectedQueueCard.target}
+          </p>
+          <button
+            type="button"
+            onClick={onQueueClear}
+            className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs border border-admin-border-mid bg-white px-3 font-bold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+          >
+            큐 필터 해제
+          </button>
+        </div>
+      )}
       <div
-        className="mb-3 grid grid-cols-3 gap-2"
+        className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
         data-testid="admin-package-queue-health"
         aria-label={`상품 큐 상태: 활성 큐 ${activeCards.length}/${cards.length}, 긴급 큐 ${urgentCards.length}개, 정리됨 ${clearCardsCount}개`}
       >
@@ -639,7 +658,7 @@ function PackageOpsQueue({
           </div>
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(card => {
           const cardDescriptionId = `admin-package-queue-${card.id}-description`;
           return (
@@ -2554,6 +2573,18 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     setCurrentPage(1);
   };
 
+  const handleQueueClear = () => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/packages',
+      metadata: {
+        surface: 'packages_action_queue',
+        action: 'clear_queue',
+      },
+    });
+    resetPackageFilters();
+  };
+
   const activeQueueLabel = activePackageQueue
     ? { review: '검수', copy: '수정', publish: '발행', deadline: '마감 대응' }[activePackageQueue]
     : '';
@@ -2620,6 +2651,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         deadlineCount={deadlineCount}
         gapCount={gapCount}
         onQueueSelect={handleQueueSelect}
+        onQueueClear={handleQueueClear}
       />
 
       <div className="flex flex-col gap-2 mb-3 md:flex-row">
