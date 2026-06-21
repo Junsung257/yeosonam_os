@@ -281,6 +281,7 @@ export default function GroupInquiryPage() {
   const [selectedIntent, setSelectedIntent] = useState<IntentChip | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [handoffSource, setHandoffSource] = useState<string | null>(null);
+  const [handoffQuery, setHandoffQuery] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [privacyConsent, setPrivacyConsent] = useState(false);
@@ -326,6 +327,7 @@ export default function GroupInquiryPage() {
     setSelectedIntent(nextIntent);
     setSelectedProducts(productNames);
     setHandoffSource(handoff.source ?? 'concierge');
+    setHandoffQuery(query?.trim() ?? '');
 
     const parsedBudget = parseKoreanBudget(budget);
     const parsedPeople = parsePartyCount(normalizedPartyType) ?? parsePartyCount(query);
@@ -425,6 +427,7 @@ export default function GroupInquiryPage() {
     handoffSource ? `유입 경로는 ${handoffSource}입니다.` : null,
     selectedIntent?.label ? `상담 목적은 ${selectedIntent.label}입니다.` : null,
     selectedIntent?.partyType ? `동행 유형은 ${PARTY_LABELS[selectedIntent.partyType] ?? selectedIntent.partyType}입니다.` : null,
+    handoffQuery ? `원문 요청은 ${handoffQuery}입니다.` : null,
     `지역은 ${getSummaryValue(extractedSummary, 'destination')}입니다.`,
     `예산은 ${getSummaryValue(extractedSummary, 'budget')}입니다.`,
     selectedProducts.length > 0 ? `관심 상품은 ${selectedProducts.join(', ')}입니다.` : null,
@@ -458,6 +461,7 @@ export default function GroupInquiryPage() {
     handoff_preview: submitHandoffPreviewText,
     next_action: stickyNextActionText,
     condition_summary: rfqConditionSummaryText,
+    handoff_query: handoffQuery || null,
     has_contact_name: contactName.trim().length > 0,
     has_contact_phone: contactPhone.trim().length > 0,
     privacy_consent: privacyConsent,
@@ -700,6 +704,7 @@ export default function GroupInquiryPage() {
         party_type: selectedIntent?.partyType ?? null,
         budget_range_label: getSummaryValue(extractedSummary, 'budget'),
         selected_products: rfqSelectedProducts,
+        handoff_query: handoffQuery || null,
         privacy_consent: privacyConsent,
       },
     };
@@ -962,6 +967,12 @@ export default function GroupInquiryPage() {
                   <div data-testid="group-inquiry-handoff-products" className="mt-3 rounded-lg bg-blue-50 px-3 py-2">
                     <p className="text-xs font-semibold text-blue-700">관심 상품 {selectedProducts.length}개</p>
                     <p className="mt-1 line-clamp-2 text-sm font-bold text-gray-900">{selectedProducts.join(', ')}</p>
+                  </div>
+                )}
+                {handoffQuery && (
+                  <div data-testid="group-inquiry-handoff-query" className="mt-3 rounded-lg bg-[#F8FAFC] px-3 py-2">
+                    <p className="text-xs font-semibold text-gray-500">원문 요청</p>
+                    <p className="mt-1 line-clamp-2 text-sm font-bold text-gray-900">{handoffQuery}</p>
                   </div>
                 )}
                 <div
