@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { fmtNum as fmt } from '@/lib/admin-utils';
 import { PageHeader, KpiCard as PatternKpiCard } from '@/components/admin/patterns';
-import { FileQuestion, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react';
+import { FileQuestion, AlertCircle, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
 
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
@@ -52,6 +52,15 @@ const STATUS_TABS = [
   { value: 'contracted', label: '계약완료' },
 ];
 
+const NEXT_ACTION_LABELS: Record<string, string> = {
+  draft: '요건 검수',
+  published: '입찰 초대',
+  bidding: '마감 확인',
+  analyzing: 'AI 분석 확인',
+  awaiting_selection: '고객 선택',
+  contracted: '계약 확인',
+};
+
 function getRequirementText(rfq: GroupRfq, key: string): string | null {
   const value = rfq.custom_requirements?.[key];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -79,10 +88,12 @@ function getHandoffBadgeText(rfq: GroupRfq): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+function getNextActionLabel(status: string): string {
+  return NEXT_ACTION_LABELS[status] ?? '상세 확인';
+}
+
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function AdminRfqsPage() {
-  const router = useRouter();
-
   const [rfqs, setRfqs] = useState<GroupRfq[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
@@ -180,7 +191,7 @@ export default function AdminRfqsPage() {
           <table className="admin-data-table">
             <thead>
               <tr>
-                {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '등록일'].map(
+                {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '다음 액션', '등록일'].map(
                   (h) => (
                     <th key={h}>{h}</th>
                   )
@@ -190,15 +201,19 @@ export default function AdminRfqsPage() {
             <tbody>
               {filteredRfqs.map((rfq) => {
                 const handoffBadgeText = getHandoffBadgeText(rfq);
+                const detailHref = `/admin/rfqs/${rfq.id}`;
+                const nextActionLabel = getNextActionLabel(rfq.status);
 
                 return (
-                  <tr
-                    key={rfq.id}
-                    onClick={() => router.push(`/admin/rfqs/${rfq.id}`)}
-                    className="cursor-pointer"
-                  >
+                  <tr key={rfq.id}>
                     <td className="font-mono text-admin-xs text-admin-muted">
-                      {rfq.rfq_code}
+                      <Link
+                        href={detailHref}
+                        className="font-semibold text-indigo-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                        aria-label={`${rfq.rfq_code} 상세 보기`}
+                      >
+                        {rfq.rfq_code}
+                      </Link>
                     </td>
                     <td className="text-admin-text">
                       {rfq.customer_name || '—'}
@@ -231,6 +246,16 @@ export default function AdminRfqsPage() {
                     </td>
                     <td className="text-admin-muted admin-num">
                       {rfq.bid_count ?? 0}
+                    </td>
+                    <td>
+                      <Link
+                        href={detailHref}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-2.5 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                        aria-label={`${rfq.rfq_code} ${nextActionLabel}`}
+                      >
+                        {nextActionLabel}
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
                     </td>
                     <td className="text-admin-muted text-admin-xs admin-num">
                       {rfq.created_at.slice(0, 10)}
