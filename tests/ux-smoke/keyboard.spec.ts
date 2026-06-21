@@ -214,6 +214,25 @@ test.describe('keyboard access smoke', () => {
     await expect(packageCardLink, 'package card detail link should have a stable accessible name').toHaveAttribute('aria-label', /상세 보기$/);
   });
 
+  test('package first candidate inquiry carries selected product context', async ({ page }) => {
+    await page.goto('/packages', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    await page.locator('[data-testid="packages-first-candidate-group-inquiry"]:visible').first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    const firstCandidateInquiry = page.locator('[data-testid="packages-first-candidate-group-inquiry"]:visible').first();
+    if (!(await firstCandidateInquiry.count())) {
+      await expectCanFocus(page.locator('a[href*="group-inquiry"]').first(), 'packages fallback inquiry link');
+      return;
+    }
+
+    await expectCanFocus(firstCandidateInquiry, 'first candidate inquiry');
+    const href = await firstCandidateInquiry.getAttribute('href');
+    expect(href, 'first candidate inquiry should route to group inquiry').toContain('/group-inquiry?');
+    const query = new URLSearchParams(href?.split('?')[1] ?? '');
+    expect(query.get('source'), 'first candidate inquiry source should be explicit').toBe('packages_first_candidate');
+    expect(query.get('selected_products'), 'first candidate inquiry should include product context').toBeTruthy();
+  });
+
   test('package card reason toggle exposes expanded state from keyboard', async ({ page }) => {
     await page.goto('/packages', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});

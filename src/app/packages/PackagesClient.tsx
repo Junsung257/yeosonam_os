@@ -720,6 +720,28 @@ export default function PackagesClient() {
   const firstVisibleScore = firstVisiblePackage ? scoreByPkgId[firstVisiblePackage.id] ?? null : null;
   const firstVisibleMinPrice = firstVisiblePackage ? packageMinPrice(firstVisiblePackage) : null;
   const firstVisibleDetailHref = firstVisiblePackage ? buildPackageDetailHref(firstVisiblePackage) : null;
+  const firstVisibleGroupInquiryHref = useMemo(() => {
+    if (!firstVisiblePackage || !firstVisiblePackageTitle) return groupInquiryHref;
+    return buildGroupInquiryHandoffHref({
+      source: 'packages_first_candidate',
+      intent: effectiveIntent ?? undefined,
+      partyType: handoffPartyType ?? undefined,
+      query: q || handoffSummary || `${firstVisiblePackageTitle} 견적 문의`,
+      destination: handoffDestination || firstVisiblePackage.destination,
+      budget: handoffBudget,
+      selectedProducts: [firstVisiblePackageTitle],
+    });
+  }, [
+    effectiveIntent,
+    firstVisiblePackage,
+    firstVisiblePackageTitle,
+    groupInquiryHref,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    handoffSummary,
+    q,
+  ]);
   const firstVisibleIsCompared = firstVisiblePackage ? compareIds.includes(firstVisiblePackage.id) : false;
   const firstVisibleDecisionReasonText = firstVisiblePackage ? [
     firstVisibleScore?.comparisonSummary || firstVisibleScore?.label || null,
@@ -861,6 +883,51 @@ export default function PackagesClient() {
     handoffPartyType,
     packageCtaDecisionMetadata,
     selectedProductNames,
+  ]);
+
+  const trackFirstVisibleGroupInquiryCta = useCallback((source = 'packages_first_candidate_group_inquiry') => {
+    if (!firstVisiblePackage) return;
+    const firstCandidateProducts = firstVisiblePackageTitle ? [firstVisiblePackageTitle] : [];
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: source,
+      page_url: '/packages',
+      product_id: firstVisiblePackage.id,
+      product_name: firstVisiblePackageTitle ?? firstVisiblePackage.id,
+      intent: effectiveIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: firstCandidateProducts.length > 0 ? firstCandidateProducts : null,
+      ready_count: packageCtaDecisionMetadata.ready_count,
+      missing_fields: packageCtaDecisionMetadata.missing_fields,
+      decision_summary: packageCtaDecisionMetadata.decision_summary,
+      handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+      next_action: '첫 후보로 견적 문의',
+      result_summary: packageCtaDecisionMetadata.result_summary,
+      applied_filters: packageCtaDecisionMetadata.applied_filters,
+      metadata: {
+        source,
+        first_candidate: true,
+        first_candidate_price: firstVisibleMinPrice,
+        first_candidate_reason: firstVisibleDecisionReasonText,
+        scarce_result: hasScarcePackageResults,
+        scarce_result_count: filteredPackages.length,
+        ...packageCtaDecisionMetadata,
+      },
+    });
+  }, [
+    effectiveIntent,
+    filteredPackages.length,
+    firstVisibleDecisionReasonText,
+    firstVisibleMinPrice,
+    firstVisiblePackage,
+    firstVisiblePackageTitle,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    hasScarcePackageResults,
+    packageCtaDecisionMetadata,
   ]);
 
   const trackEmptyStateRecoveryCta = useCallback((ctaType: string) => {
@@ -1898,7 +1965,7 @@ export default function PackagesClient() {
         {firstVisiblePackage && firstVisibleDetailHref && (
           <div
             data-testid="packages-first-candidate-actions"
-            className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2"
+            className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
           >
             <button
               type="button"
@@ -1922,10 +1989,20 @@ export default function PackagesClient() {
               href={firstVisibleDetailHref}
               onClick={trackFirstVisibleDetailCta}
               aria-describedby={packageListDescriptionIds}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-[#D7E3F3] bg-white px-4 text-[13px] font-extrabold text-text-primary transition hover:border-brand/60 hover:text-brand"
             >
               첫 후보 상세 보기
               <ArrowRight className="h-4 w-4" aria-hidden="true" strokeWidth={2.4} />
+            </Link>
+            <Link
+              href={firstVisibleGroupInquiryHref}
+              onClick={() => trackFirstVisibleGroupInquiryCta()}
+              data-testid="packages-first-candidate-group-inquiry"
+              aria-describedby={packageListDescriptionIds}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
+            >
+              첫 후보 견적 문의
+              <Users className="h-4 w-4" aria-hidden="true" strokeWidth={2.4} />
             </Link>
           </div>
         )}
@@ -2080,14 +2157,16 @@ export default function PackagesClient() {
                   AI 상담
                 </Link>
                 <Link
-                  href={groupInquiryHref}
-                  onClick={() => trackScarceResultRecoveryCta('packages_scarce_result_group_inquiry')}
+                  href={firstVisiblePackage ? firstVisibleGroupInquiryHref : groupInquiryHref}
+                  onClick={() => firstVisiblePackage
+                    ? trackFirstVisibleGroupInquiryCta('packages_scarce_result_first_candidate_group_inquiry')
+                    : trackScarceResultRecoveryCta('packages_scarce_result_group_inquiry')}
                   data-testid="packages-scarce-result-group-inquiry"
                   aria-describedby={`${scarceResultRecoverySummaryId} ${packageListDescriptionIds}`}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
                 >
                   <Users className="h-4 w-4" aria-hidden="true" />
-                  견적 문의
+                  {firstVisiblePackage ? '첫 후보 견적' : '견적 문의'}
                 </Link>
               </div>
             </div>
