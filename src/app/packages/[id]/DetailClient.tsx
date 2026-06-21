@@ -853,6 +853,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     const d = new Date(confirmed[0].date);
     return `${d.getMonth() + 1}/${d.getDate()} 확정`;
   }, [pkg]);
+  const nextConfirmedDateRaw = useMemo(() => {
+    if (!pkg?.price_dates) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    return pkg.price_dates
+      .filter(d => d.confirmed && d.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))[0]?.date ?? null;
+  }, [pkg]);
   const heroUrl = useMemo(() => {
     if (!pkg) return null;
     if (isSafeImageSrc(pkg.lp_hero_image_url)) return pkg.lp_hero_image_url.trim();
@@ -937,6 +944,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const selectedHandoffProducts = parseHandoffSelectedProducts(handoffProductsFromQuery, selectedProductName);
   const handoffIntent = handoffIntentFromQuery ?? productTypeLabel ?? pkg.product_type ?? 'consult';
   const handoffPartyType = handoffPartyTypeFromQuery ?? inferPartyTypeForHandoff(handoffIntent, pkg.product_type);
+  const todayForDeparture = new Date().toISOString().slice(0, 10);
+  const nextAvailableDepartureDateRaw = allPriceDates
+    .filter(d => d.date >= todayForDeparture)
+    .sort((a, b) => a.date.localeCompare(b.date))[0]?.date ?? null;
+  const selectedDepartureDateForHandoff =
+    selectedDate || selectedTier?.departure_dates?.[0] || nextConfirmedDateRaw || nextAvailableDepartureDateRaw || formData.date || null;
+  const selectedDepartureLabelForDisplay =
+    (selectedDate ? formatCompactDepartureDate(selectedDate) : null)
+    ?? selectedTier?.period_label
+    ?? nextConfirmedDate
+    ?? (nextAvailableDepartureDateRaw ? formatCompactDepartureDate(nextAvailableDepartureDateRaw) : null)
+    ?? formData.date
+    ?? null;
   const handoffBudget = selectedTier?.adult_price
     ? `1인 ${selectedTier.adult_price.toLocaleString()}원`
     : Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0
@@ -944,17 +964,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       : null;
   const handoffBudgetForCta = selectedTier?.adult_price ? handoffBudget : handoffBudgetFromQuery ?? handoffBudget;
   const handoffDestination = handoffDestinationFromQuery ?? pkg.destination ?? null;
-  const departureHandoffLabel = selectedDate || selectedTier?.departure_dates?.[0] || selectedTier?.period_label || formData.date;
   const groupInquiryQuery = [
     handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : null,
-    departureHandoffLabel
-      ? `${selectedProductName} ${departureHandoffLabel} 출발 예약 문의`
+    selectedDepartureDateForHandoff
+      ? `${selectedProductName} ${selectedDepartureDateForHandoff} 출발 예약 문의`
       : `${selectedProductName} 예약 문의`,
   ].filter(Boolean).join('\n');
   const conciergeHandoffQuery = [
     handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : null,
-    departureHandoffLabel
-      ? `${selectedProductName} ${departureHandoffLabel} 출발 조건 AI 상담`
+    selectedDepartureDateForHandoff
+      ? `${selectedProductName} ${selectedDepartureDateForHandoff} 출발 조건 AI 상담`
       : `${selectedProductName} 조건 AI 상담`,
   ].filter(Boolean).join('\n');
   const groupInquiryHref = buildGroupInquiryHandoffHref({
@@ -977,11 +996,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   });
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
   const durationLabel = formatPackageDuration(pkg);
-  const todayForDeparture = new Date().toISOString().slice(0, 10);
   const nextAvailableDepartureLabel = formatCompactDepartureDate(
-    allPriceDates
-      .filter(d => d.date >= todayForDeparture)
-      .sort((a, b) => a.date.localeCompare(b.date))[0]?.date,
+    nextAvailableDepartureDateRaw,
   );
   const firstScreenPriceLabel = Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0
     ? `₩${(displayPrice as number).toLocaleString()}~`
@@ -992,7 +1008,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     .slice(0, 3);
   const stickyHandoffItems = [
     { label: '지역', value: handoffDestination },
-    { label: '출발', value: selectedDate ?? nextConfirmedDate ?? nextAvailableDepartureLabel },
+    { label: '출발', value: selectedDepartureLabelForDisplay ?? nextAvailableDepartureLabel },
     { label: '예산', value: handoffBudgetForCta },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   const detailCtaSummaryId = 'package-detail-cta-summary';
@@ -1014,7 +1030,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const detailHandoffChecklist = [
     { label: '상품', complete: Boolean(selectedProductName) },
     { label: '지역', complete: Boolean(handoffDestination) },
-    { label: '출발', complete: Boolean(selectedDate ?? nextConfirmedDate ?? nextAvailableDepartureLabel) },
+    { label: '출발', complete: Boolean(selectedDepartureDateForHandoff ?? selectedDepartureLabelForDisplay ?? nextAvailableDepartureLabel) },
     { label: '가격', complete: Boolean(handoffBudgetForCta) },
   ];
   const detailHandoffReadyCount = detailHandoffChecklist.filter((item) => item.complete).length;
@@ -1180,7 +1196,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           form: {
             name: formData.name,
             phone: formData.phone,
-            desiredDate: formData.date || selectedTier?.period_label || null,
+            desiredDate: formData.date || selectedDepartureDateForHandoff || selectedTier?.period_label || null,
             adults: 1,
             children: 0,
             privacyConsent: reservationConsent,
@@ -1381,7 +1397,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       destination: handoffDestination,
       party_type: handoffPartyType,
       selected_products: selectedHandoffProducts,
-      departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+      departureDate: selectedDepartureDateForHandoff ?? selectedTier?.departure_dates?.[0],
       escalationSummary: [
         '예약 문의 폼 전송이 실패해 카카오톡 상담으로 이어갑니다.',
         reservationSubmitHandoffPreviewText,
@@ -2677,7 +2693,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             destination: handoffDestination,
             party_type: handoffPartyType,
             selected_products: selectedHandoffProducts,
-            departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+            departureDate: selectedDepartureDateForHandoff ?? selectedTier?.departure_dates?.[0],
             escalationSummary: handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : undefined,
           });
         }}
@@ -2982,7 +2998,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 body: JSON.stringify({
                   productId: id,
                   channel: 'kakao_channel',
-                  form: { name: '카카오문의', phone: '-', desiredDate: selectedTier?.departure_dates?.[0] || null, adults: 1, children: 0, privacyConsent: true },
+                  form: { name: '카카오문의', phone: '-', desiredDate: selectedDepartureDateForHandoff, adults: 1, children: 0, privacyConsent: true },
                   tracking: {
                     sessionId: getSessionId(),
                     landingUrl: window.location.href,
@@ -3011,7 +3027,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 destination: handoffDestination,
                 party_type: handoffPartyType,
                 selected_products: selectedHandoffProducts,
-                departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+                departureDate: selectedDepartureDateForHandoff ?? selectedTier?.departure_dates?.[0],
                 escalationSummary: handoffQueryFromQuery ? `검색어: ${handoffQueryFromQuery}` : undefined,
               });
               if (copied) {
