@@ -710,9 +710,11 @@ async function runBlogPublisher(request: NextRequest) {
       );
       extraClaimRounds += 1;
 
-      let { data: nextQueue, error: nextClaimError } = await supabaseAdmin.rpc('claim_queue_items', {
+      const nextClaimResult = await supabaseAdmin.rpc('claim_queue_items', {
         limit_rows: extraClaimLimit,
       });
+      let nextQueue = nextClaimResult.data;
+      const nextClaimError = nextClaimResult.error;
       if (nextClaimError) {
         errors.push(`claim_queue_items extra failed: ${nextClaimError.message}`);
         break;

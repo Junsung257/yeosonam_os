@@ -53,4 +53,25 @@ describe('fetchWithSessionRefresh', () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it('forces a server refresh after token expiry even when the browser marker cookie is missing', async () => {
+    vi.stubGlobal('document', { cookie: '' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ code: 'TOKEN_EXPIRED', error: 'token expired' }, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({ success: true }, { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ uploaded: true }, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await fetchWithSessionRefresh('/api/upload', { method: 'POST', body: 'raw' });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.uploaded).toBe(true);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });
