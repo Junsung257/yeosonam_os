@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, type KeyboardEvent a
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Phone, RotateCcw, Search, Sparkles, Users, X } from 'lucide-react';
+import { ArrowRight, Check, Phone, Plus, RotateCcw, Search, Sparkles, Users, X } from 'lucide-react';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -697,6 +697,8 @@ export default function PackagesClient() {
   const firstVisiblePackageTitle = firstVisiblePackage?.display_title || firstVisiblePackage?.products?.display_name || firstVisiblePackage?.title || null;
   const firstVisibleScore = firstVisiblePackage ? scoreByPkgId[firstVisiblePackage.id] ?? null : null;
   const firstVisibleMinPrice = firstVisiblePackage ? packageMinPrice(firstVisiblePackage) : null;
+  const firstVisibleDetailHref = firstVisiblePackage ? buildPackageDetailHref(firstVisiblePackage) : null;
+  const firstVisibleIsCompared = firstVisiblePackage ? compareIds.includes(firstVisiblePackage.id) : false;
   const firstVisibleDecisionReasonText = firstVisiblePackage ? [
     firstVisibleScore?.comparisonSummary || firstVisibleScore?.label || null,
     firstVisiblePackage.departure_airport ? `${firstVisiblePackage.departure_airport} 출발` : null,
@@ -748,6 +750,93 @@ export default function PackagesClient() {
     primaryFilterReadyCount,
     effectiveIntent,
     visiblePackages.length,
+  ]);
+
+  const handleFirstVisibleCompare = useCallback(() => {
+    if (!firstVisiblePackage) return;
+    setCompareIds(prev => {
+      if (prev.includes(firstVisiblePackage.id)) return prev;
+      if (prev.length >= 2) return [prev[1], firstVisiblePackage.id];
+      return [...prev, firstVisiblePackage.id];
+    });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: 'packages_first_candidate_compare',
+      page_url: '/packages',
+      product_id: firstVisiblePackage.id,
+      product_name: firstVisiblePackageTitle ?? firstVisiblePackage.id,
+      intent: effectiveIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      ready_count: packageCtaDecisionMetadata.ready_count,
+      missing_fields: packageCtaDecisionMetadata.missing_fields,
+      decision_summary: packageCtaDecisionMetadata.decision_summary,
+      handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+      next_action: '첫 후보를 비교 상품에 담기',
+      result_summary: packageCtaDecisionMetadata.result_summary,
+      applied_filters: packageCtaDecisionMetadata.applied_filters,
+      metadata: {
+        source: 'packages_list_decision_summary',
+        first_candidate: true,
+        first_candidate_price: firstVisibleMinPrice,
+        first_candidate_reason: firstVisibleDecisionReasonText,
+        ...packageCtaDecisionMetadata,
+      },
+    });
+  }, [
+    effectiveIntent,
+    firstVisibleDecisionReasonText,
+    firstVisibleMinPrice,
+    firstVisiblePackage,
+    firstVisiblePackageTitle,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    packageCtaDecisionMetadata,
+    selectedProductNames,
+  ]);
+
+  const trackFirstVisibleDetailCta = useCallback(() => {
+    if (!firstVisiblePackage) return;
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: 'packages_first_candidate_detail',
+      page_url: '/packages',
+      product_id: firstVisiblePackage.id,
+      product_name: firstVisiblePackageTitle ?? firstVisiblePackage.id,
+      intent: effectiveIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      ready_count: packageCtaDecisionMetadata.ready_count,
+      missing_fields: packageCtaDecisionMetadata.missing_fields,
+      decision_summary: packageCtaDecisionMetadata.decision_summary,
+      handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+      next_action: '첫 후보 상세 보기',
+      result_summary: packageCtaDecisionMetadata.result_summary,
+      applied_filters: packageCtaDecisionMetadata.applied_filters,
+      metadata: {
+        source: 'packages_list_decision_summary',
+        first_candidate: true,
+        first_candidate_price: firstVisibleMinPrice,
+        first_candidate_reason: firstVisibleDecisionReasonText,
+        ...packageCtaDecisionMetadata,
+      },
+    });
+  }, [
+    effectiveIntent,
+    firstVisibleDecisionReasonText,
+    firstVisibleMinPrice,
+    firstVisiblePackage,
+    firstVisiblePackageTitle,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    packageCtaDecisionMetadata,
+    selectedProductNames,
   ]);
 
   const trackEmptyStateRecoveryCta = useCallback((ctaType: string) => {
@@ -1738,6 +1827,40 @@ export default function PackagesClient() {
         >
           {packageListNextActionDetailText}
         </p>
+        {firstVisiblePackage && firstVisibleDetailHref && (
+          <div
+            data-testid="packages-first-candidate-actions"
+            className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2"
+          >
+            <button
+              type="button"
+              onClick={handleFirstVisibleCompare}
+              aria-pressed={firstVisibleIsCompared}
+              aria-describedby={packageListDescriptionIds}
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border px-4 text-[13px] font-extrabold transition ${
+                firstVisibleIsCompared
+                  ? 'border-brand/30 bg-brand-light text-brand'
+                  : 'border-[#D7E3F3] bg-white text-text-primary hover:border-brand/60 hover:text-brand'
+              }`}
+            >
+              {firstVisibleIsCompared ? (
+                <Check className="h-4 w-4" aria-hidden="true" strokeWidth={2.4} />
+              ) : (
+                <Plus className="h-4 w-4" aria-hidden="true" strokeWidth={2.4} />
+              )}
+              {firstVisibleIsCompared ? '첫 후보 비교 담김' : '첫 후보 비교 담기'}
+            </button>
+            <Link
+              href={firstVisibleDetailHref}
+              onClick={trackFirstVisibleDetailCta}
+              aria-describedby={packageListDescriptionIds}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
+            >
+              첫 후보 상세 보기
+              <ArrowRight className="h-4 w-4" aria-hidden="true" strokeWidth={2.4} />
+            </Link>
+          </div>
+        )}
       </section>
 
       <div ref={listTopRef} id="packages-list" aria-describedby={packageListDescriptionIds} />
