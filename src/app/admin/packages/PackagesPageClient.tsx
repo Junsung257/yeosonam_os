@@ -3736,9 +3736,11 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               const selectedExpired = isExpired(selected);
               const selectedNextOperationLabel = getPackageNextOperationLabel(selected, selectedExpired);
               const selectedNextOperationReason = getPackageNextOperationReason(selected, selectedExpired);
+              const selectedOperationRiskLabel = getPackageOperationRiskLabel(selected, selectedExpired);
               const selectedPackageStatusLabel = STATUS_LABEL[selected.status] ?? selected.status;
               const selectedPackagePriceLabel = selected.price ? `${selected.price.toLocaleString()}원` : '가격 미정';
               const detailActionSummaryId = `admin-package-detail-action-summary-${selected.id}`;
+              const detailNextActionReasonId = `admin-package-detail-next-action-reason-${selected.id}`;
               const detailActionSummaryText = `상세 결정 요약: 상태 ${selectedPackageStatusLabel}, 가격 ${selectedPackagePriceLabel}, 다음 액션 ${selectedNextOperationLabel}. 근거는 ${selectedNextOperationReason}`;
               return (
                 <>
@@ -3780,6 +3782,43 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   ))}
                 </div>
               )}
+
+              <section
+                aria-labelledby="admin-package-detail-next-action-title"
+                aria-describedby={`${detailNextActionReasonId} ${detailActionSummaryId}`}
+                className="rounded-admin-md border border-admin-border-mid bg-admin-bg p-4"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-admin-muted">Next action</p>
+                    <h3 id="admin-package-detail-next-action-title" className="mt-1 text-admin-base font-black text-admin-text-2">
+                      {selectedNextOperationLabel}
+                    </h3>
+                    <p id={detailNextActionReasonId} className="mt-1 text-admin-xs font-semibold text-admin-muted">
+                      {selectedNextOperationReason}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById(detailActionSummaryId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                    className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs border border-admin-border-mid bg-white px-3 text-admin-xs font-bold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+                  >
+                    작업 버튼 보기
+                  </button>
+                </div>
+                <dl className="mt-3 grid grid-cols-1 gap-2 text-admin-xs sm:grid-cols-3">
+                  {[
+                    ['상태', selectedPackageStatusLabel],
+                    ['가격', selectedPackagePriceLabel],
+                    ['운영 리스크', selectedOperationRiskLabel],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-admin-sm border border-admin-border-mid bg-white px-3 py-2">
+                      <dt className="font-bold text-admin-muted">{label}</dt>
+                      <dd className="mt-0.5 font-black text-admin-text-2">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
 
               {selected.product_summary && (
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-admin-sm text-blue-800">
