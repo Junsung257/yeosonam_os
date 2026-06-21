@@ -523,6 +523,7 @@ function ConciergePageContent() {
   const searchOutcomeRef = useRef<HTMLElement | null>(null);
   const customerNameRef = useRef<HTMLInputElement>(null);
   const cartSheetReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const mobileCartOpenRef = useRef<HTMLButtonElement | null>(null);
   const handoffAutoSearchStartedRef = useRef(false);
   const shouldFocusSearchOutcomeRef = useRef(false);
   const activeSearchRef = useRef<{ id: number; controller: AbortController } | null>(null);
@@ -596,6 +597,13 @@ function ConciergePageContent() {
     if (!restoreFocus) return;
     const trigger = cartSheetReturnFocusRef.current;
     window.requestAnimationFrame(() => trigger?.focus());
+  }
+
+  function focusMobileCartLauncher() {
+    window.requestAnimationFrame(() => {
+      if (!window.matchMedia('(max-width: 1023px)').matches) return;
+      mobileCartOpenRef.current?.focus();
+    });
   }
 
   const performSearch = useCallback(async (rawQuery: string, prompt: IntentPrompt | null = null) => {
@@ -745,6 +753,9 @@ function ConciergePageContent() {
       page_url: '/concierge',
       ...nextIntentSummary,
     });
+    setShareToast(`${item.product_name}을(를) 선택 구성에 담았습니다.`);
+    setTimeout(() => setShareToast(''), 3000);
+    focusMobileCartLauncher();
   }
 
   async function addResultBundleToCart() {
@@ -803,6 +814,7 @@ function ConciergePageContent() {
     });
     setShareToast(`${newItems.length}개 추천 상품을 선택 구성에 담았습니다.`);
     setTimeout(() => setShareToast(''), 3000);
+    focusMobileCartLauncher();
   }
 
   async function removeFromCart(productId: string) {
@@ -1827,6 +1839,7 @@ function ConciergePageContent() {
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-[#E5E7EB] bg-white/95 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_32px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden">
           <div className="mx-auto flex max-w-lg items-center gap-3 px-4">
             <button
+              ref={mobileCartOpenRef}
               type="button"
               data-testid="concierge-mobile-cart-open"
               aria-haspopup="dialog"
