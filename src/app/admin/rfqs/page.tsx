@@ -20,6 +20,7 @@ interface GroupRfq {
   bid_count?: number;
   customer_name?: string;
   created_at: string;
+  custom_requirements?: Record<string, unknown> | null;
 }
 
 // ── 상수 ─────────────────────────────────────────────────────────────────────
@@ -50,6 +51,33 @@ const STATUS_TABS = [
   { value: 'awaiting_selection', label: '선택대기' },
   { value: 'contracted', label: '계약완료' },
 ];
+
+function getRequirementText(rfq: GroupRfq, key: string): string | null {
+  const value = rfq.custom_requirements?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function getRequirementList(rfq: GroupRfq, key: string): string[] {
+  const value = rfq.custom_requirements?.[key];
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim());
+}
+
+function getHandoffBadgeText(rfq: GroupRfq): string | null {
+  const source = getRequirementText(rfq, 'handoff_source') ?? getRequirementText(rfq, 'source');
+  const hasQuery = Boolean(getRequirementText(rfq, 'handoff_query'));
+  const productCount = getRequirementList(rfq, 'selected_products').length;
+  const parts = [
+    source ?? '상담 유입',
+    hasQuery ? '원문 있음' : null,
+    productCount > 0 ? `상품 ${productCount}개` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function AdminRfqsPage() {
@@ -160,44 +188,56 @@ export default function AdminRfqsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredRfqs.map((rfq) => (
-                <tr
-                  key={rfq.id}
-                  onClick={() => router.push(`/admin/rfqs/${rfq.id}`)}
-                  className="cursor-pointer"
-                >
-                  <td className="font-mono text-admin-xs text-admin-muted">
-                    {rfq.rfq_code}
-                  </td>
-                  <td className="text-admin-text">
-                    {rfq.customer_name || '—'}
-                  </td>
-                  <td className="font-medium text-admin-text">
-                    {rfq.destination}
-                  </td>
-                  <td className="text-admin-muted admin-num">
-                    {rfq.adult_count + rfq.child_count}명
-                  </td>
-                  <td className="text-admin-text admin-num">
-                    {fmt(rfq.budget_per_person)}원
-                  </td>
-                  <td>
-                    <span
-                      className={`inline-flex px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${
-                        STATUS_COLORS[rfq.status] || 'bg-admin-surface-2 text-admin-muted'
-                      }`}
-                    >
-                      {STATUS_LABELS[rfq.status] || rfq.status}
-                    </span>
-                  </td>
-                  <td className="text-admin-muted admin-num">
-                    {rfq.bid_count ?? 0}
-                  </td>
-                  <td className="text-admin-muted text-admin-xs admin-num">
-                    {rfq.created_at.slice(0, 10)}
-                  </td>
-                </tr>
-              ))}
+              {filteredRfqs.map((rfq) => {
+                const handoffBadgeText = getHandoffBadgeText(rfq);
+
+                return (
+                  <tr
+                    key={rfq.id}
+                    onClick={() => router.push(`/admin/rfqs/${rfq.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <td className="font-mono text-admin-xs text-admin-muted">
+                      {rfq.rfq_code}
+                    </td>
+                    <td className="text-admin-text">
+                      {rfq.customer_name || '—'}
+                    </td>
+                    <td className="font-medium text-admin-text">
+                      <div>{rfq.destination}</div>
+                      {handoffBadgeText && (
+                        <span
+                          data-testid="admin-rfq-handoff-badge"
+                          className="mt-1 inline-flex w-fit rounded-admin-xs bg-admin-surface-2 px-2 py-0.5 text-admin-xs font-semibold text-admin-muted"
+                        >
+                          {handoffBadgeText}
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-admin-muted admin-num">
+                      {rfq.adult_count + rfq.child_count}명
+                    </td>
+                    <td className="text-admin-text admin-num">
+                      {fmt(rfq.budget_per_person)}원
+                    </td>
+                    <td>
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${
+                          STATUS_COLORS[rfq.status] || 'bg-admin-surface-2 text-admin-muted'
+                        }`}
+                      >
+                        {STATUS_LABELS[rfq.status] || rfq.status}
+                      </span>
+                    </td>
+                    <td className="text-admin-muted admin-num">
+                      {rfq.bid_count ?? 0}
+                    </td>
+                    <td className="text-admin-muted text-admin-xs admin-num">
+                      {rfq.created_at.slice(0, 10)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
