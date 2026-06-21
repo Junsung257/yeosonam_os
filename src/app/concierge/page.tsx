@@ -1782,7 +1782,7 @@ function ConciergePageContent() {
           <div className="mx-auto flex max-w-lg items-center gap-3 px-4">
             <button
               type="button"
-              data-testid="concierge-mobile-cart-summary"
+              data-testid="concierge-mobile-cart-open"
               aria-haspopup="dialog"
               aria-expanded={cartSheetOpen}
               aria-controls="concierge-cart-sheet"
@@ -1791,7 +1791,7 @@ function ConciergePageContent() {
               className="min-w-0 flex-1 rounded-[16px] bg-[#F8FAFC] px-4 py-3 text-left"
             >
               <span className="block text-[12px] font-bold text-text-secondary">선택한 구성 {cart.length}개</span>
-              <span className="block truncate text-[16px] font-extrabold text-text-primary">{money(cartTotal)}</span>
+              <span className="block truncate text-[16px] font-extrabold text-text-primary">{money(cartTotal)} · 보기</span>
             </button>
             <button
               type="button"
