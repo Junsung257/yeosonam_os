@@ -799,6 +799,54 @@ test.describe('keyboard access smoke', () => {
     await expect(cancelAction, 'admin booking cancel action should regain focus after close').toBeFocused();
   });
 
+  test('admin booking mobile card actions expose decision context', async ({ page }) => {
+    await page.goto('/admin/bookings', { waitUntil: 'commit' });
+    await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    const mobileNextAction = page.locator('[data-testid="admin-booking-mobile-next-action"]:visible').first();
+    if (!(await mobileNextAction.count())) {
+      const editAction = page.locator('[data-testid="admin-booking-edit-action"]:visible').first();
+      if (await editAction.count()) {
+        await expectCanFocus(editAction, 'admin booking desktop edit action fallback');
+        return;
+      }
+      await expectCanFocus(page.locator('input[type="email"], input[name="email"]').first(), 'admin login email');
+      await expectCanFocus(page.locator('input[type="password"], input[name="password"]').first(), 'admin login password');
+      await expectCanFocus(page.locator('button[type="submit"]').first(), 'admin login submit');
+      return;
+    }
+
+    const expectMobileBookingContext = async (action: ReturnType<typeof page.locator>, label: string) => {
+      await expect(action, `${label} should include visible decision context`).toHaveAttribute(
+        'aria-describedby',
+        /admin-booking-mobile-decision-summary-/,
+      );
+
+      const describedByIds = ((await action.getAttribute('aria-describedby')) ?? '').split(/\s+/).filter(Boolean);
+      const nextActionSummaryId = describedByIds.find(id => id.startsWith('admin-booking-mobile-next-action-summary-'));
+      const riskSummaryId = describedByIds.find(id => id.startsWith('admin-booking-mobile-risk-summary-'));
+
+      expect(nextActionSummaryId, `${label} should describe the visible next action summary`).toBeTruthy();
+      expect(riskSummaryId, `${label} should describe the visible risk summary`).toBeTruthy();
+
+      if (nextActionSummaryId) {
+        await expect(page.locator(`[id="${nextActionSummaryId}"]`)).toContainText('다음 액션');
+      }
+
+      if (riskSummaryId) {
+        await expect(page.locator(`[id="${riskSummaryId}"]`)).toContainText('운영 사유');
+      }
+    };
+
+    await expectCanFocus(mobileNextAction, 'admin booking mobile next action');
+    await expectMobileBookingContext(mobileNextAction, 'admin booking mobile next action');
+
+    const mobileDetailAction = page.locator('[data-testid="admin-booking-mobile-detail-action"]:visible').first();
+    await expectCanFocus(mobileDetailAction, 'admin booking mobile detail action');
+    await expectMobileBookingContext(mobileDetailAction, 'admin booking mobile detail action');
+  });
+
   test('admin booking delete action announces undo and moves focus to recovery action', async ({ page }) => {
     await page.goto('/admin/bookings', { waitUntil: 'commit' });
     await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});

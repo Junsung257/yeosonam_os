@@ -2887,7 +2887,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         : '상세 패널에서 예약 메모와 결제 이력 확인';
             const mobileCardSummaryId = `admin-booking-mobile-card-summary-${b.id}`;
             const mobileDecisionSummaryId = `admin-booking-mobile-decision-summary-${b.id}`;
-            const mobileCardDescriptionIds = `${mobileCardSummaryId} ${mobileDecisionSummaryId}`;
+            const mobileNextActionSummaryId = `admin-booking-mobile-next-action-summary-${b.id}`;
+            const mobileRiskSummaryId = `admin-booking-mobile-risk-summary-${b.id}`;
+            const mobileCardDescriptionIds = `${mobileCardSummaryId} ${mobileDecisionSummaryId} ${mobileNextActionSummaryId} ${mobileRiskSummaryId}`;
             const mobileActionGroupId = `admin-booking-mobile-actions-${b.id}`;
             const mobileBalanceLabel = b.status === 'cancelled' ? '환불잔액' : '잔금';
             const mobileBalanceValue = b.status === 'cancelled' ? netCashflow : Math.max(0, balance);
@@ -2981,6 +2983,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 </div>
 
                 <div
+                  id={mobileNextActionSummaryId}
                   data-testid="admin-booking-mobile-next-action-summary"
                   aria-label={`다음 액션 ${nextAction.label}. 운영 사유 ${mobileOperationRiskLabel}. ${mobileNextActionReason}`}
                   className="mt-3 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
@@ -2990,6 +2993,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     <span className="text-[12px] font-black text-admin-text-2">{nextAction.label}</span>
                   </div>
                   <p
+                    id={mobileRiskSummaryId}
                     data-testid="admin-booking-mobile-risk-summary"
                     className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
                   >
