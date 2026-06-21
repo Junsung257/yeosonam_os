@@ -39,6 +39,13 @@ describe('cron resource saver', () => {
     });
   });
 
+  it('keeps blog publishing running because it owns the daily quota', () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+
+    expect(maybeSkipNonCriticalCron(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeNull();
+    expect(maybeSkipCronForResourceSaver(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeNull();
+  });
+
   it('allows forced crons and keeps product-readiness crons closed unless explicitly enabled', () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 

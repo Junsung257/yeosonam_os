@@ -255,6 +255,20 @@ function removeRenderArtifacts(markdown: string): { text: string; changed: boole
   return { text, changed: text !== before };
 }
 
+export function normalizeBlogVisualAccents(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .replace(/==([^=\n]{1,500}?)==/g, '$1')
+    .replace(/<\/?mark\b[^>]*>/gi, '')
+    .replace(
+      /<strong\b[^>]*\bclass=["'][^"']*\bnum\b[^"']*["'][^>]*>([\s\S]*?)<\/strong>/gi,
+      '$1',
+    )
+    .replace(/\n{3,}/g, '\n\n');
+
+  return { text, changed: text !== before };
+}
+
 function softenPromotionalInfoTone(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
   const text = markdown
@@ -830,6 +844,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
 
+  const accentRepair = normalizeBlogVisualAccents(blogHtml);
+  if (accentRepair.changed) {
+    blogHtml = accentRepair.text;
+    changes.push('normalized_visual_accents');
+  }
+
   const artifactRepair = removeRenderArtifacts(blogHtml);
   if (artifactRepair.changed) {
     blogHtml = artifactRepair.text;
@@ -948,6 +968,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (repeatedPlanningHookRepair.changed) {
     blogHtml = repeatedPlanningHookRepair.text;
     changes.push('limited_repeated_planning_hooks');
+  }
+
+  const finalAccentRepair = normalizeBlogVisualAccents(blogHtml);
+  if (finalAccentRepair.changed) {
+    blogHtml = finalAccentRepair.text;
+    changes.push('normalized_visual_accents_final');
   }
 
   const after = inspectBlogIntentQuality({ ...input, blogHtml });
@@ -1069,6 +1095,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
 
+  const accentRepair = normalizeBlogVisualAccents(blogHtml);
+  if (accentRepair.changed) {
+    blogHtml = accentRepair.text;
+    changes.push('normalized_visual_accents');
+  }
+
   if (intent.mode === 'info') {
     const salesRepair = sanitizeInfoSalesTone(blogHtml);
     if (salesRepair.changed) {
@@ -1137,6 +1169,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (designRepair.changed) {
     blogHtml = designRepair.text;
     changes.push('added_reading_design_tip');
+  }
+
+  const finalAccentRepair = normalizeBlogVisualAccents(blogHtml);
+  if (finalAccentRepair.changed) {
+    blogHtml = finalAccentRepair.text;
+    changes.push('normalized_visual_accents_final');
   }
 
   const after = inspectBlogIntentQuality({ ...input, blogHtml });

@@ -40,6 +40,7 @@ import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
+  normalizeBlogVisualAccents,
   repairBlogEditorialQuality,
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
@@ -82,7 +83,7 @@ const MAX_CANDIDATE_POOL = 20;
 const MAX_QUALITY_REPAIR_ROUNDS = 3;
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
-const STALE_GENERATING_RECOVERY_MS = 60 * 60 * 1000;
+const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
 
 function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string; dayKey: string } {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -431,6 +432,15 @@ async function repairFailedQualityGates(
       }
     }
 
+    if (failed.has('accent_density')) {
+      const accentRepair = normalizeBlogVisualAccents(generated.blog_html);
+      if (accentRepair.changed) {
+        generated.blog_html = accentRepair.text;
+        changes.push('normalized_visual_accents');
+        changed = true;
+      }
+    }
+
     if (changed) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
@@ -538,6 +548,46 @@ async function recoverStaleGeneratingQueueItems(): Promise<{ recovered: number; 
   return { recovered, failed };
 }
 
+async function pullForwardQueuedBacklog(limit: number): Promise<number> {
+  if (limit <= 0) return 0;
+
+  const now = new Date().toISOString();
+  const { data: candidates, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id')
+    .eq('status', 'queued')
+    .gt('target_publish_at', now)
+    .order('priority', { ascending: false })
+    .order('target_publish_at', { ascending: true })
+    .limit(limit);
+
+  if (error || !candidates || candidates.length === 0) {
+    if (error) logWarning('[cron/blog-publisher] backlog pull-forward scan failed', error);
+    return 0;
+  }
+
+  const ids = candidates
+    .map((row: { id?: string | null }) => row.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (ids.length === 0) return 0;
+
+  const { error: updateError } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .update({
+      target_publish_at: now,
+      updated_at: now,
+    } as never)
+    .in('id', ids)
+    .eq('status', 'queued');
+
+  if (updateError) {
+    logWarning('[cron/blog-publisher] backlog pull-forward update failed', updateError);
+    return 0;
+  }
+
+  return ids.length;
+}
+
 async function runBlogPublisher(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -580,11 +630,24 @@ async function runBlogPublisher(request: NextRequest) {
       MAX_CANDIDATE_POOL,
       Math.max(MAX_BATCH, remainingToday * CLAIM_POOL_MULTIPLIER),
     );
-    const { data: queue } = await supabaseAdmin.rpc('claim_queue_items', {
+    let { data: queue } = await supabaseAdmin.rpc('claim_queue_items', {
       limit_rows: claimLimit,
     });
 
     if (!queue || queue.length === 0) {
+      const pulled = await pullForwardQueuedBacklog(claimLimit);
+      if (pulled > 0) {
+        const retryClaim = await supabaseAdmin.rpc('claim_queue_items', {
+          limit_rows: claimLimit,
+        });
+        queue = retryClaim.data;
+        if (retryClaim.error) {
+          errors.push(`claim_queue_items retry failed: ${retryClaim.error.message}`);
+        }
+      }
+      if (queue && queue.length > 0) {
+        // Continue with pulled-forward backlog below.
+      } else {
       return {
         processed: 0,
         message: '발행할 토픽 없음',
@@ -598,12 +661,15 @@ async function runBlogPublisher(request: NextRequest) {
         errors,
       };
     }
+    }
 
     const cardNewsIds = [...new Set(queue.map((q: { card_news_id?: string | null }) => q.card_news_id).filter(Boolean))] as string[];
     const eligibleByCardNewsId =
       cardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(cardNewsIds) : new Map<string, number>();
 
     let publishedThisRun = 0;
+    let extraClaimRounds = 0;
+    let pullForwarded = 0;
     for (const item of queue) {
       if (publishedThisRun >= remainingToday) {
         break;
@@ -626,6 +692,73 @@ async function runBlogPublisher(request: NextRequest) {
         }
       } catch (err) {
         errors.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    while (publishedThisRun < remainingToday) {
+      const elapsed = Date.now() - startTime;
+      const remaining = MAX_EXEC_MS - elapsed;
+      if (remaining < 30000) {
+        console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next claim`);
+        break;
+      }
+
+      const remainingQuota = remainingToday - publishedThisRun;
+      const extraClaimLimit = Math.min(
+        MAX_CANDIDATE_POOL,
+        Math.max(MAX_BATCH, remainingQuota * CLAIM_POOL_MULTIPLIER),
+      );
+      extraClaimRounds += 1;
+
+      let { data: nextQueue, error: nextClaimError } = await supabaseAdmin.rpc('claim_queue_items', {
+        limit_rows: extraClaimLimit,
+      });
+      if (nextClaimError) {
+        errors.push(`claim_queue_items extra failed: ${nextClaimError.message}`);
+        break;
+      }
+
+      if (!nextQueue || nextQueue.length === 0) {
+        const pulled = await pullForwardQueuedBacklog(extraClaimLimit);
+        pullForwarded += pulled;
+        if (pulled <= 0) break;
+
+        const retryClaim = await supabaseAdmin.rpc('claim_queue_items', {
+          limit_rows: extraClaimLimit,
+        });
+        nextQueue = retryClaim.data;
+        if (retryClaim.error) {
+          errors.push(`claim_queue_items extra retry failed: ${retryClaim.error.message}`);
+          break;
+        }
+        if (!nextQueue || nextQueue.length === 0) break;
+      }
+
+      const nextCardNewsIds = [...new Set(nextQueue.map((q: { card_news_id?: string | null }) => q.card_news_id).filter(Boolean))] as string[];
+      const nextEligibleByCardNewsId =
+        nextCardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(nextCardNewsIds) : new Map<string, number>();
+
+      for (const item of nextQueue) {
+        if (publishedThisRun >= remainingToday) break;
+
+        const itemRemaining = MAX_EXEC_MS - (Date.now() - startTime);
+        if (itemRemaining < 30000) {
+          console.log(`[blog-publisher] remaining ${Math.round(itemRemaining / 1000)}s - stopping before next item`);
+          break;
+        }
+
+        try {
+          const r = await processQueueItem(item, nextEligibleByCardNewsId);
+          results.push(r);
+          if (r.status === 'published') {
+            publishedThisRun += 1;
+          }
+          if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
+            errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
+          }
+        } catch (err) {
+          errors.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
     }
 
@@ -722,8 +855,11 @@ async function runBlogPublisher(request: NextRequest) {
         target: targetPostsToday,
         alreadyPublishedBeforeRun: todayQuota.count,
         remainingBeforeRun: remainingToday,
+        remainingAfterRun: Math.max(0, remainingToday - results.filter(r => r.status === 'published').length),
       },
       staleRecovery,
+      extraClaimRounds,
+      pullForwarded,
       results,
       errors,
       ranAt: new Date().toISOString(),
@@ -937,6 +1073,12 @@ async function processQueueItem(
 
     generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
     generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+    {
+      const accentRepair = normalizeBlogVisualAccents(generated.blog_html);
+      if (accentRepair.changed) {
+        generated.blog_html = accentRepair.text;
+      }
+    }
 
     // 일반 정보성/상품 글도 카드뉴스 경로처럼 본문 안에 사진을 보유하게 만든다.
     // AI가 이미 섹션 이미지를 넣은 경우에는 건드리지 않고, 부족분만 Pexels/OG 이미지로 보강한다.
@@ -989,6 +1131,13 @@ async function processQueueItem(
     if (structureRepair.changed) {
       generated.blog_html = structureRepair.blogHtml;
       console.log(`[blog-publisher] structure repair: ${structureRepair.changes.join(', ')}`);
+    }
+
+    {
+      const accentRepair = normalizeBlogVisualAccents(generated.blog_html);
+      if (accentRepair.changed) {
+        generated.blog_html = accentRepair.text;
+      }
     }
 
     let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
