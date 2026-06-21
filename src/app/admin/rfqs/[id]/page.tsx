@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'dompurify';
+import { ArrowRight } from 'lucide-react';
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
@@ -84,6 +85,13 @@ type RfqNotice = {
   message: string;
 };
 
+type RfqNextAction = {
+  tab: Tab;
+  label: string;
+  reason: string;
+  detail: string;
+};
+
 // ── 상수 ─────────────────────────────────────────────────────────────────────
 const TIER_COLORS: Record<string, string> = {
   GOLD: 'bg-yellow-100 text-yellow-800',
@@ -125,6 +133,78 @@ function getRequirementList(rfq: GroupRfq, key: string): string[] {
   return value
     .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     .map((item) => item.trim());
+}
+
+function getRfqNextAction(
+  rfq: GroupRfq,
+  bids: RfqBid[],
+  proposals: RfqProposal[],
+  hasHandoffContext: boolean,
+): RfqNextAction {
+  const bidCount = bids.length;
+  const proposalCount = proposals.length;
+
+  switch (rfq.status) {
+    case 'draft':
+      return {
+        tab: 'info',
+        label: '요건 검수',
+        reason: hasHandoffContext
+          ? '상담 원문과 관심 상품을 먼저 확인하고 누락 조건을 정리하세요.'
+          : '목적지, 인원, 예산, 특별요청을 확정해 공고 품질을 맞추세요.',
+        detail: '고객 요구를 정리한 뒤 공고 등록으로 넘기면 됩니다.',
+      };
+    case 'published':
+      return {
+        tab: 'bids',
+        label: '입찰 초대',
+        reason: bidCount > 0
+          ? `현재 참여 후보 ${bidCount}건이 있습니다. 응답 상태를 확인하세요.`
+          : '아직 참여 후보가 없어 파트너 초대가 필요합니다.',
+        detail: '파트너 반응을 확인하고 입찰 시작 준비 상태를 맞추세요.',
+      };
+    case 'bidding':
+      return {
+        tab: 'bids',
+        label: '마감 확인',
+        reason: bidCount > 0
+          ? `입찰 ${bidCount}건이 진행 중입니다. 마감 임박 건과 미제출 건을 보세요.`
+          : '입찰 대기 중입니다. 파트너 참여 상태를 먼저 확인하세요.',
+        detail: '마감 전 제출 상태를 정리해 분석 단계 지연을 줄입니다.',
+      };
+    case 'analyzing':
+      return {
+        tab: 'proposals',
+        label: 'AI 분석 확인',
+        reason: proposalCount > 0
+          ? `제안서 ${proposalCount}건의 가격, 리스크, 포함 조건을 비교하세요.`
+          : '제안서가 아직 없습니다. 제출 여부를 먼저 확인하세요.',
+        detail: '고객에게 보여줄 후보와 제외 사유를 함께 정리하세요.',
+      };
+    case 'awaiting_selection':
+      return {
+        tab: 'proposals',
+        label: '고객 선택',
+        reason: proposalCount > 0
+          ? `고객에게 안내할 제안서 ${proposalCount}건과 추천 순서를 확정하세요.`
+          : '선택 대기 전 제안서 상태가 비어 있습니다. 후보를 다시 확인하세요.',
+        detail: '추천/비추천 근거를 남기면 상담 후속 처리 속도가 빨라집니다.',
+      };
+    case 'contracted':
+      return {
+        tab: 'messages',
+        label: '계약 확인',
+        reason: '계약 이후 고객/파트너 후속 메시지와 누락 요청을 확인하세요.',
+        detail: '후속 안내와 결제/예약 처리 상태를 맞추면 됩니다.',
+      };
+    default:
+      return {
+        tab: 'info',
+        label: '상세 확인',
+        reason: 'RFQ 요건과 진행 상태를 확인하세요.',
+        detail: '상태에 맞는 탭에서 다음 업무를 이어가면 됩니다.',
+      };
+  }
 }
 
 // ── 타이머 컴포넌트 ──────────────────────────────────────────────────────────
@@ -285,6 +365,7 @@ export default function AdminRfqDetailPage() {
   const handoffSource = getRequirementText(rfq, 'handoff_source') ?? getRequirementText(rfq, 'source');
   const selectedProducts = getRequirementList(rfq, 'selected_products');
   const hasHandoffContext = Boolean(handoffQuery || handoffSource || selectedProducts.length > 0);
+  const nextAction = getRfqNextAction(rfq, bids, proposals, hasHandoffContext);
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -317,6 +398,48 @@ export default function AdminRfqDetailPage() {
           {notice.message}
         </div>
       )}
+
+      <section
+        aria-labelledby="admin-rfq-next-action-title"
+        aria-describedby="admin-rfq-next-action-reason admin-rfq-next-action-status"
+        className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4 shadow-admin-xs"
+      >
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <p className="text-admin-xs font-semibold uppercase text-admin-muted">Next action</p>
+            <h2 id="admin-rfq-next-action-title" className="mt-1 text-admin-lg font-bold text-admin-text">
+              {nextAction.label}
+            </h2>
+            <p id="admin-rfq-next-action-reason" className="mt-1 max-w-3xl text-admin-sm text-admin-muted">
+              {nextAction.reason}
+            </p>
+            <p className="mt-1 text-admin-xs text-admin-text-2">{nextAction.detail}</p>
+            <p id="admin-rfq-next-action-status" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {`현재 다음 단계는 ${nextAction.label}입니다. ${nextAction.reason}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab(nextAction.tab)}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-3 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+          >
+            해당 탭 보기
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+        <dl className="mt-4 grid gap-2 text-admin-xs sm:grid-cols-3">
+          {[
+            ['입찰', `${bids.length}건`],
+            ['제안서', `${proposals.length}건`],
+            ['상담 유입', hasHandoffContext ? '있음' : '없음'],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+              <dt className="font-semibold text-admin-muted">{label}</dt>
+              <dd className="mt-0.5 font-bold text-admin-text">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       {/* 탭 */}
       <div className="flex gap-1 bg-admin-surface-2 rounded-admin-md p-1 w-fit">
