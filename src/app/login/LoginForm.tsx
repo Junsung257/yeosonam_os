@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { PromiseTimeoutError, withTimeout } from '@/lib/promise-timeout';
 
 const LOGIN_TIMEOUT_MS = 12000;
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 function getSafeRedirect(value: string | null): string {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
@@ -77,6 +78,34 @@ function LoginFormInner() {
     }
   };
 
+  const handleDevAdminLogin = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await withTimeout(
+        fetch('/api/dev/admin-session', { cache: 'no-store' }),
+        LOGIN_TIMEOUT_MS,
+        'dev admin session',
+      );
+
+      if (!res.ok) {
+        setError('로컬 관리자 세션을 만들지 못했습니다.');
+        return;
+      }
+
+      window.location.href = redirectTarget;
+    } catch (err) {
+      if (err instanceof PromiseTimeoutError) {
+        setError('로컬 관리자 세션 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+      } else {
+        setError('로컬 관리자 모드 전환 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-[#DBEAFE] flex items-center justify-center p-4">
       <div className="bg-white shadow-xl rounded-2xl p-8 w-full max-w-sm">
@@ -124,6 +153,17 @@ function LoginFormInner() {
           >
             {loading ? '로그인 중...' : '로그인'}
           </button>
+          {IS_DEV && (
+            <button
+              type="button"
+              disabled={loading}
+              data-testid="login-dev-admin-button"
+              onClick={handleDevAdminLogin}
+              className="w-full rounded-lg border border-blue-200 bg-blue-50 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              로컬 관리자 모드로 보기
+            </button>
+          )}
         </form>
       </div>
     </main>
