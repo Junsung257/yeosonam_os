@@ -51,4 +51,16 @@ describe('blog renderer required structure', () => {
     expect((html.match(/<p>/g) || []).length).toBeGreaterThan(1);
     expect(html).not.toContain(`<p>${longText}</p>`);
   });
+
+  it('recovers inline markdown headings stuck inside stored HTML paragraphs', async () => {
+    const source = [
+      '<h2>석가장 여행 비용</h2>',
+      '<p>데이터가 부족한 항목은 단정하기 어려우니, 정확한 최신 정보는 여소남 큐레이터에게 문의하여 확인하는 것이 가장 좋습니다.## 현지 여행 경비, 이렇게 절약해 보세요! 현지 여행 경비를 효과적으로 절약하면서도 실용적인 여행을 즐길 수 있는 팁입니다.</p>',
+    ].join('');
+
+    const html = await renderBlogContentToHtml(source);
+
+    expect(html).toContain('<h2>현지 여행 경비, 이렇게 절약해 보세요!</h2>');
+    expect(html).not.toContain('좋습니다.## 현지');
+  });
 });

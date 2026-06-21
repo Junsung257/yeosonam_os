@@ -437,9 +437,34 @@ function splitLongPlainHtmlParagraphs(html: string): string {
   });
 }
 
+function splitInlineMarkdownHeadingsInParagraphs(html: string): string {
+  return html.replace(/<p>([\s\S]*?)<\/p>/g, (match, body) => {
+    if (!/##\s+\S/.test(body) || /<[^>]+>/.test(body)) return match;
+
+    const segments = body.split(/\s*##\s+/);
+    const first = segments.shift()?.trim();
+    const out: string[] = [];
+    if (first) out.push(`<p>${first}</p>`);
+
+    for (const segment of segments) {
+      const text = segment.trim();
+      if (!text) continue;
+      const punctuation = text.slice(0, 120).search(/[.!?。！？]/);
+      const headingEnd = punctuation >= 8 ? punctuation + 1 : Math.min(text.length, 80);
+      const heading = text.slice(0, headingEnd).trim();
+      const rest = text.slice(headingEnd).trim();
+      if (heading) out.push(`<h2>${heading}</h2>`);
+      if (rest) out.push(`<p>${rest}</p>`);
+    }
+
+    return out.length > 0 ? out.join('\n') : match;
+  });
+}
+
 function normalizeRenderedHeadingArtifacts(html: string): string {
   const seenCore = new Set<string>();
   return html
+    .replace(/<p>([\s\S]*?##\s+[\s\S]*?)<\/p>/gi, (match) => splitInlineMarkdownHeadingsInParagraphs(match))
     .replace(
       /<h([23])([^>]*)>\s*([^<]*?)\s*<strong>\s*(Q\d+[.:)]?\s*[^<]+?)<\/strong>\s*<\/h\1>/gi,
       (_full, level, attrs, prefix, question) => {
