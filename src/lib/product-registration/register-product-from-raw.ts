@@ -27,6 +27,7 @@ import { evaluateAttractionMediaReadiness } from './attraction-media-readiness';
 import { inferAccommodationsFromRawText } from './accommodations';
 import { inferDepartureDaysFromRawText } from './departure-days';
 import { normalizeUploadItinerary, type ItineraryDataLike } from './itinerary-normalization';
+import { resolvePriceRecoveryYear } from './price-year';
 import { recoverUploadPriceData } from './price-recovery';
 import { normalizeUploadTitle } from './title-normalization';
 import type { SourceEvidenceSpan, StandardProductRegistrationObject } from './types';
@@ -608,6 +609,11 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
 
   const registrationTitle = normalizeUploadTitle(input.title, ed.title) ?? ed.title ?? input.title ?? null;
   if (registrationTitle) ed.title = registrationTitle;
+  const priceYear = resolvePriceRecoveryYear({
+    explicitYear: input.priceYear,
+    rawText,
+    documentRawText: input.documentRawText,
+  });
 
   let priceRecovery = await recoverUploadPriceData(ed, {
     rawText,
@@ -616,7 +622,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     includeAllHotelColumns: !input.documentRawText || input.documentRawText.trim() === rawText.trim(),
     durationDays: ed.duration,
     departureDays: ed.departure_days,
-    year: input.priceYear,
+    year: priceYear,
     enableGeminiFallback: input.enableGeminiFallback,
   });
   const documentRawText = input.documentRawText?.trim() ?? '';
@@ -628,7 +634,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
       includeAllHotelColumns: false,
       durationDays: ed.duration,
       departureDays: ed.departure_days,
-      year: input.priceYear,
+      year: priceYear,
       enableGeminiFallback: false,
     });
     if (documentPriceRecovery.ok) {
@@ -653,7 +659,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     accommodations: ed.accommodations ?? [],
     durationDays: ed.duration,
     departureDays: ed.departure_days,
-    year: input.priceYear,
+    year: priceYear,
   });
   const priceAudit = auditPriceExtractionAgainstSource({
     priceRecovery,

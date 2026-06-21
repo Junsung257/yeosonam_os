@@ -18,6 +18,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isScheduleDetailNoise } from '@/lib/itinerary-normalizer';
 import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
+import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 
@@ -96,6 +97,9 @@ function minPrice(rows: Array<{ price?: number; adult_price?: number; adult_sell
 }
 
 function inferPriceVerifyYear(pkg: PackageRow, rawText: string): number {
+  const sourceYear = resolvePriceRecoveryYear({ rawText });
+  if (sourceYear) return sourceYear;
+
   const dbYear = (pkg.price_dates ?? [])
     .map(row => (typeof row.date === 'string' ? Number(row.date.slice(0, 4)) : NaN))
     .find(year => Number.isFinite(year) && year >= 2000);
