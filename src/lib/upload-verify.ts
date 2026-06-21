@@ -96,6 +96,21 @@ function minPrice(rows: Array<{ price?: number; adult_price?: number; adult_sell
   return prices.length > 0 ? Math.min(...prices) : null;
 }
 
+function todayKstDateKey(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const byType = new Map(parts.map(part => [part.type, part.value]));
+  return `${byType.get('year')}-${byType.get('month')}-${byType.get('day')}`;
+}
+
+function isIsoDateKey(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 function inferPriceVerifyYear(pkg: PackageRow, rawText: string): number {
   const sourceYear = resolvePriceRecoveryYear({ rawText });
   if (sourceYear) return sourceYear;
@@ -237,6 +252,36 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
 
   // C12: deterministic 가격 재대조 — 공통 가격표의 다중 컬럼/박수/요일 오매칭 차단.
   if (hasRaw) {
+    const datedPriceRows = Array.isArray(pkg.price_dates)
+      ? pkg.price_dates.filter(row => isIsoDateKey(row.date))
+      : [];
+    if (datedPriceRows.length > 0) {
+      const today = todayKstDateKey();
+      const activeRows = datedPriceRows.filter(row => (row.date as string) >= today);
+      if (activeRows.length === 0) {
+        checks.push({
+          id: 'C14',
+          label: 'departure date freshness',
+          status: 'fail',
+          detail: `all ${datedPriceRows.length} departure dates are before today ${today}`,
+        });
+      } else {
+        checks.push({
+          id: 'C14',
+          label: 'departure date freshness',
+          status: 'pass',
+          detail: `${activeRows.length}/${datedPriceRows.length} departure dates remain bookable`,
+        });
+      }
+    } else {
+      checks.push({
+        id: 'C14',
+        label: 'departure date freshness',
+        status: 'skip',
+        detail: 'no ISO departure dates',
+      });
+    }
+
     const durationDays = inferDurationDays(pkg);
     const depDays = typeof pkg.departure_days === 'string'
       ? pkg.departure_days
