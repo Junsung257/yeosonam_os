@@ -226,7 +226,23 @@ test.describe('keyboard access smoke', () => {
     await expect(compareDialog).toBeVisible();
     await expect(openCompare).toHaveAttribute('aria-expanded', 'true');
     await expect(compareDialog).toHaveAttribute('aria-modal', 'true');
-    await expect(compareDialog).toHaveAttribute('aria-describedby', 'package-compare-description');
+    await expect(compareDialog).toHaveAttribute(
+      'aria-describedby',
+      'package-compare-description package-compare-dialog-handoff-summary package-compare-dialog-next-action',
+    );
+    await expect(page.locator('[data-testid="package-compare-dialog-handoff-summary"]')).toBeVisible();
+    await expect(page.locator('[data-testid="package-compare-dialog-next-action"]')).toBeVisible();
+
+    const dialogGroupInquiry = page.locator('[data-testid="package-compare-dialog-group-inquiry"]:visible').first();
+    await expectCanFocus(dialogGroupInquiry, 'package compare dialog group inquiry');
+    await expect(dialogGroupInquiry).toHaveAttribute(
+      'aria-describedby',
+      'package-compare-dialog-handoff-summary package-compare-dialog-next-action',
+    );
+    const dialogGroupHref = await dialogGroupInquiry.getAttribute('href');
+    expect(dialogGroupHref).toContain('source=packages');
+    expect(dialogGroupHref).toContain('selected_products=');
+
     await expectCanFocus(page.locator('[data-testid="packages-compare-close"]').first(), 'packages compare close');
     await page.keyboard.press('Enter');
     await expect(compareDialog).toBeHidden();
