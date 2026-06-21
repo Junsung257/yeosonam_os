@@ -505,8 +505,19 @@ export default function PackagesClient() {
       .slice(0, 2),
     [comparePackages],
   );
+  const selectedProductBudget = useMemo(() => {
+    const selectedPrices = comparePackages
+      .filter((pkg): pkg is Package => Boolean(pkg))
+      .map((pkg) => packageMinPrice(pkg))
+      .filter((price) => Number.isFinite(price) && price > 0);
+    if (selectedPrices.length === 0) return null;
+    return `1인 ${formatWonSummary(String(Math.min(...selectedPrices)))}부터`;
+  }, [comparePackages]);
 
-  const handoffBudget = useMemo(() => formatBudgetSummary(priceMin, priceMax) ?? inferredBudgetFromQuery, [inferredBudgetFromQuery, priceMax, priceMin]);
+  const handoffBudget = useMemo(
+    () => formatBudgetSummary(priceMin, priceMax) ?? inferredBudgetFromQuery ?? selectedProductBudget,
+    [inferredBudgetFromQuery, priceMax, priceMin, selectedProductBudget],
+  );
   const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null) || inferredDestinationFromQuery;
   const handoffIntent = effectiveIntent ? INTENT_HANDOFF_LABELS[effectiveIntent] : null;
   const handoffPartyType = effectiveIntent ? INTENT_PARTY_TYPE[effectiveIntent] ?? null : null;
