@@ -687,8 +687,8 @@ function CardBody({
           )}
           </div>
         </div>
-        <span className="inline-flex h-8 min-w-[76px] shrink-0 items-center justify-center rounded-full bg-brand px-3 text-[12px] font-bold text-white shadow-sm transition-colors group-hover:bg-[#1B64DA]">
-          상세 보기
+        <span className="inline-flex h-8 min-w-[84px] shrink-0 items-center justify-center rounded-full bg-brand px-3 text-[12px] font-bold text-white shadow-sm transition-colors group-hover:bg-[#1B64DA]">
+          {cardNextActionLabel}
         </span>
       </div>
 
