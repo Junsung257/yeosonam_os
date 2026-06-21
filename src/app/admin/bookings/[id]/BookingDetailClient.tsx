@@ -99,6 +99,129 @@ function apiErrorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+function fmtWon(value: number): string {
+  return `${Math.max(0, value).toLocaleString('ko-KR')}원`;
+}
+
+function getDepartureLabel(date?: string): string {
+  if (!date) return '미정';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const departure = new Date(date);
+  const days = Math.ceil((departure.getTime() - today.getTime()) / 86400000);
+
+  if (days === 0) return '오늘 출발';
+  if (days > 0) return `D-${days}`;
+  return `D+${Math.abs(days)}`;
+}
+
+type BookingNextAction = {
+  label: string;
+  reason: string;
+  targetId: string;
+  tone: 'default' | 'warning' | 'danger' | 'success';
+};
+
+function getBookingNextAction(
+  booking: BookingDetail,
+  balance: number,
+  agencyUnpaid: number,
+  depositLeft: number | null,
+): BookingNextAction {
+  const customerBalance = Math.max(0, balance);
+  const supplierBalance = Math.max(0, agencyUnpaid);
+  const depositBalance = depositLeft === null ? null : Math.max(0, depositLeft);
+
+  if (booking.status === 'cancelled') {
+    const refundLeft = Math.max(0, (booking.paid_amount ?? 0) - (booking.total_paid_out ?? 0));
+    return {
+      label: '환불 정산 확인',
+      reason: refundLeft > 0 ? `환불 가능 잔액 ${fmtWon(refundLeft)}이 남아 있습니다.` : '취소 이력과 환불 메모를 확인하세요.',
+      targetId: 'booking-status-actions',
+      tone: refundLeft > 0 ? 'danger' : 'default',
+    };
+  }
+
+  if (booking.status === 'pending' && booking.deposit_notice_blocked) {
+    return {
+      label: '계약금 안내 허용',
+      reason: '자동 계약금 안내가 막혀 있어 운영자 승인이 먼저 필요합니다.',
+      targetId: 'booking-deposit-approval',
+      tone: 'warning',
+    };
+  }
+
+  if (booking.status === 'pending') {
+    return {
+      label: '좌석 가능 확인',
+      reason: '랜드사 좌석 가능 여부 확인 후 계약금 안내 단계로 넘기세요.',
+      targetId: 'booking-workflow-panel',
+      tone: 'default',
+    };
+  }
+
+  if (booking.status === 'waiting_deposit') {
+    return {
+      label: '계약금 입금 확인',
+      reason: depositBalance && depositBalance > 0 ? `계약금 잔액 ${fmtWon(depositBalance)} 확인이 필요합니다.` : '입금 확인 후 계약금 완납 단계로 넘기세요.',
+      targetId: 'booking-status-actions',
+      tone: depositBalance && depositBalance > 0 ? 'warning' : 'default',
+    };
+  }
+
+  if (booking.status === 'deposit_paid' || booking.status === 'confirmed') {
+    return {
+      label: '잔금 안내 발송',
+      reason: customerBalance > 0 ? `고객 잔금 ${fmtWon(customerBalance)} 안내가 필요합니다.` : '잔금이 정리되어 다음 단계 전이를 확인하세요.',
+      targetId: 'booking-status-actions',
+      tone: customerBalance > 0 ? 'warning' : 'default',
+    };
+  }
+
+  if (booking.status === 'waiting_balance') {
+    return {
+      label: '잔금 입금 확인',
+      reason: customerBalance > 0 ? `고객 잔금 ${fmtWon(customerBalance)}이 남아 있습니다.` : '잔금이 정리되어 완납 처리할 수 있습니다.',
+      targetId: 'booking-status-actions',
+      tone: customerBalance > 0 ? 'danger' : 'success',
+    };
+  }
+
+  if ((booking.status === 'fully_paid' || booking.status === 'completed') && !booking.is_manifest_sent) {
+    return {
+      label: '랜드사 명단 전달',
+      reason: '완납 이후 명단 전달 체크가 아직 비어 있습니다.',
+      targetId: 'booking-checklist',
+      tone: 'warning',
+    };
+  }
+
+  if ((booking.status === 'fully_paid' || booking.status === 'completed') && !booking.is_ticketed) {
+    return {
+      label: '발권 확인',
+      reason: '완납 이후 발권 확인 체크가 아직 비어 있습니다.',
+      targetId: 'booking-checklist',
+      tone: 'warning',
+    };
+  }
+
+  if (supplierBalance > 0) {
+    return {
+      label: '랜드사 송금 확인',
+      reason: `랜드사 미송금 ${fmtWon(supplierBalance)}이 남아 있습니다.`,
+      targetId: 'booking-checklist',
+      tone: 'warning',
+    };
+  }
+
+  return {
+    label: '사후 정산 확인',
+    reason: '핵심 체크가 정리되었습니다. 타임라인과 메모를 확인하세요.',
+    targetId: 'booking-timeline',
+    tone: 'success',
+  };
+}
+
 // ─── Progress Bar ──────────────────────────────────────────────────────────
 function ProgressBar({ status }: { status: string }) {
   const currentStep = getStepIndex(status);
@@ -278,13 +401,14 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     const focusTimer = window.setTimeout(() => {
       cancelRefundInputRef.current?.focus();
     }, 0);
+    const fallbackReturnTarget = cancelTriggerRef.current;
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
       window.setTimeout(() => {
-        const returnTarget = previousActiveElement?.isConnected ? previousActiveElement : cancelTriggerRef.current;
+        const returnTarget = previousActiveElement?.isConnected ? previousActiveElement : fallbackReturnTarget;
         returnTarget?.focus();
       }, 0);
     };
@@ -498,6 +622,14 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
   const depositLeft = (booking.deposit_amount ?? 0) > 0
     ? (booking.deposit_amount ?? 0) - Math.min(booking.paid_amount ?? 0, booking.deposit_amount ?? 0)
     : null;
+  const nextAction = getBookingNextAction(booking, balance, agencyUnpaid, depositLeft);
+  const departureLabel = getDepartureLabel(booking.departure_date);
+  const nextActionToneClass = {
+    default: 'border-admin-border-mid bg-admin-bg text-admin-text-2',
+    warning: 'border-amber-200 bg-amber-50 text-amber-800',
+    danger: 'border-red-200 bg-red-50 text-red-700',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  }[nextAction.tone];
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-5">
@@ -523,8 +655,48 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       {/* Progress Bar */}
       <ProgressBar status={booking.status} />
 
+      <section
+        aria-labelledby="booking-next-action-title"
+        aria-describedby="booking-next-action-reason booking-next-action-status"
+        className="rounded-admin-md border border-admin-border-mid bg-white p-5 shadow-admin-xs"
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <p className="text-admin-xs font-bold uppercase tracking-wide text-admin-muted">Next action</p>
+            <h2 id="booking-next-action-title" className="mt-1 text-admin-lg font-black text-admin-text">
+              {nextAction.label}
+            </h2>
+            <p id="booking-next-action-reason" className="mt-1 text-admin-sm font-medium text-admin-muted">
+              {nextAction.reason}
+            </p>
+            <p id="booking-next-action-status" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {`예약 상세의 다음 권장 액션은 ${nextAction.label}입니다. ${nextAction.reason}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => document.getElementById(nextAction.targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="inline-flex min-h-[38px] shrink-0 items-center justify-center rounded-admin-xs border border-admin-border-mid bg-admin-surface px-3 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+          >
+            관련 작업 보기
+          </button>
+        </div>
+        <dl className="mt-4 grid grid-cols-1 gap-2 text-admin-xs sm:grid-cols-3">
+          {[
+            ['출발', departureLabel],
+            ['고객 잔금', fmtWon(balance)],
+            ['랜드 미송금', fmtWon(agencyUnpaid)],
+          ].map(([label, value]) => (
+            <div key={label} className={`rounded-admin-sm border px-3 py-2 ${label === '고객 잔금' && balance > 0 ? nextActionToneClass : 'border-admin-border-mid bg-admin-bg text-admin-text-2'}`}>
+              <dt className="font-bold text-current/65">{label}</dt>
+              <dd className="mt-0.5 font-black tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
       {booking.status === 'pending' && booking.deposit_notice_blocked && (
-        <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4 space-y-2">
+        <div id="booking-deposit-approval" className="rounded-admin-md border border-amber-200 bg-amber-50 p-4 space-y-2 scroll-mt-4">
           <p className="text-sm font-bold text-amber-950">계약금 안내 전 운영자 승인이 필요합니다</p>
           <p className="text-xs text-amber-900/90">
             아래를 눌러 허용한 뒤 상태 전이를 진행하세요. 전체 자동화는{' '}
@@ -552,7 +724,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
       {/* 수배 확정 체크리스트 + 명단 */}
       {(booking.status === 'pending' || booking.status === 'waiting_deposit') && (
-        <div className="rounded-admin-md border border-blue-200 bg-blue-50 p-4 space-y-3">
+        <div id="booking-workflow-panel" className="rounded-admin-md border border-blue-200 bg-blue-50 p-4 space-y-3 scroll-mt-4">
           <div>
             <p className="text-sm font-bold text-blue-950">
               {booking.status === 'waiting_deposit' ? '계약금 안내 워크플로' : '랜드사 좌석 확인 워크플로'}
@@ -603,7 +775,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       )}
 
       {!isCancelled && (
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
+        <div id="booking-checklist" className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 scroll-mt-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-admin-sm font-semibold text-admin-text-2">수배 체크리스트</h3>
             {booking.status === 'fully_paid' && !booking.is_manifest_sent && (
@@ -933,7 +1105,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       </div>
 
       {/* Action 버튼 패널 */}
-      <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
+      <div id="booking-status-actions" className="bg-white rounded-admin-md border border-admin-border-mid p-5 scroll-mt-4">
         <h3 className="text-xs font-bold text-admin-muted uppercase tracking-wide mb-4">상태 제어</h3>
         <div className="flex flex-wrap gap-3">
           {/* 상태 전이 버튼 */}
@@ -983,7 +1155,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       <BookingConciergeAdminPanel bookingId={id} onToast={showToast} />
 
       {/* 고객 응대 타임라인 */}
-      <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
+      <div id="booking-timeline" className="bg-white rounded-admin-md border border-admin-border-mid p-5 scroll-mt-4">
         <h3 className="text-xs font-bold text-admin-muted uppercase tracking-wide mb-4">고객 응대 타임라인</h3>
 
         <div ref={timelineRef} className="space-y-3 max-h-80 overflow-y-auto pr-1">
