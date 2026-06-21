@@ -969,10 +969,14 @@ test.describe('keyboard access smoke', () => {
     }
 
     await expectCanFocus(commandOpen, 'admin payment command open');
+    await expect(commandOpen).toHaveAttribute('aria-haspopup', 'dialog');
+    await expect(commandOpen).toHaveAttribute('aria-expanded', 'false');
+    await expect(commandOpen).toHaveAttribute('aria-controls', 'payments-command-dialog');
     await page.keyboard.press('Enter');
 
     const commandDialog = page.locator('[data-testid="payments-command-dialog"]');
     await expect(commandDialog).toBeVisible();
+    await expect(commandDialog).toHaveAttribute('id', 'payments-command-dialog');
     await expect(commandDialog).toHaveAttribute('role', 'dialog');
     await expect(commandDialog).toHaveAttribute('aria-modal', 'true');
     const commandInput = page.locator('[data-testid="payments-command-input"]');

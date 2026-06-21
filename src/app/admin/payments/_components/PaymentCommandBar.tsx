@@ -86,6 +86,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
   const abortRef = useRef<AbortController | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
+  const commandDialogId = 'payments-command-dialog';
   const commandOpenDescriptionId = 'payments-command-open-description';
   const commandResultSummaryId = 'payments-command-result-summary';
   const commandInputDescriptionIds = [
@@ -370,6 +371,9 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
           aria-label="입금/출금 매칭 명령 열기"
           aria-describedby={commandOpenDescriptionId}
           aria-keyshortcuts="Meta+K Control+K"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={commandDialogId}
         >
           <kbd className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-mono">⌘K</kbd>
           <span>매칭 명령</span>
@@ -379,9 +383,9 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 토스트 */}
       {toast && (
         <div
-          className={`fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-4 z-50 max-w-[calc(100vw-2rem)] px-4 py-2 rounded shadow-admin-md text-sm sm:right-6 ${
+          className={`fixed right-4 z-50 max-w-[calc(100vw-2rem)] px-4 py-2 rounded shadow-admin-md text-sm sm:right-6 ${
             toast.kind === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-          }`}
+          } ${open ? 'bottom-[max(1.5rem,env(safe-area-inset-bottom))]' : 'bottom-[calc(5rem+env(safe-area-inset-bottom))]'}`}
           role={toast.kind === 'err' ? 'alert' : 'status'}
           aria-live={toast.kind === 'err' ? 'assertive' : 'polite'}
           aria-atomic="true"
@@ -405,6 +409,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
           />
           <div
             ref={dialogRef}
+            id={commandDialogId}
             data-testid="payments-command-dialog"
             className="relative bg-white rounded-admin-md shadow-2xl w-full max-w-2xl"
             role="dialog"
