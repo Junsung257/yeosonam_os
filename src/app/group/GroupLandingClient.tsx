@@ -539,7 +539,8 @@ export default function GroupLandingClient() {
         <p
           id="group-landing-status"
           className="sr-only"
-          {...(submitting ? { 'aria-live': 'polite' as const, 'aria-atomic': true } : {})}
+          aria-atomic="true"
+          {...(submitting ? { 'aria-live': 'polite' as const } : {})}
         >
           {submitting ? '견적 요청을 전송하고 있습니다.' : ''}
         </p>
