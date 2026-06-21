@@ -535,7 +535,6 @@ function ConciergePageContent() {
   const intentSummary = useMemo(() => inferIntentSummary(activePrompt, query, cart), [activePrompt, cart, query]);
   const groupInquiryHref = useMemo(() => {
     const productNames = cart.map((item) => item.product_name).filter(Boolean);
-    const handoffProductNames = productNames.length > 0 ? productNames : intentSummary.selected_products ?? [];
     return buildGroupInquiryHandoffHref({
       source: 'concierge',
       intent: intentSummary.intent ?? undefined,
@@ -543,7 +542,7 @@ function ConciergePageContent() {
       query: query.trim() || activePrompt?.query || 'AI 상담 장바구니 단체 견적',
       destination: intentSummary.destination,
       budget: intentSummary.budget || (cartTotal > 0 ? `총 ${cartTotal.toLocaleString('ko-KR')}원` : null),
-      selectedProducts: handoffProductNames.length > 0 ? handoffProductNames : undefined,
+      selectedProducts: productNames.length > 0 ? productNames : undefined,
     });
   }, [activePrompt?.query, cart, cartTotal, intentSummary, query]);
 
@@ -2622,7 +2621,29 @@ function CartActions({
           </span>
         </div>
       </div>
-      {summaryItems.length > 0 && (
+      {cartCount === 0 ? (
+        <div
+          className="mb-4 rounded-[14px] border border-dashed border-[#D1DCE8] bg-[#F8FAFC] p-3"
+          aria-label="상담 전달 조건"
+          aria-describedby={cartActionSummaryId}
+          data-testid="concierge-cart-handoff-summary"
+        >
+          <p className="text-[12px] font-extrabold text-text-primary">아직 담은 상품이 없습니다</p>
+          <p className="mt-1 text-[11px] font-semibold leading-5 text-text-secondary">
+            추천 결과에서 상품을 담으면 카톡 상담, 단체 견적, 결제로 바로 이어갈 수 있습니다.
+          </p>
+          {summaryItems.length > 0 && (
+            <dl className="mt-3 grid grid-cols-2 gap-2">
+              {summaryItems.slice(0, 4).map((item) => (
+                <div key={item.label} className="min-w-0 rounded-[10px] bg-white px-2.5 py-2">
+                  <dt className="text-[10px] font-bold text-text-secondary">{item.label}</dt>
+                  <dd className="mt-0.5 truncate text-[12px] font-extrabold text-text-primary">{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      ) : summaryItems.length > 0 ? (
         <div
           className="mb-4 rounded-[14px] border border-[#E5E7EB] bg-[#F8FAFC] p-3"
           aria-label="상담 전달 조건"
@@ -2639,7 +2660,7 @@ function CartActions({
             ))}
           </dl>
         </div>
-      )}
+      ) : null}
       <div className="grid grid-cols-3 gap-2">
         <button
           type="button"
