@@ -474,10 +474,12 @@ function PaymentOpsQueue({
   activeKey,
   counts,
   onSelect,
+  onClear,
 }: {
   activeKey?: PaymentQueueKey;
   counts: Record<PaymentQueueKey, number>;
   onSelect: (key: PaymentQueueKey) => void;
+  onClear: () => void;
 }) {
   const items: {
     key: PaymentQueueKey;
@@ -541,8 +543,25 @@ function PaymentOpsQueue({
       >
         {paymentQueueLeadText}
       </p>
+      {selectedQueueItem && (
+        <div
+          data-testid="admin-payment-active-queue-filter"
+          className="mb-3 flex flex-col gap-2 rounded-admin-sm border border-admin-border-mid bg-admin-bg px-3 py-2 text-admin-xs sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="font-semibold text-admin-text-2">
+            적용 중: {selectedQueueItem.label} · {selectedQueueItem.target}
+          </p>
+          <button
+            type="button"
+            onClick={onClear}
+            className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs border border-admin-border-mid bg-white px-3 font-bold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+          >
+            큐 필터 해제
+          </button>
+        </div>
+      )}
       <div
-        className="mb-3 grid grid-cols-3 gap-2"
+        className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
         data-testid="admin-payment-queue-health"
         aria-label={`결제 큐 상태: 활성 큐 ${activeItems.length}/${items.length}, 긴급 큐 ${urgentItems.length}개, 정리됨 ${clearItemsCount}개`}
       >
@@ -565,7 +584,7 @@ function PaymentOpsQueue({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
         {items.map(item => {
           const itemDescriptionId = `admin-payment-queue-${item.key}-description`;
           return (
@@ -1074,6 +1093,22 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       },
     });
   }, [outflowUnmatchedCount, reviewCount, staleCount, trashTxs.length, unmatchedCount]);
+
+  const handlePaymentQueueClear = useCallback(() => {
+    setActivePaymentQueue(undefined);
+    setTab('unmatched');
+    setOutflowSubTab('unmatched');
+    setCheckedTxIds(new Set());
+
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/payments',
+      metadata: {
+        surface: 'payments_work_queue',
+        action: 'clear_queue',
+      },
+    });
+  }, []);
 
   // ── 입금액 재동기화 ─────────────────────────────────────────────────────────
 
@@ -2171,6 +2206,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           trash: trashTxs.length,
         }}
         onSelect={handlePaymentQueueSelect}
+        onClear={handlePaymentQueueClear}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5">
