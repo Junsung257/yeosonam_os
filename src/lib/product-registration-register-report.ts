@@ -5,6 +5,7 @@ export interface UploadRegisterReportPackage {
   price: number | null;
   airline: string | null;
   status: string | null;
+  audit_status?: string | null;
   departure_days: string | null;
   commission_rate?: number | null;
   land_operator?: string | null;
@@ -19,6 +20,7 @@ export interface UploadRegisterReportRow {
   price: number | null;
   airline: string | null;
   status: string | null;
+  audit_status: string | null;
   departure_days: string | null;
   mobile_url: string;
   lp_url: string;
@@ -54,6 +56,7 @@ export function buildUploadRegisterReport(
       price: pkg.price,
       airline: pkg.airline,
       status: pkg.status,
+      audit_status: pkg.audit_status ?? null,
       departure_days: pkg.departure_days,
       mobile_url: withBaseUrl(baseUrl, `/packages/${pkg.id}`),
       lp_url: withBaseUrl(baseUrl, `/lp/${pkg.id}`),
