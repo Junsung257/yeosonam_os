@@ -391,6 +391,16 @@ export default function AdminRfqDetailPage() {
     .filter((price) => Number.isFinite(price) && price > 0)
     .reduce<number | null>((lowest, price) => (lowest == null || price < lowest ? price : lowest), null);
   const proposalIssueCount = proposals.reduce((sum, proposal) => sum + (proposal.ai_review?.issues?.length ?? 0), 0);
+  const submittedBidCount = bids.filter((bid) => Boolean(bid.submitted_at) || bid.status === 'submitted').length;
+  const timeoutBidCount = bids.filter((bid) => bid.status === 'timeout').length;
+  const lockedBidCount = bids.filter((bid) => bid.status === 'locked').length;
+  const pendingBidCount = Math.max(bids.length - submittedBidCount - timeoutBidCount, 0);
+  const topTrustBid = [...bids]
+    .filter((bid) => bid.trust_score != null)
+    .sort((a, b) => (b.trust_score ?? -1) - (a.trust_score ?? -1))[0] ?? null;
+  const bidSummaryText = bids.length > 0
+    ? `입찰 ${bids.length}건 중 제출 ${submittedBidCount}건, 진행/대기 ${pendingBidCount}건, 마감 초과 ${timeoutBidCount}건입니다. ${topTrustBid ? `신뢰도 최고 후보는 ${topTrustBid.tenant_name || topTrustBid.tenant_id.slice(0, 8)} ${topTrustBid.trust_score}점입니다.` : '신뢰도 점수는 아직 없습니다.'}`
+    : '입찰 내역이 없습니다.';
   const proposalSummaryText = recommendedProposal
     ? `추천 후보는 ${recommendedProposal.tenant_name || '랜드사'} ${recommendedProposal.ai_review?.score ?? '점수 없음'}점입니다. 최저 실질 총액은 ${lowestRealPrice ? `₩${fmt(lowestRealPrice)}` : '미정'}이고, AI 검토 리스크는 ${proposalIssueCount}건입니다.`
     : '제출된 제안서가 없어 비교 요약을 만들 수 없습니다.';
@@ -639,7 +649,40 @@ export default function AdminRfqDetailPage() {
 
       {/* ── Tab 2: 입찰현황 ─────────────────────────────────────────────────── */}
       {activeTab === 'bids' && (
-        <div id="admin-rfq-bids-panel" role="tabpanel" aria-labelledby="admin-rfq-bids-tab" className="overflow-x-auto rounded-admin-md border bg-white shadow-admin-xs">
+        <div id="admin-rfq-bids-panel" role="tabpanel" aria-labelledby="admin-rfq-bids-tab" className="space-y-3">
+          <div className="flex flex-col gap-3 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-admin-xs font-semibold uppercase text-admin-muted">Bid summary</p>
+              <p
+                data-testid="admin-rfq-bid-summary"
+                aria-label={bidSummaryText}
+                className="mt-1 text-admin-sm font-semibold text-admin-text"
+              >
+                제출 {submittedBidCount}/{bids.length} · 진행/대기 {pendingBidCount} · 마감초과 {timeoutBidCount}
+              </p>
+              <p className="mt-1 text-admin-xs text-admin-muted">{bidSummaryText}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-admin-xs text-admin-muted sm:grid-cols-4">
+              <div className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
+                <span className="block font-semibold text-admin-text">{bids.length}</span>
+                전체 입찰
+              </div>
+              <div className="rounded-admin-sm bg-status-successBg px-3 py-2 text-status-successFg">
+                <span className="block font-semibold">{submittedBidCount}</span>
+                제출 완료
+              </div>
+              <div className="rounded-admin-sm bg-status-warningBg px-3 py-2 text-status-warningFg">
+                <span className="block font-semibold">{lockedBidCount}</span>
+                작성 중
+              </div>
+              <div className="rounded-admin-sm bg-status-dangerBg px-3 py-2 text-status-dangerFg">
+                <span className="block font-semibold">{timeoutBidCount}</span>
+                마감 초과
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-admin-md border bg-white shadow-admin-xs">
           {bids.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12">
               <svg className="w-9 h-9 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg>
@@ -695,6 +738,7 @@ export default function AdminRfqDetailPage() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
       )}
 
