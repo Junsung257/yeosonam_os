@@ -985,6 +985,7 @@ test.describe('keyboard access smoke', () => {
 
     await page.keyboard.press('Escape');
     await expect(commandDialog).toBeHidden();
+    await expect(commandOpen, 'admin payment command open should regain focus after Escape').toBeFocused();
 
     await page.keyboard.press('ControlOrMeta+K');
     await expect(commandDialog).toBeVisible();

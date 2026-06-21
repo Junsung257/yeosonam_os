@@ -86,6 +86,8 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
   const abortRef = useRef<AbortController | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
+  const commandOpenButtonRef = useRef<HTMLButtonElement | null>(null);
+  const restoreLauncherFocusRef = useRef(false);
   const commandDialogId = 'payments-command-dialog';
   const commandOpenDescriptionId = 'payments-command-open-description';
   const commandResultSummaryId = 'payments-command-result-summary';
@@ -94,6 +96,11 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
     result ? commandResultSummaryId : null,
     error ? 'payments-command-error' : null,
   ].filter(Boolean).join(' ');
+
+  const openFromLauncher = useCallback(() => {
+    restoreLauncherFocusRef.current = true;
+    setOpen(true);
+  }, []);
 
   // ⌘K / Ctrl+K 토글
   useEffect(() => {
@@ -119,6 +126,10 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       setImperativeTxType(undefined);
       setImperativeIsRefund(false);
       if (abortRef.current) abortRef.current.abort();
+      if (restoreLauncherFocusRef.current) {
+        restoreLauncherFocusRef.current = false;
+        window.setTimeout(() => commandOpenButtonRef.current?.focus(), 0);
+      }
     }
   }, [open]);
 
@@ -363,9 +374,10 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 떠있는 버튼 (모달 닫힌 상태) */}
       {!open && (
         <button
+          ref={commandOpenButtonRef}
           type="button"
           data-testid="payments-command-open"
-          onClick={() => setOpen(true)}
+          onClick={openFromLauncher}
           className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-admin-md hover:bg-blue-700 text-sm flex items-center gap-2 transition"
           title="입금/출금 매칭 명령 (⌘K)"
           aria-label="입금/출금 매칭 명령 열기"
