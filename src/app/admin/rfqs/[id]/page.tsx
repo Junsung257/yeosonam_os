@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'dompurify';
 import { ArrowRight } from 'lucide-react';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
@@ -119,6 +121,14 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 function fmtDate(s?: string | null) {
   if (!s) return '—';
   return s.slice(0, 16).replace('T', ' ');
+}
+
+function trackRfqDetailAction(metadata: Record<string, unknown>): void {
+  trackEngagement({
+    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+    page_url: '/admin/rfqs',
+    metadata,
+  });
 }
 
 function getRequirementText(rfq: GroupRfq, key: string): string | null {
@@ -291,7 +301,7 @@ export default function AdminRfqDetailPage() {
     }
   }
 
-  async function transition(status: string) {
+  async function transition(status: string, metadata: Record<string, unknown>) {
     if (!id) return;
     setTransitioning(status);
     try {
@@ -303,6 +313,12 @@ export default function AdminRfqDetailPage() {
       if (!res.ok) throw new Error('상태 변경 실패');
       await fetchAll();
       setNotice({ tone: 'success', message: 'RFQ 상태가 변경되었습니다.' });
+      trackRfqDetailAction({
+        ...metadata,
+        surface: 'rfq_detail_transition',
+        action: 'transition_completed',
+        target_status: status,
+      });
     } catch {
       setNotice({ tone: 'error', message: '상태 변경 중 오류가 발생했습니다.' });
     } finally {
@@ -319,6 +335,19 @@ export default function AdminRfqDetailPage() {
       const data = await res.json();
       setReport(data);
       setNotice({ tone: 'success', message: 'AI 분석이 완료되었습니다.' });
+      if (rfq) {
+        trackRfqDetailAction({
+          surface: 'rfq_detail_analysis',
+          action: 'analysis_completed',
+          rfq_id: rfq.id,
+          rfq_code: rfq.rfq_code,
+          status: rfq.status,
+          queue_key: `rfqs_${rfq.status}`,
+          proposal_count: proposals.length,
+          bid_count: bids.length,
+          insight_count: Array.isArray(data?.key_insights) ? data.key_insights.length : 0,
+        });
+      }
     } catch {
       setNotice({ tone: 'error', message: 'AI 분석 중 오류가 발생했습니다.' });
     } finally {
@@ -466,7 +495,23 @@ export default function AdminRfqDetailPage() {
           </div>
           <button
             type="button"
-            onClick={() => setActiveTab(nextAction.tab)}
+            onClick={() => {
+              setActiveTab(nextAction.tab);
+              trackRfqDetailAction({
+                surface: 'rfq_detail_next_action',
+                action: 'recommended_tab_opened',
+                rfq_id: rfq.id,
+                rfq_code: rfq.rfq_code,
+                status: rfq.status,
+                queue_key: `rfqs_${rfq.status}`,
+                next_action: nextAction.label,
+                target_tab: nextAction.tab,
+                requirement_ready_count: requirementReadyCount,
+                requirement_missing: requirementMissingLabels,
+                bid_count: bids.length,
+                proposal_count: proposals.length,
+              });
+            }}
             className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-3 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
           >
             해당 탭 보기
@@ -529,7 +574,21 @@ export default function AdminRfqDetailPage() {
             id={`admin-rfq-${tab.key}-tab`}
             aria-selected={activeTab === tab.key}
             aria-controls={`admin-rfq-${tab.key}-panel`}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => {
+              setActiveTab(tab.key);
+              trackRfqDetailAction({
+                surface: 'rfq_detail_tabs',
+                action: 'tab_opened',
+                rfq_id: rfq.id,
+                rfq_code: rfq.rfq_code,
+                status: rfq.status,
+                queue_key: `rfqs_${rfq.status}`,
+                target_tab: tab.key,
+                bid_count: bids.length,
+                proposal_count: proposals.length,
+                message_count: messages.length,
+              });
+            }}
             className={`shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
               activeTab === tab.key
                 ? 'bg-white shadow-admin-xs text-indigo-700 font-semibold'
@@ -639,7 +698,18 @@ export default function AdminRfqDetailPage() {
                 <button
                   key={t.action}
                   type="button"
-                  onClick={() => transition(t.status)}
+                  onClick={() => transition(t.status, {
+                    rfq_id: rfq.id,
+                    rfq_code: rfq.rfq_code,
+                    status: rfq.status,
+                    queue_key: `rfqs_${rfq.status}`,
+                    target_status: t.status,
+                    requirement_ready_count: requirementReadyCount,
+                    requirement_missing: requirementMissingLabels,
+                    transition_decision: transitionDecisionText,
+                    bid_count: bids.length,
+                    proposal_count: proposals.length,
+                  })}
                   disabled={transitioning === t.status}
                   className="rounded-lg border border-indigo-300 px-3 py-2 text-left text-sm text-indigo-700 transition-colors hover:bg-indigo-50 disabled:opacity-50"
                   aria-describedby="admin-rfq-transition-decision"
