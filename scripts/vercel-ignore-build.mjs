@@ -51,7 +51,7 @@ function main() {
   let changedFiles;
   try {
     // HEAD^ 가 없는 첫 커밋 등 edge case 는 보수적으로 빌드 진행.
-    changedFiles = execSync('git diff --name-only HEAD^ HEAD', {
+    changedFiles = execSync('git diff --name-only HEAD~1 HEAD', {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     })

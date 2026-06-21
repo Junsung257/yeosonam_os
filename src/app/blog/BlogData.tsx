@@ -189,7 +189,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
 
   const destQuery = supabaseAdmin
       .from('active_destinations')
-      .select('destination, package_count, country')
+      .select('destination, package_count')
       .order('package_count', { ascending: false })
       .limit(16);
   const featuredQuery = supabaseAdmin
@@ -214,7 +214,6 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
 
   const unavailable =
     isBlogQueryUnavailable(listRes) ||
-    isBlogQueryUnavailable(destRes) ||
     isBlogQueryUnavailable(angleRes);
   const posts = (listRes.data as unknown as BlogPost[]) || [];
   const angleCounts = ((angleRes.data as Array<{ angle_type: string | null }> | null) || []).reduce<Record<string, number>>((acc, row) => {
