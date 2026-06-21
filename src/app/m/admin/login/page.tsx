@@ -53,6 +53,8 @@ function MobileLoginForm() {
 
       const res = await fetch('/api/auth/session', {
         method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           access_token: data.session.access_token,
@@ -62,6 +64,16 @@ function MobileLoginForm() {
 
       if (!res.ok) {
         setError('로그인 처리 중 오류가 발생했습니다.');
+        return;
+      }
+
+      const confirmRes = await fetch('/api/admin/session', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!confirmRes.ok) {
+        setError('로그인은 되었지만 관리자 세션 저장 확인에 실패했습니다. 새로고침 후 다시 로그인해 주세요.');
         return;
       }
 

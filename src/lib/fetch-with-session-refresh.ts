@@ -27,8 +27,8 @@ function shouldAttemptSessionRefresh(): boolean {
   return hasCookie(REFRESH_MARKER_COOKIE);
 }
 
-export function ensureSessionRefreshed(): Promise<boolean> {
-  if (!shouldAttemptSessionRefresh()) {
+export function ensureSessionRefreshed(options: { force?: boolean } = {}): Promise<boolean> {
+  if (!options.force && !shouldAttemptSessionRefresh()) {
     return Promise.resolve(false);
   }
 
@@ -78,7 +78,7 @@ export async function fetchWithSessionRefresh(
   }
   if (!isTokenExpiredPayload(data)) return res;
 
-  const refreshed = await ensureSessionRefreshed().catch(() => false);
+  const refreshed = await ensureSessionRefreshed({ force: true }).catch(() => false);
   if (!refreshed) return sessionExpiredResponse();
 
   // 일부 환경에서 Set-Cookie 적용이 다음 틱까지 미뤄지는 경우 대비
