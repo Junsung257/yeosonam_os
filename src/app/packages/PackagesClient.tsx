@@ -2038,7 +2038,7 @@ export default function PackagesClient() {
                 type="button"
                 data-testid="packages-compare-toggle"
                 onClick={(e) => { e.preventDefault(); toggleCompare(pkg.id); }}
-                className={`absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full border-2 transition-all ${
+                className={`absolute top-2 right-2 z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all focus:outline-none focus:ring-4 focus:ring-brand/15 ${
                   compareIds.includes(pkg.id)
                     ? 'bg-brand border-brand text-white shadow-sm'
                     : 'bg-white/90 border-gray-300 text-gray-400 hover:border-brand/60 hover:text-brand'
@@ -2048,9 +2048,9 @@ export default function PackagesClient() {
                 aria-describedby={compareDescriptionIds}
               >
                 {compareIds.includes(pkg.id) ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  <Check className="h-4 w-4" strokeWidth={3} aria-hidden="true" />
                 ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+                  <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
                 )}
               </button>
               <PackageCard
