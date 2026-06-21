@@ -841,7 +841,7 @@ function TodayWorkQueue({
               className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
             >
               <p id={rowDescriptionId} className="sr-only">
-                {trimSentenceEnd(row.target)}. 현재 {row.count}건이며 운영 리스크는 {row.operationRisk}, 처리 이유는 {trimSentenceEnd(row.reason)}. 다음 액션은 {row.count > 0 ? row.action : '상태 확인'}입니다.
+                {trimSentenceEnd(row.target)}. 현재 {row.count}건이며 운영 리스크는 {row.operationRisk}. 처리 이유는 {row.reason}입니다. 다음 액션은 {row.count > 0 ? row.action : '상태 확인'}입니다.
               </p>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -1030,7 +1030,7 @@ function OperatorCommandBar({
                 }`}
               >
                 <p id={actionDescriptionId} className="sr-only">
-                  {trimSentenceEnd(action.target)}. 현재 {action.count}건입니다. 운영 리스크는 {action.operationRisk}, 처리 이유는 {trimSentenceEnd(action.reason)}.
+                  {trimSentenceEnd(action.target)}. 현재 {action.count}건입니다. 운영 리스크는 {action.operationRisk}. 처리 이유는 {action.reason}입니다.
                 </p>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
