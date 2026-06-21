@@ -264,14 +264,6 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
     query: `${region.label} 맞춤 패키지 문의`,
     destination: region.label,
   });
-  const regionBottomGroupInquiryHref = buildGroupInquiryHandoffHref({
-    source: 'destination_region_bottom',
-    intent: 'region_trip',
-    partyType: 'group',
-    query: `${region.label} 여행 맞춤 견적 상담`,
-    destination: region.label,
-    selectedProducts: [`${region.label} 맞춤 패키지`],
-  });
 
   let data: RegionData | null = null;
   try {
@@ -282,6 +274,18 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
   if (!data) notFound();
 
   const heroImage = data.cities.find(c => c.image)?.image ?? null;
+  const regionStartingBudgetLabel = data.minPrice
+    ? `1인 ${Math.round(data.minPrice / 10000).toLocaleString()}만원부터`
+    : null;
+  const regionBottomGroupInquiryHref = buildGroupInquiryHandoffHref({
+    source: 'destination_region_bottom',
+    intent: 'region_trip',
+    partyType: 'group',
+    query: `${region.label} 여행 맞춤 견적 상담`,
+    destination: region.label,
+    budget: regionStartingBudgetLabel,
+    selectedProducts: [`${region.label} 맞춤 패키지`],
+  });
 
   return (
     <>
