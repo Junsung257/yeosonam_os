@@ -25,6 +25,7 @@ interface GroupRfq {
   customer_name?: string;
   bid_deadline: string | null;
   created_at: string;
+  custom_requirements?: Record<string, unknown> | null;
 }
 
 interface ChecklistItem {
@@ -110,6 +111,20 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 function fmtDate(s?: string | null) {
   if (!s) return '—';
   return s.slice(0, 16).replace('T', ' ');
+}
+
+function getRequirementText(rfq: GroupRfq, key: string): string | null {
+  const value = rfq.custom_requirements?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function getRequirementList(rfq: GroupRfq, key: string): string[] {
+  const value = rfq.custom_requirements?.[key];
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim());
 }
 
 // ── 타이머 컴포넌트 ──────────────────────────────────────────────────────────
@@ -266,6 +281,11 @@ export default function AdminRfqDetailPage() {
     );
   }
 
+  const handoffQuery = getRequirementText(rfq, 'handoff_query');
+  const handoffSource = getRequirementText(rfq, 'handoff_source') ?? getRequirementText(rfq, 'source');
+  const selectedProducts = getRequirementList(rfq, 'selected_products');
+  const hasHandoffContext = Boolean(handoffQuery || handoffSource || selectedProducts.length > 0);
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* 헤더 */}
@@ -346,6 +366,48 @@ export default function AdminRfqDetailPage() {
               )}
             </div>
           </div>
+
+          {hasHandoffContext && (
+            <section
+              data-testid="admin-rfq-handoff-context"
+              aria-labelledby="admin-rfq-handoff-title"
+              className="bg-white border border-admin-border-mid shadow-admin-xs rounded-admin-md p-5"
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 id="admin-rfq-handoff-title" className="font-semibold text-admin-text">
+                    고객 유입 문맥
+                  </h2>
+                  <p className="mt-1 text-admin-xs text-admin-muted">
+                    접수 전에 고객이 남긴 원문 조건과 관심 상품입니다.
+                  </p>
+                </div>
+                {handoffSource && (
+                  <span className="w-fit rounded-full bg-admin-surface-2 px-2.5 py-1 text-admin-xs font-semibold text-admin-text-2">
+                    {handoffSource}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-3 text-admin-sm sm:grid-cols-2">
+                {handoffQuery && (
+                  <div data-testid="admin-rfq-handoff-query" className="rounded-admin-sm bg-admin-surface-2 px-3 py-2 sm:col-span-2">
+                    <p className="text-admin-xs font-semibold text-admin-muted">원문 요청</p>
+                    <p className="mt-1 font-medium text-admin-text-2">{handoffQuery}</p>
+                  </div>
+                )}
+
+                {selectedProducts.length > 0 && (
+                  <div data-testid="admin-rfq-handoff-products" className="rounded-admin-sm bg-admin-surface-2 px-3 py-2 sm:col-span-2">
+                    <p className="text-admin-xs font-semibold text-admin-muted">관심 상품 {selectedProducts.length}개</p>
+                    <p className="mt-1 font-medium text-admin-text-2">
+                      {selectedProducts.join(', ')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* 상태 전환 (테스트) */}
           <div className="bg-white border shadow-admin-xs rounded-admin-md p-5">
