@@ -106,6 +106,29 @@ const INITIAL_FORM: FormState = {
   notes: '',
 };
 
+const GROUP_PRESET_DEFAULTS: Record<string, Pick<FormState, 'purpose' | 'pax_label' | 'budget_label'>> = {
+  '기업 워크샵': {
+    purpose: '기업 워크샵 · 포상',
+    pax_label: '20명',
+    budget_label: '80~120만원',
+  },
+  '협회 연수': {
+    purpose: '협회 · 기관 · 연수',
+    pax_label: '15명',
+    budget_label: '80~120만원',
+  },
+  '치목 골프': {
+    purpose: '치목 · 골프 · 동문',
+    pax_label: '10명',
+    budget_label: '50~80만원',
+  },
+  '패밀리 가족': {
+    purpose: '패밀리 · 가족',
+    pax_label: '10명',
+    budget_label: '80~120만원',
+  },
+};
+
 const REQUIRED_FIELD_LABELS: Record<RequiredField, string> = {
   contact_name: '신청자 성함',
   contact_phone: '연락처',
@@ -121,6 +144,26 @@ const REQUIRED_FIELDS = Object.keys(REQUIRED_FIELD_LABELS) as RequiredField[];
 
 function errorId(key: FieldErrorKey) {
   return `group-${key.replace(/_/g, '-')}-error`;
+}
+
+function readLegacyHashPreset() {
+  if (typeof window === 'undefined') return null;
+  const match = window.location.hash.match(/preset=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function resolveGroupPresetDefaults(rawPreset: string | null): Pick<FormState, 'purpose' | 'pax_label' | 'budget_label'> | null {
+  const preset = rawPreset?.trim();
+  if (!preset) return null;
+  const exactMatch = GROUP_PRESET_DEFAULTS[preset];
+  if (exactMatch) return exactMatch;
+
+  const normalized = preset.toLowerCase();
+  if (/기업|워크샵|workshop/.test(normalized)) return GROUP_PRESET_DEFAULTS['기업 워크샵'];
+  if (/협회|기관|연수/.test(normalized)) return GROUP_PRESET_DEFAULTS['협회 연수'];
+  if (/골프|동문|친목|치목/.test(normalized)) return GROUP_PRESET_DEFAULTS['치목 골프'];
+  if (/패밀리|가족|family/.test(normalized)) return GROUP_PRESET_DEFAULTS['패밀리 가족'];
+  return null;
 }
 
 const FIELD_INPUT_IDS: Record<FieldErrorKey, string> = {
@@ -154,17 +197,17 @@ export default function GroupLandingClient() {
   const submitErrorRef = useRef<HTMLDivElement | null>(null);
   const kakaoStatusRef = useRef<HTMLDivElement | null>(null);
 
-  // URL hash 에 preset 쿼리(?preset=...)가 있으면 단체 유형 자동 선택
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const hash = window.location.hash;
-    const match = hash.match(/preset=([^&]+)/);
-    if (match) {
-      const preset = decodeURIComponent(match[1]);
-      const mapped = PURPOSE_OPTIONS.find((p) => p.includes(preset.split(' ')[0]));
-      if (mapped) setForm((f) => ({ ...f, purpose: mapped }));
-    }
-  }, []);
+    const defaults = resolveGroupPresetDefaults(searchParams?.get('preset') ?? readLegacyHashPreset());
+    if (!defaults) return;
+
+    setForm((current) => ({
+      ...current,
+      purpose: defaults.purpose,
+      pax_label: current.pax_label || defaults.pax_label,
+      budget_label: current.budget_label || defaults.budget_label,
+    }));
+  }, [searchParams]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));

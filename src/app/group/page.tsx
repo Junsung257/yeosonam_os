@@ -205,9 +205,9 @@ export default function GroupLandingPage() {
           </p>
           <div className="grid md:grid-cols-2 gap-5">
             {GROUP_TYPES.map((g) => (
-              <a
+              <Link
                 key={g.value}
-                href={`#group-inquiry-form?preset=${encodeURIComponent(g.value)}`}
+                href={`/group?preset=${encodeURIComponent(g.value)}#group-inquiry-form`}
                 className="group bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md hover:border-brand/30 transition"
               >
                 <div className="text-4xl mb-3">{g.icon}</div>
@@ -219,7 +219,7 @@ export default function GroupLandingPage() {
                   <div>{g.pax}</div>
                   <div>{g.budget}</div>
                 </div>
-              </a>
+              </Link>
             ))}
           </div>
         </div>
