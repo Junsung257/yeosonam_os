@@ -3474,9 +3474,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   >
                     {reservationSubmitHandoffPreviewText}
                   </p>
-                  <button onClick={handleSubmit} disabled={isSubmitting}
+                  <button type="button" onClick={handleSubmit} disabled={isSubmitting}
                     aria-busy={isSubmitting}
-                    aria-disabled={!reservationFormReady}
+                    aria-disabled={isSubmitting}
                     aria-describedby={reservationSubmitDescriptionIds}
                     title={!reservationFormReady ? '필수 항목을 확인해 주세요' : undefined}
                     data-analytics-id="reservation_sheet_submit"

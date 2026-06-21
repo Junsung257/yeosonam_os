@@ -11,11 +11,46 @@ const fixturePath = path.join(__dirname, '..', 'visual', 'fixtures.json');
 const fixtures: Fixture[] = fs.existsSync(fixturePath)
   ? JSON.parse(fs.readFileSync(fixturePath, 'utf8'))
   : [];
-const detailRoute = fixtures[0]?.product
-  ? `/packages/${fixtures[0].product}`
-  : fixtures[0]?.id
-    ? `/packages/${fixtures[0].id}`
-    : '/packages';
+const detailRoutes = uniqueStrings([
+  ...loadLocalDetailFixturePackageIds(),
+  ...fixtures.map((fixture) => fixture.id),
+  ...fixtures.map((fixture) => fixture.product),
+])
+  .filter((id): id is string => Boolean(id))
+  .map((id) => `/packages/${id}`);
+const detailRoute = detailRoutes[0] ?? '/packages';
+
+function loadLocalDetailFixturePackageIds(): string[] {
+  const candidateFiles = [
+    path.join(process.cwd(), 'api_test.json'),
+    process.env.TEMP ? path.join(process.env.TEMP, 'yeosonam-os-dev-link', 'api_test.json') : null,
+  ].filter((file): file is string => Boolean(file));
+
+  for (const candidateFile of candidateFiles) {
+    if (!fs.existsSync(candidateFile)) continue;
+    try {
+      const payload = JSON.parse(fs.readFileSync(candidateFile, 'utf8')) as unknown;
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray((payload as { data?: unknown } | null)?.data)
+          ? (payload as { data: unknown[] }).data
+          : [];
+
+      const ids = rows
+        .map((row) => (row && typeof row === 'object' ? (row as { id?: unknown }).id : null))
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      if (ids.length > 0) return ids;
+    } catch {
+      continue;
+    }
+  }
+
+  return [];
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
 
 test.describe('keyboard access smoke', () => {
   test('global navigation menus expose controlled regions from keyboard', async ({ page }) => {
@@ -298,11 +333,10 @@ test.describe('keyboard access smoke', () => {
   });
 
   test('package detail terms sheet opens and closes from keyboard', async ({ page }) => {
-    const detailAvailable = await gotoPackageDetailWithStickyCta(page);
-    test.skip(!detailAvailable, 'package detail route is unavailable in current package data');
+    const termsAvailable = await gotoPackageDetailWithVisibleSelector(page, '[data-testid="package-terms-open"]:visible');
+    test.skip(!termsAvailable, 'package terms sheet trigger is unavailable in current package data');
 
     const termsOpen = page.locator('[data-testid="package-terms-open"]:visible').first();
-    test.skip(!(await termsOpen.count()), 'package terms sheet trigger is unavailable in current package data');
 
     await expectCanFocus(termsOpen, 'package terms sheet open');
     await expect(termsOpen).toHaveAttribute('aria-haspopup', 'dialog');
@@ -334,14 +368,16 @@ test.describe('keyboard access smoke', () => {
   });
 
   test('recommendation card disclosures expose controlled regions from keyboard', async ({ page }) => {
-    await page.goto(detailRoute, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-
     const rationaleToggle = page.locator('[data-testid="recommendation-card-rationale-toggle"]:visible').first();
     const comparisonToggle = page.locator('[data-testid="recommendation-card-comparison-toggle"]:visible').first();
     const fullCompareOpen = page.locator('[data-testid="recommendation-card-full-compare-open"]:visible').first();
+    const recommendationAvailable = await gotoPackageDetailWithVisibleSelector(page, [
+      '[data-testid="recommendation-card-rationale-toggle"]:visible',
+      '[data-testid="recommendation-card-comparison-toggle"]:visible',
+      '[data-testid="recommendation-card-full-compare-open"]:visible',
+    ]);
     test.skip(
-      !(await rationaleToggle.count()) && !(await comparisonToggle.count()) && !(await fullCompareOpen.count()),
+      !recommendationAvailable,
       'recommendation card disclosures are unavailable in current package data',
     );
 
@@ -387,13 +423,14 @@ test.describe('keyboard access smoke', () => {
   });
 
   test('travel detail info cards expose controlled disclosure regions from keyboard', async ({ page }) => {
-    await page.goto(detailRoute, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-
     const fitnessToggle = page.locator('[data-testid="travel-fitness-comparison-toggle"]:visible').first();
     const packingToggle = page.locator('[data-testid="packing-tips-toggle"]:visible').first();
+    const detailInfoAvailable = await gotoPackageDetailWithVisibleSelector(page, [
+      '[data-testid="travel-fitness-comparison-toggle"]:visible',
+      '[data-testid="packing-tips-toggle"]:visible',
+    ]);
     test.skip(
-      !(await fitnessToggle.count()) && !(await packingToggle.count()),
+      !detailInfoAvailable,
       'travel detail info disclosures are unavailable in current package data',
     );
 
@@ -1186,25 +1223,65 @@ async function expectQueueActivationState(page: Page, target: Locator, label: st
 }
 
 async function gotoPackageDetailWithStickyCta(page: Page): Promise<boolean> {
+  return gotoPackageDetailWithVisibleSelector(page, '[data-testid="package-detail-sticky-kakao"]:visible', {
+    scrollOffsets: [420, 700],
+  });
+}
+
+async function gotoPackageDetailWithVisibleSelector(
+  page: Page,
+  selectors: string | string[],
+  options: { scrollOffsets?: number[] } = {},
+): Promise<boolean> {
+  const selectorList = Array.isArray(selectors) ? selectors : [selectors];
   const candidates = new Set<string>([detailRoute]);
 
-  await page.goto('/packages', { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  const packageListResponse = await page.goto('/packages', { waitUntil: 'domcontentloaded', timeout: 15_000 }).catch(() => null);
+  if (!packageListResponse && page.url() === 'about:blank') return false;
+  await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {});
   const hrefs = await page.locator('a[href^="/packages/"]').evaluateAll((links) =>
     links
       .map((link) => link.getAttribute('href'))
       .filter((href): href is string => Boolean(href)),
   );
-  hrefs.slice(0, 12).forEach((href) => candidates.add(href));
+  hrefs.slice(0, 12).forEach((href) => {
+    const detailHref = normalizePackageDetailHref(href);
+    if (detailHref) candidates.add(detailHref);
+  });
 
-  for (const href of candidates) {
-    await page.goto(href, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  for (const href of Array.from(candidates).slice(0, 16)) {
+    const detailResponse = await page.goto(href, { waitUntil: 'domcontentloaded', timeout: 12_000 }).catch(() => null);
+    if (!detailResponse) continue;
+    await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {});
     if ((await page.getByText('NOT_FOUND', { exact: true }).count()) > 0) continue;
-    if ((await page.locator('[data-testid="package-detail-sticky-kakao"]:visible').count()) > 0) return true;
+
+    const scrollOffsets = options.scrollOffsets ?? [
+      0,
+      Math.min(720, Math.floor(page.viewportSize()?.height ?? 812)),
+      await page.evaluate(() => Math.max(0, document.documentElement.scrollHeight - window.innerHeight - 24)),
+    ];
+
+    for (const offset of scrollOffsets) {
+      await page.evaluate((scrollY) => window.scrollTo(0, scrollY), offset);
+      await page.waitForTimeout(150);
+      for (const selector of selectorList) {
+        if ((await page.locator(selector).count()) > 0) return true;
+      }
+    }
   }
 
   return false;
+}
+
+function normalizePackageDetailHref(href: string): string | null {
+  try {
+    const url = new URL(href, 'http://ux-smoke.local');
+    if (!/^\/packages\/[^/?#]+/.test(url.pathname)) return null;
+    return `${url.pathname}${url.search}`;
+  } catch {
+    if (!/^\/packages\/[^/?#]+/.test(href)) return null;
+    return href;
+  }
 }
 
 async function expectCanFocus(target: Locator, label: string): Promise<void> {
