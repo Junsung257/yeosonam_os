@@ -586,6 +586,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [selectedDate, setSelectedDate] = useState('');
   const [activeSection, setActiveSection] = useState<NavSection>('상품정보');
   const [activeDay, setActiveDay] = useState(1);
+  const [showStickyCta, setShowStickyCta] = useState(false);
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -704,6 +705,27 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         .catch((e) => console.warn('[DetailClient] attractions fallback fetch failed:', e?.message ?? e));
     }
   }, [id, initialPackage, initialAttractions.length]);
+
+  useEffect(() => {
+    let frame = 0;
+    const updateStickyCtaVisibility = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const threshold = Math.min(360, window.innerHeight * 0.42);
+        setShowStickyCta(window.scrollY > threshold);
+      });
+    };
+
+    updateStickyCtaVisibility();
+    window.addEventListener('scroll', updateStickyCtaVisibility, { passive: true });
+    window.addEventListener('resize', updateStickyCtaVisibility);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', updateStickyCtaVisibility);
+      window.removeEventListener('resize', updateStickyCtaVisibility);
+    };
+  }, []);
 
   const updateActiveSection = useCallback(() => {
     const anchorY = 132;
@@ -1635,6 +1657,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <button
               type="button"
               onClick={handleFirstScreenDepartureClick}
+              data-testid="package-detail-first-screen-departure"
+              aria-label={`${selectedProductName} 출발일 선택 영역으로 이동`}
               aria-describedby={`${detailCtaSummaryId} ${detailFirstScreenDecisionSummaryId}`}
               className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-extrabold text-slate-800 transition active:scale-[0.98]"
             >
@@ -2879,7 +2903,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약 문의 (Jiwonnote 분석 P3) ═══ */}
-      <div
+      {showStickyCta ? (
+        <div
         className="fixed bottom-0 left-0 right-[calc(100vw-100%)] bg-white z-50 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]"
         role="region"
         aria-labelledby={detailStickyCtaRegionTitleId}
@@ -3173,12 +3198,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           >
             {stickyReservationLabel}
           </button>
-          </div>
         </div>
-      </div>
+        </div>
+        </div>
+        </div>
+      ) : null}
 
       {/* ═══ 관광지 상세 바텀시트 ═══ */}
-      </div>
 
       {attractionModal && (
         <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true" aria-labelledby="attraction-modal-title">
