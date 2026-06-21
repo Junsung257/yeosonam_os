@@ -681,6 +681,31 @@ export default function GroupInquiryPage() {
     });
   }
 
+  function focusSubmitMissingField(label: string) {
+    if (label === '이름') {
+      contactNameRef.current?.focus();
+      return;
+    }
+    if (label === '연락처') {
+      contactPhoneRef.current?.focus();
+      return;
+    }
+    if (label === '개인정보 동의') {
+      privacyConsentRef.current?.focus();
+      return;
+    }
+
+    const promptByLabel: Record<string, string> = {
+      목적지: '목적지는 ',
+      인원: '인원은 ',
+      예산: '예산은 ',
+    };
+    setRfqReady(false);
+    setInput((current) => current.trim() || promptByLabel[label] || '');
+    setStatusMessage(`${label} 조건을 채팅창에서 보완해 주세요.`);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }
+
   async function registerRfq() {
     if (!validateContact()) return;
 
@@ -1280,9 +1305,24 @@ export default function GroupInquiryPage() {
                   </div>
                 </div>
                 {submitMissingLabels.length > 0 ? (
-                  <p className="mt-2 text-xs font-semibold text-gray-500">
-                    남은 항목: {submitMissingLabels.join(', ')}
-                  </p>
+                  <div
+                    data-testid="group-inquiry-submit-missing-actions"
+                    className="mt-2 flex flex-wrap items-center gap-1.5"
+                    aria-label={`남은 항목: ${submitMissingLabels.join(', ')}`}
+                  >
+                    <span className="text-xs font-semibold text-gray-500">남은 항목</span>
+                    {submitMissingLabels.map((label) => (
+                      <button
+                        key={`missing:${label}`}
+                        type="button"
+                        onClick={() => focusSubmitMissingField(label)}
+                        className="rounded-full border border-[#D1DCE8] bg-white px-2.5 py-1 text-[11px] font-extrabold text-gray-700 transition hover:border-brand/60 hover:bg-brand-light hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                        aria-label={`${label} 항목 입력 위치로 이동`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 ) : (
                   <p className="mt-2 text-xs font-semibold text-brand">
                     조건과 연락처가 준비되어 바로 견적 요청을 보낼 수 있습니다.
@@ -1310,13 +1350,34 @@ export default function GroupInquiryPage() {
               </div>
 
               {contactErrors.submit && (
-                <p
-                  id="group-inquiry-submit-error"
-                  className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
-                  role="alert"
-                >
-                  {contactErrors.submit}
-                </p>
+                <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                  <p
+                    id="group-inquiry-submit-error"
+                    role="alert"
+                  >
+                    {contactErrors.submit}
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => void openKakaoFallback('submit_error_kakao')}
+                      disabled={kakaoOpening}
+                      aria-busy={kakaoOpening}
+                      aria-describedby={kakaoActionDescriptionIds}
+                      className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-[#FEE500] px-4 text-xs font-extrabold text-[#3C1E1E] disabled:opacity-60"
+                    >
+                      <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                      {kakaoOpening ? '카톡 여는 중...' : '카톡으로 이어가기'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => focusSubmitMissingField(submitMissingLabels[0] ?? '연락처')}
+                      className="inline-flex min-h-10 items-center justify-center rounded-full border border-red-100 bg-white px-4 text-xs font-extrabold text-red-700"
+                    >
+                      입력 다시 확인
+                    </button>
+                  </div>
+                </div>
               )}
 
               <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
