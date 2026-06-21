@@ -39,6 +39,14 @@ function hasAttractionEvidence(schedule: {
     || (schedule.attraction_ids?.filter(Boolean).length ?? 0) > 0;
 }
 
+function hasAttractionKind(schedule: {
+  entity_kind?: string | null;
+  type?: string | null;
+}): boolean {
+  const kind = `${schedule.entity_kind ?? schedule.type ?? ''}`.toLowerCase();
+  return kind === 'attraction_visit' || kind === 'attraction';
+}
+
 function isKnownNonAttractionKind(schedule: {
   entity_kind?: string | null;
   type?: string | null;
@@ -48,7 +56,7 @@ function isKnownNonAttractionKind(schedule: {
 }
 
 function isNonAttractionActivity(text: string): boolean {
-  return /^(호텔|조식|중식|석식|이동|출발|도착|휴식|라운딩|공항|meal|transfer|hotel)/i.test(text);
+  return /^(호텔|조식|중식|석식|이동|출발|도착|휴식|라운딩|공항|meal|transfer|hotel)|이동|자유시간|불포함|조:|중:|석:/i.test(text);
 }
 
 /**
@@ -82,7 +90,7 @@ export function getAttractionPreviewNamesFromItinerary(
         continue;
       }
 
-      if (!evidence) continue;
+      if (!hasAttractionKind(schedule)) continue;
       const activity = (schedule.activity ?? '').replace(/^▶\s*/, '').trim();
       if (!activity || isNonAttractionActivity(activity)) continue;
       const fallback = activity.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').trim();

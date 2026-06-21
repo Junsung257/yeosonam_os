@@ -28,6 +28,7 @@ describe('getAttractionPreviewNamesFromItinerary', () => {
             { entity_kind: 'unknown', activity: '라운딩 후 중:클럽식' },
             { entity_kind: 'transfer', activity: '공항으로 이동' },
             { entity_kind: 'unknown', activity: '부 산 06:55 김해 국제공항 도착' },
+            { entity_kind: 'unknown', attraction_ids: ['bad-match'], activity: '즈엉동라운지이동→ 시내자유시간 석:불포함' },
             { entity_kind: 'meal', attraction_names: ['꿔바로우'], activity: '꿔바로우' },
           ],
         },
