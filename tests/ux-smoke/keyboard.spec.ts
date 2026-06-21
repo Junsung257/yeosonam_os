@@ -450,6 +450,10 @@ test.describe('keyboard access smoke', () => {
     await expectCanFocus(addButton, 'concierge result add button');
     await page.keyboard.press('Enter');
 
+    const mobileCartGroupInquiry = page.locator('[data-testid="concierge-mobile-cart-group-inquiry"]:visible').first();
+    await expectCanFocus(mobileCartGroupInquiry, 'concierge mobile cart group inquiry');
+    await expect(mobileCartGroupInquiry).toHaveAttribute('href', /\/group-inquiry\?.*selected_products=/);
+
     const mobileCartOpen = page.locator('[data-testid="concierge-mobile-cart-open"]:visible').first();
     await expectCanFocus(mobileCartOpen, 'concierge mobile cart open');
     await expect(mobileCartOpen, 'concierge mobile cart open starts collapsed').toHaveAttribute('aria-expanded', 'false');
