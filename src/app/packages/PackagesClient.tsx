@@ -821,6 +821,42 @@ export default function PackagesClient() {
     selectedProductNames,
   ]);
 
+  const trackPackagesAiPromptStart = useCallback((source: string, resultContext: 'empty' | 'scarce') => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.aiPromptStarted,
+      cta_type: source,
+      page_url: '/packages',
+      intent: effectiveIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      ready_count: packageCtaDecisionMetadata.ready_count,
+      missing_fields: packageCtaDecisionMetadata.missing_fields,
+      decision_summary: packageCtaDecisionMetadata.decision_summary,
+      handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+      next_action: packageCtaDecisionMetadata.next_action,
+      result_summary: packageCtaDecisionMetadata.result_summary,
+      applied_filters: packageCtaDecisionMetadata.applied_filters,
+      metadata: {
+        source,
+        result_context: resultContext,
+        ai_result_count: filteredPackages.length,
+        concierge_query: conciergeQuery,
+        ...packageCtaDecisionMetadata,
+      },
+    });
+  }, [
+    conciergeQuery,
+    effectiveIntent,
+    filteredPackages.length,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    packageCtaDecisionMetadata,
+    selectedProductNames,
+  ]);
+
   const trackCompareGroupInquiry = useCallback((source: string) => {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
@@ -1783,7 +1819,7 @@ export default function PackagesClient() {
                 )}
                 <Link
                   href={conciergeHref}
-                  onClick={() => trackEmptyStateRecoveryCta('packages_empty_state_ai')}
+                  onClick={() => trackPackagesAiPromptStart('packages_empty_state_ai', 'empty')}
                   data-testid="packages-empty-state-ai"
                   data-analytics-id="packages_empty_state_ai"
                   aria-describedby={emptyStateInquiryDescriptionIds}
@@ -1844,7 +1880,7 @@ export default function PackagesClient() {
                 )}
                 <Link
                   href={conciergeHref}
-                  onClick={() => trackScarceResultRecoveryCta('packages_scarce_result_ai')}
+                  onClick={() => trackPackagesAiPromptStart('packages_scarce_result_ai', 'scarce')}
                   data-testid="packages-scarce-result-ai"
                   aria-describedby={`${scarceResultRecoverySummaryId} ${packageListDescriptionIds}`}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-blue-200 bg-white px-4 text-[13px] font-extrabold text-[#1D4ED8] transition hover:border-brand/60 hover:text-brand"
