@@ -680,7 +680,7 @@ function TodayWorkQueue({
       tone: 'neutral',
     },
     {
-      href: '/admin/packages',
+      href: '/admin/packages?queue=review',
       label: '상품 검수',
       detail: '등록 대기 상품 발행',
       count: pendingPackagesCount,
@@ -697,6 +697,7 @@ function TodayWorkQueue({
   const activeRows = rows.filter(row => row.count > 0);
   const visibleRows = activeRows.length > 0 ? activeRows : rows;
   const priorityRow = activeRows[0];
+  const priorityBriefRows = visibleRows.slice(0, 3);
   const urgentRows = activeRows.filter(row => row.tone === 'danger' || row.tone === 'warn');
   const clearRowsCount = rows.length - activeRows.length;
   const workQueueHealthItems = [
@@ -748,6 +749,43 @@ function TodayWorkQueue({
       >
         {workQueueLeadText}
       </p>
+      <div
+        className="mt-2 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap"
+        data-testid="admin-today-work-priority-brief"
+        aria-label={priorityRow ? '오늘 업무 처리 순서' : '오늘 업무 점검 바로가기'}
+      >
+        {priorityBriefRows.map((row, index) => (
+          <Link
+            key={`priority-${row.href}`}
+            href={row.href}
+            data-testid="admin-today-work-priority-link"
+            aria-label={`${index + 1}순위 ${row.label} ${row.count}건 ${row.count > 0 ? row.action : '상태 확인'}`}
+            className="inline-flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-admin-sm border border-admin-border-mid bg-white px-2.5 py-1.5 text-[11px] font-bold text-admin-text-2 transition hover:border-admin-border-strong hover:bg-admin-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto sm:min-w-[156px]"
+            onClick={() => {
+              trackEngagement({
+                event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                page_url: '/admin',
+                metadata: {
+                  surface: 'today_work_priority_brief',
+                  action: 'priority_brief_opened',
+                  rank: index + 1,
+                  label: row.label,
+                  href: row.href,
+                  count: row.count,
+                  operation_risk: row.operationRisk,
+                  reason: row.reason,
+                  next_action: row.count > 0 ? row.action : '상태 확인',
+                  has_waiting_work: row.count > 0,
+                },
+              });
+            }}
+          >
+            <span className="shrink-0 rounded-full bg-admin-bg px-1.5 py-0.5 text-[10px] font-black text-admin-muted">{index + 1}</span>
+            <span className="min-w-0 flex-1 truncate">{row.label}</span>
+            <span className="shrink-0 text-admin-muted">{row.count > 0 ? row.action : '확인'}</span>
+          </Link>
+        ))}
+      </div>
       {priorityRow && (
         <Link
           href={priorityRow.href}
@@ -919,7 +957,7 @@ function OperatorCommandBar({
       priority: 3,
     },
     {
-      href: '/admin/packages',
+      href: '/admin/packages?queue=review',
       label: '상품 검수',
       count: pendingPackagesCount,
       helper: '발행 대기',

@@ -815,6 +815,8 @@ test.describe('keyboard access smoke', () => {
 
     await expect(page.locator('section[aria-labelledby="admin-today-work-title"]')).toBeVisible();
     await expect(page.locator('section[aria-labelledby="admin-operator-command-title"]')).toBeVisible();
+    await expect(page.locator('[data-testid="admin-today-work-priority-brief"]')).toBeVisible();
+    await expectCanFocus(page.locator('[data-testid="admin-today-work-priority-link"]:visible').first(), 'admin today work priority link');
     await expectCanFocus(todayWorkLink, 'admin today work queue link');
     await expectCanFocus(page.locator('[data-testid="admin-operator-command-link"]:visible').first(), 'admin operator command link');
   });
