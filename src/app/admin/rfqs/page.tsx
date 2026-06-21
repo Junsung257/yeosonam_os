@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { fmtNum as fmt } from '@/lib/admin-utils';
 import { PageHeader, KpiCard as PatternKpiCard } from '@/components/admin/patterns';
 import { FileQuestion, AlertCircle, Sparkles, CheckCircle2, ArrowRight, Clock } from 'lucide-react';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
@@ -170,6 +172,14 @@ function getRfqAgeClass(tone: RfqAgeSignal['tone']): string {
   return 'border-admin-border-mid bg-admin-surface-2 text-admin-muted';
 }
 
+function trackRfqAdminAction(metadata: Record<string, unknown>): void {
+  trackEngagement({
+    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+    page_url: '/admin/rfqs',
+    metadata,
+  });
+}
+
 function getRfqPriority(rfq: GroupRfq): number {
   return ACTION_QUEUE_PRIORITY.get(rfq.status) ?? ACTION_QUEUE_STATUSES.length;
 }
@@ -291,6 +301,20 @@ export default function AdminRfqsPage() {
               data-testid="admin-rfq-first-action-link"
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-3 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
               aria-label={`${firstActionRfq.rfq_code} ${firstActionLabel} 먼저 처리`}
+              onClick={() => {
+                trackRfqAdminAction({
+                  surface: 'rfqs_action_queue',
+                  action: 'first_action_opened',
+                  rfq_id: firstActionRfq.id,
+                  rfq_code: firstActionRfq.rfq_code,
+                  status: firstActionRfq.status,
+                  queue_key: `rfqs_${firstActionRfq.status}`,
+                  destination: firstActionRfq.destination,
+                  next_action: firstActionLabel,
+                  waiting_age: firstActionAgeSignal?.label,
+                  has_waiting_work: true,
+                });
+              }}
             >
               첫 건 처리
               <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -304,7 +328,19 @@ export default function AdminRfqsPage() {
                 <button
                   key={item.status}
                   type="button"
-                  onClick={() => setStatusFilter(item.status)}
+                  onClick={() => {
+                    setStatusFilter(item.status);
+                    trackRfqAdminAction({
+                      surface: 'rfqs_action_queue',
+                      action: 'select_queue',
+                      queue: `rfqs_${item.status}`,
+                      label: item.label,
+                      count: item.count,
+                      operation_risk: item.label,
+                      reason: item.description,
+                      has_waiting_work: item.count > 0,
+                    });
+                  }}
                   aria-pressed={isActive}
                   className={`rounded-admin-sm border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${
                     isActive
@@ -431,6 +467,20 @@ export default function AdminRfqsPage() {
                       href={detailHref}
                       className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-3 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                       aria-label={`${rfq.rfq_code} ${nextActionLabel}`}
+                      onClick={() => {
+                        trackRfqAdminAction({
+                          surface: 'rfqs_mobile_card',
+                          action: 'next_action_opened',
+                          rfq_id: rfq.id,
+                          rfq_code: rfq.rfq_code,
+                          status: rfq.status,
+                          queue_key: `rfqs_${rfq.status}`,
+                          destination: rfq.destination,
+                          next_action: nextActionLabel,
+                          waiting_age: ageSignal.label,
+                          has_waiting_work: ACTION_QUEUE_PRIORITY.has(rfq.status),
+                        });
+                      }}
                     >
                       {nextActionLabel}
                       <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -516,6 +566,20 @@ export default function AdminRfqsPage() {
                             href={detailHref}
                             className="inline-flex h-8 items-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-2.5 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                             aria-label={`${rfq.rfq_code} ${nextActionLabel}`}
+                            onClick={() => {
+                              trackRfqAdminAction({
+                                surface: 'rfqs_table_row',
+                                action: 'next_action_opened',
+                                rfq_id: rfq.id,
+                                rfq_code: rfq.rfq_code,
+                                status: rfq.status,
+                                queue_key: `rfqs_${rfq.status}`,
+                                destination: rfq.destination,
+                                next_action: nextActionLabel,
+                                waiting_age: ageSignal.label,
+                                has_waiting_work: ACTION_QUEUE_PRIORITY.has(rfq.status),
+                              });
+                            }}
                           >
                             {nextActionLabel}
                             <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />

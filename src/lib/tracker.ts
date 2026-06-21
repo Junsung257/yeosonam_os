@@ -345,6 +345,7 @@ function inferAdminTaskFlow(surface: string | null, action: string | null, pageU
   if (source.includes('payments')) return 'payment_operations';
   if (source.includes('bookings')) return 'booking_operations';
   if (source.includes('packages')) return 'package_operations';
+  if (source.includes('rfq')) return 'rfq_operations';
   if (source.includes('today_work') || source.includes('operator_command') || pageUrl === '/admin') return 'dashboard_triage';
   if (source.includes('jarvis') || source.includes('ai')) return 'ai_operations';
   return null;
@@ -365,6 +366,7 @@ function inferAdminQueueKey(metadata: Record<string, unknown> | undefined, surfa
     if (href.includes('mode=upcoming')) return 'bookings_upcoming';
     if (href.includes('status=pending,confirmed')) return 'bookings_active';
     if (href.includes('/admin/packages')) return 'packages_pending_review';
+    if (href.includes('/admin/rfqs')) return 'rfqs_queue';
     if (href.includes('/admin/jarvis')) return 'ai_action_review';
     if (href.includes('/admin/bookings')) return 'bookings_queue';
     if (href.includes('/admin/payments')) return 'payments_queue';
@@ -372,10 +374,12 @@ function inferAdminQueueKey(metadata: Record<string, unknown> | undefined, surfa
 
   if (surface?.includes('bulk')) return 'bulk_selection';
   if (surface?.includes('work_queue')) return surface;
+  if (surface?.includes('action_queue')) return surface;
   if (surface?.includes('command')) return surface;
   if (pageUrl?.includes('/admin/bookings')) return 'bookings_current_filter';
   if (pageUrl?.includes('/admin/packages')) return 'packages_current_filter';
   if (pageUrl?.includes('/admin/payments')) return 'payments_current_filter';
+  if (pageUrl?.includes('/admin/rfqs')) return 'rfqs_current_filter';
   if (pageUrl === '/admin') return 'dashboard_today_work';
   return null;
 }
@@ -387,6 +391,7 @@ function inferAdminCommandSource(surface: string | null, metadata: Record<string
   if (surface.includes('today_work')) return 'today_work_queue';
   if (surface.includes('command')) return 'command_bar';
   if (surface.includes('work_queue')) return 'work_queue';
+  if (surface.includes('action_queue')) return 'work_queue';
   if (surface.includes('row')) return 'table_row';
   if (surface.includes('mobile')) return 'mobile_card';
   if (surface.includes('drawer')) return 'detail_drawer';
