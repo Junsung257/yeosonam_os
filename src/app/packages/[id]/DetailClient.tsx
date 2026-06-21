@@ -1267,6 +1267,34 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       behavior: 'smooth',
     });
   };
+  const handleFirstScreenDepartureClick = () => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      product_id: id,
+      product_name: pkg.title,
+      cta_type: 'detail_first_screen_departure',
+      page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+      intent: handoffIntent,
+      budget: handoffBudgetForCta,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedHandoffProducts,
+      next_action: '첫 화면에서 출발일 선택 영역으로 이동',
+      metadata: {
+        source: 'detail_first_screen_summary',
+        selectedDate,
+        productType: pkg.product_type ?? null,
+        selectedTier: selectedTier?.period_label ?? null,
+        readiness: detailHandoffReadinessText,
+        ready_count: detailHandoffReadyCount,
+        missing_fields: detailHandoffMissingLabels,
+        decision_summary: detailFirstScreenDecisionSummaryText,
+        handoff_preview: detailCtaSummaryText,
+        next_action: '출발일 선택 후 예약 문의 또는 상담으로 이어갑니다.',
+      },
+    });
+    scrollToSection('요금표');
+  };
   const reservationNameMissing = formData.name.trim().length === 0;
   const reservationPhoneMissing = formData.phone.trim().length === 0;
   const reservationConsentMissing = !reservationConsent;
@@ -1602,6 +1630,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 <p className="mt-0.5 truncate text-[11px] font-black text-slate-900">{item.value}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={handleFirstScreenDepartureClick}
+              aria-describedby={`${detailCtaSummaryId} ${detailFirstScreenDecisionSummaryId}`}
+              className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-extrabold text-slate-800 transition active:scale-[0.98]"
+            >
+              출발일 보기
+            </button>
           </div>
         </div>
       </section>
