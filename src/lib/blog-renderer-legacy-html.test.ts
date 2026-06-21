@@ -21,8 +21,9 @@ describe('blog renderer legacy HTML cleanup', () => {
     const html = await renderBlogContentToHtml(source);
 
     expect(html).toContain('<h2>현지 여행 경비, 이렇게 절약해 보세요!</h2>');
+    expect(html).toContain('<ul><li>항공권은 발권 시기 조절:');
     expect(html).not.toContain('좋습니다.## 현지');
     expect(html).not.toContain(`<p>${longTips}</p>`);
-    expect((html.match(/<p>/g) || []).length).toBeGreaterThan(2);
+    expect((html.match(/<li>/g) || []).length).toBeGreaterThanOrEqual(5);
   });
 });

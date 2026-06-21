@@ -437,6 +437,30 @@ function splitLongPlainHtmlParagraphs(html: string): string {
   });
 }
 
+function promoteLongNumberedParagraphsToLists(html: string): string {
+  return html.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (match, body: string) => {
+    if (/<(?:p|div|ul|ol|li|table|h[1-6]|blockquote)\b/i.test(body)) return match;
+
+    const textOnly = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (textOnly.length < 520 || !/\s1[.)]\s*\S/.test(` ${textOnly}`)) return match;
+
+    const parts = body
+      .split(/\s+(?=\d+[.)]\s*[^<\n:：]{1,60}[:：])/g)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const numbered = parts.filter((part) => /^\d+[.)]\s*\S/.test(part));
+    if (numbered.length < 3) return match;
+
+    const intro = parts[0] && !/^\d+[.)]\s*\S/.test(parts[0]) ? `<p>${parts[0]}</p>\n` : '';
+    const listItems = parts
+      .filter((part) => /^\d+[.)]\s*\S/.test(part))
+      .map((part) => `<li>${part.replace(/^\d+[.)]\s*/, '')}</li>`)
+      .join('');
+
+    return `${intro}<ul>${listItems}</ul>`;
+  });
+}
+
 function unwrapDecorativeStrongParagraphs(html: string): string {
   return html.replace(/<p\b[^>]*>\s*<strong>([\s\S]*?)<\/strong>([\s\S]*?)<\/p>/gi, (match, body: string, tail: string) => {
     const textOnly = `${body} ${tail}`.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -527,7 +551,7 @@ export async function renderBlogContentToHtml(
     const normalizedHtml = normalizeRenderedHeadingArtifacts(
       normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(source))),
     );
-    const readableHtml = splitLongPlainHtmlParagraphs(normalizedHtml);
+    const readableHtml = splitLongPlainHtmlParagraphs(promoteLongNumberedParagraphsToLists(normalizedHtml));
     return proxyBlogImageUrlsInHtml(applyHtmlAccents(ensureRequiredBlogDecisionBlocksHtml(readableHtml)));
   }
 
@@ -542,7 +566,7 @@ export async function renderBlogContentToHtml(
   const normalizedHtml = normalizeRenderedHeadingArtifacts(
     normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(String(rawHtml)))),
   );
-  return proxyBlogImageUrlsInHtml(applyHtmlAccents(splitLongPlainHtmlParagraphs(normalizedHtml)));
+  return proxyBlogImageUrlsInHtml(applyHtmlAccents(splitLongPlainHtmlParagraphs(promoteLongNumberedParagraphsToLists(normalizedHtml))));
 }
 
 async function isReachableUrl(url: string, timeoutMs = 1200): Promise<boolean> {
