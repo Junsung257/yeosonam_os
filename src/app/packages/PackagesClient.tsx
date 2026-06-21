@@ -312,6 +312,7 @@ export default function PackagesClient() {
   const budgetFilterRef = useRef<HTMLSelectElement | null>(null);
   const packageListDecisionSummaryRef = useRef<HTMLElement | null>(null);
   const shouldFocusPackageResultsRef = useRef(false);
+  const packageResultsFocusTimersRef = useRef<number[]>([]);
 
   const destination = searchParams.get('destination') || '';
   const rawFilter = searchParams.get('filter') || '';
@@ -398,10 +399,18 @@ export default function PackagesClient() {
     target.scrollIntoView({ block: 'start', behavior: 'smooth' });
     target.focus({ preventScroll: true });
   }, []);
+  const clearPendingPackageResultsFocus = useCallback(() => {
+    shouldFocusPackageResultsRef.current = false;
+    packageResultsFocusTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    packageResultsFocusTimersRef.current = [];
+  }, []);
   const requestPackageResultsFocus = useCallback(() => {
     shouldFocusPackageResultsRef.current = true;
-    window.setTimeout(focusPackageResults, 80);
-    window.setTimeout(focusPackageResults, 450);
+    packageResultsFocusTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    packageResultsFocusTimersRef.current = [
+      window.setTimeout(focusPackageResults, 80),
+      window.setTimeout(focusPackageResults, 450),
+    ];
   }, [focusPackageResults]);
   const inferredIntentFromQuery = useMemo(() => inferPackageIntentFromQuery(q), [q]);
   const inferredDestinationFromQuery = useMemo(() => inferPackageDestinationFromQuery(q), [q]);
@@ -1398,10 +1407,11 @@ export default function PackagesClient() {
   const handleMoreFiltersToggle = useCallback(() => {
     setShowMoreFilters((current) => {
       const next = !current;
+      if (next) clearPendingPackageResultsFocus();
       trackPackageFilter('more_filters_panel', next ? 'open' : 'closed');
       return next;
     });
-  }, [trackPackageFilter]);
+  }, [clearPendingPackageResultsFocus, trackPackageFilter]);
 
   const closeMoreFiltersFromEscape = useCallback(() => {
     setShowMoreFilters((current) => {
@@ -1432,15 +1442,21 @@ export default function PackagesClient() {
   useEffect(() => {
     if (showMoreFilters) {
       moreFiltersWasOpenRef.current = true;
-      const focusTimer = window.setTimeout(() => moreFiltersFirstControlRef.current?.focus({ preventScroll: true }), 80);
-      return () => window.clearTimeout(focusTimer);
+      clearPendingPackageResultsFocus();
+      const focusFirstControl = () => moreFiltersFirstControlRef.current?.focus({ preventScroll: true });
+      const frameId = window.requestAnimationFrame(focusFirstControl);
+      const focusTimer = window.setTimeout(focusFirstControl, 120);
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        window.clearTimeout(focusTimer);
+      };
     }
     if (moreFiltersWasOpenRef.current) {
       moreFiltersWasOpenRef.current = false;
       window.setTimeout(() => moreFiltersToggleRef.current?.focus(), 0);
     }
     return undefined;
-  }, [showMoreFilters]);
+  }, [clearPendingPackageResultsFocus, showMoreFilters]);
 
   const handleLoadMore = useCallback(() => {
     const nextVisibleCount = Math.min(visibleCount + VISIBLE_STEP, filteredPackages.length);
