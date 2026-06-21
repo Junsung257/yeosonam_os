@@ -226,6 +226,8 @@ test.describe('keyboard access smoke', () => {
     }
 
     await expectCanFocus(firstCandidateInquiry, 'first candidate inquiry');
+    await expect(page.locator('[data-testid="packages-first-candidate-decision-summary"]:visible')).toContainText('견적 문의');
+    await expect(firstCandidateInquiry).toHaveAttribute('aria-describedby', /packages-first-candidate-decision-summary/);
     const href = await firstCandidateInquiry.getAttribute('href');
     expect(href, 'first candidate inquiry should route to group inquiry').toContain('/group-inquiry?');
     const query = new URLSearchParams(href?.split('?')[1] ?? '');

@@ -757,6 +757,11 @@ export default function PackagesClient() {
       : packageFilterNextActionText;
   const packageListDecisionSummaryText = `목록 판단 요약: 결과 ${filteredPackages.length}개, 비교 선택 ${compareIds.length}개, 다음 액션 ${packageFilterNextActionText}. ${packageListNextActionDetailText}`;
   const packageListDescriptionIds = `${packageResultSummaryId} ${packageFilterReadinessSummaryId} ${packageListDecisionSummaryId}`;
+  const firstCandidateDecisionSummaryId = 'packages-first-candidate-decision-summary';
+  const firstCandidateActionDescriptionIds = `${packageListDescriptionIds} ${firstCandidateDecisionSummaryId}`;
+  const firstCandidateDecisionSummaryText = firstVisiblePackageTitle
+    ? `첫 후보 ${firstVisiblePackageTitle}. ${firstVisibleDecisionReasonText ? `추천 근거는 ${firstVisibleDecisionReasonText}입니다. ` : ''}견적 문의에는 상품명과 핵심 조건 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}개가 함께 전달됩니다.`
+    : packageListNextActionDetailText;
   const emptyStateInquiryDescriptionIds = `${packageEmptyStateSummaryId} ${packageResultSummaryId} ${packageFilterReadinessSummaryId}`;
   const hasScarcePackageResults = filteredPackages.length > 0 && filteredPackages.length <= 3;
   const scarceResultRecoverySummaryId = 'packages-scarce-result-recovery-summary';
@@ -1967,11 +1972,18 @@ export default function PackagesClient() {
             data-testid="packages-first-candidate-actions"
             className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3"
           >
+            <p
+              id={firstCandidateDecisionSummaryId}
+              data-testid="packages-first-candidate-decision-summary"
+              className="rounded-[12px] border border-[#DCE5F0] bg-[#F8FAFC] px-3 py-2 text-[12px] font-bold leading-5 text-text-secondary sm:col-span-3"
+            >
+              {firstCandidateDecisionSummaryText}
+            </p>
             <button
               type="button"
               onClick={handleFirstVisibleCompare}
               aria-pressed={firstVisibleIsCompared}
-              aria-describedby={packageListDescriptionIds}
+              aria-describedby={firstCandidateActionDescriptionIds}
               className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border px-4 text-[13px] font-extrabold transition ${
                 firstVisibleIsCompared
                   ? 'border-brand/30 bg-brand-light text-brand'
@@ -1988,7 +2000,7 @@ export default function PackagesClient() {
             <Link
               href={firstVisibleDetailHref}
               onClick={trackFirstVisibleDetailCta}
-              aria-describedby={packageListDescriptionIds}
+              aria-describedby={firstCandidateActionDescriptionIds}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-[#D7E3F3] bg-white px-4 text-[13px] font-extrabold text-text-primary transition hover:border-brand/60 hover:text-brand"
             >
               첫 후보 상세 보기
@@ -1998,7 +2010,7 @@ export default function PackagesClient() {
               href={firstVisibleGroupInquiryHref}
               onClick={() => trackFirstVisibleGroupInquiryCta()}
               data-testid="packages-first-candidate-group-inquiry"
-              aria-describedby={packageListDescriptionIds}
+              aria-describedby={firstCandidateActionDescriptionIds}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
             >
               첫 후보 견적 문의
