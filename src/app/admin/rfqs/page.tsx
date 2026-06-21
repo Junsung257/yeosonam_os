@@ -188,83 +188,153 @@ export default function AdminRfqsPage() {
             <p className="text-admin-muted text-admin-base">해당하는 RFQ가 없습니다.</p>
           </div>
         ) : (
-          <table className="admin-data-table">
-            <thead>
-              <tr>
-                {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '다음 액션', '등록일'].map(
-                  (h) => (
-                    <th key={h}>{h}</th>
-                  )
-                )}
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <div className="divide-y divide-admin-border md:hidden">
               {filteredRfqs.map((rfq) => {
                 const handoffBadgeText = getHandoffBadgeText(rfq);
                 const detailHref = `/admin/rfqs/${rfq.id}`;
                 const nextActionLabel = getNextActionLabel(rfq.status);
 
                 return (
-                  <tr key={rfq.id}>
-                    <td className="font-mono text-admin-xs text-admin-muted">
-                      <Link
-                        href={detailHref}
-                        className="font-semibold text-indigo-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-                        aria-label={`${rfq.rfq_code} 상세 보기`}
-                      >
-                        {rfq.rfq_code}
-                      </Link>
-                    </td>
-                    <td className="text-admin-text">
-                      {rfq.customer_name || '—'}
-                    </td>
-                    <td className="font-medium text-admin-text">
-                      <div>{rfq.destination}</div>
-                      {handoffBadgeText && (
-                        <span
-                          data-testid="admin-rfq-handoff-badge"
-                          className="mt-1 inline-flex w-fit rounded-admin-xs bg-admin-surface-2 px-2 py-0.5 text-admin-xs font-semibold text-admin-muted"
+                  <article key={rfq.id} data-testid="admin-rfq-mobile-card" className="space-y-3 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link
+                          href={detailHref}
+                          className="font-mono text-admin-xs font-semibold text-indigo-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                          aria-label={`${rfq.rfq_code} 상세 보기`}
                         >
-                          {handoffBadgeText}
-                        </span>
-                      )}
-                    </td>
-                    <td className="text-admin-muted admin-num">
-                      {rfq.adult_count + rfq.child_count}명
-                    </td>
-                    <td className="text-admin-text admin-num">
-                      {fmt(rfq.budget_per_person)}원
-                    </td>
-                    <td>
+                          {rfq.rfq_code}
+                        </Link>
+                        <p className="mt-1 truncate text-admin-base font-bold text-admin-text">
+                          {rfq.destination}
+                        </p>
+                      </div>
                       <span
-                        className={`inline-flex px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${
+                        className={`shrink-0 inline-flex px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${
                           STATUS_COLORS[rfq.status] || 'bg-admin-surface-2 text-admin-muted'
                         }`}
                       >
                         {STATUS_LABELS[rfq.status] || rfq.status}
                       </span>
-                    </td>
-                    <td className="text-admin-muted admin-num">
-                      {rfq.bid_count ?? 0}
-                    </td>
-                    <td>
-                      <Link
-                        href={detailHref}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-2.5 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-                        aria-label={`${rfq.rfq_code} ${nextActionLabel}`}
+                    </div>
+
+                    {handoffBadgeText && (
+                      <span
+                        data-testid="admin-rfq-handoff-badge"
+                        className="inline-flex w-fit rounded-admin-xs bg-admin-surface-2 px-2 py-0.5 text-admin-xs font-semibold text-admin-muted"
                       >
-                        {nextActionLabel}
-                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                      </Link>
-                    </td>
-                    <td className="text-admin-muted text-admin-xs admin-num">
-                      {rfq.created_at.slice(0, 10)}
-                    </td>
-                  </tr>
+                        {handoffBadgeText}
+                      </span>
+                    )}
+
+                    <dl className="grid grid-cols-2 gap-2 text-admin-xs">
+                      {[
+                        ['고객', rfq.customer_name || '—'],
+                        ['인원', `${rfq.adult_count + rfq.child_count}명`],
+                        ['예산', `${fmt(rfq.budget_per_person)}원`],
+                        ['입찰', `${rfq.bid_count ?? 0}건`],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-admin-xs bg-admin-surface-2 px-2.5 py-2">
+                          <dt className="font-semibold text-admin-muted">{label}</dt>
+                          <dd className="mt-0.5 truncate font-bold text-admin-text-2">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+
+                    <Link
+                      href={detailHref}
+                      className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-3 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                      aria-label={`${rfq.rfq_code} ${nextActionLabel}`}
+                    >
+                      {nextActionLabel}
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
+                  </article>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+              <table className="admin-data-table min-w-[920px]">
+                <thead>
+                  <tr>
+                    {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '다음 액션', '등록일'].map(
+                      (h) => (
+                        <th key={h}>{h}</th>
+                      )
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRfqs.map((rfq) => {
+                    const handoffBadgeText = getHandoffBadgeText(rfq);
+                    const detailHref = `/admin/rfqs/${rfq.id}`;
+                    const nextActionLabel = getNextActionLabel(rfq.status);
+
+                    return (
+                      <tr key={rfq.id}>
+                        <td className="font-mono text-admin-xs text-admin-muted">
+                          <Link
+                            href={detailHref}
+                            className="font-semibold text-indigo-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                            aria-label={`${rfq.rfq_code} 상세 보기`}
+                          >
+                            {rfq.rfq_code}
+                          </Link>
+                        </td>
+                        <td className="text-admin-text">
+                          {rfq.customer_name || '—'}
+                        </td>
+                        <td className="font-medium text-admin-text">
+                          <div>{rfq.destination}</div>
+                          {handoffBadgeText && (
+                            <span
+                              data-testid="admin-rfq-handoff-badge"
+                              className="mt-1 inline-flex w-fit rounded-admin-xs bg-admin-surface-2 px-2 py-0.5 text-admin-xs font-semibold text-admin-muted"
+                            >
+                              {handoffBadgeText}
+                            </span>
+                          )}
+                        </td>
+                        <td className="text-admin-muted admin-num">
+                          {rfq.adult_count + rfq.child_count}명
+                        </td>
+                        <td className="text-admin-text admin-num">
+                          {fmt(rfq.budget_per_person)}원
+                        </td>
+                        <td>
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${
+                              STATUS_COLORS[rfq.status] || 'bg-admin-surface-2 text-admin-muted'
+                            }`}
+                          >
+                            {STATUS_LABELS[rfq.status] || rfq.status}
+                          </span>
+                        </td>
+                        <td className="text-admin-muted admin-num">
+                          {rfq.bid_count ?? 0}
+                        </td>
+                        <td>
+                          <Link
+                            href={detailHref}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-2.5 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                            aria-label={`${rfq.rfq_code} ${nextActionLabel}`}
+                          >
+                            {nextActionLabel}
+                            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                          </Link>
+                        </td>
+                        <td className="text-admin-muted text-admin-xs admin-num">
+                          {rfq.created_at.slice(0, 10)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
