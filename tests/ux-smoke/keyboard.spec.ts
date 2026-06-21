@@ -889,6 +889,31 @@ test.describe('keyboard access smoke', () => {
 
     await expectCanFocus(mobileEditAction, 'admin package mobile edit action');
 
+    const expectMobileActionContext = async (action: ReturnType<typeof page.locator>, label: string) => {
+      await expect(action, `${label} should include the visible decision summary`).toHaveAttribute(
+        'aria-describedby',
+        /admin-package-mobile-decision-summary-/,
+      );
+
+      const describedBy = (await action.getAttribute('aria-describedby')) ?? '';
+      const describedByIds = describedBy.split(/\s+/).filter(Boolean);
+      const nextActionSummaryId = describedByIds.find(id => id.startsWith('admin-package-mobile-next-action-summary-'));
+      const riskSummaryId = describedByIds.find(id => id.startsWith('admin-package-mobile-risk-summary-'));
+
+      expect(nextActionSummaryId, `${label} should describe the visible next action summary`).toBeTruthy();
+      expect(riskSummaryId, `${label} should describe the visible risk summary`).toBeTruthy();
+
+      if (nextActionSummaryId) {
+        await expect(page.locator(`[id="${nextActionSummaryId}"]`), `${label} next action summary should be visible`).toContainText('다음 액션');
+      }
+
+      if (riskSummaryId) {
+        await expect(page.locator(`[id="${riskSummaryId}"]`), `${label} risk summary should be visible`).toContainText('운영 사유');
+      }
+    };
+
+    await expectMobileActionContext(mobileEditAction, 'admin package mobile edit action');
+
     const mobilePrimaryAction = page.locator(
       [
         '[data-testid="admin-package-mobile-review-action"]:visible',
@@ -898,7 +923,11 @@ test.describe('keyboard access smoke', () => {
       ].join(', '),
     ).first();
     await expectCanFocus(mobilePrimaryAction, 'admin package mobile primary action');
-    await expectCanFocus(page.locator('[data-testid="admin-package-mobile-more-action"]:visible').first(), 'admin package mobile more action');
+    await expectMobileActionContext(mobilePrimaryAction, 'admin package mobile primary action');
+
+    const mobileMoreAction = page.locator('[data-testid="admin-package-mobile-more-action"]:visible').first();
+    await expectCanFocus(mobileMoreAction, 'admin package mobile more action');
+    await expectMobileActionContext(mobileMoreAction, 'admin package mobile more action');
   });
 
   test('admin payment command queue cards are keyboard focusable', async ({ page }) => {

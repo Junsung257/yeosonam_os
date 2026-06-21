@@ -3012,8 +3012,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                         : '상세 확인';
               const mobileCardSummaryId = `admin-package-mobile-card-summary-${pkg.id}`;
               const mobileDecisionSummaryId = `admin-package-mobile-decision-summary-${pkg.id}`;
+              const mobileNextActionSummaryId = `admin-package-mobile-next-action-summary-${pkg.id}`;
+              const mobileRiskSummaryId = `admin-package-mobile-risk-summary-${pkg.id}`;
               const mobileActionDescriptionId = `admin-package-mobile-actions-${pkg.id}`;
-              const mobileCardDescriptionIds = `${mobileCardSummaryId} ${mobileDecisionSummaryId}`;
+              const mobileCardDescriptionIds = `${mobileCardSummaryId} ${mobileDecisionSummaryId} ${mobileNextActionSummaryId} ${mobileRiskSummaryId}`;
               const mobileActionStatusDescriptionId = `${mobileCardDescriptionIds} ${mobileActionDescriptionId} admin-package-bulk-status`;
               const isPackageSelected = selected?.id === pkg.id;
               const region = pkg.products?.departure_region
@@ -3114,6 +3116,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   </div>
 
                   <div
+                    id={mobileNextActionSummaryId}
                     data-testid="admin-package-mobile-next-action-summary"
                     aria-label={`다음 액션 ${nextOperationLabel}. 운영 사유 ${mobilePackageOperationRiskLabel}. ${mobilePackageActionReason}`}
                     className="mt-3 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
@@ -3123,6 +3126,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                       <span className="text-[12px] font-black text-admin-text-2">{nextOperationLabel}</span>
                     </div>
                     <p
+                      id={mobileRiskSummaryId}
                       data-testid="admin-package-mobile-risk-summary"
                       className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
                     >
