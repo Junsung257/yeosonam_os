@@ -2219,6 +2219,39 @@ export default function AdminPage({
       >
         {dashboardStatusMessage}
       </p>
+      {dashboardStatusMessage && (
+        <div
+          data-testid="admin-dashboard-visible-status"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className={`rounded-admin-md border px-4 py-3 text-admin-xs font-semibold shadow-admin-xs ${
+            dashboardStatusMessage.includes('실패')
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : dashboardStatusMessage.includes('처리 중') || dashboardStatusMessage.includes('새로고침')
+                ? 'border-blue-100 bg-blue-50 text-blue-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>{dashboardStatusMessage}</span>
+            {dashboardStatusMessage.includes('실패') && (
+              <button
+                type="button"
+                onClick={() => {
+                  const m = period === '3m' ? 3 : period === '12m' ? 12 : 6;
+                  setIsRefreshing(true);
+                  loadAll(m);
+                }}
+                disabled={isRefreshing || isLoading}
+                className="rounded-admin-sm border border-red-200 bg-white px-3 py-1.5 text-[11px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                다시 불러오기
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {/* BUG-4: fetch 실패 배너 */}
       {fetchErrors.length > 0 && (
         <div
