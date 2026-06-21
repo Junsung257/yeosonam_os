@@ -31,6 +31,19 @@ function todayYMD(): string {
   return dateToYMD(new Date());
 }
 
+function formatDateLabel(ymd: string): string {
+  const [year, month, day] = ymd.split('-').map(Number);
+  if (!year || !month || !day) return ymd;
+  return `${year}년 ${month}월 ${day}일`;
+}
+
+function formatPriceLabel(price: number): string | null {
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const value = price / 10000;
+  const label = (Math.floor(value * 10) / 10).toFixed(1);
+  return `${label.endsWith('.0') ? label.slice(0, -2) : label}만원`;
+}
+
 export default function DepartureCalendar({ priceDates, selectedDate, onSelect, initialMonth }: Props) {
   const [pastToast, setPastToast] = useState<string | null>(null);
 
@@ -93,6 +106,8 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
                 key={ym}
                 type="button"
                 onClick={() => setViewMonth(ym)}
+                aria-pressed={isActive}
+                aria-label={`${yy}년 ${mm}월 출발일 ${count}개 보기${isActive ? ', 현재 표시 중' : ''}`}
                 className={`text-[11px] px-2.5 py-1 rounded-full border transition ${
                   isActive
                     ? 'bg-brand text-white border-brand font-bold shadow-sm'
@@ -111,7 +126,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
         <button
           type="button"
           onClick={() => shiftMonth(-1)}
-          className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center transition"
+          className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-brand/15"
           aria-label="이전 달"
         >
           <ChevronLeft size={18} />
@@ -120,7 +135,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
         <button
           type="button"
           onClick={() => shiftMonth(1)}
-          className="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center transition"
+          className="flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-brand/15"
           aria-label="다음 달"
         >
           <ChevronRight size={18} />
@@ -153,6 +168,15 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
           const isLowest = pd && minPrice > 0 && pd.price === minPrice;
           const isConfirmed = pd?.confirmed;
           const dow = cell.dow;
+          const priceLabel = pd ? formatPriceLabel(pd.price) : null;
+          const dateAriaLabel = [
+            formatDateLabel(ymd),
+            isPast ? '지난 날짜' : isAvailable ? '출발 가능' : '출발일 없음',
+            priceLabel ? `가격 ${priceLabel}` : null,
+            isConfirmed ? '출발 확정' : null,
+            isLowest && !isPast ? '최저가' : null,
+            isSelected ? '선택됨' : null,
+          ].filter(Boolean).join(', ');
 
           const baseTextColor = isPast
             ? 'text-slate-300'
@@ -189,6 +213,9 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
                   onSelect(ymd);
                 }
               }}
+              aria-label={dateAriaLabel}
+              aria-pressed={isAvailable && !isPast ? isSelected : undefined}
+              aria-disabled={!isAvailable || isPast}
               className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs transition relative ${bg} ${border} ${!isAvailable || isPast ? 'cursor-default' : 'cursor-pointer'}`}
             >
               <span className={`text-sm font-semibold ${isSelected ? 'text-white' : baseTextColor}`}>
