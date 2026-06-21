@@ -2072,12 +2072,31 @@ function ResultComparisonTable({
               const categoryLabel = category === 'DYNAMIC' ? '실시간 조건' : '고정 패키지';
               const detailHref = category === 'FIXED' ? `/packages/${encodeURIComponent(item.product_id)}` : null;
               const groupInquiryHref = getGroupInquiryHref(item);
+              const rowHandoffSummaryId = `concierge-comparison-handoff-${item.product_id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+              const rowHandoffSummaryText = `상담 전달 조건: 상품 ${item.product_name}, 예상가 ${money(item.price)}, 유형 ${categoryLabel}.`;
+              const rowActionDescriptionIds = `${summaryId} ${rowHandoffSummaryId}`;
 
               return (
                 <tr key={item.product_id} className="align-top">
                   <th scope="row" className="max-w-[220px] px-4 py-3 font-bold text-text-primary">
                     <span className="block line-clamp-2">{item.product_name}</span>
                     <span className="mt-1 block text-[11px] font-bold text-text-secondary">{API_LABELS[item.api_name] ?? item.api_name}</span>
+                    <span
+                      id={rowHandoffSummaryId}
+                      data-testid="concierge-comparison-handoff-summary"
+                      aria-label={rowHandoffSummaryText}
+                      className="mt-2 flex flex-wrap gap-1"
+                    >
+                      <span className="rounded-full bg-brand-light px-2 py-0.5 text-[10px] font-extrabold text-brand">
+                        상담 전달
+                      </span>
+                      <span className="rounded-full bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-text-secondary ring-1 ring-[#E5ECF3]">
+                        상품
+                      </span>
+                      <span className="rounded-full bg-[#F8FAFC] px-2 py-0.5 text-[10px] font-bold text-text-primary ring-1 ring-[#E5ECF3]">
+                        {money(item.price)}
+                      </span>
+                    </span>
                   </th>
                   <td className="px-3 py-3">
                     <span className="inline-flex rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-secondary">
@@ -2095,7 +2114,7 @@ function ResultComparisonTable({
                           href={detailHref}
                           onClick={() => onViewDetail(item)}
                           aria-label={`${item.product_name} 비교표에서 상세 보기`}
-                          aria-describedby={summaryId}
+                          aria-describedby={rowActionDescriptionIds}
                           className="inline-flex h-9 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[12px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
                         >
                           상세
@@ -2106,7 +2125,7 @@ function ResultComparisonTable({
                         onClick={() => onGroupInquiry(item)}
                         data-testid="concierge-comparison-group-inquiry"
                         aria-label={`${item.product_name} 비교표에서 단체 견적 문의`}
-                        aria-describedby={summaryId}
+                        aria-describedby={rowActionDescriptionIds}
                         className="inline-flex h-9 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[12px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
                       >
                         견적
@@ -2117,7 +2136,7 @@ function ResultComparisonTable({
                           void onAdd(item);
                         }}
                         aria-label={`${item.product_name} 비교표에서 담기`}
-                        aria-describedby={summaryId}
+                        aria-describedby={rowActionDescriptionIds}
                         className="h-9 rounded-full bg-brand px-3 text-[12px] font-bold text-white hover:bg-brand-dark"
                       >
                         담기
@@ -2126,7 +2145,7 @@ function ResultComparisonTable({
                         type="button"
                         onClick={() => onConsult(item)}
                         aria-label={`${item.product_name} 비교표에서 카카오톡 상담`}
-                        aria-describedby={summaryId}
+                        aria-describedby={rowActionDescriptionIds}
                         className="flex size-9 items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E]"
                       >
                         <MessageCircle size={17} />
