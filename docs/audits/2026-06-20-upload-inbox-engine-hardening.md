@@ -225,3 +225,36 @@ customerReadyOffline: 0
 ```
 
 The remaining blocked row is a Nha Trang fam-tour notice with no sale price, departure date, or customer itinerary. This is an intentional safe block. This is still extraction/offline evidence: registration and customer mobile/A4 proof require a DB preflight pass and `--register --audit-mobile` for saved package ids.
+
+## 2026-06-21 Follow-up: Full Inbox Extraction And False-Split Repair
+
+The full inbox replay against `C:\Users\admin\Downloads\여행일정표` exposed three additional engine-level gaps:
+
+- Some table-heavy `.hwp` files produced valid `hwp5html` output, but `index.xhtml` could be written outside the exact `--output/html` path. The extractor now searches the HTML output tree recursively.
+- Three real supplier HWP files had usable customer text slightly below the previous 1,200-character meaningful-text threshold. The threshold is now 900 meaningful characters plus at least 8 meaningful lines, which still rejects placeholder-only `<표>/<그림>` output.
+- Single-product PDF/HWP sources were sometimes split into a title pseudo-product and a body product. If catalog recovery finds only one customer-itinerary-bearing section, it now returns no split and lets the normal single-product registration path process the whole source.
+
+The same pass also promoted two source-backed parser rules:
+
+- Repeated bracketed day-only supplier sections such as `[ 노옵션+노팁 ] 계림/... 5일 - LJ` and `[ 노옵션+노팁 ] 계림/... 6일 - LJ` are now split into separate products, with the title's `5일/6일` duration taking priority over a shared top price-table prefix such as `화(3박5일) / 금(4박6일)`.
+- Code-first IATA flight rows such as `BX381 PUS - MFM 21:55 - 00:55+1 / BX382 MFM - PUS 01:55 - 06:30` now recover source-backed outbound and inbound flight segments.
+
+Latest full offline result:
+
+```text
+totalFiles: 157
+extracted: 129
+extractionFailed: 0
+duplicateSkipped: 28
+products: 204
+publishableOffline: 189
+blocked: 15
+blockedByCategory:
+  price_missing: 12
+  price_and_itinerary_missing: 2
+  itinerary_missing: 1
+customerReadyOffline: 0
+mobileLandingVerified: false
+```
+
+The remaining blocked rows are safe blocks unless a future source-backed pairing rule proves the missing fields. In particular, standalone schedule/confirmation documents with no sale price must not be opened, and standalone fare sheets with no customer itinerary must not be opened. The one remaining `itinerary_missing` row is a split-source candidate (`큐슈 조석` fare sheet plus separate itinerary sheet), not a publishable customer product by itself.

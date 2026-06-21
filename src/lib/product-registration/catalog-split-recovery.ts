@@ -9,12 +9,19 @@ const KOREAN_DURATION_RE = /(\d+)\s*박\s*(\d+)\s*일/;
 const MOJIBAKE_NIGHT_RE = /(\d+)\s*諛/;
 const DAY_ONLY_DURATION_RE = /(?:^|[^\d])(\d{1,2})\s*일(?:\s*\/\s*(\d{1,2})\s*일)?(?:$|[^\d])/u;
 const PRICE_TABLE_LINE_RE = /(?:\d{1,2}[./]\d{1,2}|\d{1,2}\s+\d{1,2}).*\d{1,3}(?:,\d{3})+/;
+const KOREAN_DAY_ONLY_DURATION_RE = /(?:^|[^\d])(\d{1,2})\s*일(?:$|[^\d])/u;
+const KOREAN_DAY_MARKER_RE = /(?:^|\n)\s*(?:제\s*\d{1,2}\s*일|\d{1,2}\s*일차)(?=$|[\s:])/u;
+const BRACKETED_DAY_ONLY_PRODUCT_HEADER_RE =
+  /^\s*\[[^\]\n]{2,100}\]\s*[^\n]{2,180}?(?:\d{1,2})\s*일\s*(?:[-–]\s*[A-Z]{2,3})?\s*$/u;
 const CUSTOMER_SCHEDULE_DAY_MARKER_RE =
   /(?:^|\n)\s*(?:DAY\s*\d{1,2}|제\s*\d{1,2}\s*(?:일차|일)|제\s*일\s*\d{1,2}|일\s*\d{1,2}|\d{1,2}\s*일(?:차)?)(?:\b|[\s가-힣])/i;
 const FLIGHT_CUSTOMER_TEXT_RE = /\b[A-Z]{2}\d{2,4}\b[\s\S]{0,120}(?:공항|출발|도착)|(?:공항|출발|도착)[\s\S]{0,120}\b[A-Z]{2}\d{2,4}\b/;
 
 function hasDurationSignal(line: string): boolean {
-  return KOREAN_DURATION_RE.test(line) || DAY_ONLY_DURATION_RE.test(line) || MOJIBAKE_NIGHT_RE.test(line);
+  return KOREAN_DURATION_RE.test(line)
+    || DAY_ONLY_DURATION_RE.test(line)
+    || (KOREAN_DAY_ONLY_DURATION_RE.test(line) && (BRACKETED_DAY_ONLY_PRODUCT_HEADER_RE.test(line) || /\bPKG\b/i.test(line)))
+    || MOJIBAKE_NIGHT_RE.test(line);
 }
 
 function hasReadableTitleText(line: string): boolean {
@@ -29,7 +36,7 @@ function hasReadableTitleText(line: string): boolean {
 function usableDurationTitle(line: string): boolean {
   if (!hasDurationSignal(line)) return false;
   if (PRICE_TABLE_LINE_RE.test(line)) return false;
-  if (KOREAN_DURATION_RE.test(line) || DAY_ONLY_DURATION_RE.test(line)) {
+  if (KOREAN_DURATION_RE.test(line) || DAY_ONLY_DURATION_RE.test(line) || KOREAN_DAY_ONLY_DURATION_RE.test(line)) {
     return hasReadableTitleText(line);
   }
   return true;
@@ -61,6 +68,13 @@ function inferTitle(section: string, index: number): string {
 }
 
 function inferTripStyle(title: string, section?: string): { nights?: number; duration?: number; tripStyle?: string } {
+  const titleKoreanDayOnly = title.match(KOREAN_DAY_ONLY_DURATION_RE);
+  if (!KOREAN_DURATION_RE.test(title) && titleKoreanDayOnly && BRACKETED_DAY_ONLY_PRODUCT_HEADER_RE.test(title)) {
+    const days = Number(titleKoreanDayOnly[1]);
+    return Number.isFinite(days) && days > 1
+      ? { duration: days, tripStyle: `${days}일` }
+      : {};
+  }
   const match = title.match(KOREAN_DURATION_RE) ?? section?.match(KOREAN_DURATION_RE);
   if (match) {
     return {
@@ -74,6 +88,13 @@ function inferTripStyle(title: string, section?: string): { nights?: number; dur
     const days = Number(dayOnly[2] ?? dayOnly[1]);
     return Number.isFinite(days) && days > 1
       ? { nights: Math.max(0, days - 1), duration: days, tripStyle: `${days - 1}박${days}일` }
+      : {};
+  }
+  const koreanDayOnly = title.match(KOREAN_DAY_ONLY_DURATION_RE);
+  if (koreanDayOnly) {
+    const days = Number(koreanDayOnly[1]);
+    return Number.isFinite(days) && days > 1
+      ? { duration: days, tripStyle: `${days}일` }
       : {};
   }
   const mojibakeNight = title.match(MOJIBAKE_NIGHT_RE);
@@ -97,18 +118,46 @@ function inferDestination(title: string): string | undefined {
 
 function hasCustomerScheduleEvidence(sectionRawText: string): boolean {
   if (sectionRawText.length < 350) return false;
-  if (CUSTOMER_SCHEDULE_DAY_MARKER_RE.test(sectionRawText)) return true;
+  if (CUSTOMER_SCHEDULE_DAY_MARKER_RE.test(sectionRawText) || KOREAN_DAY_MARKER_RE.test(sectionRawText)) return true;
   return FLIGHT_CUSTOMER_TEXT_RE.test(sectionRawText);
 }
 
 function hasCustomerDayMarkerEvidence(sectionRawText: string): boolean {
-  return sectionRawText.length >= 350 && CUSTOMER_SCHEDULE_DAY_MARKER_RE.test(sectionRawText);
+  return sectionRawText.length >= 350 && (CUSTOMER_SCHEDULE_DAY_MARKER_RE.test(sectionRawText) || KOREAN_DAY_MARKER_RE.test(sectionRawText));
+}
+
+function splitRepeatedDayOnlyProductHeaders(rawText: string): { sharedPrefix: string; sections: string[] } | null {
+  const lines = rawText.replace(/\r\n/g, '\n').split('\n');
+  const starts: number[] = [];
+  let offset = 0;
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? '';
+    const lookahead = lines.slice(index, index + 90).join('\n');
+    if (BRACKETED_DAY_ONLY_PRODUCT_HEADER_RE.test(line.trim()) && KOREAN_DAY_MARKER_RE.test(lookahead)) {
+      starts.push(offset);
+    }
+    offset += line.length + 1;
+  }
+
+  if (starts.length < 2) return null;
+  return {
+    sharedPrefix: rawText.slice(0, starts[0]).trim(),
+    sections: starts.map((start, index) => rawText.slice(start, starts[index + 1] ?? rawText.length).trim()),
+  };
 }
 
 export function recoverCatalogSplitFromRawText(rawText: string | null | undefined): MultiProductResult[] {
   if (!rawText?.trim()) return [];
 
-  const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(rawText);
+  let { sharedPrefix, sections } = splitCatalogByItineraryHeaders(rawText);
+  if (sections.length < 2) {
+    const repeatedDayOnlySplit = splitRepeatedDayOnlyProductHeaders(rawText);
+    if (repeatedDayOnlySplit) {
+      sharedPrefix = repeatedDayOnlySplit.sharedPrefix;
+      sections = repeatedDayOnlySplit.sections;
+    }
+  }
   if (sections.length < 2) return [];
 
   const products = sections.map((section, index) => {
@@ -140,10 +189,12 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
     return hasCustomerDayMarkerEvidence(ownSection || (product.sectionRawText ?? ''));
   });
   if (productsWithCustomerDayEvidence.length >= 2) return productsWithCustomerDayEvidence;
+  if (productsWithCustomerDayEvidence.length === 1) return [];
 
   const productsWithCustomerScheduleEvidence = products.filter((product, index) => {
     const ownSection = standardizeKnownMojibakeSupplierText(sections[index] ?? '');
     return hasCustomerScheduleEvidence(ownSection || (product.sectionRawText ?? ''));
   });
+  if (productsWithCustomerScheduleEvidence.length === 1) return [];
   return productsWithCustomerScheduleEvidence.length >= 2 ? productsWithCustomerScheduleEvidence : products;
 }

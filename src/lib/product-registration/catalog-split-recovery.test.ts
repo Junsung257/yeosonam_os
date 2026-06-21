@@ -125,6 +125,125 @@ PKG
     expect(products[1].extractedData.duration).toBe(6);
   });
 
+  it('splits repeated bracketed day-only supplier schedules into separate products', () => {
+    const raw = `항공스케줄
+2026년 4월 3일 ~ 5월 30일 [ 매주 화, 금 출발 ]
+화(3박5일) / 금(4박6일)
+부산-계림 LJ779 22:05 - 01:05+1
+계림-부산 LJ780 02:05 - 06:40
+출 발 일
+4/7, 14, 21
+1,229,000
+
+[ 노옵션+노팁 ] 계림/침주 고의령 & 망산 5일 - LJ
+출 발 일 자
+26년 4월 3일 ~ 5월 30일 (화요일 출발)
+상 품 가
+요금표 참조
+날 짜
+지 역
+교통편
+시 간
+세 부 사 항
+식 사
+제1일
+부 산
+계 림
+LJ779
+22:05
+01:05
+부산 김해국제공항 출발
+제2일
+계 림
+호텔 조식 후 고의령 관광
+제3일
+침 주
+망산 풍경구 관광
+제4일
+망 산
+계림으로 이동 후 양강사호 유람선
+제5일
+계 림
+부 산
+LJ780
+02:05
+06:40
+계림 국제공항 출발
+
+[ 노옵션+노팁 ] 계림/침주 고의령 & 망산 6일 - LJ
+출 발 일 자
+26년 4월 3일 ~ 5월 30일 (금요일 출발)
+상 품 가
+요금표 참조
+날 짜
+지 역
+교통편
+시 간
+세 부 사 항
+식 사
+제1일
+부 산
+계 림
+LJ779
+22:05
+01:05
+부산 김해국제공항 출발
+제2일
+계 림
+호텔 조식 후 고의령 관광
+제3일
+침 주
+망산 풍경구 관광
+제4일
+망 산
+계림 이동
+제5일
+계 림
+자유시간
+제6일
+계 림
+부 산
+LJ780
+02:05
+06:40
+계림 국제공항 출발`;
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(2);
+    expect(products.map(product => product.extractedData.duration)).toEqual([5, 6]);
+    expect(products[0]?.sectionRawText).toContain('화(3박5일)');
+    expect(products[1]?.sectionRawText).toContain('화(3박5일)');
+    expect(products[0]?.sectionRawText).not.toContain('망산 6일');
+    expect(products[1]?.sectionRawText).toContain('망산 6일');
+  });
+
+  it('does not split a single PDF itinerary into title and body pseudo-products', () => {
+    const raw = `치앙마이+치앙라이 노팁노옵션 4박6일
+출 발 일 4/26 - 5/1 (4박6일) 여행 인원 최소출발 인원 6명 이상
+판 매 가 659,000원
+일 자 지 역 항공편 시 간 일 정 식 사
+김해 국제공항 집결 후 출국 수속
+부 산 16:00
+김해 국제공항 출발
+ZE917 18:55
+태국 치앙마이 국제공항 도착 후 가이드 미팅
+치앙마이 22:10 석:불포함
+제1일차 호텔 CHECK - IN 및 휴식
+호텔 조식 후 치앙라이로 이동
+제2일차 치앙라이 전용차량 전 일
+치앙마이로 복귀
+제3일차 치앙마이 전용차량 전 일
+도이수텝 사원 관광
+제4일차 치앙마이 전용차량 전 일
+쌈깜팽 민예마을 관광
+제5일차 치앙마이 전용차량 전 일
+공항으로 이동
+제6일차 ZE918 06:05 부산 김해 공항 도착`;
+
+    expect(recoverCatalogSplitFromRawText(raw)).toHaveLength(0);
+  });
+
   it('splits Xian/Huashan BX catalog by every PKG block before price and itinerary recovery', async () => {
     const raw = readFileSync(
       join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/xian-huashan-bx-multiproduct.txt'),
