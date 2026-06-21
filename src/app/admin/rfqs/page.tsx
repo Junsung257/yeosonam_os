@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { fmtNum as fmt } from '@/lib/admin-utils';
 import { PageHeader, KpiCard as PatternKpiCard } from '@/components/admin/patterns';
-import { FileQuestion, AlertCircle, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
+import { FileQuestion, AlertCircle, Sparkles, CheckCircle2, ArrowRight, Clock } from 'lucide-react';
 
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
@@ -90,6 +90,13 @@ const ACTION_QUEUE_STATUSES = [
 ];
 
 const ACTION_QUEUE_PRIORITY = new Map(ACTION_QUEUE_STATUSES.map((item, index) => [item.status, index]));
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type RfqAgeSignal = {
+  label: string;
+  description: string;
+  tone: 'fresh' | 'watch' | 'stale' | 'unknown';
+};
 
 function getRequirementText(rfq: GroupRfq, key: string): string | null {
   const value = rfq.custom_requirements?.[key];
@@ -120,6 +127,47 @@ function getHandoffBadgeText(rfq: GroupRfq): string | null {
 
 function getNextActionLabel(status: string): string {
   return NEXT_ACTION_LABELS[status] ?? '상세 확인';
+}
+
+function getRfqAgeSignal(createdAt: string): RfqAgeSignal {
+  const createdTime = Date.parse(createdAt);
+  if (!Number.isFinite(createdTime)) {
+    return {
+      label: '접수일 확인',
+      description: '접수 시간을 읽을 수 없어 상세에서 확인이 필요합니다.',
+      tone: 'unknown',
+    };
+  }
+
+  const days = Math.max(0, Math.floor((Date.now() - createdTime) / DAY_MS));
+  if (days === 0) {
+    return {
+      label: '오늘 접수',
+      description: '오늘 들어온 RFQ입니다.',
+      tone: 'fresh',
+    };
+  }
+
+  if (days >= 3) {
+    return {
+      label: `${days}일 경과`,
+      description: '고객 응답 지연 리스크가 있어 먼저 확인이 필요합니다.',
+      tone: 'stale',
+    };
+  }
+
+  return {
+    label: `${days}일 경과`,
+    description: '하루 이상 대기 중인 RFQ입니다.',
+    tone: 'watch',
+  };
+}
+
+function getRfqAgeClass(tone: RfqAgeSignal['tone']): string {
+  if (tone === 'stale') return 'border-red-100 bg-red-50 text-red-700';
+  if (tone === 'watch') return 'border-amber-100 bg-amber-50 text-amber-700';
+  if (tone === 'fresh') return 'border-green-100 bg-green-50 text-green-700';
+  return 'border-admin-border-mid bg-admin-surface-2 text-admin-muted';
 }
 
 function getRfqPriority(rfq: GroupRfq): number {
@@ -166,8 +214,9 @@ export default function AdminRfqsPage() {
   // 클라이언트 필터링
   const filteredRfqs = statusFilter ? rfqs.filter((r) => r.status === statusFilter) : rfqs;
   const displayedRfqs = [...filteredRfqs].sort(compareRfqPriority);
-  const firstActionRfq = displayedRfqs[0] ?? null;
+  const firstActionRfq = displayedRfqs.find((rfq) => ACTION_QUEUE_PRIORITY.has(rfq.status)) ?? null;
   const firstActionLabel = firstActionRfq ? getNextActionLabel(firstActionRfq.status) : null;
+  const firstActionAgeSignal = firstActionRfq ? getRfqAgeSignal(firstActionRfq.created_at) : null;
 
   // KPI 집계
   const total = rfqs.length;
@@ -225,6 +274,16 @@ export default function AdminRfqsPage() {
             <p id="rfq-action-queue-summary" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
               {actionQueueSummary}
             </p>
+            {firstActionRfq && firstActionAgeSignal && (
+              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-admin-xs font-medium text-admin-muted">
+                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{firstActionRfq.rfq_code}</span>
+                <span aria-hidden="true">·</span>
+                <span className="max-w-[14rem] truncate">{firstActionRfq.destination}</span>
+                <span aria-hidden="true">·</span>
+                <span>{firstActionAgeSignal.label}</span>
+              </p>
+            )}
           </div>
           {firstActionRfq && firstActionLabel && (
             <Link
@@ -310,6 +369,7 @@ export default function AdminRfqsPage() {
                 const handoffBadgeText = getHandoffBadgeText(rfq);
                 const detailHref = `/admin/rfqs/${rfq.id}`;
                 const nextActionLabel = getNextActionLabel(rfq.status);
+                const ageSignal = getRfqAgeSignal(rfq.created_at);
 
                 return (
                   <article key={rfq.id} data-testid="admin-rfq-mobile-card" className="space-y-3 px-4 py-4">
@@ -344,6 +404,15 @@ export default function AdminRfqsPage() {
                       </span>
                     )}
 
+                    <span
+                      data-testid="admin-rfq-age-signal"
+                      className={`inline-flex w-fit items-center gap-1 rounded-admin-xs border px-2 py-0.5 text-admin-xs font-semibold ${getRfqAgeClass(ageSignal.tone)}`}
+                      title={ageSignal.description}
+                    >
+                      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                      {ageSignal.label}
+                    </span>
+
                     <dl className="grid grid-cols-2 gap-2 text-admin-xs">
                       {[
                         ['고객', rfq.customer_name || '—'],
@@ -372,10 +441,10 @@ export default function AdminRfqsPage() {
             </div>
 
             <div className="hidden overflow-x-auto md:block">
-              <table className="admin-data-table min-w-[920px]">
+              <table className="admin-data-table min-w-[1040px]">
                 <thead>
                   <tr>
-                    {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '다음 액션', '등록일'].map(
+                    {['RFQ코드', '고객명', '목적지', '인원', '예산(1인)', '상태', '입찰수', '대기', '다음 액션', '등록일'].map(
                       (h) => (
                         <th key={h}>{h}</th>
                       )
@@ -387,6 +456,7 @@ export default function AdminRfqsPage() {
                     const handoffBadgeText = getHandoffBadgeText(rfq);
                     const detailHref = `/admin/rfqs/${rfq.id}`;
                     const nextActionLabel = getNextActionLabel(rfq.status);
+                    const ageSignal = getRfqAgeSignal(rfq.created_at);
 
                     return (
                       <tr key={rfq.id}>
@@ -430,6 +500,16 @@ export default function AdminRfqsPage() {
                         </td>
                         <td className="text-admin-muted admin-num">
                           {rfq.bid_count ?? 0}
+                        </td>
+                        <td>
+                          <span
+                            data-testid="admin-rfq-age-signal"
+                            className={`inline-flex items-center gap-1 rounded-admin-xs border px-2 py-0.5 text-admin-xs font-semibold ${getRfqAgeClass(ageSignal.tone)}`}
+                            title={ageSignal.description}
+                          >
+                            <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                            {ageSignal.label}
+                          </span>
                         </td>
                         <td>
                           <Link
