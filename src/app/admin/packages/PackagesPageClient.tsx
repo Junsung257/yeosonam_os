@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { useToast } from '@/components/ui/Toast';
@@ -547,6 +548,7 @@ function PackageOpsQueue({
   deadlineCount,
   gapCount,
   activeResultCount,
+  firstActionPackage,
   onQueueSelect,
   onQueueClear,
   onSelectBatch,
@@ -558,6 +560,7 @@ function PackageOpsQueue({
   deadlineCount: number;
   gapCount: number;
   activeResultCount?: number;
+  firstActionPackage?: Package | null;
   onQueueSelect: (queue: PackageQueueSelectKey) => void;
   onQueueClear: () => void;
   onSelectBatch?: () => void;
@@ -580,6 +583,14 @@ function PackageOpsQueue({
     { label: '정리됨', value: `${clearCardsCount}개`, tone: clearCardsCount === cards.length ? 'good' : 'neutral' },
   ] as const;
   const selectedQueueCard = activeQueue ? cards.find(card => card.id === activeQueue) : undefined;
+  const firstActionHref = firstActionPackage
+    ? firstActionPackage.status === 'pending_review'
+      ? `/admin/packages/${firstActionPackage.id}/review`
+      : `/admin/packages/${firstActionPackage.id}`
+    : null;
+  const firstActionLabel = firstActionPackage
+    ? getPackageNextOperationLabel(firstActionPackage, isExpired(firstActionPackage))
+    : null;
   const packageQueueSummaryId = 'admin-package-queue-summary';
   const packageQueueLeadId = 'admin-package-queue-lead';
   const selectedQueueSummary = selectedQueueCard
@@ -635,6 +646,34 @@ function PackageOpsQueue({
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {firstActionPackage && firstActionHref && firstActionLabel && (
+              <Link
+                href={firstActionHref}
+                data-testid="admin-package-queue-first-action"
+                className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs bg-blue-600 px-3 font-bold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+                aria-label={`${firstActionPackage.title} ${firstActionLabel} 먼저 처리`}
+                onClick={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/packages',
+                    metadata: {
+                      surface: 'packages_action_queue',
+                      action: 'first_action_opened',
+                      queue: activeQueue,
+                      package_id: firstActionPackage.id,
+                      package_title: firstActionPackage.title,
+                      status: firstActionPackage.status,
+                      ...buildPackageActionDecisionMetadata(firstActionPackage, {
+                        action: 'first_action_opened',
+                        source: 'queue_first_action',
+                      }),
+                    },
+                  });
+                }}
+              >
+                첫 건 처리
+              </Link>
+            )}
             {selectedQueueCard.count > 0 && onSelectBatch && (
               <button
                 type="button"
@@ -2697,6 +2736,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         deadlineCount={deadlineCount}
         gapCount={gapCount}
         activeResultCount={filtered.length}
+        firstActionPackage={activePackageQueue ? filtered[0] ?? null : null}
         onQueueSelect={handleQueueSelect}
         onQueueClear={handleQueueClear}
         onSelectBatch={handleSelectPackageQueueBatch}
