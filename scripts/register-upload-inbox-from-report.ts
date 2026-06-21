@@ -54,6 +54,7 @@ type CliOptions = {
   fillAttractionPhotos: boolean;
   requireAllProductsPublishable: boolean;
   includeReviewNeeded: boolean;
+  maxFiles: number | null;
   waitDb: boolean;
   waitDbTimeoutMs: number;
   waitDbIntervalMs: number;
@@ -69,7 +70,13 @@ type RegistrationReportRow = {
   productCount: number;
   publishableOffline: number;
   customerReadyOffline: number;
-  status: 'eligible' | 'skipped_blocked' | 'skipped_review_needed' | 'registered' | 'registration_failed';
+  status:
+    | 'eligible'
+    | 'skipped_blocked'
+    | 'skipped_review_needed'
+    | 'skipped_chunk_limit'
+    | 'registered'
+    | 'registration_failed';
   savedIds: string[];
   reason: string | null;
   blockedProducts: Array<{
@@ -118,6 +125,7 @@ type RegistrationReport = {
     eligibleFiles: number;
     skippedBlockedFiles: number;
     skippedReviewNeededFiles: number;
+    skippedChunkLimitFiles: number;
     registeredFiles: number;
     registrationFailedFiles: number;
     savedPackageIds: number;
@@ -151,6 +159,7 @@ function parseCli(): CliOptions {
     fillAttractionPhotos: hasArg('--fill-attraction-photos'),
     requireAllProductsPublishable: !hasArg('--allow-partial-source'),
     includeReviewNeeded: !hasArg('--exclude-review-needed'),
+    maxFiles: readOptionalPositiveNumberArg('--max-files') ?? readOptionalPositiveNumberArg('--limit'),
     waitDb: hasArg('--wait-db'),
     waitDbTimeoutMs: readPositiveNumberArg('--wait-db-timeout-ms', 900_000),
     waitDbIntervalMs: readPositiveNumberArg('--wait-db-interval-ms', 30_000),
@@ -169,6 +178,13 @@ function readPositiveNumberArg(name: string, fallback: number): number {
   if (rawValue == null) return fallback;
   const value = Number(rawValue);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function readOptionalPositiveNumberArg(name: string): number | null {
+  const rawValue = readArg(name);
+  if (rawValue == null) return null;
+  const value = Number(rawValue);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
 }
 
 async function readJson<T>(path: string): Promise<T> {
@@ -376,6 +392,17 @@ async function main(): Promise<void> {
     extractRow: extractRows.get(sourceFile),
     options,
   }));
+  let eligibleSeen = 0;
+  const limitedRows = rows.map(row => {
+    if (row.status !== 'eligible' || options.maxFiles == null) return row;
+    eligibleSeen++;
+    if (eligibleSeen <= options.maxFiles) return row;
+    return {
+      ...row,
+      status: 'skipped_chunk_limit' as const,
+      reason: `not processed in this chunk; max-files=${options.maxFiles}`,
+    };
+  });
 
   const report: RegistrationReport = {
     version: 1,
@@ -392,7 +419,7 @@ async function main(): Promise<void> {
       runAfter: options.runAfter,
     },
     dbPreflight: { status: 'skipped', reason: 'not yet checked' },
-    rows,
+    rows: limitedRows,
     mobileAudit: {
       requested: options.auditMobile,
       status: 'skipped',
@@ -401,10 +428,11 @@ async function main(): Promise<void> {
       outputPath: null,
     },
     summary: {
-      sourceFiles: rows.length,
-      eligibleFiles: rows.filter(row => row.status === 'eligible').length,
-      skippedBlockedFiles: rows.filter(row => row.status === 'skipped_blocked').length,
-      skippedReviewNeededFiles: rows.filter(row => row.status === 'skipped_review_needed').length,
+      sourceFiles: limitedRows.length,
+      eligibleFiles: limitedRows.filter(row => row.status === 'eligible').length,
+      skippedBlockedFiles: limitedRows.filter(row => row.status === 'skipped_blocked').length,
+      skippedReviewNeededFiles: limitedRows.filter(row => row.status === 'skipped_review_needed').length,
+      skippedChunkLimitFiles: limitedRows.filter(row => row.status === 'skipped_chunk_limit').length,
       registeredFiles: 0,
       registrationFailedFiles: 0,
       savedPackageIds: 0,

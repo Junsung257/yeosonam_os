@@ -194,6 +194,8 @@ This resume command must run DB preflight first. If the preflight fails, no prod
 
 For unattended recovery, add `--wait-db --wait-db-timeout-ms=900000 --wait-db-interval-ms=30000`. This keeps retrying the DB preflight and starts registration only after the preflight is OK. If the wait expires, the output summary remains non-customer-ready with the failed preflight attempts recorded.
 
+When Supabase has recently shown resource pressure, run the resume in chunks with `--max-files=5` or `--max-files=10`, then inspect the saved package ids and targeted mobile/A4 audit before continuing. Chunking is an operational throttle only; it must not weaken the publish gate or skip mobile proof.
+
 If `--audit` is omitted, the resume command must fail with usage instructions rather than guessing from the latest file. The final `summary.json` is authoritative for resume status: `mobileLandingVerified=true` is allowed only when saved package ids exist and the targeted mobile/A4 audit passes. Otherwise `mobileLandingVerificationReason` must explain whether there were no saved ids, the audit was not requested, or the audit failed.
 
 For targeted saved-package proof, the mobile readiness audit accepts saved ids directly:
