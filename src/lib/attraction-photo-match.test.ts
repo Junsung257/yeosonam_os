@@ -33,6 +33,26 @@ describe('attraction photo match search planning', () => {
     expect(plan[0].query).toContain('Changbai Mountain Tianchi');
   });
 
+  it('adds English search context for Baekdu/Yanji detail points with sparse Korean photo results', () => {
+    const borderPlan = buildAttractionPhotoSearchPlan({
+      name: '36호 경계비',
+      region: '연길/백두산',
+    });
+    const treelinePlan = buildAttractionPhotoSearchPlan({
+      name: '수목한계선',
+      region: '연길/백두산',
+    });
+    const showPlan = buildAttractionPhotoSearchPlan({
+      name: '시안 실크로드쇼 할인e티켓',
+      aliases: ['실크로드쇼', 'Silk Road Show'],
+      region: '서안',
+    });
+
+    expect(borderPlan.some(item => item.query.includes('Changbai Mountain border marker'))).toBe(true);
+    expect(treelinePlan.some(item => item.query.includes('Changbai Mountain alpine tundra'))).toBe(true);
+    expect(showPlan.some(item => item.query.includes('Xi An Silk Road Show'))).toBe(true);
+  });
+
   it('infers locale from common package destination context', () => {
     expect(inferPexelsLocale({ region: '연길/백두산' })).toBe('zh-CN');
     expect(inferPexelsLocale({ region: '다낭' })).toBe('vi-VN');

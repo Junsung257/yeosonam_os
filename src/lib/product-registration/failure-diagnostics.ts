@@ -10,6 +10,7 @@ export type ProductRegistrationFailureCode =
   | 'ITINERARY_MISSING'
   | 'ITINERARY_DUPLICATE_DAY'
   | 'ITINERARY_DURATION_OVERFLOW'
+  | 'ITINERARY_ENTITY_MISMATCH'
   | 'FLIGHT_TIME_MISMATCH'
   | 'CATALOG_SPLIT_REQUIRED'
   | 'PRODUCT_COUNT_MISMATCH'
@@ -92,6 +93,18 @@ const RULES: Rule[] = [
     severity: 'critical',
     patterns: [/itinerary duration overflow/i, /duration .* but itinerary has/i],
     nextAction: 'Split catalog products by source boundaries and remove appendix/shared sections from itinerary days.',
+  },
+  {
+    code: 'ITINERARY_ENTITY_MISMATCH',
+    severity: 'critical',
+    patterns: [
+      /ITINERARY_NON_ATTRACTION_HAS_ATTRACTION_REF/i,
+      /ITINERARY_ATTRACTION_REF_ON_NON_ATTRACTION_TEXT/i,
+      /ITINERARY_ATTRACTION_KIND_CONTRADICTS_TEXT/i,
+      /paid optional-tour disclosure must not be rendered as an attraction card/i,
+      /must not be rendered as an attraction card/i,
+    ],
+    nextAction: 'Reclassify meal, hotel, transfer, shopping, and optional-tour rows before customer mobile/A4 render; do not attach attraction cards to non-attraction text.',
   },
   {
     code: 'FLIGHT_TIME_MISMATCH',

@@ -235,6 +235,90 @@ Cancel 1 day before departure: 200,000원 penalty
     expect(result.blockers.join('\n')).toContain('ITINERARY_HOTEL_FIELD_SCHEDULE_TEXT');
   });
 
+  it('blocks meal and service rows that still carry attraction references', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-16', day_of_week: null, net_price: 1429000, adult_selling_price: 1429000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-16', price: 1429000, confirmed: false }],
+      destination: 'Yanji/Baekdu',
+      destinationCode: 'YNJ',
+      internalCode: 'PUS-BX-YNJ-04-0001',
+      durationDays: 4,
+      itineraryDays: [
+        {
+          day: 1,
+          schedule: [
+            { activity: '꿔바로우', entity_kind: 'meal', attraction_ids: ['huashan'] },
+            { activity: '여행의 피로를 풀어주는 전신+발마사지 90분 (매너팁 별도)', entity_kind: 'optional_tour', attraction_ids: ['bohol-massage'] },
+          ],
+        },
+        { day: 2, schedule: [] },
+        { day: 3, schedule: [] },
+        { day: 4, schedule: [] },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join('\n')).toContain('ITINERARY_NON_ATTRACTION_HAS_ATTRACTION_REF');
+    expect(result.blockers.join('\n')).toContain('꿔바로우');
+    expect(result.blockers.join('\n')).toContain('전신+발마사지');
+  });
+
+  it('blocks attraction cards on hotel transfer and shopping disclosure text', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-16', day_of_week: null, net_price: 879000, adult_selling_price: 879000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-16', price: 879000, confirmed: false }],
+      destination: 'Taipei',
+      destinationCode: 'TPE',
+      internalCode: 'PUS-7C-TPE-05-0001',
+      durationDays: 5,
+      itineraryDays: [
+        {
+          day: 1,
+          schedule: [
+            { activity: '호텔 이동 후 석식 및 휴식, 온천욕', type: 'attraction_visit', attraction_ids: ['wrong-onsen'] },
+            { activity: '쇼핑센터 2회 + 농산물) 침향, 한약방, 라텍스, 보이차 中', type: 'normal', attraction_ids: ['wrong-market'] },
+          ],
+        },
+        { day: 2, schedule: [] },
+        { day: 3, schedule: [] },
+        { day: 4, schedule: [] },
+        { day: 5, schedule: [] },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join('\n')).toContain('ITINERARY_ATTRACTION_KIND_CONTRADICTS_TEXT');
+    expect(result.blockers.join('\n')).toContain('ITINERARY_ATTRACTION_REF_ON_NON_ATTRACTION_TEXT');
+  });
+
+  it('blocks paid optional-tour lines even when they mention real attraction names', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-16', day_of_week: null, net_price: 999000, adult_selling_price: 999000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-16', price: 999000, confirmed: false }],
+      destination: 'Zhangjiajie',
+      destinationCode: 'DYG',
+      internalCode: 'PUS-BX-DYG-04-0001',
+      durationDays: 4,
+      itineraryDays: [
+        {
+          day: 1,
+          schedule: [
+            { activity: '유리잔도,귀곡잔도,천문산사 $40 / 천문산 동선 $30 / 매력상서쇼 $60', type: 'normal', attraction_ids: ['glass-bridge'] },
+            { activity: '※현지지불옵션 : 백두산5D플라잉 체험 $40/인', type: 'normal', attraction_ids: ['baekdu-5d'] },
+          ],
+        },
+        { day: 2, schedule: [] },
+        { day: 3, schedule: [] },
+        { day: 4, schedule: [] },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join('\n')).toContain('paid optional-tour disclosure');
+    expect(result.blockers.join('\n')).toContain('유리잔도');
+    expect(result.blockers.join('\n')).toContain('백두산5D');
+  });
+
   it('does not block valid package prices just because optional charges exist elsewhere', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: 999000, child_price: null, note: null }],

@@ -230,7 +230,27 @@
 
 ---
 
-Last updated: 2026-06-07
+## ERR-itinerary-entity-attraction-card-contamination@2026-06-21
+
+- **Discovered**: 2026-06-21
+- **Domain**: product registration | mobile landing | itinerary semantics | attraction cards | learning engine
+- **Source vs result**: Existing sample products showed rows such as `유리잔도,귀곡잔도,천문산사 $40`, `황룡동굴 VIP $40`, and `※현지지불옵션 : 백두산5D플라잉 체험 $40/인` carrying attraction references. These rows mention real places or experiences, but the customer meaning is paid optional-tour disclosure, not a normal included attraction card. Similar contamination can happen when meal rows (`꿔바로우`, `삼겹살`, `매운탕`), hotel/rest rows, shopping-center disclosure rows, or service rows (`전신+발마사지`, `온천욕`) retain `attraction_ids`.
+- **Root cause**: The enrichment layer stripped many unsafe references before save, but the final customer landing/A4 gate mainly checked structural pollution. It did not independently fail when non-attraction schedule entities still had attraction references or when an `attraction_visit` kind contradicted the row text.
+- **Fix**:
+  - `findItineraryScheduleQualityIssues()` now fails customer render readiness when meal, hotel/rest, transfer, shopping, service, or paid optional-tour disclosure rows carry attraction references.
+  - Paid optional-tour rows with price symbols are blocked even if they include real attraction names, because those belong in the optional-tour section with price text, not as included attraction cards.
+  - New blocker codes are mapped to `ITINERARY_ENTITY_MISMATCH` so the review queue and macro learning loop can mine recurrence instead of treating the failure as unknown.
+- **Verification**:
+  - `npx vitest run src/lib/product-registration/deliverability-gate.test.ts src/lib/product-registration/failure-diagnostics.test.ts src/lib/itinerary-attraction-enricher.test.ts src/lib/itinerary-schedule-compiler.test.ts`
+  - `npx vitest run src/lib/product-registration src/lib/product-registration-v3 src/lib/parser`
+  - `npm run type-check`
+  - Supabase targeted sample check: 80 issue-area products / 1,831 schedule rows / 656 attraction-referenced rows found 6 paid optional-tour contamination candidates; all are now covered by the new gate pattern.
+- **Status**: FIXED IN ENGINE
+- **Recurrence prevention**: Mobile landing completion requires semantic entity/card consistency, not just page render success. A row can mention a place and still be an option, meal, hotel, shopping, transfer, or service fact. The final gate must preserve that customer meaning before any attraction card or photo appears.
+
+---
+
+Last updated: 2026-06-21
 
 상품 등록, A4, 모바일 렌더, 가격·날짜 복구, 일정 파싱, 관광지 매칭, `/register` 절차 반복 오류 상세.
 
