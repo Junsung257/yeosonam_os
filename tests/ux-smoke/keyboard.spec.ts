@@ -218,6 +218,8 @@ test.describe('keyboard access smoke', () => {
     await page.goto('/packages', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
+    await page.locator('[data-testid="package-card-link"]:visible').first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    await page.locator('[data-testid="package-card-reason-toggle"]:visible').first().waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
     const reasonToggle = page.locator('[data-testid="package-card-reason-toggle"]:visible').first();
     test.skip(!(await reasonToggle.count()), 'recommended package reason toggle is unavailable in current package data');
 

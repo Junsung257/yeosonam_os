@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   normalizeDepartureHub,
@@ -37,6 +39,19 @@ const PACKAGE_QUERY_TIMEOUT_MS = 3500;
 const OPTIONAL_QUERY_TIMEOUT_MS = 1200;
 const PERSONALIZATION_TIMEOUT_MS = 900;
 
+type SearchRequestContext = {
+  destination: string;
+  rawFilter: string;
+  hub: DepartureHubId;
+  filterForClient: string;
+  q: string;
+  month: string;
+  priceMin: string;
+  priceMax: string;
+  urgency: string;
+  category: string;
+};
+
 function emptySearchPayload(hub: DepartureHubId = 'all', filterForClient = '', degradedReason?: string) {
   return {
     packages: [],
@@ -50,6 +65,29 @@ function emptySearchPayload(hub: DepartureHubId = 'all', filterForClient = '', d
     hub,
     filterForClient,
     ...(degradedReason ? { degraded: true, degradedReason } : {}),
+  };
+}
+
+function parseSearchRequestContext(request: NextRequest): SearchRequestContext {
+  const { searchParams } = request.nextUrl;
+  const destination = searchParams.get('destination') || '';
+  const rawFilter = searchParams.get('filter') || '';
+  const rawHub = searchParams.get('hub');
+  const rawDeparture = searchParams.get('departure');
+  let hub = normalizeDepartureHub(rawHub ?? rawDeparture);
+  if (rawFilter === '\uC778\uCC9C\uCD9C\uBC1C' && !rawHub && !rawDeparture) hub = 'incheon';
+
+  return {
+    destination,
+    rawFilter,
+    hub,
+    filterForClient: rawFilter === '\uC778\uCC9C\uCD9C\uBC1C' ? '' : rawFilter,
+    q: (searchParams.get('q') || '').trim(),
+    month: searchParams.get('month') || '',
+    priceMin: searchParams.get('priceMin') || '',
+    priceMax: searchParams.get('priceMax') || '',
+    urgency: searchParams.get('urgency') || '',
+    category: searchParams.get('category') || '',
   };
 }
 
@@ -89,29 +127,163 @@ function packageMatchesBudget(pkg: any, priceMin: string, priceMax: string, mont
   return true;
 }
 
+type LocalSearchFixturePackage = Record<string, any>;
+
+function getNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function findPackagesInFixturePayload(payload: unknown): LocalSearchFixturePackage[] {
+  const rows = Array.isArray(payload)
+    ? payload
+    : Array.isArray((payload as { data?: unknown } | null)?.data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+
+  return rows.filter((row): row is LocalSearchFixturePackage => {
+    if (!row || typeof row !== 'object') return false;
+    const id = (row as { id?: unknown }).id;
+    const status = (row as { status?: unknown }).status;
+    const auditStatus = (row as { audit_status?: unknown }).audit_status;
+    const isVisibleStatus = status == null || status === 'active' || status === 'approved';
+    return typeof id === 'string' && id.trim().length > 0 && isVisibleStatus && auditStatus !== 'blocked';
+  });
+}
+
+async function loadLocalSearchFixturePackages(): Promise<LocalSearchFixturePackage[] | null> {
+  if (process.env.VERCEL_ENV === 'production') return null;
+  const fixtureFile = getNonEmptyString(process.env.PACKAGE_DETAIL_FIXTURE_FILE);
+  const candidateFiles = [
+    fixtureFile,
+    path.join(process.cwd(), 'api_test.json'),
+    process.env.TEMP ? path.join(process.env.TEMP, 'yeosonam-os-dev-link', 'api_test.json') : null,
+  ].filter((file): file is string => Boolean(file));
+
+  const rowsById = new Map<string, LocalSearchFixturePackage>();
+  for (const candidateFile of candidateFiles) {
+    try {
+      const absolutePath = path.isAbsolute(candidateFile)
+        ? candidateFile
+        : path.join(process.cwd(), candidateFile);
+      const payload = JSON.parse((await readFile(absolutePath)).toString('utf8')) as unknown;
+      for (const row of findPackagesInFixturePayload(payload)) {
+        rowsById.set(row.id, row);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return rowsById.size > 0 ? Array.from(rowsById.values()) : null;
+}
+
+function packageMatchesSearchText(pkg: LocalSearchFixturePackage, text: string): boolean {
+  if (!text) return true;
+  const needle = text.toLowerCase();
+  const haystack = [
+    pkg.destination,
+    pkg.title,
+    pkg.display_title,
+    pkg.country,
+    pkg.product_type,
+    Array.isArray(pkg.product_tags) ? pkg.product_tags.join(' ') : '',
+    Array.isArray(pkg.product_highlights) ? pkg.product_highlights.join(' ') : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(needle);
+}
+
+function normalizeLocalSearchFixturePackage(pkg: LocalSearchFixturePackage): LocalSearchFixturePackage {
+  return {
+    ...pkg,
+    products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
+  };
+}
+
+function buildFallbackRecommendationReasons(pkg: LocalSearchFixturePackage): string[] {
+  const reasons = [
+    pkg.destination ? `\uC0C1\uD488 \uBAA9\uC801\uC9C0: ${pkg.destination}` : null,
+    Array.isArray(pkg.price_dates) && pkg.price_dates.length > 0
+      ? `\uCD9C\uBC1C\uC77C ${pkg.price_dates.length}\uAC1C \uD655\uC778`
+      : null,
+    pkg.departure_airport ? `\uCD9C\uBC1C\uC9C0: ${pkg.departure_airport}` : null,
+    Array.isArray(pkg.product_highlights) ? pkg.product_highlights.find((item) => typeof item === 'string') : null,
+  ].filter((reason): reason is string => Boolean(reason && reason.trim().length > 0));
+
+  return reasons.length > 0
+    ? reasons.slice(0, 4)
+    : ['\uC0C1\uB2F4 \uC804 \uD655\uC778\uD560 \uC0C1\uD488 \uC815\uBCF4\uAC00 \uC900\uBE44\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.'];
+}
+
+async function buildLocalSearchFixturePayload(
+  context: SearchRequestContext,
+  degradedReason: string,
+) {
+  const fixtureRows = await loadLocalSearchFixturePackages();
+  if (!fixtureRows) return null;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const urgencyOn = context.urgency === '1';
+  const filteredRows = fixtureRows
+    .filter((pkg) => {
+      const priceDates = (pkg.price_dates || []) as Array<{ date?: string }>;
+      if (priceDates.length > 0 && !priceDates.some((d) => d?.date && d.date >= today)) return false;
+      if (context.destination && !packageMatchesSearchText(pkg, context.destination)) return false;
+      if (context.q && !packageMatchesSearchText(pkg, context.q)) return false;
+      if (context.hub !== 'all' && !hubMatchesDepartureAirport(context.hub, pkg.departure_airport)) return false;
+      if (urgencyOn) {
+        const deadline = getNonEmptyString(pkg.ticketing_deadline);
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() + 14);
+        if (pkg.product_type !== 'urgency' && (!deadline || deadline > cutoff.toISOString().slice(0, 10))) return false;
+      }
+      if (context.month && !packageHasDepartureMonth(pkg, context.month, today)) return false;
+      if ((context.priceMin || context.priceMax) && !packageMatchesBudget(pkg, context.priceMin, context.priceMax, context.month, today)) return false;
+      if (context.category && !packageMatchesCategory(pkg, context.category)) return false;
+      return true;
+    })
+    .slice(0, 50);
+
+  const packages = filteredRows.map(normalizeLocalSearchFixturePackage);
+  const recommendedIds = packages.map((pkg) => pkg.id).slice(0, 5);
+  const recommendedReasonMap = Object.fromEntries(
+    packages.map((pkg) => [pkg.id, buildFallbackRecommendationReasons(pkg)]),
+  );
+
+  return {
+    ...emptySearchPayload(context.hub, context.filterForClient, degradedReason),
+    packages,
+    imageByPkgId: Object.fromEntries(packages.map((pkg) => [pkg.id, null])),
+    recommendedIds,
+    recommendedReasonMap,
+  };
+}
+
 export async function GET(request: NextRequest) {
+  const context = parseSearchRequestContext(request);
+
   if (!isSupabaseConfigured) {
-    return NextResponse.json(emptySearchPayload('all', '', 'supabase_unconfigured'), {
-      headers: SEARCH_CACHE_HEADERS,
-    });
+    const fixturePayload = await buildLocalSearchFixturePayload(context, 'local_fixture');
+    return NextResponse.json(
+      fixturePayload ?? emptySearchPayload(context.hub, context.filterForClient, 'supabase_unconfigured'),
+      { headers: SEARCH_CACHE_HEADERS },
+    );
   }
 
   try {
-    const { searchParams } = request.nextUrl;
-    const destination = searchParams.get('destination') || '';
-    const rawFilter = searchParams.get('filter') || '';
-    const rawHub = searchParams.get('hub');
-    const rawDeparture = searchParams.get('departure');
-    let hub = normalizeDepartureHub(rawHub ?? rawDeparture);
-    if (rawFilter === '인천출발' && !rawHub && !rawDeparture) hub = 'incheon';
-    const filterForClient = rawFilter === '인천출발' ? '' : rawFilter;
-
-    const q = (searchParams.get('q') || '').trim();
-    const month = searchParams.get('month') || '';
-    const priceMin = searchParams.get('priceMin') || '';
-    const priceMax = searchParams.get('priceMax') || '';
-    const urgency = searchParams.get('urgency') || '';
-    const category = searchParams.get('category') || '';
+    const {
+      destination,
+      hub,
+      filterForClient,
+      q,
+      month,
+      priceMin,
+      priceMax,
+      urgency,
+      category,
+    } = context;
     const sb = supabaseAdmin;
 
     const urgencyOn = urgency === '1';
@@ -155,9 +327,11 @@ export async function GET(request: NextRequest) {
       return null;
     });
     if (!packageResult) {
-      return NextResponse.json(emptySearchPayload(hub, filterForClient, 'package_query_timeout'), {
-        headers: SEARCH_CACHE_HEADERS,
-      });
+      const fixturePayload = await buildLocalSearchFixturePayload(context, 'local_fixture');
+      return NextResponse.json(
+        fixturePayload ?? emptySearchPayload(hub, filterForClient, 'package_query_timeout'),
+        { headers: SEARCH_CACHE_HEADERS },
+      );
     }
 
     const { data: rawPackages, error: pkgErr } = packageResult;
@@ -335,6 +509,13 @@ export async function GET(request: NextRequest) {
           }
           if (!recommendedReasonMap[packageId]) recommendedReasonMap[packageId] = display.reasons;
         }
+      }
+    }
+
+    if (process.env.NODE_ENV !== 'production' && recommendedIds.length === 0 && packages.length > 0) {
+      for (const pkg of packages.slice(0, 3)) {
+        recommendedIds.push(pkg.id);
+        recommendedReasonMap[pkg.id] = buildFallbackRecommendationReasons(pkg);
       }
     }
 
