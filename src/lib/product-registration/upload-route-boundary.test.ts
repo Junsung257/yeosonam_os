@@ -115,6 +115,8 @@ describe('upload route registration pipeline boundary', () => {
 
     expect(page).toContain('const MAX_CONCURRENT = 1;');
     expect(page).toContain('uploadExceptionMessage(err)');
+    expect(page).toContain('SESSION_EXPIRED_NEEDS_LOGIN');
+    expect(page).toContain('로그인 시간이 만료');
   });
 
   it('keeps request intake, source metadata, and input quality checks outside the route body', () => {
