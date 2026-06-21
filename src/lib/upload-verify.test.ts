@@ -131,6 +131,41 @@ describe('evaluateVerifyChecks customer visibility gate', () => {
       status: 'fail',
     }));
   });
+
+  it('blocks packages whose price dates are all expired even when price rows exist', () => {
+    const result = evaluateVerifyChecks({
+      id: 'pkg-expired-price-dates',
+      title: 'Expired package',
+      status: 'active',
+      audit_status: 'clean',
+      raw_text: 'PKG expired package\n2020.1.1\n3/1\n1,000,-\nDAY 1 arrival\nDAY 2 return',
+      itinerary_data: { days: [{ schedule: [{ activity: 'arrival' }] }, { schedule: [{ activity: 'return' }] }] },
+      price_dates: [{ date: '2020-03-01', price: 1000000 }],
+      display_title: 'Expired package sample',
+    } as never);
+
+    expect(result.status).toBe('blocked');
+    expect(findCheck(result, 'C14')).toEqual(expect.objectContaining({
+      status: 'fail',
+    }));
+  });
+
+  it('passes date freshness when at least one future departure remains', () => {
+    const result = evaluateVerifyChecks({
+      id: 'pkg-future-price-dates',
+      title: 'Future package',
+      status: 'active',
+      audit_status: 'clean',
+      raw_text: 'PKG future package\n2099.1.1\n3/1\n1,000,-\nDAY 1 arrival\nDAY 2 return',
+      itinerary_data: { days: [{ schedule: [{ activity: 'arrival' }] }, { schedule: [{ activity: 'return' }] }] },
+      price_dates: [{ date: '2099-03-01', price: 1000000 }],
+      display_title: 'Future package sample',
+    } as never);
+
+    expect(findCheck(result, 'C14')).toEqual(expect.objectContaining({
+      status: 'pass',
+    }));
+  });
 });
 
 describe('evaluateVerifyChecks — fail/warn 회귀 차단', () => {

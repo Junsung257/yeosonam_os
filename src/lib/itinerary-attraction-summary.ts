@@ -2,6 +2,9 @@ export interface ItinerarySummaryLike {
   days?: Array<{
     schedule?: Array<{
       attraction_names?: string[] | null;
+      attraction_ids?: string[] | null;
+      entity_kind?: string | null;
+      type?: string | null;
       activity?: string;
     }>;
   }>;
@@ -20,9 +23,38 @@ function normalizeItinerary(input: unknown): ItinerarySummaryLike | null {
   return null;
 }
 
+function normalizedKey(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, '');
+}
+
+function hasAttractionEvidence(schedule: {
+  attraction_ids?: string[] | null;
+  attraction_names?: string[] | null;
+  entity_kind?: string | null;
+  type?: string | null;
+}): boolean {
+  const kind = `${schedule.entity_kind ?? schedule.type ?? ''}`.toLowerCase();
+  return kind === 'attraction_visit'
+    || kind === 'attraction'
+    || (schedule.attraction_ids?.filter(Boolean).length ?? 0) > 0;
+}
+
+function isKnownNonAttractionKind(schedule: {
+  entity_kind?: string | null;
+  type?: string | null;
+}): boolean {
+  const kind = `${schedule.entity_kind ?? schedule.type ?? ''}`.toLowerCase();
+  return /meal|transfer|hotel|free_time|optional|perk|shopping|notice|unknown/.test(kind);
+}
+
+function isNonAttractionActivity(text: string): boolean {
+  return /^(호텔|조식|중식|석식|이동|출발|도착|휴식|라운딩|공항|meal|transfer|hotel)/i.test(text);
+}
+
 /**
- * itinerary_data에서 관광지 프리뷰 이름을 중복 제거해 반환.
- * 우선순위: attraction_names[] -> 없으면 activity(▶ 제거) fallback.
+ * Return customer-facing attraction preview names from itinerary_data.
+ * Never promote generic schedule text such as meals, transfers, airport lines,
+ * or golf meal fragments as an attraction preview.
  */
 export function getAttractionPreviewNamesFromItinerary(
   itineraryData: unknown,
@@ -34,11 +66,14 @@ export function getAttractionPreviewNamesFromItinerary(
   const seen = new Set<string>();
 
   for (const day of it.days) {
-    for (const s of day.schedule ?? []) {
-      const names = s.attraction_names?.filter(Boolean) ?? [];
+    for (const schedule of day.schedule ?? []) {
+      const evidence = hasAttractionEvidence(schedule);
+      const names = schedule.attraction_names?.filter(Boolean) ?? [];
+
       if (names.length > 0) {
+        if (!evidence && isKnownNonAttractionKind(schedule)) continue;
         for (const name of names) {
-          const key = name.toLowerCase().replace(/\s+/g, '');
+          const key = normalizedKey(name);
           if (seen.has(key)) continue;
           seen.add(key);
           out.push(name);
@@ -47,11 +82,12 @@ export function getAttractionPreviewNamesFromItinerary(
         continue;
       }
 
-      const activity = (s.activity ?? '').replace(/^▶\s*/, '').trim();
-      if (!activity || /^(호텔|조식|중식|석식|이동|출발|도착|휴식)/.test(activity)) continue;
+      if (!evidence) continue;
+      const activity = (schedule.activity ?? '').replace(/^▶\s*/, '').trim();
+      if (!activity || isNonAttractionActivity(activity)) continue;
       const fallback = activity.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').trim();
       if (fallback.length < 2 || fallback.length > 24) continue;
-      const key = fallback.toLowerCase().replace(/\s+/g, '');
+      const key = normalizedKey(fallback);
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(fallback);
