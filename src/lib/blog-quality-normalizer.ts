@@ -1,3 +1,5 @@
+import { ensureRequiredBlogDecisionBlocks } from './blog-required-structure';
+
 interface NormalizeBlogContentInput {
   markdown: string;
   destination?: string | null;
@@ -147,6 +149,7 @@ export function normalizeBlogContent(input: NormalizeBlogContentInput): string {
   const primaryKeyword = cleanText(removeRewriteArtifactsTitle(input.primaryKeyword || destination || '여행 정보'));
   let next = removeRewriteArtifactsMarkdown(input.markdown);
   next = ensureSummarySection(next, destination, primaryKeyword);
+  next = ensureRequiredBlogDecisionBlocks(next, { destination, primaryKeyword });
   next = ensureFaqSection(next, destination, primaryKeyword);
   next = limitHighlights(next, input.maxHighlights ?? 5);
   return next.trim();

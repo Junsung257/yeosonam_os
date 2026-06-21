@@ -302,6 +302,9 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
   const tipCount = countMatches(source, /:::tip|<aside[^>]+class=["'][^"']*tip/gi);
   const warnCount = countMatches(source, /:::warn|<aside[^>]+class=["'][^"']*warn/gi);
   const numericFacts = countMatches(plain, /\d[\d,]*(?:\s*(?:원|만원|엔|달러|위안|페소|바트|%|℃|도|분|시간|박|일|km|m))?/g);
+  const htmlTables = countMatches(source, /<table\b/gi);
+  const decisionTableRows = tables + htmlTables * 4;
+  const strongScanBlocks = decisionTableRows >= 4 || listItems >= 5 || tipCount + warnCount >= 1;
 
   if (longParagraphs.length > 0) {
     addIssue(issues, 'paragraph_wall', longParagraphs.length >= 2 ? 'critical' : 'warning', 'Article has wall-of-text paragraphs that reduce scanability.', {
@@ -318,12 +321,14 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
     addIssue(issues, 'weak_list_or_table_shape', 'critical', 'Article needs real lists or tables so readers can scan the answer.', { listItems, tableRows: tables });
   }
 
-  if (markCount + tipCount + warnCount < 2 || numericFacts < 6) {
-    addIssue(issues, 'weak_reading_design', 'warning', 'Article needs stronger reading design: highlights, tip/warn boxes, or concrete numeric anchors.', {
+  if (!strongScanBlocks && (markCount + tipCount + warnCount < 2 || numericFacts < 6)) {
+    addIssue(issues, 'weak_reading_design', 'warning', 'Article needs stronger reading design: real tables, checklists, tip/warn boxes, or concrete numeric anchors.', {
       markCount,
       tipCount,
       warnCount,
       numericFacts,
+      decisionTableRows,
+      listItems,
     });
   }
 }
@@ -386,7 +391,7 @@ export function buildBlogIntentPromptContract(profile: BlogIntentProfile): strin
     blocks.push('Required blocks: who this fits, itinerary/value proof, included/excluded, price/departure facts, CTA.');
   }
 
-  blocks.push('Reading design: short paragraphs, at least one scan-friendly list/table, ==highlight==, concrete numeric anchors, and tip/warn boxes when useful.');
+  blocks.push('Reading design: short paragraphs, at least one real Markdown table for comparison-heavy topics, concrete checklists, restrained numeric anchors, and tip/warn boxes when useful. Do not use ==highlight== or <mark>.');
 
   return `## Content intent contract\n- ${parts.join('\n- ')}\n- ${blocks.join('\n- ')}`;
 }

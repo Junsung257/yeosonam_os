@@ -5,7 +5,6 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
-const PACKAGE_LIMIT = 1000;
 const BLOG_LIMIT = 2000;
 const DESTINATION_LIMIT = 500;
 const QUERY_TIMEOUT_MS = 2500;
@@ -78,16 +77,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
   ];
 
-  const [pkgs, activeDests, posts] = await Promise.all([
-    runSitemapQuery<{ id: string; updated_at: string | null }>('packages', (signal) =>
-      supabaseAdmin
-        .from('travel_packages')
-        .select('id, updated_at')
-        .in('status', ['active', 'approved'])
-        .order('updated_at', { ascending: false })
-        .limit(PACKAGE_LIMIT)
-        .abortSignal(signal),
-    ),
+  const [activeDests, posts] = await Promise.all([
     runSitemapQuery<{ destination: string }>('destinations', (signal) =>
       supabaseAdmin
         .from('active_destinations')
@@ -113,15 +103,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .abortSignal(signal),
     ),
   ]);
-
-  for (const pkg of pkgs) {
-    routes.push({
-      url: `${BASE_URL}/packages/${pkg.id}`,
-      lastModified: safeLastModified(pkg.updated_at),
-      changeFrequency: 'weekly',
-      priority: 0.85,
-    });
-  }
 
   for (const d of activeDests) {
     if (d.destination) {
