@@ -945,6 +945,7 @@ function BookingWorkQueue({
   activeKey,
   counts,
   activeResultCount,
+  firstActionBooking,
   onSelect,
   onClear,
   onSelectBatch,
@@ -952,6 +953,7 @@ function BookingWorkQueue({
   activeKey?: BookingWorkQueueKey;
   counts: Record<BookingWorkQueueKey, number>;
   activeResultCount?: number;
+  firstActionBooking?: Booking | null;
   onSelect: (key: BookingWorkQueueKey) => void;
   onClear: () => void;
   onSelectBatch?: () => void;
@@ -984,6 +986,9 @@ function BookingWorkQueue({
     { label: '정리됨', value: `${clearItemsCount}개`, tone: clearItemsCount === items.length ? 'good' : 'neutral' },
   ] as const;
   const selectedQueueItem = activeKey ? items.find(item => item.key === activeKey) : undefined;
+  const firstActionDecision = firstActionBooking ? buildBookingActionDecisionMetadata(firstActionBooking) : null;
+  const firstActionHref = firstActionBooking ? `/admin/bookings/${firstActionBooking.id}` : null;
+  const firstActionLabel = firstActionDecision?.next_action ?? null;
   const queueSummaryId = 'admin-booking-work-queue-summary';
   const queueLeadId = 'admin-booking-work-queue-lead';
   const selectedQueueSummary = selectedQueueItem
@@ -1033,6 +1038,31 @@ function BookingWorkQueue({
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {firstActionBooking && firstActionHref && firstActionLabel && (
+              <Link
+                href={firstActionHref}
+                data-testid="admin-booking-queue-first-action"
+                className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs bg-blue-600 px-3 font-bold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+                aria-label={`${firstActionBooking.customers?.name || firstActionBooking.booking_no || '예약'} ${firstActionLabel} 먼저 처리`}
+                onClick={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/bookings',
+                    metadata: {
+                      surface: 'bookings_work_queue',
+                      action: 'first_action_opened',
+                      queue: activeKey,
+                      booking_id: firstActionBooking.id,
+                      booking_no: firstActionBooking.booking_no ?? null,
+                      customer_name: firstActionBooking.customers?.name ?? null,
+                      ...firstActionDecision,
+                    },
+                  });
+                }}
+              >
+                첫 건 처리
+              </Link>
+            )}
             {selectedQueueItem.count > 0 && onSelectBatch && (
               <button
                 type="button"
@@ -2500,6 +2530,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             refund: refundPendingCnt,
           }}
           activeResultCount={filtered.length}
+          firstActionBooking={activeWorkQueueKey ? filtered[0] ?? null : null}
           onSelect={handleWorkQueueSelect}
           onClear={handleWorkQueueClear}
           onSelectBatch={handleSelectWorkQueueBatch}
