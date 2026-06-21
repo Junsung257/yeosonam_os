@@ -223,7 +223,7 @@ export async function approvePackage(packageId: string) {
       .from('travel_packages')
       .update({
         status: 'approved',
-        audit_status: 'passed',
+        audit_status: 'clean',
         audit_checked_at: new Date().toISOString(),
         baseline_requested_at: new Date().toISOString(),
       })

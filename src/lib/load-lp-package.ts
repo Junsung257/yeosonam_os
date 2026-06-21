@@ -3,6 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/map-travel-package-to-lp';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { evaluateVerifyChecks } from '@/lib/upload-verify';
 
 export async function fetchLpPackageUncached(id: string): Promise<LandingProductData | null> {
   if (!isSupabaseConfigured || !supabaseAdmin) return null;
@@ -20,6 +21,9 @@ export async function fetchLpPackageUncached(id: string): Promise<LandingProduct
   const status = (pkg as { status?: string | null }).status;
   const auditStatus = (pkg as { audit_status?: string | null }).audit_status;
   if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) return null;
+
+  const liveVerify = evaluateVerifyChecks(pkg as Parameters<typeof evaluateVerifyChecks>[0]);
+  if (liveVerify.status === 'blocked') return null;
 
   const { data: scores } = await supabaseAdmin
     .from('package_scores')

@@ -27,12 +27,14 @@ import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
   hasUnsafeCustomerNoticeMutation,
   loadLatestV3DraftForPackage,
 } from '@/lib/product-registration-v3/customer-payload';
+import { evaluateVerifyChecks } from '@/lib/upload-verify';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -104,6 +106,54 @@ async function assertPackageV3ApprovalAllowed(packageId: string) {
 }
 
 // ── 상품코드 자동생성 매핑 ──────────────────────────────────────
+async function assertPackageSourceAuditAllowsPublication(packageId: string) {
+  const { data: pkg, error } = await supabaseAdmin
+    .from('travel_packages')
+    .select('id, title, status, audit_status, duration, price, display_title, hero_tagline, raw_text, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges')
+    .eq('id', packageId)
+    .single();
+
+  if (error || !pkg) {
+    return ApiErrors.conflict('Cannot approve because the package source audit row could not be loaded.', {
+      code: 'SOURCE_AUDIT_ROW_MISSING',
+      packageId,
+      error: error?.message,
+    });
+  }
+
+  const result = evaluateVerifyChecks({
+    ...(pkg as Record<string, unknown>),
+    status: 'approved',
+  } as Parameters<typeof evaluateVerifyChecks>[0]);
+
+  const auditReport = {
+    checks: result.checks,
+    fixable: result.fixable,
+    source: 'package-approval-source-verify',
+    version: 3,
+  };
+
+  await supabaseAdmin
+    .from('travel_packages')
+    .update({
+      audit_status: result.status,
+      audit_report: auditReport,
+      audit_checked_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', packageId);
+
+  if (result.status === 'blocked') {
+    return ApiErrors.conflict('Latest source-vs-saved audit blocks customer publication.', {
+      code: 'SOURCE_AUDIT_BLOCKS_PUBLICATION',
+      packageId,
+      source_verify: result,
+    });
+  }
+
+  return null;
+}
+
 const DEPARTURE_CODES: Record<string, string> = {
   '김해공항': 'PUS', '김해': 'PUS', '부산': 'PUS', '부산국제여객터미널': 'PUS',
   '인천공항': 'ICN', '인천': 'ICN',
@@ -656,6 +706,16 @@ export async function PATCH(request: NextRequest) {
       }
       const approvalBlocks = [];
       for (const id of packageIds) {
+        const sourceAuditBlock = await assertPackageSourceAuditAllowsPublication(id);
+        if (sourceAuditBlock) {
+          approvalBlocks.push({
+            packageId: id,
+            draft_status: null,
+            reasons: ['SOURCE_AUDIT_BLOCKS_PUBLICATION'],
+            payload_error: null,
+          });
+          continue;
+        }
         const latestDraft = await loadLatestV3DraftForPackage(supabaseAdmin, id);
         if (!latestDraft) continue;
         const gate = evaluateV3CustomerNoticeGate(id, latestDraft);
@@ -777,6 +837,8 @@ export async function PATCH(request: NextRequest) {
 
     // 단건 상태 변경
     if (action === 'approve') {
+      const sourceAuditBlock = await assertPackageSourceAuditAllowsPublication(packageId);
+      if (sourceAuditBlock) return sourceAuditBlock;
       const v3ApprovalBlock = await assertPackageV3ApprovalAllowed(packageId);
       if (v3ApprovalBlock) return v3ApprovalBlock;
       const result = await approvePackage(packageId);
@@ -850,6 +912,10 @@ export async function PATCH(request: NextRequest) {
     // price_tiers 수정 시 price_dates 자동 동기화 (직접 price_dates를 보낸 경우 제외)
     if (sanitized.price_tiers && !sanitized.price_dates) {
       sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as unknown as import('@/lib/parser').PriceTier[]);
+    }
+    if (typeof sanitized.status === 'string' && isCustomerVisibleStatus(sanitized.status)) {
+      const sourceAuditBlock = await assertPackageSourceAuditAllowsPublication(packageId);
+      if (sourceAuditBlock) return sourceAuditBlock;
     }
 
     const v3NoticePatchBlock = await assertPackageV3NoticePatchAllowed(packageId, sanitized);
