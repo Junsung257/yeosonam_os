@@ -2,11 +2,11 @@
  * POST /api/revalidate
  *
  * Invalidates ISR cache paths after trusted database/admin scripts.
- * Body: { paths: string[], secret: string }
+ * Body: { paths?: string[], tags?: string[], secret: string }
  */
 
 import { NextRequest } from 'next/server';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { apiResponse } from '@/lib/api-response';
 import { getSecret } from '@/lib/secret-registry';
 import { safeEqualString } from '@/lib/timing-safe';
@@ -21,7 +21,7 @@ function noStore(body: Record<string, unknown>, status: number) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { paths, secret } = body;
+    const { paths, tags, secret } = body;
 
     const expectedSecret = getSecret('REVALIDATE_SECRET');
     if (!expectedSecret) {
@@ -31,19 +31,29 @@ export async function POST(request: NextRequest) {
       return noStore({ error: 'Invalid secret' }, 401);
     }
 
-    if (!Array.isArray(paths) || paths.length === 0) {
-      return apiResponse({ error: 'paths array is required' }, { status: 400 });
+    const hasPaths = Array.isArray(paths) && paths.length > 0;
+    const hasTags = Array.isArray(tags) && tags.length > 0;
+    if (!hasPaths && !hasTags) {
+      return apiResponse({ error: 'paths or tags array is required' }, { status: 400 });
     }
 
     const revalidated: string[] = [];
-    for (const path of paths) {
+    for (const path of hasPaths ? paths : []) {
       if (typeof path !== 'string') continue;
       if (!path.startsWith('/')) continue;
       revalidatePath(path);
       revalidated.push(path);
     }
 
-    return apiResponse({ success: true, revalidated });
+    const revalidatedTags: string[] = [];
+    for (const tag of hasTags ? tags : []) {
+      if (typeof tag !== 'string') continue;
+      if (!/^[a-z0-9:_-]{1,80}$/i.test(tag)) continue;
+      revalidateTag(tag);
+      revalidatedTags.push(tag);
+    }
+
+    return apiResponse({ success: true, revalidated, revalidatedTags });
   } catch (err) {
     return apiResponse(
       { error: sanitizeDbError(err, 'revalidate failed') },

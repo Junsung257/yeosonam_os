@@ -42,6 +42,16 @@ const THRESHOLDS = {
 } as const;
 
 const DEDUP_WINDOW_DAYS = 14;
+const GENERIC_SLUG_PREFIXES = new Set([
+  'travel-guide',
+  'package-guide',
+  'complete-guide',
+  'weather-guide',
+  'preparation-guide',
+  'budget-guide',
+  'food-guide',
+  'local-info',
+]);
 
 export interface GateResult {
   gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality';
@@ -69,6 +79,30 @@ interface CheckInput {
   content_type?: string | null;
   product_id?: string | null;
   skipFuzzyDuplicate?: boolean;
+}
+
+function getSpecificSlugPrefix(slug: string): string | null {
+  const tokens = slug
+    .split('-')
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (tokens.length < 2) return null;
+
+  const firstTwo = tokens.slice(0, 2).join('-');
+  if (GENERIC_SLUG_PREFIXES.has(firstTwo)) return null;
+
+  const prefix = tokens.slice(0, Math.min(4, Math.max(2, tokens.length - 1))).join('-');
+  if (prefix.length < 8 || !/^[a-z0-9-]+$/.test(prefix)) return null;
+  return prefix;
+}
+
+function shouldCheckDestinationAngleDuplicate(input: CheckInput): boolean {
+  if (!input.destination || !input.angle_type || input.skipFuzzyDuplicate) return false;
+  if (input.product_id) return false;
+  if (input.blog_type === 'product') return false;
+  if (input.content_type === 'package_intro') return false;
+  if (input.category === 'product_intro') return false;
+  return true;
 }
 
 export function checkLength(blog_html: string, blog_type: 'product' | 'info' = 'product'): GateResult {
@@ -533,8 +567,8 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
 
   // 1b) slug prefix 기반 fuzzy 중복 — slugify 전 토픽 유사도
   // "태국-입국-서류-정리"와 "태국-입국-서류-총정리-재작성-v2"가 slug는 다르지만 같은 주제
-  const slugPrefix = input.slug.split('-').slice(0, 2).join('-'); // 단어 2개만 사용 (짧은 목적지도 커버)
-  if (!input.skipFuzzyDuplicate && slugPrefix.length >= 4 && /^[a-z0-9-]+$/.test(slugPrefix)) {
+  const slugPrefix = input.skipFuzzyDuplicate ? null : getSpecificSlugPrefix(input.slug);
+  if (slugPrefix) {
     // 순수 영문 prefix만 Postgres 문자열 범위 검색 (한글 포함 시 정렬이 다름)
     const prefixQuery = supabaseAdmin
       .from('content_creatives')
@@ -561,7 +595,7 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   }
 
   // 2) (destination + angle_type) 14일 내 중복 — travel_packages JOIN + content_creatives.destination 둘 다 확인
-  if (!input.skipFuzzyDuplicate && input.destination && input.angle_type) {
+  if (shouldCheckDestinationAngleDuplicate(input)) {
     // 2a) travel_packages JOIN 경로 (상품 블로그)
     const angleQuery = supabaseAdmin
       .from('content_creatives')

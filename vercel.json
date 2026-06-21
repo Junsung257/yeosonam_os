@@ -99,7 +99,7 @@
     },
     {
       "path": "/api/cron/blog-publisher",
-      "schedule": "5 3 * * 0"
+      "schedule": "5 3 * * *"
     },
     {
       "path": "/api/cron/trend-topic-miner",
