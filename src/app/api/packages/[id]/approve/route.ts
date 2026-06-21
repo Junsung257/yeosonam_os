@@ -23,7 +23,7 @@ interface ApproveBody {
   title?: string;
   summary?: string;
   selectedCopyType?: string;
-  /** audit_status === 'warnings' ?곹뭹??媛뺤젣 ?뱀씤????true */
+  /** Allows approval when the publish gate requires an explicit warning override. */
   force?: boolean;
 }
 
@@ -32,20 +32,20 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
   const { id } = params;
 
   if (!id) {
-    return NextResponse.json({ error: 'id ?뚮씪誘명꽣媛 ?꾩슂?⑸땲??' }, { status: 400 });
+    return NextResponse.json({ error: 'Package id is required.' }, { status: 400 });
   }
 
   let body: ApproveBody;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: '?붿껌 蹂몃Ц???좏슚?섏? ?딆뒿?덈떎.' }, { status: 400 });
+    return NextResponse.json({ error: 'Request body is not valid JSON.' }, { status: 400 });
   }
 
   const { action, title, summary, selectedCopyType } = body;
 
   if (action !== 'approve' && action !== 'reject') {
-    return NextResponse.json({ error: 'action? approve ?먮뒗 reject?ъ빞 ?⑸땲??' }, { status: 400 });
+    return NextResponse.json({ error: 'action must be approve or reject.' }, { status: 400 });
   }
 
   // ?? ?꾩옱 ?⑦궎吏 議고쉶 (internal_code + marketing_copies ?꾩슂) ????????????????
@@ -58,7 +58,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
 
   if (fetchError || !pkg) {
     return NextResponse.json(
-      { error: fetchError?.message ?? '?곹뭹??李얠쓣 ???놁뒿?덈떎.' },
+      { error: fetchError?.message ?? 'Package was not found.' },
       { status: 404 },
     );
   }
@@ -163,7 +163,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
     if (publishGate.decision === 'block') {
       return NextResponse.json(
         {
-          error: '異쒗뙋 寃뚯씠??李⑤떒 ?곹깭?낅땲?? ?먮Ц/?덉쭏 寃利??ㅽ뙣瑜??섏젙?????ш?利앺빐???뱀씤?????덉뒿?덈떎.',
+          error: 'Customer publishing is blocked. Fix the source/mobile/A4 audit failures before approval.',
           trust_score: approvalTrustScore,
           publish_gate: publishGate,
           render_claim_coverage: {
@@ -184,7 +184,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
     if (publishGate.decision === 'force_required' && !force) {
       return NextResponse.json(
         {
-          error: '寃쎄퀬媛 ?덈뒗 ?곹뭹?낅땲?? 媛먯궗/?덉쭏 由ы룷?몃? ?뺤씤????force=true 濡??ы샇異쒗븯?몄슂.',
+          error: 'This package has warnings. Review the audit report and retry with force=true only if the warnings are acceptable.',
           trust_score: approvalTrustScore,
           publish_gate: publishGate,
           audit_status: (pkg as { audit_status?: string | null }).audit_status ?? null,
@@ -193,7 +193,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         { status: 409 },
       );
     }
-    // marketing_copies??selected ?뚮옒洹??낅뜲?댄듃
+    // Update the selected flag on marketing copy variants.
     const updatedCopies: MarketingCopy[] = Array.isArray(pkg.marketing_copies)
       ? (pkg.marketing_copies as MarketingCopy[]).map(c => ({
           ...c,
@@ -451,7 +451,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
 
   if (rejectError) {
     return NextResponse.json(
-      { error: `諛섎젮 泥섎━ ?ㅽ뙣: ${rejectError.message}` },
+      { error: `Reject failed: ${rejectError.message}` },
       { status: 500 },
     );
   }
