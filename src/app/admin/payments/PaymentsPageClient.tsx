@@ -474,14 +474,18 @@ function PaymentOpsQueue({
   activeKey,
   counts,
   activeResultCount,
+  firstActionTransaction,
   onSelect,
+  onOpenFirstAction,
   onClear,
   onSelectBatch,
 }: {
   activeKey?: PaymentQueueKey;
   counts: Record<PaymentQueueKey, number>;
   activeResultCount?: number;
+  firstActionTransaction?: BankTransaction | null;
   onSelect: (key: PaymentQueueKey) => void;
+  onOpenFirstAction?: (tx: BankTransaction) => void;
   onClear: () => void;
   onSelectBatch?: () => void;
 }) {
@@ -561,6 +565,17 @@ function PaymentOpsQueue({
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {firstActionTransaction && onOpenFirstAction && (
+              <button
+                type="button"
+                data-testid="admin-payment-queue-first-action"
+                className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs bg-blue-600 px-3 font-bold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+                aria-label={`${firstActionTransaction.counterparty_name || '거래'} 첫 건 먼저 처리`}
+                onClick={() => onOpenFirstAction(firstActionTransaction)}
+              >
+                첫 건 처리
+              </button>
+            )}
             {selectedQueueItem.count > 0 && selectedQueueItem.key !== 'trash' && onSelectBatch && (
               <button
                 type="button"
@@ -1213,6 +1228,20 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   function closeMatchPanel() {
     matchStartedAtRef.current = null;
     setSelectedTx(null);
+  }
+
+  function handleOpenFirstPaymentQueueAction(tx: BankTransaction) {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/payments',
+      metadata: {
+        surface: 'payments_work_queue',
+        action: 'first_action_opened',
+        queue: activePaymentQueue ?? null,
+        ...buildPaymentActionDecisionMetadata(tx),
+      },
+    });
+    openMatchModal(tx);
   }
 
   useEffect(() => {
@@ -2250,7 +2279,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           trash: trashTxs.length,
         }}
         activeResultCount={filtered.length}
+        firstActionTransaction={activePaymentQueue && activePaymentQueue !== 'trash' ? filtered[0] ?? null : null}
         onSelect={handlePaymentQueueSelect}
+        onOpenFirstAction={handleOpenFirstPaymentQueueAction}
         onClear={handlePaymentQueueClear}
         onSelectBatch={handleSelectPaymentQueueBatch}
       />
