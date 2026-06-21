@@ -534,7 +534,10 @@ function ConciergePageContent() {
   const fixedItems = useMemo(() => cart.filter((item) => resolveCategory(item) === 'FIXED'), [cart]);
   const intentSummary = useMemo(() => inferIntentSummary(activePrompt, query, cart), [activePrompt, cart, query]);
   const groupInquiryHref = useMemo(() => {
-    const productNames = cart.map((item) => item.product_name).filter(Boolean);
+    const productNames = mergeUniqueText([
+      ...cart.map((item) => item.product_name),
+      ...(intentSummary.selected_products ?? []),
+    ]);
     return buildGroupInquiryHandoffHref({
       source: 'concierge',
       intent: intentSummary.intent ?? undefined,

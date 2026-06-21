@@ -613,6 +613,37 @@ test.describe('keyboard access smoke', () => {
     await expect(cartSheet).toBeHidden();
   });
 
+  test('concierge handoff inquiry preserves selected products before cart add', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.route('**/api/concierge/cart**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) });
+    });
+    await page.route('**/api/concierge/search', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ results: [] }),
+      });
+    });
+
+    const selectedProduct = 'PR 마닐라 골프';
+    const params = new URLSearchParams({
+      source: 'packages',
+      intent: 'package_search',
+      query: `${selectedProduct} 상담`,
+      selected_products: selectedProduct,
+    });
+    await page.goto(`/concierge?${params.toString()}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    const emptyGroupInquiry = page.locator('[data-testid="concierge-empty-group-inquiry"]:visible').first();
+    await expect(emptyGroupInquiry, 'concierge empty group inquiry should be visible').toBeVisible();
+    const href = await emptyGroupInquiry.getAttribute('href');
+    expect(href, 'concierge empty group inquiry should preserve selected products').toContain('selected_products=');
+    const handoffParams = new URLSearchParams(href?.split('?')[1] ?? '');
+    expect(handoffParams.get('selected_products')).toBe(selectedProduct);
+  });
+
   test('group inquiry intent chips expose selected state from keyboard', async ({ page }) => {
     await page.route('**/api/rfq/interview', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 250));
