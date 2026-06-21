@@ -1414,7 +1414,7 @@ export default function PackagesClient() {
   if (isLoading) return <Loading />;
 
   return (
-    <div className={`min-h-screen bg-white ${compareIds.length > 0 ? 'pb-[calc(23rem+env(safe-area-inset-bottom))] md:pb-28' : 'pb-36 md:pb-0'}`}>
+    <div className={`min-h-screen bg-white ${compareIds.length >= 2 ? 'pb-[calc(23rem+env(safe-area-inset-bottom))] md:pb-28' : 'pb-36 md:pb-0'}`}>
       <GlobalNav />
       <a href={consultTelHref || groupInquiryHref} className="sr-only">
         여행 상품 문의
@@ -2214,8 +2214,8 @@ export default function PackagesClient() {
       {/* ── 비교 플로팅 버튼 ── */}
       </div>
 
-      {compareIds.length > 0 && (
-        <div className="fixed bottom-[calc(8rem+env(safe-area-inset-bottom))] left-1/2 z-40 max-h-[min(60dvh,24rem)] w-[min(calc(100vw-2rem),680px)] -translate-x-1/2 overflow-y-auto md:bottom-[88px]">
+      {compareIds.length >= 2 && (
+        <div className="fixed bottom-[calc(15rem+env(safe-area-inset-bottom))] left-1/2 z-[60] max-h-[min(48dvh,24rem)] w-[min(calc(100vw-2rem),680px)] -translate-x-1/2 overflow-y-auto md:bottom-[88px]">
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
             <p
               id={compareHandoffSummaryId}
@@ -2406,7 +2406,7 @@ function SimpleCompareModal({
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
           <h2 id="package-compare-title" className="text-[16px] font-bold text-text-primary">상품 비교</h2>
           <button type="button" ref={closeButtonRef} data-testid="packages-compare-close" aria-label="상품 비교 닫기" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
-            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg>
+            <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
         <div className="overflow-y-auto px-4 py-4 space-y-3">
