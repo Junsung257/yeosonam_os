@@ -1468,7 +1468,7 @@ export default function PackagesClient() {
   if (isLoading) return <Loading />;
 
   return (
-    <div className={`min-h-screen bg-white ${compareIds.length >= 2 ? 'pb-[calc(23rem+env(safe-area-inset-bottom))] md:pb-28' : 'pb-36 md:pb-0'}`}>
+    <div className={`min-h-screen bg-white ${compareIds.length >= 2 ? 'pb-[calc(23rem+env(safe-area-inset-bottom))] lg:pb-28' : 'pb-36 lg:pb-0'}`}>
       <GlobalNav />
       <a href={consultTelHref || groupInquiryHref} className="sr-only">
         여행 상품 문의
@@ -2163,7 +2163,7 @@ export default function PackagesClient() {
       )}
 
       {/* 플로팅 CTA — 모바일 전용 */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
         <div className="max-w-lg mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <p id={PACKAGES_STICKY_PHONE_DESCRIPTION_ID} className="sr-only">
             현재 패키지 목록 조건을 기준으로 전화 상담을 시작합니다.
@@ -2286,7 +2286,7 @@ export default function PackagesClient() {
 
       {compareIds.length >= 2 && (
         <div
-          className="fixed bottom-32 bottom-[var(--packages-compare-bottom)] left-1/2 z-[60] max-h-[min(48dvh,24rem)] w-[min(calc(100vw-2rem),680px)] -translate-x-1/2 overflow-y-auto md:bottom-[88px]"
+          className="fixed bottom-32 bottom-[var(--packages-compare-bottom)] left-1/2 z-[60] max-h-[min(48dvh,24rem)] w-[min(calc(100vw-2rem),680px)] -translate-x-1/2 overflow-y-auto lg:bottom-[88px]"
           style={{ '--packages-compare-bottom': 'calc(15rem + env(safe-area-inset-bottom))' } as CSSProperties}
         >
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
