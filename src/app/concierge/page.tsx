@@ -523,6 +523,7 @@ function ConciergePageContent() {
   const customerNameRef = useRef<HTMLInputElement>(null);
   const cartSheetReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const handoffAutoSearchStartedRef = useRef(false);
+  const activeSearchRef = useRef<{ id: number; controller: AbortController } | null>(null);
   const sessionId = getOrCreateSessionId();
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
@@ -579,6 +580,10 @@ function ConciergePageContent() {
     return () => window.cancelAnimationFrame(frame);
   }, [checkoutOpen]);
 
+  useEffect(() => {
+    return () => activeSearchRef.current?.controller.abort();
+  }, []);
+
   function openCartSheet(trigger: HTMLButtonElement | null) {
     cartSheetReturnFocusRef.current = trigger;
     setCartSheetOpen(true);
@@ -626,7 +631,10 @@ function ConciergePageContent() {
       ...nextIntentSummary,
     });
 
+    const requestId = (activeSearchRef.current?.id ?? 0) + 1;
+    activeSearchRef.current?.controller.abort();
     const controller = new AbortController();
+    activeSearchRef.current = { id: requestId, controller };
     const timeoutId = window.setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
 
     try {
@@ -640,9 +648,11 @@ function ConciergePageContent() {
         throw new Error('검색 응답을 불러오지 못했습니다. 다시 시도하거나 카톡 상담으로 이어가 주세요.');
       }
       const data = await response.json();
+      if (activeSearchRef.current?.id !== requestId) return;
       if (data.error) throw new Error(data.error);
       setResults(data.results ?? []);
     } catch (error) {
+      if (activeSearchRef.current?.id !== requestId) return;
       const isAbortError = error instanceof Error && error.name === 'AbortError';
       setSearchError(
         isAbortError
@@ -653,7 +663,10 @@ function ConciergePageContent() {
       );
     } finally {
       window.clearTimeout(timeoutId);
-      setLoading(false);
+      if (activeSearchRef.current?.id === requestId) {
+        activeSearchRef.current = null;
+        setLoading(false);
+      }
     }
   }, [cart]);
 
