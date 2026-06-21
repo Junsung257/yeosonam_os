@@ -114,9 +114,18 @@ test.describe('keyboard access smoke', () => {
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     const resultSummary = page.locator('[data-testid="packages-result-summary"]');
+    await expect(resultSummary).toHaveCount(1, { timeout: 20_000 });
     await expect(resultSummary).toHaveAttribute('aria-live', 'polite');
     await expect(resultSummary).toHaveAttribute('aria-atomic', 'true');
     await expect(resultSummary).toContainText(/상품 \d+개 중 \d+개/);
+
+    const monthFilter = page.locator('[data-testid="packages-month-filter"]:visible').first();
+    if ((await monthFilter.locator('option').count()) > 1) {
+      await monthFilter.selectOption({ index: 1 });
+      const decisionSummary = page.locator('[data-testid="packages-list-decision-summary"]');
+      await expect(decisionSummary, 'package filters should move focus to the refreshed result decision summary').toBeFocused({ timeout: 10_000 });
+      await expect(decisionSummary).toHaveAttribute('tabindex', '-1');
+    }
 
     const moreFilters = page.locator('[data-testid="packages-more-filters-toggle"]:visible').first();
     if (await moreFilters.count()) {

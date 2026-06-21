@@ -313,6 +313,8 @@ export default function PackagesClient() {
   const hubFilterRef = useRef<HTMLSelectElement | null>(null);
   const purposeFilterRef = useRef<HTMLSelectElement | null>(null);
   const budgetFilterRef = useRef<HTMLSelectElement | null>(null);
+  const packageListDecisionSummaryRef = useRef<HTMLElement | null>(null);
+  const shouldFocusPackageResultsRef = useRef(false);
 
   const destination = searchParams.get('destination') || '';
   const rawFilter = searchParams.get('filter') || '';
@@ -394,6 +396,17 @@ export default function PackagesClient() {
   const compareNextActionText = compareIds.length >= 2
     ? '다음: 두 상품 차이를 확인한 뒤 선택 상품 그대로 상담에 전달합니다.'
     : '다음: 비교할 상품을 하나 더 선택하면 상세 비교와 상담 전달이 쉬워집니다.';
+  const focusPackageResults = useCallback(() => {
+    const target = packageListDecisionSummaryRef.current;
+    if (!target) return;
+    target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    target.focus({ preventScroll: true });
+  }, []);
+  const requestPackageResultsFocus = useCallback(() => {
+    shouldFocusPackageResultsRef.current = true;
+    window.setTimeout(focusPackageResults, 80);
+    window.setTimeout(focusPackageResults, 450);
+  }, [focusPackageResults]);
   const inferredIntentFromQuery = useMemo(() => inferPackageIntentFromQuery(q), [q]);
   const inferredDestinationFromQuery = useMemo(() => inferPackageDestinationFromQuery(q), [q]);
   const inferredBudgetFromQuery = useMemo(() => inferPackageBudgetFromQuery(q), [q]);
@@ -402,6 +415,7 @@ export default function PackagesClient() {
 
   const navigateWithHub = useCallback(
     (nextHub: DepartureHubId) => {
+      requestPackageResultsFocus();
       const p = new URLSearchParams(searchParams.toString());
       appendDepartureHubToSearchParams(p, nextHub);
       p.delete('departure');
@@ -409,7 +423,7 @@ export default function PackagesClient() {
       const qs = p.toString();
       router.push(qs ? `/packages?${qs}` : '/packages');
     },
-    [router, searchParams],
+    [requestPackageResultsFocus, router, searchParams],
   );
 
   const hrefPackagesClearUrgencyCategory = useMemo(() => {
@@ -642,6 +656,15 @@ export default function PackagesClient() {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
+
+  useEffect(() => {
+    if (!shouldFocusPackageResultsRef.current || isLoading) return;
+    shouldFocusPackageResultsRef.current = false;
+    const focusTimer = window.setTimeout(() => {
+      focusPackageResults();
+    }, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [apiQuery, filteredPackages.length, focusPackageResults, isLoading]);
   const mobileAppliedFilterItems = useMemo<MobileAppliedFilterItem[]>(() => {
     const items: MobileAppliedFilterItem[] = [];
     if (month) items.push({ key: 'month', label: '출발월', value: formatMonthSummary(month), clearLabel: '출발월 조건 해제' });
@@ -1151,6 +1174,7 @@ export default function PackagesClient() {
     if (nextIntent) params.set('intent', nextIntent);
     else params.delete('intent');
     const qs = params.toString();
+    requestPackageResultsFocus();
     setSelectedIntent(nextIntent);
     router.push(qs ? `/packages?${qs}` : '/packages');
     trackScoreSignal({
@@ -1253,6 +1277,7 @@ export default function PackagesClient() {
     priceMin,
     primaryFilterChecklist,
     q,
+    requestPackageResultsFocus,
     router,
     searchParams,
     selectedIntent,
@@ -1266,6 +1291,7 @@ export default function PackagesClient() {
   }, [priceMax, priceMin]);
 
   const updatePackageQuery = useCallback((updates: Record<string, string | null>) => {
+    requestPackageResultsFocus();
     const p = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
       if (value) p.set(key, value);
@@ -1273,7 +1299,7 @@ export default function PackagesClient() {
     });
     const qs = p.toString();
     router.push(qs ? `/packages?${qs}` : '/packages');
-  }, [router, searchParams]);
+  }, [requestPackageResultsFocus, router, searchParams]);
 
   const handleMonthFilterChange = useCallback((value: string) => {
     updatePackageQuery({ month: value || null });
@@ -1368,13 +1394,14 @@ export default function PackagesClient() {
   );
 
   const resetPackageFilters = useCallback(() => {
+    requestPackageResultsFocus();
     setSelectedIntent(null);
     setActiveFilter(FILTER_OPTIONS[0]);
     setSortBy('recommended');
     setShowMoreFilters(false);
     trackPackageFilter('reset', 'all');
     router.push('/packages');
-  }, [router, trackPackageFilter]);
+  }, [requestPackageResultsFocus, router, trackPackageFilter]);
 
   const handleMoreFiltersToggle = useCallback(() => {
     setShowMoreFilters((current) => {
@@ -1482,6 +1509,7 @@ export default function PackagesClient() {
           >
             <select
               ref={monthFilterRef}
+              data-testid="packages-month-filter"
               aria-label="출발월"
               aria-describedby={packageFilterDescriptionIds}
               aria-controls="packages-list"
@@ -1800,8 +1828,10 @@ export default function PackagesClient() {
       </p>
 
       <section
+        ref={packageListDecisionSummaryRef}
         id={packageListDecisionSummaryId}
         data-testid="packages-list-decision-summary"
+        tabIndex={-1}
         aria-label={packageListDecisionSummaryText}
         className="mx-4 mb-3 rounded-[16px] border border-[#DCE5F0] bg-white p-3 md:mx-auto md:max-w-7xl md:px-4"
       >
