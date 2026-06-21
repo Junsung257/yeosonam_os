@@ -24,6 +24,15 @@ describe('product registration failure diagnostics', () => {
     expect(diagnostics.map(diagnostic => diagnostic.code)).toContain('FLIGHT_TIME_MISMATCH');
   });
 
+  it('classifies itinerary entity/card mismatches as a learnable blocker', () => {
+    const diagnostics = classifyProductRegistrationFailure(
+      'itinerary schedule quality error: ITINERARY_ATTRACTION_REF_ON_NON_ATTRACTION_TEXT: DAY3 "※현지지불옵션 : 백두산5D플라잉 체험 $40/인" — paid optional-tour disclosure must not be rendered as an attraction card',
+    );
+
+    expect(diagnostics.map(diagnostic => diagnostic.code)).toContain('ITINERARY_ENTITY_MISMATCH');
+    expect(diagnostics[0]?.severity).toBe('critical');
+  });
+
   it('summarizes repeated upload blockers for API responses and review queues', () => {
     const summary = summarizeProductRegistrationFailures([
       'Customer landing/A4 blocked: product_prices missing | itinerary missing',
