@@ -136,7 +136,7 @@ HWP/HWPX handling is intentionally explicit:
 - `.pdf` is a first-class unattended inbox input. The extractor must compare available free text extractors and keep the higher-quality result. `pdf-parse` is always available from the app dependency tree; `pdfplumber` may be used when `PDFPLUMBER_PYTHON` points to a Python environment with `pdfplumber`, or when the local bundled Codex Python runtime exists.
 - PDF extraction quality must be scored before registration. Prefer text with itinerary/price/travel signals and reject or down-rank glyph-heavy output. A structurally present PDF is not enough if the title, price table, flight rows, or itinerary text is mojibake.
 - `.hwp` binary extraction is allowed only when a non-GUI extractor such as pyhwp is available on the machine. The unattended inbox first tries `hwp5txt`; when that returns placeholder-only table markers, it must fall back to `hwp5html` and recover paragraph/table text from `index.xhtml`.
-- HWP extraction output must also pass a quality threshold. Placeholder-only output such as repeated table/image markers is not registration-safe even if `hwp5txt` exits successfully. The HTML fallback is registration-safe only when the recovered text clears the same travel-signal and length threshold.
+- HWP extraction output must also pass a quality threshold. Placeholder-only output such as repeated table/image markers is not registration-safe even if `hwp5txt` exits successfully. The HTML fallback is registration-safe when the recovered text has at least 900 meaningful non-placeholder characters and at least 8 meaningful lines.
 - If no non-GUI HWP extractor is available, the inbox run must record `HWP binary extractor is not available` and stop before registration for that file.
 - If a `.hwp` file has a same-stem `.pdf`, `.hwpx`, `.txt`, or `.md` companion, the unattended inbox should prefer the companion and skip that HWP path. This avoids Hancom permission popups and avoids counting known-unreadable HWP copies as product failures.
 - Duplicate extracted raw-text hashes must be skipped before DB registration. They should remain visible in the extraction report as `duplicate_skipped`, but they must not trigger another parser/DB/mobile run.
@@ -151,6 +151,8 @@ npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-
 This audit checks the extracted source queue against deterministic catalog splitting, source-backed price/date recovery, itinerary normalization, and the standard registration deliverability gate. It is still not mobile proof. The summary must keep `mobileLandingVerified=false` until the products are saved and the actual `/packages/{id}` mobile page plus A4 contract are checked.
 
 For catalog-style supplier sheets with a shared price table before multiple `PKG` sections, the audit must verify that each product variant keeps the shared price table and selects the correct grade column by product title. A table such as `실속패키지 / 베이토우+미식 / 노팁노옵션` must not be treated as a hotel-column matrix; otherwise one variant can pass structurally while showing another variant's price.
+
+Catalog split recovery must also reject false splits. If recovery finds only one section with real customer itinerary evidence and another section is just a title, fare preamble, or header fragment, the source must be processed as one product. A title-only pseudo-product must never create an `itinerary_missing` blocker or be registered as a customer product.
 
 The offline source audit must also write `learning-events.json`, `offline-master-candidates.json`, and `macro-learning-report.json`. These files feed the same micro/macro learning loop with source hashes, blocker signatures, compared fields, offline master-candidate decisions, and offline audit status while REST persistence is unavailable. They are read-only learning artifacts: they must not store raw supplier text, must not mutate production parser rules, and must not be treated as customer mobile proof.
 
@@ -182,17 +184,19 @@ The offline summary must report both candidate counts and occurrence counts by a
 
 Every offline master candidate must include `photoSearchPlan` and `descriptionSeed`. `photoSearchPlan` is the media backfill plan only: it should use the normalized attraction name, known English/local aliases, and destination context. Do not use long supplier description sentences as photo aliases. `descriptionSeed` may keep source labels and hashes for review/evidence, but the final mobile description still needs external verification or an approved internal master before customer publication.
 
-When REST recovers, resume from the extracted text queue instead of reopening HWP/HWPX files:
+When REST recovers, resume from the offline-audited extracted text queue instead of reopening HWP/HWPX files:
 
 ```bash
-npx tsx scripts/register-upload-inbox-from-extract-report.ts --report=scratch/upload-inbox-batch-reports/{run}/report.json --register --fill-attraction-photos --audit-mobile --limit=2000
+npx tsx scripts/register-upload-inbox-from-report.ts --audit=scratch/upload-inbox-batch-reports/{run}/offline-source-audit.json --register --fill-attraction-photos --audit-mobile
 ```
 
-This resume command must run DB preflight first. If the preflight returns `DB_HEALTHCHECK_TIMEOUT`, no product registration or mobile proof has started. If it saves products successfully, `--fill-attraction-photos` should backfill media for referenced attractions first, and the `--audit-mobile` step must pass for the saved package ids before anything is marked customer-ready.
+This resume command must run DB preflight first. If the preflight fails, no product registration or mobile proof has started. It must skip sources where any product remains blocked by `offline-source-audit.json`, so price-missing, itinerary-missing, and destination-unresolved documents are not retried as customer products. If it saves products successfully, `--fill-attraction-photos` should backfill media for referenced attractions first, and the `--audit-mobile` step must pass for the saved package ids before anything is marked customer-ready.
 
 For unattended recovery, add `--wait-db --wait-db-timeout-ms=900000 --wait-db-interval-ms=30000`. This keeps retrying the DB preflight and starts registration only after the preflight is OK. If the wait expires, the output summary remains non-customer-ready with the failed preflight attempts recorded.
 
-If `--report` is omitted, the resume command must select the valid extraction report with the most file rows, not a summary-only or small smoke-test JSON that happened to be written later. The final `summary.json` is authoritative for resume status: `mobileLandingVerified=true` is allowed only when saved package ids exist and the targeted mobile/A4 audit passes. Otherwise `mobileLandingVerificationReason` must explain whether there were no saved ids, the audit was not requested, or the audit failed.
+When Supabase has recently shown resource pressure, run the resume in chunks with `--max-files=5` or `--max-files=10`, then inspect the saved package ids and targeted mobile/A4 audit before continuing. Chunking is an operational throttle only; it must not weaken the publish gate or skip mobile proof.
+
+If `--audit` is omitted, the resume command must fail with usage instructions rather than guessing from the latest file. The final `summary.json` is authoritative for resume status: `mobileLandingVerified=true` is allowed only when saved package ids exist and the targeted mobile/A4 audit passes. Otherwise `mobileLandingVerificationReason` must explain whether there were no saved ids, the audit was not requested, or the audit failed.
 
 For targeted saved-package proof, the mobile readiness audit accepts saved ids directly:
 

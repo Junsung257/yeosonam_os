@@ -630,6 +630,18 @@ function extractInlineRouteFlightRows(rawText: string): Array<NonNullable<Return
       .trim();
     if (!/\b[A-Z]{2}\d{2,4}\b/.test(normalizedLine)) continue;
 
+    const iataCodeFirstRouteRe = /\b([A-Z]{2}\d{2,4})\s+([A-Z]{3})\s*[-–]\s*([A-Z]{3})\s+(\d{1,2}:?\d{2})\s*[-–~\/]\s*(\d{1,2}:?\d{2})(?:\s*\+?\s*\d+)?/gu;
+    for (const match of normalizedLine.matchAll(iataCodeFirstRouteRe)) {
+      const departureTime = normalizeFlightTimeToken(match[4]);
+      const arrivalTime = normalizeFlightTimeToken(match[5]);
+      if (!departureTime || !arrivalTime) continue;
+      rows.push({
+        code: match[1],
+        departure: { time: departureTime, airport: cleanAirport(match[2]) },
+        arrival: { time: arrivalTime, airport: cleanAirport(match[3]) },
+      });
+    }
+
     for (const match of normalizedLine.matchAll(routeSegmentRe)) {
       rows.push({
         code: match[3],

@@ -240,8 +240,8 @@ function extractHwpViaHtmlFallback(filePath: string, hwp5TxtExecutables: string[
         timeout: 60_000,
       });
       if (result.status !== 0) continue;
-      const indexPath = join(outputDir, 'index.xhtml');
-      if (!existsSync(indexPath)) continue;
+      const indexPath = findFirstFileByName(outputDir, 'index.xhtml') ?? findFirstFileByName(tempRoot, 'index.xhtml');
+      if (!indexPath || !existsSync(indexPath)) continue;
       const text = extractTextFromHwpHtml(readFileSync(indexPath, 'utf8'));
       if (isUsableHwpText(text)) return text;
     } finally {
@@ -249,6 +249,20 @@ function extractHwpViaHtmlFallback(filePath: string, hwp5TxtExecutables: string[
     }
   }
 
+  return null;
+}
+
+function findFirstFileByName(root: string, fileName: string): string | null {
+  if (!existsSync(root)) return null;
+  const entries = readdirSync(root, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = join(root, entry.name);
+    if (entry.isFile() && entry.name.toLowerCase() === fileName.toLowerCase()) return fullPath;
+    if (entry.isDirectory()) {
+      const nested = findFirstFileByName(fullPath, fileName);
+      if (nested) return nested;
+    }
+  }
   return null;
 }
 
@@ -294,7 +308,7 @@ function isUsableHwpText(text: string): boolean {
     .map(line => line.replace(/<[^>]{1,12}>/g, '').trim())
     .filter(line => line.length >= 8);
 
-  return meaningfulText.length >= 1200 && meaningfulLines.length >= 8;
+  return meaningfulText.length >= 900 && meaningfulLines.length >= 8;
 }
 
 function candidatePdfplumberPythonCommands(): string[] {

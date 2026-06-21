@@ -40,6 +40,7 @@ type OfflineProductAudit = {
   priceRows: number;
   priceDates: number;
   itineraryDays: number;
+  blockerCategory: string | null;
   publishableOffline: boolean;
   customerReadyOffline: boolean;
   blockers: string[];
@@ -57,6 +58,7 @@ type OfflineAuditReport = {
     publishableOffline: number;
     customerReadyOffline: number;
     blocked: number;
+    blockedByCategory: Record<string, number>;
     mobileLandingVerified: false;
     mobileLandingVerificationReason: string;
   };
@@ -139,6 +141,30 @@ function customerReadyOffline(registration: StandardProductRegistrationObject, b
   return registration.publishable && customerReviewWarnings.length === 0;
 }
 
+function classifyBlockerCategory(blockers: string[]): string | null {
+  if (blockers.length === 0) return null;
+  const text = blockers.join('\n');
+  const priceMissing = /product_prices missing|price_dates missing|landing\.priceFrom missing|landing\.price_dates missing/i.test(text);
+  const itineraryMissing = /itinerary missing|landing\.itinerary\.days missing|a4\.days missing/i.test(text);
+  if (priceMissing && itineraryMissing) return 'price_and_itinerary_missing';
+  if (/itinerary duplicate day number|duration overflow/i.test(text)) return 'itinerary_duplicate_or_overflow';
+  if (/flight time source mismatch|saved segments are incomplete|round-trip flight times/i.test(text)) return 'flight_mismatch';
+  if (/destination_unknown|destination code unresolved|destination_code:UNK/i.test(text)) return 'destination_unresolved';
+  if (itineraryMissing) return 'itinerary_missing';
+  if (priceMissing) return 'price_missing';
+  return 'other';
+}
+
+function countBlockedByCategory(products: OfflineProductAudit[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const product of products) {
+    if (product.publishableOffline) continue;
+    const category = product.blockerCategory ?? 'other';
+    counts[category] = (counts[category] ?? 0) + 1;
+  }
+  return counts;
+}
+
 async function auditProduct(input: {
   sourceFile: string;
   productIndex: number;
@@ -191,6 +217,7 @@ async function auditProduct(input: {
     priceRows: finalRegistration.pricing.productPrices.length,
     priceDates: finalRegistration.pricing.priceDates.length,
     itineraryDays,
+    blockerCategory: classifyBlockerCategory(blockers),
     publishableOffline: finalRegistration.publishable && blockers.length === 0,
     customerReadyOffline: customerReadyOffline(finalRegistration, blockers, warnings),
     blockers: [...new Set(blockers)].slice(0, 40),
@@ -316,6 +343,7 @@ async function main(): Promise<void> {
       publishableOffline: products.filter(product => product.publishableOffline).length,
       customerReadyOffline: products.filter(product => product.customerReadyOffline).length,
       blocked: products.filter(product => !product.publishableOffline).length,
+      blockedByCategory: countBlockedByCategory(products),
       mobileLandingVerified: false,
       mobileLandingVerificationReason: 'offline audit cannot verify live mobile pages; run register-upload-inbox with --register --audit-mobile after DB health passes',
     },

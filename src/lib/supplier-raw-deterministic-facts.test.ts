@@ -852,6 +852,34 @@ describe('Korean catalog table flight recovery', () => {
     ]);
   });
 
+  it('recovers code-first IATA route rows with both round-trip flights on one line', () => {
+    const raw = [
+      '마카오 천저우 3박5일',
+      'BX381 PUS – MFM 21:55 – 00:55+1 / BX382 MFM – PUS 01:55 – 06:30',
+      '제1일',
+      '부산 김해국제공항 출발',
+      '마카오 국제공항 도착',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+    const itinerary = buildSupplierRawDeterministicItinerary(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX381',
+      departure: { airport: 'PUS', time: '21:55' },
+      arrival: { airport: 'MFM', time: '00:55' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX382',
+      departure: { airport: 'MFM', time: '01:55' },
+      arrival: { airport: 'PUS', time: '06:30' },
+    });
+    expect(itinerary?.flight_segments).toMatchObject([
+      { leg: 'outbound', flight_no: 'BX381', dep_time: '21:55', arr_time: '00:55' },
+      { leg: 'inbound', flight_no: 'BX382', dep_time: '01:55', arr_time: '06:30' },
+    ]);
+  });
+
   it('skips airport gathering times in OCR-style PDF flight rows', () => {
     const raw = [
       '북해도 알짜 BA팩 2박3일',

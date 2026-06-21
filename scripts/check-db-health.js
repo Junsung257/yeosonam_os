@@ -7,10 +7,19 @@ const supabaseUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABAS
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const timeoutMs = Number(process.env.DB_HEALTH_TIMEOUT_MS || '5000');
 
+function isPlaceholder(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return !normalized || normalized === 'xxx' || normalized === 'placeholder' || normalized.includes('your_') || normalized.includes('replace_me');
+}
+
 function requestRestRoot() {
   return new Promise((resolve) => {
     if (!supabaseUrl || !serviceKey) {
       resolve({ status: 'skipped', notes: 'Supabase URL or service role key is not configured' });
+      return;
+    }
+    if (isPlaceholder(serviceKey)) {
+      resolve({ status: 'down', statusCode: null, notes: 'Supabase service role key is a placeholder' });
       return;
     }
 
@@ -26,10 +35,14 @@ function requestRestRoot() {
       res.resume();
       res.on('end', () => {
         resolve({
-          status: res.statusCode >= 200 && res.statusCode < 500 ? 'reachable' : 'down',
+          status: res.statusCode >= 200 && res.statusCode < 400 ? 'reachable' : 'down',
           statusCode: res.statusCode,
           responseTimeMs: Date.now() - startedAt,
-          notes: res.statusCode >= 200 && res.statusCode < 500 ? 'rest endpoint reachable' : 'server error',
+          notes: res.statusCode === 401 || res.statusCode === 403
+            ? 'rest endpoint rejected Supabase credentials'
+            : res.statusCode >= 200 && res.statusCode < 400
+              ? 'rest endpoint reachable'
+              : 'server error',
         });
       });
     });
