@@ -2566,9 +2566,19 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         </span>
                       )}
                     </div>
-                    <h3 className="mt-2 truncate text-admin-sm font-bold text-admin-text-2">
-                      {tx.bookings ? fmtBookingAnchor(tx.bookings) : tx.counterparty_name || '거래처 없음'}
-                    </h3>
+                    {tx.bookings ? (
+                      <Link
+                        href={`/admin/bookings/${tx.bookings.id}`}
+                        className="mt-2 block truncate text-admin-sm font-bold text-admin-text-2 underline-offset-2 hover:text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                        aria-label={`${fmtBookingAnchor(tx.bookings)} 예약 상세로 이동`}
+                      >
+                        {fmtBookingAnchor(tx.bookings)}
+                      </Link>
+                    ) : (
+                      <h3 className="mt-2 truncate text-admin-sm font-bold text-admin-text-2">
+                        {tx.counterparty_name || '거래처 없음'}
+                      </h3>
+                    )}
                     <p className="mt-0.5 line-clamp-2 text-[11px] text-admin-muted">
                       {tx.bookings?.package_title || tx.memo || '연결된 예약 없음'}
                     </p>
@@ -2692,9 +2702,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     {tx.bookings ? (
                       <>
                         {/* 핵심 앵커: 고객명 / 260507 */}
-                        <div className="font-medium text-admin-text-2 tabular-nums">
+                        <Link
+                          href={`/admin/bookings/${tx.bookings.id}`}
+                          className="block w-fit font-medium text-admin-text-2 underline-offset-2 tabular-nums hover:text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                          aria-label={`${fmtBookingAnchor(tx.bookings)} 예약 상세로 이동`}
+                        >
                           {fmtBookingAnchor(tx.bookings)}
-                        </div>
+                        </Link>
                         <div className="text-[11px] text-admin-muted truncate max-w-[240px]">
                           {tx.bookings.package_title || '상품 미지정'}
                           {tx.bookings.booking_no && ` · ${tx.bookings.booking_no}`}
