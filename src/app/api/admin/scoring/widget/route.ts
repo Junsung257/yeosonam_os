@@ -11,8 +11,18 @@ import { withAdminGuard } from '@/lib/admin-guard';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const EMPTY_WIDGET_STATS = {
+  active_policy_version: null,
+  total_groups: 0,
+  total_score_rows: 0,
+  ltr_samples: 0,
+  ltr_ready: false,
+  unacked_alerts: 0,
+  recent_winner: null,
+};
+
 const getHandler = async () => {
-  if (!isSupabaseConfigured) return apiResponse({ active_policy_version: null });
+  if (!isSupabaseConfigured) return apiResponse(EMPTY_WIDGET_STATS);
   const [policyRes, groupsRes, ltrRes, alertsRes, abRes] = await Promise.all([
     supabaseAdmin.from('scoring_policies').select('version').eq('is_active', true).limit(1).single(),
     supabaseAdmin.from('package_scores').select('group_key', { count: 'exact', head: true }),

@@ -941,6 +941,10 @@ type BookingActiveTab =
   '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'over_cost' | 'refund_pending' | 'settlement_pending';
 type BookingWorkQueueKey = 'unpaid' | 'prep' | 'deposit' | 'land' | 'settlement' | 'refund';
 
+function trimSentenceEnd(value: string): string {
+  return value.replace(/[.!?。]+$/u, '');
+}
+
 function BookingWorkQueue({
   activeKey,
   counts,
@@ -1129,7 +1133,7 @@ function BookingWorkQueue({
               } ${item.tone}`}
             >
               <span id={itemDescriptionId} className="sr-only">
-                {item.target} 현재 {item.count}건입니다. 운영 리스크는 {item.operationRisk}, 처리 이유는 {item.reason}입니다.
+                {trimSentenceEnd(item.target)}. 현재 {item.count}건입니다. 운영 리스크는 {item.operationRisk}, 처리 이유는 {trimSentenceEnd(item.reason)}.
               </span>
               <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
               <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>

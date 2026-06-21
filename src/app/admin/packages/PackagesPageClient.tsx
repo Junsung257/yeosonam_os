@@ -241,6 +241,10 @@ const STATUS_OPTIONS = [
 type PackageQueueKey = 'review' | 'copy' | 'publish' | 'deadline';
 type PackageQueueSelectKey = PackageQueueKey | 'gaps';
 
+function trimSentenceEnd(value: string): string {
+  return value.replace(/[.!?。]+$/u, '');
+}
+
 function getInitialPackageStatusFilter(status: string | null, queue: string | null): string {
   const normalizedStatus = (status || '').toLowerCase();
   const normalizedQueue = (queue || '').toLowerCase();
@@ -737,7 +741,7 @@ function PackageOpsQueue({
               }`}
             >
               <span id={cardDescriptionId} className="sr-only">
-                {card.target} 현재 {card.count}건입니다. 운영 리스크는 {card.operationRisk}, 처리 이유는 {card.reason}입니다.
+                {trimSentenceEnd(card.target)}. 현재 {card.count}건입니다. 운영 리스크는 {card.operationRisk}, 처리 이유는 {trimSentenceEnd(card.reason)}.
               </span>
               <div className="flex items-start justify-between gap-2">
                 <div>

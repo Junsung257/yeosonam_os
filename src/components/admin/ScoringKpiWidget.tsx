@@ -20,13 +20,53 @@ interface Stats {
   recent_winner: { policy_version: string | null; confidence: number | null } | null;
 }
 
+const EMPTY_STATS: Stats = {
+  active_policy_version: null,
+  total_groups: 0,
+  total_score_rows: 0,
+  ltr_samples: 0,
+  ltr_ready: false,
+  unacked_alerts: 0,
+  recent_winner: null,
+};
+
+function safeNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+export function normalizeScoringKpiStats(value: unknown): Stats {
+  if (!value || typeof value !== 'object') return EMPTY_STATS;
+
+  const row = value as Partial<Stats>;
+  const recentWinner = row.recent_winner && typeof row.recent_winner === 'object'
+    ? row.recent_winner
+    : null;
+
+  return {
+    active_policy_version: typeof row.active_policy_version === 'string' ? row.active_policy_version : null,
+    total_groups: safeNumber(row.total_groups),
+    total_score_rows: safeNumber(row.total_score_rows),
+    ltr_samples: safeNumber(row.ltr_samples),
+    ltr_ready: row.ltr_ready === true,
+    unacked_alerts: safeNumber(row.unacked_alerts),
+    recent_winner: recentWinner
+      ? {
+        policy_version: typeof recentWinner.policy_version === 'string' ? recentWinner.policy_version : null,
+        confidence: typeof recentWinner.confidence === 'number' && Number.isFinite(recentWinner.confidence)
+          ? recentWinner.confidence
+          : null,
+      }
+      : null,
+  };
+}
+
 export default function ScoringKpiWidget() {
   const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/scoring/widget')
       .then(r => r.ok ? r.json() : null)
-      .then(setStats)
+      .then(payload => setStats(payload ? normalizeScoringKpiStats(payload) : null))
       .catch(() => {});
   }, []);
 
@@ -55,10 +95,10 @@ export default function ScoringKpiWidget() {
         <div className="bg-admin-bg rounded-lg p-3">
           <div className="text-[10px] text-admin-muted-2 uppercase">점수 그룹</div>
           <div className="text-sm font-bold text-admin-text mt-0.5 tabular-nums">
-            {stats.total_groups.toLocaleString()}
+            {stats.total_groups.toLocaleString('ko-KR')}
           </div>
           <div className="text-[10px] text-admin-muted">
-            {stats.total_score_rows.toLocaleString()} score row
+            {stats.total_score_rows.toLocaleString('ko-KR')} score row
           </div>
         </div>
 
@@ -69,7 +109,7 @@ export default function ScoringKpiWidget() {
           <div className={`text-sm font-bold mt-0.5 tabular-nums ${
             stats.ltr_ready ? 'text-emerald-700' : 'text-violet-700'
           }`}>
-            {stats.ltr_ready ? '✓ Ready' : `${stats.ltr_samples}/1000`}
+            {stats.ltr_ready ? '✓ Ready' : `${stats.ltr_samples.toLocaleString('ko-KR')}/1,000`}
           </div>
           <div className="text-[10px] text-admin-muted">
             {stats.ltr_ready ? '학습 가능' : '데이터 누적 중'}
@@ -83,7 +123,7 @@ export default function ScoringKpiWidget() {
           <div className={`text-sm font-bold mt-0.5 tabular-nums ${
             stats.unacked_alerts > 0 ? 'text-amber-700' : 'text-admin-muted'
           }`}>
-            {stats.unacked_alerts}
+            {stats.unacked_alerts.toLocaleString('ko-KR')}
           </div>
           {stats.recent_winner?.policy_version && (
             <div className="text-[10px] text-amber-600 truncate">
