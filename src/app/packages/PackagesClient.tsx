@@ -693,11 +693,21 @@ export default function PackagesClient() {
         : filteredPackages.length <= 3
           ? '후보가 적다면 더 많은 필터를 넓혀 다른 상품도 확인해 보세요.'
           : '마음에 드는 상품 2개를 비교하거나 바로 상담으로 넘겨보세요.';
-  const firstVisiblePackageTitle = visiblePackages[0]?.display_title || visiblePackages[0]?.products?.display_name || visiblePackages[0]?.title || null;
+  const firstVisiblePackage = visiblePackages[0] ?? null;
+  const firstVisiblePackageTitle = firstVisiblePackage?.display_title || firstVisiblePackage?.products?.display_name || firstVisiblePackage?.title || null;
+  const firstVisibleScore = firstVisiblePackage ? scoreByPkgId[firstVisiblePackage.id] ?? null : null;
+  const firstVisibleMinPrice = firstVisiblePackage ? packageMinPrice(firstVisiblePackage) : null;
+  const firstVisibleDecisionReasonText = firstVisiblePackage ? [
+    firstVisibleScore?.comparisonSummary || firstVisibleScore?.label || null,
+    firstVisiblePackage.departure_airport ? `${firstVisiblePackage.departure_airport} 출발` : null,
+    Number.isFinite(firstVisibleMinPrice) && firstVisibleMinPrice && firstVisibleMinPrice > 0
+      ? `최저 ${formatWonSummary(String(firstVisibleMinPrice))}`
+      : null,
+  ].filter((item): item is string => Boolean(item)).slice(0, 3).join(' · ') : null;
   const packageListNextActionDetailText = filteredPackages.length === 0
     ? packageZeroResultRecoveryText
     : firstVisiblePackageTitle
-      ? `첫 후보는 ${firstVisiblePackageTitle}입니다. 조건이 맞으면 상세를 열고, 망설여지면 비교에 담아 보세요.`
+      ? `첫 후보는 ${firstVisiblePackageTitle}입니다. ${firstVisibleDecisionReasonText ? `판단 근거: ${firstVisibleDecisionReasonText}. ` : ''}조건이 맞으면 상세를 열고, 망설여지면 비교에 담아 보세요.`
       : packageFilterNextActionText;
   const packageListDecisionSummaryText = `목록 판단 요약: 결과 ${filteredPackages.length}개, 비교 선택 ${compareIds.length}개, 다음 액션 ${packageFilterNextActionText}. ${packageListNextActionDetailText}`;
   const packageListDescriptionIds = `${packageResultSummaryId} ${packageFilterReadinessSummaryId} ${packageListDecisionSummaryId}`;
