@@ -268,6 +268,14 @@ function firstVerifyIssue(result: PackageVerifyResult | undefined): string | nul
 }
 
 function uploadFailureMessage(data: any): string {
+  if (data?.code === 'SESSION_EXPIRED_NEEDS_LOGIN' || data?.code === 'TOKEN_EXPIRED' || data?.error === 'token expired') {
+    return [
+      '관리자 로그인 시간이 만료되었습니다.',
+      '이 오류는 상품 원문 분석 실패가 아니라 로그인 갱신 실패입니다.',
+      '페이지를 새로고침하거나 다시 로그인한 뒤 같은 원문을 재시도하세요.',
+      data?.uploadRequestId ? `(uploadRequestId: ${data.uploadRequestId})` : '',
+    ].filter(Boolean).join(' ');
+  }
   const errors = Array.isArray(data?.errors)
     ? data.errors
         .map((e: any) => [e?.title, e?.error].filter(Boolean).join(': '))
