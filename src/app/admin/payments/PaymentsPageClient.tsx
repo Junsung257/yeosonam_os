@@ -1989,6 +1989,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       ? 'px-3 py-2 rounded border border-admin-border-strong bg-white text-admin-muted text-admin-sm font-mono hover:bg-admin-bg transition-colors text-center'
       : 'px-2 py-1 rounded border border-admin-border-strong bg-white text-admin-muted text-[11px] font-mono hover:bg-admin-bg transition-colors whitespace-nowrap';
     const paymentActionDescriptionId = `admin-payment-row-actions-${layout}-${tx.id}`;
+    const paymentActionNextSummaryId = `admin-payment-row-next-action-${layout}-${tx.id}`;
     const paymentActionImpactId = `admin-payment-row-action-impact-${layout}-${tx.id}`;
     const paymentActionImpactText =
       isOpen && isPayout
@@ -2002,6 +2003,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               : '처리 영향: 제외하면 결제 작업 큐에서 빠지며, 휴지통에서 복원 또는 영구 삭제를 판단합니다.';
     const paymentActionDescriptionIds = [
       paymentActionDescriptionId,
+      paymentActionNextSummaryId,
       paymentActionImpactId,
       contextDescriptionId,
       'admin-payment-action-result-description',
@@ -2015,6 +2017,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         {compact ? (
           <>
             <div
+              id={paymentActionNextSummaryId}
               data-testid="admin-payment-mobile-next-action-summary"
               aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
               className="col-span-2 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
@@ -2039,6 +2042,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         ) : (
           <>
             <div
+              id={paymentActionNextSummaryId}
               data-testid="admin-payment-desktop-next-action-summary"
               aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
               className="max-w-[210px] rounded-admin-sm border border-admin-border bg-admin-bg px-2.5 py-1.5 text-left"

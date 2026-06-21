@@ -963,11 +963,25 @@ test.describe('keyboard access smoke', () => {
     }
 
     await expectCanFocus(trashAction, 'admin payment trash row action');
+    await expect(trashAction, 'admin payment trash action should include visible next action context').toHaveAttribute(
+      'aria-describedby',
+      /admin-payment-row-next-action-/,
+    );
+    const trashActionDescriptionIds = ((await trashAction.getAttribute('aria-describedby')) ?? '').split(/\s+/).filter(Boolean);
+    const trashNextActionSummaryId = trashActionDescriptionIds.find(id => id.startsWith('admin-payment-row-next-action-'));
+    expect(trashNextActionSummaryId, 'admin payment trash action should describe the next action summary').toBeTruthy();
+    if (trashNextActionSummaryId) {
+      await expect(page.locator(`[id="${trashNextActionSummaryId}"]`)).toContainText('다음 액션');
+    }
 
     const matchAction = page.locator('[data-testid="admin-payment-match-action"]:visible').first();
     if (!(await matchAction.count())) return;
 
     await expectCanFocus(matchAction, 'admin payment manual match row action');
+    await expect(matchAction, 'admin payment match action should include visible next action context').toHaveAttribute(
+      'aria-describedby',
+      /admin-payment-row-next-action-/,
+    );
     await expect(matchAction).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(matchAction).toHaveAttribute('aria-expanded', 'false');
     await expect(matchAction).toHaveAttribute('aria-controls', 'admin-payment-match-dialog');
