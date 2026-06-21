@@ -89,6 +89,8 @@ const ACTION_QUEUE_STATUSES = [
   },
 ];
 
+const ACTION_QUEUE_PRIORITY = new Map(ACTION_QUEUE_STATUSES.map((item, index) => [item.status, index]));
+
 function getRequirementText(rfq: GroupRfq, key: string): string | null {
   const value = rfq.custom_requirements?.[key];
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -120,6 +122,20 @@ function getNextActionLabel(status: string): string {
   return NEXT_ACTION_LABELS[status] ?? '상세 확인';
 }
 
+function getRfqPriority(rfq: GroupRfq): number {
+  return ACTION_QUEUE_PRIORITY.get(rfq.status) ?? ACTION_QUEUE_STATUSES.length;
+}
+
+function compareRfqPriority(a: GroupRfq, b: GroupRfq): number {
+  const priorityDiff = getRfqPriority(a) - getRfqPriority(b);
+  if (priorityDiff !== 0) return priorityDiff;
+
+  const aTime = Date.parse(a.created_at);
+  const bTime = Date.parse(b.created_at);
+  if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
+  return a.rfq_code.localeCompare(b.rfq_code);
+}
+
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function AdminRfqsPage() {
   const [rfqs, setRfqs] = useState<GroupRfq[]>([]);
@@ -149,6 +165,9 @@ export default function AdminRfqsPage() {
 
   // 클라이언트 필터링
   const filteredRfqs = statusFilter ? rfqs.filter((r) => r.status === statusFilter) : rfqs;
+  const displayedRfqs = [...filteredRfqs].sort(compareRfqPriority);
+  const firstActionRfq = displayedRfqs[0] ?? null;
+  const firstActionLabel = firstActionRfq ? getNextActionLabel(firstActionRfq.status) : null;
 
   // KPI 집계
   const total = rfqs.length;
@@ -207,6 +226,17 @@ export default function AdminRfqsPage() {
               {actionQueueSummary}
             </p>
           </div>
+          {firstActionRfq && firstActionLabel && (
+            <Link
+              href={`/admin/rfqs/${firstActionRfq.id}`}
+              data-testid="admin-rfq-first-action-link"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-admin-xs border border-admin-border-mid bg-admin-surface px-3 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              aria-label={`${firstActionRfq.rfq_code} ${firstActionLabel} 먼저 처리`}
+            >
+              첫 건 처리
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          )}
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             {actionQueue.map((item) => {
               const isActive = statusFilter === item.status;
@@ -269,14 +299,14 @@ export default function AdminRfqsPage() {
           </div>
         ) : error ? (
           <div className="text-center text-danger py-12 text-admin-base">{error}</div>
-        ) : filteredRfqs.length === 0 ? (
+        ) : displayedRfqs.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-admin-muted text-admin-base">해당하는 RFQ가 없습니다.</p>
           </div>
         ) : (
           <>
             <div className="divide-y divide-admin-border md:hidden">
-              {filteredRfqs.map((rfq) => {
+              {displayedRfqs.map((rfq) => {
                 const handoffBadgeText = getHandoffBadgeText(rfq);
                 const detailHref = `/admin/rfqs/${rfq.id}`;
                 const nextActionLabel = getNextActionLabel(rfq.status);
@@ -353,7 +383,7 @@ export default function AdminRfqsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRfqs.map((rfq) => {
+                  {displayedRfqs.map((rfq) => {
                     const handoffBadgeText = getHandoffBadgeText(rfq);
                     const detailHref = `/admin/rfqs/${rfq.id}`;
                     const nextActionLabel = getNextActionLabel(rfq.status);
