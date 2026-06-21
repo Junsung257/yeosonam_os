@@ -19,6 +19,7 @@ import { sendSlackAlert } from '@/lib/slack-alert';
 import { isScheduleDetailNoise } from '@/lib/itinerary-normalizer';
 import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 
 export interface VerifyCheck {
   id: string;
@@ -39,6 +40,8 @@ export interface VerifyResult {
 type PackageRow = {
   id: string;
   title?: string | null;
+  status?: string | null;
+  audit_status?: string | null;
   duration?: number | null;
   price?: number | null;
   display_title?: string | null;
@@ -429,6 +432,36 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
     checks.push({ id: 'C10', label: '옵션 가격 유효성', status: 'skip', detail: '옵션 투어 없음' });
   }
 
+  if (pkg.status === undefined && pkg.audit_status === undefined) {
+    checks.push({
+      id: 'C13',
+      label: 'customer visibility gate',
+      status: 'skip',
+      detail: 'status fields unavailable',
+    });
+  } else if (pkg.audit_status === 'blocked') {
+    checks.push({
+      id: 'C13',
+      label: 'customer visibility gate',
+      status: 'fail',
+      detail: `audit_status=${pkg.audit_status}`,
+    });
+  } else if (!isCustomerVisibleStatus(pkg.status)) {
+    checks.push({
+      id: 'C13',
+      label: 'customer visibility gate',
+      status: 'fail',
+      detail: `status=${pkg.status ?? 'null'} is not customer-visible`,
+    });
+  } else {
+    checks.push({
+      id: 'C13',
+      label: 'customer visibility gate',
+      status: 'pass',
+      detail: `status=${pkg.status}`,
+    });
+  }
+
   const hasFail = checks.some(c => c.status === 'fail');
   const hasWarn = checks.some(c => c.status === 'warn');
   const status: VerifyResult['status'] = hasFail ? 'blocked' : hasWarn ? 'warnings' : 'clean';
@@ -462,7 +495,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
     const { data: rows, error } = await supabaseAdmin
       .from('travel_packages')
       .select(
-        'id, title, duration, price, display_title, hero_tagline, raw_text, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
+        'id, title, status, audit_status, duration, price, display_title, hero_tagline, raw_text, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
       )
       .eq('id', packageId)
       .limit(1);

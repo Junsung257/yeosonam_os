@@ -107,6 +107,32 @@ describe('evaluateVerifyChecks — clean baseline (3박 5일 정상 케이스)',
   });
 });
 
+describe('evaluateVerifyChecks customer visibility gate', () => {
+  it('blocks review-only packages from being reported as clean', () => {
+    const result = evaluateVerifyChecks({
+      id: 'pkg-review',
+      title: 'Shizuoka 3 days',
+      status: 'REVIEW_NEEDED',
+      audit_status: null,
+      raw_text: 'DAY 1 airport transfer\nDAY 2 sightseeing\nDAY 3 return',
+      itinerary_data: {
+        days: [
+          { schedule: [{ activity: 'airport transfer' }] },
+          { schedule: [{ activity: 'sightseeing' }] },
+          { schedule: [{ activity: 'return' }] },
+        ],
+      },
+      price_dates: [{ date: '2026-07-01', price: 599000 }],
+      display_title: 'Shizuoka charter tour',
+    } as never);
+
+    expect(result.status).toBe('blocked');
+    expect(findCheck(result, 'C13')).toEqual(expect.objectContaining({
+      status: 'fail',
+    }));
+  });
+});
+
 describe('evaluateVerifyChecks — fail/warn 회귀 차단', () => {
   it('C12 blocks shared price-table column mismatches', () => {
     const rawText = `

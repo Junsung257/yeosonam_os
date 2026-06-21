@@ -118,4 +118,65 @@ describe('buildUploadResponsePayload learning summary', () => {
       ]),
     }));
   });
+
+  it('marks saved review-only packages as not customer publishable', async () => {
+    const fakeSupabase = {
+      from: () => ({
+        select: () => ({
+          in: async () => ({
+            data: [{
+              id: 'pkg-review',
+              internal_code: 'PUS-ETC-FSZ-03-0001',
+              title: 'Shizuoka 3 days',
+              price: 599000,
+              airline: 'BX',
+              status: 'REVIEW_NEEDED',
+              audit_status: null,
+              departure_days: '월,수',
+              commission_rate: 0.09,
+              land_operator: 'test',
+              price_dates: [{ date: '2026-07-01', price: 599000 }],
+              itinerary_data: { days: [{}, {}, {}] },
+            }],
+            error: null,
+          }),
+        }),
+      }),
+    };
+
+    const payload = await buildUploadResponsePayload({
+      supabase: fakeSupabase as never,
+      isSupabaseConfigured: true,
+      savedIds: ['pkg-review'],
+      savedTitles: ['Shizuoka 3 days'],
+      savedInternalCodes: ['PUS-ETC-FSZ-03-0001'],
+      savedConfidences: [0.9],
+      saveErrors: [],
+      totalPriceRowsSaved: 1,
+      savedPriceRowsByPackageId: new Map([['pkg-review', 1]]),
+      productsToSaveLength: 1,
+      parsedDocument: { confidence: 0.9 },
+      fileHash: 'abcdef123456',
+      classification: null,
+      inputAnalysisForTrust: null,
+      preSaveV3Status: 'ready_to_publish',
+      matchedAttractionCount: 0,
+      unmatchedAttractionCount: 0,
+      attractionSeededCount: 0,
+      attractionReflectedCount: 0,
+      uploadSourceMetadata: null,
+      filenameSupplierRaw: null,
+      marginRate: 0.09,
+      fileName: 'shizuoka.txt',
+      baseUrl: 'https://www.yeosonam.com',
+      improvementEvents: [],
+      improvementEventsSaved: 0,
+      improvementEventsSaveError: null,
+    });
+
+    expect(payload.success).toBe(true);
+    expect(payload.gate).toBe('REVIEW_NEEDED');
+    expect(payload.customerPublishable).toBe(false);
+    expect(payload.customerBlockedCount).toBe(1);
+  });
 });

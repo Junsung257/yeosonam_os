@@ -16,6 +16,7 @@ import { mineProductRegistrationPatterns } from '@/lib/product-registration/patt
 import type { UploadGate } from '@/lib/upload-validator';
 import type { UploadInputAnalysis } from '@/lib/product-registration-input-guard';
 import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { classifyProductRegistrationFailure, summarizeProductRegistrationFailures } from './failure-diagnostics';
 
 type TokenUsageSource = {
@@ -117,7 +118,7 @@ export async function buildUploadResponsePayload(input: {
   const blockedCount = saveErrorDiagnostics.filter(error => (
     error.diagnostics.some(diagnostic => diagnostic.severity === 'critical')
   )).length;
-  const overallGate: UploadGate = blockedCount > 0 && successCount === 0
+  let overallGate: UploadGate = blockedCount > 0 && successCount === 0
     ? 'BLOCKED'
     : blockedCount > 0
       ? 'REVIEW_NEEDED'
@@ -136,7 +137,7 @@ export async function buildUploadResponsePayload(input: {
     try {
       const { data: pkgs } = await input.supabase
         .from('travel_packages')
-        .select('id, internal_code, title, price, airline, status, departure_days, commission_rate, land_operator, price_dates, itinerary_data')
+        .select('id, internal_code, title, price, airline, status, audit_status, departure_days, commission_rate, land_operator, price_dates, itinerary_data')
         .in('id', input.savedIds);
       registerReport = buildUploadRegisterReport((pkgs ?? []) as UploadRegisterReportPackage[], input.baseUrl, {
         priceRowsByPackageId: input.savedPriceRowsByPackageId,
@@ -145,6 +146,16 @@ export async function buildUploadResponsePayload(input: {
       console.warn('[upload] register report build failed:', e instanceof Error ? e.message : String(e));
     }
   }
+  const customerBlockedRows = registerReport.filter(row =>
+    row.audit_status === 'blocked' || !isCustomerVisibleStatus(row.status),
+  );
+  const customerPublishableCount = registerReport.length - customerBlockedRows.length;
+  if (successCount > 0 && customerBlockedRows.length > 0 && overallGate === 'CLEAN') {
+    overallGate = 'REVIEW_NEEDED';
+  }
+  const customerPublishable = successCount > 0
+    && registerReport.length > 0
+    && customerPublishableCount === registerReport.length;
 
   const trustScore = calculateProductRegistrationTrustScore({
     inputBlocked: input.inputAnalysisForTrust?.blocked ?? false,
@@ -207,6 +218,16 @@ export async function buildUploadResponsePayload(input: {
     fileHash: `${input.fileHash.slice(0, 12)}...`,
     classification: input.classification,
     gate: overallGate,
+    customerPublishable,
+    customerPublishableCount,
+    customerBlockedCount: customerBlockedRows.length,
+    customerBlockedPackages: customerBlockedRows.slice(0, 10).map(row => ({
+      package_id: row.package_id,
+      title: row.title,
+      status: row.status,
+      audit_status: row.audit_status,
+      mobile_url: row.mobile_url,
+    })),
     trustScore,
     learningEngine: {
       mode: 'shadow',
