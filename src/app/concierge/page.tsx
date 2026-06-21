@@ -506,6 +506,7 @@ function ConciergePageContent() {
   const urlPrompt = useMemo(() => buildConciergeHandoffPrompt(searchParams), [searchParams]);
   const [query, setQuery] = useState(urlPrompt?.query ?? '');
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(Boolean(urlPrompt));
   const [results, setResults] = useState<MockSearchResult[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -598,6 +599,7 @@ function ConciergePageContent() {
       return;
     }
     setLoading(true);
+    setHasSearched(true);
     setResults([]);
     setSearchError('');
     setActivePrompt(prompt);
@@ -1003,6 +1005,7 @@ function ConciergePageContent() {
               setVouchers(null);
               setResults([]);
               setQuery('');
+              setHasSearched(false);
             }}
             className="mt-6 h-12 w-full rounded-full bg-brand text-[15px] font-bold text-white hover:bg-brand-dark"
           >
@@ -1081,7 +1084,9 @@ function ConciergePageContent() {
       ? `추천 결과 ${results.length}건이 준비되었습니다. 비교표에서 가격과 주의할 점을 확인한 뒤 상세 보기, 견적, 담기, 카톡 상담을 선택할 수 있습니다.`
       : searchError
         ? searchError
-        : '검색 조건을 입력하면 추천 결과와 비교표가 이 영역에 표시됩니다.';
+        : hasSearched
+          ? '현재 조건에 맞는 추천 결과가 없습니다. 조건을 조금 넓히거나 카카오톡 상담 또는 맞춤 견적으로 이어갈 수 있습니다.'
+          : '검색 조건을 입력하면 추천 결과와 비교표가 이 영역에 표시됩니다.';
   const cartSummaryLive = cart.length > 0 || summaryItems.length > 0;
   const kakaoIntentLive = summaryItems.length > 0;
   const resultSummaryLive = loading || results.length > 0 || Boolean(searchError);
@@ -1391,6 +1396,69 @@ function ConciergePageContent() {
               <p className="text-[15px] font-bold text-text-primary">조건에 맞는 상품을 비교하고 있습니다</p>
               <p className="mt-1 text-[13px] text-text-secondary">가격, 조건, 주의사항을 함께 정리할게요.</p>
             </div>
+          )}
+
+          {hasSearched && !loading && !searchError && results.length === 0 && (
+            <section
+              data-testid="concierge-empty-results"
+              aria-describedby={`${resultSummaryId} ${handoffReadinessSummaryId}`}
+              className="rounded-[20px] border border-[#D1DCE8] bg-white p-5 text-center shadow-card"
+            >
+              <Search className="mx-auto mb-3 text-text-tertiary" size={32} aria-hidden="true" />
+              <h2 className="text-[17px] font-extrabold text-text-primary">지금 조건으로는 추천 결과가 없습니다</h2>
+              <p className="mx-auto mt-1 max-w-xl text-[13px] leading-6 text-text-secondary">
+                조건을 조금 넓히거나, 현재 입력한 내용을 상담원에게 넘겨 맞는 상품을 찾아볼 수 있습니다.
+              </p>
+              {summaryItems.length > 0 && (
+                <div className="mt-3 flex justify-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {summaryItems.slice(0, 4).map((item) => (
+                    <span
+                      key={`empty:${item.label}:${item.value}`}
+                      className="shrink-0 rounded-full border border-[#E5ECF3] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-body"
+                    >
+                      {item.label}: {item.value}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  data-testid="concierge-empty-kakao"
+                  onClick={() => openKakaoConsult('empty_results')}
+                  aria-describedby={`${resultSummaryId} ${summaryKakaoDescriptionIds}`}
+                  className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full bg-[#FEE500] px-4 text-[13px] font-bold text-[#3C1E1E]"
+                >
+                  <MessageCircle size={16} aria-hidden="true" />
+                  카톡 상담
+                </button>
+                <Link
+                  href={groupInquiryHref}
+                  data-testid="concierge-empty-group-inquiry"
+                  onClick={() => handleGroupInquiryClick('concierge_empty_results_group_inquiry')}
+                  aria-describedby={`${resultSummaryId} ${handoffReadinessSummaryId}`}
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-4 text-[13px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                >
+                  맞춤 견적
+                </Link>
+                <button
+                  type="button"
+                  data-testid="concierge-empty-reset"
+                  onClick={() => {
+                    setQuery('');
+                    setActivePrompt(null);
+                    setSearchError('');
+                    setHasSearched(false);
+                    setResults([]);
+                    window.requestAnimationFrame(() => inputRef.current?.focus());
+                  }}
+                  aria-describedby={resultSummaryId}
+                  className="inline-flex h-11 items-center justify-center rounded-full border border-[#D1DCE8] bg-[#F8FAFC] px-4 text-[13px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                >
+                  조건 다시 입력
+                </button>
+              </div>
+            </section>
           )}
 
           {results.length > 0 && (
