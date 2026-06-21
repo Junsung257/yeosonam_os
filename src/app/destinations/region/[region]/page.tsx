@@ -264,6 +264,14 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
     query: `${region.label} 맞춤 패키지 문의`,
     destination: region.label,
   });
+  const regionBottomGroupInquiryHref = buildGroupInquiryHandoffHref({
+    source: 'destination_region_bottom',
+    intent: 'region_trip',
+    partyType: 'group',
+    query: `${region.label} 여행 맞춤 견적 상담`,
+    destination: region.label,
+    selectedProducts: [`${region.label} 맞춤 패키지`],
+  });
 
   let data: RegionData | null = null;
   try {
@@ -481,13 +489,22 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
             <p className="text-sm md:text-base text-slate-600 mb-6">
               여소남 운영팀이 {region.label} 최적 패키지를 맞춤 추천해드립니다.
             </p>
-            <TrackedKakaoLink
-              source="destination_region_bottom"
-              destination={region.label}
-              className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#FEE500] text-[#3C1E1E] font-bold text-base rounded-full hover:opacity-90"
-            >
-              💬 카카오톡 상담하기
-            </TrackedKakaoLink>
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link
+                href={regionBottomGroupInquiryHref}
+                data-testid="region-bottom-group-inquiry"
+                className="inline-flex min-h-12 items-center justify-center rounded-full bg-brand px-7 py-3.5 text-base font-bold text-white hover:opacity-90"
+              >
+                맞춤 견적 받기
+              </Link>
+              <TrackedKakaoLink
+                source="destination_region_bottom"
+                destination={region.label}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#FEE500] px-7 py-3.5 text-base font-bold text-[#3C1E1E] hover:opacity-90"
+              >
+                카카오톡 상담하기
+              </TrackedKakaoLink>
+            </div>
           </section>
         </div>
       </main>
