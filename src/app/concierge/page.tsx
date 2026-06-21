@@ -1802,18 +1802,15 @@ function ConciergePageContent() {
             >
               <MessageCircle size={21} />
             </button>
-            <button
-              type="button"
-              data-testid="concierge-mobile-cart-open"
-              aria-haspopup="dialog"
-              aria-expanded={cartSheetOpen}
-              aria-controls="concierge-cart-sheet"
+            <Link
+              href={groupInquiryHref}
+              data-testid="concierge-mobile-cart-group-inquiry"
               aria-describedby={checkoutSummaryId}
-              onClick={(event) => openCartSheet(event.currentTarget)}
-              className="h-12 rounded-full bg-brand px-5 text-[14px] font-bold text-white"
+              onClick={() => handleGroupInquiryClick('mobile_cart_bar')}
+              className="flex h-12 items-center justify-center rounded-full bg-brand px-5 text-[14px] font-bold text-white"
             >
-              보기
-            </button>
+              견적
+            </Link>
           </div>
         </div>
       )}
