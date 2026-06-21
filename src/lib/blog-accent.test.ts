@@ -27,6 +27,18 @@ describe('applyMarkdownAccents', () => {
     expect(out).not.toContain('<mark>');
   });
 
+  it('demotes excessive h2 and h3 headings at render time', () => {
+    const md = [
+      ...Array.from({ length: 12 }, (_, index) => `## Section ${index + 1}`),
+      ...Array.from({ length: 22 }, (_, index) => `### Detail ${index + 1}`),
+    ].join('\n\n');
+    const out = applyMarkdownAccents(md);
+
+    expect((out.match(/^## /gm) || []).length).toBe(10);
+    expect((out.match(/^### /gm) || []).length).toBe(20);
+    expect((out.match(/^#### /gm) || []).length).toBe(4);
+  });
+
   it('keeps tip blocks available', () => {
     const out = applyMarkdownAccents(':::tip\n오전 9~11시 추천\n:::');
 

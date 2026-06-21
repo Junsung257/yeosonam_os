@@ -54,6 +54,23 @@ export function applyMarkdownAccents(md: string): string {
   // The page template owns the only H1. Body H1s become H2s.
   out = out.replace(/^# /gm, '## ');
 
+  let h2Count = 0;
+  let h3Count = 0;
+  out = out.replace(/^(#{2,3})\s+(.+)$/gm, (match, hashes, title) => {
+    if (hashes === '##') {
+      h2Count += 1;
+      if (h2Count > 10) {
+        h3Count += 1;
+        return `### ${title}`;
+      }
+      return match;
+    }
+
+    h3Count += 1;
+    if (h3Count > 20) return `#### ${title}`;
+    return match;
+  });
+
   // Legacy ==highlight== syntax is no longer rendered as a marker.
   out = out.replace(/==([^=\n]{1,120}?)==/g, '$1');
 
