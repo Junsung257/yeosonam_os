@@ -8,7 +8,7 @@
  *   미래: DB의 package_faqs 테이블에서 상품별 커스텀 FAQ 오버레이 (JARVIS 자동 생성)
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 const PACKAGE_FAQ_KAKAO_DESCRIPTION_ID = 'package-faq-kakao-description';
 
@@ -143,7 +143,8 @@ function getFaqAnswerId(item: FaqItem, index: number): string {
   return `package-faq-answer-${index}-${Math.abs(hash).toString(36)}`;
 }
 
-function FaqRow({ item, answerId }: { item: FaqItem; answerId: string }) {
+function FaqRow({ item }: { item: FaqItem }) {
+  const answerId = useId();
   const [open, setOpen] = useState(false);
   return (
     <div className="border-b border-gray-100 last:border-0">
@@ -164,8 +165,7 @@ function FaqRow({ item, answerId }: { item: FaqItem; answerId: string }) {
           ∨
         </span>
       </button>
-      {open && (
-        <div id={answerId} className="pb-4 -mt-1">
+      <div id={answerId} hidden={!open} className="pb-4 -mt-1">
           <div className="flex items-start gap-2 bg-gray-50 rounded-lg p-3 border-l-4 border-brand/40">
             <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-gray-600 text-xs font-bold mt-0.5">A</span>
             <p className="text-sm text-gray-700 leading-relaxed flex-1">
@@ -173,7 +173,6 @@ function FaqRow({ item, answerId }: { item: FaqItem; answerId: string }) {
             </p>
           </div>
         </div>
-      )}
     </div>
   );
 }
@@ -195,7 +194,7 @@ export default function PackageFAQ({ destination, productType, kakaoChannel }: P
       <h2 className="text-lg font-extrabold text-gray-900 mb-4">💬 자주 묻는 질문</h2>
       <div className="bg-white border border-gray-100 rounded-2xl px-4 divide-y divide-gray-100">
         {allFaqs.map((item, i) => (
-          <FaqRow key={getFaqAnswerId(item, i)} item={item} answerId={getFaqAnswerId(item, i)} />
+          <FaqRow key={getFaqAnswerId(item, i)} item={item} />
         ))}
       </div>
       {kakaoChannel && (

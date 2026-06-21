@@ -70,7 +70,7 @@ export default function BottomTabBar() {
       page_url: pathname ?? '/',
       intent: 'general_consult',
       selected_products: ['하단 탭 카카오톡 빠른 상담'],
-      metadata: { source: 'bottom_tab_bar', handoff_channel: 'clipboard' },
+      metadata: { source: 'bottom_tab_bar' },
     });
     void openKakaoChannel({
       intent: 'general_consult',
