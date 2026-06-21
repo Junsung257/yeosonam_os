@@ -84,6 +84,19 @@ npm run verify:ux-smoke
 npm run verify:all -- --include-ux-smoke --json --report=.tmp/full-readiness-report.json
 ```
 
+For faster local iteration after UI changes, run the responsive route or
+keyboard slices first, then use the full gate only when release evidence is
+needed:
+
+```bash
+npm run verify:ux-smoke:routes:mobile
+npm run verify:ux-smoke:routes:tablet
+npm run verify:ux-smoke:routes:desktop
+npm run verify:ux-smoke:keyboard:mobile
+npm run verify:ux-smoke:keyboard:tablet
+npm run verify:ux-smoke:keyboard:desktop
+```
+
 `verify:all` does not run the browser UX smoke stage by default; use
 `--include-ux-smoke` only when a local browser/dev-server check is intended.
 
