@@ -1006,7 +1006,7 @@ function BookingWorkQueue({
     : '대기 중인 예약 작업이 없습니다.';
 
   return (
-    <section className="mb-3 shrink-0 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs" aria-describedby={`${queueSummaryId} ${queueLeadId}`}>
+    <section className="mb-3 shrink-0 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs" aria-label="Action queue" aria-describedby={`${queueSummaryId} ${queueLeadId}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-admin-base font-bold text-admin-text-2">오늘 처리할 예약</h2>
@@ -1133,7 +1133,7 @@ function BookingWorkQueue({
               } ${item.tone}`}
             >
               <span id={itemDescriptionId} className="sr-only">
-                {trimSentenceEnd(item.target)}. 현재 {item.count}건입니다. 운영 리스크는 {item.operationRisk}, 처리 이유는 {trimSentenceEnd(item.reason)}.
+                {trimSentenceEnd(item.target)}. 현재 {item.count}건입니다. 운영 리스크는 {item.operationRisk}. 처리 이유는 {item.reason}입니다.
               </span>
               <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
               <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
