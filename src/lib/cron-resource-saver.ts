@@ -32,7 +32,12 @@ export function isDbResourceSaverProductCronAllowlistEnabled(): boolean {
 export function shouldSkipPublicDbReadsForResourceSaver(): boolean {
   if (!isDbResourceSaverEnabled()) return false;
   const raw = process.env.DB_RESOURCE_SAVER_PUBLIC_READS ?? '';
-  return !ON_VALUES.has(raw.trim().toLowerCase());
+  const mode = raw.trim().toLowerCase();
+  if (OFF_VALUES.has(mode)) return true;
+  if (ON_VALUES.has(mode)) return false;
+
+  const blockRaw = process.env.DB_RESOURCE_SAVER_BLOCK_PUBLIC_READS ?? '';
+  return ON_VALUES.has(blockRaw.trim().toLowerCase());
 }
 
 export function isCronForceRun(request: NextRequest | Request): boolean {

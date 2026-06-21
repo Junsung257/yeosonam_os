@@ -50,12 +50,19 @@ describe('cron resource saver', () => {
     expect(maybeSkipCronForResourceSaver(cronRequest(), 'entity-resolution')).toBeNull();
   });
 
-  it('skips public db reads in production resource saver unless explicitly allowed', () => {
+  it('keeps public db reads available unless explicitly blocked', () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 
+    expect(shouldSkipPublicDbReadsForResourceSaver()).toBe(false);
+
+    vi.stubEnv('DB_RESOURCE_SAVER_PUBLIC_READS', '0');
     expect(shouldSkipPublicDbReadsForResourceSaver()).toBe(true);
 
     vi.stubEnv('DB_RESOURCE_SAVER_PUBLIC_READS', '1');
     expect(shouldSkipPublicDbReadsForResourceSaver()).toBe(false);
+
+    vi.stubEnv('DB_RESOURCE_SAVER_PUBLIC_READS', '');
+    vi.stubEnv('DB_RESOURCE_SAVER_BLOCK_PUBLIC_READS', '1');
+    expect(shouldSkipPublicDbReadsForResourceSaver()).toBe(true);
   });
 });
