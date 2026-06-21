@@ -56,6 +56,11 @@ interface IntentPrompt {
 }
 
 type SummaryItem = { label: string; value: string };
+type MissingConditionSuggestion = {
+  field: string;
+  label: string;
+  value: string;
+};
 
 const SESSION_KEY = 'concierge_session_id';
 const SEARCH_TIMEOUT_MS = 15_000;
@@ -348,6 +353,26 @@ function buildConciergeDecisionMetadata({
     handoff_preview: conciergeHandoffPreviewText || 'AI 상담 조건이 아직 정리되지 않았습니다.',
     next_action: conciergeNextActionText,
   };
+}
+
+function getMissingConditionSuggestions(missingLabels: string[]): MissingConditionSuggestion[] {
+  const suggestions: MissingConditionSuggestion[] = [];
+  if (missingLabels.includes('목적')) {
+    suggestions.push({ field: 'intent', label: '효도 여행', value: '부모님 효도 여행' });
+  }
+  if (missingLabels.includes('동행')) {
+    suggestions.push({ field: 'party_type', label: '가족 4명', value: '가족 4명' });
+    suggestions.push({ field: 'party_type', label: '20명 단체', value: '20명 단체' });
+  }
+  if (missingLabels.includes('지역')) {
+    suggestions.push({ field: 'destination', label: '동남아', value: '동남아' });
+    suggestions.push({ field: 'destination', label: '일본', value: '일본' });
+  }
+  if (missingLabels.includes('예산')) {
+    suggestions.push({ field: 'budget', label: '1인 150만원대', value: '1인 150만원대' });
+    suggestions.push({ field: 'budget', label: '총 300만원대', value: '총 300만원대' });
+  }
+  return suggestions.slice(0, 4);
 }
 
 function ModalFrame({
@@ -1022,6 +1047,7 @@ function ConciergePageContent() {
   const handoffReadinessText = handoffMissingLabels.length > 0
     ? `상담 전달 준비 ${handoffReadyCount}/${handoffChecklist.length}. 보완하면 좋은 조건: ${handoffMissingLabels.join(', ')}.`
     : `상담 전달 준비 ${handoffReadyCount}/${handoffChecklist.length}. 바로 상담으로 넘길 수 있습니다.`;
+  const missingConditionSuggestions = getMissingConditionSuggestions(handoffMissingLabels);
   const checkoutSubmitChecklist = [
     { label: '이름', complete: Boolean(customer.name.trim()) },
     { label: '담은 상품', complete: cart.length > 0 },
@@ -1131,6 +1157,31 @@ function ConciergePageContent() {
   const intentPromptGroupLabelId = 'concierge-intent-prompt-group-label';
   const intentPromptGroupDescriptionId = 'concierge-intent-prompt-group-description';
   const intentPromptDescriptionId = (intent: string) => `concierge-intent-prompt-description-${intent}`;
+  const applyMissingConditionSuggestion = (suggestion: MissingConditionSuggestion) => {
+    const currentQuery = query.trim();
+    const nextQuery = currentQuery.includes(suggestion.value)
+      ? currentQuery
+      : `${currentQuery}${currentQuery ? ' ' : ''}${suggestion.value}`;
+    setQuery(nextQuery);
+    if (activePrompt && nextQuery !== activePrompt.query) setActivePrompt(null);
+    if (searchError) setSearchError('');
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      source: 'concierge_missing_condition_chip',
+      page_url: '/concierge',
+      filter_name: suggestion.field,
+      filter_value: suggestion.value,
+      ...currentConciergeDecisionMetadata,
+      metadata: {
+        ...currentConciergeDecisionMetadata,
+        action: 'append_missing_condition',
+        field: suggestion.field,
+        value: suggestion.value,
+      },
+      ...intentSummary,
+    });
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
   return (
     <div className="min-h-dvh bg-[#F8FAFC] pb-[calc(96px+env(safe-area-inset-bottom))] lg:pb-0">
@@ -1303,6 +1354,26 @@ function ConciergePageContent() {
                     {handoffMissingLabels.length > 0 ? `보완 추천: ${handoffMissingLabels.join(', ')}` : '바로 상담 가능'}
                   </span>
                 </div>
+                {missingConditionSuggestions.length > 0 && (
+                  <div
+                    data-testid="concierge-missing-condition-suggestions"
+                    className="mt-2 flex flex-wrap items-center gap-1.5"
+                    aria-label={`빠르게 추가할 조건: ${missingConditionSuggestions.map((item) => item.label).join(', ')}`}
+                  >
+                    <span className="text-[11px] font-bold text-text-secondary">빠른 추가</span>
+                    {missingConditionSuggestions.map((suggestion) => (
+                      <button
+                        key={`${suggestion.field}-${suggestion.value}`}
+                        type="button"
+                        onClick={() => applyMissingConditionSuggestion(suggestion)}
+                        aria-label={`${suggestion.label} 조건을 검색어에 추가`}
+                        className="rounded-full border border-[#D1DCE8] bg-white px-2.5 py-1 text-[11px] font-bold text-text-body shadow-sm transition hover:border-brand/60 hover:bg-brand-light hover:text-brand"
+                      >
+                        {suggestion.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
