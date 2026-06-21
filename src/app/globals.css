@@ -353,9 +353,10 @@ td, th {
   justify-content: center;
   min-width: 1.75rem;
   height: 1.75rem;
-  background: var(--brand);
-  color: white;
-  border-radius: 0.375rem;
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -498,11 +499,11 @@ td, th {
 .prose-blog mark {
   /* 2026-05-17 CRO 업데이트: 파스텔 노랑(#FEF3C7) → 주황계열로 — .num 과 팔레트 통일 + 가독성/주목도 ↑.
    * 헬로마켓·당근·토스 등 모바일 커머스에서 검증된 amber 강조와 동일 톤. AA 대비 4.7:1. */
-  background-color: #FFEDD5; /* tailwind orange-100 */
-  color: #7C2D12;            /* tailwind orange-900 */
-  padding: 0.05em 0.3em;
-  border-radius: 0.25em;
-  font-weight: 600;
+  background-color: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-weight: 700;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -510,8 +511,8 @@ td, th {
 /* 다크 모드 대비: 옅은 배경은 다크에서 빛나 보이므로 반전 */
 @media (prefers-color-scheme: dark) {
   .prose-blog mark {
-    background-color: rgba(234, 88, 12, 0.18); /* orange-600 @ 18% */
-    color: #FED7AA;                              /* orange-200 */
+    background-color: transparent;
+    color: inherit;
   }
 }
 

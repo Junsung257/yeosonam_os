@@ -54,7 +54,7 @@ const GENERIC_SLUG_PREFIXES = new Set([
 ]);
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality' | 'accent_density';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -430,6 +430,70 @@ export async function checkStructureIntegrity(input: CheckInput): Promise<GateRe
   }
 }
 
+function countMatches(value: string, pattern: RegExp): number {
+  return (value.match(pattern) || []).length;
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function getRenderedParagraphLengths(renderedHtml: string): number[] {
+  const matches = [...renderedHtml.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)];
+
+  if (matches.length === 0) {
+    return renderedHtml
+      .split(/\n{2,}/)
+      .map((part) => stripHtml(part).length)
+      .filter((length) => length > 0);
+  }
+
+  return matches
+    .map((match) => stripHtml(match[1] || '').length)
+    .filter((length) => length > 0);
+}
+
+export async function checkAccentDensity(blog_html: string): Promise<GateResult> {
+  const renderedHtml = await renderBlogContentToHtml(blog_html);
+  const legacyMarkerCount = countMatches(blog_html, /==[^=\n]{1,120}?==/g);
+  const markCount = countMatches(`${blog_html}\n${renderedHtml}`, /<mark\b/gi);
+  const strongNumCount = Math.max(
+    countMatches(blog_html, /<strong\b[^>]*\bclass=["'][^"']*\bnum\b[^"']*["'][^>]*>/gi),
+    countMatches(renderedHtml, /<strong\b[^>]*\bclass=["'][^"']*\bnum\b[^"']*["'][^>]*>/gi),
+  );
+  const h2Count = Math.max(
+    countMatches(blog_html, /^\s{0,3}##\s+\S/gm),
+    countMatches(renderedHtml, /<h2\b/gi),
+  );
+  const h3Count = Math.max(
+    countMatches(blog_html, /^\s{0,3}###\s+\S/gm),
+    countMatches(renderedHtml, /<h3\b/gi),
+  );
+  const paragraphLengths = getRenderedParagraphLengths(renderedHtml);
+  const longestParagraph = Math.max(0, ...paragraphLengths);
+  const blockers = [
+    markCount > 0 || legacyMarkerCount > 0 ? 'highlight_marker' : null,
+    strongNumCount > 35 ? 'numeric_accent_density' : null,
+    h2Count > 10 ? 'h2_density' : null,
+    h3Count > 20 ? 'h3_density' : null,
+    longestParagraph > 450 ? 'long_paragraph' : null,
+  ].filter(Boolean);
+
+  return {
+    gate: 'accent_density',
+    passed: blockers.length === 0,
+    reason: blockers.length > 0 ? `visual accent density failed: ${blockers.join(', ')}` : undefined,
+    evidence: {
+      legacyMarkerCount,
+      markCount,
+      strongNumCount,
+      h2Count,
+      h3Count,
+      longestParagraph,
+    },
+  };
+}
+
 export function checkImageQuality(input: CheckInput): GateResult {
   const report = inspectBlogImageQuality(input.blog_html, {
     destination: input.destination,
@@ -682,6 +746,7 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(await checkRenderIntegrity(input.blog_html));
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단
   gates.push(await checkStructureIntegrity(input));
+  gates.push(await checkAccentDensity(input.blog_html));
   gates.push(checkTopicFit(input));
   // 글 의도 계약 검증 — 정보/상품/날씨/준비물/일정별 필수 블록과 읽기 디자인 차단
   gates.push(checkIntentQuality(input));

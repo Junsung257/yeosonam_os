@@ -83,7 +83,9 @@ ${catName}
 4. 인트로에서 독자가 궁금해할 결론을 먼저 짚고, 뒤에서 근거를 풀어라.
 5. 날짜·비용·준비물 등 **검증 가능한 수치**를 구체적으로.
 6. 마지막에 여소남 안내 한 줄 + yeosonam.com 링크 (스타일 가이드 CTA 톤에 맞출 것).
-7. 마크다운만 출력 (코드블록으로 감싸지 말 것).`;
+7. 마크다운만 출력 (코드블록으로 감싸지 말 것).
+8. 형광펜/==강조==/<mark> 사용 금지. 핵심 구분은 H2/H3, 목록, 표, 짧은 문단으로만 처리.
+9. 정보성 글은 핵심 답변 → 근거 → 체크리스트/표 → FAQ 흐름을 우선한다.`;
 
     const styleGuide = await getPrompt('blog-style-guide', BLOG_STYLE_GUIDE);
     const systemPrompt = `${styleGuide}
