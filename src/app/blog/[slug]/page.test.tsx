@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
@@ -103,6 +105,12 @@ vi.mock('@/lib/sentry-logger', () => ({
 }));
 
 describe('/blog/[slug] page smoke', () => {
+  it('does not split table-bearing blog HTML outside the article shell', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('if (/<table\\b/i.test(html)) return null;');
+  });
+
   it('renders a published blog detail without falling through to the global 404', async () => {
     const mod = await import('./page');
     const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;

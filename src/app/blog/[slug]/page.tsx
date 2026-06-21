@@ -536,6 +536,8 @@ async function getRelatedProducts(
  * H2가 4개 미만이면 주입하지 않는다 (짧은 글엔 방해됨).
  */
 function splitHtmlForInlineInjection(html: string): { before: string; after: string } | null {
+  if (/<table\b/i.test(html)) return null;
+
   const parts = html.split(/(?=<h2\b)/i);
   // parts[0]은 첫 H2 이전(도입부), 이후가 각 H2 섹션
   const h2Count = parts.length - 1;
