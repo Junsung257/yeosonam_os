@@ -10,6 +10,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import type { SourceEvidenceMap } from '@/lib/source-evidence';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
+import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { withAdminGuard } from '@/lib/admin-guard';
 import {
   evaluateV3CustomerNoticeGate,
@@ -67,6 +68,58 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
 
   if (action === 'approve') {
     const force = body.force === true;
+    const sourceVerify = evaluateVerifyChecks({
+      ...(pkg as Record<string, unknown>),
+      status: 'active',
+    } as Parameters<typeof evaluateVerifyChecks>[0]);
+    const sourceAuditReport = {
+      checks: sourceVerify.checks,
+      fixable: sourceVerify.fixable,
+      source: 'approve-source-verify',
+      version: 3,
+    };
+    if (sourceVerify.status === 'blocked') {
+      await supabaseAdmin
+        .from('travel_packages')
+        .update({
+          audit_status: 'blocked',
+          audit_report: sourceAuditReport,
+          audit_checked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      return NextResponse.json(
+        {
+          error: 'Customer publishing is blocked. The latest source-vs-saved audit failed before approval.',
+          source_verify: sourceVerify,
+        },
+        { status: 409 },
+      );
+    }
+    if (sourceVerify.status === 'warnings' && !force) {
+      await supabaseAdmin
+        .from('travel_packages')
+        .update({
+          audit_status: 'warnings',
+          audit_report: sourceAuditReport,
+          audit_checked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      return NextResponse.json(
+        {
+          error: 'This package has source audit warnings. Review them and retry with force=true only if acceptable.',
+          source_verify: sourceVerify,
+        },
+        { status: 409 },
+      );
+    }
+    const verifiedPkgForDelivery = {
+      ...(pkg as Record<string, unknown>),
+      status: 'active',
+      audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
+      audit_report: sourceAuditReport,
+    };
 
     const { data: latestQualityLog } = await supabaseAdmin
       .from('ai_quality_log')
@@ -89,7 +142,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       .maybeSingle();
     const sourceEvidence = ((latestIntake as { ir?: { sourceEvidence?: unknown } } | null)?.ir?.sourceEvidence ?? null) as SourceEvidenceMap | null;
     const delivery = evaluateCustomerDeliveryReadiness({
-      pkg: pkg as Parameters<typeof evaluateCustomerDeliveryReadiness>[0]['pkg'],
+      pkg: verifiedPkgForDelivery as Parameters<typeof evaluateCustomerDeliveryReadiness>[0]['pkg'],
       failedChecks,
       sourceEvidence,
       requireCompletedAudit: true,
@@ -212,6 +265,9 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
           customer_notes: v3NoticeGate.payload.customer_notes,
         } : {}),
         marketing_copies: updatedCopies,
+        audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
+        audit_report: sourceAuditReport,
+        audit_checked_at: new Date().toISOString(),
         updated_at:       new Date().toISOString(),
       })
       .eq('id', id);

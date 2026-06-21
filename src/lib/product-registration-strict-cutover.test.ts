@@ -122,7 +122,7 @@ describe('product registration strict cutover policy', () => {
     const approve = source('src/app/api/packages/[id]/approve/route.ts');
     const v3GateIndex = approve.indexOf('if (v3NoticeGate.blocksApproval)');
     const forceRequiredIndex = approve.indexOf("if (publishGate.decision === 'force_required' && !force)");
-    const activeIndex = approve.search(/status:\s*'active'/);
+    const activeIndex = approve.indexOf("status:           'active'");
 
     expect(v3GateIndex).toBeGreaterThanOrEqual(0);
     expect(forceRequiredIndex).toBeGreaterThan(v3GateIndex);
@@ -176,14 +176,19 @@ describe('product registration strict cutover policy', () => {
   it('keeps legacy package approval endpoints behind the V3 draft gate', () => {
     const packagesRoute = source('src/app/api/packages/route.ts');
     const approveActionIndex = packagesRoute.indexOf("if (action === 'approve')");
+    const sourceAuditIndex = packagesRoute.indexOf('assertPackageSourceAuditAllowsPublication(packageId)', approveActionIndex);
     const gateIndex = packagesRoute.indexOf('assertPackageV3ApprovalAllowed(packageId)', approveActionIndex);
     const approvePackageIndex = packagesRoute.indexOf('approvePackage(packageId)', approveActionIndex);
     const bulkApproveIndex = packagesRoute.indexOf("if (action === 'bulk_approve')");
+    const bulkSourceAuditIndex = packagesRoute.indexOf('assertPackageSourceAuditAllowsPublication(id)', bulkApproveIndex);
     const bulkGateIndex = packagesRoute.indexOf('V3_DRAFT_BLOCKS_BULK_APPROVAL', bulkApproveIndex);
     const bulkUpdateIndex = packagesRoute.indexOf("status: 'approved'", bulkApproveIndex);
 
+    expect(sourceAuditIndex).toBeGreaterThan(approveActionIndex);
     expect(gateIndex).toBeGreaterThan(approveActionIndex);
+    expect(gateIndex).toBeGreaterThan(sourceAuditIndex);
     expect(approvePackageIndex).toBeGreaterThan(gateIndex);
+    expect(bulkSourceAuditIndex).toBeGreaterThan(bulkApproveIndex);
     expect(bulkGateIndex).toBeGreaterThan(bulkApproveIndex);
     expect(bulkUpdateIndex).toBeGreaterThan(bulkGateIndex);
   });

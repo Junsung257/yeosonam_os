@@ -12,19 +12,34 @@ function routeSourceWithoutComments() {
 describe('package approve route customer delivery gate', () => {
   it('recomputes customer render readiness before any active status update', () => {
     const source = routeSourceWithoutComments();
+    const sourceVerifyIndex = source.indexOf('const sourceVerify = evaluateVerifyChecks');
     const deliveryIndex = source.indexOf('const delivery = evaluateCustomerDeliveryReadiness');
     const blockIndex = source.indexOf("if (publishGate.decision === 'block')");
-    const activeIndex = source.search(/status:\s*'active'/);
+    const activeIndex = source.indexOf("status:           'active'");
 
+    expect(sourceVerifyIndex).toBeGreaterThanOrEqual(0);
     expect(deliveryIndex).toBeGreaterThanOrEqual(0);
+    expect(deliveryIndex).toBeGreaterThan(sourceVerifyIndex);
     expect(blockIndex).toBeGreaterThan(deliveryIndex);
     expect(activeIndex).toBeGreaterThan(blockIndex);
+  });
+
+  it('blocks source audit failures before customer delivery approval', () => {
+    const source = routeSourceWithoutComments();
+    const sourceVerifyIndex = source.indexOf('const sourceVerify = evaluateVerifyChecks');
+    const sourceBlockIndex = source.indexOf("if (sourceVerify.status === 'blocked')");
+    const deliveryIndex = source.indexOf('const delivery = evaluateCustomerDeliveryReadiness');
+    const activeIndex = source.indexOf("status:           'active'");
+
+    expect(sourceBlockIndex).toBeGreaterThan(sourceVerifyIndex);
+    expect(deliveryIndex).toBeGreaterThan(sourceBlockIndex);
+    expect(activeIndex).toBeGreaterThan(sourceBlockIndex);
   });
 
   it('returns final render claim coverage when approval is blocked', () => {
     const source = routeSourceWithoutComments();
     const blockIndex = source.indexOf("if (publishGate.decision === 'block')");
-    const activeIndex = source.search(/status:\s*'active'/);
+    const activeIndex = source.indexOf("status:           'active'");
     const blockBody = source.slice(blockIndex, activeIndex);
 
     expect(blockBody).toContain('render_claim_coverage');
