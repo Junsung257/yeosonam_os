@@ -1295,6 +1295,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     { label: '상품', value: selectedProductName },
     { label: '출발', value: reservationConditionDepartureValue },
     { label: '가격', value: stickyPriceSummaryText },
+    { label: '확인 질문', value: stickyConsultationQuestionText },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   const reservationSubmitHandoffPreviewText = `문의 전달 조건: ${reservationSubmitHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`;
   const reservationSubmitDecisionSummaryId = 'reservation-submit-decision-summary';
@@ -1348,6 +1349,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     { label: '상품', value: selectedProductName },
     { label: '출발', value: selectedDate ?? selectedTier?.period_label ?? (formData.date || firstScreenDepartureLabel) },
     { label: '가격', value: stickyPriceSummaryText },
+    { label: '질문', value: stickyConsultationQuestionText },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   const focusFirstReservationMissingField = () => {
     setReservationSubmitAttempted(true);
