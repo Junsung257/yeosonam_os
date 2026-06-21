@@ -944,13 +944,17 @@ type BookingWorkQueueKey = 'unpaid' | 'prep' | 'deposit' | 'land' | 'settlement'
 function BookingWorkQueue({
   activeKey,
   counts,
+  activeResultCount,
   onSelect,
   onClear,
+  onSelectBatch,
 }: {
   activeKey?: BookingWorkQueueKey;
   counts: Record<BookingWorkQueueKey, number>;
+  activeResultCount?: number;
   onSelect: (key: BookingWorkQueueKey) => void;
   onClear: () => void;
+  onSelectBatch?: () => void;
 }) {
   const items: {
     key: BookingWorkQueueKey;
@@ -1020,16 +1024,33 @@ function BookingWorkQueue({
           data-testid="admin-booking-active-queue-filter"
           className="mb-3 flex flex-col gap-2 rounded-admin-sm border border-admin-border-mid bg-admin-bg px-3 py-2 text-admin-xs sm:flex-row sm:items-center sm:justify-between"
         >
-          <p className="font-semibold text-admin-text-2">
-            적용 중: {selectedQueueItem.label} · {selectedQueueItem.target}
-          </p>
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs border border-admin-border-mid bg-white px-3 font-bold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
-          >
-            큐 필터 해제
-          </button>
+          <div>
+            <p className="font-semibold text-admin-text-2">
+              적용 중: {selectedQueueItem.label} · {selectedQueueItem.target}
+            </p>
+            <p className="mt-0.5 text-admin-muted">
+              현재 목록 {activeResultCount ?? selectedQueueItem.count}건 · 위에서부터 처리하면 마감 리스크가 낮습니다.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {selectedQueueItem.count > 0 && onSelectBatch && (
+              <button
+                type="button"
+                data-testid="admin-booking-queue-select-batch"
+                onClick={onSelectBatch}
+                className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs bg-slate-950 px-3 font-bold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+              >
+                상위 10건 선택
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex h-8 w-full items-center justify-center rounded-admin-xs border border-admin-border-mid bg-white px-3 font-bold text-admin-text-2 hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 sm:w-auto"
+            >
+              큐 필터 해제
+            </button>
+          </div>
         </div>
       )}
       <div
@@ -2313,6 +2334,29 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   // eslint-disable-next-line
   }, [bookings, lifecycleTab, doneSubTab, activeTab, dqFilter, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today]);
 
+  const handleSelectWorkQueueBatch = useCallback(() => {
+    const targets = filtered.slice(0, 10);
+    if (targets.length === 0) {
+      showToast('선택할 예약이 없습니다', 'err');
+      return;
+    }
+
+    setSelected(new Set(targets.map(b => b.id)));
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/bookings',
+      metadata: {
+        surface: 'bookings_work_queue',
+        action: 'select_top_batch',
+        queue: activeWorkQueueKey ?? null,
+        selected_count: targets.length,
+        visible_count: filtered.length,
+        ...buildBulkBookingActionDecisionMetadata(targets),
+      },
+    });
+    showToast(`${targets.length}건 선택됨 — 아래 작업 바에서 처리하세요`);
+  }, [activeWorkQueueKey, filtered, showToast]);
+
   const footerStats = useMemo(() => ({
     totalSales:    filtered.reduce((s, b) => s + (b.total_price||0), 0),
     totalPaid:     filtered.reduce((s, b) => s + (b.paid_amount||0), 0),
@@ -2455,8 +2499,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             settlement: settlementPendingCnt,
             refund: refundPendingCnt,
           }}
+          activeResultCount={filtered.length}
           onSelect={handleWorkQueueSelect}
           onClear={handleWorkQueueClear}
+          onSelectBatch={handleSelectWorkQueueBatch}
         />
       )}
 
