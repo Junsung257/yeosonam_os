@@ -2837,14 +2837,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         const suppressStandardCancel = shouldSuppressStandardCancelTable(initialNotices);
 
         // 특별약관 상품: 유의사항 섹션에서 이미 안내 → CTA 직전 중복 카드 생략
-        if (suppressStandardCancel) {
+        if (suppressStandardCancel && initialNotices.length === 0) {
           return null;
         }
 
-        const cancelNotice = initialNotices.find(n => n.type === 'RESERVATION');
-        const lines = (cancelNotice?.text || '').split('\n')
+        const termsPreviewNotice =
+          initialNotices.find(n => n.type === 'RESERVATION') ??
+          initialNotices.find(n => ['CRITICAL', 'PAYMENT', 'POLICY'].includes(n.type)) ??
+          initialNotices[0];
+        const lines = (termsPreviewNotice?.text || '').split('\n')
           .map(l => l.trim()).filter(Boolean)
-          .filter(l => /[0-9]+일|전액|무료|%|수수료/.test(l))
           .slice(0, 4);
         if (lines.length === 0) return null;
         return (

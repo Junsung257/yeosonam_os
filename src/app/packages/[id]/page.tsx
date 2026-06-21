@@ -729,7 +729,7 @@ export default async function PackageDetailPage({
 
   // 4-level 약관 해소 (mobile surface) — 출발일 가장 이른 날짜 기준으로 날짜 병기
   let initialNotices: NoticeBlock[] = [];
-  if (normalizedPkg && canRunOptionalDbReads) {
+  if (normalizedPkg && (canRunOptionalDbReads || fixturePkg)) {
     const rawPriceDates = (normalizedPkg as { price_dates?: { date: string }[] }).price_dates ?? [];
     const earliestDate = rawPriceDates.map(d => d.date).filter(Boolean).sort()[0] ?? null;
     const resolved = await resolveTermsForPackage(
@@ -742,6 +742,23 @@ export default async function PackageDetailPage({
       'mobile',
     );
     initialNotices = formatCancellationDates(resolved, earliestDate);
+  }
+  const fallbackParsedNotices =
+    (normalizedPkg as { notices_parsed?: unknown } | null)?.notices_parsed ??
+    (pkg as { notices_parsed?: unknown } | null)?.notices_parsed;
+  if (initialNotices.length === 0 && Array.isArray(fallbackParsedNotices)) {
+    initialNotices = fallbackParsedNotices
+      .filter((notice): notice is NoticeBlock => {
+        if (!notice || typeof notice !== 'object') return false;
+        const candidate = notice as Partial<NoticeBlock>;
+        return typeof candidate.type === 'string' && typeof candidate.text === 'string';
+      })
+      .map((notice) => ({
+        ...notice,
+        title: typeof notice.title === 'string' ? notice.title : notice.type,
+        surfaces: Array.isArray(notice.surfaces) ? notice.surfaces : ['mobile', 'booking_guide'],
+        severity: notice.severity ?? 'standard',
+      }));
   }
 
   // 2026-05-19 박제 (P2-A / A3): 같은 catalog_id 다른 패키지 fetch — 모바일 상세 페이지 selector 용

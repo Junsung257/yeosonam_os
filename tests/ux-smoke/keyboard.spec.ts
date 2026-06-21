@@ -348,7 +348,8 @@ test.describe('keyboard access smoke', () => {
     await expect(termsSheet).toBeVisible();
     await expect(termsSheet).toHaveAttribute('role', 'dialog');
     await expect(termsSheet).toHaveAttribute('aria-modal', 'true');
-    await expect(termsSheet).toHaveAttribute('aria-describedby', 'package-terms-sheet-description');
+    await expect(termsSheet).toHaveAttribute('aria-describedby', /(^|\s)package-terms-sheet-description(\s|$)/);
+    await expect(termsSheet).toHaveAttribute('aria-describedby', /(^|\s)package-terms-decision-summary(\s|$)/);
 
     const groupToggle = page.locator('[data-testid="package-terms-group-toggle"]:visible').first();
     await expectCanFocus(groupToggle, 'package terms group toggle');
