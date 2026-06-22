@@ -99,11 +99,14 @@ npm run build
 Mobile/A4 readiness:
 
 ```bash
+npm run repair:product-mobile-readiness -- --status=pending,pending_review,draft --limit=200 --days=365
 npm run audit:product-mobile-readiness:public
 npx tsx scripts/audit-mobile-attraction-photo-coverage.ts --status=active --limit=500 --json
 ```
 
 `audit:product-mobile-readiness:public` includes `--verify-public-html`. This is mandatory because DB/V3/A4 checks can pass while the actual public `/packages/{id}` HTML still renders a stale 404, generic title, missing price marker, missing itinerary marker, or missing inquiry marker.
+
+`repair:product-mobile-readiness` is the non-public repair pass before publish. It does not make products public. In dry-run mode it reports source-backed price-date repairs, airline/terms repairs, itinerary normalization, attraction relinking, optional-tour normalization, and V3 draft regeneration. Add `--apply` only after the dry-run summary shows source-backed repairs; public exposure still requires the approval/mobile proof gate.
 
 Folder registration must pass `npm run check:upload-db-health` before HWP extraction, parser/LLM work, or mobile proof. If the preflight report says `DB_HEALTHCHECK_TIMEOUT`, the correct result is "not started because storage is unavailable"; it is not a parser failure and not a partial mobile verification.
 

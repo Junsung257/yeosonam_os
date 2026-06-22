@@ -608,6 +608,7 @@ Use `npx tsx scripts/audit-ignored-unmatched-entities.ts --json` for a dry run a
 Before declaring the registration engine ready:
 
 ```bash
+npm run repair:product-mobile-readiness -- --status=pending,pending_review,draft --limit=200 --days=365
 npm run verify:product-registration-learning
 npm run verify:product-registration-live-samples:ci
 npm run audit:drift:ci

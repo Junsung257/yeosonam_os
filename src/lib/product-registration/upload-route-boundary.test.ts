@@ -38,6 +38,10 @@ function readMobileQualityEngine(): string {
   return readFileSync(join(process.cwd(), 'scripts/run-product-registration-mobile-quality-engine.ts'), 'utf8');
 }
 
+function readMobileReadinessCandidateRepair(): string {
+  return readFileSync(join(process.cwd(), 'scripts/repair-product-mobile-readiness-candidates.ts'), 'utf8');
+}
+
 function readPersistenceRows(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/persistence-rows.ts'), 'utf8');
 }
@@ -719,6 +723,21 @@ describe('upload route registration pipeline boundary', () => {
     expect(packageJson).toContain('--verify-public-html');
     expect(learningVerifier).toContain('--verify-public-html');
     expect(mobileQualityEngine).toContain('--verify-public-html');
+  });
+
+  it('repairs non-public mobile readiness candidates before re-running quality audits', () => {
+    const packageJson = readPackageJson();
+    const mobileQualityEngine = readMobileQualityEngine();
+    const repair = readMobileReadinessCandidateRepair();
+
+    expect(packageJson).toContain('"repair:product-mobile-readiness"');
+    expect(mobileQualityEngine).toContain('scripts/repair-product-mobile-readiness-candidates.ts');
+    expect(repair).toContain('buildSourceBackedPriceDateRepair');
+    expect(repair).toContain('normalizeUploadItinerary');
+    expect(repair).toContain('runProductRegistrationV3');
+    expect(repair).toContain('persistProductRegistrationDraftV3');
+    expect(repair).not.toContain("status: 'active'");
+    expect(repair).not.toContain("status: 'approved'");
   });
 
   it('uses the latest V3 draft match summary before stale unmatched queue rows in mobile/A4 audit', () => {

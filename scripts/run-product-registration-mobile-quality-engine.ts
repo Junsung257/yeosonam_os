@@ -19,6 +19,7 @@ const publicOnly = !args.has('--all-products');
 const skipVerify = args.has('--skip-verify');
 const skipPromote = args.has('--skip-promote');
 const skipPhotoFill = args.has('--skip-photo-fill');
+const skipCandidateRepair = args.has('--skip-candidate-repair');
 
 type Step = {
   label: string;
@@ -70,6 +71,19 @@ function quoteCmdArg(value: string): string {
 }
 
 const steps: Step[] = [
+  ...(!skipCandidateRepair ? [{
+    label: 'Repair source-backed price, itinerary, optional tour, and V3 readiness candidates',
+    command: bin('npx'),
+    args: [
+      'tsx',
+      'scripts/repair-product-mobile-readiness-candidates.ts',
+      `--status=${publicOnly ? 'active,approved' : status}`,
+      `--limit=${limit}`,
+      '--days=365',
+      ...(apply ? ['--apply'] : []),
+      ...(publicOnly ? ['--include-public'] : []),
+    ],
+  }] : []),
   {
     label: 'Collect customer-visible unmatched attraction/media candidates',
     command: bin('npx'),
