@@ -2,6 +2,8 @@ import { evaluateProductPublishGate, type PublishGateFailedCheck, type PublishGa
 import { evaluateRenderClaimCoverage, type RenderClaimCoverageResult } from '@/lib/render-claim-coverage';
 import {
   evidenceCoverage,
+  findEvidenceSpan,
+  hashRawText,
   MIN_PACKAGE_EVIDENCE_COVERAGE,
   REQUIRED_PACKAGE_EVIDENCE_FIELDS,
   type SourceEvidenceMap,
@@ -101,13 +103,50 @@ function addCompactTripStyleEvidence(
   };
 }
 
+function addPriceEvidence(
+  evidence: SourceEvidenceMap | null,
+  pkg: CustomerDeliveryCheckInput['pkg'],
+): SourceEvidenceMap | null {
+  if (!evidence || evidence['priceGroups[0].adultPrice']?.length) return evidence;
+  const row = pkg as Record<string, unknown>;
+  const rawText = typeof row.raw_text === 'string' ? row.raw_text : '';
+  if (!rawText) return evidence;
+  const priceDates = Array.isArray(row.price_dates) ? row.price_dates : [];
+  const priceTiers = Array.isArray(row.price_tiers) ? row.price_tiers : [];
+  const candidates = [
+    row.price,
+    ...priceDates.map(item => (item as { price?: unknown; adult_price?: unknown }).price ?? (item as { adult_price?: unknown }).adult_price),
+    ...priceTiers.map(item => (item as { adult_price?: unknown; price?: unknown }).adult_price ?? (item as { price?: unknown }).price),
+  ];
+  const rawTextHash = hashRawText(rawText);
+  for (const candidate of candidates) {
+    const span = findEvidenceSpan(rawText, candidate, { rawTextHash, source: 'deterministic', confidence: 0.9 });
+    if (!span) continue;
+    return {
+      ...evidence,
+      'priceGroups[0].adultPrice': [span],
+    };
+  }
+  return evidence;
+}
+
 export function evaluateCustomerDeliveryReadiness(input: CustomerDeliveryCheckInput): CustomerDeliveryCheckResult {
   const resolved = resolveSourceEvidence(input);
-  const sourceEvidence = addCompactTripStyleEvidence(resolved.sourceEvidence, input.pkg);
+  const sourceEvidence = addPriceEvidence(addCompactTripStyleEvidence(resolved.sourceEvidence, input.pkg), input.pkg);
   const origin = resolved.origin;
-  const requiredFields = [...REQUIRED_PACKAGE_EVIDENCE_FIELDS];
-  const sourceCoverage = evidenceCoverage(sourceEvidence, requiredFields);
   const renderCoverage = evaluateRenderClaimCoverage(input.pkg, sourceEvidence);
+  const requiredFields = [...REQUIRED_PACKAGE_EVIDENCE_FIELDS].filter((field) => {
+    if (field === 'flights.outbound[0].code') {
+      const claim = renderCoverage.claims.find(item => item.id === 'flight.outbound.code');
+      return Boolean(claim && /^[A-Z0-9]{2}\d{3,4}$/i.test(claim.value));
+    }
+    if (field === 'flights.inbound[0].code') {
+      const claim = renderCoverage.claims.find(item => item.id === 'flight.inbound.code');
+      return Boolean(claim && /^[A-Z0-9]{2}\d{3,4}$/i.test(claim.value));
+    }
+    return true;
+  });
+  const sourceCoverage = evidenceCoverage(sourceEvidence, requiredFields);
   const finalRenderFailedChecks: PublishGateFailedCheck[] = renderCoverage.unsupported.map((claim) => ({
     id: `final_render_unsupported:${claim.id}`,
     severity: 'critical',

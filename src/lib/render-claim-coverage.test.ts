@@ -65,6 +65,17 @@ describe('render-claim-coverage', () => {
     expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
   });
 
+  it('accepts supplier date ranges and thousand-unit shorthand prices', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '3/1~3/31\n토\n1,319,-',
+      price_dates: [{ date: '2027-03-06', price: 1319000, confirmed: true }],
+      itinerary_data: { days: [] },
+    });
+
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].date')).toBe(false);
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
+  });
+
   it('accepts Korean month/day raw date labels for ISO price dates', () => {
     const result = evaluateRenderClaimCoverage({
       raw_text: '출발일 7월8일 (수) 상품가 749,000원',
@@ -87,6 +98,32 @@ describe('render-claim-coverage', () => {
     expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
   });
 
+  it('accepts itinerary wording when the raw line contains the same core evidence', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '가이드 미팅 후 중식 및 케이블카 탑승장으로 이동',
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            schedule: [{ type: 'normal', activity: '탑승장 이동' }],
+          },
+        ],
+      },
+    });
+
+    expect(result.unsupported.some(c => c.value === '탑승장 이동')).toBe(false);
+  });
+
+  it('does not expose empty parentheses in inclusion claims', () => {
+    const claims = extractRenderClaims({
+      inclusions: ['호텔()'],
+      itinerary_data: { days: [] },
+    });
+
+    expect(claims.some(c => c.value === '호텔()')).toBe(false);
+    expect(claims.some(c => c.value === '호텔')).toBe(true);
+  });
+
   it('accepts reordered term tokens such as 기타 개인경비 for 개인경비 · 기타', () => {
     const result = evaluateRenderClaimCoverage({
       raw_text: '불포함: 유류할증료, 기타 개인경비',
@@ -95,6 +132,16 @@ describe('render-claim-coverage', () => {
     });
 
     expect(result.unsupported.some(c => c.value === '개인경비 · 기타')).toBe(false);
+  });
+
+  it('accepts common supplier typo 골피비용 for rendered 골프비용', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '포함사항 왕복항공료, 숙박비, 식사, 골피비용(그린피+카트비), 여행자보험',
+      inclusions: ['골프비용(그린피+카트비)'],
+      itinerary_data: { days: [] },
+    });
+
+    expect(result.unsupported.some(c => c.value === '골프비용(그린피+카트비)')).toBe(false);
   });
 
   it('accepts sourceEvidence support even when raw text exact match is absent', () => {

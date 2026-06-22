@@ -79,6 +79,6 @@ describe('buildAdOsOperatingInventory', () => {
     expect(inventory.status).toBe('blocked');
     expect(inventory.items.find((row) => row.id === 'control_plane')?.status).toBe('blocked');
     expect(inventory.items.find((row) => row.id === 'live_autopilot')?.status).toBe('blocked');
-    expect(inventory.top_gap).toBe('Control plane safety');
+    expect(inventory.top_gap).toBe('운영 안전장치');
   });
 });

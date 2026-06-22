@@ -461,7 +461,9 @@ function isBareSurcharge(s: string): boolean {
 export function flattenItems(items: string[]): string[] {
   const repaired = repairMealDayExcludeItems(items);
   const result: string[] = [];
-  for (const item of repaired) {
+  for (const rawItem of repaired) {
+    const item = rawItem.replace(/\(\s*\)/g, '').replace(/\[\s*\]/g, '').trim();
+    if (!item) continue;
     if (SURCHARGE_RE.test(item)) {
       result.push(item.trim());
       continue;

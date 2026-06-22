@@ -298,6 +298,34 @@ describe('evaluateCustomerRenderContractChecks mobile landing blockers', () => {
     expect(checks.find(c => c.id === 'C17')?.detail).toContain('meal-only line');
     expect(checks.find(c => c.id === 'C17')?.detail).toContain('shopping line');
   });
+
+  it('does not treat golf rounding lines with hotel breakfast text as hotel-card contamination', () => {
+    const checks = evaluateCustomerRenderContractChecks({
+      id: 'pkg-golf-render',
+      title: 'PKG ZE Phu Quoc golf 4N6D',
+      duration: 6,
+      nights: 4,
+      itinerary_data: {
+        meta: { days: 6, nights: 4 },
+        days: [
+          {
+            day: 2,
+            schedule: [
+              {
+                activity: '빈펄CC 18홀 라운딩 조:호텔식',
+                attraction_ids: ['vinpearl-cc'],
+                attraction_names: ['빈펄CC'],
+              },
+            ],
+          },
+        ],
+      },
+    } as never);
+
+    expect(checks.find(c => c.id === 'C17')).toEqual(expect.objectContaining({
+      status: 'pass',
+    }));
+  });
 });
 
 describe('evaluateVerifyChecks — fail/warn 회귀 차단', () => {
@@ -404,6 +432,31 @@ premium villa golf package 3n5d
       price_dates: [
         { date: '2027-07-02', price: 1159000 },
         { date: '2027-07-09', price: 1159000 },
+      ],
+    });
+
+    expect(findCheck(r, 'C12')?.status).toBe('pass');
+  });
+
+  it('C12 keeps future DB year when raw year is a document date', () => {
+    const rawText = `
+PKG ZE Phu Quoc golf 4N6D
+2026.2.1
+3/1~3/31
+토
+1,319,-
+`;
+    const r = evaluateVerifyChecks({
+      id: 'pkg-phu-quoc-doc-year',
+      title: 'PKG ZE Phu Quoc golf 4N6D',
+      duration: 6,
+      raw_text: rawText,
+      departure_days: '토',
+      price_dates: [
+        { date: '2027-03-06', price: 1319000 },
+        { date: '2027-03-13', price: 1319000 },
+        { date: '2027-03-20', price: 1319000 },
+        { date: '2027-03-27', price: 1319000 },
       ],
     });
 

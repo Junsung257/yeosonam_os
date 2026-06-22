@@ -41,6 +41,11 @@ function normalizeNeedles(value: unknown): string[] {
       values.add(`${n} 명`);
     }
     values.add(n.toLocaleString('ko-KR'));
+    if (Number.isInteger(n) && n >= 100_000) {
+      const thousandUnit = Math.round(n / 1000).toLocaleString('ko-KR');
+      values.add(thousandUnit);
+      values.add(`${thousandUnit},-`);
+    }
     values.add(text);
     return [...values].filter(Boolean);
   }
@@ -53,6 +58,11 @@ function normalizeNeedles(value: unknown): string[] {
         values.add(`${n} 명`);
       }
       values.add(n.toLocaleString('ko-KR'));
+      if (Number.isInteger(n) && n >= 100_000) {
+        const thousandUnit = Math.round(n / 1000).toLocaleString('ko-KR');
+        values.add(thousandUnit);
+        values.add(`${thousandUnit},-`);
+      }
     }
   }
   return [...values].filter(Boolean);

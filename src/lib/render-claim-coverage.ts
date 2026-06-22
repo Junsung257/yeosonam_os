@@ -111,9 +111,48 @@ function rawSupports(rawText: string, value: string): boolean {
   return false;
 }
 
+function compactComparable(value: string): string {
+  return value
+    .replace(/\s+/g, '')
+    .replace(/[()[\]{}<>「」『』·ㆍ,./\\|:;'"!?~\-–—_*★▶△※&+]/g, '')
+    .replace(/으로|로|에서|에게|부터|까지|및|와|과|을|를|은|는|이|가|의/g, '')
+    .replace(/관광|투어|체험|방문|일정|자유시간|자유일정/g, '')
+    .trim();
+}
+
+function rawSupportsComparable(rawText: string, value: string): boolean {
+  const raw = compactComparable(rawText);
+  const claim = compactComparable(value);
+  return claim.length >= 4 && raw.includes(claim);
+}
+
+function meaningfulTokens(value: string): string[] {
+  return value
+    .split(/[\s()[\]{}<>「」『』·ㆍ,./\\|:;'"!?~\-–—_*★▶△※&+]+/g)
+    .map(token => token.trim())
+    .filter(token => token.length >= 2)
+    .filter(token => !/^(관광|투어|체험|방문|이동|일정|자유일정|자유시간|포함|불포함)$/.test(token));
+}
+
+function rawSupportsTokensInNearbyLine(rawText: string, value: string): boolean {
+  const tokens = meaningfulTokens(value);
+  if (tokens.length === 0) return false;
+  if (tokens.length === 1) return rawSupports(rawText, tokens[0]);
+  return rawText
+    .split(/\r?\n/)
+    .some((line) => tokens.every(token => rawSupports(line, token) || rawSupportsComparable(line, token)));
+}
+
+function rawSupportsItineraryLabel(rawText: string, value: string): boolean {
+  if (rawSupports(rawText, value) || rawSupportsComparable(rawText, value)) return true;
+  return rawSupportsTokensInNearbyLine(rawText, value);
+}
+
 function normalizeTermClaim(value: string): string[] {
   const compact = value.replace(/\s+/g, ' ').trim();
   const variants = new Set<string>([compact]);
+  variants.add(compact.replace(/골프\s*비용/g, '골피비용'));
+  variants.add(compact.replace(/골프비용/g, '골피비용'));
   // render-contract excludes 표시 포맷: "개인경비 · 불포함"
   variants.add(compact.replace(/\s*[·ㆍ•]\s*불포함$/i, '').trim());
   // 흔한 연결어 정규화
@@ -123,7 +162,7 @@ function normalizeTermClaim(value: string): string[] {
 
 function rawSupportsTermLabel(rawText: string, value: string): boolean {
   const variants = normalizeTermClaim(value);
-  if (variants.some(variant => rawSupports(rawText, variant))) return true;
+  if (variants.some(variant => rawSupports(rawText, variant) || rawSupportsComparable(rawText, variant))) return true;
   const tokens = value
     .split(/[·ㆍ,\/&+|()\[\]\s]+/g)
     .map(token => token.trim())
@@ -227,6 +266,16 @@ function rawSupportsDateLabel(rawText: string, value: string): boolean {
   if (!iso) return false;
   const month = String(Number(iso[1]));
   const day = String(Number(iso[2]));
+  const date = new Date(`${value}T00:00:00Z`);
+  const rangePattern = /(\d{1,2})\s*\/\s*(\d{1,2})\s*[~\-–—]\s*(\d{1,2})\s*\/\s*(\d{1,2})/g;
+  for (const match of rawText.matchAll(rangePattern)) {
+    const start = Date.UTC(date.getUTCFullYear(), Number(match[1]) - 1, Number(match[2]));
+    const end = Date.UTC(date.getUTCFullYear(), Number(match[3]) - 1, Number(match[4]));
+    const current = date.getTime();
+    if (Number.isFinite(current) && current >= Math.min(start, end) && current <= Math.max(start, end)) {
+      return true;
+    }
+  }
   const monthListPattern = new RegExp(`\\b0?${escapeRegExp(month)}\\s*/`);
   const dayPattern = new RegExp(`(?:^|[^0-9])0?${escapeRegExp(day)}(?:[^0-9]|$)`);
   return rawText
@@ -242,6 +291,11 @@ function normalizePriceClaim(value: string): string[] {
     const n = Number(compact);
     if (Number.isFinite(n)) {
       variants.add(n.toLocaleString('ko-KR'));
+      if (Number.isInteger(n) && n >= 100_000) {
+        const thousandUnit = Math.round(n / 1000).toLocaleString('ko-KR');
+        variants.add(thousandUnit);
+        variants.add(`${thousandUnit},-`);
+      }
       variants.add(`${n.toLocaleString('ko-KR')}??`);
       variants.add(`${n}??`);
     }
@@ -282,6 +336,7 @@ function rawSupportsClaim(rawText: string, claim: RenderClaim): boolean {
   if (claim.surface === 'optional') return rawSupportsOptionalLabel(rawText, claim.value);
   if (claim.surface === 'hotel') return rawSupportsHotelLabel(rawText, claim.value);
   if (claim.surface === 'flight') return rawSupportsFlightLabel(rawText, claim.value);
+  if (claim.surface === 'itinerary') return rawSupportsItineraryLabel(rawText, claim.value);
   if (claim.surface === 'price') return rawSupportsDateLabel(rawText, claim.value) || rawSupportsPriceLabel(rawText, claim.value);
   if (claim.id.includes('price') || claim.id.includes('date')) {
     return rawSupportsDateLabel(rawText, claim.value) || rawSupportsPriceLabel(rawText, claim.value) || rawSupports(rawText, claim.value);
