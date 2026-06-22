@@ -27,11 +27,18 @@ describe('package approve route customer delivery gate', () => {
   it('blocks source audit failures before customer delivery approval', () => {
     const source = routeSourceWithoutComments();
     const sourceVerifyIndex = source.indexOf('const sourceVerify = evaluateVerifyChecks');
+    const sourceRepairIndex = source.indexOf('const sourceRepairUpdates: Record<string, unknown> = {}');
+    const sourceRepairBlockIndex = source.indexOf("if (sourceRepairActions.length > 0)");
+    const sourceRepairReproofIndex = source.indexOf('SOURCE_REPAIR_REQUIRES_MOBILE_REPROOF', sourceRepairBlockIndex);
     const sourceBlockIndex = source.indexOf("if (sourceVerify.status === 'blocked')");
     const deliveryIndex = source.indexOf('const delivery = evaluateCustomerDeliveryReadiness');
     const activeIndex = source.indexOf("status:           'active'");
 
+    expect(sourceRepairIndex).toBeGreaterThan(sourceVerifyIndex);
+    expect(sourceRepairBlockIndex).toBeGreaterThan(sourceRepairIndex);
+    expect(sourceRepairReproofIndex).toBeGreaterThan(sourceRepairBlockIndex);
     expect(sourceBlockIndex).toBeGreaterThan(sourceVerifyIndex);
+    expect(sourceBlockIndex).toBeGreaterThan(sourceRepairReproofIndex);
     expect(deliveryIndex).toBeGreaterThan(sourceBlockIndex);
     expect(activeIndex).toBeGreaterThan(sourceBlockIndex);
   });

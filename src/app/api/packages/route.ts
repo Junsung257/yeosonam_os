@@ -143,11 +143,37 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
     source_price_date_repair: repair,
   };
   const existingMobileProof = extractCustomerMobileProof((pkg as { audit_report?: unknown }).audit_report ?? null);
+  if (repair.status === 'repaired') {
+    await supabaseAdmin
+      .from('travel_packages')
+      .update({
+        price_dates: repair.priceDates,
+        audit_status: 'blocked',
+        audit_report: {
+          ...auditReport,
+          ...(existingMobileProof ? { mobile_browser_proof: existingMobileProof } : {}),
+          mobile_browser_proof_required: {
+            status: 'fail',
+            reason: 'source-backed approval repair changed customer-visible price data; rerun mobile/A4 proof before publication',
+            checked_at: new Date().toISOString(),
+          },
+        },
+        audit_checked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', packageId);
+
+    return ApiErrors.conflict('Source-backed repair was applied. Rerun mobile/A4 proof before customer publication.', {
+      code: 'SOURCE_REPAIR_REQUIRES_MOBILE_REPROOF',
+      packageId,
+      source_verify: result,
+      source_price_date_repair: repair,
+    });
+  }
 
   await supabaseAdmin
     .from('travel_packages')
     .update({
-      ...(repair.status === 'repaired' ? { price_dates: repair.priceDates } : {}),
       audit_status: result.status,
       audit_report: {
         ...auditReport,

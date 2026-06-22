@@ -96,14 +96,61 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       source_terms_repair: sourceTermsRepair,
       source_field_repair: sourceFieldRepair,
     };
+    const sourceRepairUpdates: Record<string, unknown> = {};
+    const sourceRepairActions: string[] = [];
+    if (sourcePriceDateRepair.status === 'repaired') {
+      sourceRepairUpdates.price_dates = sourcePriceDateRepair.priceDates;
+      sourceRepairActions.push('price_dates');
+    }
+    if (sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline) {
+      sourceRepairUpdates.airline = sourceFieldRepair.airline;
+      sourceRepairActions.push('airline');
+    }
+    if (sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions) {
+      sourceRepairUpdates.inclusions = sourceTermsRepair.inclusions;
+      sourceRepairActions.push('inclusions');
+    }
+    if (sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes) {
+      sourceRepairUpdates.excludes = sourceTermsRepair.excludes;
+      sourceRepairActions.push('excludes');
+    }
+    if (sourceRepairActions.length > 0) {
+      await supabaseAdmin
+        .from('travel_packages')
+        .update({
+          ...sourceRepairUpdates,
+          audit_status: 'blocked',
+          audit_report: {
+            ...sourceAuditReport,
+            mobile_browser_proof_required: {
+              status: 'fail',
+              reason: `source-backed approval repair changed customer-visible data (${sourceRepairActions.join(', ')}); rerun mobile/A4 proof before publication`,
+              checked_at: new Date().toISOString(),
+            },
+          },
+          audit_checked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      return NextResponse.json(
+        {
+          error: 'Source-backed repair was applied. Rerun mobile/A4 proof before customer publication.',
+          code: 'SOURCE_REPAIR_REQUIRES_MOBILE_REPROOF',
+          repaired_fields: sourceRepairActions,
+          source_verify: sourceVerify,
+          source_repairs: {
+            price_dates: sourcePriceDateRepair,
+            field: sourceFieldRepair,
+            terms: sourceTermsRepair,
+          },
+        },
+        { status: 409 },
+      );
+    }
     if (sourceVerify.status === 'blocked') {
       await supabaseAdmin
         .from('travel_packages')
         .update({
-          ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
-          ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
-          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
-          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
           audit_status: 'blocked',
           audit_report: sourceAuditReport,
           audit_checked_at: new Date().toISOString(),
@@ -122,10 +169,6 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       await supabaseAdmin
         .from('travel_packages')
         .update({
-          ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
-          ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
-          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
-          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
           audit_status: 'warnings',
           audit_report: sourceAuditReport,
           audit_checked_at: new Date().toISOString(),
