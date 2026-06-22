@@ -40,6 +40,7 @@ export default function JarvisSidekick({ context, label = '여소남 안내', gr
   useEffect(() => {
     if (!open) return;
     const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const triggerElement = triggerRef.current;
     const previousOverflow = document.body.style.overflow;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -70,7 +71,7 @@ export default function JarvisSidekick({ context, label = '여소남 안내', gr
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
       window.setTimeout(() => {
-        const returnTarget = previousActiveElement?.isConnected ? previousActiveElement : triggerRef.current;
+        const returnTarget = previousActiveElement?.isConnected ? previousActiveElement : triggerElement;
         returnTarget?.focus();
       }, 0);
     };

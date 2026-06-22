@@ -44,12 +44,14 @@ import { useAdOsReadinessRunner } from './_lib/readiness-runner';
 import {
   buildLaunchSteps,
   buildLaunchWizardSteps,
+  getAdOsAgentOperatingModel,
   getActiveModeByPlatform,
   getCompletionDrilldown,
   getExecutionStateEntries,
   getTenantReportView,
   getTotalMappingStatus,
 } from './_lib/view-model';
+import { AiAdTeamPanel } from './_components/AiAdTeamPanel';
 import { AdminSurfaceQaPanel } from './_components/AdminSurfaceQaPanel';
 import { AutomationPolicyPanel } from './_components/AutomationPolicyPanel';
 import { BudgetOperationsPanel } from './_components/BudgetOperationsPanel';
@@ -113,7 +115,7 @@ export default function AdOsPage() {
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, checkingCredentialPreflight, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
     creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, runningMetaCreativeSafePipeline, checkingExecutionGate, checkingGoogleDraftGate, checkingNaverLivePreflight, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
-    checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
+    checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa, runningAgentDiagnosis, savingCampaignMemory,
   } = actionFlags;
 
   const {
@@ -187,6 +189,9 @@ export default function AdOsPage() {
         setAdminSurfaceQa,
       },
       shouldApply: () => alive,
+      onNonBlockingError: (err) => {
+        console.warn('[ad-os] initial readiness panel load failed', err);
+      },
     })
       .catch((err) => {
         if (alive) setError(err instanceof Error ? err.message : 'Ad OS readiness panels load failed.');
@@ -910,6 +915,47 @@ export default function AdOsPage() {
           inserted_change_requests?: unknown;
         } | undefined;
         return `Search term growth complete: keyword drafts ${formatAdOsNumber(summary?.keyword_drafts)}, negative drafts ${formatAdOsNumber(summary?.negative_drafts)}, saved ${formatAdOsNumber(summary?.inserted_keyword_plans)}, approval requests ${formatAdOsNumber(summary?.inserted_change_requests)}. External ad spend 0.`;
+      },
+    });
+  };
+
+  const runAgentDiagnosis = async () => {
+    await runJsonAction<{
+      summary?: {
+        pipeline_steps?: unknown;
+        failed_steps?: unknown;
+        roas_score?: unknown;
+        team_score?: unknown;
+      };
+      memory_id?: unknown;
+    } & Record<string, unknown>>({
+      flag: 'runningAgentDiagnosis',
+      url: '/api/admin/ad-os/agent-diagnostics',
+      body: { run_pipeline: true, persist_memory: true },
+      errorMessage: 'AI ad team diagnosis failed.',
+      successMessage: (json) => {
+        const summary = json.summary || {};
+        return `AI ad team diagnosis complete: steps ${formatAdOsNumber(summary.pipeline_steps)}, failed ${formatAdOsNumber(summary.failed_steps)}, ROAS score ${formatAdOsNumber(summary.roas_score)}%, team score ${formatAdOsNumber(summary.team_score)}%, memory ${String(json.memory_id || '-')}. External API write 0.`;
+      },
+    });
+  };
+
+  const saveCampaignMemory = async () => {
+    await runJsonAction<{
+      summary?: {
+        roas_score?: unknown;
+        team_score?: unknown;
+      };
+      memory_id?: unknown;
+      memory_created?: unknown;
+    } & Record<string, unknown>>({
+      flag: 'savingCampaignMemory',
+      url: '/api/admin/ad-os/agent-diagnostics',
+      body: { run_pipeline: false, persist_memory: true },
+      errorMessage: 'Campaign memory save failed.',
+      successMessage: (json) => {
+        const summary = json.summary || {};
+        return `Campaign memory ${json.memory_created ? 'created' : 'updated'}: ${String(json.memory_id || '-')}. ROAS score ${formatAdOsNumber(summary.roas_score)}%, team score ${formatAdOsNumber(summary.team_score)}%.`;
       },
     });
   };
@@ -1742,6 +1788,7 @@ export default function AdOsPage() {
 
   const totalMappingStatus = getTotalMappingStatus(summary);
   const completionDrilldown = getCompletionDrilldown(summary);
+  const adOsAgentOperatingModel = getAdOsAgentOperatingModel(summary);
   const launchSteps = buildLaunchSteps(summary);
   const launchWizardSteps = buildLaunchWizardSteps(summary);
   const executionStateEntries = getExecutionStateEntries(summary);
@@ -1987,6 +2034,16 @@ export default function AdOsPage() {
             onRunLaunchAudit={runLaunchAudit}
             runningLaunchAudit={runningLaunchAudit}
           />
+
+          {adOsAgentOperatingModel && (
+            <AiAdTeamPanel
+              model={adOsAgentOperatingModel}
+              onRunDiagnosis={runAgentDiagnosis}
+              onSaveMemory={saveCampaignMemory}
+              runningDiagnosis={runningAgentDiagnosis}
+              savingMemory={savingCampaignMemory}
+            />
+          )}
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <CompletionAuditPanel

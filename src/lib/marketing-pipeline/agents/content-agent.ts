@@ -30,11 +30,16 @@ interface PackageRow {
 
 export class ContentAgent extends BaseMarketingAgent {
   readonly name = 'content';
+  protected override readonly agentRole = 'copywriter' as const;
 
   async run(ctx: MarketingContext): Promise<Omit<AgentResult, 'elapsed_ms'>> {
-    if (!isSupabaseConfigured) return this.skip('Supabase 미설정');
+    if (!isSupabaseConfigured) return this.skipWithContract('Supabase not configured', {
+      input_summary: 'Approved travel packages for social/content copy generation.',
+    });
     if (!getSecret('DEEPSEEK_API_KEY') && !getSecret('GEMINI_API_KEY') && !getSecret('GOOGLE_AI_API_KEY')) {
-      return this.skip('LLM API 키 미설정');
+      return this.skipWithContract('LLM API key not configured', {
+        input_summary: 'Approved travel packages for social/content copy generation.',
+      });
     }
 
     const { data: packages, error } = await supabaseAdmin
@@ -46,7 +51,9 @@ export class ContentAgent extends BaseMarketingAgent {
       .limit(3);
 
     if (error) throw error;
-    if (!packages?.length) return this.skip('활성 패키지 없음');
+    if (!packages?.length) return this.skipWithContract('No active approved packages', {
+      input_summary: 'Latest active approved travel packages.',
+    });
 
     let generated = 0;
 
@@ -91,7 +98,16 @@ export class ContentAgent extends BaseMarketingAgent {
       generated++;
     }
 
-    return { ok: true, data: { generated, packages: packages.length } };
+    return this.withContract({
+      ok: true,
+      data: { generated, packages: packages.length },
+    }, {
+      input_summary: `${packages.length} approved packages checked for content distribution drafts.`,
+      evidence: [`${generated} content drafts generated`, `${packages.length} packages inspected`],
+      decision: generated > 0 ? 'draft_content_created' : 'no_content_created',
+      next_action: generated > 0 ? 'Review draft captions before social publishing.' : 'Add approved packages or review content prerequisites.',
+      needs_human_approval: generated > 0,
+    });
   }
 }
 

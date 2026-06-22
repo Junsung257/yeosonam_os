@@ -191,6 +191,66 @@ function requireMarketingSurfaceCoverage() {
       missing: missingAdOsRouteFiles,
     },
   );
+
+  requireIncludes('surface:ad-os-ai-ad-team-panel-wired', 'src/app/admin/ad-os/page.tsx', [
+    'AiAdTeamPanel',
+    'getAdOsAgentOperatingModel',
+    'runAgentDiagnosis',
+    'saveCampaignMemory',
+  ]);
+  requireIncludes('lib:ad-os-ai-ad-team-model', 'src/app/admin/ad-os/_lib/agent-operating-model.ts', [
+    'buildAdOsAgentOperatingModel',
+    'campaign_planner',
+    'performance_analyst',
+    'copywriter',
+    'reporter',
+    'RoasDiagnostic',
+    'CampaignMemory',
+  ]);
+  requireIncludes('component:ad-os-ai-ad-team-panel', 'src/app/admin/ad-os/_components/AiAdTeamPanel.tsx', [
+    'AI ad team',
+    'ROAS diagnosis',
+    'Campaign memory',
+    'Run diagnosis',
+    'Save memory',
+  ]);
+  requireIncludes('api:ad-os-agent-diagnostics', 'src/app/api/admin/ad-os/agent-diagnostics/route.ts', [
+    'learning-harvest',
+    'search-term-growth',
+    'optimize-performance',
+    'budget-pacing',
+    'persistAdOsCampaignMemory',
+    'ad_os_decision_logs',
+  ]);
+  requireIncludes('lib:ad-os-campaign-memory-persistence', 'src/lib/ad-os-campaign-memory.ts', [
+    'buildAdOsCampaignMemoryRecord',
+    'persistAdOsCampaignMemory',
+    'ad_os_campaign_memories',
+  ]);
+  requireIncludes('migration:ad-os-campaign-memory', 'supabase/migrations/20260622130000_ad_os_campaign_memory.sql', [
+    'CREATE TABLE IF NOT EXISTS public.ad_os_campaign_memories',
+    'ENABLE ROW LEVEL SECURITY',
+    'FOR ALL TO service_role',
+    'REVOKE ALL ON TABLE public.ad_os_campaign_memories FROM anon, authenticated',
+  ]);
+  requireIncludes('lib:marketing-agent-contract', 'src/lib/marketing-pipeline/base-agent.ts', [
+    'MarketingAgentContract',
+    'needs_human_approval',
+    'withContract',
+    'skipWithContract',
+  ]);
+  requireIncludes('lib:jarvis-marketing-specialists', 'src/lib/jarvis/orchestration/specialist-registry.ts', [
+    'marketing.campaign_planner',
+    'marketing.performance_analyst',
+    'marketing.copywriter',
+    'marketing.reporter',
+    'marketing.search_term_diagnostician',
+  ]);
+  requireIncludes('docs:ad-os-agent-operating-manual', 'docs/ad-os-agent-operating-manual.md', [
+    'AI Ad Team Roles',
+    'ROAS Debug Loop',
+    'Campaign Memory',
+  ]);
 }
 
 function appendCapped(current, chunk, limit = 2 * 1024 * 1024) {

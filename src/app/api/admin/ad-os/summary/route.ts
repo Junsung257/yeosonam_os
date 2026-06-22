@@ -540,6 +540,7 @@ function buildDegradedSummary(error: unknown) {
       budget_pacing: [],
       tenant_ad_accounts: [],
       change_requests: [],
+      campaign_memories: [],
     },
   };
 }
@@ -591,6 +592,7 @@ async function buildSummaryResponse() {
     rollbackDrillRes,
     limitedWritePilotPolicyRes,
     limitedWritePilotAttemptRes,
+    campaignMemoryRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -805,6 +807,11 @@ async function buildSummaryResponse() {
       .select('id, tenant_id, platform, requested_mode, attempt_status, external_api_write, blockers, next_action, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_campaign_memories')
+      .select('id, tenant_id, workspace_id, memory_key, status, score, purpose, facts, next_tests, last_diagnostic, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(20),
   ]);
 
   const firstError =
@@ -1124,6 +1131,15 @@ async function buildSummaryResponse() {
     external_api_write: boolean | null;
     blockers: string[] | null;
     next_action: string | null;
+  }>;
+  const campaignMemories = (!campaignMemoryRes.error ? campaignMemoryRes.data || [] : []) as Array<{
+    tenant_id: string | null;
+    workspace_id: string | null;
+    memory_key: string | null;
+    status: string | null;
+    score: number | null;
+    purpose: string | null;
+    updated_at: string | null;
   }>;
   const creativeAssetVariants = (creativeAssetVariantRes.data || []) as Array<{
     platform: string | null;
@@ -1720,6 +1736,8 @@ async function buildSummaryResponse() {
       limited_write_pilot_dry_run_succeeded: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'dry_run_succeeded').length,
       limited_write_pilot_blocked: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'blocked' || row.attempt_status === 'live_write_blocked').length,
       limited_write_pilot_external_api_write: limitedWritePilotAttempts.filter((row) => row.external_api_write).length,
+      campaign_memories: campaignMemories.length,
+      campaign_memories_ready: campaignMemories.filter((row) => row.status === 'ready').length,
       ops_executor_queue: executorQueueRows.length,
       ops_confirmation_queue: confirmationQueueRows.length,
       ops_failed_queue: failedQueueRows.length,
@@ -1791,6 +1809,7 @@ async function buildSummaryResponse() {
       rollback_drills_by_type: byKey(rollbackDrills, (row) => row.rollback_type || 'unknown'),
       limited_write_pilot_policies_by_status: byKey(limitedWritePilotPolicies, (row) => row.status || 'unknown'),
       limited_write_pilot_attempts_by_status: byKey(limitedWritePilotAttempts, (row) => row.attempt_status || 'unknown'),
+      campaign_memories_by_status: byKey(campaignMemories, (row) => row.status || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -2020,6 +2039,7 @@ async function buildSummaryResponse() {
       rollback_drills: rollbackDrillRes.data?.slice(0, 12) || [],
       limited_write_pilot_policies: limitedWritePilotPolicyRes.data?.slice(0, 12) || [],
       limited_write_pilot_attempts: limitedWritePilotAttemptRes.data?.slice(0, 12) || [],
+      campaign_memories: !campaignMemoryRes.error ? campaignMemoryRes.data?.slice(0, 12) || [] : [],
       ops_executor_queue: executorQueueRows.slice(0, 8),
       ops_confirmation_queue: confirmationQueueRows.slice(0, 8),
       ops_failed_queue: failedQueueRows.slice(0, 8),

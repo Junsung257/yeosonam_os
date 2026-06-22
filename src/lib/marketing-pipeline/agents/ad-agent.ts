@@ -22,11 +22,16 @@ interface PackageRow {
 
 export class AdAgent extends BaseMarketingAgent {
   readonly name = 'ad';
+  protected override readonly agentRole = 'campaign_planner' as const;
 
   async run(ctx: MarketingContext): Promise<Omit<AgentResult, 'elapsed_ms'>> {
-    if (!isSupabaseConfigured) return this.skip('Supabase 미설정');
+    if (!isSupabaseConfigured) return this.skipWithContract('Supabase not configured', {
+      input_summary: 'Approved packages and connected ad accounts for campaign draft planning.',
+    });
     if (!getSecret('DEEPSEEK_API_KEY') && !getSecret('GEMINI_API_KEY') && !getSecret('GOOGLE_AI_API_KEY')) {
-      return this.skip('LLM API 키 미설정');
+      return this.skipWithContract('LLM API key not configured', {
+        input_summary: 'Approved packages and connected ad accounts for campaign draft planning.',
+      });
     }
 
     const [metaToken, googleToken] = await Promise.all([
@@ -35,7 +40,10 @@ export class AdAgent extends BaseMarketingAgent {
     ]);
 
     if (!metaToken && !googleToken) {
-      return this.skip('Meta/Google OAuth 모두 미연동');
+      return this.skipWithContract('Meta/Google OAuth not connected', {
+        input_summary: 'Tenant OAuth tokens for Meta and Google Ads campaign drafting.',
+        next_action: 'Connect at least one ad platform token before campaign draft generation.',
+      });
     }
 
     const { data: packages } = await supabaseAdmin
@@ -46,7 +54,9 @@ export class AdAgent extends BaseMarketingAgent {
       .order('created_at', { ascending: false })
       .limit(5); // 한 번에 최대 5개 상품 처리
 
-    if (!packages?.length) return this.skip('활성 패키지 없음');
+    if (!packages?.length) return this.skipWithContract('No active approved packages', {
+      input_summary: 'Latest active approved packages for campaign draft generation.',
+    });
 
     const results: { packages_processed: number; items: unknown[] } = { packages_processed: 0, items: [] };
 
@@ -105,7 +115,16 @@ export class AdAgent extends BaseMarketingAgent {
       results.packages_processed += 1;
     }
 
-    return { ok: true, data: results };
+    return this.withContract({
+      ok: true,
+      data: results,
+    }, {
+      input_summary: `${results.packages_processed} packages processed for Meta/Google campaign draft planning.`,
+      evidence: [`${results.items.length} package draft result rows`, `Meta connected: ${Boolean(metaToken)}`, `Google connected: ${Boolean(googleToken)}`],
+      decision: results.packages_processed > 0 ? 'campaign_drafts_prepared' : 'no_campaign_drafts',
+      next_action: 'Review draft campaign copy and approve only budget-safe candidates.',
+      needs_human_approval: results.packages_processed > 0,
+    });
   }
 }
 

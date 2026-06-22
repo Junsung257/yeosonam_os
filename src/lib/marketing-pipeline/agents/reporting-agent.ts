@@ -14,6 +14,7 @@ interface ReportingInput {
 
 export class ReportingAgent extends BaseMarketingAgent {
   readonly name = 'reporting';
+  protected override readonly agentRole = 'reporter' as const;
 
   // 오케스트레이터가 agentsRun을 주입
   constructor(private readonly input: ReportingInput) {
@@ -22,17 +23,64 @@ export class ReportingAgent extends BaseMarketingAgent {
 
   async run(ctx: MarketingContext): Promise<Omit<AgentResult, 'elapsed_ms'>> {
     const webhookUrl = getSecret('SLACK_PAYMENTS_WEBHOOK_URL') ?? getSecret('SLACK_WEBHOOK_URL');
-    if (!webhookUrl) return this.skip('SLACK_WEBHOOK_URL 미설정');
-
     const summary = buildSummary(ctx, this.input.agentsRun);
+    const adOsReport = buildAdOsReportPayload(ctx, this.input.agentsRun);
+    if (!webhookUrl) return this.withContract({
+      ok: true,
+      skipped: true,
+      skip_reason: 'SLACK_WEBHOOK_URL not configured',
+      data: { slack_sent: false, reason: 'missing_webhook', ad_os_report: adOsReport },
+    }, {
+      input_summary: `${Object.keys(this.input.agentsRun).length} agent results summarized for local Ad OS reporting.`,
+      evidence: adOsReport.agent_rows.map((row) => `${row.name}: ${row.status}`),
+      decision: 'report_payload_ready',
+      next_action: 'Review the generated Ad OS report payload locally or configure Slack for push reporting.',
+      needs_human_approval: adOsReport.agent_rows.some((row) => row.needs_human_approval),
+    });
 
     const result = await notifySlack('info', summary.headline, summary.context);
 
-    return {
+    return this.withContract({
       ok: result.sent,
-      data: { slack_sent: result.sent, reason: result.reason },
-    };
+      data: { slack_sent: result.sent, reason: result.reason, ad_os_report: adOsReport },
+    }, {
+      input_summary: `${Object.keys(this.input.agentsRun).length} agent results summarized for reporting.`,
+      evidence: adOsReport.agent_rows.map((row) => `${row.name}: ${row.status}`),
+      decision: result.sent ? 'report_delivered' : 'report_payload_ready',
+      next_action: result.sent ? 'Review Slack report and approve any high-risk next actions.' : 'Inspect report payload and fix Slack delivery if needed.',
+      needs_human_approval: adOsReport.agent_rows.some((row) => row.needs_human_approval),
+    });
   }
+}
+
+export function buildAdOsReportPayload(
+  ctx: MarketingContext,
+  agentsRun: Record<string, AgentResult>,
+) {
+  const agentRows = Object.entries(agentsRun).map(([name, result]) => ({
+    name,
+    role: result.role || result.agent_contract?.role || 'operator',
+    status: result.skipped ? 'skipped' : result.ok ? 'ok' : 'failed',
+    input_summary: result.input_summary || result.agent_contract?.input_summary || `${name} agent run`,
+    evidence: result.evidence || result.agent_contract?.evidence || [],
+    decision: result.decision || result.agent_contract?.decision || (result.ok ? 'completed' : 'failed'),
+    next_action: result.next_action || result.agent_contract?.next_action || '-',
+    needs_human_approval: Boolean(result.needs_human_approval ?? result.agent_contract?.needs_human_approval),
+  }));
+
+  const failures = agentRows.filter((row) => row.status === 'failed');
+  const approvalRows = agentRows.filter((row) => row.needs_human_approval);
+
+  return {
+    tenant_id: ctx.tenantId,
+    run_date: ctx.runDate,
+    status: failures.length > 0 ? 'needs_attention' : approvalRows.length > 0 ? 'approval_required' : 'ready',
+    agent_rows: agentRows,
+    client_summary: failures.length > 0
+      ? `${failures.length} marketing agents need operator attention before client reporting.`
+      : `${agentRows.length} marketing agents completed or skipped safely.`,
+    next_actions: agentRows.map((row) => row.next_action).filter(Boolean).slice(0, 6),
+  };
 }
 
 function buildSummary(

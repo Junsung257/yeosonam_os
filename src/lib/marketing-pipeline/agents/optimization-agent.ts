@@ -23,10 +23,15 @@ interface BidAction {
 
 export class OptimizationAgent extends BaseMarketingAgent {
   readonly name = 'optimization';
+  protected override readonly agentRole = 'performance_analyst' as const;
 
   async run(ctx: MarketingContext): Promise<Omit<AgentResult, 'elapsed_ms'>> {
-    if (!isGSCConfigured()) return this.skip('GOOGLE_SERVICE_ACCOUNT_JSON 미설정');
-    if (!isSupabaseConfigured) return this.skip('Supabase 미설정');
+    if (!isGSCConfigured()) return this.skipWithContract('GOOGLE_SERVICE_ACCOUNT_JSON not configured', {
+      input_summary: 'GSC search metrics for performance diagnosis and bid recommendations.',
+    });
+    if (!isSupabaseConfigured) return this.skipWithContract('Supabase not configured', {
+      input_summary: 'GSC search metrics and keyword cache for performance diagnosis.',
+    });
 
     const siteUrl = process.env.GSC_SITE_URL || 'https://www.yeosonam.com/';
 
@@ -42,7 +47,15 @@ export class OptimizationAgent extends BaseMarketingAgent {
       throw new Error(`GSC 수집 실패: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    if (!rawMetrics.length) return { ok: true, data: { analyzed: 0, reason: 'GSC 데이터 없음' } };
+    if (!rawMetrics.length) return this.withContract({
+      ok: true,
+      data: { analyzed: 0, reason: 'GSC data unavailable' },
+    }, {
+      input_summary: `${siteUrl} GSC search metrics for ${dateStr}.`,
+      evidence: ['No GSC rows returned'],
+      decision: 'insufficient_data',
+      next_action: 'Wait for search metrics or verify GSC site access before optimization.',
+    });
 
     // 성과 요약 (상위 20개 키워드)
     const topKeywords = rawMetrics
@@ -57,7 +70,15 @@ export class OptimizationAgent extends BaseMarketingAgent {
         avg_position: +m.position.toFixed(1),
       }));
 
-    if (!topKeywords.length) return { ok: true, data: { analyzed: 0 } };
+    if (!topKeywords.length) return this.withContract({
+      ok: true,
+      data: { analyzed: 0 },
+    }, {
+      input_summary: `${rawMetrics.length} GSC rows checked for keyword optimization.`,
+      evidence: ['No keyword rows were eligible for analysis'],
+      decision: 'insufficient_keyword_data',
+      next_action: 'Collect query-level clicks and impressions before bid diagnosis.',
+    });
 
     // DeepSeek에 입찰가 최적화 요청
     const systemPrompt = `당신은 여행 업계 Google Ads 전문가입니다.
@@ -143,7 +164,7 @@ ${JSON.stringify(topKeywords, null, 2)}
       }
     }
 
-    return {
+    return this.withContract({
       ok: true,
       data: {
         keywords_analyzed: topKeywords.length,
@@ -151,6 +172,12 @@ ${JSON.stringify(topKeywords, null, 2)}
         actions_saved: saved,
         date: dateStr,
       },
-    };
+    }, {
+      input_summary: `${topKeywords.length} top GSC keywords analyzed for CTR, position, and bid action signals.`,
+      evidence: [`${actions.length} bid actions generated`, `${saved} recommendations saved`, `GSC date ${dateStr}`],
+      decision: actions.length > 0 ? 'optimization_candidates_ready' : 'no_change',
+      next_action: actions.length > 0 ? 'Review bid recommendations before any platform mutation.' : 'Keep collecting performance data.',
+      needs_human_approval: actions.length > 0,
+    });
   }
 }

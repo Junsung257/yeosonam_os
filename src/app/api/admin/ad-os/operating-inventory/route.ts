@@ -6,7 +6,7 @@ import { withTimeout } from '@/lib/promise-timeout';
 import { fetchAdOsSummaryJson } from '../_lib/summary-fetch';
 
 export const dynamic = 'force-dynamic';
-const AD_OS_OPERATING_INVENTORY_TIMEOUT_MS = 8000;
+const AD_OS_OPERATING_INVENTORY_TIMEOUT_MS = 15000;
 
 export const GET = withAdminGuard(async (request: NextRequest) => {
   try {
@@ -37,12 +37,26 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
+    const message = error instanceof Error ? error.message : 'operating inventory unavailable';
+    return NextResponse.json({
+      ok: true,
+      generated_at: new Date().toISOString(),
+      inventory: {
         status: 'blocked',
-        error: error instanceof Error ? error.message : 'operating inventory unavailable',
+        readiness_score: 0,
+        operational: 0,
+        partial: 0,
+        blocked: 1,
+        top_gap: 'Operating inventory unavailable.',
         next_action: 'Recover /api/admin/ad-os/summary before using the Ad OS operating inventory.',
+        items: [{
+          id: 'operating_inventory_unavailable',
+          label: 'Operating inventory unavailable',
+          status: 'blocked',
+          evidence: message,
+          next_action: 'Retry inventory check after the Ad OS summary endpoint is responsive.',
+          risk: 'medium',
+        }],
         safety: {
           read_only: true,
           database_mutation: false,
@@ -50,7 +64,15 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
           live_spend_krw: 0,
         },
       },
-      { status: 503 },
-    );
+      summary: {
+        status: 'blocked',
+        readiness_score: 0,
+        operational: 0,
+        partial: 0,
+        blocked: 1,
+        top_gap: 'Operating inventory unavailable.',
+        next_action: 'Recover /api/admin/ad-os/summary before using the Ad OS operating inventory.',
+      },
+    });
   }
 });

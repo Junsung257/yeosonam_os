@@ -75,6 +75,31 @@ export const SPECIALISTS_BY_AGENT: Record<AgentType, SpecialistDefinition[]> = {
   ],
   marketing: [
     {
+      id: 'marketing.campaign_planner',
+      labelKo: '광고 기획',
+      match: [/캠페인|기획|타깃|오퍼|퍼널|랜딩\s*구조|campaign|planner|funnel|offer/i],
+    },
+    {
+      id: 'marketing.performance_analyst',
+      labelKo: '성과 분석',
+      match: [/ROAS|CPA|CTR|CVR|성과|전환율|클릭률|왜\s*떨어|하락|진단|performance|analyst/i],
+    },
+    {
+      id: 'marketing.copywriter',
+      labelKo: '카피·소재',
+      match: [/카피|후킹|소재|헤드라인|광고문구|문구|creative|copy|headline/i],
+    },
+    {
+      id: 'marketing.search_term_diagnostician',
+      labelKo: '검색어·negative 진단',
+      match: [/검색어|search\s*term|negative|네거티브|제외\s*키워드|키워드\s*진단/i],
+    },
+    {
+      id: 'marketing.reporter',
+      labelKo: '광고주 보고',
+      match: [/보고서|리포트|광고주|주간\s*보고|월간\s*보고|report|client\s*summary/i],
+    },
+    {
       id: 'marketing.card_sns',
       labelKo: '카드뉴스·SNS',
       match: [/카드뉴스|인스타|SNS|카피|광고\s*소재/i],

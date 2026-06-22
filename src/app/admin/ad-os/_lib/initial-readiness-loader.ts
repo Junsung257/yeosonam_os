@@ -18,12 +18,14 @@ export type InitialReadinessLoaderOptions = {
   fetchers: InitialReadinessFetchers;
   handlers: InitialReadinessHandlers;
   shouldApply?: () => boolean;
+  onNonBlockingError?: (error: unknown) => void;
 };
 
 export async function loadInitialReadinessPanels({
   fetchers,
   handlers,
   shouldApply = () => true,
+  onNonBlockingError = () => {},
 }: InitialReadinessLoaderOptions): Promise<void> {
   const [smokeResult, inventoryResult, validationResult, surfaceQaResult] = await Promise.allSettled([
     fetchers.fetchStagingSmoke(),
@@ -39,8 +41,8 @@ export async function loadInitialReadinessPanels({
   if (validationResult.status === 'fulfilled') handlers.setStagingValidation(validationResult.value);
   if (surfaceQaResult.status === 'fulfilled') handlers.setAdminSurfaceQa(surfaceQaResult.value);
 
-  if (smokeResult.status === 'rejected') throw smokeResult.reason;
-  if (inventoryResult.status === 'rejected') throw inventoryResult.reason;
-  if (validationResult.status === 'rejected') throw validationResult.reason;
-  if (surfaceQaResult.status === 'rejected') throw surfaceQaResult.reason;
+  if (smokeResult.status === 'rejected') onNonBlockingError(smokeResult.reason);
+  if (inventoryResult.status === 'rejected') onNonBlockingError(inventoryResult.reason);
+  if (validationResult.status === 'rejected') onNonBlockingError(validationResult.reason);
+  if (surfaceQaResult.status === 'rejected') onNonBlockingError(surfaceQaResult.reason);
 }
