@@ -363,6 +363,31 @@ premium villa golf package 3n5d
     expect(findCheck(r, 'C10')?.status).toBe('warn');
   });
 
+  it('C10 accepts supplier option price labels with currency and per-person suffixes', () => {
+    const r = evaluateVerifyChecks({
+      id: 'pkg-phu-quoc-option-prices',
+      optional_tours: [
+        { name: '△ 혼똠섬 케이블카 &워터파크', price: '$60/인' },
+        { name: '△ 키스 오브 더 씨 쇼', price: '$50/인' },
+        { name: '마사지 팁 [60분-', price: '$3/인' },
+        { name: '90분-', price: '$4/인' },
+        { name: '발마사지30분', price: 'USD30' },
+        { name: '전신마사지60분', price: '30불' },
+      ],
+    });
+    expect(findCheck(r, 'C10')).toEqual(expect.objectContaining({
+      status: 'pass',
+    }));
+  });
+
+  it('C10 keeps non-price duration strings as warnings', () => {
+    const r = evaluateVerifyChecks({
+      id: 'pkg-duration-as-price',
+      optional_tours: [{ name: '마사지', price: '60분' }],
+    });
+    expect(findCheck(r, 'C10')?.status).toBe('warn');
+  });
+
   it('C11 hero display_title 누락 warn', () => {
     const r = evaluateVerifyChecks({ id: 'pkg-no-hero' });
     expect(findCheck(r, 'C11')?.status).toBe('warn');
