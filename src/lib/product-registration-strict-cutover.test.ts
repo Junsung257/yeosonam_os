@@ -15,7 +15,7 @@ describe('product registration strict cutover policy', () => {
     const intake = source('src/lib/product-registration/upload-request-intake.ts');
     const intakeCallIndex = upload.indexOf('const intake = await prepareUploadRequestIntake(request)');
     const qualityIndex = intake.indexOf('const inputAnalysis = analyzeUploadInputText(directRawText)');
-    const pipelineCallIndex = upload.indexOf('const result = await runUploadRegistrationPipeline({');
+    const pipelineCallIndex = upload.indexOf('const pipelinePromise = runUploadRegistrationPipeline({');
     const duplicateIndex = pipeline.indexOf('const initialDuplicate = await checkInitialUploadDuplicate({');
     const parseIndex = pipeline.indexOf('const parsedForRegistration = await parseUploadDocumentForRegistration({');
 
