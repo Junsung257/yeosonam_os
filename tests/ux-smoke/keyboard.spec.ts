@@ -287,6 +287,28 @@ test.describe('keyboard access smoke', () => {
     expect(query.get('selected_products'), 'first candidate inquiry should include product context').toBeTruthy();
   });
 
+  test('package scarce result recovery carries handoff context', async ({ page }) => {
+    await page.goto('/packages', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    await page.locator('[data-testid="packages-scarce-result-recovery"]:visible').first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
+    const scarceRecovery = page.locator('[data-testid="packages-scarce-result-recovery"]:visible').first();
+    test.skip(!(await scarceRecovery.count()), 'package scarce result recovery is unavailable in current package data');
+
+    await expect(page.locator('[data-testid="packages-scarce-result-handoff-summary"]:visible')).toBeVisible();
+    await expect(page.locator('[data-testid="packages-scarce-result-next-action"]:visible')).toBeVisible();
+
+    const groupInquiry = page.locator('[data-testid="packages-scarce-result-group-inquiry"]:visible').first();
+    await expectCanFocus(groupInquiry, 'package scarce result group inquiry');
+    await expect(groupInquiry).toHaveAttribute('aria-describedby', /packages-scarce-result-handoff-summary/);
+    const href = await groupInquiry.getAttribute('href');
+    expect(href, 'scarce result inquiry should route to group inquiry').toContain('/group-inquiry?');
+    const query = new URLSearchParams(href?.split('?')[1] ?? '');
+    expect(query.get('source'), 'scarce result inquiry source should be explicit').toBe('packages_scarce_result');
+    expect(query.get('selected_products'), 'scarce result inquiry should include candidate context').toBeTruthy();
+    expect(query.get('query'), 'scarce result inquiry should include recovery context').toBeTruthy();
+  });
+
   test('package card reason toggle exposes expanded state from keyboard', async ({ page }) => {
     await page.goto('/packages', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});

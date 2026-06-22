@@ -773,6 +773,60 @@ export default function PackagesClient() {
     : emptyStateRecoveryActions.length > 0
       ? `${emptyStateRecoveryActions[0].label} 조건을 잠시 빼면 더 많은 후보를 볼 수 있습니다.`
       : '마음에 드는 상품이 부족하면 상담으로 대체 일정과 조건을 함께 확인하세요.';
+  const scarceResultHandoffSummaryId = 'packages-scarce-result-handoff-summary';
+  const scarceResultNextActionId = 'packages-scarce-result-next-action';
+  const scarceResultPrimaryProductNames = useMemo(() => {
+    if (selectedProductNames.length > 0) return selectedProductNames;
+    return firstVisiblePackageTitle ? [firstVisiblePackageTitle] : [];
+  }, [firstVisiblePackageTitle, selectedProductNames]);
+  const scarceResultHandoffItems = useMemo(() => [
+    scarceResultPrimaryProductNames.length > 0
+      ? { label: '후보', value: scarceResultPrimaryProductNames.join(' / ') }
+      : { label: '후보', value: '조건 기반 상담' },
+    handoffDestination ? { label: '지역', value: handoffDestination } : null,
+    handoffBudget ? { label: '예산', value: handoffBudget } : null,
+    { label: '준비', value: `${primaryFilterReadyCount}/${primaryFilterChecklist.length}` },
+  ].filter((item): item is { label: string; value: string } => Boolean(item)), [
+    handoffBudget,
+    handoffDestination,
+    primaryFilterChecklist.length,
+    primaryFilterReadyCount,
+    scarceResultPrimaryProductNames,
+  ]);
+  const scarceResultHandoffSummaryText = hasScarcePackageResults
+    ? `상담 전달 요약: ${scarceResultHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${scarceResultNextActionText}`
+    : '';
+  const scarceResultGroupInquiryHref = useMemo(() => {
+    if (!hasScarcePackageResults) return groupInquiryHref;
+    return buildGroupInquiryHandoffHref({
+      source: 'packages_scarce_result',
+      intent: effectiveIntent ?? undefined,
+      partyType: handoffPartyType ?? undefined,
+      query: [
+        q || handoffSummary || '패키지 부족 결과 상담',
+        scarceResultPrimaryProductNames.length > 0
+          ? `후보: ${scarceResultPrimaryProductNames.join(' / ')}`
+          : null,
+        scarceResultRecoveryText || null,
+        scarceResultNextActionText || null,
+      ].filter(Boolean).join('\n'),
+      destination: handoffDestination,
+      budget: handoffBudget,
+      selectedProducts: scarceResultPrimaryProductNames.length > 0 ? scarceResultPrimaryProductNames : undefined,
+    });
+  }, [
+    effectiveIntent,
+    groupInquiryHref,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    handoffSummary,
+    hasScarcePackageResults,
+    q,
+    scarceResultNextActionText,
+    scarceResultPrimaryProductNames,
+    scarceResultRecoveryText,
+  ]);
   const packageCtaDecisionMetadata = useMemo(() => ({
     selectedIntent: effectiveIntent,
     intent: selectedIntent,
@@ -978,7 +1032,7 @@ export default function PackagesClient() {
       budget: handoffBudget,
       destination: handoffDestination,
       party_type: handoffPartyType,
-      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      selected_products: scarceResultPrimaryProductNames.length > 0 ? scarceResultPrimaryProductNames : null,
       ready_count: packageCtaDecisionMetadata.ready_count,
       missing_fields: packageCtaDecisionMetadata.missing_fields,
       decision_summary: packageCtaDecisionMetadata.decision_summary,
@@ -990,6 +1044,8 @@ export default function PackagesClient() {
         source: ctaType,
         scarce_result: true,
         scarce_result_count: filteredPackages.length,
+        scarce_result_handoff_summary: scarceResultHandoffSummaryText,
+        scarce_result_products: scarceResultPrimaryProductNames,
         recovery_actions: emptyStateRecoveryActions.map((item) => item.key),
         ...packageCtaDecisionMetadata,
       },
@@ -1002,8 +1058,9 @@ export default function PackagesClient() {
     handoffDestination,
     handoffPartyType,
     packageCtaDecisionMetadata,
+    scarceResultHandoffSummaryText,
     scarceResultNextActionText,
-    selectedProductNames,
+    scarceResultPrimaryProductNames,
   ]);
 
   const trackPackagesAiPromptStart = useCallback((source: string, resultContext: 'empty' | 'scarce') => {
@@ -2140,7 +2197,31 @@ export default function PackagesClient() {
                 <p className="mt-1 text-[12px] font-semibold leading-5 text-[#1E3A8A]">
                   {scarceResultRecoveryText}
                 </p>
-                <p className="mt-1 text-[12px] font-bold leading-5 text-[#475569]">
+                <div
+                  id={scarceResultHandoffSummaryId}
+                  data-testid="packages-scarce-result-handoff-summary"
+                  aria-label={scarceResultHandoffSummaryText}
+                  className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4"
+                >
+                  {scarceResultHandoffItems.map((item) => (
+                    <span
+                      key={`${item.label}-${item.value}`}
+                      className="min-w-0 rounded-[10px] border border-blue-100 bg-white/80 px-3 py-2"
+                    >
+                      <span className="block text-[10px] font-extrabold text-[#2563EB]">
+                        {item.label}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[12px] font-extrabold text-[#0F172A]">
+                        {item.value}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+                <p
+                  id={scarceResultNextActionId}
+                  data-testid="packages-scarce-result-next-action"
+                  className="mt-2 text-[12px] font-bold leading-5 text-[#475569]"
+                >
                   {scarceResultNextActionText}
                 </p>
               </div>
@@ -2152,7 +2233,9 @@ export default function PackagesClient() {
                       trackScarceResultRecoveryCta('packages_scarce_result_relax_filter');
                       handleMobileFilterClear(emptyStateRecoveryActions[0].key);
                     }}
+                    data-testid="packages-scarce-result-relax-filter"
                     aria-label={emptyStateRecoveryActions[0].clearLabel}
+                    aria-describedby={`${scarceResultRecoverySummaryId} ${scarceResultHandoffSummaryId} ${scarceResultNextActionId} ${packageListDescriptionIds}`}
                     className="inline-flex h-10 items-center justify-center rounded-full border border-blue-200 bg-white px-4 text-[13px] font-extrabold text-[#1D4ED8] transition hover:border-brand/60 hover:text-brand"
                   >
                     {emptyStateRecoveryActions[0].label} 빼기
@@ -2162,23 +2245,21 @@ export default function PackagesClient() {
                   href={conciergeHref}
                   onClick={() => trackPackagesAiPromptStart('packages_scarce_result_ai', 'scarce')}
                   data-testid="packages-scarce-result-ai"
-                  aria-describedby={`${scarceResultRecoverySummaryId} ${packageListDescriptionIds}`}
+                  aria-describedby={`${scarceResultRecoverySummaryId} ${scarceResultHandoffSummaryId} ${scarceResultNextActionId} ${packageListDescriptionIds}`}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-blue-200 bg-white px-4 text-[13px] font-extrabold text-[#1D4ED8] transition hover:border-brand/60 hover:text-brand"
                 >
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                   AI 상담
                 </Link>
                 <Link
-                  href={firstVisiblePackage ? firstVisibleGroupInquiryHref : groupInquiryHref}
-                  onClick={() => firstVisiblePackage
-                    ? trackFirstVisibleGroupInquiryCta('packages_scarce_result_first_candidate_group_inquiry')
-                    : trackScarceResultRecoveryCta('packages_scarce_result_group_inquiry')}
+                  href={scarceResultGroupInquiryHref}
+                  onClick={() => trackScarceResultRecoveryCta('packages_scarce_result_group_inquiry')}
                   data-testid="packages-scarce-result-group-inquiry"
-                  aria-describedby={`${scarceResultRecoverySummaryId} ${packageListDescriptionIds}`}
+                  aria-describedby={`${scarceResultRecoverySummaryId} ${scarceResultHandoffSummaryId} ${scarceResultNextActionId} ${packageListDescriptionIds}`}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
                 >
                   <Users className="h-4 w-4" aria-hidden="true" />
-                  {firstVisiblePackage ? '첫 후보 견적' : '견적 문의'}
+                  대체 상품까지 견적
                 </Link>
               </div>
             </div>
