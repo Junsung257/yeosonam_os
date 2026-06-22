@@ -10,19 +10,21 @@ function routeSourceWithoutComments() {
 }
 
 describe('packages bulk/customer publication gate', () => {
-  it('preserves existing mobile browser proof when source audit refreshes audit_report', () => {
+  it('blocks publication when source repair changes customer-visible data before mobile re-proof', () => {
     const source = routeSourceWithoutComments();
     const proofImportIndex = source.indexOf('extractCustomerMobileProof');
     const proofExtractIndex = source.indexOf('const existingMobileProof = extractCustomerMobileProof');
-    const updateIndex = source.indexOf('audit_report: {');
-    const proofPreserveIndex = source.indexOf('...(existingMobileProof ? { mobile_browser_proof: existingMobileProof } : {})');
-    const mobileProofIndex = source.indexOf('const mobileProof = evaluateCustomerMobileProof');
+    const repairBlockIndex = source.indexOf("if (repair.status === 'repaired')", proofExtractIndex);
+    const reproofCodeIndex = source.indexOf('SOURCE_REPAIR_REQUIRES_MOBILE_REPROOF', repairBlockIndex);
+    const mobileProofIndex = source.indexOf('const mobileProof = evaluateCustomerMobileProof', repairBlockIndex);
+    const approveUpdateIndex = source.indexOf("status: 'approved'", mobileProofIndex);
 
     expect(proofImportIndex).toBeGreaterThanOrEqual(0);
     expect(proofExtractIndex).toBeGreaterThanOrEqual(0);
-    expect(updateIndex).toBeGreaterThan(proofExtractIndex);
-    expect(proofPreserveIndex).toBeGreaterThan(updateIndex);
-    expect(mobileProofIndex).toBeGreaterThan(proofPreserveIndex);
+    expect(repairBlockIndex).toBeGreaterThan(proofExtractIndex);
+    expect(reproofCodeIndex).toBeGreaterThan(repairBlockIndex);
+    expect(mobileProofIndex).toBeGreaterThan(reproofCodeIndex);
+    expect(approveUpdateIndex).toBeGreaterThan(mobileProofIndex);
   });
 
   it('checks source audit and v3 gate before bulk public status update', () => {
