@@ -56,16 +56,20 @@ function sourceMonthDayDatesForYear(rawText: string, year: number): Date[] {
   const dates: Date[] = [];
   const seen = new Set<string>();
   const monthDayRe = /(^|[^\d])(\d{1,2})\s*\/\s*(\d{1,2})(?!\s*\/?\d)/g;
-  for (const match of rawText.matchAll(monthDayRe)) {
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) continue;
-    const date = new Date(Date.UTC(year, month - 1, day));
-    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) continue;
-    const key = date.toISOString().slice(0, 10);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    dates.push(date);
+  for (const line of rawText.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!/^\d{1,2}\s*\/\s*\d{1,2}/.test(trimmed)) continue;
+    for (const match of trimmed.matchAll(monthDayRe)) {
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) continue;
+      const date = new Date(Date.UTC(year, month - 1, day));
+      if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) continue;
+      const key = date.toISOString().slice(0, 10);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      dates.push(date);
+    }
   }
   return dates;
 }
