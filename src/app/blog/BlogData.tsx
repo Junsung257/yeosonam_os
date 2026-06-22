@@ -276,6 +276,7 @@ function HeroCard({ post }: { post: BlogPost }) {
   return (
     <Link
       href={`/blog/${post.slug}`}
+      data-testid="blog-article-link"
       className="group relative block overflow-hidden rounded-2xl"
     >
       <div className="aspect-[16/9] overflow-hidden relative">
@@ -333,6 +334,7 @@ function SideCard({ post }: { post: BlogPost }) {
   return (
     <Link
       href={`/blog/${post.slug}`}
+      data-testid="blog-article-link"
       className="group flex gap-4 overflow-hidden rounded-xl border border-admin-border bg-white p-4 transition-all hover:shadow-[0_2px_16px_rgba(0,0,0,0.08)] hover:border-brand/20"
     >
       {/* 섬네일 — 112×112 */}
@@ -395,6 +397,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   return (
     <Link
       href={`/blog/${post.slug}`}
+      data-testid="blog-article-link"
       className="group overflow-hidden rounded-2xl border border-admin-border bg-white transition-all hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:border-brand/25"
     >
       <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-bg-section relative`}>

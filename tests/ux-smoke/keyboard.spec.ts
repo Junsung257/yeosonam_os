@@ -144,6 +144,30 @@ test.describe('keyboard access smoke', () => {
     await expect(page.locator('[data-testid="group-inquiry-handoff-summary"]:visible')).toBeVisible();
   });
 
+  test('blog mobile sticky CTA preserves article handoff from keyboard', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/blog', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    const firstArticle = page.locator('[data-testid="blog-article-link"]:visible').first();
+    if (!(await firstArticle.count())) {
+      test.skip(true, 'blog articles are unavailable in current data');
+    }
+
+    const href = await firstArticle.getAttribute('href');
+    expect(href, 'blog article link should be present').toBeTruthy();
+    await page.goto(href!, { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    await page.evaluate(() => window.scrollTo(0, 520));
+
+    const stickySummary = page.locator('[data-testid="blog-sticky-cta-handoff-summary"]:visible').first();
+    const primaryCta = page.locator('[data-testid="blog-sticky-primary-cta"]:visible').first();
+    await expect(stickySummary).toBeVisible({ timeout: 10_000 });
+    await expectCanFocus(primaryCta, 'blog sticky primary CTA');
+    await expect(primaryCta).toHaveAttribute('aria-describedby', /blog-sticky-cta-handoff-summary/);
+    await expect(primaryCta).toHaveAttribute('href', /(\/packages\/|\/group-inquiry\?)/);
+  });
+
   test('package filters can be opened and focused with keyboard', async ({ page }) => {
     await page.goto('/packages', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});

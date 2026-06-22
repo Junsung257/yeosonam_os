@@ -153,6 +153,9 @@ const keyboardSmokeTargets = [
   { file: 'src/components/customer/HomeHeroSearchCluster.tsx', marker: 'data-testid="home-hero-ai-consult"' },
   { file: 'src/components/customer/HomeHeroSearchCluster.tsx', marker: 'data-testid="home-hero-group-inquiry"' },
   { file: 'src/app/page.tsx', marker: 'data-testid="home-footer-group-inquiry"' },
+  { file: 'src/app/blog/BlogData.tsx', marker: 'data-testid="blog-article-link"' },
+  { file: 'src/components/blog/StickyMobileCta.tsx', marker: 'data-testid="blog-sticky-primary-cta"' },
+  { file: 'src/components/blog/StickyMobileCta.tsx', marker: 'data-testid="blog-sticky-cta-handoff-summary"' },
   { file: 'src/app/packages/PackagesClient.tsx', marker: 'data-testid="packages-more-filters-toggle"' },
   { file: 'src/app/packages/PackagesClient.tsx', marker: 'data-testid="packages-sticky-kakao"' },
   { file: 'src/app/packages/PackagesClient.tsx', marker: 'data-testid="packages-sticky-handoff-summary"' },
@@ -510,6 +513,28 @@ const markerContracts = [
       'destination: pack.destination',
       'budget: pack.priceLabel',
       'selectedProducts: [pack.title]',
+    ],
+  },
+  {
+    label: 'blog mobile sticky CTA preserves article handoff fallback',
+    file: 'src/app/blog/[slug]/page.tsx',
+    markers: [
+      'buildGroupInquiryHandoffHref',
+      "source: isLanding && pkg ? 'blog_landing_sticky' : 'blog_article_sticky'",
+      "partyType: 'blog_reader'",
+      'blogStickyGroupInquiryHref',
+      'blogStickyContextSummary',
+    ],
+  },
+  {
+    label: 'blog mobile sticky CTA exposes safe-area and described handoff controls',
+    file: 'src/components/blog/StickyMobileCta.tsx',
+    markers: [
+      'groupInquiryUrl?: string | null',
+      'data-testid="blog-sticky-primary-cta"',
+      'data-testid="blog-sticky-cta-handoff-summary"',
+      'aria-describedby={summaryId}',
+      'pb-[env(safe-area-inset-bottom)]',
     ],
   },
   {

@@ -32,6 +32,7 @@ import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { classifyBlogIntent } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 import {
   BLOG_DETAIL_CACHE_TAG,
   createBlogDatabaseUnavailableError,
@@ -1044,6 +1045,26 @@ async function renderBlogDetail({
     durationStr,
     productDurationDays,
   });
+  const canOpenProduct = Boolean(pkg && (!pkg.status || ['active', 'approved'].includes(String(pkg.status).toLowerCase())));
+  const blogStickyProductUrl = canOpenProduct && pkg ? `/packages/${pkg.id}` : null;
+  const blogStickySelectedProduct = pkg?.title || `${title} 맞춤 여행 상담`;
+  const blogStickyGroupInquiryHref = buildGroupInquiryHandoffHref({
+    source: isLanding && pkg ? 'blog_landing_sticky' : 'blog_article_sticky',
+    intent: blogRecommendationIntent || 'blog_article',
+    partyType: 'blog_reader',
+    query: [
+      `${title} 읽고 상담`,
+      effectiveDestination ? `목적지: ${effectiveDestination}` : null,
+      angleLabel ? `관심사: ${angleLabel}` : null,
+    ].filter(Boolean).join(' · '),
+    destination: effectiveDestination ?? null,
+    selectedProducts: [blogStickySelectedProduct],
+  });
+  const blogStickyContextSummary = [
+    effectiveDestination ? `${effectiveDestination} 여행` : '블로그 여행 가이드',
+    angleLabel,
+    pkg?.title ? `연결 상품: ${pkg.title}` : '맞춤 견적 가능',
+  ].filter(Boolean).join(' · ');
 
   return (
     <>
@@ -1381,16 +1402,16 @@ async function renderBlogDetail({
         {prevNextSection}
       </main>
 
-      {/* 상품 블로그 랜딩: 모바일 하단 고정 CTA (+15~25% 전환) */}
-      {isLanding && pkg && (
-        <StickyMobileCta
-          priceKrw={pkg.price ?? null}
-          productUrl={`/packages/${pkg.id}`}
-          packageId={pkg.id}
-          intent={blogRecommendationIntent}
-          placement="sticky_mobile_cta"
-        />
-      )}
+      {/* 블로그 모바일 하단 고정 CTA: 상품이 없으면 글 맥락을 맞춤 견적으로 넘긴다. */}
+      <StickyMobileCta
+        priceKrw={pkg?.price ?? null}
+        productUrl={blogStickyProductUrl}
+        groupInquiryUrl={blogStickyGroupInquiryHref}
+        packageId={pkg?.id ?? null}
+        intent={blogRecommendationIntent}
+        placement={isLanding && pkg ? 'sticky_mobile_cta' : 'blog_article_sticky_cta'}
+        contextSummary={blogStickyContextSummary}
+      />
     </>
   );
 }
