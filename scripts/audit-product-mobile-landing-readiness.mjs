@@ -32,11 +32,17 @@ const strict = process.argv.includes('--strict');
 const repairPriceStorage = process.argv.includes('--repair-price-storage');
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
+const verifyPublicHtml = process.argv.includes('--verify-public-html');
 const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
   .split(',')
   .map(code => code.trim())
   .filter(Boolean);
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+const siteBaseUrl = String(
+  process.env.NEXT_PUBLIC_BASE_URL
+    || process.env.NEXT_PUBLIC_SITE_URL
+    || 'https://www.yeosonam.com',
+).replace(/\/+$/, '');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -185,6 +191,7 @@ function trustScore(row) {
   add(row.exclude_fragment_corruption, 'catalog.exclude_fragment_corruption', 'critical', 70);
   add(row.optional_tour_surcharge_pollution, 'catalog.optional_tour_surcharge_pollution', 'critical', 70);
   add(row.render_failure, 'render.blocked', 'critical', 80);
+  add(row.public_html_failure, 'render.public_html_failure', 'critical', 100);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
   add(row.itinerary_days === 0, 'itinerary.missing', 'critical', 35);
   add(row.v3 === 'lookup_failed', 'v3.lookup_failed', 'critical', 40);
@@ -740,6 +747,63 @@ function draftEntitySummary(draft) {
   };
 }
 
+function htmlToVisibleText(html) {
+  return String(html ?? '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: {
+        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+        accept: 'text/html,application/xhtml+xml',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function verifyPublicHtmlSurface(row) {
+  if (!verifyPublicHtml || !row.public) return null;
+  const url = `${siteBaseUrl}/packages/${encodeURIComponent(row.id)}?readiness=${Date.now()}`;
+  let response;
+  try {
+    response = await fetchWithTimeout(url, 30_000);
+  } catch (error) {
+    return `fetch failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  const html = await response.text().catch(error => `__READ_ERROR__ ${error instanceof Error ? error.message : String(error)}`);
+  const text = htmlToVisibleText(html);
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = htmlToVisibleText(titleMatch?.[1] ?? '');
+  const missing = [];
+  if (!response.ok) missing.push(`http_${response.status}`);
+  if (/NOT_FOUND|Application error|FUNCTION_INVOCATION_TIMEOUT|Internal Server Error|Failed to fetch|client-side exception|server-side exception/i.test(text)) {
+    missing.push('error_marker');
+  }
+  if (!/(?:\u20a9|\uc6d0|\ud310\ub9e4\uac00|\ucd5c\uc800\uac00)/u.test(text)) missing.push('price_marker');
+  if (!/(?:\uc5ec\ud589\s*\uc77c\uc815|DAY\s*1|\uc77c\uc815\ud45c)/u.test(text)) missing.push('itinerary_marker');
+  if (!/(?:\uc608\uc57d\s*\ubb38\uc758|\uce74\ud1a1|\uc0c1\ub2f4)/u.test(text)) missing.push('inquiry_marker');
+  if (!title || title === '\uc0c1\ud488 \uc0c1\uc138 | \uc5ec\uc18c\ub0a8' || /^\uc5ec\uc18c\ub0a8\s*$/u.test(title)) {
+    missing.push('specific_title');
+  }
+  if (text.length < 1_500) missing.push(`body_too_short_${text.length}`);
+  return missing.length > 0 ? `${url}: ${missing.join(', ')}` : null;
+}
+
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
@@ -760,6 +824,7 @@ function readinessFor(row) {
   if (row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
   if (row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
   if (row.render_failure) failures.push('render_blocked');
+  if (row.public_html_failure) failures.push('public_html_failure');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
@@ -991,7 +1056,7 @@ if (repairPriceStorage) {
   }
 }
 
-const rows = allPackageRows
+let rows = allPackageRows
   .filter(pkg => scopedPackageIds.has(pkg.id))
   .map(pkg => {
     const draft = draftMap.get(pkg.id);
@@ -1045,6 +1110,16 @@ const rows = allPackageRows
     return { ...row, readiness: readinessFor(row), trust_score: trustScore(row) };
   });
 
+if (verifyPublicHtml) {
+  const verifiedRows = [];
+  for (const row of rows) {
+    const publicHtmlFailure = await verifyPublicHtmlSurface(row);
+    const nextRow = { ...row, public_html_failure: publicHtmlFailure };
+    verifiedRows.push({ ...nextRow, readiness: readinessFor(nextRow), trust_score: trustScore(nextRow) });
+  }
+  rows = verifiedRows;
+}
+
 const publicRows = rows.filter(row => row.public);
 const failedRows = rows.filter(row => row.readiness.status === 'fail');
 const warnedRows = rows.filter(row => row.readiness.status === 'warn');
@@ -1086,6 +1161,7 @@ if (demoteUnsafePublic) {
       customer_price_option_mismatch: row.customer_price_option_mismatch,
       product_ledger_price_mismatch: row.product_ledger_price_mismatch,
       render_failure: row.render_failure,
+      public_html_failure: row.public_html_failure,
     };
     const { error: packageError } = await supabase
       .from('travel_packages')
@@ -1205,6 +1281,7 @@ const summary = {
   attraction_description_missing: rows.filter(row => row.attraction_description_missing).length,
   itinerary_semantic_mismatch: rows.filter(row => row.itinerary_semantic_mismatch).length,
   render_blocked: rows.filter(row => row.render_failure).length,
+  public_html_failure: rows.filter(row => row.public_html_failure).length,
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
   no_itinerary_days: rows.filter(row => row.itinerary_days === 0).length,
   v3_lookup_failed: rows.filter(row => row.v3 === 'lookup_failed').length,
@@ -1258,6 +1335,7 @@ const report = {
     attraction_description_missing: row.attraction_description_missing,
     itinerary_semantic_mismatch: row.itinerary_semantic_mismatch,
     render_failure: row.render_failure,
+    public_html_failure: row.public_html_failure,
   })),
   warnings: warnedRows.slice(0, 50).map(row => ({ id: row.id, code: row.code, title: row.title, status: row.status, warnings: row.readiness.warnings })),
   rows,
@@ -1277,6 +1355,7 @@ if (!jsonOnly) {
     attraction_ctx: row.attraction_context_mismatch ? 'mismatch' : row.attraction_description_missing ? 'desc_missing' : 'ok',
     itinerary_semantic: row.itinerary_semantic_mismatch ? 'mismatch' : 'ok',
     render: row.render_failure ? 'fail' : 'ok',
+    public_html: row.public_html_failure ? 'fail' : 'ok',
     policy: row.itinerary_policy_leak ? 'leak' : 'ok',
     days: row.itinerary_days,
     facts: row.structured_facts,
@@ -1309,6 +1388,7 @@ if (strict) {
   if (summary.attraction_description_missing > 0) strictFailures.push('attraction_description_missing');
   if (summary.itinerary_semantic_mismatch > 0) strictFailures.push('itinerary_semantic_mismatch');
   if (summary.render_blocked > 0) strictFailures.push('render_blocked');
+  if (summary.public_html_failure > 0) strictFailures.push('public_html_failure');
   if (summary.itinerary_policy_leak > 0) strictFailures.push('itinerary_policy_leak');
   if (summary.no_itinerary_days > 0) strictFailures.push('no_itinerary_days');
   if (summary.v3_lookup_failed > 0) strictFailures.push('v3_lookup_failed');

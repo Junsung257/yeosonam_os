@@ -678,6 +678,17 @@ describe('upload route registration pipeline boundary', () => {
     expect(audit).toContain("strictFailures.push('missing_v3_draft')");
   });
 
+  it('can fail strict mobile/A4 audit from the actual public package HTML surface', () => {
+    const audit = readMobileReadinessAudit();
+
+    expect(audit).toContain("process.argv.includes('--verify-public-html')");
+    expect(audit).toContain('function verifyPublicHtmlSurface(row)');
+    expect(audit).toContain('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)');
+    expect(audit).toContain("failures.push('public_html_failure')");
+    expect(audit).toContain("strictFailures.push('public_html_failure')");
+    expect(audit).toContain('render.public_html_failure');
+  });
+
   it('uses the latest V3 draft match summary before stale unmatched queue rows in mobile/A4 audit', () => {
     const audit = readMobileReadinessAudit();
 
