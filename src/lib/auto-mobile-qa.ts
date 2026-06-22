@@ -36,7 +36,7 @@ type ItineraryDay = {
   hotel?: { name?: string | null } | null;
 };
 
-type ExpectedRender = {
+export type ExpectedRender = {
   title: string | null;
   destination: string | null;
   tripStyle: string | null;
@@ -165,6 +165,36 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+function includesAny(haystack: string, needles: string[]): boolean {
+  return needles.some((needle) => haystack.includes(needle));
+}
+
+function isApplicationErrorHtml(html: string, text: string): boolean {
+  return /Application error|client-side exception|server-side exception|FUNCTION_INVOCATION_TIMEOUT|Internal Server Error/i.test(html)
+    || /Application error|client-side exception|server-side exception|Internal Server Error/i.test(text);
+}
+
+function missingCustomerLandingMarkers(text: string): string[] {
+  const markerGroups = [
+    {
+      label: 'price',
+      markers: ['\ud310\ub9e4\uac00', '\uc694\uae08\ud45c', '\ucd9c\ubc1c\uc77c \uc120\ud0dd'],
+    },
+    {
+      label: 'itinerary',
+      markers: ['\uc5ec\ud589 \uc77c\uc815', '\uc77c\uc815\ud45c', 'DAY 1'],
+    },
+    {
+      label: 'booking',
+      markers: ['\uc608\uc57d \ubb38\uc758', '\uce74\ud1a1 \uc0c1\ub2f4'],
+    },
+  ];
+
+  return markerGroups
+    .filter((group) => !includesAny(text, group.markers))
+    .map((group) => group.label);
+}
+
 function extractCoreTitleTokens(title: string): string[] {
   // "★스팟특가★ 부산出 보홀 PKG 5/6일 [제주항공]" → ["보홀", "제주항공"] 같은 핵심 명사.
   // 한국어 명사 길이 2자 이상 / 영문 3자 이상 토큰만.
@@ -186,7 +216,7 @@ function buildRevalidatePaths(packageId: string, shortCode?: string | null): str
   return paths;
 }
 
-function analyzeMobileHtml(
+export function analyzeMobileHtml(
   html: string,
   expected: ExpectedRender,
   surface: 'packages' | 'lp',
@@ -194,6 +224,26 @@ function analyzeMobileHtml(
   const prefix = surface === 'lp' ? 'lp_' : 'mobile_';
   const incidents: QAIncident[] = [];
   const text = htmlToText(html);
+
+  if (isApplicationErrorHtml(html, text)) {
+    incidents.push({
+      id: `${prefix}application_error_html`,
+      severity: 'critical',
+      message: `[${surface}] actual customer page rendered an application error page`,
+    });
+    return incidents;
+  }
+
+  if (surface === 'packages') {
+    const missingMarkers = missingCustomerLandingMarkers(text);
+    if (missingMarkers.length > 0) {
+      incidents.push({
+        id: `${prefix}customer_landing_core_markers_missing`,
+        severity: missingMarkers.length >= 2 ? 'critical' : 'high',
+        message: `[${surface}] customer landing core sections missing: ${missingMarkers.join(', ')}`,
+      });
+    }
+  }
 
   for (const rule of LEAK_PATTERNS) {
     const match = html.match(rule.pattern);
