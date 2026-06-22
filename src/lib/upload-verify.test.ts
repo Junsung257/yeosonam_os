@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { evaluateVerifyChecks } from './upload-verify';
+import { evaluateEntityQueueChecks, evaluateVerifyChecks } from './upload-verify';
 import { extractProductRawTextSection } from './parser/catalog-pre-split';
 
 function findCheck(result: ReturnType<typeof evaluateVerifyChecks>, id: string) {
@@ -193,6 +193,51 @@ describe('evaluateVerifyChecks customer visibility gate', () => {
     expect(findCheck(result, 'C14')).toEqual(expect.objectContaining({
       status: 'pass',
     }));
+  });
+});
+
+describe('evaluateEntityQueueChecks customer landing blockers', () => {
+  it('blocks pending attraction, shopping, option, notice, and unknown entity rows', () => {
+    const checks = evaluateEntityQueueChecks([
+      {
+        id: 'u1',
+        activity: '흰수염 폭포 시라이토폭포',
+        status: 'pending',
+        segment_kind_guess: 'attraction',
+        suggested_action: 'needs_review',
+      },
+      {
+        id: 'u2',
+        activity: '면세점 1곳 방문입니다.',
+        status: 'pending',
+        segment_kind_guess: 'shopping',
+        suggested_action: 'needs_review',
+      },
+    ]);
+
+    expect(checks).toEqual([
+      expect.objectContaining({
+        id: 'C15',
+        status: 'fail',
+      }),
+    ]);
+    expect(checks[0]?.detail).toContain('attraction:1');
+    expect(checks[0]?.detail).toContain('shopping:1');
+  });
+
+  it('allows resolved or non-blocking meal and transfer rows', () => {
+    const checks = evaluateEntityQueueChecks([
+      { activity: '꿔바로우', status: 'pending', segment_kind_guess: 'meal' },
+      { activity: '카와구치 이동', status: 'pending', segment_kind_guess: 'transfer' },
+      { activity: '오시노핫카이', status: 'resolved', segment_kind_guess: 'attraction', resolved_at: '2026-06-22T00:00:00Z' },
+    ]);
+
+    expect(checks).toEqual([
+      expect.objectContaining({
+        id: 'C15',
+        status: 'pass',
+      }),
+    ]);
   });
 });
 

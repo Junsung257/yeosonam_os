@@ -1118,7 +1118,7 @@ export default function UploadPage() {
                           </div>
                         )}
                         {item.verifyStatus === 'clean' && (
-                          <span className="inline-block mt-1 text-[10px] text-green-600 font-medium">✓ 원문 대조 통과</span>
+                          <span className="inline-block mt-1 text-[10px] text-green-600 font-medium">✓ 원문·모바일 게이트 통과</span>
                         )}
                         {item.verifyStatus === 'error' && packageIdsForItem(item).length > 0 && (
                           <div className="mt-1 flex items-center gap-2">
@@ -1138,7 +1138,7 @@ export default function UploadPage() {
                               onClick={() => setQueue(prev => prev.map(it => it.id === item.id ? { ...it, verifyExpanded: !it.verifyExpanded } : it))}
                               className={`text-[10px] font-medium flex items-center gap-1 ${item.verifyStatus === 'blocked' ? 'text-red-500' : 'text-yellow-600'}`}
                             >
-                              {item.verifyStatus === 'blocked' ? '✗' : '⚠'} 원문 대조 {item.verifyReport.warnCount + item.verifyReport.failCount}건
+                              {item.verifyStatus === 'blocked' ? '✗' : '⚠'} 검증 대조 {item.verifyReport.warnCount + item.verifyReport.failCount}건
                               <span className="text-admin-muted-2">{item.verifyExpanded ? '▲' : '▼'}</span>
                             </button>
                             {item.verifyExpanded && (

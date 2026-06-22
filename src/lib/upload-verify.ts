@@ -65,6 +65,17 @@ type QualityFailedCheck = {
   passed?: boolean;
 };
 
+export type EntityQueueRow = {
+  id?: string | null;
+  activity?: string | null;
+  raw_label?: string | null;
+  status?: string | null;
+  segment_kind_guess?: string | null;
+  suggested_action?: string | null;
+  day_number?: number | null;
+  resolved_at?: string | null;
+};
+
 function qualityStatusFromFailedChecks(checks: QualityFailedCheck[]): VerifyResult['status'] | null {
   const failed = checks.filter(c => c && c.passed === false);
   if (failed.length === 0) return null;
@@ -77,6 +88,109 @@ function mergeAuditStatus(a: VerifyResult['status'], b: VerifyResult['status'] |
   if (a === 'warnings' || b === 'warnings') return 'warnings';
   if (a === 'skipped') return b ?? a;
   return a;
+}
+
+const ENTITY_BLOCKING_KINDS = new Set(['attraction', 'shopping', 'optional_tour', 'notice', 'unknown']);
+const ENTITY_REVIEW_ACTIONS = new Set(['needs_review', 'needs_new_master', 'suggest_alias']);
+const ENTITY_NON_BLOCKING_KINDS = new Set(['meal', 'transfer', 'free_time', 'price_noise', 'hotel']);
+
+function normalizeEntityKind(value: string | null | undefined): string {
+  const kind = String(value ?? '').trim().toLowerCase();
+  return kind || 'unknown';
+}
+
+function entityLabel(row: EntityQueueRow): string {
+  return String(row.raw_label || row.activity || row.id || 'unknown').trim();
+}
+
+export function evaluateEntityQueueChecks(rows: EntityQueueRow[]): VerifyCheck[] {
+  const pending = rows.filter(row => {
+    const status = String(row.status ?? '').trim().toLowerCase();
+    return !row.resolved_at && (status === '' || status === 'pending' || status === 'review');
+  });
+
+  if (pending.length === 0) {
+    return [{
+      id: 'C15',
+      label: 'entity review gate',
+      status: 'pass',
+      detail: 'no pending customer-visible entity rows',
+    }];
+  }
+
+  const blockers = pending.filter(row => {
+    const kind = normalizeEntityKind(row.segment_kind_guess);
+    const action = String(row.suggested_action ?? '').trim().toLowerCase();
+    if (ENTITY_NON_BLOCKING_KINDS.has(kind) && action !== 'needs_review') return false;
+    return ENTITY_BLOCKING_KINDS.has(kind) || ENTITY_REVIEW_ACTIONS.has(action);
+  });
+
+  const hotelReview = pending.filter(row => normalizeEntityKind(row.segment_kind_guess) === 'hotel');
+  if (blockers.length > 0) {
+    const byKind = blockers.reduce<Record<string, number>>((acc, row) => {
+      const kind = normalizeEntityKind(row.segment_kind_guess);
+      acc[kind] = (acc[kind] ?? 0) + 1;
+      return acc;
+    }, {});
+    const counts = Object.entries(byKind).map(([kind, count]) => `${kind}:${count}`).join(', ');
+    const examples = blockers.slice(0, 5).map(entityLabel).join(' / ');
+    return [{
+      id: 'C15',
+      label: 'entity review gate',
+      status: 'fail',
+      detail: `pending customer-visible entities (${counts}) examples: ${examples}`,
+    }];
+  }
+
+  if (hotelReview.length > 0) {
+    return [{
+      id: 'C15',
+      label: 'entity review gate',
+      status: 'warn',
+      detail: `pending hotel canonical review ${hotelReview.length} row(s): ${hotelReview.slice(0, 3).map(entityLabel).join(' / ')}`,
+    }];
+  }
+
+  return [{
+    id: 'C15',
+    label: 'entity review gate',
+    status: 'pass',
+    detail: `pending non-blocking entities only (${pending.length})`,
+  }];
+}
+
+function appendChecks(result: VerifyResult, extraChecks: VerifyCheck[]): VerifyResult {
+  if (extraChecks.length === 0) return result;
+  const checks = [...result.checks, ...extraChecks];
+  const warnCount = checks.filter(c => c.status === 'warn').length;
+  const failCount = checks.filter(c => c.status === 'fail').length;
+  return {
+    ...result,
+    checks,
+    warnCount,
+    failCount,
+    passCount: checks.filter(c => c.status === 'pass').length,
+    status: failCount > 0 ? 'blocked' : warnCount > 0 ? 'warnings' : result.status,
+  };
+}
+
+async function mergeEntityQueueChecks(packageId: string, result: VerifyResult): Promise<VerifyResult> {
+  const { data, error } = await supabaseAdmin
+    .from('unmatched_activities')
+    .select('id, activity, raw_label, status, segment_kind_guess, suggested_action, day_number, resolved_at')
+    .eq('package_id', packageId)
+    .limit(200);
+
+  if (error) {
+    return appendChecks(result, [{
+      id: 'C15',
+      label: 'entity review gate',
+      status: 'warn',
+      detail: `entity queue audit unavailable: ${error.message}`,
+    }]);
+  }
+
+  return appendChecks(result, evaluateEntityQueueChecks((data ?? []) as EntityQueueRow[]));
 }
 
 function inferDurationDays(pkg: PackageRow): number | null {
@@ -568,7 +682,8 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       return null;
     }
 
-    const result = evaluateVerifyChecks(rows[0] as PackageRow);
+    let result = evaluateVerifyChecks(rows[0] as PackageRow);
+    result = await mergeEntityQueueChecks(packageId, result);
 
     const { data: latestQualityLog } = await supabaseAdmin
       .from('ai_quality_log')
