@@ -78,6 +78,8 @@ export const ACTION_FLAG_KEYS = [
   'checkingOperatingInventory',
   'checkingStagingValidation',
   'checkingAdminSurfaceQa',
+  'runningAgentDiagnosis',
+  'savingCampaignMemory',
 ] as const;
 
 export type ActionFlagKey = (typeof ACTION_FLAG_KEYS)[number];

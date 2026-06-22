@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Layers,
   Rocket,
@@ -44,12 +44,20 @@ import { useAdOsReadinessRunner } from './_lib/readiness-runner';
 import {
   buildLaunchSteps,
   buildLaunchWizardSteps,
+  getAdOsAgentOperatingModel,
   getActiveModeByPlatform,
+  getBeginnerAdOpsModel,
   getCompletionDrilldown,
   getExecutionStateEntries,
   getTenantReportView,
   getTotalMappingStatus,
 } from './_lib/view-model';
+import { AiAdTeamPanel } from './_components/AiAdTeamPanel';
+import {
+  AdOsWorkspaceTabs,
+  parseAdOsWorkspaceTab,
+  type AdOsWorkspaceTab,
+} from './_components/AdOsWorkspaceTabs';
 import { AdminSurfaceQaPanel } from './_components/AdminSurfaceQaPanel';
 import { AutomationPolicyPanel } from './_components/AutomationPolicyPanel';
 import { BudgetOperationsPanel } from './_components/BudgetOperationsPanel';
@@ -57,6 +65,7 @@ import {
   type BudgetOperationActionHandlers,
   type BudgetOperationActionLoading,
 } from './_components/BudgetOperationActionBar';
+import { BeginnerAdOpsPanel } from './_components/BeginnerAdOpsPanel';
 import { ChangeRequestsPanel } from './_components/ChangeRequestsPanel';
 import { ChannelExecutionStatePanel } from './_components/ChannelExecutionStatePanel';
 import { CompletionAuditPanel } from './_components/CompletionAuditPanel';
@@ -86,6 +95,8 @@ import { TenantSafetyPolicyPanel } from './_components/TenantSafetyPolicyPanel';
 
 export default function AdOsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<AdOsWorkspaceTab>(() => parseAdOsWorkspaceTab(searchParams.get('tab')));
   const {
     summary,
     budgetDrafts,
@@ -113,7 +124,7 @@ export default function AdOsPage() {
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, checkingCredentialPreflight, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
     creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, runningMetaCreativeSafePipeline, checkingExecutionGate, checkingGoogleDraftGate, checkingNaverLivePreflight, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
-    checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
+    checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa, runningAgentDiagnosis, savingCampaignMemory,
   } = actionFlags;
 
   const {
@@ -148,6 +159,8 @@ export default function AdOsPage() {
     setStagingValidation,
     setAdminSurfaceQa,
   } = useAdOsResultState();
+  const [opsFailureTarget, setOpsFailureTarget] = useState<Record<string, unknown> | null>(null);
+  const opsFailureCancelRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -185,6 +198,9 @@ export default function AdOsPage() {
         setAdminSurfaceQa,
       },
       shouldApply: () => alive,
+      onNonBlockingError: (err) => {
+        console.warn('[ad-os] initial readiness panel load failed', err);
+      },
     })
       .catch((err) => {
         if (alive) setError(err instanceof Error ? err.message : 'Ad OS readiness panels load failed.');
@@ -193,6 +209,11 @@ export default function AdOsPage() {
       alive = false;
     };
   }, [setAdminSurfaceQa, setError, setOperatingInventory, setStagingSmoke, setStagingValidation]);
+
+  useEffect(() => {
+    if (!opsFailureTarget) return;
+    requestAnimationFrame(() => opsFailureCancelRef.current?.focus());
+  }, [opsFailureTarget]);
 
   const refresh = async () => {
     const next = await fetchSummary();
@@ -266,7 +287,7 @@ export default function AdOsPage() {
       errorMessage: 'Staging smoke check failed.',
       successMessage: (json) => (
         json.ok
-          ? `Staging smoke passed: assertions ${formatAdOsNumber(json.smoke.passed_assertions)}, failed ${formatAdOsNumber(json.smoke.failed_assertions)}, external API write ${json.safety.external_api_write ? 'yes' : 'no'}.`
+          ? `사전 안전 점검 완료: 통과 ${formatAdOsNumber(json.smoke.passed_assertions)}개, 실패 ${formatAdOsNumber(json.smoke.failed_assertions)}개, 외부 반영 ${json.safety.external_api_write ? '있음' : '없음'}.`
           : `Staging smoke failed: assertions ${formatAdOsNumber(json.smoke.failed_assertions)} failed. Next: ${json.smoke.next_action}`
       ),
     });
@@ -305,11 +326,11 @@ export default function AdOsPage() {
       flag: 'checkingAdminSurfaceQa',
       fetchResult: fetchAdminSurfaceQa,
       onSuccess: setAdminSurfaceQa,
-      errorMessage: 'Admin surface QA failed.',
+      errorMessage: '관리자 화면 QA에 실패했습니다.',
       successMessage: (json) => (
         json.qa.status === 'pass'
-          ? `Admin surface QA passed: ${formatAdOsNumber(json.qa.passed)} pass, ${formatAdOsNumber(json.qa.warnings)} warnings, ${formatAdOsNumber(json.qa.failed)} failed.`
-          : `Admin surface QA needs attention: ${json.qa.top_gap || 'review required'}. Next: ${json.qa.next_action}`
+          ? `관리자 화면 QA 통과: 통과 ${formatAdOsNumber(json.qa.passed)}개, 주의 ${formatAdOsNumber(json.qa.warnings)}개, 실패 ${formatAdOsNumber(json.qa.failed)}개.`
+          : `관리자 화면 QA 확인 필요: ${json.qa.top_gap || '검토 필요'}. 다음 조치: ${json.qa.next_action}`
       ),
     });
   };
@@ -391,7 +412,7 @@ export default function AdOsPage() {
       errorMessage: 'Naver paused keyword publisher dry-run failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver paused keyword publisher dry-run complete: checked ${formatAdOsNumber(summary.checked_keywords)}, eligible ${formatAdOsNumber(summary.eligible_keywords)}, blocked ${formatAdOsNumber(summary.blocked_keywords)}. Legacy publisher external API write 0.`;
+        return `네이버 정지 키워드 사전 점검 완료: 확인 ${formatAdOsNumber(summary.checked_keywords)}개, 가능 ${formatAdOsNumber(summary.eligible_keywords)}개, 막힘 ${formatAdOsNumber(summary.blocked_keywords)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -467,9 +488,9 @@ export default function AdOsPage() {
     if (!keywordCsv) return;
     try {
       await navigator.clipboard.writeText(keywordCsv);
-      setAutomationMessage('Naver keyword CSV copied to clipboard.');
+      setAutomationMessage('네이버 키워드 CSV를 클립보드에 복사했습니다.');
     } catch {
-      setAutomationMessage('Clipboard copy was blocked. Select the CSV content manually.');
+      setAutomationMessage('클립보드 복사가 차단되었습니다. CSV 내용을 직접 선택해 복사하세요.');
     }
   };
 
@@ -485,7 +506,7 @@ export default function AdOsPage() {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(csvUrl);
-    setAutomationMessage('Naver keyword CSV download started.');
+    setAutomationMessage('네이버 키워드 CSV 다운로드를 시작했습니다.');
   };
 
   const harvestLearning = async () => {
@@ -493,10 +514,10 @@ export default function AdOsPage() {
       flag: 'harvestingLearning',
       url: '/api/admin/ad-os/learning-harvest',
       body: { mode: 'guarded', apply: true, days: 30 },
-      errorMessage: 'Learning harvest failed.',
+      errorMessage: '학습 데이터 수집에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Learning harvest complete: learning events ${formatAdOsNumber(summary.learning_events)}, search terms ${formatAdOsNumber(summary.search_term_candidates)}, add candidates ${formatAdOsNumber(summary.add_keyword_candidates)}, negative candidates ${formatAdOsNumber(summary.add_negative_candidates)}.`;
+        return `학습 데이터 수집 완료: 학습 이벤트 ${formatAdOsNumber(summary.learning_events)}개, 검색어 후보 ${formatAdOsNumber(summary.search_term_candidates)}개, 추가 키워드 후보 ${formatAdOsNumber(summary.add_keyword_candidates)}개, 제외 키워드 후보 ${formatAdOsNumber(summary.add_negative_candidates)}개.`;
       },
     });
   };
@@ -535,7 +556,7 @@ export default function AdOsPage() {
       errorMessage: 'Naver paused keyword activation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver paused keyword activation complete: checked ${formatAdOsNumber(summary.checked_keywords)}, approval requests ${formatAdOsNumber(summary.approved_activation_requests)}, activated ${formatAdOsNumber(summary.activated_keywords)}. External API write remains gated by active-spend interlock.`;
+        return `네이버 정지 키워드 활성화 점검 완료: 확인 ${formatAdOsNumber(summary.checked_keywords)}개, 승인 요청 ${formatAdOsNumber(summary.approved_activation_requests)}개, 활성 준비 ${formatAdOsNumber(summary.activated_keywords)}개. 실제 반영은 안전장치로 막혀 있습니다.`;
       },
     });
   };
@@ -595,10 +616,10 @@ export default function AdOsPage() {
       flag: 'applyingLearning',
       url: '/api/admin/ad-os/learning-apply',
       body: { apply: true, limit: 100 },
-      errorMessage: 'Learning apply failed.',
+      errorMessage: '학습 규칙 적용에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Learning apply complete: change requests ${formatAdOsNumber(summary.change_requests_inserted)}, pause candidates ${formatAdOsNumber(summary.pause_candidates)}, landing candidates ${formatAdOsNumber(summary.landing_candidates)}, expansion candidates ${formatAdOsNumber(summary.expansion_candidates)}.`;
+        return `학습 규칙 적용 완료: 변경 요청 ${formatAdOsNumber(summary.change_requests_inserted)}개, 중지 후보 ${formatAdOsNumber(summary.pause_candidates)}개, 랜딩 개선 후보 ${formatAdOsNumber(summary.landing_candidates)}개, 확장 후보 ${formatAdOsNumber(summary.expansion_candidates)}개.`;
       },
     });
   };
@@ -608,11 +629,11 @@ export default function AdOsPage() {
       flag: 'publishingExternal',
       url: '/api/admin/ad-os/external-publish',
       body: { platform: 'naver', mode: 'dry_run', apply: false },
-      errorMessage: 'External publish dry-run failed.',
+      errorMessage: '외부 반영 사전 점검에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
         const channelState = getAdOsRecord(summary.channel_state);
-        return `External publish dry-run complete: ${String(channelState.label || 'channel checked')}, approval requests ${formatAdOsNumber(summary.approved_requests)}, external API write ${summary.external_api_write ? 'yes' : 'no'}.`;
+        return `외부 반영 사전 점검 완료: ${String(channelState.label || '채널 점검')}, 승인 요청 ${formatAdOsNumber(summary.approved_requests)}개, 외부 API 쓰기 ${summary.external_api_write ? '있음' : '없음'}.`;
       },
     });
   };
@@ -622,10 +643,10 @@ export default function AdOsPage() {
       flag: 'runningBudgetPacing',
       url: '/api/admin/ad-os/budget-pacing',
       body: { mode: 'dry_run' },
-      errorMessage: 'Budget pacing failed.',
+      errorMessage: '예산 속도 점검에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Budget pacing dry-run complete: channels ${formatAdOsNumber(summary.checked_channels)}, over pacing ${formatAdOsNumber(summary.over_pacing)}, under pacing ${formatAdOsNumber(summary.under_pacing)}, near loss cap ${formatAdOsNumber(summary.loss_limit_near)}, blocked ${formatAdOsNumber(summary.blocked)}.`;
+        return `예산 속도 사전 점검 완료: 채널 ${formatAdOsNumber(summary.checked_channels)}개, 초과 속도 ${formatAdOsNumber(summary.over_pacing)}개, 부족 속도 ${formatAdOsNumber(summary.under_pacing)}개, 손실 한도 근접 ${formatAdOsNumber(summary.loss_limit_near)}개, 차단 ${formatAdOsNumber(summary.blocked)}개.`;
       },
     });
   };
@@ -658,7 +679,7 @@ export default function AdOsPage() {
       const pacing = await postAdOsJson(
         '/api/admin/ad-os/budget-pacing',
         { mode: 'dry_run' },
-        'Budget pacing failed.',
+        '예산 속도 점검에 실패했습니다.',
       );
       const audit = await createPipelineAuditExportDraft();
 
@@ -669,7 +690,7 @@ export default function AdOsPage() {
       const portfolioSummary = getAdOsRecord(portfolio.summary);
       const pacingSummary = getAdOsRecord(pacing.summary);
       setAutomationMessage(
-        `Optimization safe pipeline complete: facts ${formatAdOsNumber(performanceSummary.facts_prepared)}, attribution conversions ${formatAdOsNumber(attributionSummary.conversions)}, bid candidates ${formatAdOsNumber(bidSummary.candidates)}, portfolio plans ${formatAdOsNumber(portfolioSummary.inserted)}, pacing checked ${formatAdOsNumber(pacingSummary.checked_channels)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+        `최적화 안전 점검 완료: 성과 근거 ${formatAdOsNumber(performanceSummary.facts_prepared)}개, 전환 귀속 ${formatAdOsNumber(attributionSummary.conversions)}개, 입찰 후보 ${formatAdOsNumber(bidSummary.candidates)}개, 포트폴리오 계획 ${formatAdOsNumber(portfolioSummary.inserted)}개, 예산 페이싱 ${formatAdOsNumber(pacingSummary.checked_channels)}개 채널 확인. 실제 광고비 사용 없음.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Optimization safe pipeline failed.');
@@ -748,7 +769,7 @@ export default function AdOsPage() {
       errorMessage: 'Kill-switch dry-run failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Kill-switch dry-run complete: active budget channels ${formatAdOsNumber(summary.active_budget_channels)}, keyword targets ${formatAdOsNumber(summary.keyword_targets)}, mapping targets ${formatAdOsNumber(summary.mapping_targets)}. Dry-run only: no external spend.`;
+        return `긴급 중지 사전 점검 완료: 활성 예산 채널 ${formatAdOsNumber(summary.active_budget_channels)}개, 키워드 대상 ${formatAdOsNumber(summary.keyword_targets)}개, 매핑 대상 ${formatAdOsNumber(summary.mapping_targets)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -844,7 +865,7 @@ export default function AdOsPage() {
       flag: 'runningKeywordBrain',
       url: '/api/admin/ad-os/keyword-brain',
       body: { apply: true, limit: 80 },
-      errorMessage: 'Keyword Brain failed.',
+      errorMessage: '키워드 브레인 실행에 실패했습니다.',
       onSuccess: setKeywordBrainResult,
       successMessage: (json) => {
         const summary = json.summary as {
@@ -852,7 +873,7 @@ export default function AdOsPage() {
           inserted_clusters?: unknown;
           inserted_keyword_plans?: unknown;
         } | undefined;
-        return `Keyword Brain complete: candidates ${formatAdOsNumber(summary?.candidates)}, clusters ${formatAdOsNumber(summary?.inserted_clusters)}, keyword drafts ${formatAdOsNumber(summary?.inserted_keyword_plans)}. External ad spend 0.`;
+        return `키워드 브레인 완료: 후보 ${formatAdOsNumber(summary?.candidates)}개, 묶음 ${formatAdOsNumber(summary?.inserted_clusters)}개, 키워드 초안 ${formatAdOsNumber(summary?.inserted_keyword_plans)}개. 실제 광고비 0원.`;
       },
     });
   };
@@ -868,7 +889,7 @@ export default function AdOsPage() {
       flag: 'runningSeoKeywordBridge',
       url: '/api/admin/ad-os/seo-keyword-bridge',
       body: { apply: true, days: 28, limit: 80, platforms: ['naver', 'google'] },
-      errorMessage: 'SEO to Ads keyword bridge failed.',
+      errorMessage: 'SEO 기반 광고 키워드 생성에 실패했습니다.',
       onSuccess: setKeywordBrainResult,
       successMessage: (json) => {
         const summary = json.summary as {
@@ -876,7 +897,7 @@ export default function AdOsPage() {
           inserted_keyword_plans?: unknown;
           inserted_negative_candidates?: unknown;
         } | undefined;
-        return `SEO to Ads bridge complete: candidates ${formatAdOsNumber(summary?.candidate_keyword_plans)}, keyword drafts ${formatAdOsNumber(summary?.inserted_keyword_plans)}, negative candidates ${formatAdOsNumber(summary?.inserted_negative_candidates)}. External ad spend 0.`;
+        return `SEO 기반 광고 키워드 생성 완료: 후보 ${formatAdOsNumber(summary?.candidate_keyword_plans)}개, 키워드 초안 ${formatAdOsNumber(summary?.inserted_keyword_plans)}개, 제외 후보 ${formatAdOsNumber(summary?.inserted_negative_candidates)}개. 실제 광고비 사용 0원.`;
       },
     });
   };
@@ -893,7 +914,7 @@ export default function AdOsPage() {
       flag: 'runningSearchTermGrowth',
       url: '/api/admin/ad-os/search-term-growth',
       body: { apply: true, limit: 100, platforms: ['naver', 'google'] },
-      errorMessage: 'Search term growth failed.',
+      errorMessage: '검색어 기반 광고 초안 생성에 실패했습니다.',
       onSuccess: setKeywordBrainResult,
       successMessage: (json) => {
         const summary = json.summary as {
@@ -902,7 +923,48 @@ export default function AdOsPage() {
           inserted_keyword_plans?: unknown;
           inserted_change_requests?: unknown;
         } | undefined;
-        return `Search term growth complete: keyword drafts ${formatAdOsNumber(summary?.keyword_drafts)}, negative drafts ${formatAdOsNumber(summary?.negative_drafts)}, saved ${formatAdOsNumber(summary?.inserted_keyword_plans)}, approval requests ${formatAdOsNumber(summary?.inserted_change_requests)}. External ad spend 0.`;
+        return `검색어 기반 광고 초안 생성 완료: 키워드 초안 ${formatAdOsNumber(summary?.keyword_drafts)}개, 제외 초안 ${formatAdOsNumber(summary?.negative_drafts)}개, 저장 ${formatAdOsNumber(summary?.inserted_keyword_plans)}개, 승인 요청 ${formatAdOsNumber(summary?.inserted_change_requests)}개. 실제 광고비 사용 0원.`;
+      },
+    });
+  };
+
+  const runAgentDiagnosis = async () => {
+    await runJsonAction<{
+      summary?: {
+        pipeline_steps?: unknown;
+        failed_steps?: unknown;
+        roas_score?: unknown;
+        team_score?: unknown;
+      };
+      memory_id?: unknown;
+    } & Record<string, unknown>>({
+      flag: 'runningAgentDiagnosis',
+      url: '/api/admin/ad-os/agent-diagnostics',
+      body: { run_pipeline: true, persist_memory: true },
+      errorMessage: 'AI 광고팀 진단에 실패했습니다.',
+      successMessage: (json) => {
+        const summary = json.summary || {};
+        return `AI 광고팀 진단 완료: 확인 ${formatAdOsNumber(summary.pipeline_steps)}개, 실패 ${formatAdOsNumber(summary.failed_steps)}개, ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%. 실제 광고비 사용 없음.`;
+      },
+    });
+  };
+
+  const saveCampaignMemory = async () => {
+    await runJsonAction<{
+      summary?: {
+        roas_score?: unknown;
+        team_score?: unknown;
+      };
+      memory_id?: unknown;
+      memory_created?: unknown;
+    } & Record<string, unknown>>({
+      flag: 'savingCampaignMemory',
+      url: '/api/admin/ad-os/agent-diagnostics',
+      body: { run_pipeline: false, persist_memory: true },
+      errorMessage: '캠페인 메모리 저장에 실패했습니다.',
+      successMessage: (json) => {
+        const summary = json.summary || {};
+        return `캠페인 메모리 ${json.memory_created ? '생성' : '갱신'} 완료: ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%.`;
       },
     });
   };
@@ -949,7 +1011,7 @@ export default function AdOsPage() {
           planned?: unknown;
           blocked?: unknown;
         } | undefined;
-        return `Naver execution gate complete: requested ${formatAdOsNumber(summary?.requested)}, planned ${formatAdOsNumber(summary?.planned)}, blocked ${formatAdOsNumber(summary?.blocked)}. External API write 0.`;
+        return `네이버 실행 조건 점검 완료: 요청 ${formatAdOsNumber(summary?.requested)}개, 계획 ${formatAdOsNumber(summary?.planned)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1073,7 +1135,7 @@ export default function AdOsPage() {
       errorMessage: 'Platform job preparation failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Platform jobs prepared: jobs ${formatAdOsNumber(summary?.jobs)}, blocked ${formatAdOsNumber(summary?.blocked)}, approved or ready ${formatAdOsNumber(summary?.approved)}. External API write 0.`;
+        return `플랫폼 작업 준비 완료: 작업 ${formatAdOsNumber(summary?.jobs)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개, 승인/준비 ${formatAdOsNumber(summary?.approved)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1203,7 +1265,7 @@ export default function AdOsPage() {
       errorMessage: 'Approved portfolio apply failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Approved portfolio apply requests complete: approved plans ${formatAdOsNumber(summary?.approved_plans)}, change requests ${formatAdOsNumber(summary?.inserted)}. External API write 0.`;
+        return `승인된 포트폴리오 반영 요청 완료: 승인 계획 ${formatAdOsNumber(summary?.approved_plans)}개, 변경 요청 ${formatAdOsNumber(summary?.inserted)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1220,10 +1282,10 @@ export default function AdOsPage() {
       flag: 'checkingRuntimeReadiness',
       url: '/api/admin/ad-os/runtime-readiness',
       body: { apply: true },
-      errorMessage: 'Runtime readiness check failed.',
+          errorMessage: '실행 준비 점검에 실패했습니다.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Runtime readiness complete: tables ${formatAdOsNumber(summary?.tables_ready)}/${formatAdOsNumber(summary?.tables_total)}, full auto ${formatAdOsNumber(summary?.full_auto_enabled)}, external writes ${formatAdOsNumber(summary?.external_api_write_count)}.`;
+        return `실행 준비 점검 완료: 준비 테이블 ${formatAdOsNumber(summary?.tables_ready)}/${formatAdOsNumber(summary?.tables_total)}, 완전 자동 ${formatAdOsNumber(summary?.full_auto_enabled)}개, 외부 반영 ${formatAdOsNumber(summary?.external_api_write_count)}건.`;
       },
     });
   };
@@ -1241,7 +1303,7 @@ export default function AdOsPage() {
       errorMessage: 'Platform executor dry-run failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Platform executor dry-run complete: succeeded ${formatAdOsNumber(summary?.succeeded)}, blocked ${formatAdOsNumber(summary?.blocked)}. External API write 0.`;
+        return `플랫폼 실행 사전 점검 완료: 성공 ${formatAdOsNumber(summary?.succeeded)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1275,14 +1337,13 @@ export default function AdOsPage() {
   const runOpsQueueAction = async (
     row: Record<string, unknown>,
     action: 'executor_dry_run' | 'confirm_failed' | 'acknowledge_blocker',
+    options: { skipConfirm?: boolean } = {},
   ) => {
     const source = String(row.source || '');
     const id = String(row.id || '');
     if (!source || !id) return;
-    if (
-      action === 'confirm_failed' &&
-      !window.confirm('Mark this external operation as failed? Continue only after checking the external account result.')
-    ) {
+    if (action === 'confirm_failed' && !options.skipConfirm) {
+      setOpsFailureTarget(row);
       return;
     }
     const actionKey = `${source}:${id}:${action}`;
@@ -1295,19 +1356,25 @@ export default function AdOsPage() {
         action,
         apply: true,
       },
-      errorMessage: 'Ops queue action failed.',
+      errorMessage: '운영 대기열 작업에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        const blockedReason = summary.blocked_reason ? ` / blocked: ${String(summary.blocked_reason)}` : '';
+        const blockedReason = summary.blocked_reason ? ` / 차단 사유: ${String(summary.blocked_reason)}` : '';
         const label =
           action === 'executor_dry_run'
-            ? 'row dry-run'
+            ? '행 사전 점검'
             : action === 'confirm_failed'
-              ? 'external failure confirmation'
-              : 'blocker acknowledged';
-        return `Ops queue ${label} complete: ${source} ${id.slice(0, 8)}. External API write 0${blockedReason}.`;
+              ? '외부 실패 확정'
+              : '차단 사유 확인';
+        return `운영 대기열 ${label} 완료: ${source} ${id.slice(0, 8)}. 외부 API 쓰기 0건${blockedReason}.`;
       },
     });
+  };
+
+  const submitOpsFailureConfirmation = async () => {
+    if (!opsFailureTarget) return;
+    await runOpsQueueAction(opsFailureTarget, 'confirm_failed', { skipConfirm: true });
+    setOpsFailureTarget(null);
   };
 
   const standardizeExperimentTemplates = async () => {
@@ -1355,7 +1422,7 @@ export default function AdOsPage() {
       errorMessage: 'Channel adapter health check failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Channel adapter health complete: paused-write ready ${formatAdOsNumber(summary?.paused_write_ready)}, draft ready ${formatAdOsNumber(summary?.draft_ready)}, blocked ${formatAdOsNumber(summary?.blocked)}. External API write 0.`;
+        return `채널 연결 점검 완료: 정지 키워드 준비 ${formatAdOsNumber(summary?.paused_write_ready)}개, 초안 준비 ${formatAdOsNumber(summary?.draft_ready)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1386,7 +1453,7 @@ export default function AdOsPage() {
       errorMessage: 'Paused keyword packet failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver paused keyword packet complete: ${String(summary.lifecycle_status || 'unknown')}, blocked ${String(summary.blocked_reason || 'none')}. External API write 0.`;
+        return `네이버 정지 키워드 패킷 완료: 상태 ${String(summary.lifecycle_status || '미확인')}, 막힌 이유 ${String(summary.blocked_reason || '없음')}. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1422,7 +1489,7 @@ export default function AdOsPage() {
       errorMessage: 'Google RSA draft generation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Google RSA drafts complete: sets ${formatAdOsNumber(summary.rsa_sets_generated)}, variants ${formatAdOsNumber(summary.variants_inserted)}, approval requests ${formatAdOsNumber(summary.change_requests_created)}. External API write 0.`;
+        return `구글 검색광고 문안 완료: 세트 ${formatAdOsNumber(summary.rsa_sets_generated)}개, 변형 ${formatAdOsNumber(summary.variants_inserted)}개, 승인 요청 ${formatAdOsNumber(summary.change_requests_created)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1439,7 +1506,7 @@ export default function AdOsPage() {
       errorMessage: 'Google RSA draft packet generation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Google RSA packets complete: prepared ${formatAdOsNumber(summary.packets_prepared)}, written ${formatAdOsNumber(summary.packets_written)}, blocked ${formatAdOsNumber(summary.blocked_packets)}. External API write 0.`;
+        return `구글 문안 패킷 완료: 준비 ${formatAdOsNumber(summary.packets_prepared)}개, 저장 ${formatAdOsNumber(summary.packets_written)}개, 막힘 ${formatAdOsNumber(summary.blocked_packets)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1455,7 +1522,7 @@ export default function AdOsPage() {
       errorMessage: 'Google draft platform job preparation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Google draft jobs complete: prepared ${formatAdOsNumber(summary.jobs_prepared)}, written ${formatAdOsNumber(summary.jobs_written)}, approved ${formatAdOsNumber(summary.approved_jobs)}, blocked ${formatAdOsNumber(summary.blocked_jobs)}. External API write 0.`;
+        return `구글 초안 작업 완료: 준비 ${formatAdOsNumber(summary.jobs_prepared)}개, 저장 ${formatAdOsNumber(summary.jobs_written)}개, 승인 ${formatAdOsNumber(summary.approved_jobs)}개, 막힘 ${formatAdOsNumber(summary.blocked_jobs)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1499,7 +1566,7 @@ export default function AdOsPage() {
       const jobSummary = getAdOsRecord(jobs.summary);
       const attemptSummary = getAdOsRecord(attempts.summary);
       setAutomationMessage(
-        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, dry-run attempts ${formatAdOsNumber(attemptSummary.attempts_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+        `구글 안전 파이프라인 완료: 문안 세트 ${formatAdOsNumber(draftSummary.rsa_sets_generated)}개, 패킷 ${formatAdOsNumber(packetSummary.packets_written)}개, 모니터 ${formatAdOsNumber(gateSummary.monitor_only)}개, 초안 작업 ${formatAdOsNumber(jobSummary.jobs_written)}개, 사전 점검 ${formatAdOsNumber(attemptSummary.attempts_written)}개, 막힘 ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}개. 실제 광고비 사용 없음.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google safe pipeline failed.');
@@ -1568,7 +1635,7 @@ export default function AdOsPage() {
       const packetSummary = getAdOsRecord(seedPacket.summary);
       const gateSummary = getAdOsRecord(gate.summary);
       setAutomationMessage(
-        `Meta creative pipeline complete: intent signals ${formatAdOsNumber(assetSummary.generated_signals)}, variants ${formatAdOsNumber(assetSummary.generated_variants)}, seed ${String(packetSummary.lifecycle_status || 'unknown')}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+        `메타 소재 파이프라인 완료: 의도 신호 ${formatAdOsNumber(assetSummary.generated_signals)}개, 소재 변형 ${formatAdOsNumber(assetSummary.generated_variants)}개, 모니터 ${formatAdOsNumber(gateSummary.monitor_only)}개, 막힘 ${formatAdOsNumber(gateSummary.blocked)}개. 실제 광고비 사용 없음.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Meta creative pipeline failed.');
@@ -1591,7 +1658,7 @@ export default function AdOsPage() {
       errorMessage: 'Execution gate check failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Execution gate check complete: eligible ${formatAdOsNumber(summary.eligible)}, blocked ${formatAdOsNumber(summary.blocked)}, high risk ${formatAdOsNumber(summary.high_or_critical_risk)}. External API write 0.`;
+        return `실행 조건 점검 완료: 가능 ${formatAdOsNumber(summary.eligible)}개, 막힘 ${formatAdOsNumber(summary.blocked)}개, 고위험 ${formatAdOsNumber(summary.high_or_critical_risk)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1624,7 +1691,7 @@ export default function AdOsPage() {
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
         const blockers = Array.isArray(summary.blockers) ? summary.blockers : [];
-        return `Naver live preflight complete: ${String(summary.preflight_status || 'unknown')}, ready jobs ${formatAdOsNumber(summary.ready_jobs)}, blocked jobs ${formatAdOsNumber(summary.blocked_jobs)}, env ${summary.env_flag_enabled ? 'on' : 'off'}, first blocker ${String(blockers[0] || 'none')}. External API write 0.`;
+        return `네이버 실집행 사전 점검 완료: 상태 ${String(summary.preflight_status || '미확인')}, 준비 작업 ${formatAdOsNumber(summary.ready_jobs)}개, 막힌 작업 ${formatAdOsNumber(summary.blocked_jobs)}개, 첫 막힘 ${String(blockers[0] || '없음')}. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1660,7 +1727,7 @@ export default function AdOsPage() {
       errorMessage: 'Naver limited pilot failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver limited pilot complete: dry-run succeeded ${formatAdOsNumber(summary.dry_run_succeeded)}, blocked ${formatAdOsNumber(summary.blocked)}, live blocked ${formatAdOsNumber(summary.live_write_blocked)}. External API write 0.`;
+        return `네이버 제한 시범 완료: 사전 점검 성공 ${formatAdOsNumber(summary.dry_run_succeeded)}개, 막힘 ${formatAdOsNumber(summary.blocked)}개, 실집행 차단 ${formatAdOsNumber(summary.live_write_blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1728,8 +1795,26 @@ export default function AdOsPage() {
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [completionPanelRequested, summary]);
 
+  useEffect(() => {
+    setActiveTab(parseAdOsWorkspaceTab(searchParams.get('tab')));
+  }, [searchParams]);
+
+  const selectWorkspaceTab = (tab: AdOsWorkspaceTab) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === 'run') {
+      params.delete('tab');
+    } else {
+      params.set('tab', tab);
+    }
+    const query = params.toString();
+    router.replace(query ? `/admin/ad-os?${query}` : '/admin/ad-os', { scroll: false });
+  };
+
   const totalMappingStatus = getTotalMappingStatus(summary);
   const completionDrilldown = getCompletionDrilldown(summary);
+  const adOsAgentOperatingModel = getAdOsAgentOperatingModel(summary);
+  const beginnerAdOpsModel = getBeginnerAdOpsModel(summary);
   const launchSteps = buildLaunchSteps(summary);
   const launchWizardSteps = buildLaunchWizardSteps(summary);
   const executionStateEntries = getExecutionStateEntries(summary);
@@ -1909,41 +1994,41 @@ export default function AdOsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Ad OS"
-        subtitle="Travel ad operations hub for products, keywords, content, budgets, approvals, and automation."
+        title="광고 운영센터"
+        subtitle="상품, 키워드, 콘텐츠, 예산, 승인, 자동화를 한곳에서 점검하고 실행합니다."
         actions={
           <>
             <Link href="/admin/search-ads">
               <Button variant="secondary" size="sm">
                 <Search size={14} />
-                Search ads
+                검색광고
               </Button>
             </Link>
             <Button variant="secondary" size="sm" onClick={runSeoKeywordBridge} disabled={runningSeoKeywordBridge}>
               <Search size={14} />
-              {runningSeoKeywordBridge ? 'SEO bridge...' : 'SEO→Ads drafts'}
+              {runningSeoKeywordBridge ? 'SEO 연결 중...' : 'SEO 기반 초안'}
             </Button>
             <Button variant="secondary" size="sm" onClick={runSearchTermGrowth} disabled={runningSearchTermGrowth}>
               <Search size={14} />
-              {runningSearchTermGrowth ? 'Search terms...' : 'Terms->Ads drafts'}
+              {runningSearchTermGrowth ? '검색어 처리 중...' : '검색어 기반 초안'}
             </Button>
             <Link href="/admin/blog/ads">
               <Button variant="secondary" size="sm">
                 <Layers size={14} />
-                Blog mapping
+                블로그 매핑
               </Button>
             </Link>
             <Link href="/admin/marketing/card-news">
               <Button variant="secondary" size="sm">
                 <Rocket size={14} />
-                Card news
+                카드뉴스
               </Button>
             </Link>
           </>
         }
       />
 
-      {loading && <div className="admin-card p-5 text-admin-sm text-admin-muted">Loading Ad OS status.</div>}
+      {loading && <div className="admin-card p-5 text-admin-sm text-admin-muted">광고 운영 상태를 불러오는 중입니다.</div>}
       {error && (
         <div className="rounded-admin-md border border-rose-200 bg-rose-50 p-4 text-admin-sm text-rose-700">
           {error}
@@ -1957,115 +2042,229 @@ export default function AdOsPage() {
 
       {summary && (
         <>
-          <LaunchActionQueuePanel
-            actions={summary.launch_action_queue || []}
-            actionHandlers={actionHandlers}
-            actionLoading={actionLoading}
-            naverSetupPacket={naverSetupPacket}
-            onDownloadNaverKeywordCsv={downloadNaverKeywordCsv}
-            onCopyNaverKeywordCsv={copyNaverKeywordCsv}
-          />
-
-          <LaunchWizardPanel
-            launchSteps={launchSteps}
-            launchWizardSteps={launchWizardSteps}
-            externalLaunchStatus={summary.external_launch_status}
-            onRunPilotSetup={runPilotSetup}
-            runningPilotSetup={runningPilotSetup}
-            onRunLaunchAudit={runLaunchAudit}
-            runningLaunchAudit={runningLaunchAudit}
-          />
-
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <CompletionAuditPanel
-              completionAudit={summary.enterprise_layer?.completion_audit}
-              completionDrilldown={completionDrilldown}
-              highlighted={completionPanelRequested}
-              stagingSmoke={stagingSmoke}
-              checkingStagingSmoke={checkingStagingSmoke}
-              onRunStagingSmoke={runStagingSmoke}
+          {beginnerAdOpsModel && (
+            <BeginnerAdOpsPanel
+              model={beginnerAdOpsModel}
+              actionHandlers={actionHandlers}
+              actionLoading={actionLoading}
+              onOpenSettings={() => selectWorkspaceTab('settings')}
+              onOpenAdvanced={() => selectWorkspaceTab('advanced')}
             />
-            <AdminSurfaceQaPanel
-              adminSurfaceQa={adminSurfaceQa}
-              checking={checkingAdminSurfaceQa}
-              onRefresh={runAdminSurfaceQa}
-            />
-            <StagingValidationPanel
-              stagingValidation={stagingValidation}
-              checking={checkingStagingValidation}
-              onRefresh={runStagingValidation}
-            />
-            <OperatingInventoryPanel
-              operatingInventory={operatingInventory}
-              checking={checkingOperatingInventory}
-              onRefresh={runOperatingInventory}
-            />
-          </div>
+          )}
 
-          <BudgetOperationsPanel
-            budgets={budgetDrafts}
-            onBudgetChange={updateBudgetDraft}
-            actions={budgetOperationActions}
-            loading={budgetOperationLoading}
-            tenantReportBody={tenantReportBody}
-            tenantReportPeriod={tenantReportPeriod}
-            launchAudit={launchAudit}
-            opsPlan={opsPlan}
-            keywordBrainResult={keywordBrainResult}
-            naverAssetPlan={naverAssetPlan}
-          />
+          <AdOsWorkspaceTabs activeTab={activeTab} onTabChange={selectWorkspaceTab}>
+            {activeTab === 'run' && (
+              <div className="space-y-4">
+                <LaunchWizardPanel
+                  launchSteps={launchSteps}
+                  launchWizardSteps={launchWizardSteps}
+                  externalLaunchStatus={summary.external_launch_status}
+                  onRunPilotSetup={runPilotSetup}
+                  runningPilotSetup={runningPilotSetup}
+                  onRunLaunchAudit={runLaunchAudit}
+                  runningLaunchAudit={runningLaunchAudit}
+                />
 
-          <EnterpriseRuntimePanel
-            summary={summary}
-            actions={enterpriseRuntimeActions}
-            loading={enterpriseRuntimeLoading}
-            opsQueueActionId={opsQueueActionId}
-            onOpsQueueAction={runOpsQueueAction}
-          />
+                {adOsAgentOperatingModel && (
+                  <AiAdTeamPanel
+                    model={adOsAgentOperatingModel}
+                    onRunDiagnosis={runAgentDiagnosis}
+                    onSaveMemory={saveCampaignMemory}
+                    runningDiagnosis={runningAgentDiagnosis}
+                    savingMemory={savingCampaignMemory}
+                  />
+                )}
+              </div>
+            )}
 
-          <ChannelExecutionStatePanel
-            entries={executionStateEntries}
-            activeModeByPlatform={activeModeByPlatform}
-          />
+            {activeTab === 'settings' && (
+              <div className="space-y-4">
+                <BudgetOperationsPanel
+                  budgets={budgetDrafts}
+                  onBudgetChange={updateBudgetDraft}
+                  actions={budgetOperationActions}
+                  loading={budgetOperationLoading}
+                  tenantReportBody={tenantReportBody}
+                  tenantReportPeriod={tenantReportPeriod}
+                  launchAudit={launchAudit}
+                  opsPlan={opsPlan}
+                  keywordBrainResult={keywordBrainResult}
+                  naverAssetPlan={naverAssetPlan}
+                />
 
-          <AutomationPolicyPanel
-            automationModes={summary.automation_modes}
-            tenantGuardrails={summary.tenant_guardrails}
-            tenantAdReadiness={summary.tenant_ad_readiness}
-          />
+                <ChannelExecutionStatePanel
+                  entries={executionStateEntries}
+                  activeModeByPlatform={activeModeByPlatform}
+                />
 
-          <TenantSafetyPolicyPanel
-            policy={summary.tenant_policy}
-            draft={tenantPolicyDraft}
-            saving={savingTenantPolicy}
-            onSave={saveTenantPolicy}
-            onUpdate={updateTenantPolicyDraft}
-            onTogglePlatform={toggleTenantPlatform}
-          />
+                <AutomationPolicyPanel
+                  automationModes={summary.automation_modes}
+                  tenantGuardrails={summary.tenant_guardrails}
+                  tenantAdReadiness={summary.tenant_ad_readiness}
+                />
 
-          {summary.learning_loop && <LearningLoopPanel learningLoop={summary.learning_loop} />}
+                <TenantSafetyPolicyPanel
+                  policy={summary.tenant_policy}
+                  draft={tenantPolicyDraft}
+                  saving={savingTenantPolicy}
+                  onSave={saveTenantPolicy}
+                  onUpdate={updateTenantPolicyDraft}
+                  onTogglePlatform={toggleTenantPlatform}
+                />
+              </div>
+            )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <MappingStatusDistributionPanel mappingsByStatus={summary.counts.mappings_by_status} total={totalMappingStatus} />
-            <LearningSignalsPanel count={summary.kpis.learning_events || 0} rows={summary.samples.learning_events} />
-            <ProductScenariosPanel count={summary.kpis.product_scenarios || 0} rows={summary.samples.product_scenarios || []} />
-            <LandingEvolutionPanel count={summary.kpis.landing_evolution_candidates || 0} rows={summary.samples.landing_evolution_queue || []} />
-            <ChangeRequestsPanel
-              count={summary.kpis.change_requests_proposed || 0}
-              rows={summary.samples.change_requests || []}
-              loadingId={changeRequestActionId}
-              onUpdate={updateChangeRequest}
-            />
-          </div>
+            {activeTab === 'report' && (
+              <div className="space-y-4">
+                {summary.learning_loop && <LearningLoopPanel learningLoop={summary.learning_loop} />}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <MappingSamplesPanel rows={summary.samples.mappings} />
-            <KeywordPlansPanel rows={summary.samples.keyword_plans} loadingId={keywordActionId} onUpdate={updateKeywordPlan} />
-            <RecentDecisionsPanel rows={summary.recent_decisions} />
-          </div>
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <MappingStatusDistributionPanel mappingsByStatus={summary.counts.mappings_by_status} total={totalMappingStatus} />
+                  <LearningSignalsPanel count={summary.kpis.learning_events || 0} rows={summary.samples.learning_events} />
+                  <ProductScenariosPanel count={summary.kpis.product_scenarios || 0} rows={summary.samples.product_scenarios || []} />
+                  <LandingEvolutionPanel count={summary.kpis.landing_evolution_candidates || 0} rows={summary.samples.landing_evolution_queue || []} />
+                  <ChangeRequestsPanel
+                    count={summary.kpis.change_requests_proposed || 0}
+                    rows={summary.samples.change_requests || []}
+                    loadingId={changeRequestActionId}
+                    onUpdate={updateChangeRequest}
+                  />
+                </div>
+              </div>
+            )}
 
-          <OperatingModesPanel />
+            {activeTab === 'advanced' && (
+              <div className="space-y-4">
+                <LaunchActionQueuePanel
+                  actions={summary.launch_action_queue || []}
+                  actionHandlers={actionHandlers}
+                  actionLoading={actionLoading}
+                  naverSetupPacket={naverSetupPacket}
+                  onDownloadNaverKeywordCsv={downloadNaverKeywordCsv}
+                  onCopyNaverKeywordCsv={copyNaverKeywordCsv}
+                />
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <CompletionAuditPanel
+                    completionAudit={summary.enterprise_layer?.completion_audit}
+                    completionDrilldown={completionDrilldown}
+                    highlighted={completionPanelRequested}
+                    stagingSmoke={stagingSmoke}
+                    checkingStagingSmoke={checkingStagingSmoke}
+                    onRunStagingSmoke={runStagingSmoke}
+                  />
+                  <AdminSurfaceQaPanel
+                    adminSurfaceQa={adminSurfaceQa}
+                    checking={checkingAdminSurfaceQa}
+                    onRefresh={runAdminSurfaceQa}
+                  />
+                  <StagingValidationPanel
+                    stagingValidation={stagingValidation}
+                    checking={checkingStagingValidation}
+                    onRefresh={runStagingValidation}
+                  />
+                  <OperatingInventoryPanel
+                    operatingInventory={operatingInventory}
+                    checking={checkingOperatingInventory}
+                    onRefresh={runOperatingInventory}
+                  />
+                </div>
+
+                <EnterpriseRuntimePanel
+                  summary={summary}
+                  actions={enterpriseRuntimeActions}
+                  loading={enterpriseRuntimeLoading}
+                  opsQueueActionId={opsQueueActionId}
+                  onOpsQueueAction={runOpsQueueAction}
+                />
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <MappingSamplesPanel rows={summary.samples.mappings} />
+                  <KeywordPlansPanel rows={summary.samples.keyword_plans} loadingId={keywordActionId} onUpdate={updateKeywordPlan} />
+                  <RecentDecisionsPanel rows={summary.recent_decisions} />
+                </div>
+
+                <OperatingModesPanel />
+              </div>
+            )}
+          </AdOsWorkspaceTabs>
         </>
+      )}
+
+      {opsFailureTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="외부 작업 실패 확정 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setOpsFailureTarget(null)}
+          />
+          <div
+            id="ad-os-ops-failure-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ad-os-ops-failure-confirm-title"
+            aria-describedby="ad-os-ops-failure-confirm-description ad-os-ops-failure-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">외부 작업</p>
+              <h2 id="ad-os-ops-failure-confirm-title" className="text-lg font-bold text-admin-text">
+                외부 작업 실패로 확정할까요?
+              </h2>
+              <p id="ad-os-ops-failure-confirm-description" className="text-sm leading-6 text-admin-muted">
+                외부 광고 계정의 실제 처리 결과를 확인한 뒤에만 실패로 기록하세요. 이 작업은 큐 상태와 운영 판단에 반영됩니다.
+              </p>
+            </div>
+
+            <dl
+              id="ad-os-ops-failure-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">출처</dt>
+                <dd className="font-semibold text-admin-text">{String(opsFailureTarget.source || '-')}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">id</dt>
+                <dd className="font-mono text-xs font-semibold text-admin-text">
+                  {String(opsFailureTarget.id || '-').slice(0, 12)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">상태</dt>
+                <dd className="font-semibold text-admin-text">{String(opsFailureTarget.status || '-')}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">blocked</dt>
+                <dd className="max-w-[13rem] truncate font-semibold text-admin-text">
+                  {String(opsFailureTarget.blocked_reason || opsFailureTarget.blocker || '-')}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={opsFailureCancelRef}
+                type="button"
+                onClick={() => setOpsFailureTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={submitOpsFailureConfirmation}
+                disabled={opsQueueActionId === `${String(opsFailureTarget.source || '')}:${String(opsFailureTarget.id || '')}:confirm_failed`}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {opsQueueActionId === `${String(opsFailureTarget.source || '')}:${String(opsFailureTarget.id || '')}:confirm_failed`
+                  ? '처리 중...'
+                  : '실패로 확정'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

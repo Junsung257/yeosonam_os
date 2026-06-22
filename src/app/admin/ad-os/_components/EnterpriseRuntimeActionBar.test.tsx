@@ -52,20 +52,20 @@ describe('Ad OS EnterpriseRuntimeActionBar', () => {
       />,
     );
 
-    expect(html).toContain('Runtime readiness');
-    expect(html).toContain('Naver paused packet');
-    expect(html).toContain('Credential preflight');
-    expect(html).toContain('Google RSA drafts');
-    expect(html).toContain('Google RSA packets');
-    expect(html).toContain('Google draft jobs');
-    expect(html).toContain('Google safe pipeline');
-    expect(html).toContain('Meta creative pipeline');
-    expect(html).toContain('Naver gate');
-    expect(html).toContain('Google draft gate');
-    expect(html).toContain('Naver live preflight');
-    expect(html).toContain('Platform dry-run');
-    expect(html).toContain('Conversion dry-run');
-    expect(html).toContain('Conversion safe pipeline');
-    expect(html).toContain('Audit export');
+    expect(html).toContain('실행 준비 점검');
+    expect(html).toContain('네이버 정지 키워드 패킷');
+    expect(html).toContain('계정 연결 사전 점검');
+    expect(html).toContain('구글 검색광고 문안');
+    expect(html).toContain('구글 문안 패킷');
+    expect(html).toContain('구글 초안 작업');
+    expect(html).toContain('구글 안전 파이프라인');
+    expect(html).toContain('메타 소재 파이프라인');
+    expect(html).toContain('네이버 실행 조건');
+    expect(html).toContain('구글 초안 조건');
+    expect(html).toContain('네이버 실집행 사전 점검');
+    expect(html).toContain('플랫폼 사전 점검');
+    expect(html).toContain('전환 업로드 점검');
+    expect(html).toContain('전환 안전 파이프라인');
+    expect(html).toContain('감사 파일 생성');
   });
 });

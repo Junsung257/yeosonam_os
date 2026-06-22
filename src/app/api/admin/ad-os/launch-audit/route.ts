@@ -110,7 +110,7 @@ export const POST = withAdminGuard(async () => {
       naverConfig.configured
         ? `KeywordTool ${naverKeywordSample.length.toLocaleString('ko-KR')}개 응답`
         : '네이버 검색광고 키 미설정',
-      naverConfig.configured ? 'API 키는 있으므로 계정 자산과 예산을 확인합니다.' : 'NAVER_ADS_API_KEY/SECRET/CUSTOMER_ID를 설정합니다.',
+      naverConfig.configured ? '계정 연결은 있으므로 계정 자산과 예산을 확인합니다.' : '네이버 광고 계정 연결을 완료합니다.',
     ),
     item(
       'naver-assets',
@@ -141,19 +141,19 @@ export const POST = withAdminGuard(async () => {
     ),
     item(
       'google-api',
-      'Google Ads 권한',
+      '구글 광고 계정',
       googleConfig.configured && googleToken?.accessToken ? 'warn' : googleConfig.configured ? 'warn' : 'fail',
-      googleConfig.configured ? `키 있음, OAuth ${googleToken?.accessToken ? '있음' : '없음'}` : 'Google Ads 키 미설정',
+      googleConfig.configured ? `계정 정보 있음, 연결 토큰 ${googleToken?.accessToken ? '있음' : '없음'}` : '구글 광고 계정 미연결',
       googleToken?.accessToken
-        ? '현재 별도 probe에서 PERMISSION_DENIED가 확인됐으므로 customer 권한/scope를 점검합니다.'
-        : 'Google Ads OAuth 연결을 먼저 완료합니다.',
+        ? '현재 외부 계정 테스트에서 권한 문제가 확인됐으므로 계정 권한을 점검합니다.'
+        : '구글 광고 계정 연결을 먼저 완료합니다.',
     ),
     item(
       'google-budget',
       'Google 예산 캡',
       googleBudgetReady ? 'pass' : 'fail',
       `상태 ${googleBudget?.status || '없음'}, 월 ${Number(googleBudget?.monthly_budget_krw || 0).toLocaleString('ko-KR')}원, 일 ${Number(googleBudget?.daily_budget_cap_krw || 0).toLocaleString('ko-KR')}원`,
-      googleBudgetReady ? '예산 캡은 준비됐지만 Google Ads 권한 경고가 남아 실제 외부 집행은 보류합니다.' : 'Google 권한 문제가 풀리기 전에는 예산을 켜도 실제 집행은 보류합니다.',
+      googleBudgetReady ? '예산 캡은 준비됐지만 구글 광고 계정 권한 경고가 남아 실제 외부 집행은 보류합니다.' : '구글 광고 계정 문제가 풀리기 전에는 예산을 켜도 실제 집행은 보류합니다.',
     ),
     item(
       'google-approved-keywords',

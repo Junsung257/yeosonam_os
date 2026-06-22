@@ -43,8 +43,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       status: 'missing_config',
       configured: false,
       missing,
-      message: 'Google Ads API 설정값이 부족합니다.',
-      next_action: 'Developer token, customer id, OAuth client id/secret을 먼저 연결하세요.',
+      message: '구글 광고 계정 연결 정보가 부족합니다.',
+      next_action: '구글 광고 계정 연결을 먼저 완료하세요.',
       sample_count: 0,
     };
   } else {
@@ -55,8 +55,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         status: 'missing_oauth',
         configured: true,
         missing: ['google_ads_oauth_token'],
-        message: 'Google Ads OAuth 토큰이 없어 실제 계정 호출은 아직 불가능합니다.',
-        next_action: 'Google Ads OAuth refresh token을 테넌트 토큰 저장소에 연결하세요.',
+        message: '구글 광고 계정 연결 토큰이 없어 실제 계정 확인은 아직 불가능합니다.',
+        next_action: '구글 광고 계정 연결을 완료한 뒤 다시 점검하세요.',
         sample_count: 0,
       };
     } else {
@@ -77,17 +77,17 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       });
 
       if (!res.ok) {
-        const text = sanitizeDbError(await res.text(), 'Google Ads API request failed');
+        const text = sanitizeDbError(await res.text(), '구글 광고 계정 확인 실패');
         const permissionDenied = res.status === 403 || /PERMISSION_DENIED/i.test(text);
         probe = {
           platform: 'google',
           status: permissionDenied ? 'permission_denied' : 'failed',
           configured: true,
           missing: [],
-          message: `Google Ads 호출 실패 (${res.status}): ${text.slice(0, 180)}`,
+          message: `구글 광고 계정 확인 실패 (${res.status}): ${text.slice(0, 180)}`,
           next_action: permissionDenied
-            ? 'OAuth scope, customer id 권한, developer token 접근 레벨, conversion action 권한을 확인하세요.'
-            : 'Google Ads API 응답을 확인하고 customer/developer token 설정을 재점검하세요.',
+            ? '구글 광고 계정 권한, 접근 수준, 전환 설정 권한을 확인하세요.'
+            : '구글 광고 계정 연결 정보를 재점검하세요.',
           sample_count: 0,
         };
       } else {
@@ -97,8 +97,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
           status: 'ready',
           configured: true,
           missing: [],
-          message: `Google Ads historical metrics 호출 성공: ${(json.results || []).length.toLocaleString('ko-KR')}개 결과`,
-          next_action: 'Conversion action과 최종 URL 정책을 확인한 뒤 draft/paused publisher를 연결하세요.',
+          message: `구글 광고 검색량 확인 성공: ${(json.results || []).length.toLocaleString('ko-KR')}개 결과`,
+          next_action: '전환 설정과 최종 URL 정책을 확인한 뒤 광고 초안 생성을 연결하세요.',
           sample_count: json.results?.length || 0,
           samples: (json.results || []).slice(0, 5),
         };

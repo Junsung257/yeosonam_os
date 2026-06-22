@@ -6,14 +6,14 @@ import { withTimeout } from '@/lib/promise-timeout';
 import { fetchAdOsSummaryJson } from '../_lib/summary-fetch';
 
 export const dynamic = 'force-dynamic';
-const AD_OS_OPERATING_INVENTORY_TIMEOUT_MS = 8000;
+const AD_OS_OPERATING_INVENTORY_SUMMARY_TIMEOUT_MS = 5000;
 
 export const GET = withAdminGuard(async (request: NextRequest) => {
   try {
     const summary = await withTimeout(
       fetchAdOsSummaryJson(request),
-      AD_OS_OPERATING_INVENTORY_TIMEOUT_MS,
-      'ad os operating inventory',
+      AD_OS_OPERATING_INVENTORY_SUMMARY_TIMEOUT_MS,
+      '광고 운영 요약',
     );
     const inventory = buildAdOsOperatingInventory({
       completionAudit: summary?.enterprise_layer?.completion_audit || null,
@@ -37,12 +37,26 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
       },
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        status: 'blocked',
-        error: error instanceof Error ? error.message : 'operating inventory unavailable',
-        next_action: 'Recover /api/admin/ad-os/summary before using the Ad OS operating inventory.',
+    const message = error instanceof Error ? error.message : '운영 항목 점검을 사용할 수 없습니다.';
+    return NextResponse.json({
+      ok: true,
+      generated_at: new Date().toISOString(),
+      inventory: {
+        status: 'partial',
+        readiness_score: 45,
+        operational: 0,
+        partial: 1,
+        blocked: 0,
+        top_gap: '광고 운영 요약 응답 지연',
+        next_action: '광고 운영 요약이 느려 기본 점검 카드만 표시합니다. 잠시 뒤 다시 점검하세요.',
+        items: [{
+          id: 'operating_inventory_unavailable',
+          label: '운영 항목 점검 지연',
+          status: 'partial',
+          evidence: message,
+          next_action: '화면은 계속 사용할 수 있습니다. 요약 API가 안정화되면 운영 항목을 다시 불러오세요.',
+          risk: 'medium',
+        }],
         safety: {
           read_only: true,
           database_mutation: false,
@@ -50,7 +64,15 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
           live_spend_krw: 0,
         },
       },
-      { status: 503 },
-    );
+      summary: {
+        status: 'partial',
+        readiness_score: 45,
+        operational: 0,
+        partial: 1,
+        blocked: 0,
+        top_gap: '광고 운영 요약 응답 지연',
+        next_action: '광고 운영 요약이 느려 기본 점검 카드만 표시합니다. 잠시 뒤 다시 점검하세요.',
+      },
+    });
   }
 });

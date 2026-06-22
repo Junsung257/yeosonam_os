@@ -7,7 +7,7 @@ describe('Ad OS OpsQueueList', () => {
     const html = renderToStaticMarkup(<OpsQueueList rows={[]} empty="No queued work" />);
 
     expect(html).toContain('No queued work');
-    expect(html).not.toContain('Dry-run');
+    expect(html).not.toContain('사전 점검');
   });
 
   it('renders status, platform label, reason, next action, and gated action buttons', () => {
@@ -33,10 +33,10 @@ describe('Ad OS OpsQueueList', () => {
 
     expect(html).toContain('Keyword dry run');
     expect(html).toContain('네이버');
-    expect(html).toContain('approved');
+    expect(html).toContain('승인');
     expect(html).toContain('ready for dry-run');
     expect(html).toContain('operator confirms result');
-    expect(html).toContain('Dry-run');
+    expect(html).toContain('사전 점검');
     expect(html).toContain('차단 확인');
     expect(html).not.toContain('실패 확정');
   });

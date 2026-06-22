@@ -19,10 +19,10 @@ export type LaunchActionLoading = Record<LaunchActionKey, boolean>;
 const LAUNCH_ACTION_KEY_SET = new Set<string>(LAUNCH_ACTION_KEYS);
 
 function actionToneLabel(tone: LaunchAction['tone']): string {
-  if (tone === 'good') return 'Recommended';
-  if (tone === 'warn') return 'Bottleneck';
-  if (tone === 'bad') return 'Safety';
-  return 'Review';
+  if (tone === 'good') return '추천';
+  if (tone === 'warn') return '병목';
+  if (tone === 'bad') return '안전 확인';
+  return '검토';
 }
 
 function isLaunchActionKey(value: string): value is LaunchActionKey {
@@ -39,7 +39,7 @@ function getLaunchActionState(
       disabled: true,
       loading: false,
       onClick: undefined,
-      title: `Unsupported action: ${action.ui_action}`,
+      title: `지원하지 않는 작업: ${action.ui_action}`,
     };
   }
 
@@ -75,13 +75,13 @@ export function LaunchActionQueuePanel({
     <section className="admin-card p-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-admin-base font-semibold text-admin-text-2">Today queue</h2>
+          <h2 className="text-admin-base font-semibold text-admin-text-2">오늘 할 일</h2>
           <p className="mt-1 text-admin-xs text-admin-muted">
-            Orders the next Ad OS actions from current account, budget, keyword, and safety state.
+            계정, 예산, 키워드, 안전 상태를 보고 지금 먼저 처리할 광고 작업을 정렬합니다.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <StatusPill tone="neutral">{actions.length} actions</StatusPill>
+          <StatusPill tone="neutral">{actions.length}개 작업</StatusPill>
           {topQueuedAction && (
             <Button
               size="sm"
@@ -91,7 +91,7 @@ export function LaunchActionQueuePanel({
               title={topQueuedActionState?.title}
             >
               <ArrowRight size={14} />
-              Run top action
+              1순위 실행
             </Button>
           )}
         </div>
@@ -132,39 +132,39 @@ export function LaunchActionQueuePanel({
         <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface p-3">
           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
             <div>
-              <h3 className="text-admin-sm font-semibold text-admin-text">Naver setup packet</h3>
+              <h3 className="text-admin-sm font-semibold text-admin-text">네이버 세팅 패킷</h3>
               <p className="mt-1 text-admin-2xs text-admin-muted">{naverSetupPacket.next_action}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <StatusPill tone={naverSetupPacket.existing_assets.campaigns > 0 ? 'good' : 'warn'}>
-                campaigns {naverSetupPacket.existing_assets.campaigns}
+                캠페인 {naverSetupPacket.existing_assets.campaigns}
               </StatusPill>
               <StatusPill tone={naverSetupPacket.existing_assets.adgroups > 0 ? 'good' : 'warn'}>
-                ad groups {naverSetupPacket.existing_assets.adgroups}
+                광고그룹 {naverSetupPacket.existing_assets.adgroups}
               </StatusPill>
               <StatusPill tone={naverSetupPacket.existing_assets.channels > 0 ? 'good' : 'warn'}>
-                channels {naverSetupPacket.existing_assets.channels}
+                채널 {naverSetupPacket.existing_assets.channels}
               </StatusPill>
             </div>
           </div>
 
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
             <div className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
-              <p className="text-admin-2xs text-admin-muted">Campaign</p>
+              <p className="text-admin-2xs text-admin-muted">캠페인</p>
               <p className="mt-1 text-admin-xs font-semibold text-admin-text">{naverSetupPacket.packet.campaign_name}</p>
             </div>
             <div className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
-              <p className="text-admin-2xs text-admin-muted">Ad group</p>
+              <p className="text-admin-2xs text-admin-muted">광고그룹</p>
               <p className="mt-1 text-admin-xs font-semibold text-admin-text">{naverSetupPacket.packet.ad_group_name}</p>
             </div>
             <div className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
-              <p className="text-admin-2xs text-admin-muted">Daily budget / Max CPC</p>
+              <p className="text-admin-2xs text-admin-muted">일예산 / 최대 CPC</p>
               <p className="mt-1 text-admin-xs font-semibold text-admin-text">
-                {naverSetupPacket.packet.daily_budget_krw.toLocaleString('ko-KR')} KRW / {naverSetupPacket.packet.max_cpc_krw.toLocaleString('ko-KR')} KRW
+                {naverSetupPacket.packet.daily_budget_krw.toLocaleString('ko-KR')}원 / {naverSetupPacket.packet.max_cpc_krw.toLocaleString('ko-KR')}원
               </p>
             </div>
             <div className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
-              <p className="text-admin-2xs text-admin-muted">Keyword candidates</p>
+              <p className="text-admin-2xs text-admin-muted">키워드 후보</p>
               <p className="mt-1 text-admin-xs font-semibold text-admin-text">{naverSetupPacket.packet.keyword_count.toLocaleString('ko-KR')}</p>
             </div>
           </div>
@@ -173,10 +173,10 @@ export function LaunchActionQueuePanel({
             <table className="admin-data-table">
               <thead>
                 <tr>
-                  <th>Keyword</th>
-                  <th>Match</th>
-                  <th>Bid</th>
-                  <th>Landing</th>
+                  <th>키워드</th>
+                  <th>일치</th>
+                  <th>입찰가</th>
+                  <th>랜딩</th>
                 </tr>
               </thead>
               <tbody>
@@ -184,7 +184,7 @@ export function LaunchActionQueuePanel({
                   <tr key={`${keyword.keyword}-${index}`}>
                     <td className="font-semibold text-admin-text">{keyword.keyword || '-'}</td>
                     <td>{keyword.match_type || '-'}</td>
-                    <td className="admin-num">{keyword.bid_krw.toLocaleString('ko-KR')} KRW</td>
+                    <td className="admin-num">{keyword.bid_krw.toLocaleString('ko-KR')}원</td>
                     <td className="max-w-xs truncate">{keyword.final_url || '-'}</td>
                   </tr>
                 ))}
@@ -195,19 +195,19 @@ export function LaunchActionQueuePanel({
           <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-admin-sm font-semibold text-admin-text">Naver keyword CSV</p>
+                <p className="text-admin-sm font-semibold text-admin-text">네이버 키워드 CSV</p>
                 <p className="mt-1 text-admin-2xs text-admin-muted">
-                  Keyword, match type, bid, and landing URL rows for upload or review.
+                  업로드 또는 검수용 키워드, 일치 방식, 입찰가, 랜딩 URL입니다.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" onClick={onDownloadNaverKeywordCsv}>
                   <Download size={14} />
-                  Download CSV
+                  CSV 다운로드
                 </Button>
                 <Button size="sm" variant="secondary" onClick={onCopyNaverKeywordCsv}>
                   <Save size={14} />
-                  Copy CSV
+                  CSV 복사
                 </Button>
               </div>
             </div>

@@ -11,13 +11,13 @@ export function KeywordBrainResultPanel({ result }: { result: Record<string, unk
     <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-admin-sm font-semibold text-admin-text">Keyword Brain result</p>
+          <p className="text-admin-sm font-semibold text-admin-text">키워드 브레인 결과</p>
           <p className="mt-1 text-admin-2xs text-admin-muted">
-            Groups product facts, search terms, blocked waste terms, and long-tail clusters into keyword draft candidates.
+            상품 정보, 검색어, 낭비 제외어, 롱테일 묶음을 광고 키워드 초안으로 정리합니다.
           </p>
         </div>
         <StatusPill tone="good">
-          {Number(summary?.candidates || 0).toLocaleString('ko-KR')} candidates
+          후보 {Number(summary?.candidates || 0).toLocaleString('ko-KR')}개
         </StatusPill>
       </div>
 

@@ -59,11 +59,11 @@ describe('Ad OS BudgetOperationsPanel', () => {
     );
 
     expect(html).toContain('Channel budget guardrails');
-    expect(html).toContain('Save budgets');
-    expect(html).toContain('Tenant report summary');
+    expect(html).toContain('예산 저장');
+    expect(html).toContain('광고주 리포트 요약');
     expect(html).toContain('Launch audit result');
     expect(html).toContain('Ops plan result');
-    expect(html).toContain('Keyword Brain result');
+    expect(html).toContain('키워드 브레인 결과');
     expect(html).toContain('Naver asset plan');
   });
 });

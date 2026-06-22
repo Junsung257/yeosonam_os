@@ -49,14 +49,14 @@ describe('Ad OS EnterpriseOpsQueuePanel', () => {
       />,
     );
 
-    expect(html).toContain('Operations queue');
+    expect(html).toContain('운영 대기열');
     expect(html).toContain('Review dry-run output before approval.');
-    expect(html).toContain('executor 1');
-    expect(html).toContain('confirm 1');
-    expect(html).toContain('blocked 1');
-    expect(html).toContain('live write 0');
+    expect(html).toContain('실행 대기 1');
+    expect(html).toContain('확인 대기 1');
+    expect(html).toContain('막힘 1');
+    expect(html).toContain('외부 반영 0');
     expect(html).toContain('Naver keyword dry-run');
-    expect(html).toContain('Dry-run');
+    expect(html).toContain('사전 점검');
     expect(html).toContain('Failed upload confirmation');
     expect(html).toContain('Blocked write packet');
   });
@@ -73,9 +73,9 @@ describe('Ad OS EnterpriseOpsQueuePanel', () => {
       />,
     );
 
-    expect(html).toContain('Review ready execution jobs');
-    expect(html).toContain('No approved execution jobs');
-    expect(html).toContain('No failed external result confirmation');
-    expect(html).toContain('No blocked job or failed executor attempt');
+    expect(html).toContain('실제 반영 전에 실행 대기');
+    expect(html).toContain('사전 점검을 기다리는 승인 작업이 없습니다.');
+    expect(html).toContain('확인해야 할 외부 결과가 없습니다.');
+    expect(html).toContain('확인 대기 중인 실패 또는 막힌 작업이 없습니다.');
   });
 });

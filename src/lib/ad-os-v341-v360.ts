@@ -106,16 +106,16 @@ export function buildAgencyReportingSummary(input: {
         : 'ready';
 
   const nextAction = missing.includes('critical_incident_clearance')
-    ? 'Resolve critical incidents and run kill-switch review before sending agency reports.'
+    ? '중요 사고를 해소하고 긴급 중지 점검을 실행한 뒤 광고주 보고서를 보내세요.'
     : missing.includes('full_auto_policy_review')
-      ? 'Disable or separately approve full-auto workspaces before packaging tenant reports.'
+      ? '완전 자동 워크스페이스는 끄거나 별도 승인한 뒤 광고주 리포트를 묶으세요.'
       : missing.includes('active_billing_profile')
-        ? 'Create or activate tenant billing profiles before SaaS reporting.'
+        ? '광고주 리포트 전에 과금 프로필을 생성하거나 활성화하세요.'
         : missing.includes('monthly_report_draft')
-          ? 'Generate monthly tenant report drafts from performance facts.'
+          ? '성과 근거에서 월간 광고주 리포트 초안을 생성하세요.'
           : missing.includes('audit_export_ready')
-            ? 'Prepare tenant audit export for the current reporting period.'
-            : 'Agency reporting package is ready for operator review and client delivery.';
+            ? '현재 보고 기간의 감사 파일을 준비하세요.'
+            : '광고주 전달 전 운영자가 최종 검토하면 됩니다.';
 
   return {
     status,

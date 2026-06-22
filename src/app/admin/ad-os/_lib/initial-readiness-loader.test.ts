@@ -33,10 +33,11 @@ describe('initial Ad OS readiness loader', () => {
     expect(applied).toEqual(['smoke', 'inventory', 'validation', 'surface']);
   });
 
-  it('applies fulfilled panels before surfacing the first rejected panel in fixed order', async () => {
+  it('applies fulfilled panels and reports rejected panels as non-blocking errors', async () => {
     const applied: string[] = [];
+    const errors: string[] = [];
 
-    await expect(loadInitialReadinessPanels({
+    await loadInitialReadinessPanels({
       fetchers: {
         fetchStagingSmoke: async () => smoke,
         fetchOperatingInventory: async () => { throw new Error('inventory failed'); },
@@ -44,15 +45,18 @@ describe('initial Ad OS readiness loader', () => {
         fetchAdminSurfaceQa: async () => surfaceQa,
       },
       handlers: createHandlers(applied),
-    })).rejects.toThrow('inventory failed');
+      onNonBlockingError: (error) => errors.push(error instanceof Error ? error.message : String(error)),
+    });
 
     expect(applied).toEqual(['smoke', 'validation', 'surface']);
+    expect(errors).toEqual(['inventory failed']);
   });
 
-  it('keeps smoke as the highest priority initial load failure', async () => {
+  it('reports multiple initial load failures without blocking fulfilled panels', async () => {
     const applied: string[] = [];
+    const errors: string[] = [];
 
-    await expect(loadInitialReadinessPanels({
+    await loadInitialReadinessPanels({
       fetchers: {
         fetchStagingSmoke: async () => { throw new Error('smoke failed'); },
         fetchOperatingInventory: async () => { throw new Error('inventory failed'); },
@@ -60,9 +64,11 @@ describe('initial Ad OS readiness loader', () => {
         fetchAdminSurfaceQa: async () => surfaceQa,
       },
       handlers: createHandlers(applied),
-    })).rejects.toThrow('smoke failed');
+      onNonBlockingError: (error) => errors.push(error instanceof Error ? error.message : String(error)),
+    });
 
     expect(applied).toEqual(['validation', 'surface']);
+    expect(errors).toEqual(['smoke failed', 'inventory failed']);
   });
 
   it('skips state writes and failure surfacing after the page is unmounted', async () => {

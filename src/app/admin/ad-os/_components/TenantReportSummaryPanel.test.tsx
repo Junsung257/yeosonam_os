@@ -11,7 +11,7 @@ const report: TenantReportBody = {
   discovered_cheap_keywords: 9,
   keyword_clusters: 3,
   external_mutations: 0,
-  next_actions: ['Review low-margin terms.', 'Keep external writes in dry-run.'],
+  next_actions: ['마진이 낮은 검색어를 검토하세요.', '외부 반영은 사전 점검 상태로 유지하세요.'],
 };
 
 describe('Ad OS TenantReportSummaryPanel', () => {
@@ -23,16 +23,16 @@ describe('Ad OS TenantReportSummaryPanel', () => {
       />,
     );
 
-    expect(html).toContain('Tenant report summary');
+    expect(html).toContain('광고주 리포트 요약');
     expect(html).toContain('2026-06-01');
     expect(html).toContain('2026-06-05');
-    expect(html).toContain('Budget usage');
+    expect(html).toContain('예산 사용률');
     expect(html).toContain('35%');
-    expect(html).toContain('Revenue ROAS');
+    expect(html).toContain('매출 ROAS');
     expect(html).toContain('280%');
     expect(html).toContain('CPA');
     expect(html).toContain('2만원');
-    expect(html).toContain('Review low-margin terms.');
+    expect(html).toContain('마진이 낮은 검색어를 검토하세요.');
   });
 
   it('renders nothing before report data exists', () => {

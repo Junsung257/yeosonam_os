@@ -65,7 +65,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     uploaded_dry_run: 0,
     blocked: attempts.filter((attempt) => attempt.status === 'blocked').length,
     external_api_write: false,
-    note: 'Dry-run execution validates upload readiness only. Jobs stay approved until a platform adapter confirms an external upload id.',
+    note: '사전 점검 실행은 업로드 준비 상태만 확인합니다. 작업은 채널 어댑터가 외부 업로드 결과를 확인할 때까지 승인 상태로 유지됩니다.',
   };
   await supabaseAdmin.from('ad_os_automation_runs').update({ status: 'completed', finished_at: new Date().toISOString(), summary }).eq('id', run.id);
 

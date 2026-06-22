@@ -344,6 +344,7 @@ export type Summary = {
     ops_executor_queue?: Array<Record<string, unknown>>;
     ops_confirmation_queue?: Array<Record<string, unknown>>;
     ops_failed_queue?: Array<Record<string, unknown>>;
+    campaign_memories?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };

@@ -14,6 +14,20 @@ export type SafetyEvidenceItem = {
   meta?: string;
 };
 
+function evidenceStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    pass: '통과',
+    fail: '실패',
+    warn: '확인',
+    ready: '준비 완료',
+    needs_attention: '확인 필요',
+    blocked: '막힘',
+    operational: '정상',
+    partial: '확인 필요',
+  };
+  return labels[status] || status;
+}
+
 export function SafetyEvidenceList({
   items,
   empty,
@@ -36,7 +50,7 @@ export function SafetyEvidenceList({
               <p className="truncate text-admin-2xs font-semibold text-admin-text">{item.label}</p>
               <p className="mt-0.5 truncate text-admin-2xs text-admin-muted">{item.evidence}</p>
             </div>
-            <StatusPill tone={item.tone}>{item.status}</StatusPill>
+            <StatusPill tone={item.tone}>{evidenceStatusLabel(item.status)}</StatusPill>
           </div>
           <p className="mt-1 line-clamp-2 text-admin-2xs leading-5 text-admin-muted md:col-span-2">{item.nextAction}</p>
           {(item.href || item.meta) && (

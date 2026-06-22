@@ -17,7 +17,7 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import type { LaunchActionKey, Summary } from '@/app/admin/ad-os/_lib/types';
 
 export const dynamic = 'force-dynamic';
-const AD_OS_SUMMARY_TIMEOUT_MS = 8000;
+const AD_OS_SUMMARY_TIMEOUT_MS = 15000;
 
 const PLATFORMS = ['naver', 'google', 'meta', 'kakao'] as const;
 
@@ -122,16 +122,16 @@ function buildExternalLaunchStatus(input: {
       Number(googleBudget.daily_budget_cap_krw || 0) > 0,
   );
   const naverChecks = [
-    { id: 'api', label: 'API 키', done: Boolean(input.integrationStatus.naver), next: 'NAVER_ADS_API_KEY/SECRET/CUSTOMER_ID 설정' },
-    { id: 'permission', label: '권한 감사', done: naverPermissionReady, next: '외부 계정 테스트 또는 네이버 자산 자동저장 실행' },
+    { id: 'api', label: '계정 연결', done: Boolean(input.integrationStatus.naver), next: '네이버 광고 계정 연결' },
+    { id: 'permission', label: '권한 확인', done: naverPermissionReady, next: '외부 계정 테스트 또는 네이버 자산 자동저장 실행' },
     { id: 'budget', label: '예산', done: hasNaverBudget, next: '네이버 월예산/일상한/Max CPC 활성화' },
     { id: 'adgroup', label: '광고그룹 ID', done: Boolean(naverCampaignId && naverAdGroupId), next: '네이버 광고센터에서 캠페인/비즈채널/광고그룹 생성 후 자산 자동저장' },
     { id: 'keywords', label: '승인 키워드', done: approvedOrTestingKeywords > 0, next: '네이버 후보 승인 또는 1단계 시범 세팅' },
     { id: 'drafts', label: '내부 드래프트', done: input.draftCampaigns > 0, next: '캠페인 드래프트 생성' },
   ];
   const googleChecks = [
-    { id: 'api', label: 'API/OAuth', done: Boolean(input.integrationStatus.google), next: 'Google Ads OAuth 권한 확인' },
-    { id: 'permission', label: '권한 감사', done: googlePermissionReady, next: '외부 계정 테스트에서 Google Ads PERMISSION_DENIED 해소' },
+    { id: 'api', label: '계정 연결', done: Boolean(input.integrationStatus.google), next: '구글 광고 계정 연결' },
+    { id: 'permission', label: '권한 확인', done: googlePermissionReady, next: '외부 계정 테스트에서 구글 광고 권한 문제 해소' },
     { id: 'budget', label: '예산', done: hasGoogleBudget, next: '구글 월예산/일상한/Max CPC 활성화' },
     { id: 'keywords', label: '승인 키워드', done: approvedOrTestingKeywords > 0, next: '구글 후보 승인' },
     { id: 'drafts', label: '내부 드래프트', done: input.draftCampaigns > 0, next: '캠페인 드래프트 생성' },
@@ -145,14 +145,14 @@ function buildExternalLaunchStatus(input: {
       pass: naverChecks.length - naverMissing.length,
       total: naverChecks.length,
       checks: naverChecks,
-      next_action: naverMissing[0]?.next || '네이버 limited pilot 점검 후 감사된 executor만 사용',
+      next_action: naverMissing[0]?.next || '네이버 시범 집행 점검 후 승인된 실행만 사용',
     },
     google: {
       ready: googleMissing.length === 0,
       pass: googleChecks.length - googleMissing.length,
       total: googleChecks.length,
       checks: googleChecks,
-      next_action: googleMissing[0]?.next || 'Google Ads 권한 감사 후 guarded publisher 실행',
+      next_action: googleMissing[0]?.next || '구글 광고 권한 확인 후 승인된 실행만 사용',
     },
     approved_or_testing_keywords: approvedOrTestingKeywords,
   };
@@ -230,7 +230,7 @@ function buildLaunchActionQueue(input: {
     actions.push({
       id: 'google_permission',
       priority: input.externalLaunchStatus.google.pass >= 4 ? 4 : 6,
-      label: '구글 권한 감사',
+      label: '구글 광고 계정 확인',
       description: input.externalLaunchStatus.google.next_action,
       button_label: '외부 계정 테스트',
       ui_action: 'probePublisher',
@@ -254,9 +254,9 @@ function buildLaunchActionQueue(input: {
     actions.push({
       id: 'keyword_brain',
       priority: 5,
-      label: '초세부 키워드 Brain',
-      description: '상품 팩트, 검색어, 실패어를 묶어 부모님/출발지/항공/불안해소형 longtail cluster를 만듭니다.',
-      button_label: 'Keyword Brain',
+      label: '초세부 키워드 묶기',
+      description: '상품 정보, 검색어, 실패어를 묶어 부모님/출발지/항공/불안해소형 키워드 묶음을 만듭니다.',
+      button_label: '키워드 묶기',
       ui_action: 'runKeywordBrain',
       tone: 'good',
     });
@@ -540,6 +540,7 @@ function buildDegradedSummary(error: unknown) {
       budget_pacing: [],
       tenant_ad_accounts: [],
       change_requests: [],
+      campaign_memories: [],
     },
   };
 }
@@ -591,6 +592,7 @@ async function buildSummaryResponse() {
     rollbackDrillRes,
     limitedWritePilotPolicyRes,
     limitedWritePilotAttemptRes,
+    campaignMemoryRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -805,6 +807,11 @@ async function buildSummaryResponse() {
       .select('id, tenant_id, platform, requested_mode, attempt_status, external_api_write, blockers, next_action, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_campaign_memories')
+      .select('id, tenant_id, workspace_id, memory_key, status, score, purpose, facts, next_tests, last_diagnostic, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(20),
   ]);
 
   const firstError =
@@ -1125,6 +1132,15 @@ async function buildSummaryResponse() {
     blockers: string[] | null;
     next_action: string | null;
   }>;
+  const campaignMemories = (!campaignMemoryRes.error ? campaignMemoryRes.data || [] : []) as Array<{
+    tenant_id: string | null;
+    workspace_id: string | null;
+    memory_key: string | null;
+    status: string | null;
+    score: number | null;
+    purpose: string | null;
+    updated_at: string | null;
+  }>;
   const creativeAssetVariants = (creativeAssetVariantRes.data || []) as Array<{
     platform: string | null;
     asset_type: string | null;
@@ -1202,11 +1218,11 @@ async function buildSummaryResponse() {
         title: row.job_type,
         reason: row.blocked_reason,
         next_action: row.platform === 'naver'
-          ? '네이버 paused-write executor dry-run 후 live gate를 확인하세요.'
+          ? '네이버 정지 키워드 사전 점검 후 실제 반영 조건을 확인하세요.'
           : row.platform === 'google'
-            ? 'Google draft/OAuth/conversion action gate를 확인하세요.'
+            ? '구글 광고 초안, 계정 연결, 전환 설정을 확인하세요.'
             : row.platform === 'meta'
-              ? 'Meta creative/CAPI draft gate를 확인하세요.'
+              ? '메타 소재와 전환 연동 초안을 확인하세요.'
               : '채널 어댑터 실행 게이트를 확인하세요.',
         created_at: row.created_at,
       })),
@@ -1219,7 +1235,7 @@ async function buildSummaryResponse() {
         status: row.status,
         title: row.event_name,
         reason: row.blocked_reason,
-        next_action: '전환 upload dry-run으로 consent, dedupe, identifier 품질을 재확인하세요.',
+        next_action: '전환 업로드 사전 점검으로 동의, 중복 제거, 식별 품질을 재확인하세요.',
         created_at: row.created_at,
       })),
   ];
@@ -1230,8 +1246,8 @@ async function buildSummaryResponse() {
       platform: row.platform,
       status: row.status,
       title: row.job_type,
-      reason: row.external_mutation_result_id || 'external result pending',
-      next_action: '외부 플랫폼 결과를 확인한 뒤 external-results/confirm으로 성공/실패를 확정하세요.',
+      reason: row.external_mutation_result_id || '외부 플랫폼 결과 확인 대기',
+      next_action: '외부 플랫폼 결과를 확인한 뒤 성공/실패를 확정하세요.',
       created_at: row.created_at,
     })),
     ...conversionConfirmationJobs.map((row) => sampleQueueRow({
@@ -1240,8 +1256,8 @@ async function buildSummaryResponse() {
       platform: row.platform,
       status: row.status,
       title: row.event_name,
-      reason: row.external_upload_id || 'external upload id pending',
-      next_action: 'Google/Meta 업로드 id를 확인한 뒤 external-results/confirm으로 업로드 상태를 확정하세요.',
+      reason: row.external_upload_id || '업로드 결과 확인 대기',
+      next_action: '구글/메타 업로드 결과를 확인한 뒤 업로드 상태를 확정하세요.',
       created_at: row.created_at,
     })),
   ];
@@ -1255,7 +1271,7 @@ async function buildSummaryResponse() {
         status: row.status || row.guardrail_status,
         title: row.job_type,
         reason: row.blocked_reason,
-        next_action: row.blocked_reason || '예산, 권한, 자동화 레벨, kill switch를 확인하세요.',
+        next_action: row.blocked_reason || '예산, 권한, 자동화 수준, 긴급 중지 상태를 확인하세요.',
         created_at: row.created_at,
       })),
     ...conversionUploadJobs
@@ -1267,7 +1283,7 @@ async function buildSummaryResponse() {
         status: row.status,
         title: row.event_name,
         reason: row.blocked_reason,
-        next_action: row.blocked_reason || 'PII, consent, dedupe, freshness, identifier 품질을 확인하세요.',
+        next_action: row.blocked_reason || '개인정보, 동의, 중복 제거, 최신성, 식별 품질을 확인하세요.',
         created_at: row.created_at,
       })),
     ...executionAttempts
@@ -1279,7 +1295,7 @@ async function buildSummaryResponse() {
         status: row.status,
         title: row.attempt_type,
         reason: row.blocked_reason,
-        next_action: row.blocked_reason || '최근 실행 attempt의 dry-run 결과와 adapter gate를 확인하세요.',
+        next_action: row.blocked_reason || '최근 실행의 사전 점검 결과와 채널 연결 상태를 확인하세요.',
         created_at: row.created_at,
       })),
   ];
@@ -1308,17 +1324,17 @@ async function buildSummaryResponse() {
   };
   const integrationDetails = {
     naver: {
-      label: 'Naver Search Ads',
+      label: '네이버 검색광고',
       configured: integrationStatus.naver,
       required: {
         NAVER_ADS_API_KEY: Boolean(getSecret('NAVER_ADS_API_KEY')),
         NAVER_ADS_SECRET_KEY: Boolean(getSecret('NAVER_ADS_SECRET_KEY')),
         NAVER_ADS_CUSTOMER_ID: Boolean(getSecret('NAVER_ADS_CUSTOMER_ID')),
       },
-      note: integrationStatus.naver ? 'KeywordTool/검색광고 API 호출 가능' : '네이버 검색광고 서버 키 필요',
+      note: integrationStatus.naver ? '네이버 검색광고 계정 연결됨' : '네이버 검색광고 계정 연결 필요',
     },
     google: {
-      label: 'Google Ads',
+      label: '구글 광고',
       configured: integrationStatus.google,
       required: {
         GOOGLE_ADS_DEVELOPER_TOKEN: Boolean(getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')),
@@ -1326,10 +1342,10 @@ async function buildSummaryResponse() {
         GOOGLE_ADS_CLIENT_ID: Boolean(getSecret('GOOGLE_ADS_CLIENT_ID')),
         GOOGLE_ADS_CLIENT_SECRET: Boolean(getSecret('GOOGLE_ADS_CLIENT_SECRET')),
       },
-      note: integrationStatus.google ? 'OAuth 토큰 상태까지 별도 확인 필요' : 'Developer token/OAuth/Customer ID 필요',
+      note: integrationStatus.google ? '구글 광고 계정 연결 상태 추가 확인 필요' : '구글 광고 계정 연결 필요',
     },
     meta: {
-      label: 'Meta Ads',
+      label: '메타 광고',
       configured: integrationStatus.meta,
       required: {
         META_AD_ACCOUNT_ID: Boolean(getSecret('META_AD_ACCOUNT_ID')),
@@ -1720,6 +1736,8 @@ async function buildSummaryResponse() {
       limited_write_pilot_dry_run_succeeded: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'dry_run_succeeded').length,
       limited_write_pilot_blocked: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'blocked' || row.attempt_status === 'live_write_blocked').length,
       limited_write_pilot_external_api_write: limitedWritePilotAttempts.filter((row) => row.external_api_write).length,
+      campaign_memories: campaignMemories.length,
+      campaign_memories_ready: campaignMemories.filter((row) => row.status === 'ready').length,
       ops_executor_queue: executorQueueRows.length,
       ops_confirmation_queue: confirmationQueueRows.length,
       ops_failed_queue: failedQueueRows.length,
@@ -1791,6 +1809,7 @@ async function buildSummaryResponse() {
       rollback_drills_by_type: byKey(rollbackDrills, (row) => row.rollback_type || 'unknown'),
       limited_write_pilot_policies_by_status: byKey(limitedWritePilotPolicies, (row) => row.status || 'unknown'),
       limited_write_pilot_attempts_by_status: byKey(limitedWritePilotAttempts, (row) => row.attempt_status || 'unknown'),
+      campaign_memories_by_status: byKey(campaignMemories, (row) => row.status || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -2020,6 +2039,7 @@ async function buildSummaryResponse() {
       rollback_drills: rollbackDrillRes.data?.slice(0, 12) || [],
       limited_write_pilot_policies: limitedWritePilotPolicyRes.data?.slice(0, 12) || [],
       limited_write_pilot_attempts: limitedWritePilotAttemptRes.data?.slice(0, 12) || [],
+      campaign_memories: !campaignMemoryRes.error ? campaignMemoryRes.data?.slice(0, 12) || [] : [],
       ops_executor_queue: executorQueueRows.slice(0, 8),
       ops_confirmation_queue: confirmationQueueRows.slice(0, 8),
       ops_failed_queue: failedQueueRows.slice(0, 8),
@@ -2045,6 +2065,6 @@ export const GET = withAdminGuard(async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Ad OS summary unavailable';
     console.warn('[ad-os/summary] degraded response:', message);
-    return NextResponse.json(buildDegradedSummary(error), { status: 503 });
+    return NextResponse.json(buildDegradedSummary(error));
   }
 });

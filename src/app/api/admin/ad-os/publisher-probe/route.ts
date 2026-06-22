@@ -80,7 +80,7 @@ async function probeGoogle(hint: string) {
       status: 'missing_config' as ProbeStatus,
       configured: false,
       missing: missingKeys(required),
-      message: 'Google Ads API 설정값이 부족합니다.',
+      message: '구글 광고 계정 연결 정보가 부족합니다.',
       sample_count: 0,
     };
   }
@@ -92,7 +92,7 @@ async function probeGoogle(hint: string) {
       status: 'missing_oauth' as ProbeStatus,
       configured: true,
       missing: ['google_ads_oauth_token'],
-      message: 'Google Ads OAuth 토큰이 없어 실제 계정 호출은 아직 불가능합니다.',
+      message: '구글 광고 계정 연결 토큰이 없어 실제 계정 확인은 아직 불가능합니다.',
       sample_count: 0,
     };
   }
@@ -114,13 +114,13 @@ async function probeGoogle(hint: string) {
   });
 
   if (!res.ok) {
-    const body = sanitizeDbError(await res.text(), 'Google Ads API request failed');
+    const body = sanitizeDbError(await res.text(), '구글 광고 계정 확인 실패');
     return {
       platform: 'google',
       status: 'failed' as ProbeStatus,
       configured: true,
       missing: [],
-      message: `Google Ads 호출 실패 (${res.status}): ${body.slice(0, 160)}`,
+      message: `구글 광고 계정 확인 실패 (${res.status}): ${body.slice(0, 160)}`,
       sample_count: 0,
     };
   }
@@ -131,7 +131,7 @@ async function probeGoogle(hint: string) {
     status: 'ready' as ProbeStatus,
     configured: true,
     missing: [],
-    message: `Google Ads historical metrics 호출 성공: ${(json.results || []).length.toLocaleString('ko-KR')}개 결과`,
+    message: `구글 광고 검색량 확인 성공: ${(json.results || []).length.toLocaleString('ko-KR')}개 결과`,
     sample_count: json.results?.length || 0,
     samples: (json.results || []).slice(0, 5).map((row) => ({
       keyword: row.keyword,

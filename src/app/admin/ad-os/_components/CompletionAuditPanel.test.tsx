@@ -71,12 +71,12 @@ describe('Ad OS CompletionAuditPanel', () => {
       />,
     );
 
-    expect(html).toContain('Completion Audit');
+    expect(html).toContain('완료 점검');
     expect(html).toContain('88%');
-    expect(html).toContain('Staging Smoke');
+    expect(html).toContain('사전 안전 점검');
     expect(html).toContain('11 / 11');
     expect(html).toContain('Smoke ran in read-only mode.');
-    expect(html).toContain('DB write off - external write off');
+    expect(html).toContain('DB 변경 꺼짐 - 외부 반영 꺼짐');
     expect(html).toContain('ring-2');
   });
 
@@ -91,8 +91,8 @@ describe('Ad OS CompletionAuditPanel', () => {
       />,
     );
 
-    expect(html).toContain('unknown');
-    expect(html).toContain('not checked');
-    expect(html).toContain('No completion evidence loaded.');
+    expect(html).toContain('미확인');
+    expect(html).toContain('미점검');
+    expect(html).toContain('완료 점검 근거가 아직 없습니다.');
   });
 });

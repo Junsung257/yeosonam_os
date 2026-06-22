@@ -156,78 +156,78 @@ export function buildAdOsOperatingInventory(input: {
   const items = [
     item({
       id: 'control_plane',
-      label: 'Control plane safety',
+      label: '운영 안전장치',
       status: completion && completion.failed === 0 && externalWriteCount === 0 && smokePasses ? 'operational' : externalWriteCount > 0 ? 'blocked' : 'partial',
-      evidence: `completion ${completion?.status || 'unknown'}, smoke ${smoke?.status || 'unknown'}, external writes ${externalWriteCount}`,
+      evidence: `완료 점검 ${completion?.status || '미확인'}, 사전 점검 ${smoke?.status || '미확인'}, 외부 반영 ${externalWriteCount}건`,
       next_action: smokePasses
-        ? 'Keep read-only smoke in CI/operator checks before DB-backed staging runs.'
-        : 'Restore completion audit and staging smoke before declaring Ad OS readiness.',
+        ? 'DB 기반 사전 실행 전에는 읽기 전용 점검을 계속 유지하세요.'
+        : '준비 완료로 표시하기 전에 완료 점검과 사전 안전 점검을 복구하세요.',
       risk: externalWriteCount > 0 ? 'high' : 'low',
     }),
     item({
       id: 'operator_ux',
-      label: 'Operator UX evidence',
+      label: '운영자 화면 근거',
       status: completion && smoke ? 'operational' : 'partial',
-      evidence: `completion requirements ${completion?.requirements.length || 0}, smoke assertions ${smoke?.passed_assertions || 0}`,
-      next_action: 'Surface this inventory beside completion audit, runtime readiness, and channel adapter cards.',
+      evidence: `완료 점검 항목 ${completion?.requirements.length || 0}개, 사전 점검 통과 ${smoke?.passed_assertions || 0}개`,
+      next_action: '완료 점검, 실행 준비, 채널 연결 카드와 함께 운영 근거를 확인하세요.',
       risk: 'medium',
     }),
     item({
       id: 'channel_execution',
-      label: 'Naver/Google/Meta execution adapters',
+      label: '네이버/구글/메타 실행 연결',
       status: channelSnapshots > 0 && channelReady > 0 ? 'operational' : channelSnapshots > 0 ? 'partial' : 'blocked',
-      evidence: `adapter snapshots ${channelSnapshots}, ready states ${channelReady}`,
+      evidence: `채널 점검 ${channelSnapshots}개, 준비 상태 ${channelReady}개`,
       next_action: channelReady > 0
-        ? 'Continue keeping Naver paused/dry-run first and Google/Meta live publish disabled until credentials and conversion actions pass.'
-        : 'Generate channel adapter health snapshots and paused/draft packets for each connected platform.',
+        ? '계정과 전환 설정이 통과될 때까지 네이버는 정지/사전 점검 우선, 구글/메타 실반영은 꺼두세요.'
+        : '연결된 채널별 상태 점검과 정지/초안 패킷을 먼저 만드세요.',
       risk: channelReady > 0 ? 'medium' : 'high',
     }),
     item({
       id: 'conversion_quality',
-      label: 'First-party conversion quality',
+      label: '전환 데이터 품질',
       status: conversionBlocked > 0 ? 'blocked' : conversionUploadable > 0 ? 'operational' : 'partial',
-      evidence: `uploadable conversions ${conversionUploadable}, blocked conversions ${conversionBlocked}`,
+      evidence: `업로드 가능 전환 ${conversionUploadable}개, 막힌 전환 ${conversionBlocked}개`,
       next_action: conversionUploadable > 0
-        ? 'Use clean conversion jobs as the source for booked margin attribution.'
-        : 'Collect consented conversion candidates with dedupe, freshness, and hashed identifier quality.',
+        ? '정상 전환 작업을 예약 마진 귀속의 기준으로 사용하세요.'
+        : '동의, 중복 제거, 최신성, 식별 품질이 확인된 전환 후보를 수집하세요.',
       risk: conversionBlocked > 0 ? 'high' : 'medium',
     }),
     item({
       id: 'learning_loop',
-      label: 'Booked-margin learning loop',
+      label: '예약 마진 학습 루프',
       status: marginReady ? 'operational' : numberValue(enterprise.portfolio_optimizer?.candidates) > 0 ? 'partial' : 'blocked',
-      evidence: `margin ready ${marginReady ? 1 : 0}, optimizer candidates ${numberValue(enterprise.portfolio_optimizer?.candidates)}`,
+      evidence: `마진 학습 ${marginReady ? '준비' : '미준비'}, 최적화 후보 ${numberValue(enterprise.portfolio_optimizer?.candidates)}개`,
       next_action: marginReady
-        ? 'Generate pause, scale, landing repair, and creative refresh candidates from margin ROAS facts.'
-        : 'Normalize click, CTA, booking, spend, revenue, margin, CPA, ROAS, and bounce facts by product/keyword/blog/creative/channel.',
+        ? '마진 ROAS 근거로 중지, 확대, 랜딩 수정, 소재 교체 후보를 만드세요.'
+        : '상품/키워드/블로그/소재/채널별 클릭, CTA, 예약, 비용, 매출, 마진, CPA, ROAS 근거를 정리하세요.',
       risk: marginReady ? 'medium' : 'high',
     }),
     item({
       id: 'creative_factory',
-      label: 'Travel creative factory',
+      label: '여행 소재 생성',
       status: creativeVariants > 0 && duplicateRisks === 0 ? 'operational' : creativeVariants > 0 ? 'partial' : 'blocked',
-      evidence: `creative variants ${creativeVariants}, duplicate risks ${duplicateRisks}`,
+      evidence: `소재 변형 ${creativeVariants}개, 중복 위험 ${duplicateRisks}개`,
       next_action: duplicateRisks > 0
-        ? 'Prefer hub updates, CTA swaps, FAQ/internal links, and card news over duplicate blog article generation.'
-        : 'Keep scenario creative variants tied to fatigue, CTR decay, and CPA trend evidence.',
+        ? '중복 블로그 생성보다 허브 업데이트, CTA 교체, FAQ/내부링크, 카드뉴스를 우선하세요.'
+        : '소재 피로도, CTR 하락, CPA 추세 근거와 소재 변형을 연결해 유지하세요.',
       risk: duplicateRisks > 0 ? 'high' : 'medium',
     }),
     item({
       id: 'tenant_saas',
-      label: 'Tenant SaaS packaging',
+      label: '광고주 운영 패키지',
       status: numberValue(enterprise.saas_packaging?.workspaces) > 0 && numberValue(enterprise.saas_packaging?.active_billing_profiles) > 0 ? 'operational' : 'partial',
-      evidence: `workspaces ${numberValue(enterprise.saas_packaging?.workspaces)}, billing profiles ${numberValue(enterprise.saas_packaging?.active_billing_profiles)}`,
-      next_action: 'Keep tenant budgets, RBAC approvers, audit exports, data retention, and monthly reports separated per tenant.',
+      evidence: `워크스페이스 ${numberValue(enterprise.saas_packaging?.workspaces)}개, 과금 프로필 ${numberValue(enterprise.saas_packaging?.active_billing_profiles)}개`,
+      next_action: '광고주별 예산, 승인자, 감사 파일, 데이터 보관, 월간 리포트를 분리해 유지하세요.',
       risk: 'medium',
     }),
     item({
       id: 'live_autopilot',
-      label: 'Limited/full autopilot readiness',
+      label: '자동 집행 준비',
       status: livePilotEnabled > 0 || fullAutoEnabled > 0 ? 'blocked' : numberValue(enterprise.limited_write_pilot?.dry_run_succeeded) > 0 ? 'partial' : 'partial',
-      evidence: `limited pilot dry-run ${numberValue(enterprise.limited_write_pilot?.dry_run_succeeded)}, live enabled ${livePilotEnabled}, full auto ${fullAutoEnabled}`,
+      evidence: `제한 시범 사전 점검 ${numberValue(enterprise.limited_write_pilot?.dry_run_succeeded)}개, 실집행 ${livePilotEnabled}, 완전 자동 ${fullAutoEnabled}`,
       next_action: livePilotEnabled > 0 || fullAutoEnabled > 0
-        ? 'Disable live/full auto until explicit tenant approval, budget caps, kill-switch clearance, and experiment confidence are proven.'
-        : 'Keep recommend -> approve -> limited dry-run as the default path before any live spend.',
+        ? '광고주 승인, 예산 한도, 긴급 중지 해제, 실험 신뢰도가 확인될 때까지 실집행/완전 자동을 끄세요.'
+        : '실제 광고비 사용 전에는 추천 -> 승인 -> 제한 사전 점검 흐름을 기본으로 유지하세요.',
       risk: livePilotEnabled > 0 || fullAutoEnabled > 0 ? 'high' : 'medium',
     }),
   ];
@@ -245,8 +245,8 @@ export function buildAdOsOperatingInventory(input: {
     partial,
     blocked,
     items,
-    top_gap: topGap?.label || 'No operating gap',
-    next_action: topGap?.next_action || 'All Ad OS operating inventory areas have current evidence.',
+    top_gap: topGap?.label || '운영 막힘 없음',
+    next_action: topGap?.next_action || '모든 광고 운영 항목에 최신 근거가 있습니다.',
     safety: {
       read_only: true,
       database_mutation: false,

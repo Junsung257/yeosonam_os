@@ -304,12 +304,12 @@ export function buildEnterpriseTenantReport(input: {
     external_mutations: input.externalMutations,
     keyword_clusters: input.keywordClusters,
     executive_summary: marginRoasPct > 0
-      ? `Margin ROAS ${marginRoasPct}% with ${conversions} conversions.`
-      : 'Learning loop is ready, but paid conversion margin data is still insufficient.',
+      ? `마진 기준 ROAS ${marginRoasPct}%, 전환 ${conversions}건입니다.`
+      : '학습 루프는 준비됐지만 유료 전환 마진 근거가 아직 부족합니다.',
     next_actions: [
-      input.keywordClusters > 0 ? 'Approve high-score longtail clusters for paused publisher tests.' : 'Run Keyword Brain to create product-level longtail clusters.',
-      input.pausedWasteKeywords > 0 ? 'Apply negative keyword candidates after review.' : 'Harvest search terms to find waste queries.',
-      input.externalMutations > 0 ? 'Review external mutation audit rows before activation.' : 'Create Naver asset change requests before live publishing.',
+      input.keywordClusters > 0 ? '점수가 높은 초세부 키워드 묶음을 검수한 뒤 시범 세팅에 넣으세요.' : '상품별 초세부 키워드 묶음을 먼저 만드세요.',
+      input.pausedWasteKeywords > 0 ? '검수 후 제외 키워드 후보를 반영하세요.' : '검색어를 수집해 낭비 검색어를 찾으세요.',
+      input.externalMutations > 0 ? '외부 반영 전 변경 요청 근거를 검토하세요.' : '실집행 전에 네이버 자산 변경 요청을 만드세요.',
     ],
   };
 }

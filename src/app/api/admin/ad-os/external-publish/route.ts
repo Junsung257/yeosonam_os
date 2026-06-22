@@ -192,7 +192,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     mutation_audit_status: byStatus(mutationRows.map((row) => row.status)),
     external_api_write: false,
     staging,
-    note: 'This guarded publisher creates idempotent external mutation audit rows only. Approved changes stay approved until an audited executor confirms an external result; this route performs no external API write.',
+    note: '이 승인형 발행기는 외부 변경 감사 기록만 만들며 실제 외부 API 쓰기는 수행하지 않습니다. 승인된 변경은 별도 검증 실행기가 외부 결과를 확인할 때까지 승인 상태로 유지됩니다.',
   };
 
   await supabaseAdmin

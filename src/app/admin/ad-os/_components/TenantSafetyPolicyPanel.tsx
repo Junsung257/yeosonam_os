@@ -26,24 +26,24 @@ export function TenantSafetyPolicyPanel({
       <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-admin-sm font-semibold text-admin-text">Tenant safety policy</p>
+            <p className="text-admin-sm font-semibold text-admin-text">광고 안전 정책</p>
             <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">
-              Controls allowed channels, spend caps, CPC limits, loss caps, automation level, and approval requirements.
-              {policy.error ? 'Policy save failed.' : ''}
+              허용 채널, 예산 한도, 클릭 단가, 손실 한도, 자동화 수준, 승인 필요 여부를 관리합니다.
+              {policy.error ? ' 정책 저장에 실패했습니다.' : ''}
             </p>
           </div>
           <StatusPill tone={policy.configured ? 'good' : 'warn'}>
-            {policy.configured ? 'Policy configured' : 'Default policy'}
+            {policy.configured ? '정책 설정됨' : '기본 정책'}
           </StatusPill>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
           {[
-            ['Channels', policy.allowed_platforms.join(', ')],
-            ['Monthly cap', fmtWon(policy.monthly_budget_cap_krw)],
-            ['Daily cap', fmtWon(policy.daily_budget_cap_krw)],
-            ['Max CPC', fmtWon(policy.max_cpc_krw)],
-            ['Test loss cap', fmtWon(policy.max_test_loss_krw)],
-            ['Max level', `L${policy.max_automation_level}`],
+            ['허용 채널', policy.allowed_platforms.join(', ')],
+            ['월 한도', fmtWon(policy.monthly_budget_cap_krw)],
+            ['일 한도', fmtWon(policy.daily_budget_cap_krw)],
+            ['최대 CPC', fmtWon(policy.max_cpc_krw)],
+            ['테스트 손실 한도', fmtWon(policy.max_test_loss_krw)],
+            ['최대 자동화', `L${policy.max_automation_level}`],
           ].map(([label, value]) => (
             <div key={label} className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
               <p className="text-admin-2xs text-admin-muted">{label}</p>
@@ -55,17 +55,17 @@ export function TenantSafetyPolicyPanel({
           <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-admin-sm font-semibold text-admin-text">Edit policy</p>
-                <p className="mt-1 text-admin-2xs text-admin-muted">Adjust the limits that gate Ad OS automation for this tenant.</p>
+                <p className="text-admin-sm font-semibold text-admin-text">정책 수정</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">광고 자동화가 넘지 말아야 할 한도를 조정합니다.</p>
               </div>
               <Button size="sm" onClick={onSave} loading={saving}>
                 <ShieldCheck size={14} />
-                Save policy
+                정책 저장
               </Button>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-6">
               <label className="text-admin-2xs font-semibold text-admin-muted">
-                Monthly cap
+                월 한도
                 <input
                   type="number"
                   min={0}
@@ -75,7 +75,7 @@ export function TenantSafetyPolicyPanel({
                 />
               </label>
               <label className="text-admin-2xs font-semibold text-admin-muted">
-                Daily cap
+                일 한도
                 <input
                   type="number"
                   min={0}
@@ -85,7 +85,7 @@ export function TenantSafetyPolicyPanel({
                 />
               </label>
               <label className="text-admin-2xs font-semibold text-admin-muted">
-                Max CPC
+                최대 CPC
                 <input
                   type="number"
                   min={0}
@@ -95,7 +95,7 @@ export function TenantSafetyPolicyPanel({
                 />
               </label>
               <label className="text-admin-2xs font-semibold text-admin-muted">
-                Test loss cap
+                테스트 손실 한도
                 <input
                   type="number"
                   min={0}
@@ -105,7 +105,7 @@ export function TenantSafetyPolicyPanel({
                 />
               </label>
               <label className="text-admin-2xs font-semibold text-admin-muted">
-                Max automation level
+                최대 자동화 단계
                 <input
                   type="number"
                   min={0}
@@ -116,16 +116,16 @@ export function TenantSafetyPolicyPanel({
                 />
               </label>
               <label className="text-admin-2xs font-semibold text-admin-muted">
-                Risk status
+                위험 상태
                 <select
                   value={draft.risk_status}
                   onChange={(event) => onUpdate('risk_status', event.target.value)}
                   className="mt-1 h-9 w-full rounded-admin-xs border border-admin-border bg-admin-surface px-2 text-admin-xs text-admin-text"
                 >
-                  <option value="normal">normal</option>
-                  <option value="watch">watch</option>
-                  <option value="restricted">restricted</option>
-                  <option value="blocked">blocked</option>
+                  <option value="normal">정상</option>
+                  <option value="watch">관찰</option>
+                  <option value="restricted">제한</option>
+                  <option value="blocked">차단</option>
                 </select>
               </label>
             </div>
@@ -146,7 +146,7 @@ export function TenantSafetyPolicyPanel({
                   checked={draft.require_human_approval}
                   onChange={(event) => onUpdate('require_human_approval', event.target.checked)}
                 />
-                Require approval
+                승인 필수
               </label>
               <label className="inline-flex items-center gap-1.5 text-admin-xs font-semibold text-admin-text">
                 <input
@@ -154,7 +154,7 @@ export function TenantSafetyPolicyPanel({
                   checked={draft.full_auto_enabled}
                   onChange={(event) => onUpdate('full_auto_enabled', event.target.checked)}
                 />
-                Allow full auto
+                완전 자동 허용
               </label>
             </div>
           </div>

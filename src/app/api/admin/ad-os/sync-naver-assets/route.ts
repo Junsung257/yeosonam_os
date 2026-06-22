@@ -22,10 +22,10 @@ export const POST = withAdminGuard(async () => {
   if (!config.configured) {
     return apiResponse({
       ok: false,
-      error: 'Naver SearchAd API keys are not configured.',
+      error: '네이버 검색광고 계정 연결이 필요합니다.',
       config,
       saved: false,
-      next_action: 'Set NAVER_ADS_API_KEY, NAVER_ADS_SECRET_KEY, and NAVER_ADS_CUSTOMER_ID first.',
+      next_action: '네이버 광고 계정 연결을 먼저 완료하세요.',
     }, { status: 400 });
   }
 
