@@ -620,7 +620,7 @@ npm run benchmark:product-ocr:ci
 node --check scripts/audit-product-mobile-landing-readiness.mjs
 ```
 
-After deployment or remote DB/data changes, run the live readiness audit with `npm run verify:product-registration-learning:live`, `npm run verify:product-registration-live-samples:ci`, or `npx tsx scripts/audit-product-mobile-landing-readiness.mjs --public-only --strict` using the appropriate filters. Before release handoff, run `npm run verify:product-registration-learning:full` so the same regression gates, stored live-sample learning verification, live audit, and production build pass together.
+After deployment or remote DB/data changes, run the live readiness audit with `npm run verify:product-registration-learning:live`, `npm run verify:product-registration-live-samples:ci`, or `npm run audit:product-mobile-readiness:public` using the appropriate filters. Public release handoff must include the public HTML proof path (`--verify-public-html`) so a stale or broken `/packages/{id}` customer page cannot be reported as ready from DB/V3/A4 checks alone. Before release handoff, run `npm run verify:product-registration-learning:full` so the same regression gates, stored live-sample learning verification, live audit, and production build pass together.
 
 The strict live audit must fail customer-visible samples when the latest V3 draft is `blocked`, `needs_review`, or missing. For attraction matching, the latest `product_registration_drafts.match_summary.attraction_unmatched_count` is authoritative; the legacy `unmatched_activities` queue is only a fallback when no draft summary exists, and only unresolved pending rows count.
 

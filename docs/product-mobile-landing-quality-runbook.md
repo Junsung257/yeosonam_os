@@ -99,13 +99,15 @@ npm run build
 Mobile/A4 readiness:
 
 ```bash
-node scripts/audit-product-mobile-landing-readiness.mjs --public-only --strict --limit=2000 --json
+npm run audit:product-mobile-readiness:public
 npx tsx scripts/audit-mobile-attraction-photo-coverage.ts --status=active --limit=500 --json
 ```
 
-Folder registration must pass `scripts/check-upload-db-health.ts` before HWP extraction, parser/LLM work, or mobile proof. If the preflight report says `DB_HEALTHCHECK_TIMEOUT`, the correct result is "not started because storage is unavailable"; it is not a parser failure and not a partial mobile verification.
+`audit:product-mobile-readiness:public` includes `--verify-public-html`. This is mandatory because DB/V3/A4 checks can pass while the actual public `/packages/{id}` HTML still renders a stale 404, generic title, missing price marker, missing itinerary marker, or missing inquiry marker.
 
-When the healthcheck times out, run `scripts/diagnose-upload-db-health.ts`. `REST_TIMEOUT_OR_522` means the Supabase project host is reachable but `/rest/v1` table/API calls are timing out or returning gateway 522. In that state, do not retry bulk registration; keep producing extraction/offline audit artifacts only and retry persistence after REST health recovers.
+Folder registration must pass `npm run check:upload-db-health` before HWP extraction, parser/LLM work, or mobile proof. If the preflight report says `DB_HEALTHCHECK_TIMEOUT`, the correct result is "not started because storage is unavailable"; it is not a parser failure and not a partial mobile verification.
+
+When the healthcheck times out, run `node scripts/check-db-health.js` again after reducing load or restarting the Supabase project. `REST_TIMEOUT_OR_522` means the Supabase project host is reachable but `/rest/v1` table/API calls are timing out or returning gateway 522. In that state, do not retry bulk registration; keep producing extraction/offline audit artifacts only and retry persistence after REST health recovers.
 
 If live `/packages/{id}` or `/lp/{id}` navigation times out while the Supabase project status is `ACTIVE_HEALTHY`, treat it as a live Data API pressure incident, not as a mobile UI pass/fail. Check Supabase API logs for repeated 503/504/522 on these patterns:
 

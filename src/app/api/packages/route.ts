@@ -780,6 +780,34 @@ export async function PATCH(request: NextRequest) {
           blocked: approvalBlocks,
         });
       }
+      const { data: packageRows, error: packageRowsError } = await supabaseAdmin
+        .from('travel_packages')
+        .select('id, audit_report, updated_at')
+        .in('id', packageIds);
+      if (packageRowsError) throw packageRowsError;
+      const packageRowById = new Map((packageRows ?? []).map(row => [String(row.id), row]));
+      const mobileProofBlocks = packageIds
+        .map(id => {
+          const row = packageRowById.get(String(id));
+          const mobileProof = evaluateCustomerMobileProof({
+            auditReport: row?.audit_report ?? null,
+            packageUpdatedAt: (row as { updated_at?: string | null } | undefined)?.updated_at ?? null,
+          });
+          return mobileProof.ok
+            ? null
+            : {
+                packageId: id,
+                reason: mobileProof.reason,
+                proof: mobileProof.proof,
+              };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+      if (mobileProofBlocks.length > 0) {
+        return ApiErrors.conflict('Customer publishing is blocked. Actual /packages mobile browser proof is required before bulk approval.', {
+          code: 'MOBILE_BROWSER_PROOF_REQUIRED_FOR_BULK_APPROVAL',
+          blocked: mobileProofBlocks,
+        });
+      }
       const now = new Date().toISOString();
       const { error } = await supabaseAdmin
         .from('travel_packages')

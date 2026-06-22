@@ -30,11 +30,15 @@ describe('packages bulk/customer publication gate', () => {
     const bulkIndex = source.indexOf("if (action === 'bulk_approve')");
     const sourceGateIndex = source.indexOf('const sourceAuditBlock = await assertPackageSourceAuditAllowsPublication(id)');
     const v3GateIndex = source.indexOf('const gate = evaluateV3CustomerNoticeGate(id, latestDraft)');
-    const updateIndex = source.indexOf("status: 'approved'", v3GateIndex);
+    const mobileProofIndex = source.indexOf('const mobileProofBlocks = packageIds', v3GateIndex);
+    const mobileProofGateIndex = source.indexOf('MOBILE_BROWSER_PROOF_REQUIRED_FOR_BULK_APPROVAL', mobileProofIndex);
+    const updateIndex = source.indexOf("status: 'approved'", mobileProofGateIndex);
 
     expect(bulkIndex).toBeGreaterThanOrEqual(0);
     expect(sourceGateIndex).toBeGreaterThan(bulkIndex);
     expect(v3GateIndex).toBeGreaterThan(sourceGateIndex);
-    expect(updateIndex).toBeGreaterThan(v3GateIndex);
+    expect(mobileProofIndex).toBeGreaterThan(v3GateIndex);
+    expect(mobileProofGateIndex).toBeGreaterThan(mobileProofIndex);
+    expect(updateIndex).toBeGreaterThan(mobileProofGateIndex);
   });
 });

@@ -26,6 +26,18 @@ function readMobileReadinessAudit(): string {
   return readFileSync(join(process.cwd(), 'scripts/audit-product-mobile-landing-readiness.mjs'), 'utf8');
 }
 
+function readPackageJson(): string {
+  return readFileSync(join(process.cwd(), 'package.json'), 'utf8');
+}
+
+function readLearningEngineVerifier(): string {
+  return readFileSync(join(process.cwd(), 'scripts/verify-product-registration-learning-engine.mjs'), 'utf8');
+}
+
+function readMobileQualityEngine(): string {
+  return readFileSync(join(process.cwd(), 'scripts/run-product-registration-mobile-quality-engine.ts'), 'utf8');
+}
+
 function readPersistenceRows(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/persistence-rows.ts'), 'utf8');
 }
@@ -687,6 +699,26 @@ describe('upload route registration pipeline boundary', () => {
     expect(audit).toContain("failures.push('public_html_failure')");
     expect(audit).toContain("strictFailures.push('public_html_failure')");
     expect(audit).toContain('render.public_html_failure');
+  });
+
+  it('fails mobile/A4 audit before product checks when Supabase REST is unavailable', () => {
+    const audit = readMobileReadinessAudit();
+
+    expect(audit).toContain('async function checkSupabaseRestHealth()');
+    expect(audit).toContain('DB_HEALTHCHECK_TIMEOUT_OR_UNREACHABLE');
+    expect(audit).toContain('const supabaseHealth = await checkSupabaseRestHealth()');
+  });
+
+  it('wires public HTML proof into operational mobile readiness routines', () => {
+    const packageJson = readPackageJson();
+    const learningVerifier = readLearningEngineVerifier();
+    const mobileQualityEngine = readMobileQualityEngine();
+
+    expect(packageJson).toContain('"check:upload-db-health"');
+    expect(packageJson).toContain('"audit:product-mobile-readiness:public"');
+    expect(packageJson).toContain('--verify-public-html');
+    expect(learningVerifier).toContain('--verify-public-html');
+    expect(mobileQualityEngine).toContain('--verify-public-html');
   });
 
   it('uses the latest V3 draft match summary before stale unmatched queue rows in mobile/A4 audit', () => {
