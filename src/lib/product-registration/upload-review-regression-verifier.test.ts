@@ -203,4 +203,31 @@ DAY 1
     expect(report.checks[0]?.coveredCodes).toContain('FLIGHT_TIME_MISMATCH');
     expect(report.checks[0]?.uncoveredCodes).not.toContain('CUSTOMER_RENDER_BLOCKED');
   });
+
+  it('passes soft upload timeout rows when saved raw text is available for replay', () => {
+    const report = buildUploadReviewRegressionReport({
+      rows: [
+        row({
+          product_title: '광저우일반버스 · 3박5일 · BX0000',
+          error_reason: 'UPLOAD_PIPELINE_SOFT_TIMEOUT: uploadRequestId=50efdd8a elapsedMs=240015',
+          raw_text_chunk: `광저우 일반버스 3박5일
+출발일 2026.07.01
+상품가 599,000원
+DAY 1 부산 출발 / 광저우 도착
+DAY 2 광저우 시내관광
+DAY 3 자유일정
+DAY 4 공항 이동
+DAY 5 부산 도착`,
+        }),
+      ],
+    });
+
+    expect(report.checked).toBe(1);
+    expect(report.passed).toBe(1);
+    expect(report.failed).toBe(0);
+    expect(report.skipped).toBe(0);
+    expect(report.codeCounts.UPLOAD_PIPELINE_SOFT_TIMEOUT).toBe(1);
+    expect(report.uncoveredCodeCounts.UPLOAD_PIPELINE_SOFT_TIMEOUT).toBeUndefined();
+    expect(report.checks[0]?.coveredCodes).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT');
+  });
 });

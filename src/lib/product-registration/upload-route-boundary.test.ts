@@ -118,6 +118,11 @@ describe('upload route registration pipeline boundary', () => {
 
     expect(page).toContain('const MAX_CONCURRENT = 1;');
     expect(page).toContain('uploadExceptionMessage(err)');
+    expect(page).toContain("status: 'waiting' | 'processing' | 'done' | 'deferred' | 'error'");
+    expect(page).toContain('function isUploadDeferredForReplay');
+    expect(page).toContain('function deferredUploadResult');
+    expect(page).toContain("status: 'deferred'");
+    expect(page).toContain('자동 재처리 대기');
     expect(page).toContain('SESSION_EXPIRED_NEEDS_LOGIN');
     expect(page).toContain('로그인 시간이 만료');
   });
