@@ -136,6 +136,27 @@
 
 ---
 
+## ERR-SHIZUOKA-false-clean-mobile-render@2026-06-22
+
+- **Discovered**: 2026-06-22
+- **Domain**: product registration | upload verify | mobile landing | itinerary semantics
+- **Product**: `시즈오카 · 2박 3일 · BX1645` (`9e13834b-7329-4b6d-b059-20c3507607ad`)
+- **Source vs result**: The upload list showed a clean-looking verification result even though the saved customer data was not mobile-landing-ready. The package was still customer-private, but the operator-facing result made it look cleaner than it was. The saved itinerary had `2박 3일` product data with `itinerary_data.meta.nights=1`, meal-only schedule rows, and shopping/notice rows that could carry attraction-card semantics.
+- **Root cause**: Previous verification separated source/DB checks from final customer-render semantics. Pending unmatched entity review was added to the upload gate in PR #387, but duration/meta mismatch and schedule entity/card contamination were still not enforced directly inside `runUploadVerify()`.
+- **Fix**:
+  - Added `C16 customer render duration contract` to fail itinerary day-count, duplicate-day, trip_style, and meta day/night disagreements before customer render.
+  - Added `C17 customer render entity contract` to fail meal-only rows in timeline and non-attraction rows carrying attraction cards/photos.
+  - Added regression coverage for the Shizuoka-style `meta.nights=1` on a `2박 3일` product and `꿔바로우` / `면세점` schedule-card contamination.
+  - Updated `docs/product-registration-current-ssot.md` so `C15/C16/C17` are mandatory customer-render gates, not advisory checks.
+- **Verification**:
+  - `npx vitest run src/lib/upload-verify.test.ts`
+  - `npx vitest run src/lib/upload-verify.test.ts src/lib/product-registration/upload-route-boundary.test.ts`
+  - `npm run type-check`
+- **Status**: FIXED IN ENGINE
+- **Prevention**: A product cannot be called mobile-landing-ready from upload verify unless source/DB checks, unresolved-entity review, duration/meta consistency, and customer-visible schedule entity/card semantics all pass. Existing saved products still require re-verification under the new gates.
+
+---
+
 ## ERR-BAEKDU-meal-hotel-schedule-leak@2026-06-12
 
 - **Discovered**: 2026-06-12
