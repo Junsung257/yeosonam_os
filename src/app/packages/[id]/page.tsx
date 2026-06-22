@@ -174,14 +174,36 @@ export async function generateMetadata({
     audit_status?: string | null;
   } | null = null;
   try {
-    const result = await runSupabaseQueryWithTimeout(
+    let result = await runSupabaseQueryWithTimeout(
       sb
         .from('travel_packages')
         .select('title, destination, price, product_type, product_summary, status, audit_status')
         .eq('id', id)
         .maybeSingle(),
       { label: 'package.metadata.primary', timeoutMs: 1800 },
-    );
+    ).catch(() => ({ data: null, error: null }));
+    if (!result.data && !result.error) {
+      await waitForPackageDetailRetry(300);
+      result = await runSupabaseQueryWithTimeout(
+        sb
+          .from('travel_packages')
+          .select('title, destination, price, product_type, product_summary, status, audit_status')
+          .eq('id', id)
+          .maybeSingle(),
+        { label: 'package.metadata.primary.retry1', timeoutMs: 3500 },
+      ).catch(() => ({ data: null, error: null }));
+    }
+    if (!result.data && !result.error) {
+      await waitForPackageDetailRetry(700);
+      result = await runSupabaseQueryWithTimeout(
+        sb
+          .from('travel_packages')
+          .select('title, destination, price, product_type, product_summary, status, audit_status')
+          .eq('id', id)
+          .maybeSingle(),
+        { label: 'package.metadata.primary.retry2', timeoutMs: 6000 },
+      ).catch(() => ({ data: null, error: null }));
+    }
     if (result.error) {
       return buildPackageNoindexMetadata(id, canonical);
     }
