@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { destinationToIsoSet } from '@/lib/destination-iso';
+import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 
 interface ItineraryDayData {
   day?: number;
@@ -21,10 +22,15 @@ export async function resolveLpHeroPhotoUrl(
 
   const collectedIds = collectAttractionIds(pkg.itinerary_data);
   if (collectedIds.length > 0) {
-    const { data: detail } = await sb
-      .from('attractions')
-      .select('id, name, photos, country, region')
-      .in('id', collectedIds);
+    const { data: detail } = await runOptionalSupabaseQuery(
+      sb
+        .from('attractions')
+        .select('id, name, photos, country, region')
+        .in('id', collectedIds)
+        .limit(30),
+      { data: [] },
+      { label: 'lp.hero.attractions-by-id', timeoutMs: 1200 },
+    );
 
     const hero = chooseHeroCandidate((detail ?? []) as unknown as AttractionData[], pkg.destination, true);
     const p = hero?.photos?.[0];
@@ -48,12 +54,16 @@ async function resolveDestinationFallbackHero(
     .flatMap(token => [`region.ilike.%${escapeSupabaseOrToken(token)}%`, `name.ilike.%${escapeSupabaseOrToken(token)}%`])
     .join(',');
 
-  const { data } = await sb
-    .from('attractions')
-    .select('id, name, photos, country, region')
-    .not('photos', 'is', null)
-    .or(filter)
-    .limit(50);
+  const { data } = await runOptionalSupabaseQuery(
+    sb
+      .from('attractions')
+      .select('id, name, photos, country, region')
+      .not('photos', 'is', null)
+      .or(filter)
+      .limit(50),
+    { data: [] },
+    { label: 'lp.hero.destination-fallback', timeoutMs: 1200 },
+  );
 
   return chooseHeroCandidate((data ?? []) as unknown as AttractionData[], destination, false);
 }
