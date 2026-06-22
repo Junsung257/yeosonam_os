@@ -164,6 +164,7 @@ steps.push(
       '--strict',
       `--limit=${Math.max(limit, 2000)}`,
       ...(publicOnly ? ['--public-only'] : []),
+      ...(publicOnly ? ['--verify-public-html'] : []),
       '--json',
     ],
   },

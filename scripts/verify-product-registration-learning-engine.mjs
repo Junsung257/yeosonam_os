@@ -100,6 +100,7 @@ if (includeLive) {
       '--limit=30',
       '--json',
       '--public-only',
+      '--verify-public-html',
     ],
   });
 }

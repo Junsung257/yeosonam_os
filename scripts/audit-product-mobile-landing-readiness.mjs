@@ -71,6 +71,57 @@ const supabase = createClient(url, serviceKey, { auth: { persistSession: false }
 const PUBLIC_STATUSES = new Set(['approved', 'active', 'published']);
 const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
 
+async function checkSupabaseRestHealth() {
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.DB_HEALTH_TIMEOUT_MS || '5000');
+  const startedAt = Date.now();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${String(url).replace(/\/+$/, '')}/rest/v1/`, {
+      signal: controller.signal,
+      headers: {
+        apikey: serviceKey,
+        authorization: `Bearer ${serviceKey}`,
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+    });
+    return {
+      ok: response.status >= 200 && response.status < 400,
+      status: response.status,
+      response_time_ms: Date.now() - startedAt,
+      reason: response.status >= 200 && response.status < 400 ? 'rest endpoint reachable' : `rest endpoint returned ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      response_time_ms: Date.now() - startedAt,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function failDatabasePreflight(health) {
+  const payload = {
+    status: 'blocked',
+    reason: 'DB_HEALTHCHECK_TIMEOUT_OR_UNREACHABLE',
+    message: 'Supabase REST/Data API is not healthy enough for mobile/A4 readiness audit.',
+    supabase_health: health,
+  };
+  if (jsonOnly) {
+    console.log(JSON.stringify(payload, null, 2));
+  } else {
+    console.error(`${payload.reason}: ${health.reason} (${health.response_time_ms}ms)`);
+  }
+  process.exit(1);
+}
+
+const supabaseHealth = await checkSupabaseRestHealth();
+if (!supabaseHealth.ok) failDatabasePreflight(supabaseHealth);
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
