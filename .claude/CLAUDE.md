@@ -7,6 +7,11 @@ Use Superpowers, when available in the Codex/Claude harness, as a general develo
 Superpowers is not the source of truth for Yeosonam domain decisions. For product registration, DB/RLS/schema changes, supplier parsing, attractions, render contracts, AI routing, and customer-facing data safety, the project SSOT files below still take priority:
 
 - `docs/product-registration-current-ssot.md`
+- `docs/blog-autopublish-contract.md`
+- `docs/affiliate-current-ssot.md`
+- `docs/settlement-current-ssot.md`
+- `docs/marketing-current-ssot.md`
+- `docs/ai-ops-current-ssot.md`
 - `.claude/skills/register/SKILL.md`
 - `.claude/CLAUDE.md`
 - `.cursor/rules/*.mdc`
@@ -75,6 +80,11 @@ Close meaningful work by naming the durable artifact: fixture/test, current SSOT
 | 도메인 | 필수 Read 파일 |
 |-------|--------------|
 | 상품 등록 | `.claude/skills/register/SKILL.md` (+ references/) |
+| 블로그 생성·발행·이미지·SEO·색인 | `docs/blog-autopublish-contract.md` (+ 운영은 `docs/blog-ops-runbook.md`) |
+| 제휴·인플루언서·추천코드·커미션 | `docs/affiliate-current-ssot.md` |
+| 정산·입금·ledger·환불·지급 | `docs/settlement-current-ssot.md` |
+| 마케팅·Ad OS·외부 광고 발행 | `docs/marketing-current-ssot.md` |
+| AI·자비스·RAG·프롬프트·모델 라우팅 | `docs/ai-ops-current-ssot.md` |
 | 서안 등 수동 legacy 어셈블러 요청 | `.claude/commands/assemble-product.md` (명시 요청 시에만) |
 | **관광지(attractions) 관리** | **`.claude/commands/manage-attractions.md`** |
 | **등록 후 상품 검증** | **`.claude/commands/validate-product.md`** (원문 ↔ A4 ↔ 모바일 3자 대조) |

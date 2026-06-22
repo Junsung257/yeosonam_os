@@ -1,6 +1,6 @@
 # AI Agent Documentation Automation
 
-Last updated: 2026-06-05
+Last updated: 2026-06-23
 
 This is the operating system for keeping Yeosonam OS documentation current without asking the user to separately organize documents later.
 
@@ -41,6 +41,11 @@ Domain SSOT files define current behavior:
 
 - `docs/product-registration-current-ssot.md`: supplier upload, mobile landing, A4 readiness.
 - `docs/product-registration-v3-standard-language.md`: customer-safe notice language.
+- `docs/blog-autopublish-contract.md`: blog generation, publish quality, images, SEO, indexing.
+- `docs/affiliate-current-ssot.md`: affiliate attribution, referral cookies, partner evidence, commission boundary.
+- `docs/settlement-current-ssot.md`: payments, ledger, settlement, payout, reconciliation.
+- `docs/marketing-current-ssot.md`: marketing automation, Ad OS, external publish boundary.
+- `docs/ai-ops-current-ssot.md`: AI provider policy, Jarvis, RAG, prompt/eval boundary.
 - `db/FIELD_POLICY.md`: customer/internal field exposure.
 
 History and evidence files are not current playbooks:
@@ -62,6 +67,10 @@ rg "keyword" docs AGENTS.md .claude --glob "!docs/audits/**"
 | New product-registration parser behavior | golden fixture and expected JSON |
 | New price-table shape | price IR parser test and golden corpus if supplier raw failed |
 | New blog generation, prompt, render, publish, indexing, image, SEO, or quality-gate behavior | blog regression test plus `docs/blog-autopublish-contract.md` or `docs/errors/blog.md` update |
+| New affiliate attribution, referral, influencer, or commission behavior | test plus `docs/affiliate-current-ssot.md` or `docs/errors/affiliate.md` update |
+| New payment, ledger, settlement, payout, or reconciliation behavior | test plus `docs/settlement-current-ssot.md` or `docs/errors/settlement.md` update |
+| New marketing automation, Ad OS, external publish, campaign action, or spend behavior | test plus `docs/marketing-current-ssot.md` or `docs/errors/marketing.md` update |
+| New AI provider, Jarvis, RAG, prompt, eval, or learning-loop behavior | eval/test plus `docs/ai-ops-current-ssot.md` or `docs/errors/ai-ops.md` update |
 | New customer-visible rule | current domain SSOT |
 | Repeated operational mistake | `db/error-registry.md` ACTIVE CHECKLIST + full entry |
 | Route/pipeline architecture change | current domain SSOT and boundary test |

@@ -12,6 +12,11 @@
 |-----------|---------------------------|
 | **도메인·DB·RLS·제휴·PII·학습 데이터·자비스** | `CURRENT_STATUS.md`, 아래 **§docs/ 주제별** 표에서 파일 고른 뒤 필요한 구간만 Read, `.claude/CLAUDE.md` 해당 절 |
 | **상품 등록·A4/모바일 렌더·관광지** | `docs/product-registration-current-ssot.md` 먼저 Read + `.claude/CLAUDE.md` 해당 절. `.claude/commands/*.md`는 수동 legacy 작업 요청 때만 참조 |
+| **블로그 생성·발행·이미지·SEO·색인** | `docs/blog-autopublish-contract.md` 먼저 Read + `docs/blog-ops-runbook.md` 필요한 구간 |
+| **제휴·인플루언서·추천코드·커미션** | `docs/affiliate-current-ssot.md` 먼저 Read + 반복 오류는 `docs/errors/affiliate.md` |
+| **정산·입금·ledger·환불·지급** | `docs/settlement-current-ssot.md` 먼저 Read + 반복 오류는 `docs/errors/settlement.md` |
+| **마케팅·Ad OS·외부 광고 발행** | `docs/marketing-current-ssot.md` 먼저 Read + 반복 오류는 `docs/errors/marketing.md` |
+| **AI·자비스·RAG·프롬프트·모델 라우팅** | `docs/ai-ops-current-ssot.md` 먼저 Read + 반복 오류는 `docs/errors/ai-ops.md` |
 | **게이미피케이션·마일리지** | `CURRENT_STATUS.md`, `docs/gamification-runbook.md`, `src/lib/gamification-service.ts`, `src/lib/mileage-service.ts` |
 | **API 응답 포맷·인증 패턴** | `.cursor/rules/api-response-format.mdc` |
 | **DB 변경·마이그레이션** | `.cursor/rules/db-migration-policy.mdc`, `CURRENT_STATUS.md`, `db/FIELD_POLICY.md` |
@@ -44,8 +49,13 @@
 
 | 주제 | 파일 |
 |------|------|
-| 제휴 추적·쿠키·코브랜딩 | `docs/affiliate-attribution.md` |
-| 블로그 운영 런북 | `docs/blog-system-runbook.md` |
+| **제휴 현재 SSOT·추천코드·커미션 계약** | **`docs/affiliate-current-ssot.md`** |
+| 제휴 추적·쿠키·코브랜딩 세부 | `docs/affiliate-attribution.md` |
+| **블로그 자동발행 현재 SSOT·품질 계약** | **`docs/blog-autopublish-contract.md`** |
+| 블로그 운영 런북 | `docs/blog-system-runbook.md`, `docs/blog-ops-runbook.md` |
+| **정산 현재 SSOT·ledger·지급 계약** | **`docs/settlement-current-ssot.md`** |
+| **마케팅 현재 SSOT·Ad OS·외부발행 계약** | **`docs/marketing-current-ssot.md`** |
+| **AI Ops 현재 SSOT·자비스·RAG·모델 라우팅** | **`docs/ai-ops-current-ssot.md`** |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |
 | Supabase Auth 오픈 보안 게이트 | `docs/supabase-auth-open-gate.md` |

@@ -11,6 +11,7 @@ Next.js App Router B2B2C 여행 SaaS: 예약 상태 머신, Supabase, 어드민 
 - **진입점:** 루트 `AGENTS.md`
 - **구현 레시피·공개 경로·DB 패턴:** `.claude/CLAUDE.md`
 - **최신 스키마·메뉴 요약:** `CURRENT_STATUS.md`
+- **영역별 현재 계약:** 상품등록 `docs/product-registration-current-ssot.md`, 블로그 `docs/blog-autopublish-contract.md`, 제휴 `docs/affiliate-current-ssot.md`, 정산 `docs/settlement-current-ssot.md`, 마케팅 `docs/marketing-current-ssot.md`, AI Ops `docs/ai-ops-current-ssot.md`
 
 ## 코딩 시 주의
 

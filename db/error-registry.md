@@ -44,6 +44,7 @@
 | 블로그 | `docs/errors/blog.md` | slug, 렌더 무결성, 이미지 품질, SEO, 자동 발행 |
 | 제휴 | `docs/errors/affiliate.md` | 제휴 귀속, 추천코드, 인플루언서, 커미션 |
 | 정산 / ledger | `docs/errors/settlement.md` | 정산, 장부, 입금, 은행/SMS, 세무 |
+| 마케팅 / Ad OS | `docs/errors/marketing.md` | 캠페인, 외부 광고 발행, 소재, spend guardrail |
 | AI / 자비스 / LLM | `docs/errors/ai-ops.md` | 자비스, QA, RAG, 프롬프트, eval |
 | 공통 | `docs/errors/common.md` | 문서 운영, lint, Next 업그레이드, 공통 절차 |
 
