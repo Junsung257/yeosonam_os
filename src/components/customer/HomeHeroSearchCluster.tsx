@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Heart, Plane, Users, type LucideIcon } from 'lucide-react';
 import { useChatStore } from '@/lib/chat-store';
 import { REGIONS } from '@/lib/regions';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
@@ -39,6 +40,75 @@ const POPULAR_DESTINATIONS: string[] = [
 type PickerStep = 'hub' | 'when' | 'where' | 'budget';
 
 type BudgetPreset = 'any' | 'value' | 'standard' | 'premium';
+
+type HomeHeroScenario = {
+  key: string;
+  title: string;
+  summary: string;
+  proof: string;
+  intent: string;
+  partyType: string;
+  query: string;
+  destination: string | null;
+  budget: string | null;
+  selectedProducts: string[];
+  Icon: LucideIcon;
+};
+
+const HOME_HERO_SCENARIOS: HomeHeroScenario[] = [
+  {
+    key: 'filial_busan',
+    title: '부산 출발 효도여행',
+    summary: '60대 부모님 일정·항공·호텔까지 맞춰보기',
+    proof: '이동 동선과 노쇼핑 조건 우선',
+    intent: 'filial_trip',
+    partyType: 'family',
+    query: '부산 출발 60대 부모님 효도여행. 이동이 편하고 노쇼핑 조건을 우선으로 비교해주세요.',
+    destination: null,
+    budget: '표준(50~100만원)',
+    selectedProducts: ['부산 출발 효도여행 맞춤 상담'],
+    Icon: Heart,
+  },
+  {
+    key: 'family_no_shopping',
+    title: '노쇼핑 가족여행',
+    summary: '동남아 가족 일정과 추가비용 가능성 확인',
+    proof: '아이·부모 동반 일정에 적합',
+    intent: 'family_trip',
+    partyType: 'family',
+    query: '노쇼핑 동남아 가족여행. 추가 비용 가능성과 아이 동반 일정을 같이 비교해주세요.',
+    destination: '동남아',
+    budget: '표준(50~100만원)',
+    selectedProducts: ['노쇼핑 가족여행 맞춤 상담'],
+    Icon: Users,
+  },
+  {
+    key: 'workshop_group',
+    title: '20명 단체 워크샵',
+    summary: '견적·객실·버스·식사 조건 한 번에 정리',
+    proof: '단체 견적서 준비에 최적',
+    intent: 'workshop_group',
+    partyType: 'company',
+    query: '20명 단체 워크샵. 객실, 버스, 식사, 행사 동선까지 포함해 견적을 비교해주세요.',
+    destination: null,
+    budget: null,
+    selectedProducts: ['20명 단체 워크샵 견적 상담'],
+    Icon: Users,
+  },
+  {
+    key: 'golf_compare',
+    title: '3박5일 골프 비교',
+    summary: '항공·그린피·숙소 포함가를 빠르게 비교',
+    proof: '추가 라운드 비용 확인',
+    intent: 'golf_compare',
+    partyType: 'group',
+    query: '3박5일 골프 여행. 항공, 그린피, 숙소 포함가와 추가 라운드 비용을 비교해주세요.',
+    destination: null,
+    budget: '프리미엄(100만원 이상)',
+    selectedProducts: ['3박5일 골프 비교 상담'],
+    Icon: Plane,
+  },
+];
 
 function budgetPresetFromParams(priceMin: string, priceMax: string): BudgetPreset {
   if (!priceMin && !priceMax) return 'any';
@@ -262,6 +332,21 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   const groupInquiryHandoffSummaryText = groupInquiryHandoffItems.length > 0
     ? `견적 문의 전달 조건: ${groupInquiryHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
     : '견적 문의 전달 조건은 출발지부터 정리됩니다.';
+  const scenarioInquiryLinks = useMemo(
+    () => HOME_HERO_SCENARIOS.map((scenario) => ({
+      ...scenario,
+      href: buildGroupInquiryHandoffHref({
+        source: 'home_hero_scenario',
+        intent: scenario.intent,
+        partyType: scenario.partyType,
+        query: scenario.query,
+        destination: scenario.destination,
+        budget: scenario.budget,
+        selectedProducts: scenario.selectedProducts,
+      }),
+    })),
+    [],
+  );
 
   useEffect(() => {
     if (step === null) return;
@@ -358,6 +443,25 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
     });
   }
 
+  function trackScenarioInquiryClick(scenario: HomeHeroScenario & { href: string }) {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: `home_hero_scenario_${scenario.key}`,
+      page_url: pageUrl,
+      budget: scenario.budget,
+      destination: scenario.destination,
+      party_type: scenario.partyType,
+      selected_products: scenario.selectedProducts,
+      metadata: {
+        source: 'home_hero_scenario',
+        href: scenario.href,
+        intent: scenario.intent,
+        scenario_key: scenario.key,
+        scenario_title: scenario.title,
+      },
+    });
+  }
+
   const stepTitle: Record<PickerStep, string> = {
     hub: '어디서 출발할까요?',
     when: '언제 떠날까요?',
@@ -425,6 +529,53 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           </span>
           <span className="text-[13px] font-bold text-brand bg-brand-light px-3 py-1.5 rounded-full flex-shrink-0">검색</span>
         </button>
+        <section
+          data-testid="home-hero-scenario-rail"
+          aria-label="상황별 빠른 견적 문의"
+          className="space-y-2"
+        >
+          <div className="flex items-center justify-between gap-3 px-0.5">
+            <p className="text-[12px] font-extrabold text-text-primary">바로 많이 찾는 상담</p>
+            <span className="text-[11px] font-bold text-text-secondary">조건 전달됨</span>
+          </div>
+          <div className="flex snap-x gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {scenarioInquiryLinks.map((scenario) => {
+              const Icon = scenario.Icon;
+              return (
+                <Link
+                  key={scenario.key}
+                  href={scenario.href}
+                  data-testid="home-hero-scenario-inquiry"
+                  aria-label={`${scenario.title} 견적 문의. ${scenario.summary}. ${scenario.proof}`}
+                  onClick={() => trackScenarioInquiryClick(scenario)}
+                  className="group flex min-h-[112px] w-[246px] shrink-0 snap-start flex-col justify-between rounded-lg border border-[#E5E7EB] bg-white px-3.5 py-3 text-left shadow-sm transition hover:border-brand/40 hover:bg-[#F8FAFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2"
+                >
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="flex min-w-0 items-start gap-2.5">
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-light text-brand">
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-extrabold text-text-primary">
+                          {scenario.title}
+                        </span>
+                        <span className="mt-1 block text-[11px] font-semibold leading-4 text-text-secondary">
+                          {scenario.summary}
+                        </span>
+                      </span>
+                    </span>
+                    <span className="mt-1 shrink-0 text-brand transition group-hover:translate-x-0.5" aria-hidden>
+                      <ArrowRight className="h-4 w-4" />
+                    </span>
+                  </span>
+                  <span className="mt-2 block rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-extrabold text-text-body">
+                    {scenario.proof}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
           <Link href="/packages?urgency=1" className={`${pillBase} bg-gradient-to-br from-brand to-[#2563EB] text-white shadow-md shadow-brand/20`}>
             <span aria-hidden>🔥</span>마감·특가

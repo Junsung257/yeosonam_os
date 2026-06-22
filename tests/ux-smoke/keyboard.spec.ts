@@ -131,6 +131,20 @@ test.describe('keyboard access smoke', () => {
     await expect(page.locator('[data-testid="group-inquiry-sticky-handoff-summary"]:visible')).toBeVisible();
   });
 
+  test('home hero scenario inquiry carries ready-made consultation context', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    await expect(page.locator('[data-testid="home-hero-scenario-rail"]:visible')).toBeVisible();
+    const scenarioInquiry = page.locator('[data-testid="home-hero-scenario-inquiry"]:visible').first();
+    await expectCanFocus(scenarioInquiry, 'home hero scenario inquiry');
+    await expect(scenarioInquiry).toHaveAttribute('href', /\/group-inquiry\?.*source=home_hero_scenario/);
+    const href = await scenarioInquiry.getAttribute('href');
+    expect(href).toContain('selected_products=');
+    expect(href).toContain('party_type=');
+    expect(href).toContain('query=');
+  });
+
   test('home footer group inquiry preserves entry context', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
