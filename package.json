@@ -64,6 +64,7 @@
     "audit:product-mobile-readiness": "npx tsx scripts/audit-product-mobile-landing-readiness.mjs",
     "audit:product-mobile-readiness:ci": "npx tsx scripts/audit-product-mobile-landing-readiness.mjs --strict --days=2 --limit=30 --json",
     "audit:product-mobile-readiness:public": "npx tsx scripts/audit-product-mobile-landing-readiness.mjs --public-only --strict --limit=2000 --days=365 --verify-public-html --json",
+    "repair:product-mobile-readiness": "npx tsx scripts/repair-product-mobile-readiness-candidates.ts",
     "extract:upload-inbox": "npx tsx scripts/register-upload-inbox.ts",
     "audit:upload-inbox-sources": "npx tsx scripts/audit-upload-inbox-extracted-sources.ts",
     "register:upload-inbox-from-report": "npx tsx scripts/register-upload-inbox-from-report.ts --register --fill-attraction-photos --audit-mobile",
