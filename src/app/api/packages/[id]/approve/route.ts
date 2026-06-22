@@ -13,6 +13,7 @@ import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -223,6 +224,38 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       );
     }
     const publishGate = delivery.publishGate;
+    const mobileProof = evaluateCustomerMobileProof({
+      auditReport: (pkg as { audit_report?: unknown }).audit_report ?? sourceAuditReport,
+      packageUpdatedAt: (pkg as { updated_at?: string | null }).updated_at ?? null,
+    });
+    if (!mobileProof.ok) {
+      await supabaseAdmin
+        .from('travel_packages')
+        .update({
+          audit_status: 'blocked',
+          audit_report: {
+            ...sourceAuditReport,
+            mobile_browser_proof: mobileProof.proof,
+            mobile_browser_proof_required: {
+              status: 'fail',
+              reason: mobileProof.reason,
+              checked_at: new Date().toISOString(),
+            },
+          },
+          audit_checked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      return NextResponse.json(
+        {
+          error: 'Customer publishing is blocked. Actual /packages mobile browser proof is required before approval.',
+          trust_score: approvalTrustScore,
+          mobile_browser_proof: mobileProof,
+          source_verify: sourceVerify,
+        },
+        { status: 409 },
+      );
+    }
     if (publishGate.decision === 'block') {
       return NextResponse.json(
         {
@@ -277,7 +310,11 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         marketing_copies: updatedCopies,
         ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
         audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
-        audit_report: sourceAuditReport,
+        audit_report: {
+          ...sourceAuditReport,
+          mobile_browser_proof: mobileProof.proof,
+          approved_from_mobile_browser_proof_at: mobileProof.proof?.checked_at ?? null,
+        },
         audit_checked_at: new Date().toISOString(),
         updated_at:       new Date().toISOString(),
       })

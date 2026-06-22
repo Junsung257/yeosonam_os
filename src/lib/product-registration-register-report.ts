@@ -6,6 +6,8 @@ export interface UploadRegisterReportPackage {
   airline: string | null;
   status: string | null;
   audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
   departure_days: string | null;
   commission_rate?: number | null;
   land_operator?: string | null;
@@ -21,6 +23,9 @@ export interface UploadRegisterReportRow {
   airline: string | null;
   status: string | null;
   audit_status: string | null;
+  mobile_browser_proof_status: string | null;
+  mobile_browser_proof_checked_at: string | null;
+  mobile_browser_proof_required: boolean;
   departure_days: string | null;
   mobile_url: string;
   lp_url: string;
@@ -30,6 +35,28 @@ export interface UploadRegisterReportRow {
   itinerary_days_count: number;
   commission_rate: number | null;
   land_operator: string | null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function mobileProofFromAuditReport(auditReport: unknown): {
+  status: string | null;
+  checkedAt: string | null;
+  required: boolean;
+} {
+  const report = asRecord(auditReport);
+  const proof = asRecord(report?.mobile_browser_proof);
+  const status = typeof proof?.status === 'string' ? proof.status : null;
+  const checkedAt = typeof proof?.checked_at === 'string' ? proof.checked_at : null;
+  return {
+    status,
+    checkedAt,
+    required: status !== 'pass' || !checkedAt,
+  };
 }
 
 function withBaseUrl(baseUrl: string, path: string): string {
@@ -49,6 +76,7 @@ export function buildUploadRegisterReport(
     const priceRowsSaved = map instanceof Map ? map.get(pkg.id) : map?.[pkg.id];
     const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
     const itineraryData = pkg.itinerary_data as { days?: unknown[] } | null | undefined;
+    const mobileProof = mobileProofFromAuditReport(pkg.audit_report);
     return {
       package_id: pkg.id,
       short_code: pkg.internal_code,
@@ -57,6 +85,9 @@ export function buildUploadRegisterReport(
       airline: pkg.airline,
       status: pkg.status,
       audit_status: pkg.audit_status ?? null,
+      mobile_browser_proof_status: mobileProof.status,
+      mobile_browser_proof_checked_at: mobileProof.checkedAt,
+      mobile_browser_proof_required: mobileProof.required,
       departure_days: pkg.departure_days,
       mobile_url: withBaseUrl(baseUrl, `/packages/${pkg.id}`),
       lp_url: withBaseUrl(baseUrl, `/lp/${pkg.id}`),

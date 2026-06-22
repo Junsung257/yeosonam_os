@@ -47,4 +47,18 @@ describe('package approve route customer delivery gate', () => {
     expect(blockBody).toContain('{ status: 409 }');
     expect(blockBody).toContain('customer_deliverable: delivery.customerDeliverable');
   });
+
+  it('requires actual packages mobile browser proof before active status update', () => {
+    const source = routeSourceWithoutComments();
+    const mobileProofIndex = source.indexOf('const mobileProof = evaluateCustomerMobileProof');
+    const mobileProofBlockIndex = source.indexOf('if (!mobileProof.ok)');
+    const publishGateBlockIndex = source.indexOf("if (publishGate.decision === 'block')");
+    const activeIndex = source.indexOf("status:           'active'");
+
+    expect(mobileProofIndex).toBeGreaterThanOrEqual(0);
+    expect(mobileProofBlockIndex).toBeGreaterThan(mobileProofIndex);
+    expect(publishGateBlockIndex).toBeGreaterThan(mobileProofBlockIndex);
+    expect(activeIndex).toBeGreaterThan(mobileProofBlockIndex);
+    expect(source.slice(mobileProofBlockIndex, activeIndex)).toContain('Actual /packages mobile browser proof is required before approval.');
+  });
 });

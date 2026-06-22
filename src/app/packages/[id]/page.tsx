@@ -1,6 +1,7 @@
 import type React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabase, getSupabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import DetailClient from './DetailClient';
@@ -22,6 +23,7 @@ import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
+import { getSecret } from '@/lib/secret-registry';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -35,6 +37,12 @@ function getPackageUrl(id: string): string {
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+async function isInternalRenderProofRequest(): Promise<boolean> {
+  const secret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
+  if (!secret) return false;
+  return (await headers()).get('x-yeosonam-render-proof') === secret;
 }
 
 function getNonEmptyString(value: unknown): string | null {
@@ -205,7 +213,8 @@ export async function generateMetadata({
   if (!data) notFound();
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
-  if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) {
+  const allowInternalProof = await isInternalRenderProofRequest();
+  if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) {
     notFound();
   }
   const title = String(data.title || data.destination || '여소남 패키지 여행');
@@ -242,6 +251,7 @@ export default async function PackageDetailPage({
   if (!sbOrNull) notFound();
   const sb = sbOrNull;
   const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
+  const allowInternalProof = await isInternalRenderProofRequest();
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
@@ -262,12 +272,12 @@ export default async function PackageDetailPage({
 
   // 감사 차단 상품은 고객 상세도 404 처리 (감사 게이트 이중 가드)
   if ('audit_status' in pkg && pkg.audit_status === 'blocked') {
-    notFound();
+    if (!allowInternalProof) notFound();
   }
 
   // status 게이트 — REVIEW_NEEDED/draft/expired/archived 등은 고객 노출 차단
   const pkgStatus = 'status' in pkg ? pkg.status : undefined;
-  if (!isCustomerVisibleStatus(pkgStatus)) {
+  if (!allowInternalProof && !isCustomerVisibleStatus(pkgStatus)) {
     notFound();
   }
 
