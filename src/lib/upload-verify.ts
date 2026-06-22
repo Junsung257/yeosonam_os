@@ -91,6 +91,29 @@ function priceValue(row: { price?: number; adult_price?: number; adult_selling_p
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function isValidOptionalTourPrice(value: number | string | null | undefined): boolean {
+  if (value === null || value === undefined || value === '') return true;
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0;
+
+  const raw = String(value).trim();
+  if (!raw) return true;
+  if (/^(?:무료|포함|없음)$/i.test(raw)) return true;
+  if (/^(?:미정|문의|현지문의|별도문의|TBD)$/i.test(raw)) return false;
+
+  const compact = raw.replace(/\s+/g, '');
+  if (/^-/.test(compact) || /(?:^|[^0-9])-[$＄₩￦￥¥€]?\d/.test(compact)) return false;
+
+  const hasPriceUnit = /(?:[$＄₩￦￥¥€]|USD|KRW|JPY|CNY|RMB|VND|달러|불|원|엔|위안|동|\/인|1인|인당|perperson|pp)/i.test(compact);
+  const numericOnly = /^[+]?\d[\d,]*(?:\.\d+)?$/.test(compact);
+  const priceLike = compact.match(/[+]?(?:[$＄₩￦￥¥€])?\d[\d,]*(?:\.\d+)?(?:USD|KRW|JPY|CNY|RMB|VND|달러|불|원|엔|위안|동)?/i);
+
+  if (!numericOnly && !hasPriceUnit) return false;
+  if (!priceLike) return false;
+
+  const amount = Number(priceLike[0].replace(/[^\d.]/g, ''));
+  return Number.isFinite(amount) && amount >= 0;
+}
+
 function minPrice(rows: Array<{ price?: number; adult_price?: number; adult_selling_price?: number; selling_price?: number }>): number | null {
   const prices = rows.map(priceValue).filter((value): value is number => value != null);
   return prices.length > 0 ? Math.min(...prices) : null;
@@ -462,9 +485,7 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   for (const o of opts) {
     if (!o || typeof o !== 'object') continue;
     const obj = o as { name?: string; price?: number | string | null };
-    if (obj.price === null || obj.price === undefined || obj.price === '') continue;
-    const num = typeof obj.price === 'number' ? obj.price : Number(String(obj.price).replace(/[, ]/g, ''));
-    if (!Number.isFinite(num) || num < 0) {
+    if (!isValidOptionalTourPrice(obj.price)) {
       badOpt.push(`${obj.name ?? '?'} = ${JSON.stringify(obj.price)}`);
     }
   }
