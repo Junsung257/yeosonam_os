@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Layers,
   Rocket,
@@ -46,12 +46,18 @@ import {
   buildLaunchWizardSteps,
   getAdOsAgentOperatingModel,
   getActiveModeByPlatform,
+  getBeginnerAdOpsModel,
   getCompletionDrilldown,
   getExecutionStateEntries,
   getTenantReportView,
   getTotalMappingStatus,
 } from './_lib/view-model';
 import { AiAdTeamPanel } from './_components/AiAdTeamPanel';
+import {
+  AdOsWorkspaceTabs,
+  parseAdOsWorkspaceTab,
+  type AdOsWorkspaceTab,
+} from './_components/AdOsWorkspaceTabs';
 import { AdminSurfaceQaPanel } from './_components/AdminSurfaceQaPanel';
 import { AutomationPolicyPanel } from './_components/AutomationPolicyPanel';
 import { BudgetOperationsPanel } from './_components/BudgetOperationsPanel';
@@ -59,6 +65,7 @@ import {
   type BudgetOperationActionHandlers,
   type BudgetOperationActionLoading,
 } from './_components/BudgetOperationActionBar';
+import { BeginnerAdOpsPanel } from './_components/BeginnerAdOpsPanel';
 import { ChangeRequestsPanel } from './_components/ChangeRequestsPanel';
 import { ChannelExecutionStatePanel } from './_components/ChannelExecutionStatePanel';
 import { CompletionAuditPanel } from './_components/CompletionAuditPanel';
@@ -88,6 +95,8 @@ import { TenantSafetyPolicyPanel } from './_components/TenantSafetyPolicyPanel';
 
 export default function AdOsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<AdOsWorkspaceTab>(() => parseAdOsWorkspaceTab(searchParams.get('tab')));
   const {
     summary,
     budgetDrafts,
@@ -1786,9 +1795,26 @@ export default function AdOsPage() {
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [completionPanelRequested, summary]);
 
+  useEffect(() => {
+    setActiveTab(parseAdOsWorkspaceTab(searchParams.get('tab')));
+  }, [searchParams]);
+
+  const selectWorkspaceTab = (tab: AdOsWorkspaceTab) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === 'run') {
+      params.delete('tab');
+    } else {
+      params.set('tab', tab);
+    }
+    const query = params.toString();
+    router.replace(query ? `/admin/ad-os?${query}` : '/admin/ad-os', { scroll: false });
+  };
+
   const totalMappingStatus = getTotalMappingStatus(summary);
   const completionDrilldown = getCompletionDrilldown(summary);
   const adOsAgentOperatingModel = getAdOsAgentOperatingModel(summary);
+  const beginnerAdOpsModel = getBeginnerAdOpsModel(summary);
   const launchSteps = buildLaunchSteps(summary);
   const launchWizardSteps = buildLaunchWizardSteps(summary);
   const executionStateEntries = getExecutionStateEntries(summary);
@@ -2016,124 +2042,152 @@ export default function AdOsPage() {
 
       {summary && (
         <>
-          <LaunchActionQueuePanel
-            actions={summary.launch_action_queue || []}
-            actionHandlers={actionHandlers}
-            actionLoading={actionLoading}
-            naverSetupPacket={naverSetupPacket}
-            onDownloadNaverKeywordCsv={downloadNaverKeywordCsv}
-            onCopyNaverKeywordCsv={copyNaverKeywordCsv}
-          />
-
-          <LaunchWizardPanel
-            launchSteps={launchSteps}
-            launchWizardSteps={launchWizardSteps}
-            externalLaunchStatus={summary.external_launch_status}
-            onRunPilotSetup={runPilotSetup}
-            runningPilotSetup={runningPilotSetup}
-            onRunLaunchAudit={runLaunchAudit}
-            runningLaunchAudit={runningLaunchAudit}
-          />
-
-          {adOsAgentOperatingModel && (
-            <AiAdTeamPanel
-              model={adOsAgentOperatingModel}
-              onRunDiagnosis={runAgentDiagnosis}
-              onSaveMemory={saveCampaignMemory}
-              runningDiagnosis={runningAgentDiagnosis}
-              savingMemory={savingCampaignMemory}
+          {beginnerAdOpsModel && (
+            <BeginnerAdOpsPanel
+              model={beginnerAdOpsModel}
+              actionHandlers={actionHandlers}
+              actionLoading={actionLoading}
+              onOpenSettings={() => selectWorkspaceTab('settings')}
+              onOpenAdvanced={() => selectWorkspaceTab('advanced')}
             />
           )}
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <CompletionAuditPanel
-              completionAudit={summary.enterprise_layer?.completion_audit}
-              completionDrilldown={completionDrilldown}
-              highlighted={completionPanelRequested}
-              stagingSmoke={stagingSmoke}
-              checkingStagingSmoke={checkingStagingSmoke}
-              onRunStagingSmoke={runStagingSmoke}
-            />
-            <AdminSurfaceQaPanel
-              adminSurfaceQa={adminSurfaceQa}
-              checking={checkingAdminSurfaceQa}
-              onRefresh={runAdminSurfaceQa}
-            />
-            <StagingValidationPanel
-              stagingValidation={stagingValidation}
-              checking={checkingStagingValidation}
-              onRefresh={runStagingValidation}
-            />
-            <OperatingInventoryPanel
-              operatingInventory={operatingInventory}
-              checking={checkingOperatingInventory}
-              onRefresh={runOperatingInventory}
-            />
-          </div>
+          <AdOsWorkspaceTabs activeTab={activeTab} onTabChange={selectWorkspaceTab}>
+            {activeTab === 'run' && (
+              <div className="space-y-4">
+                <LaunchWizardPanel
+                  launchSteps={launchSteps}
+                  launchWizardSteps={launchWizardSteps}
+                  externalLaunchStatus={summary.external_launch_status}
+                  onRunPilotSetup={runPilotSetup}
+                  runningPilotSetup={runningPilotSetup}
+                  onRunLaunchAudit={runLaunchAudit}
+                  runningLaunchAudit={runningLaunchAudit}
+                />
 
-          <BudgetOperationsPanel
-            budgets={budgetDrafts}
-            onBudgetChange={updateBudgetDraft}
-            actions={budgetOperationActions}
-            loading={budgetOperationLoading}
-            tenantReportBody={tenantReportBody}
-            tenantReportPeriod={tenantReportPeriod}
-            launchAudit={launchAudit}
-            opsPlan={opsPlan}
-            keywordBrainResult={keywordBrainResult}
-            naverAssetPlan={naverAssetPlan}
-          />
+                {adOsAgentOperatingModel && (
+                  <AiAdTeamPanel
+                    model={adOsAgentOperatingModel}
+                    onRunDiagnosis={runAgentDiagnosis}
+                    onSaveMemory={saveCampaignMemory}
+                    runningDiagnosis={runningAgentDiagnosis}
+                    savingMemory={savingCampaignMemory}
+                  />
+                )}
+              </div>
+            )}
 
-          <EnterpriseRuntimePanel
-            summary={summary}
-            actions={enterpriseRuntimeActions}
-            loading={enterpriseRuntimeLoading}
-            opsQueueActionId={opsQueueActionId}
-            onOpsQueueAction={runOpsQueueAction}
-          />
+            {activeTab === 'settings' && (
+              <div className="space-y-4">
+                <BudgetOperationsPanel
+                  budgets={budgetDrafts}
+                  onBudgetChange={updateBudgetDraft}
+                  actions={budgetOperationActions}
+                  loading={budgetOperationLoading}
+                  tenantReportBody={tenantReportBody}
+                  tenantReportPeriod={tenantReportPeriod}
+                  launchAudit={launchAudit}
+                  opsPlan={opsPlan}
+                  keywordBrainResult={keywordBrainResult}
+                  naverAssetPlan={naverAssetPlan}
+                />
 
-          <ChannelExecutionStatePanel
-            entries={executionStateEntries}
-            activeModeByPlatform={activeModeByPlatform}
-          />
+                <ChannelExecutionStatePanel
+                  entries={executionStateEntries}
+                  activeModeByPlatform={activeModeByPlatform}
+                />
 
-          <AutomationPolicyPanel
-            automationModes={summary.automation_modes}
-            tenantGuardrails={summary.tenant_guardrails}
-            tenantAdReadiness={summary.tenant_ad_readiness}
-          />
+                <AutomationPolicyPanel
+                  automationModes={summary.automation_modes}
+                  tenantGuardrails={summary.tenant_guardrails}
+                  tenantAdReadiness={summary.tenant_ad_readiness}
+                />
 
-          <TenantSafetyPolicyPanel
-            policy={summary.tenant_policy}
-            draft={tenantPolicyDraft}
-            saving={savingTenantPolicy}
-            onSave={saveTenantPolicy}
-            onUpdate={updateTenantPolicyDraft}
-            onTogglePlatform={toggleTenantPlatform}
-          />
+                <TenantSafetyPolicyPanel
+                  policy={summary.tenant_policy}
+                  draft={tenantPolicyDraft}
+                  saving={savingTenantPolicy}
+                  onSave={saveTenantPolicy}
+                  onUpdate={updateTenantPolicyDraft}
+                  onTogglePlatform={toggleTenantPlatform}
+                />
+              </div>
+            )}
 
-          {summary.learning_loop && <LearningLoopPanel learningLoop={summary.learning_loop} />}
+            {activeTab === 'report' && (
+              <div className="space-y-4">
+                {summary.learning_loop && <LearningLoopPanel learningLoop={summary.learning_loop} />}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <MappingStatusDistributionPanel mappingsByStatus={summary.counts.mappings_by_status} total={totalMappingStatus} />
-            <LearningSignalsPanel count={summary.kpis.learning_events || 0} rows={summary.samples.learning_events} />
-            <ProductScenariosPanel count={summary.kpis.product_scenarios || 0} rows={summary.samples.product_scenarios || []} />
-            <LandingEvolutionPanel count={summary.kpis.landing_evolution_candidates || 0} rows={summary.samples.landing_evolution_queue || []} />
-            <ChangeRequestsPanel
-              count={summary.kpis.change_requests_proposed || 0}
-              rows={summary.samples.change_requests || []}
-              loadingId={changeRequestActionId}
-              onUpdate={updateChangeRequest}
-            />
-          </div>
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <MappingStatusDistributionPanel mappingsByStatus={summary.counts.mappings_by_status} total={totalMappingStatus} />
+                  <LearningSignalsPanel count={summary.kpis.learning_events || 0} rows={summary.samples.learning_events} />
+                  <ProductScenariosPanel count={summary.kpis.product_scenarios || 0} rows={summary.samples.product_scenarios || []} />
+                  <LandingEvolutionPanel count={summary.kpis.landing_evolution_candidates || 0} rows={summary.samples.landing_evolution_queue || []} />
+                  <ChangeRequestsPanel
+                    count={summary.kpis.change_requests_proposed || 0}
+                    rows={summary.samples.change_requests || []}
+                    loadingId={changeRequestActionId}
+                    onUpdate={updateChangeRequest}
+                  />
+                </div>
+              </div>
+            )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <MappingSamplesPanel rows={summary.samples.mappings} />
-            <KeywordPlansPanel rows={summary.samples.keyword_plans} loadingId={keywordActionId} onUpdate={updateKeywordPlan} />
-            <RecentDecisionsPanel rows={summary.recent_decisions} />
-          </div>
+            {activeTab === 'advanced' && (
+              <div className="space-y-4">
+                <LaunchActionQueuePanel
+                  actions={summary.launch_action_queue || []}
+                  actionHandlers={actionHandlers}
+                  actionLoading={actionLoading}
+                  naverSetupPacket={naverSetupPacket}
+                  onDownloadNaverKeywordCsv={downloadNaverKeywordCsv}
+                  onCopyNaverKeywordCsv={copyNaverKeywordCsv}
+                />
 
-          <OperatingModesPanel />
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <CompletionAuditPanel
+                    completionAudit={summary.enterprise_layer?.completion_audit}
+                    completionDrilldown={completionDrilldown}
+                    highlighted={completionPanelRequested}
+                    stagingSmoke={stagingSmoke}
+                    checkingStagingSmoke={checkingStagingSmoke}
+                    onRunStagingSmoke={runStagingSmoke}
+                  />
+                  <AdminSurfaceQaPanel
+                    adminSurfaceQa={adminSurfaceQa}
+                    checking={checkingAdminSurfaceQa}
+                    onRefresh={runAdminSurfaceQa}
+                  />
+                  <StagingValidationPanel
+                    stagingValidation={stagingValidation}
+                    checking={checkingStagingValidation}
+                    onRefresh={runStagingValidation}
+                  />
+                  <OperatingInventoryPanel
+                    operatingInventory={operatingInventory}
+                    checking={checkingOperatingInventory}
+                    onRefresh={runOperatingInventory}
+                  />
+                </div>
+
+                <EnterpriseRuntimePanel
+                  summary={summary}
+                  actions={enterpriseRuntimeActions}
+                  loading={enterpriseRuntimeLoading}
+                  opsQueueActionId={opsQueueActionId}
+                  onOpsQueueAction={runOpsQueueAction}
+                />
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <MappingSamplesPanel rows={summary.samples.mappings} />
+                  <KeywordPlansPanel rows={summary.samples.keyword_plans} loadingId={keywordActionId} onUpdate={updateKeywordPlan} />
+                  <RecentDecisionsPanel rows={summary.recent_decisions} />
+                </div>
+
+                <OperatingModesPanel />
+              </div>
+            )}
+          </AdOsWorkspaceTabs>
         </>
       )}
 

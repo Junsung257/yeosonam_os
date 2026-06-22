@@ -3,6 +3,7 @@ import {
   buildLaunchSteps,
   buildLaunchWizardSteps,
   getActiveModeByPlatform,
+  getBeginnerAdOpsModel,
   getCompletionDrilldown,
   getExecutionStateEntries,
   getTenantReportView,
@@ -123,6 +124,27 @@ describe('Ad OS view model helpers', () => {
       ['3. 캠페인 초안', '준비'],
       ['4. 네이버 광고그룹', 'ID 저장'],
     ]);
+  });
+
+  it('builds the beginner operator model from the same summary', () => {
+    const summary = makeSummary({
+      kpis: {
+        keyword_candidates: 12,
+        draft_campaigns: 1,
+        active_campaigns: 0,
+      },
+      launch_action_queue: [{
+        id: 'audit',
+        priority: 1,
+        label: '집행 점검',
+        description: '안전 상태 확인',
+        button_label: '점검',
+        ui_action: 'runLaunchAudit',
+        tone: 'good',
+      }],
+    });
+
+    expect(getBeginnerAdOpsModel(summary)?.visibleActions.map((action) => action.ui_action)).toEqual(['runLaunchAudit']);
   });
 
   it('derives tenant report display values', () => {

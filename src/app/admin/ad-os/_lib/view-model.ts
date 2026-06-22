@@ -1,5 +1,6 @@
 import { PLATFORM_LABEL } from './display';
 import { buildAdOsAgentOperatingModel } from './agent-operating-model';
+import { buildBeginnerAdOpsModel } from './beginner-mode-model';
 import type { Summary } from './types';
 
 export type LaunchChecklistStep = {
@@ -24,6 +25,11 @@ export function getTotalMappingStatus(summary: Summary | null): number {
 
 export function getAdOsAgentOperatingModel(summary: Summary | null) {
   return summary ? buildAdOsAgentOperatingModel(summary) : null;
+}
+
+export function getBeginnerAdOpsModel(summary: Summary | null) {
+  if (!summary) return null;
+  return buildBeginnerAdOpsModel(summary, getAdOsAgentOperatingModel(summary));
 }
 
 export function getCompletionDrilldown(summary: Summary | null) {

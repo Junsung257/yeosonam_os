@@ -198,6 +198,30 @@ function requireMarketingSurfaceCoverage() {
     'runAgentDiagnosis',
     'saveCampaignMemory',
   ]);
+  requireIncludes('surface:ad-os-beginner-mode-wired', 'src/app/admin/ad-os/page.tsx', [
+    'BeginnerAdOpsPanel',
+    'AdOsWorkspaceTabs',
+    'getBeginnerAdOpsModel',
+    'selectWorkspaceTab',
+  ]);
+  requireIncludes('lib:ad-os-beginner-mode-model', 'src/app/admin/ad-os/_lib/beginner-mode-model.ts', [
+    'buildBeginnerAdOpsModel',
+    'BEGINNER_SAFE_ACTIONS',
+    '승인 전용',
+    'hiddenAdvancedCount',
+  ]);
+  requireIncludes('component:ad-os-beginner-mode-panel', 'src/app/admin/ad-os/_components/BeginnerAdOpsPanel.tsx', [
+    '광고 시작 전 확인 필요',
+    '지금 할 일',
+    '상세 설정',
+    '고급/감사',
+  ]);
+  requireIncludes('component:ad-os-workspace-tabs', 'src/app/admin/ad-os/_components/AdOsWorkspaceTabs.tsx', [
+    '바로 실행',
+    '상세 설정',
+    '성과/리포트',
+    '고급/감사',
+  ]);
   requireIncludes('lib:ad-os-ai-ad-team-model', 'src/app/admin/ad-os/_lib/agent-operating-model.ts', [
     'buildAdOsAgentOperatingModel',
     'campaign_planner',
