@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { countCatalogItineraryHeaders } from '@/lib/parser/catalog-pre-split';
 import { parseDocument, type ParsedDocument, type ParseOptions } from '@/lib/parser';
 import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
 import { getLandOperatorProfile } from '@/lib/land-operator-profile';
@@ -68,13 +67,9 @@ export async function parseUploadDocumentForRegistration(input: {
     prelimLandOperatorId: input.prelimLandOperatorId,
   });
 
-  const directRawTextLooksLikeCatalog = input.directRawText
-    ? countCatalogItineraryHeaders(input.directRawText) >= 2
-    : false;
   const shouldBypassLegacyParserForRawText =
     Boolean(input.directRawText)
     && !isStandardProductMarkdown(input.directRawText ?? '')
-    && !directRawTextLooksLikeCatalog
     && process.env.RAW_UPLOAD_NORMALIZER_ENABLED !== '0';
 
   let parsedDocument = input.directRawText && isStandardProductMarkdown(input.directRawText)

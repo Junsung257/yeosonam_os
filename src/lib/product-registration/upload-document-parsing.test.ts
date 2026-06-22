@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   checkParsedDocumentNormalizedDuplicate: vi.fn(),
   computeNormalizedContentHash: vi.fn(() => 'normalized-hash'),
-  countCatalogItineraryHeaders: vi.fn(() => 0),
   getLandOperatorProfile: vi.fn(async () => null),
   getRegionCacheContext: vi.fn(async () => ''),
   getRelevantReflections: vi.fn(async () => []),
@@ -11,10 +10,6 @@ const mocks = vi.hoisted(() => ({
   parseDocument: vi.fn(),
   parseStandardProductMarkdown: vi.fn(),
   applyUploadV2Preflight: vi.fn(async () => ({ applied: false, gateFailures: [] as string[] })),
-}));
-
-vi.mock('@/lib/parser/catalog-pre-split', () => ({
-  countCatalogItineraryHeaders: mocks.countCatalogItineraryHeaders,
 }));
 
 vi.mock('@/lib/parser', () => ({
@@ -55,7 +50,6 @@ import { parseUploadDocumentForRegistration } from './upload-document-parsing';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.isStandardProductMarkdown.mockReturnValue(false);
-  mocks.countCatalogItineraryHeaders.mockReturnValue(0);
   mocks.computeNormalizedContentHash.mockReturnValue('normalized-hash');
   mocks.checkParsedDocumentNormalizedDuplicate.mockResolvedValue({ duplicate: false });
   mocks.applyUploadV2Preflight.mockResolvedValue({ applied: false, gateFailures: [] as string[] });
@@ -126,13 +120,11 @@ describe('parseUploadDocumentForRegistration', () => {
     expect(result.parsedDocument.extractedData._llm_meta?.tokens_input).toBe(0);
   });
 
-  it('runs legacy parseDocument for catalog-looking direct text', async () => {
-    mocks.countCatalogItineraryHeaders.mockReturnValue(2);
-
-    await parseUploadDocumentForRegistration({
+  it('uses the raw text bypass document for catalog-looking direct text uploads', async () => {
+    const result = await parseUploadDocumentForRegistration({
       buffer: Buffer.from('catalog raw text'),
       fileName: 'catalog.txt',
-      directRawText: 'catalog raw text',
+      directRawText: 'catalog raw text\nDAY 1 부산 출발\nDAY 2 광저우 관광\n---\n광저우 5일\nDAY 1 부산 출발\nDAY 2 천저우 관광',
       tempDestination: null,
       prelimLandOperatorId: null,
       supabase: {} as never,
@@ -140,7 +132,8 @@ describe('parseUploadDocumentForRegistration', () => {
       fileHash: 'hash',
     });
 
-    expect(mocks.parseDocument).toHaveBeenCalled();
+    expect(mocks.parseDocument).not.toHaveBeenCalled();
+    expect(result.parsedDocument.rawText).toContain('광저우 5일');
   });
 
   it('returns V2 gate failures and duplicate result from the centralized parser', async () => {
