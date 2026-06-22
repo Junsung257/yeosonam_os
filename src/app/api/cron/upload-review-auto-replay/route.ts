@@ -40,6 +40,7 @@ const RECOVERABLE_REASON_FILTER = [
   'error_reason.ilike.%destination_code:UNK%',
   'error_reason.ilike.%catalog split%',
   'error_reason.ilike.%PRODUCT_COUNT_MISMATCH%',
+  'error_reason.ilike.%UPLOAD_PIPELINE_SOFT_TIMEOUT%',
 ].join(',');
 
 function safeAfter(task: () => Promise<void> | void): void {
@@ -108,6 +109,7 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
     defaultCommissionRate: 10,
   });
 
+  const shouldUseDuplicateGuard = row.error_reason?.includes('UPLOAD_PIPELINE_SOFT_TIMEOUT') ?? false;
   const result = await runUploadRegistrationPipeline({
     intake: {
       ok: true,
@@ -119,7 +121,7 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
       inputAnalysisForTrust,
       archiveMode: false,
       bulkMode: false,
-      forceReprocess: true,
+      forceReprocess: !shouldUseDuplicateGuard,
     },
     supabase: supabaseAdmin,
     isSupabaseConfigured,

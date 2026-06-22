@@ -268,6 +268,13 @@ function firstVerifyIssue(result: PackageVerifyResult | undefined): string | nul
 }
 
 function uploadFailureMessage(data: any): string {
+  if (data?.code === 'UPLOAD_DEFERRED_FOR_REPLAY') {
+    return [
+      data?.error || '상품등록 처리 시간이 길어 자동 재처리 큐에 넣었습니다.',
+      data?.replayQueued ? '자동 재처리 대상입니다.' : '큐 저장은 실패했으니 같은 원문을 다시 시도해 주세요.',
+      data?.uploadRequestId ? `(uploadRequestId: ${data.uploadRequestId})` : '',
+    ].filter(Boolean).join(' ');
+  }
   if (data?.code === 'SESSION_EXPIRED_NEEDS_LOGIN' || data?.code === 'TOKEN_EXPIRED' || data?.error === 'token expired') {
     return [
       '관리자 로그인 시간이 만료되었습니다.',
