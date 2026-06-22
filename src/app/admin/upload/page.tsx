@@ -17,7 +17,7 @@ interface QueueItem {
   file: File;
   rawText?: string;
   sourceLabel?: string;
-  status: 'waiting' | 'processing' | 'done' | 'error';
+  status: 'waiting' | 'processing' | 'done' | 'deferred' | 'error';
   dbId?: string;
   dbIds?: string[];
   title?: string;
@@ -292,6 +292,18 @@ function uploadFailureMessage(data: any): string {
   return data?.uploadRequestId ? `${message} (uploadRequestId: ${data.uploadRequestId})` : message;
 }
 
+function isUploadDeferredForReplay(data: any): boolean {
+  return data?.code === 'UPLOAD_DEFERRED_FOR_REPLAY' && data?.replayQueued === true;
+}
+
+function deferredUploadResult(data: any): Partial<QueueItem> {
+  return {
+    status: 'deferred',
+    title: data?.title || '자동 재처리 대기',
+    errorMsg: uploadFailureMessage(data),
+  };
+}
+
 function uploadExceptionMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/Failed to fetch|NetworkError|Load failed|The network connection was lost/i.test(message)) {
@@ -373,6 +385,7 @@ export default function UploadPage() {
     const res = await fetchWithSessionRefresh(uploadUrl, { method: 'POST', body: formData });
     const data = await safeResJson(res);
     if (!res.ok) throw new Error(uploadFailureMessage(data));
+    if (isUploadDeferredForReplay(data)) return deferredUploadResult(data);
     if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
     const ed = data.data?.extractedData;
@@ -407,7 +420,7 @@ export default function UploadPage() {
 
       try {
         const result = await uploadSingle(items[i].file);
-        setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: 'done', ...result } : it));
+        setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: result.status ?? 'done', ...result } : it));
         const packageIds = packageIdsForItem(result);
         if (packageIds.length > 0) runVerify(items[i].id, packageIds);
       } catch (err) {
@@ -494,6 +507,13 @@ export default function UploadPage() {
       });
       const data = await safeResJson(res);
       if (!res.ok) throw new Error(uploadFailureMessage(data));
+      if (isUploadDeferredForReplay(data)) {
+        setQueue(prev => prev.map(it => it.id === id ? {
+          ...it,
+          ...deferredUploadResult(data),
+        } : it));
+        return;
+      }
       if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
       const ed = data.data?.extractedData;
@@ -628,13 +648,15 @@ export default function UploadPage() {
   }, [processTextItem]);
 
   const doneCount = queue.filter(q => q.status === 'done').length;
+  const deferredCount = queue.filter(q => q.status === 'deferred').length;
   const errorCount = queue.filter(q => q.status === 'error').length;
   const waitingFileCount = queue.filter(q => q.status === 'waiting' && !q.rawText).length;
   const processingCount = queue.filter(q => q.status === 'processing').length;
-  const progressPct = queue.length > 0 ? Math.round((doneCount + errorCount) / queue.length * 100) : 0;
+  const progressPct = queue.length > 0 ? Math.round((doneCount + deferredCount + errorCount) / queue.length * 100) : 0;
 
   const statusIcon = (status: QueueItem['status']) => {
     if (status === 'done') return <span className="text-green-600 text-admin-sm font-medium">업로드됨</span>;
+    if (status === 'deferred') return <span className="text-amber-600 text-admin-sm font-medium">자동 재처리 대기</span>;
     if (status === 'error') return <span className="text-red-600 text-admin-sm font-medium">오류</span>;
     if (status === 'processing') return <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
     return <span className="text-admin-muted text-admin-sm">대기</span>;
@@ -817,9 +839,9 @@ export default function UploadPage() {
                 <div className="flex justify-between text-[11px] text-admin-muted mb-1">
                   <span>
                     {processingCount > 0
-                      ? `${processingCount}개 병렬 처리 중 · 완료 ${doneCount}/${queue.length}`
-                      : doneCount + errorCount === queue.length
-                        ? `완료: ${doneCount}개 성공${errorCount > 0 ? ` / ${errorCount}개 오류` : ''}`
+                      ? `${processingCount}개 병렬 처리 중 · 완료 ${doneCount}/${queue.length}${deferredCount > 0 ? ` · 자동 재처리 ${deferredCount}` : ''}`
+                      : doneCount + deferredCount + errorCount === queue.length
+                        ? `완료: ${doneCount}개 성공${deferredCount > 0 ? ` / ${deferredCount}개 자동 재처리 대기` : ''}${errorCount > 0 ? ` / ${errorCount}개 오류` : ''}`
                         : `파일 대기: ${waitingFileCount}개`}
                   </span>
                   <span>{progressPct}%</span>
@@ -929,7 +951,9 @@ export default function UploadPage() {
           <div className="px-4 py-3 border-b border-admin-border-mid flex items-center justify-between">
             <h2 className="font-semibold text-admin-text-2 text-admin-base">처리 목록</h2>
             {queue.length > 0 && (
-              <span className="text-[11px] text-admin-muted">{queue.length}개 · 완료 {doneCount}</span>
+              <span className="text-[11px] text-admin-muted">
+                {queue.length}개 · 완료 {doneCount}{deferredCount > 0 ? ` · 재처리 ${deferredCount}` : ''}
+              </span>
             )}
           </div>
 
@@ -942,7 +966,7 @@ export default function UploadPage() {
               {[...queue].reverse().map((item) => (
                 <div
                   key={item.id}
-                  className={`flex items-start gap-3 px-4 py-2 border-b border-admin-border-mid last:border-b-0 ${item.status === 'processing' ? 'bg-blue-50' : ''}`}
+                  className={`flex items-start gap-3 px-4 py-2 border-b border-admin-border-mid last:border-b-0 ${item.status === 'processing' ? 'bg-blue-50' : item.status === 'deferred' ? 'bg-amber-50' : ''}`}
                 >
                   <div className="mt-0.5 flex-shrink-0">{statusIcon(item.status)}</div>
                   <div className="flex-1 min-w-0">
@@ -1143,6 +1167,9 @@ export default function UploadPage() {
                           </button>
                         )}
                       </div>
+                    )}
+                    {item.status === 'deferred' && (
+                      <p className="mt-0.5 text-[11px] text-amber-700 leading-snug">{item.errorMsg}</p>
                     )}
                     {item.status === 'waiting' && (
                       <p className="text-[11px] text-admin-muted">대기 중</p>

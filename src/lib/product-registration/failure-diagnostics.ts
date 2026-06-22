@@ -19,6 +19,7 @@ export type ProductRegistrationFailureCode =
   | 'ATTRACTION_CONTEXT_MISMATCH'
   | 'ATTRACTION_UNRESOLVED'
   | 'CUSTOMER_RENDER_BLOCKED'
+  | 'UPLOAD_PIPELINE_SOFT_TIMEOUT'
   | 'UPLOAD_DISCONNECTED'
   | 'SUPABASE_NOT_CONFIGURED'
   | 'REQUEST_SCOPE_ERROR'
@@ -153,6 +154,12 @@ const RULES: Rule[] = [
     severity: 'critical',
     patterns: [/Customer landing\/A4 blocked/i, /고객용 랜딩\/A4 생성 불가/i, /\bBLOCKED:/i, /final upload gate blocked/i],
     nextAction: 'Keep the product out of customer visibility until all specific blocker codes are cleared.',
+  },
+  {
+    code: 'UPLOAD_PIPELINE_SOFT_TIMEOUT',
+    severity: 'high',
+    patterns: [/UPLOAD_PIPELINE_SOFT_TIMEOUT/i, /상품등록 처리 시간이 길어 자동 재처리 큐/i],
+    nextAction: 'Replay the saved raw text from upload_review_queue with duplicate guard instead of requiring another browser upload.',
   },
   {
     code: 'UPLOAD_DISCONNECTED',

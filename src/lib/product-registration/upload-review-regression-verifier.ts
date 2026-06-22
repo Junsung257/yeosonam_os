@@ -73,11 +73,16 @@ const SUPPORTED_DESTINATION_CODES = new Set<ProductRegistrationFailureCode>([
   'DESTINATION_UNRESOLVED',
 ]);
 
+const SUPPORTED_REPLAY_CODES = new Set<ProductRegistrationFailureCode>([
+  'UPLOAD_PIPELINE_SOFT_TIMEOUT',
+]);
+
 const SUPPORTED_CODES = new Set<ProductRegistrationFailureCode>([
   ...SUPPORTED_ITINERARY_CODES,
   ...SUPPORTED_PRICE_EVIDENCE_CODES,
   ...SUPPORTED_FLIGHT_CODES,
   ...SUPPORTED_DESTINATION_CODES,
+  ...SUPPORTED_REPLAY_CODES,
 ]);
 
 function splitCoverage(codes: ProductRegistrationFailureCode[]): {
@@ -364,6 +369,25 @@ function verifyDestinationEvidence(row: UploadReviewQueueFixtureRow): CheckerRes
   };
 }
 
+function verifyReplayableSource(row: UploadReviewQueueFixtureRow): CheckerResult {
+  const candidate = buildUploadReviewFixtureCandidate(row);
+  const coveredCodes = candidate.codes.filter(code => SUPPORTED_REPLAY_CODES.has(code));
+  const rawText = row.raw_text_chunk ?? '';
+  if (rawText.trim().length < 50) {
+    return {
+      coveredCodes,
+      ok: false,
+      reason: 'saved raw text is missing or too short for timeout replay.',
+    };
+  }
+
+  return {
+    coveredCodes,
+    ok: true,
+    reason: 'saved raw text is available for timeout replay with duplicate guard.',
+  };
+}
+
 function verifySupportedCodes(row: UploadReviewQueueFixtureRow): UploadReviewRegressionCheck {
   const candidate = buildUploadReviewFixtureCandidate(row);
   const { coveredCodes: supportedCovered, uncoveredCodes: initiallyUncovered } = splitCoverage(candidate.codes);
@@ -372,6 +396,7 @@ function verifySupportedCodes(row: UploadReviewQueueFixtureRow): UploadReviewReg
   if (candidate.codes.some(code => SUPPORTED_PRICE_EVIDENCE_CODES.has(code))) results.push(verifyPriceEvidence(row));
   if (candidate.codes.some(code => SUPPORTED_FLIGHT_CODES.has(code))) results.push(verifyFlightEvidence(row));
   if (candidate.codes.some(code => SUPPORTED_DESTINATION_CODES.has(code))) results.push(verifyDestinationEvidence(row));
+  if (candidate.codes.some(code => SUPPORTED_REPLAY_CODES.has(code))) results.push(verifyReplayableSource(row));
 
   const failed = results.filter(result => !result.ok);
   const coveredCodes = [...new Set(results.flatMap(result => result.coveredCodes))];

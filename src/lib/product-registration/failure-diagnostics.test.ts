@@ -74,4 +74,14 @@ describe('product registration failure diagnostics', () => {
       'PERSISTENCE_CONSTRAINT_FAILED',
     ]));
   });
+
+  it('classifies soft upload timeouts as replayable queue blockers', () => {
+    const summary = summarizeProductRegistrationFailures([
+      'UPLOAD_PIPELINE_SOFT_TIMEOUT: uploadRequestId=50efdd8a elapsedMs=240015',
+    ]);
+
+    expect(summary.codes).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT');
+    expect(summary.codes).not.toContain('UNKNOWN_BLOCKER');
+    expect(summary.hasCritical).toBe(false);
+  });
 });
