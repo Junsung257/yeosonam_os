@@ -33,20 +33,28 @@ function resolveSourceEvidence(input: CustomerDeliveryCheckInput): {
   sourceEvidence: SourceEvidenceMap | null;
   origin: 'intake' | 'fallback' | 'missing';
 } {
-  if (input.sourceEvidence && Object.keys(input.sourceEvidence).length > 0) {
-    return { sourceEvidence: input.sourceEvidence, origin: 'intake' };
-  }
-
+  let fallbackEvidence: SourceEvidenceMap | null = null;
   try {
     const fallback = pkgToIntake(input.pkg as Parameters<typeof pkgToIntake>[0], {
       landOperatorName: input.pkg.land_operator ?? undefined,
     });
-    const evidence = fallback.ir.sourceEvidence;
-    if (Object.keys(evidence).length > 0) {
-      return { sourceEvidence: evidence, origin: 'fallback' };
-    }
+    fallbackEvidence = fallback.ir.sourceEvidence;
   } catch {
-    // A missing fallback should surface as low evidence coverage below.
+    fallbackEvidence = null;
+  }
+
+  if (input.sourceEvidence && Object.keys(input.sourceEvidence).length > 0) {
+    return {
+      sourceEvidence: {
+        ...(fallbackEvidence ?? {}),
+        ...input.sourceEvidence,
+      },
+      origin: 'intake',
+    };
+  }
+
+  if (fallbackEvidence && Object.keys(fallbackEvidence).length > 0) {
+    return { sourceEvidence: fallbackEvidence, origin: 'fallback' };
   }
 
   return { sourceEvidence: null, origin: 'missing' };
@@ -68,8 +76,35 @@ function isNonCustomerBlockingOperationalCheck(check: PublishGateFailedCheck): b
   return check.id === 'cove_unknown' && /CoVe unknown:\s*$/.test(check.message ?? '');
 }
 
+function addCompactTripStyleEvidence(
+  evidence: SourceEvidenceMap | null,
+  pkg: CustomerDeliveryCheckInput['pkg'],
+): SourceEvidenceMap | null {
+  if (!evidence || evidence['meta.tripStyle']?.length) return evidence;
+  const row = pkg as Record<string, unknown>;
+  const rawText = typeof row.raw_text === 'string' ? row.raw_text : '';
+  const tripStyle = typeof row.trip_style === 'string' ? row.trip_style.trim() : '';
+  if (!rawText || !tripStyle) return evidence;
+  const compactRaw = rawText.replace(/\s+/g, '');
+  const compactTripStyle = tripStyle.replace(/\s+/g, '');
+  if (!compactTripStyle || !compactRaw.includes(compactTripStyle)) return evidence;
+  return {
+    ...evidence,
+    'meta.tripStyle': [{
+      rawTextHash: 'compact-trip-style',
+      start: 0,
+      end: 0,
+      quote: tripStyle,
+      confidence: 0.95,
+      source: 'deterministic',
+    }],
+  };
+}
+
 export function evaluateCustomerDeliveryReadiness(input: CustomerDeliveryCheckInput): CustomerDeliveryCheckResult {
-  const { sourceEvidence, origin } = resolveSourceEvidence(input);
+  const resolved = resolveSourceEvidence(input);
+  const sourceEvidence = addCompactTripStyleEvidence(resolved.sourceEvidence, input.pkg);
+  const origin = resolved.origin;
   const requiredFields = [...REQUIRED_PACKAGE_EVIDENCE_FIELDS];
   const sourceCoverage = evidenceCoverage(sourceEvidence, requiredFields);
   const renderCoverage = evaluateRenderClaimCoverage(input.pkg, sourceEvidence);

@@ -221,7 +221,17 @@ function normalizeDateClaim(value: string): string[] {
 
 function rawSupportsDateLabel(rawText: string, value: string): boolean {
   const variants = normalizeDateClaim(value);
-  return variants.some(variant => rawSupports(rawText, variant));
+  if (variants.some(variant => rawSupports(rawText, variant))) return true;
+
+  const iso = value.match(/\b20\d{2}-(\d{1,2})-(\d{1,2})\b/);
+  if (!iso) return false;
+  const month = String(Number(iso[1]));
+  const day = String(Number(iso[2]));
+  const monthListPattern = new RegExp(`\\b0?${escapeRegExp(month)}\\s*/`);
+  const dayPattern = new RegExp(`(?:^|[^0-9])0?${escapeRegExp(day)}(?:[^0-9]|$)`);
+  return rawText
+    .split(/\r?\n/)
+    .some((line) => monthListPattern.test(line) && dayPattern.test(line));
 }
 
 function normalizePriceClaim(value: string): string[] {

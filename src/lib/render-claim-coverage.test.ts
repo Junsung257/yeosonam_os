@@ -76,6 +76,17 @@ describe('render-claim-coverage', () => {
     expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
   });
 
+  it('accepts compact supplier date lists such as 7/1, 8, 15, 22', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '7/1, 8, 15, 22\n749,000원',
+      price_dates: [{ date: '2026-07-08', price: 749000, confirmed: true }],
+      itinerary_data: { days: [] },
+    });
+
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].date')).toBe(false);
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
+  });
+
   it('accepts reordered term tokens such as 기타 개인경비 for 개인경비 · 기타', () => {
     const result = evaluateRenderClaimCoverage({
       raw_text: '불포함: 유류할증료, 기타 개인경비',
