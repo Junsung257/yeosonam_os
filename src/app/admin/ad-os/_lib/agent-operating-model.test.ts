@@ -137,7 +137,7 @@ describe('Ad OS agent operating model', () => {
       'reporter',
     ]);
     expect(model.teamScore).toBeGreaterThanOrEqual(80);
-    expect(model.campaignMemory.facts.map((fact) => fact.label)).toContain('Approval rule');
+    expect(model.campaignMemory.facts.map((fact) => fact.label)).toContain('승인 기준');
     expect(model.campaignMemory.nextTests).toHaveLength(3);
   });
 

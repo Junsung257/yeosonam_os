@@ -9,22 +9,22 @@ const model: AdOsAgentOperatingModel = {
   roles: [
     {
       id: 'campaign_planner',
-      label: 'Campaign planner',
+      label: '기획 담당',
       status: 'ready',
-      inputSummary: 'Products and budgets.',
-      evidence: ['12 keyword candidates'],
-      decision: 'draft plan available',
-      nextAction: 'Approve safe drafts.',
+      inputSummary: '상품과 예산을 봅니다.',
+      evidence: ['키워드 후보 12개'],
+      decision: '기획 초안 있음',
+      nextAction: '안전한 초안만 승인하세요.',
       needsHumanApproval: true,
     },
     {
       id: 'performance_analyst',
-      label: 'Performance analyst',
+      label: '성과 분석 담당',
       status: 'attention',
-      inputSummary: 'ROAS and search terms.',
+      inputSummary: 'ROAS와 검색어를 봅니다.',
       evidence: ['ROAS 240%'],
-      decision: 'diagnosis evidence available',
-      nextAction: 'Review terms.',
+      decision: '진단 근거 있음',
+      nextAction: '검색어를 검수하세요.',
       needsHumanApproval: true,
     },
   ],
@@ -35,10 +35,10 @@ const model: AdOsAgentOperatingModel = {
       {
         id: 'low-roas',
         priority: 'high',
-        reason: 'ROAS is below target.',
+        reason: 'ROAS가 기준보다 낮습니다.',
         evidence: 'ROAS 240%.',
-        immediateAction: 'Review CPA and landing CTA.',
-        holdReason: 'Margin incomplete.',
+        immediateAction: 'CPA와 랜딩 CTA를 확인하세요.',
+        holdReason: '마진 근거 부족.',
         needsHumanApproval: true,
       },
     ],
@@ -47,10 +47,10 @@ const model: AdOsAgentOperatingModel = {
     status: 'ready',
     score: 88,
     facts: [
-      { label: 'Campaign purpose', value: 'Search demand capture' },
-      { label: 'Approval rule', value: 'Human approval required' },
+      { label: '캠페인 목적', value: '검색 수요 포착' },
+      { label: '승인 기준', value: '사람 승인 필요' },
     ],
-    nextTests: ['Run search-term growth.'],
+    nextTests: ['검색어 확장을 실행하세요.'],
   },
 };
 
@@ -58,12 +58,12 @@ describe('Ad OS AiAdTeamPanel', () => {
   it('renders team roles, ROAS diagnosis, and campaign memory', () => {
     const html = renderToStaticMarkup(<AiAdTeamPanel model={model} />);
 
-    expect(html).toContain('AI ad team');
-    expect(html).toContain('Campaign planner');
-    expect(html).toContain('Performance analyst');
-    expect(html).toContain('ROAS diagnosis');
-    expect(html).toContain('ROAS is below target.');
-    expect(html).toContain('Campaign memory');
-    expect(html).toContain('Human approval required');
+    expect(html).toContain('AI 광고팀');
+    expect(html).toContain('기획 담당');
+    expect(html).toContain('성과 분석 담당');
+    expect(html).toContain('ROAS 진단');
+    expect(html).toContain('ROAS가 기준보다 낮습니다.');
+    expect(html).toContain('캠페인 메모리');
+    expect(html).toContain('사람 승인 필요');
   });
 });

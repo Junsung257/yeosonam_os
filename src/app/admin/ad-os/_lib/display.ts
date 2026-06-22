@@ -10,11 +10,11 @@ export const STATUS_LABEL: Record<string, string> = {
   approved: '승인',
   testing: '테스트',
   active: '집행',
-  winning: '승자',
+  winning: '성과 좋음',
   scaled: '확대',
   paused: '중지',
   negative: '제외',
-  rejected: '폐기',
+  rejected: '반려',
   expired: '만료',
 };
 

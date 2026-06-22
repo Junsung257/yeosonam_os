@@ -63,12 +63,13 @@ describe('Ad OS BudgetOperationActionBar', () => {
   it('renders the budget operation controls with readable labels', () => {
     const html = renderToStaticMarkup(<BudgetOperationActionBar {...baseProps} />);
 
-    expect(html).toContain('Save budgets');
-    expect(html).toContain('Launch audit');
-    expect(html).toContain('Create Naver paused keywords');
-    expect(html).toContain('Budget pacing');
-    expect(html).toContain('Optimization safe pipeline');
-    expect(html).toContain('Kill-switch dry-run');
+    expect(html).toContain('예산 저장');
+    expect(html).toContain('집행 점검');
+    expect(html).toContain('네이버 중지 키워드 생성');
+    expect(html).toContain('예산 페이싱');
+    expect(html).toContain('최적화 안전 파이프라인');
+    expect(html).toContain('긴급 중지 점검');
+    expect(html).toContain('고급 작업');
   });
 
   it('renders all configured actions as buttons', () => {
@@ -80,6 +81,6 @@ describe('Ad OS BudgetOperationActionBar', () => {
     );
 
     expect((html.match(/<button/g) || []).length).toBe(39);
-    expect(html).toContain('Save budgets');
+    expect(html).toContain('예산 저장');
   });
 });

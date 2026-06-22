@@ -146,7 +146,7 @@ async function insertDiagnosticDecisions(input: {
   const rows = input.model.roasDiagnostic.hypotheses.map((hypothesis) => ({
     run_id: input.runId,
     tenant_id: input.tenantId,
-    platform: 'internal',
+    platform: null,
     decision_type: 'no_change',
     target_table: 'ad_os_campaign_memories',
     target_id: input.memoryId,
@@ -159,6 +159,7 @@ async function insertDiagnosticDecisions(input: {
     reason: hypothesis.reason,
     confidence: hypothesis.priority === 'high' ? 0.84 : hypothesis.priority === 'medium' ? 0.72 : 0.6,
     expected_impact: {
+      source: 'ai_ad_team_roas_diagnostic',
       evidence: hypothesis.evidence,
       immediate_action: hypothesis.immediateAction,
       hold_reason: hypothesis.holdReason,
@@ -240,7 +241,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       summary: resultSummary,
     });
   } catch (error) {
-    const safeError = sanitizeDbError(error, 'AI ad team diagnostic failed');
+    const safeError = sanitizeDbError(error, 'AI 광고팀 진단에 실패했습니다');
     if (runId) {
       await completeDiagnosticRun(runId, 'failed', {
         kind: 'ai_ad_team_roas_diagnostic',

@@ -880,7 +880,7 @@ export default function AdOsPage() {
       flag: 'runningSeoKeywordBridge',
       url: '/api/admin/ad-os/seo-keyword-bridge',
       body: { apply: true, days: 28, limit: 80, platforms: ['naver', 'google'] },
-      errorMessage: 'SEO to Ads keyword bridge failed.',
+      errorMessage: 'SEO 기반 광고 키워드 생성에 실패했습니다.',
       onSuccess: setKeywordBrainResult,
       successMessage: (json) => {
         const summary = json.summary as {
@@ -888,7 +888,7 @@ export default function AdOsPage() {
           inserted_keyword_plans?: unknown;
           inserted_negative_candidates?: unknown;
         } | undefined;
-        return `SEO to Ads bridge complete: candidates ${formatAdOsNumber(summary?.candidate_keyword_plans)}, keyword drafts ${formatAdOsNumber(summary?.inserted_keyword_plans)}, negative candidates ${formatAdOsNumber(summary?.inserted_negative_candidates)}. External ad spend 0.`;
+        return `SEO 기반 광고 키워드 생성 완료: 후보 ${formatAdOsNumber(summary?.candidate_keyword_plans)}개, 키워드 초안 ${formatAdOsNumber(summary?.inserted_keyword_plans)}개, 제외 후보 ${formatAdOsNumber(summary?.inserted_negative_candidates)}개. 실제 광고비 사용 0원.`;
       },
     });
   };
@@ -905,7 +905,7 @@ export default function AdOsPage() {
       flag: 'runningSearchTermGrowth',
       url: '/api/admin/ad-os/search-term-growth',
       body: { apply: true, limit: 100, platforms: ['naver', 'google'] },
-      errorMessage: 'Search term growth failed.',
+      errorMessage: '검색어 기반 광고 초안 생성에 실패했습니다.',
       onSuccess: setKeywordBrainResult,
       successMessage: (json) => {
         const summary = json.summary as {
@@ -914,7 +914,7 @@ export default function AdOsPage() {
           inserted_keyword_plans?: unknown;
           inserted_change_requests?: unknown;
         } | undefined;
-        return `Search term growth complete: keyword drafts ${formatAdOsNumber(summary?.keyword_drafts)}, negative drafts ${formatAdOsNumber(summary?.negative_drafts)}, saved ${formatAdOsNumber(summary?.inserted_keyword_plans)}, approval requests ${formatAdOsNumber(summary?.inserted_change_requests)}. External ad spend 0.`;
+        return `검색어 기반 광고 초안 생성 완료: 키워드 초안 ${formatAdOsNumber(summary?.keyword_drafts)}개, 제외 초안 ${formatAdOsNumber(summary?.negative_drafts)}개, 저장 ${formatAdOsNumber(summary?.inserted_keyword_plans)}개, 승인 요청 ${formatAdOsNumber(summary?.inserted_change_requests)}개. 실제 광고비 사용 0원.`;
       },
     });
   };
@@ -932,10 +932,10 @@ export default function AdOsPage() {
       flag: 'runningAgentDiagnosis',
       url: '/api/admin/ad-os/agent-diagnostics',
       body: { run_pipeline: true, persist_memory: true },
-      errorMessage: 'AI ad team diagnosis failed.',
+      errorMessage: 'AI 광고팀 진단에 실패했습니다.',
       successMessage: (json) => {
         const summary = json.summary || {};
-        return `AI ad team diagnosis complete: steps ${formatAdOsNumber(summary.pipeline_steps)}, failed ${formatAdOsNumber(summary.failed_steps)}, ROAS score ${formatAdOsNumber(summary.roas_score)}%, team score ${formatAdOsNumber(summary.team_score)}%, memory ${String(json.memory_id || '-')}. External API write 0.`;
+        return `AI 광고팀 진단 완료: 실행 ${formatAdOsNumber(summary.pipeline_steps)}개, 실패 ${formatAdOsNumber(summary.failed_steps)}개, ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%, 메모리 ${String(json.memory_id || '-')}. 외부 API 쓰기 0건.`;
       },
     });
   };
@@ -952,10 +952,10 @@ export default function AdOsPage() {
       flag: 'savingCampaignMemory',
       url: '/api/admin/ad-os/agent-diagnostics',
       body: { run_pipeline: false, persist_memory: true },
-      errorMessage: 'Campaign memory save failed.',
+      errorMessage: '캠페인 메모리 저장에 실패했습니다.',
       successMessage: (json) => {
         const summary = json.summary || {};
-        return `Campaign memory ${json.memory_created ? 'created' : 'updated'}: ${String(json.memory_id || '-')}. ROAS score ${formatAdOsNumber(summary.roas_score)}%, team score ${formatAdOsNumber(summary.team_score)}%.`;
+        return `캠페인 메모리 ${json.memory_created ? '생성' : '갱신'} 완료: ${String(json.memory_id || '-')}. ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%.`;
       },
     });
   };
@@ -1968,41 +1968,41 @@ export default function AdOsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Ad OS"
-        subtitle="Travel ad operations hub for products, keywords, content, budgets, approvals, and automation."
+        title="광고 운영센터"
+        subtitle="상품, 키워드, 콘텐츠, 예산, 승인, 자동화를 한곳에서 점검하고 실행합니다."
         actions={
           <>
             <Link href="/admin/search-ads">
               <Button variant="secondary" size="sm">
                 <Search size={14} />
-                Search ads
+                검색광고
               </Button>
             </Link>
             <Button variant="secondary" size="sm" onClick={runSeoKeywordBridge} disabled={runningSeoKeywordBridge}>
               <Search size={14} />
-              {runningSeoKeywordBridge ? 'SEO bridge...' : 'SEO→Ads drafts'}
+              {runningSeoKeywordBridge ? 'SEO 연결 중...' : 'SEO→광고 초안'}
             </Button>
             <Button variant="secondary" size="sm" onClick={runSearchTermGrowth} disabled={runningSearchTermGrowth}>
               <Search size={14} />
-              {runningSearchTermGrowth ? 'Search terms...' : 'Terms->Ads drafts'}
+              {runningSearchTermGrowth ? '검색어 처리 중...' : '검색어→광고 초안'}
             </Button>
             <Link href="/admin/blog/ads">
               <Button variant="secondary" size="sm">
                 <Layers size={14} />
-                Blog mapping
+                블로그 매핑
               </Button>
             </Link>
             <Link href="/admin/marketing/card-news">
               <Button variant="secondary" size="sm">
                 <Rocket size={14} />
-                Card news
+                카드뉴스
               </Button>
             </Link>
           </>
         }
       />
 
-      {loading && <div className="admin-card p-5 text-admin-sm text-admin-muted">Loading Ad OS status.</div>}
+      {loading && <div className="admin-card p-5 text-admin-sm text-admin-muted">광고 운영 상태를 불러오는 중입니다.</div>}
       {error && (
         <div className="rounded-admin-md border border-rose-200 bg-rose-50 p-4 text-admin-sm text-rose-700">
           {error}

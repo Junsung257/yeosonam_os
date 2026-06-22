@@ -208,11 +208,11 @@ function requireMarketingSurfaceCoverage() {
     'CampaignMemory',
   ]);
   requireIncludes('component:ad-os-ai-ad-team-panel', 'src/app/admin/ad-os/_components/AiAdTeamPanel.tsx', [
-    'AI ad team',
-    'ROAS diagnosis',
-    'Campaign memory',
-    'Run diagnosis',
-    'Save memory',
+    'AI 광고팀',
+    'ROAS 진단',
+    '캠페인 메모리',
+    '진단 실행',
+    '메모리 저장',
   ]);
   requireIncludes('api:ad-os-agent-diagnostics', 'src/app/api/admin/ad-os/agent-diagnostics/route.ts', [
     'learning-harvest',

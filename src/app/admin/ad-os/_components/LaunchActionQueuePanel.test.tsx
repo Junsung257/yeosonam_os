@@ -80,15 +80,15 @@ describe('Ad OS LaunchActionQueuePanel', () => {
       />,
     );
 
-    expect(html).toContain('Today queue');
-    expect(html).toContain('2 actions');
-    expect(html).toContain('Run top action');
+    expect(html).toContain('오늘 할 일');
+    expect(html).toContain('2개 작업');
+    expect(html).toContain('1순위 실행');
     expect(html).toContain('Pilot setup');
-    expect(html).toContain('Recommended');
-    expect(html).toContain('Naver setup packet');
+    expect(html).toContain('추천');
+    expect(html).toContain('네이버 세팅 패킷');
     expect(html).toContain('bohol package');
-    expect(html).toContain('Download CSV');
-    expect(html).toContain('Copy CSV');
+    expect(html).toContain('CSV 다운로드');
+    expect(html).toContain('CSV 복사');
   });
 
   it('renders without the optional Naver setup packet', () => {
@@ -103,8 +103,8 @@ describe('Ad OS LaunchActionQueuePanel', () => {
       />,
     );
 
-    expect(html).toContain('1 actions');
-    expect(html).not.toContain('Naver setup packet');
+    expect(html).toContain('1개 작업');
+    expect(html).not.toContain('네이버 세팅 패킷');
   });
 
   it('supports the degraded summary refresh action', () => {
@@ -128,7 +128,7 @@ describe('Ad OS LaunchActionQueuePanel', () => {
     );
 
     expect(html).toContain('Refresh status');
-    expect(html).toContain('Run top action');
+    expect(html).toContain('1순위 실행');
     expect(html).toContain('disabled=""');
   });
 
@@ -153,7 +153,7 @@ describe('Ad OS LaunchActionQueuePanel', () => {
     );
 
     expect(html).toContain('Run unsupported');
-    expect(html).toContain('Unsupported action: newServerAction');
+    expect(html).toContain('지원하지 않는 작업: newServerAction');
     expect((html.match(/disabled=""/g) || []).length).toBe(2);
   });
 });

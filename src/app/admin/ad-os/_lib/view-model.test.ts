@@ -111,17 +111,17 @@ describe('Ad OS view model helpers', () => {
     });
 
     expect(buildLaunchSteps(summary).map((step) => [step.label, step.done])).toEqual([
-      ['Publisher API', true],
-      ['Search budget', true],
-      ['Keyword candidates', true],
-      ['Guarded keywords', true],
-      ['Draft campaigns', true],
+      ['광고 API', true],
+      ['검색광고 예산', true],
+      ['키워드 후보', true],
+      ['승인 키워드', true],
+      ['캠페인 초안', true],
     ]);
     expect(buildLaunchWizardSteps(summary).map((step) => [step.label, step.status])).toEqual([
-      ['1. Publisher API', 'ready'],
-      ['2. Budget cap', 'active'],
-      ['3. Draft campaign', 'ready'],
-      ['4. Naver ad group', 'id stored'],
+      ['1. 광고 API', '준비'],
+      ['2. 예산 한도', '활성'],
+      ['3. 캠페인 초안', '준비'],
+      ['4. 네이버 광고그룹', 'ID 저장'],
     ]);
   });
 

@@ -39,16 +39,16 @@ export function buildLaunchSteps(summary: Summary | null): LaunchChecklistStep[]
 
   return [
     {
-      label: 'Publisher API',
+      label: '광고 API',
       done: Boolean(summary.integration_status.naver || summary.integration_status.google),
       value: ['naver', 'google']
         .filter((platform) => summary.integration_status[platform])
         .map((platform) => PLATFORM_LABEL[platform] || platform)
-        .join(', ') || 'needs key',
-      next: 'Connect publisher API credentials before external activation.',
+        .join(', ') || '키 필요',
+      next: '외부 광고를 켜기 전에 네이버/구글 API 키를 연결하세요.',
     },
     {
-      label: 'Search budget',
+      label: '검색광고 예산',
       done: summary.channel_budgets.some((budget) =>
         ['naver', 'google'].includes(budget.platform) &&
         budget.status === 'active' &&
@@ -58,27 +58,27 @@ export function buildLaunchSteps(summary: Summary | null): LaunchChecklistStep[]
       value: summary.channel_budgets.filter((budget) =>
         ['naver', 'google'].includes(budget.platform) &&
         budget.status === 'active',
-      ).length > 0 ? 'active' : 'pending',
-      next: 'Set monthly budget, daily cap, and max CPC before active launch.',
+      ).length > 0 ? '활성' : '대기',
+      next: '월예산, 일한도, 최대 CPC를 먼저 설정하세요.',
     },
     {
-      label: 'Keyword candidates',
+      label: '키워드 후보',
       done: summary.kpis.keyword_candidates > 0,
-      value: `${summary.kpis.keyword_candidates.toLocaleString('ko-KR')} items`,
-      next: 'Generate keyword candidates from product mappings and long-tail search terms.',
+      value: `${summary.kpis.keyword_candidates.toLocaleString('ko-KR')}개`,
+      next: '상품 매핑과 롱테일 검색어에서 키워드 후보를 생성하세요.',
     },
     {
-      label: 'Guarded keywords',
+      label: '승인 키워드',
       done: Number(summary.counts.keyword_plans_by_status?.approved || 0) > 0 ||
         Number(summary.counts.keyword_plans_by_status?.testing || 0) > 0,
-      value: `${Number(summary.counts.keyword_plans_by_status?.approved || 0).toLocaleString('ko-KR')} approved`,
-      next: 'Approve or test keywords before external publish.',
+      value: `${Number(summary.counts.keyword_plans_by_status?.approved || 0).toLocaleString('ko-KR')}개 승인`,
+      next: '외부 반영 전에 키워드를 승인하거나 테스트 상태로 두세요.',
     },
     {
-      label: 'Draft campaigns',
+      label: '캠페인 초안',
       done: summary.kpis.draft_campaigns > 0 || summary.kpis.active_campaigns > 0,
-      value: `${Number(summary.kpis.draft_campaigns || 0).toLocaleString('ko-KR')} drafts`,
-      next: 'Create internal draft campaigns and creatives before live execution.',
+      value: `${Number(summary.kpis.draft_campaigns || 0).toLocaleString('ko-KR')}개 초안`,
+      next: '실집행 전에 내부 캠페인/소재 초안을 만드세요.',
     },
   ];
 }
@@ -102,28 +102,28 @@ export function buildLaunchWizardSteps(summary: Summary | null): LaunchWizardSte
 
   return [
     {
-      label: '1. Publisher API',
-      status: summary.integration_status.naver || summary.integration_status.google ? 'ready' : 'missing',
+      label: '1. 광고 API',
+      status: summary.integration_status.naver || summary.integration_status.google ? '준비' : '미연결',
       done: Boolean(summary.integration_status.naver || summary.integration_status.google),
-      body: 'Connect publisher credentials before any external campaign activation.',
+      body: '외부 캠페인을 켜기 전에 광고 계정 인증을 연결합니다.',
     },
     {
-      label: '2. Budget cap',
-      status: readiness.hasActiveSearchBudget ? 'active' : 'pending',
+      label: '2. 예산 한도',
+      status: readiness.hasActiveSearchBudget ? '활성' : '대기',
       done: readiness.hasActiveSearchBudget,
-      body: 'Keep monthly, daily, max CPC, and test-loss guardrails configured.',
+      body: '월예산, 일한도, 최대 CPC, 테스트 손실 한도를 유지합니다.',
     },
     {
-      label: '3. Draft campaign',
-      status: summary.kpis.draft_campaigns > 0 || summary.kpis.active_campaigns > 0 ? 'ready' : 'missing',
+      label: '3. 캠페인 초안',
+      status: summary.kpis.draft_campaigns > 0 || summary.kpis.active_campaigns > 0 ? '준비' : '부족',
       done: summary.kpis.draft_campaigns > 0 || summary.kpis.active_campaigns > 0,
-      body: 'Create internal campaign and creative drafts before external publish.',
+      body: '외부 반영 전 내부 캠페인과 소재 초안을 만듭니다.',
     },
     {
-      label: '4. Naver ad group',
-      status: readiness.hasStoredNaverAdgroup ? 'id stored' : 'not linked',
+      label: '4. 네이버 광고그룹',
+      status: readiness.hasStoredNaverAdgroup ? 'ID 저장' : '미연결',
       done: readiness.hasStoredNaverAdgroup,
-      body: 'Store the external ad group id before limited Naver execution.',
+      body: '네이버 제한 실행 전에 외부 광고그룹 ID를 저장합니다.',
     },
   ];
 }

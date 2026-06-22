@@ -1,6 +1,11 @@
 import { Bot, Save } from 'lucide-react';
 import Button from '@/components/ui/Button';
-import type { AdOsAgentOperatingModel, AiAdTeamStatus } from '../_lib/agent-operating-model';
+import {
+  aiAdTeamStatusLabel,
+  priorityLabel,
+  type AdOsAgentOperatingModel,
+  type AiAdTeamStatus,
+} from '../_lib/agent-operating-model';
 import { MetricGrid } from './MetricGrid';
 import { StatusPill, type StatusPillTone } from './StatusPill';
 
@@ -29,13 +34,13 @@ export function AiAdTeamPanel({
     <section className="admin-card p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-admin-base font-semibold text-admin-text-2">AI ad team</h2>
+          <h2 className="text-admin-base font-semibold text-admin-text-2">AI 광고팀</h2>
           <p className="mt-1 text-admin-xs text-admin-muted">
-            Role-split campaign planning, performance diagnosis, copy generation, and reporting evidence for Ad OS.
+            기획, 성과 분석, 소재/카피, 보고 역할을 나눠서 광고 운영 근거를 정리합니다.
           </p>
         </div>
         <StatusPill tone={tone(model.overallStatus)}>
-          team score {model.teamScore}%
+          팀 점수 {model.teamScore}% · {aiAdTeamStatusLabel(model.overallStatus)}
         </StatusPill>
       </div>
       {(onRunDiagnosis || onSaveMemory) && (
@@ -43,13 +48,13 @@ export function AiAdTeamPanel({
           {onRunDiagnosis && (
             <Button size="sm" variant="primary" onClick={onRunDiagnosis} loading={runningDiagnosis}>
               <Bot size={14} />
-              Run diagnosis
+              진단 실행
             </Button>
           )}
           {onSaveMemory && (
             <Button size="sm" variant="secondary" onClick={onSaveMemory} loading={savingMemory}>
               <Save size={14} />
-              Save memory
+              메모리 저장
             </Button>
           )}
         </div>
@@ -60,7 +65,7 @@ export function AiAdTeamPanel({
           <div key={role.id} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
             <div className="flex items-start justify-between gap-2">
               <p className="text-admin-sm font-semibold text-admin-text">{role.label}</p>
-              <StatusPill tone={tone(role.status)}>{role.status}</StatusPill>
+              <StatusPill tone={tone(role.status)}>{aiAdTeamStatusLabel(role.status)}</StatusPill>
             </div>
             <p className="mt-2 text-admin-2xs leading-5 text-admin-muted">{role.inputSummary}</p>
             <p className="mt-2 text-admin-xs font-semibold text-admin-text">{role.decision}</p>
@@ -80,9 +85,9 @@ export function AiAdTeamPanel({
         <div className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-admin-sm font-semibold text-admin-text">ROAS diagnosis</p>
+              <p className="text-admin-sm font-semibold text-admin-text">ROAS 진단</p>
               <p className="mt-1 text-admin-2xs text-admin-muted">
-                Fixed debug loop for ROAS, CPA, CTR, CVR, search terms, landing, and budget guardrails.
+                ROAS, CPA, CTR, CVR, 검색어, 랜딩, 예산 안전장치를 고정 루틴으로 점검합니다.
               </p>
             </div>
             <StatusPill tone={tone(model.roasDiagnostic.status)}>{model.roasDiagnostic.score}%</StatusPill>
@@ -90,9 +95,9 @@ export function AiAdTeamPanel({
           <MetricGrid
             columns="md:grid-cols-3"
             metrics={[
-              { label: 'Hypotheses', value: model.roasDiagnostic.hypotheses.length.toLocaleString('ko-KR') },
-              { label: 'Top priority', value: topHypothesis?.priority || '-' },
-              { label: 'Approval', value: model.roasDiagnostic.hypotheses.some((row) => row.needsHumanApproval) ? 'required' : 'not required' },
+              { label: '가설 수', value: model.roasDiagnostic.hypotheses.length.toLocaleString('ko-KR') },
+              { label: '최우선', value: topHypothesis ? priorityLabel(topHypothesis.priority) : '-' },
+              { label: '승인', value: model.roasDiagnostic.hypotheses.some((row) => row.needsHumanApproval) ? '필요' : '불필요' },
             ]}
           />
           <div className="mt-3 space-y-2">
@@ -101,7 +106,7 @@ export function AiAdTeamPanel({
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-admin-xs font-semibold text-admin-text">{hypothesis.reason}</p>
                   <StatusPill tone={hypothesis.priority === 'high' ? 'bad' : hypothesis.priority === 'medium' ? 'warn' : 'neutral'}>
-                    {hypothesis.priority}
+                    {priorityLabel(hypothesis.priority)}
                   </StatusPill>
                 </div>
                 <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">{hypothesis.evidence}</p>
@@ -114,9 +119,9 @@ export function AiAdTeamPanel({
         <div className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-admin-sm font-semibold text-admin-text">Campaign memory</p>
+              <p className="text-admin-sm font-semibold text-admin-text">캠페인 메모리</p>
               <p className="mt-1 text-admin-2xs text-admin-muted">
-                Tenant-facing planning, guardrail, learning, reporting, and next-test context.
+                광고주별 목적, 승인 기준, 학습 이력, 리포트 상태, 다음 테스트를 한곳에 묶습니다.
               </p>
             </div>
             <StatusPill tone={tone(model.campaignMemory.status)}>{model.campaignMemory.score}%</StatusPill>
@@ -131,7 +136,7 @@ export function AiAdTeamPanel({
           </div>
           {model.campaignMemory.persistedAt && (
             <p className="mt-3 text-admin-2xs leading-5 text-admin-muted">
-              Last saved memory: {model.campaignMemory.persistedAt}
+              마지막 저장: {model.campaignMemory.persistedAt}
             </p>
           )}
           <div className="mt-3 space-y-2">
