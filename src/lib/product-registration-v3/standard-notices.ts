@@ -281,6 +281,10 @@ export function buildStandardNoticeDraft(input: {
 }
 
 function parseKrw(textValue: string): { amount: number | null; currency: string | null } {
+  const koreanMan = textValue.match(/(\d+(?:\.\d+)?)\s*만\s*원/);
+  if (koreanMan) return { amount: Math.round(Number(koreanMan[1]) * 10000), currency: '원' };
+  const koreanWon = textValue.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원/);
+  if (koreanWon) return { amount: Number(koreanWon[1].replace(/,/g, '')), currency: '원' };
   const man = textValue.match(/(\d+(?:\.\d+)?)\s*만\s*원?/);
   if (man) return { amount: Math.round(Number(man[1]) * 10000), currency: '원' };
   const won = textValue.match(/(\d{2,3}(?:,\d{3})+|\d{5,})\s*원/);
@@ -372,14 +376,17 @@ export function detectStandardNoticeFromLine(
 
   if (/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) {
     const included = /포함|노팁|NO\s*TIP/i.test(source);
-    const amount = parseUsd(source);
+    const usdAmount = parseUsd(source);
+    const krwAmount = usdAmount == null ? parseKrw(source) : { amount: null, currency: null };
+    const amount = usdAmount ?? krwAmount.amount;
+    const currency = usdAmount ? 'USD' : krwAmount.currency;
     return buildStandardNoticeDraft({
       source_text: source,
       category: 'tip_guideline',
       template_key: included ? 'guide.tip_included' : 'guide.tip_amount_local_payment',
       values: included
         ? { included: true }
-        : { amount, currency: amount ? 'USD' : null, per: /\/P|person|1\s*인/i.test(source) ? '1인' : null },
+        : { amount, currency, per: /\/P|person|1\s*인/i.test(source) ? '1인' : null },
       evidence: [evidence],
       review_status: included || amount ? undefined : 'review_needed',
     });
@@ -392,7 +399,6 @@ export function detectStandardNoticeFromLine(
       template_key: 'tip.massage_by_region_duration',
       values: { tipTable: source },
       evidence: [evidence],
-      review_status: 'review_needed',
     });
   }
 

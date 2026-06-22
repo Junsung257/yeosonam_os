@@ -100,13 +100,10 @@ function buildPackageNoindexMetadata(id: string, canonical: string): Metadata {
 //   invalidation 인프라는 동일: /api/packages/[id]/approve · /api/packages (bulk PATCH/POST)
 //     · /api/admin/attractions/[id]/{feedback,aliases} · section-extractors · itinerary-llm-extractor
 //     모두 revalidatePath('/packages/{id}') 또는 revalidatePackagePaths() 호출.
-export const revalidate = 60;
-export const dynamicParams = true;
-
-const STATIC_PACKAGE_PRERENDER_LIMIT = Math.max(
-  0,
-  Number(process.env.PACKAGE_STATIC_PRERENDER_LIMIT ?? '0') || 0,
-);
+// Customer package pages must render from the latest saved package row.
+// Static package prerendering made audit results diverge from the real mobile page.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /**
  * 빌드 시 prerender 대상: 최근 활성 상품 50개. 인기 핫패스를 0ms 응답으로 즉시 처리.
@@ -114,26 +111,6 @@ const STATIC_PACKAGE_PRERENDER_LIMIT = Math.max(
  * - 빌드 환경에 supabase 가용 시에만 실행 (CI sandbox 등 가용성 보장 안 되면 빈 배열).
  * - 50개 선정 기준: status in (active, approved) + updated_at desc — 최근 운영 상품 우선.
  */
-export async function generateStaticParams(): Promise<Array<{ id: string }>> {
-  if (STATIC_PACKAGE_PRERENDER_LIMIT <= 0) return [];
-  if (!isSupabaseConfigured) return [];
-  try {
-    const sb = getPackageReadClient();
-    if (!sb) return [];
-    const { data } = await sb
-      .from('travel_packages')
-      .select('id')
-      .in('status', ['active', 'approved'])
-      .order('updated_at', { ascending: false })
-      .limit(STATIC_PACKAGE_PRERENDER_LIMIT);
-    return ((data ?? []) as Array<{ id?: unknown }>)
-      .map((p) => (typeof p.id === 'string' ? p.id.trim() : ''))
-      .filter((id): id is string => id.length > 0)
-      .map((id) => ({ id }));
-  } catch {
-    return [];
-  }
-}
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
 function getPackageReadClient(): SupabaseClient | null {

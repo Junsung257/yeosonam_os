@@ -1,9 +1,55 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMobileQaImprovementEvent } from './auto-mobile-qa';
+import { analyzeMobileHtml, buildMobileQaImprovementEvent, type ExpectedRender } from './auto-mobile-qa';
 import { hashSourceText } from './product-registration/improvement-ledger';
 
+const expectedRender: ExpectedRender = {
+  title: '시즈오카 2박 3일',
+  destination: '시즈오카',
+  tripStyle: '2박 3일',
+  duration: 3,
+  nights: 2,
+  hotelNames: [],
+  hasOptionalTours: false,
+  status: 'active',
+  shortCode: 'PUS-ETC-FSZ-03-0016',
+  internalCode: 'PUS-ETC-FSZ-03-0016',
+  rawText: null,
+  updatedAt: '2026-06-22T00:00:00.000Z',
+  lastDayNumber: 3,
+  lastDayArrivalCity: '부산',
+  homeCity: '부산',
+};
+
 describe('auto mobile QA learning ledger bridge', () => {
+  it('blocks an actual customer package page application error from becoming mobile proof', () => {
+    const incidents = analyzeMobileHtml(
+      '<html><body>Application error: a client-side exception has occurred while loading www.yeosonam.com</body></html>',
+      expectedRender,
+      'packages',
+    );
+
+    expect(incidents).toEqual([
+      expect.objectContaining({
+        id: 'mobile_application_error_html',
+        severity: 'critical',
+      }),
+    ]);
+  });
+
+  it('requires customer landing core sections on the packages surface', () => {
+    const incidents = analyzeMobileHtml(
+      '<html><body><h1>시즈오카 2박 3일</h1><p>예약 문의</p></body></html>',
+      expectedRender,
+      'packages',
+    );
+
+    expect(incidents).toContainEqual(expect.objectContaining({
+      id: 'mobile_customer_landing_core_markers_missing',
+      severity: 'critical',
+    }));
+  });
+
   it('turns customer mobile landing incidents into macro-learning ledger evidence without raw text', () => {
     const event = buildMobileQaImprovementEvent({
       packageId: '550e8400-e29b-41d4-a716-446655440000',

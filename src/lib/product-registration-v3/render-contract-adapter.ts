@@ -1,5 +1,6 @@
 ﻿import type { DayInput, HotelInfo, MealInfo, RenderPackageInput } from '@/lib/render-contract';
 import { isPublishableStandardNoticeDraft } from './customer-payload';
+import { isCustomerOptionalTourCandidate } from '@/lib/customer-option-classifier';
 import type { V3DraftLedger } from './types';
 
 function renderMeal(value: Record<string, unknown>): { enabled: boolean; note: string | null } {
@@ -71,12 +72,18 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
       customer_notes: publishableNotices
         .map(notice => notice.standard_text)
         .join('\n'),
-      optional_tours: variant.options.map(option => ({
-        name: option.normalized_name,
-        price: option.price_amount ? `${option.currency ?? ''}${option.price_amount}` : null,
-        price_usd: option.currency === 'USD' && option.price_amount ? option.price_amount : undefined,
-        region: option.region ?? undefined,
-      })),
+      optional_tours: variant.options
+        .filter(option => isCustomerOptionalTourCandidate([
+          option.raw_name,
+          option.normalized_name,
+          option.price_amount ? `${option.currency ?? ''}${option.price_amount}` : '',
+        ].join(' ')))
+        .map(option => ({
+          name: option.normalized_name,
+          price: option.price_amount ? `${option.currency ?? ''}${option.price_amount}` : null,
+          price_usd: option.currency === 'USD' && option.price_amount ? option.price_amount : undefined,
+          region: option.region ?? undefined,
+        })),
       itinerary_data: {
         meta: {
           flight_out: outbound?.code ?? null,

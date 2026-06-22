@@ -74,6 +74,38 @@ ${MONTH_KO}7
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-07-25', adult_price: 1649000 }));
   });
 
+  it('does not turn per-person labels into phantom day-one departures', () => {
+    const rawText = [
+      '[LJ] Da Nang Hoi An 3N5D',
+      '\uAE30    \uAC04',
+      '\uC0C1 \uD488 \uAC00',
+      '7/19',
+      '8/31',
+      '1\uC778 599,000\uC6D0',
+      '*6/26\uAE4C\uC9C0 \uBC1C\uAD8C',
+      '8/18, 25',
+      '1\uC778 639,000\uC6D0',
+      '7/28, 29',
+      '1\uC778 799,000\uC6D0',
+      '\uB8F8 \uD0C0 \uC785',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+    const byDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(byDate).toEqual(new Map([
+      ['2026-07-19', 599000],
+      ['2026-07-28', 799000],
+      ['2026-07-29', 799000],
+      ['2026-08-18', 639000],
+      ['2026-08-25', 639000],
+      ['2026-08-31', 599000],
+    ]));
+    expect(byDate.has('2026-07-01')).toBe(false);
+    expect(byDate.has('2026-08-01')).toBe(false);
+  });
+
   it('recovers spaced month day price rows without slash separators', () => {
     const rawText = [
       '\uAD6C\uCC44\uAD6C \uC2E0\uC120\uC9C0 \uD669\uB8E1',

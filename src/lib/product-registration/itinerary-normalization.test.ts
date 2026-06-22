@@ -2,6 +2,41 @@ import { describe, expect, it } from 'vitest';
 import { normalizeUploadItinerary } from './itinerary-normalization';
 
 describe('normalizeUploadItinerary', () => {
+  it('fills empty schedule days from the original day table before customer render', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '푸꾸옥',
+      durationDays: 6,
+      activeAttractions: [],
+      productRawText: [
+        '제1일 에스츄리CC 18홀 라운딩 *클럽식 포함',
+        '제2일 호텔 조식 후 골프장으로 이동',
+        '빈펄CC 18홀 라운딩',
+        '제3일 호텔 조식 후 골프장으로 이동',
+        '빈펄CC 18홀 라운딩',
+        '제4일 호텔 조식 후 골프장으로 이동',
+        '에스츄리CC 18홀 라운딩 *클럽식 포함',
+        '제5일 공항으로 이동',
+        '제6일 부산 도착',
+      ].join('\n'),
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'normal', activity: '에스츄리CC 18홀 라운딩 *클럽식 포함' }] },
+          { day: 2, schedule: [] },
+          { day: 3, schedule: [] },
+          { day: 4, schedule: [] },
+          { day: 5, schedule: [{ type: 'transfer', activity: '공항으로 이동' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      },
+    });
+
+    const days = result.itineraryDataToSave?.days ?? [];
+    expect(days.find(day => day.day === 2)?.schedule?.map(item => item.activity)).toContain('빈펄CC 18홀 라운딩');
+    expect(days.find(day => day.day === 3)?.schedule?.map(item => item.activity)).toContain('빈펄CC 18홀 라운딩');
+    expect(days.find(day => day.day === 4)?.schedule?.map(item => item.activity)).toContain('에스츄리CC 18홀 라운딩 *클럽식 포함');
+    expect(result.warnings.some(warning => warning.includes('empty itinerary day schedule filled'))).toBe(true);
+  });
+
   it('post-processes itinerary and returns attraction candidate rows outside the route', async () => {
     const result = await normalizeUploadItinerary({
       destination: '괌',
@@ -290,5 +325,47 @@ describe('normalizeUploadItinerary', () => {
     });
 
     expect((result.itineraryDataToSave as { flight_segments?: unknown[] } | null)?.flight_segments).toEqual(flightSegments);
+  });
+
+  it('aligns saved itinerary meta nights and days to the product duration', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '시즈오카',
+      durationDays: 3,
+      activeAttractions: [],
+      productRawText: '시즈오카 2박3일',
+      itineraryData: {
+        meta: { days: 2, nights: 1 },
+        days: [
+          { day: 1, schedule: [{ type: 'activity', activity: '공항 미팅' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '시즈오카 관광' }] },
+          { day: 3, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    expect(result.itineraryDataToSave?.meta).toMatchObject({ days: 3, nights: 2 });
+  });
+
+  it('uses source-backed nights for overnight-flight products instead of days minus one', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '푸꾸옥',
+      durationDays: 6,
+      nights: 4,
+      activeAttractions: [],
+      productRawText: '푸꾸옥 4박6일',
+      itineraryData: {
+        meta: { days: 6, nights: 5 },
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '골프 라운딩' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '골프 라운딩' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: '골프 라운딩' }] },
+          { day: 5, schedule: [{ type: 'flight', activity: '푸꾸옥 출발' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    expect(result.itineraryDataToSave?.meta).toMatchObject({ days: 6, nights: 4 });
   });
 });

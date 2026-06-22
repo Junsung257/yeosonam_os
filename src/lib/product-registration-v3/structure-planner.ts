@@ -11,7 +11,7 @@ const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(?:\uc6d0|KRW|USD|\$)?/i;
 const DAY_HEADER_RE = /^(?:day\s*\d{1,2}(?:\b|\s|$)|\uc81c\s*\d{1,2}\s*\uc77c(?:\s|$)|\d{1,2}\s*\uc77c\ucc28(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
-const OPTION_RE = /option|optional|\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ub9c8\uc0ac\uc9c0|\ud06c\ub8e8\uc988|\uacf5\uc5f0/i;
+const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\ud604\uc9c0\s*\uc9c0\ubd88\s*\uc635\uc158|\uac15\ub825\s*\ucd94\ucc9c\s*\uc635\uc158|\ucd94\ucc9c\s*\uc120\ud0dd\s*\uad00\uad11/i;
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const MEETING_RE = /meeting|\ubbf8\ud305|\uc9d1\uacb0|\ud53d\uc5c5|\uacf5\ud56d\s*\ubbf8\ud305/i;
 
@@ -86,6 +86,18 @@ function collectSectionLocations(lines: V3SourceLine[], pattern: RegExp, label: 
     .map(line => ({ line_start: line.lineNumber, line_end: line.lineNumber, label }));
 }
 
+function isOptionSectionLine(line: string): boolean {
+  const compacted = line.replace(/\s+/g, ' ').trim();
+  const dense = compacted.replace(/\s+/g, '');
+  if (!compacted) return false;
+  if (/^(?:\uc120\ud0dd\uad00\uad11|optional tours?|options?)$/i.test(dense)) return true;
+  if (/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158)$/i.test(dense)) return true;
+  if (/^(?:\ub178\uc635\uc158|nooption)$/i.test(dense)) return false;
+  if (/\ub77c\uc6b4\ub529|\uace8\ud504\uc7a5|\ud604\uc9c0\s*\uc0ac\uc815|\uc120\ud0dd\uc740\s*\ud604\uc9c0\uc0ac\uc815/i.test(compacted)) return false;
+  if (/\ub9c8\uc0ac\uc9c0/.test(compacted) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\$|USD/i.test(compacted)) return false;
+  return OPTION_RE.test(compacted);
+}
+
 function collectVariantAxes(boundaries: V3StructurePlan['product_boundaries']): V3StructurePlan['variant_axes'] {
   const titles = boundaries.map(boundary => boundary.title_hint);
   const gradeValues = titles
@@ -113,7 +125,9 @@ export function planProductRegistrationV3(lines: V3SourceLine[]): V3StructurePla
     .filter(line => MEETING_RE.test(line.quote))
     .flatMap(line => [...line.quote.matchAll(TIME_RE)].map(m => m[0]));
   const dayHeaders = lines.filter(line => DAY_HEADER_RE.test(line.quote.trim()));
-  const optionSections = collectSectionLocations(lines, OPTION_RE, 'option section');
+  const optionSections = lines
+    .filter(line => isOptionSectionLine(line.quote))
+    .map(line => ({ line_start: line.lineNumber, line_end: line.lineNumber, label: 'option section' }));
   const shoppingSections = collectSectionLocations(lines, SHOPPING_RE, 'shopping section');
   const unresolved_parts: string[] = [];
 

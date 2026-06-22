@@ -11,6 +11,7 @@ import { evidenceFromLines } from './source-line-index';
 import { extractStandardNoticesFromRemarkLines } from './standard-notices';
 import { extractStructuredFactsFromSupplierText } from './structured-facts';
 import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
+import { isCustomerOptionalTourCandidate, isNonCustomerOptionText } from '@/lib/customer-option-classifier';
 
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
@@ -37,7 +38,7 @@ const FLIGHT_WORD_RE = /flight|\ud56d\uacf5|\ucd9c\ubc1c|\ub3c4\ucc29|\uacf5\ud5
 const TRANSFER_RE = /transfer|\uc774\ub3d9|\ucc28\ub7c9|\ubc84\uc2a4|\uc804\uc6a9\ucc28\ub7c9|\uc1a1\uc601|\ud53d\uc5c5/i;
 const MEAL_RE = /breakfast|lunch|dinner|\uc870\uc2dd|\uc911\uc2dd|\uc11d\uc2dd|\ud2b9\uc2dd|meal/i;
 const HOTEL_RE = /hotel|resort|\uc219\ubc15|\ud638\ud154|\ub9ac\uc870\ud2b8|\ud480\s*\ube4c\ub77c|\ube4c\ub77c|\uac1d\uc2e4|\uccb4\ud06c\uc778|\uccb4\ud06c\uc544\uc6c3/i;
-const OPTION_RE = /option|optional|\uc120\ud0dd|\uc635\uc158|\ucd94\ucc9c\s*\uad00\uad11|\ud604\uc9c0\s*\uc9c0\ubd88|\ub9c8\uc0ac\uc9c0|\ud06c\ub8e8\uc988|\uacf5\uc5f0|\uc1fc|\uccb4\ud5d8|\ud2f0\ucf13|\uc785\uc7a5\uad8c/i;
+const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\uc635\uc158|\ucd94\ucc9c\s*(?:\uad00\uad11|\uc120\ud0dd)|\ud604\uc9c0\s*\uc9c0\ubd88/i;
 const GOLF_OPTION_DETAIL_RE =
   /(?:\uace8\ud504\uc7a5\s*\uc815\ubcf4|\ucf54\uc2a4\uc815\ubcf4|\ud2f0\s*\ud0c0\uc784|\uadf8\ub9b0\ud53c|\uce90\ub514\ud53c|\uce74\ud2b8\ud53c|\uce90\ub514\s*\ud301|\uc2f1\uae00\s*\uce74\ud2b8|\ud074\ub7fd\s*\ub80c\ud0c8)/i;
 const GOLF_ROUND_RE =
@@ -56,9 +57,9 @@ const NOTICE_RE = /include|exclude|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ucd5c\uc18c|
 const REMARK_RE = /비고|주의\s*사항|remark|안내|공지|싱글\s*차지|여권|전자\s*담배|룸\s*배정|객실\s*배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동|공항\s*미팅|관광지\s*방문|현지\s*가이드|차량에서\s*설명|가이드|기사\s*팁|쇼핑|선택\s*관광|노\s*옵션|노\s*쇼핑|노\s*팁/i;
 const ATTRACTION_DECOY_RE = PRODUCT_HEADER_RE;
 const KOREAN_MEAL_TERM_RE =
-  /(?:\uc0bc\uacb9\uc0b4|\uaf88\ubc14\ub85c\uc6b0|\uafd4\ubc14\ub85c\uc6b0|\ub0c9\uba74|\ube44\ube54\ubc25|\ub9e4\uc6b4\ud0d5|\ud604\uc9c0\uc2dd|\ud638\ud154\uc2dd|\uc0e4\ube0c\uc0e4\ube0c|\uae40\s*\ubc25|\uc591\uaf2c\uce58|\uc18c\ubd88\uace0\uae30|\uc1a1\uc774\uad6c\uc774|\ubd88\uace0\uae30|\ub3d9\ubd81\uc694\ub9ac|\uac00\uc815\uc2dd|\uc911\s*:|\uc11d\s*:|\uc870\s*:)/i;
+  /(?:\uc0bc\uacb9\uc0b4|\uc81c\uc721|\ucc0c\uac1c|\uc5f4\ub300\uacfc\uc77c|\uaf88\ubc14\ub85c\uc6b0|\uafd4\ubc14\ub85c\uc6b0|\ub0c9\uba74|\ube44\ube54\ubc25|\ub9e4\uc6b4\ud0d5|\ud604\uc9c0\uc2dd|\ud638\ud154\uc2dd|\uc0e4\ube0c\uc0e4\ube0c|\uae40\s*\ubc25|\uc591\uaf2c\uce58|\uc18c\ubd88\uace0\uae30|\uc1a1\uc774\uad6c\uc774|\ubd88\uace0\uae30|\ub3d9\ubd81\uc694\ub9ac|\uac00\uc815\uc2dd|\uc911\s*:|\uc11d\s*:|\uc870\s*:)/i;
 const ROUTE_CELL_ONLY_RE =
-  /^(?:\ubd80\s*\uc0b0|\uc5f0\s*\uae38|\ub3c4\s*\ubb38|\uc6a9\s*\uc815|\uc774\ub3c4\ubc31\ud558(?:\s*(?:\ub0a8|\ubd81|\uc11c)\s*\ud30c)?|\uc1a1\uac15\ud558|\ub0a8\s*\ud30c|\ubd81\s*\ud30c|\uc11c\s*\ud30c|\uc7a5\ubc31\uc0b0|\ubc31\ub450\uc0b0)$/;
+  /^(?:\ubd80\s*\uc0b0|\uc5f0\s*\uae38|\ub3c4\s*\ubb38|\uc6a9\s*\uc815|\uc774\ub3c4\ubc31\ud558(?:\s*(?:\ub0a8|\ubd81|\uc11c)\s*\ud30c)?|\uc1a1\uac15\ud558|\ub0a8\s*\ud30c|\ubd81\s*\ud30c|\uc11c\s*\ud30c|\uc7a5\ubc31\uc0b0|\ubc31\ub450\uc0b0|\uc2dc\uc988\uc624\uce74|\uce74\uc640\uad6c\uce58|\ub2e4\ub0ad|\ud638\uc774\uc548|\ud478\uafb8\uc625)$/;
 const TIME_CELL_ONLY_RE = /^:?\d{1,2}(?::\d{2})?$/;
 const STANDALONE_USD_PRICE_RE = /^\$?\s*\d+(?:\.\d+)?\s*(?:\/\s*\uc778)?(?:\s*\(?\ud301\ubcc4\ub3c4\)?)?$/i;
 const HOTEL_OCCURRENCE_RE =
@@ -80,6 +81,13 @@ function eventTypeForLine(line: string): V3EventType | null {
   const text = line.trim();
   if (!text) return null;
   const compact = text.replace(/\s+/g, '');
+  if (/^(?:\uc624\s*\uc804|\uc624\s*\ud6c4|\uc804\s*\uc77c)$/.test(text)) return 'price_noise';
+  if (/^\(?\s*\ucf5c\ub4dc\s*\ubc00\s*\)?$/i.test(text)) return 'meal';
+  if (/\uc0c1\uae30\s*\uc77c\uc815|\ud604\uc9c0\s*\uc0ac\uc815|\uc591\ud574/.test(text)) return 'notice';
+  if (/\uc804\uc6a9\ucc28(?:\ub7c9|\ub791)/.test(text)) return 'transfer';
+  if (/\uacf5\ud56d.*\ucd9c\uad6d\s*\uc218\uc18d|\ucd9c\uad6d\s*\uc218\uc18d/.test(text)) return 'transfer';
+  if (/\ud0d1\uc2b9\ud558\uc5ec.*(?:\uc790\uc5f0\uacbd\uad00|\uad00\uad11)/.test(text)) return 'notice';
+  if (/(?:\ud2b9\uc0b0\ud488|\uc1fc\ud551).*(?:\uad00\uad11|\ubc29\ubb38|\d+\s*\ud68c)/.test(text)) return 'shopping';
   if (ABBREVIATED_PRICE_RE.test(compact)) return 'price_noise';
   if (/^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(compact)) return 'notice';
   if (/^(?:\ub178\uc635\uc158|no\s*option)$/i.test(compact)) return 'notice';
@@ -119,12 +127,14 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (TRANSFER_RE.test(text)) return 'transfer';
   if (MEAL_RE.test(text)) return 'meal';
   if (HOTEL_RE.test(text)) return 'hotel';
+  if (isNonCustomerOptionText(text)) return 'notice';
   if (GOLF_OPTION_DETAIL_RE.test(text)) return 'option';
   if (GOLF_ROUND_RE.test(text)) return 'activity';
   if ((USD_RE.test(text) || /\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(text)) && /\ud638\ud551\ud22c\uc5b4|\uc120\ud0dd|\uc635\uc158/i.test(text)) return 'option';
   if (/^\s*[-–]/.test(text) && ACTIVITY_NOTE_LINE_RE.test(text)) return 'notice';
   if (INCLUDED_ACTIVITY_RE.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(text)) return 'activity';
   if (/\ub9c8\uc0ac\uc9c0|\uc628\ucc9c\uc695/.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ud604\uc9c0\uc9c0\ubd88/i.test(text)) return 'activity';
+  if (/(?:\uc1fc|show|\ud06c\ub8e8\uc988|\uc720\ub78c\uc120|\uccb4\ud5d8)/i.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ud604\uc9c0\uc635\uc158/i.test(text)) return 'activity';
   if (OPTION_RE.test(text)) return 'option';
   if (SHOPPING_RE.test(text) || SHOPPING_DETAIL_RE.test(text)) return 'shopping';
   if (FREE_TIME_RE.test(text)) return 'free_time';
@@ -197,11 +207,14 @@ function isOptionHeadingOrNonCustomerOption(text: string): boolean {
   if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return true;
   if (INCLUDED_ACTIVITY_RE.test(normalized) && !USD_RE.test(normalized) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(normalized)) return true;
   if (/^(?:\ub178\uc635\uc158|no\s*option|\uc120\ud0dd\uad00\uad11\s*(?:\uc5c6\uc74c|\ubb34|0\ud68c))$/i.test(compact)) return true;
+  if (isNonCustomerOptionText(normalized)) return true;
   return false;
 }
 
 function isOptionPriceCandidate(text: string): boolean {
-  return USD_RE.test(text) && OPTION_PRICE_CANDIDATE_RE.test(text) && !/\uac00\uc774\ub4dc|\uae30\uc0ac|\ud301|tip/i.test(text);
+  return USD_RE.test(text)
+    && (OPTION_PRICE_CANDIDATE_RE.test(text) || /\b(?:5D|VIP)\b|VIP|5D/i.test(text))
+    && isCustomerOptionalTourCandidate(text);
 }
 
 function buildPriceCalendarFromIR(sectionLines: V3SourceLine[], title: string): V3LedgerVariant['price_calendar'] {
@@ -259,6 +272,33 @@ function parseDuration(title: string, dayCount: number): { durationDays: number 
   };
 }
 
+function resolveAdjacentFlightTimes(
+  sectionLines: V3SourceLine[],
+  sectionIndex: number,
+  sameLineTimes: string[],
+): { depTime: string | null; arrTime: string | null } {
+  let depTime = sameLineTimes[0] ?? null;
+  let arrTime = sameLineTimes[1] ?? null;
+  const lookahead = sectionLines.slice(sectionIndex + 1, sectionIndex + 7);
+  for (const next of lookahead) {
+    if (FLIGHT_CODE_RE.test(next.quote)) break;
+    const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
+    if (!nextTime) continue;
+    if (!depTime && /\ucd9c\ubc1c/.test(next.quote)) {
+      depTime = nextTime;
+      continue;
+    }
+    if (!arrTime && /\ub3c4\ucc29/.test(next.quote)) {
+      arrTime = nextTime;
+      continue;
+    }
+    if (!depTime) depTime = nextTime;
+    else if (!arrTime && nextTime !== depTime) arrTime = nextTime;
+    if (depTime && arrTime) break;
+  }
+  return { depTime, arrTime };
+}
+
 function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_boundaries'][number]): V3LedgerVariant {
   const sectionLines = lines.slice(boundary.line_start - 1, boundary.line_end);
   const linePrices = sectionLines
@@ -274,19 +314,32 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     .filter(price => price.amount > 0);
   const prices = linePrices.length > 0 ? linePrices : buildPriceCalendarFromIR(sectionLines, boundary.title_hint);
 
-  const flight_segments = sectionLines
-    .map(line => ({ line, match: line.quote.match(FLIGHT_CODE_RE) }))
-    .filter((row): row is { line: V3SourceLine; match: RegExpMatchArray } => Boolean(row.match))
-    .map(({ line, match }, index) => {
-      const times = [...line.quote.matchAll(TIME_RE_GLOBAL)].map(m => m[0]);
-      return {
-        leg: index === 0 ? 'outbound' as const : index === 1 ? 'inbound' as const : 'unknown' as const,
-        code: `${match[1]}${match[2]}`,
-        dep_time: times[0] ?? null,
-        arr_time: times[1] ?? null,
-        evidence: evidenceFromLines(lines, line.lineNumber),
-      };
-    });
+  const flightRows = sectionLines
+    .map((line, sectionIndex) => ({ line, sectionIndex, match: line.quote.match(FLIGHT_CODE_RE) }))
+    .filter((row): row is { line: V3SourceLine; sectionIndex: number; match: RegExpMatchArray } => Boolean(row.match));
+  const flight_segments = flightRows.map(({ line, match, sectionIndex }, index) => {
+    const times = [...line.quote.matchAll(TIME_RE_GLOBAL)].map(m => m[0]);
+    const resolvedTimes = resolveAdjacentFlightTimes(sectionLines, sectionIndex, times);
+    let arrTime = resolvedTimes.arrTime;
+    if (!arrTime) {
+      for (const next of sectionLines.slice(sectionIndex + 1, sectionIndex + 4)) {
+        if (FLIGHT_CODE_RE.test(next.quote)) break;
+        if (!/\ub3c4\ucc29/.test(next.quote)) continue;
+        const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
+        if (nextTime) {
+          arrTime = nextTime;
+          break;
+        }
+      }
+    }
+    return {
+      leg: index === 0 ? 'outbound' as const : index === 1 ? 'inbound' as const : 'unknown' as const,
+      code: `${match[1]}${match[2]}`,
+      dep_time: resolvedTimes.depTime,
+      arr_time: arrTime,
+      evidence: evidenceFromLines(lines, line.lineNumber),
+    };
+  });
 
   const days: V3LedgerVariant['days'] = [];
   let currentDay: V3LedgerVariant['days'][number] | null = null;
@@ -346,7 +399,8 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   const optionCandidates = sectionLines
     .filter(line => eventTypeForLine(line.quote) === 'option' || isOptionPriceCandidate(line.quote))
     .flatMap(splitOptionLine)
-    .filter(candidate => !isOptionHeadingOrNonCustomerOption(candidate.text));
+    .filter(candidate => !isOptionHeadingOrNonCustomerOption(candidate.text))
+    .filter(candidate => isCustomerOptionalTourCandidate(candidate.text));
   const options = optionCandidates.map(candidate => {
     const usd = candidate.text.match(USD_RE);
     const day = [...days].reverse().find(d => d.events.some(event => event.evidence.line_start <= candidate.line.lineNumber));
@@ -435,7 +489,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     );
   });
   const minDepartureLine = sectionLines.find(line =>
-    /minimum|min\.?|\ucd5c\uc18c|\uc778\s*\uc6d0|\d+\s*(?:\uba85|\uc778)\s*\uc774\uc0c1\s*\ucd9c\ubc1c/i.test(line.quote)
+    /minimum|min\.?|\ucd5c\uc18c|\uc778\s*\uc6d0|\d+\s*(?:\uba85|\uc778)\s*(?:\uc774\uc0c1|\ubd80\ud130)\s*\ucd9c\ubc1c/i.test(line.quote)
     && /\d+/.test(line.quote)
   );
   const minimum_departure = minDepartureLine
@@ -443,6 +497,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
         value: Number(
           minDepartureLine.quote.match(/(?:minimum|min\.?|\ucd5c\uc18c(?:\ucd9c\ubc1c)?)\D*(\d+)/i)?.[1]
             ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1\s*\ucd9c\ubc1c/)?.[1]
+            ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\ubd80\ud130\s*\ucd9c\ubc1c/)?.[1]
             ?? minDepartureLine.quote.match(/(\d+)\s*(?:\uba85|\uc778)\s*\uc774\uc0c1/)?.[1]
             ?? minDepartureLine.quote.match(/\d+/)?.[0]
             ?? 0,

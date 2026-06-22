@@ -25,8 +25,9 @@ export function applyProductRegistrationV3Matching(
         if (event.type === 'option') optionReview++;
         if (event.type !== 'attraction') continue;
 
-        const match = matchAttraction(event.raw_text, attractions, destination ?? undefined)
-          ?? matchAttraction(event.raw_text, attractions, undefined);
+        const scopedDestination = destination?.trim() || undefined;
+        const match = matchAttraction(event.raw_text, attractions, scopedDestination)
+          ?? (scopedDestination ? null : matchAttraction(event.raw_text, attractions, undefined));
         if (match?.id || match?.name) {
           event.canonical_id = match.id ?? match.name;
           event.canonical_type = 'attraction';

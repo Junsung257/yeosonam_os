@@ -687,6 +687,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     productRawText: rawText,
     destination: ed.destination,
     durationDays: ed.duration,
+    nights: (ed as { nights?: number | null }).nights ?? null,
     activeAttractions: input.activeAttractions,
   });
   const itineraryBackedDuration = inferSafeDurationFromItinerary(itinerary.itineraryDataToSave);

@@ -73,7 +73,12 @@ function optionalEventHasCustomerSafeDisclosure(rawText: string): boolean {
   return /\$\s*\d+(?:\.\d+)?/.test(rawText) && normalizeOptionDisclosureText(rawText).length >= 2;
 }
 
+function hasExplicitShoppingCountDisclosure(text: string): boolean {
+  return /(?:\uc1fc\ud551|\uba74\uc138\uc810).*\d+\s*(?:\uacf3|\ud68c).*(?:\ubc29\ubb38|\uc608\uc815)|\d+\s*(?:\uacf3|\ud68c).*(?:\uc1fc\ud551|\uba74\uc138\uc810)/.test(text);
+}
+
 function shoppingEventHasCustomerSafeDisclosure(rawText: string): boolean {
+  if (hasExplicitShoppingCountDisclosure(rawText)) return true;
   return /쇼핑(?:센터)?\s*\d+\s*회|\d+\s*회/.test(rawText)
     && /(침향|한약|라텍스|차가버섯|죽탄|콜라겐|보이차|농산물|잡화|토산품|기념품|면세|노니|커피)/i.test(rawText);
 }
@@ -154,6 +159,7 @@ function optionIsGenericCostOrHeading(option: { raw_name: string }): boolean {
 }
 
 function shoppingHasCustomerSafeDisclosure(value: string): boolean {
+  if (hasExplicitShoppingCountDisclosure(value)) return true;
   return /쇼핑(?:센터)?\s*\d+\s*회|\d+\s*회/.test(value)
     && /(침향|한약|라텍스|차가버섯|죽탄|콜라겐|보이차|농산물|잡화|토산품|기념품|면세|노니|커피)/i.test(value);
 }

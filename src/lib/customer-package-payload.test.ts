@@ -117,6 +117,14 @@ describe('customer package client payload', () => {
     expect(pageSource).toContain('initialPackage={clientPackage}');
   });
 
+  it('keeps package detail pages dynamically rendered from the latest saved row', () => {
+    const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
+
+    expect(pageSource).toContain("export const dynamic = 'force-dynamic'");
+    expect(pageSource).toContain('export const revalidate = 0');
+    expect(pageSource).not.toContain('export async function generateStaticParams');
+  });
+
   it('passes package detail duration and hero render facts through the customer boundary', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
     const detailSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');

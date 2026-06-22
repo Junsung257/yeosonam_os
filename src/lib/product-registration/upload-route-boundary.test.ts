@@ -324,6 +324,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(contextLoader).toContain('customer_publishable');
     expect(contextLoader).toContain(".eq('is_active', true)");
     expect(contextLoader).not.toContain(".eq('customer_publishable', true)");
+    expect(contextLoader).not.toContain('bulkMode ? Promise.resolve([] as AttractionData[])');
   });
 
   it('post-save mobile QA blocks customer visibility on high or critical incidents', () => {
