@@ -37,7 +37,7 @@ describe('ad-os-v341-v360 agency reporting summary', () => {
       'monthly_report_draft',
       'audit_export_ready',
     ]));
-    expect(summary.next_action).toContain('billing');
+    expect(summary.next_action).toContain('과금 프로필');
   });
 
   it('blocks reporting when full auto or critical incidents are present', () => {

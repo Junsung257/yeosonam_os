@@ -14,6 +14,8 @@ import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
+import { buildSourceBackedFieldRepair } from '@/lib/source-package-field-repair';
+import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -71,9 +73,14 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
   if (action === 'approve') {
     const force = body.force === true;
     const sourcePriceDateRepair = buildSourceBackedPriceDateRepair(pkg as Parameters<typeof buildSourceBackedPriceDateRepair>[0]);
+    const sourceTermsRepair = buildSourceBackedTermsRepair(pkg);
+    const sourceFieldRepair = buildSourceBackedFieldRepair(pkg);
     const pkgForSourceVerify = {
       ...(pkg as Record<string, unknown>),
+      ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
       ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
+      ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
+      ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
     };
     const sourceVerify = evaluateVerifyChecks({
       ...pkgForSourceVerify,
@@ -86,12 +93,17 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       source: 'approve-source-verify',
       version: 3,
       source_price_date_repair: sourcePriceDateRepair,
+      source_terms_repair: sourceTermsRepair,
+      source_field_repair: sourceFieldRepair,
     };
     if (sourceVerify.status === 'blocked') {
       await supabaseAdmin
         .from('travel_packages')
         .update({
           ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
+          ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
+          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
+          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
           audit_status: 'blocked',
           audit_report: sourceAuditReport,
           audit_checked_at: new Date().toISOString(),
@@ -111,6 +123,9 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         .from('travel_packages')
         .update({
           ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
+          ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
+          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
+          ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
           audit_status: 'warnings',
           audit_report: sourceAuditReport,
           audit_checked_at: new Date().toISOString(),
@@ -308,7 +323,10 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
           customer_notes: v3NoticeGate.payload.customer_notes,
         } : {}),
         marketing_copies: updatedCopies,
+        ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
         ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
+        ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
+        ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
         audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
         audit_report: {
           ...sourceAuditReport,

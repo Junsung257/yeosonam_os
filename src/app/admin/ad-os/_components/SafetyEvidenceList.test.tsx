@@ -32,7 +32,7 @@ describe('Ad OS SafetyEvidenceList', () => {
     expect(html).toContain('Admin surface');
     expect(html).toContain('/admin/ad-os · ready');
     expect(html).toContain('Open the surface');
-    expect(html).toContain('pass');
+    expect(html).toContain('통과');
     expect(html).toContain('href="/admin/ad-os"');
     expect(html).toContain('화면 보기');
     expect(html).toContain('ready / empty / error');

@@ -163,4 +163,32 @@ describe('buildSourceBackedPriceDateRepair', () => {
     ]);
     expect(result.priceDates.some(row => row.date === '2026-07-01' || row.date === '2026-08-01')).toBe(false);
   });
+
+  it('keeps future DB departure year when the raw year is only a document date', () => {
+    const rawText = [
+      'PKG ZE Phu Quoc golf 4N6D',
+      '2026.2.1',
+      '3/29~4/30',
+      '토',
+      '1,319,-',
+      '일,월,화',
+      '1,459,-',
+    ].join('\n');
+
+    const result = buildSourceBackedPriceDateRepair({
+      title: 'PKG ZE Phu Quoc golf 4N6D',
+      duration: 6,
+      raw_text: rawText,
+      departure_days: '토',
+      price_dates: [
+        { date: '2027-03-06', price: 1319000, confirmed: false },
+        { date: '2027-03-13', price: 1319000, confirmed: false },
+      ],
+    });
+
+    expect(JSON.stringify(result)).not.toContain('2026-03');
+    if (result.status === 'repaired') {
+      expect(result.priceDates.every(row => row.date.startsWith('2027-'))).toBe(true);
+    }
+  });
 });

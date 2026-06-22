@@ -52,6 +52,39 @@ function priceValue(row: SourcePriceRepairPackage['price_dates'] extends Array<i
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function sourceMonthDayDatesForYear(rawText: string, year: number): Date[] {
+  const dates: Date[] = [];
+  const seen = new Set<string>();
+  const monthDayRe = /(^|[^\d])(\d{1,2})\s*\/\s*(\d{1,2})(?!\s*\/?\d)/g;
+  for (const match of rawText.matchAll(monthDayRe)) {
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) continue;
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) continue;
+    const key = date.toISOString().slice(0, 10);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dates.push(date);
+  }
+  return dates;
+}
+
+function shouldPreferFutureDbPriceYear(pkg: SourcePriceRepairPackage, rawText: string, sourceYear: number, dbYear: number): boolean {
+  if (dbYear <= sourceYear) return false;
+
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const existingRows = (pkg.price_dates ?? [])
+    .map(row => (typeof row.date === 'string' && ISO_DATE_RE.test(row.date) ? new Date(`${row.date}T00:00:00Z`) : null))
+    .filter((date): date is Date => date instanceof Date && Number.isFinite(date.getTime()));
+  const allExistingFuture = existingRows.length > 0 && existingRows.every(date => date.getTime() >= todayUtc);
+  if (!allExistingFuture || sourceYear > now.getUTCFullYear()) return false;
+
+  const sourceDates = sourceMonthDayDatesForYear(rawText, sourceYear);
+  return sourceDates.length > 0 && sourceDates.every(date => date.getTime() < todayUtc);
+}
+
 function inferDurationDays(pkg: SourcePriceRepairPackage): number | null {
   if (typeof pkg.duration === 'number' && Number.isFinite(pkg.duration) && pkg.duration > 0) return pkg.duration;
   const titleMatch = pkg.title?.match(/(\d+)\s*박\s*(\d+)\s*일/);
@@ -60,11 +93,14 @@ function inferDurationDays(pkg: SourcePriceRepairPackage): number | null {
 
 function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number {
   const sourceYear = resolvePriceRecoveryYear({ rawText });
-  if (sourceYear) return sourceYear;
-
   const dbYear = (pkg.price_dates ?? [])
     .map(row => (typeof row.date === 'string' ? Number(row.date.slice(0, 4)) : NaN))
     .find(year => Number.isFinite(year) && year >= 2000);
+  if (sourceYear && dbYear && dbYear > sourceYear) {
+    if (shouldPreferFutureDbPriceYear(pkg, rawText, sourceYear, dbYear)) return dbYear;
+  }
+  if (sourceYear) return sourceYear;
+
   if (dbYear) return dbYear;
 
   const rawYear = Number(rawText.match(/\b(20\d{2})\b/)?.[1] ?? 0);
