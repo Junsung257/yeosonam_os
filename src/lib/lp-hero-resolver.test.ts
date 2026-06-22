@@ -32,7 +32,9 @@ describe('resolveLpHeroPhotoUrl', () => {
     const sb = {
       from: () => ({
         select: () => ({
-          in: async () => ({ data: rows }),
+          in: () => ({
+            limit: async () => ({ data: rows }),
+          }),
         }),
       }),
     };

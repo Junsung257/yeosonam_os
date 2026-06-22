@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { safeEqualString } from '@/lib/timing-safe';
 import { apiResponse } from '@/lib/api-response';
+import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 
 /**
  * Vercel Cron은 `Authorization: Bearer ${CRON_SECRET}` 를 붙이고,
@@ -61,6 +62,12 @@ export function requireCronBearer(request: NextRequest): NextResponse | null {
 
 type NextHandler = (req: NextRequest, ctx?: any) => Promise<NextResponse>;
 
+function inferCronName(request: NextRequest): string {
+  const parts = request.nextUrl.pathname.split('/').filter(Boolean);
+  const cronIndex = parts.lastIndexOf('cron');
+  return cronIndex >= 0 ? parts[cronIndex + 1] ?? 'unknown-cron' : parts.at(-1) ?? 'unknown-cron';
+}
+
 /**
  * Cron 엔드포인트 래퍼. requireCronBearer() 검증 후 핸들러 실행.
  * 동적 라우트([id] 등)의 ctx 파라미터도 지원.
@@ -74,6 +81,8 @@ export function withCronGuard(handler: NextHandler): NextHandler {
   return async (req: NextRequest, ctx?: any): Promise<NextResponse> => {
     const authError = requireCronBearer(req);
     if (authError) return authError;
+    const resourceSaver = maybeSkipCronForResourceSaver(req, inferCronName(req));
+    if (resourceSaver) return resourceSaver as NextResponse;
     return ctx ? handler(req, ctx) : handler(req);
   };
 }

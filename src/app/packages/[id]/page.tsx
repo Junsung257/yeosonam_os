@@ -416,13 +416,18 @@ export default async function PackageDetailPage({
     : null;
   let productPriceRows: Array<{ target_date: string | null; adult_selling_price: number | null; note: string | null }> = [];
   const priceProductCode = pkgBase?.products?.internal_code ?? (pkgBase as { internal_code?: string | null } | null)?.internal_code ?? null;
-  if (priceProductCode) {
-    const { data: priceRows } = await sb
-      .from('product_prices')
-      .select('target_date, adult_selling_price, note')
-      .eq('product_id', priceProductCode)
-      .order('target_date', { ascending: true })
-      .order('adult_selling_price', { ascending: true, nullsFirst: false });
+  if (priceProductCode && !skipNonCriticalDbReads) {
+    const { data: priceRows } = await runOptionalSupabaseQuery(
+      sb
+        .from('product_prices')
+        .select('target_date, adult_selling_price, note')
+        .eq('product_id', priceProductCode)
+        .order('target_date', { ascending: true })
+        .order('adult_selling_price', { ascending: true, nullsFirst: false })
+        .limit(300),
+      { data: [] },
+      { label: 'package.product-prices', timeoutMs: 1200 },
+    );
     productPriceRows = (priceRows ?? []) as typeof productPriceRows;
   }
   const normalizedPkg = pkgBase
@@ -501,7 +506,7 @@ export default async function PackageDetailPage({
   let climateData: Awaited<ReturnType<typeof resolveDestinationClimate>> = null;
   let representativeMonth = new Date().getMonth() + 1;
   let departureDistribution: Record<number, number> = {};
-  if (pkg?.destination) {
+  if (pkg?.destination && !skipNonCriticalDbReads) {
     climateData = await resolveDestinationClimate(pkg.destination);
 
     // 출발일 평균월 산출 — price_dates 우선, 없으면 price_tiers.departure_dates
@@ -544,13 +549,17 @@ export default async function PackageDetailPage({
     } | null;
   };
   let scoreRows: ScoreRow[] = [];
-  {
-    const { data: sc } = await sb
-      .from('package_scores')
-      .select('departure_date, rank_in_group, group_size, effective_price, list_price, shopping_count, hotel_avg_grade, meal_count, free_option_count, is_direct_flight, breakdown')
-      .eq('package_id', id)
-      .order('departure_date', { ascending: true })
-      .limit(36);
+  if (!skipNonCriticalDbReads) {
+    const { data: sc } = await runOptionalSupabaseQuery(
+      sb
+        .from('package_scores')
+        .select('departure_date, rank_in_group, group_size, effective_price, list_price, shopping_count, hotel_avg_grade, meal_count, free_option_count, is_direct_flight, breakdown')
+        .eq('package_id', id)
+        .order('departure_date', { ascending: true })
+        .limit(36),
+      { data: [] },
+      { label: 'package.score-rows', timeoutMs: 1200 },
+    );
     if (sc) scoreRows = sc as ScoreRow[];
   }
 
@@ -564,18 +573,22 @@ export default async function PackageDetailPage({
     breakdown: ScoreRow['breakdown'];
   };
   const rivalsByDate: Record<string, Rival[]> = {};
-  {
+  if (!skipNonCriticalDbReads) {
     const groupKeys = scoreRows
       .filter(r => r.group_size >= 2 && r.departure_date)
       .map(r => `${pkg?.destination ?? ''}|${r.departure_date}`);
     const uniqueGroupKeys = Array.from(new Set(groupKeys)).slice(0, 20);
     if (uniqueGroupKeys.length > 0) {
-      const { data } = await sb
-        .from('package_scores')
-        .select(`departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)`)
-        .in('group_key', uniqueGroupKeys)
-        .neq('package_id', id)
-        .limit(80);
+      const { data } = await runOptionalSupabaseQuery(
+        sb
+          .from('package_scores')
+          .select(`departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)`)
+          .in('group_key', uniqueGroupKeys)
+          .neq('package_id', id)
+          .limit(80),
+        { data: [] },
+        { label: 'package.score-rivals', timeoutMs: 1200 },
+      );
       for (const r of data ?? []) {
         const row = r as unknown as { departure_date: string; travel_packages: { title: string } | { title: string }[] } & Rival;
         const t = Array.isArray(row.travel_packages) ? row.travel_packages[0]?.title : row.travel_packages?.title;
@@ -601,7 +614,7 @@ export default async function PackageDetailPage({
     nextDepartureDate: string | null;
   } = { bookings: 0, interest: 0, todayViews: 0, nextDepartureBookings: 0, nextDepartureDate: null };
 
-  if (pkg?.destination) {
+  if (pkg?.destination && !skipNonCriticalDbReads) {
     const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
     const since24h = new Date(Date.now() - 86400000).toISOString();
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -760,7 +773,7 @@ export default async function PackageDetailPage({
     };
   })() : null;
   let lpHeroImageUrl: string | null = null;
-  if (normalizedPkg) {
+  if (normalizedPkg && !skipNonCriticalDbReads) {
     try {
       lpHeroImageUrl = await resolveLpHeroPhotoUrl(sb, normalizedPkg as { destination?: string | null; itinerary_data?: unknown });
     } catch {
