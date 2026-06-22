@@ -70,7 +70,7 @@ async function ensureDryRunPolicy(): Promise<PolicyRow | null> {
       require_rollback_ready: true,
       require_human_approval: true,
       live_external_write_enabled: false,
-      notes: 'Auto-created by Naver limited pilot dry-run. Live external write remains disabled.',
+      notes: '네이버 제한 시범 사전 점검으로 자동 생성됐습니다. 실제 외부 반영은 계속 꺼져 있습니다.',
     } as never)
     .select('*')
     .single();

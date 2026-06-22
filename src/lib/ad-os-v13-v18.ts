@@ -48,26 +48,26 @@ function step(id: string, done: boolean, label: string, nextAction: string): Pub
     id,
     label,
     status: done ? 'pass' : 'fail',
-    nextAction: done ? 'Ready' : nextAction,
+    nextAction: done ? '준비 완료' : nextAction,
   };
 }
 
 export function buildPublisherOpsPlan(input: PublisherReadinessInput): PublisherOpsPlan {
   const isGoogle = input.platform === 'google';
   const steps = [
-    step('credentials', input.credentialsReady, 'Credentials', isGoogle ? 'Connect OAuth, developer token, and customer id.' : 'Set Naver API key, secret, and customer id.'),
-    step('permission', input.permissionReady, 'Permission', 'Resolve account permission or agency account access.'),
-    step('budget', input.budgetReady, 'Budget guardrail', 'Set monthly budget, daily cap, max CPC, and test loss limit.'),
-    step('campaign', input.campaignReady, 'Campaign', 'Create or sync campaign id.'),
-    step('ad_group', input.adGroupReady !== false, 'Ad group', 'Create or sync ad group id.'),
-    step('keywords', input.approvedKeywords > 0, 'Approved keywords', 'Approve long-tail keyword candidates.'),
-    step('tenant_policy', input.tenantAllowed, 'Tenant policy', 'Allow platform and automation level for this tenant.'),
+    step('credentials', input.credentialsReady, '계정 연결', isGoogle ? '구글 광고 계정 연결을 완료하세요.' : '네이버 광고 계정 연결을 완료하세요.'),
+    step('permission', input.permissionReady, '권한 확인', '광고 계정 권한 또는 대행사 접근 권한을 확인하세요.'),
+    step('budget', input.budgetReady, '예산 안전장치', '월예산, 일상한, 최대 클릭단가, 테스트 손실 한도를 설정하세요.'),
+    step('campaign', input.campaignReady, '캠페인', '캠페인을 만들거나 기존 캠페인을 연결하세요.'),
+    step('ad_group', input.adGroupReady !== false, '광고그룹', '광고그룹을 만들거나 기존 광고그룹을 연결하세요.'),
+    step('keywords', input.approvedKeywords > 0, '승인 키워드', '초세부 키워드 후보를 검수하고 승인하세요.'),
+    step('tenant_policy', input.tenantAllowed, '광고주 정책', '이 광고주에게 허용된 채널과 자동화 수준을 확인하세요.'),
   ];
 
   if (isGoogle) {
     steps.push(
-      step('conversion_action', Boolean(input.conversionActionReady), 'Conversion action', 'Configure booking/lead conversion action.'),
-      step('final_url_policy', Boolean(input.finalUrlPolicyReady), 'Final URL policy', 'Lock final URL expansion to approved blog or landing URLs.'),
+      step('conversion_action', Boolean(input.conversionActionReady), '전환 설정', '예약/문의 전환 액션을 설정하세요.'),
+      step('final_url_policy', Boolean(input.finalUrlPolicyReady), '랜딩 URL 정책', '승인된 블로그 또는 랜딩 URL만 쓰도록 고정하세요.'),
     );
   }
 

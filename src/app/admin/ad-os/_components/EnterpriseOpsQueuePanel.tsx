@@ -25,23 +25,23 @@ export function EnterpriseOpsQueuePanel({
     <div className="mt-5 border-t border-admin-border pt-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h3 className="text-admin-sm font-semibold text-admin-text-2">Operations queue</h3>
+          <h3 className="text-admin-sm font-semibold text-admin-text-2">운영 대기열</h3>
           <p className="mt-1 text-admin-xs text-admin-muted">
-            {opsQueues?.next_action || 'Review ready execution jobs, confirmations, and blocked work before any live write path.'}
+            {opsQueues?.next_action || '실제 반영 전에 실행 대기, 결과 확인, 막힌 작업을 검토하세요.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <StatusPill tone={(opsQueues?.executor_ready || 0) > 0 ? 'warn' : 'neutral'}>
-            executor {Number(opsQueues?.executor_ready || 0).toLocaleString('ko-KR')}
+            실행 대기 {Number(opsQueues?.executor_ready || 0).toLocaleString('ko-KR')}
           </StatusPill>
           <StatusPill tone={(opsQueues?.confirmation_pending || 0) > 0 ? 'warn' : 'neutral'}>
-            confirm {Number(opsQueues?.confirmation_pending || 0).toLocaleString('ko-KR')}
+            확인 대기 {Number(opsQueues?.confirmation_pending || 0).toLocaleString('ko-KR')}
           </StatusPill>
           <StatusPill tone={(opsQueues?.failed_or_blocked || 0) > 0 ? 'bad' : 'good'}>
-            blocked {Number(opsQueues?.failed_or_blocked || 0).toLocaleString('ko-KR')}
+            막힘 {Number(opsQueues?.failed_or_blocked || 0).toLocaleString('ko-KR')}
           </StatusPill>
           <StatusPill tone={(opsQueues?.live_writes || 0) === 0 ? 'good' : 'bad'}>
-            live write {Number(opsQueues?.live_writes || 0).toLocaleString('ko-KR')}
+            외부 반영 {Number(opsQueues?.live_writes || 0).toLocaleString('ko-KR')}
           </StatusPill>
         </div>
       </div>
@@ -49,12 +49,12 @@ export function EnterpriseOpsQueuePanel({
       <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-3">
         <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-admin-xs font-semibold text-admin-text">Execution queue</h4>
+            <h4 className="text-admin-xs font-semibold text-admin-text">실행 대기</h4>
             <PlayCircle size={14} className="text-admin-muted" />
           </div>
           <OpsQueueList
             rows={executorRows}
-            empty="No approved execution jobs are waiting for dry-run."
+            empty="사전 점검을 기다리는 승인 작업이 없습니다."
             loadingId={loadingId}
             onAction={onAction}
             actions={['executor_dry_run']}
@@ -63,12 +63,12 @@ export function EnterpriseOpsQueuePanel({
 
         <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-admin-xs font-semibold text-admin-text">Result confirmation</h4>
+            <h4 className="text-admin-xs font-semibold text-admin-text">결과 확인</h4>
             <CheckCircle2 size={14} className="text-admin-muted" />
           </div>
           <OpsQueueList
             rows={confirmationRows}
-            empty="No failed external result confirmation is pending."
+            empty="확인해야 할 외부 결과가 없습니다."
             loadingId={loadingId}
             onAction={onAction}
             actions={['confirm_failed']}
@@ -77,12 +77,12 @@ export function EnterpriseOpsQueuePanel({
 
         <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="text-admin-xs font-semibold text-admin-text">Failed or blocked</h4>
+            <h4 className="text-admin-xs font-semibold text-admin-text">실패/막힘</h4>
             <AlertTriangle size={14} className="text-admin-muted" />
           </div>
           <OpsQueueList
             rows={failedRows}
-            empty="No blocked job or failed executor attempt is waiting for acknowledgement."
+            empty="확인 대기 중인 실패 또는 막힌 작업이 없습니다."
             loadingId={loadingId}
             onAction={onAction}
             actions={['acknowledge_blocker']}

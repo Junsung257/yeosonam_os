@@ -16,6 +16,20 @@ function completionTone(status?: CompletionAudit['status']): StatusPillTone {
   return 'warn';
 }
 
+function completionLabel(status?: CompletionAudit['status']): string {
+  if (status === 'ready') return '준비 완료';
+  if (status === 'blocked') return '차단';
+  if (status === 'needs_attention') return '확인 필요';
+  return '미확인';
+}
+
+function smokeLabel(status?: string): string {
+  if (status === 'pass') return '통과';
+  if (status === 'fail') return '실패';
+  if (status === 'warn') return '확인 필요';
+  return '미점검';
+}
+
 function requirementTone(status: CompletionRequirement['status']): StatusPillTone {
   if (status === 'pass') return 'good';
   if (status === 'fail') return 'bad';
@@ -45,58 +59,58 @@ export function CompletionAuditPanel({
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-admin-2xs font-semibold text-admin-muted">Completion Audit</p>
+        <p className="text-admin-2xs font-semibold text-admin-muted">완료 점검</p>
         <StatusPill tone={completionTone(completionAudit?.status)}>
-          {completionAudit?.status || 'unknown'}
+          {completionLabel(completionAudit?.status)}
         </StatusPill>
       </div>
       <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">
         {Number(completionAudit?.readiness_score || 0).toLocaleString('ko-KR')}%
       </p>
       <p className="mt-1 text-admin-2xs text-admin-muted">
-        pass {Number(completionAudit?.passed || 0).toLocaleString('ko-KR')} / warn {Number(completionAudit?.warnings || 0).toLocaleString('ko-KR')} / fail {Number(completionAudit?.failed || 0).toLocaleString('ko-KR')}
+        통과 {Number(completionAudit?.passed || 0).toLocaleString('ko-KR')} / 확인 {Number(completionAudit?.warnings || 0).toLocaleString('ko-KR')} / 실패 {Number(completionAudit?.failed || 0).toLocaleString('ko-KR')}
       </p>
       <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
-        {completionAudit?.next_action || 'Collect current evidence before declaring Ad OS complete.'}
+        {completionAudit?.next_action || '완료로 표시하기 전에 현재 운영 근거를 수집하세요.'}
       </p>
 
       <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-admin-2xs font-semibold text-admin-muted">Staging Smoke</p>
+            <p className="text-admin-2xs font-semibold text-admin-muted">사전 안전 점검</p>
             <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">
-              Checks fixture-backed product, scenario, keyword, creative, execution, conversion upload, portfolio, and learning evidence in read-only mode.
+              상품, 시나리오, 키워드, 소재, 실행, 전환 업로드, 포트폴리오, 학습 근거를 읽기 전용으로 점검합니다.
             </p>
           </div>
           <StatusPill tone={stagingSmoke?.ok ? 'good' : stagingSmoke ? 'bad' : 'neutral'}>
-            {stagingSmoke?.smoke.status || 'not checked'}
+            {smokeLabel(stagingSmoke?.smoke.status)}
           </StatusPill>
         </div>
         <MetricGrid
           metrics={[
             {
-              label: 'Assertions',
+              label: '점검 항목',
               value: `${Number(stagingSmoke?.smoke.passed_assertions || 0).toLocaleString('ko-KR')} / ${Number(
                 (stagingSmoke?.smoke.passed_assertions || 0) + (stagingSmoke?.smoke.failed_assertions || 0),
               ).toLocaleString('ko-KR')}`,
             },
-            { label: 'Keywords', value: Number(stagingSmoke?.smoke.counts.keywords || 0).toLocaleString('ko-KR') },
-            { label: 'Creative', value: Number(stagingSmoke?.smoke.counts.creative_variants || 0).toLocaleString('ko-KR') },
-            { label: 'External spend', value: fmtWon(stagingSmoke?.safety.external_spend_krw || 0) },
+            { label: '키워드', value: Number(stagingSmoke?.smoke.counts.keywords || 0).toLocaleString('ko-KR') },
+            { label: '소재', value: Number(stagingSmoke?.smoke.counts.creative_variants || 0).toLocaleString('ko-KR') },
+            { label: '외부 광고비', value: fmtWon(stagingSmoke?.safety.external_spend_krw || 0) },
           ]}
         />
         <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
-          {stagingSmoke?.smoke.next_action || 'Run the smoke API to show current operational safety evidence here.'}
+          {stagingSmoke?.smoke.next_action || '현재 운영 안전 근거를 확인하려면 사전 점검을 실행하세요.'}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" onClick={onRunStagingSmoke} loading={checkingStagingSmoke}>
-            Read-only smoke
+            읽기 전용 점검
           </Button>
           <Link href="/api/admin/ad-os/staging-smoke" className="inline-flex items-center gap-1 text-admin-2xs font-semibold text-blue-700">
             JSON <ArrowRight className="h-3 w-3" />
           </Link>
           <StatusPill tone={stagingSmoke?.safety.external_api_write === false && stagingSmoke.safety.database_mutation === false ? 'good' : 'warn'}>
-            DB write {stagingSmoke?.safety.database_mutation ? 'on' : 'off'} - external write {stagingSmoke?.safety.external_api_write ? 'on' : 'off'}
+            DB 변경 {stagingSmoke?.safety.database_mutation ? '켜짐' : '꺼짐'} - 외부 반영 {stagingSmoke?.safety.external_api_write ? '켜짐' : '꺼짐'}
           </StatusPill>
         </div>
       </div>
@@ -110,7 +124,7 @@ export function CompletionAuditPanel({
           status: item.status,
           tone: requirementTone(item.status),
         }))}
-        empty="No completion evidence loaded."
+        empty="완료 점검 근거가 아직 없습니다."
         containerClassName="mt-3 space-y-2"
         itemClassName="grid gap-2 border-t border-admin-border pt-2 md:grid-cols-[minmax(0,1fr)_auto]"
         emptyClassName="border-t border-admin-border pt-2 text-admin-2xs text-admin-muted"

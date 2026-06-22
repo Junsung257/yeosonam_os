@@ -13,14 +13,14 @@ const validationFixture: StagingValidation = {
     warnings: 0,
     failed: 0,
     top_blocker: null,
-    next_action: 'Staging validation is ready for operator review.',
+    next_action: '배포 전 검증은 운영자 확인 준비가 됐습니다.',
     checks: [
       {
         id: 'read-only-smoke',
-        label: 'Read-only smoke',
+        label: '읽기 전용 점검',
         status: 'pass',
-        evidence: 'No database or external API writes were observed.',
-        next_action: 'Keep this guardrail active.',
+        evidence: 'DB 변경이나 외부 API 반영이 감지되지 않았습니다.',
+        next_action: '이 안전장치를 계속 켜두세요.',
       },
     ],
     safety: {
@@ -40,10 +40,10 @@ describe('Ad OS StagingValidationPanel', () => {
     );
 
     expect(html).toContain('배포 전 검증 패키지');
-    expect(html).toContain('Staging validation is ready for operator review.');
+    expect(html).toContain('배포 전 검증은 운영자 확인 준비가 됐습니다.');
     expect(html).toContain('92%');
-    expect(html).toContain('Read-only smoke');
-    expect(html).toContain('No database or external API writes were observed.');
+    expect(html).toContain('읽기 전용 점검');
+    expect(html).toContain('DB 변경이나 외부 API 반영이 감지되지 않았습니다.');
     expect(html).toContain('DB 변경 꺼짐 - 외부 반영 꺼짐 - 완전 자동 꺼짐');
   });
 

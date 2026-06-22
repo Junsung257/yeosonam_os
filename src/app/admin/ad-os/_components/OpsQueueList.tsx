@@ -1,13 +1,25 @@
 'use client';
 
 import Button from '@/components/ui/Button';
-import { PLATFORM_LABEL, queueTone } from '../_lib/display';
+import { PLATFORM_LABEL, queueStatusLabel, queueTone } from '../_lib/display';
 import { StatusPill } from './StatusPill';
 
 export type OpsQueueAction =
   | 'executor_dry_run'
   | 'confirm_failed'
   | 'acknowledge_blocker';
+
+function sourceLabel(source: unknown): string {
+  const value = String(source || '');
+  const labels: Record<string, string> = {
+    platform_job: '실행 작업',
+    conversion_upload_job: '전환 업로드',
+    platform_job_confirmation: '외부 결과 확인',
+    conversion_upload_confirmation: '업로드 결과 확인',
+    execution_attempt: '실행 시도',
+  };
+  return labels[value] || value || '-';
+}
 
 export function OpsQueueList({
   rows,
@@ -38,10 +50,10 @@ export function OpsQueueList({
             <div className="min-w-0">
               <p className="truncate text-admin-xs font-semibold text-admin-text">{String(row.title || row.source || '-')}</p>
               <p className="mt-0.5 text-admin-2xs text-admin-muted">
-                {PLATFORM_LABEL[String(row.platform)] || String(row.platform || 'internal')} · {String(row.source || '-')}
+                {PLATFORM_LABEL[String(row.platform)] || String(row.platform || '내부')} · {sourceLabel(row.source)}
               </p>
             </div>
-            <StatusPill tone={queueTone(row.status)}>{String(row.status || '-')}</StatusPill>
+            <StatusPill tone={queueTone(row.status)}>{queueStatusLabel(row.status)}</StatusPill>
           </div>
           {Boolean(row.reason || row.next_action) && (
             <p className="mt-2 text-admin-2xs leading-5 text-admin-muted">
@@ -62,7 +74,7 @@ export function OpsQueueList({
                   onClick={() => onAction(row, 'executor_dry_run')}
                   loading={loadingId === `${String(row.source)}:${String(row.id)}:executor_dry_run`}
                 >
-                  Dry-run
+                  사전 점검
                 </Button>
               )}
               {actions.includes('confirm_failed') && ['platform_job_confirmation', 'conversion_upload_confirmation'].includes(String(row.source || '')) && (

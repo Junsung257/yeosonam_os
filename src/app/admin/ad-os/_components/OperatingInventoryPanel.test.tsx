@@ -39,12 +39,12 @@ describe('Ad OS OperatingInventoryPanel', () => {
       <OperatingInventoryPanel operatingInventory={inventoryFixture} checking={false} onRefresh={() => {}} />,
     );
 
-    expect(html).toContain('Operating Inventory');
+    expect(html).toContain('운영 항목 점검');
     expect(html).toContain('Runtime execution needs operator evidence.');
     expect(html).toContain('75%');
     expect(html).toContain('Runtime execution');
     expect(html).toContain('Executor queue is ready but not confirmed.');
-    expect(html).toContain('live spend');
+    expect(html).toContain('실제 광고비');
   });
 
   it('renders the empty state before inventory data is loaded', () => {
@@ -52,8 +52,8 @@ describe('Ad OS OperatingInventoryPanel', () => {
       <OperatingInventoryPanel operatingInventory={null} checking={false} onRefresh={() => {}} />,
     );
 
-    expect(html).toContain('not checked');
-    expect(html).toContain('Review the Ad OS operating inventory.');
-    expect(html).toContain('Run inventory check to load operational');
+    expect(html).toContain('미점검');
+    expect(html).toContain('광고 운영 항목을 점검하세요.');
+    expect(html).toContain('운영 항목 점검을 실행하면');
   });
 });

@@ -287,7 +287,7 @@ export default function AdOsPage() {
       errorMessage: 'Staging smoke check failed.',
       successMessage: (json) => (
         json.ok
-          ? `Staging smoke passed: assertions ${formatAdOsNumber(json.smoke.passed_assertions)}, failed ${formatAdOsNumber(json.smoke.failed_assertions)}, external API write ${json.safety.external_api_write ? 'yes' : 'no'}.`
+          ? `사전 안전 점검 완료: 통과 ${formatAdOsNumber(json.smoke.passed_assertions)}개, 실패 ${formatAdOsNumber(json.smoke.failed_assertions)}개, 외부 반영 ${json.safety.external_api_write ? '있음' : '없음'}.`
           : `Staging smoke failed: assertions ${formatAdOsNumber(json.smoke.failed_assertions)} failed. Next: ${json.smoke.next_action}`
       ),
     });
@@ -412,7 +412,7 @@ export default function AdOsPage() {
       errorMessage: 'Naver paused keyword publisher dry-run failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver paused keyword publisher dry-run complete: checked ${formatAdOsNumber(summary.checked_keywords)}, eligible ${formatAdOsNumber(summary.eligible_keywords)}, blocked ${formatAdOsNumber(summary.blocked_keywords)}. Legacy publisher external API write 0.`;
+        return `네이버 정지 키워드 사전 점검 완료: 확인 ${formatAdOsNumber(summary.checked_keywords)}개, 가능 ${formatAdOsNumber(summary.eligible_keywords)}개, 막힘 ${formatAdOsNumber(summary.blocked_keywords)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -556,7 +556,7 @@ export default function AdOsPage() {
       errorMessage: 'Naver paused keyword activation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver paused keyword activation complete: checked ${formatAdOsNumber(summary.checked_keywords)}, approval requests ${formatAdOsNumber(summary.approved_activation_requests)}, activated ${formatAdOsNumber(summary.activated_keywords)}. External API write remains gated by active-spend interlock.`;
+        return `네이버 정지 키워드 활성화 점검 완료: 확인 ${formatAdOsNumber(summary.checked_keywords)}개, 승인 요청 ${formatAdOsNumber(summary.approved_activation_requests)}개, 활성 준비 ${formatAdOsNumber(summary.activated_keywords)}개. 실제 반영은 안전장치로 막혀 있습니다.`;
       },
     });
   };
@@ -690,7 +690,7 @@ export default function AdOsPage() {
       const portfolioSummary = getAdOsRecord(portfolio.summary);
       const pacingSummary = getAdOsRecord(pacing.summary);
       setAutomationMessage(
-        `Optimization safe pipeline complete: facts ${formatAdOsNumber(performanceSummary.facts_prepared)}, attribution conversions ${formatAdOsNumber(attributionSummary.conversions)}, bid candidates ${formatAdOsNumber(bidSummary.candidates)}, portfolio plans ${formatAdOsNumber(portfolioSummary.inserted)}, pacing checked ${formatAdOsNumber(pacingSummary.checked_channels)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+        `최적화 안전 점검 완료: 성과 근거 ${formatAdOsNumber(performanceSummary.facts_prepared)}개, 전환 귀속 ${formatAdOsNumber(attributionSummary.conversions)}개, 입찰 후보 ${formatAdOsNumber(bidSummary.candidates)}개, 포트폴리오 계획 ${formatAdOsNumber(portfolioSummary.inserted)}개, 예산 페이싱 ${formatAdOsNumber(pacingSummary.checked_channels)}개 채널 확인. 실제 광고비 사용 없음.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Optimization safe pipeline failed.');
@@ -769,7 +769,7 @@ export default function AdOsPage() {
       errorMessage: 'Kill-switch dry-run failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Kill-switch dry-run complete: active budget channels ${formatAdOsNumber(summary.active_budget_channels)}, keyword targets ${formatAdOsNumber(summary.keyword_targets)}, mapping targets ${formatAdOsNumber(summary.mapping_targets)}. Dry-run only: no external spend.`;
+        return `긴급 중지 사전 점검 완료: 활성 예산 채널 ${formatAdOsNumber(summary.active_budget_channels)}개, 키워드 대상 ${formatAdOsNumber(summary.keyword_targets)}개, 매핑 대상 ${formatAdOsNumber(summary.mapping_targets)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -944,7 +944,7 @@ export default function AdOsPage() {
       errorMessage: 'AI 광고팀 진단에 실패했습니다.',
       successMessage: (json) => {
         const summary = json.summary || {};
-        return `AI 광고팀 진단 완료: 실행 ${formatAdOsNumber(summary.pipeline_steps)}개, 실패 ${formatAdOsNumber(summary.failed_steps)}개, ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%, 메모리 ${String(json.memory_id || '-')}. 외부 API 쓰기 0건.`;
+        return `AI 광고팀 진단 완료: 확인 ${formatAdOsNumber(summary.pipeline_steps)}개, 실패 ${formatAdOsNumber(summary.failed_steps)}개, ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -964,7 +964,7 @@ export default function AdOsPage() {
       errorMessage: '캠페인 메모리 저장에 실패했습니다.',
       successMessage: (json) => {
         const summary = json.summary || {};
-        return `캠페인 메모리 ${json.memory_created ? '생성' : '갱신'} 완료: ${String(json.memory_id || '-')}. ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%.`;
+        return `캠페인 메모리 ${json.memory_created ? '생성' : '갱신'} 완료: ROAS 점수 ${formatAdOsNumber(summary.roas_score)}%, 팀 점수 ${formatAdOsNumber(summary.team_score)}%.`;
       },
     });
   };
@@ -1011,7 +1011,7 @@ export default function AdOsPage() {
           planned?: unknown;
           blocked?: unknown;
         } | undefined;
-        return `Naver execution gate complete: requested ${formatAdOsNumber(summary?.requested)}, planned ${formatAdOsNumber(summary?.planned)}, blocked ${formatAdOsNumber(summary?.blocked)}. External API write 0.`;
+        return `네이버 실행 조건 점검 완료: 요청 ${formatAdOsNumber(summary?.requested)}개, 계획 ${formatAdOsNumber(summary?.planned)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1135,7 +1135,7 @@ export default function AdOsPage() {
       errorMessage: 'Platform job preparation failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Platform jobs prepared: jobs ${formatAdOsNumber(summary?.jobs)}, blocked ${formatAdOsNumber(summary?.blocked)}, approved or ready ${formatAdOsNumber(summary?.approved)}. External API write 0.`;
+        return `플랫폼 작업 준비 완료: 작업 ${formatAdOsNumber(summary?.jobs)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개, 승인/준비 ${formatAdOsNumber(summary?.approved)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1265,7 +1265,7 @@ export default function AdOsPage() {
       errorMessage: 'Approved portfolio apply failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Approved portfolio apply requests complete: approved plans ${formatAdOsNumber(summary?.approved_plans)}, change requests ${formatAdOsNumber(summary?.inserted)}. External API write 0.`;
+        return `승인된 포트폴리오 반영 요청 완료: 승인 계획 ${formatAdOsNumber(summary?.approved_plans)}개, 변경 요청 ${formatAdOsNumber(summary?.inserted)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1282,10 +1282,10 @@ export default function AdOsPage() {
       flag: 'checkingRuntimeReadiness',
       url: '/api/admin/ad-os/runtime-readiness',
       body: { apply: true },
-      errorMessage: 'Runtime readiness check failed.',
+          errorMessage: '실행 준비 점검에 실패했습니다.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Runtime readiness complete: tables ${formatAdOsNumber(summary?.tables_ready)}/${formatAdOsNumber(summary?.tables_total)}, full auto ${formatAdOsNumber(summary?.full_auto_enabled)}, external writes ${formatAdOsNumber(summary?.external_api_write_count)}.`;
+        return `실행 준비 점검 완료: 준비 테이블 ${formatAdOsNumber(summary?.tables_ready)}/${formatAdOsNumber(summary?.tables_total)}, 완전 자동 ${formatAdOsNumber(summary?.full_auto_enabled)}개, 외부 반영 ${formatAdOsNumber(summary?.external_api_write_count)}건.`;
       },
     });
   };
@@ -1303,7 +1303,7 @@ export default function AdOsPage() {
       errorMessage: 'Platform executor dry-run failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Platform executor dry-run complete: succeeded ${formatAdOsNumber(summary?.succeeded)}, blocked ${formatAdOsNumber(summary?.blocked)}. External API write 0.`;
+        return `플랫폼 실행 사전 점검 완료: 성공 ${formatAdOsNumber(summary?.succeeded)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1422,7 +1422,7 @@ export default function AdOsPage() {
       errorMessage: 'Channel adapter health check failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Channel adapter health complete: paused-write ready ${formatAdOsNumber(summary?.paused_write_ready)}, draft ready ${formatAdOsNumber(summary?.draft_ready)}, blocked ${formatAdOsNumber(summary?.blocked)}. External API write 0.`;
+        return `채널 연결 점검 완료: 정지 키워드 준비 ${formatAdOsNumber(summary?.paused_write_ready)}개, 초안 준비 ${formatAdOsNumber(summary?.draft_ready)}개, 막힘 ${formatAdOsNumber(summary?.blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1453,7 +1453,7 @@ export default function AdOsPage() {
       errorMessage: 'Paused keyword packet failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver paused keyword packet complete: ${String(summary.lifecycle_status || 'unknown')}, blocked ${String(summary.blocked_reason || 'none')}. External API write 0.`;
+        return `네이버 정지 키워드 패킷 완료: 상태 ${String(summary.lifecycle_status || '미확인')}, 막힌 이유 ${String(summary.blocked_reason || '없음')}. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1489,7 +1489,7 @@ export default function AdOsPage() {
       errorMessage: 'Google RSA draft generation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Google RSA drafts complete: sets ${formatAdOsNumber(summary.rsa_sets_generated)}, variants ${formatAdOsNumber(summary.variants_inserted)}, approval requests ${formatAdOsNumber(summary.change_requests_created)}. External API write 0.`;
+        return `구글 검색광고 문안 완료: 세트 ${formatAdOsNumber(summary.rsa_sets_generated)}개, 변형 ${formatAdOsNumber(summary.variants_inserted)}개, 승인 요청 ${formatAdOsNumber(summary.change_requests_created)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1506,7 +1506,7 @@ export default function AdOsPage() {
       errorMessage: 'Google RSA draft packet generation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Google RSA packets complete: prepared ${formatAdOsNumber(summary.packets_prepared)}, written ${formatAdOsNumber(summary.packets_written)}, blocked ${formatAdOsNumber(summary.blocked_packets)}. External API write 0.`;
+        return `구글 문안 패킷 완료: 준비 ${formatAdOsNumber(summary.packets_prepared)}개, 저장 ${formatAdOsNumber(summary.packets_written)}개, 막힘 ${formatAdOsNumber(summary.blocked_packets)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1522,7 +1522,7 @@ export default function AdOsPage() {
       errorMessage: 'Google draft platform job preparation failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Google draft jobs complete: prepared ${formatAdOsNumber(summary.jobs_prepared)}, written ${formatAdOsNumber(summary.jobs_written)}, approved ${formatAdOsNumber(summary.approved_jobs)}, blocked ${formatAdOsNumber(summary.blocked_jobs)}. External API write 0.`;
+        return `구글 초안 작업 완료: 준비 ${formatAdOsNumber(summary.jobs_prepared)}개, 저장 ${formatAdOsNumber(summary.jobs_written)}개, 승인 ${formatAdOsNumber(summary.approved_jobs)}개, 막힘 ${formatAdOsNumber(summary.blocked_jobs)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1566,7 +1566,7 @@ export default function AdOsPage() {
       const jobSummary = getAdOsRecord(jobs.summary);
       const attemptSummary = getAdOsRecord(attempts.summary);
       setAutomationMessage(
-        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, dry-run attempts ${formatAdOsNumber(attemptSummary.attempts_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+        `구글 안전 파이프라인 완료: 문안 세트 ${formatAdOsNumber(draftSummary.rsa_sets_generated)}개, 패킷 ${formatAdOsNumber(packetSummary.packets_written)}개, 모니터 ${formatAdOsNumber(gateSummary.monitor_only)}개, 초안 작업 ${formatAdOsNumber(jobSummary.jobs_written)}개, 사전 점검 ${formatAdOsNumber(attemptSummary.attempts_written)}개, 막힘 ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}개. 실제 광고비 사용 없음.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google safe pipeline failed.');
@@ -1635,7 +1635,7 @@ export default function AdOsPage() {
       const packetSummary = getAdOsRecord(seedPacket.summary);
       const gateSummary = getAdOsRecord(gate.summary);
       setAutomationMessage(
-        `Meta creative pipeline complete: intent signals ${formatAdOsNumber(assetSummary.generated_signals)}, variants ${formatAdOsNumber(assetSummary.generated_variants)}, seed ${String(packetSummary.lifecycle_status || 'unknown')}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+        `메타 소재 파이프라인 완료: 의도 신호 ${formatAdOsNumber(assetSummary.generated_signals)}개, 소재 변형 ${formatAdOsNumber(assetSummary.generated_variants)}개, 모니터 ${formatAdOsNumber(gateSummary.monitor_only)}개, 막힘 ${formatAdOsNumber(gateSummary.blocked)}개. 실제 광고비 사용 없음.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Meta creative pipeline failed.');
@@ -1658,7 +1658,7 @@ export default function AdOsPage() {
       errorMessage: 'Execution gate check failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Execution gate check complete: eligible ${formatAdOsNumber(summary.eligible)}, blocked ${formatAdOsNumber(summary.blocked)}, high risk ${formatAdOsNumber(summary.high_or_critical_risk)}. External API write 0.`;
+        return `실행 조건 점검 완료: 가능 ${formatAdOsNumber(summary.eligible)}개, 막힘 ${formatAdOsNumber(summary.blocked)}개, 고위험 ${formatAdOsNumber(summary.high_or_critical_risk)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1691,7 +1691,7 @@ export default function AdOsPage() {
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
         const blockers = Array.isArray(summary.blockers) ? summary.blockers : [];
-        return `Naver live preflight complete: ${String(summary.preflight_status || 'unknown')}, ready jobs ${formatAdOsNumber(summary.ready_jobs)}, blocked jobs ${formatAdOsNumber(summary.blocked_jobs)}, env ${summary.env_flag_enabled ? 'on' : 'off'}, first blocker ${String(blockers[0] || 'none')}. External API write 0.`;
+        return `네이버 실집행 사전 점검 완료: 상태 ${String(summary.preflight_status || '미확인')}, 준비 작업 ${formatAdOsNumber(summary.ready_jobs)}개, 막힌 작업 ${formatAdOsNumber(summary.blocked_jobs)}개, 첫 막힘 ${String(blockers[0] || '없음')}. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -1727,7 +1727,7 @@ export default function AdOsPage() {
       errorMessage: 'Naver limited pilot failed.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Naver limited pilot complete: dry-run succeeded ${formatAdOsNumber(summary.dry_run_succeeded)}, blocked ${formatAdOsNumber(summary.blocked)}, live blocked ${formatAdOsNumber(summary.live_write_blocked)}. External API write 0.`;
+        return `네이버 제한 시범 완료: 사전 점검 성공 ${formatAdOsNumber(summary.dry_run_succeeded)}개, 막힘 ${formatAdOsNumber(summary.blocked)}개, 실집행 차단 ${formatAdOsNumber(summary.live_write_blocked)}개. 실제 광고비 사용 없음.`;
       },
     });
   };
@@ -2006,11 +2006,11 @@ export default function AdOsPage() {
             </Link>
             <Button variant="secondary" size="sm" onClick={runSeoKeywordBridge} disabled={runningSeoKeywordBridge}>
               <Search size={14} />
-              {runningSeoKeywordBridge ? 'SEO 연결 중...' : 'SEO→광고 초안'}
+              {runningSeoKeywordBridge ? 'SEO 연결 중...' : 'SEO 기반 초안'}
             </Button>
             <Button variant="secondary" size="sm" onClick={runSearchTermGrowth} disabled={runningSearchTermGrowth}>
               <Search size={14} />
-              {runningSearchTermGrowth ? '검색어 처리 중...' : '검색어→광고 초안'}
+              {runningSearchTermGrowth ? '검색어 처리 중...' : '검색어 기반 초안'}
             </Button>
             <Link href="/admin/blog/ads">
               <Button variant="secondary" size="sm">

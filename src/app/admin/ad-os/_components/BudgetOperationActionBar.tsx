@@ -108,7 +108,7 @@ const BUDGET_OPERATION_ACTIONS: BudgetOperationActionSpec[] = [
   { key: 'runOptimizationSafePipeline', id: 'optimization-safe-pipeline', label: '최적화 안전 파이프라인', icon: Gauge },
   { key: 'loadTenantReport', id: 'tenant-report', label: '광고주 리포트 불러오기', icon: Download },
   { key: 'buildOpsPlan', id: 'ops-plan', label: '운영 계획 생성', icon: Bot },
-  { key: 'runKeywordBrain', id: 'keyword-brain', label: 'Keyword Brain', icon: Search },
+  { key: 'runKeywordBrain', id: 'keyword-brain', label: '키워드 묶기', icon: Search },
   { key: 'createNaverAssets', id: 'create-naver-assets', label: '네이버 자산 생성', icon: Rocket },
   { key: 'executeNaverGate', id: 'execute-naver-gate', label: '네이버 게이트 실행', icon: ShieldCheck },
   { key: 'exportGoogleConversions', id: 'google-export', label: '구글 전환 내보내기', icon: Download },

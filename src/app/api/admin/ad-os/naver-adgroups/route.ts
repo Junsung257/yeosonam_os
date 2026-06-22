@@ -14,7 +14,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!config.configured) {
     return apiResponse({
       ok: false,
-      error: 'Naver Ads API is not configured.',
+      error: '네이버 광고 계정 연결이 필요합니다.',
       config,
       adgroups: [],
     }, { status: 400 });
@@ -27,7 +27,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!result.ok) {
     return apiResponse({
       ok: false,
-      error: 'Naver ad group lookup failed.',
+      error: '네이버 광고그룹 조회에 실패했습니다.',
       config,
       adgroups: [],
     }, { status: 502 });
@@ -42,7 +42,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       ? {
           ok: verified.ok,
           adgroup: verified.adgroup,
-          error: verified.error ? 'Naver ad group verification failed.' : undefined,
+          error: verified.error ? '네이버 광고그룹 확인에 실패했습니다.' : undefined,
         }
       : null,
     recommended_env: result.adgroups[0]?.nccAdgroupId

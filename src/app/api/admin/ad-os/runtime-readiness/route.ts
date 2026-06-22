@@ -88,7 +88,7 @@ function buildSupabaseUnconfiguredResponse() {
     degraded: true,
     reason: 'supabase_unconfigured',
     access_state: 'supabase_unconfigured',
-    error: 'Supabase is not configured. Runtime readiness checks are unavailable in this environment.',
+    error: 'Supabase 연결이 설정되지 않아 이 환경에서는 실행 준비 점검을 사용할 수 없습니다.',
     tableStatus,
     counts,
     errors: {},

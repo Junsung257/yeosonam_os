@@ -75,6 +75,24 @@ export function priorityLabel(priority: RoasDiagnostic['hypotheses'][number]['pr
   return '낮음';
 }
 
+function completionStatusLabel(status: string | null | undefined): string {
+  if (status === 'ready') return '준비 완료';
+  if (status === 'needs_attention') return '확인 필요';
+  if (status === 'blocked') return '차단';
+  return status ? String(status) : '없음';
+}
+
+function operatorNextAction(message: string | null | undefined): string {
+  const text = String(message || '').trim();
+  if (!text) return '';
+  if (text === 'Create or activate tenant billing profiles before SaaS reporting.') return '광고주 리포트 전에 과금 프로필을 생성하거나 활성화하세요.';
+  if (text === 'Generate monthly tenant report drafts from performance facts.') return '성과 근거에서 월간 광고주 리포트 초안을 생성하세요.';
+  if (text === 'Prepare tenant audit export for the current reporting period.') return '현재 보고 기간의 감사 파일을 준비하세요.';
+  if (text === 'Agency reporting package is ready for operator review and client delivery.') return '광고주 전달 전 운영자가 최종 검토하면 됩니다.';
+  if (text.includes('SaaS reporting')) return '광고주 리포트 전에 과금 프로필을 확인하세요.';
+  return text;
+}
+
 export function buildAdOsAgentOperatingModel(summary: Summary): AdOsAgentOperatingModel {
   const keywordCandidates = num(summary.kpis.keyword_candidates);
   const draftCampaigns = num(summary.kpis.draft_campaigns);
@@ -91,6 +109,7 @@ export function buildAdOsAgentOperatingModel(summary: Summary): AdOsAgentOperati
   const conversionRate = num(metrics?.conversion_rate_pct);
   const searchTerms = num(summary.samples.search_term_candidates?.length);
   const budgetActive = summary.channel_budgets.some((budget) => budget.status === 'active' && budget.monthly_budget_krw > 0);
+  const completionStatus = completionStatusLabel(summary.enterprise_layer?.completion_audit?.status);
 
   const roles: AiAdTeamRole[] = [
     {
@@ -143,7 +162,7 @@ export function buildAdOsAgentOperatingModel(summary: Summary): AdOsAgentOperati
       evidence: [
         `준비/초안 리포트 ${reports.toLocaleString('ko-KR')}개`,
         `감사 파일 ${auditExports.toLocaleString('ko-KR')}개`,
-        summary.enterprise_layer?.completion_audit?.status ? `완료 점검 ${summary.enterprise_layer.completion_audit.status}` : '완료 점검 없음',
+        summary.enterprise_layer?.completion_audit?.status ? `완료 점검 ${completionStatus}` : '완료 점검 없음',
       ],
       decision: reports > 0 || auditExports > 0 ? '보고 패키지 있음' : '보고 패키지 부족',
       nextAction: reports > 0 || auditExports > 0 ? '근거를 광고주용 주간 리포트로 묶으세요.' : '학습 근거를 갱신한 뒤 광고주 리포트와 감사 파일을 만드세요.',
@@ -192,7 +211,7 @@ function buildRoasDiagnostic(input: {
       id: 'missing-search-terms',
       priority: 'high',
       reason: '검색어 근거가 아직 연결되지 않았습니다.',
-      evidence: 'Ad OS 요약에 검색어 샘플이 0개입니다.',
+      evidence: '광고 운영 요약에 검색어 샘플이 0개입니다.',
       immediateAction: '광고비를 늘리기 전에 학습 수집과 검색어 확장을 실행하세요.',
       holdReason: '성과 검색어와 낭비 검색어를 안전하게 구분할 수 없습니다.',
       needsHumanApproval: false,
@@ -281,6 +300,9 @@ function buildCampaignMemory(
   const activeBudgets = summary.channel_budgets.filter((budget) => budget.status === 'active').length;
   const persistedMemory = summary.samples.campaign_memories?.[0] || null;
   const persistedStatus = persistedMemory ? String(persistedMemory.status || '') : '';
+  const learningNextAction = operatorNextAction(learning?.next_action);
+  const reportNextAction = operatorNextAction(report?.next_action);
+  const completionNextAction = operatorNextAction(completion?.next_action);
   const score = Math.max(0, Math.min(100, Math.round(
     (completion?.readiness_score || 0) * 0.35 +
     diagnostic.score * 0.25 +
@@ -294,8 +316,8 @@ function buildCampaignMemory(
       { label: '캠페인 목적', value: summary.kpis.keyword_candidates > 0 ? '상품/SEO 신호 기반 검색 수요 포착' : '키워드 후보 생성 필요' },
       { label: '예산 안전장치', value: `활성 채널 예산 ${activeBudgets}개` },
       { label: '승인 기준', value: summary.tenant_policy?.require_human_approval === false ? '정책상 사람 승인 선택' : '사람 승인 필요' },
-      { label: '학습 상태', value: learning?.next_action || '학습 루프 미연결' },
-      { label: '보고 상태', value: report?.next_action || completion?.next_action || '근거 갱신 후 광고주 리포트 생성' },
+      { label: '학습 상태', value: learningNextAction || '학습 루프 미연결' },
+      { label: '보고 상태', value: reportNextAction || completionNextAction || '근거 갱신 후 광고주 리포트 생성' },
       { label: '메모리 저장', value: persistedMemory ? `${persistedStatus || '저장됨'} / ${String(persistedMemory.updated_at || '-')}` : '아직 저장된 메모리 없음' },
     ],
     nextTests: [

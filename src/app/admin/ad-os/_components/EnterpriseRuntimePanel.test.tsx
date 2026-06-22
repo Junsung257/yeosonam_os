@@ -48,10 +48,10 @@ describe('Ad OS EnterpriseRuntimePanel', () => {
       />,
     );
 
-    expect(html).toContain('Enterprise runtime');
-    expect(html).toContain('external write 0');
-    expect(html).toContain('Runtime readiness');
-    expect(html).toContain('Operations queue');
+    expect(html).toContain('고급 실행 점검');
+    expect(html).toContain('외부 반영 0');
+    expect(html).toContain('실행 준비 점검');
+    expect(html).toContain('운영 대기열');
     expect(html).toContain('Runtime dry-run');
   });
 
@@ -66,8 +66,8 @@ describe('Ad OS EnterpriseRuntimePanel', () => {
       />,
     );
 
-    expect(html).toContain('Enterprise runtime');
-    expect(html).toContain('external write 0');
-    expect(html).not.toContain('Operations queue');
+    expect(html).toContain('고급 실행 점검');
+    expect(html).toContain('외부 반영 0');
+    expect(html).not.toContain('운영 대기열');
   });
 });

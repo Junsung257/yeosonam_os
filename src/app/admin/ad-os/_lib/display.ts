@@ -1,7 +1,7 @@
 export const PLATFORM_LABEL: Record<string, string> = {
   naver: '네이버',
   google: '구글',
-  meta: 'Meta',
+  meta: '메타',
   kakao: '카카오',
 };
 
@@ -35,6 +35,24 @@ export function queueTone(status: unknown): 'neutral' | 'good' | 'warn' | 'bad' 
   if (['blocked', 'failed', 'rejected'].includes(value)) return 'bad';
   if (['approved', 'running', 'requested'].includes(value)) return 'warn';
   return 'neutral';
+}
+
+export function queueStatusLabel(status: unknown): string {
+  const value = String(status || '');
+  const labels: Record<string, string> = {
+    approved: '승인',
+    running: '실행 중',
+    requested: '요청됨',
+    succeeded: '성공',
+    uploaded: '업로드됨',
+    applied: '반영됨',
+    blocked: '막힘',
+    failed: '실패',
+    rejected: '반려',
+    pending: '대기',
+    ready: '준비 완료',
+  };
+  return labels[value] || value || '-';
 }
 
 export function readinessTone(status: 'pass' | 'partial' | 'fail'): 'good' | 'warn' | 'bad' {

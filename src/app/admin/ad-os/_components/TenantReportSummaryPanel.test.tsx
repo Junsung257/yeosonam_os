@@ -11,7 +11,7 @@ const report: TenantReportBody = {
   discovered_cheap_keywords: 9,
   keyword_clusters: 3,
   external_mutations: 0,
-  next_actions: ['Review low-margin terms.', 'Keep external writes in dry-run.'],
+  next_actions: ['마진이 낮은 검색어를 검토하세요.', '외부 반영은 사전 점검 상태로 유지하세요.'],
 };
 
 describe('Ad OS TenantReportSummaryPanel', () => {
@@ -32,7 +32,7 @@ describe('Ad OS TenantReportSummaryPanel', () => {
     expect(html).toContain('280%');
     expect(html).toContain('CPA');
     expect(html).toContain('2만원');
-    expect(html).toContain('Review low-margin terms.');
+    expect(html).toContain('마진이 낮은 검색어를 검토하세요.');
   });
 
   it('renders nothing before report data exists', () => {

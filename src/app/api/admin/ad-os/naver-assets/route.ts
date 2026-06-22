@@ -15,10 +15,10 @@ export const POST = withAdminGuard(async () => {
   if (!config.configured) {
     return apiResponse({
       ok: false,
-      error: 'Naver Ads API is not configured.',
+      error: '네이버 광고 계정 연결이 필요합니다.',
       config,
       assets: { campaigns: [], adgroups: [], channels: [] },
-      next_action: 'Configure NAVER_ADS_API_KEY, NAVER_ADS_SECRET_KEY, and NAVER_ADS_CUSTOMER_ID first.',
+      next_action: '네이버 광고 계정 연결을 먼저 완료하세요.',
     }, { status: 400 });
   }
 
@@ -32,7 +32,7 @@ export const POST = withAdminGuard(async () => {
   if (firstError) {
     return apiResponse({
       ok: false,
-      error: 'Naver Ads API asset lookup failed.',
+      error: '네이버 광고 자산 조회에 실패했습니다.',
       config,
       assets: {
         campaigns: campaignRes.campaigns,
