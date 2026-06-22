@@ -105,6 +105,9 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).toContain("export const runtime = 'nodejs'");
     expect(route).toContain("export const dynamic = 'force-dynamic'");
     expect(route).toContain('export const maxDuration = 300');
+    expect(route).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT_MS');
+    expect(route).toContain('enqueueUploadTimeoutReplay({');
+    expect(route).toContain("code: 'UPLOAD_DEFERRED_FOR_REPLAY'");
     expect(route).toContain('x-upload-request-id');
     expect(route).toContain('uploadRequestId');
     expect(route).toContain('[Upload API] request complete:');
@@ -126,7 +129,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).toContain("from '@/lib/product-registration/upload-request-intake'");
     expect(route).toContain('const intake = await prepareUploadRequestIntake(request)');
     expect(route).toContain("from '@/lib/product-registration/upload-registration-pipeline'");
-    expect(route).toContain('const result = await runUploadRegistrationPipeline({');
+    expect(route).toContain('const pipelinePromise = runUploadRegistrationPipeline({');
+    expect(route).toContain('const raced = await Promise.race([');
     expect(route).not.toContain("from '@/lib/upload-source-metadata'");
     expect(route).not.toContain("from '@/lib/product-registration-input-guard'");
     expect(route).not.toContain('parseUploadSourceMetadata({');
@@ -756,6 +760,9 @@ describe('upload route registration pipeline boundary', () => {
     expect(cron).toContain('itinerary duplicate day');
     expect(cron).toContain('price date disagreement');
     expect(cron).toContain('flight time source mismatch');
+    expect(cron).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT');
+    expect(cron).toContain('shouldUseDuplicateGuard');
+    expect(cron).toContain('forceReprocess: !shouldUseDuplicateGuard');
     expect(cron).toContain("request.nextUrl.searchParams.get('queueId')");
     expect(cron).toContain(".eq('id', queueId)");
     expect(cron).toContain('.or(RECOVERABLE_REASON_FILTER)');
