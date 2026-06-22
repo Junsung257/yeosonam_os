@@ -182,7 +182,7 @@ export async function generateMetadata({
         .maybeSingle(),
       { label: 'package.metadata.primary', timeoutMs: 1800 },
     ).catch(() => ({ data: null, error: null }));
-    if (!result.data && !result.error) {
+    if (!result.data) {
       await waitForPackageDetailRetry(300);
       result = await runSupabaseQueryWithTimeout(
         sb
@@ -193,7 +193,7 @@ export async function generateMetadata({
         { label: 'package.metadata.primary.retry1', timeoutMs: 3500 },
       ).catch(() => ({ data: null, error: null }));
     }
-    if (!result.data && !result.error) {
+    if (!result.data) {
       await waitForPackageDetailRetry(700);
       result = await runSupabaseQueryWithTimeout(
         sb
