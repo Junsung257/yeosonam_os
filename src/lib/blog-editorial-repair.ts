@@ -547,6 +547,68 @@ function ensureMarkdownTableBoundaries(markdown: string): { text: string; change
   return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
 }
 
+function markdownTableSeparatorFor(headerLine: string): string {
+  const cellCount = Math.max(1, parseMarkdownTableCells(headerLine).length);
+  return `| ${Array.from({ length: cellCount }, () => '---').join(' | ')} |`;
+}
+
+function repairLooseMarkdownTables(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const tableCells = parseMarkdownTableCells(lines[index] ?? '');
+    if (tableCells.length < 2) {
+      next.push(lines[index] ?? '');
+      continue;
+    }
+
+    const block: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length) {
+      const current = lines[cursor] ?? '';
+      if (parseMarkdownTableCells(current).length >= 2) {
+        block.push(current.trim());
+        cursor += 1;
+        continue;
+      }
+      if (current.trim() === '') {
+        let lookahead = cursor + 1;
+        while (lookahead < lines.length && (lines[lookahead] ?? '').trim() === '') {
+          lookahead += 1;
+        }
+        if (lookahead < lines.length && parseMarkdownTableCells(lines[lookahead] ?? '').length >= 2) {
+          changed = true;
+          cursor = lookahead;
+          continue;
+        }
+      }
+      break;
+    }
+
+    if (block.length === 1) {
+      next.push(tableCells.join(' / '));
+      changed = true;
+    } else {
+      const hasSeparator = /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(block[1] ?? '');
+      next.push(block[0]);
+      if (hasSeparator) {
+        next.push(block[1]);
+        next.push(...block.slice(2));
+      } else {
+        next.push(markdownTableSeparatorFor(block[0]));
+        next.push(...block.slice(1));
+        changed = true;
+      }
+    }
+
+    index = cursor - 1;
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
 function capH2Headings(markdown: string, maxH2 = 9): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   let h2Count = 0;
@@ -898,6 +960,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('added_markdown_table_boundaries');
   }
 
+  const looseTableRepair = repairLooseMarkdownTables(blogHtml);
+  if (looseTableRepair.changed) {
+    blogHtml = looseTableRepair.text;
+    changes.push('repaired_loose_markdown_tables');
+  }
+
   const tableProseRepair = splitTableProseRows(blogHtml);
   if (tableProseRepair.changed) {
     blogHtml = tableProseRepair.text;
@@ -968,6 +1036,14 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (repeatedPlanningHookRepair.changed) {
     blogHtml = repeatedPlanningHookRepair.text;
     changes.push('limited_repeated_planning_hooks');
+  }
+
+  const finalLooseTableRepair = repairLooseMarkdownTables(blogHtml);
+  if (finalLooseTableRepair.changed) {
+    blogHtml = finalLooseTableRepair.text;
+    if (!changes.includes('repaired_loose_markdown_tables')) {
+      changes.push('repaired_loose_markdown_tables');
+    }
   }
 
   const finalAccentRepair = normalizeBlogVisualAccents(blogHtml);

@@ -19,6 +19,7 @@ import { inspectBlogImageQuality } from './blog-image-quality';
 import { inspectBlogStructure } from './blog-structure-audit';
 import { inspectBlogIntentQuality } from './blog-content-intent';
 import { evaluateBlogEditorialQuality, evaluateBlogTopicFit } from './blog-topic-fit-gate';
+import { normalizeBlogCtaDestination } from './blog-cta';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -54,7 +55,7 @@ const GENERIC_SLUG_PREFIXES = new Set([
 ]);
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality' | 'accent_density';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality' | 'accent_density';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -267,6 +268,100 @@ export function checkCta(blog_html: string): GateResult {
  *
  * 외부 링크 2개 이상 기준은 style-guide.ts "외부 권위 링크 규칙"과 동기화.
  */
+function extractMarkdownUrls(markdown: string): string[] {
+  const linkRe = /\[[^\]]+\]\(([^)]+)\)/g;
+  const urls: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(markdown)) !== null) {
+    urls.push((match[1] || '').trim().replace(/&amp;/g, '&'));
+  }
+  return urls;
+}
+
+export function checkCtaDestinationIntegrity(input: CheckInput): GateResult {
+  const expectedDest = normalizeBlogCtaDestination(input.destination);
+  const issues: Array<{ url: string; reason: string; destination?: string | null }> = [];
+
+  for (const rawUrl of extractMarkdownUrls(input.blog_html)) {
+    if (!/(^\/packages\?)|(^https?:\/\/(?:www\.)?yeosonam\.com\/packages\?)/i.test(rawUrl)) {
+      continue;
+    }
+
+    try {
+      const parsed = new URL(rawUrl.startsWith('/') ? `https://www.yeosonam.com${rawUrl}` : rawUrl);
+      const rawDest = parsed.searchParams.get('destination');
+      if (rawDest === null) continue;
+
+      const foundDest = normalizeBlogCtaDestination(rawDest);
+      if (!foundDest) {
+        issues.push({ url: rawUrl, reason: 'empty_destination_param', destination: rawDest });
+      } else if (!expectedDest) {
+        issues.push({ url: rawUrl, reason: 'destination_param_without_queue_destination', destination: foundDest });
+      } else if (foundDest !== expectedDest) {
+        issues.push({ url: rawUrl, reason: 'destination_param_mismatch', destination: foundDest });
+      }
+    } catch {
+      issues.push({ url: rawUrl, reason: 'malformed_package_url' });
+    }
+  }
+
+  return {
+    gate: 'cta_destination_integrity',
+    passed: issues.length === 0,
+    reason: issues.length > 0 ? `package CTA destination mismatch: ${issues.map((issue) => issue.reason).join(', ')}` : undefined,
+    evidence: {
+      expectedDestination: expectedDest,
+      issues: issues.slice(0, 10),
+    },
+  };
+}
+
+export function checkMarkdownTableIntegrity(blog_html: string): GateResult {
+  const lines = blog_html.split(/\r?\n/);
+  const issues: Array<{ line: number; reason: string; preview: string }> = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+    if (!line.startsWith('|') || !line.endsWith('|')) continue;
+
+    const previous = lines[index - 1]?.trim() ?? '';
+    if (previous.startsWith('|') && previous.endsWith('|')) continue;
+
+    const block: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length) {
+      const current = lines[cursor]?.trim() ?? '';
+      if (!current.startsWith('|') || !current.endsWith('|')) break;
+      block.push(current);
+      cursor += 1;
+    }
+
+    const hasSeparator = block.length >= 2 && /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(block[1]);
+    if (!hasSeparator) {
+      issues.push({ line: index + 1, reason: 'missing_header_separator', preview: block[0].slice(0, 120) });
+      index = cursor;
+      continue;
+    }
+
+    const headerCells = block[0].split('|').slice(1, -1).length;
+    const badRowIndex = block.slice(2).findIndex((row) => row.split('|').slice(1, -1).length !== headerCells);
+    if (badRowIndex >= 0) {
+      issues.push({ line: index + badRowIndex + 3, reason: 'cell_count_mismatch', preview: block[badRowIndex + 2].slice(0, 120) });
+    }
+    if (block.length < 4) {
+      issues.push({ line: index + 1, reason: 'too_few_table_rows', preview: block[0].slice(0, 120) });
+    }
+    index = cursor;
+  }
+
+  return {
+    gate: 'table_integrity',
+    passed: issues.length === 0,
+    reason: issues.length > 0 ? `markdown table integrity failed: ${issues.map((issue) => issue.reason).join(', ')}` : undefined,
+    evidence: { issues: issues.slice(0, 10) },
+  };
+}
+
 const MIN_EXTERNAL_LINKS = 2;
 
 export function checkLinks(blog_html: string, baseUrl?: string): GateResult {
@@ -734,6 +829,7 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(checkKeywordDensity(input.blog_html, input.primary_keyword, blogType));
   gates.push(checkHook(input.blog_html));
   gates.push(checkCta(input.blog_html));
+  gates.push(checkCtaDestinationIntegrity(input));
   gates.push(checkLinks(input.blog_html, baseUrl));
   // 가독성 게이트 — 동적 임계값 적용
   const readThreshold = blogType === 'info'
@@ -746,6 +842,7 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(await checkRenderIntegrity(input.blog_html));
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단
   gates.push(await checkStructureIntegrity(input));
+  gates.push(checkMarkdownTableIntegrity(input.blog_html));
   gates.push(await checkAccentDensity(input.blog_html));
   gates.push(checkTopicFit(input));
   // 글 의도 계약 검증 — 정보/상품/날씨/준비물/일정별 필수 블록과 읽기 디자인 차단

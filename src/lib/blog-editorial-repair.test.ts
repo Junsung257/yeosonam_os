@@ -6,6 +6,30 @@ import {
 } from './blog-editorial-repair';
 
 describe('blog editorial repair', () => {
+  it('repairs loose markdown tables with blank lines and missing separators', () => {
+    const result = repairBlogStructureQuality({
+      title: 'Nha Trang weather',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: [
+        '# Nha Trang weather',
+        '',
+        '## Monthly weather',
+        '',
+        '| Month | Season | Rain |',
+        '',
+        '| January | Dry | Low |',
+        '',
+        '| February | Dry | Low |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_loose_markdown_tables');
+    expect(result.blogHtml).toContain('| --- | --- | --- |');
+    expect(result.blogHtml).not.toContain('| Month | Season | Rain |\n\n| January | Dry | Low |');
+  });
+
   it('repairs informational sales tone and missing weather table', () => {
     const source = `# 장가계 월별 날씨와 옷차림 가이드
 

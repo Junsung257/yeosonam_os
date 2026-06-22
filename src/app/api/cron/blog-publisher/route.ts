@@ -19,7 +19,7 @@ import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
-import { buildStandardBlogCtaMarkdown } from '@/lib/blog-cta';
+import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
 import {
   fetchApprovedReviewSnippets,
@@ -378,7 +378,7 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
-    if (failed.has('structure_integrity') || failed.has('intent_quality') || failed.has('render_integrity')) {
+    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('render_integrity')) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -461,6 +461,11 @@ async function repairFailedQualityGates(
     if (!changed) break;
 
     generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+    generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+      destination: item.destination,
+      slug: generated.slug,
+      utmSource: 'naver_blog',
+    });
     qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     console.log(`[blog-publisher] quality repair round ${round}: ${changes.join(', ')} -> passed=${qa.passed}`);
   }
@@ -548,7 +553,7 @@ async function recoverStaleGeneratingQueueItems(): Promise<{ recovered: number; 
   return { recovered, failed };
 }
 
-async function pullForwardQueuedBacklog(limit: number): Promise<number> {
+async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> = new Set()): Promise<number> {
   if (limit <= 0) return 0;
 
   const now = new Date().toISOString();
@@ -568,7 +573,7 @@ async function pullForwardQueuedBacklog(limit: number): Promise<number> {
 
   const ids = candidates
     .map((row: { id?: string | null }) => row.id)
-    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    .filter((id): id is string => typeof id === 'string' && id.length > 0 && !excludeIds.has(id));
   if (ids.length === 0) return 0;
 
   const { error: updateError } = await supabaseAdmin
@@ -600,6 +605,7 @@ async function runBlogPublisher(request: NextRequest) {
   const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
   const errors: string[] = [];
   const startTime = Date.now();
+  const attemptedQueueIds = new Set<string>();
 
   try {
     blogStyleGuideCache = null;
@@ -635,7 +641,7 @@ async function runBlogPublisher(request: NextRequest) {
     });
 
     if (!queue || queue.length === 0) {
-      const pulled = await pullForwardQueuedBacklog(claimLimit);
+      const pulled = await pullForwardQueuedBacklog(claimLimit, attemptedQueueIds);
       if (pulled > 0) {
         const retryClaim = await supabaseAdmin.rpc('claim_queue_items', {
           limit_rows: claimLimit,
@@ -671,6 +677,11 @@ async function runBlogPublisher(request: NextRequest) {
     let extraClaimRounds = 0;
     let pullForwarded = 0;
     for (const item of queue) {
+      if (attemptedQueueIds.has(item.id)) {
+        results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
+        continue;
+      }
+      attemptedQueueIds.add(item.id);
       if (publishedThisRun >= remainingToday) {
         break;
       }
@@ -721,7 +732,7 @@ async function runBlogPublisher(request: NextRequest) {
       }
 
       if (!nextQueue || nextQueue.length === 0) {
-        const pulled = await pullForwardQueuedBacklog(extraClaimLimit);
+        const pulled = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds);
         pullForwarded += pulled;
         if (pulled <= 0) break;
 
@@ -736,11 +747,19 @@ async function runBlogPublisher(request: NextRequest) {
         if (!nextQueue || nextQueue.length === 0) break;
       }
 
+      nextQueue = nextQueue.filter((q: { id?: string | null }) => q.id && !attemptedQueueIds.has(q.id));
+      if (nextQueue.length === 0) break;
+
       const nextCardNewsIds = [...new Set(nextQueue.map((q: { card_news_id?: string | null }) => q.card_news_id).filter(Boolean))] as string[];
       const nextEligibleByCardNewsId =
         nextCardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(nextCardNewsIds) : new Map<string, number>();
 
       for (const item of nextQueue) {
+        if (attemptedQueueIds.has(item.id)) {
+          results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
+          continue;
+        }
+        attemptedQueueIds.add(item.id);
         if (publishedThisRun >= remainingToday) break;
 
         const itemRemaining = MAX_EXEC_MS - (Date.now() - startTime);
@@ -1141,6 +1160,11 @@ async function processQueueItem(
         generated.blog_html = accentRepair.text;
       }
     }
+    generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+      destination: item.destination,
+      slug: generated.slug,
+      utmSource: 'naver_blog',
+    });
 
     let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
 
@@ -1260,6 +1284,11 @@ async function processQueueItem(
         slug: generated.slug,
         utmSource: 'naver_blog',
       })}`;
+      generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+        destination: item.destination,
+        slug: generated.slug,
+        utmSource: 'naver_blog',
+      });
       seoScore = computeSeoScore(buildSeoScoreInput());
       console.log(`[blog-publisher] SEO CTA repair -> ${seoScore.score}/${seoScore.maxScore}`);
     }
@@ -1732,6 +1761,13 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   const queueSlug = buildQueueSlug(item);
   const utmCamp = encodeURIComponent(queueSlug);
   const utmSrc = 'naver_blog';
+  const introPackageCtaUrl = buildBlogPackageCtaUrl({
+    destination: item.destination,
+    slug: queueSlug,
+    baseUrl: baseForUtm,
+    utmSource: utmSrc,
+    content: 'intro_cta',
+  });
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
     destination: item.destination ?? null,
@@ -1885,7 +1921,7 @@ ${serpGapBlock}
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
 - 3-Tier CTA 분산:
-  - 도입부: [관련 패키지 보기](${baseForUtm}/packages?destination=${encodeURIComponent(item.destination || '')}&utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=intro_cta)
+  - 도입부: [관련 패키지 보기](${introPackageCtaUrl})
   - 중간: [여소남 큐레이터에게 문의](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=mid_cta)
   - 마지막: [여소남에서 안심 여행 준비하세요](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_cta)`;
 
