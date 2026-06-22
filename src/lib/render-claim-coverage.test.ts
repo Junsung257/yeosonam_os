@@ -65,6 +65,27 @@ describe('render-claim-coverage', () => {
     expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
   });
 
+  it('accepts Korean month/day raw date labels for ISO price dates', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '출발일 7월8일 (수) 상품가 749,000원',
+      price_dates: [{ date: '2026-07-08', price: 749000, confirmed: true }],
+      itinerary_data: { days: [] },
+    });
+
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].date')).toBe(false);
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
+  });
+
+  it('accepts reordered term tokens such as 기타 개인경비 for 개인경비 · 기타', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '불포함: 유류할증료, 기타 개인경비',
+      excludes: ['개인경비 · 기타'],
+      itinerary_data: { days: [] },
+    });
+
+    expect(result.unsupported.some(c => c.value === '개인경비 · 기타')).toBe(false);
+  });
+
   it('accepts sourceEvidence support even when raw text exact match is absent', () => {
     const result = evaluateRenderClaimCoverage({
       ...pkg,

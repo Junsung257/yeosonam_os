@@ -123,7 +123,12 @@ function normalizeTermClaim(value: string): string[] {
 
 function rawSupportsTermLabel(rawText: string, value: string): boolean {
   const variants = normalizeTermClaim(value);
-  return variants.some(variant => rawSupports(rawText, variant));
+  if (variants.some(variant => rawSupports(rawText, variant))) return true;
+  const tokens = value
+    .split(/[·ㆍ,\/&+|()\[\]\s]+/g)
+    .map(token => token.trim())
+    .filter(token => token.length >= 2);
+  return tokens.length >= 2 && tokens.every(token => rawSupports(rawText, token));
 }
 
 function normalizeOptionalClaim(value: string): string[] {
@@ -190,7 +195,16 @@ function normalizeDateClaim(value: string): string[] {
     const y = iso[1];
     const m = String(Number(iso[2]));
     const d = String(Number(iso[3]));
+    const mm = iso[2].padStart(2, '0');
+    const dd = iso[3].padStart(2, '0');
     variants.add(`${m}/${d}`);
+    variants.add(`${mm}/${dd}`);
+    variants.add(`${m}.${d}`);
+    variants.add(`${y}.${mm}.${dd}`);
+    variants.add(`${m}월${d}일`);
+    variants.add(`${m}월 ${d}일`);
+    variants.add(`${mm}월${dd}일`);
+    variants.add(`${mm}월 ${dd}일`);
     variants.add(`${m}월 ${d}일`);
     variants.add(`${y}.${m}.${d}`);
   }
@@ -198,6 +212,8 @@ function normalizeDateClaim(value: string): string[] {
   if (slash) {
     const m = String(Number(slash[1]));
     const d = String(Number(slash[2]));
+    variants.add(`${m}월${d}일`);
+    variants.add(`${m}월 ${d}일`);
     variants.add(`${m}월 ${d}일`);
   }
   return [...variants].filter(v => v.length >= 3);
