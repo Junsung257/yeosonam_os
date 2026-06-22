@@ -723,6 +723,29 @@ test.describe('keyboard access smoke', () => {
     await expect(page.locator('[data-testid="group-inquiry-sticky-handoff-summary"]:visible')).toBeVisible();
   });
 
+  test('group inquiry handoff next action moves to the missing condition input', async ({ page }) => {
+    const params = new URLSearchParams({
+      source: 'home_hero_scenario',
+      intent: 'filial_trip',
+      party_type: 'family',
+      selected_products: '부산 출발 효도여행 맞춤 상담',
+      budget: '표준(50~100만원)',
+      query: '부산 출발 60대 부모님 효도여행. 이동이 편하고 노쇼핑 조건을 우선으로 비교해주세요.',
+    });
+    await page.goto(`/group-inquiry?${params.toString()}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    await expect(page.locator('[data-testid="group-inquiry-handoff-summary"]:visible')).toBeVisible();
+    await expect(page.locator('[data-testid="group-inquiry-handoff-next-action"]:visible')).toBeVisible();
+    const nextAction = page.locator('[data-testid="group-inquiry-handoff-next-action-button"]:visible').first();
+    await expectCanFocus(nextAction, 'group inquiry handoff next action');
+    await page.keyboard.press('Enter');
+
+    const messageInput = page.locator('#group-inquiry-message');
+    await expect(messageInput).toBeFocused();
+    await expect(messageInput).toHaveValue(/목적지는|인원은|예산은/);
+  });
+
   test('group landing can hand off current intent into AI inquiry', async ({ page }) => {
     await page.goto('/group', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});

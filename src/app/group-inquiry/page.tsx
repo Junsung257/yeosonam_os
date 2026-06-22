@@ -426,6 +426,13 @@ export default function GroupInquiryPage() {
       : requiredReady
         ? '필수 조건이 준비되었습니다. 추가 요청사항을 남기거나 연락처 입력으로 넘어갈 수 있습니다.'
         : '목적지, 인원, 예산 중 아는 내용부터 알려주세요.';
+  const handoffPrimaryMissingLabel = rfqReadinessMissingLabels[0] ?? null;
+  const handoffPrimaryActionText = requiredReady
+    ? '연락처 입력으로 넘어가기'
+    : `${handoffPrimaryMissingLabel ?? '부족한 조건'} 보완하기`;
+  const handoffPrimaryActionDescription = requiredReady
+    ? '필수 견적 조건이 준비되어 담당자 연락처 입력 영역으로 이동합니다.'
+    : `${handoffPrimaryMissingLabel ?? '부족한 조건'}을 채팅창에서 바로 보완합니다.`;
   const stickyHandoffItems = [
     { label: '목적', value: selectedIntent?.label },
     { label: '지역', value: getSummaryValue(extractedSummary, 'destination') },
@@ -439,6 +446,7 @@ export default function GroupInquiryPage() {
   const submitDecisionSummaryId = 'group-inquiry-submit-decision-summary';
   const handoffContextDescriptionId = 'group-inquiry-handoff-context-description';
   const handoffReadinessSummaryId = 'group-inquiry-handoff-readiness-summary';
+  const handoffNextActionSummaryId = 'group-inquiry-handoff-next-action-summary';
   const intentChipGroupDescriptionId = 'group-inquiry-intent-chip-group-description';
   const intentChipStatusId = 'group-inquiry-intent-chip-status';
   const handoffContextSummaryText = [
@@ -513,6 +521,51 @@ export default function GroupInquiryPage() {
     contactErrors.summary ? 'group-inquiry-summary-error' : null,
     submitting ? 'group-inquiry-status' : null,
   ].filter(Boolean).join(' ');
+
+  function handleHandoffPrimaryAction() {
+    if (requiredReady) {
+      setRfqReady(true);
+      setStatusMessage('필수 조건이 준비되어 연락처 입력으로 이동합니다.');
+      window.requestAnimationFrame(() => contactNameRef.current?.focus());
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+        source: 'group_inquiry_handoff_next_action',
+        page_url: window.location.pathname,
+        intent: selectedIntent?.intent ?? null,
+        budget: getSummaryValue(extractedSummary, 'budget'),
+        destination: extractedSummary.destination ?? null,
+        party_type: selectedIntent?.partyType ?? null,
+        selected_products: selectedProducts.length > 0 ? selectedProducts : null,
+        metadata: {
+          action: 'focus_contact',
+          handoff_source: handoffSource,
+          ready_count: rfqReadinessReadyCount,
+          missing_fields: rfqReadinessMissingLabels,
+        },
+      });
+      return;
+    }
+
+    const missingLabel = handoffPrimaryMissingLabel ?? '목적지';
+    focusSubmitMissingField(missingLabel);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+      source: 'group_inquiry_handoff_next_action',
+      page_url: window.location.pathname,
+      intent: selectedIntent?.intent ?? null,
+      budget: getSummaryValue(extractedSummary, 'budget'),
+      destination: extractedSummary.destination ?? null,
+      party_type: selectedIntent?.partyType ?? null,
+      selected_products: selectedProducts.length > 0 ? selectedProducts : null,
+      metadata: {
+        action: 'focus_missing_field',
+        missing_field: missingLabel,
+        handoff_source: handoffSource,
+        ready_count: rfqReadinessReadyCount,
+        missing_fields: rfqReadinessMissingLabels,
+      },
+    });
+  }
 
   async function sendMessage(messageOverride?: string, chip?: IntentChip) {
     if (loading) return;
@@ -1029,6 +1082,32 @@ export default function GroupInquiryPage() {
                   <span className="ml-2 font-medium">
                     {rfqReadinessMissingLabels.length > 0 ? `보완 필요: ${rfqReadinessMissingLabels.join(', ')}` : '바로 등록 가능'}
                   </span>
+                </div>
+                <div
+                  data-testid="group-inquiry-handoff-next-action"
+                  className="mt-3 rounded-lg border border-[#DCE8F8] bg-[#F8FAFC] px-3 py-3"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-extrabold text-gray-500">다음 행동</p>
+                      <p
+                        id={handoffNextActionSummaryId}
+                        className="mt-1 text-sm font-bold leading-5 text-gray-900"
+                      >
+                        {handoffPrimaryActionDescription}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="group-inquiry-handoff-next-action-button"
+                      onClick={handleHandoffPrimaryAction}
+                      aria-describedby={`${handoffContextDescriptionId} ${handoffReadinessSummaryId} ${handoffNextActionSummaryId}`}
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-brand px-4 text-sm font-extrabold text-white transition hover:bg-[#1B64DA] focus:outline-none focus:ring-2 focus:ring-brand/25"
+                    >
+                      {handoffPrimaryActionText}
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
                 {handoffSource && !hasValue(extractedSummary.adult_count) && (
                   <div
