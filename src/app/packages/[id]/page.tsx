@@ -54,6 +54,10 @@ function getFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(normalized) ? normalized : undefined;
 }
 
+function waitForPackageDetailRetry(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function getStringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
@@ -232,13 +236,35 @@ export default async function PackageDetailPage({
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
-  const pkgResult = await runSupabaseQueryWithTimeout(
+  let pkgResult = await runSupabaseQueryWithTimeout(
     sb.from('travel_packages')
       .select(DETAIL_FIELDS)
       .eq('id', id)
       .single(),
     { label: 'package.detail.primary', timeoutMs: 2500 },
   ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
+
+  if (!pkgResult.data) {
+    await waitForPackageDetailRetry(500);
+    pkgResult = await runSupabaseQueryWithTimeout(
+      sb.from('travel_packages')
+        .select(DETAIL_FIELDS)
+        .eq('id', id)
+        .single(),
+      { label: 'package.detail.primary.retry1', timeoutMs: 5000 },
+    ).catch(() => ({ data: null, error: new Error('package detail retry1 timed out') }));
+  }
+
+  if (!pkgResult.data) {
+    await waitForPackageDetailRetry(1_000);
+    pkgResult = await runSupabaseQueryWithTimeout(
+      sb.from('travel_packages')
+        .select(DETAIL_FIELDS)
+        .eq('id', id)
+        .single(),
+      { label: 'package.detail.primary.retry2', timeoutMs: 8000 },
+    ).catch(() => ({ data: null, error: new Error('package detail retry2 timed out') }));
+  }
 
   const pkg = pkgResult.data;
 
