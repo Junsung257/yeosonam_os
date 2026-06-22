@@ -154,6 +154,8 @@ const keyboardSmokeTargets = [
   { file: 'src/components/customer/HomeHeroSearchCluster.tsx', marker: 'data-testid="home-hero-group-inquiry"' },
   { file: 'src/app/page.tsx', marker: 'data-testid="home-footer-group-inquiry"' },
   { file: 'src/app/blog/BlogData.tsx', marker: 'data-testid="blog-article-link"' },
+  { file: 'src/app/blog/BlogData.tsx', marker: 'data-testid="blog-list-group-inquiry"' },
+  { file: 'src/app/blog/BlogData.tsx', marker: 'data-testid="blog-list-handoff-summary"' },
   { file: 'src/components/blog/StickyMobileCta.tsx', marker: 'data-testid="blog-sticky-primary-cta"' },
   { file: 'src/components/blog/StickyMobileCta.tsx', marker: 'data-testid="blog-sticky-cta-handoff-summary"' },
   { file: 'src/app/packages/PackagesClient.tsx', marker: 'data-testid="packages-more-filters-toggle"' },
@@ -513,6 +515,19 @@ const markerContracts = [
       'destination: pack.destination',
       'budget: pack.priceLabel',
       'selectedProducts: [pack.title]',
+    ],
+  },
+  {
+    label: 'blog list inquiry preserves reading filters into handoff',
+    file: 'src/app/blog/BlogData.tsx',
+    markers: [
+      'buildGroupInquiryHandoffHref',
+      "source: 'blog_list'",
+      "partyType: 'blog_reader'",
+      'blogListInquiryHref',
+      'blogListHandoffSummaryText',
+      'data-testid="blog-list-group-inquiry"',
+      'data-testid="blog-list-handoff-summary"',
     ],
   },
   {

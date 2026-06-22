@@ -14,6 +14,7 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { buildGroupInquiryHandoffHref, GROUP_INQUIRY_PRODUCT_LABEL } from '@/lib/group-inquiry-handoff';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -497,6 +498,27 @@ export default async function BlogData({ searchParams }: Props) {
   const chipBase = 'shrink-0 rounded-full px-4 py-2 text-body font-medium transition-all whitespace-nowrap';
   const chipActive = 'bg-text-primary text-white';
   const chipIdle = 'bg-bg-section text-text-body hover:bg-[#E8EAED]';
+  const activeAngleLabel = angle ? ANGLE_LABELS[angle] ?? angle : null;
+  const blogListHandoffSummaryText = [
+    destination ? `${destination} 여행` : '여행 매거진',
+    activeAngleLabel,
+    unavailable ? 'DB 확인 중' : `관련 글 ${totalLabel}편`,
+  ].filter(Boolean).join(' · ');
+  const blogListInquiryHref = buildGroupInquiryHandoffHref({
+    source: 'blog_list',
+    intent: angle || 'blog_consult',
+    partyType: 'blog_reader',
+    query: [
+      destination ? `목적지: ${destination}` : '목적지 미정',
+      activeAngleLabel ? `관심사: ${activeAngleLabel}` : '스타일 미정',
+      '여행 매거진에서 견적 문의',
+    ].join(' · '),
+    destination: destination ?? null,
+    selectedProducts: [destination ? `${destination} 맞춤 여행 상담` : GROUP_INQUIRY_PRODUCT_LABEL],
+  });
+  const blogListNextActionText = destination || activeAngleLabel
+    ? '현재 보고 있는 조건을 견적 문의에 함께 전달합니다.'
+    : '목적지나 스타일을 아직 못 정했다면 상담에서 후보를 좁혀드릴게요.';
 
   return (
     <>
@@ -560,6 +582,30 @@ export default async function BlogData({ searchParams }: Props) {
               <span className="mx-2 text-[#E5E7EB]">·</span>
               <b className="text-text-primary font-semibold">{totalLabel}</b>{unavailable ? '' : '편'}
             </p>
+            <div
+              data-testid="blog-list-handoff-summary"
+              aria-label={`블로그 견적 문의 전달 조건: ${blogListHandoffSummaryText}. ${blogListNextActionText}`}
+              className="mt-5 flex flex-col gap-3 border-t border-admin-border pt-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="text-[12px] font-extrabold text-text-primary">
+                  읽은 주제로 여행 견적까지 이어가기
+                </p>
+                <p className="mt-1 truncate text-[12px] font-semibold text-text-secondary">
+                  {blogListHandoffSummaryText}
+                </p>
+                <p className="mt-0.5 text-[11px] font-medium text-text-secondary">
+                  {blogListNextActionText}
+                </p>
+              </div>
+              <Link
+                href={blogListInquiryHref}
+                data-testid="blog-list-group-inquiry"
+                className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-full bg-text-primary px-5 text-[13px] font-extrabold text-white transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2"
+              >
+                맞춤 견적 문의
+              </Link>
+            </div>
           </div>
         </header>
 

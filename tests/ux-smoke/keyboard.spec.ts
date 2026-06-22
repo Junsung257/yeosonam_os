@@ -144,6 +144,20 @@ test.describe('keyboard access smoke', () => {
     await expect(page.locator('[data-testid="group-inquiry-handoff-summary"]:visible')).toBeVisible();
   });
 
+  test('blog list group inquiry carries reading context', async ({ page }) => {
+    await page.goto('/blog', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+
+    const handoffSummary = page.locator('[data-testid="blog-list-handoff-summary"]:visible').first();
+    const blogInquiry = page.locator('[data-testid="blog-list-group-inquiry"]:visible').first();
+    await expect(handoffSummary).toBeVisible();
+    await expectCanFocus(blogInquiry, 'blog list group inquiry');
+    await expect(blogInquiry).toHaveAttribute('href', /\/group-inquiry\?.*source=blog_list/);
+    const href = await blogInquiry.getAttribute('href');
+    expect(href).toContain('party_type=blog_reader');
+    expect(href).toContain('selected_products=');
+  });
+
   test('blog mobile sticky CTA preserves article handoff from keyboard', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/blog', { waitUntil: 'domcontentloaded' });
