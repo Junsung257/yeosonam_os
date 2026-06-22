@@ -1,6 +1,14 @@
 # Blog Errors
 
-Last updated: 2026-06-18
+Last updated: 2026-06-22
+
+## ERR-BLOG-prompt-contract-drift@2026-06-22
+
+- [x] **ERR-BLOG-prompt-contract-drift@2026-06-22**: Blog visual/publish rules were hardened to remove highlight clutter and malformed tables, but the live `blog-publisher` prompt still instructed the model to wrap key sentences with `==...==` highlights.
+- **Root cause**: The durable blog contract, quality gates, renderer/CSS cleanup, and LLM writing prompt were not verified as one unit. Earlier checks proved existing rows and post-generation gates improved, but they did not prove the upstream prompt stopped asking for the old behavior.
+- **Fix**: `src/app/api/cron/blog-publisher/route.ts` now explicitly bans `==...==`, `<mark>`, and highlight-style emphasis, and requires stable GitHub Flavored Markdown tables with a separator row and no blank lines inside table rows. `tests/regression/cases/ERR-BLOG-prompt-highlight-regression.test.js` locks this prompt contract.
+- **Prevention**: Blog prompt changes count as blog automation behavior changes. They require a durable artifact through `scripts/check-doc-automation-contract.mjs`: a regression test, blog SSOT/runbook update, blog error entry, or audit note. Do not call a blog quality fix complete until prompt, repair, quality gate, and rendered output all enforce the same rule.
+- **Verification**: `node tests/regression/cases/ERR-BLOG-prompt-highlight-regression.test.js`; `npx vitest run src/lib/blog-cta.test.ts src/lib/blog-quality-gate-accent-density.test.ts src/lib/blog-editorial-repair.test.ts`; `npx tsc --noEmit --pretty false`.
 
 ## ERR-BLOG-supabase-rest-522@2026-06-18
 

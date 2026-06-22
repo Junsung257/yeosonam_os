@@ -61,6 +61,7 @@ rg "keyword" docs AGENTS.md .claude --glob "!docs/audits/**"
 |---|---|
 | New product-registration parser behavior | golden fixture and expected JSON |
 | New price-table shape | price IR parser test and golden corpus if supplier raw failed |
+| New blog generation, prompt, render, publish, indexing, image, SEO, or quality-gate behavior | blog regression test plus `docs/blog-autopublish-contract.md` or `docs/errors/blog.md` update |
 | New customer-visible rule | current domain SSOT |
 | Repeated operational mistake | `db/error-registry.md` ACTIVE CHECKLIST + full entry |
 | Route/pipeline architecture change | current domain SSOT and boundary test |
@@ -84,6 +85,22 @@ source failure
 ```
 
 Never make the document the only fix. The document records the fix; the fixture/test prevents regression.
+
+## Blog Automation Specific Flow
+
+For blog generation, publishing, rendering, images, SEO, or indexing:
+
+```text
+source failure
+  -> identify whether it is prompt, queue, repair, gate, render, image, SEO, indexing, or cron policy
+  -> add a deterministic ERR-BLOG regression case when feasible
+  -> update `docs/errors/blog.md` for repeated failures
+  -> update `docs/blog-autopublish-contract.md` or the active blog runbook if the invariant changed
+  -> run the narrow unit/regression test and the relevant blog audit command
+  -> deploy only after the live path and document contract agree
+```
+
+Do not call a blog fix complete from a repaired DB row or a one-time manual publish. Completion requires the live publisher, shared publish helper, quality gates, rendered public page, and indexing outbox to enforce the same rule.
 
 ## Prompt/Harness Best Practices
 

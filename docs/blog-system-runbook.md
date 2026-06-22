@@ -20,14 +20,15 @@ Supabase Dashboard > SQL Editor에서 순서대로:
 
 ### 3. 첫 스케줄러 수동 실행
 ```bash
-# Vercel 배포 직후, 첫 월요일 자동 실행 기다리지 말고:
-curl https://yeosonam.com/api/cron/blog-scheduler
+# Vercel 배포 직후, 첫 월요일 자동 실행을 기다리지 말고
+# 운영 CRON_SECRET 또는 Vercel Cron 인증 헤더가 있는 환경에서 실행한다.
+curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-scheduler
 ```
 → 17개 destination 중 Pillar 없는 곳 큐잉 + 42개 주간 토픽 충전
 
 ### 4. 첫 블로그 발행 수동 트리거
 ```bash
-curl https://yeosonam.com/api/cron/blog-publisher
+curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-publisher
 ```
 → 1시간 안 기다리고 즉시 6개까지 생성 시도
 
@@ -47,8 +48,9 @@ curl https://yeosonam.com/api/cron/blog-publisher
 
 2. **Vercel Cron 로그**
    - Vercel Dashboard > Project > Crons 탭
-   - `blog-publisher` 는 `vercel.json` 기준 **UTC 매시 04분/34분** (`4,34 * * * *`, 배치당 최대 `MAX_BATCH`건)
-   - `blog-lifecycle` 이 매일 01:30 KST 실행 확인
+   - `blog-publisher` 는 `vercel.json` 기준 **UTC 03:05, 06:05, 09:05, 12:05** 실행 (KST 12:05, 15:05, 18:05, 21:05)
+   - `blog-scheduler` 는 `vercel.json` 기준 **UTC 일요일 15:00** 실행 (KST 월요일 00:00)
+   - `blog-lifecycle` 이 매일 KST 01:30 실행 확인
 
 3. **알림 체크**
    - Slack 웹훅 설정했으면 `#blog-alerts` 채널 확인
@@ -146,7 +148,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 curl https://yeosonam.com/api/blog/queue
 
 # 2) 퍼블리셔 수동 실행
-curl https://yeosonam.com/api/cron/blog-publisher
+curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-publisher
 
 # 3) GOOGLE_AI_API_KEY 쿼터 확인 (Gemini 콘솔)
 ```
@@ -156,8 +158,8 @@ curl https://yeosonam.com/api/cron/blog-publisher
 - 원인: `blog-scheduler` 가 아직 Pillar 큐잉 안 함
 - 해결:
   ```bash
-  curl https://yeosonam.com/api/cron/blog-scheduler   # 큐잉
-  curl https://yeosonam.com/api/cron/blog-publisher   # 즉시 생성
+  curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-scheduler   # 큐잉
+  curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-publisher   # 즉시 생성
   ```
 
 ### 광고 매핑 UTM URL 작동 안 함

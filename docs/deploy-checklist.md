@@ -137,7 +137,7 @@ Detailed runbook: [`docs/supabase-auth-open-gate.md`](./supabase-auth-open-gate.
 
 - [ ] `/api/cron/blog-lifecycle` — 매일 01:30 KST
 - [ ] `/api/cron/blog-scheduler` — 매주 월 00:00 KST
-- [ ] `/api/cron/blog-publisher` — 매시간 정각
+- [ ] `/api/cron/blog-publisher` — 매일 KST 12:05, 15:05, 18:05, 21:05
 - [ ] `/api/cron/blog-learn` — 매주 일 23:00 KST
 - [ ] 기타 11개 기존 크론 (meta-optimize, auto-archive, post-travel 등) 유지
 - [ ] `/api/cron/marketing-rules` — 등록/ENABLED 확인
@@ -192,9 +192,9 @@ Vercel Dashboard > Project > Settings > Crons 에서 전부 ENABLED 확인.
 - [ ] `/admin/blog/write` → 수동 작성 UI 정상
 
 ### 크론 수동 실행
-- [ ] `curl https://yeosonam.com/api/cron/blog-scheduler` → 200 + `pillars: { queued: N }` 응답
-- [ ] `curl https://yeosonam.com/api/cron/blog-publisher` → 200 + `processed: N` 응답
-- [ ] `curl https://yeosonam.com/api/cron/blog-lifecycle` → 200 응답
+- [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-scheduler` → 200 + `pillars: { queued: N }` 응답
+- [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-publisher` → 200 + `processed: N` 응답
+- [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-lifecycle` → 200 응답
 - [ ] `curl https://yeosonam.com/api/cron/marketing-rules` → 200 + `apply_bid_updates` 확인
 - [ ] `curl https://yeosonam.com/api/cron/ad-optimizer` → 200 + `apply_db_changes` 확인
 - [ ] `curl https://yeosonam.com/api/cron/booking-attribution-audit` → 200 + `autofix_enabled` 확인

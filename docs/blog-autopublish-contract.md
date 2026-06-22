@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-06-16
+Last updated: 2026-06-22
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -66,15 +66,16 @@ Before the first publish gate:
 2. Build `generation_meta.content_brief` with `buildBlogContentBrief()` before LLM writing.
 3. Treat raw queue topics as seeds only. The brief is the source of truth for final title, primary keyword, secondary keywords, search intent, required sections, forbidden angles, and source requirements.
 4. Run `analyzeSerp()` for eligible keywords. If Naver keys are missing or no results are returned, use the free Google Suggest fallback only as keyword/search-intent guidance.
-5. Normalize or reject the slug.
-6. Ensure internal CTA links.
-7. Ensure official reference links.
-8. Insert or verify inline images.
-9. Run `repairBlogEditorialQuality()`.
-10. Run `repairBlogStructureQuality()`.
-11. Run `runQualityGates()`, including `topic_fit` and `editorial_quality`.
-12. Run `computeSeoScore()`.
-13. Run `computeReadability()` on the final post-gate body.
+5. Build the LLM prompt from the same visual/content contract used by gates: no `==...==`, no `<mark>`, no highlight-style emphasis, and tables must be valid GitHub Flavored Markdown with a separator row and no blank lines inside table rows.
+6. Normalize or reject the slug.
+7. Ensure internal CTA links.
+8. Ensure official reference links.
+9. Insert or verify inline images.
+10. Run `repairBlogEditorialQuality()`.
+11. Run `repairBlogStructureQuality()`.
+12. Run `runQualityGates()`, including `topic_fit`, `editorial_quality`, `accent_density`, `table_integrity`, and `cta_destination_integrity`.
+13. Run `computeSeoScore()`.
+14. Run `computeReadability()` on the final post-gate body.
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
@@ -91,6 +92,9 @@ The post must not be published when any of these are true:
 - The slug is weak, generated-looking, numeric-leading, or hash-suffixed.
 - Render integrity fails.
 - Structure integrity fails.
+- `accent_density` fails because highlight markup exists, numeric emphasis is excessive, heading counts are excessive, or paragraph walls remain.
+- `table_integrity` fails because a Markdown table is missing a separator row, has inconsistent cells, or is too short to be useful.
+- `cta_destination_integrity` fails because a package CTA has an empty or mismatched destination parameter.
 - Readability has repeated phrase spam that cannot be repaired.
 - The article has no usable image path or missing image alt evidence.
 - The article has no internal CTA and no official external reference.

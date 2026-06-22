@@ -53,6 +53,10 @@ const requiredAnchors = [
     includes: ['Automatic Doc Decision Matrix', 'Agent Closeout Contract'],
   },
   {
+    file: 'docs/blog-autopublish-contract.md',
+    includes: ['Required Pre-Publish Pipeline', 'Blocking Rules', 'Publishing and indexing must be treated as separate responsibilities'],
+  },
+  {
     file: 'docs/audits/README.md',
     includes: ['Audit Archive Index', 'not the current operating playbook', '--glob "!docs/audits/**"'],
   },
@@ -92,6 +96,22 @@ const productRegistrationChange = [...changed].some((file) =>
   ].some((prefix) => file.startsWith(prefix) || file === prefix)
 );
 
+const blogAutomationChange = [...changed].some((file) =>
+  [
+    'src/app/api/cron/blog-publisher/',
+    'src/app/api/cron/blog-scheduler/',
+    'src/app/api/cron/blog-daily-summary/',
+    'src/app/api/cron/blog-regenerate-zero-click/',
+    'src/app/api/blog/',
+    'src/app/blog/',
+    'src/lib/blog-',
+    'src/lib/serp-analyzer.ts',
+    'src/lib/indexing.ts',
+    'scripts/audit-blog-',
+    'scripts/backfill-blog-quality.ts',
+  ].some((prefix) => file.startsWith(prefix) || file === prefix)
+);
+
 const durableArtifactChange = [...changed].some((file) => {
   if (file.includes('.test.')) return true;
   return [
@@ -104,9 +124,30 @@ const durableArtifactChange = [...changed].some((file) => {
   ].some((prefix) => file.startsWith(prefix) || file === prefix);
 });
 
+const blogDurableArtifactChange = [...changed].some((file) => {
+  if (file.includes('.test.')) return true;
+  return [
+    'docs/blog-autopublish-contract.md',
+    'docs/blog-system-runbook.md',
+    'docs/blog-ops-runbook.md',
+    'docs/blog-search-quality-daily-process.md',
+    'docs/errors/blog.md',
+    'db/error-registry.md',
+    'docs/audits/',
+    'tests/regression/cases/ERR-BLOG',
+    'tests/regression/fixtures/ERR-BLOG',
+  ].some((prefix) => file.startsWith(prefix) || file === prefix);
+});
+
 if (productRegistrationChange && !durableArtifactChange) {
   failures.push(
     'Product-registration behavior changed without a durable artifact. Add a fixture/test, SSOT update, error-registry entry, or audit note.'
+  );
+}
+
+if (blogAutomationChange && !blogDurableArtifactChange) {
+  failures.push(
+    'Blog automation/rendering/publish behavior changed without a durable artifact. Add a regression test, blog SSOT/runbook update, blog error-registry entry, or audit note.'
   );
 }
 
