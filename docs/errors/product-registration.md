@@ -1704,3 +1704,13 @@ Last updated: 2026-06-21
 > Original source before 2026-06-07 split: `db/error-registry.md:1012`
 
 - [ ] **ERR-BHO-TB-04@2026-04-30** (데이터 — 원문 날짜 표기 OCR/인쇄 오류로 월 잘못 기재): 투어비 보홀 원문 가격표의 `8/2,3,9,10,16 수목` 행이 실제로는 **9월** 날짜 (2026-09-02=수, 09-03=목 ... 확인). 원문에 "8"로 인쇄되어 있으나 2026년 8월 2일=일요일로 수요일과 불일치. 요일 대조 결과 9월로 교정. **해결**: 날짜-요일 불일치 탐지 후 인접 월 탐색으로 교정. 9월로 정정하여 PRICES_3D5 행렬 구성. **재발 방지**: `db/lib/parse-price-table.js` 신규 유틸 — `parsePriceRows()` 가 날짜-요일 불일치 자동 탐지 + 인접 월 교정 + anomaly 보고 (2026-04-30). 앞으로 BHO 어셈블러 가격표 파싱 시 이 유틸 사용 권장.
+# ERR-mobile-proof-bypass@2026-06-22
+
+- **Discovered**: 2026-06-22
+- **Domain**: product registration / customer mobile landing
+- **Symptom**: Upload/source verification was reported as complete even though the actual `/packages/{id}` mobile customer page had not been proven. Shizuoka-style products could appear clean at the harness level while the final customer page was not actually reviewed.
+- **Root cause**: The SSOT required mobile/A4 proof, but approval and reporting paths still treated source/render-contract checks as enough. Auto mobile QA also skipped non-public packages, so pre-approval `/packages` proof could not exist.
+- **Fix**: Add an internal render-proof path for `/packages/{id}`, persist `audit_report.mobile_browser_proof`, require that proof before approval, and block customer publication with `MOBILE_BROWSER_PROOF_REQUIRED` when it is missing or stale.
+- **Verification**: `npx vitest run src/lib/customer-mobile-proof.test.ts src/lib/auto-mobile-qa.test.ts src/app/api/packages/[id]/approve/route.test.ts src/lib/product-registration/upload-route-boundary.test.ts` and `npx tsc --noEmit --pretty false`.
+- **Status**: FIXED IN ENGINE
+- **Prevention**: Do not call a product complete from source audit alone. Final completion requires actual `/packages/{id}` mobile proof plus A4 readiness.

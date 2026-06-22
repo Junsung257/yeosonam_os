@@ -48,6 +48,7 @@ type ExpectedRender = {
   shortCode: string | null;
   internalCode: string | null;
   rawText: string | null;
+  updatedAt?: string | null;
   lastDayNumber: number | null;
   lastDayArrivalCity: string | null;
   homeCity: string | null;
@@ -79,6 +80,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     shortCode: null,
     internalCode: null,
     rawText: null,
+    updatedAt: null,
     lastDayNumber: null,
     lastDayArrivalCity: null,
     homeCity: null,
@@ -86,7 +88,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, destination, duration, nights, trip_style, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code, raw_text')
+      .select('title, display_title, destination, duration, nights, trip_style, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code, raw_text, updated_at')
       .eq('id', packageId)
       .maybeSingle();
     if (!data) {
@@ -131,6 +133,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       shortCode: (data as { short_code?: string | null }).short_code ?? null,
       internalCode: (data as { internal_code?: string | null }).internal_code ?? null,
       rawText: (data as { raw_text?: string | null }).raw_text ?? null,
+      updatedAt: (data as { updated_at?: string | null }).updated_at ?? null,
       lastDayNumber: typeof lastDay?.day === 'number' ? lastDay.day : days.length || null,
       lastDayArrivalCity,
       homeCity,
@@ -392,7 +395,10 @@ export function buildMobileQaImprovementEvent(input: {
 }
 
 async function fetchSurfaceHtml(pageUrl: string): Promise<string | null> {
-  const res = await fetch(pageUrl, { headers: { 'User-Agent': 'YeosonamAutoQA/1.0' } });
+  const headers: Record<string, string> = { 'User-Agent': 'YeosonamAutoQA/1.0' };
+  const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
+  if (proofSecret) headers['x-yeosonam-render-proof'] = proofSecret;
+  const res = await fetch(pageUrl, { headers });
   if (!res.ok) return null;
   return res.text();
 }
@@ -403,10 +409,6 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
 
   try {
     const expected = await loadExpectedRender(packageId);
-    if (!isCustomerVisibleStatus(expected.status)) {
-      console.log(`[AutoQA] ${packageId}: status=${expected.status ?? 'null'} — 고객 비노출, QA skip`);
-      return;
-    }
 
     const revalidatePaths = buildRevalidatePaths(packageId, expected.shortCode);
 
@@ -425,7 +427,9 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
 
     const surfaces: Array<{ surface: 'packages' | 'lp'; pageUrl: string }> = [
       { surface: 'packages', pageUrl: `${url}/packages/${packageId}` },
-      { surface: 'lp', pageUrl: `${url}/lp/${packageId}` },
+      ...(isCustomerVisibleStatus(expected.status)
+        ? [{ surface: 'lp' as const, pageUrl: `${url}/lp/${packageId}` }]
+        : []),
     ];
 
     const incidents: QAIncident[] = [];
@@ -433,6 +437,11 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
       const html = await fetchSurfaceHtml(pageUrl);
       if (!html) {
         console.warn(`[AutoQA] ${packageId}: ${surface} fetch fail`);
+        incidents.push({
+          id: `${surface === 'lp' ? 'lp_' : 'mobile_'}surface_fetch_failed`,
+          severity: 'high',
+          message: `[${surface}] customer mobile proof fetch failed`,
+        });
         continue;
       }
       incidents.push(...analyzeMobileHtml(html, expected, surface));
@@ -552,6 +561,32 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
         }
       }
     } else {
+      const checkedAt = new Date().toISOString();
+      try {
+        const { data: pkgRow } = await supabaseAdmin
+          .from('travel_packages')
+          .select('audit_report')
+          .eq('id', packageId)
+          .maybeSingle();
+        const existingReport = (pkgRow as { audit_report?: Record<string, unknown> | null } | null)?.audit_report;
+        await supabaseAdmin
+          .from('travel_packages')
+          .update({
+            audit_report: {
+              ...(existingReport && typeof existingReport === 'object' && !Array.isArray(existingReport) ? existingReport : {}),
+              mobile_browser_proof: {
+                status: 'pass',
+                checked_at: checkedAt,
+                package_updated_at: expected.updatedAt,
+                surfaces: surfaces.map(item => item.surface),
+              },
+            },
+            audit_checked_at: checkedAt,
+          })
+          .eq('id', packageId);
+      } catch (e) {
+        console.warn('[AutoQA] mobile proof save failed:', e instanceof Error ? e.message : e);
+      }
       console.log(`[AutoQA] ${packageId}: mobile clean ✓`);
     }
   } catch (e) {

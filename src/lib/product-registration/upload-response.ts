@@ -137,7 +137,7 @@ export async function buildUploadResponsePayload(input: {
     try {
       const { data: pkgs } = await input.supabase
         .from('travel_packages')
-        .select('id, internal_code, title, price, airline, status, audit_status, departure_days, commission_rate, land_operator, price_dates, itinerary_data')
+        .select('id, internal_code, title, price, airline, status, audit_status, audit_report, updated_at, departure_days, commission_rate, land_operator, price_dates, itinerary_data')
         .in('id', input.savedIds);
       registerReport = buildUploadRegisterReport((pkgs ?? []) as UploadRegisterReportPackage[], input.baseUrl, {
         priceRowsByPackageId: input.savedPriceRowsByPackageId,
@@ -147,7 +147,7 @@ export async function buildUploadResponsePayload(input: {
     }
   }
   const customerBlockedRows = registerReport.filter(row =>
-    row.audit_status === 'blocked' || !isCustomerVisibleStatus(row.status),
+    row.audit_status === 'blocked' || !isCustomerVisibleStatus(row.status) || row.mobile_browser_proof_required,
   );
   const customerPublishableCount = registerReport.length - customerBlockedRows.length;
   if (successCount > 0 && customerBlockedRows.length > 0 && overallGate === 'CLEAN') {
@@ -226,6 +226,8 @@ export async function buildUploadResponsePayload(input: {
       title: row.title,
       status: row.status,
       audit_status: row.audit_status,
+      mobile_browser_proof_status: row.mobile_browser_proof_status,
+      mobile_browser_proof_required: row.mobile_browser_proof_required,
       mobile_url: row.mobile_url,
     })),
     trustScore,

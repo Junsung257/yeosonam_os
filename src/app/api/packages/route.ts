@@ -36,6 +36,7 @@ import {
 } from '@/lib/product-registration-v3/customer-payload';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
+import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -110,7 +111,7 @@ async function assertPackageV3ApprovalAllowed(packageId: string) {
 async function assertPackageSourceAuditAllowsPublication(packageId: string) {
   const { data: pkg, error } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, status, audit_status, duration, price, display_title, hero_tagline, raw_text, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges')
+    .select('id, title, status, audit_status, audit_report, updated_at, duration, nights, price, display_title, hero_tagline, raw_text, trip_style, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges')
     .eq('id', packageId)
     .single();
 
@@ -159,6 +160,36 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
       packageId,
       source_verify: result,
       source_price_date_repair: repair,
+    });
+  }
+
+  const mobileProof = evaluateCustomerMobileProof({
+    auditReport: (pkg as { audit_report?: unknown }).audit_report ?? null,
+    packageUpdatedAt: (pkg as { updated_at?: string | null }).updated_at ?? null,
+  });
+  if (!mobileProof.ok) {
+    await supabaseAdmin
+      .from('travel_packages')
+      .update({
+        audit_status: 'blocked',
+        audit_report: {
+          ...auditReport,
+          mobile_browser_proof: mobileProof.proof,
+          mobile_browser_proof_required: {
+            status: 'fail',
+            reason: mobileProof.reason,
+            checked_at: new Date().toISOString(),
+          },
+        },
+        audit_checked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', packageId);
+    return ApiErrors.conflict('Actual /packages mobile browser proof is required before customer publication.', {
+      code: 'MOBILE_BROWSER_PROOF_REQUIRED',
+      packageId,
+      mobile_browser_proof: mobileProof,
+      source_verify: result,
     });
   }
 
