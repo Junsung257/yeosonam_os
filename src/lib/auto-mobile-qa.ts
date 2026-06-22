@@ -444,13 +444,35 @@ export function buildMobileQaImprovementEvent(input: {
   };
 }
 
+const SURFACE_FETCH_RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000] as const;
+
+function wait(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function looksLikeTransientHiddenPackage(html: string | null): boolean {
+  if (!html) return true;
+  return /NOT_FOUND|패키지를 찾을 수 없습니다|Package not found|not found/i.test(html);
+}
+
 async function fetchSurfaceHtml(pageUrl: string): Promise<string | null> {
   const headers: Record<string, string> = { 'User-Agent': 'YeosonamAutoQA/1.0' };
   const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
   if (proofSecret) headers['x-yeosonam-render-proof'] = proofSecret;
-  const res = await fetch(pageUrl, { headers });
+  headers['Cache-Control'] = 'no-cache';
+  const res = await fetch(pageUrl, { headers, cache: 'no-store' });
   if (!res.ok) return null;
   return res.text();
+}
+
+async function fetchSurfaceHtmlWithRetry(pageUrl: string): Promise<string | null> {
+  let lastHtml: string | null = null;
+  for (const delayMs of SURFACE_FETCH_RETRY_DELAYS_MS) {
+    if (delayMs > 0) await wait(delayMs);
+    lastHtml = await fetchSurfaceHtml(pageUrl);
+    if (!looksLikeTransientHiddenPackage(lastHtml)) return lastHtml;
+  }
+  return lastHtml;
 }
 
 export async function runAutoMobileQA(packageId: string, baseUrl?: string): Promise<void> {
@@ -464,7 +486,7 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
 
     const secret = getSecret('REVALIDATE_SECRET');
     if (secret) {
-      void fetch(`${url}/api/revalidate`, {
+      await fetch(`${url}/api/revalidate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ paths: revalidatePaths, secret }),
@@ -473,7 +495,7 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
       );
     }
 
-    await new Promise(r => setTimeout(r, 3000));
+    await wait(3_000);
 
     const surfaces: Array<{ surface: 'packages' | 'lp'; pageUrl: string }> = [
       { surface: 'packages', pageUrl: `${url}/packages/${packageId}` },
@@ -484,7 +506,7 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
 
     const incidents: QAIncident[] = [];
     for (const { surface, pageUrl } of surfaces) {
-      const html = await fetchSurfaceHtml(pageUrl);
+      const html = await fetchSurfaceHtmlWithRetry(pageUrl);
       if (!html) {
         console.warn(`[AutoQA] ${packageId}: ${surface} fetch fail`);
         incidents.push({
