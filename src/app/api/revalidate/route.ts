@@ -2,7 +2,8 @@
  * POST /api/revalidate
  *
  * Invalidates ISR cache paths after trusted database/admin scripts.
- * Body: { paths?: string[], tags?: string[], secret: string }
+ * Body: { path?: string, paths?: string[], tags?: string[], secret?: string }
+ * Header fallback: x-revalidate-secret
  */
 
 import { NextRequest } from 'next/server';
@@ -21,7 +22,10 @@ function noStore(body: Record<string, unknown>, status: number) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { paths, tags, secret } = body;
+    const { path, paths, tags } = body;
+    const secret = typeof body.secret === 'string'
+      ? body.secret
+      : request.headers.get('x-revalidate-secret');
 
     const expectedSecret = getSecret('REVALIDATE_SECRET');
     if (!expectedSecret) {
@@ -31,18 +35,23 @@ export async function POST(request: NextRequest) {
       return noStore({ error: 'Invalid secret' }, 401);
     }
 
-    const hasPaths = Array.isArray(paths) && paths.length > 0;
+    const normalizedPaths = Array.isArray(paths)
+      ? paths
+      : typeof path === 'string'
+        ? [path]
+        : [];
+    const hasPaths = normalizedPaths.length > 0;
     const hasTags = Array.isArray(tags) && tags.length > 0;
     if (!hasPaths && !hasTags) {
       return apiResponse({ error: 'paths or tags array is required' }, { status: 400 });
     }
 
     const revalidated: string[] = [];
-    for (const path of hasPaths ? paths : []) {
-      if (typeof path !== 'string') continue;
-      if (!path.startsWith('/')) continue;
-      revalidatePath(path);
-      revalidated.push(path);
+    for (const pathValue of hasPaths ? normalizedPaths : []) {
+      if (typeof pathValue !== 'string') continue;
+      if (!pathValue.startsWith('/')) continue;
+      revalidatePath(pathValue);
+      revalidated.push(pathValue);
     }
 
     const revalidatedTags: string[] = [];
