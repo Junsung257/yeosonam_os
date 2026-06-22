@@ -44,11 +44,30 @@ type PackageRow = {
   status?: string | null;
   audit_status?: string | null;
   duration?: number | null;
+  nights?: number | null;
   price?: number | null;
   display_title?: string | null;
   hero_tagline?: string | null;
   raw_text?: string | null;
-  itinerary_data?: { days?: Array<{ hotel?: { name?: string | null } | null; schedule?: Array<{ activity?: string }> | null } | null> } | null;
+  trip_style?: string | null;
+  itinerary_data?: {
+    meta?: Record<string, unknown> | null;
+    days?: Array<{
+      day?: number | null;
+      regions?: unknown;
+      hotel?: { name?: string | null } | null;
+      schedule?: Array<{
+        activity?: string | null;
+        note?: string | null;
+        time?: string | null;
+        type?: string | null;
+        entity_kind?: string | null;
+        attraction_ids?: unknown;
+        attraction_names?: unknown;
+        attraction_note?: string | null;
+      } | null> | null;
+    } | null> | null;
+  } | null;
   accommodations?: string[] | null;
   inclusions?: string[] | string | null;
   optional_tours?: Array<{ name?: string; price?: number | string | null; price_currency?: string | null } | string | null> | null;
@@ -172,6 +191,124 @@ function appendChecks(result: VerifyResult, extraChecks: VerifyCheck[]): VerifyR
     passCount: checks.filter(c => c.status === 'pass').length,
     status: failCount > 0 ? 'blocked' : warnCount > 0 ? 'warnings' : result.status,
   };
+}
+
+function asNumber(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function asText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function activityLabel(item: { activity?: string | null } | null | undefined): string {
+  return asText(item?.activity) || 'unknown schedule item';
+}
+
+function parseTripStyle(value: string | null | undefined): { nights: number; days: number } | null {
+  const match = asText(value).match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (!match) return null;
+  return { nights: Number(match[1]), days: Number(match[2]) };
+}
+
+export function evaluateCustomerRenderContractChecks(pkg: PackageRow): VerifyCheck[] {
+  const checks: VerifyCheck[] = [];
+  const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
+  const meta = pkg.itinerary_data?.meta ?? {};
+  const duration = asNumber(pkg.duration);
+  const nights = asNumber(pkg.nights);
+  const metaDays = asNumber(meta.days);
+  const metaNights = asNumber(meta.nights);
+  const tripStyle = parseTripStyle(pkg.trip_style) ?? parseTripStyle(pkg.title);
+
+  const durationIssues: string[] = [];
+  if (duration && days.length > 0 && days.length !== duration) {
+    durationIssues.push(`itinerary days ${days.length} != product duration ${duration}`);
+  }
+  if (metaDays && duration && metaDays !== duration) {
+    durationIssues.push(`itinerary_data.meta.days ${metaDays} != product duration ${duration}`);
+  }
+  if (tripStyle && duration && tripStyle.days !== duration) {
+    durationIssues.push(`trip_style days ${tripStyle.days} != product duration ${duration}`);
+  }
+  if (tripStyle && nights !== null && tripStyle.nights !== nights) {
+    durationIssues.push(`trip_style nights ${tripStyle.nights} != product nights ${nights}`);
+  }
+  if (metaNights !== null && nights !== null && metaNights !== nights) {
+    durationIssues.push(`itinerary_data.meta.nights ${metaNights} != product nights ${nights}`);
+  }
+
+  const dayNumbers = days.map(day => asNumber(day?.day)).filter((value): value is number => value !== null);
+  const duplicateDay = dayNumbers.find((value, index) => dayNumbers.indexOf(value) !== index);
+  if (duplicateDay !== undefined) {
+    durationIssues.push(`duplicate itinerary day number ${duplicateDay}`);
+  }
+
+  checks.push(durationIssues.length > 0
+    ? {
+        id: 'C16',
+        label: 'customer render duration contract',
+        status: 'fail',
+        detail: durationIssues.slice(0, 4).join(' | '),
+      }
+    : {
+        id: 'C16',
+        label: 'customer render duration contract',
+        status: days.length > 0 ? 'pass' : 'skip',
+        detail: days.length > 0 ? `${days.length} itinerary day(s) consistent` : 'itinerary days unavailable',
+      });
+
+  const contaminationIssues: string[] = [];
+  const mealOnlyRe = /^(?:호텔식|현지식|김밥|냉면|꿔바로우|꿔바로우|샤브샤브|삼겹살|양꼬치|비빔밥|무제한|매운탕|오리구이|산천어회)$/;
+  const shoppingRe = /(?:쇼핑센터|쇼핑|면세점|침향|한약방|라텍스|차가버섯|죽탄|콜라겐|보이차|농산물|특산품|기념품)/;
+  const hotelRe = /(?:HOTEL|hotel|호텔|리조트|골프텔|동급|준\s*5성|정\s*5성|5성)/i;
+  const nonAttractionKinds = new Set(['meal', 'shopping', 'optional_tour', 'notice', 'hotel', 'transfer', 'price_noise', 'free_time']);
+
+  for (const day of days) {
+    for (const item of Array.isArray(day?.schedule) ? day.schedule : []) {
+      const activity = activityLabel(item);
+      const compact = activity.replace(/\s+/g, '');
+      const kind = asText(item?.entity_kind).toLowerCase();
+      const type = asText(item?.type).toLowerCase();
+      const attractionIds = asArray(item?.attraction_ids).filter(Boolean);
+      const hasAttractionCard = attractionIds.length > 0 || asArray(item?.attraction_names).filter(Boolean).length > 0;
+
+      if (!activity || activity === 'unknown schedule item') continue;
+      if (hasAttractionCard && (nonAttractionKinds.has(kind) || nonAttractionKinds.has(type))) {
+        contaminationIssues.push(`day ${day?.day ?? '?'} non-attraction has attraction card: ${activity}`);
+      }
+      if (hasAttractionCard && shoppingRe.test(activity)) {
+        contaminationIssues.push(`day ${day?.day ?? '?'} shopping line has attraction card: ${activity}`);
+      }
+      if (mealOnlyRe.test(compact) || kind === 'meal' || type === 'meal') {
+        contaminationIssues.push(`day ${day?.day ?? '?'} meal-only line visible in schedule: ${activity}`);
+      }
+      if (hasAttractionCard && hotelRe.test(activity) && !/(?:온천욕|체험|특전|상당)/.test(activity)) {
+        contaminationIssues.push(`day ${day?.day ?? '?'} hotel-like line has attraction card: ${activity}`);
+      }
+    }
+  }
+
+  checks.push(contaminationIssues.length > 0
+    ? {
+        id: 'C17',
+        label: 'customer render entity contract',
+        status: 'fail',
+        detail: contaminationIssues.slice(0, 5).join(' | '),
+      }
+    : {
+        id: 'C17',
+        label: 'customer render entity contract',
+        status: days.length > 0 ? 'pass' : 'skip',
+        detail: days.length > 0 ? 'no schedule entity/card contamination detected' : 'itinerary days unavailable',
+      });
+
+  return checks;
 }
 
 async function mergeEntityQueueChecks(packageId: string, result: VerifyResult): Promise<VerifyResult> {
@@ -616,6 +753,9 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
     checks.push({ id: 'C10', label: '옵션 가격 유효성', status: 'skip', detail: '옵션 투어 없음' });
   }
 
+  const renderContractChecks = evaluateCustomerRenderContractChecks(pkg);
+  checks.push(...renderContractChecks);
+
   if (pkg.status === undefined && pkg.audit_status === undefined) {
     checks.push({
       id: 'C13',
@@ -672,7 +812,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
     const { data: rows, error } = await supabaseAdmin
       .from('travel_packages')
       .select(
-        'id, title, status, audit_status, duration, price, display_title, hero_tagline, raw_text, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
+        'id, title, status, audit_status, duration, nights, price, display_title, hero_tagline, raw_text, trip_style, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
       )
       .eq('id', packageId)
       .limit(1);

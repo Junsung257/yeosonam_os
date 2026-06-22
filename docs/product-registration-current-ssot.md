@@ -99,6 +99,18 @@ Customer-ready upload requires source-backed round-trip flight evidence to survi
 - A row must not be called recovered only because `extractSupplierRawDeterministicFacts()` found partial flight facts. Replay verification must also accept complete `buildSupplierRawDeterministicItinerary(...).flight_segments`.
 - Before marking an upload ready, the flow must validate the final customer mobile/A4 payload, not just parser output.
 
+## Customer Render Contract
+
+Upload verification must fail before customer opening when the saved data would produce a broken mobile landing or A4 render.
+
+The upload verify layer owns these customer-render gates:
+
+- `C15 entity review gate`: unresolved customer-visible unmatched entities block clean verification. This includes pending attraction, shopping, optional_tour, notice, and unknown rows. Meal, transfer, free_time, price_noise, and resolved hotel rows may pass only when they are non-blocking and not marked `needs_review`.
+- `C16 customer render duration contract`: saved itinerary day count, duplicate day numbers, `itinerary_data.meta.days`, `itinerary_data.meta.nights`, `duration`, `nights`, and `trip_style` must agree. A product such as `2박 3일` must not carry `itinerary_data.meta.nights=1`.
+- `C17 customer render entity contract`: schedule rows that are meals, shopping, options, notices, hotels, transfers, free time, or price noise must not carry attraction cards/photos. Meal-only tokens such as `꿔바로우`, shopping rows such as `면세점 1곳`, and hotel/service rows must not render as normal attraction timeline cards.
+
+These gates are not optional advisory checks. If any fail, the product can be saved for review, but it is not customer-openable and must not be described as mobile-landing-ready.
+
 ## Self-Improving Central Engine Contract
 
 The upload engine has two learning loops under one central engine. This is not a free-running AI that rewrites production behavior by itself. It is a trace/eval/dataset/rule-promotion system:

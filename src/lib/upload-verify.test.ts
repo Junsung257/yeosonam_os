@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { evaluateEntityQueueChecks, evaluateVerifyChecks } from './upload-verify';
+import { evaluateCustomerRenderContractChecks, evaluateEntityQueueChecks, evaluateVerifyChecks } from './upload-verify';
 import { extractProductRawTextSection } from './parser/catalog-pre-split';
 
 function findCheck(result: ReturnType<typeof evaluateVerifyChecks>, id: string) {
@@ -238,6 +238,65 @@ describe('evaluateEntityQueueChecks customer landing blockers', () => {
         status: 'pass',
       }),
     ]);
+  });
+});
+
+describe('evaluateCustomerRenderContractChecks mobile landing blockers', () => {
+  it('blocks itinerary duration and meta night disagreement before customer render', () => {
+    const checks = evaluateCustomerRenderContractChecks({
+      id: 'pkg-shizuoka-meta',
+      title: '시즈오카 · 2박 3일',
+      duration: 3,
+      nights: 2,
+      trip_style: '2박 3일',
+      itinerary_data: {
+        meta: { days: 3, nights: 1 },
+        days: [
+          { day: 1, schedule: [{ activity: '시즈오카 국제공항 도착' }] },
+          { day: 2, schedule: [{ activity: '오시노핫카이 관광' }] },
+          { day: 3, schedule: [{ activity: '부산 도착' }] },
+        ],
+      },
+    } as never);
+
+    expect(checks.find(c => c.id === 'C16')).toEqual(expect.objectContaining({
+      status: 'fail',
+    }));
+    expect(checks.find(c => c.id === 'C16')?.detail).toContain('meta.nights 1');
+  });
+
+  it('blocks meal, shopping, and non-attraction rows when they would render as attraction cards', () => {
+    const checks = evaluateCustomerRenderContractChecks({
+      id: 'pkg-shizuoka-render',
+      title: '시즈오카 · 2박 3일',
+      duration: 3,
+      nights: 2,
+      itinerary_data: {
+        meta: { days: 3, nights: 2 },
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { activity: '꿔바로우', entity_kind: 'meal' },
+              {
+                activity: '일본관광공사 면세점',
+                entity_kind: 'shopping',
+                attraction_ids: ['wrong-attraction-id'],
+                attraction_names: ['일본관광공사 면세점'],
+              },
+            ],
+          },
+          { day: 2, schedule: [{ activity: '오시노핫카이 관광' }] },
+          { day: 3, schedule: [{ activity: '부산 도착' }] },
+        ],
+      },
+    } as never);
+
+    expect(checks.find(c => c.id === 'C17')).toEqual(expect.objectContaining({
+      status: 'fail',
+    }));
+    expect(checks.find(c => c.id === 'C17')?.detail).toContain('meal-only line');
+    expect(checks.find(c => c.id === 'C17')?.detail).toContain('shopping line');
   });
 });
 
