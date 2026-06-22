@@ -51,9 +51,11 @@ describe('sitemap', () => {
 
     const routes = await sitemap();
     const urls = routes.map((route) => route.url);
+    const expectedBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+      .replace(/\/+$/, '');
 
-    expect(urls).toContain('https://www.yeosonam.com/packages');
-    expect(urls).toContain('https://www.yeosonam.com/blog/osaka-weather');
+    expect(urls).toContain(`${expectedBaseUrl}/packages`);
+    expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).not.toContain('travel_packages');
   });
