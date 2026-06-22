@@ -1143,6 +1143,31 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     { label: '질문', value: stickyConsultationQuestionText ?? '포함/불포함 확인' },
   ];
   const detailFirstScreenDecisionSummaryText = `첫 화면 상담 판단 요약: ${detailFirstScreenDecisionItems.map((item) => `${item.label} ${item.value}`).join(', ')}. 다음 액션은 ${stickyNextActionText}`;
+  const detailFirstScreenTrustPanelId = 'package-detail-first-screen-trust-panel';
+  const detailFirstScreenTrustQuestionId = 'package-detail-first-screen-trust-question';
+  const detailFirstScreenTrustItems = [
+    { label: '맞는 고객', value: decisionGuide.goodFor[0] ?? '일정과 포함 조건을 빠르게 확인하고 싶은 고객' },
+    { label: '확인할 점', value: decisionGuide.cautions[0] ?? '항공, 객실, 취소 규정은 예약 전 확인 필요' },
+    { label: '근거', value: decisionGuide.proofs.slice(0, 2).join(' · ') || firstScreenDepartureLabel },
+  ];
+  const detailFirstScreenTrustSummaryText = [
+    '첫 화면 신뢰 판단 요약.',
+    ...detailFirstScreenTrustItems.map((item) => `${item.label}: ${item.value}.`),
+    stickyConsultationQuestionText ? `상담 질문: ${stickyConsultationQuestionText}` : null,
+  ].filter(Boolean).join(' ');
+  const detailFirstScreenCtaDescriptionIds = `${detailCtaSummaryId} ${detailFirstScreenDecisionSummaryId} ${detailFirstScreenTrustPanelId} ${detailFirstScreenTrustQuestionId}`;
+  const handleFirstScreenTrustInquiry = (trigger: HTMLButtonElement) => {
+    if (stickyConsultationQuestionText) {
+      setFormData((current) => {
+        if (current.message.includes(stickyConsultationQuestionText)) return current;
+        const nextMessage = current.message.trim()
+          ? `${current.message.trim()}\n${stickyConsultationQuestionText}`
+          : stickyConsultationQuestionText;
+        return { ...current, message: nextMessage };
+      });
+    }
+    openInquiryForm('detail_first_screen_trust_panel', trigger);
+  };
   const stickyKakaoHandoffPreviewText = stickyHandoffItems.length > 0
     ? `카톡 전달 조건: ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
     : `카톡 전달 조건: ${selectedProductName} 상품 기준으로 상담을 시작합니다.`;
@@ -1641,7 +1666,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <button
               type="button"
               onClick={(event) => openInquiryForm('detail_first_screen_summary', event.currentTarget)}
-              aria-describedby={`${detailCtaSummaryId} ${detailFirstScreenDecisionSummaryId}`}
+              data-testid="package-detail-first-screen-reservation"
+              aria-describedby={detailFirstScreenCtaDescriptionIds}
               className="shrink-0 rounded-xl bg-slate-950 px-4 py-3 text-[13px] font-extrabold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] active:scale-[0.98] transition"
             >
               예약 문의
@@ -1683,13 +1709,48 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               </div>
             ))}
           </div>
+          <p id={detailFirstScreenTrustQuestionId} className="sr-only">
+            {stickyConsultationQuestionText
+              ? `상담 때 먼저 확인할 질문: ${stickyConsultationQuestionText}`
+              : '상담 때 먼저 확인할 질문은 예약 문의에서 정리합니다.'}
+          </p>
+          <div
+            id={detailFirstScreenTrustPanelId}
+            data-testid="package-detail-first-screen-trust-panel"
+            aria-label={detailFirstScreenTrustSummaryText}
+            className="mt-3 rounded-xl border border-blue-100 bg-[#EFF6FF] p-3"
+          >
+            <div className="grid gap-2">
+              {detailFirstScreenTrustItems.map((item) => (
+                <div key={`${item.label}-${item.value}`} className="rounded-lg bg-white/80 px-3 py-2">
+                  <p className="text-[10px] font-extrabold text-[#2563EB]">{item.label}</p>
+                  <p className="mt-0.5 text-[12px] font-bold leading-5 text-slate-800 break-keep">{item.value}</p>
+                </div>
+              ))}
+            </div>
+            {stickyConsultationQuestionText && (
+              <button
+                type="button"
+                data-testid="package-detail-first-screen-trust-question"
+                onClick={(event) => handleFirstScreenTrustInquiry(event.currentTarget)}
+                aria-haspopup="dialog"
+                aria-expanded={showForm}
+                aria-controls="package-detail-reservation-dialog"
+                aria-describedby={detailFirstScreenCtaDescriptionIds}
+                className="mt-2 flex min-h-10 w-full items-center justify-between gap-3 rounded-lg border border-blue-200 bg-white px-3 py-2 text-left text-[12px] font-extrabold text-[#1D4ED8] transition active:scale-[0.98]"
+              >
+                <span className="min-w-0 break-keep">이 질문으로 문의하기</span>
+                <span className="shrink-0 text-[11px] font-bold text-[#64748B]">상담 메모 포함</span>
+              </button>
+            )}
+          </div>
           <div className="mt-3">
             <button
               type="button"
               onClick={handleFirstScreenDepartureClick}
               data-testid="package-detail-first-screen-departure"
               aria-label={`${selectedProductName} 출발일 선택 영역으로 이동`}
-              aria-describedby={`${detailCtaSummaryId} ${detailFirstScreenDecisionSummaryId}`}
+              aria-describedby={detailFirstScreenCtaDescriptionIds}
               className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-extrabold text-slate-800 transition active:scale-[0.98]"
             >
               출발일 보기

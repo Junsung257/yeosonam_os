@@ -429,6 +429,33 @@ test.describe('keyboard access smoke', () => {
     await expect(reservationCta, 'package detail reservation CTA should regain focus after close').toBeFocused();
   });
 
+  test('package detail first screen trust panel opens inquiry with question', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const detailAvailable = await gotoPackageDetailWithVisibleSelector(page, '[data-testid="package-detail-first-screen-trust-panel"]:visible', {
+      scrollOffsets: [0, 320, 520],
+    });
+    test.skip(!detailAvailable, 'package detail first screen trust panel is unavailable in current package data');
+
+    await expect(page.locator('[data-testid="package-detail-first-screen-trust-panel"]:visible')).toBeVisible();
+    const reservation = page.locator('[data-testid="package-detail-first-screen-reservation"]:visible').first();
+    await expectCanFocus(reservation, 'package detail first screen reservation');
+    await expect(reservation).toHaveAttribute('aria-describedby', /package-detail-first-screen-trust-panel/);
+
+    const trustQuestion = page.locator('[data-testid="package-detail-first-screen-trust-question"]:visible').first();
+    await expectCanFocus(trustQuestion, 'package detail first screen trust question');
+    await expect(trustQuestion).toHaveAttribute('aria-haspopup', 'dialog');
+    await page.keyboard.press('Enter');
+
+    const reservationDialog = page.locator('[data-testid="package-detail-reservation-dialog"]');
+    await expect(reservationDialog).toBeVisible();
+    await expect(reservationDialog.locator('#reservation-message')).not.toHaveValue('');
+    await expect(trustQuestion, 'trust question trigger should expose expanded state').toHaveAttribute('aria-expanded', 'true');
+    await expectCanFocus(page.locator('[data-testid="package-detail-reservation-close"]').first(), 'reservation inquiry close');
+    await page.keyboard.press('Enter');
+    await expect(reservationDialog).toBeHidden();
+    await expect(trustQuestion, 'trust question trigger should regain focus after close').toBeFocused();
+  });
+
   test('package detail terms sheet opens and closes from keyboard', async ({ page }) => {
     const termsAvailable = await gotoPackageDetailWithVisibleSelector(page, '[data-testid="package-terms-open"]:visible');
     test.skip(!termsAvailable, 'package terms sheet trigger is unavailable in current package data');
