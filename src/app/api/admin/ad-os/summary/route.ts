@@ -17,7 +17,7 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import type { LaunchActionKey, Summary } from '@/app/admin/ad-os/_lib/types';
 
 export const dynamic = 'force-dynamic';
-const AD_OS_SUMMARY_TIMEOUT_MS = 8000;
+const AD_OS_SUMMARY_TIMEOUT_MS = 15000;
 
 const PLATFORMS = ['naver', 'google', 'meta', 'kakao'] as const;
 
@@ -2065,6 +2065,6 @@ export const GET = withAdminGuard(async () => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Ad OS summary unavailable';
     console.warn('[ad-os/summary] degraded response:', message);
-    return NextResponse.json(buildDegradedSummary(error), { status: 503 });
+    return NextResponse.json(buildDegradedSummary(error));
   }
 });
