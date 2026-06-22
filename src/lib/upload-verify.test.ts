@@ -132,6 +132,34 @@ describe('evaluateVerifyChecks customer visibility gate', () => {
     }));
   });
 
+  it('does not self-lock on stale blocked audit_status after deterministic issues are fixed', () => {
+    const result = evaluateVerifyChecks({
+      id: 'pkg-stale-blocked-audit',
+      title: 'Phu Quoc option price recovery',
+      status: 'active',
+      audit_status: 'blocked',
+      raw_text: 'DAY 1 arrival\nDAY 2 free time\nDAY 3 return\n2099.7.1\n459,000',
+      itinerary_data: {
+        days: [
+          { schedule: [{ activity: 'arrival' }] },
+          { schedule: [{ activity: 'free time' }] },
+          { schedule: [{ activity: 'return' }] },
+        ],
+      },
+      optional_tours: [{ name: '△ 혼똠섬 케이블카 &워터파크', price: '$60/인' }],
+      price_dates: [{ date: '2099-07-01', price: 459000 }],
+      display_title: 'Phu Quoc standard package',
+    } as never);
+
+    expect(result.status).not.toBe('blocked');
+    expect(findCheck(result, 'C10')).toEqual(expect.objectContaining({
+      status: 'pass',
+    }));
+    expect(findCheck(result, 'C13')).toEqual(expect.objectContaining({
+      status: 'pass',
+    }));
+  });
+
   it('blocks packages whose price dates are all expired even when price rows exist', () => {
     const result = evaluateVerifyChecks({
       id: 'pkg-expired-price-dates',

@@ -509,13 +509,6 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       status: 'skip',
       detail: 'status fields unavailable',
     });
-  } else if (pkg.audit_status === 'blocked') {
-    checks.push({
-      id: 'C13',
-      label: 'customer visibility gate',
-      status: 'fail',
-      detail: `audit_status=${pkg.audit_status}`,
-    });
   } else if (!isCustomerVisibleStatus(pkg.status)) {
     checks.push({
       id: 'C13',
