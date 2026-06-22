@@ -42,12 +42,12 @@ describe('Ad OS AdminSurfaceQaPanel', () => {
       <AdminSurfaceQaPanel adminSurfaceQa={qaFixture} checking={false} onRefresh={() => {}} />,
     );
 
-    expect(html).toContain('Admin Surface QA');
+    expect(html).toContain('관리자 화면 QA');
     expect(html).toContain('One admin surface needs evidence.');
     expect(html).toContain('83%');
     expect(html).toContain('Ad OS');
     expect(html).toContain('/admin/ad-os');
-    expect(html).toContain('DB write off - external write off');
+    expect(html).toContain('DB 변경 꺼짐 - 외부 반영 꺼짐');
   });
 
   it('renders the empty state before QA data is loaded', () => {
@@ -55,8 +55,8 @@ describe('Ad OS AdminSurfaceQaPanel', () => {
       <AdminSurfaceQaPanel adminSurfaceQa={null} checking={false} onRefresh={() => {}} />,
     );
 
-    expect(html).toContain('not checked');
-    expect(html).toContain('Review the six admin operation surfaces.');
-    expect(html).toContain('Run QA to see data sources');
+    expect(html).toContain('미점검');
+    expect(html).toContain('관리자 운영 화면 6개를 확인하세요.');
+    expect(html).toContain('QA를 실행하면 6개 관리자 화면');
   });
 });

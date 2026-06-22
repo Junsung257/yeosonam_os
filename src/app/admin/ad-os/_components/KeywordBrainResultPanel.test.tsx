@@ -28,8 +28,8 @@ describe('Ad OS KeywordBrainResultPanel', () => {
   it('renders keyword brain candidates with bid and tier labels', () => {
     const html = renderToStaticMarkup(<KeywordBrainResultPanel result={result} />);
 
-    expect(html).toContain('Keyword Brain result');
-    expect(html).toContain('2 candidates');
+    expect(html).toContain('키워드 브레인 결과');
+    expect(html).toContain('후보 2개');
     expect(html).toContain('tokyo private tour');
     expect(html).toContain('premium');
     expect(html).toContain('phrase');

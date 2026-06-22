@@ -24,23 +24,23 @@ export function TenantReportSummaryPanel({
   if (!report) return null;
 
   const metrics = [
-    ['Budget usage', `${Number(report.budget_usage_pct || 0)}%`],
-    ['Revenue ROAS', `${Number(report.revenue_roas_pct || 0)}%`],
-    ['Margin ROAS', `${Number(report.margin_roas_pct || 0)}%`],
+    ['예산 사용률', `${Number(report.budget_usage_pct || 0)}%`],
+    ['매출 ROAS', `${Number(report.revenue_roas_pct || 0)}%`],
+    ['마진 ROAS', `${Number(report.margin_roas_pct || 0)}%`],
     ['CPA', fmtWon(Number(report.cpa_krw || 0))],
-    ['Paused waste keywords', Number(report.paused_waste_keywords || 0).toLocaleString('ko-KR')],
-    ['Cheap keywords', Number(report.discovered_cheap_keywords || 0).toLocaleString('ko-KR')],
-    ['Keyword clusters', Number(report.keyword_clusters || 0).toLocaleString('ko-KR')],
-    ['External mutations', Number(report.external_mutations || 0).toLocaleString('ko-KR')],
+    ['낭비 키워드', Number(report.paused_waste_keywords || 0).toLocaleString('ko-KR')],
+    ['저비용 키워드', Number(report.discovered_cheap_keywords || 0).toLocaleString('ko-KR')],
+    ['키워드 묶음', Number(report.keyword_clusters || 0).toLocaleString('ko-KR')],
+    ['외부 변경', Number(report.external_mutations || 0).toLocaleString('ko-KR')],
   ];
 
   return (
     <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
-          <p className="text-admin-sm font-semibold text-admin-text">Tenant report summary</p>
+          <p className="text-admin-sm font-semibold text-admin-text">광고주 리포트 요약</p>
           <p className="mt-1 text-admin-2xs text-admin-muted">
-            Shows budget usage, revenue ROAS, margin ROAS, and action signals from the loaded tenant report.
+            예산 사용률, 매출 ROAS, 마진 ROAS, 다음 조치 신호를 한눈에 보여줍니다.
           </p>
         </div>
         <StatusPill tone="neutral">

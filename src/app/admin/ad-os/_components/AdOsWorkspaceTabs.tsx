@@ -10,7 +10,7 @@ export const AD_OS_WORKSPACE_TABS: Array<{
   { id: 'run', label: '바로 실행', description: '초보자가 볼 진단, 초안, 승인 요청' },
   { id: 'settings', label: '상세 설정', description: '예산, 채널, 정책, 계정 연결' },
   { id: 'report', label: '성과/리포트', description: 'ROAS, 검색어, 리포트, 변경 요청' },
-  { id: 'advanced', label: '고급/감사', description: '개발자용 점검, 큐, raw evidence' },
+  { id: 'advanced', label: '고급/감사', description: '개발자용 점검, 대기열, 원본 근거' },
 ];
 
 export function parseAdOsWorkspaceTab(value: string | null): AdOsWorkspaceTab {

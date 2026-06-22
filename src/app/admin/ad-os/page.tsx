@@ -326,11 +326,11 @@ export default function AdOsPage() {
       flag: 'checkingAdminSurfaceQa',
       fetchResult: fetchAdminSurfaceQa,
       onSuccess: setAdminSurfaceQa,
-      errorMessage: 'Admin surface QA failed.',
+      errorMessage: '관리자 화면 QA에 실패했습니다.',
       successMessage: (json) => (
         json.qa.status === 'pass'
-          ? `Admin surface QA passed: ${formatAdOsNumber(json.qa.passed)} pass, ${formatAdOsNumber(json.qa.warnings)} warnings, ${formatAdOsNumber(json.qa.failed)} failed.`
-          : `Admin surface QA needs attention: ${json.qa.top_gap || 'review required'}. Next: ${json.qa.next_action}`
+          ? `관리자 화면 QA 통과: 통과 ${formatAdOsNumber(json.qa.passed)}개, 주의 ${formatAdOsNumber(json.qa.warnings)}개, 실패 ${formatAdOsNumber(json.qa.failed)}개.`
+          : `관리자 화면 QA 확인 필요: ${json.qa.top_gap || '검토 필요'}. 다음 조치: ${json.qa.next_action}`
       ),
     });
   };
@@ -488,9 +488,9 @@ export default function AdOsPage() {
     if (!keywordCsv) return;
     try {
       await navigator.clipboard.writeText(keywordCsv);
-      setAutomationMessage('Naver keyword CSV copied to clipboard.');
+      setAutomationMessage('네이버 키워드 CSV를 클립보드에 복사했습니다.');
     } catch {
-      setAutomationMessage('Clipboard copy was blocked. Select the CSV content manually.');
+      setAutomationMessage('클립보드 복사가 차단되었습니다. CSV 내용을 직접 선택해 복사하세요.');
     }
   };
 
@@ -506,7 +506,7 @@ export default function AdOsPage() {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(csvUrl);
-    setAutomationMessage('Naver keyword CSV download started.');
+    setAutomationMessage('네이버 키워드 CSV 다운로드를 시작했습니다.');
   };
 
   const harvestLearning = async () => {
@@ -514,10 +514,10 @@ export default function AdOsPage() {
       flag: 'harvestingLearning',
       url: '/api/admin/ad-os/learning-harvest',
       body: { mode: 'guarded', apply: true, days: 30 },
-      errorMessage: 'Learning harvest failed.',
+      errorMessage: '학습 데이터 수집에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Learning harvest complete: learning events ${formatAdOsNumber(summary.learning_events)}, search terms ${formatAdOsNumber(summary.search_term_candidates)}, add candidates ${formatAdOsNumber(summary.add_keyword_candidates)}, negative candidates ${formatAdOsNumber(summary.add_negative_candidates)}.`;
+        return `학습 데이터 수집 완료: 학습 이벤트 ${formatAdOsNumber(summary.learning_events)}개, 검색어 후보 ${formatAdOsNumber(summary.search_term_candidates)}개, 추가 키워드 후보 ${formatAdOsNumber(summary.add_keyword_candidates)}개, 제외 키워드 후보 ${formatAdOsNumber(summary.add_negative_candidates)}개.`;
       },
     });
   };
@@ -616,10 +616,10 @@ export default function AdOsPage() {
       flag: 'applyingLearning',
       url: '/api/admin/ad-os/learning-apply',
       body: { apply: true, limit: 100 },
-      errorMessage: 'Learning apply failed.',
+      errorMessage: '학습 규칙 적용에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Learning apply complete: change requests ${formatAdOsNumber(summary.change_requests_inserted)}, pause candidates ${formatAdOsNumber(summary.pause_candidates)}, landing candidates ${formatAdOsNumber(summary.landing_candidates)}, expansion candidates ${formatAdOsNumber(summary.expansion_candidates)}.`;
+        return `학습 규칙 적용 완료: 변경 요청 ${formatAdOsNumber(summary.change_requests_inserted)}개, 중지 후보 ${formatAdOsNumber(summary.pause_candidates)}개, 랜딩 개선 후보 ${formatAdOsNumber(summary.landing_candidates)}개, 확장 후보 ${formatAdOsNumber(summary.expansion_candidates)}개.`;
       },
     });
   };
@@ -629,11 +629,11 @@ export default function AdOsPage() {
       flag: 'publishingExternal',
       url: '/api/admin/ad-os/external-publish',
       body: { platform: 'naver', mode: 'dry_run', apply: false },
-      errorMessage: 'External publish dry-run failed.',
+      errorMessage: '외부 반영 사전 점검에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
         const channelState = getAdOsRecord(summary.channel_state);
-        return `External publish dry-run complete: ${String(channelState.label || 'channel checked')}, approval requests ${formatAdOsNumber(summary.approved_requests)}, external API write ${summary.external_api_write ? 'yes' : 'no'}.`;
+        return `외부 반영 사전 점검 완료: ${String(channelState.label || '채널 점검')}, 승인 요청 ${formatAdOsNumber(summary.approved_requests)}개, 외부 API 쓰기 ${summary.external_api_write ? '있음' : '없음'}.`;
       },
     });
   };
@@ -643,10 +643,10 @@ export default function AdOsPage() {
       flag: 'runningBudgetPacing',
       url: '/api/admin/ad-os/budget-pacing',
       body: { mode: 'dry_run' },
-      errorMessage: 'Budget pacing failed.',
+      errorMessage: '예산 속도 점검에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        return `Budget pacing dry-run complete: channels ${formatAdOsNumber(summary.checked_channels)}, over pacing ${formatAdOsNumber(summary.over_pacing)}, under pacing ${formatAdOsNumber(summary.under_pacing)}, near loss cap ${formatAdOsNumber(summary.loss_limit_near)}, blocked ${formatAdOsNumber(summary.blocked)}.`;
+        return `예산 속도 사전 점검 완료: 채널 ${formatAdOsNumber(summary.checked_channels)}개, 초과 속도 ${formatAdOsNumber(summary.over_pacing)}개, 부족 속도 ${formatAdOsNumber(summary.under_pacing)}개, 손실 한도 근접 ${formatAdOsNumber(summary.loss_limit_near)}개, 차단 ${formatAdOsNumber(summary.blocked)}개.`;
       },
     });
   };
@@ -679,7 +679,7 @@ export default function AdOsPage() {
       const pacing = await postAdOsJson(
         '/api/admin/ad-os/budget-pacing',
         { mode: 'dry_run' },
-        'Budget pacing failed.',
+        '예산 속도 점검에 실패했습니다.',
       );
       const audit = await createPipelineAuditExportDraft();
 
@@ -865,7 +865,7 @@ export default function AdOsPage() {
       flag: 'runningKeywordBrain',
       url: '/api/admin/ad-os/keyword-brain',
       body: { apply: true, limit: 80 },
-      errorMessage: 'Keyword Brain failed.',
+      errorMessage: '키워드 브레인 실행에 실패했습니다.',
       onSuccess: setKeywordBrainResult,
       successMessage: (json) => {
         const summary = json.summary as {
@@ -873,7 +873,7 @@ export default function AdOsPage() {
           inserted_clusters?: unknown;
           inserted_keyword_plans?: unknown;
         } | undefined;
-        return `Keyword Brain complete: candidates ${formatAdOsNumber(summary?.candidates)}, clusters ${formatAdOsNumber(summary?.inserted_clusters)}, keyword drafts ${formatAdOsNumber(summary?.inserted_keyword_plans)}. External ad spend 0.`;
+        return `키워드 브레인 완료: 후보 ${formatAdOsNumber(summary?.candidates)}개, 묶음 ${formatAdOsNumber(summary?.inserted_clusters)}개, 키워드 초안 ${formatAdOsNumber(summary?.inserted_keyword_plans)}개. 실제 광고비 0원.`;
       },
     });
   };
@@ -1356,17 +1356,17 @@ export default function AdOsPage() {
         action,
         apply: true,
       },
-      errorMessage: 'Ops queue action failed.',
+      errorMessage: '운영 대기열 작업에 실패했습니다.',
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
-        const blockedReason = summary.blocked_reason ? ` / blocked: ${String(summary.blocked_reason)}` : '';
+        const blockedReason = summary.blocked_reason ? ` / 차단 사유: ${String(summary.blocked_reason)}` : '';
         const label =
           action === 'executor_dry_run'
-            ? 'row dry-run'
+            ? '행 사전 점검'
             : action === 'confirm_failed'
-              ? 'external failure confirmation'
-              : 'blocker acknowledged';
-        return `Ops queue ${label} complete: ${source} ${id.slice(0, 8)}. External API write 0${blockedReason}.`;
+              ? '외부 실패 확정'
+              : '차단 사유 확인';
+        return `운영 대기열 ${label} 완료: ${source} ${id.slice(0, 8)}. 외부 API 쓰기 0건${blockedReason}.`;
       },
     });
   };
@@ -2208,7 +2208,7 @@ export default function AdOsPage() {
             className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
           >
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">External operation</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">외부 작업</p>
               <h2 id="ad-os-ops-failure-confirm-title" className="text-lg font-bold text-admin-text">
                 외부 작업 실패로 확정할까요?
               </h2>
@@ -2222,7 +2222,7 @@ export default function AdOsPage() {
               className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
             >
               <div className="flex items-center justify-between gap-3">
-                <dt className="text-admin-muted">source</dt>
+                <dt className="text-admin-muted">출처</dt>
                 <dd className="font-semibold text-admin-text">{String(opsFailureTarget.source || '-')}</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
@@ -2232,7 +2232,7 @@ export default function AdOsPage() {
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <dt className="text-admin-muted">status</dt>
+                <dt className="text-admin-muted">상태</dt>
                 <dd className="font-semibold text-admin-text">{String(opsFailureTarget.status || '-')}</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
