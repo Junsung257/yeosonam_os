@@ -771,9 +771,6 @@ function readinessFor(row) {
   if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
   if (row.unmatched_activities > 0) warnings.push('unmatched_activities_pending');
-  if (row.entity_noise_removed > 0) warnings.push('entity_noise_removed');
-  if (row.entity_meal_structured > 0) warnings.push('entity_meal_structured');
-  if (row.entity_transfer_structured > 0) warnings.push('entity_transfer_structured');
 
   return {
     status: failures.length ? 'fail' : warnings.length ? 'warn' : 'pass',

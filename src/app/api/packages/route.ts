@@ -36,7 +36,7 @@ import {
 } from '@/lib/product-registration-v3/customer-payload';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
-import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
+import { evaluateCustomerMobileProof, extractCustomerMobileProof } from '@/lib/customer-mobile-proof';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -142,13 +142,17 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
     version: 3,
     source_price_date_repair: repair,
   };
+  const existingMobileProof = extractCustomerMobileProof((pkg as { audit_report?: unknown }).audit_report ?? null);
 
   await supabaseAdmin
     .from('travel_packages')
     .update({
       ...(repair.status === 'repaired' ? { price_dates: repair.priceDates } : {}),
       audit_status: result.status,
-      audit_report: auditReport,
+      audit_report: {
+        ...auditReport,
+        ...(existingMobileProof ? { mobile_browser_proof: existingMobileProof } : {}),
+      },
       audit_checked_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
