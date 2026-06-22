@@ -456,6 +456,26 @@ function priceDateSourceEvidenceMismatch(pkg) {
       .map(day => dateToDayNumber({ year, month, day: Number(day) }))
       .filter(day => day != null);
   };
+  const parseMixedSlashDateList = (line, year) => {
+    const compact = String(line ?? '').replace(/\s+/g, '');
+    if (!/^\d{1,2}\/\d{1,2}(?:,\d{1,2}(?:\/\d{1,2})?)+$/.test(compact)) return [];
+    let month = null;
+    const out = [];
+    for (const token of compact.split(',')) {
+      const slash = token.match(/^(\d{1,2})\/(\d{1,2})$/);
+      if (slash) {
+        month = Number(slash[1]);
+        const day = dateToDayNumber({ year, month, day: Number(slash[2]) });
+        if (day != null) out.push(day);
+        continue;
+      }
+      if (month != null && /^\d{1,2}$/.test(token)) {
+        const day = dateToDayNumber({ year, month, day: Number(token) });
+        if (day != null) out.push(day);
+      }
+    }
+    return out;
+  };
   const rangeEvidenceCovers = row => {
     const parts = isoParts(row.date);
     if (!parts) return false;
@@ -475,7 +495,10 @@ function priceDateSourceEvidenceMismatch(pkg) {
     const target = dateToDayNumber(parts);
     if (target == null) return false;
     for (let i = 0; i < lines.length; i++) {
-      const dates = parseSlashDateList(lines[i], parts.year);
+      const dates = [
+        ...parseSlashDateList(lines[i], parts.year),
+        ...parseMixedSlashDateList(lines[i], parts.year),
+      ];
       if (!dates.includes(target)) continue;
       const window = lines.slice(i, Math.min(lines.length, i + 5));
       if (window.some(line => lineHasAmount(line, row.price))) return true;
@@ -658,7 +681,8 @@ function itinerarySemanticMismatch(pkg) {
           || (/(\uCD9C\uBC1C|\uB3C4\uCC29)$/.test(compact) && !/(\uAD00\uAD11|\uCCB4\uD5D8|\uB4F1\uC815|\uC0B0\uCC45|\uC870\uB9DD)/.test(activity));
         if (!flightLike) return `day ${day?.day ?? '?'} non-flight line classified as flight: ${activity}`;
       }
-      if ((kind === 'attraction_visit' || hasAttraction) && /(?:HOTEL|hotel|\uD638\uD154|\uC8FC\uC810|\uB3D9\uAE09|\uC900\s*5\uC131|\uC815\s*5\uC131|5\uC131)/.test(activity)) {
+      const golfLike = /(?:\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|\bCC\b|CC\s*\d|\uC5D0\uC2A4\uCE04\uB9AC\s*CC|\uBE48\uD384\s*CC)/i.test(activity);
+      if ((kind === 'attraction_visit' || hasAttraction) && !golfLike && /(?:HOTEL|hotel|\uD638\uD154|\uC8FC\uC810|\uB3D9\uAE09|\uC900\s*5\uC131|\uC815\s*5\uC131|5\uC131)/.test(activity)) {
         return `day ${day?.day ?? '?'} hotel-like line classified as attraction: ${activity}`;
       }
     }

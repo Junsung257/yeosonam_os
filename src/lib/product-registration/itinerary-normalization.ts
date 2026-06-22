@@ -72,6 +72,89 @@ function preserveTopLevelFlightSegments<T extends ItineraryDataLike | null>(
   } as T;
 }
 
+function alignItineraryMetaToDuration<T extends ItineraryDataLike | null>(
+  itineraryData: T,
+  durationDays?: number | null,
+  nights?: number | null,
+): T {
+  if (!itineraryData || typeof durationDays !== 'number' || !Number.isFinite(durationDays) || durationDays <= 0) {
+    return itineraryData;
+  }
+  const roundedDays = Math.floor(durationDays);
+  if (roundedDays <= 0) return itineraryData;
+  const existingMeta = typeof itineraryData.meta === 'object' && itineraryData.meta !== null
+    ? itineraryData.meta as Record<string, unknown>
+    : {};
+  const expectedNights = typeof nights === 'number' && Number.isFinite(nights) && nights >= 0
+    ? Math.floor(nights)
+    : Math.max(0, roundedDays - 1);
+  if (existingMeta.days === roundedDays && existingMeta.nights === expectedNights) return itineraryData;
+  return {
+    ...itineraryData,
+    meta: {
+      ...existingMeta,
+      days: roundedDays,
+      nights: expectedNights,
+    },
+  } as T;
+}
+
+async function fillEmptyScheduleDaysFromRaw<T extends ItineraryDataLike | null>(
+  itineraryData: T,
+  rawText: string | null | undefined,
+  durationDays?: number | null,
+): Promise<{ itineraryData: T; warnings: string[] }> {
+  const days = itineraryData?.days;
+  if (!days?.length || !rawText?.trim()) return { itineraryData, warnings: [] };
+  const emptyDayNumbers = days
+    .filter(day => !Array.isArray(day.schedule) || day.schedule.length === 0)
+    .map(day => dayNumber(day.day))
+    .filter((value): value is number => value !== null);
+  if (emptyDayNumbers.length === 0) return { itineraryData, warnings: [] };
+
+  try {
+    const { parseDayTable } = await import('@/lib/parser/deterministic/day-table');
+    const parsed = parseDayTable(rawText);
+    if (parsed.confidence < 0.4 || parsed.days.length === 0) return { itineraryData, warnings: [] };
+    if (typeof durationDays === 'number' && durationDays > 0 && parsed.days.length > durationDays + 1) {
+      return { itineraryData, warnings: [] };
+    }
+    const parsedByDay = new Map<number, ItineraryDayLike>();
+    for (const day of parsed.days) {
+      const number = dayNumber(day.day);
+      if (number !== null) parsedByDay.set(number, day as unknown as ItineraryDayLike);
+    }
+    let changed = false;
+    const filledDays = days.map(day => {
+      const number = dayNumber(day.day);
+      if (number === null) return day;
+      const schedule = Array.isArray(day.schedule) ? day.schedule : [];
+      if (schedule.length > 0) return day;
+      const sourceDay = parsedByDay.get(number);
+      const sourceSchedule = Array.isArray(sourceDay?.schedule) ? sourceDay.schedule : [];
+      if (sourceSchedule.length === 0) return day;
+      changed = true;
+      return {
+        ...day,
+        schedule: sourceSchedule,
+        meals: day.meals ?? sourceDay?.meals,
+        hotel: day.hotel ?? sourceDay?.hotel,
+        regions: Array.isArray(day.regions) && day.regions.length > 0 ? day.regions : sourceDay?.regions,
+      };
+    });
+    if (!changed) return { itineraryData, warnings: [] };
+    return {
+      itineraryData: { ...itineraryData, days: filledDays } as T,
+      warnings: [`empty itinerary day schedule filled from source day table: day ${emptyDayNumbers.join(', ')}`],
+    };
+  } catch (e) {
+    return {
+      itineraryData,
+      warnings: [`empty itinerary day source fill failed: ${e instanceof Error ? e.message : String(e)}`],
+    };
+  }
+}
+
 function activityKey(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
@@ -283,6 +366,7 @@ export async function normalizeUploadItinerary(input: {
   productRawText?: string | null;
   destination?: string | null;
   durationDays?: number | null;
+  nights?: number | null;
   activeAttractions: AttractionData[];
 }): Promise<UploadItineraryNormalizationResult> {
   const warnings: string[] = [];
@@ -304,6 +388,13 @@ export async function normalizeUploadItinerary(input: {
     }
   }
   itineraryInput = normalizeStructuredItineraryEntities(itineraryInput);
+  const sourceDayFill = await fillEmptyScheduleDaysFromRaw(
+    itineraryInput,
+    input.productRawText,
+    input.durationDays,
+  );
+  itineraryInput = sourceDayFill.itineraryData;
+  warnings.push(...sourceDayFill.warnings);
   const initialPrune = prunePollutedScheduleItems(itineraryInput);
   const initialRangeRepair = pruneOutOfRangePollutedDays(initialPrune.itineraryData, input.durationDays);
   warnings.push(...initialRangeRepair.warnings);
@@ -348,7 +439,22 @@ export async function normalizeUploadItinerary(input: {
   warnings.push(...postOutlierRepair.warnings);
   const duplicateDayRepair = collapseDuplicateDayEntries(postOutlierRepair.itineraryData, input.durationDays);
   warnings.push(...duplicateDayRepair.warnings);
-  const itineraryDataToSave = preserveTopLevelFlightSegments(duplicateDayRepair.itineraryData, itineraryInput);
+  const finalSourceDayFill = await fillEmptyScheduleDaysFromRaw(
+    duplicateDayRepair.itineraryData,
+    input.productRawText,
+    input.durationDays,
+  );
+  warnings.push(...finalSourceDayFill.warnings);
+  const finalEnrichment = enrichItineraryWithAttractionReferences(
+    finalSourceDayFill.itineraryData,
+    input.activeAttractions,
+    input.destination ?? undefined,
+  );
+  const itineraryDataToSave = alignItineraryMetaToDuration(
+    preserveTopLevelFlightSegments(finalEnrichment.itineraryData, itineraryInput),
+    input.durationDays,
+    input.nights,
+  );
 
   const extractedCandidateRows: Array<{ activity: string; destination?: string }> = [];
   for (const day of itineraryDataToSave?.days ?? []) {
@@ -369,10 +475,10 @@ export async function normalizeUploadItinerary(input: {
     itineraryInput,
     itineraryDataToSave,
     scheduleItemCount,
-    matchedScheduleItemCount: enrichment.matchedScheduleItemCount ?? enrichment.matchedCanonicalNames.length,
-    unmatchedCandidateCount: enrichment.unmatchedCandidates.length,
-    unmatchedCandidates: enrichment.unmatchedCandidates,
-    matchedCanonicalNames: enrichment.matchedCanonicalNames,
+    matchedScheduleItemCount: finalEnrichment.matchedScheduleItemCount ?? finalEnrichment.matchedCanonicalNames.length,
+    unmatchedCandidateCount: finalEnrichment.unmatchedCandidates.length,
+    unmatchedCandidates: finalEnrichment.unmatchedCandidates,
+    matchedCanonicalNames: finalEnrichment.matchedCanonicalNames,
     extractedCandidateRows,
     fallbackApplied,
     fallbackAirline,

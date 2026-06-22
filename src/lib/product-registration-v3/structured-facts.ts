@@ -136,10 +136,19 @@ function parseUsd(text: string): number | null {
 }
 
 function parseKrw(text: string): number | null {
+  const koreanMan = text.match(/(\d+(?:\.\d+)?)\s*만\s*원/);
+  if (koreanMan) return Math.round(Number(koreanMan[1]) * 10000);
+  const koreanWon = text.match(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원/);
+  if (koreanWon) return Number(koreanWon[1].replace(/,/g, ''));
   const man = text.match(/(\d+(?:\.\d+)?)\s*만\s*원?/);
   if (man) return Math.round(Number(man[1]) * 10000);
   const won = text.match(/(\d{2,3}(?:,\d{3})+|\d{5,})\s*원/);
   return won ? Number(won[1].replace(/,/g, '')) : null;
+}
+
+function parsePercent(text: string): number | null {
+  const m = text.match(/(\d+(?:\.\d+)?)\s*%/);
+  return m ? Number(m[1]) : null;
 }
 
 function isIncludedCostLine(source: string): boolean {
@@ -245,10 +254,13 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     if ((/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) || /노\s*팁|NO\s*TIP/i.test(source)) {
       const included = /포함|노\s*팁|NO\s*TIP/i.test(source)
         || (currentCostSection === 'include' && !/불포함|별도|현지\s*지불|현지지불|개인경비/i.test(source));
-      const amount = parseUsd(source);
+      const usdAmount = parseUsd(source);
+      const krwAmount = usdAmount == null ? parseKrw(source) : null;
+      const amount = usdAmount ?? krwAmount;
+      const currency = usdAmount ? 'USD' : krwAmount ? '원' : null;
       const values = included
         ? { included: true, amount: null, currency: null, payment: null }
-        : { included: false, amount, currency: amount ? 'USD' : null, payment: 'local' };
+        : { included: false, amount, currency, payment: 'local' };
       const reviewStatus = included || amount ? 'auto_clean' : 'review_needed';
       addFact(facts, makeFact({
         category: 'guide_tip',
@@ -507,15 +519,16 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       && !isCancellationOrPaymentPolicyLine(source)
     ) {
       const amount = parseKrw(source) ?? parseUsd(source);
+      const percent = amount == null ? parsePercent(source) : null;
       const conditionalMinPax = isConditionalMinPaxSurchargeLine(source);
       const currency = /\$|USD/i.test(source) ? 'USD' : amount ? '원' : null;
       addFact(facts, makeFact({
         category: 'surcharge',
-        values: { label: source.slice(0, 80), amount, currency },
+        values: { label: source.slice(0, 80), amount, currency, percent },
         evidence,
-        risk_level: amount || !conditionalMinPax ? 'high' : 'medium',
-        review_status: amount || conditionalMinPax ? 'auto_clean' : 'review_needed',
-        standard_text: amount
+        risk_level: amount || percent || !conditionalMinPax ? 'high' : 'medium',
+        review_status: amount || percent || conditionalMinPax ? 'auto_clean' : 'review_needed',
+        standard_text: amount || percent
           ? `${source.slice(0, 40)}은 별도 비용으로 발생할 수 있습니다.`
           : conditionalMinPax
             ? '기준 인원 미충족 시 추가요금이 발생할 수 있어 예약 시 확인이 필요합니다.'

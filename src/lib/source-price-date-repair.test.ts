@@ -119,4 +119,48 @@ describe('buildSourceBackedPriceDateRepair', () => {
     expect(result.status).toBe('unsafe');
     expect(result.reason).toContain('differs from source');
   });
+
+  it('replaces phantom day-one departures with the source-backed price table', () => {
+    const rawText = [
+      '[LJ] Da Nang Hoi An 3N5D',
+      '\uAE30    \uAC04',
+      '\uC0C1 \uD488 \uAC00',
+      '7/19',
+      '8/31',
+      '1\uC778 599,000\uC6D0',
+      '*6/26\uAE4C\uC9C0 \uBC1C\uAD8C',
+      '8/18, 25',
+      '1\uC778 639,000\uC6D0',
+      '7/28, 29',
+      '1\uC778 799,000\uC6D0',
+      '\uB8F8 \uD0C0 \uC785',
+    ].join('\n');
+
+    const result = buildSourceBackedPriceDateRepair({
+      title: '[LJ] Da Nang Hoi An 3N5D',
+      duration: 5,
+      raw_text: rawText,
+      price_dates: [
+        { date: '2026-07-01', price: 799000, confirmed: false },
+        { date: '2026-07-28', price: 799000, confirmed: false },
+        { date: '2026-07-29', price: 799000, confirmed: false },
+        { date: '2026-08-01', price: 599000, confirmed: false },
+        { date: '2026-08-18', price: 639000, confirmed: false },
+        { date: '2026-08-25', price: 639000, confirmed: false },
+        { date: '2026-08-31', price: 599000, confirmed: false },
+      ],
+    });
+
+    expect(result.status).toBe('repaired');
+    if (result.status !== 'repaired') throw new Error('expected repair');
+    expect(result.priceDates.map(row => row.date)).toEqual([
+      '2026-07-19',
+      '2026-07-28',
+      '2026-07-29',
+      '2026-08-18',
+      '2026-08-25',
+      '2026-08-31',
+    ]);
+    expect(result.priceDates.some(row => row.date === '2026-07-01' || row.date === '2026-08-01')).toBe(false);
+  });
 });

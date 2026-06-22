@@ -130,6 +130,45 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(res.unmatchedCandidates).toHaveLength(0);
   });
 
+  it('prefers direct source text matches over stale existing attraction ids', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 2,
+            regions: ['푸꾸옥'],
+            schedule: [
+              {
+                activity: '빈펄CC 18홀 라운딩 조:호텔식',
+                attraction_ids: ['safari'],
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'safari',
+          name: '푸꾸옥 빈펄 사파리 빈원더스 콤보 QR티켓 입장권 패스트패스',
+          short_desc: '사파리와 테마파크',
+          region: '푸꾸옥',
+        },
+        {
+          id: 'golf',
+          name: '빈펄 CC',
+          short_desc: '푸꾸옥 프리미엄 18홀 골프',
+          region: '푸꾸옥',
+          aliases: ['빈펄CC'],
+        },
+      ],
+      '푸꾸옥',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['golf']);
+    expect(item.attraction_names).toEqual(['빈펄 CC']);
+  });
+
   it('skips generic free-time and transit rows from the attraction denominator', () => {
     expect(shouldAttemptAttractionMatch({ activity: '달랏 시내 자유시간', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '공항 이동', type: 'normal' })).toBe(false);

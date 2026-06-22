@@ -57,6 +57,10 @@ function hasDateHint(line: string): boolean {
   return /\d{1,2}\s*\/\s*\d{1,2}/.test(line) || /^\s*\d{1,2}(?:\s*,\s*\d{1,2})+\s*$/.test(line);
 }
 
+function isDepartureDateCandidateLine(line: string): boolean {
+  return hasDateHint(line) && !/[\uBC1C\uAD8C\uB9C8\uAC10\uAE4C\uC9C0]/.test(line);
+}
+
 function prepareLines(rawText: string): string[] {
   const sourceLines = rawText
     .split(/\r?\n/)
@@ -79,7 +83,20 @@ function prepareLines(rawText: string): string[] {
   for (let i = 0; i < priceJoined.length; i++) {
     const current = priceJoined[i];
     const next = priceJoined[i + 1] ?? '';
-    if (hasDateHint(current) && !hasPrice(current) && hasPrice(next) && !hasDateHint(next)) {
+    const afterNext = priceJoined[i + 2] ?? '';
+    if (
+      isDepartureDateCandidateLine(current)
+      && !hasPrice(current)
+      && isDepartureDateCandidateLine(next)
+      && !hasPrice(next)
+      && hasPrice(afterNext)
+      && !hasDateHint(afterNext)
+    ) {
+      lines.push(`${current} ${next} ${afterNext}`);
+      i += 2;
+      continue;
+    }
+    if (isDepartureDateCandidateLine(current) && !hasPrice(current) && hasPrice(next) && !hasDateHint(next)) {
       lines.push(`${current} ${next}`);
       i++;
       continue;
@@ -126,6 +143,10 @@ function dateObjectsFromSegment(segment: string, fallbackYear: number, fallbackM
     seen.add(date);
     dates.push(date);
   };
+
+  cleaned = cleaned
+    .replace(/\d+\s*\uC778/g, ' ')
+    .replace(/\uC131\uC778\s*\d+/g, ' ');
 
   cleaned = cleaned.replace(/(\d{1,2})\s*\/\s*(\d{1,2})\s*~\s*(?:(\d{1,2})\s*\/\s*)?(\d{1,2})/g, (match, monthText, startDayText, endMonthText, endDayText) => {
     const month = Number(monthText);

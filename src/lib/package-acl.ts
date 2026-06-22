@@ -16,6 +16,7 @@
 import { formatDepartureDays } from './admin-utils';
 import type { PackageCore } from './package-schema';
 import { REGION_KEYWORD_MAP } from './constants/regions';
+import { isCustomerOptionalTourCandidate } from './customer-option-classifier';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Photo 정규화 — 구형식 {url,thumb,credit} → 신형식 {src_medium,src_large,photographer}
@@ -125,6 +126,8 @@ export function normalizeOptionalTour(raw: unknown): PackageCore['optional_tours
   if (!raw || typeof raw !== 'object') return null;
   const t = raw as LegacyTour;
   if (!t.name) return null;
+  const combined = [t.name, t.price, t.note].filter(value => value != null).join(' ');
+  if (!isCustomerOptionalTourCandidate(combined)) return null;
   const inferred = inferRegion(t.name, t.region);
   const parsedPrice = parseCustomerOptionalTourPrice(t);
   return {

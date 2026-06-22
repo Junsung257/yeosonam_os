@@ -130,6 +130,43 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.render_contract_preview).toHaveLength(1);
   });
 
+  it('does not block golf notices as optional tours and recovers separated ZE flight times', async () => {
+    const raw = `
+상품: 푸꾸옥 2색골프 3박5일
+가격 459,000원 / 최소출발 2명
+DAY 1
+ZE981
+부산 출발 19:05
+푸꾸옥 도착 22:25
+DAY 2 빈펄CC 18홀 라운딩
+* 골프장 라운딩 순서 및 골프장 선택은 현지사정에 따라 변동될 수 있습니다.
+* 설날 기간 : 2/14 ~2/22 기간 미팅 샌딩비 50% 추가비용 발생됩니다.
+※ 마사지 팁 [60분-$3, 90분-$4, 120분-$5] 기준입니다.
+DAY 5
+ZE982
+푸꾸옥 출발 23:25
+부산 도착 06:55
+포함 호텔, 조식
+불포함 개인경비
+`.trim();
+
+    const result = await runProductRegistrationV3(raw);
+    const variant = result.ledger.variants[0];
+
+    expect(result.structure_plan.option_section_locations).toEqual([]);
+    expect(variant.flight_segments).toMatchObject([
+      { code: 'ZE981', dep_time: '19:05', arr_time: '22:25' },
+      { code: 'ZE982', dep_time: '23:25', arr_time: '06:55' },
+    ]);
+    expect(result.gate_result.checks.some(check =>
+      check.status === 'fail'
+      && (check.id.endsWith('options_reflected')
+        || check.id.endsWith('high_risk_notice_values')
+        || check.id.endsWith('high_risk_structured_fact_values')),
+    )).toBe(false);
+    expect(result.gate_result.status).not.toBe('blocked');
+  });
+
   it('splits a Baekdu catalog into 8 draft variants with per-variant evidence', async () => {
     const result = await runProductRegistrationV3(buildBaekduEightVariantFixture());
 
@@ -212,6 +249,81 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.ledger.variants[0].flight_segments).toHaveLength(2);
     expect(result.gate_result.status).toBe('blocked');
     expect(result.gate_result.checks.find(check => check.id.endsWith('flight_times_complete'))?.status).toBe('fail');
+  });
+
+  it('pairs adjacent arrival-only flight lines with the source flight segment', async () => {
+    const raw = [
+      'Product: Phu Quoc Golf 4N6D',
+      'Price: 459,000 KRW / minimum 2',
+      'DAY 1 부산 ZE981 19:05 김해 국제공항 출발',
+      'DAY 1 푸꾸옥 22:10 푸꾸옥 국제공항 도착',
+      'DAY 2 빈펄CC 18홀 라운딩 조:호텔식',
+      'DAY 5 푸꾸옥 ZE982 23:25 푸꾸옥 국제공항 출발',
+      'DAY 6 부산 06:55 김해 국제공항 도착',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [{ id: 'golf', name: '빈펄 CC', aliases: ['빈펄CC'], region: '푸꾸옥' }],
+      destination: '푸꾸옥',
+    });
+
+    expect(result.ledger.variants[0].flight_segments).toMatchObject([
+      { code: 'ZE981', dep_time: '19:05', arr_time: '22:10' },
+      { code: 'ZE982', dep_time: '23:25', arr_time: '06:55' },
+    ]);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('flight_times_complete'))?.status).toBe('pass');
+  });
+
+  it('classifies itinerary table noise and shopping fragments away from attraction review', async () => {
+    const raw = [
+      'Product: Da Nang Spot 3N5D',
+      'Price: 599,000 KRW / minimum 4',
+      'DAY 1 LJ112 부산 출발 21:00 다낭 도착 23:30',
+      'DAY 2 다낭',
+      'DAY 2 전용차랑',
+      'DAY 2 오 전',
+      'DAY 2 베트남 특산품 관광 3회',
+      'DAY 3 (콜드밀)',
+      'DAY 4 ■상기 일정은 항공 및 현지 사정에 의하여 변동될 수 있사오니 양해하여 주시기 바랍니다■',
+      'DAY 5 LJ113 다낭 출발 01:00 부산 도착 07:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '다낭' });
+    const reviewTexts = result.match_summary.entity_summary?.review_items
+      .filter(item => item.category === 'attraction')
+      .map(item => item.raw_text) ?? [];
+
+    expect(reviewTexts).not.toContain('다낭');
+    expect(reviewTexts).not.toContain('전용차랑');
+    expect(reviewTexts).not.toContain('오 전');
+    expect(reviewTexts).not.toContain('베트남 특산품 관광 3회');
+    expect(reviewTexts).not.toContain('(콜드밀)');
+  });
+
+  it('recognizes vertical per-person minimum departure lines', async () => {
+    const raw = [
+      'Product: Da Nang Spot 3N5D',
+      'Price: 599,000 KRW',
+      '\uC778 \uC6D0',
+      '4\uBA85\uBD80\uD130 \uCD9C\uBC1C',
+      'DAY 1 LJ111 Busan departure 21:00 Da Nang arrival 23:30',
+      'DAY 2 Da Nang tour',
+      'DAY 3 Hoi An tour',
+      'DAY 4 Free time',
+      'DAY 5 LJ112 Da Nang departure 01:00 Busan arrival 07:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: 'Da Nang' });
+    const variant = result.ledger.variants[0];
+
+    expect(variant.minimum_departure?.value).toBe(4);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('minimum_departure'))?.status).toBe('pass');
   });
 
   it('uses line-level evidence and never whole raw text as fallback evidence', async () => {
@@ -439,6 +551,46 @@ describe('product-registration-v3 draft ledger pipeline', () => {
       '더 비스타 18홀 라운딩 (2부 TEE 조건)',
       '디 하이츠 18홀 라운딩',
     ]));
+  });
+
+  it('does not fall back to cross-region attraction matches when destination is known', async () => {
+    const raw = [
+      '상품: 푸꾸옥 4박6일',
+      '가격: 549,000원',
+      'DAY 1 푸꾸옥 도착',
+      'DAY 2 베트남의 베네치아! 복합 엔터테이먼트 단지 그랜드월드 나이트투어',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '푸꾸옥',
+      attractions: [{ id: 'bohol-night', name: '나이트투어', region: '보홀' }],
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(events.some(event => event.canonical_id === 'bohol-night')).toBe(false);
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).toContain(
+      '베트남의 베네치아! 복합 엔터테이먼트 단지 그랜드월드 나이트투어',
+    );
+  });
+
+  it('keeps golf cart fees out of customer optional tours', async () => {
+    const raw = [
+      '상품: PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 4박6일',
+      '가격: 1,319,000원',
+      'DAY 1 에스츄리CC 18홀 라운딩 *클럽식 포함',
+      '비 고',
+      '* 싱글카트비 18홀 기준 빈펄 450,000동 / 에스츄리 500,000동 추가 됩니다.',
+      '* 골프장 라운딩 순서 및 골프장 선택은 현지사정에 따라 변동될 수 있습니다.',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '푸꾸옥',
+      attractions: [{ id: 'estury', name: '에스츄리CC', region: '푸꾸옥' }],
+    });
+    const preview = result.render_contract_preview[0];
+
+    expect(preview?.optional_tours ?? []).toEqual([]);
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
   });
 
   it('keeps Cebu semi-package transit, shopping, options, and passport notices out of unmatched attractions', async () => {

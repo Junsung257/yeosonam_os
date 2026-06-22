@@ -77,7 +77,7 @@ function isDirectScanEligibleTerm(term: string, attraction: AttractionData, dest
   if (clean.length < 2 || clean.length > 24) return false;
   if (DIRECT_SCAN_STOP_TERMS.has(clean)) return false;
   if (attraction.category && DIRECT_SCAN_EXCLUDED_CATEGORIES.has(attraction.category)) return false;
-  if (!destinationAllowsAttraction(attraction, destination) && normalizeDirectTerm(clean).length < 4) return false;
+  if (destination && !destinationAllowsAttraction(attraction, destination)) return false;
   return true;
 }
 
@@ -85,7 +85,7 @@ function isDirectScanUnsafeActivity(activity: string): boolean {
   const compact = activity.replace(/\s+/g, '');
   if (!compact) return true;
   if (/(?:\uB9C8\uC0AC\uC9C0|\uC774\uB3D9|\uC18C\uC694|\uD638\uD154|\uACF5\uD56D|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uAC00\uC774\uB4DC\uBBF8\uD305)/.test(compact)) {
-    return !/(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C)/.test(compact);
+    return !/(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|CC)/.test(compact);
   }
   return false;
 }
@@ -96,7 +96,7 @@ function compactScheduleText(value: string | null | undefined): string {
 
 function hasAttractionVisitHint(text: string): boolean {
   const compact = compactScheduleText(text);
-  return /(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uC77C\uC1A1\uC815|\uD574\uB780\uAC15|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0)/.test(compact);
+  return /(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uC77C\uC1A1\uC815|\uD574\uB780\uAC15|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|CC)/.test(compact);
 }
 
 function isSupplierHeaderOrCommerceLine(text: string): boolean {
@@ -284,11 +284,26 @@ export function enrichItineraryWithAttractionReferences(
         ? item.attraction_ids.map(id => String(id)).filter(Boolean)
         : [];
       if (existingIds.length > 0) {
+        const itemText = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
+        const directValues = dedupeAttractionMatches(
+          findRegisteredAttractionTermsInText(itemText, attractions, matchDestination),
+          itemText,
+        );
+        if (directValues.length > 0) {
+          matchedScheduleItemCount++;
+          directValues.forEach(v => matchedNames.add(v.name));
+          return {
+            ...item,
+            attraction_ids: directValues.map(v => v.id).filter(Boolean),
+            attraction_names: directValues.map(v => v.name),
+            attraction_note: directValues[0]?.short_desc ?? item.note ?? null,
+          };
+        }
         const rawValues = existingIds
           .map(id => attractionById.get(id))
           .filter((a): a is AttractionData => Boolean(a))
           .filter(a => destinationAllowsAttraction(a, matchDestination));
-        const values = dedupeAttractionMatches(rawValues, [item.activity, item.note ?? ''].filter(Boolean).join(' '));
+        const values = dedupeAttractionMatches(rawValues, itemText);
         if (values.length > 0) {
           matchedScheduleItemCount++;
           values.forEach(v => matchedNames.add(v.name));

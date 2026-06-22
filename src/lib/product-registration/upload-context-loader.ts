@@ -58,7 +58,7 @@ export async function loadUploadRegistrationContext(input: {
   const [landOperatorsResult, departingLocationsResult, activeAttractions] = await Promise.all([
     input.supabase.from('land_operators').select('id, name').eq('is_active', true),
     input.supabase.from('departing_locations').select('id, name').eq('is_active', true),
-    input.bulkMode ? Promise.resolve([] as AttractionData[]) : loadActiveAttractionsForUpload(input),
+    loadActiveAttractionsForUpload(input),
   ]);
 
   if (landOperatorsResult.error) {
