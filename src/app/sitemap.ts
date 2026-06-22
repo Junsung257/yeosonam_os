@@ -12,7 +12,7 @@ const QUERY_TIMEOUT_MS = 2500;
 
 type SitemapQueryResponse<T> = {
   data: T[] | null;
-  error: { message?: string } | null;
+  error: { message?: string; name?: string } | Error | null;
 };
 
 export const revalidate = 3600;
@@ -36,7 +36,20 @@ function isAbortLikeError(err: unknown): boolean {
   if (err instanceof Error) {
     return err.name === 'AbortError' || /abort|timeout|timed out/i.test(err.message);
   }
+  if (err && typeof err === 'object') {
+    const maybeError = err as { message?: unknown; name?: unknown };
+    return String(maybeError.name || '') === 'AbortError'
+      || /abort|timeout|timed out/i.test(String(maybeError.message || ''));
+  }
   return false;
+}
+
+function sitemapQueryErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    return String((err as { message?: unknown }).message || err);
+  }
+  return String(err);
 }
 
 async function runSitemapQuery<T>(
@@ -52,13 +65,17 @@ async function runSitemapQuery<T>(
   try {
     const result = await queryFactory(controller.signal);
     if (result.error) {
-      console.warn(`[sitemap] ${label} query failed:`, result.error.message || result.error);
+      // Timeout/abort is the expected fallback path during static builds; keep build logs clean.
+      if (!isAbortLikeError(result.error)) {
+        console.warn(`[sitemap] ${label} query failed:`, sitemapQueryErrorMessage(result.error));
+      }
       return [];
     }
     return Array.isArray(result.data) ? result.data : [];
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`[sitemap] ${label} query ${isAbortLikeError(err) ? 'timed out' : 'failed'}:`, reason);
+    if (!isAbortLikeError(err)) {
+      console.warn(`[sitemap] ${label} query failed:`, sitemapQueryErrorMessage(err));
+    }
     return [];
   } finally {
     clearTimeout(timer);
