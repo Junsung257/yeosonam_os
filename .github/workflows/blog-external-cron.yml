@@ -1,0 +1,110 @@
+name: Blog External Cron
+
+on:
+  schedule:
+    # KST 12:07, 15:07, 18:07, 21:07.
+    - cron: '7 3,6,9,12 * * *'
+    # KST 22:12, after the final daily publisher slot.
+    - cron: '12 13 * * *'
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: Cron endpoint to trigger.
+        required: true
+        type: choice
+        default: blog-publisher
+        options:
+          - blog-publisher
+          - blog-daily-summary
+      force:
+        description: Add force=true for manual publisher checks.
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-external-cron-${{ github.event_name }}-${{ github.event.schedule || github.event.inputs.endpoint || 'manual' }}
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://www.yeosonam.com
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+    steps:
+      - name: Select endpoint
+        id: select
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          endpoint="${{ github.event.inputs.endpoint || '' }}"
+          force="${{ github.event.inputs.force || 'false' }}"
+
+          if [ -z "$endpoint" ]; then
+            case "${{ github.event.schedule }}" in
+              "12 13 * * *")
+                endpoint="blog-daily-summary"
+                ;;
+              *)
+                endpoint="blog-publisher"
+                ;;
+            esac
+            force="false"
+          fi
+
+          query=""
+          if [ "$force" = "true" ]; then
+            query="?force=true"
+          fi
+
+          echo "endpoint=$endpoint" >> "$GITHUB_OUTPUT"
+          echo "url=${BASE_URL}/api/cron/${endpoint}${query}" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger blog cron
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "Missing GitHub Actions secret: CRON_SECRET" >&2
+            exit 1
+          fi
+
+          http_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --location \
+              --retry 3 \
+              --retry-delay 10 \
+              --max-time 540 \
+              --output response.json \
+              --write-out "%{http_code}" \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              "${{ steps.select.outputs.url }}"
+          )"
+
+          echo "Endpoint: ${{ steps.select.outputs.endpoint }}"
+          echo "HTTP status: ${http_code}"
+          cat response.json
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            exit 1
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+          const body = fs.readFileSync('response.json', 'utf8');
+          const data = JSON.parse(body);
+          if (data?.ok === false) {
+            console.error('Cron endpoint returned ok=false');
+            process.exit(1);
+          }
+          NODE
