@@ -67,6 +67,24 @@ function isPlaceholder(value) {
   return /^(https:\/\/example\.supabase\.co|dummy-|example-|placeholder)/i.test(String(value || '').trim());
 }
 
+function decodeJwtPayload(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) return null;
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyServiceRoleKey(value) {
+  if (isPlaceholder(value)) return false;
+  const payload = decodeJwtPayload(value);
+  return payload?.role === 'service_role';
+}
+
 function fetchWithTimeout(input, init = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) ? timeoutMs : 10000);
@@ -110,7 +128,7 @@ const supabaseUrl = envValue('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL');
 const serviceKey = envValue('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY');
 const missingConnection = [
   !supabaseUrl || isPlaceholder(supabaseUrl) ? 'NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL' : '',
-  !serviceKey || isPlaceholder(serviceKey) ? 'SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY' : '',
+  !serviceKey || !isLikelyServiceRoleKey(serviceKey) ? 'valid service_role SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY' : '',
 ].filter(Boolean);
 
 const report = {
