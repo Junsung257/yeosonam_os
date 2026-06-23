@@ -29,14 +29,14 @@ describe('withCronGuard resource saver', () => {
     });
   });
 
-  it('runs guarded product crons only when the allowlist is explicitly enabled', async () => {
+  it('runs guarded lightweight product crons only when the allowlist is explicitly enabled', async () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
     vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS', '1');
     vi.stubEnv('CRON_SECRET', 'secret');
 
     const handler = vi.fn(async () => NextResponse.json({ ok: true }));
     const guarded = withCronGuard(handler);
-    const request = new NextRequest('https://www.yeosonam.com/api/cron/fill-attraction-photos', {
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/entity-resolution', {
       headers: { authorization: 'Bearer secret' },
     });
 

@@ -21,4 +21,19 @@ describe('middleware cron resource saver', () => {
       reason: 'db_resource_saver_mode',
     });
   });
+
+  it('also gates blog publisher cron while DB resource saver is active', async () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher', {
+      headers: { 'x-vercel-cron': '1' },
+    }));
+
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      skipped: true,
+      cron: 'blog-publisher',
+      reason: 'db_resource_saver_mode',
+    });
+  });
 });

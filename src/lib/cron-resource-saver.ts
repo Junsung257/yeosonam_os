@@ -32,6 +32,11 @@ export function isDbResourceSaverProductCronAllowlistEnabled(): boolean {
   return PRODUCT_CRON_ALLOW_VALUES.has(saverMode);
 }
 
+export function isDbResourceSaverCriticalCronAllowlistEnabled(): boolean {
+  const raw = process.env.DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS ?? '';
+  return ON_VALUES.has(raw.trim().toLowerCase());
+}
+
 export function shouldSkipPublicDbReadsForResourceSaver(): boolean {
   if (!isDbResourceSaverEnabled()) return false;
   const raw = process.env.DB_RESOURCE_SAVER_PUBLIC_READS ?? '';
@@ -49,7 +54,7 @@ export function isCronForceRun(request: NextRequest | Request): boolean {
 }
 
 export function maybeSkipNonCriticalCron(request: NextRequest, cronName: string): Response | null {
-  if (CRITICAL_CRONS.has(cronName)) return null;
+  if (CRITICAL_CRONS.has(cronName) && isDbResourceSaverCriticalCronAllowlistEnabled()) return null;
   if (!isDbResourceSaverEnabled() || isCronForceRun(request)) return null;
 
   const res = apiResponse({
@@ -71,13 +76,12 @@ const RESOURCE_SAVER_ALLOWED_CRONS = new Set([
   'unmatched-auto-resolve',
   'entity-resolution',
   'legacy-sections-backfill',
-  'fill-attraction-photos',
   'learning-flywheel',
   'product-registration-learning-report',
 ]);
 
 export function maybeSkipCronForResourceSaver(request: NextRequest, cronName: string): Response | null {
-  if (CRITICAL_CRONS.has(cronName)) return null;
+  if (CRITICAL_CRONS.has(cronName) && isDbResourceSaverCriticalCronAllowlistEnabled()) return null;
   if (RESOURCE_SAVER_ALLOWED_CRONS.has(cronName) && isDbResourceSaverProductCronAllowlistEnabled()) return null;
   return maybeSkipNonCriticalCron(request, cronName);
 }
