@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -31,6 +32,9 @@ interface ScoreSignalBody {
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) return apiResponse({ ok: false }, { status: 200 });
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return apiResponse({ ok: true, skipped: true, reason: 'db_resource_saver_mode' }, { status: 202 });
+  }
 
   let body: ScoreSignalBody;
   try {

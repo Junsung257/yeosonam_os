@@ -11,6 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +30,9 @@ interface Payload {
 
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'db_resource_saver_mode' }, { status: 202 });
+  }
   try {
     const body = await req.json() as Payload;
     if (!body.package_id || !body.source) {
@@ -69,6 +73,9 @@ export async function POST(req: NextRequest) {
  */
 export async function PATCH(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'db_resource_saver_mode' }, { status: 202 });
+  }
   try {
     const body = await req.json() as Payload;
     if (!body.package_id || !body.outcome) {
