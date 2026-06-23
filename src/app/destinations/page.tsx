@@ -75,7 +75,7 @@ function normalizeDestinationStat(row: Partial<DestinationStat> | null | undefin
 function normalizeAttractionSample(row: unknown): AttractionSample | null {
   if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, unknown>;
-  const destination = typeof record.destination === 'string' ? record.destination.trim() : '';
+  const destination = typeof record.region === 'string' ? record.region.trim() : '';
   const name = typeof record.name === 'string' ? record.name.trim() : '';
   if (!destination || !name) return null;
 
@@ -107,8 +107,8 @@ async function getDestinations() {
     const destinations = normalizedStats.map(s => s.destination);
     const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
       .from('attractions')
-      .select('destination, name, photos')
-      .in('destination', destinations)
+      .select('region, name, photos')
+      .in('region', destinations)
       .not('photos', 'is', null)
       .limit(4000) : { data: null };
 

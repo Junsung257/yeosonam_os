@@ -96,7 +96,7 @@ export async function buildPillarContext(destination: string): Promise<{
   seasonHint: string;
 } | null> {
   const [{ data: attrs }, { data: pkgs }] = await Promise.all([
-    supabaseAdmin.from('attractions').select('name, short_desc').eq('destination', destination).limit(12),
+    supabaseAdmin.from('attractions').select('name, short_desc').eq('region', destination).limit(12),
     supabaseAdmin.from('travel_packages').select('title, price, airline, duration, nights').eq('destination', destination).in('status', ['approved', 'active']).order('price', { ascending: true }).limit(10),
   ]);
 
