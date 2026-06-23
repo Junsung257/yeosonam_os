@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { saveWebVital, alertIfPoorVital } from '@/lib/web-vitals-collector';
 
 const VITAL_NAMES = new Set(['LCP', 'CLS', 'INP', 'FCP', 'TTFB']);
@@ -51,6 +52,10 @@ export async function POST(req: NextRequest) {
       pageType: normalizedPageType,
       slug: normalizedSlug,
     };
+
+    if (shouldSkipPublicDbReadsForResourceSaver()) {
+      return apiResponse({ ok: true, skipped: true, reason: 'db_resource_saver_mode' });
+    }
 
     // 비동기 저장 (await 안 함 — 응답 지연 방지)
     void saveWebVital(payload).catch(() => {});
