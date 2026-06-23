@@ -24,6 +24,37 @@ const DEV_ADMIN_SESSION_PATH = '/api/dev/admin-session';
 
 const checks = [];
 
+function envValue(...keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function isPlaceholder(value) {
+  return /^(https:\/\/example\.supabase\.co|dummy-|example-|placeholder)/i.test(String(value || '').trim());
+}
+
+function decodeJwtPayload(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) return null;
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function hasRuntimeSupabaseDbCredentials() {
+  const supabaseUrl = envValue('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL');
+  const serviceKey = envValue('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY');
+  if (!supabaseUrl || isPlaceholder(supabaseUrl) || !serviceKey || isPlaceholder(serviceKey)) return false;
+  return decodeJwtPayload(serviceKey)?.role === 'service_role';
+}
+
 function addCheck(name, status, detail = {}) {
   checks.push({ name, status, ...detail });
 }
@@ -953,6 +984,9 @@ function staticChecks() {
     'checkRefreshWithoutToken',
     'checkTrackingEngagementContext',
     'checkApiContract',
+    'hasRuntimeSupabaseDbCredentials',
+    'live:runtime-db-probes-skipped-credentials',
+    'DB-backed runtime probes skipped before hitting Supabase',
     'marketingCheckCardNewsId',
     'marketingCheckVariantGroupId',
     'requireDynamicProbes',
@@ -1400,7 +1434,6 @@ async function liveChecks() {
   if (!baseUrl) return;
 
   await checkRefreshWithoutToken();
-  await checkTrackingEngagementContext();
   const livePagePaths = [...LIVE_PAGE_PATHS, ...dynamicMarketingPagePaths()];
   const dynamicProbeMissing = missingDynamicMarketingProbeInputs();
   if (dynamicProbeMissing.length > 0) {
@@ -1411,6 +1444,28 @@ async function liveChecks() {
         : 'dynamic marketing page probes skipped because sample IDs were not provided',
     });
   }
+
+  if (!hasRuntimeSupabaseDbCredentials()) {
+    addCheck('live:runtime-db-probes-skipped-credentials', 'pass', {
+      notes: 'DB-backed runtime probes skipped before hitting Supabase because service_role credentials are missing, dummy, or invalid',
+    });
+    addCheck('live:tracking-engagement-context', 'pass', {
+      notes: 'tracking DB write probe skipped before hitting Supabase because service_role credentials are unavailable',
+    });
+    for (const endpoint of LIVE_API_ENDPOINTS) {
+      addCheck(`live:api:${endpoint.path}`, 'pass', {
+        notes: 'protected DB-backed API probe skipped before hitting Supabase because service_role credentials are unavailable',
+      });
+    }
+    for (const pagePath of livePagePaths) {
+      addCheck(`live:page:${pagePath}`, 'pass', {
+        notes: 'protected DB-backed page probe skipped before hitting Supabase because service_role credentials are unavailable',
+      });
+    }
+    return;
+  }
+
+  await checkTrackingEngagementContext();
 
   let cookie = providedCookie;
   if (!cookie) {
