@@ -824,7 +824,9 @@ describe('upload route registration pipeline boundary', () => {
     const cron = readUploadReviewAutoReplayCron();
 
     expect(cron).toContain('return 10;');
-    expect(cron).toContain('RECOVERABLE_REASON_FILTER');
+    expect(cron).toContain('RECOVERABLE_REASON_PATTERNS');
+    expect(cron).toContain('isRecoverableReviewQueueReason');
+    expect(cron).toContain('replayFetchLimit');
     expect(cron).toContain('itinerary duplicate day');
     expect(cron).toContain('price date disagreement');
     expect(cron).toContain('flight time source mismatch');
@@ -833,7 +835,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(cron).toContain('forceReprocess: !shouldUseDuplicateGuard');
     expect(cron).toContain("request.nextUrl.searchParams.get('queueId')");
     expect(cron).toContain(".eq('id', queueId)");
-    expect(cron).toContain('.or(RECOVERABLE_REASON_FILTER)');
+    expect(cron).not.toContain('.or(RECOVERABLE_REASON_FILTER)');
+    expect(cron).not.toContain('error_reason.ilike');
     expect(cron).toContain("order('created_at', { ascending: false })");
     expect(cron).toContain('buildUploadReviewRegressionReport({ rows: [row] })');
     expect(cron).toContain('runUploadRegistrationPipeline({');

@@ -25,23 +25,23 @@ type ReplaySummary = {
   savedIds?: string[];
 };
 
-const RECOVERABLE_REASON_FILTER = [
-  'error_reason.ilike.%itinerary duplicate day%',
-  'error_reason.ilike.%duration overflow%',
-  'error_reason.ilike.%product_prices missing%',
-  'error_reason.ilike.%price_dates missing%',
-  'error_reason.ilike.%price date disagreement%',
-  'error_reason.ilike.%price amount disagreement%',
-  'error_reason.ilike.%model-derived price source%',
-  'error_reason.ilike.%Too Many Requests%',
-  'error_reason.ilike.%flight time source mismatch%',
-  'error_reason.ilike.%destination code unresolved%',
-  'error_reason.ilike.%Destination resolution failed%',
-  'error_reason.ilike.%destination_code:UNK%',
-  'error_reason.ilike.%catalog split%',
-  'error_reason.ilike.%PRODUCT_COUNT_MISMATCH%',
-  'error_reason.ilike.%UPLOAD_PIPELINE_SOFT_TIMEOUT%',
-].join(',');
+const RECOVERABLE_REASON_PATTERNS = [
+  /itinerary duplicate day/i,
+  /duration overflow/i,
+  /product_prices missing/i,
+  /price_dates missing/i,
+  /price date disagreement/i,
+  /price amount disagreement/i,
+  /model-derived price source/i,
+  /Too Many Requests/i,
+  /flight time source mismatch/i,
+  /destination code unresolved/i,
+  /Destination resolution failed/i,
+  /destination_code:UNK/i,
+  /catalog split/i,
+  /PRODUCT_COUNT_MISMATCH/i,
+  /UPLOAD_PIPELINE_SOFT_TIMEOUT/i,
+];
 
 function safeAfter(task: () => Promise<void> | void): void {
   try {
@@ -61,6 +61,15 @@ function clampLimit(value: string | null): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 10;
   return Math.max(1, Math.min(10, Math.trunc(parsed)));
+}
+
+function replayFetchLimit(limit: number): number {
+  return Math.min(25, Math.max(limit, limit * 5));
+}
+
+function isRecoverableReviewQueueReason(errorReason: string | null | undefined): boolean {
+  if (!errorReason) return false;
+  return RECOVERABLE_REASON_PATTERNS.some(pattern => pattern.test(errorReason));
 }
 
 function extractSavedIds(payload: Record<string, unknown>): string[] {
@@ -184,9 +193,8 @@ export async function GET(request: NextRequest) {
     query = query.eq('id', queueId);
   } else {
     query = query
-      .or(RECOVERABLE_REASON_FILTER)
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .limit(replayFetchLimit(limit));
   }
 
   const { data, error } = await query;
@@ -195,7 +203,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  const rows = (data ?? []) as UploadReviewQueueFixtureRow[];
+  const fetchedRows = (data ?? []) as UploadReviewQueueFixtureRow[];
+  const rows = queueId
+    ? fetchedRows
+    : fetchedRows.filter(row => isRecoverableReviewQueueReason(row.error_reason)).slice(0, limit);
   const results: ReplaySummary[] = [];
   for (const row of rows) {
     try {

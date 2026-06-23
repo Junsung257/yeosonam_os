@@ -57,6 +57,13 @@ describe('cron resource saver', () => {
     expect(maybeSkipCronForResourceSaver(cronRequest(), 'entity-resolution')).toBeNull();
   });
 
+  it('keeps upload review replay closed during resource saver mode even when product crons are allowed', () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+    vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS', '1');
+
+    expect(maybeSkipCronForResourceSaver(cronRequest(), 'upload-review-auto-replay')).toBeInstanceOf(Response);
+  });
+
   it('keeps public db reads available unless explicitly blocked', () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 
