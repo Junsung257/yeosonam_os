@@ -6,6 +6,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { isUuid } from '@/lib/uuid';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import { safeEqualString } from '@/lib/timing-safe';
+import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -528,6 +529,22 @@ function cronSecretAllowsRequest(request: NextRequest): boolean {
   return safeEqualString(request.headers.get('authorization'), `Bearer ${cronSecret}`);
 }
 
+function getCronNameFromPathname(pathname: string): string | null {
+  if (!pathname.startsWith('/api/cron/')) return null;
+  return pathname.slice('/api/cron/'.length).split('/').filter(Boolean)[0] ?? 'unknown-cron';
+}
+
+function maybeSkipCronAtMiddleware(request: NextRequest, pathname: string): Response | null {
+  const cronName = getCronNameFromPathname(pathname);
+  if (!cronName) return null;
+
+  const isTrustedCronInvocation =
+    request.headers.get('x-vercel-cron') === '1' || cronSecretAllowsRequest(request);
+  if (!isTrustedCronInvocation) return null;
+
+  return maybeSkipCronForResourceSaver(request, cronName);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
@@ -550,6 +567,9 @@ export async function middleware(request: NextRequest) {
 
   // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────
   // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급
+  const cronResourceSaverResponse = maybeSkipCronAtMiddleware(request, pathname);
+  if (cronResourceSaverResponse) return cronResourceSaverResponse as NextResponse;
+
   let response: NextResponse | null = null;
   const existingSession = request.cookies.get('ys_session_id')?.value;
 
