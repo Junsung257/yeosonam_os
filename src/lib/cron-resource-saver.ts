@@ -72,7 +72,6 @@ const RESOURCE_SAVER_ALLOWED_CRONS = new Set([
   'entity-resolution',
   'legacy-sections-backfill',
   'fill-attraction-photos',
-  'upload-review-auto-replay',
   'learning-flywheel',
   'product-registration-learning-report',
 ]);
