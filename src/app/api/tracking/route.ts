@@ -11,6 +11,7 @@ import {
   getFirstTrafficBySession,
   mergeSessionToUser,
 } from '@/lib/supabase';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -231,6 +232,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Supabase 미설정 시 202 즉시 반환 (개발/테스트 환경)
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: true, mock: true }, { status: 202 });
+  }
+
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'db_resource_saver_mode' }, { status: 202 });
   }
 
   switch (body.type) {

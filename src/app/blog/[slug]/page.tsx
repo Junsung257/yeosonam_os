@@ -37,6 +37,7 @@ import {
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -339,6 +340,7 @@ function sanitizeServerBlogHtml(html: string): string {
 // ── 데이터 페칭 ──────────────────────────────────────────────
 async function getPost(slug: string): Promise<BlogPost | null> {
   if (!isSupabaseConfigured) return null;
+  if (shouldSkipPublicDbReadsForResourceSaver()) throw createBlogDatabaseUnavailableError();
 
   const dbSlug = safeDecodeSlug(slug);
 
@@ -373,6 +375,9 @@ async function getPost(slug: string): Promise<BlogPost | null> {
 
 async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    throw createBlogDatabaseUnavailableError();
+  }
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
     throw createBlogDatabaseUnavailableError();
   }
 
@@ -453,6 +458,7 @@ async function getRelatedProducts(
   intent: string = 'blog',
 ): Promise<RelatedProductLite[]> {
   if (!isSupabaseConfigured || !destination) return [];
+  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
   const today = new Date().toISOString().slice(0, 10);
   const scoreResult = await runBlogDetailQuery(
     'relatedProductScores',
