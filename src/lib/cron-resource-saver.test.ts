@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isDbResourceSaverEnabled,
+  isDbResourceSaverCriticalCronAllowlistEnabled,
   isDbResourceSaverProductCronAllowlistEnabled,
   maybeSkipCronForResourceSaver,
   maybeSkipNonCriticalCron,
@@ -39,9 +40,18 @@ describe('cron resource saver', () => {
     });
   });
 
-  it('keeps blog publishing running because it owns the daily quota', () => {
+  it('blocks blog publishing by default while the database is under pressure', () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 
+    expect(maybeSkipNonCriticalCron(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeInstanceOf(Response);
+    expect(maybeSkipCronForResourceSaver(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeInstanceOf(Response);
+  });
+
+  it('runs critical crons during resource saver mode only with an explicit emergency allowlist', () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+    vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_CRITICAL_CRONS', '1');
+
+    expect(isDbResourceSaverCriticalCronAllowlistEnabled()).toBe(true);
     expect(maybeSkipNonCriticalCron(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeNull();
     expect(maybeSkipCronForResourceSaver(cronRequest('https://www.yeosonam.com/api/cron/blog-publisher'), 'blog-publisher')).toBeNull();
   });
@@ -55,6 +65,13 @@ describe('cron resource saver', () => {
     vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS', '1');
     expect(isDbResourceSaverProductCronAllowlistEnabled()).toBe(true);
     expect(maybeSkipCronForResourceSaver(cronRequest(), 'entity-resolution')).toBeNull();
+  });
+
+  it('keeps heavy product enrichment crons closed even when product crons are allowed', () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+    vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS', '1');
+
+    expect(maybeSkipCronForResourceSaver(cronRequest('https://www.yeosonam.com/api/cron/fill-attraction-photos'), 'fill-attraction-photos')).toBeInstanceOf(Response);
   });
 
   it('keeps upload review replay closed during resource saver mode even when product crons are allowed', () => {
