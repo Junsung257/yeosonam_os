@@ -183,7 +183,7 @@ export default async function HomePage() {
     ),
     runOptionalSupabaseQuery(
       sb.from('active_destinations')
-        .select('destination, package_count, country')
+        .select('destination, package_count')
         .order('package_count', { ascending: false })
         .limit(20),
       emptyResult,
