@@ -50,24 +50,18 @@ describe('auto mobile QA learning ledger bridge', () => {
     }));
   });
 
-  it('does not flag final arrival when an earlier day navigation window contains home departure text', () => {
+  it('checks the actual final DAY body instead of the first summary DAY marker', () => {
     const incidents = analyzeMobileHtml(
       [
         '<html><body>',
-        '<section>판매가 요금표 출발일 선택 예약 문의 여행 일정 가는편 부산 김해국제공항 출발 DAY 1 DAY 2 DAY 3 DAY 4 DAY 5</section>',
-        '<main>',
-        '<section>DAY 5 계림 국제공항 출발 01:45 부산 김해국제공항 도착 06:05</section>',
-        '</main>',
-        '<img src="https://images.pexels.com/photos/test.jpg" />',
+        '판매가 예약 문의 여행 일정 DAY 1',
+        'DAY 5 요약 부산 김해 출발',
+        'DAY 5 본문 계림 출발 부산 김해 도착 예약 문의',
+        '<img src="https://images.pexels.com/photo.jpg" />',
         '</body></html>',
       ].join(' '),
       {
         ...expectedRender,
-        title: '부산-계림 3박5일 실속PKG',
-        destination: '계림',
-        tripStyle: '3박5일',
-        duration: 5,
-        nights: 3,
         lastDayNumber: 5,
         lastDayArrivalCity: '부산 김해',
         homeCity: '부산 김해',

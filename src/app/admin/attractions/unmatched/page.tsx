@@ -88,6 +88,15 @@ interface UnmatchedSummary {
   candidate_queued_total?: number;
   auto_ignored_total?: number;
   cron_last_success_at?: string | null;
+  queue_split?: {
+    attraction_gap: number;
+    candidate_master: number;
+    hotel_nonblocking: number;
+    notice_noise: number;
+    auto_terminal_ready: number;
+    manual_review: number;
+    unclassified: number;
+  };
   high_occurrence_threshold: number;
   recent_auto_alias: Array<{
     id: string;
@@ -421,6 +430,7 @@ export default function UnmatchedPage() {
           candidate_queued_total: typeof json.candidate_queued_total === 'number' ? json.candidate_queued_total : 0,
           auto_ignored_total: typeof json.auto_ignored_total === 'number' ? json.auto_ignored_total : 0,
           cron_last_success_at: typeof json.cron_last_success_at === 'string' ? json.cron_last_success_at : null,
+          queue_split: json.queue_split && typeof json.queue_split === 'object' ? json.queue_split : undefined,
         } as UnmatchedSummary);
       }
     } catch {
@@ -587,7 +597,8 @@ export default function UnmatchedPage() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 text-center">
             <div className="text-2xl font-bold text-admin-text-2">{summary.active_pending_count ?? summary.counts.pending}</div>
             {(summary.pending_resolved_conflict_count ?? 0) > 0 && (
@@ -655,6 +666,25 @@ export default function UnmatchedPage() {
             )}
           </div>
         </div>
+        {summary.queue_split && (
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-2 mb-4">
+            {[
+              ['등록가능 관광지', summary.queue_split.attraction_gap],
+              ['후보 묶음', summary.queue_split.candidate_master],
+              ['호텔/비차단', summary.queue_split.hotel_nonblocking],
+              ['공지/노이즈', summary.queue_split.notice_noise],
+              ['자동종결 가능', summary.queue_split.auto_terminal_ready],
+              ['수동검토', summary.queue_split.manual_review],
+              ['미분류', summary.queue_split.unclassified],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="bg-white border border-admin-border-mid rounded-admin-md p-2 text-center">
+                <div className="text-base font-bold text-admin-text-2">{value}</div>
+                <div className="text-[10px] text-admin-muted">{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        </>
       )}
 
       {bootstrapOpen && (

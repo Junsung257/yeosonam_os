@@ -14,10 +14,79 @@ import { persistAttractionMediaCandidates } from '@/lib/product-registration/att
 import type { AttractionData } from '@/lib/attraction-matcher';
 import type { AlertInput } from '@/lib/admin-alerts';
 import type { LeakIncident } from '@/lib/customer-leak-sanitizer';
+import { getSecret } from '@/lib/secret-registry';
 
 export type UploadSafeAfter = (task: () => Promise<void> | void) => void;
 
 type PostAlert = (input: AlertInput) => Promise<unknown> | unknown;
+
+function buildCronHeaders(): HeadersInit | undefined {
+  const secret = getSecret('CRON_SECRET');
+  return secret ? { authorization: `Bearer ${secret}` } : undefined;
+}
+
+function buildUploadToOpenAutopilotUrl(input: {
+  requestBaseUrl: string;
+  packageIds: string[];
+  catalogGroupId?: string | null;
+  limit?: number;
+}): string {
+  const url = new URL('/api/cron/upload-to-open-autopilot', input.requestBaseUrl);
+  if (input.packageIds.length > 0) url.searchParams.set('packageIds', input.packageIds.join(','));
+  if (input.catalogGroupId) url.searchParams.set('catalogGroupId', input.catalogGroupId);
+  url.searchParams.set('limit', String(input.limit ?? Math.max(1, input.packageIds.length || 1)));
+  url.searchParams.set('entityLimit', '75');
+  url.searchParams.set('entityPasses', '2');
+  url.searchParams.set('autoOpen', 'true');
+  url.searchParams.set('force', 'true');
+  return url.toString();
+}
+
+export function scheduleUploadToOpenAutopilot(input: {
+  safeAfter: UploadSafeAfter;
+  requestBaseUrl: string;
+  packageIds: string[];
+  catalogGroupId?: string | null;
+  isSupabaseConfigured: boolean;
+  postAlert: PostAlert;
+}): void {
+  const packageIds = [...new Set(input.packageIds.map(id => id.trim()).filter(Boolean))];
+  if (!input.isSupabaseConfigured || packageIds.length === 0) return;
+
+  input.safeAfter(async () => {
+    const url = buildUploadToOpenAutopilotUrl({
+      requestBaseUrl: input.requestBaseUrl,
+      packageIds,
+      catalogGroupId: input.catalogGroupId,
+      limit: Math.max(1, packageIds.length),
+    });
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: buildCronHeaders(),
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`upload-to-open autopilot returned ${response.status}: ${text.slice(0, 300)}`);
+      }
+      console.log('[Upload API] upload-to-open autopilot scheduled:', packageIds.length);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('[Upload API] upload-to-open autopilot wake failed:', msg);
+      void input.postAlert({
+        category: 'register-backfill',
+        severity: 'warning',
+        title: 'upload-to-open autopilot wake failed',
+        message: msg.slice(0, 500),
+        ref_type: 'travel_package',
+        ref_id: packageIds[0],
+        meta: { phase: 'upload-to-open-autopilot', packageIds },
+        dedupe: true,
+      });
+    }
+  });
+}
 
 export async function recordUploadAiQualityLog(input: {
   supabase: SupabaseClient;

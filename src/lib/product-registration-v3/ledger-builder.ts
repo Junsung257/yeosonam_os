@@ -71,6 +71,14 @@ const PRICE_MATRIX_FRAGMENT_RE =
 const BAKEKDU_DESCRIPTION_FRAGMENT_RE =
   /(?:\uacbd\uacc4\ube44|\uc218\ubaa9\ud55c\uacc4\uc120|\ud574\ubc1c\s*\d|고산초원지대)/;
 
+const TIME_WITH_ARRIVAL_OFFSET_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+?\d+\))?$/;
+const SOURCE_EVIDENCE_HEADER_RE = /^\[\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\]$/;
+const HOLIDAY_PRICE_NOISE_RE = /^[\s\u25cf\u2605\u2606*]+.*\uc5f0\ud734\s*\ucd9c\ubc1c/;
+const KOREAN_REGION_CELL_ONLY_RE =
+  /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c)$/;
+const BRACKETED_DESCRIPTION_ONLY_RE = /^\[[^\]]{8,80}\]$/;
+const BRACKETED_NAMED_ATTRACTION_RE = /^\[[^\]]*(?:\uACF5\uC6D0|\uC2DC\uC7A5|\uAC70\uB9AC|\uB3D9\uAD74|\uD3ED\uD3EC|\uC0AC\uC6D0|\uC1FC|\uC720\uB78C\uC120)[^\]]*\]$/;
+
 function normalizePrice(token: string): number {
   const number = Number(token.replace(/[,\s]/g, ''));
   if (!Number.isFinite(number)) return 0;
@@ -81,6 +89,11 @@ function eventTypeForLine(line: string): V3EventType | null {
   const text = line.trim();
   if (!text) return null;
   const compact = text.replace(/\s+/g, '');
+  if (SOURCE_EVIDENCE_HEADER_RE.test(text)) return 'price_noise';
+  if (TIME_WITH_ARRIVAL_OFFSET_ONLY_RE.test(compact)) return 'price_noise';
+  if (HOLIDAY_PRICE_NOISE_RE.test(text)) return 'price_noise';
+  if (KOREAN_REGION_CELL_ONLY_RE.test(compact)) return 'transfer';
+  if (BRACKETED_DESCRIPTION_ONLY_RE.test(text) && !BRACKETED_NAMED_ATTRACTION_RE.test(text)) return 'notice';
   if (/^(?:\uc624\s*\uc804|\uc624\s*\ud6c4|\uc804\s*\uc77c)$/.test(text)) return 'price_noise';
   if (/^\(?\s*\ucf5c\ub4dc\s*\ubc00\s*\)?$/i.test(text)) return 'meal';
   if (/\uc0c1\uae30\s*\uc77c\uc815|\ud604\uc9c0\s*\uc0ac\uc815|\uc591\ud574/.test(text)) return 'notice';

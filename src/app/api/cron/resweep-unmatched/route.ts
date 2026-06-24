@@ -7,18 +7,22 @@ import { countActiveUnmatched } from '@/lib/unmatched-lifecycle';
 
 export const dynamic = 'force-dynamic';
 
+async function runResweepUnmatchedCron() {
+  const result = await resweepUnmatchedActivities();
+  const { errors, ...summary } = result;
+  return {
+    ok: true,
+    ...summary,
+    active_pending_after: await countActiveUnmatched(),
+    error_count: errors,
+  };
+}
+
 const getHandler = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
 
   try {
-    const result = await resweepUnmatchedActivities();
-    const { errors, ...summary } = result;
-    return {
-      ok: true,
-      ...summary,
-      active_pending_after: await countActiveUnmatched(),
-      error_count: errors,
-    };
+    return await runResweepUnmatchedCron();
   } catch (error) {
     const message = logAndSanitize('cron resweep-unmatched', error, 'sweep failed');
     return { ok: false, error: message, errors: [message] };

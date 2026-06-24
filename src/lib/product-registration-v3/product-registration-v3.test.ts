@@ -6,6 +6,14 @@ import { buildStandardNoticeDraft } from './standard-notices';
 import { mapTravelPackageToLandingData } from '../map-travel-package-to-lp';
 import { renderPackage } from '../render-contract';
 import { buildEntityReviewItem } from './entity-normalizer';
+import { classifyUnmatchedActivity } from '../unmatched-classifier';
+
+function queuesUnmatchedActivity(item: { raw_text: string; category: string; blocks_publish: boolean; suggested_action: string }) {
+  const classified = classifyUnmatchedActivity(item.raw_text, item.category);
+  return item.category === 'attraction' &&
+    classified.category === 'attraction' &&
+    (item.blocks_publish || item.suggested_action === 'needs_review');
+}
 
 function buildBaekduEightVariantFixture(): string {
   const grades = ['Standard', 'Premium', 'Lilac', 'VIP'];
@@ -204,6 +212,49 @@ ZE982
     expect(result.structure_plan.expected_products).toBe(6);
     expect(result.ledger.variants).toHaveLength(6);
     expect(result.gate_result.checks.find(check => check.id === 'expected_products_match')?.status).toBe('pass');
+  });
+
+  it('keeps Guilin schedule noise out of unmatched attractions and matches descriptive attraction lines', async () => {
+    const raw = [
+      'Product: Guilin 3N5D High Grade',
+      'Price: 1,429,000 KRW / minimum 4',
+      'DAY 1 BX341 departure 10:00 arrival 12:00',
+      'DAY 1 00:45(+1)',
+      'DAY 2 -자연이 수억년의 세월동안 빚어낸 종유석과 석순의 향연 노적암동굴',
+      'DAY 3 양  삭',
+      'DAY 4 백  사',
+      'DAY 4 -계림의 비경 그림 같은 산수 풍경 세외도원(나룻배)',
+      'DAY 5 [공통 가격표 원문 근거]',
+      'DAY 5 ● 연휴 출발 ★★',
+      'DAY 5 BX342 departure 13:00 arrival 15:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '계림',
+      attractions: [
+        { id: 'reed-flute-cave', name: '노적암동굴', region: '구이린' },
+        { id: 'shangri-la-guilin', name: '세외도원', region: '구이린' },
+        { id: 'xian-huashan', name: '화산', region: '서안' },
+      ],
+    });
+
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+    expect(result.match_summary.attraction_matched_count).toBe(2);
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).toEqual([]);
+    const eventTypes = result.ledger.variants[0].days.flatMap(day => day.events.map(event => ({
+      text: event.raw_text,
+      type: event.type,
+      status: event.match_status,
+    })));
+    expect(eventTypes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: '00:45(+1)', type: 'price_noise' }),
+      expect.objectContaining({ text: '양  삭', type: 'transfer' }),
+      expect.objectContaining({ text: '백  사', type: 'transfer' }),
+      expect.objectContaining({ text: '[공통 가격표 원문 근거]', type: 'price_noise' }),
+      expect.objectContaining({ text: '● 연휴 출발 ★★', type: 'price_noise' }),
+    ]));
   });
 
   it('uses explicit PKG boundaries before variant labels for Xian/Huashan catalogs', () => {
@@ -710,8 +761,9 @@ ZE982
 
     expect(persisted.id).toBe('draft-1');
     expect(persisted.error).toBeNull();
-    expect(persisted.queuedUnmatched).toBe(result.match_summary.entity_summary.review_items.length);
-    expect(rpcCalls).toHaveLength(result.match_summary.entity_summary.review_items.length);
+    const queuedReviewItems = result.match_summary.entity_summary.review_items.filter(queuesUnmatchedActivity);
+    expect(persisted.queuedUnmatched).toBe(queuedReviewItems.length);
+    expect(rpcCalls).toHaveLength(queuedReviewItems.length);
     expect(rpcCalls[0]).toMatchObject({ name: 'upsert_unmatched_activity' });
     expect(rpcCalls[0]).toMatchObject({
       payload: expect.objectContaining({
@@ -763,7 +815,8 @@ ZE982
       result,
     });
 
-    expect(upserts).toHaveLength(result.match_summary.entity_summary.review_items.length);
+    const queuedReviewItems = result.match_summary.entity_summary.review_items.filter(queuesUnmatchedActivity);
+    expect(upserts).toHaveLength(queuedReviewItems.length);
     expect(upserts[0]).toMatchObject({
       options: { onConflict: 'unmatched_scope_key,activity' },
       payload: expect.objectContaining({

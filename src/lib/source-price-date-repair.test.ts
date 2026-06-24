@@ -105,7 +105,7 @@ describe('buildSourceBackedPriceDateRepair', () => {
     expect(result.priceDates).toHaveLength(8);
   });
 
-  it('does not repair when an existing date conflicts with the source price', () => {
+  it('repairs when an existing date conflicts with the deterministic source price', () => {
     const result = buildSourceBackedPriceDateRepair({
       title: '연길/백두산(북+남파) 3박4일',
       duration: 4,
@@ -116,8 +116,10 @@ describe('buildSourceBackedPriceDateRepair', () => {
       departure_days: '목요일',
     });
 
-    expect(result.status).toBe('unsafe');
+    expect(result.status).toBe('repaired');
     expect(result.reason).toContain('differs from source');
+    if (result.status !== 'repaired') throw new Error('expected repair');
+    expect(result.priceDates.find(row => row.date === '2026-07-02')?.price).toBe(1429000);
   });
 
   it('replaces phantom day-one departures with the source-backed price table', () => {

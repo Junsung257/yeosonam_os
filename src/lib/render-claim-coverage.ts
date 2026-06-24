@@ -258,6 +258,42 @@ function normalizeDateClaim(value: string): string[] {
   return [...variants].filter(v => v.length >= 3);
 }
 
+function normalizeYear(value: string | undefined, fallbackYear: number): number {
+  if (!value) return fallbackYear;
+  const year = Number(value);
+  if (!Number.isFinite(year)) return fallbackYear;
+  return year < 100 ? 2000 + year : year;
+}
+
+function rawSupportsKoreanDateRange(rawText: string, value: string): boolean {
+  const iso = value.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (!iso) return false;
+  const target = Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  if (!Number.isFinite(target)) return false;
+
+  const rangePattern = new RegExp(
+    String.raw`(?:(20\d{2}|\d{2})\s*\uB144\s*)?(\d{1,2})\s*\uC6D4\s*(\d{1,2})\s*\uC77C?\s*[~\-–—]\s*(?:(20\d{2}|\d{2})\s*\uB144\s*)?(?:(\d{1,2})\s*\uC6D4\s*)?(\d{1,2})\s*\uC77C?`,
+    'g',
+  );
+
+  for (const match of rawText.matchAll(rangePattern)) {
+    const startYear = normalizeYear(match[1], Number(iso[1]));
+    const startMonth = Number(match[2]);
+    const startDay = Number(match[3]);
+    const endYear = normalizeYear(match[4], startYear);
+    const endMonth = Number(match[5] ?? startMonth);
+    const endDay = Number(match[6]);
+    const start = Date.UTC(startYear, startMonth - 1, startDay);
+    let end = Date.UTC(endYear, endMonth - 1, endDay);
+    if (end < start) end = Date.UTC(endYear + 1, endMonth - 1, endDay);
+    if (target >= Math.min(start, end) && target <= Math.max(start, end)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function rawSupportsDateLabel(rawText: string, value: string): boolean {
   const variants = normalizeDateClaim(value);
   if (variants.some(variant => rawSupports(rawText, variant))) return true;
@@ -276,6 +312,7 @@ function rawSupportsDateLabel(rawText: string, value: string): boolean {
       return true;
     }
   }
+  if (rawSupportsKoreanDateRange(rawText, value)) return true;
   const monthListPattern = new RegExp(`\\b0?${escapeRegExp(month)}\\s*/`);
   const dayPattern = new RegExp(`(?:^|[^0-9])0?${escapeRegExp(day)}(?:[^0-9]|$)`);
   return rawText
@@ -331,6 +368,24 @@ function rawSupportsMergedFlightLabel(rawText: string, value: string): boolean {
   return hasRoute && hasTime;
 }
 
+function rawSupportsKoreanMergedFlightLabel(rawText: string, value: string): boolean {
+  if (!rawText || !value) return false;
+  if (!/[\uAC00-\uD7A3]/.test(value) || !/\uCD9C\uBC1C/.test(value) || !/\uB3C4\uCC29/.test(value)) return false;
+  const compactRaw = rawText.replace(/\s+/g, '');
+  const compactValue = value.replace(/\s+/g, '');
+  const time = compactValue.match(/\d{1,2}:\d{2}(?:\(\+?\d+\))?/)?.[0] ?? null;
+  const dep = compactValue.match(/^(.+?)\uCD9C\uBC1C/)?.[1] ?? '';
+  const arr = compactValue.match(/\uCD9C\uBC1C.*?(?:[→>\-]+)?(.+?)\uB3C4\uCC29/)?.[1] ?? '';
+  const hasDeparture = compactRaw.includes('\uCD9C\uBC1C') && (
+    compactRaw.includes(dep)
+    || compactRaw.includes('\uBD80\uC0B0')
+    || compactRaw.includes('\uAE40\uD574')
+  );
+  const hasArrival = compactRaw.includes('\uB3C4\uCC29') && arr.length >= 2 && compactRaw.includes(arr);
+  const hasTime = !time || compactRaw.includes(time);
+  return hasDeparture && hasArrival && hasTime;
+}
+
 function rawSupportsClaim(rawText: string, claim: RenderClaim): boolean {
   if (claim.surface === 'terms') return rawSupportsTermLabel(rawText, claim.value);
   if (claim.surface === 'optional') return rawSupportsOptionalLabel(rawText, claim.value);
@@ -353,6 +408,7 @@ export function evaluateRenderClaimCoverage(
   const unsupported = claims.filter(claim =>
     !rawSupportsClaim(rawText, claim)
     && !rawSupportsMergedFlightLabel(rawText, claim.value)
+    && !rawSupportsKoreanMergedFlightLabel(rawText, claim.value)
     && !evidenceSupports(sourceEvidence, claim.value)
   );
   const total = claims.length;

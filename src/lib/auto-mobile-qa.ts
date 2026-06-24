@@ -195,23 +195,6 @@ function missingCustomerLandingMarkers(text: string): string[] {
     .map((group) => group.label);
 }
 
-function finalDayTextWindow(text: string, dayMarker: string): string {
-  const dayIndex = text.lastIndexOf(dayMarker);
-  return dayIndex >= 0 ? text.slice(dayIndex, dayIndex + 700) : '';
-}
-
-function departurePhrases(city: string): string[] {
-  const compactCity = city.replace(/\s+/g, '');
-  return Array.from(new Set([
-    `${city} 출발`,
-    `${city}국제공항 출발`,
-    `${city}공항 출발`,
-    `${compactCity} 출발`,
-    `${compactCity}국제공항 출발`,
-    `${compactCity}공항 출발`,
-  ]));
-}
-
 function extractCoreTitleTokens(title: string): string[] {
   // "★스팟특가★ 부산出 보홀 PKG 5/6일 [제주항공]" → ["보홀", "제주항공"] 같은 핵심 명사.
   // 한국어 명사 길이 2자 이상 / 영문 3자 이상 토큰만.
@@ -231,6 +214,30 @@ function buildRevalidatePaths(packageId: string, shortCode?: string | null): str
   const paths = [`/packages/${packageId}`, `/m/packages/${packageId}`, `/lp/${packageId}`];
   if (shortCode && shortCode !== packageId) paths.push(`/lp/${shortCode}`);
   return paths;
+}
+
+function finalDayTextWindow(text: string, dayNumber: number): string {
+  const dayMarker = `DAY ${dayNumber}`;
+  const dayIndex = text.lastIndexOf(dayMarker);
+  if (dayIndex < 0) return '';
+  const rest = text.slice(dayIndex + dayMarker.length);
+  const nextDayOffset = rest.search(/\bDAY\s+\d+\b/);
+  const end = nextDayOffset >= 0 ? dayIndex + dayMarker.length + nextDayOffset : dayIndex + 900;
+  return text.slice(dayIndex, end);
+}
+
+function includesDeparturePhrase(text: string, city: string): boolean {
+  const escapedCity = city
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\s+/g, '\\s*');
+  return new RegExp(`${escapedCity}\\s*\\uCD9C\\uBC1C`).test(text);
+}
+
+function clearStaleMobileQaFailures(report: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const clean = report && typeof report === 'object' && !Array.isArray(report) ? { ...report } : {};
+  delete clean.incidents;
+  delete clean.mobile_browser_proof_required;
+  return clean;
 }
 
 export function analyzeMobileHtml(
@@ -371,18 +378,14 @@ export function analyzeMobileHtml(
       });
     }
   }
+
   if (expected.lastDayNumber && expected.homeCity && expected.lastDayArrivalCity) {
-    const dayMarker = `DAY ${expected.lastDayNumber}`;
-    const dayText = finalDayTextWindow(text, dayMarker);
-    const wrongDeparture = [
-      ...departurePhrases(expected.homeCity),
-      ...departurePhrases(expected.lastDayArrivalCity),
-    ].some(phrase => dayText.includes(phrase));
-    if (wrongDeparture) {
+    const dayText = finalDayTextWindow(text, expected.lastDayNumber);
+    if (includesDeparturePhrase(dayText, expected.homeCity) || includesDeparturePhrase(dayText, expected.lastDayArrivalCity)) {
       incidents.push({
         id: `${prefix}final_arrival_rendered_as_departure`,
         severity: 'critical',
-        message: `[${surface}] final DAY arrival row rendered as departure text`,
+        message: `[${surface}] final DAY arrival row rendered as a departure phrase (${expected.lastDayArrivalCity} arrival expected)`,
       });
     }
   }
@@ -664,7 +667,7 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
           .from('travel_packages')
           .update({
             audit_report: {
-              ...(existingReport && typeof existingReport === 'object' && !Array.isArray(existingReport) ? existingReport : {}),
+              ...clearStaleMobileQaFailures(existingReport),
               mobile_browser_proof: {
                 status: 'pass',
                 checked_at: checkedAt,

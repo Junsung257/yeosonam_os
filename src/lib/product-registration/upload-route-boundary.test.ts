@@ -30,6 +30,10 @@ function readPackageJson(): string {
   return readFileSync(join(process.cwd(), 'package.json'), 'utf8');
 }
 
+function readMiddleware(): string {
+  return readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8');
+}
+
 function readLearningEngineVerifier(): string {
   return readFileSync(join(process.cwd(), 'scripts/verify-product-registration-learning-engine.mjs'), 'utf8');
 }
@@ -84,6 +88,14 @@ function readUploadReviewQueue(): string {
 
 function readUploadReviewAutoReplayCron(): string {
   return readFileSync(join(process.cwd(), 'src/app/api/cron/upload-review-auto-replay/route.ts'), 'utf8');
+}
+
+function readUploadToOpenAutopilotCron(): string {
+  return readFileSync(join(process.cwd(), 'src/app/api/cron/upload-to-open-autopilot/route.ts'), 'utf8');
+}
+
+function readUploadToOpenAutopilotLib(): string {
+  return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-to-open-autopilot.ts'), 'utf8');
 }
 
 function readUploadContextLoader(): string {
@@ -840,5 +852,40 @@ describe('upload route registration pipeline boundary', () => {
     expect(cron).toContain("order('created_at', { ascending: false })");
     expect(cron).toContain('buildUploadReviewRegressionReport({ rows: [row] })');
     expect(cron).toContain('runUploadRegistrationPipeline({');
+  });
+
+  it('wires saved uploads into the upload-to-open autopilot instead of stopping at blocked review', () => {
+    const completion = readUploadRegistrationCompletion();
+    const postTasks = readPostRegistrationTasks();
+    const pipeline = readUploadRegistrationPipeline();
+    const middleware = readMiddleware();
+
+    expect(completion).toContain('scheduleUploadToOpenAutopilot({');
+    expect(completion).toContain('requestBaseUrl: input.requestBaseUrl');
+    expect(pipeline).toContain('requestBaseUrl: input.requestBaseUrl');
+    expect(middleware).toContain("'/api/cron/upload-to-open-autopilot'");
+    expect(postTasks).toContain("new URL('/api/cron/upload-to-open-autopilot'");
+    expect(postTasks).toContain("url.searchParams.set('autoOpen', 'true')");
+    expect(postTasks).toContain("url.searchParams.set('force', 'true')");
+    expect(postTasks).toContain("authorization: `Bearer ${secret}`");
+  });
+
+  it('keeps upload-to-open autopilot behind source, V3, mobile, and publish gates before activating packages', () => {
+    const cron = readUploadToOpenAutopilotCron();
+    const lib = readUploadToOpenAutopilotLib();
+
+    expect(cron).toContain("withCronLogging('upload-to-open-autopilot'");
+    expect(cron).toContain('unmatchedOrchestratorGet');
+    expect(cron).toContain("boolParam(request, 'autoOpen', true)");
+    expect(lib).toContain('buildSourceBackedPriceDateRepair');
+    expect(lib).toContain('buildSourceBackedFieldRepair');
+    expect(lib).toContain('buildSourceBackedTermsRepair');
+    expect(lib).toContain('runUploadVerify(pkg.id)');
+    expect(lib).toContain('runAutoMobileQA(pkg.id, baseUrl)');
+    expect(lib).toContain('evaluateV3CustomerNoticeGate');
+    expect(lib).toContain('evaluateCustomerMobileProof');
+    expect(lib).toContain('evaluateCustomerDeliveryReadiness');
+    expect(lib).toContain("status: 'active'");
+    expect(lib).toContain("audit_status: 'clean'");
   });
 });

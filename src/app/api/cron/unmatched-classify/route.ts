@@ -7,6 +7,17 @@ import { countActiveUnmatched } from '@/lib/unmatched-lifecycle';
 
 export const dynamic = 'force-dynamic';
 
+async function runUnmatchedClassifyCron(options: {
+  limit?: number;
+  minAttractionScore?: number;
+} = {}) {
+  const result = await runUnmatchedClassification(options);
+  return {
+    ...result,
+    active_pending_after: await countActiveUnmatched(),
+  };
+}
+
 const handleUnmatchedClassify = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
 
@@ -17,11 +28,7 @@ const handleUnmatchedClassify = async (request: NextRequest) => {
       process.env.UNMATCHED_CLASSIFY_ATTRACTION_SCORE ??
       95,
     );
-    const result = await runUnmatchedClassification({ limit, minAttractionScore });
-    return {
-      ...result,
-      active_pending_after: await countActiveUnmatched(),
-    };
+    return await runUnmatchedClassifyCron({ limit, minAttractionScore });
   } catch (error) {
     const message = sanitizeDbError(error, 'unmatched classify failed');
     return { ok: false, error: message, errors: [message] };

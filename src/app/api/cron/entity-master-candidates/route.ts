@@ -145,20 +145,19 @@ function payloadFor(group: CandidateGroup) {
   };
 }
 
-const handleEntityMasterCandidates = async (request: NextRequest) => {
-  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+async function runEntityMasterCandidates(options: { limit?: number } = {}) {
   if (!isSupabaseConfigured) {
     return { ok: true, scanned: 0, groups: 0, upserted: 0, closed: 0, ignored: 0, errors: [] as string[] };
   }
 
   try {
-    const limit = limitFrom(request);
+    const limit = options.limit ?? 500;
     const { data, error } = await supabaseAdmin
       .from('unmatched_activities')
       .select('id, activity, package_id, package_title, day_number, country, region, occurrence_count, segment_kind_guess, suggested_resolution, source_context')
       .eq('status', 'pending')
       .is('resolved_at', null)
-      .in('segment_kind_guess', ['attraction', 'hotel', 'shopping', 'optional_tour', 'notice', 'unknown'])
+      .eq('segment_kind_guess', 'attraction')
       .order('occurrence_count', { ascending: false })
       .limit(limit);
     if (error) throw error;
@@ -234,6 +233,11 @@ const handleEntityMasterCandidates = async (request: NextRequest) => {
     const message = sanitizeDbError(error, 'entity master candidate generation failed');
     return { ok: false, error: message, errors: [message] };
   }
+}
+
+const handleEntityMasterCandidates = async (request: NextRequest) => {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+  return runEntityMasterCandidates({ limit: limitFrom(request) });
 };
 
 export const GET = withCronLogging('entity-master-candidates', handleEntityMasterCandidates);

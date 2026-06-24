@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   flushUploadAttractionReviewQueue: vi.fn(async () => null),
   recordUploadDocumentHash: vi.fn(async () => ({ ok: true })),
   scheduleUploadL3BackfillTasks: vi.fn(),
+  scheduleUploadToOpenAutopilot: vi.fn(),
 }));
 
 vi.mock('./upload-document-hashes', () => ({
@@ -13,6 +14,7 @@ vi.mock('./upload-document-hashes', () => ({
 
 vi.mock('./upload-post-registration-tasks', () => ({
   scheduleUploadL3BackfillTasks: mocks.scheduleUploadL3BackfillTasks,
+  scheduleUploadToOpenAutopilot: mocks.scheduleUploadToOpenAutopilot,
 }));
 
 vi.mock('./upload-response', () => ({

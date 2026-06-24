@@ -20,6 +20,15 @@ export interface UnmatchedSummary {
   candidate_queued_total: number;
   auto_ignored_total: number;
   cron_last_success_at: string | null;
+  queue_split: {
+    attraction_gap: number;
+    candidate_master: number;
+    hotel_nonblocking: number;
+    notice_noise: number;
+    auto_terminal_ready: number;
+    manual_review: number;
+    unclassified: number;
+  };
   /** `pending_high_occurrence` 집계에 쓰인 등장 횟수 하한 (env와 부트스트랩 기본과 동일) */
   high_occurrence_threshold: number;
   recent_auto_alias: Array<{
@@ -47,6 +56,7 @@ export async function getUnmatchedSummary(): Promise<UnmatchedSummary> {
     candidateQueued,
     autoIgnored,
     cronLastSuccess,
+    queueSplit,
   ] = await Promise.all([
     supabaseAdmin.rpc('get_unmatched_summary', { p_high_occ_min: highOccMin }),
     countRows(query => query.eq('status', 'pending').is('resolved_at', null)),
@@ -56,6 +66,7 @@ export async function getUnmatchedSummary(): Promise<UnmatchedSummary> {
     countRows(query => query.eq('suggested_action', 'candidate_queue')),
     countRows(query => query.eq('status', 'ignored')),
     getLastUnmatchedCronSuccessAt(),
+    getQueueSplit(),
   ]);
   if (error) throw error;
   return {
@@ -67,12 +78,14 @@ export async function getUnmatchedSummary(): Promise<UnmatchedSummary> {
     candidate_queued_total: candidateQueued,
     auto_ignored_total: autoIgnored,
     cron_last_success_at: cronLastSuccess,
+    queue_split: queueSplit,
   };
 }
 
 type CountableQuery = {
   eq: (column: string, value: unknown) => CountableQuery;
   is: (column: string, value: unknown) => CountableQuery;
+  in: (column: string, values: unknown[]) => CountableQuery;
   not: (column: string, operator: string, value: unknown) => CountableQuery;
   then: Promise<{ count: number | null; error: unknown }>['then'];
 };
@@ -86,6 +99,40 @@ async function countRows(apply: (query: CountableQuery) => CountableQuery): Prom
   const { count, error } = await query;
   if (error) throw error;
   return count ?? 0;
+}
+
+function activePending(query: CountableQuery): CountableQuery {
+  return query.eq('status', 'pending').is('resolved_at', null);
+}
+
+async function getQueueSplit(): Promise<UnmatchedSummary['queue_split']> {
+  const [
+    attractionGap,
+    candidateMaster,
+    hotelNonblocking,
+    noticeNoise,
+    autoTerminalReady,
+    manualReview,
+    unclassified,
+  ] = await Promise.all([
+    countRows(query => activePending(query).eq('segment_kind_guess', 'attraction')),
+    countRows(query => activePending(query).eq('suggested_action', 'candidate_queue')),
+    countRows(query => activePending(query).eq('segment_kind_guess', 'hotel')),
+    countRows(query => activePending(query).in('segment_kind_guess', ['notice', 'price_noise', 'free_time'])),
+    countRows(query => activePending(query).in('segment_kind_guess', ['meal', 'transfer', 'price_noise', 'free_time'])),
+    countRows(query => activePending(query).in('segment_kind_guess', ['shopping', 'optional_tour', 'unknown'])),
+    countRows(query => activePending(query).is('segment_kind_guess', null)),
+  ]);
+
+  return {
+    attraction_gap: attractionGap,
+    candidate_master: candidateMaster,
+    hotel_nonblocking: hotelNonblocking,
+    notice_noise: noticeNoise,
+    auto_terminal_ready: autoTerminalReady,
+    manual_review: manualReview,
+    unclassified,
+  };
 }
 
 async function countTerminalReingests(): Promise<number> {

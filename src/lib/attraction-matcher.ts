@@ -147,6 +147,19 @@ const YANJI_BAEKDU_DESTINATION_RE =
   /\uC5F0\uAE38|\uBC31\uB450\uC0B0|\uC7A5\uBC31\uC0B0|\uBC31\uB450|\uC5F0\uBCC0/;
 const YANJI_BAEKDU_REGION_RE =
   /\uC5F0\uAE38|\uBC31\uB450\uC0B0|\uC7A5\uBC31\uC0B0|\uC5F0\uBCC0|\uB3C4\uBB38|\uC6A9\uC815|\uC1A1\uAC15\uD558|\uC774\uB3C4\uBC31\uD558|\uB0A8\uD30C|\uBD81\uD30C|\uC11C\uD30C/;
+const DESTINATION_SCOPE_ALIASES = [
+  ['\uacc4\ub9bc', '\uad6c\uc774\ub9b0', '\uc591\uc0ad', 'yangshuo', 'guilin', 'kwl'],
+  ['\uc7a5\uac00\uacc4', 'zhangjiajie', 'dyg'],
+  ['\uc11c\uc548', '\uc2dc\uc548', "xi'an", 'xian'],
+] as const;
+
+function scopeAliasesOverlap(destination: string, region: string): boolean {
+  return DESTINATION_SCOPE_ALIASES.some(group => {
+    const destHit = group.some(alias => destination.includes(alias));
+    const regionHit = group.some(alias => region.includes(alias));
+    return destHit && regionHit;
+  });
+}
 
 export function destinationAllowsAttractionScope(
   attraction: AttractionData,
@@ -159,6 +172,7 @@ export function destinationAllowsAttractionScope(
   const country = normalizeScope(attraction.country);
   if (!region) return true;
   if (dest.includes(region) || region.includes(dest)) return true;
+  if (scopeAliasesOverlap(dest, region)) return true;
   if (country && dest.includes(country)) return true;
 
   const regionTokens = region

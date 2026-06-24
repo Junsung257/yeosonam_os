@@ -77,6 +77,8 @@ const RESOURCE_SAVER_ALLOWED_CRONS = new Set([
   'resweep-unmatched',
   'unmatched-auto-resolve',
   'entity-resolution',
+  'unmatched-orchestrator',
+  'upload-to-open-autopilot',
   'legacy-sections-backfill',
   'learning-flywheel',
   'product-registration-learning-report',

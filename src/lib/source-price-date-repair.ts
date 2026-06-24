@@ -196,12 +196,13 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
     }
     if (expectedRow.price !== price) {
       return {
-        status: 'unsafe',
-        reason: `existing date ${row.date} price ${price} differs from source ${expectedRow.price}`,
+        status: 'repaired',
+        reason: `replaced price_dates with source-backed table because existing date ${row.date} price ${price} differs from source ${expectedRow.price}`,
         source: expected.source,
         expectedCount: expected.rows.length,
         existingCount: existingRows.length,
-        addedCount: 0,
+        addedCount: expected.rows.filter(expectedRow => !existingRows.some(existingRow => existingRow.date === expectedRow.date)).length,
+        priceDates: expected.rows,
       };
     }
 
