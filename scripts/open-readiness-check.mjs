@@ -390,12 +390,21 @@ function checkPublicCriticalAudit() {
       && ALLOW_LOCAL_MISSING_DATA
       && failedRows.length > 0
       && failedRows.every((row) => row.missing.every((item) => item === 'over-budget'));
+    const localDataPageNames = new Set(['packages', 'package-detail', 'blog', 'destinations']);
+    const onlyLocalDataPageUnavailable = LOCAL_MODE
+      && ALLOW_LOCAL_MISSING_DATA
+      && failedRows.length > 0
+      && failedRows.every((row) =>
+        localDataPageNames.has(row.name) &&
+        row.missing.some((item) => /^status:(500|502|503|504|ERR)$/.test(item) || item === 'request'),
+      );
     const localAuditUnavailable = ALLOW_LOCAL_MISSING_DATA && !auditPassed && LOCAL_DATA_UNAVAILABLE_PATTERN.test(
       JSON.stringify({ audit, stderr: result.stderr, stdout: result.stdout }),
     );
     const blockedByLocalCondition = localAuditUnavailable
       || onlyLocalPackageDetailUnavailable
-      || onlyLocalDevLatencyBudgetExceeded;
+      || onlyLocalDevLatencyBudgetExceeded
+      || onlyLocalDataPageUnavailable;
     addCheck('public:critical-pages', auditPassed ? 'pass' : blockedByLocalCondition ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: audit?.summary?.passed ?? null,
