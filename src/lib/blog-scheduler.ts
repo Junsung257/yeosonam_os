@@ -137,7 +137,8 @@ export async function ensureDailyPublishableQueue(opts?: {
   const { count: queuedCount } = await supabaseAdmin
     .from('blog_topic_queue')
     .select('id', { count: 'exact', head: true })
-    .eq('status', 'queued');
+    .eq('status', 'queued')
+    .neq('source', 'pillar');
 
   const existingQueued = queuedCount ?? 0;
   if (existingQueued >= targetCandidates) {

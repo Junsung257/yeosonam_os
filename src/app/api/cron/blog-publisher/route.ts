@@ -626,6 +626,48 @@ async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> =
   return ids.length;
 }
 
+async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
+  const now = new Date();
+  const nextWeeklyWindow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const nextWeeklyIso = nextWeeklyWindow.toISOString();
+
+  const { data: duePillars, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id')
+    .eq('status', 'queued')
+    .eq('source', 'pillar')
+    .or(`target_publish_at.is.null,target_publish_at.lte.${now.toISOString()}`)
+    .limit(20);
+
+  if (error || !duePillars || duePillars.length === 0) {
+    if (error) logWarning('[cron/blog-publisher] pillar deferral scan failed', error);
+    return { deferred: 0 };
+  }
+
+  const ids = duePillars
+    .map((row: { id?: string | null }) => row.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (ids.length === 0) return { deferred: 0 };
+
+  const { error: updateError } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .update({
+      target_publish_at: nextWeeklyIso,
+      priority: 25,
+      updated_at: now.toISOString(),
+    } as never)
+    .in('id', ids)
+    .eq('status', 'queued')
+    .eq('source', 'pillar');
+
+  if (updateError) {
+    logWarning('[cron/blog-publisher] pillar deferral update failed', updateError);
+    return { deferred: 0 };
+  }
+
+  return { deferred: ids.length };
+}
+
 async function runBlogPublisher(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -643,6 +685,7 @@ async function runBlogPublisher(request: NextRequest) {
   try {
     blogStyleGuideCache = null;
     const staleRecovery = await recoverStaleGeneratingQueueItems();
+    const pillarDeferral = await deferDuePillarQueueItems();
     const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
     const targetPostsToday = normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
     const todayQuota = await getTodayBlogPublishCount();
@@ -660,6 +703,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        pillarDeferral,
         errors,
       };
     }
@@ -707,6 +751,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        pillarDeferral,
         queueRefill,
         failure_breakdown: { candidate_shortage: 1 },
         errors,
@@ -930,6 +975,7 @@ async function runBlogPublisher(request: NextRequest) {
         remainingAfterRun: Math.max(0, remainingToday - publishedCount),
       },
       staleRecovery,
+      pillarDeferral,
       queueRefill,
       failure_breakdown: failureBreakdown,
       extraClaimRounds,

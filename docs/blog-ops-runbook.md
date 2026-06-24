@@ -172,6 +172,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 
 - Root cause after cron/auth recovery: the active queue was mostly stale duplicate candidates, especially broad `destination + value` topics. Keeping the duplicate gate is correct; the fix is to generate more specific candidates before publishing.
 - `blog-scheduler` and `blog-publisher` now call `ensureDailyPublishableQueue()` to maintain at least 8-12 queued candidates.
+- Daily publisher runs defer due `source='pillar'` queue rows by 7 days and lower their priority, because long-form destination hub generation should not consume the daily 3-4 commercial/info publishing slots.
 - New generated candidates keep `angle_type='value'` for the content generator, but store specific `meta.micro_angle` values such as `budget_family`, `transport_cost`, `hotel_area`, `food_budget`, `weather_packing`, `first_day_plan`, `shopping_budget`, `kid_friendly`, `airport_arrival`, and `local_mobility`.
 - The duplicate gate now uses `destination + micro_angle` for micro-angle candidates. Rows without `micro_angle` still use the older broad `destination + angle_type` protection.
 - `cron_run_logs` are no longer skipped for critical blog crons while DB resource saver mode is on. This preserves the daily audit trail for publisher, scheduler, and summary runs.
