@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      OPEN_CHECK_BASE_URL: ${{ secrets.VERCEL_BASE_URL || vars.VERCEL_BASE_URL || 'https://www.yeosonam.com' }}
-      VERCEL_LOG_TARGET: ${{ secrets.VERCEL_BASE_URL || vars.VERCEL_BASE_URL || 'https://www.yeosonam.com' }}
+      OPEN_CHECK_BASE_URL: https://www.yeosonam.com
+      VERCEL_LOG_TARGET: https://www.yeosonam.com
       VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE || 'zzbaa0317-4596s-projects' }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

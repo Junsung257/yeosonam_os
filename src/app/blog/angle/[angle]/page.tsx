@@ -10,7 +10,6 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import {
   BLOG_ANGLE_CACHE_TAG,
-  createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
@@ -136,11 +135,7 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
 
 const getCachedAnglePageData = unstable_cache(
   async (angle: string) => {
-    const data = await getAnglePageDataUncached(angle);
-    if (data.unavailable) {
-      throw createBlogDatabaseUnavailableError();
-    }
-    return data;
+    return getAnglePageDataUncached(angle);
   },
   ['blog-angle-page-v1'],
   { revalidate: 300, tags: [BLOG_ANGLE_CACHE_TAG] },

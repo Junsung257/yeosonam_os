@@ -20,6 +20,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
+const MIN_DAILY_SUMMARY_ALERT_POSTS = 3;
+
 function getKstDayRange(offsetDays = 0): { start: Date; end: Date; dayKey: string } {
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -119,7 +121,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
-  if (summary.under_daily_target) {
+  if (summary.under_daily_target || summary.published < MIN_DAILY_SUMMARY_ALERT_POSTS) {
     issues.push({
       code: 'daily_publish_sla_miss',
       severity: summary.published === 0 ? 'critical' : 'high',

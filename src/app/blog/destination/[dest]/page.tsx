@@ -10,7 +10,6 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import {
   BLOG_DESTINATION_CACHE_TAG,
-  createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
@@ -120,7 +119,7 @@ async function resolveDestinationRouteParamUncached(value: string): Promise<stri
       3000,
     );
     if (isBlogDestinationQueryUnavailable(result)) {
-      throw createBlogDatabaseUnavailableError();
+      return decoded;
     }
     if (result.error) return decoded;
 
@@ -130,7 +129,6 @@ async function resolveDestinationRouteParamUncached(value: string): Promise<stri
 
     return match || decoded;
   } catch {
-    if (decoded) throw createBlogDatabaseUnavailableError();
     return decoded;
   }
 }
@@ -212,13 +210,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
 }
 
 const getCachedDestinationPageData = unstable_cache(
-  async (dest: string) => {
-    const data = await getDestinationPageDataUncached(dest);
-    if (data.unavailable) {
-      throw createBlogDatabaseUnavailableError();
-    }
-    return data;
-  },
+  async (dest: string) => getDestinationPageDataUncached(dest),
   ['blog-destination-page-v1'],
   { revalidate: 300, tags: [BLOG_DESTINATION_CACHE_TAG] },
 );

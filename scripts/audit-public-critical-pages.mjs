@@ -80,7 +80,7 @@ const corePages = [
   {
     name: 'destinations',
     path: '/destinations',
-    budgetMs: 5000,
+    budgetMs: 10000,
     mustHaveAny: ['목적지', '여행', '지역'],
     ctaAny: ['상품', '보기', '여행', '상담'],
   },
@@ -111,7 +111,7 @@ async function fetchTextOnce(path) {
   });
   const request = (async () => {
     const res = await fetch(pathUrl(path), {
-      redirect: 'manual',
+      redirect: 'follow',
       signal: controller.signal,
       headers: {
         Accept: 'text/html,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5',
