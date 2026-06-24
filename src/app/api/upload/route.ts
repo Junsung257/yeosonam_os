@@ -7,7 +7,11 @@ import { postAlert } from '@/lib/admin-alerts';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { prepareUploadRequestIntake } from '@/lib/product-registration/upload-request-intake';
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
-import { enqueueUploadTimeoutReplay } from '@/lib/product-registration/upload-timeout-replay-queue';
+import {
+  enqueueUploadTimeoutReplay,
+  scheduleImmediateUploadTimeoutReplay,
+  type UploadTimeoutReplayQueueResult,
+} from '@/lib/product-registration/upload-timeout-replay-queue';
 
 function safeAfter(task: () => Promise<void> | void): void {
   try {
@@ -81,7 +85,7 @@ const postHandler = async (request: NextRequest) => {
         intake,
         uploadRequestId: requestId,
         elapsedMs,
-      }).catch(error => ({
+      }).catch((error): UploadTimeoutReplayQueueResult => ({
         queued: false,
         reason: error instanceof Error ? error.message : String(error),
       }));
@@ -106,8 +110,18 @@ const postHandler = async (request: NextRequest) => {
         requestId,
         elapsedMs,
         replayQueued: replay.queued,
+        queueId: replay.queueId ?? null,
         reason: replay.reason ?? null,
       });
+
+      if (replay.queued) {
+        scheduleImmediateUploadTimeoutReplay({
+          safeAfter,
+          requestBaseUrl: request.nextUrl.origin,
+          queueId: replay.queueId,
+          uploadRequestId: requestId,
+        });
+      }
 
       return NextResponse.json(
         {
@@ -117,6 +131,7 @@ const postHandler = async (request: NextRequest) => {
             ? '상품등록 처리 시간이 길어 자동 재처리 큐에 넣었습니다. 같은 원문은 중복 방지 후 재처리됩니다.'
             : '상품등록 처리 시간이 길어 중단했습니다. 같은 원문을 다시 시도해 주세요.',
           replayQueued: replay.queued,
+          replayQueueId: replay.queueId,
           replayReason: replay.reason,
           retrySafe: true,
           uploadRequestId: requestId,
