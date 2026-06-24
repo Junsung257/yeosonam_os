@@ -186,6 +186,21 @@ function parseShoppingItems(text: string): string[] {
 
 function parseMealSummary(text: string): string | null {
   const compact = text.replace(/\s+/g, ' ');
+  if (/(?:\ud328\ud0a4\uc9c0\s*\uc0c1\ud488|\uc77c\uc815\s*\uc911|\uac1c\ubcc4\s*\ud65c\ub3d9|\uc790\uc720\s*\ud65c\ub3d9|\ubd88\uac00|\uc2e4\uc2dc\ubd88\uac00)/.test(compact)) return null;
+  const explicitMealLine = compact.match(/(?:^|[\s,])([조중석])\s*[:：]\s*([^,|/]{1,18})/g);
+  if (explicitMealLine?.length) {
+    return explicitMealLine
+      .map(part => {
+        const match = part.match(/([조중석])\s*[:：]\s*([^,|/]{1,18})/);
+        if (!match) return null;
+        const label = match[1] === '조' ? '조식' : match[1] === '중' ? '중식' : '석식';
+        return `${label} ${match[2].trim()}`;
+      })
+      .filter((part): part is string => Boolean(part))
+      .join(', ');
+  }
+  if (/(조식|중식|석식)\s*후/.test(compact)) return null;
+  if (!/(조식|중식|석식|식사|특식|호텔식|현지식|무제한)/.test(compact)) return null;
   const parts: string[] = [];
   const breakfast = compact.match(/(?:조|조식)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
   const lunch = compact.match(/(?:중|중식)\s*[:：\-/]?\s*([가-힣A-Za-z ]{2,12})/);
@@ -476,7 +491,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    if (/준비물|수영복|우산|운동화|모자|선크림|여권\s*사본|상비약/i.test(source)) {
+    if (/준비물|수영복|(?<!\uACF5\uC6D0)우산(?!\uACF5\uC6D0)|운동화|모자|선크림|여권\s*사본|상비약/i.test(source)) {
       const items = source.split(/[,:：/·ㆍ]/).map(item => item.trim()).filter(item => item.length >= 2).slice(0, 8);
       addFact(facts, makeFact({
         category: 'prep_items',
@@ -517,6 +532,7 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       /유류\s*할증료|추가\s*(요금|비용|금액)|별도\s*(비용|요금)|불포함\s*(비용|요금|금액)|입장료|관광세|리조트피|비자비|환경세/i.test(source)
       && !isIncludedCostLine(source)
       && !isCancellationOrPaymentPolicyLine(source)
+      && !/왕복항공료|유류할증료|포함|관광지\s*입장료|여행자보험|중국비자|비자\s*필요/i.test(source)
     ) {
       const amount = parseKrw(source) ?? parseUsd(source);
       const percent = amount == null ? parsePercent(source) : null;

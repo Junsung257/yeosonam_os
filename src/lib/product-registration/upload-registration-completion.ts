@@ -8,6 +8,7 @@ import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
 import { recordUploadDocumentHash } from './upload-document-hashes';
 import {
   scheduleUploadL3BackfillTasks,
+  scheduleUploadToOpenAutopilot,
   type UploadSafeAfter,
 } from './upload-post-registration-tasks';
 import type { ProcessUploadProductsResult } from './upload-product-runner';
@@ -36,6 +37,7 @@ export async function completeUploadRegistration(input: {
   filenameSupplierRaw: string | null | undefined;
   marginRate: number;
   baseUrl: string;
+  requestBaseUrl?: string;
 }): Promise<Record<string, unknown>> {
   const result = input.registrationProductsResult;
 
@@ -54,6 +56,13 @@ export async function completeUploadRegistration(input: {
   if (result.savedIds.length > 0) {
     scheduleUploadL3BackfillTasks({
       safeAfter: input.safeAfter,
+      packageIds: result.savedIds,
+      isSupabaseConfigured: input.isSupabaseConfigured,
+      postAlert: input.postAlert,
+    });
+    scheduleUploadToOpenAutopilot({
+      safeAfter: input.safeAfter,
+      requestBaseUrl: input.requestBaseUrl || input.baseUrl,
       packageIds: result.savedIds,
       isSupabaseConfigured: input.isSupabaseConfigured,
       postAlert: input.postAlert,

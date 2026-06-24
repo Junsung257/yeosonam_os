@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { buildSourceBackedAttractionDescriptions } from '../src/lib/attraction-source-backed-description';
 
 loadEnv({ path: '.env.local' });
+loadEnv({ path: '.env.croncheck.local' });
 loadEnv();
 
 const args = new Set(process.argv.slice(2));

@@ -89,4 +89,33 @@ describe('product-registration-v3 structured facts', () => {
     ].join('\n'));
     expect(noTip.gate_result.checks.find(check => check.id.endsWith('high_risk_structured_fact_values'))?.status).toBe('pass');
   });
+
+  it('does not treat ordinary Korean syllables in visa or attraction lines as meal/surcharge facts', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: [
+        '-중국비자 필요시 추가 비용 발생 합니다.',
+        '-계림의 상징, 기암괴석과 푸른 강의 조화 상비산',
+        '-중식 후 하늘 위에서 내려다보는 비경 요산(케이블카)',
+        '조:호텔식',
+        '중:현지식',
+        '석:동북요리',
+      ].join('\n'),
+    });
+
+    const mealSources = result.standardNotices
+      .filter(notice => notice.category === 'meal_plan')
+      .map(notice => notice.source_text);
+    expect(mealSources).toEqual(['조:호텔식', '중:현지식', '석:동북요리']);
+    expect(result.structuredFacts.some(fact =>
+      fact.category === 'surcharge' && String(fact.values.label ?? '').includes('중국비자')
+    )).toBe(false);
+  });
+  it('does not turn package operation restrictions into meal notices', () => {
+    const result = extractStructuredFactsFromSupplierText({
+      rawText: '패키지 상품은 일정 중 조식 인 등의 개별활동은 불가, 중식 개인자유활동',
+    });
+
+    expect(result.standardNotices.some(notice => notice.category === 'meal_plan')).toBe(false);
+    expect(result.structuredFacts.some(fact => fact.category === 'meal_plan')).toBe(false);
+  });
 });

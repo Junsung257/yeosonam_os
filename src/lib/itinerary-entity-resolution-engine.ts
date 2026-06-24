@@ -449,31 +449,7 @@ export async function resolveItineraryEntityCandidate(
     ...asSources(row.suggested_master?.external_sources),
   ];
 
-  if (!label || NON_MASTER_ACTIONS.has(baseDecision.autoAction)) {
-    const status: EntityResolutionStatus = baseDecision.autoAction === 'reject_noise'
-      ? 'rejected_noise'
-      : 'structured_non_master';
-    return {
-      candidateKey: row.candidate_key || baseDecision.candidateKey,
-      canonicalName: label,
-      canonicalNameSource: 'base_classifier',
-      verificationScore: baseDecision.confidence,
-      autoVerificationStatus: status,
-      autoAction: baseDecision.autoAction,
-      promotionStatus: baseDecision.promotionStatus,
-      decisionReason: baseDecision.decisionReason,
-      externalSources: uniqueSources(baseSources),
-      suggestedMaster: {
-        ...baseDecision.suggestedMaster,
-        canonical_name: label,
-        customer_publishable: false,
-      },
-      attempts,
-      wikidata: [],
-    };
-  }
-
-  const templateResolution = safeTemplateResolution(category, label);
+  const templateResolution = label ? safeTemplateResolution(category, label) : null;
   if (templateResolution) {
     return {
       candidateKey: row.candidate_key || baseDecision.candidateKey,
@@ -494,6 +470,30 @@ export async function resolveItineraryEntityCandidate(
         customer_publishable: false,
         verification_status: templateResolution.status,
         verification_score: Math.max(baseDecision.confidence, templateResolution.status === 'template_matched' ? 0.84 : 0.88),
+      },
+      attempts,
+      wikidata: [],
+    };
+  }
+
+  if (!label || NON_MASTER_ACTIONS.has(baseDecision.autoAction)) {
+    const status: EntityResolutionStatus = baseDecision.autoAction === 'reject_noise'
+      ? 'rejected_noise'
+      : 'structured_non_master';
+    return {
+      candidateKey: row.candidate_key || baseDecision.candidateKey,
+      canonicalName: label,
+      canonicalNameSource: 'base_classifier',
+      verificationScore: baseDecision.confidence,
+      autoVerificationStatus: status,
+      autoAction: baseDecision.autoAction,
+      promotionStatus: baseDecision.promotionStatus,
+      decisionReason: baseDecision.decisionReason,
+      externalSources: uniqueSources(baseSources),
+      suggestedMaster: {
+        ...baseDecision.suggestedMaster,
+        canonical_name: label,
+        customer_publishable: false,
       },
       attempts,
       wikidata: [],

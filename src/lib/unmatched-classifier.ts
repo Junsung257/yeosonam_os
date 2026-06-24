@@ -21,6 +21,7 @@ export type ClassifiedUnmatched = {
     | 'auto_resolve_existing'
     | 'auto_ignore_noise'
     | 'needs_new_master'
+    | 'suggest_alias'
     | 'needs_review';
   resolvedKind: string | null;
 };
@@ -39,15 +40,23 @@ type UnmatchedRow = {
 };
 
 const PRICE_NOISE_RE =
-  /(?:^\s*$|^\d{1,4}(?:,\d{3})*(?:\s*(?:원|krw|usd|\$|위안|엔))?$|가격|요금|판매가|출발일|성인|아동|소아|예약금|잔금|총\s*금액|취소료|수수료|^\d{1,2}[./-]\d{1,2})/i;
-const MEAL_RE = /(?:조식|중식|석식|식사|식당|레스토랑|뷔페|도시락|breakfast|lunch|dinner|meal|restaurant)/i;
-const TRANSFER_RE = /(?:이동|차량|버스|공항|픽업|샌딩|전용차|기사|transfer|pickup|drop[-\s]?off|airport)/i;
-const HOTEL_RE = /(?:호텔|리조트|숙박|객실|체크\s*인|체크\s*아웃|투숙|hotel|resort|villa|room|check[-\s]?in|check[-\s]?out)/i;
-const SHOPPING_RE = /(?:쇼핑|면세|기념품|토산품|라텍스|잡화|토속품|mall|outlet|shopping)/i;
-const OPTION_RE = /(?:선택\s*관광|옵션|마사지|스파|공연|입장권|체험|골프|라운딩|optional|option|spa|massage|ticket)/i;
-const FREE_TIME_RE = /(?:자유\s*시간|자유일정|휴식|외부\s*자유|free\s*time|rest)/i;
-const NOTICE_RE = /(?:안내|공지|주의|취소|환불|비자|여권|입국|출국|예약금|수수료|변경|현지사정|선사사정|양해|notice|caution|refund|cancel|visa)/i;
-const ATTRACTION_HINT_RE = /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|타워|비치|광장|전망대|케이블카|마을|천등|폭포|온천|정원|temple|park|museum|beach|market|tower|garden)/i;
+  /(?:^\s*$|^\d{1,4}(?:,\d{3})*(?:\s*(?:원|krw|usd|\$))?$|^\d+\s*월\s*기준$|가격|요금|판매가|출발일|마감일|성인|아동|소아|예약금|총\s*금액|취소료|수수료|^\d{1,2}[./-]\d{1,2})/i;
+const MEAL_RE =
+  /(?:조식|중식|석식|석\s*-\s*한\s*식|식사|식당|레스토랑|뷔페|뷔페식|현지식|한식|특식|선상식|클럽식|콜드밀|제육|찌개|과일\s*시식|연꽃잎차|못주스|breakfast|lunch|dinner|meal|restaurant|rice noodle|pho)/i;
+const TRANSFER_RE =
+  /(?:^[A-Z]{3}(?:-[A-Z]{3})?$|이동|차량|버스|공항|픽업|샌딩|전용차|기사|미팅|transfer|pickup|drop[-\s]?off|airport)/i;
+const HOTEL_RE =
+  /(?:호텔|리조트|숙박|객실|체크\s*인|체크\s*아웃|투숙|동급|준5성|정5성|노보텔|하얏트|힐튼|풀만|렌조이|hotel|resort|villa|room|check[-\s]?in|check[-\s]?out)/i;
+const SHOPPING_RE =
+  /(?:쇼핑|면세|기념품|토산품|특산품|아울렛|라텍스|잡화|mall|outlet|shopping)/i;
+const OPTION_RE =
+  /(?:선택\s*관광|옵션|마사지|스파|공연|쇼|투어|입장권|체험|골프|라운딩|optional|option|spa|massage|ticket|show|tour)/i;
+const FREE_TIME_RE =
+  /(?:^오\s*(?:전|후)$|자유\s*시간|자유일정|리조트내\s*자유|오전\s*자유|오후\s*자유|free\s*time|rest)/i;
+const NOTICE_RE =
+  /(?:안내|공지|주의|준비물|수영복|선크림|여벌\s*옷|아쿠아슈즈|장비|구명조끼|미끼|상기\s*일정|아래\s*일정|필수\s*관광\s*\d*|미진행시|제공\s*X|취소|환불|비자|여권|입국|출국|예약금|수수료|변경|현지\s*사정|항공\s*및\s*현지\s*사정|천재지변|양해|notice|caution|refund|cancel|visa|passport)/i;
+const ATTRACTION_HINT_RE =
+  /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|타워|비치|해변|광장|전망대|케이블카|마을|천등|폭포|온천|정원|야시장|유람선|호수|계림|temple|park|museum|beach|market|tower|garden)/i;
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -82,9 +91,6 @@ export function classifyUnmatchedActivity(
   if (!text || PRICE_NOISE_RE.test(text)) {
     category = 'price_noise';
     confidence = 0.92;
-  } else if (FREE_TIME_RE.test(text)) {
-    category = 'free_time';
-    confidence = 0.92;
   } else if (MEAL_RE.test(text)) {
     category = 'meal';
     confidence = 0.9;
@@ -100,6 +106,9 @@ export function classifyUnmatchedActivity(
   } else if (OPTION_RE.test(text)) {
     category = 'optional_tour';
     confidence = 0.86;
+  } else if (FREE_TIME_RE.test(text)) {
+    category = 'free_time';
+    confidence = 0.92;
   } else if (NOTICE_RE.test(text)) {
     category = 'notice';
     confidence = 0.84;
@@ -132,7 +141,11 @@ export function classifyUnmatchedActivity(
     category,
     confidence,
     terminalStatus: 'pending',
-    suggestedAction: category === 'attraction' || category === 'hotel' ? 'needs_new_master' : 'needs_review',
+    suggestedAction: category === 'attraction'
+      ? 'needs_new_master'
+      : category === 'hotel'
+        ? 'suggest_alias'
+        : 'needs_review',
     resolvedKind: null,
   };
 }
@@ -144,7 +157,7 @@ function sourceContext(row: UnmatchedRow, category: UnmatchedEntityCategory): Re
     day_number: row.day_number,
     country: row.country,
     destination: row.region ?? row.country,
-    customer_visible: !['price_noise', 'free_time'].includes(category),
+    customer_visible: !['price_noise', 'free_time', 'notice'].includes(category),
     classifier: 'unmatched-classifier-v2',
     classified_at: new Date().toISOString(),
   };

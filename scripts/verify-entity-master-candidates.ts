@@ -14,6 +14,7 @@ import {
 } from '../src/lib/naver-entity-verifier';
 
 loadEnv({ path: '.env.local' });
+loadEnv({ path: '.env.croncheck.local' });
 loadEnv();
 
 const args = process.argv.slice(2);

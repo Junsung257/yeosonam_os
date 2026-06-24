@@ -2,6 +2,7 @@ import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 
 loadEnv({ path: '.env.local' });
+loadEnv({ path: '.env.croncheck.local' });
 loadEnv();
 
 const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -63,6 +64,38 @@ async function countCandidateLinkedRows(scope: 'pending' | 'terminal'): Promise<
   return linkedCount;
 }
 
+type ActiveRow = {
+  activity: string | null;
+  package_title: string | null;
+  day_number: number | null;
+  country: string | null;
+  region: string | null;
+  occurrence_count: number | null;
+  segment_kind_guess: string | null;
+  confidence: number | null;
+  suggested_action: string | null;
+  created_at: string | null;
+};
+
+async function fetchActiveRows(): Promise<ActiveRow[]> {
+  const rows: ActiveRow[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('unmatched_activities')
+      .select('activity, package_title, day_number, country, region, occurrence_count, segment_kind_guess, confidence, suggested_action, created_at')
+      .eq('status', 'pending')
+      .is('resolved_at', null)
+      .order('occurrence_count', { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...(data as ActiveRow[]));
+    if (data.length < pageSize) break;
+  }
+  return rows;
+}
+
 async function main() {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const [
@@ -89,22 +122,39 @@ async function main() {
     countCandidateLinkedRows('terminal'),
   ]);
 
-  const { data: activeRows, error: activeError } = await supabase
-    .from('unmatched_activities')
-    .select('activity, package_title, day_number, country, region, occurrence_count, segment_kind_guess, confidence, suggested_action, created_at')
-    .eq('status', 'pending')
-    .is('resolved_at', null)
-    .order('occurrence_count', { ascending: false })
-    .limit(5000);
-  if (activeError) throw activeError;
+  const activeRows = await fetchActiveRows();
 
   const byCategory: Record<string, number> = {};
-  for (const row of activeRows ?? []) {
+  const bySuggestedAction: Record<string, number> = {};
+  const byCreatedDay: Record<string, number> = {};
+  const queueSplit = {
+    attraction_gap: 0,
+    candidate_master: 0,
+    hotel_nonblocking: 0,
+    notice_noise: 0,
+    auto_terminal_ready: 0,
+    manual_review: 0,
+    unclassified: 0,
+  };
+
+  for (const row of activeRows) {
     const category = String(row.segment_kind_guess ?? 'null');
     byCategory[category] = (byCategory[category] ?? 0) + 1;
+    const action = String(row.suggested_action ?? 'null');
+    bySuggestedAction[action] = (bySuggestedAction[action] ?? 0) + 1;
+    const createdDay = row.created_at ? row.created_at.slice(0, 10) : 'null';
+    byCreatedDay[createdDay] = (byCreatedDay[createdDay] ?? 0) + 1;
+
+    if (category === 'attraction') queueSplit.attraction_gap++;
+    if (action === 'candidate_queue') queueSplit.candidate_master++;
+    if (category === 'hotel') queueSplit.hotel_nonblocking++;
+    if (['notice', 'price_noise', 'free_time'].includes(category)) queueSplit.notice_noise++;
+    if (['meal', 'transfer', 'price_noise', 'free_time'].includes(category)) queueSplit.auto_terminal_ready++;
+    if (['shopping', 'optional_tour', 'unknown'].includes(category)) queueSplit.manual_review++;
+    if (category === 'null') queueSplit.unclassified++;
   }
 
-  const top = (activeRows ?? []).slice(0, 30).map(row => ({
+  const top = activeRows.slice(0, 30).map(row => ({
     activity: row.activity,
     package_title: row.package_title,
     day_number: row.day_number,
@@ -148,6 +198,9 @@ async function main() {
       terminal_linked_candidate: terminalLinkedCandidate,
     },
     active_pending_by_category: byCategory,
+    active_pending_by_suggested_action: bySuggestedAction,
+    active_pending_by_created_day: byCreatedDay,
+    active_pending_queue_split: queueSplit,
     top_active_pending: top,
     recent_unmatched_cron_runs: cronRuns ?? [],
   }, null, 2));

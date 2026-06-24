@@ -42,12 +42,14 @@ function updatePayload(decision: EntityResolutionDecision) {
   };
 }
 
-const handleEntityResolution = async (request: NextRequest) => {
-  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+async function runEntityResolution(options: {
+  limit?: number;
+  category?: string | null;
+} = {}) {
   if (!isSupabaseConfigured) return { ok: true, scanned: 0, updated: 0, errors: [] as string[] };
 
-  const limit = limitFrom(request);
-  const category = request.nextUrl.searchParams.get('category');
+  const limit = options.limit ?? 20;
+  const category = options.category ?? null;
 
   let query = supabaseAdmin
     .from('entity_master_candidates')
@@ -119,6 +121,14 @@ const handleEntityResolution = async (request: NextRequest) => {
     active_pending_after: await countActiveUnmatched(),
     errors: errors.slice(0, 20),
   };
+}
+
+const handleEntityResolution = async (request: NextRequest) => {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+  return runEntityResolution({
+    limit: limitFrom(request),
+    category: request.nextUrl.searchParams.get('category'),
+  });
 };
 
 export const GET = withCronLogging('entity-resolution', handleEntityResolution);

@@ -217,6 +217,7 @@ export async function runUploadRegistrationPipeline(input: {
     fileName,
     normalizedCatalogHash,
     baseUrl: input.publicBaseUrl,
+    requestBaseUrl: input.requestBaseUrl,
   });
 
   return { status: 200, payload: responsePayload };

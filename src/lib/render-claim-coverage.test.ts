@@ -76,6 +76,17 @@ describe('render-claim-coverage', () => {
     expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
   });
 
+  it('accepts Korean year/month departure ranges as source evidence for generated departure dates', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '출발날짜 26년 9월 23일 ~ 11월 26일 : 매주 (수, 목) 출발\n1,269,000',
+      price_dates: [{ date: '2026-09-30', price: 1269000, confirmed: false }],
+      itinerary_data: { days: [] },
+    });
+
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].date')).toBe(false);
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
+  });
+
   it('accepts Korean month/day raw date labels for ISO price dates', () => {
     const result = evaluateRenderClaimCoverage({
       raw_text: '출발일 7월8일 (수) 상품가 749,000원',

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { classifyUnmatchedActivity } from '@/lib/unmatched-classifier';
 import type { V3EntityReviewItem, V3PipelineResult } from './types';
 
 const ATTRACTION_NAME_SUFFIX_RE =
@@ -40,6 +41,15 @@ function normalizeQueueLabel(item: V3EntityReviewItem): { activity: string; rawL
   return { activity: raw, rawLabel: evidenceQuote || raw };
 }
 
+function shouldQueueUnmatchedActivity(item: V3EntityReviewItem): boolean {
+  const classified = classifyUnmatchedActivity(item.raw_text, item.category);
+  return (
+    item.category === 'attraction' &&
+    classified.category === 'attraction' &&
+    (item.blocks_publish || item.suggested_action === 'needs_review')
+  );
+}
+
 async function queueUnmatchedAttractions(
   sb: SupabaseClient,
   input: {
@@ -50,7 +60,7 @@ async function queueUnmatchedAttractions(
     result: V3PipelineResult;
   },
 ): Promise<{ saved: number; error: string | null }> {
-  const items: V3EntityReviewItem[] = input.result.match_summary.entity_summary?.review_items
+  const reviewItems: V3EntityReviewItem[] = input.result.match_summary.entity_summary?.review_items
     ?? input.result.match_summary.unmatched.map(item => ({
       raw_text: item.raw_text,
       category: 'attraction' as const,
@@ -62,9 +72,11 @@ async function queueUnmatchedAttractions(
       blocks_publish: true,
       suggested_resolution: { category: 'attraction', policy: 'match-existing-only-no-auto-create' },
     }));
+  const items = reviewItems.filter(shouldQueueUnmatchedActivity);
   if (items.length === 0) return { saved: 0, error: null };
 
   let saved = 0;
+  const terminalConflictMessage = 'pending rows must not have resolved_at';
   for (const item of items) {
     const queueLabel = normalizeQueueLabel(item);
     if (!queueLabel) continue;
@@ -94,6 +106,9 @@ async function queueUnmatchedAttractions(
       }).single();
       if (!rpc.error) {
         saved++;
+        continue;
+      }
+      if (rpc.error.message?.includes(terminalConflictMessage)) {
         continue;
       }
     } catch {
@@ -129,6 +144,7 @@ async function queueUnmatchedAttractions(
         classification_version: 'product-registration-v3-entity-v1',
         note: input.draftId ? `Queued from product_registration_drafts ${input.draftId}` : 'Queued from product_registration_v3',
       }, { onConflict: 'unmatched_scope_key,activity' });
+    if (error?.message?.includes(terminalConflictMessage)) continue;
     if (error) return { saved, error: error.message };
     saved++;
   }

@@ -133,6 +133,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/unmatched-classify',
   '/api/cron/resweep-unmatched',
   '/api/cron/upload-review-auto-replay',
+  '/api/cron/upload-to-open-autopilot',
   '/api/cron/embed-products',
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',

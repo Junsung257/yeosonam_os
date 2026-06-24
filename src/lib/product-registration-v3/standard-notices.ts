@@ -145,8 +145,13 @@ export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
     category: 'group_schedule_penalty',
     risk: 'high',
     visibility: 'customer_visible',
-    required: ['amount', 'currency'],
-    render: ({ amount, currency, unit }) => `단체 일정에 참여하지 않고 개별 일정을 진행하는 경우 현지 규정에 따라 ${unit ? `${unit} ` : ''}${formatMoney(amount, currency)}의 추가 비용이 발생할 수 있습니다.`,
+    required: [],
+    render: ({ amount, currency, unit }) => {
+      if (typeof amount === 'number' && Number.isFinite(amount)) {
+        return `단체 일정에 참여하지 않고 개별 일정을 진행하는 경우 현지 규정에 따라 ${unit ? `${unit} ` : ''}${formatMoney(amount, currency)}의 추가 비용이 발생할 수 있습니다.`;
+      }
+      return '단체 일정에 참여하지 않고 개별 일정을 진행하는 경우 포함 서비스 제공이 어려울 수 있으며, 현지 규정은 예약 시 확인이 필요합니다.';
+    },
   },
   'restaurant.short_walk_possible': {
     category: 'restaurant_access',

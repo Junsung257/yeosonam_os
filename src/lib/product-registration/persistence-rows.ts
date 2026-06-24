@@ -1,7 +1,7 @@
-import { createHash } from 'crypto';
 import { normalizeOptionalTours } from '@/lib/package-acl';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import type { FinalizeUploadRegistrationResult } from './finalize-registration';
+import { buildCustomerSourceRawText } from './source-evidence-raw-text';
 import type { ProductRegistrationResult } from './types';
 
 export type UploadPersistenceRowsInput = {
@@ -96,6 +96,15 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
   const confidenceV3 = input.finalized.confidenceV3;
   const productStatus = input.finalized.productStatus;
   const pkgStatus = input.finalized.pkgStatus;
+  const customerSourceRaw = buildCustomerSourceRawText({
+    productRawText: input.productRawText,
+    documentRawText: maskSensitiveRawText(
+      input.documentRawText,
+      input.landOperatorName ?? input.filenameSupplierRaw,
+    ),
+    priceDates: input.priceDates as Array<{ date?: string | null; price?: number | null }> | null,
+    priceRows: input.priceRows,
+  });
   const productRow = input.internalCode
     ? {
         internal_code: input.internalCode,
@@ -141,8 +150,8 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
       price: ed.price,
       filename: input.sourceFilename,
       file_type: input.fileType,
-      raw_text: input.productRawText,
-      raw_text_hash: createHash('sha256').update(input.productRawText ?? '').digest('hex'),
+      raw_text: customerSourceRaw.rawText,
+      raw_text_hash: customerSourceRaw.rawTextHash,
       display_title: resolveCustomerDisplayTitle({
         extractedDisplayTitle: (ed as { display_title?: string | null }).display_title,
         title: input.title,

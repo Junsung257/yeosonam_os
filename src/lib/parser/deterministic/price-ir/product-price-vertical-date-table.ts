@@ -21,6 +21,21 @@ function parseKrwPrice(line: string): number {
   return value < 10000 ? value * 1000 : value;
 }
 
+function preferredGradePriceIndex(title?: string | null): number | null {
+  const compact = String(title ?? '').replace(/\s+/g, '');
+  if (!compact) return null;
+  if (compact.includes('고품격')) return 2;
+  if (compact.includes('품격')) return 1;
+  if (compact.includes('실속')) return 0;
+  return null;
+}
+
+function pickProductPrice(prices: number[], options: PriceIROptions): number {
+  const preferredIndex = preferredGradePriceIndex(options.title);
+  if (preferredIndex != null && prices[preferredIndex] > 0) return prices[preferredIndex];
+  return prices[0] ?? 0;
+}
+
 function parseDateListLine(line: string, yearHint?: number): string[] {
   const compact = line
     .replace(/[()[\]{}]/g, ' ')
@@ -239,13 +254,15 @@ export function extractProductPriceVerticalDateRows(
     const dates = parseDateListLine(lines[i], options.year);
     if (dates.length === 0) continue;
 
-    let price = 0;
+    const prices: number[] = [];
     let priceIndex = i + 1;
-    for (; priceIndex < Math.min(lines.length, i + 5); priceIndex++) {
-      price = parseKrwPrice(lines[priceIndex]);
-      if (price > 0) break;
+    for (; priceIndex < Math.min(lines.length, i + 8); priceIndex++) {
       if (parseDateListLine(lines[priceIndex], options.year).length > 0) break;
+      const price = parseKrwPrice(lines[priceIndex]);
+      if (price > 0) prices.push(price);
+      else if (prices.length > 0) break;
     }
+    const price = pickProductPrice(prices, options);
     if (price <= 0) continue;
 
     for (const date of dates) {
@@ -257,7 +274,7 @@ export function extractProductPriceVerticalDateRows(
         status: 'available',
       });
     }
-    i = priceIndex;
+    i = Math.max(i, priceIndex - 1);
   }
 
   rows.push(...byDate.values());

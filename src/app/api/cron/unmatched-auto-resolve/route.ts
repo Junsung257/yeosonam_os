@@ -43,6 +43,12 @@ function minScoreFrom(): number {
   return Number.isFinite(value) ? value : 75;
 }
 
+type AutoResolveOptions = {
+  limit?: number;
+  minScore?: number;
+  wikidataEnabled?: boolean;
+};
+
 async function addAlias(attractionId: string, aliases: string[] | null, alias: string, now: string) {
   const cleanAlias = alias.replace(/\s+/g, ' ').trim();
   if (!cleanAlias || aliases?.includes(cleanAlias)) return;
@@ -130,16 +136,14 @@ async function queueWikidataCandidate(unmatched: UnmatchedRow, top: WikidataSugg
   });
 }
 
-async function handleUnmatchedAutoResolve(request: NextRequest) {
-  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-
+async function runUnmatchedAutoResolve(options: AutoResolveOptions = {}) {
   if (!isSupabaseConfigured) {
     return { ok: true, scanned: 0, resolved: 0, wikidataSuggested: 0, errors: [] as string[] };
   }
 
-  const minScore = minScoreFrom();
-  const limit = limitFrom(request);
-  const wikidataEnabled = process.env.UNMATCHED_AUTO_RESOLVE_WIKIDATA !== 'false';
+  const minScore = options.minScore ?? minScoreFrom();
+  const limit = options.limit ?? 500;
+  const wikidataEnabled = options.wikidataEnabled ?? process.env.UNMATCHED_AUTO_RESOLVE_WIKIDATA !== 'false';
   const errors: string[] = [];
   const affectedAttractionIds = new Set<string>();
   let scanned = 0;
@@ -285,6 +289,21 @@ async function handleUnmatchedAutoResolve(request: NextRequest) {
     active_pending_after: await countActiveUnmatched(),
     errors: errors.slice(0, 20),
   };
+}
+
+async function handleUnmatchedAutoResolve(request: NextRequest) {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+
+  try {
+    return await runUnmatchedAutoResolve({
+      limit: limitFrom(request),
+      minScore: minScoreFrom(),
+      wikidataEnabled: process.env.UNMATCHED_AUTO_RESOLVE_WIKIDATA !== 'false',
+    });
+  } catch (error) {
+    const message = sanitizeDbError(error, 'unmatched auto resolve failed');
+    return { ok: false, error: message, errors: [message] };
+  }
 }
 
 export const GET = withCronLogging('unmatched-auto-resolve', handleUnmatchedAutoResolve);

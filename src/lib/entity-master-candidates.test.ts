@@ -120,6 +120,104 @@ describe('entity master candidate automation', () => {
     expect(multi.autoAction).toBe('needs_review');
   });
 
+  it('rejects operational fragments from the June unmatched backlog', () => {
+    const airport = evaluateMasterCandidate({
+      rawLabel: '漠PUS-FSZ',
+      category: 'attraction',
+      occurrenceCount: 12,
+      evidenceCount: 4,
+    });
+    const productTitle = evaluateMasterCandidate({
+      rawLabel: '카멜리아 후쿠오카 갓성비 시내핵심 3일',
+      category: 'attraction',
+      occurrenceCount: 3,
+      evidenceCount: 1,
+    });
+    const guideNotice = evaluateMasterCandidate({
+      rawLabel: '※ 한국인 또는 한국어 가능 현지 가이드',
+      category: 'attraction',
+      occurrenceCount: 10,
+      evidenceCount: 5,
+    });
+    const destinationTag = evaluateMasterCandidate({
+      rawLabel: '#시즈오카',
+      category: 'attraction',
+      occurrenceCount: 21,
+      evidenceCount: 7,
+    });
+
+    expect(airport.promotionStatus).toBe('rejected_noise');
+    expect(productTitle.promotionStatus).toBe('rejected_noise');
+    expect(guideNotice.promotionStatus).toBe('rejected_noise');
+    expect(destinationTag.promotionStatus).toBe('rejected_noise');
+  });
+
+  it('does not auto-create internal masters from descriptive route prose', () => {
+    const routeMetric = evaluateMasterCandidate({
+      rawLabel: '총길이 430M',
+      category: 'attraction',
+      occurrenceCount: 6,
+      evidenceCount: 3,
+    });
+    const descriptive = evaluateMasterCandidate({
+      rawLabel: '가파른 협곡이 어우러져 중국 북방 산수의 웅장함과 아름다움을 한껏 드러냅니다.',
+      category: 'attraction',
+      occurrenceCount: 20,
+      evidenceCount: 10,
+    });
+
+    expect(routeMetric.promotionStatus).toBe('rejected_noise');
+    expect(descriptive.autoAction).toBe('needs_review');
+    expect(descriptive.suggestedMaster.customer_publishable).toBe(false);
+  });
+
+  it('rejects low-value operational leftovers instead of making candidate places', () => {
+    const familyDoc = evaluateMasterCandidate({
+      rawLabel: '- 부모와 동행해도 영문 가족관계증명서 반드시 지참',
+      category: 'attraction',
+    });
+    const benefit = evaluateMasterCandidate({
+      rawLabel: '커피 또는 음료 제공',
+      category: 'attraction',
+    });
+    const surcharge = evaluateMasterCandidate({
+      rawLabel: '유류할증료',
+      category: 'attraction',
+    });
+    const genericPark = evaluateMasterCandidate({
+      rawLabel: '놀이공원 무제한 이용 가능',
+      category: 'attraction',
+    });
+
+    expect(familyDoc.promotionStatus).toBe('rejected_noise');
+    expect(benefit.promotionStatus).toBe('rejected_noise');
+    expect(surcharge.promotionStatus).toBe('rejected_noise');
+    expect(genericPark.promotionStatus).toBe('rejected_noise');
+  });
+
+  it('keeps two-token attraction names when the suffix token is generic by itself', () => {
+    const decision = evaluateMasterCandidate({
+      rawLabel: '사이샹 옛거리',
+      category: 'attraction',
+      occurrenceCount: 2,
+      evidenceCount: 2,
+    });
+
+    expect(decision.normalizedLabel).toBe('사이샹 옛거리');
+  });
+
+  it('extracts the real place name from "called as" descriptions', () => {
+    const decision = evaluateMasterCandidate({
+      rawLabel: '비밀의 사원이라 불리는 링엄사',
+      category: 'attraction',
+      occurrenceCount: 10,
+      evidenceCount: 5,
+    });
+
+    expect(decision.normalizedLabel).toBe('링엄사');
+    expect(decision.autoAction).toBe('create_internal_master');
+  });
+
   it('normalizes decorative supplier prefixes without losing the useful label', () => {
     expect(normalizeCandidateLabel('▶인생샷의 성지! 연인들의 필수 방문 코스 [키스 오브 브릿지]'))
       .toBe('인생샷의 성지! 연인들의 필수 방문 코스 [키스 오브 브릿지]');

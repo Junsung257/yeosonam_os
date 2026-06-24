@@ -3,18 +3,15 @@ import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { countActiveUnmatched } from '@/lib/unmatched-lifecycle';
+import { GET as entityMasterCandidatesGet } from '../entity-master-candidates/route';
+import { GET as entityResolutionGet } from '../entity-resolution/route';
+import { GET as promoteInternalCandidatesGet } from '../promote-internal-candidates/route';
+import { GET as resweepUnmatchedGet } from '../resweep-unmatched/route';
+import { GET as unmatchedAutoResolveGet } from '../unmatched-auto-resolve/route';
+import { GET as unmatchedClassifyGet } from '../unmatched-classify/route';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
-
-const PIPELINE = [
-  '/api/cron/unmatched-classify',
-  '/api/cron/resweep-unmatched',
-  '/api/cron/unmatched-auto-resolve',
-  '/api/cron/entity-master-candidates',
-  '/api/cron/entity-resolution',
-  '/api/cron/promote-internal-candidates',
-] as const;
 
 type StepResult = {
   path: string;
@@ -23,26 +20,48 @@ type StepResult = {
   body: unknown;
 };
 
-async function callStep(request: NextRequest, path: string): Promise<StepResult> {
-  const url = new URL(path, request.nextUrl.origin);
-  const limit = request.nextUrl.searchParams.get('limit');
-  if (limit) url.searchParams.set('limit', limit);
+type PipelineStep = {
+  path: string;
+  run: (request: NextRequest) => Promise<Response> | Response;
+};
 
-  const authorization = request.headers.get('authorization');
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: authorization ? { authorization } : undefined,
-    cache: 'no-store',
-  });
+const PIPELINE: PipelineStep[] = [
+  {
+    path: '/api/cron/unmatched-classify',
+    run: unmatchedClassifyGet,
+  },
+  {
+    path: '/api/cron/resweep-unmatched',
+    run: resweepUnmatchedGet,
+  },
+  {
+    path: '/api/cron/unmatched-auto-resolve',
+    run: unmatchedAutoResolveGet,
+  },
+  {
+    path: '/api/cron/entity-master-candidates',
+    run: entityMasterCandidatesGet,
+  },
+  {
+    path: '/api/cron/entity-resolution',
+    run: entityResolutionGet,
+  },
+  {
+    path: '/api/cron/promote-internal-candidates',
+    run: promoteInternalCandidatesGet,
+  },
+];
 
+async function runStep(step: PipelineStep, request: NextRequest): Promise<StepResult> {
+  const response = await step.run(request);
   let body: unknown = null;
   try {
     body = await response.json();
   } catch {
     body = await response.text().catch(() => null);
   }
-
-  return { path, ok: response.ok, status: response.status, body };
+  const bodyOk = (body as { ok?: unknown } | null)?.ok !== false;
+  return { path: step.path, ok: response.ok && bodyOk, status: response.status, body };
 }
 
 async function handleUnmatchedOrchestrator(request: NextRequest) {
@@ -52,28 +71,25 @@ async function handleUnmatchedOrchestrator(request: NextRequest) {
   const steps: StepResult[] = [];
   const errors: string[] = [];
 
-  for (const path of PIPELINE) {
+  for (const stepConfig of PIPELINE) {
     try {
-      const step = await callStep(request, path);
+      const step = await runStep(stepConfig, request);
       steps.push(step);
       if (!step.ok) {
-        errors.push(`${path}: status=${step.status}`);
+        errors.push(`${step.path}: status=${step.status}`);
         break;
       }
       const stepErrors = (step.body as { errors?: unknown })?.errors;
       if (Array.isArray(stepErrors) && stepErrors.length > 0) {
-        errors.push(...stepErrors.slice(0, 3).map(error => `${path}: ${String(error)}`));
+        errors.push(...stepErrors.slice(0, 3).map(error => `${step.path}: ${String(error)}`));
       }
     } catch (error) {
-      errors.push(sanitizeDbError(error, `${path} failed`));
+      errors.push(sanitizeDbError(error, `${stepConfig.path} failed`));
       break;
     }
   }
 
   const activePendingAfter = await countActiveUnmatched();
-  if (activePendingAfter > 0) {
-    errors.push(`active_pending_after=${activePendingAfter}`);
-  }
 
   return {
     ok: errors.length === 0,

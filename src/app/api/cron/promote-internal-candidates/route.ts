@@ -51,14 +51,13 @@ async function findExisting(name: string, aliases: string[]) {
   return null;
 }
 
-const handlePromoteInternalCandidates = async (request: NextRequest) => {
-  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
   if (!isSupabaseConfigured) {
     return { ok: true, scanned: 0, promoted: 0, linkedExisting: 0, errors: [] as string[] };
   }
 
   try {
-    const limit = limitFrom(request);
+    const limit = options.limit ?? 50;
     const { data, error } = await supabaseAdmin
       .from('entity_master_candidates')
       .select('id, candidate_key, raw_label, normalized_label, canonical_name, country_scope, region_scope, destination_scope, source_unmatched_ids, external_sources, suggested_master, decision_reason')
@@ -165,6 +164,11 @@ const handlePromoteInternalCandidates = async (request: NextRequest) => {
     const message = sanitizeDbError(error, 'promote internal candidates failed');
     return { ok: false, error: message, errors: [message] };
   }
+}
+
+const handlePromoteInternalCandidates = async (request: NextRequest) => {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+  return runPromoteInternalCandidates({ limit: limitFrom(request) });
 };
 
 export const GET = withCronLogging('promote-internal-candidates', handlePromoteInternalCandidates);

@@ -684,6 +684,28 @@ describe('extractPriceIR product price vertical date table', () => {
       '2027-01-19',
     ]);
   });
+
+  it('selects the matching grade column for vertical date rows with multiple package prices', () => {
+    const rawText = [
+      '상품가',
+      '9/30',
+      '799,000',
+      '1,269,000',
+      '1,429,000',
+      '10/7',
+      '799,000',
+      '1,269,000',
+      '1,429,000',
+    ].join('\n');
+
+    const economy = extractPriceIR(rawText, { year: 2026, title: '부산-계림 3박5일 실속PKG' });
+    const premium = extractPriceIR(rawText, { year: 2026, title: '부산-계림 3박5일 품격PKG' });
+    const deluxe = extractPriceIR(rawText, { year: 2026, title: '부산-계림 3박5일 고품격PKG' });
+
+    expect(economy.rows.find(row => row.date === '2026-09-30')?.adult_price).toBe(799000);
+    expect(premium.rows.find(row => row.date === '2026-09-30')?.adult_price).toBe(1269000);
+    expect(deluxe.rows.find(row => row.date === '2026-09-30')?.adult_price).toBe(1429000);
+  });
 });
 
 const TAIPEI_COMPACT_GRADE_PERIOD_TABLE = `
