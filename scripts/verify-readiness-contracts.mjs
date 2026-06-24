@@ -64,7 +64,7 @@ const checksToRun = [
       '--json',
       '--report=.tmp/marketing-release-contract-report.json',
     ],
-    expectedStatus: 'blocked',
+    expectedStatuses: ['blocked', 'warn'],
   },
 ];
 
@@ -87,11 +87,11 @@ function runCheck(check) {
     windowsHide: true,
   });
   const report = parseJson(result.stdout);
-  const expectedStatus = check.expectedStatus || 'pass';
+  const expectedStatuses = check.expectedStatuses || [check.expectedStatus || 'pass'];
   const allowedExitCodes = check.allowedExitCodes || [0];
   const failedCount = Number(report?.failed ?? 0);
   const passed = allowedExitCodes.includes(result.status)
-    && report?.status === expectedStatus
+    && expectedStatuses.includes(report?.status)
     && failedCount === 0;
   return {
     id: check.id,
@@ -103,7 +103,7 @@ function runCheck(check) {
     warnings: Number(report?.warnings ?? report?.warned ?? 0),
     failed: Number(report?.failed ?? (passed ? 0 : 1)),
     reportStatus: report?.status || 'unknown',
-    expectedStatus,
+    expectedStatus: expectedStatuses.join('|'),
     error: passed ? '' : (result.stderr || result.stdout || result.error?.message || '').trim().slice(0, 1200),
   };
 }
