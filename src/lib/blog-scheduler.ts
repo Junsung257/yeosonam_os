@@ -215,7 +215,7 @@ export async function ensureDailyPublishableQueue(opts?: {
 
       rowsRaw.push({
         topic,
-        source: 'micro_angle_refill',
+        source: 'coverage_gap',
         priority: 72,
         destination,
         category: template.category,
