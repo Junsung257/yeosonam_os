@@ -45,7 +45,7 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
-import { getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
@@ -84,6 +84,38 @@ const MAX_QUALITY_REPAIR_ROUNDS = 3;
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
+
+function getQueueMicroAngle(item: any): string | null {
+  const value = item?.meta?.micro_angle;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function classifyPublisherFailure(reason?: string): string {
+  const text = (reason ?? '').toLowerCase();
+  if (!text) return 'other';
+  if (text.includes('duplicate') || text.includes('slug') || text.includes('중복')) return 'duplicate';
+  if (text.includes('topic_fit') || text.includes('destination_prefix')) return 'topic_fit';
+  if (text.includes('structure_integrity') || text.includes('structure')) return 'structure_integrity';
+  if (text.includes('keyword_density')) return 'keyword_density';
+  if (text.includes('table_integrity') || text.includes('table')) return 'table_integrity';
+  if (text.includes('render_integrity') || text.includes('render')) return 'render_integrity';
+  if (text.includes('intent_quality') || text.includes('intent')) return 'intent_quality';
+  if (text.includes('editorial_quality') || text.includes('editorial')) return 'editorial_quality';
+  if (text.includes('image_quality') || text.includes('image')) return 'image_quality';
+  if (text.includes('seo')) return 'seo_score';
+  if (text.includes('db') || text.includes('insert') || text.includes('update')) return 'database';
+  return 'other';
+}
+
+function buildPublisherFailureBreakdown(results: Array<{ status: string; reason?: string }>): Record<string, number> {
+  return results
+    .filter(result => result.status !== 'published' && result.status !== 'done' && result.status !== 'deferred_buffer')
+    .reduce<Record<string, number>>((acc, result) => {
+      const bucket = classifyPublisherFailure(result.reason);
+      acc[bucket] = (acc[bucket] ?? 0) + 1;
+      return acc;
+    }, {});
+}
 
 function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string; dayKey: string } {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -350,6 +382,7 @@ function buildQualityGateInput(
     category: item.category,
     content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
     product_id: item.product_id ?? null,
+    micro_angle: getQueueMicroAngle(item),
   };
 }
 
@@ -632,6 +665,15 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     // 원자적 큐 클레임 — FOR UPDATE SKIP LOCKED 로 중복 발행 방지
+    const queueRefill = await ensureDailyPublishableQueue({
+      postsPerDay: targetPostsToday,
+      minCandidates: Math.max(targetPostsToday * 3, remainingToday * CLAIM_POOL_MULTIPLIER, 8),
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`publishable_queue_refill_failed: ${message}`);
+      return null;
+    });
+
     const claimLimit = Math.min(
       MAX_CANDIDATE_POOL,
       Math.max(MAX_BATCH, remainingToday * CLAIM_POOL_MULTIPLIER),
@@ -656,6 +698,7 @@ async function runBlogPublisher(request: NextRequest) {
       } else {
       return {
         processed: 0,
+        published: 0,
         message: '발행할 토픽 없음',
         dailyQuota: {
           day: todayQuota.dayKey,
@@ -664,6 +707,8 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        queueRefill,
+        failure_breakdown: { candidate_shortage: 1 },
         errors,
       };
     }
@@ -867,18 +912,26 @@ async function runBlogPublisher(request: NextRequest) {
       errors.push(...indexingWorker.errors.map((error) => `indexing: ${error}`));
     }
 
+    const publishedCount = results.filter(r => r.status === 'published').length;
+    const failureBreakdown = buildPublisherFailureBreakdown(results);
+    if (publishedCount === 0 && remainingToday > 0) {
+      errors.push('publisher_zero_published_with_remaining_quota');
+    }
+
     return {
       processed: results.length,
-      published: results.filter(r => r.status === 'published').length,
+      published: publishedCount,
       indexingWorker,
       dailyQuota: {
         day: todayQuota.dayKey,
         target: targetPostsToday,
         alreadyPublishedBeforeRun: todayQuota.count,
         remainingBeforeRun: remainingToday,
-        remainingAfterRun: Math.max(0, remainingToday - results.filter(r => r.status === 'published').length),
+        remainingAfterRun: Math.max(0, remainingToday - publishedCount),
       },
       staleRecovery,
+      queueRefill,
+      failure_breakdown: failureBreakdown,
       extraClaimRounds,
       pullForwarded,
       results,
@@ -1180,6 +1233,7 @@ async function processQueueItem(
         category: item.category,
         content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
         product_id: item.product_id ?? null,
+        micro_angle: getQueueMicroAngle(item),
       });
     }
 
@@ -1195,6 +1249,7 @@ async function processQueueItem(
         category: item.category,
         content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
         product_id: item.product_id ?? null,
+        micro_angle: getQueueMicroAngle(item),
       });
     }
 
@@ -1211,6 +1266,7 @@ async function processQueueItem(
         category: item.category,
         content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
         product_id: item.product_id ?? null,
+        micro_angle: getQueueMicroAngle(item),
       });
     }
 

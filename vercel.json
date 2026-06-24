@@ -119,7 +119,7 @@
     },
     {
       "path": "/api/cron/blog-daily-summary",
-      "schedule": "10 0 * * *"
+      "schedule": "12 13 * * *"
     },
     {
       "path": "/api/cron/sync-engagement",

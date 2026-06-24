@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { DEFAULT_POSTS_PER_DAY, assignPublishSlots, refillWeeklyQueue } from '@/lib/blog-scheduler';
+import { assignPublishSlots, getBlogPublishingPolicy, normalizeDailyPostTarget, refillWeeklyQueue } from '@/lib/blog-scheduler';
 import { ensureAllDestinationsHavePillar } from '@/lib/blog-pillar-generator';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
@@ -18,12 +18,15 @@ const handleSchedule = async (request: NextRequest) => {
   }
 
   try {
+    const policy = await getBlogPublishingPolicy('global');
+    const postsPerDay = normalizeDailyPostTarget(policy.posts_per_day);
     const pillarResult = await ensureAllDestinationsHavePillar();
-    const result = await refillWeeklyQueue({ postsPerDay: DEFAULT_POSTS_PER_DAY });
-    const slotAssignment = await assignPublishSlots(DEFAULT_POSTS_PER_DAY);
+    const result = await refillWeeklyQueue({ postsPerDay });
+    const slotAssignment = await assignPublishSlots(postsPerDay);
 
     return {
       ok: true,
+      postsPerDay,
       pillars: pillarResult,
       refill: result,
       slot_assignment: slotAssignment,

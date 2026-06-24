@@ -3,9 +3,12 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
+import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 
 /**
- * 일일 발행 요약 + 저성과 글 자동 재생성 트리거 — 매일 09:00 KST (00:00 UTC)
+ * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
+ * Runs after the final daily blog-publisher slot, so the report covers today's
+ * completed KST publishing window instead of a morning pre-publish snapshot.
  *
  * 1) 어제 발행 통계 → publishing_policies.daily_summary_webhook 으로 push
  * 2) auto_regenerate_underperformers ON 시:
@@ -17,7 +20,54 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
-const MIN_DAILY_BLOG_POSTS = 3;
+function getKstDayRange(offsetDays = 0): { start: Date; end: Date; dayKey: string } {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  kst.setUTCDate(kst.getUTCDate() + offsetDays);
+  const year = kst.getUTCFullYear();
+  const month = kst.getUTCMonth();
+  const date = kst.getUTCDate();
+  const start = new Date(Date.UTC(year, month, date, -9, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month, date + 1, -9, 0, 0, 0));
+  return {
+    start,
+    end,
+    dayKey: `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
+  };
+}
+
+async function insertDedupedBlogAlert(input: {
+  severity: string;
+  title: string;
+  message: string;
+  refType: string;
+  refId: string;
+  meta: Record<string, unknown>;
+  dedupeOpenByRefType?: boolean;
+}): Promise<void> {
+  let existingQuery = supabaseAdmin
+    .from('admin_alerts')
+    .select('id')
+    .eq('category', 'blog')
+    .eq('ref_type', input.refType)
+    .is('acknowledged_at', null)
+    .limit(1);
+  if (!input.dedupeOpenByRefType) {
+    existingQuery = existingQuery.eq('ref_id', input.refId);
+  }
+  const { data: existing } = await existingQuery;
+  if (existing && existing.length > 0) return;
+
+  await supabaseAdmin.from('admin_alerts').insert({
+    category: 'blog',
+    severity: input.severity,
+    title: input.title,
+    message: input.message,
+    ref_type: input.refType,
+    ref_id: input.refId,
+    meta: input.meta,
+  });
+}
 
 async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -40,6 +90,109 @@ function isGoogleIndexedReport(report: any): boolean {
   return coverage.includes('indexed')
     || coverage.includes('색인이 생성')
     || coverage.includes('색인 생성');
+}
+
+type BlogOpsWatcherIssue = {
+  code: string;
+  severity: 'info' | 'warning' | 'high' | 'critical';
+  title: string;
+  detail: string;
+  recommendation: string;
+};
+
+function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
+  agent: 'blog_ops_watcher';
+  level: 'healthy' | 'watch' | 'risk' | 'blocked';
+  issue_count: number;
+  issues: BlogOpsWatcherIssue[];
+  next_action: string;
+} {
+  const issues: BlogOpsWatcherIssue[] = [];
+
+  if (sourceErrors.includes('daily_summary_source_queries_timed_out')) {
+    issues.push({
+      code: 'source_queries_timed_out',
+      severity: 'critical',
+      title: 'Blog data source timed out',
+      detail: 'Daily summary source queries timed out, so publish counts and queue status may be incomplete.',
+      recommendation: 'Check Supabase REST/Data API health before judging publish success or running bulk repairs.',
+    });
+  }
+
+  if (summary.under_daily_target) {
+    issues.push({
+      code: 'daily_publish_sla_miss',
+      severity: summary.published === 0 ? 'critical' : 'high',
+      title: 'Daily blog publish target missed',
+      detail: `Published ${summary.published}/${summary.min_daily_target} posts for ${summary.date} KST.`,
+      recommendation: 'Inspect blog-publisher, active queue rows, and recent quality-gate failures before requeueing.',
+    });
+  }
+
+  if (summary.publisher_cron && summary.publisher_cron.ran_today === false) {
+    issues.push({
+      code: 'publisher_cron_not_observed',
+      severity: 'critical',
+      title: 'Blog publisher cron did not run today',
+      detail: `No blog-publisher cron run was recorded for ${summary.date} KST. Last run: ${summary.publisher_cron.last_run_at ?? 'unknown'}.`,
+      recommendation: 'Check Vercel Cron delivery, Deployment Protection bypass, and CRON_SECRET before manually forcing publication.',
+    });
+  }
+
+  if (summary.queue_failed > 0) {
+    issues.push({
+      code: 'queue_failures_present',
+      severity: 'high',
+      title: 'Blog queue has failed rows',
+      detail: `${summary.queue_failed} failed queue rows are present.`,
+      recommendation: 'Group failures by failure_code, fix repeat classes, then requeue only retryable rows.',
+    });
+  }
+
+  const duplicateFailures = Number(summary.failure_breakdown?.publisher?.duplicate ?? 0);
+  if (duplicateFailures > 0) {
+    issues.push({
+      code: 'duplicate_failures_present',
+      severity: 'high',
+      title: 'Duplicate blog candidates blocked publishing',
+      detail: `${duplicateFailures} publisher candidates were blocked by duplicate checks.`,
+      recommendation: 'Keep the duplicate gate enabled and refill with destination + micro_angle candidates instead of retrying skipped topics.',
+    });
+  }
+
+  if (Array.isArray(summary.search_standard?.health_issues) && summary.search_standard.health_issues.length > 0) {
+    issues.push({
+      code: 'search_visibility_issues',
+      severity: 'warning',
+      title: 'Search visibility needs attention',
+      detail: summary.search_standard.health_issues.join(', '),
+      recommendation: 'Separate publish health from indexing/ranking health; verify GSC, IndexNow, sitemap, and rank snapshots.',
+    });
+  }
+
+  if (summary.under_daily_target && summary.queue_pending === 0) {
+    issues.push({
+      code: 'publish_queue_empty',
+      severity: 'high',
+      title: 'Blog publish queue appears empty',
+      detail: 'The daily target was missed and no queued rows were counted.',
+      recommendation: 'Run topic generation/scheduler after confirming the DB source is healthy.',
+    });
+  }
+
+  const hasCritical = issues.some((issue) => issue.severity === 'critical');
+  const hasHigh = issues.some((issue) => issue.severity === 'high');
+  const hasWarning = issues.some((issue) => issue.severity === 'warning');
+  const level = hasCritical ? 'blocked' : hasHigh ? 'risk' : hasWarning ? 'watch' : 'healthy';
+  const nextAction = issues[0]?.recommendation ?? 'No action needed. Keep the daily publishing and indexing checks running.';
+
+  return {
+    agent: 'blog_ops_watcher',
+    level,
+    issue_count: issues.length,
+    issues,
+    next_action: nextAction,
+  };
 }
 
 async function runDailySummary(request: NextRequest) {
@@ -67,12 +220,10 @@ async function runDailySummary(request: NextRequest) {
     { data: null } as any,
   );
   const policy = policyRow?.[0];
+  const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
 
-  // 어제 통계 (24h)
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yStart = new Date(yesterday); yStart.setHours(0, 0, 0, 0);
-  const yEnd = new Date(yesterday); yEnd.setHours(23, 59, 59, 999);
+  // Today in KST. The cron runs after the final daily publisher slot.
+  const reportDay = getKstDayRange();
   const recentSearchStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const thirtyDaysAgo = new Date();
@@ -84,11 +235,12 @@ async function runDailySummary(request: NextRequest) {
     { data: [], count: 0 },
     { data: null, count: 0 },
     { data: null, count: 0 },
+    { data: [], count: 0 },
   ] as any;
   const summaryResults = await withTimeout(Promise.all([
     supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
-      .gte('published_at', yStart.toISOString()).lte('published_at', yEnd.toISOString()),
+      .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
     supabaseAdmin.from('blog_topic_queue').select('status', { count: 'exact' })
       .in('status', ['queued', 'failed']),
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
@@ -101,11 +253,14 @@ async function runDailySummary(request: NextRequest) {
       .gte('checked_at', recentSearchStart.toISOString()),
     supabaseAdmin.from('rank_history').select('slug', { count: 'exact', head: true })
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),
+    supabaseAdmin.from('cron_health').select('cron_name, last_status, last_run_at, last_error_count, last_summary')
+      .eq('cron_name', 'blog-publisher')
+      .limit(1),
   ]), 18_000, summaryFallback);
   if (summaryResults === summaryFallback) {
     errors.push('daily_summary_source_queries_timed_out');
   }
-  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes] = summaryResults;
+  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes, publisherCronRes] = summaryResults;
 
   const published = pubRes.data || [];
   const indexReports = indexRes.data || [];
@@ -176,12 +331,24 @@ async function runDailySummary(request: NextRequest) {
   const avgReadability = readabilityScores.length > 0
     ? Math.round(readabilityScores.reduce((a, b) => a + b, 0) / readabilityScores.length)
     : null;
+  const publisherCron = publisherCronRes.data?.[0] || null;
+  const publisherSummary = publisherCron?.last_summary && typeof publisherCron.last_summary === 'object'
+    ? publisherCron.last_summary as Record<string, any>
+    : {};
+  const failureBreakdown = publisherSummary.failure_breakdown && typeof publisherSummary.failure_breakdown === 'object'
+    ? publisherSummary.failure_breakdown
+    : {};
+  const publisherLastRunAt = publisherCron?.last_run_at ? new Date(publisherCron.last_run_at) : null;
+  const publisherRanToday = publisherLastRunAt
+    ? publisherLastRunAt >= reportDay.start && publisherLastRunAt < reportDay.end
+    : false;
 
   const summary = {
-    date: yStart.toISOString().split('T')[0],
+    date: reportDay.dayKey,
+    timezone: 'Asia/Seoul',
     published: pubRes.count || 0,
-    min_daily_target: MIN_DAILY_BLOG_POSTS,
-    under_daily_target: (pubRes.count || 0) < MIN_DAILY_BLOG_POSTS,
+    min_daily_target: dailyTarget,
+    under_daily_target: (pubRes.count || 0) < dailyTarget,
     queue_pending: queueCounts.queued || 0,
     queue_failed: queueCounts.failed || 0,
     rank_alerts_open: alertRes.count || 0,
@@ -209,21 +376,36 @@ async function runDailySummary(request: NextRequest) {
     },
     avg_readability: avgReadability,
     destination_distribution: destDist,
+    publisher_cron: {
+      last_status: publisherCron?.last_status ?? null,
+      last_run_at: publisherCron?.last_run_at ?? null,
+      last_error_count: publisherCron?.last_error_count ?? null,
+      last_summary: publisherCron?.last_summary ?? null,
+      ran_today: publisherRanToday,
+    },
+    failure_breakdown: {
+      publisher: failureBreakdown,
+      candidate_shortage: summaryResults === summaryFallback ? null : Math.max(0, dailyTarget - (queueCounts.queued || 0)),
+    },
+    next_action: Object.keys(failureBreakdown).length > 0
+      ? 'Fix the largest publisher failure bucket before requeueing duplicate topics.'
+      : 'Keep scheduler and publisher running; refill queue if pending candidates drop below target.',
   };
+  const opsWatcher = buildBlogOpsWatcherReport(summary, errors);
+  (summary as any).ops_watcher = opsWatcher;
 
   if (summary.under_daily_target) {
-    const message = `블로그 일일 발행 SLA 미달: ${summary.date} published=${summary.published}, min=${MIN_DAILY_BLOG_POSTS}`;
+    const message = `블로그 일일 발행 SLA 미달: ${summary.date} KST published=${summary.published}, min=${dailyTarget}`;
     errors.push(message);
-    await supabaseAdmin.from('admin_alerts').insert({
-      category: 'blog',
+    await insertDedupedBlogAlert({
       severity: summary.published === 0 ? 'high' : 'medium',
       title: '블로그 일일 발행 SLA 미달',
       message,
-      ref_type: 'blog_daily_summary',
-      ref_id: summary.date,
+      refType: 'blog_daily_summary',
+      refId: summary.date,
       meta: {
         published: summary.published,
-        min_daily_target: MIN_DAILY_BLOG_POSTS,
+        min_daily_target: dailyTarget,
         queue_pending: summary.queue_pending,
         queue_failed: summary.queue_failed,
         recommendation: '품질 게이트 실패 또는 큐 부족 원인을 확인하고 대체 토픽을 큐잉하세요.',
@@ -234,17 +416,38 @@ async function runDailySummary(request: NextRequest) {
   if (searchHealthIssues.length > 0) {
     const message = `블로그 검색 제출 상태 점검 필요: ${searchHealthIssues.join(', ')}`;
     errors.push(message);
-    await supabaseAdmin.from('admin_alerts').insert({
-      category: 'blog',
+    await insertDedupedBlogAlert({
       severity: 'medium',
       title: '블로그 검색 제출 상태 점검 필요',
       message,
-      ref_type: 'blog_search_indexing',
-      ref_id: summary.date,
+      refType: 'blog_search_indexing',
+      refId: summary.date,
       meta: {
         search_standard: summary.search_standard,
         recommendation: '네이버는 IndexNow/Search Advisor, 구글은 GSC sitemap과 URL Inspection 권한을 우선 확인하세요.',
       },
+    });
+  }
+
+  for (const issue of opsWatcher.issues) {
+    await insertDedupedBlogAlert({
+      severity: issue.severity,
+      title: `[Blog Ops Watcher] ${issue.title}`,
+      message: `${issue.detail}\nNext: ${issue.recommendation}`,
+      refType: `blog_ops_watcher:${issue.code}`,
+      refId: summary.date,
+      meta: {
+        issue,
+        watcher_level: opsWatcher.level,
+        report_date: summary.date,
+        published: summary.published,
+        min_daily_target: summary.min_daily_target,
+        queue_pending: summary.queue_pending,
+        queue_failed: summary.queue_failed,
+        publisher_cron: summary.publisher_cron,
+        search_health_issues: summary.search_standard.health_issues,
+      },
+      dedupeOpenByRefType: true,
     });
   }
 

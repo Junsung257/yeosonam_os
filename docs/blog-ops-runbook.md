@@ -142,3 +142,37 @@ The blog system is complete only when the admin UI can answer these questions wi
   - the Search Console property is tried separately through candidates: configured property, canonical URL-prefix, domain property, and non-www fallback;
   - `/api/admin/blog/ops-summary` counts Google unknown URLs only for canonical `https://www.yeosonam.com/blog/...` inspection records.
 - Do not use the GSC property host to rewrite the URL being inspected. The inspected URL must stay equal to the public canonical URL.
+
+## 2026-06-23 Daily Summary Timing Evidence
+
+- The live `blog-publisher` schedule runs at 12:05, 15:05, 18:05, and 21:05 KST.
+- `blog-daily-summary` previously ran at 09:10 KST, before the daily publish windows, so it was not a true post-publish operating report.
+- The daily summary cron now runs at 22:12 KST (`12 13 * * *` UTC) and summarizes the current KST day after the final publisher slot.
+- The daily summary uses the global publishing policy target instead of a hardcoded minimum, and duplicate unresolved `admin_alerts` for the same report date/type are suppressed.
+- 2026-06-23 live checks found the public `/blog` page reachable. Supabase REST later recovered enough to verify that 2026-06-23 KST had `published=0`, while `blog_topic_queue` still had due queued rows.
+- Vercel logs showed `blog-publisher` requests reaching the protected `*.vercel.app` deployment URL with HTTP 200 from Deployment Protection instead of the app route. A protection-bypass query reached the app route and returned JSON 401, which confirms the publisher function itself is behind the protection layer.
+- Do not treat an edge-middleware 200 from a protected deployment URL as publish success. Success requires a `blog-publisher` row in `cron_health`/`cron_run_logs` for the current KST day plus `content_creatives.published_at` rows meeting the policy target.
+- The daily summary now includes a `Blog Ops Watcher` report and checks whether `blog-publisher` ran today. It writes deduped unresolved alerts by issue code, so repeat failures accumulate in `cron_run_logs` without spamming duplicate open alerts.
+- Required production fix: allow Vercel Cron to reach the cron API route despite Deployment Protection. Prefer a secure Vercel-supported automation bypass or a protection setting scoped to production cron traffic; do not commit the bypass secret into `vercel.json`.
+
+## Vercel Cron Bypass Fallback
+
+- `.github/workflows/blog-external-cron.yml` is the Vercel-Cron-independent scheduler.
+- It calls the custom domain, not the protected `*.vercel.app` deployment URL:
+  - `https://www.yeosonam.com/api/cron/blog-scheduler?force=true` at 11:50 KST to replenish publishable queue candidates.
+  - `https://www.yeosonam.com/api/cron/blog-publisher` at 12:07, 15:07, 18:07, and 21:07 KST.
+  - `https://www.yeosonam.com/api/cron/blog-daily-summary` at 22:12 KST.
+- The workflow requires a GitHub Actions repository secret named `CRON_SECRET`, with the same value as the production Vercel `CRON_SECRET`.
+- Scheduled workflow calls include `force=true`, because blog publishing, scheduling, and daily reporting are critical cron jobs and must not be silently skipped by `DB_RESOURCE_SAVER_MODE`.
+- The workflow treats `blog-publisher` as failed when `remainingBeforeRun > 0` and `published=0`. HTTP 200 is not enough; the run must either publish or surface a concrete failure bucket.
+- This bypasses the Vercel Cron delivery problem, but it still depends on the Vercel-hosted app route being reachable through `www.yeosonam.com`.
+- If Vercel hosting/functions are fully down, move the publisher worker itself to an external runtime such as a small VPS, Cloudflare Worker plus queue, or Supabase Edge Function; do not rely on HTTP calls into the Vercel app in that failure mode.
+
+## 2026-06-24 Micro-Angle Publish Recovery
+
+- Root cause after cron/auth recovery: the active queue was mostly stale duplicate candidates, especially broad `destination + value` topics. Keeping the duplicate gate is correct; the fix is to generate more specific candidates before publishing.
+- `blog-scheduler` and `blog-publisher` now call `ensureDailyPublishableQueue()` to maintain at least 8-12 queued candidates.
+- New generated candidates keep `angle_type='value'` for the content generator, but store specific `meta.micro_angle` values such as `budget_family`, `transport_cost`, `hotel_area`, `food_budget`, `weather_packing`, `first_day_plan`, `shopping_budget`, `kid_friendly`, `airport_arrival`, and `local_mobility`.
+- The duplicate gate now uses `destination + micro_angle` for micro-angle candidates. Rows without `micro_angle` still use the older broad `destination + angle_type` protection.
+- `cron_run_logs` are no longer skipped for critical blog crons while DB resource saver mode is on. This preserves the daily audit trail for publisher, scheduler, and summary runs.
+- Daily summary now records the publisher `failure_breakdown` and a reader-facing `next_action`, so repeated duplicate, structure, render, or candidate-shortage failures can be tracked without retrying the same skipped topics.

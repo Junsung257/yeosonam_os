@@ -79,6 +79,7 @@ interface CheckInput {
   category?: string | null;
   content_type?: string | null;
   product_id?: string | null;
+  micro_angle?: string | null;
   skipFuzzyDuplicate?: boolean;
 }
 
@@ -755,6 +756,35 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
 
   // 2) (destination + angle_type) 14일 내 중복 — travel_packages JOIN + content_creatives.destination 둘 다 확인
   if (shouldCheckDestinationAngleDuplicate(input)) {
+    const microAngle = typeof input.micro_angle === 'string' ? input.micro_angle.trim() : '';
+    if (microAngle) {
+      const microQuery = supabaseAdmin
+        .from('content_creatives')
+        .select('id, slug')
+        .eq('destination', input.destination)
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .is('product_id', null)
+        .gte('published_at', sinceIso)
+        .contains('generation_meta', { micro_angle: microAngle });
+
+      if (input.excludeContentCreativeId) {
+        microQuery.neq('id', input.excludeContentCreativeId);
+      }
+
+      const { data: microDupes } = await microQuery.limit(1);
+
+      if (microDupes && microDupes.length > 0) {
+        return {
+          gate: 'duplicate',
+          passed: false,
+          reason: `최근 ${DEDUP_WINDOW_DAYS}일 내 ${input.destination} + ${microAngle} 정보성 글 이미 발행됨`,
+          evidence: { type: 'destination_micro_angle', existing_slug: microDupes[0].slug },
+        };
+      }
+
+      return { gate: 'duplicate', passed: true };
+    }
     // 2a) travel_packages JOIN 경로 (상품 블로그)
     const angleQuery = supabaseAdmin
       .from('content_creatives')

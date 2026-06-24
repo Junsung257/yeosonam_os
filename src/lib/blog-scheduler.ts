@@ -1,3 +1,286 @@
+type MicroAngleId =
+  | 'budget_family'
+  | 'transport_cost'
+  | 'hotel_area'
+  | 'food_budget'
+  | 'weather_packing'
+  | 'first_day_plan'
+  | 'shopping_budget'
+  | 'kid_friendly'
+  | 'airport_arrival'
+  | 'local_mobility';
+
+interface MicroAngleTemplate {
+  id: MicroAngleId;
+  category: string;
+  keywordSuffix: string;
+  topic: (destination: string, year: number, month: number) => string;
+}
+
+const MICRO_ANGLE_TEMPLATES: MicroAngleTemplate[] = [
+  {
+    id: 'budget_family',
+    category: 'travel_tips',
+    keywordSuffix: 'family budget',
+    topic: (destination, year) => `${destination} 가족여행 ${year} 실제 경비표`,
+  },
+  {
+    id: 'transport_cost',
+    category: 'transport',
+    keywordSuffix: 'transport cost',
+    topic: (destination, year) => `${destination} 렌터카 택시 픽업 이동비 비교 ${year}`,
+  },
+  {
+    id: 'hotel_area',
+    category: 'hotel',
+    keywordSuffix: 'hotel area budget',
+    topic: (destination) => `${destination} 호텔 위치별 예산 차이와 숙소 지역 선택`,
+  },
+  {
+    id: 'food_budget',
+    category: 'food',
+    keywordSuffix: 'food budget',
+    topic: (destination, year) => `${destination} 식비 예산 현지 맛집 비용 가이드 ${year}`,
+  },
+  {
+    id: 'weather_packing',
+    category: 'preparation',
+    keywordSuffix: 'weather packing',
+    topic: (destination, _year, month) => `${destination} ${month}월 날씨와 옷차림 준비물 체크`,
+  },
+  {
+    id: 'first_day_plan',
+    category: 'itinerary',
+    keywordSuffix: 'first day itinerary',
+    topic: (destination) => `${destination} 도착 첫날 일정 공항에서 숙소까지 동선`,
+  },
+  {
+    id: 'shopping_budget',
+    category: 'shopping',
+    keywordSuffix: 'shopping budget',
+    topic: (destination) => `${destination} 쇼핑 예산 선물 리스트와 면세점 체크`,
+  },
+  {
+    id: 'kid_friendly',
+    category: 'family',
+    keywordSuffix: 'kids travel',
+    topic: (destination) => `${destination} 아이와 가기 좋은 코스와 가족 일정`,
+  },
+  {
+    id: 'airport_arrival',
+    category: 'transport',
+    keywordSuffix: 'airport arrival',
+    topic: (destination) => `${destination} 공항 도착 후 입국 심사 환전 픽업 순서`,
+  },
+  {
+    id: 'local_mobility',
+    category: 'transport',
+    keywordSuffix: 'local mobility',
+    topic: (destination, year) => `${destination} 현지 이동수단 그랩 택시 렌터카 선택법 ${year}`,
+  },
+];
+
+const MICRO_ANGLE_DESTINATIONS = [
+  '괌',
+  '세부',
+  '보홀',
+  '발리',
+  '나트랑',
+  '다낭',
+  '방콕',
+  '오사카',
+  '싱가포르',
+  '마닐라',
+  '클락',
+  '푸꾸옥',
+  '대만',
+  '홍콩',
+  '삿포로',
+];
+
+function microAngleKey(destination: string | null | undefined, microAngle: string | null | undefined): string | null {
+  const dest = destination?.trim();
+  const angle = microAngle?.trim();
+  if (!dest || !angle) return null;
+  return `${dest}::${angle}`;
+}
+
+function readMicroAngle(row: { angle_type?: string | null; generation_meta?: any; meta?: any }): string | null {
+  const fromMeta = row.meta?.micro_angle ?? row.generation_meta?.micro_angle;
+  if (typeof fromMeta === 'string' && fromMeta.trim()) return fromMeta.trim();
+  const rawAngle = row.angle_type;
+  if (typeof rawAngle === 'string' && MICRO_ANGLE_TEMPLATES.some(t => t.id === rawAngle)) return rawAngle;
+  return null;
+}
+
+function expectedMicroSlug(destination: string, microAngle: MicroAngleId): string {
+  const destSlug = romanize(destination) || destination.toLowerCase().replace(/\s+/g, '-');
+  return `${destSlug}-${microAngle.replace(/_/g, '-')}`;
+}
+
+export async function ensureDailyPublishableQueue(opts?: {
+  postsPerDay?: number;
+  minCandidates?: number;
+}): Promise<{
+  added: number;
+  existingQueued: number;
+  targetCandidates: number;
+  skippedRecentDuplicate: number;
+  skippedQueuedDuplicate: number;
+  rejectedByTopicFit: number;
+  insertedTopics: string[];
+}> {
+  const policy = await getBlogPublishingPolicy('global');
+  const postsPerDay = normalizeDailyPostTarget(opts?.postsPerDay ?? policy.posts_per_day);
+  const targetCandidates = Math.max(opts?.minCandidates ?? 0, postsPerDay * 3, 8);
+
+  const { count: queuedCount } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'queued');
+
+  const existingQueued = queuedCount ?? 0;
+  if (existingQueued >= targetCandidates) {
+    return {
+      added: 0,
+      existingQueued,
+      targetCandidates,
+      skippedRecentDuplicate: 0,
+      skippedQueuedDuplicate: 0,
+      rejectedByTopicFit: 0,
+      insertedTopics: [],
+    };
+  }
+
+  const since = new Date();
+  since.setDate(since.getDate() - Math.max(14, policy.multi_angle_gap_days ?? 14));
+
+  const [recentPublishedRes, activeQueueRes] = await Promise.all([
+    supabaseAdmin
+      .from('content_creatives')
+      .select('destination, angle_type, slug, generation_meta')
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .gte('published_at', since.toISOString())
+      .limit(300),
+    supabaseAdmin
+      .from('blog_topic_queue')
+      .select('destination, angle_type, topic, meta')
+      .in('status', ['queued', 'generating'])
+      .limit(500),
+  ]);
+
+  const recentKeys = new Set<string>();
+  for (const row of recentPublishedRes.data ?? []) {
+    const key = microAngleKey(row.destination, readMicroAngle(row));
+    if (key) recentKeys.add(key);
+  }
+
+  const queuedKeys = new Set<string>();
+  const queuedTopics = new Set<string>();
+  for (const row of activeQueueRes.data ?? []) {
+    const key = microAngleKey(row.destination, readMicroAngle(row));
+    if (key) queuedKeys.add(key);
+    if (typeof row.topic === 'string') queuedTopics.add(row.topic);
+  }
+
+  const recentDestinations = (recentPublishedRes.data ?? [])
+    .map(row => row.destination)
+    .filter((destination): destination is string => typeof destination === 'string' && destination.trim().length > 0);
+  const destinations = Array.from(new Set([...recentDestinations, ...MICRO_ANGLE_DESTINATIONS])).slice(0, 24);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const deficit = Math.max(0, targetCandidates - existingQueued);
+
+  let skippedRecentDuplicate = 0;
+  let skippedQueuedDuplicate = 0;
+  const rowsRaw: Array<Record<string, unknown>> = [];
+
+  for (const destination of destinations) {
+    for (const template of MICRO_ANGLE_TEMPLATES) {
+      if (rowsRaw.length >= deficit * 2) break;
+      const key = microAngleKey(destination, template.id);
+      const topic = template.topic(destination, year, month);
+      if (!key) continue;
+      if (recentKeys.has(key)) {
+        skippedRecentDuplicate += 1;
+        continue;
+      }
+      if (queuedKeys.has(key) || queuedTopics.has(topic)) {
+        skippedQueuedDuplicate += 1;
+        continue;
+      }
+
+      rowsRaw.push({
+        topic,
+        source: 'micro_angle_refill',
+        priority: 72,
+        destination,
+        category: template.category,
+        angle_type: 'value',
+        primary_keyword: `${destination} ${template.keywordSuffix}`,
+        keyword_tier: 'longtail' as KeywordTier,
+        competition_level: 'low',
+        meta: {
+          micro_angle: template.id,
+          audience: template.id === 'kid_friendly' || template.id === 'budget_family' ? 'family' : 'general',
+          season_month: month,
+          expected_slug: expectedMicroSlug(destination, template.id),
+          generated_by: 'micro_angle_refill',
+        },
+      });
+    }
+    if (rowsRaw.length >= deficit * 2) break;
+  }
+
+  const { rows, rejected } = filterTopicFitPassed(rowsRaw as any[]);
+  const rowsToInsert = rows.slice(0, deficit);
+  if (rowsToInsert.length === 0) {
+    return {
+      added: 0,
+      existingQueued,
+      targetCandidates,
+      skippedRecentDuplicate,
+      skippedQueuedDuplicate,
+      rejectedByTopicFit: rejected.length,
+      insertedTopics: [],
+    };
+  }
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .insert(rowsToInsert)
+    .select('topic');
+
+  if (error) {
+    console.warn('[scheduler] micro-angle insert failed:', error);
+    return {
+      added: 0,
+      existingQueued,
+      targetCandidates,
+      skippedRecentDuplicate,
+      skippedQueuedDuplicate,
+      rejectedByTopicFit: rejected.length,
+      insertedTopics: [],
+    };
+  }
+
+  const insertedTopics = (inserted ?? [])
+    .map((row: { topic?: string | null }) => row.topic)
+    .filter((topic): topic is string => typeof topic === 'string' && topic.length > 0);
+
+  return {
+    added: insertedTopics.length,
+    existingQueued,
+    targetCandidates,
+    skippedRecentDuplicate,
+    skippedQueuedDuplicate,
+    rejectedByTopicFit: rejected.length,
+    insertedTopics,
+  };
+}
+
 /**
  * 블로그 스케줄러 — 발행 캘린더 자동 생성
  *
@@ -20,6 +303,7 @@ import { pickSeasonalTopics, generateNextQuarterTopics } from './blog-seasonal-c
 import { analyzeCoverageGaps } from './blog-coverage-analyzer';
 import { researchKeywordsBatch, classifyKeywordTier, type KeywordTier } from './keyword-research';
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
+import { romanize } from './slug-utils';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];
@@ -96,6 +380,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
   seasonal_added: number;
   coverage_added: number;
   product_added: number;
+  micro_angle_added: number;
   total_added: number;
 }> {
   const policy = await getBlogPublishingPolicy('global');
@@ -320,11 +605,17 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
 
   // assignPublishSlots는 route.ts(cron 엔트리)에서 호출하므로 여기서는 생략
 
+  const microAngleRefill = await ensureDailyPublishableQueue({ postsPerDay }).catch((e) => {
+    console.warn('[scheduler] micro-angle refill failed:', e);
+    return { added: 0 };
+  });
+
   return {
     seasonal_added: seasonalAdded,
     coverage_added: coverageAdded,
     product_added: productAdded,
-    total_added: seasonalAdded + coverageAdded + productAdded,
+    micro_angle_added: microAngleRefill.added,
+    total_added: seasonalAdded + coverageAdded + productAdded + microAngleRefill.added,
   };
 }
 

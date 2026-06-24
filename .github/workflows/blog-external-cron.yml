@@ -2,6 +2,8 @@ name: Blog External Cron
 
 on:
   schedule:
+    # KST 11:50, replenish publishable micro-angle queue before publisher slots.
+    - cron: '50 2 * * *'
     # KST 12:07, 15:07, 18:07, 21:07.
     - cron: '7 3,6,9,12 * * *'
     # KST 22:12, after the final daily publisher slot.
@@ -14,6 +16,7 @@ on:
         type: choice
         default: blog-publisher
         options:
+          - blog-scheduler
           - blog-publisher
           - blog-daily-summary
       force:
@@ -49,6 +52,9 @@ jobs:
 
           if [ -z "$endpoint" ]; then
             case "${{ github.event.schedule }}" in
+              "50 2 * * *")
+                endpoint="blog-scheduler"
+                ;;
               "12 13 * * *")
                 endpoint="blog-daily-summary"
                 ;;
@@ -56,7 +62,7 @@ jobs:
                 endpoint="blog-publisher"
                 ;;
             esac
-            force="false"
+            force="true"
           fi
 
           query=""
@@ -103,8 +109,22 @@ jobs:
           const fs = require('fs');
           const body = fs.readFileSync('response.json', 'utf8');
           const data = JSON.parse(body);
+          const endpoint = '${{ steps.select.outputs.endpoint }}';
           if (data?.ok === false) {
             console.error('Cron endpoint returned ok=false');
             process.exit(1);
+          }
+          if (data?.skipped && data?.reason === 'db_resource_saver_mode') {
+            console.error('Critical blog cron was skipped by DB resource saver mode');
+            process.exit(1);
+          }
+          if (endpoint === 'blog-publisher') {
+            const remainingBeforeRun = Number(data?.dailyQuota?.remainingBeforeRun ?? data?.dailyQuota?.remaining ?? 0);
+            const published = Number(data?.published ?? 0);
+            if (remainingBeforeRun > 0 && published === 0) {
+              console.error(`Publisher produced zero posts with remaining quota (${remainingBeforeRun}).`);
+              console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
+              process.exit(1);
+            }
           }
           NODE

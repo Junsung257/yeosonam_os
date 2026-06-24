@@ -6,6 +6,8 @@ const ON_VALUES = new Set(['1', 'true', 'on', 'enabled', 'yes']);
 const PRODUCT_CRON_ALLOW_VALUES = new Set(['product', 'product-crons', 'product_crons']);
 const CRITICAL_CRONS = new Set([
   'blog-publisher',
+  'blog-scheduler',
+  'blog-daily-summary',
 ]);
 
 export function isDbResourceSaverEnabled(): boolean {
@@ -86,6 +88,13 @@ export function maybeSkipCronForResourceSaver(request: NextRequest, cronName: st
   return maybeSkipNonCriticalCron(request, cronName);
 }
 
-export function shouldSkipCronDbLogging(): boolean {
-  return isDbResourceSaverEnabled();
+export function isCriticalCron(cronName: string): boolean {
+  return CRITICAL_CRONS.has(cronName);
+}
+
+export function shouldSkipCronDbLogging(cronName?: string, request?: NextRequest | Request): boolean {
+  if (!isDbResourceSaverEnabled()) return false;
+  if (cronName && isCriticalCron(cronName)) return false;
+  if (request && isCronForceRun(request)) return false;
+  return true;
 }

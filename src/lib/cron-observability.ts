@@ -97,7 +97,7 @@ export function withCronLogging(cronName: string, handler: CronHandler, options:
     const elapsedMs = finishedAt.getTime() - startedAt.getTime();
 
     let alerted = false;
-    if (isSupabaseConfigured && !shouldSkipCronDbLogging()) {
+    if (isSupabaseConfigured && !shouldSkipCronDbLogging(cronName, request)) {
       try {
         if (!shouldAlert && status === 'partial_failure') {
           const { data: prev } = await withTimeout(
