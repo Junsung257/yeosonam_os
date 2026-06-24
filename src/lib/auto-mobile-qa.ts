@@ -195,6 +195,23 @@ function missingCustomerLandingMarkers(text: string): string[] {
     .map((group) => group.label);
 }
 
+function finalDayTextWindow(text: string, dayMarker: string): string {
+  const dayIndex = text.lastIndexOf(dayMarker);
+  return dayIndex >= 0 ? text.slice(dayIndex, dayIndex + 700) : '';
+}
+
+function departurePhrases(city: string): string[] {
+  const compactCity = city.replace(/\s+/g, '');
+  return Array.from(new Set([
+    `${city} 출발`,
+    `${city}국제공항 출발`,
+    `${city}공항 출발`,
+    `${compactCity} 출발`,
+    `${compactCity}국제공항 출발`,
+    `${compactCity}공항 출발`,
+  ]));
+}
+
 function extractCoreTitleTokens(title: string): string[] {
   // "★스팟특가★ 부산出 보홀 PKG 5/6일 [제주항공]" → ["보홀", "제주항공"] 같은 핵심 명사.
   // 한국어 명사 길이 2자 이상 / 영문 3자 이상 토큰만.
@@ -354,16 +371,18 @@ export function analyzeMobileHtml(
       });
     }
   }
-
   if (expected.lastDayNumber && expected.homeCity && expected.lastDayArrivalCity) {
     const dayMarker = `DAY ${expected.lastDayNumber}`;
-    const dayIndex = text.indexOf(dayMarker);
-    const dayText = dayIndex >= 0 ? text.slice(dayIndex, dayIndex + 700) : '';
-    if (dayText.includes(`${expected.homeCity} 출발`) || dayText.includes(`${expected.lastDayArrivalCity} 출발`)) {
+    const dayText = finalDayTextWindow(text, dayMarker);
+    const wrongDeparture = [
+      ...departurePhrases(expected.homeCity),
+      ...departurePhrases(expected.lastDayArrivalCity),
+    ].some(phrase => dayText.includes(phrase));
+    if (wrongDeparture) {
       incidents.push({
         id: `${prefix}final_arrival_rendered_as_departure`,
         severity: 'critical',
-        message: `[${surface}] 마지막 DAY 도착행이 출발 문구로 렌더됨 (${expected.lastDayArrivalCity} 도착 expected)`,
+        message: `[${surface}] final DAY arrival row rendered as departure text`,
       });
     }
   }

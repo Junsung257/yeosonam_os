@@ -38,3 +38,13 @@ The replay queue now records `UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY` as a recovera
 ## Operating Note
 
 For already-failed uploads whose replay row was created before the long-source preservation fix, the saved queue row may still be truncated. Re-upload the original full source after this deployment so the queue-first path can save the complete replay source and split all variants.
+
+## Follow-Up: Mobile Final Arrival QA False Positive
+
+The replayed Guilin source confirmed the queue-first fix: the full 15,046-character source was preserved and six product variants were created.
+
+The remaining blocker was not catalog splitting. `auto_mobile_qa` blocked all six rows with `mobile_final_arrival_rendered_as_departure`, while the stored itinerary already had the correct final flight sequence: Guilin departure followed by Busan Gimhae arrival.
+
+Root cause: the QA rule used the first `DAY N` marker in rendered text. On the customer package page, day navigation and flight-summary text can appear before the actual final-day itinerary body, so the QA window could include an earlier home-departure phrase and falsely mark the final arrival as a departure.
+
+Fix: final-day QA now uses the last `DAY N` marker to prefer the itinerary body, and the regression covers a page where an earlier navigation window contains `Busan Gimhae departure` while the actual final day correctly renders `Busan Gimhae arrival`.
