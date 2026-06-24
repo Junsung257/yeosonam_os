@@ -38,6 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-06-24 | `2026-06-24-upload-function-timeout-queue-first.md` | Queue-first upload timeout prevention and replay-source preservation evidence. |
 | 2026-06-08 | `2026-06-08-product-registration-learning-engine-audit.md` | Self-improving registration engine verification and live readiness evidence. |
 | 2026-06-20 | `2026-06-20-upload-inbox-engine-hardening.md` | Offline upload-inbox hardening evidence for price/date, flight, and remaining itinerary blockers. |
 | 2026-06-05 | `2026-06-05-upload-registration-goal-completion-audit.md` | Completion evidence for centralized upload registration. |

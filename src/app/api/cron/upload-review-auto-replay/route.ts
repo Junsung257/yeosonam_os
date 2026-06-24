@@ -41,6 +41,7 @@ const RECOVERABLE_REASON_PATTERNS = [
   /catalog split/i,
   /PRODUCT_COUNT_MISMATCH/i,
   /UPLOAD_PIPELINE_SOFT_TIMEOUT/i,
+  /UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY/i,
 ];
 
 function safeAfter(task: () => Promise<void> | void): void {

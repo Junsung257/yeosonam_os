@@ -33,11 +33,74 @@ export const maxDuration = 300;
 
 const UPLOAD_PIPELINE_SOFT_TIMEOUT_MS = Math.max(
   30_000,
-  Math.min(270_000, Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 240_000)),
+  Math.min(120_000, Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 45_000)),
+);
+const UPLOAD_QUEUE_FIRST_TEXT_LENGTH = Math.max(
+  5_000,
+  Math.min(100_000, Number(process.env.UPLOAD_QUEUE_FIRST_TEXT_LENGTH ?? 18_000)),
 );
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function countLikelyPackageSections(rawText: string | null): number {
+  if (!rawText) return 0;
+  const matches = rawText.match(/(?:^|\n)[^\n]{0,80}(?:PKG|Package|PACKAGE)[^\n]{0,80}/gmu);
+  return matches?.length ?? 0;
+}
+
+function shouldQueueFirst(rawText: string | null): boolean {
+  if (!rawText) return false;
+  if (rawText.length >= UPLOAD_QUEUE_FIRST_TEXT_LENGTH) return true;
+  return countLikelyPackageSections(rawText) >= 4;
+}
+
+async function deferUploadForReplay(input: {
+  intake: Extract<Awaited<ReturnType<typeof prepareUploadRequestIntake>>, { ok: true }>;
+  requestId: string;
+  startedAt: number;
+  requestBaseUrl: string;
+  reasonCode: string;
+}) {
+  const elapsedMs = Date.now() - input.startedAt;
+  const replay = await enqueueUploadTimeoutReplay({
+    supabase: supabaseAdmin,
+    isSupabaseConfigured,
+    intake: input.intake,
+    uploadRequestId: input.requestId,
+    elapsedMs,
+    reasonCode: input.reasonCode,
+    timeoutMs: 8_000,
+  }).catch((error): UploadTimeoutReplayQueueResult => ({
+    queued: false,
+    reason: error instanceof Error ? error.message : String(error),
+  }));
+
+  if (replay.queued) {
+    scheduleImmediateUploadTimeoutReplay({
+      safeAfter,
+      requestBaseUrl: input.requestBaseUrl,
+      queueId: replay.queueId,
+      uploadRequestId: input.requestId,
+    });
+  }
+
+  return NextResponse.json(
+    {
+      success: false,
+      code: 'UPLOAD_DEFERRED_FOR_REPLAY',
+      error: replay.queued
+        ? '상품등록 처리 시간이 길어 자동 재처리 큐에 넣었습니다. 같은 원문은 중복 방지 후 재처리됩니다.'
+        : '상품등록 처리 시간이 길어 중단했습니다. 같은 원문을 다시 시도해 주세요.',
+      replayQueued: replay.queued,
+      replayQueueId: replay.queueId,
+      replayReason: replay.reason,
+      retrySafe: true,
+      uploadRequestId: input.requestId,
+    },
+    { status: 202, headers: { 'x-upload-request-id': input.requestId } },
+  );
 }
 
 const postHandler = async (request: NextRequest) => {
@@ -62,6 +125,20 @@ const postHandler = async (request: NextRequest) => {
         { status: intake.status, headers: { 'x-upload-request-id': requestId } },
       );
     }
+    if (shouldQueueFirst(intake.directRawText)) {
+      console.warn('[Upload API] queue-first replay for heavy upload:', {
+        requestId,
+        rawTextLength: intake.directRawText?.length ?? 0,
+        likelyPackageSections: countLikelyPackageSections(intake.directRawText),
+      });
+      return deferUploadForReplay({
+        intake,
+        requestId,
+        startedAt,
+        requestBaseUrl: request.nextUrl.origin,
+        reasonCode: 'UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY',
+      });
+    }
 
     const pipelinePromise = runUploadRegistrationPipeline({
       intake,
@@ -78,66 +155,13 @@ const postHandler = async (request: NextRequest) => {
     ]);
 
     if (raced.kind === 'timeout') {
-      const elapsedMs = Date.now() - startedAt;
-      const replay = await enqueueUploadTimeoutReplay({
-        supabase: supabaseAdmin,
-        isSupabaseConfigured,
+      return deferUploadForReplay({
         intake,
-        uploadRequestId: requestId,
-        elapsedMs,
-      }).catch((error): UploadTimeoutReplayQueueResult => ({
-        queued: false,
-        reason: error instanceof Error ? error.message : String(error),
-      }));
-
-      pipelinePromise
-        .then(result => {
-          console.log('[Upload API] slow pipeline eventually completed:', {
-            requestId,
-            elapsedMs: Date.now() - startedAt,
-            status: result.status,
-          });
-        })
-        .catch(error => {
-          console.warn('[Upload API] slow pipeline eventually failed:', {
-            requestId,
-            elapsedMs: Date.now() - startedAt,
-            message: error instanceof Error ? error.message : String(error),
-          });
-        });
-
-      console.warn('[Upload API] soft timeout -> queued replay:', {
         requestId,
-        elapsedMs,
-        replayQueued: replay.queued,
-        queueId: replay.queueId ?? null,
-        reason: replay.reason ?? null,
+        startedAt,
+        requestBaseUrl: request.nextUrl.origin,
+        reasonCode: 'UPLOAD_PIPELINE_SOFT_TIMEOUT',
       });
-
-      if (replay.queued) {
-        scheduleImmediateUploadTimeoutReplay({
-          safeAfter,
-          requestBaseUrl: request.nextUrl.origin,
-          queueId: replay.queueId,
-          uploadRequestId: requestId,
-        });
-      }
-
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'UPLOAD_DEFERRED_FOR_REPLAY',
-          error: replay.queued
-            ? '상품등록 처리 시간이 길어 자동 재처리 큐에 넣었습니다. 같은 원문은 중복 방지 후 재처리됩니다.'
-            : '상품등록 처리 시간이 길어 중단했습니다. 같은 원문을 다시 시도해 주세요.',
-          replayQueued: replay.queued,
-          replayQueueId: replay.queueId,
-          replayReason: replay.reason,
-          retrySafe: true,
-          uploadRequestId: requestId,
-        },
-        { status: 202, headers: { 'x-upload-request-id': requestId } },
-      );
     }
 
     const { result } = raced;

@@ -47,6 +47,8 @@ export async function enqueueUploadTimeoutReplay(input: {
   intake: UploadRequestIntakeSuccess;
   uploadRequestId: string;
   elapsedMs: number;
+  reasonCode?: string;
+  timeoutMs?: number;
 }): Promise<UploadTimeoutReplayQueueResult> {
   if (!input.isSupabaseConfigured) return { queued: false, reason: 'Supabase is not configured.' };
 
@@ -56,19 +58,21 @@ export async function enqueueUploadTimeoutReplay(input: {
   }
   const rawTextChunk = safeRawTextExcerpt(rawText, DEFAULT_UPLOAD_REVIEW_REPLAY_RAW_TEXT_LIMIT);
   const rawTextStoredLength = rawTextChunk?.length ?? 0;
+  const reasonCode = input.reasonCode || 'UPLOAD_PIPELINE_SOFT_TIMEOUT';
+  const timeoutMs = Math.max(1_000, Math.min(20_000, input.timeoutMs ?? 8_000));
 
-  const { data, error } = await input.supabase
+  const insertPromise = input.supabase
     .from('upload_review_queue')
     .insert({
       severity: 'high',
       status: 'pending',
-      error_reason: `UPLOAD_PIPELINE_SOFT_TIMEOUT: uploadRequestId=${input.uploadRequestId} elapsedMs=${input.elapsedMs}`,
+      error_reason: `${reasonCode}: uploadRequestId=${input.uploadRequestId} elapsedMs=${input.elapsedMs}`,
       source_filename: input.intake.fileName,
       file_hash: input.intake.fileHash,
       normalized_content_hash: null,
       raw_text_chunk: rawTextChunk,
       parsed_draft_json: {
-        code: 'UPLOAD_PIPELINE_SOFT_TIMEOUT',
+        code: reasonCode,
         uploadRequestId: input.uploadRequestId,
         elapsedMs: input.elapsedMs,
         retryPolicy: 'safe_duplicate_guard',
@@ -81,6 +85,10 @@ export async function enqueueUploadTimeoutReplay(input: {
     })
     .select('id')
     .maybeSingle();
+  const timeoutPromise = new Promise<{ data: null; error: { message: string } }>(resolve => {
+    setTimeout(() => resolve({ data: null, error: { message: `upload replay queue insert timed out after ${timeoutMs}ms` } }), timeoutMs);
+  });
+  const { data, error } = await Promise.race([insertPromise, timeoutPromise]);
 
   if (error) return { queued: false, reason: error.message };
   return { queued: true, queueId: typeof data?.id === 'string' ? data.id : undefined };

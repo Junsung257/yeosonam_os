@@ -75,6 +75,7 @@ const SUPPORTED_DESTINATION_CODES = new Set<ProductRegistrationFailureCode>([
 
 const SUPPORTED_REPLAY_CODES = new Set<ProductRegistrationFailureCode>([
   'UPLOAD_PIPELINE_SOFT_TIMEOUT',
+  'UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY',
 ]);
 
 const SUPPORTED_CODES = new Set<ProductRegistrationFailureCode>([

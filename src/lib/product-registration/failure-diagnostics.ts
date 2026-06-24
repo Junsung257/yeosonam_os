@@ -20,6 +20,7 @@ export type ProductRegistrationFailureCode =
   | 'ATTRACTION_UNRESOLVED'
   | 'CUSTOMER_RENDER_BLOCKED'
   | 'UPLOAD_PIPELINE_SOFT_TIMEOUT'
+  | 'UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY'
   | 'UPLOAD_DISCONNECTED'
   | 'SUPABASE_NOT_CONFIGURED'
   | 'REQUEST_SCOPE_ERROR'
@@ -44,13 +45,13 @@ const RULES: Rule[] = [
   {
     code: 'PRICE_ROWS_MISSING',
     severity: 'critical',
-    patterns: [/product_prices missing/i, /가격 행 없음/i, /상품가 행\(product_prices\) 없음/i, /price_tiers\s*없음/i, /product_prices\s*없음/i],
+    patterns: [/product_prices missing/i, /price_tiers missing/i, /product_prices\s+missing/i, /가격 행 없음/u, /상품가 행\(product_prices\) 없음/u],
     nextAction: 'Recover source-backed product price rows before saving or opening the product.',
   },
   {
     code: 'PRICE_DATES_MISSING',
     severity: 'critical',
-    patterns: [/price_dates missing/i, /출발일별 가격\(price_dates\) 없음/i, /price_dates\s*없음/i],
+    patterns: [/price_dates missing/i, /price_dates\s+missing/i, /출발일별 가격.*없음/u, /출발일별 가격\(price_dates\) 없음/u],
     nextAction: 'Recover source-backed departure dates and date-level minimum prices.',
   },
   {
@@ -68,7 +69,7 @@ const RULES: Rule[] = [
   {
     code: 'MODEL_PRICE_UNSUPPORTED',
     severity: 'critical',
-    patterns: [/model-derived price source/i, /ai_fallback:gemini/i, /gemini:실패/i, /Too Many Requests/i],
+    patterns: [/model-derived price source/i, /ai_fallback:gemini/i, /gemini:실패/u, /Too Many Requests/i],
     nextAction: 'Do not publish model-only prices; recover deterministic or supplier-raw price evidence.',
   },
   {
@@ -152,25 +153,31 @@ const RULES: Rule[] = [
   {
     code: 'CUSTOMER_RENDER_BLOCKED',
     severity: 'critical',
-    patterns: [/Customer landing\/A4 blocked/i, /고객용 랜딩\/A4 생성 불가/i, /\bBLOCKED:/i, /final upload gate blocked/i],
+    patterns: [/Customer landing\/A4 blocked/i, /고객용 랜딩\/A4 생성 불가/u, /\bBLOCKED:/i, /final upload gate blocked/i],
     nextAction: 'Keep the product out of customer visibility until all specific blocker codes are cleared.',
   },
   {
     code: 'UPLOAD_PIPELINE_SOFT_TIMEOUT',
     severity: 'high',
-    patterns: [/UPLOAD_PIPELINE_SOFT_TIMEOUT/i, /상품등록 처리 시간이 길어 자동 재처리 큐/i],
+    patterns: [/UPLOAD_PIPELINE_SOFT_TIMEOUT/i],
     nextAction: 'Replay the saved raw text from upload_review_queue with duplicate guard instead of requiring another browser upload.',
+  },
+  {
+    code: 'UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY',
+    severity: 'high',
+    patterns: [/UPLOAD_PIPELINE_DEFERRED_FOR_REPLAY/i],
+    nextAction: 'Replay the saved long raw text from upload_review_queue outside the browser request.',
   },
   {
     code: 'UPLOAD_DISCONNECTED',
     severity: 'high',
-    patterns: [/서버 응답 전에 끊겼습니다/i, /Failed to fetch/i, /request.*disconnected/i],
+    patterns: [/서버 응답 전에 끊겼습니다/u, /Failed to fetch/i, /request.*disconnected/i, /server response.*before/i],
     nextAction: 'Check the upload review queue by uploadRequestId/file hash and replay the failed source through the deterministic runner.',
   },
   {
     code: 'SUPABASE_NOT_CONFIGURED',
     severity: 'high',
-    patterns: [/Supabase가 구성되지 않았습니다/i, /Supabase.*not configured/i, /Missing Supabase URL or service role key/i],
+    patterns: [/Supabase가 구성되지 않았습니다/u, /Supabase.*not configured/i, /Missing Supabase URL or service role key/i],
     nextAction: 'Fix environment configuration before treating the row as a parser failure.',
   },
   {
@@ -182,7 +189,7 @@ const RULES: Rule[] = [
   {
     code: 'PERSISTENCE_CONSTRAINT_FAILED',
     severity: 'critical',
-    patterns: [/violates check constraint/i, /travel_packages 저장 실패/i, /new row for relation .* violates/i],
+    patterns: [/violates check constraint/i, /travel_packages 저장 실패/u, /new row for relation .* violates/i],
     nextAction: 'Repair persistence payload shape and add a storage contract regression before retrying upload.',
   },
 ];
@@ -197,7 +204,6 @@ function uniqueDiagnostics(items: ProductRegistrationFailureDiagnostic[]): Produ
   }
   return unique;
 }
-
 export function classifyProductRegistrationFailure(
   reason: string | null | undefined,
 ): ProductRegistrationFailureDiagnostic[] {
