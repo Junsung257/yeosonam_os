@@ -448,6 +448,10 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
     if (isNextCacheContextUnavailable(error)) {
       return getPostFastUncached(slug);
     }
+    if (isBlogDatabaseUnavailableError(error)) {
+      const fallbackPost = await getPost(slug);
+      if (fallbackPost) return fallbackPost;
+    }
     throw error;
   }
 }

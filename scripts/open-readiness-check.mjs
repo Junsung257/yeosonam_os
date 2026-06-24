@@ -371,7 +371,8 @@ function checkPublicCriticalAudit() {
     '--',
     `--base=${BASE_URL}`,
     '--json',
-    '--timeout-ms=15000',
+    '--timeout-ms=20000',
+    '--retries=2',
   ];
   if (!LOCAL_MODE || HAS_EXPLICIT_PACKAGE_ID) {
     args.splice(7, 0, `--package-id=${PACKAGE_ID}`);

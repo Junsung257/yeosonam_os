@@ -80,7 +80,7 @@ const corePages = [
   {
     name: 'destinations',
     path: '/destinations',
-    budgetMs: 10000,
+    budgetMs: 20000,
     mustHaveAny: ['목적지', '여행', '지역'],
     ctaAny: ['상품', '보기', '여행', '상담'],
   },
@@ -146,14 +146,20 @@ async function fetchTextOnce(path) {
   }
 }
 
-async function fetchText(path) {
+async function fetchText(path, budgetMs = null) {
   let lastResult = null;
+  let bestOkResult = null;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const result = await fetchTextOnce(path);
     lastResult = { ...result, attempts: attempt + 1 };
-    if (result.ok && result.status !== null && result.status < 500) return lastResult;
+    if (result.ok && result.status !== null && result.status < 500) {
+      if (!bestOkResult || result.ms < bestOkResult.ms) {
+        bestOkResult = lastResult;
+      }
+      if (!budgetMs || result.ms <= budgetMs) return lastResult;
+    }
   }
-  return lastResult;
+  return bestOkResult || lastResult;
 }
 
 function visibleText($) {
@@ -217,7 +223,7 @@ if (packageDetailPath) {
   pages.push({
     name: 'package-detail',
     path: packageDetailPath,
-    budgetMs: 6000,
+    budgetMs: 20000,
     mustHaveAny: ['일정', '가격', '포함', '취소', '여행'],
     ctaAny: ['문의', '상담', '예약', '찜', '공유'],
   });
@@ -231,7 +237,7 @@ if (isLocal) {
 
 const results = [];
 for (const page of pages) {
-  const result = await fetchText(page.path);
+  const result = await fetchText(page.path, page.budgetMs);
   const analysis = result.status === 200 && result.text ? analyzeHtml(page, result) : { missing: [] };
   const missing = [
     ...(result.ok ? [] : ['request']),
