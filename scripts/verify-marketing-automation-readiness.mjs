@@ -963,7 +963,7 @@ function staticChecks() {
     'verify-marketing-release-readiness.mjs',
     'marketing-release-smoke',
     '--skip-marketing-automation',
-    "expectedStatus: 'blocked'",
+    "expectedStatuses: ['blocked', 'warn']",
     'checksToRun',
   ]);
   requireCommandPass('script:readiness-contracts-suite-pass', process.execPath, [
