@@ -410,7 +410,7 @@ async function evaluateAndMaybeOpenPackage(input: {
     auditReport: pkg.audit_report,
     packageUpdatedAt: pkg.updated_at,
   });
-  if (!mobileProof.ok && mobileProof.reason !== 'actual /packages mobile browser proof is missing') {
+  if (!mobileProof.ok) {
     reasons.push(`mobile_proof:${mobileProof.reason}`);
   }
 
@@ -509,7 +509,7 @@ async function evaluateAndMaybeOpenPackage(input: {
   if (pkg.internal_code) {
     await input.supabase
       .from('products')
-      .update({ status: 'active', updated_at: openedAt })
+      .update({ status: 'ACTIVE', updated_at: openedAt })
       .eq('internal_code', pkg.internal_code);
   }
 

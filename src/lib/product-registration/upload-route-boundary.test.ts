@@ -884,8 +884,20 @@ describe('upload route registration pipeline boundary', () => {
     expect(lib).toContain('runAutoMobileQA(pkg.id, baseUrl)');
     expect(lib).toContain('evaluateV3CustomerNoticeGate');
     expect(lib).toContain('evaluateCustomerMobileProof');
+    expect(lib).not.toContain("mobileProof.reason !== 'actual /packages mobile browser proof is missing'");
+    expect(lib).toContain('reasons.push(`mobile_proof:${mobileProof.reason}`)');
     expect(lib).toContain('evaluateCustomerDeliveryReadiness');
     expect(lib).toContain("status: 'active'");
     expect(lib).toContain("audit_status: 'clean'");
+  });
+
+  it('exposes saved vs customer-open readiness separately in upload responses', () => {
+    const response = readUploadResponse();
+
+    expect(response).toContain('openReadiness');
+    expect(response).toContain('mobileProofRequiredCount');
+    expect(response).toContain('openEligible');
+    expect(response).toContain('wait_for_upload_to_open_autopilot');
+    expect(response).toContain('run_upload_to_open_autopilot_mobile_proof');
   });
 });

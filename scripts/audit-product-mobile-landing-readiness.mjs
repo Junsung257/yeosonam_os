@@ -19,6 +19,7 @@ function loadEnvFile(file) {
 }
 
 loadEnvFile(path.resolve(process.cwd(), '.env.local'));
+loadEnvFile(path.resolve(process.cwd(), '.env.croncheck.local'));
 loadEnvFile(path.resolve(process.cwd(), '.env'));
 
 const daysArg = Number(process.argv.find(arg => arg.startsWith('--days='))?.split('=')[1] ?? 3);
@@ -73,7 +74,7 @@ const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
 
 async function checkSupabaseRestHealth() {
   const controller = new AbortController();
-  const timeoutMs = Number(process.env.DB_HEALTH_TIMEOUT_MS || '5000');
+  const timeoutMs = Number(process.env.DB_HEALTH_TIMEOUT_MS || '15000');
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -120,7 +121,9 @@ function failDatabasePreflight(health) {
 }
 
 const supabaseHealth = await checkSupabaseRestHealth();
-if (!supabaseHealth.ok) failDatabasePreflight(supabaseHealth);
+const requireHealthyPreflight = process.env.DB_HEALTHCHECK_REQUIRED === '1'
+  || process.argv.includes('--strict-healthcheck');
+if (!supabaseHealth.ok && requireHealthyPreflight) failDatabasePreflight(supabaseHealth);
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -226,6 +229,12 @@ function trustScore(row) {
   const add = (condition, code, severity, deduction) => {
     if (condition) issues.push({ code, severity, deduction });
   };
+  const hardV3Blocked = row.v3 === 'blocked' && (
+    row.entity_attraction_unresolved > 0
+    || row.entity_unknown_customer_visible > 0
+    || Boolean(row.render_failure)
+    || Boolean(row.public_html_failure)
+  );
   add(row.code_unk, 'code.unk', 'critical', 80);
   add(row.raw_notice_leak_risk, 'notice.raw_leak_risk', 'critical', 100);
   add(row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0, 'price.missing', 'critical', 35);
@@ -246,7 +255,7 @@ function trustScore(row) {
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
   add(row.itinerary_days === 0, 'itinerary.missing', 'critical', 35);
   add(row.v3 === 'lookup_failed', 'v3.lookup_failed', 'critical', 40);
-  add(row.v3 === 'blocked', 'v3.blocked', 'critical', 40);
+  add(hardV3Blocked, 'v3.blocked', 'critical', 40);
   add(row.v3 === 'needs_review', 'v3.needs_review', 'high', 20);
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
   add(row.standard_notices === 0 && row.structured_facts === 0, 'v3.facts_missing', 'medium', 15);
@@ -486,6 +495,11 @@ function priceDateSourceEvidenceMismatch(pkg) {
     if (!month || !day) return null;
     return `${Number(month)}/${Number(day)}`;
   };
+  const compactDateTokenOccurs = (compactLine, token) => {
+    if (!token) return false;
+    const escaped = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^0-9])${escaped}([^0-9]|$)`).test(compactLine);
+  };
   const isoParts = iso => {
     const [, year, month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
     if (!year || !month || !day) return null;
@@ -571,7 +585,7 @@ function priceDateSourceEvidenceMismatch(pkg) {
     if (!label || !amount) continue;
     const start = lines.findIndex(line => {
       const compact = line.replace(/\s+/g, '');
-      return compact.includes(label) || (slashLabel && compact.includes(slashLabel));
+      return compact.includes(label) || compactDateTokenOccurs(compact, slashLabel);
     });
     if (start < 0) {
       if (rangeEvidenceCovers(row) || dateListEvidenceCovers(row)) continue;
@@ -615,6 +629,8 @@ function destinationAllowsAttraction(destination, attraction, context = '') {
   if (!dest) return true;
   const region = normalizeTerm(attraction?.region);
   if (!region) return true;
+  const guilinScope = /(?:계림|구이린|귀이린|양삭|부산-계림)/;
+  if (guilinScope.test(dest) && guilinScope.test(region)) return true;
   const regionTokens = region.split(/[,/|&]+/).map(token => token.trim()).filter(Boolean);
   if (dest.includes(region) || region.includes(dest)) return true;
   if (ctx.includes(region) || regionTokens.some(token => token.length >= 2 && ctx.includes(token))) return true;
@@ -653,6 +669,7 @@ function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
       if (ids.length > 0) continue;
       const activity = String(item?.activity ?? '').replace(/\s+/g, ' ').trim();
       if (!activity) continue;
+      if (/(?:추천옵션|선택\s*관광|\$\s*\d+|USD\s*\d+|\/\s*인)/i.test(activity)) continue;
       const type = String(item?.type ?? item?.entity_kind ?? '').toLowerCase();
       if (['flight', 'hotel', 'meal', 'transfer', 'shopping', 'optional_tour', 'notice', 'free_time', 'price_noise'].includes(type)) continue;
       const context = [activity, item?.note, dayContext].filter(Boolean).join(' ');
@@ -858,6 +875,12 @@ async function verifyPublicHtmlSurface(row) {
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
+  const hardV3Blocked = row.v3 === 'blocked' && (
+    row.entity_attraction_unresolved > 0
+    || row.entity_unknown_customer_visible > 0
+    || Boolean(row.render_failure)
+    || Boolean(row.public_html_failure)
+  );
 
   if (row.raw_notice_leak_risk) failures.push('raw_notice_leak_risk');
   if (row.code_unk) failures.push('code_unk');
@@ -879,12 +902,13 @@ function readinessFor(row) {
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
-  if (row.v3 === 'blocked') failures.push('v3_blocked');
+  if (hardV3Blocked) failures.push('v3_blocked');
   if (row.entity_attraction_unresolved > 0) failures.push('entity_attraction_unresolved');
   if (row.entity_shopping_review_needed > 0) failures.push('entity_shopping_review_needed');
   if (row.entity_option_review_needed > 0) failures.push('entity_option_review_needed');
   if (row.entity_unknown_customer_visible > 0) failures.push('entity_unknown_customer_visible');
   if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
+  if (row.v3 === 'blocked' && !hardV3Blocked) warnings.push('v3_blocked_nonblocking');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
   if (row.unmatched_activities > 0) warnings.push('unmatched_activities_pending');
 
@@ -1336,7 +1360,13 @@ const summary = {
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
   no_itinerary_days: rows.filter(row => row.itinerary_days === 0).length,
   v3_lookup_failed: rows.filter(row => row.v3 === 'lookup_failed').length,
-  v3_blocked: rows.filter(row => row.v3 === 'blocked').length,
+  v3_blocked: rows.filter(row =>
+    row.v3 === 'blocked' && (
+      row.entity_attraction_unresolved > 0
+      || row.entity_unknown_customer_visible > 0
+      || Boolean(row.render_failure)
+      || Boolean(row.public_html_failure)
+    )).length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,

@@ -262,8 +262,8 @@ export default async function PackageDetailPage({
     sb.from('travel_packages')
       .select(DETAIL_FIELDS)
       .eq('id', id)
-      .single(),
-    { label: 'package.detail.primary', timeoutMs: 2500 },
+      .maybeSingle(),
+    { label: 'package.detail.primary', timeoutMs: 6000 },
   ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
 
   if (!pkgResult.data) {
@@ -272,8 +272,8 @@ export default async function PackageDetailPage({
       sb.from('travel_packages')
         .select(DETAIL_FIELDS)
         .eq('id', id)
-        .single(),
-      { label: 'package.detail.primary.retry1', timeoutMs: 5000 },
+        .maybeSingle(),
+      { label: 'package.detail.primary.retry1', timeoutMs: 10000 },
     ).catch(() => ({ data: null, error: new Error('package detail retry1 timed out') }));
   }
 
@@ -283,14 +283,22 @@ export default async function PackageDetailPage({
       sb.from('travel_packages')
         .select(DETAIL_FIELDS)
         .eq('id', id)
-        .single(),
-      { label: 'package.detail.primary.retry2', timeoutMs: 8000 },
+        .maybeSingle(),
+      { label: 'package.detail.primary.retry2', timeoutMs: 15000 },
     ).catch(() => ({ data: null, error: new Error('package detail retry2 timed out') }));
   }
 
   const pkg = pkgResult.data;
 
   // 존재하지 않는 패키지 → 404
+  if (!pkg && pkgResult.error) {
+    console.error('[packages/detail] package detail lookup unavailable', {
+      id,
+      message: pkgResult.error instanceof Error ? pkgResult.error.message : String(pkgResult.error),
+    });
+    throw new Error('PACKAGE_DETAIL_LOOKUP_UNAVAILABLE');
+  }
+
   if (!pkg) {
     notFound();
   }
