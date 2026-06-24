@@ -3,6 +3,7 @@ import {
   classifyBlogQueueFailure,
   shouldSelfHealBlogQueueItem,
 } from './blog-queue-failure-policy';
+import { shouldQuarantineQueuedBlogItem } from './blog-queue-lifecycle';
 
 describe('blog queue failure policy', () => {
   it('blocks self-heal for missing pillar context', () => {
@@ -39,5 +40,41 @@ describe('blog queue failure policy', () => {
         self_heal_blocked: true,
       },
     })).toBe(false);
+  });
+
+  it('preflight-quarantines queued duplicate rows instead of reclaiming them', () => {
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 0,
+      lastError: 'duplicate slug already exists',
+      meta: {},
+    })).toMatchObject({
+      quarantine: true,
+      status: 'skipped',
+      reason: 'duplicate_content',
+    });
+  });
+
+  it('preflight-keeps retryable queued rows under the attempt limit', () => {
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 1,
+      lastError: 'temporary database timeout',
+      meta: {},
+      maxAttempts: 2,
+    })).toMatchObject({
+      quarantine: false,
+    });
+  });
+
+  it('preflight-quarantines retryable rows after the attempt limit', () => {
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 2,
+      lastError: 'temporary database timeout',
+      meta: {},
+      maxAttempts: 2,
+    })).toMatchObject({
+      quarantine: true,
+      status: 'failed',
+      reason: 'db_write',
+    });
   });
 });

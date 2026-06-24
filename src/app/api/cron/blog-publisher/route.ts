@@ -49,6 +49,8 @@ import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPos
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
+import { quarantineNonRetryableBlogQueueItems } from '@/lib/blog-queue-lifecycle';
+import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -685,6 +687,10 @@ async function runBlogPublisher(request: NextRequest) {
   try {
     blogStyleGuideCache = null;
     const staleRecovery = await recoverStaleGeneratingQueueItems();
+    const preflightQuarantine = await quarantineNonRetryableBlogQueueItems({
+      limit: MAX_CANDIDATE_POOL * 3,
+      maxAttempts: MAX_ATTEMPTS,
+    });
     const pillarDeferral = await deferDuePillarQueueItems();
     const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
     const targetPostsToday = normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
@@ -703,6 +709,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        preflightQuarantine,
         pillarDeferral,
         errors,
       };
@@ -751,6 +758,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        preflightQuarantine,
         pillarDeferral,
         queueRefill,
         failure_breakdown: { candidate_shortage: 1 },
@@ -766,6 +774,8 @@ async function runBlogPublisher(request: NextRequest) {
     let publishedThisRun = 0;
     let extraClaimRounds = 0;
     let pullForwarded = 0;
+    let emergencyRefillRounds = 0;
+    const emergencyRefills: Array<Awaited<ReturnType<typeof ensureDailyPublishableQueue>> | null> = [];
     for (const item of queue) {
       if (attemptedQueueIds.has(item.id)) {
         results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
@@ -822,9 +832,20 @@ async function runBlogPublisher(request: NextRequest) {
       }
 
       if (!nextQueue || nextQueue.length === 0) {
+        emergencyRefillRounds += 1;
+        const emergencyRefill = await ensureDailyPublishableQueue({
+          postsPerDay: targetPostsToday,
+          minCandidates: Math.max(targetPostsToday * 3, remainingQuota * CLAIM_POOL_MULTIPLIER, 8),
+        }).catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          errors.push(`emergency_publishable_queue_refill_failed: ${message}`);
+          return null;
+        });
+        emergencyRefills.push(emergencyRefill);
+
         const pulled = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds);
         pullForwarded += pulled;
-        if (pulled <= 0) break;
+        if (pulled <= 0 && !emergencyRefill?.added) break;
 
         const retryClaim = await supabaseAdmin.rpc('claim_queue_items', {
           limit_rows: extraClaimLimit,
@@ -975,10 +996,13 @@ async function runBlogPublisher(request: NextRequest) {
         remainingAfterRun: Math.max(0, remainingToday - publishedCount),
       },
       staleRecovery,
+      preflightQuarantine,
       pillarDeferral,
       queueRefill,
       failure_breakdown: failureBreakdown,
       extraClaimRounds,
+      emergencyRefillRounds,
+      emergencyRefills,
       pullForwarded,
       results,
       errors,
@@ -1179,17 +1203,19 @@ async function processQueueItem(
     // 4-Gate (length · cliche · duplicate · keyword_density)
     const blogType: 'product' | 'info' = item.product_id ? 'product' : 'info';
     // Pillar posts: skip keyword density (destination name dominates by design)
-    // Compound destinations (X/Y/Z): use only first city to avoid inflated density
-    const rawKeyword = item.source === 'pillar'
-      ? null
-      : ((generated.generation_meta?.content_brief as { primary_keyword?: string } | undefined)?.primary_keyword
-          || item.primary_keyword
-          || item.destination
-          || (item.meta?.keywords as string[] | undefined)?.[0]
-          || null);
-    const primaryKeyword = rawKeyword?.includes('/')
-      ? rawKeyword.split('/')[0].trim()
-      : rawKeyword;
+    // Compound destinations (X/Y/Z) stay broad enough to avoid single-city keyword stuffing.
+    const generatedPrimaryKeyword =
+      (generated.generation_meta?.content_brief as { primary_keyword?: string } | undefined)?.primary_keyword
+      || (generated.generation_meta?.seo as { primary_keyword?: string } | undefined)?.primary_keyword
+      || null;
+    const primaryKeyword = choosePublisherPrimaryKeyword({
+      source: item.source,
+      productId: item.product_id ?? null,
+      destination: item.destination ?? null,
+      itemPrimaryKeyword: item.primary_keyword ?? (item.meta?.keywords as string[] | undefined)?.[0] ?? null,
+      generatedPrimaryKeyword,
+      topic: item.topic ?? null,
+    });
 
     generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
     generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
@@ -1850,6 +1876,12 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     seo_title: seo.seoTitle,
     seo_description: seo.seoDescription,
     og_image_url,
+    generation_meta: {
+      seo: {
+        primary_keyword: seo.primaryKeyword,
+        secondary_keywords: seo.secondaryKeywords,
+      },
+    },
   };
 }
 

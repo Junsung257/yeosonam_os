@@ -172,6 +172,9 @@ The blog system is complete only when the admin UI can answer these questions wi
 
 - Root cause after cron/auth recovery: the active queue was mostly stale duplicate candidates, especially broad `destination + value` topics. Keeping the duplicate gate is correct; the fix is to generate more specific candidates before publishing.
 - `blog-scheduler` and `blog-publisher` now call `ensureDailyPublishableQueue()` to maintain at least 8-12 queued candidates.
+- `blog-publisher` runs a preflight quarantine before claiming rows. Queued rows that already carry non-retryable duplicate/topic/context failures are moved to `skipped` or `failed` instead of being reclaimed on every run.
+- If the publisher burns through candidates before meeting the remaining daily quota, it performs an emergency micro-angle refill and tries to claim again in the same run.
+- Product keyword-density checks now use a short generated SEO keyword or `destination package` fallback. Compound destinations such as `Da Nang/Hoi An` are not collapsed to a single city, which prevents false stuffing failures.
 - Daily publisher runs defer due `source='pillar'` queue rows by 7 days and lower their priority, because long-form destination hub generation should not consume the daily 3-4 commercial/info publishing slots.
 - New generated candidates keep `angle_type='value'` for the content generator, but store specific `meta.micro_angle` values such as `budget_family`, `transport_cost`, `hotel_area`, `food_budget`, `weather_packing`, `first_day_plan`, `shopping_budget`, `kid_friendly`, `airport_arrival`, and `local_mobility`.
 - The duplicate gate now uses `destination + micro_angle` for micro-angle candidates. Rows without `micro_angle` still use the older broad `destination + angle_type` protection.
