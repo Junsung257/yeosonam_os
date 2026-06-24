@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { getSecret } from '@/lib/secret-registry';
 import type { UploadRequestIntakeSuccess } from './upload-request-intake';
+import { DEFAULT_UPLOAD_REVIEW_REPLAY_RAW_TEXT_LIMIT } from './upload-review-queue';
 
 export type UploadTimeoutReplayQueueResult = {
   queued: boolean;
@@ -53,6 +54,8 @@ export async function enqueueUploadTimeoutReplay(input: {
   if (!rawText || rawText.length < 50) {
     return { queued: false, reason: 'No replayable raw text was available.' };
   }
+  const rawTextChunk = safeRawTextExcerpt(rawText, DEFAULT_UPLOAD_REVIEW_REPLAY_RAW_TEXT_LIMIT);
+  const rawTextStoredLength = rawTextChunk?.length ?? 0;
 
   const { data, error } = await input.supabase
     .from('upload_review_queue')
@@ -63,12 +66,15 @@ export async function enqueueUploadTimeoutReplay(input: {
       source_filename: input.intake.fileName,
       file_hash: input.intake.fileHash,
       normalized_content_hash: null,
-      raw_text_chunk: safeRawTextExcerpt(rawText, 12000),
+      raw_text_chunk: rawTextChunk,
       parsed_draft_json: {
         code: 'UPLOAD_PIPELINE_SOFT_TIMEOUT',
         uploadRequestId: input.uploadRequestId,
         elapsedMs: input.elapsedMs,
         retryPolicy: 'safe_duplicate_guard',
+        rawTextOriginalLength: rawText.length,
+        rawTextStoredLength,
+        rawTextTruncated: rawTextStoredLength < rawText.length,
       },
       product_title: input.intake.fileName,
       land_operator_id: null,

@@ -22,15 +22,26 @@ export type ScheduleUploadReviewQueueInput = UploadReviewQueueRowInput & {
   isSupabaseConfigured: boolean;
 };
 
+export const DEFAULT_UPLOAD_REVIEW_REPLAY_RAW_TEXT_LIMIT = 80_000;
+
 export function scheduleUploadReviewInsert(input: ScheduleUploadReviewQueueInput): void {
   if (!input.isSupabaseConfigured) return;
 
+  const rawTextLimit = input.rawTextLimit ?? DEFAULT_UPLOAD_REVIEW_REPLAY_RAW_TEXT_LIMIT;
   const rawTextChunk = input.rawText != null
-    ? safeRawTextExcerpt(input.rawText, input.rawTextLimit ?? 12000)
+    ? safeRawTextExcerpt(input.rawText, rawTextLimit)
     : input.rawTextChunk ?? null;
+  const rawTextOriginalLength = input.rawText?.trim().length ?? null;
+  const rawTextStoredLength = rawTextChunk?.length ?? null;
   const failureDiagnostics = summarizeProductRegistrationFailures([input.errorReason]);
   const parsedDraftJson = {
     ...(input.parsedDraftJson ?? {}),
+    rawTextOriginalLength,
+    rawTextStoredLength,
+    rawTextTruncated:
+      typeof rawTextOriginalLength === 'number' &&
+      typeof rawTextStoredLength === 'number' &&
+      rawTextStoredLength < rawTextOriginalLength,
     _product_registration_failure_diagnostics: {
       codes: failureDiagnostics.codes,
       diagnostics: failureDiagnostics.diagnostics,
