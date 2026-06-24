@@ -1,17 +1,19 @@
 {
   "critical": [
     "SERPAPI_KEY",
-    "BAND_RSS_URL",
-    "TWITTER_BEARER_TOKEN",
     "NAVER_CLIENT_ID",
     "NAVER_CLIENT_SECRET",
+    "CRON_SECRET"
+  ],
+  "optionalIntegrations": [
+    "BAND_RSS_URL",
+    "TWITTER_BEARER_TOKEN",
     "NAVER_CAFE_ID",
     "GOOGLE_ADS_DEVELOPER_TOKEN",
     "GOOGLE_ADS_CUSTOMER_ID",
     "GOOGLE_ADS_CLIENT_ID",
     "GOOGLE_ADS_CLIENT_SECRET",
-    "SLACK_WEBHOOK_URL",
-    "CRON_SECRET"
+    "SLACK_WEBHOOK_URL"
   ],
   "warnDefaults": [
     "AD_FLAG_UP_BID_FACTOR",

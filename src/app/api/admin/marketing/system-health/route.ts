@@ -89,10 +89,10 @@ function runtimeEnvReadinessCheck(): Check {
       ? 'All runtime integration environment variables are present.'
       : status === 'fail'
         ? `${missing.length} important environment variable(s) are missing. Related integrations will stay degraded or skipped.`
-        : `Runtime is using default values for ${warnings.join(', ')}.`,
+        : `Optional/default runtime settings are not fully configured: ${warnings.join(', ')}.`,
     detail: {
       missing,
-      using_defaults: warnings,
+      optional_or_default_missing: warnings,
       source: 'src/lib/env-check.ts',
       read_only: true,
       external_api_write: false,

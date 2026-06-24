@@ -62,17 +62,19 @@ function sourceTextForRuntimeRefs() {
 
 const contract = JSON.parse(readText(contractPath));
 const critical = Array.isArray(contract.critical) ? contract.critical : [];
+const optionalIntegrations = Array.isArray(contract.optionalIntegrations) ? contract.optionalIntegrations : [];
 const warnDefaults = Array.isArray(contract.warnDefaults) ? contract.warnDefaults : [];
-const allKeys = unique([...critical, ...warnDefaults]);
+const allKeys = unique([...critical, ...optionalIntegrations, ...warnDefaults]);
 const checks = [];
 
-addCheck(checks, 'runtime-env-contract:shape', critical.length > 0 && warnDefaults.length > 0 ? 'pass' : 'fail', {
+addCheck(checks, 'runtime-env-contract:shape', critical.length > 0 && optionalIntegrations.length > 0 && warnDefaults.length > 0 ? 'pass' : 'fail', {
   contractPath,
   criticalCount: critical.length,
+  optionalIntegrationsCount: optionalIntegrations.length,
   warnDefaultsCount: warnDefaults.length,
 });
 
-const duplicates = duplicateValues([...critical, ...warnDefaults]);
+const duplicates = duplicateValues([...critical, ...optionalIntegrations, ...warnDefaults]);
 addCheck(checks, 'runtime-env-contract:no-duplicates', duplicates.length === 0 ? 'pass' : 'fail', {
   duplicates,
 });

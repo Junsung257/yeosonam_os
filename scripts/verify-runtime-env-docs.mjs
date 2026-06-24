@@ -37,6 +37,7 @@ function checkDocument(path, keys) {
 const contract = readJson(contractPath);
 const keys = unique([
   ...(Array.isArray(contract.critical) ? contract.critical : []),
+  ...(Array.isArray(contract.optionalIntegrations) ? contract.optionalIntegrations : []),
   ...(Array.isArray(contract.warnDefaults) ? contract.warnDefaults : []),
 ]);
 

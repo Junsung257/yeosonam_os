@@ -272,17 +272,20 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 ### Critical staging/production keys
 
 - [ ] `SERPAPI_KEY`
-- [ ] `BAND_RSS_URL`
-- [ ] `TWITTER_BEARER_TOKEN`
 - [ ] `NAVER_CLIENT_ID`
 - [ ] `NAVER_CLIENT_SECRET`
+- [ ] `CRON_SECRET`
+
+### Optional integration keys
+
+- [ ] `BAND_RSS_URL`
+- [ ] `TWITTER_BEARER_TOKEN`
 - [ ] `NAVER_CAFE_ID`
 - [ ] `GOOGLE_ADS_DEVELOPER_TOKEN`
 - [ ] `GOOGLE_ADS_CUSTOMER_ID`
 - [ ] `GOOGLE_ADS_CLIENT_ID`
 - [ ] `GOOGLE_ADS_CLIENT_SECRET`
 - [ ] `SLACK_WEBHOOK_URL`
-- [ ] `CRON_SECRET`
 
 ### Explicit bid defaults
 
@@ -313,5 +316,6 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 - [ ] Fill marketing dynamic page probes: `MARKETING_CHECK_CARD_NEWS_ID`, `MARKETING_CHECK_VARIANT_GROUP_ID`.
 - [ ] Confirm protected ops probes can authenticate with `CRON_SECRET` or `OPEN_CHECK_AUTH_COOKIE`.
 - [ ] Fill external management credentials: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN`.
-- [ ] Fill runtime integration keys listed in `src/config/runtime-env-readiness.json`.
+- [ ] Fill critical runtime integration keys listed in `src/config/runtime-env-readiness.json`.
+- [ ] Fill optional runtime integration keys only when those marketing/social channels are active.
 - [ ] Confirm blog quality data is available through staging/production Supabase or set `BLOG_QUALITY_SOURCE_READY`.

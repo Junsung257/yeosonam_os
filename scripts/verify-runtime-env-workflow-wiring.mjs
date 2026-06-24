@@ -41,6 +41,7 @@ function checkWorkflow(path) {
   const required = [
     ...dataProbeKeys.map((key) => ({ key, sourceRequired: false })),
     ...readiness.critical.map((key) => ({ key, sourceRequired: true })),
+    ...(readiness.optionalIntegrations || []).map((key) => ({ key, sourceRequired: false })),
     ...readiness.warnDefaults.map((key) => ({ key, sourceRequired: false })),
   ];
 

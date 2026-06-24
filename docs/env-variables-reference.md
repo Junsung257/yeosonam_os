@@ -351,24 +351,33 @@ This section is checked by `npm run verify:runtime-env-docs`. Keep it in sync wi
 
 ### Critical keys
 
-These keys are required for the open-readiness gate to prove connected marketing,
-search, social, ads, Slack, and cron integrations. If they are missing, local
-checks can still run, but the readiness result stays `blocked`.
+These keys are required for the open-readiness gate to prove connected search,
+Naver API, and cron integrations. If they are missing, local checks can still
+run, but the readiness result stays `blocked`.
 
 | Key | Purpose |
 |---|---|
 | `SERPAPI_KEY` | SerpAPI fallback/provider key for search rank checks. |
-| `BAND_RSS_URL` | Band RSS source URL for marketing/social ingestion. |
-| `TWITTER_BEARER_TOKEN` | Twitter/X API bearer token for social publishing and reads. |
 | `NAVER_CLIENT_ID` | Naver API client ID for search, seasonal, OAuth, and rank flows. |
 | `NAVER_CLIENT_SECRET` | Naver API client secret paired with `NAVER_CLIENT_ID`. |
+| `CRON_SECRET` | Bearer secret used by cron and server-to-server jobs. |
+
+### Optional integration keys
+
+These keys enable social, ads, Slack, and community integrations. They are
+tracked by readiness, but missing values are warnings rather than release
+blockers because blog autopublishing can operate without them.
+
+| Key | Purpose |
+|---|---|
+| `BAND_RSS_URL` | Band RSS source URL for marketing/social ingestion. |
+| `TWITTER_BEARER_TOKEN` | Twitter/X API bearer token for social publishing and reads. |
 | `NAVER_CAFE_ID` | Naver Cafe ID for cafe/community marketing checks. |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads developer token. |
 | `GOOGLE_ADS_CUSTOMER_ID` | Google Ads customer account ID. |
 | `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth client ID. |
 | `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth client secret. |
 | `SLACK_WEBHOOK_URL` | Slack operations webhook for marketing/readiness alerts. |
-| `CRON_SECRET` | Bearer secret used by cron and server-to-server jobs. |
 
 ### Warn-default keys
 
@@ -444,6 +453,7 @@ The audit covers:
 | Protected ops probes | `CRON_SECRET`, or `OPEN_CHECK_AUTH_COOKIE` for cookie-authenticated staging checks |
 | External management APIs | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN` |
 | Runtime integrations | The critical keys listed in `src/config/runtime-env-readiness.json` |
+| Optional runtime integrations | The optional integration keys listed in `src/config/runtime-env-readiness.json` |
 | Runtime tunable defaults | The warn-default keys listed in `src/config/runtime-env-readiness.json` |
 | Blog quality data | `BLOG_QUALITY_SOURCE_READY` or a usable `SUPABASE_SERVICE_ROLE_KEY` |
 

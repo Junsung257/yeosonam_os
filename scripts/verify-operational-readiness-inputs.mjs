@@ -50,10 +50,17 @@ const groups = [
   },
   {
     id: 'runtime-integrations',
-    label: 'Runtime integrations',
+    label: 'Critical runtime integrations',
     severity: 'blocked',
     keys: contract.critical || [],
-    notes: 'Required for search, social, ads, Slack, and cron integrations to leave degraded mode.',
+    notes: 'Required for search/rank, Naver API, and cron integrations to leave degraded mode.',
+  },
+  {
+    id: 'optional-runtime-integrations',
+    label: 'Optional runtime integrations',
+    severity: 'warn',
+    keys: contract.optionalIntegrations || [],
+    notes: 'Required only for optional social, ads, Slack, and community integrations. Blog autopublishing is not blocked when these are absent.',
   },
   {
     id: 'runtime-defaults',
@@ -581,7 +588,7 @@ function writeNodeApplyScript(path, checks) {
 }
 
 function runtimeVercelKeysForApply(checks) {
-  const runtimeCheckIds = new Set(['runtime-integrations', 'runtime-defaults']);
+  const runtimeCheckIds = new Set(['runtime-integrations', 'optional-runtime-integrations', 'runtime-defaults']);
   return [...new Set(checks
     .filter((check) => runtimeCheckIds.has(check.id))
     .flatMap((check) => check.missing))]
