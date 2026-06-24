@@ -8,7 +8,7 @@ describe('queueUploadAttractionReviewCandidates', () => {
     const fakeSupabase = {
       rpc: async (name: string, payload: unknown) => {
         rpcCalls.push({ name, payload });
-        return name === 'increment_unmatched_count'
+        return name === 'upsert_unmatched_activity'
           ? { error: { message: 'rpc unavailable' } }
           : { error: null };
       },
@@ -75,11 +75,13 @@ describe('queueUploadAttractionReviewCandidates', () => {
     expect(result.newCandidateQueued).toBe(1);
     expect(rpcCalls.map(call => call.name)).toEqual([
       'increment_mention_count',
-      'increment_unmatched_count',
+      'upsert_unmatched_activity',
     ]);
     expect(rpcCalls[1].payload).toMatchObject({
       p_activity: '새 후보 관광지',
       p_package_id: '00000000-0000-0000-0000-000000000001',
+      p_raw_label: expect.any(String),
+      p_segment_kind_guess: 'attraction',
     });
   });
 });

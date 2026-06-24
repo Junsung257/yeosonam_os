@@ -40,14 +40,27 @@ async function upsertScopedUnmatched(
   supabaseAdmin: SupabaseClient,
   row: UploadUnmatchedActivityRow & { region?: string | null },
 ): Promise<void> {
-  const rpc = await supabaseAdmin.rpc('increment_unmatched_count', {
+  const scopedRpc = await supabaseAdmin.rpc('upsert_unmatched_activity', {
     p_activity: row.activity,
     p_package_id: row.package_id,
     p_package_title: row.package_title,
     p_day_number: row.day_number,
     p_country: row.country,
+    p_region: row.region ?? null,
+    p_segment_kind_guess: 'attraction',
+    p_confidence: 0.6,
+    p_suggested_action: 'needs_review',
+    p_raw_label: row.activity,
+    p_source_context: {
+      package_id: row.package_id,
+      package_title: row.package_title,
+      customer_visible: true,
+      blocks_publish: true,
+      source: 'upload_attraction_review_queue',
+    },
+    p_classification_version: 'upload-attraction-review-v2',
   });
-  if (!rpc.error) return;
+  if (!scopedRpc.error) return;
 
   const { error } = await supabaseAdmin.from('unmatched_activities').upsert({
     activity: row.activity,
@@ -58,6 +71,18 @@ async function upsertScopedUnmatched(
     region: row.region ?? null,
     occurrence_count: 1,
     status: 'pending',
+    segment_kind_guess: 'attraction',
+    raw_label: row.activity,
+    confidence: 0.6,
+    suggested_action: 'needs_review',
+    source_context: {
+      package_id: row.package_id,
+      package_title: row.package_title,
+      customer_visible: true,
+      blocks_publish: true,
+      source: 'upload_attraction_review_queue',
+    },
+    classification_version: 'upload-attraction-review-v2',
   }, { onConflict: 'unmatched_scope_key,activity' });
   if (error) throw new Error(error.message);
 }
