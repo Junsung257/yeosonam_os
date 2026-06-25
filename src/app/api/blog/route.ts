@@ -11,6 +11,7 @@ import {
 import { apiResponse } from '@/lib/api-response';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -151,6 +152,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    if (!id && !slug && searchParams.get('admin') !== '1' && shouldSkipPublicDbReadsForResourceSaver()) {
+      return degradedBlogListResponse('Public blog DB reads are paused for resource saver mode', page, limit, destination);
+    }
+
     if (id) {
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!UUID_RE.test(id)) {

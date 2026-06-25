@@ -88,6 +88,8 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
   assert.match(source, /Promise\.race/);
   assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
+  assert.match(source, /shouldSkipPublicDbReadsForResourceSaver/);
+  assert.match(source, /Public blog DB reads are paused for resource saver mode/);
   assert.match(source, /stale-if-error=86400/);
   assert.match(source, /status: 503/);
   assert.match(source, /range\(offset, offset \+ limit\)/);
