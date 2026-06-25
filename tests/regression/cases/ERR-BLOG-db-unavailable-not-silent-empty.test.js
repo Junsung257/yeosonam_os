@@ -47,8 +47,10 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   assert.match(source, /__blogQueryUnavailable/);
   assert.match(source, /Promise\.race/);
   assert.match(source, /isBlogQueryUnavailable/);
-  assert.match(source, /isBlogQueryUnavailable\(destRes\)/);
-  assert.match(source, /isBlogQueryUnavailable\(angleRes\)/);
+  assert.match(source, /range\(offset, offset \+ PER_PAGE\)/);
+  assert.doesNotMatch(source, /count:\s*['"]exact['"]/);
+  assert.doesNotMatch(source, /runBlogQuery\(['"]destinations['"]/);
+  assert.doesNotMatch(source, /runBlogQuery\(['"]angleCounts['"]/);
   assert.match(source, /connection timeout/i);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답 지연/);
@@ -88,6 +90,8 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
   assert.match(source, /Blog database request timed out/);
   assert.match(source, /stale-if-error=86400/);
   assert.match(source, /status: 503/);
+  assert.match(source, /range\(offset, offset \+ limit\)/);
+  assert.doesNotMatch(source, /BLOG_LIST_COUNT_SELECT/);
 });
 
 test('public blog fallback content is Korean and not an English sample article', () => {

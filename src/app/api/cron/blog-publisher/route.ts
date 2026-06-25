@@ -79,9 +79,17 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-const MAX_BATCH = 4; // daily quality quota: 3-4 posts/day, never bulk-publish beyond the target.
-const CLAIM_POOL_MULTIPLIER = 5;
-const MAX_CANDIDATE_POOL = 20;
+function intEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+const MAX_BATCH = intEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
+const CLAIM_POOL_MULTIPLIER = intEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 3, 1, 5);
+const MAX_CANDIDATE_POOL = intEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 10, MAX_BATCH, 20);
 const MAX_QUALITY_REPAIR_ROUNDS = 3;
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게

@@ -36,8 +36,16 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-const MAX_PUBLISH_PER_RUN = 3;
-const MAX_THREADS_PER_RUN = 5;
+function intEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+const MAX_PUBLISH_PER_RUN = intEnv('AUTO_PUBLISH_LOOP_MAX_PUBLISH_PER_RUN', 1, 1, 3);
+const MAX_THREADS_PER_RUN = intEnv('AUTO_PUBLISH_LOOP_MAX_THREADS_PER_RUN', 1, 1, 5);
 
 function currentPostingHourKst(): number {
   return (new Date().getUTCHours() + 9) % 24;

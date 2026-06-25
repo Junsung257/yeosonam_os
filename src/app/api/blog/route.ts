@@ -20,7 +20,6 @@ const BLOG_PUBLIC_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=3
 const BLOG_DEGRADED_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120, stale-if-error=600';
 const BLOG_STALE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=300, stale-if-error=86400';
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination';
-const BLOG_LIST_COUNT_SELECT = 'id';
 
 type BlogListPayload = {
   posts: unknown[];
@@ -215,37 +214,22 @@ export async function GET(request: NextRequest) {
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
-      .order('published_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    let countQuery = supabaseAdmin
-      .from('content_creatives')
-      .select(BLOG_LIST_COUNT_SELECT, { count: 'exact', head: true })
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null);
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .range(offset, offset + limit);
 
     if (destination) {
       query = query.eq('destination', destination);
-      countQuery = countQuery.eq('destination', destination);
     }
 
-    const [listResult, countResult] = await Promise.all([
-      runApiBlogQuery('list', query),
-      runApiBlogQuery('listCount', countQuery, 4000).catch((error) => ({
-        data: null,
-        error,
-        count: null,
-      })),
-    ]);
-
+    const listResult = await runApiBlogQuery('list', query, 2500);
     const { data, error } = listResult;
     if (error) throw error;
-    const total = typeof countResult.count === 'number'
-      ? countResult.count
-      : offset + (data?.length ?? 0);
+    const fetchedPosts = Array.isArray(data) ? data : [];
+    const posts = fetchedPosts.slice(0, limit);
+    const hasNextPage = fetchedPosts.length > limit;
+    const total = hasNextPage ? offset + limit + 1 : offset + posts.length;
     const payload: BlogListPayload = {
-      posts: data || [],
+      posts,
       total,
       page,
       totalPages: Math.max(1, Math.ceil(total / limit)),

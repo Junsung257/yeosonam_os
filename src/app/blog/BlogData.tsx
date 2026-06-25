@@ -19,7 +19,6 @@ import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count';
-const BLOG_LIST_COUNT_SELECT = 'id';
 
 const ANGLE_LABELS: Record<string, string> = {
   value: '💰 가성비', emotional: '🌸 감성', filial: '🎁 효도', luxury: '✨ 럭셔리',
@@ -201,104 +200,57 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
     .eq('status', 'published')
     .eq('channel', 'naver_blog')
     .not('slug', 'is', null)
-    .order('published_at', { ascending: false })
-    .range(offset, offset + PER_PAGE - 1);
-
-  let countQuery = supabaseAdmin
-    .from('content_creatives')
-    .select(BLOG_LIST_COUNT_SELECT, { count: 'exact', head: true })
-    .eq('status', 'published')
-    .eq('channel', 'naver_blog')
-    .not('slug', 'is', null);
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .range(offset, offset + PER_PAGE);
 
   if (filter.angle) {
     listQuery = listQuery.eq('angle_type', filter.angle);
-    countQuery = countQuery.eq('angle_type', filter.angle);
   }
   if (filter.destination) {
     listQuery = listQuery.eq('destination', filter.destination);
-    countQuery = countQuery.eq('destination', filter.destination);
   }
 
-  let angleQuery = supabaseAdmin
-    .from('content_creatives')
-    .select('angle_type')
-    .eq('status', 'published')
-    .eq('channel', 'naver_blog')
-    .not('slug', 'is', null)
-    .not('angle_type', 'is', null)
-    .limit(2000);
-
-  if (filter.destination) angleQuery = angleQuery.eq('destination', filter.destination);
-
-  const destQuery = supabaseAdmin
-      .from('active_destinations')
-      .select('destination, package_count')
-      .order('package_count', { ascending: false })
-      .limit(16);
-  const featuredQuery = supabaseAdmin
-      .from('content_creatives')
-      .select(BLOG_LIST_SELECT)
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .eq('featured', true)
-      .not('slug', 'is', null)
-      .order('featured_order', { ascending: true, nullsFirst: false })
-      .order('published_at', { ascending: false })
-      .limit(3);
-
-  const [destRes, featuredRes, listRes, countRes, angleRes] = await Promise.all([
-    runBlogQuery('destinations', destQuery, { data: [] }),
-    runBlogQuery('featured', featuredQuery, { data: [] }),
-    runBlogQuery('posts', listQuery, { data: [], count: 0 }),
-    runBlogQuery('postCount', countQuery, { data: null, count: null }, 2500),
-    runBlogQuery('angleCounts', angleQuery, { data: [] }),
-  ]);
+  const listRes = await runBlogQuery('posts', listQuery, { data: [] }, 2500);
 
   const listUnavailable = isBlogQueryUnavailable(listRes);
   if (listUnavailable) {
     throw createBlogDatabaseUnavailableError();
   }
 
-  const posts = (listRes.data as unknown as BlogPost[]) || [];
+  const fetchedPosts = (listRes.data as unknown as BlogPost[]) || [];
+  const hasNextPage = fetchedPosts.length > PER_PAGE;
+  const posts = fetchedPosts.slice(0, PER_PAGE);
 
-  const countUnavailable = isBlogQueryUnavailable(countRes);
-  if (posts.length === 0 && countUnavailable) {
-    throw createBlogDatabaseUnavailableError();
-  }
-
-  const angleRows = isBlogQueryUnavailable(angleRes)
-    ? posts.map((post) => ({ angle_type: post.angle_type }))
-    : ((angleRes.data as Array<{ angle_type: string | null }> | null) || []);
-  const angleCounts = angleRows.reduce<Record<string, number>>((acc, row) => {
-    const angle = row.angle_type?.trim();
+  const angleCounts = posts.reduce<Record<string, number>>((acc, post) => {
+    const angle = post.angle_type?.trim();
     if (angle) acc[angle] = (acc[angle] ?? 0) + 1;
     return acc;
   }, {});
 
-  const destinations = isBlogQueryUnavailable(destRes)
-    ? [...new Set(posts.map((post) => post.destination).filter(Boolean))]
-        .map((destination) => ({
-          destination: String(destination),
-          package_count: posts.filter((post) => post.destination === destination).length,
-          min_price: null,
-        }))
-    : ((destRes.data as unknown as DestinationStat[]) || []);
+  const destinations = [...new Set(posts.map((post) => post.destination).filter(Boolean))]
+    .map((destination) => ({
+      destination: String(destination),
+      package_count: posts.filter((post) => post.destination === destination).length,
+      min_price: null,
+    }));
 
-  const featuredBase = ((featuredRes.data as unknown as BlogPost[]) || []).filter((post) => Boolean(getDisplayImageUrl(post)));
-  const featuredIds = new Set(featuredBase.map((f) => f.id));
-  const featuredFallback = posts
-    .filter((post) => Boolean(getDisplayImageUrl(post)) && !featuredIds.has(post.id))
-    .slice(0, Math.max(0, 3 - featuredBase.length));
-  const featured = [...featuredBase, ...featuredFallback];
+  const featured = posts
+    .filter((post) => Boolean(getDisplayImageUrl(post)))
+    .sort((a, b) => {
+      const aOrder = a.featured ? (a.featured_order ?? 999) : 999;
+      const bOrder = b.featured ? (b.featured_order ?? 999) : 999;
+      return aOrder - bOrder;
+    })
+    .slice(0, 3);
   const filteredPosts = page === 1 && !filter.destination && !filter.angle
     ? posts.filter(p => !featured.some(featuredPost => featuredPost.id === p.id))
     : posts;
+  const approximateTotal = hasNextPage ? offset + PER_PAGE + 1 : offset + posts.length;
 
   return {
     featured: page === 1 && !filter.destination && !filter.angle ? featured : [],
     posts: filteredPosts,
-    total: typeof countRes.count === 'number' ? countRes.count : offset + posts.length,
+    total: approximateTotal,
     destinations,
     angleCounts,
     unavailable: false,
