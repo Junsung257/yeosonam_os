@@ -151,6 +151,8 @@ type BlogListData = {
   destinations: DestinationStat[];
   angleCounts: Record<string, number>;
   unavailable: boolean;
+  fallback?: boolean;
+  fallbackReason?: string;
 };
 
 function unavailableBlogData(filter: { destination?: string; angle?: string } = {}): BlogListData {
@@ -173,6 +175,8 @@ function unavailableBlogData(filter: { destination?: string; angle?: string } = 
       destinations,
       angleCounts,
       unavailable: false,
+      fallback: true,
+      fallbackReason: '현재 DB 응답이 지연되어 한글 비상 가이드를 표시하고 있습니다.',
     };
   }
   return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {}, unavailable: true };
@@ -190,7 +194,7 @@ function blogDataCacheKey(page: number, filter: { destination?: string; angle?: 
 
 async function getBlogDataUncached(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return unavailableBlogData(filter);
-  if (shouldSkipPublicDbReadsForResourceSaver()) return unavailableBlogData(filter);
+  const publicReadSaverActive = shouldSkipPublicDbReadsForResourceSaver();
 
   const offset = (page - 1) * PER_PAGE;
 
@@ -210,7 +214,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
     listQuery = listQuery.eq('destination', filter.destination);
   }
 
-  const listRes = await runBlogQuery('posts', listQuery, { data: [] }, 2500);
+  const listRes = await runBlogQuery('posts', listQuery, { data: [] }, publicReadSaverActive ? 2500 : 3500);
 
   const listUnavailable = isBlogQueryUnavailable(listRes);
   if (listUnavailable) {
@@ -494,7 +498,7 @@ export default async function BlogData({ searchParams }: Props) {
   const page = Math.max(1, parseInt(params.page || '1'));
   const destination = params.destination || undefined;
   const angle = params.angle || undefined;
-  const { featured, posts, total, destinations, angleCounts, unavailable } = await getBlogData(page, { destination, angle });
+  const { featured, posts, total, destinations, angleCounts, unavailable, fallback, fallbackReason } = await getBlogData(page, { destination, angle });
   const totalPages = unavailable ? 0 : Math.ceil(total / PER_PAGE);
   const totalLabel = unavailable ? '확인 중' : total.toLocaleString();
   const visibleAngleChips = ANGLE_CHIPS.filter(c => (angleCounts[c.v] ?? 0) > 0 || c.v === angle);
@@ -578,6 +582,15 @@ export default async function BlogData({ searchParams }: Props) {
             </p>
           </div>
         </header>
+
+        {fallback && (
+          <section className="mx-auto max-w-6xl px-4 pt-6">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-[13px] leading-6 text-amber-900">
+              <strong className="font-bold">DB 응답 지연 중</strong>
+              <span className="ml-2">{fallbackReason || '실제 발행 글이 복구되는 동안 한글 비상 가이드를 표시합니다.'}</span>
+            </div>
+          </section>
+        )}
 
         {/* ── 필터 바 — 스타일·목적지 2행 ── */}
         <div className="border-b border-admin-border bg-white sticky top-14 md:top-16 z-20">

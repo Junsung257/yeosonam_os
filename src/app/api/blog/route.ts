@@ -152,10 +152,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    if (!id && !slug && searchParams.get('admin') !== '1' && shouldSkipPublicDbReadsForResourceSaver()) {
-      return degradedBlogListResponse('Public blog DB reads are paused for resource saver mode', page, limit, destination);
-    }
-
     if (id) {
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!UUID_RE.test(id)) {
@@ -249,7 +245,14 @@ export async function GET(request: NextRequest) {
       if (!id && !slug && searchParams.get('admin') !== '1') {
         const stale = staleBlogListResponse(blogListCacheKey(page, limit, destination), 'Blog database request timed out');
         if (stale) return stale;
-        return degradedBlogListResponse('Blog database request timed out', page, limit, destination);
+        return degradedBlogListResponse(
+          shouldSkipPublicDbReadsForResourceSaver()
+            ? 'Public blog DB reads are slow while resource saver mode is active'
+            : 'Blog database request timed out',
+          page,
+          limit,
+          destination,
+        );
       }
       return apiResponse(
         { error: 'Blog database request timed out' },
