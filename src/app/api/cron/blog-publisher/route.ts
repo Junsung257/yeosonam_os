@@ -1835,7 +1835,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     const { data: attrs } = await supabaseAdmin
       .from('attractions')
       .select('name, short_desc, photos, badge_type, aliases')
-      .eq('destination', product.destination);
+      .eq('region', product.destination);
     attractions = attrs || [];
   }
 
