@@ -6,9 +6,10 @@ import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
+const PACKAGE_LIMIT = 1000;
 const BLOG_LIMIT = 2000;
 const DESTINATION_LIMIT = 500;
-const QUERY_TIMEOUT_MS = 10000;
+const QUERY_TIMEOUT_MS = 2500;
 
 type SitemapQueryResponse<T> = {
   data: T[] | null;

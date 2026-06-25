@@ -10,6 +10,7 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import {
   BLOG_ANGLE_CACHE_TAG,
+  createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
@@ -95,10 +96,10 @@ function getRouteParam(value: string | string[] | undefined): string {
 
 async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
-    return { posts: [], recommendedPackages: [], unavailable: true };
+    throw createBlogDatabaseUnavailableError();
   }
   if (shouldSkipPublicDbReadsForResourceSaver()) {
-    return { posts: [], recommendedPackages: [], unavailable: true };
+    throw createBlogDatabaseUnavailableError();
   }
 
   try {
@@ -118,7 +119,7 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
     );
 
     if (isBlogAngleQueryUnavailable(postsResult) || postsResult.error) {
-      return { posts: [], recommendedPackages: [], unavailable: true };
+      throw createBlogDatabaseUnavailableError();
     }
 
     const recommendedPackages = await getPackagesByAngle(angle, 6);
@@ -129,7 +130,7 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
       unavailable: false,
     };
   } catch {
-    return { posts: [], recommendedPackages: [], unavailable: true };
+    throw createBlogDatabaseUnavailableError();
   }
 }
 

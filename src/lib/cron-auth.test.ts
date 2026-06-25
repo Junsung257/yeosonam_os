@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { withCronGuard } from './cron-auth';
+import { isCronAuthorized, withCronGuard } from './cron-auth';
 
 describe('withCronGuard resource saver', () => {
   afterEach(() => {
@@ -44,5 +44,14 @@ describe('withCronGuard resource saver', () => {
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(await response.json()).toEqual({ ok: true });
+  });
+
+  it('rejects cron calls in production when CRON_SECRET is missing', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CRON_SECRET', '');
+
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher');
+
+    expect(isCronAuthorized(request)).toBe(false);
   });
 });

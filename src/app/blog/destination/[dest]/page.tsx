@@ -10,6 +10,7 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import {
   BLOG_DESTINATION_CACHE_TAG,
+  createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
@@ -152,10 +153,10 @@ const resolveDestinationRouteParam = cache(async (value: string): Promise<string
 async function getDestinationPageDataUncached(dest: string): Promise<DestinationPageData> {
   const decoded = safeDecodePathSegment(dest).trim();
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
-    return { destination: decoded, posts: [], packages: [], unavailable: true };
+    throw createBlogDatabaseUnavailableError();
   }
   if (shouldSkipPublicDbReadsForResourceSaver()) {
-    return { destination: decoded, posts: [], packages: [], unavailable: true };
+    throw createBlogDatabaseUnavailableError();
   }
 
   const destination = await resolveDestinationRouteParam(dest);
@@ -174,7 +175,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
 
     const postsResult = await runBlogDestinationQuery('posts', postsQuery, { data: [] as BlogPost[], error: null }, 6000);
     if (isBlogDestinationQueryUnavailable(postsResult) || postsResult.error) {
-      return { destination, posts: [], packages: [], unavailable: true };
+      throw createBlogDatabaseUnavailableError();
     }
 
     const posts = ((postsResult.data || []) as unknown as BlogPost[]).filter(
@@ -205,7 +206,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
       unavailable: false,
     };
   } catch {
-    return { destination, posts: [], packages: [], unavailable: true };
+    throw createBlogDatabaseUnavailableError();
   }
 }
 

@@ -256,8 +256,14 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   ]);
 
   const unavailable =
+    isBlogQueryUnavailable(destRes) ||
+    isBlogQueryUnavailable(featuredRes) ||
     isBlogQueryUnavailable(listRes) ||
+    isBlogQueryUnavailable(countRes) ||
     isBlogQueryUnavailable(angleRes);
+  if (unavailable) {
+    throw createBlogDatabaseUnavailableError();
+  }
   const posts = (listRes.data as unknown as BlogPost[]) || [];
   const angleCounts = ((angleRes.data as Array<{ angle_type: string | null }> | null) || []).reduce<Record<string, number>>((acc, row) => {
     const angle = row.angle_type?.trim();

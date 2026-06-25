@@ -11,7 +11,7 @@ import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
  */
 export function isCronAuthorized(request: NextRequest | Request): boolean {
   const secret = getSecret('CRON_SECRET');
-  if (!secret) return true;
+  if (!secret) return process.env.NODE_ENV !== 'production';
   const authHeader = request.headers.get('authorization');
   const url = request instanceof NextRequest ? request.nextUrl : new URL(request.url);
   const querySecret = url.searchParams.get('secret');
