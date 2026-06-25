@@ -10,7 +10,7 @@ import {
 } from '@/lib/blog-publish-quality';
 import { apiResponse } from '@/lib/api-response';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
-import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
+import { getFallbackBlogPost, getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 type AbortableQuery<T> = {
@@ -194,7 +194,9 @@ export async function GET(request: NextRequest) {
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
         .not('slug', 'is', null)
-        .limit(1));
+        .limit(1),
+        2500,
+      );
 
       if (error) throw error;
       if (!data || data.length === 0) {
@@ -242,6 +244,17 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     if (isAbortLikeError(err)) {
+      if (slug && !id && searchParams.get('admin') !== '1') {
+        const fallbackPost = getFallbackBlogPost(slug);
+        if (fallbackPost) {
+          return apiResponse({ post: fallbackPost, fallback: true, reason: 'Blog database request timed out' }, {
+            headers: {
+              'Cache-Control': BLOG_STALE_CACHE_CONTROL,
+              'X-Data-State': 'fallback',
+            },
+          });
+        }
+      }
       if (!id && !slug && searchParams.get('admin') !== '1') {
         const stale = staleBlogListResponse(blogListCacheKey(page, limit, destination), 'Blog database request timed out');
         if (stale) return stale;
