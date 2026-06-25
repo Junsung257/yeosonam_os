@@ -27,96 +27,107 @@ const FALLBACK_IMAGE_1 = 'https://images.pexels.com/photos/25000725/pexels-photo
 const FALLBACK_IMAGE_2 = 'https://images.pexels.com/photos/2166559/pexels-photo-2166559.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940';
 const FALLBACK_IMAGE_3 = 'https://images.pexels.com/photos/338504/pexels-photo-338504.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940';
 
+const DESTINATION_ALIASES: Record<string, string> = {
+  zhangjiajie: '장가계',
+  '张家界': '장가계',
+};
+
+function normalizeDestination(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return DESTINATION_ALIASES[trimmed.toLowerCase()] ?? DESTINATION_ALIASES[trimmed] ?? trimmed;
+}
+
 export const FALLBACK_BLOG_POSTS: PublicFallbackBlogPost[] = [
   {
     id: 'fallback-zhangjiajie-weather',
     slug: 'zhangjiajie-weather',
-    seo_title: 'Zhangjiajie weather and what to wear by month 2026',
+    seo_title: '장가계 월별 날씨와 옷차림 가이드 2026',
     seo_description:
-      'A practical 2026 Zhangjiajie weather guide with monthly clothing tips, route planning notes, packing advice, and reliable travel preparation checkpoints.',
+      '2026년 장가계 여행을 준비하는 분들을 위한 월별 날씨, 옷차림, 준비물, 우천 시 일정 조정 팁을 정리했습니다.',
     og_image_url:
       'https://www.yeosonam.com/api/blog/image?src=https%3A%2F%2Fimages.pexels.com%2Fphotos%2F25000725%2Fpexels-photo-25000725.jpeg%3Fauto%3Dcompress%26cs%3Dtinysrgb%26dpr%3D2%26h%3D650%26w%3D940&w=960',
     blog_html: `
-# Zhangjiajie weather and what to wear by month 2026
+# 장가계 월별 날씨와 옷차림 가이드 2026
 
-Zhangjiajie is a mountain destination where weather changes faster than most city trips. A sunny morning can become a foggy afternoon, and a cool valley path can feel humid after a short climb. This guide gives travelers a practical month-by-month framework for clothing, packing, route order, and on-site decisions. It is written for readers who want a clear plan before booking flights, hotels, cable cars, and day routes.
+장가계는 시내와 산 위의 체감 온도 차이가 크고, 안개와 비가 빠르게 바뀌는 산악 여행지입니다. 아침에는 맑아도 오후에는 전망대가 구름에 가려질 수 있고, 계곡길은 짧게 걸어도 습도가 높게 느껴질 수 있습니다. 이 글은 항공, 호텔, 케이블카, 셔틀 동선까지 함께 고려해야 하는 여행자를 기준으로 월별 옷차림과 준비물을 정리했습니다.
 
-The key idea is simple: prepare for layers, rain, and uneven walking surfaces. Even in warm months, the mountain viewpoints can feel cooler than downtown Zhangjiajie. In spring and autumn, the same day can require a light jacket in the morning and breathable clothes at noon. In winter, the scenery can be dramatic, but paths may be cold, wet, or slippery. A good plan should leave space for weather changes instead of locking every viewpoint into one tight schedule.
+핵심은 단순합니다. 얇은 겹옷, 비 대비, 미끄럼 방지 신발을 기본으로 잡아야 합니다. 따뜻한 계절에도 산 위 전망대는 시내보다 서늘하고, 봄·가을에는 아침과 낮의 옷차림이 달라집니다. 겨울 장가계는 풍경이 극적이지만 길이 젖거나 얼 수 있어 일정을 여유 있게 잡는 편이 안전합니다.
 
-![Zhangjiajie mountain cliffs and mist in 2026](${FALLBACK_IMAGE_1})
+![장가계 산악 전망과 안개 풍경](${FALLBACK_IMAGE_1})
 
-<figcaption>Zhangjiajie weather changes quickly around mountain viewpoints, so layered clothing is the safest default.</figcaption>
+<figcaption>장가계는 전망대 주변 날씨가 빠르게 바뀌므로 얇은 겹옷이 가장 안전한 기본값입니다.</figcaption>
 
-## Quick summary for Zhangjiajie weather planning
+## 장가계 날씨 준비 핵심 요약
 
-If this is your first Zhangjiajie trip, plan clothing around three conditions: walking, waiting, and rain. Walking between shuttle stops, cable car stations, glass bridges, and viewpoints creates heat, but waiting in exposed mountain areas can feel cold. Rain is also common enough that a compact rain jacket is more useful than a heavy umbrella on narrow paths.
+처음 장가계를 간다면 옷차림은 세 가지 상황을 기준으로 준비하세요. 걷는 시간, 대기하는 시간, 비가 오는 시간입니다. 셔틀 정류장과 케이블카, 유리다리, 전망대를 오가며 걸을 때는 금방 덥지만, 산 위에서 대기할 때는 바람 때문에 춥게 느껴질 수 있습니다. 좁은 계단과 전망대에서는 큰 우산보다 가벼운 우비나 방수 재킷이 더 실용적입니다.
 
-For most travelers, the safest packing list is a breathable base layer, a light outer layer, comfortable walking shoes with grip, a compact rain shell, spare socks, a small towel, and a waterproof pouch for documents and phones. Families should add snacks, motion-sickness medicine, and extra time buffers. Older travelers should avoid overly compressed itineraries because stairs, shuttle transfers, and queues can be tiring even when the weather is good.
+기본 준비물은 통풍되는 이너, 가벼운 겉옷, 접지력 있는 운동화나 트레킹화, 얇은 우비, 여분 양말, 작은 수건, 휴대폰과 여권을 넣을 방수 파우치입니다. 가족 여행이라면 간식과 멀미약, 대기 시간을 고려한 여유 일정을 추가하세요. 부모님 동반 여행은 날씨가 좋아도 계단과 셔틀 환승, 대기 시간이 체력 부담이 될 수 있으므로 하루 코스를 과하게 압축하지 않는 것이 좋습니다.
 
-Use the official weather forecast as a final check before departure. For general China travel advisories and document preparation, review the Korean Ministry of Foreign Affairs overseas safety page: [MOFA overseas travel safety](https://www.0404.go.kr/).
+출발 직전에는 공식 예보와 해외 안전 정보를 다시 확인하세요. 중국 여행 안전 정보와 서류 준비는 [외교부 해외안전여행](https://www.0404.go.kr/)에서 확인할 수 있습니다.
 
-## Month-by-month clothing guide
+## 월별 옷차림 가이드
 
-| Season | Weather tendency | What to wear | Planning note |
+| 시기 | 날씨 경향 | 추천 옷차림 | 일정 팁 |
 | --- | --- | --- | --- |
-| March to May | Mild, foggy, changeable | Long sleeves, light jacket, rain shell | Keep one flexible viewpoint slot |
-| June to August | Warm, humid, shower-prone | Breathable clothes, sun hat, quick-dry layer | Start early and rest at noon |
-| September to November | Clearer, cooler mornings | Light knit, windbreaker, comfortable pants | Best balance for walking |
-| December to February | Cold, sometimes icy | Warm coat, gloves, grippy shoes | Check path conditions carefully |
+| 3-5월 | 온화하지만 안개와 비가 잦음 | 긴팔, 얇은 재킷, 우비 | 전망대 1곳은 유동 일정으로 남기기 |
+| 6-8월 | 덥고 습하며 소나기 가능 | 통풍 옷, 모자, 빠르게 마르는 옷 | 오전 일찍 시작하고 한낮 휴식 |
+| 9-11월 | 시야가 비교적 좋고 아침은 선선함 | 얇은 니트, 바람막이, 편한 바지 | 걷기와 전망의 균형이 좋은 시기 |
+| 12-2월 | 춥고 길이 젖거나 얼 수 있음 | 두꺼운 겉옷, 장갑, 접지력 좋은 신발 | 케이블카와 보행로 운행 여부 확인 |
 
-Spring is good for misty scenery and softer temperatures. The tradeoff is unstable weather. Fog can hide a viewpoint for an hour and then clear suddenly, so avoid judging the whole day from the morning sky. Summer gives long daylight and vivid scenery, but humidity and showers make quick-dry clothing important. Autumn is usually the easiest season for first-time travelers because visibility and walking comfort are better balanced. Winter can be beautiful but should be planned conservatively.
+봄은 안개 낀 풍경과 온화한 기온이 장점이지만 날씨가 자주 바뀝니다. 전망대가 한 시간 이상 가려졌다가 갑자기 열리는 경우도 있어 아침 하늘만 보고 하루를 판단하지 않는 편이 좋습니다. 여름은 낮 시간이 길고 풍경이 선명하지만 습도와 소나기 대비가 중요합니다. 가을은 시야와 보행 편의가 균형 잡혀 초행자에게 가장 무난합니다. 겨울은 설경이 매력적이지만 보행로와 케이블카 상황을 보수적으로 확인해야 합니다.
 
-## Best route order when the weather is uncertain
+## 날씨가 애매할 때 코스 잡는 법
 
-On a cloudy or rainy day, put lower-altitude routes and indoor transfer points earlier in the schedule. Save the highest viewpoints for windows of clearer visibility. If a guide or hotel staff says visibility is improving, move quickly, because mountain weather can change again by the time a group reaches the next shuttle stop.
+흐리거나 비가 오는 날은 낮은 고도의 코스와 실내 이동 거점을 먼저 배치하고, 높은 전망대는 시야가 열릴 가능성이 있는 시간대로 남겨두는 편이 좋습니다. 가이드나 호텔 직원이 시야가 좋아지고 있다고 말하면 이동 판단을 빠르게 해야 합니다. 산악 날씨는 셔틀을 타고 다음 정류장에 도착하는 사이에도 다시 바뀔 수 있습니다.
 
-A practical order is to keep one flagship viewpoint, one flexible scenic zone, and one easier backup route each day. This prevents the trip from feeling wasted if the most famous viewpoint is foggy. It also helps families and older travelers avoid rushing across too many shuttle lines. When possible, book important tickets with enough margin between transfers.
+하루 일정은 대표 전망대 1곳, 유동적으로 조정 가능한 풍경 코스 1곳, 쉬운 대체 코스 1곳으로 잡으면 안정적입니다. 가장 유명한 전망대가 안개에 가려져도 여행 전체가 망가지는 느낌을 줄일 수 있고, 가족이나 부모님 동반 여행에서도 셔틀 이동을 무리하게 몰지 않을 수 있습니다.
 
-![Zhangjiajie walking path and forest route clothing guide](${FALLBACK_IMAGE_2})
+![장가계 숲길과 보행로 여행 준비](${FALLBACK_IMAGE_2})
 
-<figcaption>Comfortable shoes and rain-ready layers matter more than formal outfits on Zhangjiajie walking routes.</figcaption>
+<figcaption>장가계 보행 코스에서는 격식 있는 옷보다 편한 신발과 비 대비가 더 중요합니다.</figcaption>
 
-## Packing checklist for real travel days
+## 실제 여행일 준비물 체크리스트
 
-Bring one small daypack rather than a large shoulder bag. The daypack should hold water, a thin outer layer, a rain shell, tissues, a power bank, passport copies, and a small snack. Keep the phone and passport pouch protected from sudden rain. If you are traveling with children, add a spare top and socks because wet clothing can make the return transfer uncomfortable.
+큰 숄더백보다 작은 데이팩 하나를 추천합니다. 물, 얇은 겉옷, 우비, 휴지, 보조배터리, 여권 사본, 간단한 간식을 넣어두면 이동 중 대응이 쉽습니다. 휴대폰과 여권은 갑작스러운 비에 젖지 않도록 방수 파우치에 넣어두세요. 아이와 함께 간다면 젖은 옷 때문에 귀가 이동이 불편해질 수 있으니 여분 상의와 양말을 추가하는 것이 좋습니다.
 
-Shoes deserve special attention. Zhangjiajie is not a destination for new or stiff shoes. Choose footwear that has already been tested on stairs. The surface can be wet near forest paths, glass bridge areas, and shuttle boarding points. For photography, bring a strap or secure phone grip. Many viewpoints are crowded, and a dropped phone can be difficult or impossible to recover.
+신발은 특히 중요합니다. 장가계는 새 신발을 시험하기 좋은 여행지가 아닙니다. 계단을 걸어본 적 있는 편한 신발을 고르고, 숲길과 유리다리 주변, 셔틀 탑승 지점의 젖은 바닥에 대비하세요. 사진을 많이 찍는다면 손목 스트랩이나 휴대폰 그립도 도움이 됩니다. 전망대는 사람이 많아 휴대폰을 떨어뜨리면 회수가 어렵습니다.
 
-## Reader-first itinerary advice
+## 예약 전 확인하면 좋은 기준
 
-Do not build a Zhangjiajie itinerary only around famous photo spots. The most satisfying trips usually combine one iconic viewpoint, one slower forest route, one cultural or old-town stop, and enough rest time. A realistic schedule gives travelers room to eat, move between stations, and adjust when a queue is longer than expected.
+장가계 일정은 유명 포토스팟만 보고 짜면 피로도가 높아질 수 있습니다. 만족도가 높은 일정은 대표 전망대, 천천히 걷는 숲길, 고성이나 문화 코스, 충분한 휴식 시간을 함께 배치합니다. 식사와 셔틀 이동, 대기열까지 고려해야 실제 현장에서 무리 없이 움직일 수 있습니다.
 
-For travelers comparing package tours, check whether the itinerary explains cable car usage, shuttle transfers, optional activities, and rainy-day alternatives. A lower price is not always better if the schedule is too compressed or if important transfers are unclear. Ask the operator how the route changes when visibility is poor. That single question often reveals whether the plan is truly traveler-centered.
+패키지 상품을 비교할 때는 케이블카 포함 여부, 셔틀 환승, 선택 관광, 우천 시 대체 코스가 명확한지 확인하세요. 가격이 낮아도 일정이 지나치게 빡빡하거나 이동 설명이 불명확하면 체감 만족도가 떨어질 수 있습니다. “시야가 좋지 않을 때 코스가 어떻게 바뀌나요?”라는 질문 하나만 해도 일정이 여행자 중심으로 설계되었는지 확인할 수 있습니다.
 
-![Zhangjiajie travel preparation weather checklist and scenic view](${FALLBACK_IMAGE_3})
+![장가계 여행 준비 체크리스트와 풍경](${FALLBACK_IMAGE_3})
 
-<figcaption>A good Zhangjiajie plan keeps backup routes ready instead of forcing every viewpoint into one rigid day.</figcaption>
+<figcaption>좋은 장가계 일정은 모든 전망대를 하루에 밀어 넣기보다 대체 코스를 함께 준비합니다.</figcaption>
 
-## Common mistakes to avoid
+## 자주 하는 실수
 
-The first mistake is packing only for downtown temperatures. Mountain viewpoints can feel cooler and windier. The second mistake is using an umbrella as the only rain plan. Umbrellas are awkward on crowded paths and stairs. The third mistake is scheduling too many high-effort routes on the same day. Zhangjiajie rewards patience, not speed.
+첫 번째 실수는 시내 기온만 보고 짐을 싸는 것입니다. 산 위 전망대는 더 서늘하고 바람이 강할 수 있습니다. 두 번째 실수는 우산만 준비하는 것입니다. 사람이 많은 계단과 좁은 길에서는 우산보다 우비가 편합니다. 세 번째 실수는 체력 소모가 큰 코스를 하루에 너무 많이 넣는 것입니다. 장가계는 빠르게 도는 여행지라기보다 날씨를 보며 여유 있게 움직일 때 만족도가 높습니다.
 
-Another common mistake is ignoring meal timing. Scenic areas can be crowded, and a delayed lunch can make families tired quickly. Carry a simple snack even if meals are included. Finally, do not assume every photo spot will be visible at the exact planned time. Weather windows are part of the destination, so flexibility is a real quality factor.
+식사 시간도 중요합니다. 관광지가 붐비면 점심이 늦어질 수 있고, 가족 여행은 이때 체력이 급격히 떨어집니다. 식사가 포함되어 있어도 간단한 간식은 챙기세요. 마지막으로 모든 포토스팟이 계획한 시간에 정확히 보일 것이라고 기대하지 않는 편이 좋습니다. 장가계에서는 유연성이 곧 여행 품질입니다.
 
 ## FAQ
 
-### Is Zhangjiajie good in the rainy season?
+### 장마철에도 장가계 여행이 가능한가요?
 
-Yes, but the itinerary should be flexible. Rain can create dramatic mist, but it can also reduce visibility. Keep a rain shell and one backup route ready.
+가능합니다. 다만 일정은 유연해야 합니다. 비가 오면 안개와 운해가 멋질 수 있지만 시야가 제한될 수도 있습니다. 우비와 대체 코스를 함께 준비하세요.
 
-### How many clothing layers are enough?
+### 옷은 몇 겹 정도 준비하면 좋나요?
 
-Most travelers need a base layer and one light outer layer outside winter. In winter, add a warm coat, gloves, and shoes with better grip.
+겨울을 제외하면 통풍되는 이너와 얇은 겉옷 한 벌이면 대부분 대응할 수 있습니다. 겨울에는 두꺼운 외투, 장갑, 접지력 좋은 신발을 추가하세요.
 
-### Are sneakers enough for Zhangjiajie?
+### 운동화만으로도 괜찮나요?
 
-Comfortable sneakers are usually enough if they have grip and have already been broken in. Avoid slippery soles and new shoes.
+접지력이 있고 이미 길들인 운동화라면 대부분 괜찮습니다. 미끄러운 밑창이나 새 신발은 피하는 편이 좋습니다.
 
-## Final recommendation
+## 최종 추천
 
-For a 2026 Zhangjiajie trip, the best preparation is not a heavy suitcase. It is a flexible schedule, layered clothing, rain protection, and realistic walking expectations. If you are comparing routes or package options, prioritize clear transfer details, weather alternatives, and enough rest time. That makes the difference between simply visiting famous spots and actually enjoying the mountain scenery.
+2026년 장가계 여행에서 가장 중요한 준비는 무거운 캐리어가 아닙니다. 유연한 일정, 겹쳐 입기 쉬운 옷, 비 대비, 현실적인 보행 계획입니다. 상품을 비교한다면 이동 설명, 우천 시 대체 코스, 충분한 휴식 시간이 있는지를 먼저 보세요. 그 차이가 유명 관광지를 “찍고 오는 여행”과 산악 풍경을 제대로 즐기는 여행을 가릅니다.
 
-For related travel planning, check the [Yeosonam travel magazine](/blog) and current [package travel options](/packages).
+관련 여행 준비는 [여소남 여행 매거진](/blog)과 [현재 패키지 상품](/packages)에서 함께 확인할 수 있습니다.
 `.trim(),
     angle_type: 'value',
     channel: 'naver_blog',
@@ -125,7 +136,7 @@ For related travel planning, check the [Yeosonam travel magazine](/blog) and cur
     updated_at: '2026-06-24T00:00:00.000Z',
     product_id: null,
     tracking_id: null,
-    destination: 'Zhangjiajie',
+    destination: '장가계',
     content_type: 'guide',
     featured: true,
     featured_order: 1,
@@ -138,8 +149,9 @@ For related travel planning, check the [Yeosonam travel magazine](/blog) and cur
 ];
 
 export function getFallbackBlogPosts(filter: { destination?: string | null; angle?: string | null } = {}) {
+  const destination = normalizeDestination(filter.destination);
   return FALLBACK_BLOG_POSTS.filter((post) => {
-    if (filter.destination && post.destination !== filter.destination) return false;
+    if (destination && normalizeDestination(post.destination) !== destination) return false;
     if (filter.angle && post.angle_type !== filter.angle) return false;
     return true;
   });

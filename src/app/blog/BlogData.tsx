@@ -255,21 +255,36 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
     runBlogQuery('angleCounts', angleQuery, { data: [] }),
   ]);
 
-  const unavailable =
-    isBlogQueryUnavailable(destRes) ||
-    isBlogQueryUnavailable(featuredRes) ||
-    isBlogQueryUnavailable(listRes) ||
-    isBlogQueryUnavailable(countRes) ||
-    isBlogQueryUnavailable(angleRes);
-  if (unavailable) {
+  const listUnavailable = isBlogQueryUnavailable(listRes);
+  if (listUnavailable) {
     throw createBlogDatabaseUnavailableError();
   }
+
   const posts = (listRes.data as unknown as BlogPost[]) || [];
-  const angleCounts = ((angleRes.data as Array<{ angle_type: string | null }> | null) || []).reduce<Record<string, number>>((acc, row) => {
+
+  const countUnavailable = isBlogQueryUnavailable(countRes);
+  if (posts.length === 0 && countUnavailable) {
+    throw createBlogDatabaseUnavailableError();
+  }
+
+  const angleRows = isBlogQueryUnavailable(angleRes)
+    ? posts.map((post) => ({ angle_type: post.angle_type }))
+    : ((angleRes.data as Array<{ angle_type: string | null }> | null) || []);
+  const angleCounts = angleRows.reduce<Record<string, number>>((acc, row) => {
     const angle = row.angle_type?.trim();
     if (angle) acc[angle] = (acc[angle] ?? 0) + 1;
     return acc;
   }, {});
+
+  const destinations = isBlogQueryUnavailable(destRes)
+    ? [...new Set(posts.map((post) => post.destination).filter(Boolean))]
+        .map((destination) => ({
+          destination: String(destination),
+          package_count: posts.filter((post) => post.destination === destination).length,
+          min_price: null,
+        }))
+    : ((destRes.data as unknown as DestinationStat[]) || []);
+
   const featuredBase = ((featuredRes.data as unknown as BlogPost[]) || []).filter((post) => Boolean(getDisplayImageUrl(post)));
   const featuredIds = new Set(featuredBase.map((f) => f.id));
   const featuredFallback = posts
@@ -284,9 +299,9 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
     featured: page === 1 && !filter.destination && !filter.angle ? featured : [],
     posts: filteredPosts,
     total: typeof countRes.count === 'number' ? countRes.count : offset + posts.length,
-    destinations: (destRes.data as unknown as DestinationStat[]) || [],
+    destinations,
     angleCounts,
-    unavailable,
+    unavailable: false,
   };
 }
 

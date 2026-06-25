@@ -90,6 +90,16 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
   assert.match(source, /status: 503/);
 });
 
+test('public blog fallback content is Korean and not an English sample article', () => {
+  const source = read('src', 'lib', 'blog-public-fallback.ts');
+
+  assert.match(source, /장가계 월별 날씨와 옷차림 가이드 2026/);
+  assert.match(source, /destination:\s*'장가계'/);
+  assert.match(source, /normalizeDestination/);
+  assert.doesNotMatch(source, /Zhangjiajie weather and what to wear by month 2026/);
+  assert.doesNotMatch(source, /Quick summary for Zhangjiajie weather planning/);
+});
+
 test('public blog publish paths invalidate list and detail data caches', () => {
   const cache = read('src', 'lib', 'blog-cache.ts');
   const revalidate = read('src', 'lib', 'revalidate-blog-cache.ts');
