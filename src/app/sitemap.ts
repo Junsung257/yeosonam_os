@@ -2,12 +2,13 @@ import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
 const BLOG_LIMIT = 2000;
 const DESTINATION_LIMIT = 500;
-const QUERY_TIMEOUT_MS = 2500;
+const QUERY_TIMEOUT_MS = 10000;
 
 type SitemapQueryResponse<T> = {
   data: T[] | null;
@@ -77,7 +78,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
   ];
 
-  const [activeDests, posts] = await Promise.all([
+  const [activeDests, queriedPosts] = await Promise.all([
     runSitemapQuery<{ destination: string }>('destinations', (signal) =>
       supabaseAdmin
         .from('active_destinations')
@@ -103,6 +104,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .abortSignal(signal),
     ),
   ]);
+  const posts = queriedPosts.length > 0 ? queriedPosts : getFallbackBlogPosts();
 
   for (const d of activeDests) {
     if (d.destination) {

@@ -10,6 +10,7 @@ import {
 } from '@/lib/blog-publish-quality';
 import { apiResponse } from '@/lib/api-response';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -17,6 +18,39 @@ type AbortableQuery<T> = {
 
 const BLOG_PUBLIC_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=86400';
 const BLOG_DEGRADED_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120, stale-if-error=600';
+const BLOG_STALE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=300, stale-if-error=86400';
+const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination';
+const BLOG_LIST_COUNT_SELECT = 'id';
+
+type BlogListPayload = {
+  posts: unknown[];
+  total: number;
+  page: number;
+  totalPages: number;
+  stale?: boolean;
+  staleReason?: string;
+};
+
+const lastGoodBlogLists = new Map<string, BlogListPayload>();
+
+function blogListCacheKey(page: number, limit: number, destination: string | null): string {
+  return JSON.stringify({ page, limit, destination: destination || '' });
+}
+
+function staleBlogListResponse(key: string, reason: string) {
+  const cached = lastGoodBlogLists.get(key);
+  if (!cached) return null;
+  return apiResponse({
+    ...cached,
+    stale: true,
+    staleReason: reason,
+  }, {
+    headers: {
+      'Cache-Control': BLOG_STALE_CACHE_CONTROL,
+      'X-Data-State': 'stale',
+    },
+  });
+}
 
 function isAbortLikeError(error: unknown): boolean {
   if (!error) return false;
@@ -70,7 +104,23 @@ function qualityGateFailedResponse(report: BlogPublishQualityReport) {
   }, { status: 422 });
 }
 
-function degradedBlogListResponse(reason: string, page: number, limit: number) {
+function degradedBlogListResponse(reason: string, page: number, limit: number, destination?: string | null) {
+  const posts = getFallbackBlogPosts({ destination });
+  if (posts.length > 0) {
+    return apiResponse({
+      posts: posts.slice((page - 1) * limit, page * limit),
+      total: posts.length,
+      page,
+      totalPages: Math.max(1, Math.ceil(posts.length / limit)),
+      fallback: true,
+      reason,
+    }, {
+      headers: {
+        'Cache-Control': BLOG_STALE_CACHE_CONTROL,
+        'X-Data-State': 'fallback',
+      },
+    });
+  }
   return apiResponse({
     posts: [],
     total: 0,
@@ -96,7 +146,7 @@ export async function GET(request: NextRequest) {
 
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
     if (!id && !slug && searchParams.get('admin') !== '1') {
-      return degradedBlogListResponse('Blog database is not configured', page, limit);
+      return degradedBlogListResponse('Blog database is not configured', page, limit, destination);
     }
     return apiResponse({ error: 'Blog database is not configured' }, { status: 503 });
   }
@@ -139,7 +189,7 @@ export async function GET(request: NextRequest) {
     if (slug) {
       const { data, error } = await runApiBlogQuery('slug', supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, seo_title, seo_description, og_image_url, angle_type, channel, published_at, created_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)')
+        .select('id, slug, seo_title, seo_description, og_image_url, angle_type, channel, published_at, created_at, product_id, tracking_id, destination')
         .eq('slug', slug)
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -157,33 +207,60 @@ export async function GET(request: NextRequest) {
     }
 
     const offset = (page - 1) * limit;
+    const cacheKey = blogListCacheKey(page, limit, destination);
 
     let query = supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, travel_packages(id, title, destination, price, duration, category)', { count: 'exact' })
+      .select(BLOG_LIST_SELECT)
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (destination) query = query.eq('travel_packages.destination', destination);
+    let countQuery = supabaseAdmin
+      .from('content_creatives')
+      .select(BLOG_LIST_COUNT_SELECT, { count: 'exact', head: true })
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null);
 
-    const { data, error, count } = await runApiBlogQuery('list', query);
+    if (destination) {
+      query = query.eq('destination', destination);
+      countQuery = countQuery.eq('destination', destination);
+    }
+
+    const [listResult, countResult] = await Promise.all([
+      runApiBlogQuery('list', query),
+      runApiBlogQuery('listCount', countQuery, 4000).catch((error) => ({
+        data: null,
+        error,
+        count: null,
+      })),
+    ]);
+
+    const { data, error } = listResult;
     if (error) throw error;
-
-    return apiResponse({
+    const total = typeof countResult.count === 'number'
+      ? countResult.count
+      : offset + (data?.length ?? 0);
+    const payload: BlogListPayload = {
       posts: data || [],
-      total: count ?? 0,
+      total,
       page,
-      totalPages: Math.ceil((count ?? 0) / limit),
-    }, {
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+    lastGoodBlogLists.set(cacheKey, payload);
+
+    return apiResponse(payload, {
       headers: { 'Cache-Control': BLOG_PUBLIC_CACHE_CONTROL },
     });
   } catch (err) {
     if (isAbortLikeError(err)) {
       if (!id && !slug && searchParams.get('admin') !== '1') {
-        return degradedBlogListResponse('Blog database request timed out', page, limit);
+        const stale = staleBlogListResponse(blogListCacheKey(page, limit, destination), 'Blog database request timed out');
+        if (stale) return stale;
+        return degradedBlogListResponse('Blog database request timed out', page, limit, destination);
       }
       return apiResponse(
         { error: 'Blog database request timed out' },

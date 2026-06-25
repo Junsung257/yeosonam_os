@@ -14,9 +14,12 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
+const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count';
+const BLOG_LIST_COUNT_SELECT = 'id';
 
 const ANGLE_LABELS: Record<string, string> = {
   value: '💰 가성비', emotional: '🌸 감성', filial: '🎁 효도', luxury: '✨ 럭셔리',
@@ -151,30 +154,71 @@ type BlogListData = {
   unavailable: boolean;
 };
 
-function unavailableBlogData(): BlogListData {
+function unavailableBlogData(filter: { destination?: string; angle?: string } = {}): BlogListData {
+  const fallbackPosts = getFallbackBlogPosts(filter);
+  if (fallbackPosts.length > 0) {
+    const destinations = [...new Set(fallbackPosts.map((post) => post.destination).filter(Boolean))]
+      .map((destination) => ({
+        destination: String(destination),
+        package_count: fallbackPosts.filter((post) => post.destination === destination).length,
+        min_price: null,
+      }));
+    const angleCounts = fallbackPosts.reduce<Record<string, number>>((acc, post) => {
+      if (post.angle_type) acc[post.angle_type] = (acc[post.angle_type] ?? 0) + 1;
+      return acc;
+    }, {});
+    return {
+      featured: fallbackPosts.filter((post) => post.featured),
+      posts: fallbackPosts,
+      total: fallbackPosts.length,
+      destinations,
+      angleCounts,
+      unavailable: false,
+    };
+  }
   return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {}, unavailable: true };
 }
 
+const lastGoodBlogData = new Map<string, BlogListData>();
+
+function blogDataCacheKey(page: number, filter: { destination?: string; angle?: string }): string {
+  return JSON.stringify({
+    page,
+    destination: filter.destination || '',
+    angle: filter.angle || '',
+  });
+}
+
 async function getBlogDataUncached(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
-  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return unavailableBlogData();
-  if (shouldSkipPublicDbReadsForResourceSaver()) return unavailableBlogData();
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return unavailableBlogData(filter);
+  if (shouldSkipPublicDbReadsForResourceSaver()) return unavailableBlogData(filter);
 
   const offset = (page - 1) * PER_PAGE;
 
   let listQuery = supabaseAdmin
     .from('content_creatives')
-    .select(
-      'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
-      { count: 'exact' },
-    )
+    .select(BLOG_LIST_SELECT)
     .eq('status', 'published')
     .eq('channel', 'naver_blog')
     .not('slug', 'is', null)
     .order('published_at', { ascending: false })
     .range(offset, offset + PER_PAGE - 1);
 
-  if (filter.angle) listQuery = listQuery.eq('angle_type', filter.angle);
-  if (filter.destination) listQuery = listQuery.eq('destination', filter.destination);
+  let countQuery = supabaseAdmin
+    .from('content_creatives')
+    .select(BLOG_LIST_COUNT_SELECT, { count: 'exact', head: true })
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .not('slug', 'is', null);
+
+  if (filter.angle) {
+    listQuery = listQuery.eq('angle_type', filter.angle);
+    countQuery = countQuery.eq('angle_type', filter.angle);
+  }
+  if (filter.destination) {
+    listQuery = listQuery.eq('destination', filter.destination);
+    countQuery = countQuery.eq('destination', filter.destination);
+  }
 
   let angleQuery = supabaseAdmin
     .from('content_creatives')
@@ -194,9 +238,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
       .limit(16);
   const featuredQuery = supabaseAdmin
       .from('content_creatives')
-      .select(
-        'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
-      )
+      .select(BLOG_LIST_SELECT)
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('featured', true)
@@ -205,10 +247,11 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
       .order('published_at', { ascending: false })
       .limit(3);
 
-  const [destRes, featuredRes, listRes, angleRes] = await Promise.all([
+  const [destRes, featuredRes, listRes, countRes, angleRes] = await Promise.all([
     runBlogQuery('destinations', destQuery, { data: [] }),
     runBlogQuery('featured', featuredQuery, { data: [] }),
     runBlogQuery('posts', listQuery, { data: [], count: 0 }),
+    runBlogQuery('postCount', countQuery, { data: null, count: null }, 2500),
     runBlogQuery('angleCounts', angleQuery, { data: [] }),
   ]);
 
@@ -234,7 +277,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   return {
     featured: page === 1 && !filter.destination && !filter.angle ? featured : [],
     posts: filteredPosts,
-    total: listRes.count ?? 0,
+    total: typeof countRes.count === 'number' ? countRes.count : offset + posts.length,
     destinations: (destRes.data as unknown as DestinationStat[]) || [],
     angleCounts,
     unavailable,
@@ -257,10 +300,13 @@ const getCachedBlogData = unstable_cache(
 );
 
 async function getBlogData(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
+  const cacheKey = blogDataCacheKey(page, filter);
   try {
-    return await getCachedBlogData(page, filter.destination ?? '', filter.angle ?? '');
+    const data = await getCachedBlogData(page, filter.destination ?? '', filter.angle ?? '');
+    if (!data.unavailable && data.posts.length > 0) lastGoodBlogData.set(cacheKey, data);
+    return data;
   } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) return unavailableBlogData();
+    if (isBlogDatabaseUnavailableError(err)) return lastGoodBlogData.get(cacheKey) ?? unavailableBlogData(filter);
     throw err;
   }
 }
