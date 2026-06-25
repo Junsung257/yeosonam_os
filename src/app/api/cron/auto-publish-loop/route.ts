@@ -12,6 +12,7 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
 import { evaluateThreadsDistribution } from '@/lib/content-pipeline/threads-automation';
 import { publishDistribution, type ScheduledDistributionRow } from '@/lib/social-publishing/distribution-publisher';
+import { readBoundedIntEnv } from '@/lib/env-utils';
 
 /**
  * Auto Publish Loop — 2시간당 1회
@@ -36,16 +37,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-function intEnv(name: string, fallback: number, min: number, max: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(max, Math.max(min, parsed));
-}
-
-const MAX_PUBLISH_PER_RUN = intEnv('AUTO_PUBLISH_LOOP_MAX_PUBLISH_PER_RUN', 1, 1, 3);
-const MAX_THREADS_PER_RUN = intEnv('AUTO_PUBLISH_LOOP_MAX_THREADS_PER_RUN', 1, 1, 5);
+const MAX_PUBLISH_PER_RUN = readBoundedIntEnv('AUTO_PUBLISH_LOOP_MAX_PUBLISH_PER_RUN', 1, 1, 3);
+const MAX_THREADS_PER_RUN = readBoundedIntEnv('AUTO_PUBLISH_LOOP_MAX_THREADS_PER_RUN', 1, 1, 5);
 
 function currentPostingHourKst(): number {
   return (new Date().getUTCHours() + 9) % 24;
