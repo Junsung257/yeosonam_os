@@ -28,6 +28,7 @@ vi.mock('@/lib/parser/hotel-canonical-learner', () => ({
 
 vi.mock('@/lib/parser/catalog-pre-split', () => ({
   extractProductRawTextSection: vi.fn(() => 'fallback product raw text'),
+  stripSharedCatalogPrefixForProductDetail: vi.fn((rawText: string | null | undefined) => rawText ?? ''),
 }));
 
 vi.mock('@/lib/product-registration/destination-resolution', () => ({

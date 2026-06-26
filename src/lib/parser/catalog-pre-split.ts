@@ -70,6 +70,45 @@ export function collectVariantCatalogBlockStarts(raw: string): number[] {
   return deduped;
 }
 
+export function collectTransportVariantDetailBlockStarts(raw: string): number[] {
+  const text = raw.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const starts: number[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const current = lines[index]?.trim() ?? '';
+    const next = lines[index + 1]?.trim() ?? '';
+    const label = `${current}${next}`.replace(/\s+/g, '');
+    const isTransportBlock =
+      label === '\uB9AC\uBB34\uC9C4\uBC84\uC2A4\uC774\uB3D9' ||
+      label === '\uACE0\uC18D\uCCA0\uC774\uB3D9' ||
+      label === '\uACE0\uC18D\uC5F4\uCC28\uC774\uB3D9';
+    if (!isTransportBlock) continue;
+
+    const window = lines.slice(index, Math.min(lines.length, index + 90)).join('\n');
+    const hasTitle = /[\p{Script=Hangul}A-Za-z][^\n]{0,80}\d{1,2}\s*\uC77C/u.test(window);
+    const hasProductFacts =
+      /\uCD5C\uC18C\uCD9C\uBC1C/u.test(window) &&
+      /\uD3EC\s*\uD568\s*\uB0B4\s*\uC5ED/u.test(window) &&
+      /\uBD88\uD3EC\uD568\s*\uB0B4\uC5ED/u.test(window);
+    const hasItineraryTable =
+      /\uC77C\s*\uC790/u.test(window) &&
+      /\uC81C\s*1\s*\uC77C/u.test(window);
+
+    if (hasTitle && hasProductFacts && hasItineraryTable) {
+      starts.push(offsets[index]);
+    }
+  }
+
+  return [...new Set(starts)].sort((a, b) => a - b);
+}
+
 function collectSpecialPriceBlockStarts(raw: string): number[] {
   const text = raw.replace(/\r\n/g, '\n');
   const starts: number[] = [];
@@ -239,6 +278,7 @@ export function countCatalogItineraryHeaders(raw: string): number {
   return Math.max(
     collectItineraryHeaderStarts(raw).length,
     collectVariantCatalogBlockStarts(raw).length,
+    collectTransportVariantDetailBlockStarts(raw).length,
     collectSpecialPriceBlockStarts(raw).length,
     collectPkgBlockStarts(raw).length,
   );
@@ -401,6 +441,13 @@ export function extractProductRawTextSection(
     return text.slice(start, end).trim();
   }
 
+  const transportStarts = collectTransportVariantDetailBlockStarts(text);
+  if (transportStarts.length >= totalProducts && transportStarts.length >= 2) {
+    const start = transportStarts[idx] ?? transportStarts[transportStarts.length - 1];
+    const end = idx + 1 < transportStarts.length ? transportStarts[idx + 1] : text.length;
+    return text.slice(start, end).trim();
+  }
+
   const pkgStarts = collectPkgBlockStarts(text);
   if (pkgStarts.length >= totalProducts && pkgStarts.length >= 2) {
     const start = pkgStarts[idx] ?? pkgStarts[pkgStarts.length - 1];
@@ -435,19 +482,44 @@ export function extractProductRawTextSection(
   return fullRaw;
 }
 
+export function stripSharedCatalogPrefixForProductDetail(rawText: string | null | undefined): string {
+  const text = rawText?.replace(/\r\n/g, '\n').trim() ?? '';
+  if (!text.includes('---')) return text;
+
+  const parts = text.split(/\n\s*---\s*\n/);
+  if (parts.length < 2) return text;
+
+  const detail = parts.at(-1)?.trim() ?? '';
+  if (detail.length < 100) return text;
+
+  const hasItineraryEvidence =
+    /\uC77C\s*\uC790/u.test(detail) ||
+    /\uC81C\s*1\s*\uC77C/u.test(detail) ||
+    /\bDAY\s*1\b/i.test(detail);
+  const hasProductFacts =
+    /\uCD5C\uC18C\uCD9C\uBC1C/u.test(detail) ||
+    /\uD3EC\s*\uD568\s*\uB0B4\s*\uC5ED/u.test(detail) ||
+    /\uBD88\uD3EC\uD568\s*\uB0B4\uC5ED/u.test(detail);
+
+  return hasItineraryEvidence || hasProductFacts ? detail : text;
+}
+
 export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult {
   const text = raw.replace(/\r\n/g, '\n');
   const variantStarts = collectVariantCatalogBlockStarts(text);
   const specialPriceStarts = collectSpecialPriceBlockStarts(text);
+  const transportStarts = collectTransportVariantDetailBlockStarts(text);
   const itineraryStarts = collectItineraryHeaderStarts(text);
   const pkgStarts = collectPkgBlockStarts(text);
   const starts = pkgStarts.length >= 2
     ? pkgStarts
     : specialPriceStarts.length >= 2
       ? specialPriceStarts
-      : variantStarts.length >= 2
-        ? variantStarts
-        : itineraryStarts;
+      : transportStarts.length >= 2 && transportStarts.length > Math.max(variantStarts.length, itineraryStarts.length)
+        ? transportStarts
+        : variantStarts.length >= 2
+          ? variantStarts
+          : itineraryStarts;
 
   if (starts.length <= 1) {
     return { sharedPrefix: '', sections: [text] };

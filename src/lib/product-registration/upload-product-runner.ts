@@ -6,7 +6,7 @@ import { getRegistrationPolicy } from '@/lib/registration-policy';
 import type { ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 import { maybeTriggerMrtSync } from '@/lib/parser/mrt-lazy-sync';
 import { recordHotelsFromItinerary } from '@/lib/parser/hotel-canonical-learner';
-import { extractProductRawTextSection } from '@/lib/parser/catalog-pre-split';
+import { extractProductRawTextSection, stripSharedCatalogPrefixForProductDetail } from '@/lib/parser/catalog-pre-split';
 import type { MultiProductResult, ParsedDocument } from '@/lib/parser';
 import { issueUploadInternalCode } from '@/lib/product-registration/destination-resolution';
 import { finalizeUploadRegistration } from '@/lib/product-registration/finalize-registration';
@@ -127,6 +127,7 @@ export async function processUploadRegistrationProducts(input: {
         productIndex,
         input.productsToSave.length,
       );
+    const productV3RawText = stripSharedCatalogPrefixForProductDetail(productRawText);
 
     let internalCode: string | null = null;
     let productInserted = false;
@@ -168,6 +169,7 @@ export async function processUploadRegistrationProducts(input: {
         supplierHint: input.irLandOperatorName,
         sourceType: input.parsedDocument.fileType,
         tempDestination: input.tempDestination,
+        v3RawText: productV3RawText,
         extraFailures: input.productRegistrationV2GateFailures.map(reason => `Product Registration V2 gate failed: ${reason}`),
         enableGeminiFallback: true,
       });
@@ -428,7 +430,7 @@ export async function processUploadRegistrationProducts(input: {
           ?? '(unknown)';
         const intakeCommissionRate =
           input.filenameRule.marginRate != null ? input.filenameRule.marginRate * 100 : input.marginRate * 100;
-        const intakeRawText = productRawText ?? input.parsedDocument.rawText ?? '';
+        const intakeRawText = productV3RawText || productRawText || input.parsedDocument.rawText || '';
         scheduleUploadPostRegistrationTasks({
           safeAfter: input.safeAfter,
           supabase: input.supabase,
