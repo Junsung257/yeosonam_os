@@ -2,10 +2,12 @@ import { type NextRequest } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { countActiveUnmatched } from '@/lib/unmatched-lifecycle';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 180;
 
 type CandidateRow = {
   id: string;
@@ -71,6 +73,8 @@ async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
 
     let promoted = 0;
     let linkedExisting = 0;
+    const affectedAttractionIds = new Set<string>();
+    const affectedPackageIds = new Set<string>();
     const errors: string[] = [];
 
     for (const row of (data ?? []) as CandidateRow[]) {
@@ -119,6 +123,7 @@ async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
           attractionId = (created as { id: string }).id;
           promoted++;
         }
+        if (attractionId) affectedAttractionIds.add(attractionId);
 
         const now = new Date().toISOString();
         await supabaseAdmin
@@ -132,6 +137,16 @@ async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
 
         const sourceUnmatchedIds = row.source_unmatched_ids ?? [];
         if (sourceUnmatchedIds.length > 0) {
+          const { data: sourceRows, error: sourceRowsError } = await supabaseAdmin
+            .from('unmatched_activities')
+            .select('package_id')
+            .in('id', sourceUnmatchedIds)
+            .not('package_id', 'is', null);
+          if (sourceRowsError) throw sourceRowsError;
+          for (const sourceRow of (sourceRows ?? []) as Array<{ package_id: string | null }>) {
+            if (sourceRow.package_id) affectedPackageIds.add(sourceRow.package_id);
+          }
+
           const { error: closeError } = await supabaseAdmin
             .from('unmatched_activities')
             .update({
@@ -152,11 +167,27 @@ async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
       }
     }
 
+    let reenrich: Awaited<ReturnType<typeof reEnrichAffectedPackages>> | null = null;
+    if (affectedAttractionIds.size > 0) {
+      try {
+        reenrich = await reEnrichAffectedPackages([...affectedAttractionIds], {
+          packageIds: [...affectedPackageIds],
+          maxPackages: Math.max(limit * 3, affectedPackageIds.size, 1),
+          forceRevalidate: true,
+        });
+      } catch (error) {
+        errors.push(sanitizeDbError(error, 're-enrich affected packages failed'));
+      }
+    }
+
     return {
       ok: errors.length === 0,
       scanned: data?.length ?? 0,
       promoted,
       linkedExisting,
+      affected_attractions: affectedAttractionIds.size,
+      affected_packages: affectedPackageIds.size,
+      reenrich,
       active_pending_after: await countActiveUnmatched(),
       errors: errors.slice(0, 20),
     };
