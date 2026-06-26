@@ -3,9 +3,10 @@ import { createSourceLineIndex, parseV3AiStructurePlan, persistProductRegistrati
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildStandardNoticeDraft } from './standard-notices';
+import { evaluateProductRegistrationV3Gate } from './gate';
 import { mapTravelPackageToLandingData } from '../map-travel-package-to-lp';
 import { renderPackage } from '../render-contract';
-import { buildEntityReviewItem } from './entity-normalizer';
+import { buildEntityReviewItem, buildV3EntitySummary } from './entity-normalizer';
 import { classifyUnmatchedActivity } from '../unmatched-classifier';
 
 function queuesUnmatchedActivity(item: { raw_text: string; category: string; blocks_publish: boolean; suggested_action: string }) {
@@ -14,6 +15,8 @@ function queuesUnmatchedActivity(item: { raw_text: string; category: string; blo
     classified.category === 'attraction' &&
     (item.blocks_publish || item.suggested_action === 'needs_review');
 }
+
+const testEvidence = { line_start: 1, line_end: 1, char_start: 0, char_end: 1, quote: 'fixture' };
 
 function buildBaekduEightVariantFixture(): string {
   const grades = ['Standard', 'Premium', 'Lilac', 'VIP'];
@@ -775,6 +778,7 @@ ZE982
       destination: 'City',
     });
     const rpcCalls: unknown[] = [];
+    const candidateUpserts: unknown[] = [];
     const fakeSupabase = {
       from(table: string) {
         if (table === 'product_registration_drafts') {
@@ -787,6 +791,19 @@ ZE982
                   };
                 },
               };
+            },
+          };
+        }
+        if (table === 'entity_master_candidates') {
+          return {
+            select() {
+              return {
+                in: async () => ({ data: [], error: null }),
+              };
+            },
+            upsert: async (payload: unknown, options: unknown) => {
+              candidateUpserts.push({ payload, options });
+              return { error: null };
             },
           };
         }
@@ -823,6 +840,21 @@ ZE982
         p_source_context: expect.any(Object),
       }),
     });
+    expect(candidateUpserts).toHaveLength(1);
+    expect(candidateUpserts[0]).toMatchObject({
+      options: { onConflict: 'candidate_key' },
+      payload: expect.arrayContaining([
+        expect.objectContaining({
+          category: 'attraction',
+          source_context: expect.objectContaining({
+            draft_ids: ['draft-1'],
+            package_ids: ['00000000-0000-0000-0000-000000000001'],
+            mobile_landing_impact: true,
+            analyzer: 'product-registration-v3-draft',
+          }),
+        }),
+      ]),
+    });
   });
 
   it('uses package-scoped fallback upsert for unmatched attractions when the RPC is unavailable', async () => {
@@ -831,6 +863,7 @@ ZE982
       destination: 'City',
     });
     const upserts: unknown[] = [];
+    const candidateUpserts: unknown[] = [];
     const fakeSupabase = {
       from(table: string) {
         if (table === 'product_registration_drafts') {
@@ -843,6 +876,19 @@ ZE982
                   };
                 },
               };
+            },
+          };
+        }
+        if (table === 'entity_master_candidates') {
+          return {
+            select() {
+              return {
+                in: async () => ({ data: [], error: null }),
+              };
+            },
+            upsert: async (payload: unknown, options: unknown) => {
+              candidateUpserts.push({ payload, options });
+              return { error: null };
             },
           };
         }
@@ -876,6 +922,7 @@ ZE982
         source_context: expect.any(Object),
       }),
     });
+    expect(candidateUpserts).toHaveLength(1);
   });
 
   it('feeds the same V3 render contract into mobile LP and A4 canonical rendering', async () => {
@@ -912,6 +959,151 @@ ZE982
     expect(events.some(event => event.type === 'transfer')).toBe(true);
     expect(events.some(event => event.type === 'meal')).toBe(true);
     expect(events.filter(event => event.type === 'attraction').map(event => event.raw_text)).toEqual(['Central Garden attraction']);
+  });
+
+  it('does not block matched attraction detail bullets as separate attractions', () => {
+    const summary = buildV3EntitySummary({
+      destination: '광저우',
+      ledger: {
+        document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+        variants: [{
+          variant_key: 'v1',
+          grade: null,
+          course: '광저우',
+          duration_days: 1,
+          nights: 0,
+          title_parts: [],
+          price_calendar: [],
+          flight_segments: [],
+          days: [{
+            day: 1,
+            route: [],
+            meals: { breakfast: {}, lunch: {}, dinner: {} },
+            hotel: {},
+            events: [
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '풍경과 복이 깃든 성스러운 곳 소선령',
+                canonical_id: 'attraction-sosun',
+                canonical_type: 'attraction',
+                match_status: 'matched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '- 산 곳곳에 복자가 새겨진 돌들이 가득한 만복산',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '▶광저우에서 가장 유명한 사찰로 대불탑과 전통정원을 볼 수 있는 대불사',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+            ],
+          }],
+          inclusions: [],
+          exclusions: [],
+          options: [],
+          shopping: [],
+          structured_facts: [],
+          standard_notices: [],
+          minimum_departure: null,
+          evidence_coverage: {},
+        }],
+      },
+    });
+
+    expect(summary.review_items.some(item => item.raw_text === '만복산' && item.blocks_publish)).toBe(false);
+    expect(summary.review_items.some(item => item.raw_text === '대불사' && item.blocks_publish)).toBe(true);
+    expect(summary.attraction_unresolved_count).toBe(1);
+  });
+
+  it('uses entity unresolved attraction count ahead of legacy unmatched event count in V3 gate', () => {
+    const baseVariant = {
+      variant_key: 'v1',
+      grade: null,
+      course: '광저우',
+      duration_days: 1,
+      nights: 0,
+      title_parts: [],
+      price_calendar: [],
+      flight_segments: [{ leg: 'outbound' as const, code: 'BX0000', dep_time: '10:00', arr_time: '11:00', evidence: testEvidence }],
+      days: [{ day: 1, route: [], events: [], meals: { breakfast: { text: '조식' }, lunch: {}, dinner: {} }, hotel: { name: '호텔' } }],
+      inclusions: [{ value: '항공', evidence: testEvidence }],
+      exclusions: [{ value: '개인경비', evidence: testEvidence }],
+      options: [],
+      shopping: [],
+      structured_facts: [],
+      standard_notices: [],
+      minimum_departure: { value: 6, evidence: testEvidence },
+      evidence_coverage: {},
+    };
+    const gate = evaluateProductRegistrationV3Gate(
+      {
+        document_type: 'single_package',
+        planner_source: 'deterministic',
+        expected_products: 1,
+        shared_sections: [],
+        product_boundaries: [{ index: 0, line_start: 1, line_end: 1, title_hint: '광저우' }],
+        variant_axes: [],
+        price_table_location: null,
+        price_mapping_strategy: 'none',
+        flight_pattern: { outbound_codes: [], inbound_codes: [], meeting_times: [] },
+        itinerary_boundary_pattern: null,
+        option_section_locations: [],
+        shopping_section_locations: [],
+        confidence: 1,
+        unresolved_parts: [],
+      },
+      {
+        document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+        variants: [baseVariant],
+      },
+      {
+        attraction_matched_count: 1,
+        attraction_unmatched_count: 3,
+        option_review_count: 0,
+        shopping_count: 0,
+        unmatched: [],
+        entity_summary: {
+          counts: {
+            attraction: 1,
+            hotel: 0,
+            meal: 0,
+            transfer: 0,
+            shopping: 0,
+            optional_tour: 0,
+            free_time: 0,
+            notice: 3,
+            price_noise: 0,
+            unknown: 0,
+          },
+          review_required_count: 0,
+          attraction_unresolved_count: 0,
+          shopping_review_needed_count: 0,
+          option_review_needed_count: 0,
+          unknown_customer_visible_count: 0,
+          auto_ignored_noise_count: 0,
+          meal_structured_count: 0,
+          transfer_structured_count: 0,
+          hotel_structured_count: 0,
+          free_time_structured_count: 0,
+          review_items: [],
+        },
+      },
+    );
+
+    expect(gate.checks.find(check => check.id === 'attraction_unmatched_queue_clear')?.status).toBe('pass');
+    expect(gate.status).toBe('ready_to_publish');
   });
 
   it('keeps regional meal terms scoped by destination without attraction queue pollution', async () => {

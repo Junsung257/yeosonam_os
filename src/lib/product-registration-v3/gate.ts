@@ -104,12 +104,13 @@ export function evaluateProductRegistrationV3Gate(
 
   if (matchSummary) {
     const entity = matchSummary.entity_summary;
+    const unresolvedAttractionCount = entity?.attraction_unresolved_count ?? matchSummary.attraction_unmatched_count;
     check(
       checks,
       'attraction_unmatched_queue_clear',
-      matchSummary.attraction_unmatched_count === 0,
+      unresolvedAttractionCount === 0,
       'high',
-      `${matchSummary.attraction_unmatched_count} unmatched attraction events require review`,
+      `${unresolvedAttractionCount} unmatched attraction events require review`,
     );
     check(
       checks,

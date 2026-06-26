@@ -165,6 +165,10 @@ function blocksPublish(category: V3EntityCategory, event: V3LedgerEvent): boolea
   return false;
 }
 
+function isMatchedAttractionDetailBullet(rawText: string): boolean {
+  return /^\s*[-–—]\s*\S/.test(rawText) && rawText.replace(/\s+/g, '').length >= 6;
+}
+
 function reviewKey(item: V3EntityReviewItem): string {
   if (item.category === 'attraction') {
     return [
@@ -289,13 +293,34 @@ export function buildV3EntitySummary(input: {
 
   for (const variant of input.ledger.variants) {
     for (const day of variant.days) {
+      const dayHasMatchedAttraction = day.events.some(event =>
+        event.type === 'attraction'
+        && event.match_status === 'matched'
+        && Boolean(event.canonical_id),
+      );
       for (const event of day.events) {
-        const item = buildEntityReviewItem({
+        const baseItem = buildEntityReviewItem({
           event,
           dayNumber: day.day,
           destination: input.destination,
           country: input.country,
         });
+        const item = baseItem.category === 'attraction'
+          && baseItem.blocks_publish
+          && dayHasMatchedAttraction
+          && isMatchedAttractionDetailBullet(event.raw_text)
+          ? {
+              ...baseItem,
+              category: 'notice' as const,
+              suggested_action: 'auto_resolve_existing' as const,
+              blocks_publish: false,
+              suggested_resolution: {
+                ...baseItem.suggested_resolution,
+                category: 'notice' as const,
+                policy: 'matched-attraction-detail-bullet',
+              },
+            }
+          : baseItem;
         addItem(item);
       }
     }

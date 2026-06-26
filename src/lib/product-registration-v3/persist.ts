@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { evaluateMasterCandidate } from '@/lib/entity-master-candidates';
 import { classifyUnmatchedActivity } from '@/lib/unmatched-classifier';
 import type { V3EntityReviewItem, V3PipelineResult } from './types';
 
@@ -58,6 +59,162 @@ function shouldQueueUnmatchedActivity(item: V3EntityReviewItem): boolean {
     classified.category === 'attraction' &&
     (item.blocks_publish || item.suggested_action === 'needs_review')
   );
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+}
+
+async function upsertDraftAttractionMasterCandidates(
+  sb: SupabaseClient,
+  input: {
+    packageId?: string | null;
+    packageTitle?: string | null;
+    destination?: string | null;
+    draftId?: string | null;
+    result: V3PipelineResult;
+  },
+): Promise<{ saved: number; error: string | null }> {
+  const reviewItems: V3EntityReviewItem[] = input.result.match_summary.entity_summary?.review_items
+    ?? input.result.match_summary.unmatched.map(item => ({
+      raw_text: item.raw_text,
+      category: 'attraction' as const,
+      day_number: item.day_number,
+      evidence: item.evidence,
+      confidence: 0.6,
+      suggested_action: 'needs_review' as const,
+      customer_visible: true,
+      blocks_publish: true,
+      suggested_resolution: { category: 'attraction', policy: 'match-existing-only-no-auto-create' },
+    }));
+  const items = reviewItems.filter(shouldQueueUnmatchedActivity);
+  if (items.length === 0) return { saved: 0, error: null };
+
+  const groups = new Map<string, {
+    activity: string;
+    rawLabel: string;
+    count: number;
+    days: Set<number>;
+    examples: Array<Record<string, unknown>>;
+  }>();
+
+  for (const item of items) {
+    const queueLabel = normalizeQueueLabel(item);
+    if (!queueLabel) continue;
+    const decision = evaluateMasterCandidate({
+      rawLabel: queueLabel.activity,
+      category: 'attraction',
+      country: input.destination ?? null,
+      region: input.destination ?? null,
+      destination: input.destination ?? null,
+      occurrenceCount: 1,
+      evidenceCount: 1,
+      packageCount: input.packageId ? 1 : 0,
+    });
+    const group = groups.get(decision.candidateKey) ?? {
+      activity: queueLabel.activity,
+      rawLabel: queueLabel.rawLabel,
+      count: 0,
+      days: new Set<number>(),
+      examples: [],
+    };
+    group.count += 1;
+    if (item.day_number != null) group.days.add(item.day_number);
+    if (group.examples.length < 5) {
+      group.examples.push({
+        draft_id: input.draftId ?? null,
+        package_id: input.packageId ?? null,
+        package_title: input.packageTitle ?? null,
+        day_number: item.day_number ?? null,
+        label: queueLabel.activity,
+        evidence: item.evidence,
+      });
+    }
+    groups.set(decision.candidateKey, group);
+  }
+
+  const keys = Array.from(groups.keys());
+  if (keys.length === 0) return { saved: 0, error: null };
+
+  const { data: existingRows, error: fetchError } = await sb
+    .from('entity_master_candidates')
+    .select('candidate_key, evidence_count, occurrence_count, package_count, source_context, source_unmatched_ids')
+    .in('candidate_key', keys);
+  if (fetchError) return { saved: 0, error: fetchError.message };
+
+  const existingByKey = new Map(
+    ((existingRows ?? []) as Array<Record<string, unknown>>).map(row => [String(row.candidate_key), row]),
+  );
+
+  const payload = Array.from(groups.entries()).map(([candidateKey, group]) => {
+    const existing = existingByKey.get(candidateKey);
+    const sourceContext = existing?.source_context && typeof existing.source_context === 'object'
+      ? existing.source_context as Record<string, unknown>
+      : {};
+    const packageIds = new Set([
+      ...stringArray(sourceContext.package_ids),
+      ...(input.packageId ? [input.packageId] : []),
+    ]);
+    const packageTitles = new Set([
+      ...stringArray(sourceContext.package_titles),
+      ...(input.packageTitle ? [input.packageTitle] : []),
+    ]);
+    const draftIds = new Set([
+      ...stringArray(sourceContext.draft_ids),
+      ...(input.draftId ? [input.draftId] : []),
+    ]);
+    const decision = evaluateMasterCandidate({
+      rawLabel: group.activity,
+      category: 'attraction',
+      country: input.destination ?? null,
+      region: input.destination ?? null,
+      destination: input.destination ?? null,
+      occurrenceCount: Number(existing?.occurrence_count ?? 0) + group.count,
+      evidenceCount: Number(existing?.evidence_count ?? 0) + 1,
+      packageCount: packageIds.size,
+    });
+
+    return {
+      candidate_key: candidateKey,
+      category: decision.category,
+      raw_label: decision.rawLabel,
+      normalized_label: decision.normalizedLabel,
+      destination_scope: decision.destinationScope,
+      country_scope: decision.countryScope,
+      region_scope: decision.regionScope,
+      evidence_count: Number(existing?.evidence_count ?? 0) + 1,
+      occurrence_count: Number(existing?.occurrence_count ?? 0) + group.count,
+      package_count: packageIds.size,
+      source_unmatched_ids: stringArray(existing?.source_unmatched_ids),
+      source_context: {
+        ...sourceContext,
+        draft_ids: Array.from(draftIds).slice(-20),
+        package_ids: Array.from(packageIds).slice(-50),
+        package_titles: Array.from(packageTitles).slice(-20),
+        examples: [
+          ...(Array.isArray(sourceContext.examples) ? sourceContext.examples : []),
+          ...group.examples,
+        ].slice(-20),
+        analyzer: 'product-registration-v3-draft',
+        mobile_landing_impact: packageIds.size > 0,
+        updated_at: new Date().toISOString(),
+      },
+      external_sources: [],
+      suggested_master: decision.suggestedMaster,
+      confidence: decision.confidence,
+      promotion_status: decision.promotionStatus,
+      auto_action: decision.autoAction,
+      decision_reason: decision.decisionReason,
+    };
+  });
+
+  const { error } = await sb
+    .from('entity_master_candidates')
+    .upsert(payload, { onConflict: 'candidate_key' });
+  if (error) return { saved: 0, error: error.message };
+  return { saved: payload.length, error: null };
 }
 
 async function queueUnmatchedAttractions(
@@ -210,6 +367,14 @@ export async function persistProductRegistrationDraftV3(
       result: input.result,
     });
     if (queued.error) return { id, error: queued.error, queuedUnmatched: queued.saved };
+    const candidates = await upsertDraftAttractionMasterCandidates(sb, {
+      packageId: input.packageId,
+      packageTitle: input.packageTitle,
+      destination: input.destination,
+      draftId: id,
+      result: input.result,
+    });
+    if (candidates.error) return { id, error: candidates.error, queuedUnmatched: queued.saved };
     return { id, error: null, queuedUnmatched: queued.saved };
   } catch (error) {
     return { id: null, error: error instanceof Error ? error.message : String(error), queuedUnmatched: 0 };

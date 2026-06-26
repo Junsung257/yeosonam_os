@@ -132,6 +132,7 @@ function payloadFor(group: CandidateGroup) {
     source_context: {
       package_ids: [...group.packageIds].slice(0, 50),
       package_titles: [...group.packageTitles].slice(0, 20),
+      mobile_landing_impact: group.packageIds.size > 0,
       examples: group.examples,
       analyzer: 'entity-master-candidates-cron',
       analyzed_at: new Date().toISOString(),

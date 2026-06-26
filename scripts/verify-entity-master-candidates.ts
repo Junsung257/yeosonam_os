@@ -27,6 +27,7 @@ const skipWikidata = args.includes('--skip-wikidata') || naverCacheOnly;
 const limit = Number(argValue('--limit', '20'));
 const offset = Number(argValue('--offset', '0'));
 const categoryFilter = argValue('--category', '');
+const destinationFilter = argValue('--destination', '');
 const promotionStatusFilter = argList('--promotion-status');
 
 function argValue(name: string, fallback: string): string {
@@ -125,6 +126,10 @@ async function fetchCandidates(): Promise<EntityCandidateRow[]> {
     query = query.eq('category', categoryFilter);
   } else {
     query = query.in('category', ['attraction', 'hotel', 'shopping', 'optional_tour', 'notice']);
+  }
+
+  if (destinationFilter) {
+    query = query.or(`destination_scope.eq.${destinationFilter},region_scope.eq.${destinationFilter},country_scope.eq.${destinationFilter}`);
   }
 
   const { data, error } = await query;
@@ -361,6 +366,7 @@ async function main() {
     apply,
     offset,
     category: categoryFilter || 'all',
+    destination: destinationFilter || null,
     promotion_status: promotionStatusFilter.length > 0 ? promotionStatusFilter : 'default_active',
     naver_cache: naverCacheOnly ? 'only' : preferCachedNaver ? 'prefer' : 'off',
     wikidata: skipWikidata ? 'skipped' : 'on',
@@ -373,6 +379,7 @@ async function main() {
     apply: output.apply,
     offset: output.offset,
     category: output.category,
+    destination: output.destination,
     promotion_status: output.promotion_status,
     naver_cache: output.naver_cache,
     wikidata: output.wikidata,

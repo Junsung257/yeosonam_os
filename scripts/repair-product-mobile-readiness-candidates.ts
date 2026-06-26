@@ -9,6 +9,7 @@ import { buildSourceBackedPriceDateRepair } from '../src/lib/source-price-date-r
 import { buildSourceBackedTermsRepair } from '../src/lib/source-terms-repair';
 import { normalizeUploadItinerary } from '../src/lib/product-registration/itinerary-normalization';
 import { persistProductRegistrationDraftV3, runProductRegistrationV3 } from '../src/lib/product-registration-v3';
+import { evaluateProductRegistrationV3Gate } from '../src/lib/product-registration-v3/gate';
 import { stripSharedCatalogPrefixForProductDetail } from '../src/lib/parser/catalog-pre-split';
 import type { AttractionData } from '../src/lib/attraction-matcher';
 
@@ -20,6 +21,7 @@ type PackageRow = {
   status: string | null;
   duration: number | null;
   nights: number | null;
+  min_participants: number | null;
   raw_text: string | null;
   itinerary_data: unknown;
   optional_tours: unknown;
@@ -162,7 +164,7 @@ async function loadAllActiveAttractions(): Promise<AttractionRow[]> {
 async function loadPackages(): Promise<PackageRow[]> {
   let query = supabase
     .from('travel_packages')
-    .select('id,title,internal_code,destination,status,duration,nights,raw_text,itinerary_data,optional_tours,price_dates,departure_days,accommodations,inclusions,excludes,airline,audit_report')
+    .select('id,title,internal_code,destination,status,duration,nights,min_participants,raw_text,itinerary_data,optional_tours,price_dates,departure_days,accommodations,inclusions,excludes,airline,audit_report')
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -190,6 +192,31 @@ function auditReportWithRepair(pkg: PackageRow, repair: Record<string, unknown>)
       version: 'candidate-repair-v1',
     },
   };
+}
+
+function applyPackageMinimumDeparture(v3: Awaited<ReturnType<typeof runProductRegistrationV3>>, pkg: PackageRow): boolean {
+  const value = Number(pkg.min_participants);
+  if (!Number.isFinite(value) || value <= 0) return false;
+  let changed = false;
+  for (const variant of v3.ledger.variants) {
+    if (variant.minimum_departure) continue;
+    variant.minimum_departure = {
+      value,
+      evidence: {
+        line_start: 0,
+        line_end: 0,
+        char_start: 0,
+        char_end: 0,
+        quote: `travel_packages.min_participants=${value}`,
+      },
+    };
+    variant.evidence_coverage.minimum_departure = true;
+    changed = true;
+  }
+  if (changed) {
+    v3.gate_result = evaluateProductRegistrationV3Gate(v3.structure_plan, v3.ledger, v3.match_summary);
+  }
+  return changed;
 }
 
 async function repairPackage(pkg: PackageRow, activeAttractions: AttractionRow[]) {
@@ -248,10 +275,12 @@ async function repairPackage(pkg: PackageRow, activeAttractions: AttractionRow[]
       destination: pkg.destination ?? undefined,
       supplierHint: pkg.destination ?? undefined,
     });
+    const minimumDeparturePatched = applyPackageMinimumDeparture(v3, pkg);
     v3Report = {
       status: v3.gate_result.status,
       attraction_unresolved: v3.match_summary.entity_summary?.attraction_unresolved_count ?? v3.match_summary.attraction_unmatched_count,
       option_review_needed: v3.match_summary.entity_summary?.option_review_needed_count ?? 0,
+      minimum_departure_patched: minimumDeparturePatched,
     };
     details.v3 = v3Report;
     if (apply) {

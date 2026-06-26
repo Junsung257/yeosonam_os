@@ -189,6 +189,7 @@ function candidatePayload(group: CandidateGroup) {
     source_context: {
       package_ids: Array.from(group.packageIds).slice(0, 50),
       package_titles: Array.from(group.packageTitles).slice(0, 20),
+      mobile_landing_impact: group.packageIds.size > 0,
       examples: group.examples,
       analyzer: 'analyze-unmatched-master-candidates',
       analyzed_at: new Date().toISOString(),
