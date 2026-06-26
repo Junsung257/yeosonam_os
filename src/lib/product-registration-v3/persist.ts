@@ -10,10 +10,20 @@ const NON_MASTER_ATTRACTION_EXACT_RE =
   /^(?:일반석|전동카\+트레킹|양\s*삭|용\s*승|백\s*사)$/;
 const GENERIC_HOTEL_EVENT_RE = /^(?:호텔\s*조식\s*후(?:\s*\[[^\]]+\])?|호텔\s*투숙\s*및\s*휴식)$/;
 
+const KO_ATTRACTION_NAME_SUFFIX_RE =
+  /([\w\uac00-\ud7a3().·・\-\s]{2,}?(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|야시장|비치|해변|광장|전망대|케이블카|마을|폭포|온천|정원|호수|유람선|공연))(?:\s*\([^)]*\))?$/i;
+const KO_NON_MASTER_ATTRACTION_FRAGMENT_RE =
+  /^(?:상기\s*일정|아래\s*일정|항공\s*및\s*현지\s*사정|전용\s*버스|전용차|차창|호텔\s*조식|호텔\s*투숙|미팅|픽업|샌딩|예약\s*가능|발레단\s*조합|장예모\s*감독|비로\s*물든|제공\s*X|준비물|필수\s*관광|출발\s*마감)/i;
+const KO_NON_MASTER_ATTRACTION_EXACT_RE =
+  /^(?:오\s*전|오\s*후|자유\s*시간|자유\s*일정|일반\s*아동.*|호텔|리조트|조식|중식|석식)$/i;
+const KO_GENERIC_HOTEL_EVENT_RE =
+  /^(?:호텔\s*조식\s*후.*|호텔\s*투숙\s*및\s*휴식|HOTEL\s*:\s*(?:상기\s*)?호텔.*동급.*)$/i;
+
 function normalizeHotelQueueLabel(raw: string): string | null {
-  if (GENERIC_HOTEL_EVENT_RE.test(raw)) return null;
+  if (GENERIC_HOTEL_EVENT_RE.test(raw) || KO_GENERIC_HOTEL_EVENT_RE.test(raw)) return null;
   return raw
     .replace(/^HOTEL\s*:\s*/i, '')
+    .replace(/\s*\((?:준|특)?\s*\d?\s*성급?\)\s*$/i, '')
     .replace(/\s*또는\s*동급.*$/i, '')
     .replace(/\s*\((?:준|정)?\s*\d\s*성급?\)\s*$/i, '')
     .trim() || null;

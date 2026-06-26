@@ -81,7 +81,7 @@ async function main() {
       continue;
     }
     if (p.internal_code) {
-      await sb.from('products').update({ status: 'active', updated_at: new Date().toISOString() }).eq('internal_code', p.internal_code);
+      await sb.from('products').update({ status: 'ACTIVE', updated_at: new Date().toISOString() }).eq('internal_code', p.internal_code);
     }
     console.log(`✅ ${p.short_code}: ${p.audit_status ?? 'null'} → active`);
     promoted.push(id);

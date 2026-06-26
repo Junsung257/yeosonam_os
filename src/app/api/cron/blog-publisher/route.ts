@@ -51,6 +51,7 @@ import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 import { quarantineNonRetryableBlogQueueItems } from '@/lib/blog-queue-lifecycle';
 import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
+import { readBoundedIntEnv } from '@/lib/env-utils';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -79,9 +80,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-const MAX_BATCH = 4; // daily quality quota: 3-4 posts/day, never bulk-publish beyond the target.
-const CLAIM_POOL_MULTIPLIER = 5;
-const MAX_CANDIDATE_POOL = 20;
+const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
+const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 3, 1, 5);
+const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 10, MAX_BATCH, 20);
 const MAX_QUALITY_REPAIR_ROUNDS = 3;
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
@@ -1834,7 +1835,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     const { data: attrs } = await supabaseAdmin
       .from('attractions')
       .select('name, short_desc, photos, badge_type, aliases')
-      .eq('destination', product.destination);
+      .eq('region', product.destination);
     attractions = attrs || [];
   }
 

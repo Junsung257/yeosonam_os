@@ -10,6 +10,7 @@ import type { UploadReviewQueueFixtureRow } from '@/lib/product-registration/rev
 import { buildUploadReviewRegressionReport } from '@/lib/product-registration/upload-review-regression-verifier';
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
 
 export const dynamic = 'force-dynamic';
@@ -198,7 +199,10 @@ export async function GET(request: NextRequest) {
       .limit(replayFetchLimit(limit));
   }
 
-  const { data, error } = await query;
+  const { data, error } = await runSupabaseQueryWithTimeout(query, {
+    label: 'cron.upload-review-auto-replay.pick',
+    timeoutMs: 4000,
+  });
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

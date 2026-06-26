@@ -47,8 +47,10 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   assert.match(source, /__blogQueryUnavailable/);
   assert.match(source, /Promise\.race/);
   assert.match(source, /isBlogQueryUnavailable/);
-  assert.match(source, /isBlogQueryUnavailable\(destRes\)/);
-  assert.match(source, /isBlogQueryUnavailable\(angleRes\)/);
+  assert.match(source, /range\(offset, offset \+ PER_PAGE\)/);
+  assert.doesNotMatch(source, /count:\s*['"]exact['"]/);
+  assert.doesNotMatch(source, /runBlogQuery\(['"]destinations['"]/);
+  assert.doesNotMatch(source, /runBlogQuery\(['"]angleCounts['"]/);
   assert.match(source, /connection timeout/i);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답 지연/);
@@ -78,7 +80,7 @@ test('/blog detail does not convert DB timeouts into notFound', () => {
   assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
 });
 
-test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
+test('/api/blog returns stale or Korean fallback for list DB timeout instead of hanging silently', () => {
   const source = read('src', 'app', 'api', 'blog', 'route.ts');
 
   assert.match(source, /runApiBlogQuery/);
@@ -86,8 +88,26 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
   assert.match(source, /Promise\.race/);
   assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
+  assert.match(source, /shouldSkipPublicDbReadsForResourceSaver/);
+  assert.match(source, /Public blog DB reads are slow while resource saver mode is active/);
+  assert.match(source, /degradedBlogListResponse/);
   assert.match(source, /stale-if-error=86400/);
   assert.match(source, /status: 503/);
+  assert.match(source, /range\(offset, offset \+ limit\)/);
+  assert.doesNotMatch(source, /BLOG_LIST_COUNT_SELECT/);
+});
+
+test('public blog fallback content is Korean and not an English sample article', () => {
+  const source = read('src', 'lib', 'blog-public-fallback.ts');
+
+  assert.match(source, /장가계 월별 날씨와 옷차림 가이드 2026/);
+  assert.match(source, /다낭 가족여행 패키지 고르는 법/);
+  assert.match(source, /후쿠오카 온천 포함 짧은 여행 가이드/);
+  assert.match(source, /destination:\s*'장가계'/);
+  assert.match(source, /FALLBACK_SEEDS/);
+  assert.match(source, /normalizeDestination/);
+  assert.doesNotMatch(source, /Zhangjiajie weather and what to wear by month 2026/);
+  assert.doesNotMatch(source, /Quick summary for Zhangjiajie weather planning/);
 });
 
 test('public blog publish paths invalidate list and detail data caches', () => {

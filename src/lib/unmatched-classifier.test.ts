@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { classifyUnmatchedActivity } from './unmatched-classifier';
 
 describe('classifyUnmatchedActivity', () => {
-  it('auto-closes meal and transfer rows as added', () => {
+  it('auto-closes meal and transfer rows as structured non-attraction entities', () => {
     expect(classifyUnmatchedActivity('호텔 조식 후 전용차량 이동')).toMatchObject({
       category: 'meal',
       terminalStatus: 'added',
@@ -13,7 +13,7 @@ describe('classifyUnmatchedActivity', () => {
       terminalStatus: 'added',
       suggestedAction: 'auto_resolve_existing',
     });
-    expect(classifyUnmatchedActivity('석-한  식')).toMatchObject({
+    expect(classifyUnmatchedActivity('석-한 식')).toMatchObject({
       category: 'meal',
       terminalStatus: 'added',
       suggestedAction: 'auto_resolve_existing',
@@ -51,14 +51,14 @@ describe('classifyUnmatchedActivity', () => {
       terminalStatus: 'ignored',
       suggestedAction: 'auto_ignore_noise',
     });
+  });
+
+  it('classifies common non-attraction itinerary entities without making attraction masters', () => {
     expect(classifyUnmatchedActivity('준비물 : 수영복, 모자, 선크림, 여벌 옷, 아쿠아슈즈')).toMatchObject({
       category: 'notice',
       terminalStatus: 'pending',
       suggestedAction: 'needs_review',
     });
-  });
-
-  it('classifies common non-attraction itinerary entities without making attraction masters', () => {
     expect(classifyUnmatchedActivity('호텔 투숙 및 휴식')).toMatchObject({
       category: 'hotel',
       terminalStatus: 'pending',
@@ -94,7 +94,7 @@ describe('classifyUnmatchedActivity', () => {
     });
   });
 
-  it('does not ignore real activities only because they mention inclusion', () => {
+  it('does not ignore real optional activities only because they mention inclusion', () => {
     expect(classifyUnmatchedActivity('천등 날리기 체험 포함(4인 기준)')).toMatchObject({
       category: 'optional_tour',
       terminalStatus: 'pending',

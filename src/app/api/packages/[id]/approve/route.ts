@@ -392,7 +392,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
     if (pkg.internal_code) {
       const { error: productError } = await supabaseAdmin
         .from('products')
-        .update({ status: 'active', updated_at: new Date().toISOString() })
+        .update({ status: 'ACTIVE', updated_at: new Date().toISOString() })
         .eq('internal_code', pkg.internal_code);
 
       if (productError) {

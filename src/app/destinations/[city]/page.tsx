@@ -349,7 +349,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     supabaseAdmin
       .from('attractions')
       .select('id, name, short_desc, photos, badge_type')
-      .eq('destination', city)
+      .eq('region', city)
       .order('mention_count', { ascending: false })
       .limit(8),
     supabaseAdmin

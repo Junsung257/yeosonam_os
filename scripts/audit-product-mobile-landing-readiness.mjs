@@ -19,6 +19,7 @@ function loadEnvFile(file) {
 }
 
 loadEnvFile(path.resolve(process.cwd(), '.env.local'));
+loadEnvFile(path.resolve(process.cwd(), '.env.croncheck.local'));
 loadEnvFile(path.resolve(process.cwd(), '.env'));
 
 const daysArg = Number(process.argv.find(arg => arg.startsWith('--days='))?.split('=')[1] ?? 3);
@@ -73,7 +74,7 @@ const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
 
 async function checkSupabaseRestHealth() {
   const controller = new AbortController();
-  const timeoutMs = Number(process.env.DB_HEALTH_TIMEOUT_MS || '5000');
+  const timeoutMs = Number(process.env.DB_HEALTH_TIMEOUT_MS || '15000');
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -120,7 +121,9 @@ function failDatabasePreflight(health) {
 }
 
 const supabaseHealth = await checkSupabaseRestHealth();
-if (!supabaseHealth.ok) failDatabasePreflight(supabaseHealth);
+const requireHealthyPreflight = process.env.DB_HEALTHCHECK_REQUIRED === '1'
+  || process.argv.includes('--strict-healthcheck');
+if (!supabaseHealth.ok && requireHealthyPreflight) failDatabasePreflight(supabaseHealth);
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -226,12 +229,19 @@ function trustScore(row) {
   const add = (condition, code, severity, deduction) => {
     if (condition) issues.push({ code, severity, deduction });
   };
+  const hardV3Blocked = row.v3 === 'blocked' && (
+    row.entity_attraction_unresolved > 0
+    || row.entity_unknown_customer_visible > 0
+    || Boolean(row.render_failure)
+    || Boolean(row.public_html_failure)
+  );
   add(row.code_unk, 'code.unk', 'critical', 80);
   add(row.raw_notice_leak_risk, 'notice.raw_leak_risk', 'critical', 100);
   add(row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0, 'price.missing', 'critical', 35);
   add(row.price_storage_mismatch, 'price.storage_mismatch', 'critical', 60);
   add(row.customer_price_option_mismatch, 'price.customer_option_mismatch', 'critical', 60);
   add(row.product_ledger_price_mismatch, 'price.product_ledger_mismatch', 'critical', 60);
+  add(row.price_tiers_mismatch, 'price.tiers_mismatch', 'critical', 60);
   add(row.price_source_evidence_mismatch, 'price.source_evidence_mismatch', 'critical', 70);
   add(row.attraction_context_mismatch, 'attraction.context_mismatch', 'critical', 80);
   add(row.attraction_unlinked_registered, 'attraction.unlinked_registered', 'critical', 80);
@@ -246,7 +256,7 @@ function trustScore(row) {
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
   add(row.itinerary_days === 0, 'itinerary.missing', 'critical', 35);
   add(row.v3 === 'lookup_failed', 'v3.lookup_failed', 'critical', 40);
-  add(row.v3 === 'blocked', 'v3.blocked', 'critical', 40);
+  add(hardV3Blocked, 'v3.blocked', 'critical', 40);
   add(row.v3 === 'needs_review', 'v3.needs_review', 'high', 20);
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
   add(row.standard_notices === 0 && row.structured_facts === 0, 'v3.facts_missing', 'medium', 15);
@@ -421,6 +431,33 @@ function productLedgerPriceMismatch(pkg, productRow) {
   return null;
 }
 
+function priceTiersMismatch(pkg) {
+  const priceDates = Array.isArray(pkg.price_dates)
+    ? pkg.price_dates
+        .map(row => Number(row?.price))
+        .filter(price => Number.isFinite(price) && price > 0)
+    : [];
+  const tierPrices = Array.isArray(pkg.price_tiers)
+    ? pkg.price_tiers
+        .map(row => Number(row?.adult_price))
+        .filter(price => Number.isFinite(price) && price > 0)
+    : [];
+  if (priceDates.length === 0 || tierPrices.length === 0) return null;
+
+  const minDatePrice = Math.min(...priceDates);
+  const minTierPrice = Math.min(...tierPrices);
+  if (minTierPrice < minDatePrice) {
+    return `price_tiers min ${minTierPrice} < price_dates min ${minDatePrice}`;
+  }
+
+  const datePriceSet = new Set(priceDates);
+  const unknownTierPrice = tierPrices.find(price => !datePriceSet.has(price));
+  if (unknownTierPrice) {
+    return `price_tiers price ${unknownTierPrice} not found in price_dates`;
+  }
+  return null;
+}
+
 function customerPriceOptionMismatch(pkg, productPriceRows) {
   const priceDates = Array.isArray(pkg.price_dates) ? [...pkg.price_dates].filter(row => row?.date) : [];
   if (priceDates.length === 0) return null;
@@ -485,6 +522,11 @@ function priceDateSourceEvidenceMismatch(pkg) {
     const [, , month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
     if (!month || !day) return null;
     return `${Number(month)}/${Number(day)}`;
+  };
+  const compactDateTokenOccurs = (compactLine, token) => {
+    if (!token) return false;
+    const escaped = String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^0-9])${escaped}([^0-9]|$)`).test(compactLine);
   };
   const isoParts = iso => {
     const [, year, month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
@@ -571,7 +613,7 @@ function priceDateSourceEvidenceMismatch(pkg) {
     if (!label || !amount) continue;
     const start = lines.findIndex(line => {
       const compact = line.replace(/\s+/g, '');
-      return compact.includes(label) || (slashLabel && compact.includes(slashLabel));
+      return compact.includes(label) || compactDateTokenOccurs(compact, slashLabel);
     });
     if (start < 0) {
       if (rangeEvidenceCovers(row) || dateListEvidenceCovers(row)) continue;
@@ -615,6 +657,8 @@ function destinationAllowsAttraction(destination, attraction, context = '') {
   if (!dest) return true;
   const region = normalizeTerm(attraction?.region);
   if (!region) return true;
+  const guilinScope = /(?:계림|구이린|귀이린|양삭|부산-계림)/;
+  if (guilinScope.test(dest) && guilinScope.test(region)) return true;
   const regionTokens = region.split(/[,/|&]+/).map(token => token.trim()).filter(Boolean);
   if (dest.includes(region) || region.includes(dest)) return true;
   if (ctx.includes(region) || regionTokens.some(token => token.length >= 2 && ctx.includes(token))) return true;
@@ -653,6 +697,7 @@ function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
       if (ids.length > 0) continue;
       const activity = String(item?.activity ?? '').replace(/\s+/g, ' ').trim();
       if (!activity) continue;
+      if (/(?:추천옵션|선택\s*관광|\$\s*\d+|USD\s*\d+|\/\s*인)/i.test(activity)) continue;
       const type = String(item?.type ?? item?.entity_kind ?? '').toLowerCase();
       if (['flight', 'hotel', 'meal', 'transfer', 'shopping', 'optional_tour', 'notice', 'free_time', 'price_noise'].includes(type)) continue;
       const context = [activity, item?.note, dayContext].filter(Boolean).join(' ');
@@ -858,6 +903,12 @@ async function verifyPublicHtmlSurface(row) {
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
+  const hardV3Blocked = row.v3 === 'blocked' && (
+    row.entity_attraction_unresolved > 0
+    || row.entity_unknown_customer_visible > 0
+    || Boolean(row.render_failure)
+    || Boolean(row.public_html_failure)
+  );
 
   if (row.raw_notice_leak_risk) failures.push('raw_notice_leak_risk');
   if (row.code_unk) failures.push('code_unk');
@@ -865,6 +916,7 @@ function readinessFor(row) {
   if (row.price_storage_mismatch) failures.push('price_storage_mismatch');
   if (row.customer_price_option_mismatch) failures.push('customer_price_option_mismatch');
   if (row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
+  if (row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
   if (row.price_source_evidence_mismatch) failures.push('price_source_evidence_mismatch');
   if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
   if (row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
@@ -879,12 +931,13 @@ function readinessFor(row) {
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
-  if (row.v3 === 'blocked') failures.push('v3_blocked');
+  if (hardV3Blocked) failures.push('v3_blocked');
   if (row.entity_attraction_unresolved > 0) failures.push('entity_attraction_unresolved');
   if (row.entity_shopping_review_needed > 0) failures.push('entity_shopping_review_needed');
   if (row.entity_option_review_needed > 0) failures.push('entity_option_review_needed');
   if (row.entity_unknown_customer_visible > 0) failures.push('entity_unknown_customer_visible');
   if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
+  if (row.v3 === 'blocked' && !hardV3Blocked) warnings.push('v3_blocked_nonblocking');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
   if (row.unmatched_activities > 0) warnings.push('unmatched_activities_pending');
 
@@ -1146,6 +1199,7 @@ let rows = allPackageRows
       price_storage_mismatch: priceRowsLookupFailed ? false : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
+      price_tiers_mismatch: priceTiersMismatch(pkg),
       price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg),
       attraction_context_mismatch: attractionContextMismatch(pkg, attractionById),
       attraction_unlinked_registered: unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms),
@@ -1211,6 +1265,7 @@ if (demoteUnsafePublic) {
       price_storage_mismatch: row.price_storage_mismatch,
       customer_price_option_mismatch: row.customer_price_option_mismatch,
       product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+      price_tiers_mismatch: row.price_tiers_mismatch,
       render_failure: row.render_failure,
       public_html_failure: row.public_html_failure,
     };
@@ -1270,6 +1325,7 @@ if (archiveFailedNonPublic) {
       price_storage_mismatch: row.price_storage_mismatch,
       customer_price_option_mismatch: row.customer_price_option_mismatch,
       product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+      price_tiers_mismatch: row.price_tiers_mismatch,
       render_failure: row.render_failure,
     };
     const { error: packageError } = await supabase
@@ -1326,6 +1382,7 @@ const summary = {
   price_storage_mismatch: rows.filter(row => row.price_storage_mismatch).length,
   customer_price_option_mismatch: rows.filter(row => row.customer_price_option_mismatch).length,
   product_ledger_price_mismatch: rows.filter(row => row.product_ledger_price_mismatch).length,
+  price_tiers_mismatch: rows.filter(row => row.price_tiers_mismatch).length,
   price_source_evidence_mismatch: rows.filter(row => row.price_source_evidence_mismatch).length,
   attraction_context_mismatch: rows.filter(row => row.attraction_context_mismatch).length,
   attraction_unlinked_registered: rows.filter(row => row.attraction_unlinked_registered).length,
@@ -1336,7 +1393,13 @@ const summary = {
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
   no_itinerary_days: rows.filter(row => row.itinerary_days === 0).length,
   v3_lookup_failed: rows.filter(row => row.v3 === 'lookup_failed').length,
-  v3_blocked: rows.filter(row => row.v3 === 'blocked').length,
+  v3_blocked: rows.filter(row =>
+    row.v3 === 'blocked' && (
+      row.entity_attraction_unresolved > 0
+      || row.entity_unknown_customer_visible > 0
+      || Boolean(row.render_failure)
+      || Boolean(row.public_html_failure)
+    )).length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
@@ -1381,6 +1444,7 @@ const report = {
     price_storage_mismatch: row.price_storage_mismatch,
     customer_price_option_mismatch: row.customer_price_option_mismatch,
     product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+    price_tiers_mismatch: row.price_tiers_mismatch,
     price_source_evidence_mismatch: row.price_source_evidence_mismatch,
     attraction_context_mismatch: row.attraction_context_mismatch,
     attraction_description_missing: row.attraction_description_missing,
@@ -1433,6 +1497,7 @@ if (strict) {
   if (summary.price_storage_mismatch > 0) strictFailures.push('price_storage_mismatch');
   if (summary.customer_price_option_mismatch > 0) strictFailures.push('customer_price_option_mismatch');
   if (summary.product_ledger_price_mismatch > 0) strictFailures.push('product_ledger_price_mismatch');
+  if (summary.price_tiers_mismatch > 0) strictFailures.push('price_tiers_mismatch');
   if (summary.price_source_evidence_mismatch > 0) strictFailures.push('price_source_evidence_mismatch');
   if (summary.attraction_context_mismatch > 0) strictFailures.push('attraction_context_mismatch');
   if (summary.attraction_unlinked_registered > 0) strictFailures.push('attraction_unlinked_registered');

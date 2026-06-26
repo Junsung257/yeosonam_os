@@ -143,4 +143,5 @@ test('ERR-BLOG-autopublish-contract-bypass: durable indexing outbox is scheduled
   assert.match(migration, /FOR ALL TO service_role/);
   assert.equal(parsed.crons.length <= 100, true, 'vercel.json must stay within Vercel cron limit');
   assert.match(vercel, /\/api\/cron\/blog-publisher/);
+  assert.match(vercel, /\/api\/cron\/auto-publish-loop/);
 });

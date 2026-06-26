@@ -38,6 +38,7 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -449,8 +450,7 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
       return getPostFastUncached(slug);
     }
     if (isBlogDatabaseUnavailableError(error)) {
-      const fallbackPost = await getPost(slug);
-      if (fallbackPost) return fallbackPost;
+      return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
     }
     throw error;
   }

@@ -98,8 +98,12 @@
       "schedule": "30 2 * * *"
     },
     {
+      "path": "/api/cron/auto-publish-loop",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/blog-publisher",
-      "schedule": "5 3,6,9,12 * * *"
+      "schedule": "5 3 * * *"
     },
     {
       "path": "/api/cron/trend-topic-miner",
@@ -336,10 +340,6 @@
     {
       "path": "/api/cron/product-registration-learning-report",
       "schedule": "24 2 * * 1"
-    },
-    {
-      "path": "/api/cron/upload-review-auto-replay",
-      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/admin/optimization",

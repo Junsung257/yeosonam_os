@@ -58,6 +58,26 @@ const NOTICE_RE =
 const ATTRACTION_HINT_RE =
   /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|타워|비치|해변|광장|전망대|케이블카|마을|천등|폭포|온천|정원|야시장|유람선|호수|계림|temple|park|museum|beach|market|tower|garden)/i;
 
+const KO_PRICE_NOISE_RE =
+  /(?:^\s*$|^\d{1,4}(?:,\d{3})*(?:\s*(?:원|krw|usd|\$))?$|^\d+\s*원\s*기준?$|가격|요금|판매가|출발\s*마감|할인|성인|아동|소아|유아|예약금|총\s*금액|취소료|수수료|^\d{1,2}[./-]\d{1,2})/i;
+const KO_MEAL_RE =
+  /(?:조식|중식|석식|식사|식당|레스토랑|뷔페|특식|한식|현지식|도시락|제육|찌개|쌀국수|과일\s*제공|모닝콜|breakfast|lunch|dinner|meal|restaurant|rice noodle|pho)/i;
+const KO_MEAL_ABBREVIATION_RE = /(?:\uC11D\s*-\s*\uD55C\s*\uC2DD)/i;
+const KO_TRANSFER_RE =
+  /(?:^[A-Z]{3}(?:-[A-Z]{3})?$|이동|차량|버스|공항|픽업|샌딩|전용차|기사|미팅|transfer|pickup|drop[-\s]?off|airport)/i;
+const KO_HOTEL_RE =
+  /(?:호텔|리조트|숙박|객실|체크\s*인|체크\s*아웃|투숙|휴식|동급|준\s*\d?\s*성급|풀빌라|hotel|resort|villa|room|check[-\s]?in|check[-\s]?out)/i;
+const KO_SHOPPING_RE =
+  /(?:쇼핑|면세|기념품|특산품|농수산|라텍스|잡화|쇼핑센터|호화호특|mall|outlet|shopping)/i;
+const KO_OPTION_RE =
+  /(?:선택\s*관광|옵션|마사지|스파|공연|투어|입장권|체험|골프|라운드|optional|option|spa|massage|ticket|show|tour)/i;
+const KO_FREE_TIME_RE =
+  /(?:^\s*(?:오\s*전|오\s*후)\s*$|자유\s*시간|자유\s*일정|리조트\s*내\s*자유|오전\s*자유|오후\s*자유|free\s*time|rest)/i;
+const KO_NOTICE_RE =
+  /(?:안내|공지|주의|준비물|상기\s*일정|아래\s*일정|필수\s*관광\s*\d*|미진행\s*시|제공\s*X|취소|환불|비자|여권|입국|출국|예약금|수수료|변경될\s*수|현지\s*사정|항공\s*및\s*현지\s*사정|천재지변|기상|notice|caution|refund|cancel|visa|passport)/i;
+const KO_ATTRACTION_HINT_RE =
+  /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|야시장|비치|해변|광장|전망대|케이블카|마을|천등|폭포|온천|정원|계림|관광지명|temple|park|museum|beach|market|tower|garden)/i;
+
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -88,31 +108,31 @@ export function classifyUnmatchedActivity(
   let category: UnmatchedEntityCategory = existing ?? 'attraction';
   let confidence = existing ? 0.72 : 0.65;
 
-  if (!text || PRICE_NOISE_RE.test(text)) {
+  if (!text || KO_PRICE_NOISE_RE.test(text)) {
     category = 'price_noise';
     confidence = 0.92;
-  } else if (MEAL_RE.test(text)) {
+  } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text)) {
     category = 'meal';
     confidence = 0.9;
-  } else if (TRANSFER_RE.test(text)) {
-    category = 'transfer';
-    confidence = 0.9;
-  } else if (HOTEL_RE.test(text)) {
-    category = 'hotel';
-    confidence = 0.86;
-  } else if (SHOPPING_RE.test(text)) {
-    category = 'shopping';
-    confidence = 0.86;
-  } else if (OPTION_RE.test(text)) {
-    category = 'optional_tour';
-    confidence = 0.86;
-  } else if (FREE_TIME_RE.test(text)) {
-    category = 'free_time';
-    confidence = 0.92;
-  } else if (NOTICE_RE.test(text)) {
+  } else if (KO_NOTICE_RE.test(text)) {
     category = 'notice';
     confidence = 0.84;
-  } else if (ATTRACTION_HINT_RE.test(text)) {
+  } else if (KO_TRANSFER_RE.test(text)) {
+    category = 'transfer';
+    confidence = 0.9;
+  } else if (KO_HOTEL_RE.test(text)) {
+    category = 'hotel';
+    confidence = 0.86;
+  } else if (KO_SHOPPING_RE.test(text)) {
+    category = 'shopping';
+    confidence = 0.86;
+  } else if (KO_OPTION_RE.test(text)) {
+    category = 'optional_tour';
+    confidence = 0.86;
+  } else if (KO_FREE_TIME_RE.test(text)) {
+    category = 'free_time';
+    confidence = 0.92;
+  } else if (KO_ATTRACTION_HINT_RE.test(text)) {
     category = 'attraction';
     confidence = 0.78;
   }

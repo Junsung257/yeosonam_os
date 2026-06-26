@@ -156,6 +156,30 @@ export async function buildUploadResponsePayload(input: {
   const customerPublishable = successCount > 0
     && registerReport.length > 0
     && customerPublishableCount === registerReport.length;
+  const mobileProofRequiredCount = registerReport.filter(row => row.mobile_browser_proof_required).length;
+  const openEligible = successCount > 0
+    && registerReport.length > 0
+    && customerBlockedRows.length === 0
+    && customerPublishableCount === registerReport.length;
+  const openReadiness = {
+    saved: successCount,
+    blocked: customerBlockedRows.length + blockedCount,
+    reviewNeeded: overallGate !== 'CLEAN' || customerBlockedRows.length > 0,
+    mobileProofRequired: mobileProofRequiredCount > 0,
+    mobileProofRequiredCount,
+    openEligible,
+    nextAction: openEligible
+      ? 'customer_open_eligible'
+      : mobileProofRequiredCount > 0
+        ? 'run_upload_to_open_autopilot_mobile_proof'
+        : customerBlockedRows.length > 0
+          ? 'review_customer_open_blockers'
+          : blockedCount > 0
+            ? 'review_registration_blockers'
+            : successCount > 0
+              ? 'wait_for_upload_to_open_autopilot'
+              : 'fix_registration_failure',
+  };
 
   const trustScore = calculateProductRegistrationTrustScore({
     inputBlocked: input.inputAnalysisForTrust?.blocked ?? false,
@@ -221,6 +245,8 @@ export async function buildUploadResponsePayload(input: {
     customerPublishable,
     customerPublishableCount,
     customerBlockedCount: customerBlockedRows.length,
+    openEligible,
+    openReadiness,
     customerBlockedPackages: customerBlockedRows.slice(0, 10).map(row => ({
       package_id: row.package_id,
       title: row.title,
