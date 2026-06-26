@@ -244,6 +244,141 @@ ZE917 18:55
     expect(recoverCatalogSplitFromRawText(raw)).toHaveLength(0);
   });
 
+  it('splits transport variant detail blocks when price table columns share one catalog prefix', () => {
+    const raw = `수요일【3박5일】
+
+광저우,천저우 5일
+리무진버스 이동
+노팁,노옵션+쇼핑2회
+광저우,천저우 5일
+고속열차 이동
+노팁,노옵션,노쇼핑
+9월 2일
+1,179,000
+1,369,000
+
+토요일【4박6일】
+
+광저우,천저우+단하산 6일
+리무진버스 이동
+노팁,노옵션+쇼핑2회
+광저우,천저우+소선령 6일
+고속열차 이동
+노팁,노옵션,노쇼핑
+9월 5일
+1,299,000
+1,479,000
+BX0000 PUS 22:00 → CAN 01:05+1  |  BX0000 CAN 02:05 → PUS 06:30
+
+리무진
+버스이동
+광저우, 천저우 5일
+#망산 #오지봉 #고의령 #구룡수채 #동천선경
+
+최소출발
+6명[현지행사합류 기준]
+포 함 내 역
+ 항공료 및 텍스, 호텔, 차량, 가이드
+불포함 내역
+ 매너팁 및 개인경비
+일 자
+지    역
+일                   정
+식  사
+제1일
+부산
+광저우
+ 부산출발
+제5일
+광저우
+부산도착
+
+고속철
+이동
+광저우, 천저우 5일
+#망산 #오지봉 #고의령 #소동강 #광저우시내관광
+
+최소출발
+6명[현지행사합류 기준]
+포 함 내 역
+ 항공료 및 텍스, 호텔, 차량, 가이드
+불포함 내역
+ 매너팁 및 개인경비
+일 자
+지    역
+일                   정
+식  사
+제1일
+부산
+광저우
+ 부산출발
+제5일
+광저우
+부산도착
+
+리무진
+버스이동
+광저우,단하산,천저우 6일
+#단하산 #망산 #오지봉 #고의령
+
+최소출발
+6명[현지행사합류 기준]
+포 함 내 역
+ 항공료 및 텍스, 호텔, 차량, 가이드
+불포함 내역
+ 매너팁 및 개인경비
+일 자
+지    역
+일                   정
+식  사
+제1일
+부산
+광저우
+ 부산출발
+제6일
+광저우
+부산도착
+
+고속철
+이동
+광저우,천저우,소선령 6일
+#망산 #오지봉 #고의령 #소동강
+
+최소출발
+6명[현지행사합류 기준]
+포 함 내 역
+ 항공료 및 텍스, 호텔, 차량, 가이드
+불포함 내역
+ 매너팁 및 개인경비
+일 자
+지    역
+일                   정
+식  사
+제1일
+부산
+광저우
+ 부산출발
+제6일
+광저우
+부산도착`;
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(4);
+    expect(products.map(product => product.extractedData.title)).toEqual([
+      '광저우, 천저우 5일',
+      '광저우, 천저우 5일',
+      '광저우,단하산,천저우 6일',
+      '광저우,천저우,소선령 6일',
+    ]);
+    expect(products.map(product => product.extractedData.duration)).toEqual([5, 5, 6, 6]);
+    expect(products.every(product => product.sectionRawText?.includes('수요일【3박5일】'))).toBe(true);
+    const firstDetailSection = products[0]?.sectionRawText?.split('---').at(-1) ?? '';
+    expect(products[0]?.sectionRawText).toContain('구룡수채');
+    expect(firstDetailSection).not.toContain('소선령 6일');
+    expect(products[3]?.sectionRawText).toContain('소선령 6일');
+  });
+
   it('splits Xian/Huashan BX catalog by every PKG block before price and itinerary recovery', async () => {
     const raw = readFileSync(
       join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/xian-huashan-bx-multiproduct.txt'),

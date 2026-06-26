@@ -5,6 +5,9 @@ import {
   standardizeKnownMojibakeTitle,
 } from './supplier-mojibake-standardization';
 
+const READABLE_KOREAN_DURATION_RE = /(\d+)\s*\uBC15\s*(\d+)\s*\uC77C/u;
+const READABLE_KOREAN_DAY_ONLY_RE = /(?:^|[^\d])(\d{1,2})\s*\uC77C(?:$|[^\d])/u;
+
 const KOREAN_DURATION_RE = /(\d+)\s*박\s*(\d+)\s*일/;
 const MOJIBAKE_NIGHT_RE = /(\d+)\s*諛/;
 const DAY_ONLY_DURATION_RE = /(?:^|[^\d])(\d{1,2})\s*일(?:\s*\/\s*(\d{1,2})\s*일)?(?:$|[^\d])/u;
@@ -18,7 +21,9 @@ const CUSTOMER_SCHEDULE_DAY_MARKER_RE =
 const FLIGHT_CUSTOMER_TEXT_RE = /\b[A-Z]{2}\d{2,4}\b[\s\S]{0,120}(?:공항|출발|도착)|(?:공항|출발|도착)[\s\S]{0,120}\b[A-Z]{2}\d{2,4}\b/;
 
 function hasDurationSignal(line: string): boolean {
-  return KOREAN_DURATION_RE.test(line)
+  return READABLE_KOREAN_DURATION_RE.test(line)
+    || READABLE_KOREAN_DAY_ONLY_RE.test(line)
+    || KOREAN_DURATION_RE.test(line)
     || DAY_ONLY_DURATION_RE.test(line)
     || (KOREAN_DAY_ONLY_DURATION_RE.test(line) && (BRACKETED_DAY_ONLY_PRODUCT_HEADER_RE.test(line) || /\bPKG\b/i.test(line)))
     || MOJIBAKE_NIGHT_RE.test(line);
@@ -56,6 +61,12 @@ function inferTitle(section: string, index: number): string {
   }
   const inlinePkgTitle = lines.find(line => /\bPKG\b/i.test(line) && usableDurationTitle(line));
   if (inlinePkgTitle) return inlinePkgTitle;
+  const readableDurationTitle = lines.find(line =>
+    usableDurationTitle(line) &&
+    !/^\s*\uC81C\s*\d+\s*\uC77C\b/u.test(line) &&
+    !/^\s*(?:\uC77C\s*\uC790|\uC2DD\s*\uC0AC|\uC2DC\s*\uAC04)\s*$/u.test(line)
+  );
+  if (readableDurationTitle) return readableDurationTitle;
 
   const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
   const pkgTitle = pkgIndex >= 0
@@ -68,6 +79,29 @@ function inferTitle(section: string, index: number): string {
 }
 
 function inferTripStyle(title: string, section?: string): { nights?: number; duration?: number; tripStyle?: string } {
+  const readableDuration = title.match(READABLE_KOREAN_DURATION_RE);
+  if (readableDuration) {
+    return {
+      nights: Number(readableDuration[1]),
+      duration: Number(readableDuration[2]),
+      tripStyle: `${readableDuration[1]}\uBC15${readableDuration[2]}\uC77C`,
+    };
+  }
+  const readableDayOnly = title.match(READABLE_KOREAN_DAY_ONLY_RE);
+  if (readableDayOnly) {
+    const days = Number(readableDayOnly[1]);
+    return Number.isFinite(days) && days > 1
+      ? { nights: Math.max(0, days - 2), duration: days, tripStyle: `${Math.max(0, days - 2)}\uBC15${days}\uC77C` }
+      : {};
+  }
+  const sectionReadableDuration = section?.match(READABLE_KOREAN_DURATION_RE);
+  if (sectionReadableDuration) {
+    return {
+      nights: Number(sectionReadableDuration[1]),
+      duration: Number(sectionReadableDuration[2]),
+      tripStyle: `${sectionReadableDuration[1]}\uBC15${sectionReadableDuration[2]}\uC77C`,
+    };
+  }
   const titleKoreanDayOnly = title.match(KOREAN_DAY_ONLY_DURATION_RE);
   if (!KOREAN_DURATION_RE.test(title) && titleKoreanDayOnly && BRACKETED_DAY_ONLY_PRODUCT_HEADER_RE.test(title)) {
     const days = Number(titleKoreanDayOnly[1]);
@@ -147,10 +181,59 @@ function splitRepeatedDayOnlyProductHeaders(rawText: string): { sharedPrefix: st
   };
 }
 
+function splitTransportVariantDetailBlocks(rawText: string): { sharedPrefix: string; sections: string[] } | null {
+  const text = rawText.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const starts: number[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const current = lines[index]?.trim() ?? '';
+    const next = lines[index + 1]?.trim() ?? '';
+    const label = `${current}${next}`.replace(/\s+/g, '');
+    const isTransportBlock =
+      label === '\uB9AC\uBB34\uC9C4\uBC84\uC2A4\uC774\uB3D9' ||
+      label === '\uACE0\uC18D\uCCA0\uC774\uB3D9' ||
+      label === '\uACE0\uC18D\uC5F4\uCC28\uC774\uB3D9';
+    if (!isTransportBlock) continue;
+
+    const window = lines.slice(index, Math.min(lines.length, index + 90)).join('\n');
+    const hasTitle = /[\p{Script=Hangul}A-Za-z][^\n]{0,80}\d{1,2}\s*\uC77C/u.test(window);
+    const hasProductFacts =
+      /\uCD5C\uC18C\uCD9C\uBC1C/u.test(window) &&
+      /\uD3EC\s*\uD568\s*\uB0B4\s*\uC5ED/u.test(window) &&
+      /\uBD88\uD3EC\uD568\s*\uB0B4\uC5ED/u.test(window);
+    const hasItineraryTable =
+      /\uC77C\s*\uC790/u.test(window) &&
+      /\uC81C\s*1\s*\uC77C/u.test(window);
+
+    if (hasTitle && hasProductFacts && hasItineraryTable) {
+      starts.push(offsets[index]);
+    }
+  }
+
+  const sorted = [...new Set(starts)].sort((a, b) => a - b);
+  if (sorted.length < 2) return null;
+  return {
+    sharedPrefix: text.slice(0, sorted[0]).trim(),
+    sections: sorted.map((start, index) => text.slice(start, sorted[index + 1] ?? text.length).trim()),
+  };
+}
+
 export function recoverCatalogSplitFromRawText(rawText: string | null | undefined): MultiProductResult[] {
   if (!rawText?.trim()) return [];
 
   let { sharedPrefix, sections } = splitCatalogByItineraryHeaders(rawText);
+  const transportVariantSplit = splitTransportVariantDetailBlocks(rawText);
+  if (transportVariantSplit && transportVariantSplit.sections.length > sections.length) {
+    sharedPrefix = transportVariantSplit.sharedPrefix;
+    sections = transportVariantSplit.sections;
+  }
   if (sections.length < 2) {
     const repeatedDayOnlySplit = splitRepeatedDayOnlyProductHeaders(rawText);
     if (repeatedDayOnlySplit) {
