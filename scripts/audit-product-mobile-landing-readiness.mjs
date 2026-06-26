@@ -241,6 +241,7 @@ function trustScore(row) {
   add(row.price_storage_mismatch, 'price.storage_mismatch', 'critical', 60);
   add(row.customer_price_option_mismatch, 'price.customer_option_mismatch', 'critical', 60);
   add(row.product_ledger_price_mismatch, 'price.product_ledger_mismatch', 'critical', 60);
+  add(row.price_tiers_mismatch, 'price.tiers_mismatch', 'critical', 60);
   add(row.price_source_evidence_mismatch, 'price.source_evidence_mismatch', 'critical', 70);
   add(row.attraction_context_mismatch, 'attraction.context_mismatch', 'critical', 80);
   add(row.attraction_unlinked_registered, 'attraction.unlinked_registered', 'critical', 80);
@@ -426,6 +427,33 @@ function productLedgerPriceMismatch(pkg, productRow) {
   }
   if (packagePrice !== productNetPrice) {
     return `products.net_price ${productNetPrice} != travel_packages.price ${packagePrice}`;
+  }
+  return null;
+}
+
+function priceTiersMismatch(pkg) {
+  const priceDates = Array.isArray(pkg.price_dates)
+    ? pkg.price_dates
+        .map(row => Number(row?.price))
+        .filter(price => Number.isFinite(price) && price > 0)
+    : [];
+  const tierPrices = Array.isArray(pkg.price_tiers)
+    ? pkg.price_tiers
+        .map(row => Number(row?.adult_price))
+        .filter(price => Number.isFinite(price) && price > 0)
+    : [];
+  if (priceDates.length === 0 || tierPrices.length === 0) return null;
+
+  const minDatePrice = Math.min(...priceDates);
+  const minTierPrice = Math.min(...tierPrices);
+  if (minTierPrice < minDatePrice) {
+    return `price_tiers min ${minTierPrice} < price_dates min ${minDatePrice}`;
+  }
+
+  const datePriceSet = new Set(priceDates);
+  const unknownTierPrice = tierPrices.find(price => !datePriceSet.has(price));
+  if (unknownTierPrice) {
+    return `price_tiers price ${unknownTierPrice} not found in price_dates`;
   }
   return null;
 }
@@ -888,6 +916,7 @@ function readinessFor(row) {
   if (row.price_storage_mismatch) failures.push('price_storage_mismatch');
   if (row.customer_price_option_mismatch) failures.push('customer_price_option_mismatch');
   if (row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
+  if (row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
   if (row.price_source_evidence_mismatch) failures.push('price_source_evidence_mismatch');
   if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
   if (row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
@@ -1170,6 +1199,7 @@ let rows = allPackageRows
       price_storage_mismatch: priceRowsLookupFailed ? false : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
+      price_tiers_mismatch: priceTiersMismatch(pkg),
       price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg),
       attraction_context_mismatch: attractionContextMismatch(pkg, attractionById),
       attraction_unlinked_registered: unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms),
@@ -1235,6 +1265,7 @@ if (demoteUnsafePublic) {
       price_storage_mismatch: row.price_storage_mismatch,
       customer_price_option_mismatch: row.customer_price_option_mismatch,
       product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+      price_tiers_mismatch: row.price_tiers_mismatch,
       render_failure: row.render_failure,
       public_html_failure: row.public_html_failure,
     };
@@ -1294,6 +1325,7 @@ if (archiveFailedNonPublic) {
       price_storage_mismatch: row.price_storage_mismatch,
       customer_price_option_mismatch: row.customer_price_option_mismatch,
       product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+      price_tiers_mismatch: row.price_tiers_mismatch,
       render_failure: row.render_failure,
     };
     const { error: packageError } = await supabase
@@ -1350,6 +1382,7 @@ const summary = {
   price_storage_mismatch: rows.filter(row => row.price_storage_mismatch).length,
   customer_price_option_mismatch: rows.filter(row => row.customer_price_option_mismatch).length,
   product_ledger_price_mismatch: rows.filter(row => row.product_ledger_price_mismatch).length,
+  price_tiers_mismatch: rows.filter(row => row.price_tiers_mismatch).length,
   price_source_evidence_mismatch: rows.filter(row => row.price_source_evidence_mismatch).length,
   attraction_context_mismatch: rows.filter(row => row.attraction_context_mismatch).length,
   attraction_unlinked_registered: rows.filter(row => row.attraction_unlinked_registered).length,
@@ -1411,6 +1444,7 @@ const report = {
     price_storage_mismatch: row.price_storage_mismatch,
     customer_price_option_mismatch: row.customer_price_option_mismatch,
     product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+    price_tiers_mismatch: row.price_tiers_mismatch,
     price_source_evidence_mismatch: row.price_source_evidence_mismatch,
     attraction_context_mismatch: row.attraction_context_mismatch,
     attraction_description_missing: row.attraction_description_missing,
@@ -1463,6 +1497,7 @@ if (strict) {
   if (summary.price_storage_mismatch > 0) strictFailures.push('price_storage_mismatch');
   if (summary.customer_price_option_mismatch > 0) strictFailures.push('customer_price_option_mismatch');
   if (summary.product_ledger_price_mismatch > 0) strictFailures.push('product_ledger_price_mismatch');
+  if (summary.price_tiers_mismatch > 0) strictFailures.push('price_tiers_mismatch');
   if (summary.price_source_evidence_mismatch > 0) strictFailures.push('price_source_evidence_mismatch');
   if (summary.attraction_context_mismatch > 0) strictFailures.push('attraction_context_mismatch');
   if (summary.attraction_unlinked_registered > 0) strictFailures.push('attraction_unlinked_registered');
