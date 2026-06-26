@@ -233,3 +233,15 @@ test('public blog surface monitor covers all angle tabs and survives DB outages'
   assert.match(opsRoute, /checkPublicBlogSurfaces\(\{ baseUrl: publicSurfaceBaseUrl\(request\) \}\)/);
   assert.doesNotMatch(opsRoute, /status:\s*500/);
 });
+
+test('local release readiness treats transient local DB outages as blocked, not hard fail', () => {
+  const source = read('scripts', 'open-readiness-check.mjs');
+
+  assert.match(source, /function localDataUnavailableText/);
+  assert.match(source, /function localCommandUnavailable/);
+  assert.match(source, /localCommandOnlyFailure/);
+  assert.match(source, /failedRows\.length === 0/);
+  assert.match(source, /failedCount === 0/);
+  assert.match(source, /unavailable \? 'blocked' : 'fail'/);
+  assert.match(source, /blog quality probe output was unavailable during a local DB\/runtime timeout/);
+});
