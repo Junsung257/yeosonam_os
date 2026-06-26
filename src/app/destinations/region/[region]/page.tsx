@@ -12,8 +12,8 @@ import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
-export const revalidate = 600;
-export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
+export const revalidate = 0;
+export const dynamic = 'force-dynamic';
 export const dynamicParams = true;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
@@ -93,10 +93,6 @@ function normalizeAttractionImageSample(row: unknown): AttractionImageSample | n
     region,
     photos: photos && photos.length > 0 ? photos : null,
   };
-}
-
-export async function generateStaticParams() {
-  return [];
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ region?: string | string[] }> }): Promise<Metadata> {
