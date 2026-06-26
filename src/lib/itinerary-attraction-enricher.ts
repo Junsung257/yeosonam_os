@@ -38,6 +38,8 @@ const DIRECT_SCAN_STOP_TERMS = new Set([
 
 const MINIMUM_ACTIVITY_HINT_RE =
   /\uB514\uC2A4\uCEE4\uBC84\uB9AC|\uC7AC\uB798\uC2DC\uC7A5|\uC5F4\uB300\uACFC\uC77C|\uC2A4\uCFE0\uBC84|\uB2E4\uC774\uBE59|\uB9C8\uC0AC\uC9C0|\uD638\uD551|\uC2DC\uB0B4\uAD00\uAD11|\uC288\uB77C\uC778|\uC0B0\uD1A0\uB2C8\uB1E8|\uAE30\uB150\uD488|\uD1A0\uC0B0\uD488/;
+const NON_SIGHTSEEING_ATTRACTION_ROW_RE =
+  /(?:eSIM|유심|데이터|해외\s*여행\s*데이터|필수|이용권|패스|쿠폰)/i;
 
 function normalizeDirectTerm(value: string | null | undefined): string {
   return (value ?? '').toLowerCase().replace(/\s+/g, '').trim();
@@ -64,6 +66,14 @@ function destinationAllowsAttraction(attraction: AttractionData, destination?: s
   return destinationAllowsAttractionScope(attraction, destination);
 }
 
+function isSightseeingAttractionRow(attraction: AttractionData): boolean {
+  return !NON_SIGHTSEEING_ATTRACTION_ROW_RE.test([
+    attraction.name,
+    attraction.category ?? '',
+    ...(attraction.aliases ?? []),
+  ].join(' '));
+}
+
 function directTermOccurs(text: string, term: string): boolean {
   const clean = term.trim().toLowerCase();
   if (!clean) return false;
@@ -76,6 +86,7 @@ function isDirectScanEligibleTerm(term: string, attraction: AttractionData, dest
   const clean = term.trim();
   if (clean.length < 2 || clean.length > 24) return false;
   if (DIRECT_SCAN_STOP_TERMS.has(clean)) return false;
+  if (!isSightseeingAttractionRow(attraction)) return false;
   if (attraction.category && DIRECT_SCAN_EXCLUDED_CATEGORIES.has(attraction.category)) return false;
   if (destination && !destinationAllowsAttraction(attraction, destination)) return false;
   return true;
@@ -302,6 +313,7 @@ export function enrichItineraryWithAttractionReferences(
         const rawValues = existingIds
           .map(id => attractionById.get(id))
           .filter((a): a is AttractionData => Boolean(a))
+          .filter(isSightseeingAttractionRow)
           .filter(a => destinationAllowsAttraction(a, matchDestination));
         const values = dedupeAttractionMatches(rawValues, itemText);
         if (values.length > 0) {

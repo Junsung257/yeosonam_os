@@ -103,6 +103,59 @@ function customerVisible(category: V3EntityCategory): boolean {
   return !['price_noise'].includes(category);
 }
 
+const ATTRACTION_REVIEW_PREFIX_RE =
+  /^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b'"\u2018\u2019\u201c\u201d]+/;
+const GUANGZHOU_DESCRIPTION_WITHOUT_MASTER_RE =
+  /^(?:소선이\s*신선을\s*만난\s*곳|붉은\s*사암지형의\s*장엄한\s*파노라마\s*뷰)/;
+const KOREAN_ATTRACTION_REVIEW_SUFFIX_RE =
+  /([가-힣][가-힣\s]{1,18}?(?:풍경구|대협곡|고촌|유후거리|구룡수채|동천선경|봉림소진|대불사|소선령|백록동|삼절비|소선관|만복산|장로봉|양원석|음원석|고의령|마황구|단하산|망산|소동강|비천산|산|강|봉|석|동|비|사|관|령|촌|진|채|곡|거리))(?:\s*\([^)]*\))?$/;
+const GUANGZHOU_ATTRACTION_LABELS = [
+  '마황구대협곡',
+  '와요평고촌',
+  '구룡수채',
+  '동천선경',
+  '봉림소진',
+  '유후거리',
+  '소선령',
+  '백록동',
+  '삼절비',
+  '소선관',
+  '만복산',
+  '장로봉',
+  '양원석',
+  '음원석',
+  '고의령',
+  '단하산',
+  '소동강',
+  '비천산',
+  '망산',
+  '대불사',
+];
+
+function normalizeAttractionReviewText(rawText: string): string | null {
+  const cleaned = rawText
+    .replace(ATTRACTION_REVIEW_PREFIX_RE, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return null;
+  if (GUANGZHOU_DESCRIPTION_WITHOUT_MASTER_RE.test(cleaned)) return null;
+
+  const withoutTrailingParen = cleaned.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  const compact = withoutTrailingParen.replace(/\s+/g, '');
+  const knownLabel = GUANGZHOU_ATTRACTION_LABELS
+    .map(label => ({ label, index: compact.lastIndexOf(label) }))
+    .filter(item => item.index >= 0)
+    .sort((a, b) => b.index - a.index || b.label.length - a.label.length)[0]?.label;
+  if (knownLabel) return knownLabel;
+
+  const suffix = withoutTrailingParen.match(KOREAN_ATTRACTION_REVIEW_SUFFIX_RE)?.[1];
+  if (suffix) {
+    return suffix.replace(/\s+/g, '').trim();
+  }
+  if (/^[가-힣]\s+[가-힣]$/.test(cleaned)) return cleaned.replace(/\s+/g, '');
+  return cleaned;
+}
+
 function blocksPublish(category: V3EntityCategory, event: V3LedgerEvent): boolean {
   if (category === 'attraction') return event.match_status !== 'matched';
   if (category === 'optional_tour' && optionalEventHasCustomerSafeDisclosure(event.raw_text)) return false;
@@ -113,6 +166,13 @@ function blocksPublish(category: V3EntityCategory, event: V3LedgerEvent): boolea
 }
 
 function reviewKey(item: V3EntityReviewItem): string {
+  if (item.category === 'attraction') {
+    return [
+      item.category,
+      item.raw_text.replace(/\s+/g, '').trim().toLowerCase(),
+      item.day_number ?? 'unknown_day',
+    ].join('|');
+  }
   return [
     item.category,
     item.raw_text.replace(/\s+/g, ' ').trim().toLowerCase(),
@@ -170,12 +230,18 @@ export function buildEntityReviewItem(input: {
   destination?: string | null;
   country?: string | null;
 }): V3EntityReviewItem {
-  const category = entityCategoryForEventType(input.event.type);
+  const initialCategory = entityCategoryForEventType(input.event.type);
+  const attractionReviewText = initialCategory === 'attraction'
+    ? normalizeAttractionReviewText(input.event.raw_text)
+    : input.event.raw_text;
+  const category: V3EntityCategory = initialCategory === 'attraction' && !attractionReviewText
+    ? 'notice'
+    : initialCategory;
   const foodTerm = category === 'meal' ? regionalFoodTerm(input.event.raw_text) : null;
   const confidence = confidenceFor(category, input.event);
   const suggested_action = suggestedActionFor(category, input.event);
   return {
-    raw_text: input.event.raw_text,
+    raw_text: attractionReviewText ?? input.event.raw_text,
     category,
     day_number: input.dayNumber,
     evidence: input.event.evidence,

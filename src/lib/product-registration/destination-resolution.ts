@@ -136,6 +136,9 @@ export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
   런던: 'LHR',
   파리: 'CDG',
   모스크바: 'SVO',
+  광저우: 'CAN',
+  광주: 'CAN',
+  천저우: 'CAN',
 };
 
 const DEST_KEYWORDS = Object.keys(UPLOAD_DEST_CODE_MAP);
@@ -166,6 +169,8 @@ export function resolveUploadCode(text: string | undefined | null, map: Record<s
 
 export function inferUploadDestinationFromText(rawText: string | undefined | null): string {
   if (!rawText) return '';
+  if (/광\s*저\s*우/.test(rawText)) return '광저우';
+  if (/천\s*저\s*우/.test(rawText)) return '천저우';
   const mojibakeProfile = detectKnownMojibakeSupplierProfile(rawText);
   if (mojibakeProfile === 'joshi-golf' || mojibakeProfile === 'narita-nomori-golf') return '나리타';
   if (mojibakeProfile?.startsWith('xian-')) return '서안';
@@ -211,9 +216,19 @@ export function resolveUploadDestinationAndCodes(input: {
   const productInferred = inferUploadDestinationFromText(input.productRawText);
   const documentInferred = inferUploadDestinationFromText(input.documentRawText);
   const tempDestination = input.tempDestination?.trim() ?? '';
+  const evidenceText = [input.productRawText, input.documentRawText].filter(Boolean).join('\n');
+  const existingDestinationHasSourceEvidence = existingDestination
+    ? evidenceText.includes(existingDestination)
+    : false;
 
   const existingDestinationCode = resolveUploadCode(existingDestination, UPLOAD_DEST_CODE_MAP, 'UNK');
-  const trustedExistingDestination = existingDestination && existingDestinationCode !== 'UNK'
+  const sourceBackedDestination = productInferred || documentInferred;
+  const sourceBackedDestinationCode = resolveUploadCode(sourceBackedDestination, UPLOAD_DEST_CODE_MAP, 'UNK');
+  const trustedExistingDestination = existingDestination
+    && existingDestinationCode !== 'UNK'
+    && (!sourceBackedDestination
+      || existingDestinationHasSourceEvidence
+      || existingDestinationCode === sourceBackedDestinationCode)
     ? existingDestination
     : '';
 
