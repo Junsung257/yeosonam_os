@@ -173,6 +173,7 @@ export type RegisterProductFromRawInput = {
   destinationResolution?: UploadDestinationResolution | null;
   internalCode?: string | null;
   destinationCode?: string | null;
+  v3RawText?: string | null;
   extraFailures?: string[];
   enableGeminiFallback?: boolean;
   priceYear?: number;
@@ -196,11 +197,12 @@ async function runV3Safely(input: RegisterProductFromRawInput, ed: ExtractedData
   result: V3PipelineResult | null;
   warnings: string[];
 }> {
-  if (input.rawText.trim().length < 50) {
+  const v3RawText = input.v3RawText?.trim() || input.rawText;
+  if (v3RawText.trim().length < 50) {
     return { result: null, warnings: ['v3:raw_text_too_short'] };
   }
   try {
-    const result = await runProductRegistrationV3(input.rawText, {
+    const result = await runProductRegistrationV3(v3RawText, {
       attractions: input.activeAttractions,
       destination: ed.destination ?? input.destinationResolution?.destination ?? input.tempDestination ?? undefined,
       supplierHint: input.supplierHint ?? undefined,

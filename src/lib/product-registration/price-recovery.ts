@@ -338,6 +338,98 @@ function groupedDeparturePriceTiers(rawText: string, year?: number): PriceTier[]
     .filter((tier): tier is PriceTier => tier != null);
 }
 
+function transportVariantSharedPriceTableTiers(
+  ed: ExtractedData,
+  rawText: string,
+  year?: number,
+): PriceTier[] {
+  const duration = ed.duration;
+  if (duration !== 5 && duration !== 6) return [];
+  if (!rawText.includes('\uC218\uC694\uC77C') || !rawText.includes('\uD1A0\uC694\uC77C')) return [];
+  if (!rawText.includes('\uB9AC\uBB34\uC9C4') || !/고속(?:철|열차)/u.test(rawText)) return [];
+
+  const detailSection = rawText.split(/\n\s*---\s*\n/).at(-1) ?? rawText;
+  const compactDetail = detailSection.replace(/\s+/g, '');
+  const transportColumn = compactDetail.includes('\uB9AC\uBB34\uC9C4\uBC84\uC2A4\uC774\uB3D9')
+    ? 0
+    : /고속(?:철|열차)이동/u.test(compactDetail)
+      ? 1
+      : null;
+  if (transportColumn == null) return [];
+
+  const lines = rawText.replace(/\r\n/g, '\n').split('\n').map(line => line.trim());
+  const headerRe = duration === 5
+    ? /\uC218\uC694\uC77C[^\n]*3\s*\uBC15\s*5\s*\uC77C/u
+    : /\uD1A0\uC694\uC77C[^\n]*4\s*\uBC15\s*6\s*\uC77C/u;
+  const start = lines.findIndex(line => headerRe.test(line));
+  if (start < 0) return [];
+  const nextHeader = lines.findIndex((line, index) =>
+    index > start && (/\uC218\uC694\uC77C[^\n]*\d+\s*\uBC15\s*\d+\s*\uC77C/u.test(line) || /\uD1A0\uC694\uC77C[^\n]*\d+\s*\uBC15\s*\d+\s*\uC77C/u.test(line)));
+  const end = nextHeader > start ? nextHeader : lines.findIndex((line, index) => index > start && /\b[A-Z]{2}\d{2,4}\b/.test(line));
+  const block = lines.slice(start + 1, end > start ? end : Math.min(lines.length, start + 80));
+
+  const fallbackYear = year ?? new Date().getFullYear();
+  const tiers: PriceTier[] = [];
+  let pendingDates: string[] = [];
+  let pendingPrices: Array<number | null> = [];
+  let noteParts: string[] = [];
+
+  const flush = () => {
+    if (pendingDates.length === 0 || pendingPrices.length < 2) return;
+    const price = pendingPrices[transportColumn];
+    if (price && price >= 100_000) {
+      tiers.push({
+        period_label: `transport_variant_shared_price_table_${duration}d_${transportColumn === 0 ? 'limousine_bus' : 'high_speed_train'}`,
+        departure_dates: [...new Set(pendingDates)],
+        adult_price: price,
+        status: 'available',
+        note: ['source_transport_variant_shared_price_table', ...noteParts].filter(Boolean).join(':'),
+      });
+    }
+    pendingDates = [];
+    pendingPrices = [];
+    noteParts = [];
+  };
+
+  for (const line of block) {
+    if (!line) continue;
+    if (/\b[A-Z]{2}\d{2,4}\b/.test(line)) break;
+    const dates = [...line.matchAll(/(?:(20\d{2})\s*\uB144\s*)?(\d{1,2})\s*\uC6D4\s*(\d{1,2})\s*\uC77C/g)]
+      .map((match) => {
+        const y = Number(match[1] ?? fallbackYear);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        if (!Number.isInteger(y) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+        if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+        return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      })
+      .filter((date): date is string => Boolean(date));
+    if (dates.length > 0) {
+      if (pendingPrices.length > 0) flush();
+      pendingDates.push(...dates);
+      continue;
+    }
+
+    if (/^\[[^\]]+\]$/.test(line)) {
+      noteParts.push(line.replace(/^\[|\]$/g, ''));
+      continue;
+    }
+
+    if (/별도\s*문의/.test(line)) {
+      pendingPrices.push(null);
+    } else {
+      const priceMatch = line.match(/^([1-9]\d{0,2}(?:,\d{3})+|[1-9]\d{5,})$/);
+      if (!priceMatch) continue;
+      pendingPrices.push(Number(priceMatch[1].replace(/[^\d]/g, '')));
+    }
+
+    if (pendingPrices.length >= 2) flush();
+  }
+  flush();
+
+  return tiers;
+}
+
 function evaluateCandidate(
   ed: ExtractedData,
   tiers: PriceTier[],
@@ -512,6 +604,17 @@ export async function recoverUploadPriceData(
       };
     }
     failures.push(...explainCandidate(`deterministic:${detCandidate.source}`, detCandidate));
+
+    const transportVariantCandidate = evaluateCandidate(ed, transportVariantSharedPriceTableTiers(ed, rawText, options.year), ctx);
+    if (transportVariantCandidate.priceRows.length > 0 && transportVariantCandidate.priceDates.length > 0) {
+      return {
+        ok: true,
+        source: 'supplier_transport_variant_shared_price_table',
+        failures,
+        ...transportVariantCandidate,
+      };
+    }
+    failures.push(...explainCandidate('supplier_transport_variant_shared_price_table', transportVariantCandidate));
 
     const groupedCandidate = evaluateCandidate(ed, groupedDeparturePriceTiers(rawText, options.year), ctx);
     if (groupedCandidate.priceRows.length > 0 && groupedCandidate.priceDates.length > 0) {

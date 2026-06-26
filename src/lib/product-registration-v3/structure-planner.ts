@@ -3,6 +3,7 @@ import { V3StructurePlanSchema } from './plan-schema';
 import {
   collectItineraryHeaderStarts,
   collectPkgBlockStarts,
+  collectTransportVariantDetailBlockStarts,
   collectVariantCatalogBlockStarts,
 } from '@/lib/parser/catalog-pre-split';
 
@@ -35,13 +36,16 @@ function titleHintFromBoundary(lines: V3SourceLine[], startLine: number, endLine
 
 function collectCatalogBoundaryStarts(raw: string): number[] {
   const variantStarts = collectVariantCatalogBlockStarts(raw);
+  const transportStarts = collectTransportVariantDetailBlockStarts(raw);
   const itineraryStarts = collectItineraryHeaderStarts(raw);
   const pkgStarts = collectPkgBlockStarts(raw);
   const starts = pkgStarts.length >= 2
     ? pkgStarts
-    : variantStarts.length >= 2
-      ? variantStarts
-      : itineraryStarts;
+    : transportStarts.length >= 2 && transportStarts.length > Math.max(variantStarts.length, itineraryStarts.length)
+      ? transportStarts
+      : variantStarts.length >= 2
+        ? variantStarts
+        : itineraryStarts;
   return [...new Set(starts)].sort((a, b) => a - b);
 }
 

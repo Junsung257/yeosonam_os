@@ -576,6 +576,16 @@ function priceDateSourceEvidenceMismatch(pkg) {
     }
     return out;
   };
+  const parseKoreanDateOnlyLine = (line, year) => {
+    const compact = String(line ?? '').replace(/\s+/g, '');
+    const match = compact.match(/^(?:(20\d{2})년)?(\d{1,2})월(\d{1,2})일$/);
+    if (!match) return null;
+    return dateToDayNumber({
+      year: Number(match[1] ?? year),
+      month: Number(match[2]),
+      day: Number(match[3]),
+    });
+  };
   const rangeEvidenceCovers = row => {
     const parts = isoParts(row.date);
     if (!parts) return false;
@@ -599,8 +609,17 @@ function priceDateSourceEvidenceMismatch(pkg) {
         ...parseSlashDateList(lines[i], parts.year),
         ...parseMixedSlashDateList(lines[i], parts.year),
       ];
+      const koreanDate = parseKoreanDateOnlyLine(lines[i], parts.year);
+      if (koreanDate != null) {
+        dates.push(koreanDate);
+        for (let j = i + 1; j < Math.min(lines.length, i + 8); j++) {
+          const nextKoreanDate = parseKoreanDateOnlyLine(lines[j], parts.year);
+          if (nextKoreanDate == null) break;
+          dates.push(nextKoreanDate);
+        }
+      }
       if (!dates.includes(target)) continue;
-      const window = lines.slice(i, Math.min(lines.length, i + 5));
+      const window = lines.slice(i, Math.min(lines.length, i + 10));
       if (window.some(line => lineHasAmount(line, row.price))) return true;
     }
     return false;

@@ -175,6 +175,79 @@ function dayCompletenessScore(day: ItineraryDayLike): number {
   return schedule.length * 100 + text.length + hotelBonus + mealsBonus;
 }
 
+function dayScheduleText(day: ItineraryDayLike): string {
+  const schedule = Array.isArray(day.schedule) ? day.schedule : [];
+  return schedule
+    .map(item => {
+      const row = item as { activity?: unknown; type?: unknown; transport?: unknown; time?: unknown };
+      return [row.activity, row.type, row.transport, row.time].filter(Boolean).join(' ');
+    })
+    .join(' ');
+}
+
+function looksLikeFinalReturnDay(day: ItineraryDayLike): boolean {
+  const schedule = Array.isArray(day.schedule) ? day.schedule : [];
+  const text = dayScheduleText(day);
+  return schedule.some(item => (item as { type?: unknown }).type === 'flight')
+    || /\b[A-Z]{2}\d{2,4}\b/.test(text)
+    || /(?:\uCD9C\uBC1C|\uB3C4\uCC29|\uADC0\uAD6D|\uACF5\uD56D)/u.test(text)
+    || /\b(?:depart|departure|arrive|arrival|return)\b/i.test(text);
+}
+
+function promoteReturnScheduleItems(day: ItineraryDayLike): ItineraryDayLike {
+  const schedule = Array.isArray(day.schedule) ? day.schedule : null;
+  if (!schedule) return day;
+  return {
+    ...day,
+    schedule: schedule.map(item => {
+      const row = item as { activity?: unknown; type?: unknown; transport?: unknown };
+      const activity = String(row.activity ?? '');
+      if (row.type === 'flight') return item;
+      if (!/(?:\uCD9C\uBC1C|\uB3C4\uCC29|\uADC0\uAD6D|\uACF5\uD56D)|\b[A-Z]{2}\d{2,4}\b|\b(?:depart|departure|arrive|arrival|return)\b/iu.test(activity)) {
+        return item;
+      }
+      return { ...item, type: 'flight' };
+    }),
+  };
+}
+
+function repairFinalDuplicateReturnDay<T extends ItineraryDataLike | null>(itineraryData: T, durationDays?: number | null): {
+  itineraryData: T;
+  warnings: string[];
+} {
+  const days = itineraryData?.days;
+  if (!days?.length || typeof durationDays !== 'number' || durationDays < 2) {
+    return { itineraryData, warnings: [] };
+  }
+  const roundedDuration = Math.floor(durationDays);
+  if (days.length !== roundedDuration) return { itineraryData, warnings: [] };
+
+  const last = days[days.length - 1];
+  const previous = days[days.length - 2];
+  const lastNumber = dayNumber(last?.day);
+  const previousNumber = dayNumber(previous?.day);
+  if (lastNumber === null || previousNumber === null) return { itineraryData, warnings: [] };
+  if (lastNumber !== previousNumber || lastNumber !== roundedDuration - 1) return { itineraryData, warnings: [] };
+  if (!looksLikeFinalReturnDay(last)) return { itineraryData, warnings: [] };
+
+  const numbers = days
+    .slice(0, -1)
+    .map(day => dayNumber(day.day))
+    .filter((value): value is number => value !== null);
+  if (new Set(numbers).size !== roundedDuration - 1) return { itineraryData, warnings: [] };
+
+  return {
+    itineraryData: {
+      ...itineraryData,
+      days: [
+        ...days.slice(0, -1),
+        { ...promoteReturnScheduleItems(last), day: roundedDuration },
+      ],
+    } as T,
+    warnings: [`final duplicate return day renumbered: day ${lastNumber} -> ${roundedDuration}`],
+  };
+}
+
 function collapseDuplicateDayEntries<T extends ItineraryDataLike | null>(itineraryData: T, durationDays?: number | null): {
   itineraryData: T;
   warnings: string[];
@@ -400,7 +473,9 @@ export async function normalizeUploadItinerary(input: {
   warnings.push(...initialRangeRepair.warnings);
   const initialOutlierRepair = pruneOutlierPollutedDays(initialRangeRepair.itineraryData);
   warnings.push(...initialOutlierRepair.warnings);
-  const initialDuplicateRepair = collapseDuplicateDayEntries(initialOutlierRepair.itineraryData, input.durationDays);
+  const initialReturnDayRepair = repairFinalDuplicateReturnDay(initialOutlierRepair.itineraryData, input.durationDays);
+  warnings.push(...initialReturnDayRepair.warnings);
+  const initialDuplicateRepair = collapseDuplicateDayEntries(initialReturnDayRepair.itineraryData, input.durationDays);
   warnings.push(...initialDuplicateRepair.warnings);
   itineraryInput = compileItineraryForLanding(initialDuplicateRepair.itineraryData);
 
@@ -437,7 +512,9 @@ export async function normalizeUploadItinerary(input: {
   warnings.push(...postRangeRepair.warnings);
   const postOutlierRepair = pruneOutlierPollutedDays(postRangeRepair.itineraryData);
   warnings.push(...postOutlierRepair.warnings);
-  const duplicateDayRepair = collapseDuplicateDayEntries(postOutlierRepair.itineraryData, input.durationDays);
+  const postReturnDayRepair = repairFinalDuplicateReturnDay(postOutlierRepair.itineraryData, input.durationDays);
+  warnings.push(...postReturnDayRepair.warnings);
+  const duplicateDayRepair = collapseDuplicateDayEntries(postReturnDayRepair.itineraryData, input.durationDays);
   warnings.push(...duplicateDayRepair.warnings);
   const finalSourceDayFill = await fillEmptyScheduleDaysFromRaw(
     duplicateDayRepair.itineraryData,

@@ -141,6 +141,31 @@ describe('normalizeUploadItinerary', () => {
     expect(result.warnings).toContain('duplicate itinerary days collapsed: day 1, 2, 3, 4, 5, 6');
   });
 
+  it('renumbers a final duplicate return block to the duration day before duplicate collapse', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: 'Guangzhou',
+      durationDays: 6,
+      nights: 4,
+      activeAttractions: [],
+      productRawText: 'Guangzhou 4N6D return flight block duplicated as day 5',
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: 'Busan departure' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: 'Danxia Mountain' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: 'Mangshan' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: 'Xiaodongjiang' }] },
+          { day: 5, schedule: [{ type: 'activity', activity: 'Gaoyiling and transfer to airport' }] },
+          { day: 5, schedule: [{ type: 'flight', activity: 'BX0000 Guangzhou departure Busan arrival' }] },
+        ],
+      } as never,
+    });
+
+    const days = result.itineraryDataToSave?.days ?? [];
+    expect(days.map(day => day.day)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(days.at(-1)?.schedule?.map(item => item.activity)).toContain('BX0000 Guangzhou departure Busan arrival');
+    expect(result.warnings).toContain('final duplicate return day renumbered: day 5 -> 6');
+  });
+
   it('prunes out-of-range price-table days before duplicate day repair', async () => {
     const result = await normalizeUploadItinerary({
       destination: '서안',

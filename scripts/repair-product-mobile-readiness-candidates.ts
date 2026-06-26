@@ -9,6 +9,7 @@ import { buildSourceBackedPriceDateRepair } from '../src/lib/source-price-date-r
 import { buildSourceBackedTermsRepair } from '../src/lib/source-terms-repair';
 import { normalizeUploadItinerary } from '../src/lib/product-registration/itinerary-normalization';
 import { persistProductRegistrationDraftV3, runProductRegistrationV3 } from '../src/lib/product-registration-v3';
+import { stripSharedCatalogPrefixForProductDetail } from '../src/lib/parser/catalog-pre-split';
 import type { AttractionData } from '../src/lib/attraction-matcher';
 
 type PackageRow = {
@@ -241,7 +242,8 @@ async function repairPackage(pkg: PackageRow, activeAttractions: AttractionRow[]
 
   let v3Report: Record<string, unknown> | null = null;
   if (!skipV3 && pkg.raw_text?.trim()) {
-    const v3 = await runProductRegistrationV3(pkg.raw_text, {
+    const v3RawText = stripSharedCatalogPrefixForProductDetail(pkg.raw_text);
+    const v3 = await runProductRegistrationV3(v3RawText, {
       attractions: activeAttractions,
       destination: pkg.destination ?? undefined,
       supplierHint: pkg.destination ?? undefined,
@@ -256,7 +258,7 @@ async function repairPackage(pkg: PackageRow, activeAttractions: AttractionRow[]
       const persisted = await persistProductRegistrationDraftV3(supabase as never, {
         packageId: pkg.id,
         packageTitle: pkg.title,
-        rawText: pkg.raw_text,
+        rawText: v3RawText,
         sourceType: 'mobile-readiness-candidate-repair',
         supplierHint: pkg.destination,
         destination: pkg.destination,
