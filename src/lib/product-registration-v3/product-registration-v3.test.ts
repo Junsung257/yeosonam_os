@@ -355,6 +355,57 @@ ZE982
     expect(reviewTexts).not.toContain('(콜드밀)');
   });
 
+  it('keeps Guangzhou transport/table fragments out of attraction review while preserving real sights', async () => {
+    const raw = [
+      'Product: 광저우 천저우 3박5일 고속철',
+      'Price: 1,369,000 KRW / minimum 4',
+      'DAY 1 BX123 부산 출발 10:00 광저우 도착 12:30',
+      'DAY 2 광저우',
+      'DAY 2 천저우',
+      'DAY 2 G397',
+      'DAY 2 (2등석)',
+      'DAY 2 변경가능',
+      'DAY 2 고의령',
+      'DAY 2 ▶멀리서도 눈에 띄는 거대한 언덕이 높은 의자와 같다고 하여',
+      'DAY 2 이름 붙여진 고의령',
+      'DAY 2 ▶붉은색의 협곡으로 퇴적암이 옹기종기 솟아있는 신비로운 풍경의',
+      'DAY 2 마황구대협곡(차창)',
+      'DAY 2 ▶명/청대 역사가 살아 숨쉬는 고대 역사문화마을 와요평고촌',
+      'DAY 2 ▶천저우에서 가장 오래된 아름다운 옛거리 유후거리',
+      'DAY 3 케이블카(20분)-전망대-에스컬레이터-도경지-팔괘대-오지봉관망대-인심대',
+      'DAY 3 -협곡식당-폭포-도해관음-후루와-성삭-마천령(엘리베이터)-금편대협곡-금편신주',
+      'DAY 5 BX124 광저우 출발 13:00 부산 도착 16:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '광저우' });
+    const reviewTexts = result.match_summary.entity_summary?.review_items
+      .filter(item => item.category === 'attraction')
+      .map(item => item.raw_text) ?? [];
+
+    expect(reviewTexts).toEqual(expect.arrayContaining([
+      '고의령',
+      '마황구대협곡',
+      '와요평고촌',
+      '유후거리',
+    ]));
+    for (const noise of [
+      '광저우',
+      '천저우',
+      'G397',
+      '(2등석)',
+      '변경가능',
+      '▶멀리서도 눈에 띄는 거대한 언덕이 높은 의자와 같다고 하여',
+      '이름 붙여진 고의령',
+      '▶붉은색의 협곡으로 퇴적암이 옹기종기 솟아있는 신비로운 풍경의',
+      '케이블카(20분)-전망대-에스컬레이터-도경지-팔괘대-오지봉관망대-인심대',
+      '-협곡식당-폭포-도해관음-후루와-성삭-마천령(엘리베이터)-금편대협곡-금편신주',
+    ]) {
+      expect(reviewTexts).not.toContain(noise);
+    }
+  });
+
   it('recognizes vertical per-person minimum departure lines', async () => {
     const raw = [
       'Product: Da Nang Spot 3N5D',

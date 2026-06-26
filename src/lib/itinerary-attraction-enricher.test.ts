@@ -61,6 +61,39 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(item.attraction_ids).toBeUndefined();
     expect(res.matchedScheduleItemCount).toBe(0);
   });
+
+  it('removes stale non-sightseeing attraction ids such as eSIM data products', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              {
+                activity: '기암괴석, 운해, 폭포와 온천이 어우러진 여행지 오지봉',
+                attraction_ids: ['esim-cn'],
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'esim-cn',
+          name: '중국 eSIM 기간 고정 데이터 해외 여행 데이터 필수',
+          region: '북경',
+          country: 'CN',
+        },
+      ],
+      '광저우',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toBeUndefined();
+    expect(item.attraction_names).toBeUndefined();
+    expect(res.matchedScheduleItemCount).toBe(0);
+  });
+
   it('일정 항목에 attraction_ids/names를 주입한다', () => {
     const res = enrichItineraryWithAttractionReferences(
       {

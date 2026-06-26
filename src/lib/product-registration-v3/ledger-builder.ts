@@ -78,6 +78,15 @@ const KOREAN_REGION_CELL_ONLY_RE =
   /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c)$/;
 const BRACKETED_DESCRIPTION_ONLY_RE = /^\[[^\]]{8,80}\]$/;
 const BRACKETED_NAMED_ATTRACTION_RE = /^\[[^\]]*(?:\uACF5\uC6D0|\uC2DC\uC7A5|\uAC70\uB9AC|\uB3D9\uAD74|\uD3ED\uD3EC|\uC0AC\uC6D0|\uC1FC|\uC720\uB78C\uC120)[^\]]*\]$/;
+const GUANGZHOU_ROUTE_CELL_ONLY_RE =
+  /^(?:광저우|천저우|영덕)$/;
+const RAIL_CODE_CELL_ONLY_RE = /^[GDC]\d{2,5}$/i;
+const RAIL_SEAT_OR_CHANGE_NOTICE_RE = /^\(?\s*(?:[12]등석|변경가능)\s*\)?$/;
+const ROUTE_RETURN_CELL_RE = /^[\uAC00-\uD7A3\s]{2,12}귀환$/;
+const TRANSPORT_PATH_FRAGMENT_RE =
+  /(?:케이블카|전망대|에스컬레이터|엘리베이터|식당|하산|협곡식당).*(?:-|–|—)/;
+const DESCRIPTION_ONLY_FRAGMENT_RE =
+  /^(?:▶|[-•])?\s*(?:멀리서도|붉은색의|이름\s*붙여진)/;
 
 function normalizePrice(token: string): number {
   const number = Number(token.replace(/[,\s]/g, ''));
@@ -92,6 +101,12 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (SOURCE_EVIDENCE_HEADER_RE.test(text)) return 'price_noise';
   if (TIME_WITH_ARRIVAL_OFFSET_ONLY_RE.test(compact)) return 'price_noise';
   if (HOLIDAY_PRICE_NOISE_RE.test(text)) return 'price_noise';
+  if (GUANGZHOU_ROUTE_CELL_ONLY_RE.test(compact)) return 'transfer';
+  if (RAIL_CODE_CELL_ONLY_RE.test(compact)) return 'transfer';
+  if (RAIL_SEAT_OR_CHANGE_NOTICE_RE.test(compact)) return 'notice';
+  if (ROUTE_RETURN_CELL_RE.test(compact)) return 'transfer';
+  if (TRANSPORT_PATH_FRAGMENT_RE.test(text)) return 'activity';
+  if (DESCRIPTION_ONLY_FRAGMENT_RE.test(text)) return 'activity';
   if (KOREAN_REGION_CELL_ONLY_RE.test(compact)) return 'transfer';
   if (BRACKETED_DESCRIPTION_ONLY_RE.test(text) && !BRACKETED_NAMED_ATTRACTION_RE.test(text)) return 'notice';
   if (/^(?:\uc624\s*\uc804|\uc624\s*\ud6c4|\uc804\s*\uc77c)$/.test(text)) return 'price_noise';

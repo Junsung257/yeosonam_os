@@ -117,6 +117,23 @@ describe('upload destination resolution Korean aliases', () => {
     expect(result.failures).toEqual([]);
   });
 
+  it('prefers source-backed Guangzhou over unrelated existing Chinese destinations', () => {
+    for (const staleDestination of ['계림', '북경']) {
+      const result = resolveUploadDestinationAndCodes({
+        destination: staleDestination,
+        departureAirport: '부산',
+        durationDays: 5,
+        productRawText: '광저우 천저우 3박5일\n광저우 도착 후 천저우 이동',
+        documentRawText: '',
+      });
+
+      expect(result.destination).toBe('광저우');
+      expect(result.source).toBe('product_raw');
+      expect(result.destinationCode).toBe('CAN');
+      expect(result.failures).toEqual([]);
+    }
+  });
+
   it('resolves Narita/Chiba golf catalog text to Tokyo airport group', () => {
     const rawText = readFileSync(
       join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt'),
