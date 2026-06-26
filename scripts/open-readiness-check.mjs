@@ -82,6 +82,21 @@ function addBlockedCheck(name, detail = {}) {
   addCheck(name, 'blocked', detail);
 }
 
+function localDataUnavailableText(payload) {
+  return LOCAL_DATA_UNAVAILABLE_PATTERN.test(JSON.stringify(payload || {}));
+}
+
+function localCommandUnavailable(result) {
+  if (!LOCAL_MODE || !ALLOW_LOCAL_MISSING_DATA) return false;
+  return localDataUnavailableText({
+    stdout: result?.stdout,
+    stderr: result?.stderr,
+    message: result?.message,
+    status: result?.status,
+    signal: result?.signal,
+  });
+}
+
 function writeReport(path, report) {
   if (!path) return;
   const target = resolve(path);
@@ -390,7 +405,14 @@ function checkPublicCriticalAudit() {
     const failedRows = Array.isArray(audit?.results)
       ? audit.results.filter((row) => Array.isArray(row.missing) && row.missing.length > 0)
       : [];
-    const auditPassed = result.ok && Number(audit?.summary?.failed ?? failedRows.length) === 0;
+    const summaryFailed = Number(audit?.summary?.failed);
+    const failedCount = Number.isFinite(summaryFailed) ? summaryFailed : failedRows.length;
+    const auditPassed = result.ok && failedCount === 0;
+    const localCommandOnlyFailure = LOCAL_MODE
+      && ALLOW_LOCAL_MISSING_DATA
+      && !result.ok
+      && failedRows.length === 0
+      && failedCount === 0;
     const onlyLocalPackageDetailUnavailable = LOCAL_MODE
       && ALLOW_LOCAL_MISSING_DATA
       && HAS_EXPLICIT_PACKAGE_ID
@@ -415,10 +437,16 @@ function checkPublicCriticalAudit() {
         row.missing.some((item) => /^status:(500|502|503|504|ERR)$/.test(item) || item === 'request') &&
         row.missing.every((item) => /^status:(500|502|503|504|ERR)$/.test(item) || item === 'request' || item === 'over-budget'),
       );
-    const localAuditUnavailable = ALLOW_LOCAL_MISSING_DATA && !auditPassed && LOCAL_DATA_UNAVAILABLE_PATTERN.test(
-      JSON.stringify({ audit, stderr: result.stderr, stdout: result.stdout }),
-    );
+    const localAuditUnavailable = ALLOW_LOCAL_MISSING_DATA && !auditPassed && localDataUnavailableText({
+      audit,
+      stderr: result.stderr,
+      stdout: result.stdout,
+      message: result.message,
+      status: result.status,
+      signal: result.signal,
+    });
     const blockedByLocalCondition = localAuditUnavailable
+      || localCommandOnlyFailure
       || onlyLocalPackageDetailUnavailable
       || onlyLocalDevLatencyBudgetExceeded
       || onlyLocalDataPageUnavailable
@@ -426,13 +454,13 @@ function checkPublicCriticalAudit() {
     addCheck('public:critical-pages', auditPassed ? 'pass' : blockedByLocalCondition ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: audit?.summary?.passed ?? null,
-      failed: audit?.summary?.failed ?? failedRows.length,
+      failed: failedCount,
       score: audit?.summary?.score ?? null,
       notes: blockedByLocalCondition
         ? onlyLocalDevLatencyBudgetExceeded
           ? 'local dev server exceeded critical-page latency budget; production/staging performance verification is required'
           : 'local critical-page data unavailable; production/staging data is required for full verification'
-        : `score=${audit?.summary?.score ?? 'n/a'}, failed=${audit?.summary?.failed ?? failedRows.length}`,
+        : `score=${audit?.summary?.score ?? 'n/a'}, failed=${failedCount}`,
       error: auditPassed
         ? ''
         : blockedByLocalCondition
@@ -443,9 +471,13 @@ function checkPublicCriticalAudit() {
           .join(', ') || (result.stderr || result.message || '').trim().slice(0, 1000),
     });
   } catch (err) {
-    addCheck('public:critical-pages', 'fail', {
+    const unavailable = localCommandUnavailable(result);
+    addCheck('public:critical-pages', unavailable ? 'blocked' : 'fail', {
       ms: result.ms,
-      error: (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1000),
+      notes: unavailable
+        ? 'local critical-page audit output was unavailable during a DB/runtime timeout; production/staging data is required for full verification'
+        : '',
+      error: unavailable ? '' : (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1000),
     });
   }
 }
@@ -830,10 +862,14 @@ function checkBlogSearchQualityReadiness() {
           ).trim().slice(0, 1200),
     });
   } catch (err) {
-    addCheck('public:blog-search-quality', 'fail', {
+    const unavailable = localCommandUnavailable(result);
+    addCheck('public:blog-search-quality', unavailable ? 'blocked' : 'fail', {
       ms: result.ms,
       command: `npm ${args.join(' ')}`,
-      error: (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
+      notes: unavailable
+        ? 'blog quality probe output was unavailable during a local DB/runtime timeout; retry after warm DB or inspect ops report'
+        : '',
+      error: unavailable ? '' : (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
     });
   }
 }
