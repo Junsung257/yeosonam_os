@@ -5,9 +5,12 @@ import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import type { PriceDate } from '@/lib/price-dates';
 import {
   evaluateV3CustomerNoticeGate,
+  getV3DraftGateStatus,
   hasSupplierRemarkRawLeakRisk,
+  type LatestV3DraftForPackage,
   loadLatestV3DraftForPackage,
 } from '@/lib/product-registration-v3/customer-payload';
 import {
@@ -18,10 +21,12 @@ import {
 } from '@/lib/product-registration-v3';
 import type { V3PipelineResult } from '@/lib/product-registration-v3';
 import { buildSourceBackedFieldRepair } from '@/lib/source-package-field-repair';
-import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
+import { buildSourceBackedPriceDateRepair, hasTransportPriceVariantCue } from '@/lib/source-price-date-repair';
 import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
 import { runUploadVerify, evaluateVerifyChecks } from '@/lib/upload-verify';
+import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import { buildCustomerSourceRawText } from './source-evidence-raw-text';
+import { replaceProductPricesForProduct } from './product-price-replacement';
 
 export type UploadToOpenAutopilotPackage = {
   id: string;
@@ -44,6 +49,7 @@ export type UploadToOpenAutopilotPackage = {
   inclusions: string[] | null;
   excludes: string[] | null;
   optional_tours: unknown[] | null;
+  price_tiers?: unknown[] | null;
   price_dates: Array<{
     date?: string | null;
     price?: number | null;
@@ -91,6 +97,17 @@ type IntakeRow = {
 
 type ProductSourceRow = {
   raw_extracted_text?: string | null;
+};
+
+type RestorableV3DraftRow = LatestV3DraftForPackage & {
+  raw_text?: string | null;
+  raw_text_hash?: string | null;
+  source_type?: string | null;
+  supplier_hint?: string | null;
+  document_type?: string | null;
+  structure_plan?: unknown;
+  evidence_index?: unknown;
+  match_summary?: unknown;
 };
 
 async function loadActiveAttractionsForV3(supabase: SupabaseClient): Promise<AttractionData[]> {
@@ -155,6 +172,105 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function validPriceDates(priceDates: PriceDate[]): PriceDate[] {
+  return priceDates
+    .filter(row =>
+      typeof row.date === 'string'
+      && /^\d{4}-\d{2}-\d{2}$/.test(row.date)
+      && typeof row.price === 'number'
+      && Number.isFinite(row.price)
+      && row.price > 0,
+    )
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function minimumPrice(priceDates: PriceDate[]): number | null {
+  const prices = validPriceDates(priceDates).map(row => row.price);
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
+
+function productPriceRowsFromPriceDates(priceDates: PriceDate[]): ProductPriceRowInput[] {
+  return validPriceDates(priceDates).map(row => ({
+    target_date: row.date,
+    day_of_week: null,
+    net_price: row.price,
+    adult_selling_price: row.price,
+    child_price: typeof row.child_price === 'number' && row.child_price > 0 ? row.child_price : null,
+    note: 'source-backed autopilot price repair',
+  }));
+}
+
+function priceTiersFromPriceDates(priceDates: PriceDate[]): Array<Record<string, unknown>> {
+  const groupedByPrice = new Map<number, PriceDate[]>();
+  for (const row of validPriceDates(priceDates)) {
+    groupedByPrice.set(row.price, [...(groupedByPrice.get(row.price) ?? []), row]);
+  }
+  return [...groupedByPrice.entries()]
+    .sort((a, b) => Math.min(...a[1].map(row => Date.parse(row.date))) - Math.min(...b[1].map(row => Date.parse(row.date))))
+    .map(([price, rows]) => ({
+      period_label: 'source-backed departure dates',
+      departure_dates: rows.map(row => row.date),
+      adult_price: price,
+      ...(rows.some(row => typeof row.child_price === 'number' && row.child_price > 0)
+        ? { child_price: Math.min(...rows.map(row => row.child_price).filter((price): price is number => typeof price === 'number' && price > 0)) }
+        : {}),
+      status: rows.some(row => row.confirmed) ? 'confirmed' : 'available',
+    }));
+}
+
+function coercePackagePriceDates(pkg: UploadToOpenAutopilotPackage): PriceDate[] {
+  return (pkg.price_dates ?? [])
+    .map(row => ({
+      date: row.date ?? '',
+      price: row.price ?? row.adult_price ?? row.adult_selling_price ?? row.selling_price ?? 0,
+      ...(typeof row.child_price === 'number' && row.child_price > 0 ? { child_price: row.child_price } : {}),
+      confirmed: row.confirmed === true,
+    }));
+}
+
+function hasFailingDeterministicPriceCheck(pkg: UploadToOpenAutopilotPackage): boolean {
+  const result = evaluateVerifyChecks({
+    ...pkg,
+    status: 'active',
+    audit_status: 'clean',
+  } as Parameters<typeof evaluateVerifyChecks>[0]);
+  return result.checks.some(check => check.id === 'C12' && check.status === 'fail');
+}
+
+async function syncSourceBackedPriceStores(input: {
+  supabase: SupabaseClient;
+  pkg: UploadToOpenAutopilotPackage;
+  priceDates: PriceDate[];
+  updates: Record<string, unknown>;
+  repairs: string[];
+}): Promise<void> {
+  const minPrice = minimumPrice(input.priceDates);
+  if (minPrice == null) return;
+
+  input.updates.price_dates = validPriceDates(input.priceDates);
+  input.updates.price_tiers = priceTiersFromPriceDates(input.priceDates);
+  input.updates.price = minPrice;
+
+  if (!input.pkg.internal_code) return;
+
+  await replaceProductPricesForProduct({
+    supabase: input.supabase,
+    productId: input.pkg.internal_code,
+    rows: productPriceRowsFromPriceDates(input.priceDates),
+  });
+
+  const { error } = await input.supabase
+    .from('products')
+    .update({
+      net_price: minPrice,
+      updated_at: nowIso(),
+    })
+    .eq('internal_code', input.pkg.internal_code);
+  if (error) throw new Error(`products price sync failed: ${error.message}`);
+
+  input.repairs.push('price_stores:products_product_prices_price_tiers_synced');
+}
+
 async function markAutopilotStage(
   supabase: SupabaseClient,
   packageId: string,
@@ -193,7 +309,7 @@ async function loadPackages(
   const ids = uniqueIds(options.packageIds);
   let query = supabase
     .from('travel_packages')
-    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
     .order('updated_at', { ascending: false })
     .limit(Math.max(1, Math.min(50, options.limit ?? 10)));
 
@@ -243,12 +359,40 @@ async function applySourceBackedRepairs(
 
   const priceRepair = buildSourceBackedPriceDateRepair(workingPkg);
   if (priceRepair.status === 'repaired') {
-    updates.price_dates = priceRepair.priceDates;
-    const prices = priceRepair.priceDates
-      .map(row => row.price)
-      .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
-    if (prices.length > 0) updates.price = Math.min(...prices);
-    repairs.push(`price_dates:${priceRepair.reason}`);
+    const repairedPkg = { ...workingPkg, price_dates: priceRepair.priceDates };
+    if (hasTransportPriceVariantCue(workingPkg) && !hasFailingDeterministicPriceCheck(repairedPkg)) {
+      await syncSourceBackedPriceStores({
+        supabase,
+        pkg,
+        priceDates: priceRepair.priceDates,
+        updates,
+        repairs,
+      });
+      const repairedMinPrice = minimumPrice(priceRepair.priceDates);
+      workingPkg = {
+        ...repairedPkg,
+        ...(repairedMinPrice != null ? { price: repairedMinPrice } : {}),
+      };
+      repairs.push(`price_dates:${priceRepair.reason}`);
+    } else {
+      blockedReasons.push(`price_dates_repair_requires_review:${priceRepair.reason}`);
+    }
+  } else if (priceRepair.status === 'not_needed') {
+    const existingPriceDates = coercePackagePriceDates(workingPkg);
+    if (validPriceDates(existingPriceDates).length > 0) {
+      if (hasFailingDeterministicPriceCheck(workingPkg)) {
+        blockedReasons.push('price_dates_sync_requires_review:c12_failed');
+      } else {
+        await syncSourceBackedPriceStores({
+          supabase,
+          pkg,
+          priceDates: existingPriceDates,
+          updates,
+          repairs,
+        });
+        repairs.push('price_dates:existing_source_backed_dates_synced_to_dependent_stores');
+      }
+    }
   } else if (priceRepair.status === 'unsafe') {
     blockedReasons.push(`price_dates:${priceRepair.reason}`);
   }
@@ -294,7 +438,7 @@ async function applySourceBackedRepairs(
       updated_at: updatedAt,
     })
     .eq('id', pkg.id)
-    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
     .single();
   if (error) throw error;
   return { pkg: data as UploadToOpenAutopilotPackage, repairs, blockedReasons };
@@ -328,7 +472,7 @@ async function loadDeliveryContext(supabase: SupabaseClient, packageId: string) 
 async function reloadPackage(supabase: SupabaseClient, packageId: string): Promise<UploadToOpenAutopilotPackage> {
   const { data, error } = await supabase
     .from('travel_packages')
-    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
     .eq('id', packageId)
     .single();
   if (error) throw error;
@@ -339,6 +483,16 @@ async function rebuildV3DraftFromCurrentPackage(input: {
   supabase: SupabaseClient;
   pkg: UploadToOpenAutopilotPackage;
 }): Promise<string[]> {
+  const latestDraft = await loadLatestV3DraftForPackage(input.supabase, input.pkg.id);
+  if (getV3DraftGateStatus(latestDraft) === 'ready_to_publish') {
+    return ['v3_rebuild_skipped:latest_ready_to_publish'];
+  }
+
+  const restoredReady = await restoreLatestReadyV3DraftAsCurrent(input.supabase, input.pkg.id);
+  if (restoredReady) {
+    return ['v3_rebuild_skipped:restored_existing_ready_to_publish'];
+  }
+
   const rawText = input.pkg.raw_text ?? '';
   if (rawText.trim().length < 50) return ['v3_rebuild_skipped:raw_text_too_short'];
   const attractions = await loadActiveAttractionsForV3(input.supabase);
@@ -361,6 +515,40 @@ async function rebuildV3DraftFromCurrentPackage(input: {
   });
   if (persisted.error) return [`v3_rebuild_failed:${persisted.error}`];
   return [`v3_rebuilt:${v3.gate_result.status}:queued=${persisted.queuedUnmatched}`];
+}
+
+async function restoreLatestReadyV3DraftAsCurrent(
+  supabase: SupabaseClient,
+  packageId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('product_registration_drafts')
+    .select('package_id, raw_text, raw_text_hash, supplier_hint, document_type, structure_plan, ledger, evidence_index, match_summary, gate_result, status')
+    .eq('package_id', packageId)
+    .eq('status', 'ready_to_publish')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return false;
+
+  const ready = data as RestorableV3DraftRow;
+  const { error: insertError } = await supabase
+    .from('product_registration_drafts')
+    .insert({
+      package_id: ready.package_id ?? packageId,
+      raw_text: ready.raw_text ?? '',
+      raw_text_hash: ready.raw_text_hash ?? '',
+      source_type: 'upload-to-open-autopilot:restore-ready-draft',
+      supplier_hint: ready.supplier_hint ?? null,
+      document_type: ready.document_type ?? null,
+      structure_plan: ready.structure_plan ?? null,
+      ledger: ready.ledger ?? null,
+      evidence_index: ready.evidence_index ?? null,
+      match_summary: ready.match_summary ?? null,
+      gate_result: ready.gate_result ?? null,
+      status: 'ready_to_publish',
+    });
+  return !insertError;
 }
 
 async function evaluateAndMaybeOpenPackage(input: {

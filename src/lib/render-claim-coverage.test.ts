@@ -289,6 +289,23 @@ describe('render-claim-coverage', () => {
     expect(result.unsupported.some(c => c.value === '준5성')).toBe(false);
   });
 
+  it('accepts hotel names when source has parenthetical grade annotations between names', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '\ub85c\uc584\ud0c0\uc6cc\ud638\ud154(\uc8155\uc131) \ub610\ub294 \ud584\ud2bc\ubc14\uc774\ud790\ud2bc\ud638\ud154(\uc9005\uc131) \ub610\ub294 \ub3d9\uae09',
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            hotel: { name: '\ub85c\uc584\ud0c0\uc6cc\ud638\ud154 \ub610\ub294 \ud584\ud2bc\ubc14\uc774\ud790\ud2bc\ud638\ud154 \ub610\ub294 \ub3d9\uae09', grade: '5\uc131' },
+            schedule: [{ type: 'normal', activity: '\ud638\ud154\ud22c\uc219' }],
+          },
+        ],
+      },
+    });
+
+    expect(result.unsupported.some(c => c.id === 'days[0].hotel.name')).toBe(false);
+  });
+
   it('accepts flight city token 부산(김해) when raw has 부산 김해', () => {
     const result = evaluateRenderClaimCoverage({
       raw_text: '출발: 부산 김해 / 도착: 나트랑',
