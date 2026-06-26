@@ -19,6 +19,7 @@ type CandidateRow = {
   region_scope: string | null;
   destination_scope: string | null;
   source_unmatched_ids: string[] | null;
+  source_context: Record<string, unknown> | null;
   external_sources: Array<Record<string, unknown>> | null;
   suggested_master: Record<string, unknown> | null;
   decision_reason: string | null;
@@ -27,6 +28,11 @@ type CandidateRow = {
 function limitFrom(request: NextRequest): number {
   const raw = Number(request.nextUrl.searchParams.get('limit') ?? process.env.PROMOTE_INTERNAL_CANDIDATES_LIMIT ?? 50);
   return Number.isFinite(raw) ? Math.max(1, Math.min(200, Math.floor(raw))) : 50;
+}
+
+function minScoreFrom(request: NextRequest): number {
+  const raw = Number(request.nextUrl.searchParams.get('minScore') ?? process.env.PROMOTE_INTERNAL_CANDIDATES_MIN_SCORE ?? 0.3);
+  return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0.3;
 }
 
 function clean(value: unknown): string {
@@ -41,6 +47,13 @@ function chooseName(row: CandidateRow): string {
   return clean(row.canonical_name) || clean(row.normalized_label) || clean(row.raw_label);
 }
 
+function packageIdsFrom(row: CandidateRow): string[] {
+  const ids = row.source_context?.package_ids;
+  return Array.isArray(ids)
+    ? ids.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+}
+
 async function findExisting(name: string, aliases: string[]) {
   for (const term of unique([name, ...aliases])) {
     const { data, error } = await supabaseAdmin
@@ -53,20 +66,23 @@ async function findExisting(name: string, aliases: string[]) {
   return null;
 }
 
-async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
+async function runPromoteInternalCandidates(options: { limit?: number; minScore?: number } = {}) {
   if (!isSupabaseConfigured) {
     return { ok: true, scanned: 0, promoted: 0, linkedExisting: 0, errors: [] as string[] };
   }
 
   try {
     const limit = options.limit ?? 50;
+    const minScore = options.minScore ?? 0.3;
     const { data, error } = await supabaseAdmin
       .from('entity_master_candidates')
-      .select('id, candidate_key, raw_label, normalized_label, canonical_name, country_scope, region_scope, destination_scope, source_unmatched_ids, external_sources, suggested_master, decision_reason')
+      .select('id, candidate_key, raw_label, normalized_label, canonical_name, country_scope, region_scope, destination_scope, source_unmatched_ids, source_context, external_sources, suggested_master, decision_reason')
       .eq('category', 'attraction')
       .eq('auto_action', 'create_internal_master')
       .eq('promotion_status', 'auto_internal')
       .eq('auto_verification_status', 'verified_internal')
+      .gte('verification_score', minScore)
+      .contains('source_context', { mobile_landing_impact: true })
       .order('verification_score', { ascending: false })
       .limit(limit);
     if (error) throw error;
@@ -124,6 +140,7 @@ async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
           promoted++;
         }
         if (attractionId) affectedAttractionIds.add(attractionId);
+        for (const packageId of packageIdsFrom(row)) affectedPackageIds.add(packageId);
 
         const now = new Date().toISOString();
         await supabaseAdmin
@@ -199,7 +216,10 @@ async function runPromoteInternalCandidates(options: { limit?: number } = {}) {
 
 const handlePromoteInternalCandidates = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  return runPromoteInternalCandidates({ limit: limitFrom(request) });
+  return runPromoteInternalCandidates({
+    limit: limitFrom(request),
+    minScore: minScoreFrom(request),
+  });
 };
 
 export const GET = withCronLogging('promote-internal-candidates', handlePromoteInternalCandidates);

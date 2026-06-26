@@ -108,6 +108,7 @@ if (!skipVerify) {
       '--category=attraction',
       '--promotion-status=needs_review,candidate,auto_internal,publishable_ready',
       `--limit=${verifyLimit}`,
+      ...(destination ? [`--destination=${destination}`] : []),
       '--summary-only',
       '--json',
       ...(apply ? ['--apply'] : []),

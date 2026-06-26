@@ -220,6 +220,7 @@ function candidatePayload(group: CandidateGroup) {
     source_context: {
       package_ids: [...group.packageIds].slice(0, 100),
       package_titles: [...group.packageTitles].slice(0, 50),
+      mobile_landing_impact: group.packageIds.size > 0,
       examples: group.examples,
       analyzer: 'run-unmatched-final-pipeline',
       analyzed_at: new Date().toISOString(),

@@ -845,6 +845,8 @@ function gateStatus(draft, lookupFailed = false) {
 }
 
 function draftAttractionUnmatchedCount(draft) {
+  const entityCount = Number(draft?.match_summary?.entity_summary?.attraction_unresolved_count);
+  if (Number.isFinite(entityCount) && entityCount >= 0) return entityCount;
   const count = Number(draft?.match_summary?.attraction_unmatched_count);
   return Number.isFinite(count) && count >= 0 ? count : null;
 }

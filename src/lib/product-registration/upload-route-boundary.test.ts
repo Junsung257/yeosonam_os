@@ -756,6 +756,7 @@ describe('upload route registration pipeline boundary', () => {
     const audit = readMobileReadinessAudit();
 
     expect(audit).toContain('function draftAttractionUnmatchedCount(draft)');
+    expect(audit).toContain('entity_summary?.attraction_unresolved_count');
     expect(audit).toContain('match_summary, created_at');
     expect(audit).toContain("eq('status', 'pending')");
     expect(audit).toContain("is('resolved_attraction_id', null)");
