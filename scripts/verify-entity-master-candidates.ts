@@ -30,6 +30,7 @@ const naverCacheOnly = args.includes('--naver-cache-only');
 const skipWikidata = args.includes('--skip-wikidata') || naverCacheOnly;
 const limit = Number(argValue('--limit', '20'));
 const offset = Number(argValue('--offset', '0'));
+const concurrency = Math.max(1, Number(argValue('--concurrency', '1')) || 1);
 const categoryFilter = argValue('--category', '');
 const destinationFilter = argValue('--destination', '');
 const promotionStatusFilter = argList('--promotion-status');
@@ -55,6 +56,16 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
+
+type VerificationAttemptRow = {
+  candidate_key: string | null;
+  source: string;
+  query: string | null;
+  status: string | null;
+  score: number | null;
+  evidence: unknown;
+  created_at: string | null;
+};
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -170,23 +181,47 @@ function evidenceTarget(value: unknown): NaverSearchEvidenceItem['target'] | nul
   return value === 'blog' || value === 'webkr' || value === 'encyc' || value === 'local' ? value : null;
 }
 
-async function fetchCachedNaverResult(row: EntityCandidateRow): Promise<NaverEntityVerificationResult | null> {
-  const { data, error } = await supabase
-    .from('entity_verification_attempts')
-    .select('source, query, status, score, evidence, created_at')
-    .eq('candidate_key', row.candidate_key)
-    .in('source', ['naver_search', 'naver_searchad'])
-    .eq('status', 'success')
-    .order('created_at', { ascending: false })
-    .limit(80);
-  if (error) throw error;
+async function prefetchCachedNaverAttempts(rows: EntityCandidateRow[]): Promise<Map<string, VerificationAttemptRow[]>> {
+  const keys = [...new Set(rows.map(row => row.candidate_key).filter(Boolean))];
+  const attemptsByKey = new Map<string, VerificationAttemptRow[]>();
+  const chunkSize = 100;
+
+  for (let index = 0; index < keys.length; index += chunkSize) {
+    const chunk = keys.slice(index, index + chunkSize);
+    const { data, error } = await supabase
+      .from('entity_verification_attempts')
+      .select('candidate_key, source, query, status, score, evidence, created_at')
+      .in('candidate_key', chunk)
+      .in('source', ['naver_search', 'naver_searchad'])
+      .eq('status', 'success')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    for (const attempt of (data ?? []) as VerificationAttemptRow[]) {
+      const key = attempt.candidate_key;
+      if (!key) continue;
+      const bucket = attemptsByKey.get(key) ?? [];
+      if (bucket.length >= 80) continue;
+      bucket.push(attempt);
+      attemptsByKey.set(key, bucket);
+    }
+  }
+
+  return attemptsByKey;
+}
+
+function buildCachedNaverResult(
+  row: EntityCandidateRow,
+  attempts: VerificationAttemptRow[],
+): NaverEntityVerificationResult | null {
+  if (attempts.length === 0) return null;
 
   const searchByQuery = new Map<string, NaverSearchEvidenceItem>();
   const keywordByName = new Map<string, NaverKeywordEvidenceItem>();
   let searchScore = 0;
   let keywordScore = 0;
 
-  for (const attempt of data ?? []) {
+  for (const attempt of attempts) {
     const evidence = (attempt.evidence ?? {}) as Record<string, unknown>;
     if (attempt.source === 'naver_search') {
       const target = evidenceTarget(evidence.target);
@@ -386,18 +421,32 @@ async function main() {
   const decisions: EntityResolutionDecision[] = [];
   const errors: Array<{ candidate_key: string; error: string }> = [];
   let googlePlacesBudget = getGooglePlacesBudgetFromEnv(await countGooglePlacesAttemptsToday());
+  const effectiveConcurrency = !apply && (!googlePlacesBudget.enabled || googlePlacesBudget.remainingDailyCalls <= 0)
+    ? concurrency
+    : 1;
+  const cachedNaverAttempts = preferCachedNaver
+    ? await prefetchCachedNaverAttempts(rows)
+    : new Map<string, VerificationAttemptRow[]>();
 
-  for (const row of rows) {
+  async function resolveRow(row: EntityCandidateRow): Promise<EntityResolutionDecision> {
+    const cachedNaver = preferCachedNaver
+      ? buildCachedNaverResult(row, cachedNaverAttempts.get(row.candidate_key) ?? [])
+      : null;
+    return resolveItineraryEntityCandidate(row, {
+      googlePlacesBudget,
+      ...(cachedNaver || naverCacheOnly
+        ? { naverVerifier: async () => cachedNaver ?? emptyCachedNaverResult(row) }
+        : {}),
+      ...(skipWikidata ? { wikidataReconciler: async () => [] } : {}),
+    });
+  }
+
+  async function handleRow(row: EntityCandidateRow): Promise<void> {
     try {
-      const cachedNaver = preferCachedNaver ? await fetchCachedNaverResult(row) : null;
-      const decision = await resolveItineraryEntityCandidate(row, {
-        googlePlacesBudget,
-        ...(cachedNaver || naverCacheOnly
-          ? { naverVerifier: async () => cachedNaver ?? emptyCachedNaverResult(row) }
-          : {}),
-        ...(skipWikidata ? { wikidataReconciler: async () => [] } : {}),
-      });
-      googlePlacesBudget = consumeGooglePlacesBudget(googlePlacesBudget, decision);
+      const decision = await resolveRow(row);
+      if (effectiveConcurrency === 1) {
+        googlePlacesBudget = consumeGooglePlacesBudget(googlePlacesBudget, decision);
+      }
       decisions.push(decision);
       if (apply) await persistDecision(row, decision);
     } catch (error) {
@@ -405,6 +454,14 @@ async function main() {
         candidate_key: row.candidate_key,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  if (effectiveConcurrency === 1) {
+    for (const row of rows) await handleRow(row);
+  } else {
+    for (let index = 0; index < rows.length; index += effectiveConcurrency) {
+      await Promise.all(rows.slice(index, index + effectiveConcurrency).map(handleRow));
     }
   }
 
@@ -418,6 +475,7 @@ async function main() {
     promotion_status: promotionStatusFilter.length > 0 ? promotionStatusFilter : 'default_active',
     naver_cache: naverCacheOnly ? 'only' : preferCachedNaver ? 'prefer' : 'off',
     wikidata: skipWikidata ? 'skipped' : 'on',
+    concurrency: effectiveConcurrency,
     google_places_budget: {
       enabled: googlePlacesBudget.enabled,
       daily_limit: googlePlacesBudget.dailyLimit,
@@ -438,6 +496,7 @@ async function main() {
     promotion_status: output.promotion_status,
     naver_cache: output.naver_cache,
     wikidata: output.wikidata,
+    concurrency: output.concurrency,
     google_places_budget: output.google_places_budget,
     errors: output.errors,
     byStatus: output.byStatus,
