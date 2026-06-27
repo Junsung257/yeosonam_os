@@ -77,4 +77,16 @@ describe('blog queue failure policy', () => {
       reason: 'db_write',
     });
   });
+
+  it('preflight-quarantines evidence-insufficient candidates before another claim', () => {
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 0,
+      lastError: null,
+      meta: { evidence_insufficient: true },
+    })).toMatchObject({
+      quarantine: true,
+      status: 'failed',
+      reason: 'evidence_insufficient',
+    });
+  });
 });

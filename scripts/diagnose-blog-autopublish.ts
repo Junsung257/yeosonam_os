@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { countPublishableQueueCandidates } from '../src/lib/blog-scheduler';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -93,6 +94,7 @@ async function main() {
     queueCounts,
     indexingCounts,
     indexingProblemRes,
+    activeQueueRes,
     cronHealthRes,
     publisherLogsRes,
     policyRes,
@@ -127,6 +129,11 @@ async function main() {
       .order('updated_at', { ascending: false })
       .limit(limit),
     supabase
+      .from('blog_topic_queue')
+      .select('id, product_id, destination, angle_type, topic, source, meta')
+      .in('status', ['queued', 'generating'])
+      .limit(500),
+    supabase
       .from('cron_health')
       .select('cron_name, last_status, last_run_at, last_error_count, last_elapsed_ms, last_summary')
       .in('cron_name', ['blog-scheduler', 'blog-publisher', 'blog-daily-summary', 'blog-indexing-worker']),
@@ -150,6 +157,7 @@ async function main() {
     publishedYesterdayRes,
     recentPublishedRes,
     indexingProblemRes,
+    activeQueueRes,
     cronHealthRes,
     publisherLogsRes,
     policyRes,
@@ -162,6 +170,24 @@ async function main() {
   const cronHealth = Object.fromEntries((cronHealthRes.data ?? []).map((row: any) => [row.cron_name, row]));
   const publisherHealth = cronHealth['blog-publisher'];
   const publisherLogs = publisherLogsRes.data ?? [];
+  const publishabilityStats = countPublishableQueueCandidates({
+    activeQueue: activeQueueRes.data ?? [],
+    recentPublished: recentPublishedRes.data ?? [],
+  });
+  const publishabilitySnapshot = {
+    queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
+    publishable_candidate_count: publishabilityStats.publishableCount,
+    duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
+    evidence_insufficient_count: publishabilityStats.evidenceInsufficient,
+    candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
+    next_action: publishabilityStats.evidenceInsufficient > 0
+      ? 'collect_evidence'
+      : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
+        ? 'quarantine_duplicates'
+        : publishabilityStats.publishableCount < dailyTarget * 2
+          ? 'refill_candidates'
+          : 'publish_ready',
+  };
   const latestPublisherLog = publisherLogs[0] ?? null;
   const latestPublisherSummary = summaryObject(latestPublisherLog);
   const healthPublisherSummary = lastSummaryObject(publisherHealth);
@@ -219,13 +245,13 @@ async function main() {
     });
   }
 
-  const queued = numberFrom(queueCounts.queued) + numberFrom(queueCounts.generating);
+  const queued = publishabilitySnapshot.publishable_candidate_count;
   if (queued < dailyTarget * 2) {
     buckets.push({
       code: 'candidate_shortage',
       severity: queued === 0 ? 'critical' : 'warning',
-      detail: `Only ${queued} queued/generating blog candidate(s) remain for a target of ${dailyTarget}/day.`,
-      evidence: queueCounts,
+      detail: `Only ${queued} publishable blog candidate(s) remain for a target of ${dailyTarget}/day.`,
+      evidence: publishabilitySnapshot,
     });
   }
 
@@ -271,6 +297,7 @@ async function main() {
       under_target: (publishedTodayRes.count ?? 0) < dailyTarget,
     },
     queue: queueCounts,
+    publishability: publishabilitySnapshot,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
     latest_publisher_runs: publisherLogs,

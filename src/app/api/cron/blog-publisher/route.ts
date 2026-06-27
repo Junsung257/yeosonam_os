@@ -90,11 +90,12 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
-const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 3, 1, 5);
-const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 10, MAX_BATCH, 20);
-const MAX_QUALITY_REPAIR_ROUNDS = 3;
+const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 2, 1, 5);
+const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 6, MAX_BATCH, 20);
+const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 1, 0, 4);
+const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
 const MAX_ATTEMPTS = 2;
-const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
+const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
 
 function getQueueMicroAngle(item: any): string | null {
@@ -395,6 +396,7 @@ function buildQualityGateInput(
     content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
     product_id: item.product_id ?? null,
     micro_angle: getQueueMicroAngle(item),
+    generation_meta: generated.generation_meta ?? null,
   };
 }
 
@@ -423,7 +425,7 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
-    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('render_integrity')) {
+    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity')) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -455,6 +457,15 @@ async function repairFailedQualityGates(
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
       if (generated.blog_html !== before) {
         changes.push('forced_official_reference_links');
+        changed = true;
+      }
+    }
+
+    if (failed.has('engine_v2')) {
+      const before = generated.blog_html;
+      generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+      if (generated.blog_html !== before) {
+        changes.push('engine_v2_evidence_references');
         changed = true;
       }
     }
@@ -504,6 +515,11 @@ async function repairFailedQualityGates(
     }
 
     if (!changed) break;
+
+    generated.generation_meta = {
+      ...(generated.generation_meta || {}),
+      repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0) + 1,
+    };
 
     generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
     generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
@@ -816,7 +832,7 @@ async function runBlogPublisher(request: NextRequest) {
       }
     }
 
-    while (publishedThisRun < remainingToday) {
+    while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
       const elapsed = Date.now() - startTime;
       const remaining = MAX_EXEC_MS - elapsed;
       if (remaining < 30000) {
@@ -990,6 +1006,7 @@ async function runBlogPublisher(request: NextRequest) {
 
     const publishedCount = results.filter(r => r.status === 'published').length;
     const failureBreakdown = buildPublisherFailureBreakdown(results);
+    const canonicalMatched = publishedSlugs.every(slug => typeof slug === 'string' && slug.trim().length > 0 && !slug.startsWith('/'));
     if (publishedCount === 0 && remainingToday > 0) {
       errors.push('publisher_zero_published_with_remaining_quota');
     }
@@ -1010,6 +1027,12 @@ async function runBlogPublisher(request: NextRequest) {
       pillarDeferral,
       queueRefill,
       failure_breakdown: failureBreakdown,
+      operational_checks: {
+        published_count: publishedCount,
+        quality_passed: results.filter(r => r.status === 'published').length === publishedCount,
+        indexing_queued: publishedCount === 0 ? true : indexingFailed === 0,
+        canonical_matched: canonicalMatched,
+      },
       extraClaimRounds,
       emergencyRefillRounds,
       emergencyRefills,
@@ -1305,51 +1328,18 @@ async function processQueueItem(
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
-      qa = await runQualityGates({
-        blog_html: generated.blog_html,
-        slug: generated.slug,
-        destination: item.destination,
-        angle_type: normalizeAngleType(item.angle_type),
-        blog_type: blogType,
-        primary_keyword: primaryKeyword,
-        category: item.category,
-        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        product_id: item.product_id ?? null,
-        micro_angle: getQueueMicroAngle(item),
-      });
+      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'hook' && !gate.passed)) {
       generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
-      qa = await runQualityGates({
-        blog_html: generated.blog_html,
-        slug: generated.slug,
-        destination: item.destination,
-        angle_type: normalizeAngleType(item.angle_type),
-        blog_type: blogType,
-        primary_keyword: primaryKeyword,
-        category: item.category,
-        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        product_id: item.product_id ?? null,
-        micro_angle: getQueueMicroAngle(item),
-      });
+      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
-      qa = await runQualityGates({
-        blog_html: generated.blog_html,
-        slug: generated.slug,
-        destination: item.destination,
-        angle_type: normalizeAngleType(item.angle_type),
-        blog_type: blogType,
-        primary_keyword: primaryKeyword,
-        category: item.category,
-        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        product_id: item.product_id ?? null,
-        micro_angle: getQueueMicroAngle(item),
-      });
+      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     }
 
     if (!qa.passed) {
@@ -1457,11 +1447,31 @@ async function processQueueItem(
 
     const readability = computeReadability(generated.blog_html);
     const now = new Date().toISOString();
+    const engineGate = qa.gates.find(gate => gate.gate === 'engine_v2');
+    const engineEvaluation = engineGate?.evidence && typeof engineGate.evidence === 'object'
+      ? (engineGate.evidence as Record<string, unknown>).evaluation as Record<string, unknown> | undefined
+      : undefined;
+    const engineMetrics = engineEvaluation?.metrics && typeof engineEvaluation.metrics === 'object'
+      ? engineEvaluation.metrics as Record<string, unknown>
+      : {};
+    const engineBrief = engineEvaluation?.brief && typeof engineEvaluation.brief === 'object'
+      ? engineEvaluation.brief as Record<string, unknown>
+      : {};
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
       ...(item.meta || {}),
       ...(generated.generation_meta || {}),
+      engine_version: 'blog-engine-v2',
+      writer: typeof generated.generation_meta?.writer === 'string'
+        ? generated.generation_meta.writer
+        : (item.product_id ? 'product_consultant_writer' : 'info_writer'),
+      brief_score: typeof engineMetrics.task_completion === 'number' ? engineMetrics.task_completion : null,
+      evidence_score: typeof engineMetrics.source_support === 'number' ? engineMetrics.source_support : null,
+      engine_score: typeof engineEvaluation?.score === 'number' ? engineEvaluation.score : null,
+      failure_bucket: engineEvaluation?.failure_bucket ?? null,
+      repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
+      evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
     };
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
