@@ -113,6 +113,15 @@ function inferUploadYearForMonth(month: number): number {
   return month < currentMonth ? now.getFullYear() + 1 : now.getFullYear();
 }
 
+function inferUploadYearForMonthDay(month: number, day: number): number {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+  if (month < currentMonth) return now.getFullYear() + 1;
+  if (month === currentMonth && day < currentDay) return now.getFullYear() + 1;
+  return now.getFullYear();
+}
+
 function parseKoreanDepartureDateList(source: string): string[] {
   const dates: string[] = [];
   const seen = new Set<string>();
@@ -156,6 +165,52 @@ function parseKoreanDepartureDateList(source: string): string[] {
   return dates.sort();
 }
 
+function parseLiteralHwpDepartureDateList(source: string, fallbackYear: number): string[] {
+  const dates: string[] = [];
+  const seen = new Set<string>();
+  let currentYear: number | null = null;
+  let currentMonth: number | null = null;
+
+  const push = (year: number, month: number, day: number) => {
+    const iso = toIsoDate(year, month, day);
+    if (!iso || seen.has(iso)) return;
+    seen.add(iso);
+    dates.push(iso);
+  };
+
+  const text = source
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  for (const match of text.matchAll(/(?:^|[^\d])(?:(20\d{2})\s*\uB144\s*)?(\d{1,2})\s*[./]\s*(\d{1,2})(?=$|[^\d])/g)) {
+    if (match[1]) currentYear = Number(match[1]);
+    currentMonth = Number(match[2]);
+    push(currentYear ?? inferUploadYearForMonthDay(currentMonth, Number(match[3])), currentMonth, Number(match[3]));
+  }
+
+  for (const match of text.matchAll(/(?:^|[^\d])(?:(20\d{2})\s*\uB144\s*)?(\d{1,2})\s*[./]\s*(\d{1,2}(?:\s*,\s*\d{1,2})+)(?=$|[^\d/])/g)) {
+    if (match[1]) currentYear = Number(match[1]);
+    currentMonth = Number(match[2]);
+    for (const dayText of match[3].split(',')) {
+      const day = Number(dayText.trim());
+      push(currentYear ?? inferUploadYearForMonthDay(currentMonth, day), currentMonth, day);
+    }
+  }
+
+  for (const match of text.matchAll(/(?:^|[^\d])(?:(20\d{2})\s*\uB144\s*)?(\d{1,2})\s*\uC6D4\s*(\d{1,2}(?:\s*,\s*\d{1,2})*)\s*\uC77C/g)) {
+    if (match[1]) currentYear = Number(match[1]);
+    currentMonth = Number(match[2]);
+    for (const dayText of match[3].split(',')) {
+      const day = Number(dayText.trim());
+      push(currentYear ?? inferUploadYearForMonthDay(currentMonth, day), currentMonth, day);
+    }
+  }
+
+  return dates.sort();
+}
+
 function extractKoreanDepartureDateBlock(rawText: string): string {
   const lines = rawText.replace(/\r\n/g, '\n').split('\n');
   const labelRe = /(?:출\s*발\s*일\s*자|출\s*발\s*일|출발일자|출발일|출발날짜|출발일정)/;
@@ -191,6 +246,15 @@ function extractHeadingBlock(rawText: string, heading: RegExp, stop: RegExp, max
 
 function extractDepartureDates(rawText: string): string[] {
   const fallbackYear = inferYearFromRawText(rawText);
+  const literalHwpLabeled = extractHeadingBlock(
+    rawText,
+    /^\s*(?:\uCD9C\s*\uBC1C\s*\uC77C|\uCD9C\uBC1C\uC77C|\uCD9C\uBC1C\s*\uC77C\uC815)\s*[:\uFF1A]?\s*(.*)$/i,
+    /^\s*(?:\uC778\s*\uC6D0|\uD310\s*\uB9E4\s*\uAC00(?:\s*\uACA9)?|\uD310\uB9E4\uAC00|\uC0C1\uD488\s*\uAC00|\uC694\s*\uAE08|\uD638\uD154|\uAC1D\s*\uC2E4|\uD3EC\uD568\uC0AC\uD56D|\uBD88\uD3EC\uD568\uC0AC\uD56D)\s*$/i,
+    4,
+  );
+  const literalHwpDates = parseLiteralHwpDepartureDateList(literalHwpLabeled, fallbackYear);
+  if (literalHwpDates.length > 0) return literalHwpDates;
+
   const koreanLabeled = parseKoreanDepartureDateList(extractKoreanDepartureDateBlock(rawText));
   if (koreanLabeled.length > 0) return koreanLabeled;
 
@@ -210,6 +274,9 @@ function extractDepartureDates(rawText: string): string[] {
 }
 
 function extractPrices(rawText: string): { adult: number | null; child: number | null } {
+  const literalHwpAdult = parseMoney(rawText.match(
+    /(?:\uD310\s*\uB9E4\s*\uAC00(?:\s*\uACA9)?|\uD310\uB9E4\uAC00|\uC0C1\uD488\s*\uAC00|\uC694\s*\uAE08)\s*(?:[:\uFF1A]|\r?\n)\s*[^0-9\n\r]*([0-9]{1,3}(?:,[0-9]{3})+|[1-9][0-9]{4,})/i,
+  )?.[1]);
   const priceBlock = extractHeadingBlock(
     rawText,
     /^\s*(?:판\s*매\s*가|최\s*저\s*가|상품\s*가|요\s*금)\s*[:：-]?\s*(.*)$/i,
@@ -220,7 +287,7 @@ function extractPrices(rawText: string): { adult: number | null; child: number |
   const tableRow = rawText.match(/20\d{2}[./-]\d{1,2}[./-]\d{1,2}\s*[|／/]\s*([0-9,]+)\s*원?\s*[|／/]\s*([0-9,]+)\s*원?/);
   const adult = headingPrice ?? parseMoney(rawText.match(/(?:성인|대인)\s*([0-9,]+)\s*원/)?.[1] ?? tableRow?.[1]);
   const child = parseMoney(rawText.match(/(?:아동|소아|어린이)\s*([0-9,]+)\s*원/)?.[1] ?? tableRow?.[2]);
-  return { adult, child };
+  return { adult: literalHwpAdult ?? adult, child };
 }
 
 function toOptionalTour(line: string) {

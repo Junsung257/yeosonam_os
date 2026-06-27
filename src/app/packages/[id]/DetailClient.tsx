@@ -60,12 +60,15 @@ interface DaySchedule {
   schedule?: {
     time?: string;
     activity: string;
+    source_activity?: string | null;
     type?: string;
     transport?: string;
     note?: string;
     badge?: string;
     entity_kind?: string | null;
     landing_sentence?: string | null;
+    attraction_queries?: string[] | null;
+    attraction_names?: string[] | null;
     service_name?: string | null;
     service_detail?: string | null;
   }[];
@@ -251,8 +254,34 @@ function AttractionPhotoSlide({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-function scheduleDisplayText(item: { activity?: string | null; landing_sentence?: string | null }): string {
-  return (item.landing_sentence || item.activity || '').trim();
+function preserveSourceSpecifics(sourceText: string, landing: string): string[] {
+  const specifics = [
+    ...(sourceText.match(/\d{2,4}\s*계단/g) ?? []),
+    ...(sourceText.match(/중국\s*[-–~]\s*북한/g) ?? []),
+    ...(sourceText.match(/중조\s*국경지대/g) ?? []),
+  ];
+  return [...new Set(specifics.map(item => item.replace(/\s+/g, ' ').trim()))]
+    .filter(item => item && !landing.includes(item));
+}
+
+function scheduleDisplayText(item: {
+  activity?: string | null;
+  source_activity?: string | null;
+  landing_sentence?: string | null;
+  attraction_queries?: string[] | null;
+  attraction_names?: string[] | null;
+}): string {
+  const activity = (item.activity || '').trim();
+  const landing = (item.landing_sentence || '').trim();
+  if (!landing) return activity;
+  const sourceText = [
+    item.source_activity,
+    activity,
+    ...(Array.isArray(item.attraction_queries) ? item.attraction_queries : []),
+    ...(Array.isArray(item.attraction_names) ? item.attraction_names : []),
+  ].filter(Boolean).join(' ');
+  const specifics = preserveSourceSpecifics(sourceText, landing);
+  return specifics.length > 0 ? `${landing} (${specifics.join(' · ')})` : landing;
 }
 
 function isIncludedServiceScheduleItem(item: { activity?: string | null; entity_kind?: string | null; type?: string | null }): boolean {

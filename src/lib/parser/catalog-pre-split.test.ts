@@ -39,6 +39,48 @@ describe('splitCatalogByItineraryHeaders', () => {
     expect(countCatalogItineraryHeaders(raw)).toBe(1);
   });
 
+  it('RMK 연합행사 안내의 다른 박수 문구를 상품 헤더로 세지 않는다', () => {
+    const raw = [
+      '[노옵션노팁] 다낭&호이안/바나힐 3박 5일 [비엣젯항공]',
+      '출 발 일 자',
+      '2026년 7월 29일 출발예정',
+      'R M K',
+      '▶ 타항공사 / 4박6일 팀과 연합행사이며, 현지에서 옵션안내 같이 드립니다.',
+      '날 짜',
+      '제1일',
+      '부산 김해국제공항 출발',
+      '제2일',
+      '호이안 구시가지 관광',
+    ].join('\n');
+
+    expect(countCatalogItineraryHeaders(raw)).toBe(1);
+  });
+
+  it('월별 가격표에서 같은 PKG 제목이 반복되어도 단일 상품으로 센다', () => {
+    const raw = [
+      '북해도 실속비에이 3박4일 PKG',
+      '비에이ㆍ오타루ㆍ도야ㆍ노보리베츠',
+      '6월',
+      '6/28, 30',
+      '1,169,000원',
+      '북해도 실속비에이 3박4일 PKG',
+      '비에이ㆍ오타루ㆍ도야ㆍ노보리베츠',
+      '8/1~8/16',
+      '1,049,000원',
+      '북해도 실속비에이 3박4일 PKG',
+      '비에이ㆍ오타루ㆍ도야ㆍ노보리베츠',
+      '포함사항',
+      '왕복항공료, 호텔',
+      '불포함사항',
+      '개인경비',
+      '일자',
+      '제1일 부산 출발',
+    ].join('\n');
+
+    expect(collectPkgBlockStarts(raw)).toHaveLength(1);
+    expect(countCatalogItineraryHeaders(raw)).toBe(1);
+  });
+
   it('전각 대괄호·일정 표 띄어쓰기 허용', () => {
     const raw = `앞
 【BX】 방콕 일정 표

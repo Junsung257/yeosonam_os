@@ -261,6 +261,7 @@ function collectReadableDurationHeaderStarts(raw: string): number[] {
     if (!hasReadableTitleText(line)) continue;
     if (MONEY_RE.test(line)) continue;
     if (/^(?:출발|출발일|출발날짜|상품가|요금|요금표|행사일자|패턴|비고)\b/u.test(line)) continue;
+    if (/(?:\uC5F0\uD569\uD589\uC0AC|\uC635\uC158\uC548\uB0B4|\uD328\uB110\uD2F0|\uD604\uC9C0\uC5D0\uC11C|\uD300\uACFC)/u.test(line)) continue;
 
     const context = lines.slice(i + 1, Math.min(lines.length, i + 80)).join('\n');
     const hasItineraryEvidence = /\b[A-Z]{2}\d{2,4}\b/.test(context)
@@ -411,7 +412,29 @@ export function collectPkgBlockStarts(raw: string): number[] {
       deduped.push(start);
     }
   }
-  return deduped;
+  const byRepeatedTitle: number[] = [];
+  const seenSignatures = new Map<string, number>();
+  for (const start of deduped) {
+    const signature = pkgStartSignature(text, start);
+    const previous = signature ? seenSignatures.get(signature) : undefined;
+    if (previous != null && start - previous < 2_000) continue;
+    byRepeatedTitle.push(start);
+    if (signature) seenSignatures.set(signature, start);
+  }
+  return byRepeatedTitle;
+}
+
+function pkgStartSignature(text: string, start: number): string | null {
+  const lines = text.slice(start, start + 260)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !MONEY_RE.test(line))
+    .filter(line => !/^(?:\d{1,2}\/\d{1,2}|[~\d,\s]+|\d+\s*월|출발확정|선발권조건|특가|초특가)/u.test(line));
+  const titleLines = lines.slice(0, 2);
+  if (titleLines.length === 0) return null;
+  const signature = titleLines.join(' ').replace(/\s+/g, '').toLowerCase();
+  return signature.length >= 8 ? signature : null;
 }
 
 /**

@@ -47,7 +47,7 @@ function maskSensitiveRawText(rawText: string, landOperatorName?: string | null)
 }
 
 function parseTripStyleNights(value: unknown): number | null {
-  const match = String(value ?? '').match(/(\d+)\s*박\s*\d+\s*일/);
+  const match = String(value ?? '').match(/([1-9]\d*)\s*\uBC15\s*[1-9]\d*\s*\uC77C/u);
   if (!match) return null;
   const nights = Number(match[1]);
   return Number.isFinite(nights) && nights >= 0 ? nights : null;

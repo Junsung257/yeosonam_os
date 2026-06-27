@@ -44,6 +44,19 @@ describe('upload destination resolution', () => {
 });
 
 describe('upload destination resolution Korean aliases', () => {
+  it('resolves readable Korean Shijiazhuang/Taihangshan aliases', () => {
+    const result = resolveUploadDestinationAndCodes({
+      destination: '석가장/태항산(보천&천계산) 4일',
+      departureAirport: '부산',
+      durationDays: 4,
+      productRawText: '[노옵션+노팁] 석가장/태항산(보천&천계산) 4일',
+      documentRawText: '',
+    });
+
+    expect(result.destinationCode).toBe('SJW');
+    expect(result.failures).toEqual([]);
+  });
+
   it('resolves modern Korean destination aliases from existing destination strings', () => {
     const cases = [
       ['시즈오카 BX시내숙박 명문골프 3박4일', 'FSZ'],

@@ -150,6 +150,24 @@ Cancel 1 day before departure: 200,000원 penalty
     expect(result.blockers.join(' | ')).toContain('optional/surcharge/cancellation amount polluted product price');
   });
 
+  it('does not block a product price that appears before surcharge text on a labeled sales-price line', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-29', day_of_week: null, net_price: 899000, adult_selling_price: 899000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-29', price: 899000, confirmed: false }],
+      destination: 'Da Nang',
+      destinationCode: 'DAD',
+      internalCode: 'PUS-AA-DAD-05-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }, { day: 5 }],
+      durationDays: 5,
+      rawText: [
+        '판 매  가 격',
+        '\\899,000/인 (멜리아빈펄 업글시 6만원/인 인상-싱글차지14만원)',
+      ].join('\n'),
+    });
+
+    expect(result.blockers.join(' | ')).not.toContain('optional/surcharge/cancellation amount polluted product price');
+  });
+
   it('blocks missing or non-contiguous itinerary days before A4/mobile rendering', () => {
     const base = {
       priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: 999000, child_price: null, note: null }],
