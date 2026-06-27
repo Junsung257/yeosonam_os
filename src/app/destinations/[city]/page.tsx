@@ -71,6 +71,26 @@ function getPositiveNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function normalizeJsonLdText(value: unknown): string | null {
+  const text = getTrimmedString(value);
+  return text ? text.replace(/\s+/g, ' ').slice(0, 500) : null;
+}
+
+function buildPackageJsonLdDescription(pkg: PillarData['packages'][number]): string {
+  const summary = normalizeJsonLdText(pkg.product_summary);
+  if (summary) return summary;
+
+  const facts = [
+    `${pkg.destination} package`,
+    pkg.duration ? `${pkg.duration} day itinerary` : null,
+    pkg.nights ? `${pkg.nights} night stay` : null,
+    pkg.departure_airport ? `departure from ${pkg.departure_airport}` : null,
+    pkg.airline,
+  ].filter((fact): fact is string => Boolean(fact));
+
+  return normalizeJsonLdText(`${pkg.title} - ${facts.join(', ')}`) || pkg.title;
+}
+
 async function getDestinationSocialImage(city: string): Promise<string> {
   if (!isSupabaseConfigured) return SOCIAL_IMAGE_URL;
   if (shouldSkipPublicDbReadsForResourceSaver()) return SOCIAL_IMAGE_URL;
@@ -178,6 +198,7 @@ interface PillarData {
     price: number | null;
     airline: string | null;
     departure_airport: string | null;
+    product_summary: string | null;
     avg_rating: number | null;
     review_count: number;
     price_dates: PackagePriceDate[] | null;
@@ -277,6 +298,7 @@ function normalizePackageRow(row: unknown): PillarData['packages'][number] | nul
     price: getFiniteNumber(record.price),
     airline: getNullableTrimmedString(record.airline),
     departure_airport: getNullableTrimmedString(record.departure_airport),
+    product_summary: getNullableTrimmedString(record.product_summary),
     avg_rating: getFiniteNumber(record.avg_rating),
     review_count: Math.max(0, Math.trunc(getFiniteNumber(record.review_count) ?? 0)),
     price_dates: getPriceDateList(record.price_dates),
@@ -354,7 +376,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .limit(8),
     supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, avg_rating, review_count, price_dates')
+      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates')
       .eq('destination', city)
       .in('status', ['approved', 'active'])
       .order('price', { ascending: true })
@@ -625,6 +647,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                           item: {
                             '@type': 'Product',
                             name: p.title,
+                            description: buildPackageJsonLdDescription(p),
                             url: `${BASE_URL}/packages/${encodeURIComponent(p.id)}`,
                             ...(packageRating && packageReviewCount
                               ? {

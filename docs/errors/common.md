@@ -1,8 +1,21 @@
 # Common Errors
 
-Last updated: 2026-06-07
+Last updated: 2026-06-26
 
 문서 운영, lint, 프레임워크 업그레이드, 공통 UI/렌더링, 운영 절차 반복 오류 상세.
+
+## ERR-structured-data-product-description@2026-06-26
+
+- **Detected**: 2026-06-26
+- **Domain**: common SEO / structured data
+- **Symptom**: Google Search Console reported Merchant listing structured data warning: missing `description` on Product items. The affected pages were destination product lists such as `/destinations/부산-계림-품격` and `/destinations/부산-계림-실속`.
+- **Root cause**: Destination ItemList JSON-LD emitted nested `Product` nodes with `name`, `url`, rating, and offer data, but no `description`. Review-section Product JSON-LD had the same future-risk pattern.
+- **Fix**: Destination Product JSON-LD now reads `travel_packages.product_summary` and falls back to a generated description. Review-section Product JSON-LD also emits `description`.
+- **Verification rule**: Run `npm run audit:structured-data`. The release verifier also runs this check through `npm run verify:local-release`.
+- **Status**: FIXED
+- **Prevention**: Any customer-facing schema.org `Product` JSON-LD must include a non-empty `description`. Do not rely on Search Console email as the first detector; local structured-data audit must fail before release.
+
+---
 
 ## ERR-regression-coverage-gap@2026-04-27
 
