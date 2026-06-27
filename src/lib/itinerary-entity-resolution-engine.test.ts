@@ -589,6 +589,14 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(terminalNonMasterReason('attraction', '아쿠아토피아 워터파크', '아쿠아토피아 워터파크+놀이공원 무제한 이용 가능')).toBeNull();
   });
 
+  it('auto-rejects generic Korean itinerary tokens that should not become internal masters', () => {
+    const labels = ['or', '마감', '자유식', '내부', '반자연', '천지조망', '온천계란 2개', '안전교육 포함 약1시간', '일-수', '부산 국제여객터미널 3층 집결', '전동카 1시간 30분 소요', '특정일'];
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('generic, itinerary, or attribute fragment, not attraction master');
+    }
+  });
+
   it('keeps shopping text review-gated without wasting external search', async () => {
     const decision = await resolveItineraryEntityCandidate(candidate({
       category: 'shopping',
@@ -641,6 +649,7 @@ describe('resolveItineraryEntityCandidate', () => {
 
     expect(decision.autoAction).toBe('structure_non_master');
     expect(decision.autoVerificationStatus).toBe('structured_non_master');
+    expect(decision.promotionStatus).toBe('rejected_noise');
     expect(decision.suggestedMaster.customer_publishable).toBe(false);
   });
 
@@ -659,6 +668,7 @@ describe('resolveItineraryEntityCandidate', () => {
 
     expect(decision.autoAction).toBe('structure_non_master');
     expect(decision.autoVerificationStatus).toBe('structured_non_master');
+    expect(decision.promotionStatus).toBe('rejected_noise');
   });
 
   it('auto-structures low-risk preparation notices', async () => {
@@ -693,5 +703,6 @@ describe('resolveItineraryEntityCandidate', () => {
 
     expect(decision.autoAction).toBe('structure_non_master');
     expect(decision.autoVerificationStatus).toBe('structured_non_master');
+    expect(decision.promotionStatus).toBe('rejected_noise');
   });
 });
