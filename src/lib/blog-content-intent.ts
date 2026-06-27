@@ -59,7 +59,12 @@ export interface BlogIntentIssue {
     | 'weak_reading_design'
     | 'paragraph_wall'
     | 'weak_list_or_table_shape'
-    | 'weak_source_backing';
+    | 'weak_source_backing'
+    | 'repeated_ai_opening_pattern'
+    | 'missing_answer_first'
+    | 'early_strong_cta'
+    | 'unsupported_yeosonam_data'
+    | 'missing_product_consult_block';
   severity: BlogIntentIssueSeverity;
   message: string;
   evidence?: Record<string, unknown>;
@@ -333,6 +338,121 @@ function inspectReadingDesign(source: string, plain: string, issues: BlogIntentI
   }
 }
 
+function firstBodyParagraph(source: string): string {
+  const chunks = source
+    .split(/\n{2,}/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  for (const chunk of chunks) {
+    const visibleLines = chunk
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => {
+        if (!line) return false;
+        if (/^#{1,6}\s+/.test(line)) return false;
+        if (/^\|.*\|$/.test(line)) return false;
+        if (/^[-*]\s+/.test(line)) return false;
+        if (/^\d+\.\s+/.test(line)) return false;
+        if (/^:::/i.test(line)) return false;
+        return true;
+      });
+    const plain = stripMarkup(visibleLines.join(' ')).replace(/\s+/g, ' ').trim();
+    if (plain.length >= 20) return plain;
+  }
+
+  return '';
+}
+
+function inspectCommonEditorialContract(source: string, plain: string, issues: BlogIntentIssue[]) {
+  const bannedPatterns = [
+    '이게 말이 되나 싶으시죠',
+    '완벽 가이드',
+    '총정리',
+    '여소남 에디터가 추천',
+    '놓치면 후회',
+    '최고의 선택',
+  ];
+  const matched = bannedPatterns.filter((pattern) => plain.includes(pattern) || source.includes(pattern));
+  const highlightCount = countMatches(source, /==[^=\n]{3,120}==|<mark\b/gi);
+
+  if (matched.length > 0 || highlightCount > 0) {
+    addIssue(
+      issues,
+      'repeated_ai_opening_pattern',
+      matched.includes('이게 말이 되나 싶으시죠') || highlightCount > 0 ? 'critical' : 'warning',
+      'Article contains repeated AI-like editorial patterns or highlight markup that should not appear in natural blog copy.',
+      { matched, highlightCount },
+    );
+  }
+
+  const hasYeosonamEvidence = /(예약|상담|검색)\s*(로그|건수|데이터|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain);
+  if (plain.includes('여소남 데이터') && !hasYeosonamEvidence) {
+    addIssue(
+      issues,
+      'unsupported_yeosonam_data',
+      'critical',
+      'Do not mention Yeosonam data unless the evidence source or aggregation basis is stated.',
+    );
+  }
+}
+
+function inspectInfoWriterContract(source: string, plain: string, issues: BlogIntentIssue[]) {
+  const first = firstBodyParagraph(source);
+  const startsLikeGreeting = /^(안녕하세요|소중한\s*여행|여소남\s*에디터|오늘은|이번\s*글에서는)/.test(first);
+  const hasAnswerSignal = /(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|줄일 수|해야|핵심|결론)/.test(first);
+
+  if (first.length < 60 || startsLikeGreeting || !hasAnswerSignal) {
+    addIssue(
+      issues,
+      'missing_answer_first',
+      'critical',
+      'Informational posts must answer the reader question in the first paragraph instead of opening with generic editorial setup.',
+      {
+        firstParagraphLength: first.length,
+        startsLikeGreeting,
+        hasAnswerSignal,
+        sample: first.slice(0, 140),
+      },
+    );
+  }
+
+  const firstThirtyPercent = plain.slice(0, Math.ceil(plain.length * 0.3));
+  const earlySource = `${source.slice(0, Math.ceil(source.length * 0.3))} ${firstThirtyPercent}`;
+  if (/(상담|문의|예약|상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(earlySource)) {
+    addIssue(
+      issues,
+      'early_strong_cta',
+      'critical',
+      'Informational posts can have only one soft CTA near the bottom, not a hard sales CTA in the opening third.',
+    );
+  }
+}
+
+function inspectProductConsultContract(source: string, issues: BlogIntentIssue[]) {
+  const requiredBlocks = [
+    { key: '10초 판단', pattern: /10초\s*판단/ },
+    { key: '포함/불포함', pattern: /포함\/불포함|포함\s*사항.*불포함\s*사항/s },
+    { key: '맞는 사람', pattern: /이런\s*분께\s*맞|fit_for/i },
+    { key: '안 맞는 사람', pattern: /맞지\s*않을\s*수|not_fit_for/i },
+    { key: '가격 변동 조건', pattern: /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i },
+    { key: '문의 전 질문', pattern: /문의\s*전\s*질문|consult_questions/i },
+  ];
+  const missing = requiredBlocks
+    .filter((block) => !block.pattern.test(source))
+    .map((block) => block.key);
+
+  if (missing.length > 0) {
+    addIssue(
+      issues,
+      'missing_product_consult_block',
+      'critical',
+      'Product posts must help the reader decide before inquiry with fit, non-fit, inclusion, risk, and question blocks.',
+      { missing },
+    );
+  }
+}
+
 export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQualityReport {
   const intent = classifyBlogIntent(input);
   const source = input.blogHtml || '';
@@ -355,6 +475,9 @@ export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQual
 
   if (intent.infoSubtype) inspectInfoContract(intent.infoSubtype, source, plain, issues);
   if (intent.productSubtype) inspectProductContract(intent.productSubtype, plain, issues);
+  inspectCommonEditorialContract(source, plain, issues);
+  if (intent.mode === 'info') inspectInfoWriterContract(source, plain, issues);
+  if (intent.mode === 'product' || intent.productSubtype) inspectProductConsultContract(source, issues);
   inspectReadingDesign(source, plain, issues);
 
   const criticalCount = issues.filter((issue) => issue.severity === 'critical').length;

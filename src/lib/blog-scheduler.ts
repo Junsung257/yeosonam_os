@@ -21,61 +21,61 @@ const MICRO_ANGLE_TEMPLATES: MicroAngleTemplate[] = [
   {
     id: 'budget_family',
     category: 'travel_tips',
-    keywordSuffix: 'family budget',
+    keywordSuffix: '가족여행 예산',
     topic: (destination, year) => `${destination} 가족여행 ${year} 실제 경비표`,
   },
   {
     id: 'transport_cost',
     category: 'transport',
-    keywordSuffix: 'transport cost',
+    keywordSuffix: '공항 픽업 이동비',
     topic: (destination, year) => `${destination} 렌터카 택시 픽업 이동비 비교 ${year}`,
   },
   {
     id: 'hotel_area',
     category: 'hotel',
-    keywordSuffix: 'hotel area budget',
+    keywordSuffix: '숙소 위치별 예산',
     topic: (destination) => `${destination} 호텔 위치별 예산 차이와 숙소 지역 선택`,
   },
   {
     id: 'food_budget',
     category: 'food',
-    keywordSuffix: 'food budget',
+    keywordSuffix: '식비 예산',
     topic: (destination, year) => `${destination} 식비 예산 현지 맛집 비용 가이드 ${year}`,
   },
   {
     id: 'weather_packing',
     category: 'preparation',
-    keywordSuffix: 'weather packing',
+    keywordSuffix: '날씨 옷차림 준비물',
     topic: (destination, _year, month) => `${destination} ${month}월 날씨와 옷차림 준비물 체크`,
   },
   {
     id: 'first_day_plan',
     category: 'itinerary',
-    keywordSuffix: 'first day itinerary',
+    keywordSuffix: '도착 첫날 일정',
     topic: (destination) => `${destination} 도착 첫날 일정 공항에서 숙소까지 동선`,
   },
   {
     id: 'shopping_budget',
     category: 'shopping',
-    keywordSuffix: 'shopping budget',
+    keywordSuffix: '쇼핑 예산',
     topic: (destination) => `${destination} 쇼핑 예산 선물 리스트와 면세점 체크`,
   },
   {
     id: 'kid_friendly',
     category: 'family',
-    keywordSuffix: 'kids travel',
+    keywordSuffix: '아이와 가족여행',
     topic: (destination) => `${destination} 아이와 가기 좋은 코스와 가족 일정`,
   },
   {
     id: 'airport_arrival',
     category: 'transport',
-    keywordSuffix: 'airport arrival',
+    keywordSuffix: '공항 도착 입국 동선',
     topic: (destination) => `${destination} 공항 도착 후 입국 심사 환전 픽업 순서`,
   },
   {
     id: 'local_mobility',
     category: 'transport',
-    keywordSuffix: 'local mobility',
+    keywordSuffix: '현지 이동수단',
     topic: (destination, year) => `${destination} 현지 이동수단 그랩 택시 렌터카 선택법 ${year}`,
   },
 ];
@@ -118,6 +118,80 @@ function expectedMicroSlug(destination: string, microAngle: MicroAngleId): strin
   return `${destSlug}-${microAngle.replace(/_/g, '-')}`;
 }
 
+export function buildMicroAnglePrimaryKeyword(destination: string, template: Pick<MicroAngleTemplate, 'keywordSuffix'>): string {
+  return `${destination} ${template.keywordSuffix}`.replace(/\s+/g, ' ').trim();
+}
+
+type QueueCandidateLike = {
+  destination?: string | null;
+  angle_type?: string | null;
+  topic?: string | null;
+  slug?: string | null;
+  source?: string | null;
+  slug_hint?: string | null;
+  generation_meta?: any;
+  meta?: any;
+};
+
+function readExpectedSlug(row: QueueCandidateLike): string | null {
+  const raw = row.meta?.expected_slug ?? row.meta?.spun_slug ?? row.slug_hint ?? row.slug;
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : null;
+}
+
+function publishableQueueKey(row: QueueCandidateLike): string | null {
+  const micro = readMicroAngle(row);
+  const microKey = microAngleKey(row.destination, micro);
+  if (microKey) return microKey;
+  const slug = readExpectedSlug(row);
+  if (slug) return `slug::${slug}`;
+  if (typeof row.topic === 'string' && row.topic.trim()) {
+    return `topic::${row.topic.trim().toLowerCase()}`;
+  }
+  return null;
+}
+
+export function countPublishableQueueCandidates(input: {
+  activeQueue: QueueCandidateLike[];
+  recentPublished: QueueCandidateLike[];
+}): {
+  publishableCount: number;
+  blockedRecentDuplicate: number;
+  duplicateQueued: number;
+} {
+  const recentKeys = new Set<string>();
+  for (const row of input.recentPublished) {
+    const key = microAngleKey(row.destination, readMicroAngle(row));
+    if (key) recentKeys.add(key);
+    const slug = readExpectedSlug(row);
+    if (slug) recentKeys.add(`slug::${slug}`);
+  }
+
+  const publishableKeys = new Set<string>();
+  let blockedRecentDuplicate = 0;
+  let duplicateQueued = 0;
+
+  for (const row of input.activeQueue) {
+    if (row.source === 'pillar') continue;
+    const key = publishableQueueKey(row);
+    if (!key) continue;
+    if (recentKeys.has(key)) {
+      blockedRecentDuplicate += 1;
+      continue;
+    }
+    if (publishableKeys.has(key)) {
+      duplicateQueued += 1;
+      continue;
+    }
+    publishableKeys.add(key);
+  }
+
+  return {
+    publishableCount: publishableKeys.size,
+    blockedRecentDuplicate,
+    duplicateQueued,
+  };
+}
+
 export async function ensureDailyPublishableQueue(opts?: {
   postsPerDay?: number;
   minCandidates?: number;
@@ -134,25 +208,6 @@ export async function ensureDailyPublishableQueue(opts?: {
   const postsPerDay = normalizeDailyPostTarget(opts?.postsPerDay ?? policy.posts_per_day);
   const targetCandidates = Math.max(opts?.minCandidates ?? 0, postsPerDay * 3, 8);
 
-  const { count: queuedCount } = await supabaseAdmin
-    .from('blog_topic_queue')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'queued')
-    .neq('source', 'pillar');
-
-  const existingQueued = queuedCount ?? 0;
-  if (existingQueued >= targetCandidates) {
-    return {
-      added: 0,
-      existingQueued,
-      targetCandidates,
-      skippedRecentDuplicate: 0,
-      skippedQueuedDuplicate: 0,
-      rejectedByTopicFit: 0,
-      insertedTopics: [],
-    };
-  }
-
   const since = new Date();
   since.setDate(since.getDate() - Math.max(14, policy.multi_angle_gap_days ?? 14));
 
@@ -166,10 +221,27 @@ export async function ensureDailyPublishableQueue(opts?: {
       .limit(300),
     supabaseAdmin
       .from('blog_topic_queue')
-      .select('destination, angle_type, topic, meta')
+      .select('destination, angle_type, topic, source, slug_hint, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
   ]);
+
+  const queueCandidateStats = countPublishableQueueCandidates({
+    activeQueue: activeQueueRes.data ?? [],
+    recentPublished: recentPublishedRes.data ?? [],
+  });
+  const existingQueued = queueCandidateStats.publishableCount;
+  if (existingQueued >= targetCandidates) {
+    return {
+      added: 0,
+      existingQueued,
+      targetCandidates,
+      skippedRecentDuplicate: queueCandidateStats.blockedRecentDuplicate,
+      skippedQueuedDuplicate: queueCandidateStats.duplicateQueued,
+      rejectedByTopicFit: 0,
+      insertedTopics: [],
+    };
+  }
 
   const recentKeys = new Set<string>();
   for (const row of recentPublishedRes.data ?? []) {
@@ -220,7 +292,7 @@ export async function ensureDailyPublishableQueue(opts?: {
         destination,
         category: template.category,
         angle_type: 'value',
-        primary_keyword: `${destination} ${template.keywordSuffix}`,
+        primary_keyword: buildMicroAnglePrimaryKeyword(destination, template),
         keyword_tier: 'longtail' as KeywordTier,
         competition_level: 'low',
         meta: {
@@ -305,6 +377,7 @@ import { analyzeCoverageGaps } from './blog-coverage-analyzer';
 import { researchKeywordsBatch, classifyKeywordTier, type KeywordTier } from './keyword-research';
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
 import { romanize } from './slug-utils';
+import { buildProductDedupKey, resolveProductDepartureDate, resolveProductSupplierCode } from './blog-product-brief';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];
@@ -496,7 +569,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
 
   const { data: freshProducts } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, destination, title, created_at, ticketing_deadline')
+    .select('id, destination, title, created_at, ticketing_deadline, duration, price_dates, price_tiers, confirmed_dates, land_operator, land_operator_id, internal_code')
     .in('status', ['approved', 'active'])
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: false })
@@ -508,6 +581,13 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     title: string | null;
     created_at: string;
     ticketing_deadline: string | null;
+    duration: number | null;
+    price_dates?: unknown;
+    price_tiers?: unknown;
+    confirmed_dates?: unknown;
+    land_operator?: string | null;
+    land_operator_id?: string | null;
+    internal_code?: string | null;
   };
   const productIds = ((freshProducts || []) as PkgRow[]).map((p) => p.id);
 
@@ -551,6 +631,9 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     // 상품 블로그는 longtail — "{출발지+}부산출발 다낭 4박5일 가성비 리뷰"
     const productRowsRaw = eligibleProducts.map(p => {
       const pk = `${p.destination || ''} ${p.title || '패키지'}`.trim();
+      const productDedupKey = buildProductDedupKey(p);
+      const departureDate = resolveProductDepartureDate(p);
+      const supplierCode = resolveProductSupplierCode(p);
 
       // 발권기한 있는 상품: 발권기한 15일 전을 목표 발행일로, priority 상향
       let rowPriority = 80;
@@ -590,6 +673,10 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         ...(targetPublishAt ? { target_publish_at: targetPublishAt } : {}),
         meta: {
           product_title: p.title,
+          product_dedup_key: productDedupKey,
+          departure_date: departureDate,
+          duration: p.duration ?? null,
+          supplier_code: supplierCode,
           ...(p.ticketing_deadline ? { ticketing_deadline: p.ticketing_deadline } : {}),
         },
       };

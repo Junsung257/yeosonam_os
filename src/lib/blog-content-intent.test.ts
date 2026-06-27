@@ -86,7 +86,7 @@ describe('blog content intent quality', () => {
       contentType: 'guide',
       blogHtml: `# 장가계 날씨 월별 옷차림
 
-2026년 기준 장가계 날씨는 봄과 가을이 걷기 좋고, 여름은 우기 대응이 핵심입니다.
+2026년 기준 장가계 날씨는 봄과 가을이 걷기 좋고, 여름은 우기 대응이 핵심입니다. 부모님 동반 일정이라면 월별 기온보다 계단 이동, 우비 준비, 케이블카 대기 가능성을 먼저 확인하는 편이 좋습니다.
 
 ## 월별 장가계 날씨 표
 
@@ -106,7 +106,7 @@ describe('blog content intent quality', () => {
 - 여벌 양말
 
 ## 우기와 건기 리스크
-==7월과 8월은 강수량이 높아 천문산 케이블카 대기 시간이 30분 이상 늘 수 있습니다.==
+7월과 8월은 강수량이 높아 천문산 케이블카 대기 시간이 30분 이상 늘 수 있습니다.
 
 :::tip
 비 예보가 있으면 유리다리보다 실내 이동이 쉬운 일정부터 배치하세요.
@@ -141,5 +141,96 @@ A. 4월, 5월, 9월, 10월이 걷기 좋습니다.
 
     expect(report.passed).toBe(false);
     expect(report.issues.some((issue) => issue.code === 'weak_list_or_table_shape')).toBe(true);
+  });
+
+  it('blocks generic info openings and early hard CTAs', () => {
+    const report = inspectBlogIntentQuality({
+      title: '발리 가족 여행 경비',
+      primaryKeyword: '발리 가족 여행 경비',
+      category: 'cost',
+      contentType: 'guide',
+      blogHtml: `# 발리 가족 여행 경비
+
+안녕하세요. 여소남 에디터가 추천하는 발리 가족 여행 경비 완벽 가이드입니다.
+
+[지금 상품 보기](/packages?destination=발리)
+
+## 비용 표
+| 항목 | 비용 |
+| --- | ---: |
+| 항공 | 1,800,000원 |
+| 호텔 | 1,200,000원 |
+| 식비 | 600,000원 |
+
+## 체크리스트
+- 항공권
+- 호텔
+- 식비
+- 이동비
+- 선택관광
+`,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'missing_answer_first')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'repeated_ai_opening_pattern')).toBe(true);
+  });
+
+  it('blocks unsupported Yeosonam data claims', () => {
+    const report = inspectBlogIntentQuality({
+      title: '다낭 여행 준비물',
+      primaryKeyword: '다낭 여행 준비물',
+      category: 'preparation',
+      contentType: 'guide',
+      blogHtml: `# 다낭 여행 준비물
+
+다낭 여행 준비물은 우기 여부와 숙소 위치를 기준으로 먼저 나누면 됩니다. 가족 여행이라면 상비약, 방수 준비, 결제 수단을 먼저 확인하세요.
+
+## 준비물 체크리스트
+- 여권
+- 카드
+- 현금
+- 상비약
+- 방수팩
+
+## 판단 기준
+여소남 데이터로 보면 이 준비물이 가장 좋습니다.
+`,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'unsupported_yeosonam_data')).toBe(true);
+  });
+
+  it('requires product posts to use consultant decision blocks', () => {
+    const report = inspectBlogIntentQuality({
+      title: '발리 패키지 상품',
+      primaryKeyword: '발리 패키지',
+      category: 'product',
+      contentType: 'package_intro',
+      productId: 'pkg_123',
+      blogHtml: `# 발리 패키지 상품
+
+발리 패키지는 가격과 일정이 좋은 상품입니다.
+
+## 상품 소개
+특가와 예약 마감 정보를 확인하세요.
+
+## 일정
+- 1일차 도착
+- 2일차 관광
+- 3일차 자유시간
+
+## 가격
+899,000원부터입니다.
+
+## 예약
+문의하세요.
+`,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'missing_product_consult_block')).toBe(true);
   });
 });

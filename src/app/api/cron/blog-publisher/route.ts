@@ -4,7 +4,16 @@ import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
-import { generateBlogPost, generateBlogSeo, type AngleType } from '@/lib/content-generator';
+import { generateBlogSeo, type AngleType } from '@/lib/content-generator';
+import { buildProductBlogBrief, buildProductSlugSuffix } from '@/lib/blog-product-brief';
+import { generateProductConsultantBlogPost } from '@/lib/blog-product-consultant-writer';
+import {
+  BLOG_EDITORIAL_VOICE,
+  buildInfoGuideBrief,
+  buildInfoWriterPromptBlock,
+  buildProductConsultBrief,
+  buildProductConsultantPromptBlock,
+} from '@/lib/blog-editorial-voice';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
@@ -63,7 +72,7 @@ import { readBoundedIntEnv } from '@/lib/env-utils';
  *      b. source 에 따라 생성:
  *         - pillar       → /destinations/[city] 허브 (장문 AI)
  *         - card_news    → from-card-news `publisher_bridge`(본문만) + 퍼블리셔가 단일 INSERT/승격
- *         - product      → content-generator.generateBlogPost (템플릿)
+ *         - product      → product_consultant_writer (템플릿)
  *         - 나머지       → Gemini 2.5 Flash + style guide
  *      c. 4-Gate 검증 (length·cliche·duplicate·keyword_density)
  *      d. Pass → content_creatives insert 또는 draft 승격(status='published') + 색인 알림 + ISR revalidate
@@ -1064,7 +1073,7 @@ async function processQueueItem(
     // 생성 경로 분기
     //   1) pillar → /destinations/[city] 허브 본문 생성 (장문 AI)
     //   2) card_news 연결 → from-card-news API 위임 (PNG 삽입 블로그)
-    //   3) product_id 있음 → generateBlogPost (템플릿)
+    //   3) product_id 있음 → product_consultant_writer (템플릿)
     //   4) 나머지 → Gemini 정보성 글
     const topicFit = evaluateBlogTopicFit({
       topic: item.topic,
@@ -1839,7 +1848,9 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     attractions = attrs || [];
   }
 
-  let blog_html = generateBlogPost(product, angle, attractions);
+  const productBrief = buildProductBlogBrief(product, angle);
+  const productConsultBrief = buildProductConsultBrief(productBrief);
+  let blog_html = generateProductConsultantBlogPost(product, productBrief);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: product.id,
     destination: product.destination,
@@ -1847,8 +1858,8 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   });
   blog_html += formatReviewQuotesAppendMarkdown(reviewSnips);
   const seo = generateBlogSeo(product, angle);
-  // Append product ID suffix to prevent slug collisions between same-destination products
-  const slug = `${seo.slug}-${product.id.slice(-6)}`;
+  // Append product facts to prevent same-destination products from burning duplicate slug candidates.
+  const slug = `${seo.slug}-${buildProductSlugSuffix(product)}`;
 
   // og_image_url 폴백 체인 — null 비율 83% 문제 해결 (2026-05-12)
   // 1. 상품 대표사진 hero_image_url
@@ -1872,12 +1883,41 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     `${baseUrl}/og-image.png`;
 
   return {
-    blog_html,
+    blog_html: blog_html + `\n\n<!-- prompt_version: ${productBrief.prompt_version} -->`,
     slug,
     seo_title: seo.seoTitle,
     seo_description: seo.seoDescription,
     og_image_url,
     generation_meta: {
+      prompt_version: productBrief.prompt_version,
+      writer: 'product_consultant_writer',
+      editorial_voice: BLOG_EDITORIAL_VOICE,
+      product_consult_brief: productConsultBrief,
+      prompt_contract: buildProductConsultantPromptBlock(productConsultBrief),
+      content_brief: {
+        title: productBrief.product_title,
+        primary_keyword: productBrief.primary_keyword,
+        secondary_keywords: [productBrief.destination, productBrief.supplier_code, productBrief.departure_date]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+        search_intent: 'commercial_package_comparison',
+        required_sections: [
+          'price_and_inclusions',
+          'itinerary_summary',
+          'fit_and_cautions',
+          'consultation_cta',
+        ],
+        forbidden_angles: [
+          'clickbait opening',
+          'unsupported scarcity',
+          'hidden excluded costs',
+        ],
+        source_requirements: [
+          'use stored product fields only',
+          'do not invent prices, dates, hotels, airlines, or inclusions',
+        ],
+        product: productBrief,
+      },
+      product_dedup_key: productBrief.dedup_key,
       seo: {
         primary_keyword: seo.primaryKeyword,
         secondary_keywords: seo.secondaryKeywords,
@@ -1934,6 +1974,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
   }
+  const infoGuideBrief = buildInfoGuideBrief(contentBrief);
   const effectiveTopic = contentBrief.title;
   const primaryKw = contentBrief.primaryKeyword;
   const volume = item.monthly_search_volume;
@@ -2043,6 +2084,15 @@ ${originalityPromptBlock}
 ${freshnessPromptBlock}
 ${intentPromptBlock}
 ${buildBlogContentBriefPromptBlock(contentBrief)}
+${buildInfoWriterPromptBlock(infoGuideBrief)}
+
+## Current quality contract from recent /blog samples
+- Micro-angle ids or English planning labels are internal only. Never expose labels like "family budget", "transport cost", "hotel area budget", "weather packing", or "local mobility" in the H1, H2, slug text, or body. Convert them into natural Korean search intent.
+- The first 200 characters must answer the reader task: cost, timing, route, documents, packing, or decision criteria for ${primaryKw}.
+- If a Markdown table appears, it must be valid GitHub Flavored Markdown with a header row, separator row, and at least 3 body rows. If there are fewer than 3 real rows, write a checklist instead of a table.
+- Do not use ==highlight==, <mark>, fake emphasis syntax, or unexplained English placeholders.
+- Include official or primary-source links when the topic can change by policy, visa, weather, airport, transport, or ticketing conditions.
+- Destination is required unless the brief explicitly says the article is intentionally generic. Do not publish a generic travel guide when a destination exists in the queue item.
 
 ${tierGuidance[tier]}
 ${trendBlock}
@@ -2106,6 +2156,10 @@ ${serpGapBlock}
   }
 
   const generation_meta: Record<string, unknown> = {
+    prompt_version: promptVersion,
+    writer: 'info_writer',
+    editorial_voice: BLOG_EDITORIAL_VOICE,
+    info_guide_brief: infoGuideBrief,
     content_brief: {
       title: contentBrief.title,
       primary_keyword: contentBrief.primaryKeyword,
