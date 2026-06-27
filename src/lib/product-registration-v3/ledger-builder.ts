@@ -123,6 +123,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (/^\(\+\d+\)$/.test(compact)) return null;
   if (/^(?:부산|클락|푸꾸옥|세부|다낭|나트랑|호치민|방콕)$/.test(compact)) return null;
   if (/^(?:살펴보기|여권|입국|이트래블|eTravel)/i.test(compact)) return 'notice';
+  if (/^(?:\uBBF8\uC81C\uACF5|\uBD88\uD3EC\uD568|\uD3EC\uD568|\uC81C\uACF5|\uC5C6\uC74C|N\/A|NA|-)$/.test(compact)) return 'price_noise';
   if (/기내박/.test(compact)) return 'hotel';
   if (ITINERARY_TABLE_LABEL_RE.test(compact)) return 'price_noise';
   if (PRICE_MATRIX_FRAGMENT_RE.test(compact)) return 'price_noise';

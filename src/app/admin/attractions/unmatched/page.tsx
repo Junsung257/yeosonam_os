@@ -122,6 +122,190 @@ interface BootstrapCandidate {
   } | null;
 }
 
+interface EntityMasterCandidate {
+  id: string;
+  candidate_key: string;
+  category: string;
+  raw_label: string | null;
+  normalized_label: string | null;
+  destination_scope: string | null;
+  country_scope: string | null;
+  region_scope: string | null;
+  occurrence_count: number | null;
+  package_count: number | null;
+  source_context?: Record<string, unknown> | null;
+  external_sources?: Array<{ source?: string; id?: string | null; url?: string | null; confidence?: number | null; name?: string | null }> | null;
+  suggested_master?: Record<string, unknown> | null;
+  confidence: number | null;
+  promotion_status: string | null;
+  auto_action: string | null;
+  auto_verification_status: string | null;
+  verification_score: number | null;
+  canonical_name: string | null;
+  canonical_name_source: string | null;
+  source_reliability_snapshot?: Record<string, unknown> | null;
+  decision_reason: string | null;
+  promoted_attraction_id: string | null;
+}
+
+function evidenceLabel(source: string | undefined): string {
+  if (source === 'google_places') return 'Google';
+  if (source === 'naver_search') return 'Naver';
+  if (source === 'naver_searchad') return 'SearchAd';
+  if (source === 'wikidata') return 'Wikidata';
+  if (source === 'osm_nominatim' || source === 'osm') return 'OSM';
+  return source || 'source';
+}
+
+function EntityMasterCandidatePanel({ onAfterAction }: { onAfterAction: () => void }) {
+  const [candidates, setCandidates] = useState<EntityMasterCandidate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const loadCandidates = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/entity-master-candidates?category=attraction&limit=80');
+      const json = await res.json();
+      const rows = Array.isArray(json.candidates) ? json.candidates : [];
+      setCandidates(rows.filter((row: EntityMasterCandidate) => (
+        row.promotion_status === 'auto_internal' ||
+        row.promotion_status === 'publishable_ready' ||
+        row.promotion_status === 'needs_review' ||
+        row.auto_action === 'create_internal_master'
+      )));
+    } catch {
+      setCandidates([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadCandidates(); }, [loadCandidates]);
+
+  const runAction = async (candidate: EntityMasterCandidate, action: string, extra: Record<string, unknown> = {}) => {
+    setBusyId(candidate.id);
+    try {
+      const res = await fetch('/api/admin/entity-master-candidates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: candidate.id, action, ...extra }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'action failed');
+      await loadCandidates();
+      onAfterAction();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const mergeAlias = async (candidate: EntityMasterCandidate) => {
+    const attractionId = prompt('기존 관광지 ID를 입력하면 이 후보명을 alias로 병합합니다.');
+    if (!attractionId) return;
+    await runAction(candidate, 'merge_alias', { attraction_id: attractionId });
+  };
+
+  const internalCount = candidates.filter(row => row.promotion_status === 'auto_internal').length;
+  const publishableCount = candidates.filter(row => row.promotion_status === 'publishable_ready').length;
+
+  return (
+    <section className="mb-4 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-bold text-admin-text-2">외부검증 관광지 후보</h2>
+          <p className="text-xs text-admin-muted mt-1">
+            Google/Naver/Wikidata 근거로 내부 매칭용 마스터를 빠르게 만들고, 고객 공개는 승인 후에만 진행합니다.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="rounded bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">내부 {internalCount}</span>
+          <span className="rounded bg-sky-50 px-2 py-1 font-semibold text-sky-700">공개후보 {publishableCount}</span>
+          <button
+            type="button"
+            onClick={() => void loadCandidates()}
+            disabled={loading}
+            className="rounded bg-admin-surface-2 px-3 py-1.5 text-admin-text-2 hover:bg-slate-200 disabled:opacity-50"
+          >
+            {loading ? '새로고침 중' : '새로고침'}
+          </button>
+        </div>
+      </div>
+      {candidates.length === 0 ? (
+        <p className="mt-3 text-sm text-admin-muted">검토할 외부검증 후보가 없습니다.</p>
+      ) : (
+        <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
+          {candidates.slice(0, 12).map(candidate => {
+            const sources = candidate.external_sources ?? [];
+            const packageIds = Array.isArray(candidate.source_context?.package_ids)
+              ? candidate.source_context?.package_ids as string[]
+              : [];
+            const snapshot = candidate.source_reliability_snapshot ?? {};
+            const score = Math.round(((candidate.verification_score ?? candidate.confidence ?? 0) as number) * 100);
+            return (
+              <article key={candidate.id} className="rounded border border-admin-border bg-admin-surface p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <strong className="truncate text-sm text-admin-text-2">
+                        {candidate.canonical_name || candidate.normalized_label || candidate.raw_label}
+                      </strong>
+                      <span className="rounded bg-white px-1.5 py-0.5 text-[10px] font-semibold text-admin-muted">
+                        {score}점
+                      </span>
+                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        {candidate.promotion_status || candidate.auto_action}
+                      </span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-admin-muted">{candidate.decision_reason}</p>
+                    <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-admin-muted-2">
+                      {candidate.country_scope && <span>{candidate.country_scope}</span>}
+                      {candidate.region_scope && <span>{candidate.region_scope}</span>}
+                      <span>상품 {candidate.package_count ?? packageIds.length}개</span>
+                      <span>등장 {candidate.occurrence_count ?? 0}회</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {sources.slice(0, 5).map((source, index) => (
+                        <span key={`${source.source}-${source.id}-${index}`} className="rounded bg-white px-1.5 py-0.5 text-[10px] text-admin-text-2">
+                          {evidenceLabel(source.source)} {typeof source.confidence === 'number' ? `${Math.round(source.confidence * 100)}%` : ''}
+                        </span>
+                      ))}
+                      {typeof snapshot.osm_nominatim_score === 'number' && (
+                        <span className="rounded bg-white px-1.5 py-0.5 text-[10px] text-admin-text-2">
+                          OSM {Math.round(snapshot.osm_nominatim_score * 100)}%
+                        </span>
+                      )}
+                      {snapshot.google_places_score == null && (
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-admin-muted">
+                          Google off/unused
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <button type="button" disabled={busyId === candidate.id} onClick={() => void runAction(candidate, 'verify_now')}
+                    className="rounded bg-sky-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">재검증</button>
+                  <button type="button" disabled={busyId === candidate.id} onClick={() => void runAction(candidate, 'keep_internal')}
+                    className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">내부유지</button>
+                  <button type="button" disabled={busyId === candidate.id || !candidate.promoted_attraction_id} onClick={() => void runAction(candidate, 'make_publishable')}
+                    className="rounded bg-violet-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">고객공개 승인</button>
+                  <button type="button" disabled={busyId === candidate.id} onClick={() => void mergeAlias(candidate)}
+                    className="rounded bg-amber-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">별칭 병합</button>
+                  <button type="button" disabled={busyId === candidate.id} onClick={() => void runAction(candidate, 'reject_noise')}
+                    className="rounded bg-slate-500 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">아님/거절</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem[]; onAfterRegister: () => void }) {
   const candidates = useMemo(
     () => items.filter(i => i.status === 'pending' && i.suggested_card && typeof i.suggested_card === 'object'),
@@ -686,6 +870,8 @@ export default function UnmatchedPage() {
         )}
         </>
       )}
+
+      <EntityMasterCandidatePanel onAfterAction={load} />
 
       {bootstrapOpen && (
         <div className="mb-4 border border-amber-200 bg-amber-50/60 rounded-admin-md p-4">

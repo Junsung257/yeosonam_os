@@ -31,7 +31,7 @@ function limitFrom(request: NextRequest): number {
 }
 
 function minScoreFrom(request: NextRequest): number {
-  const raw = Number(request.nextUrl.searchParams.get('minScore') ?? process.env.PROMOTE_INTERNAL_CANDIDATES_MIN_SCORE ?? 0.3);
+  const raw = Number(request.nextUrl.searchParams.get('minScore') ?? process.env.PROMOTE_INTERNAL_CANDIDATES_MIN_SCORE ?? 0.62);
   return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0.3;
 }
 
@@ -52,6 +52,20 @@ function packageIdsFrom(row: CandidateRow): string[] {
   return Array.isArray(ids)
     ? ids.filter((value): value is string => typeof value === 'string' && value.length > 0)
     : [];
+}
+
+function hasTrustedPlaceEvidence(row: CandidateRow): boolean {
+  return (row.external_sources ?? []).some(source => {
+    const kind = String(source.source ?? '');
+    const confidence = typeof source.confidence === 'number' ? source.confidence : 0;
+    return (
+      (kind === 'google_places' && confidence >= 0.78 && Boolean(source.id)) ||
+      (kind === 'wikidata' && confidence >= 0.82 && Boolean(source.id)) ||
+      (kind === 'osm' && confidence >= 0.82 && Boolean(source.id || source.url)) ||
+      (kind === 'osm_nominatim' && confidence >= 0.82 && Boolean(source.id || source.url)) ||
+      (kind === 'naver_search' && confidence >= 0.72 && Boolean(source.id || source.url || source.name))
+    );
+  });
 }
 
 async function findExisting(name: string, aliases: string[]) {
@@ -95,6 +109,7 @@ async function runPromoteInternalCandidates(options: { limit?: number; minScore?
 
     for (const row of (data ?? []) as CandidateRow[]) {
       try {
+        if (!hasTrustedPlaceEvidence(row)) continue;
         const name = chooseName(row);
         if (!name || name.length < 2 || name.length > 64) continue;
         const aliases = unique([

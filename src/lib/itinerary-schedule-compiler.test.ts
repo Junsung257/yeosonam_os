@@ -202,6 +202,38 @@ describe('Baekdu landing regression guards', () => {
     expect(meal.entity_kind).toBe('meal');
   });
 
+  it('classifies check-in and check-out rows as hotel operations, not attractions', () => {
+    const checkout = compileScheduleItemForLanding({
+      activity: 'Check-out (~12:00)',
+      type: 'normal',
+    });
+    const checkin = compileScheduleItemForLanding({
+      activity: '\uCCB4\uD06C\uC778 \uD6C4 \uD734\uC2DD',
+      type: 'normal',
+    });
+
+    expect(checkout.entity_kind).toBe('hotel_stay');
+    expect(checkout.attraction_query).toBeNull();
+    expect(checkin.entity_kind).toBe('hotel_stay');
+    expect(checkin.attraction_query).toBeNull();
+  });
+
+  it('drops standalone check-out rows from customer landing schedules', () => {
+    const compiled = compileItineraryForLanding({
+      days: [
+        {
+          day: 4,
+          schedule: [
+            { activity: 'Check-out (~12:00)', type: 'normal' },
+            { activity: '공항으로 개별이동', type: 'normal' },
+          ],
+        },
+      ],
+    });
+
+    expect(compiled.days[0].schedule.map(item => item.activity)).toEqual(['공항으로 개별이동']);
+  });
+
   it('blocks cross-region attraction IDs and short substring matches in Baekdu lines', () => {
     const compiled = compileItineraryForLanding({
       days: [

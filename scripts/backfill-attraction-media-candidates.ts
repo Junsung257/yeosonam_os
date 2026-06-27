@@ -14,6 +14,10 @@ const apply = args.has('--apply');
 const json = args.has('--json');
 const limit = Number(argValue('--limit', '500'));
 const status = argValue('--status', '');
+const ids = argValue('--ids', '')
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
 
 function argValue(name: string, fallback: string): string {
   const found = process.argv.find(arg => arg.startsWith(`${name}=`));
@@ -45,6 +49,7 @@ async function fetchPackages(): Promise<PackageRow[]> {
     .order('updated_at', { ascending: false })
     .limit(limit);
 
+  if (ids.length > 0) query = query.in('id', ids);
   if (status) query = query.eq('status', status);
 
   const { data, error } = await query;
@@ -102,6 +107,7 @@ async function main() {
 
   const output = {
     apply,
+    ids: ids.length,
     scanned: rows.length,
     packages_with_candidates: details.length,
     candidateTotal,

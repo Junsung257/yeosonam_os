@@ -12,6 +12,10 @@ import {
   type NaverKeywordEvidenceItem,
   type NaverSearchEvidenceItem,
 } from '../src/lib/naver-entity-verifier';
+import {
+  getGooglePlacesBudgetFromEnv,
+  type GooglePlacesBudget,
+} from '../src/lib/google-places-entity-verifier';
 
 loadEnv({ path: '.env.local' });
 loadEnv({ path: '.env.croncheck.local' });
@@ -29,6 +33,7 @@ const offset = Number(argValue('--offset', '0'));
 const categoryFilter = argValue('--category', '');
 const destinationFilter = argValue('--destination', '');
 const promotionStatusFilter = argList('--promotion-status');
+const packageIdFilter = argList('--package-ids');
 
 function argValue(name: string, fallback: string): string {
   const found = args.find(arg => arg.startsWith(`${name}=`));
@@ -113,6 +118,7 @@ function cachedSearchAttemptAgrees(row: EntityCandidateRow, query: string, evide
 }
 
 async function fetchCandidates(): Promise<EntityCandidateRow[]> {
+  const queryLimit = packageIdFilter.length > 0 ? Math.max(limit, 5000) : limit;
   let query = supabase
     .from('entity_master_candidates')
     .select('id, candidate_key, category, raw_label, normalized_label, destination_scope, country_scope, region_scope, evidence_count, occurrence_count, package_count, source_context, external_sources, suggested_master, confidence, auto_action, promotion_status')
@@ -120,7 +126,7 @@ async function fetchCandidates(): Promise<EntityCandidateRow[]> {
       ? promotionStatusFilter
       : ['candidate', 'auto_internal', 'needs_review', 'publishable_ready'])
     .order('occurrence_count', { ascending: false })
-    .range(offset, offset + limit - 1);
+    .range(offset, offset + queryLimit - 1);
 
   if (categoryFilter) {
     query = query.eq('category', categoryFilter);
@@ -134,7 +140,15 @@ async function fetchCandidates(): Promise<EntityCandidateRow[]> {
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as EntityCandidateRow[];
+  const rows = (data ?? []) as EntityCandidateRow[];
+  if (packageIdFilter.length === 0) return rows;
+  const wanted = new Set(packageIdFilter);
+  return rows
+    .filter(row => {
+      const ids = row.source_context?.package_ids;
+      return Array.isArray(ids) && ids.some(value => typeof value === 'string' && wanted.has(value));
+    })
+    .slice(0, limit);
 }
 
 function emptyCachedNaverResult(row: EntityCandidateRow): NaverEntityVerificationResult {
@@ -281,9 +295,40 @@ function updatePayload(decision: EntityResolutionDecision) {
       sources: [...new Set(decision.externalSources.map(source => source.source))],
       naver_search_score: decision.naver?.searchScore ?? null,
       naver_keyword_score: decision.naver?.keywordScore ?? null,
+      osm_nominatim_score: decision.osmNominatim?.score ?? null,
+      osm_nominatim_region_conflict: decision.osmNominatim?.regionConflict ?? null,
+      google_places_score: decision.googlePlaces?.score ?? null,
+      google_places_region_conflict: decision.googlePlaces?.regionConflict ?? null,
       wikidata_top_score: decision.wikidata[0]?.confidence ?? null,
     },
     verified_at: new Date().toISOString(),
+  };
+}
+
+function startOfUtcDay(): string {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+async function countGooglePlacesAttemptsToday(): Promise<number> {
+  const { count, error } = await supabase
+    .from('entity_verification_attempts')
+    .select('id', { count: 'exact', head: true })
+    .eq('source', 'google_places')
+    .in('status', ['success', 'empty', 'error'])
+    .gte('created_at', startOfUtcDay());
+  if (error) throw error;
+  return count ?? 0;
+}
+
+function consumeGooglePlacesBudget(budget: GooglePlacesBudget, decision: EntityResolutionDecision): GooglePlacesBudget {
+  const used = decision.attempts.filter(attempt => attempt.source === 'google_places' && attempt.status !== 'skipped').length;
+  const remainingDailyCalls = Math.max(0, budget.remainingDailyCalls - used);
+  return {
+    ...budget,
+    remainingDailyCalls,
+    skipReason: remainingDailyCalls <= 0 ? 'GOOGLE_PLACES_DAILY_LIMIT exhausted' : budget.skipReason,
   };
 }
 
@@ -340,16 +385,19 @@ async function main() {
   const rows = await fetchCandidates();
   const decisions: EntityResolutionDecision[] = [];
   const errors: Array<{ candidate_key: string; error: string }> = [];
+  let googlePlacesBudget = getGooglePlacesBudgetFromEnv(await countGooglePlacesAttemptsToday());
 
   for (const row of rows) {
     try {
       const cachedNaver = preferCachedNaver ? await fetchCachedNaverResult(row) : null;
       const decision = await resolveItineraryEntityCandidate(row, {
+        googlePlacesBudget,
         ...(cachedNaver || naverCacheOnly
           ? { naverVerifier: async () => cachedNaver ?? emptyCachedNaverResult(row) }
           : {}),
         ...(skipWikidata ? { wikidataReconciler: async () => [] } : {}),
       });
+      googlePlacesBudget = consumeGooglePlacesBudget(googlePlacesBudget, decision);
       decisions.push(decision);
       if (apply) await persistDecision(row, decision);
     } catch (error) {
@@ -370,6 +418,13 @@ async function main() {
     promotion_status: promotionStatusFilter.length > 0 ? promotionStatusFilter : 'default_active',
     naver_cache: naverCacheOnly ? 'only' : preferCachedNaver ? 'prefer' : 'off',
     wikidata: skipWikidata ? 'skipped' : 'on',
+    google_places_budget: {
+      enabled: googlePlacesBudget.enabled,
+      daily_limit: googlePlacesBudget.dailyLimit,
+      remaining_daily_calls: googlePlacesBudget.remainingDailyCalls,
+      max_queries_per_candidate: googlePlacesBudget.maxQueriesPerCandidate,
+      skip_reason: googlePlacesBudget.skipReason ?? null,
+    },
     errors,
     ...summarize(decisions),
   };
@@ -383,6 +438,7 @@ async function main() {
     promotion_status: output.promotion_status,
     naver_cache: output.naver_cache,
     wikidata: output.wikidata,
+    google_places_budget: output.google_places_budget,
     errors: output.errors,
     byStatus: output.byStatus,
     byAction: output.byAction,

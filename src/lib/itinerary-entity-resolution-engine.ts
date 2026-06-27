@@ -6,6 +6,16 @@ import {
   type MasterCandidatePromotionStatus,
 } from '@/lib/entity-master-candidates';
 import { verifyNaverEntityName, type NaverEntityVerificationResult } from '@/lib/naver-entity-verifier';
+import {
+  getGooglePlacesBudgetFromEnv,
+  verifyGooglePlacesEntityName,
+  type GooglePlacesBudget,
+  type GooglePlacesVerificationResult,
+} from '@/lib/google-places-entity-verifier';
+import {
+  verifyOsmNominatimEntityName,
+  type OsmNominatimVerificationResult,
+} from '@/lib/osm-nominatim-entity-verifier';
 import { reconcilePlaceName, type ReconciledEntity } from '@/lib/wikidata-reconcile';
 
 export type EntityCandidateRow = {
@@ -31,7 +41,7 @@ export type EntityCandidateRow = {
 export type EntityVerificationAttempt = {
   candidate_id?: string;
   candidate_key: string;
-  source: 'naver_search' | 'naver_searchad' | 'wikidata' | 'osm_nominatim' | 'internal' | 'manual';
+  source: 'naver_search' | 'naver_searchad' | 'google_places' | 'wikidata' | 'osm_nominatim' | 'internal' | 'manual';
   query: string;
   status: 'success' | 'empty' | 'error' | 'skipped';
   score: number;
@@ -62,11 +72,16 @@ export type EntityResolutionDecision = {
   suggestedMaster: Record<string, unknown>;
   attempts: EntityVerificationAttempt[];
   naver?: NaverEntityVerificationResult;
+  googlePlaces?: GooglePlacesVerificationResult;
+  osmNominatim?: OsmNominatimVerificationResult;
   wikidata: ReconciledEntity[];
 };
 
 export type EntityResolutionDependencies = {
   naverVerifier?: typeof verifyNaverEntityName;
+  googlePlacesVerifier?: typeof verifyGooglePlacesEntityName;
+  googlePlacesBudget?: GooglePlacesBudget;
+  osmNominatimVerifier?: typeof verifyOsmNominatimEntityName;
   wikidataReconciler?: typeof reconcilePlaceName;
 };
 
@@ -262,6 +277,14 @@ function hasRegionalNaverSupport(naver: NaverEntityVerificationResult | undefine
       row.target === 'blog'
     )
   )));
+}
+
+function hasGooglePlaceSupport(googlePlaces: GooglePlacesVerificationResult | undefined): boolean {
+  return Boolean(googlePlaces?.hasStrongPlaceIdentity && !googlePlaces.regionConflict && googlePlaces.score >= 0.78);
+}
+
+function hasOsmPlaceSupport(osmNominatim: OsmNominatimVerificationResult | undefined): boolean {
+  return Boolean(osmNominatim?.hasStrongPlaceIdentity && !osmNominatim.regionConflict && osmNominatim.score >= 0.82);
 }
 
 function namesAgree(canonicalName: string, aliases: string[], identity: CandidateExternalSource | null): boolean {
@@ -637,6 +660,43 @@ export async function resolveItineraryEntityCandidate(
     }
   }
 
+  let osmNominatim: OsmNominatimVerificationResult | undefined;
+  if (category === 'attraction' || category === 'hotel') {
+    try {
+      osmNominatim = await (dependencies.osmNominatimVerifier ?? verifyOsmNominatimEntityName)({
+        label: naver?.canonicalName || label,
+        aliases,
+        region: row.region_scope,
+        country: row.country_scope,
+        destination: row.destination_scope,
+        scopeHints: scopeHintsFrom(row),
+        category,
+        maxQueriesPerCandidate: 1,
+      });
+      attempts.push(...osmNominatim.attempts.map(attempt => ({
+        candidate_id: row.id,
+        candidate_key: row.candidate_key || baseDecision.candidateKey,
+        source: attempt.source,
+        query: attempt.query || label,
+        status: attempt.status,
+        score: attempt.score,
+        evidence: attempt.evidence,
+        error: attempt.error ?? null,
+      })));
+    } catch (error) {
+      attempts.push({
+        candidate_id: row.id,
+        candidate_key: row.candidate_key || baseDecision.candidateKey,
+        source: 'osm_nominatim',
+        query: naver?.canonicalName || label,
+        status: 'error',
+        score: 0,
+        evidence: {},
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const wikidataSources: CandidateExternalSource[] = wikidata.slice(0, 2).map(item => ({
     source: 'wikidata',
     id: item.qid,
@@ -644,10 +704,66 @@ export async function resolveItineraryEntityCandidate(
     confidence: item.confidence,
     name: item.label_ko || item.label_en || undefined,
   }));
-  const externalSources = uniqueSources([
+  const freeExternalSources = uniqueSources([
     ...baseSources,
     ...(naver?.sources ?? []),
     ...wikidataSources,
+    ...(osmNominatim?.sources ?? []),
+  ]);
+  const freeIdentity = bestIdentitySource(freeExternalSources);
+  const freeSupportCount = supportingSourceCount(freeExternalSources);
+  const freeCanonicalName = naver?.canonicalName || osmNominatim?.canonicalName || label;
+  const freeIdentityNameAgrees = namesAgree(freeCanonicalName, aliases, freeIdentity);
+  const freeEvidenceIsEnough = (
+    (hasStrongIdentitySource(freeIdentity) && freeSupportCount >= 2 && freeIdentityNameAgrees) ||
+    (hasOsmPlaceSupport(osmNominatim) && sourceNamesAgree(osmNominatim?.canonicalName ?? '', aliases) && hasCorpusSupport(row)) ||
+    (hasNaverLocalSupport(naver) && sourceNamesAgree(freeCanonicalName, aliases) && hasCorpusSupport(row))
+  );
+
+  let googlePlaces: GooglePlacesVerificationResult | undefined;
+  if ((category === 'attraction' || category === 'hotel') && !freeEvidenceIsEnough) {
+    const budget = dependencies.googlePlacesBudget ?? getGooglePlacesBudgetFromEnv();
+    try {
+      googlePlaces = await (dependencies.googlePlacesVerifier ?? verifyGooglePlacesEntityName)({
+        label: naver?.canonicalName || label,
+        aliases,
+        region: row.region_scope,
+        country: row.country_scope,
+        destination: row.destination_scope,
+        scopeHints: scopeHintsFrom(row),
+        category,
+        enabled: budget.enabled,
+        remainingDailyCalls: budget.remainingDailyCalls,
+        maxQueriesPerCandidate: budget.maxQueriesPerCandidate,
+        skipReason: budget.skipReason,
+      });
+      attempts.push(...googlePlaces.attempts.map(attempt => ({
+        candidate_id: row.id,
+        candidate_key: row.candidate_key || baseDecision.candidateKey,
+        source: attempt.source,
+        query: attempt.query || label,
+        status: attempt.status,
+        score: attempt.score,
+        evidence: attempt.evidence,
+        error: attempt.error ?? null,
+      })));
+    } catch (error) {
+      attempts.push({
+        candidate_id: row.id,
+        candidate_key: row.candidate_key || baseDecision.candidateKey,
+        source: 'google_places',
+        query: naver?.canonicalName || label,
+        status: 'error',
+        score: 0,
+        evidence: {},
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const externalSources = uniqueSources([
+    ...freeExternalSources,
+    ...(googlePlaces?.sources ?? []),
   ]);
 
   const identity = bestIdentitySource(externalSources);
@@ -665,6 +781,8 @@ export async function resolveItineraryEntityCandidate(
   });
 
   const naverScore = naver?.overallScore ?? 0;
+  const googlePlacesScore = googlePlaces?.score ?? 0;
+  const osmNominatimScore = osmNominatim?.score ?? 0;
   const identityScore = identity?.confidence ?? 0;
   const evidenceScore = clamp(
     Math.min(0.2, Math.max(0, (row.evidence_count ?? 1) - 1) * 0.035) +
@@ -672,18 +790,28 @@ export async function resolveItineraryEntityCandidate(
   );
   const verificationScore = clamp(
     Math.max(baseDecision.confidence, externalDecision.confidence) * 0.22 +
-    naverScore * 0.28 +
+    Math.max(naverScore, googlePlacesScore, osmNominatimScore) * 0.28 +
     identityScore * 0.36 +
     evidenceScore * 0.14,
   );
-  const canonicalName = naver?.canonicalName || label;
-  const canonicalNameSource = naver?.canonicalNameSource || 'input';
+  const canonicalName = googlePlaces?.hasStrongPlaceIdentity && sourceNamesAgree(googlePlaces.canonicalName, aliases)
+    ? googlePlaces.canonicalName
+    : osmNominatim?.hasStrongPlaceIdentity && sourceNamesAgree(osmNominatim.canonicalName, aliases)
+      ? osmNominatim.canonicalName
+    : naver?.canonicalName || label;
+  const canonicalNameSource = googlePlaces?.hasStrongPlaceIdentity && sourceNamesAgree(googlePlaces.canonicalName, aliases)
+    ? 'google_places'
+    : osmNominatim?.hasStrongPlaceIdentity && sourceNamesAgree(osmNominatim.canonicalName, aliases)
+      ? 'osm_nominatim'
+    : naver?.canonicalNameSource || 'input';
   const scopeReady = hasResolvedScope(row);
   const corpusSupported = hasCorpusSupport(row);
   const strongIdentity = hasStrongIdentitySource(identity);
   const naverLocalSupported = hasNaverLocalSupport(naver);
   const naverNameSupported = hasNaverNameSupport(naver);
   const naverRegionalSupported = hasRegionalNaverSupport(naver);
+  const googlePlaceSupported = hasGooglePlaceSupport(googlePlaces);
+  const osmPlaceSupported = hasOsmPlaceSupport(osmNominatim);
   const safeMasterName = isSafeMasterName(category, canonicalName, row.raw_label || label);
   const autoRejectNonMasterReason = terminalNonMasterReason(category, canonicalName, row.raw_label || label);
   const sourceNameAgrees = sourceNamesAgree(canonicalName, aliases);
@@ -699,8 +827,9 @@ export async function resolveItineraryEntityCandidate(
     scopeReady &&
     (
       (strongIdentity && supportCount >= 2 && identityNameAgrees && verificationScore >= 0.68) ||
-      (naverLocalSupported && sourceNameAgrees && corpusSupported && naverScore >= 0.52) ||
-      (category === 'attraction' && sourceNameAgrees && naverRegionalSupported && scopeReady && (corpusSupported || (naver?.searchScore ?? 0) >= 0.55))
+      (osmPlaceSupported && sourceNameAgrees && corpusSupported && verificationScore >= 0.62) ||
+      (googlePlaceSupported && sourceNameAgrees && corpusSupported && verificationScore >= 0.62) ||
+      (naverLocalSupported && sourceNameAgrees && corpusSupported && naverScore >= 0.52)
     );
 
   let autoAction = externalDecision.autoAction;
@@ -725,6 +854,10 @@ export async function resolveItineraryEntityCandidate(
       autoVerificationStatus = 'verified_internal';
       decisionReason = strongIdentity
         ? 'hotel identity has strong external support; internal canonical can be automated, customer-facing master stays gated'
+        : osmPlaceSupported
+          ? 'hotel has OSM/Nominatim identity plus repeated supplier evidence; internal canonical can be automated'
+        : googlePlaceSupported
+          ? 'hotel has Google Places identity plus repeated supplier evidence; internal canonical can be automated'
         : 'hotel has local search identity plus repeated supplier evidence; internal canonical can be automated';
     } else if (externalDecision.autoAction === 'create_internal_master' && safeMasterName) {
       autoAction = 'create_internal_master';
@@ -756,6 +889,10 @@ export async function resolveItineraryEntityCandidate(
       autoVerificationStatus = 'verified_internal';
       decisionReason = strongIdentity
         ? 'probable attraction has strong identity evidence for internal non-customer-publishable automation'
+        : osmPlaceSupported
+          ? 'probable attraction has OSM/Nominatim identity plus repeated supplier evidence for internal automation'
+        : googlePlaceSupported
+          ? 'probable attraction has Google Places identity plus repeated supplier evidence for internal automation'
         : 'probable attraction has local search support plus repeated supplier evidence for internal automation';
     } else if (externalDecision.autoAction === 'create_internal_master' && safeMasterName) {
       autoAction = 'create_internal_master';
@@ -802,6 +939,10 @@ export async function resolveItineraryEntityCandidate(
         naver_local_support: naverLocalSupported,
         naver_name_support: naverNameSupported,
         naver_regional_support: naverRegionalSupported,
+        osm_nominatim_support: osmPlaceSupported,
+        osm_nominatim_region_conflict: osmNominatim?.regionConflict ?? false,
+        google_places_support: googlePlaceSupported,
+        google_places_region_conflict: googlePlaces?.regionConflict ?? false,
         source_name_agrees: sourceNameAgrees,
         auto_reject_non_master_reason: autoRejectNonMasterReason,
         support_count: supportCount,
@@ -811,6 +952,8 @@ export async function resolveItineraryEntityCandidate(
     },
     attempts,
     naver,
+    googlePlaces,
+    osmNominatim,
     wikidata,
   };
 }

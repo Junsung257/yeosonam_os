@@ -78,6 +78,29 @@ const KO_NOTICE_RE =
 const KO_ATTRACTION_HINT_RE =
   /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|야시장|비치|해변|광장|전망대|케이블카|마을|천등|폭포|온천|정원|계림|관광지명|temple|park|museum|beach|market|tower|garden)/i;
 
+const NORMAL_PRICE_NOISE_RE =
+  /(?:^\s*\d{3,5}\s*M\s*$|^\s*\d{1,4}(?:,\d{3})*(?:\s*(?:원|KRW|USD|\$))?\s*$|가격|판매가|출발\s*마감|예약금|취소료|수수료)/i;
+const NORMAL_MEAL_RE =
+  /(?:조식|중식|석식|식사|식당|뷔페|특식|현지식|호텔식|한식|제육|찌개|보쌈|쌀국수|김밥|샤브샤브|양꼬치|삼겹살|씨푸드|해산물|맥주\s*1\s*병|노미호다이|breakfast|lunch|dinner|meal|restaurant|pho)/i;
+const NORMAL_NOTICE_RE =
+  /(?:상기\s*일정|현지\s*사정|항공\s*및\s*현지\s*사정|변동될\s*수|변경될\s*수|양해|안내|공지|주의|준비물|여권|비자|취소|환불|입국|출국|예약금|수수료|미제공|제공\s*X|필수\s*관광)/i;
+const NORMAL_TRANSFER_RE =
+  /(?:^[A-Z]{3}(?:-[A-Z]{3})?$|이동|차량|버스|공항|픽업|샌딩|전용차|기사|미팅|귀환|부산-광저우|샤오관|transfer|pickup|drop[-\s]?off|airport)/i;
+const NORMAL_PLACE_TRANSFER_RE =
+  /^(?:하노이|파타야|삿포로|치토세|후쿠오카|석가장|임주|다낭|푸꾸옥|나트랑|달랏|광저우|천저우|샤오관)$/i;
+const NORMAL_HOTEL_RE =
+  /(?:호텔|리조트|숙박|객실|체크\s*인|체크\s*아웃|뉴카멜리아|hotel|resort|villa|room|check[-\s]?in|check[-\s]?out)/i;
+const NORMAL_SHOPPING_RE =
+  /(?:쇼핑|면세|명품샵|기념품|토산품|특산품|농수산|라텍스|잡화|쇼핑센터|아울렛|mall|outlet|shopping)/i;
+const NORMAL_OPTION_RE =
+  /(?:선택\s*관광|옵션|마사지|스파|공연|쇼|입장권|자유이용권|케이블카|왕복케이블카|전통복장체험|소원배|소원등|드론촬영|나룻배|골프|라운드|라운딩|optional|option|spa|massage|ticket|show)/i;
+const NORMAL_FREE_TIME_RE =
+  /(?:자유\s*시간|자유\s*일정|휴식|리조트\s*내\s*자유|오전\s*자유|오후\s*자유|free\s*time|rest)/i;
+const NORMAL_NOISE_RE =
+  /(?:^=+>$|^전용$|대기시간\s*최소화|중복\s*없는\s*관광\s*동선|탑승하여|차창|울창한\s*밀림과\s*자연경관|사막\s*진입시\s*케이블카\s*또는\s*버스\s*이용|^\s*\d{3,5}\s*M\s*$)/i;
+const NORMAL_ATTRACTION_HINT_RE =
+  /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|비치|해변|광장|브릿지|마을|천등|온천|정원|풍경구|구시가지|사찰|temple|park|museum|beach|market|tower|garden)/i;
+
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -108,31 +131,34 @@ export function classifyUnmatchedActivity(
   let category: UnmatchedEntityCategory = existing ?? 'attraction';
   let confidence = existing ? 0.72 : 0.65;
 
-  if (!text || KO_PRICE_NOISE_RE.test(text)) {
+  if (!text || KO_PRICE_NOISE_RE.test(text) || NORMAL_PRICE_NOISE_RE.test(text)) {
     category = 'price_noise';
     confidence = 0.92;
-  } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text)) {
+  } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text) || NORMAL_MEAL_RE.test(text)) {
     category = 'meal';
     confidence = 0.9;
-  } else if (KO_NOTICE_RE.test(text)) {
+  } else if (KO_NOTICE_RE.test(text) || NORMAL_NOTICE_RE.test(text)) {
     category = 'notice';
     confidence = 0.84;
-  } else if (KO_TRANSFER_RE.test(text)) {
+  } else if (NORMAL_NOISE_RE.test(text)) {
+    category = 'free_time';
+    confidence = 0.9;
+  } else if (KO_TRANSFER_RE.test(text) || NORMAL_TRANSFER_RE.test(text) || NORMAL_PLACE_TRANSFER_RE.test(text)) {
     category = 'transfer';
     confidence = 0.9;
-  } else if (KO_HOTEL_RE.test(text)) {
+  } else if (KO_HOTEL_RE.test(text) || NORMAL_HOTEL_RE.test(text)) {
     category = 'hotel';
     confidence = 0.86;
-  } else if (KO_SHOPPING_RE.test(text)) {
+  } else if (KO_SHOPPING_RE.test(text) || NORMAL_SHOPPING_RE.test(text)) {
     category = 'shopping';
     confidence = 0.86;
-  } else if (KO_OPTION_RE.test(text)) {
+  } else if (KO_OPTION_RE.test(text) || NORMAL_OPTION_RE.test(text)) {
     category = 'optional_tour';
     confidence = 0.86;
-  } else if (KO_FREE_TIME_RE.test(text)) {
+  } else if (KO_FREE_TIME_RE.test(text) || NORMAL_FREE_TIME_RE.test(text)) {
     category = 'free_time';
     confidence = 0.92;
-  } else if (KO_ATTRACTION_HINT_RE.test(text)) {
+  } else if (KO_ATTRACTION_HINT_RE.test(text) || NORMAL_ATTRACTION_HINT_RE.test(text)) {
     category = 'attraction';
     confidence = 0.78;
   }

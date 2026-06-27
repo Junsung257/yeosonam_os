@@ -624,6 +624,39 @@ ZE982
     expect(result.gate_result.checks.find(check => check.id === 'option_review_queue_clear')?.status).toBe('warn');
   });
 
+  it('keeps Phu Quoc air-tel meal availability values out of unmatched attractions', async () => {
+    const raw = [
+      '상품: [에어텔] 멜리아 빈펄 푸꾸옥 (북부) 3박 5일 [비엣젯항공]',
+      '가격: 629,000원 / 최소출발 1명',
+      'DAY 1 VJ969 부산 김해 국제공항 출발 07:45 푸꾸옥 국제공항 도착 11:10',
+      'DAY 1 호텔 투숙 및 휴식',
+      'DAY 1 조: 미제공',
+      'DAY 1 중: 미제공',
+      'DAY 1 석: 미제공',
+      'DAY 2 호텔 조식 후',
+      'DAY 2 가이드 & 차량 제공되지 않는 자유일정',
+      'DAY 2 호텔 투숙 및 휴식',
+      'DAY 3 호텔 조식 후',
+      'DAY 3 가이드 & 차량 제공되지 않는 자유일정',
+      'DAY 3 호텔 투숙 및 휴식',
+      'DAY 4 호텔 조식 후 Check-out (~12:00)',
+      'DAY 4 공항으로 개별이동',
+      'DAY 4 VJ968 푸꾸옥 국제 공항 출발 23:10 부산 김해국제공항 도착 06:40',
+      '포함사항 왕복항공료, 호텔 숙박, 조식',
+      '불포함사항 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [],
+      destination: '푸꾸옥',
+    });
+
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).toHaveLength(0);
+    expect(result.match_summary.entity_summary.attraction_unresolved_count).toBe(0);
+    expect(result.gate_result.checks.find(check => check.id === 'attraction_unmatched_queue_clear')?.status).toBe('pass');
+    expect(result.gate_result.checks.find(check => check.id === 'entity_attraction_unresolved_clear')?.status).toBe('pass');
+  });
+
   it('keeps core golf round schedule lines out of the attraction unmatched queue', async () => {
     const raw = [
       '상품: 클락 품격 풀빌라 더비스타 2색골프 + 단독차량 4박6일',
@@ -1027,6 +1060,207 @@ ZE982
     expect(summary.attraction_unresolved_count).toBe(1);
   });
 
+  it('keeps normal Korean HWP notices and service fragments out of unresolved attraction review', () => {
+    const summary = buildV3EntitySummary({
+      destination: '다낭',
+      ledger: {
+        document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+        variants: [{
+          variant_key: 'v1',
+          grade: null,
+          course: '다낭',
+          duration_days: 1,
+          nights: 0,
+          title_parts: [],
+          price_calendar: [],
+          flight_segments: [],
+          days: [{
+            day: 1,
+            route: [],
+            meals: { breakfast: {}, lunch: {}, dinner: {} },
+            hotel: {},
+            events: [
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '상기 일정은 현지 사정에 의하여 변동될 수 있사오니 양해 바랍니다',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '사막 진입시 케이블카 또는 버스 이용',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '현지인들의 삶이 고스란히 녹아있는 한시장',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '호이안 야경 관광',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '파타야',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '한정식',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '황하와 만리장성이 만나는 곳으로 중국 최고 10대 협곡중 하나입니다.',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '2026.6.1',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '출발확정일',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '부산항 출항',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '맥주1병',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '8/11(화)',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '[카멜리아] 후쿠오카 갓성비 시내핵심 3일',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '총길이 430M, 넓이 6M, 계곡에서의 높이 300M에 달하는 세계 최고의',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '백숙',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '중국 청도 10경으로 꼽히는 잔교',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'attraction',
+                time: null,
+                raw_text: '몽환적인 풍경의 긴린호수',
+                canonical_id: null,
+                canonical_type: 'attraction',
+                match_status: 'unmatched',
+                evidence: testEvidence,
+              },
+              {
+                type: 'shopping',
+                time: null,
+                raw_text: '쇼  핑 차, 캐시미어 2회',
+                canonical_id: null,
+                canonical_type: 'shopping',
+                match_status: 'review',
+                evidence: testEvidence,
+              },
+            ],
+          }],
+          inclusions: [],
+          exclusions: [],
+          options: [],
+          shopping: [],
+          structured_facts: [],
+          standard_notices: [],
+          minimum_departure: null,
+          evidence_coverage: {},
+        }],
+      },
+    });
+
+    expect(summary.review_items.map(item => item.raw_text)).toEqual(['한시장', '호이안 야경', '잔교', '긴린호수']);
+    expect(summary.review_items.every(item => item.category === 'attraction')).toBe(true);
+    expect(summary.attraction_unresolved_count).toBe(4);
+  });
+
   it('uses entity unresolved attraction count ahead of legacy unmatched event count in V3 gate', () => {
     const baseVariant = {
       variant_key: 'v1',
@@ -1335,6 +1569,72 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(notice?.source_text).toBe('전자담배 반입금지입니다.');
     expect(result.gate_result.status).toBe('blocked');
     expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
+  });
+
+  it('matches descriptive HWP attraction lines and ignores price/meal noise in V3 entity review', async () => {
+    const raw = [
+      '상품명: 북해도/달랏 HWP 회귀',
+      'DAY 1',
+      '달랏 언덕에 위치한 아름다운 핑크빛 건축물 수녀원 도멘 드 마리 성당',
+      '베트남에서 가장 유명한 다딴라 폭포 (레일바이크 탑승)',
+      '삼겹구이',
+      '(무제한)',
+      '8/4-15',
+      '전용',
+      'DAY 2',
+      '▷약1만여점의 오르골이 화려하게 장식되어있는 오르골당',
+      '▷청푸른 빛의 신비로운 호수 아오이이케',
+    ].join('\n');
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [
+        { id: 'domaine', name: '도멘 드 마리 성당', aliases: [], region: '달랏', country: 'VN' },
+        { id: 'datanla', name: '다딴라 폭포', aliases: [], region: '달랏', country: 'VN' },
+        { id: 'music-box', name: '오르골당', aliases: [], region: '오타루', country: 'JP' },
+        { id: 'blue-pond', name: '아오이이케', aliases: [], region: '비에이', country: 'JP' },
+      ],
+    });
+    const unresolved = result.match_summary.entity_summary.review_items
+      .filter(item => item.category === 'attraction' && item.blocks_publish)
+      .map(item => item.raw_text);
+
+    expect(result.match_summary.attraction_matched_count).toBeGreaterThanOrEqual(4);
+    expect(unresolved).toEqual([]);
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('삼겹구이');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('8/4-15');
+  });
+
+  it('treats explicit shopping-center and duty-free visit notices as customer-safe disclosure', async () => {
+    const raw = [
+      '상품명: 쇼핑 고지 회귀',
+      'DAY 1',
+      '달랏 쇼핑센터 방문',
+      'DAY 2',
+      '▶면세 1곳 방문',
+      'DAY 3',
+      '쇼핑센터 캐시미어 아울렛 (자율쇼핑)',
+    ].join('\n');
+    const result = await runProductRegistrationV3(raw);
+    const shoppingReview = result.match_summary.entity_summary.review_items
+      .filter(item => item.category === 'shopping');
+
+    expect(shoppingReview).toEqual([]);
+    expect(result.match_summary.entity_summary.shopping_review_needed_count).toBe(0);
+  });
+
+  it('allows unpriced join/application optional-tour notices without blocking publish', async () => {
+    const raw = [
+      '상품명: 선택관광 고지 회귀',
+      'DAY 1',
+      '▶산호섬에서 신나는 스릴만점의 해양스포츠 선택 관광 (조인)',
+      'DAY 2',
+      '- 선택관광 신청 후 발리 즐기기',
+    ].join('\n');
+    const result = await runProductRegistrationV3(raw);
+    const optionReview = result.match_summary.entity_summary.review_items
+      .filter(item => item.category === 'optional_tour');
+
+    expect(optionReview).toEqual([]);
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
   });
 
   it('marks customer-visible high-risk notices review_needed when evidence is missing', () => {

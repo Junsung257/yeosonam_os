@@ -285,6 +285,10 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 - [ ] `GOOGLE_ADS_CUSTOMER_ID`
 - [ ] `GOOGLE_ADS_CLIENT_ID`
 - [ ] `GOOGLE_ADS_CLIENT_SECRET`
+- [ ] `GOOGLE_PLACES_API_KEY`
+- [ ] `GOOGLE_PLACES_ENABLED=false` unless paid Google verification has been explicitly approved
+- [ ] `GOOGLE_PLACES_DAILY_LIMIT=0` by default, or a reviewed positive cap for the approved verification window
+- [ ] `GOOGLE_PLACES_MAX_QUERIES_PER_CANDIDATE=1`
 - [ ] `SLACK_WEBHOOK_URL`
 
 ### Explicit bid defaults
