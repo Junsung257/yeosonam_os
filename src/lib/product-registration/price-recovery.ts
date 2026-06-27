@@ -549,6 +549,16 @@ export async function recoverUploadPriceData(
     };
   }
 
+  const transportVariantEarlyCandidate = evaluateCandidate(ed, transportVariantSharedPriceTableTiers(ed, rawText, options.year), ctx);
+  if (transportVariantEarlyCandidate.priceRows.length > 0 && transportVariantEarlyCandidate.priceDates.length > 0) {
+    return {
+      ok: true,
+      source: 'supplier_transport_variant_shared_price_table',
+      failures,
+      ...transportVariantEarlyCandidate,
+    };
+  }
+
   if (rawText.length >= 100) {
     const det = extractPriceIR(rawText, {
       year: options.year,

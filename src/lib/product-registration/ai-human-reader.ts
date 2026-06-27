@@ -161,6 +161,11 @@ function parseLooseDateTokens(line: string, yearHint?: number): string[] {
     .filter((date): date is string => Boolean(date));
   if (explicitKoreanDates.length > 0) return [...new Set(explicitKoreanDates)];
 
+  const droppedLeadingDigitDates = [...withoutParentheses.matchAll(/(?:^|[^\d])0(\d{2})\D{0,5}(\d{1,2})\D{0,5}(\d{1,2})/g)]
+    .map(match => isoDate(2000 + Number(match[1]), Number(match[2]), Number(match[3])))
+    .filter((date): date is string => Boolean(date));
+  if (droppedLeadingDigitDates.length > 0) return [...new Set(droppedLeadingDigitDates)];
+
   const twoDigitYearDates = [...withoutParentheses.matchAll(/(?:^|[^\d])(\d{2})\s*년\s*(\d{1,2})\s*(?:[./월]\s*)?(\d{1,2})/g)]
     .map((match) => {
       const yy = Number(match[1]);
@@ -616,8 +621,13 @@ function buildPricePairs(input: HumanReaderInput, rawTextHash: string): {
     ...extractGolfWeekdayRangePriceRows(input),
     ...extractMonthlyWeekdayGridRows(input),
   ];
-  for (const row of candidateRows) {
+  const sortedCandidateRows = [...candidateRows].sort((a, b) => a.date.localeCompare(b.date));
+  const seenMonthDayPrice = new Set<string>();
+  for (const row of sortedCandidateRows) {
     if (!row.date || !row.adult_price || row.adult_price <= 0) continue;
+    const looseKey = `${row.date.slice(5)}|${row.adult_price}`;
+    if (seenMonthDayPrice.has(looseKey)) continue;
+    seenMonthDayPrice.add(looseKey);
     const key = `${row.date}|${row.adult_price}`;
     if (seen.has(key)) continue;
     seen.add(key);

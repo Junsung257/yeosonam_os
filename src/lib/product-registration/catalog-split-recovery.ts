@@ -143,6 +143,11 @@ function inferTripStyle(title: string, section?: string): { nights?: number; dur
 
 function inferDestination(title: string): string | undefined {
   const normalizedTitle = standardizeKnownMojibakeTitle(title);
+  const readableKnown = [
+    '석가장', '발리', '푸꾸옥', '다낭', '보홀', '나트랑', '달랏', '연길', '백두산', '시즈오카', '몽골',
+  ];
+  const readableDestination = readableKnown.find(name => title.includes(name) || normalizedTitle.includes(name));
+  if (readableDestination) return readableDestination;
   const known = [
     '클락', '후쿠오카', '푸꾸옥', '세부', '다낭', '나트랑', '방콕', '파타야', '오사카', '도쿄', '나리타', '치바', '서안', '화산',
     '?대씫', '?꾩퓼?ㅼ뭅', '?멸씀??', '?몃?', '?ㅻ궘', '?섑듃??', '諛⑹퐬', '?뚰???', '?ㅼ궗移?', '?꾩퓙', '?섎━?', '移섎컮', '二좎떆', '?쒖븞', '?붿궛',
@@ -178,6 +183,34 @@ function splitRepeatedDayOnlyProductHeaders(rawText: string): { sharedPrefix: st
   return {
     sharedPrefix: rawText.slice(0, starts[0]).trim(),
     sections: starts.map((start, index) => rawText.slice(start, starts[index + 1] ?? rawText.length).trim()),
+  };
+}
+
+function splitReadableRepeatedProductHeaders(rawText: string): { sharedPrefix: string; sections: string[] } | null {
+  const text = rawText.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const starts: number[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]?.trim() ?? '';
+    if (!/^\[[^\]\n]{2,120}\][^\n]{2,180}\d{1,2}\s*일(?:$|[\s&<\-–—])/u.test(line)) continue;
+    const window = lines.slice(index, Math.min(lines.length, index + 110)).join('\n');
+    if (/(?:^|\n)\s*제\s*1\s*일(?:$|[\s\n])/u.test(window) && /(?:^|\n)\s*제\s*[2-9]\s*일(?:$|[\s\n])/u.test(window)) {
+      starts.push(offsets[index]);
+    }
+  }
+
+  const sorted = [...new Set(starts)].sort((a, b) => a - b);
+  if (sorted.length < 2) return null;
+  return {
+    sharedPrefix: text.slice(0, sorted[0]).trim(),
+    sections: sorted.map((start, index) => text.slice(start, sorted[index + 1] ?? text.length).trim()),
   };
 }
 
@@ -241,9 +274,16 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
       sections = repeatedDayOnlySplit.sections;
     }
   }
+  if (sections.length < 2) {
+    const readableRepeatedProductSplit = splitReadableRepeatedProductHeaders(rawText);
+    if (readableRepeatedProductSplit) {
+      sharedPrefix = readableRepeatedProductSplit.sharedPrefix;
+      sections = readableRepeatedProductSplit.sections;
+    }
+  }
   if (sections.length < 2) return [];
 
-  const products = sections.map((section, index) => {
+  let products = sections.map((section, index) => {
     const sectionRawText = standardizeKnownMojibakeSupplierText(((sharedPrefix ? `${sharedPrefix}\n\n---\n\n` : '') + section).trim());
     const title = standardizeKnownMojibakeTitle(inferTitle(section, index));
     const trip = inferTripStyle(title, sectionRawText);
@@ -267,6 +307,13 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
       sectionRawText,
     };
   });
+  const strongProductCount = products.filter(product => {
+    const title = product.extractedData.title ?? '';
+    return /^\[[^\]]+\]/.test(title) || /\bPKG\b/i.test(title);
+  }).length;
+  if (strongProductCount >= 2) {
+    products = products.filter(product => !/\/\/.+\d+\s*박\s*\d+\s*일/u.test(product.extractedData.title ?? ''));
+  }
   const productsWithCustomerDayEvidence = products.filter((product, index) => {
     const ownSection = standardizeKnownMojibakeSupplierText(sections[index] ?? '');
     return hasCustomerDayMarkerEvidence(ownSection || (product.sectionRawText ?? ''));

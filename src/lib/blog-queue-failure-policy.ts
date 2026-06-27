@@ -4,6 +4,8 @@ type BlogQueueFailureCode =
   | 'keyword_density'
   | 'structure_integrity'
   | 'intent_quality'
+  | 'engine_v2'
+  | 'evidence_insufficient'
   | 'topic_fit'
   | 'seo_score'
   | 'db_write'
@@ -24,6 +26,8 @@ const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'keyword_density',
   'structure_integrity',
   'intent_quality',
+  'engine_v2',
+  'evidence_insufficient',
   'topic_fit',
   'seo_score',
   'linked_draft_invalid',
@@ -70,6 +74,14 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (hasFailedGate(qa, 'intent_quality') || /\[intent_quality\]|intent_quality|weak_reading_design|weak_list_or_table/i.test(text)) {
     return { code: 'intent_quality', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (/evidence_insufficient|source_support|근거\s*부족/i.test(text)) {
+    return { code: 'evidence_insufficient', retryable: false, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'engine_v2') || /\[engine_v2\]|engine v2|product_decision_helpfulness|engine_task_incomplete|ai_naturalness|sales_pressure/i.test(text)) {
+    return { code: 'engine_v2', retryable: true, selfHealAllowed: false, skipped: false };
   }
 
   if (hasFailedGate(qa, 'topic_fit') || /topic_fit|topic fit/i.test(text)) {

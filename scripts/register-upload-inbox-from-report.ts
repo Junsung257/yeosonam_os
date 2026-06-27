@@ -1,20 +1,17 @@
 #!/usr/bin/env tsx
 
+import './load-script-env';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { config as loadEnv } from 'dotenv';
 
 import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
 import { runUploadRegistrationPipeline } from '@/lib/product-registration/upload-registration-pipeline';
 import type { UploadRequestIntakeSuccess } from '@/lib/product-registration/upload-request-intake';
 import { parseUploadSourceMetadata } from '@/lib/upload-source-metadata';
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-
-loadEnv({ path: '.env.local' });
-loadEnv();
 
 type ExtractReportRow = {
   fileName?: string;

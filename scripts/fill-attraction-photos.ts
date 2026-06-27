@@ -8,6 +8,10 @@ const json = args.has('--json');
 const limit = Number(argValue('--limit', '50'));
 const referenced = args.has('--referenced');
 const status = argValue('--status', 'active');
+const packageIds = argValue('--ids', '')
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
 
 function argValue(name: string, fallback: string): string {
   const found = process.argv.find(arg => arg.startsWith(`${name}=`));
@@ -25,16 +29,19 @@ async function main() {
       return;
     }
 
-    const { data: packages, error: packageError } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('travel_packages')
       .select('id, itinerary_data')
-      .eq('status', status)
       .not('itinerary_data', 'is', null)
       .limit(1000);
+    if (packageIds.length > 0) query = query.in('id', packageIds);
+    else query = query.eq('status', status);
+
+    const { data: packages, error: packageError } = await query;
     if (packageError) throw packageError;
 
-    const ids = Array.from(new Set((packages ?? []).flatMap(row => collectAttractionIds(row.itinerary_data)))).slice(0, limit);
-    const rows = await fetchAttractionsByIds(ids);
+    const attractionIds = Array.from(new Set((packages ?? []).flatMap(row => collectAttractionIds(row.itinerary_data)))).slice(0, limit);
+    const rows = await fetchAttractionsByIds(attractionIds);
     let processed = 0;
     let totalPhotos = 0;
     for (const row of rows.filter(row => !Array.isArray(row.photos) || row.photos.length === 0)) {
@@ -51,7 +58,7 @@ async function main() {
       await new Promise(resolve => setTimeout(resolve, 250));
     }
 
-    const output = { mode: 'referenced', status, limit, referencedAttractions: ids.length, processed, totalPhotos };
+    const output = { mode: 'referenced', status, packageIds: packageIds.length, limit, referencedAttractions: attractionIds.length, processed, totalPhotos };
     if (json) console.log(JSON.stringify(output, null, 2));
     else console.log(`[fill-attraction-photos] mode=referenced processed=${processed} totalPhotos=${totalPhotos}`);
     return;

@@ -118,6 +118,8 @@ export async function runUploadV3CatalogPreflight(input: {
     preSaveV3Result,
     expectedProductCount,
     actualProductCount,
-    productCountMismatch: expectedProductCount >= 2 && actualProductCount !== expectedProductCount,
+    productCountMismatch: preSaveV3Result.gate_result.status !== 'blocked'
+      && expectedProductCount >= 2
+      && actualProductCount !== expectedProductCount,
   };
 }

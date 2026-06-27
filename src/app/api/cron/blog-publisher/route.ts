@@ -4,7 +4,16 @@ import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
-import { generateBlogPost, generateBlogSeo, type AngleType } from '@/lib/content-generator';
+import { generateBlogSeo, type AngleType } from '@/lib/content-generator';
+import { buildProductBlogBrief, buildProductSlugSuffix } from '@/lib/blog-product-brief';
+import { generateProductConsultantBlogPost } from '@/lib/blog-product-consultant-writer';
+import {
+  BLOG_EDITORIAL_VOICE,
+  buildInfoGuideBrief,
+  buildInfoWriterPromptBlock,
+  buildProductConsultBrief,
+  buildProductConsultantPromptBlock,
+} from '@/lib/blog-editorial-voice';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
@@ -63,7 +72,7 @@ import { readBoundedIntEnv } from '@/lib/env-utils';
  *      b. source 에 따라 생성:
  *         - pillar       → /destinations/[city] 허브 (장문 AI)
  *         - card_news    → from-card-news `publisher_bridge`(본문만) + 퍼블리셔가 단일 INSERT/승격
- *         - product      → content-generator.generateBlogPost (템플릿)
+ *         - product      → product_consultant_writer (템플릿)
  *         - 나머지       → Gemini 2.5 Flash + style guide
  *      c. 4-Gate 검증 (length·cliche·duplicate·keyword_density)
  *      d. Pass → content_creatives insert 또는 draft 승격(status='published') + 색인 알림 + ISR revalidate
@@ -81,11 +90,12 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
-const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 3, 1, 5);
-const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 10, MAX_BATCH, 20);
-const MAX_QUALITY_REPAIR_ROUNDS = 3;
+const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 2, 1, 5);
+const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 6, MAX_BATCH, 20);
+const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 1, 0, 4);
+const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
 const MAX_ATTEMPTS = 2;
-const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
+const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
 
 function getQueueMicroAngle(item: any): string | null {
@@ -386,6 +396,7 @@ function buildQualityGateInput(
     content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
     product_id: item.product_id ?? null,
     micro_angle: getQueueMicroAngle(item),
+    generation_meta: generated.generation_meta ?? null,
   };
 }
 
@@ -414,7 +425,7 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
-    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('render_integrity')) {
+    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity')) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -446,6 +457,15 @@ async function repairFailedQualityGates(
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
       if (generated.blog_html !== before) {
         changes.push('forced_official_reference_links');
+        changed = true;
+      }
+    }
+
+    if (failed.has('engine_v2')) {
+      const before = generated.blog_html;
+      generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+      if (generated.blog_html !== before) {
+        changes.push('engine_v2_evidence_references');
         changed = true;
       }
     }
@@ -495,6 +515,11 @@ async function repairFailedQualityGates(
     }
 
     if (!changed) break;
+
+    generated.generation_meta = {
+      ...(generated.generation_meta || {}),
+      repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0) + 1,
+    };
 
     generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
     generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
@@ -807,7 +832,7 @@ async function runBlogPublisher(request: NextRequest) {
       }
     }
 
-    while (publishedThisRun < remainingToday) {
+    while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
       const elapsed = Date.now() - startTime;
       const remaining = MAX_EXEC_MS - elapsed;
       if (remaining < 30000) {
@@ -981,6 +1006,7 @@ async function runBlogPublisher(request: NextRequest) {
 
     const publishedCount = results.filter(r => r.status === 'published').length;
     const failureBreakdown = buildPublisherFailureBreakdown(results);
+    const canonicalMatched = publishedSlugs.every(slug => typeof slug === 'string' && slug.trim().length > 0 && !slug.startsWith('/'));
     if (publishedCount === 0 && remainingToday > 0) {
       errors.push('publisher_zero_published_with_remaining_quota');
     }
@@ -1001,6 +1027,12 @@ async function runBlogPublisher(request: NextRequest) {
       pillarDeferral,
       queueRefill,
       failure_breakdown: failureBreakdown,
+      operational_checks: {
+        published_count: publishedCount,
+        quality_passed: results.filter(r => r.status === 'published').length === publishedCount,
+        indexing_queued: publishedCount === 0 ? true : indexingFailed === 0,
+        canonical_matched: canonicalMatched,
+      },
       extraClaimRounds,
       emergencyRefillRounds,
       emergencyRefills,
@@ -1064,7 +1096,7 @@ async function processQueueItem(
     // 생성 경로 분기
     //   1) pillar → /destinations/[city] 허브 본문 생성 (장문 AI)
     //   2) card_news 연결 → from-card-news API 위임 (PNG 삽입 블로그)
-    //   3) product_id 있음 → generateBlogPost (템플릿)
+    //   3) product_id 있음 → product_consultant_writer (템플릿)
     //   4) 나머지 → Gemini 정보성 글
     const topicFit = evaluateBlogTopicFit({
       topic: item.topic,
@@ -1296,51 +1328,18 @@ async function processQueueItem(
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
-      qa = await runQualityGates({
-        blog_html: generated.blog_html,
-        slug: generated.slug,
-        destination: item.destination,
-        angle_type: normalizeAngleType(item.angle_type),
-        blog_type: blogType,
-        primary_keyword: primaryKeyword,
-        category: item.category,
-        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        product_id: item.product_id ?? null,
-        micro_angle: getQueueMicroAngle(item),
-      });
+      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'hook' && !gate.passed)) {
       generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
-      qa = await runQualityGates({
-        blog_html: generated.blog_html,
-        slug: generated.slug,
-        destination: item.destination,
-        angle_type: normalizeAngleType(item.angle_type),
-        blog_type: blogType,
-        primary_keyword: primaryKeyword,
-        category: item.category,
-        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        product_id: item.product_id ?? null,
-        micro_angle: getQueueMicroAngle(item),
-      });
+      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
-      qa = await runQualityGates({
-        blog_html: generated.blog_html,
-        slug: generated.slug,
-        destination: item.destination,
-        angle_type: normalizeAngleType(item.angle_type),
-        blog_type: blogType,
-        primary_keyword: primaryKeyword,
-        category: item.category,
-        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-        product_id: item.product_id ?? null,
-        micro_angle: getQueueMicroAngle(item),
-      });
+      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     }
 
     if (!qa.passed) {
@@ -1448,11 +1447,31 @@ async function processQueueItem(
 
     const readability = computeReadability(generated.blog_html);
     const now = new Date().toISOString();
+    const engineGate = qa.gates.find(gate => gate.gate === 'engine_v2');
+    const engineEvaluation = engineGate?.evidence && typeof engineGate.evidence === 'object'
+      ? (engineGate.evidence as Record<string, unknown>).evaluation as Record<string, unknown> | undefined
+      : undefined;
+    const engineMetrics = engineEvaluation?.metrics && typeof engineEvaluation.metrics === 'object'
+      ? engineEvaluation.metrics as Record<string, unknown>
+      : {};
+    const engineBrief = engineEvaluation?.brief && typeof engineEvaluation.brief === 'object'
+      ? engineEvaluation.brief as Record<string, unknown>
+      : {};
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
       ...(item.meta || {}),
       ...(generated.generation_meta || {}),
+      engine_version: 'blog-engine-v2',
+      writer: typeof generated.generation_meta?.writer === 'string'
+        ? generated.generation_meta.writer
+        : (item.product_id ? 'product_consultant_writer' : 'info_writer'),
+      brief_score: typeof engineMetrics.task_completion === 'number' ? engineMetrics.task_completion : null,
+      evidence_score: typeof engineMetrics.source_support === 'number' ? engineMetrics.source_support : null,
+      engine_score: typeof engineEvaluation?.score === 'number' ? engineEvaluation.score : null,
+      failure_bucket: engineEvaluation?.failure_bucket ?? null,
+      repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
+      evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
     };
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
@@ -1839,7 +1858,9 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     attractions = attrs || [];
   }
 
-  let blog_html = generateBlogPost(product, angle, attractions);
+  const productBrief = buildProductBlogBrief(product, angle);
+  const productConsultBrief = buildProductConsultBrief(productBrief);
+  let blog_html = generateProductConsultantBlogPost(product, productBrief);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: product.id,
     destination: product.destination,
@@ -1847,8 +1868,8 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   });
   blog_html += formatReviewQuotesAppendMarkdown(reviewSnips);
   const seo = generateBlogSeo(product, angle);
-  // Append product ID suffix to prevent slug collisions between same-destination products
-  const slug = `${seo.slug}-${product.id.slice(-6)}`;
+  // Append product facts to prevent same-destination products from burning duplicate slug candidates.
+  const slug = `${seo.slug}-${buildProductSlugSuffix(product)}`;
 
   // og_image_url 폴백 체인 — null 비율 83% 문제 해결 (2026-05-12)
   // 1. 상품 대표사진 hero_image_url
@@ -1872,12 +1893,41 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     `${baseUrl}/og-image.png`;
 
   return {
-    blog_html,
+    blog_html: blog_html + `\n\n<!-- prompt_version: ${productBrief.prompt_version} -->`,
     slug,
     seo_title: seo.seoTitle,
     seo_description: seo.seoDescription,
     og_image_url,
     generation_meta: {
+      prompt_version: productBrief.prompt_version,
+      writer: 'product_consultant_writer',
+      editorial_voice: BLOG_EDITORIAL_VOICE,
+      product_consult_brief: productConsultBrief,
+      prompt_contract: buildProductConsultantPromptBlock(productConsultBrief),
+      content_brief: {
+        title: productBrief.product_title,
+        primary_keyword: productBrief.primary_keyword,
+        secondary_keywords: [productBrief.destination, productBrief.supplier_code, productBrief.departure_date]
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+        search_intent: 'commercial_package_comparison',
+        required_sections: [
+          'price_and_inclusions',
+          'itinerary_summary',
+          'fit_and_cautions',
+          'consultation_cta',
+        ],
+        forbidden_angles: [
+          'clickbait opening',
+          'unsupported scarcity',
+          'hidden excluded costs',
+        ],
+        source_requirements: [
+          'use stored product fields only',
+          'do not invent prices, dates, hotels, airlines, or inclusions',
+        ],
+        product: productBrief,
+      },
+      product_dedup_key: productBrief.dedup_key,
       seo: {
         primary_keyword: seo.primaryKeyword,
         secondary_keywords: seo.secondaryKeywords,
@@ -1934,6 +1984,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
   }
+  const infoGuideBrief = buildInfoGuideBrief(contentBrief);
   const effectiveTopic = contentBrief.title;
   const primaryKw = contentBrief.primaryKeyword;
   const volume = item.monthly_search_volume;
@@ -2043,6 +2094,15 @@ ${originalityPromptBlock}
 ${freshnessPromptBlock}
 ${intentPromptBlock}
 ${buildBlogContentBriefPromptBlock(contentBrief)}
+${buildInfoWriterPromptBlock(infoGuideBrief)}
+
+## Current quality contract from recent /blog samples
+- Micro-angle ids or English planning labels are internal only. Never expose labels like "family budget", "transport cost", "hotel area budget", "weather packing", or "local mobility" in the H1, H2, slug text, or body. Convert them into natural Korean search intent.
+- The first 200 characters must answer the reader task: cost, timing, route, documents, packing, or decision criteria for ${primaryKw}.
+- If a Markdown table appears, it must be valid GitHub Flavored Markdown with a header row, separator row, and at least 3 body rows. If there are fewer than 3 real rows, write a checklist instead of a table.
+- Do not use ==highlight==, <mark>, fake emphasis syntax, or unexplained English placeholders.
+- Include official or primary-source links when the topic can change by policy, visa, weather, airport, transport, or ticketing conditions.
+- Destination is required unless the brief explicitly says the article is intentionally generic. Do not publish a generic travel guide when a destination exists in the queue item.
 
 ${tierGuidance[tier]}
 ${trendBlock}
@@ -2106,6 +2166,10 @@ ${serpGapBlock}
   }
 
   const generation_meta: Record<string, unknown> = {
+    prompt_version: promptVersion,
+    writer: 'info_writer',
+    editorial_voice: BLOG_EDITORIAL_VOICE,
+    info_guide_brief: infoGuideBrief,
     content_brief: {
       title: contentBrief.title,
       primary_keyword: contentBrief.primaryKeyword,

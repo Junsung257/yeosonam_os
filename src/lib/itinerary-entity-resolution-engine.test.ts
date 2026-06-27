@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chooseCanonicalNameFromNaver } from './naver-entity-verifier';
-import { resolveItineraryEntityCandidate, type EntityCandidateRow } from './itinerary-entity-resolution-engine';
+import {
+  resolveItineraryEntityCandidate,
+  terminalNonMasterReason,
+  type EntityCandidateRow,
+} from './itinerary-entity-resolution-engine';
 
 function candidate(overrides: Partial<EntityCandidateRow> = {}): EntityCandidateRow {
   return {
@@ -24,6 +28,14 @@ function candidate(overrides: Partial<EntityCandidateRow> = {}): EntityCandidate
     ...overrides,
   };
 }
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([]), { status: 200 })));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('chooseCanonicalNameFromNaver', () => {
   it('prefers a short high-volume Korean place name over a long descriptive phrase', () => {
@@ -89,6 +101,74 @@ describe('chooseCanonicalNameFromNaver', () => {
 });
 
 describe('resolveItineraryEntityCandidate', () => {
+  it('uses Google Places strong identity plus supplier corpus as internal-only attraction evidence', async () => {
+    const decision = await resolveItineraryEntityCandidate(candidate({
+      raw_label: 'Tokyo Tower',
+      normalized_label: 'Tokyo Tower',
+      destination_scope: 'Tokyo',
+      country_scope: 'JP',
+      region_scope: 'Tokyo',
+      evidence_count: 4,
+      occurrence_count: 7,
+      package_count: 3,
+      suggested_master: { label: 'Tokyo Tower' },
+    }), {
+      naverVerifier: async () => ({
+        configured: true,
+        canonicalName: 'Tokyo Tower',
+        canonicalNameSource: 'input',
+        searchScore: 0,
+        keywordScore: 0,
+        overallScore: 0,
+        searchEvidence: [],
+        keywordEvidence: [],
+        sources: [],
+        attempts: [],
+      }),
+      googlePlacesVerifier: async () => ({
+        configured: true,
+        enabled: true,
+        remainingDailyCalls: 9,
+        maxQueriesPerCandidate: 1,
+        canonicalName: 'Tokyo Tower',
+        score: 0.92,
+        hasStrongPlaceIdentity: true,
+        regionConflict: false,
+        evidence: [{
+          query: 'Tokyo Tokyo Tower',
+          placeId: 'place-tokyo-tower',
+          displayName: 'Tokyo Tower',
+          formattedAddress: '4 Chome-2-8 Shibakoen, Minato City, Tokyo, Japan',
+          types: ['tourist_attraction', 'point_of_interest'],
+          googleMapsUri: 'https://maps.google.com/?cid=1',
+          websiteUri: null,
+          nameMatches: true,
+          regionMatches: true,
+          countryMatches: true,
+          typeMatches: true,
+          score: 0.92,
+        }],
+        sources: [{
+          source: 'google_places',
+          id: 'place-tokyo-tower',
+          url: 'https://maps.google.com/?cid=1',
+          confidence: 0.92,
+          name: 'Tokyo Tower',
+        }],
+        attempts: [],
+      }),
+      wikidataReconciler: async () => [],
+    });
+
+    expect(decision.autoAction).toBe('create_internal_master');
+    expect(decision.promotionStatus).toBe('auto_internal');
+    expect(decision.autoVerificationStatus).toBe('verified_internal');
+    expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    expect(decision.suggestedMaster.assurance).toEqual(expect.objectContaining({
+      google_places_support: true,
+    }));
+  });
+
   it('uses Naver as a naming signal but does not make a new attraction publishable by itself', async () => {
     const decision = await resolveItineraryEntityCandidate(candidate(), {
       naverVerifier: async () => ({
@@ -186,6 +266,82 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(decision.suggestedMaster.customer_publishable).toBe(true);
   });
 
+  it('can mark an attraction publishable-ready with free OSM identity evidence while keeping admin approval separate', async () => {
+    const decision = await resolveItineraryEntityCandidate(candidate({
+      raw_label: 'Tokyo Tower',
+      normalized_label: 'Tokyo Tower',
+      destination_scope: 'Tokyo',
+      country_scope: 'JP',
+      region_scope: 'Tokyo',
+      evidence_count: 10,
+      occurrence_count: 16,
+      package_count: 6,
+      suggested_master: { label: 'Tokyo Tower' },
+    }), {
+      naverVerifier: async () => ({
+        configured: true,
+        canonicalName: 'Tokyo Tower',
+        canonicalNameSource: 'naver_search',
+        searchScore: 0.98,
+        keywordScore: 0,
+        overallScore: 0.637,
+        searchEvidence: [
+          {
+            target: 'local',
+            query: 'Tokyo Tower',
+            total: 20,
+            itemCount: 3,
+            matchedItems: 3,
+            exactTitleMatches: 1,
+            regionMatches: 1,
+            addressMatches: 1,
+            topTitles: ['Tokyo Tower'],
+            topLinks: ['https://example.com/tokyo-tower'],
+          },
+        ],
+        keywordEvidence: [],
+        sources: [
+          {
+            source: 'naver_search',
+            id: 'Tokyo Tower',
+            url: 'https://search.naver.com/search.naver?query=Tokyo%20Tower',
+            confidence: 0.98,
+            name: 'Tokyo Tower',
+          },
+        ],
+        attempts: [],
+      }),
+      osmNominatimVerifier: async () => ({
+        configured: true,
+        canonicalName: 'Tokyo Tower',
+        score: 1,
+        hasStrongPlaceIdentity: true,
+        regionConflict: false,
+        evidence: [],
+        sources: [{
+          source: 'osm_nominatim',
+          id: 'way:123',
+          url: 'https://www.openstreetmap.org/way/123',
+          confidence: 1,
+          name: 'Tokyo Tower',
+        }],
+        attempts: [],
+      }),
+      googlePlacesVerifier: async () => {
+        throw new Error('Google should not be called when free evidence is enough');
+      },
+      wikidataReconciler: async () => [],
+    });
+
+    expect(decision.autoAction).toBe('create_publishable_master');
+    expect(decision.promotionStatus).toBe('publishable_ready');
+    expect(decision.autoVerificationStatus).toBe('verified_publishable');
+    expect(decision.suggestedMaster.assurance).toEqual(expect.objectContaining({
+      osm_nominatim_support: true,
+      google_places_support: false,
+    }));
+  });
+
   it('verifies an internal hotel only with local/place support and repeated supplier evidence', async () => {
     const decision = await resolveItineraryEntityCandidate(candidate({
       category: 'hotel',
@@ -242,7 +398,7 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(decision.suggestedMaster.customer_publishable).toBe(false);
   });
 
-  it('uses regional Naver web evidence for overseas attraction internal verification', async () => {
+  it('keeps blog-only Naver evidence review-gated without Google or local place support', async () => {
     const decision = await resolveItineraryEntityCandidate(candidate({
       raw_label: '보랏빛 야경과 이색적인 시장의 조화 [부이페스트 바자 나이트 마켓]',
       normalized_label: '부이페스트 바자 나이트 마켓',
@@ -290,9 +446,7 @@ describe('resolveItineraryEntityCandidate', () => {
       wikidataReconciler: async () => [],
     });
 
-    expect(decision.autoAction).toBe('create_internal_master');
-    expect(decision.promotionStatus).toBe('auto_internal');
-    expect(decision.autoVerificationStatus).toBe('verified_internal');
+    expect(decision.autoVerificationStatus).not.toBe('verified_internal');
     expect(decision.suggestedMaster.customer_publishable).toBe(false);
   });
 
@@ -378,6 +532,61 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(decision.autoAction).toBe('reject_noise');
     expect(decision.promotionStatus).toBe('rejected_noise');
     expect(decision.autoVerificationStatus).toBe('rejected_noise');
+  });
+
+  it('auto-rejects Korean itinerary fragments that are not attraction masters', async () => {
+    const labels = [
+      '부산항출항',
+      '왕복전동차',
+      '호이안 디저트 - 반짱느엉 + 못 주스',
+      '일본 3대 온천지로 꼽히는 아타미로 이동 후',
+      '증편특가',
+    ];
+
+    for (const label of labels) {
+      const decision = await resolveItineraryEntityCandidate(candidate({
+        raw_label: label,
+        normalized_label: label,
+        suggested_master: { label },
+      }), {
+        naverVerifier: async () => {
+          throw new Error('Naver should be skipped for terminal non-master Korean fragments');
+        },
+        wikidataReconciler: async () => [],
+      });
+
+      expect(decision.autoAction).toBe('reject_noise');
+      expect(decision.promotionStatus).toBe('rejected_noise');
+      expect(decision.autoVerificationStatus).toBe('rejected_noise');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
+
+  it('does not reject a clean Korean place name just because raw context has list wording', async () => {
+    expect(terminalNonMasterReason(
+      'attraction',
+      '다딴란 폭포',
+      '베트남에서 가장 유명한 다딴란 폭포 등 관광',
+    )).toBeNull();
+  });
+
+  it('auto-rejects Korean option, metric, room, and multi-entity fragments', () => {
+    expect(terminalNonMasterReason('attraction', '사막 진입시 케이블카 또는 버스 이용', '사막 진입시 케이블카 또는 버스 이용'))
+      .toBe('activity or operational detail, not an attraction master');
+    expect(terminalNonMasterReason('attraction', '5043M', '5043M'))
+      .toBe('metric or attribute fragment, not an attraction master');
+    expect(terminalNonMasterReason('attraction', '비암산 일송정, 해란강', '비암산 일송정, 해란강'))
+      .toBe('multiple entities or option list, not a single attraction master');
+    expect(terminalNonMasterReason('hotel', ': 푸꾸옥 뉴월드 - 가든풀빌라 2BED룸', ': 푸꾸옥 뉴월드 - 가든풀빌라 2BED룸'))
+      .toBe('hotel operational or room fragment');
+  });
+
+  it('keeps clean Korean place names reviewable', () => {
+    expect(terminalNonMasterReason('attraction', '시나무런초원', '시나무런 초원')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '관운장 사당', '관운장 사당')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '베이사이드플레이스', '베이사이드플레이스 관광')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '판시판산', '케이블카 탑승 후 판시판산 관광')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '아쿠아토피아 워터파크', '아쿠아토피아 워터파크+놀이공원 무제한 이용 가능')).toBeNull();
   });
 
   it('keeps shopping text review-gated without wasting external search', async () => {

@@ -10,10 +10,18 @@ const args = process.argv.slice(2);
 const apply = args.includes('--apply');
 const json = args.includes('--json');
 const limit = Number(argValue('--limit', '10000'));
+const packageIds = argList('--ids').concat(argList('--package-ids'));
 
 function argValue(name: string, fallback: string): string {
   const found = args.find(arg => arg.startsWith(`${name}=`));
   return found ? found.slice(name.length + 1) : fallback;
+}
+
+function argList(name: string): string[] {
+  return argValue(name, '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
 }
 
 const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -58,13 +66,17 @@ async function fetchActiveRows(): Promise<ActiveRow[]> {
   const pageSize = 1000;
   for (let from = 0; rows.length < limit; from += pageSize) {
     const to = Math.min(from + pageSize - 1, limit - 1);
-    const { data, error } = await supabase
+    let query = supabase
       .from('unmatched_activities')
       .select('id, activity, package_id, package_title, day_number, country, region, occurrence_count, segment_kind_guess, confidence, suggested_action, suggested_resolution, source_context')
       .eq('status', 'pending')
       .is('resolved_at', null)
       .order('occurrence_count', { ascending: false })
       .range(from, to);
+    if (packageIds.length > 0) {
+      query = query.in('package_id', packageIds);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     if (!data || data.length === 0) break;
     rows.push(...(data as ActiveRow[]));
@@ -172,11 +184,15 @@ function summarize(plan: PlanRow[]) {
 }
 
 async function countActivePending(): Promise<number> {
-  const { count, error } = await supabase
+  let query = supabase
     .from('unmatched_activities')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'pending')
     .is('resolved_at', null);
+  if (packageIds.length > 0) {
+    query = query.in('package_id', packageIds);
+  }
+  const { count, error } = await query;
   if (error) throw error;
   return count ?? 0;
 }
@@ -193,6 +209,7 @@ async function main() {
 
   const output = {
     apply,
+    package_ids: packageIds,
     scanned: rows.length,
     started_active_pending: startedActivePending,
     active_pending_after: activePendingAfter,

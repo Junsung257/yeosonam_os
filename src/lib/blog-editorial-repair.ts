@@ -552,6 +552,24 @@ function markdownTableSeparatorFor(headerLine: string): string {
   return `| ${Array.from({ length: cellCount }, () => '---').join(' | ')} |`;
 }
 
+function markdownTableBlockToBullets(block: string[]): string[] {
+  const header = parseMarkdownTableCells(block[0] ?? '');
+  const hasSeparator = /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(block[1] ?? '');
+  const rows = block.slice(hasSeparator ? 2 : 1)
+    .map((line) => parseMarkdownTableCells(line))
+    .filter((cells) => cells.length >= 2);
+
+  if (rows.length === 0) return [header.join(' / ')];
+
+  return rows.map((cells) => {
+    const pairs = cells.map((cell, index) => {
+      const label = header[index] || `Column ${index + 1}`;
+      return `${label}: ${cell}`;
+    });
+    return `- ${pairs.join(' / ')}`;
+  });
+}
+
 function repairLooseMarkdownTables(markdown: string): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   const next: string[] = [];
@@ -592,14 +610,16 @@ function repairLooseMarkdownTables(markdown: string): { text: string; changed: b
       changed = true;
     } else {
       const hasSeparator = /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(block[1] ?? '');
-      next.push(block[0]);
-      if (hasSeparator) {
-        next.push(block[1]);
-        next.push(...block.slice(2));
-      } else {
-        next.push(markdownTableSeparatorFor(block[0]));
-        next.push(...block.slice(1));
+      const normalizedBlock = hasSeparator
+        ? [block[0], block[1], ...block.slice(2)]
+        : [block[0], markdownTableSeparatorFor(block[0]), ...block.slice(1)];
+      if (!hasSeparator) changed = true;
+
+      if (normalizedBlock.length < 5) {
+        next.push(...markdownTableBlockToBullets(normalizedBlock));
         changed = true;
+      } else {
+        next.push(...normalizedBlock);
       }
     }
 

@@ -377,6 +377,10 @@ blockers because blog autopublishing can operate without them.
 | `GOOGLE_ADS_CUSTOMER_ID` | Google Ads customer account ID. |
 | `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth client ID. |
 | `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth client secret. |
+| `GOOGLE_PLACES_API_KEY` | Server-only Google Places Text Search key for attraction/entity verification. Does nothing unless `GOOGLE_PLACES_ENABLED=true` and a positive daily limit are set. |
+| `GOOGLE_PLACES_ENABLED` | Optional Google Places verification switch. Default is off/false so Google calls are 0 even when a key exists. |
+| `GOOGLE_PLACES_DAILY_LIMIT` | Maximum billable Google Places verification attempts per UTC day. Default is `0`. |
+| `GOOGLE_PLACES_MAX_QUERIES_PER_CANDIDATE` | Maximum Google Places Text Search queries for one entity candidate. Default is `1`. |
 | `SLACK_WEBHOOK_URL` | Slack operations webhook for marketing/readiness alerts. |
 
 ### Warn-default keys

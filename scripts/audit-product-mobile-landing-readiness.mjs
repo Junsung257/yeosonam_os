@@ -38,6 +38,10 @@ const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split(
   .split(',')
   .map(code => code.trim())
   .filter(Boolean);
+const packageIdFilter = (process.argv.find(arg => arg.startsWith('--package-ids='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(id => id.trim())
+  .filter(Boolean);
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 const siteBaseUrl = String(
   process.env.NEXT_PUBLIC_BASE_URL
@@ -357,6 +361,19 @@ function hasUnresolvedCodeOrDestination(pkg) {
 }
 
 function hasItineraryPolicyLeak(pkg) {
+  const visibleDays = Array.isArray(pkg.itinerary_data?.days)
+    ? pkg.itinerary_data.days
+    : Array.isArray(pkg.itinerary)
+      ? pkg.itinerary
+      : [];
+  return visibleDays.some(day => {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    return schedule.some(item => {
+      const activity = String(item?.activity ?? '');
+      return /(?:취소\s*규정|취소\s*수수료|예약금\s*수수료|위약금|환불\s*불가|300,000)/i.test(activity);
+    });
+  });
+
   const days = Array.isArray(pkg.itinerary_data?.days)
     ? pkg.itinerary_data.days
     : Array.isArray(pkg.itinerary)
@@ -491,7 +508,7 @@ function customerPriceOptionMismatch(pkg, productPriceRows) {
   return null;
 }
 
-function priceDateSourceEvidenceMismatch(pkg) {
+function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
   const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates.filter(row => row?.date && Number(row?.price) > 0) : [];
   const raw = String(pkg.raw_text ?? '');
   if (priceDates.length === 0 || !raw.trim()) return null;
@@ -512,6 +529,19 @@ function priceDateSourceEvidenceMismatch(pkg) {
   const lineHasAmount = (line, price) => {
     const compactLine = String(line ?? '').replace(/\s+/g, '');
     return amountVariantsFor(price).some(amount => compactLine.includes(amount.replace(/\s+/g, '')));
+  };
+  const rawHasAmount = price => lines.some(line => lineHasAmount(line, price));
+  const productPriceProvenanceCovers = row => {
+    if (!rawHasAmount(row.price)) return false;
+    return productPriceRows.some(priceRow => {
+      if (priceRow?.target_date !== row.date) return false;
+      const storedAmount = Number(priceRow.adult_selling_price ?? priceRow.net_price);
+      if (!Number.isFinite(storedAmount) || storedAmount !== Number(row.price)) return false;
+      const note = String(priceRow.note ?? '').trim();
+      if (!note) return false;
+      return /^(?:source_|pdf_date_price_table)/i.test(note)
+        || /\d{1,2}\s*\uC6D4|[월화수목금토일]/.test(note);
+    });
   };
   const dateLabel = iso => {
     const [, , month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
@@ -539,10 +569,16 @@ function priceDateSourceEvidenceMismatch(pkg) {
   };
   const parseSlashRange = (line, year) => {
     const compact = String(line ?? '').replace(/\s+/g, '');
-    const match = compact.match(/(\d{1,2})\/(\d{1,2})~(\d{1,2})\/(\d{1,2})/);
+    const explicit = compact.match(/(\d{1,2})\/(\d{1,2})[~-](\d{1,2})\/(\d{1,2})/);
+    const sameMonth = compact.match(/(\d{1,2})\/(\d{1,2})[~-](\d{1,2})(?!\/)/);
+    const match = explicit ?? sameMonth;
     if (!match) return null;
     const start = dateToDayNumber({ year, month: Number(match[1]), day: Number(match[2]) });
-    const end = dateToDayNumber({ year, month: Number(match[3]), day: Number(match[4]) });
+    const end = dateToDayNumber({
+      year,
+      month: explicit ? Number(match[3]) : Number(match[1]),
+      day: Number(explicit ? match[4] : match[3]),
+    });
     if (start == null || end == null) return null;
     return { start: Math.min(start, end), end: Math.max(start, end) };
   };
@@ -576,6 +612,52 @@ function priceDateSourceEvidenceMismatch(pkg) {
     }
     return out;
   };
+  const parseEmbeddedSlashDates = (line, year) => {
+    const normalized = String(line ?? '').replace(/\s+/g, ' ');
+    const compact = String(line ?? '').replace(/\s+/g, '');
+    const out = [];
+    for (const match of normalized.matchAll(/(^|[^0-9])(\d{1,2})\/(\d{1,2})(?=$|[^0-9/])/g)) {
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const dayNumber = dateToDayNumber({ year, month, day });
+      if (dayNumber != null) out.push(dayNumber);
+    }
+    for (const match of compact.matchAll(/(^|[^0-9])(\d{1,2})\/(\d{1,2}(?:,\d{1,2})+)(?=$|[^0-9/])/g)) {
+      const month = Number(match[2]);
+      for (const dayText of match[3].split(',')) {
+        const dayNumber = dateToDayNumber({ year, month, day: Number(dayText) });
+        if (dayNumber != null) out.push(dayNumber);
+      }
+    }
+    for (const match of compact.matchAll(/(^|[^0-9])(\d{1,2})\/(\d{1,2})(?:([^0-9]|\b))/g)) {
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const dayNumber = dateToDayNumber({ year, month, day });
+      if (dayNumber != null) out.push(dayNumber);
+    }
+    return out;
+  };
+  const parseKoreanMonthDayList = (line, year) => {
+    const compact = String(line ?? '')
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\[[^\]]*\]/g, '')
+      .replace(/\s+/g, '');
+    const out = [];
+    for (const match of compact.matchAll(/(\d{1,2})\uC6D4(\d{1,2}(?:,\d{1,2})*)\uC77C/g)) {
+      const month = Number(match[1]);
+      for (const dayText of match[2].split(',')) {
+        const dayNumber = dateToDayNumber({ year, month, day: Number(dayText) });
+        if (dayNumber != null) out.push(dayNumber);
+      }
+    }
+    return out;
+  };
+  const dateNumbersInLine = (line, year) => [
+    ...parseSlashDateList(line, year),
+    ...parseMixedSlashDateList(line, year),
+    ...parseEmbeddedSlashDates(line, year),
+    ...parseKoreanMonthDayList(line, year),
+  ];
   const parseKoreanDateOnlyLine = (line, year) => {
     const compact = String(line ?? '').replace(/\s+/g, '');
     const match = compact.match(/^(?:(20\d{2})년)?(\d{1,2})월(\d{1,2})일$/);
@@ -599,16 +681,23 @@ function priceDateSourceEvidenceMismatch(pkg) {
     }
     return false;
   };
+  const rangeLineWithProductPriceProvenanceCovers = row => {
+    const parts = isoParts(row.date);
+    if (!parts || !productPriceProvenanceCovers(row)) return false;
+    const target = dateToDayNumber(parts);
+    if (target == null) return false;
+    return lines.some(line => {
+      const range = parseSlashRange(line, parts.year);
+      return Boolean(range && target >= range.start && target <= range.end);
+    });
+  };
   const dateListEvidenceCovers = row => {
     const parts = isoParts(row.date);
     if (!parts) return false;
     const target = dateToDayNumber(parts);
     if (target == null) return false;
     for (let i = 0; i < lines.length; i++) {
-      const dates = [
-        ...parseSlashDateList(lines[i], parts.year),
-        ...parseMixedSlashDateList(lines[i], parts.year),
-      ];
+      const dates = dateNumbersInLine(lines[i], parts.year);
       const koreanDate = parseKoreanDateOnlyLine(lines[i], parts.year);
       if (koreanDate != null) {
         dates.push(koreanDate);
@@ -630,32 +719,47 @@ function priceDateSourceEvidenceMismatch(pkg) {
     const slashLabel = slashDateLabel(row.date);
     const amount = amountFor(row.price);
     if (!label || !amount) continue;
-    const start = lines.findIndex(line => {
+    const parts = isoParts(row.date);
+    const target = parts ? dateToDayNumber(parts) : null;
+    const starts = lines.reduce((indices, line, index) => {
       const compact = line.replace(/\s+/g, '');
-      return compact.includes(label) || compactDateTokenOccurs(compact, slashLabel);
-    });
-    if (start < 0) {
+      if (
+        compact.includes(label)
+        || compactDateTokenOccurs(compact, slashLabel)
+        || (parts && target != null && dateNumbersInLine(line, parts.year).includes(target))
+      ) {
+        indices.push(index);
+      }
+      return indices;
+    }, []);
+    if (starts.length === 0) {
+      if (productPriceProvenanceCovers(row)) continue;
       if (rangeEvidenceCovers(row) || dateListEvidenceCovers(row)) continue;
       return `source missing date ${row.date}`;
     }
 
-    let cursor = start + 1;
-    let sawAnotherDateBeforePrice = false;
     let found = false;
-    for (let i = cursor; i < Math.min(lines.length, cursor + 8); i++) {
-      const line = lines[i];
-      if (!line) continue;
-      if (dateOnlyRe.test(line)) {
-        sawAnotherDateBeforePrice = true;
-        break;
+    let sawAnotherDateBeforePrice = false;
+    for (const start of starts) {
+      let localSawAnotherDateBeforePrice = false;
+      for (let i = start; i < Math.min(lines.length, start + 9); i++) {
+        const line = lines[i];
+        if (!line) continue;
+        if (i > start && dateOnlyRe.test(line)) {
+          localSawAnotherDateBeforePrice = true;
+          break;
+        }
+        if (i > start && headerRe.test(line)) break;
+        if (lineHasAmount(line, row.price)) {
+          found = true;
+          break;
+        }
       }
-      if (headerRe.test(line)) break;
-      if (lineHasAmount(line, row.price)) {
-        found = true;
-        break;
-      }
+      sawAnotherDateBeforePrice = sawAnotherDateBeforePrice || localSawAnotherDateBeforePrice;
+      if (found) break;
     }
     if ((!found || sawAnotherDateBeforePrice) && !rangeEvidenceCovers(row) && !dateListEvidenceCovers(row)) {
+      if (rangeLineWithProductPriceProvenanceCovers(row)) continue;
       return `source price evidence missing for ${row.date} ${amount}`;
     }
   }
@@ -668,6 +772,12 @@ function normalizeTerm(value) {
 
 function isMatchableAttractionRow(attraction) {
   return !attraction?.category || !['accommodation', 'hotel', 'mrt_product'].includes(String(attraction.category));
+}
+
+function isBadRegisteredAttractionTerm(term) {
+  const normalized = normalizeTerm(term);
+  if (!normalized || /^\d+(?:분|시간|m)$/.test(normalized)) return true;
+  return /(?:마사지|오일마사지|전통마사지|전신마사지|발마사지|쇼핑센터)/.test(normalized);
 }
 
 function destinationAllowsAttraction(destination, attraction, context = '') {
@@ -716,14 +826,16 @@ function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
       if (ids.length > 0) continue;
       const activity = String(item?.activity ?? '').replace(/\s+/g, ' ').trim();
       if (!activity) continue;
+      if (/^\d{1,2}[./-]\d{1,2}(?:\s*\([^)]+\))?$/.test(activity)) continue;
       if (/(?:추천옵션|선택\s*관광|\$\s*\d+|USD\s*\d+|\/\s*인)/i.test(activity)) continue;
       const type = String(item?.type ?? item?.entity_kind ?? '').toLowerCase();
       if (['flight', 'hotel', 'meal', 'transfer', 'shopping', 'optional_tour', 'notice', 'free_time', 'price_noise'].includes(type)) continue;
-      const context = [activity, item?.note, dayContext].filter(Boolean).join(' ');
+      const itemText = [activity, item?.note].filter(Boolean).join(' ');
+      const context = [itemText, dayContext].filter(Boolean).join(' ');
       if (isTransferOnlyAttractionContext(context)) continue;
       for (const term of attractionTerms) {
         if (!destinationAllowsAttraction(pkg.destination, term.attraction, context)) continue;
-        if (!directTermOccursInSchedule(context, term.term)) continue;
+        if (!directTermOccursInSchedule(itemText, term.term)) continue;
         return `${activity}: registered attraction "${term.attraction.name}" appears but attraction_ids is empty`;
       }
     }
@@ -979,6 +1091,9 @@ let packageQuery = supabase
 if (codeFilter.length > 0) {
   packageQuery = packageQuery.in('internal_code', codeFilter);
 }
+if (packageIdFilter.length > 0) {
+  packageQuery = packageQuery.in('id', packageIdFilter);
+}
 
 const { data: packages, error } = await packageQuery;
 
@@ -1032,6 +1147,7 @@ for (let from = 0; ; from += 1000) {
     if (!isMatchableAttractionRow(attraction)) continue;
     for (const term of [attraction.name, ...(Array.isArray(attraction.aliases) ? attraction.aliases : [])]) {
       const clean = String(term ?? '').trim();
+      if (isBadRegisteredAttractionTerm(clean)) continue;
       if (normalizeTerm(clean).length >= 3 && clean.length <= 24) {
         activeAttractionTerms.push({ term: clean, attraction });
       }
@@ -1221,7 +1337,7 @@ let rows = allPackageRows
       customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
       price_tiers_mismatch: priceTiersMismatch(pkg),
-      price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg),
+      price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       attraction_context_mismatch: attractionContextMismatch(pkg, attractionById),
       attraction_unlinked_registered: unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms),
       attraction_description_missing: attractionDescriptionMissing(pkg, attractionById),

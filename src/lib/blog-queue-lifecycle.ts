@@ -88,10 +88,17 @@ export function shouldQuarantineQueuedBlogItem(input: {
   const decision = classifyBlogQueueFailure(storedFailureCode || lastError);
   const attempts = input.attempts ?? 0;
   const maxAttempts = input.maxAttempts ?? 2;
-  const explicitlyBlocked = meta.self_heal_blocked === true || typeof meta.quarantine_reason === 'string';
+  const explicitlyBlocked =
+    meta.self_heal_blocked === true ||
+    meta.evidence_insufficient === true ||
+    typeof meta.quarantine_reason === 'string';
 
   if (!lastError && !storedFailureCode && !explicitlyBlocked && attempts < maxAttempts) {
     return { quarantine: false, status: 'failed', reason: null };
+  }
+
+  if (meta.evidence_insufficient === true || storedFailureCode === 'evidence_insufficient') {
+    return { quarantine: true, status: 'failed', reason: 'evidence_insufficient' };
   }
 
   if (decision.skipped) {

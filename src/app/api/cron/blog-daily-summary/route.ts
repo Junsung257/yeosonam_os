@@ -3,7 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
-import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { countPublishableQueueCandidates, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -238,13 +238,14 @@ async function runDailySummary(request: NextRequest) {
     { data: null, count: 0 },
     { data: null, count: 0 },
     { data: [], count: 0 },
+    { data: [], count: 0 },
   ] as any;
   const summaryResults = await withTimeout(Promise.all([
     supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
-    supabaseAdmin.from('blog_topic_queue').select('status', { count: 'exact' })
-      .in('status', ['queued', 'failed']),
+    supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, destination, angle_type, topic, source, meta', { count: 'exact' })
+      .in('status', ['queued', 'generating', 'failed']),
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
       .is('resolved_at', null),
     supabaseAdmin.from('indexing_reports').select('google_status, google_error, indexnow_status, indexnow_error, sitemap_pings, google_index_verdict, google_coverage_state')
@@ -258,11 +259,16 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('cron_health').select('cron_name, last_status, last_run_at, last_error_count, last_summary')
       .eq('cron_name', 'blog-publisher')
       .limit(1),
+    supabaseAdmin.from('content_creatives').select('destination, angle_type, slug, product_id, generation_meta')
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .gte('published_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+      .limit(300),
   ]), 18_000, summaryFallback);
   if (summaryResults === summaryFallback) {
     errors.push('daily_summary_source_queries_timed_out');
   }
-  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes, publisherCronRes] = summaryResults;
+  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes, publisherCronRes, recentPublishedRes] = summaryResults;
 
   const published = pubRes.data || [];
   const indexReports = indexRes.data || [];
@@ -320,6 +326,24 @@ async function runDailySummary(request: NextRequest) {
     acc[r.status] = (acc[r.status] || 0) + 1;
     return acc;
   }, {});
+  const publishabilityStats = countPublishableQueueCandidates({
+    activeQueue: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
+    recentPublished: recentPublishedRes.data || [],
+  });
+  const publishability = {
+    queued_total: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating').length,
+    publishable_candidate_count: publishabilityStats.publishableCount,
+    duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
+    evidence_insufficient_count: publishabilityStats.evidenceInsufficient,
+    candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
+    next_action: publishabilityStats.evidenceInsufficient > 0
+      ? 'collect_evidence'
+      : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
+        ? 'quarantine_duplicates'
+        : publishabilityStats.publishableCount < dailyTarget * 2
+          ? 'refill_candidates'
+          : 'publish_ready',
+  };
 
   // destination별 발행 분포
   const destDist: Record<string, number> = {};
@@ -344,15 +368,21 @@ async function runDailySummary(request: NextRequest) {
   const publisherRanToday = publisherLastRunAt
     ? publisherLastRunAt >= reportDay.start && publisherLastRunAt < reportDay.end
     : false;
+  const dailySummarySlot = new Date(reportDay.start.getTime() + ((22 * 60) + 12) * 60 * 1000);
+  const postSummaryPublisherRun = publisherLastRunAt
+    ? publisherLastRunAt > dailySummarySlot && publisherLastRunAt < reportDay.end
+    : false;
 
   const summary = {
     date: reportDay.dayKey,
     timezone: 'Asia/Seoul',
+    generated_at: new Date().toISOString(),
     published: pubRes.count || 0,
     min_daily_target: dailyTarget,
     under_daily_target: (pubRes.count || 0) < dailyTarget,
     queue_pending: queueCounts.queued || 0,
     queue_failed: queueCounts.failed || 0,
+    publishability,
     rank_alerts_open: alertRes.count || 0,
     indexing_success_rate: +indexRate.toFixed(1),
     search_standard: {
@@ -384,12 +414,18 @@ async function runDailySummary(request: NextRequest) {
       last_error_count: publisherCron?.last_error_count ?? null,
       last_summary: publisherCron?.last_summary ?? null,
       ran_today: publisherRanToday,
+      post_summary_publisher_run: postSummaryPublisherRun,
+      post_summary_note: postSummaryPublisherRun
+        ? 'Publisher ran after the daily summary slot; published count is recalculated in this response.'
+        : null,
     },
     failure_breakdown: {
       publisher: failureBreakdown,
-      candidate_shortage: summaryResults === summaryFallback ? null : Math.max(0, dailyTarget - (queueCounts.queued || 0)),
+      candidate_shortage: summaryResults === summaryFallback ? null : Math.max(0, dailyTarget * 2 - publishability.publishable_candidate_count),
     },
-    next_action: Object.keys(failureBreakdown).length > 0
+    next_action: publishability.next_action !== 'publish_ready'
+      ? `Resolve publishability issue: ${publishability.next_action}.`
+      : Object.keys(failureBreakdown).length > 0
       ? 'Fix the largest publisher failure bucket before requeueing duplicate topics.'
       : 'Keep scheduler and publisher running; refill queue if pending candidates drop below target.',
   };

@@ -190,9 +190,17 @@ function rawSupportsOptionalLabel(rawText: string, value: string): boolean {
   return variants.some(variant => rawSupports(rawText, variant));
 }
 
+function stripHotelGradeParentheticals(value: string): string {
+  return value
+    .replace(/\(\s*(?:정|준)?\s*\d\s*성\s*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function normalizeHotelClaim(value: string): string[] {
   const compact = value.replace(/\s+/g, ' ').trim();
   const variants = new Set<string>([compact]);
+  variants.add(stripHotelGradeParentheticals(compact));
   // 5성 <-> 5성급, 준5성 <-> 준 5성급
   variants.add(compact.replace(/성급$/g, '성').trim());
   variants.add(compact.replace(/성$/g, '성급').trim());
@@ -203,7 +211,9 @@ function normalizeHotelClaim(value: string): string[] {
 
 function rawSupportsHotelLabel(rawText: string, value: string): boolean {
   const variants = normalizeHotelClaim(value);
-  return variants.some(variant => rawSupports(rawText, variant));
+  if (variants.some(variant => rawSupports(rawText, variant))) return true;
+  const normalizedRaw = stripHotelGradeParentheticals(rawText);
+  return variants.some(variant => rawSupports(normalizedRaw, stripHotelGradeParentheticals(variant)));
 }
 
 function normalizeFlightClaim(value: string): string[] {

@@ -46,6 +46,37 @@ afterEach(() => {
 });
 
 describe('applySupplierRawDeterministicFacts', () => {
+  it('uses literal HWP 출발일 and 판매가 blocks as source-backed dates and prices', () => {
+    const facts = extractSupplierRawDeterministicFacts(`
+PKG
+BX 서안/진시황릉+병마용 3박5일
+2026.6.1
+출 발 일
+26년 8/12(수)
+판 매 가
+439,000원
+*6월선발+선착20석한정
+`);
+
+    expect(facts.dates).toEqual(['2026-08-12']);
+    expect(facts.prices).toEqual({ adult: 439000, child: null });
+  });
+
+  it('expands literal HWP slash-comma departure day lists', () => {
+    const facts = extractSupplierRawDeterministicFacts(`
+PKG
+BX 청도 2색골프 2박3일
+2026.6.1
+출 발 일
+26년 8/11,19,25(화,수)
+판 매 가
+469,000원
+`);
+
+    expect(facts.dates).toEqual(['2026-08-11', '2026-08-19', '2026-08-25']);
+    expect(facts.prices).toEqual({ adult: 469000, child: null });
+  });
+
   it('preserves source-backed per-date prices instead of copying the first price across all dates', () => {
     const facts = extractSupplierRawDeterministicFacts(TABLE_PRICE_DANANG_RAW.rawText);
     const enriched = applySupplierRawDeterministicFacts({ ...baseIr, priceGroups: [] }, TABLE_PRICE_DANANG_RAW.rawText);

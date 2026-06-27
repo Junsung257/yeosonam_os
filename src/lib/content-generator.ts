@@ -607,7 +607,7 @@ export function generateBlogPost(
 
   // ── H1 (후킹형 — seo_title과 구분되어 키워드 스터핑 방지, 친근한 존댓말) ────────
   const h1Options: Record<AngleType, string> = {
-    value: `${dest} ${dur} ${priceStr || '이 가격'}, 이게 말이 되나 싶으시죠?`,
+    value: `${dest} ${dur} ${priceStr ? `${priceStr}부터 확인하는` : '예산부터 확인하는'} 패키지 선택 가이드`,
     emotional: `${dest} ${dur}, 잠깐 일상을 내려놓고 싶으실 때`,
     filial: `부모님과 가는 ${dest} ${dur}, 동선부터 편하게`,
     luxury: `${dest} ${dur} 프리미엄, 어디서 갈리는 걸까요?`,

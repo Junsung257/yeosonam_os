@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildSourceBackedPriceDateRepair } from './source-price-date-repair';
+import { buildSourceBackedPriceDateRepair, selectSourceBackedPriceRows } from './source-price-date-repair';
 
 const BAEKDU_GRADE_PATTERN_MATRIX = `
 ★연길/백두산 7-8월 목/일 출발 증편★
@@ -192,5 +192,35 @@ describe('buildSourceBackedPriceDateRepair', () => {
     if (result.status === 'repaired') {
       expect(result.priceDates.every(row => row.date.startsWith('2027-'))).toBe(true);
     }
+  });
+
+  it('selects duplicate same-date transport prices from the structured variant, not raw table order', () => {
+    const rows = [
+      { date: '2026-09-02', adult_price: 1179000, child_price: null, status: 'available' },
+      { date: '2026-09-02', adult_price: 1369000, child_price: null, status: 'available' },
+      { date: '2026-09-16', adult_price: 1199000, child_price: null, status: 'available' },
+      { date: '2026-09-16', adult_price: 1399000, child_price: null, status: 'available' },
+    ];
+
+    const bus = selectSourceBackedPriceRows({
+      title: '\uad11\uc800\uc6b0, \ucc9c\uc800\uc6b0 5\uc77c',
+      hero_tagline: '\ub9ac\ubb34\uc9c4\ubc84\uc2a4+\ub178\ud301\ub178\uc635\uc158',
+      itinerary_data: {
+        days: [
+          { schedule: [{ activity: '\ub9ac\ubb34\uc9c4 \ubc84\uc2a4\uc774\ub3d9' }, { activity: '\uc18c\uacc4\ub9bc \uaf2c\ub9c8\uc5f4\ucc28 \uad00\uad11' }] },
+        ],
+      },
+    }, rows);
+    expect(bus.map(row => row.adult_price)).toEqual([1179000, 1199000]);
+
+    const rail = selectSourceBackedPriceRows({
+      title: '\uad11\uc800\uc6b0, \ucc9c\uc800\uc6b0 5\uc77c',
+      itinerary_data: {
+        days: [
+          { schedule: [{ activity: 'G6080 \uace0\uc18d\uc5f4\ucc28 \uc774\ub3d9' }] },
+        ],
+      },
+    }, rows);
+    expect(rail.map(row => row.adult_price)).toEqual([1369000, 1399000]);
   });
 });
