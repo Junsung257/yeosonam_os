@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { UploadInputAnalysis } from '@/lib/product-registration-input-guard';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { summarizeProductRegistrationFailures } from './failure-diagnostics';
 
@@ -15,6 +16,7 @@ export type UploadReviewQueueRowInput = {
   parsedDraftJson?: Record<string, unknown> | null;
   productTitle?: string | null;
   landOperatorId?: string | null;
+  inputAnalysis?: UploadInputAnalysis | null;
 };
 
 export type ScheduleUploadReviewQueueInput = UploadReviewQueueRowInput & {
@@ -48,6 +50,23 @@ export function scheduleUploadReviewInsert(input: ScheduleUploadReviewQueueInput
       hasCritical: failureDiagnostics.hasCritical,
       nextAction: failureDiagnostics.nextAction,
     },
+    ...(input.inputAnalysis?.preprocessing ? {
+      _input_text_preprocessing: {
+        originalHash: input.inputAnalysis.preprocessing.originalHash,
+        normalizedHash: input.inputAnalysis.preprocessing.normalizedHash,
+        changed: input.inputAnalysis.preprocessing.changed,
+        originalLength: input.inputAnalysis.preprocessing.originalLength,
+        normalizedLength: input.inputAnalysis.preprocessing.normalizedLength,
+        lineCount: input.inputAnalysis.preprocessing.lineCount,
+        normalizedLineCount: input.inputAnalysis.preprocessing.normalizedLineCount,
+        tableLikeLineCount: input.inputAnalysis.preprocessing.tableLikeLineCount,
+        itineraryHeaderCount: input.inputAnalysis.preprocessing.itineraryHeaderCount,
+        currencyTokenCount: input.inputAnalysis.preprocessing.currencyTokenCount,
+        dateTokenCount: input.inputAnalysis.preprocessing.dateTokenCount,
+        changes: input.inputAnalysis.preprocessing.changes,
+        inputIssues: input.inputAnalysis.issues.map(issue => issue.code),
+      },
+    } : {}),
   };
 
   void input.supabase

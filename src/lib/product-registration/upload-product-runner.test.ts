@@ -112,6 +112,8 @@ describe('processUploadRegistrationProducts', () => {
           note: null,
         }],
         priceDates: [{ date: '2026-07-24', price: 859000, confirmed: false }],
+        minPrice: 859000,
+        failures: [],
       },
       itinerary: {
         itineraryInput: { days: [{ day: 1, schedule: [] }] },
@@ -124,6 +126,14 @@ describe('processUploadRegistrationProducts', () => {
         unmatchedCandidates: [],
       },
       deliverability: { ok: true, blockers: [] },
+      evidence: {
+        rawTextLength: 21,
+        rawTextHash: '0'.repeat(64),
+        priceSource: 'test',
+        v3DraftStatus: null,
+        v3RawTextHash: null,
+        spans: [],
+      },
       destination: {
         departureCode: 'PUS',
         destinationCode: 'CEB',

@@ -195,6 +195,7 @@ export async function runUploadRegistrationPipeline(input: {
     landOperators: landOps,
     irCanaryPrimary,
     forceReprocess,
+    inputAnalysisForTrust,
   });
 
   const responsePayload = await completeUploadRegistration({

@@ -1,5 +1,5 @@
 ﻿import { describe, expect, it } from 'vitest';
-import { analyzeUploadInputText } from './product-registration-input-guard';
+import { analyzeUploadInputText, normalizePastedSupplierText } from './product-registration-input-guard';
 
 describe('product registration upload input guard', () => {
   it('allows clean supplier product raw text', () => {
@@ -61,5 +61,33 @@ describe('product registration upload input guard', () => {
 
     expect(result.blocked).toBe(true);
     expect(result.issues.map(issue => issue.code)).toContain('encoding_corrupted');
+  });
+
+  it('keeps a preprocessing snapshot for pasted supplier text without exposing a second raw body', () => {
+    const pasted = [
+      '\uFEFF상품명\t달랏 3박5일 패키지',
+      '• 출발일 2026.07.24',
+      '• 판매가 ₩899,000 / 아동 799,000원',
+      '',
+      '',
+      '',
+      '',
+      'DAY 1\t인천 출발',
+    ].join('\r\n');
+
+    const normalized = normalizePastedSupplierText(pasted);
+    const result = analyzeUploadInputText(pasted);
+
+    expect(normalized.normalizedText).toContain('상품명 | 달랏 3박5일 패키지');
+    expect(normalized.normalizedText).toContain('- 출발일 2026.07.24');
+    expect(result.preprocessing.changed).toBe(true);
+    expect(result.preprocessing.changes.zeroWidthRemoved).toBe(1);
+    expect(result.preprocessing.changes.tabsExpanded).toBeGreaterThan(0);
+    expect(result.preprocessing.changes.bulletLinesNormalized).toBe(2);
+    expect(result.preprocessing.currencyTokenCount).toBeGreaterThanOrEqual(2);
+    expect(result.preprocessing.dateTokenCount).toBeGreaterThanOrEqual(1);
+    expect(result.preprocessing.itineraryHeaderCount).toBe(1);
+    expect(result.preprocessing.originalHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.preprocessing.normalizedHash).toMatch(/^[a-f0-9]{64}$/);
   });
 });
