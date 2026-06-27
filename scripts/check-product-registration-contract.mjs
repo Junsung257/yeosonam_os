@@ -24,6 +24,14 @@ const required = [
         label: 'failure-to-fixture candidate rule',
         pattern: /upload_review_queue.*fixture candidate/i,
       },
+      {
+        label: 'text paste upload contract',
+        pattern: /Text Paste Upload Contract[\s\S]*supplier pasted text as the primary input path/i,
+      },
+      {
+        label: 'standard registration schema gate',
+        pattern: /standard-registration-schema\.ts[\s\S]*Zod runtime validator[\s\S]*JSON Schema contract/i,
+      },
     ],
   },
   {
@@ -84,6 +92,23 @@ const required = [
       {
         label: 'upload response exposes diagnostics',
         pattern: /failureDiagnostics/,
+      },
+    ],
+  },
+  {
+    file: 'src/lib/product-registration/standard-registration-schema.ts',
+    checks: [
+      {
+        label: 'standard registration validator export',
+        pattern: /export function validateStandardProductRegistrationObject/,
+      },
+      {
+        label: 'standard registration json schema export',
+        pattern: /export const StandardProductRegistrationJsonSchema/,
+      },
+      {
+        label: 'deliverable requires product price rows',
+        pattern: /deliverable registration requires at least one product_prices row/,
       },
     ],
   },

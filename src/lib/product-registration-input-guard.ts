@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 export type UploadInputIssueCode =
   | 'encoding_corrupted'
   | 'web_page_copy'
@@ -16,6 +18,7 @@ export interface UploadInputAnalysis {
   blocked: boolean;
   needsReview: boolean;
   issues: UploadInputIssue[];
+  preprocessing: UploadTextPreprocessingSnapshot;
   metrics: {
     length: number;
     hangulCount: number;
@@ -27,12 +30,38 @@ export interface UploadInputAnalysis {
   };
 }
 
+export interface UploadTextPreprocessingSnapshot {
+  originalHash: string;
+  normalizedHash: string;
+  changed: boolean;
+  originalLength: number;
+  normalizedLength: number;
+  lineCount: number;
+  normalizedLineCount: number;
+  tableLikeLineCount: number;
+  itineraryHeaderCount: number;
+  currencyTokenCount: number;
+  dateTokenCount: number;
+  changes: {
+    zeroWidthRemoved: number;
+    crlfNormalized: number;
+    tabsExpanded: number;
+    bulletLinesNormalized: number;
+    repeatedBlankLinesCollapsed: number;
+    nfkcChanged: boolean;
+  };
+}
+
 const ZERO_WIDTH_RE = /[\u200B-\u200D\uFEFF]/g;
 const HANGUL_RE = /[\u3131-\u318E\uAC00-\uD7A3]/g;
 const CJK_RE = /[\u3400-\u4DBF\u4E00-\u9FFF]/g;
 const REPLACEMENT_RE = /\uFFFD/g;
 const QUESTION_RUN_RE = /\?{3,}/g;
 const MOJIBAKE_TOKEN_RE = /(?:\u5360|\uFFFD|\u907A\u0080)/g;
+const BULLET_LINE_RE = /^[ \t]*(?:[-*+]|[\u00B7\u2022\u25AA\u25AB\u25A0\u25A1\u25CF\u25CB\u25C6\u25C7\u25B6\u25B7])\s+/gm;
+const CURRENCY_TOKEN_RE = /(?:[\u20A9\uFFE6\u00A5]|\\|KRW|USD|US\$|\$|JPY|CNY)\s*\d|(?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:\uC6D0|\uB9CC\uC6D0|\uB2EC\uB7EC|\uC5D4|\uC704\uC548)/gi;
+const DATE_TOKEN_RE = /\b(?:20\d{2}[./-]\d{1,2}[./-]\d{1,2}|\d{1,2}[./-]\d{1,2})(?:\s*\([^)]+\))?/g;
+const ITINERARY_HEADER_RE = /(?:^|\n)\s*(?:DAY\s*\d+|\d+\s*\uC77C\uCC28|\d+\s*\u65E5\uCC28|\d+\s*\uC77C\s*\uCC28)/gi;
 
 function rx(source: string, flags = ''): RegExp {
   return new RegExp(source, flags);
@@ -67,6 +96,10 @@ function countMatches(text: string, regex: RegExp): number {
   return (text.match(regex) ?? []).length;
 }
 
+function hashText(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
 function compactEvidence(text: string, regex: RegExp): string[] {
   const out: string[] = [];
   for (const line of text.split(/\r?\n/)) {
@@ -91,15 +124,57 @@ function scorePatterns(text: string, patterns: Array<[RegExp, string]>): { score
 }
 
 export function normalizeUploadTextForAnalysis(rawText: string): string {
-  return rawText
+  return normalizePastedSupplierText(rawText).normalizedText;
+}
+
+export function normalizePastedSupplierText(rawText: string): {
+  normalizedText: string;
+  preprocessing: UploadTextPreprocessingSnapshot;
+} {
+  const zeroWidthRemoved = countMatches(rawText, ZERO_WIDTH_RE);
+  const crlfNormalized = countMatches(rawText, /\r\n?/g);
+  const tabsExpanded = countMatches(rawText, /\t+/g);
+  const bulletLinesNormalized = countMatches(rawText, BULLET_LINE_RE);
+  const beforeNfkc = rawText
     .replace(ZERO_WIDTH_RE, '')
     .replace(/\r\n?/g, '\n')
-    .normalize('NFKC')
-    .replace(/\n{4,}/g, '\n\n\n');
+    .replace(/\t+/g, ' | ')
+    .replace(BULLET_LINE_RE, '- ');
+  const afterNfkc = beforeNfkc.normalize('NFKC');
+  const beforeBlankCollapse = afterNfkc.replace(/[ \t]+\n/g, '\n');
+  const repeatedBlankLinesCollapsed = countMatches(beforeBlankCollapse, /\n{4,}/g);
+  const normalizedText = beforeBlankCollapse.replace(/\n{4,}/g, '\n\n\n');
+
+  return {
+    normalizedText,
+    preprocessing: {
+      originalHash: hashText(rawText),
+      normalizedHash: hashText(normalizedText),
+      changed: rawText !== normalizedText,
+      originalLength: rawText.length,
+      normalizedLength: normalizedText.length,
+      lineCount: rawText.split(/\r\n?|\n/).length,
+      normalizedLineCount: normalizedText.split('\n').length,
+      tableLikeLineCount: normalizedText.split('\n').filter(line => (
+        line.includes('|') || line.includes('\t') || (line.match(/\s{2,}/g) ?? []).length >= 2
+      )).length,
+      itineraryHeaderCount: countMatches(normalizedText, ITINERARY_HEADER_RE),
+      currencyTokenCount: countMatches(normalizedText, CURRENCY_TOKEN_RE),
+      dateTokenCount: countMatches(normalizedText, DATE_TOKEN_RE),
+      changes: {
+        zeroWidthRemoved,
+        crlfNormalized,
+        tabsExpanded,
+        bulletLinesNormalized,
+        repeatedBlankLinesCollapsed,
+        nfkcChanged: beforeNfkc !== afterNfkc,
+      },
+    },
+  };
 }
 
 export function analyzeUploadInputText(rawText: string): UploadInputAnalysis {
-  const normalizedText = normalizeUploadTextForAnalysis(rawText);
+  const { normalizedText, preprocessing } = normalizePastedSupplierText(rawText);
   const hangulCount = countMatches(normalizedText, HANGUL_RE);
   const hanjaLikeCount = countMatches(normalizedText, CJK_RE);
   const replacementCount = countMatches(normalizedText, REPLACEMENT_RE);
@@ -166,6 +241,7 @@ export function analyzeUploadInputText(rawText: string): UploadInputAnalysis {
     blocked,
     needsReview,
     issues,
+    preprocessing,
     metrics: {
       length: len,
       hangulCount,

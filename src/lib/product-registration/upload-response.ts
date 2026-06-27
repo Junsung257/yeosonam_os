@@ -297,6 +297,22 @@ export async function buildUploadResponsePayload(input: {
       sourceLabel: input.uploadSourceMetadata?.cleanSourceLabel ?? input.fileName,
       metadataOnlyLineRemoved: input.uploadSourceMetadata?.metadataOnlyLineRemoved ?? false,
       issues: input.uploadSourceMetadata?.issues ?? [],
+      textPreprocessing: input.inputAnalysisForTrust?.preprocessing
+        ? {
+            originalHash: input.inputAnalysisForTrust.preprocessing.originalHash,
+            normalizedHash: input.inputAnalysisForTrust.preprocessing.normalizedHash,
+            changed: input.inputAnalysisForTrust.preprocessing.changed,
+            originalLength: input.inputAnalysisForTrust.preprocessing.originalLength,
+            normalizedLength: input.inputAnalysisForTrust.preprocessing.normalizedLength,
+            lineCount: input.inputAnalysisForTrust.preprocessing.lineCount,
+            normalizedLineCount: input.inputAnalysisForTrust.preprocessing.normalizedLineCount,
+            tableLikeLineCount: input.inputAnalysisForTrust.preprocessing.tableLikeLineCount,
+            itineraryHeaderCount: input.inputAnalysisForTrust.preprocessing.itineraryHeaderCount,
+            currencyTokenCount: input.inputAnalysisForTrust.preprocessing.currencyTokenCount,
+            dateTokenCount: input.inputAnalysisForTrust.preprocessing.dateTokenCount,
+            changes: input.inputAnalysisForTrust.preprocessing.changes,
+          }
+        : null,
     },
     registerReport,
     ...(input.saveErrors.length > 0 ? { errors: input.saveErrors } : {}),

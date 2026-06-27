@@ -13,9 +13,14 @@ import { finalizeUploadRegistration } from '@/lib/product-registration/finalize-
 import { buildUploadPersistenceRows } from '@/lib/product-registration/persistence-rows';
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
 import { runMicroAutoQA } from '@/lib/product-registration/auto-qa';
+import type { UploadInputAnalysis } from '@/lib/product-registration-input-guard';
 import type { ImprovementLedgerEvent } from '@/lib/product-registration/improvement-ledger';
 import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
 import { recordUploadSectionSignals } from '@/lib/product-registration/section-signal-recording';
+import {
+  formatStandardRegistrationSchemaIssues,
+  validateStandardProductRegistrationObject,
+} from '@/lib/product-registration/standard-registration-schema';
 import {
   claimUploadProductSection,
   updateUploadProductSectionJob,
@@ -90,6 +95,7 @@ export async function processUploadRegistrationProducts(input: {
   landOperators: UploadLandOperatorRow[];
   irCanaryPrimary: boolean;
   forceReprocess: boolean;
+  inputAnalysisForTrust?: UploadInputAnalysis | null;
 }): Promise<ProcessUploadProductsResult> {
   const savedIds: string[] = [];
   const savedTitles: string[] = [];
@@ -196,6 +202,36 @@ export async function processUploadRegistrationProducts(input: {
         Object.assign(ed, registrationResult.extractedData);
       }
 
+      const schemaValidation = validateStandardProductRegistrationObject(registrationResult);
+      if (!schemaValidation.ok) {
+        const errorReason = `Standard registration schema blocked: ${formatStandardRegistrationSchemaIssues(schemaValidation)}`;
+        improvementEvents.push(...preSaveAutoQA.attempts);
+        saveErrors.push({ title, error: errorReason });
+        scheduleUploadReviewInsert({
+          supabase: input.supabase,
+          isSupabaseConfigured: input.isSupabaseConfigured,
+          severity: 'critical',
+          errorReason,
+          sourceFilename: input.fileName,
+          fileHash: input.fileHash,
+          normalizedContentHash: input.normalizedCatalogHash,
+          rawText: productRawText,
+          parsedDraftJson: ed as unknown as Record<string, unknown>,
+          productTitle: title,
+          landOperatorId: input.effectiveLandOperatorId,
+          inputAnalysis: input.inputAnalysisForTrust,
+        });
+        void updateUploadProductSectionJob({
+          supabase: input.supabase,
+          isSupabaseConfigured: input.isSupabaseConfigured,
+          jobId: sectionJobId,
+          status: 'blocked',
+          errorMessage: errorReason,
+        });
+        console.warn('[Upload API] standard registration schema blocked insert:', errorReason);
+        continue;
+      }
+
       const priceRecovery = registrationResult.priceRecovery;
       const priceRows = registrationResult.pricing.productPrices;
       const projectedPriceDates = registrationResult.pricing.priceDates;
@@ -230,6 +266,7 @@ export async function processUploadRegistrationProducts(input: {
           parsedDraftJson: ed as unknown as Record<string, unknown>,
           productTitle: title,
           landOperatorId: input.effectiveLandOperatorId,
+          inputAnalysis: input.inputAnalysisForTrust,
         });
         void updateUploadProductSectionJob({
           supabase: input.supabase,
@@ -312,6 +349,7 @@ export async function processUploadRegistrationProducts(input: {
           parsedDraftJson: ed as unknown as Record<string, unknown>,
           productTitle: title,
           landOperatorId: input.effectiveLandOperatorId,
+          inputAnalysis: input.inputAnalysisForTrust,
         });
         void updateUploadProductSectionJob({
           supabase: input.supabase,
@@ -521,6 +559,7 @@ export async function processUploadRegistrationProducts(input: {
         parsedDraftJson: ed as unknown as Record<string, unknown>,
         productTitle: title,
         landOperatorId: input.effectiveLandOperatorId,
+        inputAnalysis: input.inputAnalysisForTrust,
       });
       saveErrors.push({ title, error: errMsg });
     }
