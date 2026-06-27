@@ -32,6 +32,8 @@ type BlogRow = {
   seo_description: string | null;
   og_image_url: string | null;
   destination: string | null;
+  content_type?: string | null;
+  product_id?: string | null;
   blog_html: string | null;
   generation_meta?: {
     keywords?: string[] | null;
@@ -964,7 +966,7 @@ async function main() {
 
   let query = supabase
     .from('content_creatives')
-    .select('id, slug, seo_title, seo_description, og_image_url, destination, blog_html, generation_meta, target_ad_keywords')
+    .select('id, slug, seo_title, seo_description, og_image_url, destination, content_type, product_id, blog_html, generation_meta, target_ad_keywords')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .not('slug', 'is', null)
@@ -992,6 +994,9 @@ async function main() {
     const originalDescription = row.seo_description?.trim() || null;
     const destination = row.destination || extractDestination(row.seo_title || row.slug || '');
     const primaryKeyword = normalizePrimaryKeyword(keywordFromStoredMeta(row)) || primaryKeywordFor(row);
+    const productId = typeof row.product_id === 'string' && row.product_id.trim() ? row.product_id : null;
+    const contentType = row.content_type || (productId ? 'package_intro' : 'guide');
+    const blogType = productId ? 'product' : 'info';
     const repairSourceHtml = replacePlaceholderContext(repairSourceHtmlBase, primaryKeyword, destination, row.slug);
     const resolvedOgImage = await resolveOgImage(row);
     const normalizedTitle = improveBackfillSeoTitle(
@@ -1011,8 +1016,8 @@ async function main() {
       slug,
       primaryKeyword,
       category: normalizedTitle,
-      contentType: 'guide',
-      productId: null,
+      contentType,
+      productId,
       blogHtml: repairSourceHtml,
     });
     const repairedDraft = softenKeywordDensity(
@@ -1024,7 +1029,7 @@ async function main() {
         ),
       ),
       primaryKeyword,
-      'info',
+      blogType,
     );
 
     const finalized = await finalizeBlogPost({
@@ -1061,7 +1066,7 @@ async function main() {
         ),
       ),
       primaryKeyword,
-      'info',
+      blogType,
     );
     const longtailRepairedFinal = ensureLongtailCoverageSection(repairedFinal, secondaryKeywords);
     const preStructureHtml = normalizeMarkdownLinkLabels(ensureInternalFunnelLinks(longtailRepairedFinal, destination, slug));
@@ -1070,13 +1075,13 @@ async function main() {
       slug,
       primaryKeyword,
       category: normalizedTitle,
-      contentType: 'guide',
-      productId: null,
+      contentType,
+      productId,
       blogHtml: preStructureHtml,
     });
     const nextOg = finalized.ogImageUrl;
     let nextHtml = removeLoneHashHeadings(ensureMinimumInlineImagesFromOg(structureRepair.blogHtml, destination, slug, nextOg));
-    const densityRepair = repairKeywordDensityToTarget(nextHtml, primaryKeyword, 'info');
+    const densityRepair = repairKeywordDensityToTarget(nextHtml, primaryKeyword, blogType);
     if (densityRepair.changed) {
       nextHtml = densityRepair.blogHtml;
     }
@@ -1091,6 +1096,8 @@ async function main() {
       primary_keyword: primaryKeyword,
       secondary_keywords: secondaryKeywords,
       category: normalizedTitle,
+      content_type: contentType,
+      product_id: productId,
       excludeContentCreativeId: row.id,
       skipFuzzyDuplicate: true,
     });

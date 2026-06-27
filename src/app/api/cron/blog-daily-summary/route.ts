@@ -344,10 +344,15 @@ async function runDailySummary(request: NextRequest) {
   const publisherRanToday = publisherLastRunAt
     ? publisherLastRunAt >= reportDay.start && publisherLastRunAt < reportDay.end
     : false;
+  const dailySummarySlot = new Date(reportDay.start.getTime() + ((22 * 60) + 12) * 60 * 1000);
+  const postSummaryPublisherRun = publisherLastRunAt
+    ? publisherLastRunAt > dailySummarySlot && publisherLastRunAt < reportDay.end
+    : false;
 
   const summary = {
     date: reportDay.dayKey,
     timezone: 'Asia/Seoul',
+    generated_at: new Date().toISOString(),
     published: pubRes.count || 0,
     min_daily_target: dailyTarget,
     under_daily_target: (pubRes.count || 0) < dailyTarget,
@@ -384,6 +389,10 @@ async function runDailySummary(request: NextRequest) {
       last_error_count: publisherCron?.last_error_count ?? null,
       last_summary: publisherCron?.last_summary ?? null,
       ran_today: publisherRanToday,
+      post_summary_publisher_run: postSummaryPublisherRun,
+      post_summary_note: postSummaryPublisherRun
+        ? 'Publisher ran after the daily summary slot; published count is recalculated in this response.'
+        : null,
     },
     failure_breakdown: {
       publisher: failureBreakdown,

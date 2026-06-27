@@ -21,6 +21,8 @@ describe('blog editorial repair', () => {
         '| January | Dry | Low |',
         '',
         '| February | Dry | Low |',
+        '',
+        '| March | Dry | Medium |',
       ].join('\n'),
     });
 
@@ -28,6 +30,27 @@ describe('blog editorial repair', () => {
     expect(result.changes).toContain('repaired_loose_markdown_tables');
     expect(result.blogHtml).toContain('| --- | --- | --- |');
     expect(result.blogHtml).not.toContain('| Month | Season | Rain |\n\n| January | Dry | Low |');
+  });
+
+  it('converts underfilled markdown tables to scannable lists', () => {
+    const result = repairBlogStructureQuality({
+      title: 'Bali family budget',
+      category: 'travel_tips',
+      contentType: 'guide',
+      primaryKeyword: 'Bali family budget',
+      blogHtml: [
+        '# Bali family budget',
+        '',
+        '| Item | Note |',
+        '| --- | --- |',
+        '| Taxi | Confirm airport pickup cost before arrival |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_loose_markdown_tables');
+    expect(result.blogHtml).not.toContain('| Item | Note |');
+    expect(result.blogHtml).toContain('- Item: Taxi / Note: Confirm airport pickup cost before arrival');
   });
 
   it('repairs informational sales tone and missing weather table', () => {
@@ -199,7 +222,7 @@ describe('blog editorial repair', () => {
     expect(result.changes).toContain('split_table_prose_rows');
     expect(result.blogHtml).not.toContain('| Check point: July northern Europe');
     expect(result.blogHtml).toContain('Check point: July northern Europe can stay bright late into the night.');
-    expect(result.blogHtml).toContain('| Zurich | cool | layers |');
+    expect(result.blogHtml).toContain('- City: Zurich / Weather: cool / Note: layers');
   });
 
   it('adds markdown table boundaries before following prose', () => {
@@ -223,7 +246,7 @@ describe('blog editorial repair', () => {
 
     expect(result.changed).toBe(true);
     expect(result.changes).toContain('added_markdown_table_boundaries');
-    expect(result.blogHtml).toContain('| Oslo | mild |\n\nCheck point: July northern Europe');
+    expect(result.blogHtml).toContain('- City: Oslo / Weather: mild\n\nCheck point: July northern Europe');
   });
 
   it('caps excessive h2 headings by demoting later support sections', () => {

@@ -103,6 +103,27 @@ describe('blog publish quality', () => {
     });
   });
 
+  it('audits product posts with the product quality contract', async () => {
+    await evaluateBlogPublishQuality({
+      blog_html: '# Product\n\nPackage body.',
+      slug: 'danang-package-20260711',
+      seo_title: '다낭 패키지',
+      seo_description: '다낭 패키지 가격과 포함사항 안내',
+      destination: '다낭',
+      content_type: 'package_intro',
+      product_id: 'pkg_123',
+      primary_keyword: '다낭 패키지',
+    });
+
+    expect(runQualityGatesMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        blog_type: 'product',
+        content_type: 'package_intro',
+        product_id: 'pkg_123',
+      }),
+    );
+  });
+
   it('resolves destination from joined travel package rows first', () => {
     expect(resolveBlogDestination({
       destination: 'fallback',
