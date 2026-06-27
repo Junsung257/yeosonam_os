@@ -6,6 +6,94 @@ import { recoverCatalogSplitFromRawText } from './catalog-split-recovery';
 import { recoverUploadPriceData } from './price-recovery';
 
 describe('recoverCatalogSplitFromRawText', () => {
+  it('drops a readable Korean price-table summary pseudo product when real package bodies follow', () => {
+    const raw = [
+      '부산출발 발리 내맘대로 5일/６일',
+      '일/금 3박5일 // 월/수 4박6일',
+      'BX601 PUS/DPS  17:00/22:55     BX602  DPS/PUS  00:05/08:10',
+      '패턴',
+      '출발일',
+      '5일',
+      '7/1-22',
+      '1,139,000원',
+      '[BX] 부산 - 발리 3박 5일   금/일 출발',
+      '최소출발',
+      '2명 이상 출발 확정',
+      '일 자',
+      '제1일',
+      '부산',
+      '발리',
+      '제2일',
+      '발리',
+      '제5일',
+      '발리',
+      '부산',
+      '[BX] 부산 - 발리 4박 6일   월/수 출발',
+      '최소출발',
+      '2명 이상 출발 확정',
+      '일 자',
+      '제1일',
+      '부산',
+      '발리',
+      '제2일',
+      '발리',
+      '제6일',
+      '발리',
+      '부산',
+    ].join('\n');
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(2);
+    expect(products.map(product => product.extractedData.title)).toEqual([
+      '[BX] 부산 - 발리 3박 5일   금/일 출발',
+      '[BX] 부산 - 발리 4박 6일   월/수 출발',
+    ]);
+    expect(products.map(product => product.extractedData.destination)).toEqual(['발리', '발리']);
+  });
+
+  it('splits readable Korean repeated bracketed product headers with customer itineraries', () => {
+    const raw = [
+      '[노옵션+노팁] 석가장/태항산(보천&천계산) 4일 &#8211; 7C',
+      '출 발 일 자',
+      '26년 7월 4, 11일 (토요일 출발)',
+      '여 행 경 비',
+      '699,000원',
+      '날 짜',
+      '제1일',
+      '부산',
+      '석가장',
+      '제2일',
+      '임주',
+      '보천',
+      '제4일',
+      '석가장',
+      '부산',
+      '[노옵션+노팁] 석가장/태항산(보천&통천협&팔천협) 5일 &#8211; 7C',
+      '출 발 일 자',
+      '26년 7월 7일 (화요일 출발)',
+      '여 행 경 비',
+      '699,000원',
+      '날 짜',
+      '제1일',
+      '부산',
+      '석가장',
+      '제2일',
+      '임주',
+      '보천',
+      '제5일',
+      '석가장',
+      '부산',
+    ].join('\n');
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(2);
+    expect(products.map(product => product.extractedData.duration)).toEqual([4, 5]);
+    expect(products.map(product => product.extractedData.destination)).toEqual(['석가장', '석가장']);
+    expect(products[0]?.sectionRawText).not.toContain('보천&통천협');
+  });
+
   it('splits repeated SPECIAL PRICE supplier blocks into separate products', () => {
     const raw = `♥ SPECIAL PRICE ♥
 부산 - 푸꾸옥 세이브 여유로운 6일

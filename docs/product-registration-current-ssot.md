@@ -533,7 +533,8 @@ unmatched_activities
 Source roles are intentionally separated:
 
 - Naver Search and SearchAd: Korean user-facing naming, alias popularity, and representative-name selection. SearchAd volume can choose the canonical display candidate, but it is not enough by itself to prove that a place exists.
-- Wikidata/OSM/official/manual evidence: identity proof. A customer-publishable attraction candidate requires at least one identity source plus an independent supporting source.
+- Wikidata/OSM/official/manual evidence: free/open identity proof. A customer-publishable attraction candidate requires at least one identity source plus an independent supporting source.
+- Google Places: optional paid place identity evidence for place id, address, region/country fit, maps URL, and place type. It is disabled by default even when a key exists. Calls require `GOOGLE_PLACES_ENABLED=true`, positive `GOOGLE_PLACES_DAILY_LIMIT`, and the per-candidate cap from `GOOGLE_PLACES_MAX_QUERIES_PER_CANDIDATE` (default 1). Use it only as a premium check for ambiguous attraction/hotel candidates after Naver, Wikidata, OSM, and supplier corpus evidence are insufficient.
 - Supplier/internal evidence: occurrence and regional context. It can increase confidence but cannot bypass identity verification for new customer-visible master records.
 
 The verification state is stored on `entity_master_candidates` as `auto_verification_status`, `verification_score`, `canonical_name`, `canonical_name_source`, `source_reliability_snapshot`, and `verified_at`. Each external lookup is logged in `entity_verification_attempts` so the engine learns from successful, empty, errored, and skipped checks.
@@ -582,6 +583,21 @@ Implementation status:
 - `npm run benchmark:product-ocr` runs the offline benchmark. With no input file, it uses the supplier raw golden fixtures, including the noisy OCR fixture, as the text-upload baseline.
 - `npm run benchmark:product-ocr -- --input=path/to/candidates.json --json` can compare extracted text from Docling, Marker, MinerU, PaddleOCR PP-StructureV3, LayoutParser, Azure Document Intelligence, or any other candidate without adding that tool to production.
 - `npm run benchmark:product-ocr:ci` is strict and fails when any candidate is not final-customer-outcome ready.
+
+## HWP Inbox Automation
+
+For local batches of supplier `.hwp` files, prefer Hancom Office text extraction over adding a production HWP parser to the upload route. The local workflow is:
+
+```text
+data/product-registration/hwp-inbox/raw/*.hwp
+  -> scripts/extract-hwp-inbox.ps1 using installed Hancom Office
+  -> extracted/*.txt and prepared/*.txt
+  -> offline source audit
+  -> existing upload-inbox central registration scripts
+  -> mobile/A4/browser proof gates before any customer-visible status
+```
+
+The raw HWP files, extracted text, prepared text, and reports are local-only and git-ignored. If operator cleanup is needed, edit the `prepared/` copy, not the `extracted/` source copy. The upload API remains an HTTP adapter; HWP-specific extraction must stay in local inbox tooling or the existing document parsing boundary, not in `src/app/api/upload/route.ts`.
 
 ## Ignored Noise Audit Contract
 

@@ -65,6 +65,14 @@ supabase/.temp/
 # 스크래치/실험 폴더 (LLM 출력 덤프, 실험 HTML, 임시 로그)
 scratch/
 
+# Local supplier HWP inbox. Raw files and extracted text can include private
+# supplier pricing/contracts, so only the README stays tracked.
+/data/product-registration/hwp-inbox/raw/
+/data/product-registration/hwp-inbox/extracted/
+/data/product-registration/hwp-inbox/prepared/
+/data/product-registration/hwp-inbox/reports/
+!/data/product-registration/hwp-inbox/README.md
+
 # Playwright 실패 덤프 (재현용)
 test-results/
 playwright-report/

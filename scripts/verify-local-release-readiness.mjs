@@ -559,6 +559,7 @@ function summarizeOperationalInputs(result) {
 const checks = [
   { id: 'type-check', script: 'type-check' },
   { id: 'lint', script: 'lint' },
+  { id: 'structured-data', script: 'audit:structured-data' },
 ];
 
 if (!skipTests) {

@@ -8,6 +8,10 @@ const args = new Set(process.argv.slice(2));
 const json = args.has('--json');
 const limit = Number(argValue('--limit', '100'));
 const status = argValue('--status', 'active');
+const ids = argValue('--ids', '')
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
 
 function argValue(name: string, fallback: string): string {
   const found = process.argv.find(arg => arg.startsWith(`${name}=`));
@@ -56,18 +60,19 @@ async function main() {
     .select('id, title, status, destination, itinerary_data')
     .not('itinerary_data', 'is', null)
     .limit(limit);
-  if (status !== 'all') query = query.eq('status', status);
+  if (ids.length > 0) query = query.in('id', ids);
+  else if (status !== 'all') query = query.eq('status', status);
 
   const { data: packages, error } = await query;
   if (error) throw error;
 
   const rows = (packages ?? []) as PackageRow[];
   const refsByPackage = rows.map(row => ({ row, refs: collectAttractionRefs(row.itinerary_data) }));
-  const ids = Array.from(new Set(refsByPackage.flatMap(item => item.refs.map(ref => ref.attractionId))));
+  const attractionIds = Array.from(new Set(refsByPackage.flatMap(item => item.refs.map(ref => ref.attractionId))));
 
   const attractionMap = new Map<string, { id: string; name: string | null; photos: unknown[] }>();
-  for (let i = 0; i < ids.length; i += 500) {
-    const chunk = ids.slice(i, i + 500);
+  for (let i = 0; i < attractionIds.length; i += 500) {
+    const chunk = attractionIds.slice(i, i + 500);
     if (chunk.length === 0) continue;
     const { data, error: attractionError } = await supabase
       .from('attractions')
@@ -106,6 +111,7 @@ async function main() {
   const totalWithPhotos = details.reduce((sum, row) => sum + row.refs_with_photos, 0);
   const output = {
     scanned_packages: rows.length,
+    ids: ids.length,
     packages_with_attraction_refs: details.filter(row => row.attraction_refs > 0).length,
     total_attraction_refs: totalRefs,
     refs_with_photos: totalWithPhotos,

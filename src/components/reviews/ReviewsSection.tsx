@@ -88,11 +88,11 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
 
   const { data: pkg } = await supabaseAdmin
     .from('travel_packages')
-    .select('avg_rating, review_count, title')
+    .select('avg_rating, review_count, title, product_summary')
     .eq('id', packageId)
     .limit(1);
 
-  const stats = pkg?.[0] as { avg_rating: number | null; review_count: number; title: string } | undefined;
+  const stats = pkg?.[0] as { avg_rating: number | null; review_count: number; title: string; product_summary: string | null } | undefined;
 
   // 리뷰 없으면 빈 상태 UI
   if (!stats?.avg_rating || stats.review_count === 0) {
@@ -139,6 +139,7 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
             '@context': 'https://schema.org',
             '@type': 'Product',
             name: stats.title,
+            description: stats.product_summary || stats.title,
             aggregateRating: {
               '@type': 'AggregateRating',
               ratingValue: avg.toFixed(2),

@@ -98,6 +98,10 @@ function readUploadToOpenAutopilotLib(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-to-open-autopilot.ts'), 'utf8');
 }
 
+function readUploadVerifyLib(): string {
+  return readFileSync(join(process.cwd(), 'src/lib/upload-verify.ts'), 'utf8');
+}
+
 function readUploadContextLoader(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-context-loader.ts'), 'utf8');
 }
@@ -874,16 +878,29 @@ describe('upload route registration pipeline boundary', () => {
   it('keeps upload-to-open autopilot behind source, V3, mobile, and publish gates before activating packages', () => {
     const cron = readUploadToOpenAutopilotCron();
     const lib = readUploadToOpenAutopilotLib();
+    const verify = readUploadVerifyLib();
 
     expect(cron).toContain("withCronLogging('upload-to-open-autopilot'");
     expect(cron).toContain('unmatchedOrchestratorGet');
     expect(cron).toContain("boolParam(request, 'autoOpen', true)");
     expect(lib).toContain('buildSourceBackedPriceDateRepair');
+    expect(lib).toContain('syncSourceBackedPriceStores({');
+    expect(lib).toContain('hasTransportPriceVariantCue(workingPkg)');
+    expect(lib).toContain('price_dates_repair_requires_review');
+    expect(lib).toContain('price_dates:${priceRepair.reason}');
+    expect(lib).toContain('price_dates_sync_requires_review:c12_failed');
+    expect(lib).toContain("price_dates:existing_source_backed_dates_synced_to_dependent_stores");
+    expect(lib).toContain('replaceProductPricesForProduct({');
+    expect(lib).toContain("input.updates.price_tiers = priceTiersFromPriceDates(input.priceDates)");
+    expect(lib).toContain("net_price: minPrice");
+    expect(verify).toContain('selectSourceBackedPriceRows(pkg, expected.rows)');
     expect(lib).toContain('buildSourceBackedFieldRepair');
     expect(lib).toContain('buildSourceBackedTermsRepair');
     expect(lib).toContain('runUploadVerify(pkg.id)');
     expect(lib).toContain('runAutoMobileQA(pkg.id, baseUrl)');
     expect(lib).toContain('evaluateV3CustomerNoticeGate');
+    expect(lib).toContain('restoreLatestReadyV3DraftAsCurrent');
+    expect(lib).toContain("v3_rebuild_skipped:restored_existing_ready_to_publish");
     expect(lib).toContain('evaluateCustomerMobileProof');
     expect(lib).not.toContain("mobileProof.reason !== 'actual /packages mobile browser proof is missing'");
     expect(lib).toContain('reasons.push(`mobile_proof:${mobileProof.reason}`)');

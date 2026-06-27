@@ -7,6 +7,7 @@ import {
   type EntityCandidateRow,
   type EntityResolutionDecision,
 } from '@/lib/itinerary-entity-resolution-engine';
+import { getGooglePlacesBudgetFromEnv, type GooglePlacesBudget } from '@/lib/google-places-entity-verifier';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { countActiveUnmatched } from '@/lib/unmatched-lifecycle';
 
@@ -36,9 +37,40 @@ function updatePayload(decision: EntityResolutionDecision) {
       sources: [...new Set(decision.externalSources.map(source => source.source))],
       naver_search_score: decision.naver?.searchScore ?? null,
       naver_keyword_score: decision.naver?.keywordScore ?? null,
+      osm_nominatim_score: decision.osmNominatim?.score ?? null,
+      osm_nominatim_region_conflict: decision.osmNominatim?.regionConflict ?? null,
+      google_places_score: decision.googlePlaces?.score ?? null,
+      google_places_region_conflict: decision.googlePlaces?.regionConflict ?? null,
       wikidata_top_score: decision.wikidata[0]?.confidence ?? null,
     },
     verified_at: new Date().toISOString(),
+  };
+}
+
+function startOfUtcDay(): string {
+  const date = new Date();
+  date.setUTCHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+async function countGooglePlacesAttemptsToday(): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from('entity_verification_attempts')
+    .select('id', { count: 'exact', head: true })
+    .eq('source', 'google_places')
+    .in('status', ['success', 'empty', 'error'])
+    .gte('created_at', startOfUtcDay());
+  if (error) throw error;
+  return count ?? 0;
+}
+
+function consumeGooglePlacesBudget(budget: GooglePlacesBudget, decision: EntityResolutionDecision): GooglePlacesBudget {
+  const used = decision.attempts.filter(attempt => attempt.source === 'google_places' && attempt.status !== 'skipped').length;
+  const remainingDailyCalls = Math.max(0, budget.remainingDailyCalls - used);
+  return {
+    ...budget,
+    remainingDailyCalls,
+    skipReason: remainingDailyCalls <= 0 ? 'GOOGLE_PLACES_DAILY_LIMIT exhausted' : budget.skipReason,
   };
 }
 
@@ -75,10 +107,12 @@ async function runEntityResolution(options: {
   const errors: string[] = [];
   const byStatus: Record<string, number> = {};
   const byAction: Record<string, number> = {};
+  let googlePlacesBudget = getGooglePlacesBudgetFromEnv(await countGooglePlacesAttemptsToday());
 
   for (const row of (data ?? []) as EntityCandidateRow[]) {
     try {
-      const decision = await resolveItineraryEntityCandidate(row);
+      const decision = await resolveItineraryEntityCandidate(row, { googlePlacesBudget });
+      googlePlacesBudget = consumeGooglePlacesBudget(googlePlacesBudget, decision);
       byStatus[decision.autoVerificationStatus] = (byStatus[decision.autoVerificationStatus] ?? 0) + 1;
       byAction[decision.autoAction] = (byAction[decision.autoAction] ?? 0) + 1;
 
@@ -118,6 +152,13 @@ async function runEntityResolution(options: {
     category: category || 'all',
     byStatus,
     byAction,
+    google_places_budget: {
+      enabled: googlePlacesBudget.enabled,
+      daily_limit: googlePlacesBudget.dailyLimit,
+      remaining_daily_calls: googlePlacesBudget.remainingDailyCalls,
+      max_queries_per_candidate: googlePlacesBudget.maxQueriesPerCandidate,
+      skip_reason: googlePlacesBudget.skipReason ?? null,
+    },
     active_pending_after: await countActiveUnmatched(),
     errors: errors.slice(0, 20),
   };

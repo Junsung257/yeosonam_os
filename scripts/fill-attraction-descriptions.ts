@@ -10,6 +10,10 @@ const apply = args.has('--apply');
 const json = args.has('--json');
 const status = argValue('--status', 'active');
 const limit = Number(argValue('--limit', '500'));
+const ids = argValue('--ids', '')
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
 
 function argValue(name: string, fallback: string): string {
   const found = process.argv.find(arg => arg.startsWith(`${name}=`));
@@ -35,12 +39,15 @@ async function main() {
   const { supabaseAdmin, isSupabaseConfigured } = await import('../src/lib/supabase');
   if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
 
-  const { data: packages, error: packageError } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('travel_packages')
     .select('id, itinerary_data')
-    .eq('status', status)
     .not('itinerary_data', 'is', null)
     .limit(limit);
+  if (ids.length > 0) query = query.in('id', ids);
+  else query = query.eq('status', status);
+
+  const { data: packages, error: packageError } = await query;
   if (packageError) throw packageError;
 
   const refsById = new Map<string, Set<string>>();
@@ -83,6 +90,7 @@ async function main() {
   const output = {
     apply,
     status,
+    ids: ids.length,
     scannedReferencedAttractions: refsById.size,
     updated: apply ? updates.length : 0,
     candidates: updates.length,

@@ -598,6 +598,98 @@ describe('extractPriceIR multi-column spot weekday table', () => {
 });
 
 describe('extractPriceIR product price vertical date table', () => {
+  it('recovers Korean HWP departure lines followed by a per-person price', () => {
+    const rawText = [
+      '증편특가',
+      '연길/백두산(북+서파) 3박4일',
+      '7월 9, 23일 [목요일] 출발',
+      '629,000원/인',
+      '포 함 내 역',
+      '왕복 항공료 및 텍스',
+      '선택관광',
+      '노옵션',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toEqual([
+      expect.objectContaining({ date: '2026-07-09', adult_price: 629000 }),
+      expect.objectContaining({ date: '2026-07-23', adult_price: 629000 }),
+    ]);
+    expect(result.rows.some(row => row.adult_price === 40000)).toBe(false);
+  });
+
+  it('recovers Korean HWP grade date tables and selects the matching product grade', () => {
+    const rawText = [
+      '일요일【3박4일】',
+      '호화호특,시나무런초원',
+      '실속',
+      '품격',
+      '7월 26일',
+      '599,000',
+      '1,199,000',
+      '8월 23일',
+      '549,000',
+      '999,000',
+      '수요일【4박5일】',
+      '실속',
+      '품격',
+      '8월 26일',
+      '629,000',
+      '1,149,000',
+      'BX3455 PUS 08:30 → HET 10:55',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, {
+      year: 2026,
+      title: '품격 내몽고 호화호특 3박 4일',
+      durationDays: 4,
+    });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows.map(row => [row.date, row.adult_price])).toEqual([
+      ['2026-07-26', 1199000],
+      ['2026-08-23', 999000],
+    ]);
+    expect(result.rows.find(row => row.date === '2026-08-26')).toBeUndefined();
+  });
+
+  it('recovers Korean HWP hotel month/day matrices with sale-arrow prices', () => {
+    const rawText = [
+      '★부산-보홀 헤난리조트 삼총사 세미패키지 여름휴가특가 [7C]★',
+      '날짜',
+      '헤난 타왈라',
+      '헤난 알로나비치',
+      '헤난 프리미어코스트',
+      '7월',
+      '19,20,21',
+      '3박',
+      '839,000 → 599,000',
+      '879,000 → 659,000',
+      '23,24',
+      '779,000',
+      '799,000',
+      '실시간 기준으로 예약 진행 시 좌석 및 호텔 리체크 필수',
+      'PKG',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toContainEqual(expect.objectContaining({
+      date: '2026-07-19',
+      adult_price: 599000,
+      option_label: '헤난 타왈라',
+    }));
+    expect(result.rows).toContainEqual(expect.objectContaining({
+      date: '2026-07-24',
+      adult_price: 799000,
+      option_label: '헤난 알로나비치',
+    }));
+    expect(result.rows.some(row => row.adult_price === 839000)).toBe(false);
+  });
+
   it('recovers 상품가 date lists followed by full KRW prices', () => {
     const rawText = `
 [크라운] 큐슈 BX조석 스기노이 2박 3일

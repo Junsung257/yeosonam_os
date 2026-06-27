@@ -81,6 +81,28 @@ describe('classifyUnmatchedActivity', () => {
     });
   });
 
+  it('auto-closes normal Korean HWP noise, transfer, option, and shopping fragments', () => {
+    expect(classifyUnmatchedActivity('상기 일정은 현지 사정에 의하여 변동될 수 있사오니 양해 바랍니다')).toMatchObject({
+      category: 'notice',
+    });
+    expect(classifyUnmatchedActivity('부산-광저우')).toMatchObject({
+      category: 'transfer',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('대기시간 최소화')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('왕복케이블카')).toMatchObject({
+      category: 'optional_tour',
+      terminalStatus: 'pending',
+    });
+    expect(classifyUnmatchedActivity('명품샵 방문')).toMatchObject({
+      category: 'shopping',
+      terminalStatus: 'pending',
+    });
+  });
+
   it('keeps probable new attractions pending for master-candidate handling', () => {
     expect(classifyUnmatchedActivity('푸꾸옥 야시장')).toMatchObject({
       category: 'attraction',

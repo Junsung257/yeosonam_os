@@ -70,14 +70,17 @@ function optionalEventHasCustomerSafeDisclosure(rawText: string): boolean {
   if (/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158)$/.test(compact)) return true;
   if (/^(?:\uc120\ud0dd\uad00\uad11\ube44\uc6a9|\uc720\ub958\ubcc0\ub3d9\ubd84|\ub9e4\ub108\ud301\ubc0f\uac1c\uc778\uacbd\ube44|\uac1c\uc778\uacbd\ube44)$/.test(compact)) return true;
   if (/^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)\$?\d+/i.test(compact)) return true;
+  if (/(?:\uc120\ud0dd\s*\uad00\uad11|\uc120\ud0dd\uad00\uad11).*(?:\uc870\uc778|\uc2e0\uccad\s*\ud6c4)/.test(rawText)) return true;
   return /\$\s*\d+(?:\.\d+)?/.test(rawText) && normalizeOptionDisclosureText(rawText).length >= 2;
 }
 
 function hasExplicitShoppingCountDisclosure(text: string): boolean {
-  return /(?:\uc1fc\ud551|\uba74\uc138\uc810).*\d+\s*(?:\uacf3|\ud68c).*(?:\ubc29\ubb38|\uc608\uc815)|\d+\s*(?:\uacf3|\ud68c).*(?:\uc1fc\ud551|\uba74\uc138\uc810)/.test(text);
+  return /(?:\uc1fc\ud551|\uc1fc\ud551\uc13c\ud130|\uba74\uc138\uc810|\uba74\uc138).*\d+\s*(?:\uacf3|\ud68c).*(?:\ubc29\ubb38|\uc608\uc815)|\d+\s*(?:\uacf3|\ud68c).*(?:\uc1fc\ud551|\uc1fc\ud551\uc13c\ud130|\uba74\uc138\uc810|\uba74\uc138)|(?:\uc1fc\ud551\uc13c\ud130|\uba74\uc138\uc810|\uba74\uc138)\s*\ubc29\ubb38|(?:\uc790\uc728|\uc790\uc720)\s*\uc1fc\ud551/.test(text);
 }
 
 function shoppingEventHasCustomerSafeDisclosure(rawText: string): boolean {
+  const compact = rawText.replace(/\s+/g, '');
+  if (/쇼핑.*\d+\s*회|(?:차|캐시미어).*\d+\s*회/.test(compact)) return true;
   if (hasExplicitShoppingCountDisclosure(rawText)) return true;
   return /쇼핑(?:센터)?\s*\d+\s*회|\d+\s*회/.test(rawText)
     && /(침향|한약|라텍스|차가버섯|죽탄|콜라겐|보이차|농산물|잡화|토산품|기념품|면세|노니|커피)/i.test(rawText);
@@ -132,16 +135,69 @@ const GUANGZHOU_ATTRACTION_LABELS = [
   '대불사',
 ];
 
+const NORMAL_ATTRACTION_REVIEW_NOISE_RE =
+  /(?:상기\s*일정|현지\s*사정|항공\s*및\s*현지\s*사정|변동될\s*수|변경될\s*수|양해|자유이용권|케이블카|왕복케이블카|탑승하여|차창|대기시간|중복\s*없는\s*관광\s*동선|드론촬영|나룻배|부산-광저우|다낭\s*귀환|사막\s*진입시\s*케이블카\s*또는\s*버스\s*이용|^OR$|^파타야$|^샤오관$|^호화호특$|^호화호트$|^아타미$|^이즈$|^후쿠오카$|^히타$|^난칸$|^유\s*후\s*인$|^뉴카멜리아$|^하노이$|부산항\s*출항|하카다항\s*(?:하선|출발)|입국\s*수속|증편특가|출발확정일|출발임박일|특정일|붉은색|초록색|부관훼리|카멜리아.*갓성비|특전\d|일-\s*수|자유식|성인\s*\/\s*아동|2명\s*이상\s*출발|2인\s*1실|별도\s*요금|취소시\s*위약금|중국\s*연휴|한정식|전골|연어회|뷔페|백숙|도시락|맥주\s*1\s*병|빵\s*\+\s*옥수수\s*\+\s*과일|무제한|폭포뷰|스탠다드|프리미엄|^\s*\d{1,2}[.\/-]\d{1,2}\s*\([^)]+\)\s*$|^\s*\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}\s*$|^\s*\d{2}년\s*\d{1,2}[.\/]\d{1,2}|^\s*\d{3,5}\s*M\s*$)/i;
+
+const NORMAL_ATTRACTION_LABEL_RULES: Array<[RegExp, string]> = [
+  [/시나무런.*초원/i, '시나무런 초원'],
+  [/유후거리/i, '유후거리'],
+  [/동강호/i, '동강호풍경구'],
+  [/고의령/i, '고의령'],
+  [/남화선사|천년고찰/i, '남화선사'],
+  [/상용호/i, '상용호'],
+  [/두솔동굴/i, '두솔동굴'],
+  [/양원사/i, '양원사'],
+  [/골든브릿지/i, '골든브릿지'],
+  [/미케비치/i, '미케비치'],
+  [/다낭\s*대성당/i, '다낭 대성당'],
+  [/영응사/i, '영응사'],
+  [/오행산|마블\s*마운틴/i, '오행산'],
+  [/한시장/i, '한시장'],
+  [/사랑의\s*부두/i, '사랑의 부두'],
+  [/호이안\s*야경/i, '호이안 야경'],
+  [/떤키|내원교|풍흥|광조회관|호이안\s*구시가지/i, '호이안 구시가지'],
+  [/대협곡\s*유리다리/i, '대협곡 유리다리'],
+  [/토가풍정원/i, '토가풍정원'],
+  [/춘쿤산/i, '춘쿤산'],
+  [/샹샤완/i, '샹샤완'],
+  [/대당불야성/i, '대당불야성'],
+  [/모아산/i, '모아산국가 삼림공원'],
+  [/내몽고박물관/i, '내몽고박물관'],
+  [/사이샹\s*옛거리|사이샹옛거리/i, '사이샹 옛거리'],
+  [/멍량풍정원|몽골족의\s*전통문화/i, '멍량풍정원'],
+  [/아타미\s*매화원/i, '아타미 매화원'],
+  [/아타미\s*친수공원/i, '아타미 친수공원'],
+  [/슈젠지/i, '슈젠지'],
+  [/오와쿠다니/i, '오와쿠다니 유황계곡'],
+  [/잔교/i, '잔교'],
+  [/5\.?4\s*광장|오사광장/i, '5.4광장'],
+  [/팔대관/i, '팔대관'],
+  [/긴린호수/i, '긴린호수'],
+  [/민예거리/i, '유후인 민예거리'],
+];
+
 function normalizeAttractionReviewText(rawText: string): string | null {
   const cleaned = rawText
     .replace(ATTRACTION_REVIEW_PREFIX_RE, '')
+    .replace(/&#8211;|&ndash;|[–—]/g, '-')
     .replace(/\s+/g, ' ')
     .trim();
   if (!cleaned) return null;
+  if (/^(?:\uBBF8\uC81C\uACF5|\uBD88\uD3EC\uD568|\uD3EC\uD568|\uC81C\uACF5|\uC5C6\uC74C|N\/A|NA|-)$/.test(cleaned.replace(/\s+/g, ''))) return null;
   if (GUANGZHOU_DESCRIPTION_WITHOUT_MASTER_RE.test(cleaned)) return null;
 
   const withoutTrailingParen = cleaned.replace(/\s*\([^)]*\)\s*$/, '').trim();
   const compact = withoutTrailingParen.replace(/\s+/g, '');
+  if (/^\d{1,2}[.\/-]\d{1,2}(?:\([^)]+\))?$/.test(compact)) return null;
+  if (NORMAL_ATTRACTION_REVIEW_NOISE_RE.test(withoutTrailingParen) || NORMAL_ATTRACTION_REVIEW_NOISE_RE.test(compact)) return null;
+
+  const normalLabel = NORMAL_ATTRACTION_LABEL_RULES.find(([pattern]) => pattern.test(withoutTrailingParen) || pattern.test(compact))?.[1];
+  if (normalLabel) return normalLabel;
+
+  if (/(?:입니다|보이며|드러냅니다|하나입니다)\.?$/.test(withoutTrailingParen)) return null;
+  if (/^(?:1,?200년|길이\s*\d|총길이\s*\d|신선이\s*만든)/.test(withoutTrailingParen)) return null;
+  if (/황하강이.*푸른\s*물/.test(withoutTrailingParen)) return null;
+
   const knownLabel = GUANGZHOU_ATTRACTION_LABELS
     .map(label => ({ label, index: compact.lastIndexOf(label) }))
     .filter(item => item.index >= 0)
@@ -218,6 +274,7 @@ function optionIsGenericCostOrHeading(option: { raw_name: string }): boolean {
   const compact = option.raw_name
     .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663()]+/, '')
     .replace(/\s+/g, '');
+  if (/^(?:\uc0c1\ud488\uba85|\uc81c\ubaa9|title)[:：]/i.test(option.raw_name.trim())) return true;
   return /^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uc120\ud0dd\uad00\uad11\ube44\uc6a9|\uc720\ub958\ubcc0\ub3d9\ubd84|\ub9e4\ub108\ud301\ubc0f\uac1c\uc778\uacbd\ube44|\uac1c\uc778\uacbd\ube44)$/.test(compact)
     || /^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)\$?\d+/i.test(compact);
 }

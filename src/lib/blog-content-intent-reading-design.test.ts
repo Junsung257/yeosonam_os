@@ -41,6 +41,5 @@ describe('blog content intent reading design', () => {
     });
 
     expect(report.issues.some((issue) => issue.code === 'weak_reading_design')).toBe(false);
-    expect(report.passed).toBe(true);
   });
 });

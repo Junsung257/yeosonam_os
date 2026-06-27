@@ -6,8 +6,12 @@ import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year'
 export type SourcePriceRepairPackage = {
   id?: string | null;
   title?: string | null;
+  display_title?: string | null;
+  hero_tagline?: string | null;
+  trip_style?: string | null;
   duration?: number | null;
   raw_text?: string | null;
+  itinerary_data?: unknown;
   accommodations?: string[] | null;
   price_dates?: Array<{
     date?: string | null;
@@ -40,6 +44,15 @@ export type SourceBackedPriceDateRepair =
       addedCount: number;
       priceDates: PriceDate[];
     };
+
+type SourcePriceIRRow = {
+  date: string;
+  adult_price: number;
+  child_price?: number | null;
+  status?: string | null;
+};
+
+type DuplicatePricePreference = 'min' | 'max' | null;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -95,6 +108,70 @@ function inferDurationDays(pkg: SourcePriceRepairPackage): number | null {
   return titleMatch ? Number(titleMatch[2]) : null;
 }
 
+function selectedVariantText(pkg: SourcePriceRepairPackage): string {
+  const parts = [
+    pkg.title,
+    pkg.display_title,
+    pkg.hero_tagline,
+    pkg.trip_style,
+  ];
+  const itinerary = pkg.itinerary_data as {
+    days?: Array<{
+      schedule?: Array<{
+        activity?: string | null;
+        note?: string | null;
+        time?: string | null;
+      } | null> | null;
+    } | null> | null;
+  } | null | undefined;
+  for (const day of itinerary?.days ?? []) {
+    for (const item of day?.schedule ?? []) {
+      parts.push(item?.activity, item?.note, item?.time);
+    }
+  }
+  return parts
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n');
+}
+
+function duplicatePricePreference(pkg: SourcePriceRepairPackage): DuplicatePricePreference {
+  const text = selectedVariantText(pkg);
+  const hasTrainNumber = /\bG\s*\d{3,5}\b/i.test(text);
+  if (hasTrainNumber) return 'max';
+
+  const hasBus = /(?:\ub9ac\s*\ubb34\s*\uc9c4|\ubc84\s*\uc2a4\s*\uc774\s*\ub3d9|\uc77c\s*\ubc18\s*\ubc84\s*\uc2a4)/i.test(text);
+  if (hasBus) return 'min';
+
+  const hasHighSpeedRail = /(?:\uace0\s*\uc18d\s*\ucca0|\uace0\s*\uc18d\s*\uc5f4\s*\ucc28)/i.test(text);
+  if (hasHighSpeedRail) return 'max';
+
+  return null;
+}
+
+export function hasTransportPriceVariantCue(pkg: SourcePriceRepairPackage): boolean {
+  return duplicatePricePreference(pkg) != null;
+}
+
+export function selectSourceBackedPriceRows(
+  pkg: SourcePriceRepairPackage,
+  rows: SourcePriceIRRow[],
+): SourcePriceIRRow[] {
+  const preference = duplicatePricePreference(pkg);
+  const byDate = new Map<string, SourcePriceIRRow[]>();
+  for (const row of rows) {
+    if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
+    byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
+  }
+
+  return [...byDate.values()]
+    .map(candidates => {
+      const sorted = [...candidates].sort((a, b) => a.adult_price - b.adult_price);
+      if (preference === 'max') return sorted[sorted.length - 1];
+      return sorted[0];
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number {
   const sourceYear = resolvePriceRecoveryYear({ rawText });
   const dbYear = (pkg.price_dates ?? [])
@@ -133,7 +210,7 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   if (ir.source === 'none' || ir.rows.length === 0) return { source: ir.source, rows: [] };
 
   const byDate = new Map<string, PriceDate>();
-  for (const row of ir.rows) {
+  for (const row of selectSourceBackedPriceRows(pkg, ir.rows)) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
     const current = byDate.get(row.date);
     if (current && current.price <= row.adult_price) continue;

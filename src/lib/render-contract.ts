@@ -82,6 +82,7 @@ export interface ScheduleItem {
   attraction_queries?: string[];
   landing_sentence?: string | null;
   a4_sentence?: string | null;
+  source_activity?: string | null;
 }
 
 /** Meal — day.meals 와 호환 */
@@ -987,7 +988,7 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
     const isLastDay = idx === days.length - 1;
     const origSchedule = Array.isArray(d?.schedule)
       ? (d.schedule as ScheduleItem[]).map(item => (
-          item?.a4_sentence ? { ...item, activity: item.a4_sentence } : item
+          item?.a4_sentence ? { ...item, source_activity: item.activity ?? null, activity: item.a4_sentence } : item
         ))
       : [];
 

@@ -361,12 +361,13 @@ function attachRawFactFlightSegments(
   if (existingComplete) return;
 
   const rawFlightCodes = [...rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
+  const rawFlightTimes = [...rawText.matchAll(/\b(\d{1,2}:\d{2})\b/g)].map(match => match[1]);
   const outboundCode = rawFacts.outbound?.code ?? rawFlightCodes[0] ?? itinerary.meta?.flight_out ?? null;
   const inboundCode = rawFacts.inbound?.code ?? rawFlightCodes.at(-1) ?? itinerary.meta?.flight_in ?? null;
-  const outboundDep = rawFacts.outbound?.departure.time ?? itinerary.meta?.flight_out_time ?? ed.flight_info?.depart ?? null;
-  const outboundArr = rawFacts.outbound?.arrival.time ?? itinerary.meta?.flight_out_arrive_time ?? ed.flight_info?.arrive ?? null;
-  const inboundDep = rawFacts.inbound?.departure.time ?? itinerary.meta?.flight_in_time ?? ed.flight_info?.return_depart ?? null;
-  const inboundArr = rawFacts.inbound?.arrival.time ?? itinerary.meta?.flight_in_arrive_time ?? ed.flight_info?.return_arrive ?? null;
+  const outboundDep = rawFacts.outbound?.departure.time ?? itinerary.meta?.flight_out_time ?? ed.flight_info?.depart ?? rawFlightTimes[0] ?? null;
+  const outboundArr = rawFacts.outbound?.arrival.time ?? itinerary.meta?.flight_out_arrive_time ?? ed.flight_info?.arrive ?? rawFlightTimes[1] ?? null;
+  const inboundDep = rawFacts.inbound?.departure.time ?? itinerary.meta?.flight_in_time ?? ed.flight_info?.return_depart ?? rawFlightTimes.at(-2) ?? null;
+  const inboundArr = rawFacts.inbound?.arrival.time ?? itinerary.meta?.flight_in_arrive_time ?? ed.flight_info?.return_arrive ?? rawFlightTimes.at(-1) ?? null;
   const days = Array.isArray((itinerary as { days?: unknown }).days) ? (itinerary as { days: unknown[] }).days : [];
   const lastDayIndex = Math.max(0, days.length - 1);
 
@@ -542,6 +543,33 @@ function ensureCustomerSellingPrices(rows: ProductPriceRowInput[]): ProductPrice
   });
 }
 
+function parseKoreanDuration(value: unknown): { nights: number; days: number } | null {
+  const match = String(value ?? '').match(/([1-9]\d*)\s*\uBC15\s*([1-9]\d*)\s*\uC77C/u);
+  if (!match) return null;
+  const nights = Number(match[1]);
+  const days = Number(match[2]);
+  if (!Number.isFinite(nights) || !Number.isFinite(days) || nights < 0 || days <= 0 || nights >= days) {
+    return null;
+  }
+  return { nights, days };
+}
+
+function resolveSourceBackedNights(ed: ExtractedData, registrationTitle?: string | null): number | null {
+  const explicit = (ed as { nights?: number | null }).nights;
+  if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit >= 0) return Math.floor(explicit);
+
+  const durationDays = typeof ed.duration === 'number' && Number.isFinite(ed.duration) && ed.duration > 0
+    ? Math.floor(ed.duration)
+    : null;
+  for (const candidate of [(ed as { trip_style?: string | null }).trip_style, registrationTitle, ed.title]) {
+    const parsed = parseKoreanDuration(candidate);
+    if (!parsed) continue;
+    if (durationDays != null && parsed.days !== durationDays) continue;
+    return parsed.nights;
+  }
+  return null;
+}
+
 async function normalizeExtractedDataForRegistration(input: RegisterProductFromRawInput, ed: ExtractedData): Promise<string[]> {
   const warnings: string[] = [];
   applyDeterministicExtractedDataFixes(ed);
@@ -611,6 +639,10 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
 
   const registrationTitle = normalizeUploadTitle(input.title, ed.title) ?? ed.title ?? input.title ?? null;
   if (registrationTitle) ed.title = registrationTitle;
+  const sourceBackedNights = resolveSourceBackedNights(ed, registrationTitle);
+  if (sourceBackedNights != null) {
+    (ed as ExtractedData & { nights?: number }).nights = sourceBackedNights;
+  }
   const priceYear = resolvePriceRecoveryYear({
     explicitYear: input.priceYear,
     rawText,
@@ -689,7 +721,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     productRawText: rawText,
     destination: ed.destination,
     durationDays: ed.duration,
-    nights: (ed as { nights?: number | null }).nights ?? null,
+    nights: sourceBackedNights,
     activeAttractions: input.activeAttractions,
   });
   const itineraryBackedDuration = inferSafeDurationFromItinerary(itinerary.itineraryDataToSave);

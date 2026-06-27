@@ -21,6 +21,7 @@ import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
 import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { selectSourceBackedPriceRows } from '@/lib/source-price-date-repair';
 
 export interface VerifyCheck {
   id: string;
@@ -607,15 +608,16 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       departureDays: depDays,
       accommodations: pkg.accommodations ?? [],
     });
+    const expectedRows = selectSourceBackedPriceRows(pkg, expected.rows);
     const dbPriceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
-    if (expected.rows.length === 0) {
+    if (expectedRows.length === 0) {
       checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: 'deterministic 가격표 미인식' });
     } else if (dbPriceDates.length === 0) {
-      checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'fail', detail: `원문 가격 ${expected.rows.length}건 인식, DB price_dates 없음` });
+      checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'fail', detail: `원문 가격 ${expectedRows.length}건 인식, DB price_dates 없음` });
     } else {
-      const expectedMin = minPrice(expected.rows);
+      const expectedMin = minPrice(expectedRows);
       const dbMin = minPrice(dbPriceDates);
-      const expectedByDate = new Map(expected.rows.map(row => [row.date, row.adult_price]));
+      const expectedByDate = new Map(expectedRows.map(row => [row.date, row.adult_price]));
       const dbByDate = new Map(
         dbPriceDates
           .filter(row => typeof row.date === 'string')
@@ -660,7 +662,7 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
           id: 'C12',
           label: '가격표 원문 재대조',
           status: 'pass',
-          detail: `원문 ${expected.rows.length}건 ↔ DB ${dbPriceDates.length}건 정합`,
+          detail: `원문 ${expectedRows.length}건 ↔ DB ${dbPriceDates.length}건 정합`,
         });
       }
     }

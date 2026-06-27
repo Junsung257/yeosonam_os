@@ -14,6 +14,9 @@ export const UPLOAD_REGION_CODE_MAP: Record<string, string> = {
 };
 
 export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
+  석가장: 'SJW',
+  '석가장/태항산': 'SJW',
+  태항산: 'SJW',
   오사카: 'OSA',
   간사이: 'OSA',
   교토: 'OSA',

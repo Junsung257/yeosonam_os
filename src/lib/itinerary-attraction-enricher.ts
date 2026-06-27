@@ -95,10 +95,15 @@ function isDirectScanEligibleTerm(term: string, attraction: AttractionData, dest
 function isDirectScanUnsafeActivity(activity: string): boolean {
   const compact = activity.replace(/\s+/g, '');
   if (!compact) return true;
+  if (isHotelOperationLine(activity)) return true;
   if (/(?:\uB9C8\uC0AC\uC9C0|\uC774\uB3D9|\uC18C\uC694|\uD638\uD154|\uACF5\uD56D|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uAC00\uC774\uB4DC\uBBF8\uD305)/.test(compact)) {
     return !/(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|CC)/.test(compact);
   }
   return false;
+}
+
+function isHotelOperationLine(text: string): boolean {
+  return /(?:\bcheck\s*[- ]?\s*(?:in|out)\b|\uCCB4\uD06C\s*(?:\uC778|\uC544\uC6C3)|\uCCB4\uD06C\s*[- ]?\s*(?:in|out))/i.test(text);
 }
 
 function compactScheduleText(value: string | null | undefined): string {
@@ -119,6 +124,7 @@ function isSupplierHeaderOrCommerceLine(text: string): boolean {
 
 function shouldStripAttractionReferences(item: ItineraryScheduleItem): boolean {
   const text = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
+  if (isHotelOperationLine(text)) return true;
   if (isSupplierHeaderOrCommerceLine(text)) return true;
   if (item.entity_kind === 'optional_tour' || item.entity_kind === 'perk') return true;
   if (item.entity_kind === 'transfer' && !hasAttractionVisitHint(text)) return true;
@@ -237,6 +243,8 @@ function isGenericNonAttractionActivity(activity: string): boolean {
   const compact = text.replace(/\s+/g, '');
   if (/^(?:\uBD80\uC0B0|\uC138\uBD80|\uD074\uB77D|\uD478\uAFB8\uC625|\uB2E4\uB0AD|\uB098\uD2B8\uB791|\uC5F0\uAE38|\uB3C4\uBB38|\uC6A9\uC815|\uC774\uB3C4\uBC31\uD558|\uBD81\uD30C|\uC11C\uD30C)$/.test(compact)) return true;
   if (/^(?:살펴보기|여권|입국|이트래블|eTravel|만15세미만)/i.test(compact)) return true;
+  if (isHotelOperationLine(text)) return true;
+  if (/^(?:\uBBF8\uC81C\uACF5|\uBD88\uD3EC\uD568|\uD3EC\uD568|\uC81C\uACF5|\uC5C6\uC74C|N\/A|NA|-)$/.test(compact)) return true;
   if (/^(?:LJ|BX|KE|OZ|7C|ZE|TW|RS)\s*\d{3,4}$/i.test(text)) return true;
   if (/(?:출발|향발|도착|해산)/.test(text) && /(?:부산|세부|김해|공항)/.test(text)) return true;
   if (/기내박/.test(compact)) return true;

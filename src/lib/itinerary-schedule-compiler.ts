@@ -147,6 +147,10 @@ function hasExplicitLocalPrice(text: string): boolean {
   return /(?:\$|＄)\s*\d{1,3}|\b\d{1,3}\s*(?:USD|달러|불)\b/i.test(text);
 }
 
+function isHotelOperationLine(text: string): boolean {
+  return /(?:\bcheck\s*[- ]?\s*(?:in|out)\b|\uCCB4\uD06C\s*(?:\uC778|\uC544\uC6C3)|\uCCB4\uD06C\s*[- ]?\s*(?:in|out))/i.test(text);
+}
+
 function hasIncludedValueSignal(text: string): boolean {
   return /(?:상당|포함|제공|특전|무료|서비스|체험)/.test(text);
 }
@@ -226,6 +230,7 @@ function classifySafe(activity: string, type?: string | null): ScheduleEntityKin
   if (type === 'meal') return 'meal';
   if (type === 'shopping' || /(\uBA74\uC138|\uC1FC\uD551|\uC1FC\uD551\uC13C\uD130|lala\s*port)/i.test(text)) return 'shopping';
   if (type === 'optional' || /(\uC120\uD0DD\s*\uAD00\uAD11|\uC635\uC158|\uBCC4\uB3C4\s*\uC694\uAE08)/.test(text)) return 'optional_tour';
+  if (isHotelOperationLine(text)) return 'hotel_stay';
   if (
     /(\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0|\uC628\uCC9C\uC695|\uC2A4\uD30C)/.test(text)
     && hasExplicitLocalPrice(text)
@@ -345,6 +350,7 @@ function shouldDropLandingScheduleItem(item: CompiledScheduleItem, regions?: unk
     : [];
   if (regionLabels.includes(compactText)) return true;
   if (/^(?:\uD638\uD154\s*)?(?:\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD)\s*\uD6C4$/.test(text)) return true;
+  if (isHotelOperationLine(text)) return true;
   if (/^(?:\uBD80\uC0B0|\uC5F0\uAE38|\uB3C4\uBB38|\uC6A9\uC815|\uC774\uB3C4\uBC31\uD558|\uC1A1\uAC15\uD558|\uB0A8\uD30C|\uBD81\uD30C|\uC11C\uD30C)$/.test(compactText)) return true;
   if (/^(?:\uC804\uC77C|\uC804\uC6A9\uCC28\uB7C9|\uBB34\uC81C\uD55C)$/.test(compactText)) return true;
   if (/^\([^)]*\)$/.test(text)) return true;

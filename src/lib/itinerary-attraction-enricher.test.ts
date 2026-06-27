@@ -205,7 +205,37 @@ describe('enrichItineraryWithAttractionReferences', () => {
   it('skips generic free-time and transit rows from the attraction denominator', () => {
     expect(shouldAttemptAttractionMatch({ activity: '달랏 시내 자유시간', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '공항 이동', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: 'Check-out (~12:00)', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '미제공', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '죽림선원 관광', type: 'normal' })).toBe(true);
+  });
+
+  it('removes stale attraction references from hotel operation rows', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 4,
+            schedule: [
+              {
+                activity: 'Check-out (~12:00)',
+                type: 'normal',
+                entity_kind: 'attraction_visit',
+                attraction_query: 'Check-out',
+                attraction_queries: ['Check-out'],
+              },
+            ],
+          },
+        ],
+      },
+      [{ id: 'dummy', name: '푸꾸옥 야시장', region: '푸꾸옥' }],
+      '푸꾸옥',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_query).toBeUndefined();
+    expect(item.attraction_queries).toBeUndefined();
+    expect(res.unmatchedCandidates).toHaveLength(0);
   });
   it('skips supplier table fragments from unmatched attraction collection', () => {
     expect(shouldAttemptAttractionMatch({ activity: '\uBD80  \uC0B0', type: 'normal' })).toBe(false);

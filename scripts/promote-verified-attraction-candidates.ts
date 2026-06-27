@@ -9,9 +9,14 @@ loadEnv();
 const args = new Set(process.argv.slice(2));
 const apply = args.has('--apply');
 const json = args.has('--json');
+const existingOnly = args.has('--existing-only');
 const limit = Number(argValue('--limit', '50'));
 const destination = argValue('--destination', '');
 const minScore = Number(argValue('--min-score', '0.44'));
+const packageIdFilter = argValue('--package-ids', '')
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
 
 function argValue(name: string, fallback: string): string {
   const found = process.argv.find(arg => arg.startsWith(`${name}=`));
@@ -65,8 +70,19 @@ function sourceExamplesFrom(row: CandidateRow): string[] {
 }
 
 function isBadMasterName(value: string): boolean {
-  if (!value || value.length < 2) return true;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  const compact = normalized.replace(/\s+/g, '');
+  if (!normalized || compact.length < 2) return true;
   if (/^\d+\s*\uD638\s*\uACBD\uACC4\uBE44$/.test(value)) return false;
+  if (/^#?\d+/.test(normalized)) return true;
+  if (/[+]/.test(normalized)) return true;
+  if (/[.!?。]$/.test(normalized)) return true;
+  if (/(?:이동|출항|탑승장|이용가능|감상|전경|드러냅니다|곳입니다|관광$|추천|메뉴|무제한|전용|프리미엄|노노)$/.test(compact)) return true;
+  if (/(?:조식|중식|석식|한상차림|세트메뉴|모듬구이|삼겹구이|백숙|짜조|쌀국수|씨푸드|스테이크|연어|초밥|빵|옥수수|과일|열대과일|음료|맥주|고량주)/.test(compact)) return true;
+  if (/(?:공항|항출항|버스|전동카트|전동카|케이블카왕복|왕복이용)$/.test(compact)) return true;
+  if (/(?:하노이|파타야|동경|석가장|임주|샤오관|아타미|도야|치토세|난칸|죠잔케이|이도백화|나리타공항|부산항출항)$/.test(compact)) return true;
+  if (normalized.length > 24 && !/(?:대협곡|폭포|사원|성당|공원|박물관|호수|전망대|해변|비치|온천|신사|사찰|궁|광장|거리|야시장|케이블카)/.test(normalized)) return true;
+  if (normalized.length > 34) return true;
   if (/[,\u3001/]/.test(value)) return true;
   if (/(맛집|날씨|주변|합성데크|차광막|WPC|돈까스|돈카츠|재래시장|옵션|마사지|선택관광)/i.test(value)) return true;
   if (/^\d+호\s*경계비$/.test(value)) return true;
@@ -87,6 +103,7 @@ function chooseMasterName(row: CandidateRow): string {
 }
 
 async function fetchCandidates(): Promise<CandidateRow[]> {
+  const queryLimit = packageIdFilter.length > 0 ? Math.max(limit, 5000) : limit;
   let query = supabase
     .from('entity_master_candidates')
     .select('id, candidate_key, raw_label, normalized_label, canonical_name, destination_scope, country_scope, region_scope, source_context, suggested_master, external_sources, source_unmatched_ids, verification_score, package_count')
@@ -97,11 +114,16 @@ async function fetchCandidates(): Promise<CandidateRow[]> {
     .gte('verification_score', minScore)
     .contains('source_context', { mobile_landing_impact: true })
     .order('package_count', { ascending: false })
-    .limit(limit);
+    .limit(queryLimit);
   if (destination) query = query.eq('destination_scope', destination);
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as CandidateRow[];
+  const rows = (data ?? []) as CandidateRow[];
+  if (packageIdFilter.length === 0) return rows;
+  const wanted = new Set(packageIdFilter);
+  return rows
+    .filter(row => packageIdsFrom(row).some(packageId => wanted.has(packageId)))
+    .slice(0, limit);
 }
 
 async function findExisting(name: string, aliases: string[]) {
@@ -134,6 +156,10 @@ async function promote(row: CandidateRow) {
   const existing = await findExisting(masterName, aliases);
   let attractionId = existing?.id ?? null;
   let created = false;
+
+  if (!attractionId && existingOnly) {
+    return { status: 'skipped', reason: 'existing_only_no_match', candidate_key: row.candidate_key, masterName, aliases };
+  }
 
   if (!attractionId && apply) {
     const descriptions = buildSourceBackedAttractionDescriptions({
@@ -255,6 +281,7 @@ async function main() {
 
   const output = {
     apply,
+    existingOnly,
     scanned: rows.length,
     promoted_or_existing: results.filter(row => row.status === 'created' || row.status === 'linked_existing').length,
     skipped: results.filter(row => row.status === 'skipped').length,

@@ -23,6 +23,7 @@ export type UploadDeliverabilityInput = {
 
 const RISK_CONTEXT_RE =
   /(optional|option|tour|ticket|admission|surcharge|cancel|cancellation|penalty|fee|charge|\uC120\uD0DD\s*\uAD00\uAD11|\uCD94\uCC9C\s*\uAD00\uAD11|\uC785\uC7A5\uAD8C|\uCD94\uAC00\s*\uC694\uAE08|\uCD94\uAC00\uAE08|\uCC28\uC9C0|\uC368\uCC28\uC9C0|\uD604\uC9C0\s*\uC9C0\uC0C1\uBE44|\uCEE8\uC2DC\uC9C0\uC5B4|2B|3B|\uCE90\uB514|\uC218\uC218\uB8CC|\uCDE8\uC18C|\uC608\uC57D\uAE08)/i;
+const PRODUCT_PRICE_LABEL_RE = /(\uD310\s*\uB9E4\s*\uAC00\s*\uACA9|\uD310\s*\uB9E4\s*\uAC00|\uC0C1\s*\uD488\s*\uAC00|\uC0C1\uD488\uAC00)/i;
 const AMOUNT_RE = /(\d{1,3}(?:,\d{3})+|\d+)\s*(\uB9CC\uC6D0|\uC6D0|krw|,-)?/gi;
 const PRICE_MIN = 10_000;
 const PRICE_MAX = 50_000_000;
@@ -72,14 +73,23 @@ function normalizeKrwAmount(value: string, unit?: string): number | null {
 
 function extractRiskContextPrices(rawText: string): number[] {
   const prices = new Set<number>();
+  let productPriceLabelCarry = 0;
 
   for (const line of rawText.split(/\r?\n/)) {
-    if (!RISK_CONTEXT_RE.test(line)) continue;
+    const hasProductPriceLabel = PRODUCT_PRICE_LABEL_RE.test(line);
+    if (!RISK_CONTEXT_RE.test(line)) {
+      productPriceLabelCarry = hasProductPriceLabel ? 2 : Math.max(0, productPriceLabelCarry - 1);
+      continue;
+    }
+    const riskIndex = line.search(RISK_CONTEXT_RE);
+    const keepLeadingProductPrice = (hasProductPriceLabel || productPriceLabelCarry > 0) && riskIndex > 0;
 
     for (const match of line.matchAll(AMOUNT_RE)) {
+      if (keepLeadingProductPrice && (match.index ?? 0) < riskIndex) continue;
       const price = normalizeKrwAmount(match[1], match[2]);
       if (price != null) prices.add(price);
     }
+    productPriceLabelCarry = hasProductPriceLabel ? 2 : Math.max(0, productPriceLabelCarry - 1);
   }
 
   return [...prices];
