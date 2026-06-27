@@ -123,6 +123,8 @@ export function buildMicroAnglePrimaryKeyword(destination: string, template: Pic
 }
 
 type QueueCandidateLike = {
+  id?: string | null;
+  product_id?: string | null;
   destination?: string | null;
   angle_type?: string | null;
   topic?: string | null;
@@ -133,19 +135,41 @@ type QueueCandidateLike = {
   meta?: any;
 };
 
+function readWriterType(row: QueueCandidateLike): string {
+  const raw = row.meta?.writer_type ?? row.meta?.writer ?? row.generation_meta?.writer;
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  return row.product_id ? 'product_consultant_writer' : 'info_writer';
+}
+
 function readExpectedSlug(row: QueueCandidateLike): string | null {
   const raw = row.meta?.expected_slug ?? row.meta?.spun_slug ?? row.slug_hint ?? row.slug;
   return typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : null;
 }
 
+function readProductDedupKey(row: QueueCandidateLike): string | null {
+  const raw = row.meta?.product_dedup_key ?? row.generation_meta?.product_dedup_key ?? row.meta?.dedup_key;
+  if (typeof raw === 'string' && raw.trim()) return raw.trim().toLowerCase();
+  if (typeof row.product_id === 'string' && row.product_id.trim()) return row.product_id.trim().toLowerCase();
+  return null;
+}
+
+function hasEvidenceInsufficientFlag(row: QueueCandidateLike): boolean {
+  return row.meta?.evidence_insufficient === true ||
+    row.meta?.failure_code === 'evidence_insufficient' ||
+    row.generation_meta?.failure_bucket === 'evidence_insufficient';
+}
+
 function publishableQueueKey(row: QueueCandidateLike): string | null {
+  const writer = readWriterType(row);
+  const productDedupKey = readProductDedupKey(row);
+  if (productDedupKey) return `${writer}::product::${productDedupKey}`;
   const micro = readMicroAngle(row);
   const microKey = microAngleKey(row.destination, micro);
-  if (microKey) return microKey;
+  if (microKey) return `${writer}::${microKey}`;
   const slug = readExpectedSlug(row);
-  if (slug) return `slug::${slug}`;
+  if (slug) return `${writer}::slug::${slug}`;
   if (typeof row.topic === 'string' && row.topic.trim()) {
-    return `topic::${row.topic.trim().toLowerCase()}`;
+    return `${writer}::topic::${row.topic.trim().toLowerCase()}`;
   }
   return null;
 }
@@ -157,21 +181,25 @@ export function countPublishableQueueCandidates(input: {
   publishableCount: number;
   blockedRecentDuplicate: number;
   duplicateQueued: number;
+  evidenceInsufficient: number;
 } {
   const recentKeys = new Set<string>();
   for (const row of input.recentPublished) {
-    const key = microAngleKey(row.destination, readMicroAngle(row));
+    const key = publishableQueueKey(row);
     if (key) recentKeys.add(key);
-    const slug = readExpectedSlug(row);
-    if (slug) recentKeys.add(`slug::${slug}`);
   }
 
   const publishableKeys = new Set<string>();
   let blockedRecentDuplicate = 0;
   let duplicateQueued = 0;
+  let evidenceInsufficient = 0;
 
   for (const row of input.activeQueue) {
     if (row.source === 'pillar') continue;
+    if (hasEvidenceInsufficientFlag(row)) {
+      evidenceInsufficient += 1;
+      continue;
+    }
     const key = publishableQueueKey(row);
     if (!key) continue;
     if (recentKeys.has(key)) {
@@ -189,7 +217,60 @@ export function countPublishableQueueCandidates(input: {
     publishableCount: publishableKeys.size,
     blockedRecentDuplicate,
     duplicateQueued,
+    evidenceInsufficient,
   };
+}
+
+async function quarantineDuplicatePublishableCandidates(input: {
+  activeQueue: QueueCandidateLike[];
+  recentPublished: QueueCandidateLike[];
+}): Promise<number> {
+  const recentKeys = new Set<string>();
+  for (const row of input.recentPublished) {
+    const key = publishableQueueKey(row);
+    if (key) recentKeys.add(key);
+  }
+
+  const seen = new Set<string>();
+  const duplicateRows: Array<{ id: string; key: string; meta: Record<string, unknown> }> = [];
+  for (const row of input.activeQueue) {
+    if (!row.id || row.source === 'pillar' || hasEvidenceInsufficientFlag(row)) continue;
+    const key = publishableQueueKey(row);
+    if (!key) continue;
+    const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+      ? row.meta as Record<string, unknown>
+      : {};
+    if (recentKeys.has(key) || seen.has(key)) {
+      duplicateRows.push({ id: row.id, key, meta });
+      continue;
+    }
+    seen.add(key);
+  }
+
+  if (duplicateRows.length === 0) return 0;
+  const now = new Date().toISOString();
+  let quarantined = 0;
+  for (const row of duplicateRows.slice(0, 50)) {
+    const { error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update({
+        status: 'skipped',
+        last_error: 'candidate_duplicate_preclaim',
+        updated_at: now,
+        meta: {
+          ...row.meta,
+          self_heal_blocked: true,
+          quarantine_reason: 'duplicate_preclaim',
+          duplicate_key: row.key,
+          quarantined_by: 'blog-engine-v2-publishability',
+          quarantined_at: now,
+        },
+      } as never)
+      .eq('id', row.id)
+      .eq('status', 'queued');
+    if (!error) quarantined += 1;
+  }
+  return quarantined;
 }
 
 export async function ensureDailyPublishableQueue(opts?: {
@@ -201,6 +282,9 @@ export async function ensureDailyPublishableQueue(opts?: {
   targetCandidates: number;
   skippedRecentDuplicate: number;
   skippedQueuedDuplicate: number;
+  evidenceInsufficient: number;
+  quarantinedDuplicateCandidates: number;
+  publishabilitySnapshot: BlogPublishabilitySnapshot;
   rejectedByTopicFit: number;
   insertedTopics: string[];
 }> {
@@ -214,19 +298,39 @@ export async function ensureDailyPublishableQueue(opts?: {
   const [recentPublishedRes, activeQueueRes] = await Promise.all([
     supabaseAdmin
       .from('content_creatives')
-      .select('destination, angle_type, slug, generation_meta')
+      .select('destination, angle_type, slug, product_id, generation_meta')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .gte('published_at', since.toISOString())
       .limit(300),
     supabaseAdmin
       .from('blog_topic_queue')
-      .select('destination, angle_type, topic, source, slug_hint, meta')
+      .select('id, product_id, destination, angle_type, topic, source, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
   ]);
 
   const queueCandidateStats = countPublishableQueueCandidates({
+    activeQueue: activeQueueRes.data ?? [],
+    recentPublished: recentPublishedRes.data ?? [],
+  });
+  const queuedTotal = activeQueueRes.data?.filter((row: QueueCandidateLike) => row.source !== 'pillar').length ?? 0;
+  const duplicateCount = queueCandidateStats.blockedRecentDuplicate + queueCandidateStats.duplicateQueued;
+  const publishabilitySnapshot: BlogPublishabilitySnapshot = {
+    queued_total: queuedTotal,
+    publishable_count: queueCandidateStats.publishableCount,
+    duplicate_count: duplicateCount,
+    evidence_insufficient_count: queueCandidateStats.evidenceInsufficient,
+    candidate_shortage: queueCandidateStats.publishableCount < targetCandidates,
+    next_action: queueCandidateStats.evidenceInsufficient > 0
+      ? 'collect_evidence'
+      : duplicateCount > 0
+        ? 'quarantine_duplicates'
+        : queueCandidateStats.publishableCount < targetCandidates
+          ? 'refill_candidates'
+          : 'publish_ready',
+  };
+  const quarantinedDuplicateCandidates = await quarantineDuplicatePublishableCandidates({
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
   });
@@ -238,6 +342,9 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate: queueCandidateStats.blockedRecentDuplicate,
       skippedQueuedDuplicate: queueCandidateStats.duplicateQueued,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+      quarantinedDuplicateCandidates,
+      publishabilitySnapshot,
       rejectedByTopicFit: 0,
       insertedTopics: [],
     };
@@ -316,6 +423,9 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate,
       skippedQueuedDuplicate,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+      quarantinedDuplicateCandidates,
+      publishabilitySnapshot,
       rejectedByTopicFit: rejected.length,
       insertedTopics: [],
     };
@@ -334,6 +444,9 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate,
       skippedQueuedDuplicate,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+      quarantinedDuplicateCandidates,
+      publishabilitySnapshot,
       rejectedByTopicFit: rejected.length,
       insertedTopics: [],
     };
@@ -349,6 +462,14 @@ export async function ensureDailyPublishableQueue(opts?: {
     targetCandidates,
     skippedRecentDuplicate,
     skippedQueuedDuplicate,
+    evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+    quarantinedDuplicateCandidates,
+    publishabilitySnapshot: {
+      ...publishabilitySnapshot,
+      publishable_count: existingQueued + insertedTopics.length,
+      candidate_shortage: existingQueued + insertedTopics.length < targetCandidates,
+      next_action: existingQueued + insertedTopics.length < targetCandidates ? 'refill_candidates' : 'publish_ready',
+    },
     rejectedByTopicFit: rejected.length,
     insertedTopics,
   };
@@ -378,6 +499,7 @@ import { researchKeywordsBatch, classifyKeywordTier, type KeywordTier } from './
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
 import { romanize } from './slug-utils';
 import { buildProductDedupKey, resolveProductDepartureDate, resolveProductSupplierCode } from './blog-product-brief';
+import type { BlogPublishabilitySnapshot } from './blog-engine-v2';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];

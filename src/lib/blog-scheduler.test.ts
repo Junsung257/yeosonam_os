@@ -29,6 +29,26 @@ describe('blog scheduler queue refill helpers', () => {
       publishableCount: 1,
       blockedRecentDuplicate: 1,
       duplicateQueued: 1,
+      evidenceInsufficient: 0,
+    });
+  });
+
+  it('separates writer type and product dedup keys in publishable candidate counting', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeQueue: [
+        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'info_writer' } },
+        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'product_consultant_writer', product_dedup_key: 'pkg|2026-07-01|5d|YSN' } },
+        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'budget_family', writer_type: 'product_consultant_writer', product_dedup_key: 'pkg|2026-07-01|5d|YSN' } },
+        { destination: '발리', angle_type: 'value', meta: { micro_angle: 'transport_cost', evidence_insufficient: true } },
+      ],
+    });
+
+    expect(stats).toEqual({
+      publishableCount: 2,
+      blockedRecentDuplicate: 0,
+      duplicateQueued: 1,
+      evidenceInsufficient: 1,
     });
   });
 });

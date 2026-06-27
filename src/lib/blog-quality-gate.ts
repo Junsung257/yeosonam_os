@@ -18,6 +18,7 @@ import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-re
 import { inspectBlogImageQuality } from './blog-image-quality';
 import { inspectBlogStructure } from './blog-structure-audit';
 import { inspectBlogIntentQuality } from './blog-content-intent';
+import { evaluateBlogEngineV2 } from './blog-engine-v2';
 import { evaluateBlogEditorialQuality, evaluateBlogTopicFit } from './blog-topic-fit-gate';
 import { normalizeBlogCtaDestination } from './blog-cta';
 
@@ -57,7 +58,7 @@ const GENERIC_SLUG_PREFIXES = new Set([
 ]);
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality' | 'accent_density';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'engine_v2' | 'editorial_quality' | 'image_quality' | 'accent_density';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -83,6 +84,7 @@ interface CheckInput {
   product_id?: string | null;
   micro_angle?: string | null;
   skipFuzzyDuplicate?: boolean;
+  generation_meta?: Record<string, unknown> | null;
 }
 
 function getSpecificSlugPrefix(slug: string): string | null {
@@ -638,6 +640,41 @@ export function checkIntentQuality(input: CheckInput): GateResult {
   };
 }
 
+export function checkBlogEngineV2(input: CheckInput): GateResult {
+  if (input.content_type === 'pillar') {
+    return {
+      gate: 'engine_v2',
+      passed: true,
+      evidence: { skipped: 'pillar_content' },
+    };
+  }
+
+  const evaluation = evaluateBlogEngineV2({
+    blogHtml: input.blog_html,
+    primaryKeyword: input.primary_keyword,
+    destination: input.destination,
+    contentType: input.content_type,
+    productId: input.product_id,
+    generationMeta: input.generation_meta,
+  });
+
+  return {
+    gate: 'engine_v2',
+    passed: evaluation.passed,
+    reason: evaluation.passed
+      ? undefined
+      : `engine v2 ${evaluation.score}/100: ${evaluation.failure_bucket}`,
+    evidence: {
+      evaluation,
+      failure_bucket: evaluation.failure_bucket,
+      score: evaluation.score,
+      metrics: evaluation.metrics,
+      evidence_count: evaluation.brief.evidence_items.length,
+      writer: evaluation.brief.writer_type,
+    },
+  };
+}
+
 function checkTopicFit(input: CheckInput): GateResult {
   const report = evaluateBlogTopicFit({
     topic: input.primary_keyword,
@@ -879,6 +916,8 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(checkTopicFit(input));
   // 글 의도 계약 검증 — 정보/상품/날씨/준비물/일정별 필수 블록과 읽기 디자인 차단
   gates.push(checkIntentQuality(input));
+  // 엔진 V2 평가 — 후보/근거/상담형 글 구조의 실제 비즈니스 적합성 점검
+  gates.push(checkBlogEngineV2(input));
   gates.push(checkEditorialQuality(input));
   // 이미지 품질 기준 검증 — 깨진 URL, 중복, 빈 alt, 주제 무관 alt/caption 차단
   gates.push(checkImageQuality(input));
