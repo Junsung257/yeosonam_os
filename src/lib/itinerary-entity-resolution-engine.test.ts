@@ -123,6 +123,9 @@ describe('resolveItineraryEntityCandidate', () => {
       }),
       googlePlacesVerifier: async () => ({
         configured: true,
+        enabled: true,
+        remainingDailyCalls: 9,
+        maxQueriesPerCandidate: 1,
         canonicalName: 'Tokyo Tower',
         score: 0.92,
         hasStrongPlaceIdentity: true,
