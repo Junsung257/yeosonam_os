@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chooseCanonicalNameFromNaver } from './naver-entity-verifier';
-import { resolveItineraryEntityCandidate, type EntityCandidateRow } from './itinerary-entity-resolution-engine';
+import {
+  resolveItineraryEntityCandidate,
+  terminalNonMasterReason,
+  type EntityCandidateRow,
+} from './itinerary-entity-resolution-engine';
 
 function candidate(overrides: Partial<EntityCandidateRow> = {}): EntityCandidateRow {
   return {
@@ -528,6 +532,61 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(decision.autoAction).toBe('reject_noise');
     expect(decision.promotionStatus).toBe('rejected_noise');
     expect(decision.autoVerificationStatus).toBe('rejected_noise');
+  });
+
+  it('auto-rejects Korean itinerary fragments that are not attraction masters', async () => {
+    const labels = [
+      '부산항출항',
+      '왕복전동차',
+      '호이안 디저트 - 반짱느엉 + 못 주스',
+      '일본 3대 온천지로 꼽히는 아타미로 이동 후',
+      '증편특가',
+    ];
+
+    for (const label of labels) {
+      const decision = await resolveItineraryEntityCandidate(candidate({
+        raw_label: label,
+        normalized_label: label,
+        suggested_master: { label },
+      }), {
+        naverVerifier: async () => {
+          throw new Error('Naver should be skipped for terminal non-master Korean fragments');
+        },
+        wikidataReconciler: async () => [],
+      });
+
+      expect(decision.autoAction).toBe('reject_noise');
+      expect(decision.promotionStatus).toBe('rejected_noise');
+      expect(decision.autoVerificationStatus).toBe('rejected_noise');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
+
+  it('does not reject a clean Korean place name just because raw context has list wording', async () => {
+    expect(terminalNonMasterReason(
+      'attraction',
+      '다딴란 폭포',
+      '베트남에서 가장 유명한 다딴란 폭포 등 관광',
+    )).toBeNull();
+  });
+
+  it('auto-rejects Korean option, metric, room, and multi-entity fragments', () => {
+    expect(terminalNonMasterReason('attraction', '사막 진입시 케이블카 또는 버스 이용', '사막 진입시 케이블카 또는 버스 이용'))
+      .toBe('activity or operational detail, not an attraction master');
+    expect(terminalNonMasterReason('attraction', '5043M', '5043M'))
+      .toBe('metric or attribute fragment, not an attraction master');
+    expect(terminalNonMasterReason('attraction', '비암산 일송정, 해란강', '비암산 일송정, 해란강'))
+      .toBe('multiple entities or option list, not a single attraction master');
+    expect(terminalNonMasterReason('hotel', ': 푸꾸옥 뉴월드 - 가든풀빌라 2BED룸', ': 푸꾸옥 뉴월드 - 가든풀빌라 2BED룸'))
+      .toBe('hotel operational or room fragment');
+  });
+
+  it('keeps clean Korean place names reviewable', () => {
+    expect(terminalNonMasterReason('attraction', '시나무런초원', '시나무런 초원')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '관운장 사당', '관운장 사당')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '베이사이드플레이스', '베이사이드플레이스 관광')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '판시판산', '케이블카 탑승 후 판시판산 관광')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '아쿠아토피아 워터파크', '아쿠아토피아 워터파크+놀이공원 무제한 이용 가능')).toBeNull();
   });
 
   it('keeps shopping text review-gated without wasting external search', async () => {

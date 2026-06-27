@@ -9,6 +9,7 @@ loadEnv();
 const args = new Set(process.argv.slice(2));
 const apply = args.has('--apply');
 const json = args.has('--json');
+const existingOnly = args.has('--existing-only');
 const limit = Number(argValue('--limit', '50'));
 const destination = argValue('--destination', '');
 const minScore = Number(argValue('--min-score', '0.44'));
@@ -156,6 +157,10 @@ async function promote(row: CandidateRow) {
   let attractionId = existing?.id ?? null;
   let created = false;
 
+  if (!attractionId && existingOnly) {
+    return { status: 'skipped', reason: 'existing_only_no_match', candidate_key: row.candidate_key, masterName, aliases };
+  }
+
   if (!attractionId && apply) {
     const descriptions = buildSourceBackedAttractionDescriptions({
       name: masterName,
@@ -276,6 +281,7 @@ async function main() {
 
   const output = {
     apply,
+    existingOnly,
     scanned: rows.length,
     promoted_or_existing: results.filter(row => row.status === 'created' || row.status === 'linked_existing').length,
     skipped: results.filter(row => row.status === 'skipped').length,
