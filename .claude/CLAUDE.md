@@ -18,7 +18,7 @@ Superpowers is not the source of truth for Yeosonam domain decisions. For produc
 - `CURRENT_STATUS.md`
 - `db/error-registry.md`
 
-If Superpowers guidance conflicts with Yeosonam-specific rules, follow the Yeosonam rule and mention the conflict in the final report. Do not install or configure a Superpowers MCP wrapper unless the Codex plugin is unavailable in the target harness and the user explicitly wants cross-IDE MCP support.
+If Superpowers, LazyCodex, Spec Kit, Cline, OpenHands, Aider, ast-grep, or Probe guidance conflicts with Yeosonam-specific rules, follow the Yeosonam rule and mention the conflict in the final report. For the selected internal workflow contract, read `docs/agent-workflow-current-ssot.md`. Do not install or configure external agent runtimes, autonomous hooks, or a Superpowers MCP wrapper unless the user explicitly asks for a separate tool pilot.
 
 ## 2026-06-16 MCP Tooling
 

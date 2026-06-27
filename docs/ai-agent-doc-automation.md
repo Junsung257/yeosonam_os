@@ -30,6 +30,8 @@ completed investigation -> docs/audits/YYYY-MM-DD-*.md
 temporary note -> no docs; final answer only
 ```
 
+Exception: Tier 2 and Tier 3 work under `docs/agent-workflow-current-ssot.md` may create a feature packet at `docs/specs/YYYYMMDD-short-slug/` using `docs/specs/_template/`. This is not a default planning note; it is a durable implementation contract for large or high-risk work. Tier 0 and Tier 1 work must still avoid new spec packets unless the user explicitly asks for one.
+
 ## Document Hierarchy
 
 Always-loaded entry files stay short:
@@ -76,6 +78,7 @@ rg "keyword" docs AGENTS.md .claude --glob "!docs/audits/**"
 | Route/pipeline architecture change | current domain SSOT and boundary test |
 | Render contract change | current domain SSOT and customer render tests |
 | DB schema/guard change | migration + domain SSOT if behavior changes |
+| Tier 2 or Tier 3 agent workflow packet | `docs/specs/YYYYMMDD-short-slug/` with spec, plan, tasks, and verification |
 | One-off investigation | `docs/audits/YYYY-MM-DD-short-title.md` plus one index row in `docs/audits/README.md` |
 | Manual legacy workaround | final answer only unless it becomes repeatable |
 

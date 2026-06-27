@@ -20,6 +20,7 @@
 | **게이미피케이션·마일리지** | `CURRENT_STATUS.md`, `docs/gamification-runbook.md`, `src/lib/gamification-service.ts`, `src/lib/mileage-service.ts` |
 | **API 응답 포맷·인증 패턴** | `.cursor/rules/api-response-format.mdc` |
 | **DB 변경·마이그레이션** | `.cursor/rules/db-migration-policy.mdc`, `CURRENT_STATUS.md`, `db/FIELD_POLICY.md` |
+| **대형·고위험 작업·에이전트 워크플로우** | `docs/agent-workflow-current-ssot.md` 먼저 Read + 해당 도메인 SSOT |
 | **반복 실수·문서 자동 정리·SSOT 정리** | `docs/ai-agent-doc-automation.md` + `db/error-registry.md` |
 | **Git 정리·커밋·푸시·PR·머지·배포** | `docs/git-commit-handoff.md` 먼저 Read. 사용자는 비개발자이므로 AI가 안전한 기본값으로 판단하고, 폐기·되돌리기·강제푸시 전에는 멈춘다 |
 | **오타·import 한 줄·사용자가 지정한 단일 파일 기계적 수정** | 생략 가능 (프로젝트 규칙은 `.cursor/rules` 참고) |
@@ -60,6 +61,7 @@
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |
 | Supabase Auth 오픈 보안 게이트 | `docs/supabase-auth-open-gate.md` |
 | AI 정책 운영 가이드 | `docs/ai-policy-operations.md` |
+| 에이전트 워크플로우 현재 SSOT | `docs/agent-workflow-current-ssot.md` |
 | AI 에이전트 문서 자동화·하네스 | `docs/ai-agent-doc-automation.md` |
 | 반복 오류 상세 보관소 | `docs/errors/README.md` |
 | Git 커밋 핸드오프 | `docs/git-commit-handoff.md` |
