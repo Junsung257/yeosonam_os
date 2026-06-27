@@ -102,6 +102,7 @@ const KOREAN_MULTI_ENTITY_OR_OPTION_FRAGMENT_RE = /(?:[,/&+]|또는)/;
 const KOREAN_DESCRIPTIVE_ATTRACTION_PHRASE_RE = /(?:세계적으로\s*유명한|가장\s*유명한|꼽히는|환상적이고|아름다운|드넓은|어우러져|드러냅니다|내려다|세계\s*최고의|듯한|봉우리|절경|최초의|반야생|계림의\s*상징|에서\s*파\s*$|등\s*$)/;
 const KOREAN_GENERIC_OR_ROUTE_TOKEN_RE = /^(?:초원|해발|귀빈석|북파|남파|서파|양구코스|양커우코스|노노노|완톤)$/;
 const KOREAN_HOTEL_ROOM_OR_FACILITY_RE = /(?:객실|룸|BED|베드|풀빌라|가든풀빌라|욕실|락커|환복|체크\s*-?\s*인|체크\s*-?\s*아웃)/i;
+const KOREAN_EXTRA_GENERIC_OR_ITINERARY_FRAGMENT_RE = /(?:^or$|^마감$|^자유식$|^내부$|^반자연$|^초록색$|^붉은색$|^일\s*-\s*수$|^노노$|^\d+\s*분$|트레킹|온천계란|안전교육|약\s*\d+\s*시간|천지조망|무료이용|놀이기구|노팁|노옵션|특가|출확|발권|개별지참|명소\s*중|산\s*전체가|최대규모|포함|가능\s*$|집결|전동카.*소요|전동카트|차장관광|전통문화|전통복장|캠프파이어|민속공연|관람|특정일|혹은|투어$|보이는|매주|최고의|사진스팟|기원인|하늘과\s*바다|경계비|체험|지프차|대게|연어|전골|피자|몽골족의|역사|약\s*\d+만|화려하게|장식|[▷▶★♥]|\)$|BX\s*\d+|편으로|향발|[:：])/i;
 const COUNTRY_TO_ISO2: Record<string, string> = {
   korea: 'KR',
   japan: 'JP',
@@ -376,6 +377,9 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   if (category === 'attraction' && KOREAN_GENERIC_OR_ROUTE_TOKEN_RE.test(name)) {
     return 'generic or route token, not attraction master';
   }
+  if (category === 'attraction' && KOREAN_EXTRA_GENERIC_OR_ITINERARY_FRAGMENT_RE.test(name)) {
+    return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
   if (category === 'attraction' && /(?:la\s*la\s*port|lalaport)/i.test(combined)) {
     return 'shopping mall or commercial venue fragment';
   }
@@ -506,6 +510,9 @@ export async function resolveItineraryEntityCandidate(
 
   const templateResolution = label ? safeTemplateResolution(category, label) : null;
   if (templateResolution) {
+    const promotionStatus: MasterCandidatePromotionStatus = templateResolution.status === 'structured_non_master'
+      ? 'rejected_noise'
+      : 'candidate';
     return {
       candidateKey: row.candidate_key || baseDecision.candidateKey,
       canonicalName: label,
@@ -513,7 +520,7 @@ export async function resolveItineraryEntityCandidate(
       verificationScore: Math.max(baseDecision.confidence, templateResolution.status === 'template_matched' ? 0.84 : 0.88),
       autoVerificationStatus: templateResolution.status,
       autoAction: 'structure_non_master',
-      promotionStatus: 'candidate',
+      promotionStatus,
       decisionReason: templateResolution.reason,
       externalSources: uniqueSources(baseSources),
       suggestedMaster: {
