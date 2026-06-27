@@ -143,6 +143,51 @@ function normalizeScope(value: string | null | undefined): string {
   return (value ?? '').toLowerCase().replace(/\s+/g, '').trim();
 }
 
+const GENERIC_ALIAS_TERMS = new Set([
+  '\uC57C\uC2DC\uC7A5',
+  '\uC2DC\uB0B4',
+  '\uC2DC\uB0B4\uAD00\uAD11',
+  '\uC2DC\uB0B4\uC911\uC2EC\uAC00',
+  '\uD50C\uB77C\uC6CC\uAC00\uB4E0',
+  '\uC57C\uACBD',
+  '\uB9E5\uC8FC',
+  '\uBB34\uC81C\uD55C',
+  '(\uBB34\uC81C\uD55C',
+  '\uC8FC\uB958\uBB34\uC81C\uD55C)',
+  '\uC74C\uB8CC/\uC8FC\uB958\uBB34\uC81C\uD55C)',
+  '\uB180\uC774\uACF5\uC6D0',
+  'or',
+  '\uD639\uC740',
+  '\uC815\uADDC',
+  '\uC99D\uD3B8',
+]);
+
+const ALIAS_NOISE_RE =
+  /(?:\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i;
+
+export function isMatchableAttractionAlias(term: string | null | undefined, attraction: AttractionData): boolean {
+  const clean = (term ?? '').replace(/\s+/g, ' ').trim();
+  const normalized = normalizeScope(clean);
+  if (!normalized || normalized.length < 2) return false;
+  if (GENERIC_ALIAS_TERMS.has(normalized)) return false;
+  if (/^\(?[\d,]+(?:\uC5D4|\uC6D0|m)?\)?$/i.test(normalized)) return false;
+  if (ALIAS_NOISE_RE.test(clean)) return false;
+
+  const canonical = normalizeScope(attraction.name);
+  if (canonical && normalized === canonical) return true;
+  if (canonical && (normalized.includes(canonical) || canonical.includes(normalized))) return true;
+
+  const hasScope = Boolean(normalizeScope(attraction.region) || normalizeScope(attraction.country));
+  if (!hasScope && normalized.length < 5) return false;
+  if (!hasScope && /[\uAC00-\uD7A3]/.test(clean)) return false;
+
+  if (/[\uAC00-\uD7A3]/.test(clean) && normalized.length > 12 && canonical && !normalized.includes(canonical)) {
+    return false;
+  }
+
+  return true;
+}
+
 const YANJI_BAEKDU_DESTINATION_RE =
   /\uC5F0\uAE38|\uBC31\uB450\uC0B0|\uC7A5\uBC31\uC0B0|\uBC31\uB450|\uC5F0\uBCC0/;
 const YANJI_BAEKDU_REGION_RE =
@@ -205,7 +250,7 @@ export function buildAttractionIndex(
     if (a.name) byLowerName.set(a.name.toLowerCase(), a);
     if (a.aliases) {
       for (const al of a.aliases) {
-        if (al) byLowerAlias.set(al.toLowerCase(), a);
+        if (isMatchableAttractionAlias(al, a)) byLowerAlias.set(al.toLowerCase(), a);
       }
     }
   }
@@ -255,7 +300,7 @@ export function matchAttractionIndexed(
   for (const a of index.filtered) {
     if (!a.aliases) continue;
     for (const alias of a.aliases) {
-      if (!alias || alias.length < 2 || MATCH_STOP_WORDS.has(alias)) continue;
+      if (!isMatchableAttractionAlias(alias, a) || MATCH_STOP_WORDS.has(alias)) continue;
       const aliasLower = alias.toLowerCase();
       const aliasNoSpace = alias.replace(/\s+/g, '').toLowerCase();
       if (allowsSubstringMatch(actLower, aliasLower) || (aliasNoSpace.length >= 3 && actLowerNoSpace.includes(aliasNoSpace))) return a;

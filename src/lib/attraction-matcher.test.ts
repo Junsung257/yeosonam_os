@@ -262,3 +262,64 @@ describe('regional route scope matching', () => {
     expect(matched?.name).toBe('\uC5F0\uAE38\uBBFC\uC18D\uCD0C');
   });
 });
+
+describe('polluted attraction aliases', () => {
+  const pollutedAliases: AttractionData[] = [
+    attr({
+      id: 'dalat-night-market',
+      name: '\uB2EC\uB784\uC57C\uC2DC\uC7A5',
+      aliases: [
+        '\uC57C\uC2DC\uC7A5',
+        '\uD50C\uB77C\uC6CC\uAC00\uB4E0',
+        '\uBD04\uC758 \uB3C4\uC2DC \uB2EC\uB784\uC5D0\uC11C \uAC00\uC7A5 \uC720\uBA85\uD55C \uAF43\uC815\uC6D0 \uD50C\uB77C\uC6CC\uAC00\uB4E0',
+        '\uB2EC\uB784 \uC57C\uC2DC\uC7A5',
+      ],
+      region: null,
+      country: null,
+      category: 'market',
+    }),
+    attr({
+      id: 'aqua',
+      name: '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C',
+      aliases: [
+        '\uBB34\uC81C\uD55C',
+        '(\uBB34\uC81C\uD55C',
+        '\uB180\uC774\uACF5\uC6D0',
+        '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544 \uC6CC\uD130\uD30C\uD06C',
+      ],
+      region: '\uD478\uAFB8\uC625',
+      category: 'sightseeing',
+    }),
+  ];
+
+  it('does not match generic polluted aliases into unrelated destinations', () => {
+    expect(matchAttraction(
+      '\uBCA0\uD2B8\uB0A8 \uBAA8\uB4E0 \uAF43\uC744 \uD55C\uBC88\uC5D0 \uBCFC \uC218 \uC788\uB294 \uD50C\uB77C\uC6CC\uAC00\uB4E0',
+      pollutedAliases,
+      '\uB2E4\uB0AD/\uD638\uC774\uC548',
+    )).toBeNull();
+    expect(matchAttraction(
+      '\uC57C\uC2DC\uC7A5 \uAD6C\uACBD',
+      pollutedAliases,
+      '\uD6C4\uCFE0\uC624\uCE74',
+    )).toBeNull();
+    expect(matchAttraction(
+      '(\uBB34\uC81C\uD55C',
+      pollutedAliases,
+      '\uD478\uAFB8\uC625',
+    )).toBeNull();
+  });
+
+  it('still allows the canonical Dalat night-market label', () => {
+    expect(matchAttraction(
+      '\uB2EC\uB784 \uC57C\uC2DC\uC7A5 \uD22C\uC5B4',
+      pollutedAliases,
+      '\uB2EC\uB784',
+    )?.name).toBe('\uB2EC\uB784\uC57C\uC2DC\uC7A5');
+    expect(matchAttraction(
+      '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544 \uC6CC\uD130\uD30C\uD06C \uBC29\uBB38',
+      pollutedAliases,
+      '\uD478\uAFB8\uC625',
+    )?.name).toBe('\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C');
+  });
+});

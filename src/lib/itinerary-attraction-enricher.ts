@@ -1,4 +1,9 @@
-import { destinationAllowsAttractionScope, matchAttractions, type AttractionData } from '@/lib/attraction-matcher';
+import {
+  destinationAllowsAttractionScope,
+  isMatchableAttractionAlias,
+  matchAttractions,
+  type AttractionData,
+} from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 
 export interface ItineraryScheduleItem {
@@ -86,6 +91,7 @@ function isDirectScanEligibleTerm(term: string, attraction: AttractionData, dest
   const clean = term.trim();
   if (clean.length < 2 || clean.length > 24) return false;
   if (DIRECT_SCAN_STOP_TERMS.has(clean)) return false;
+  if (clean !== attraction.name && !isMatchableAttractionAlias(clean, attraction)) return false;
   if (!isSightseeingAttractionRow(attraction)) return false;
   if (attraction.category && DIRECT_SCAN_EXCLUDED_CATEGORIES.has(attraction.category)) return false;
   if (destination && !destinationAllowsAttraction(attraction, destination)) return false;

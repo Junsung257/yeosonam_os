@@ -777,7 +777,40 @@ function isMatchableAttractionRow(attraction) {
 function isBadRegisteredAttractionTerm(term) {
   const normalized = normalizeTerm(term);
   if (!normalized || /^\d+(?:분|시간|m)$/.test(normalized)) return true;
-  return /(?:마사지|오일마사지|전통마사지|전신마사지|발마사지|쇼핑센터)/.test(normalized);
+  if (new Set([
+    '\uC57C\uC2DC\uC7A5',
+    '\uC2DC\uB0B4',
+    '\uC2DC\uB0B4\uAD00\uAD11',
+    '\uC2DC\uB0B4\uC911\uC2EC\uAC00',
+    '\uD50C\uB77C\uC6CC\uAC00\uB4E0',
+    '\uC57C\uACBD',
+    '\uB9E5\uC8FC',
+    '\uBB34\uC81C\uD55C',
+    '(\uBB34\uC81C\uD55C',
+    '\uC8FC\uB958\uBB34\uC81C\uD55C)',
+    '\uC74C\uB8CC/\uC8FC\uB958\uBB34\uC81C\uD55C)',
+    '\uB180\uC774\uACF5\uC6D0',
+    'or',
+    '\uD639\uC740',
+    '\uC815\uADDC',
+    '\uC99D\uD3B8',
+  ]).has(normalized)) return true;
+  return /(?:마사지|오일마사지|전통마사지|전신마사지|발마사지|쇼핑센터|\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i.test(normalized);
+}
+
+function isUnsafeRegisteredAttractionAlias(term, attraction) {
+  if (isBadRegisteredAttractionTerm(term)) return true;
+  const normalized = normalizeTerm(term);
+  const canonical = normalizeTerm(attraction?.name);
+  if (canonical && normalized === canonical) return false;
+  if (canonical && (normalized.includes(canonical) || canonical.includes(normalized))) return false;
+  const hasScope = Boolean(normalizeTerm(attraction?.region) || normalizeTerm(attraction?.country));
+  if (!hasScope && normalized.length < 5) return true;
+  if (!hasScope && /[\uAC00-\uD7A3]/.test(String(term ?? ''))) return true;
+  if (/[\uAC00-\uD7A3]/.test(String(term ?? '')) && normalized.length > 12 && canonical && !normalized.includes(canonical)) {
+    return true;
+  }
+  return false;
 }
 
 function destinationAllowsAttraction(destination, attraction, context = '') {
@@ -1147,6 +1180,7 @@ for (let from = 0; ; from += 1000) {
     if (!isMatchableAttractionRow(attraction)) continue;
     for (const term of [attraction.name, ...(Array.isArray(attraction.aliases) ? attraction.aliases : [])]) {
       const clean = String(term ?? '').trim();
+      if (clean !== attraction.name && isUnsafeRegisteredAttractionAlias(clean, attraction)) continue;
       if (isBadRegisteredAttractionTerm(clean)) continue;
       if (normalizeTerm(clean).length >= 3 && clean.length <= 24) {
         activeAttractionTerms.push({ term: clean, attraction });
