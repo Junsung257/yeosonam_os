@@ -76,7 +76,8 @@ Before coding:
 After coding:
 1. Run the narrowest tests/checks.
 2. Run doc/workflow checks if docs changed.
-3. Report what changed, what evidence proves it, and what remains manual.
+3. If the work fixes a failure, add the guard that prevents recurrence or state why no guard is justified.
+4. Report what changed, what evidence proves it, and what remains manual.
 ```
 
 ## Open Tradeoffs

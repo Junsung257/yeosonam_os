@@ -81,6 +81,7 @@ Before building or expanding an MVP feature, answer:
 | Question | Evidence needed |
 |---|---|
 | Does this help the daily inquiry-to-booking workflow? | User journey, route/service path, or action queue item |
+| If this fixes a failure, what prevents recurrence? | Fixture, regression test, eval, deterministic gate, error-registry entry, SSOT rule, readiness check, or explicit no-guard rationale |
 | Is customer-facing travel information source-backed? | Product source hash, supplier data, eligibility proof, or explicit manual-review state |
 | Is AI output a draft or an approved fact? | Approval state, schema validation, eval, or domain gate |
 | Does it reduce manual duplicate entry? | Existing data reuse or one-write/many-read flow |

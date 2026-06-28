@@ -170,13 +170,34 @@ Tenant, affiliate, referral, and partner scope are not optional later concerns. 
 
 Do not hard-code one AI model, one vector store, one storage backend, one ad platform, or one content channel. The repo may have defaults, but architecture must keep provider boundaries explicit.
 
-### 5.11 Repeated Mistakes Become Guards
+### 5.11 Failures Become Guards
 
-Every repeated failure should become a fixture, regression test, eval, SSOT rule, error-registry entry, or readiness check. A one-time manual repair is not a system fix.
+Every customer-impacting, operationally meaningful, security/privacy, money, booking, settlement, product, marketing, or AI failure must leave a durable guard before it is called resolved. The guard may be a fixture, regression test, eval, deterministic gate, SSOT rule, error-registry entry, readiness check, or monitored action queue rule.
+
+A one-time manual repair is not a system fix. If a guard is intentionally not added, the closeout must state why the failure is non-repeatable or too small to warrant a durable artifact.
+
+Repeated failures get a higher bar: they must be added to the active error registry or the matching domain error file, and the next fix must include a prevention mechanism.
 
 ### 5.12 Small MVP, Strong Spine
 
 The MVP must stay small, but its spine must be correct: inquiry, consultation memory, source-backed product, quote/recommendation draft, follow-up action, booking/payment evidence, and marketing handoff.
+
+### 5.13 Learning Improves Every Process
+
+Every process that produces repeated work or risky decisions should generate learning evidence:
+
+```text
+event or failure
+  -> structured evidence
+  -> classification
+  -> bounded repair or human review
+  -> fixture/eval/rule candidate
+  -> reviewed promotion
+  -> regression/readiness proof
+  -> operator-visible report
+```
+
+Learning must improve the process, not mutate production blindly. Macro learning may propose parser rules, prompt changes, product repairs, marketing actions, or Jarvis tools, but production behavior changes still go through review, tests, and domain gates.
 
 ## 6. MVP Scope
 

@@ -30,6 +30,8 @@ completed investigation -> docs/audits/YYYY-MM-DD-*.md
 temporary note -> no docs; final answer only
 ```
 
+A customer-impacting, operationally meaningful, security/privacy, money, booking, settlement, product, marketing, or AI failure is not "resolved" by a manual repair alone. Before closeout, add a prevention artifact such as a fixture, regression test, eval, deterministic gate, SSOT rule, error-registry entry, readiness check, or monitored action queue rule. If no artifact is added, explicitly state why the issue is non-repeatable or too small to guard.
+
 Exception: Tier 2 and Tier 3 work under `docs/agent-workflow-current-ssot.md` may create a feature packet at `docs/specs/YYYYMMDD-short-slug/` using `docs/specs/_template/`. This is not a default planning note; it is a durable implementation contract for large or high-risk work. Tier 0 and Tier 1 work must still avoid new spec packets unless the user explicitly asks for one.
 
 ## Document Hierarchy
