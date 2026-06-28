@@ -386,6 +386,24 @@ For any deterministic price IR where `source !== 'none'` and both `product_price
 
 LLM/Gemini price fallback must pass the strict fallback tier normalizer before it can be evaluated as a candidate. A fallback tier is ignored unless it has an integer KRW `adult_price` in the product price range and usable date evidence (`departure_dates`, `date_range`, or `departure_day_of_week`). Deterministic IR still outranks complete fallback tiers.
 
+### Price Source Evidence Repair Contract
+
+The mobile-readiness audit may run bounded source-evidence repairs for already saved packages, but only to make persisted rows match source-backed evidence that is already present in the package or product-price ledger. It is not a second parser and must not invent prices, dates, hotels, flights, or package availability.
+
+Allowed repair classes:
+
+- `--repair-price-storage`: rebuilds mismatched `product_prices`/`price_dates` alignment from existing saved price evidence.
+- `--repair-price-tiers`: rebuilds `travel_packages.price_tiers` and summary price from valid saved `price_dates`.
+- `--repair-price-source-evidence`: removes unsupported `price_dates` only when the audit can identify a concrete date that lacks source-backed amount evidence, at least one valid source-backed departure date remains, and replacement `product_prices`, `price_dates`, `price_tiers`, `travel_packages.price`, and `products.net_price` can be synchronized from the remaining evidence.
+
+Forbidden outcomes:
+
+- A date must not survive customer readiness because it merely exists in `price_dates`; the audit must be able to tie it to source-backed amount evidence or an approved saved product-price row.
+- If pruning unsupported dates would leave no valid departure date, the package remains `needs_human_source_review`; do not replace the missing evidence with a guessed lowest price.
+- Repair outputs are audit evidence, not final customer-open proof. Customer-ready still requires the registration quality scorecard, `/packages` and `/lp` mobile browser proof, and no unresolved entity/V3 blockers.
+
+Attraction reference repair in this audit may only attach references to already registered active attraction masters. It may use explicit `--codes=` or `--status=` scope filters and may widen destination matching only when the itinerary row text itself contains the attraction region/context. It must not create, auto-seed, or customer-publish attraction masters; unmatched or ambiguous entities remain in the review path.
+
 ## Evidence Contract
 
 `StandardProductRegistrationObject.evidence` is internal-only source evidence for evals and V3 draft ledgers. It includes:
