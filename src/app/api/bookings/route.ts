@@ -475,6 +475,26 @@ export async function POST(request: NextRequest) {
 
     const booking = await createBooking(body);
 
+    if (booking?.id) {
+      ff(supabaseAdmin.from('ops_events').insert({
+        event_type: 'booking_created',
+        severity: 'info',
+        title: '예약 생성',
+        description: `${booking.booking_no ?? '예약'} · ${booking.package_title ?? '상품 미지정'}`,
+        booking_id: booking.id,
+        customer_id: body.leadCustomerId,
+        target_type: 'bookings',
+        target_id: booking.id,
+        status: 'resolved',
+        metadata: {
+          source: body.quickCreated ? 'quick_create' : 'booking_api',
+          package_title: booking.package_title,
+          departure_date: booking.departure_date,
+        },
+        created_by: body.quickCreated ? 'quick_create' : 'booking_api',
+      } as never), 'ops_events.booking_created');
+    }
+
     if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {
       const { enqueueDepositNoticeGateTask } = await import('@/lib/booking-workflow-tasks');
       ff(enqueueDepositNoticeGateTask(booking.id as string), 'enqueueDepositNoticeGateTask');

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { getAdminContext } from '@/lib/admin-context';
 
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const authError = await requireAdminRequest(req);
@@ -36,6 +37,20 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void supabaseAdmin.from('ops_events').insert({
+    event_type: 'customer_note',
+    severity: 'info',
+    title: `${channel} 상담 메모`,
+    description: content.trim().slice(0, 200),
+    customer_id: params.id,
+    target_type: 'customer_notes',
+    target_id: (data as { id?: string } | null)?.id ?? null,
+    status: 'resolved',
+    metadata: { channel },
+    created_by: getAdminContext(req).actor,
+  } as Record<string, unknown>).then(() => undefined, error => {
+    console.warn('[customer notes ops_event] 실패:', error?.message ?? error);
+  });
   return NextResponse.json({ note: data });
 }
 
