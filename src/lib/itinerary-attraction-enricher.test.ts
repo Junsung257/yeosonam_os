@@ -237,6 +237,58 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(item.attraction_queries).toBeUndefined();
     expect(res.unmatchedCandidates).toHaveLength(0);
   });
+
+  it('removes hotel-stay attraction ids instead of rendering accommodation as attraction cards', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '서안 노보텔 또는 동급 준5성 호텔 투숙',
+                type: 'normal',
+                attraction_ids: ['hotel-1'],
+                attraction_names: ['노보텔 시안 더 벨 타워'],
+              },
+            ],
+          },
+        ],
+      },
+      [{ id: 'hotel-1', name: '노보텔 시안 더 벨 타워', region: '서안' }],
+      '서안',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toBeUndefined();
+    expect(item.attraction_names).toBeUndefined();
+    expect(item.attraction_note).toBeUndefined();
+  });
+
+  it('uses source activity text as a safe attraction note when the registered attraction lacks descriptions', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 3,
+            schedule: [
+              {
+                activity: '베트남에서 가장 유명한 다딴란 폭포 알파인코스터 체험',
+                type: 'normal',
+                attraction_ids: ['coaster-1'],
+              },
+            ],
+          },
+        ],
+      },
+      [{ id: 'coaster-1', name: '다딴라 알파인 코스터', region: '달랏' }],
+      '나트랑/달랏',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['coaster-1']);
+    expect(item.attraction_note).toBe('베트남에서 가장 유명한 다딴란 폭포 알파인코스터 체험');
+  });
   it('skips supplier table fragments from unmatched attraction collection', () => {
     expect(shouldAttemptAttractionMatch({ activity: '\uBD80  \uC0B0', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '\uC804\uC6A9\uCC28\uB7C9', type: 'normal' })).toBe(false);

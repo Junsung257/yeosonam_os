@@ -21,9 +21,11 @@ const statusFilter = (process.argv.find(arg => arg.startsWith('--status='))?.spl
   .filter(Boolean);
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const key = serviceKey || (!apply ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined);
 
 if (!url || !key) throw new Error('Missing Supabase environment variables');
+if (apply && !serviceKey) throw new Error('--apply requires SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY');
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
@@ -49,6 +51,13 @@ function attractionIdSet(itineraryData: ItineraryDataLike | null): Set<string> {
 
 function diffIds(before: Set<string>, after: Set<string>): string[] {
   return [...after].filter(id => !before.has(id));
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, inner) => {
+    if (!inner || typeof inner !== 'object' || Array.isArray(inner)) return inner;
+    return Object.fromEntries(Object.entries(inner).sort(([left], [right]) => left.localeCompare(right)));
+  });
 }
 
 async function fetchAllActiveAttractions(): Promise<AttractionData[]> {
@@ -96,6 +105,7 @@ async function main() {
     title: string | null;
     status: string | null;
     added_ids: string[];
+    removed_ids: string[];
     matched_names: string[];
   }> = [];
 
@@ -104,13 +114,15 @@ async function main() {
     const enriched = enrichItineraryWithAttractionReferences(row.itinerary_data, attractions, row.destination ?? undefined);
     const after = attractionIdSet(enriched.itineraryData);
     const added = diffIds(before, after);
-    if (added.length === 0) continue;
+    const removed = diffIds(after, before);
+    if (added.length === 0 && removed.length === 0 && canonicalJson(row.itinerary_data) === canonicalJson(enriched.itineraryData)) continue;
     changed.push({
       id: row.id,
       code: row.internal_code,
       title: row.title,
       status: row.status,
       added_ids: added,
+      removed_ids: removed,
       matched_names: enriched.matchedCanonicalNames,
     });
     if (apply) {

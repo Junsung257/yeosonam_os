@@ -91,10 +91,15 @@ function splitTermLine(line: string): string[] {
   const result: string[] = [];
   let depth = 0;
   let buf = '';
-  for (const ch of [...line]) {
+  const chars = [...line];
+  for (let index = 0; index < chars.length; index += 1) {
+    const ch = chars[index];
     if (ch === '(' || ch === '[' || ch === '{') depth += 1;
     if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
-    if (ch === ',' && depth === 0) {
+    const numericComma = ch === ','
+      && /\d/.test(chars[index - 1] ?? '')
+      && /\d/.test(chars[index + 1] ?? '');
+    if (ch === ',' && depth === 0 && !numericComma) {
       const item = cleanLine(buf);
       if (item) result.push(item);
       buf = '';
@@ -135,6 +140,11 @@ function hasBrokenOrUnsupportedTerms(pkg: SourceTermsRepairPackage): boolean {
   if (current.some(item => /\(\s*\)/.test(item))) return true;
   if (current.some(item => HTML_ENTITY_RE.test(item))) return true;
   if (current.some(item => INTERNAL_PROMO_RE.test(item))) return true;
+  for (let index = 0; index < current.length - 1; index += 1) {
+    const item = cleanLine(current[index]);
+    const next = cleanLine(current[index + 1]);
+    if (/\b\d{1,3}$/.test(item) && /^\d{3}\s*(?:원|엔|달러|위안|krw|jpy|usd|cny|\$)/i.test(next)) return true;
+  }
   if ((pkg.excludes ?? []).some(item => NON_TERM_HEADING_RE.test(item) || EXCLUDE_NOTICE_OR_SECTION_RE.test(item) || SHOPPING_FRAGMENT_RE.test(item))) return true;
   const raw = pkg.raw_text ?? '';
   return current.some(item => item.length >= 4 && !compact(raw).includes(compact(item)));

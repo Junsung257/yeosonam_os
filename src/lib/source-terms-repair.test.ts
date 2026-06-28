@@ -104,4 +104,26 @@ describe('buildSourceBackedTermsRepair', () => {
     ]);
     expect(JSON.stringify(result.excludes)).not.toMatch(/쇼\s*핑|비\s*고|필\s*독|본 상품|확정 전|침향|커피|잡화/);
   });
+
+  it('keeps comma-formatted money amounts as one customer term', () => {
+    const rawText = [
+      '상품 안내',
+      '포함',
+      '항공료, 호텔, 차량',
+      '불포함',
+      '가이드경비($50/인), 써차지 안내 35,000원/인 (9/25~9/28 출발), 싱글차지 18만원/인',
+      '선택관광',
+    ].join('\n');
+
+    const result = buildSourceBackedTermsRepair({
+      raw_text: rawText,
+      inclusions: ['항공료'],
+      excludes: ['써차지 안내 35', '000원/인 (9/25~9/28 출발)'],
+    });
+
+    expect(result.status).toBe('repaired');
+    if (result.status !== 'repaired') throw new Error('expected repair');
+    expect(result.excludes).toContain('써차지 안내 35,000원/인 (9/25~9/28 출발)');
+    expect(result.excludes).not.toContain('써차지 안내 35');
+  });
 });
