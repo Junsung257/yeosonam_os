@@ -497,7 +497,11 @@ async function fetchSurfaceHtmlWithRetry(pageUrl: string): Promise<string | null
   return lastHtml;
 }
 
-export async function runAutoMobileQA(packageId: string, baseUrl?: string): Promise<void> {
+export async function runAutoMobileQA(
+  packageId: string,
+  baseUrl?: string,
+  options: { includeLpForProof?: boolean } = {},
+): Promise<void> {
   if (!isSupabaseConfigured) return;
   const url = baseUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yeosonam.com';
 
@@ -521,7 +525,7 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
 
     const surfaces: Array<{ surface: 'packages' | 'lp'; pageUrl: string }> = [
       { surface: 'packages', pageUrl: `${url}/packages/${packageId}` },
-      ...(isCustomerVisibleStatus(expected.status)
+      ...(isCustomerVisibleStatus(expected.status) || options.includeLpForProof
         ? [{ surface: 'lp' as const, pageUrl: `${url}/lp/${packageId}` }]
         : []),
     ];

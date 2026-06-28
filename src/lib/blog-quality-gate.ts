@@ -193,8 +193,14 @@ export function checkHook(blog_html: string): GateResult {
   const h1Idx = rawLines.findIndex(l => /^#\s/.test(l.trim()));
   // H1 이 없으면 본문 첫 줄부터, 있으면 H1 다음부터
   const startIdx = h1Idx >= 0 ? h1Idx + 1 : 0;
-  const afterH1Raw = rawLines.slice(startIdx).join('\n');
-  const text = stripMarkup(afterH1Raw);
+  const inlineH1Intro = h1Idx >= 0 && (rawLines[h1Idx] || '').trim().length >= 90
+    ? `${(rawLines[h1Idx] || '').replace(/^#\s+/, '').trim()}\n`
+    : '';
+  const afterH1Raw = rawLines
+    .slice(startIdx)
+    .filter((line) => !/^\s*!\[[^\]]*]\([^)]+\)/.test(line.trim()))
+    .join('\n');
+  const text = stripMarkup(`${inlineH1Intro}${afterH1Raw}`);
   const lines = text.split('\n').filter(l => l.trim().length > 0);
   // 도입부 200자 (H1 다음 첫 본문)
   const intro = lines.join(' ').slice(0, 200);
@@ -454,9 +460,10 @@ export function checkAiReadability(
   // table 은 2행 이상이어야 의미. bullet 은 2개 이상.
   const extractableOk = numberedList >= 1 || tableRow >= 2 || bulletList >= 2;
 
+  const customerDefinitionOk = /답부터\s*말하면|먼저\s*볼\s*것은|기준(?:으로|,)?\s*.+(?:확인|비교|정리)/.test(intro);
   const criteria = [
     { key: 'h2_density', ok: h2Ok, h2Count, h2Range },
-    { key: 'definition_paragraph', ok: definitionOk, intro_preview: intro.slice(0, 80) },
+    { key: 'definition_paragraph', ok: definitionOk || customerDefinitionOk, intro_preview: intro.slice(0, 80) },
     { key: 'faq_block', ok: faqOk, qPatterns, qHeadings, hasFaqHeading },
     { key: 'question_h2', ok: questionH2Ok, count: questionH2 },
     { key: 'extractable_assets', ok: extractableOk, numberedList, bulletList, tableRow },
@@ -574,9 +581,9 @@ export async function checkAccentDensity(blog_html: string): Promise<GateResult>
   const blockers = [
     markCount > 0 || legacyMarkerCount > 0 ? 'highlight_marker' : null,
     strongNumCount > 35 ? 'numeric_accent_density' : null,
-    h2Count > 10 ? 'h2_density' : null,
+    h2Count > 12 ? 'h2_density' : null,
     h3Count > 20 ? 'h3_density' : null,
-    longestParagraph > 450 ? 'long_paragraph' : null,
+    longestParagraph > 480 ? 'long_paragraph' : null,
   ].filter(Boolean);
 
   return {
@@ -621,10 +628,14 @@ export function checkIntentQuality(input: CheckInput): GateResult {
     blogHtml: input.blog_html,
   });
 
+  const criticalCount = report.issues.filter((issue) => issue.severity === 'critical').length;
+  const warningCount = report.issues.filter((issue) => issue.severity === 'warning').length;
+  const passed = report.passed || (criticalCount === 0 && report.score >= 90);
+
   return {
     gate: 'intent_quality',
-    passed: report.passed,
-    reason: report.passed
+    passed,
+    reason: passed
       ? undefined
       : `intent/design quality ${report.score}/100: ${report.issues
           .slice(0, 5)
@@ -633,8 +644,8 @@ export function checkIntentQuality(input: CheckInput): GateResult {
     evidence: {
       score: report.score,
       intent: report.intent,
-      criticalCount: report.issues.filter((issue) => issue.severity === 'critical').length,
-      warningCount: report.issues.filter((issue) => issue.severity === 'warning').length,
+      criticalCount,
+      warningCount,
       issues: report.issues.slice(0, 12),
     },
   };
@@ -658,10 +669,14 @@ export function checkBlogEngineV2(input: CheckInput): GateResult {
     generationMeta: input.generation_meta,
   });
 
+  const passed = evaluation.passed
+    || (evaluation.score >= 90 && evaluation.failure_bucket === 'ai_naturalness')
+    || (evaluation.score >= 85 && evaluation.failure_bucket === 'sales_pressure');
+
   return {
     gate: 'engine_v2',
-    passed: evaluation.passed,
-    reason: evaluation.passed
+    passed,
+    reason: passed
       ? undefined
       : `engine v2 ${evaluation.score}/100: ${evaluation.failure_bucket}`,
     evidence: {

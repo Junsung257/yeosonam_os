@@ -1,6 +1,3 @@
-/**
- * travel_packages 행 → LP(랜딩)용 직렬화 데이터. 서버·API 공통.
- */
 import type { PriceListItem } from '@/lib/parser';
 import { normalizeDays } from '@/lib/attraction-matcher';
 import { getEffectivePriceDates } from '@/lib/price-dates';
@@ -8,6 +5,7 @@ import { getKakaoChannelChatUrl } from '@/lib/kakaoChannel';
 import { renderPackage } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
+import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -20,9 +18,7 @@ export interface DayActivity {
   type: 'sightseeing' | 'meal' | 'hotel' | 'flight' | 'optional' | 'shopping' | 'transport';
   label: string;
   detail?: string;
-  /** upload route의 enrichItineraryWithAttractionReferences가 매칭한 관광지 ID 목록 */
   attractionIds?: string[];
-  /** upload route의 enrichItineraryWithAttractionReferences가 매칭한 관광지명 */
   attractionNames?: string[];
 }
 
@@ -72,14 +68,12 @@ export interface LandingProductData {
 }
 
 function toLpActivityType(type?: string | null): DayActivity['type'] {
-  if (!type) return 'sightseeing';
   if (type === 'meal') return 'meal';
   if (type === 'hotel') return 'hotel';
   if (type === 'flight') return 'flight';
   if (type === 'optional') return 'optional';
   if (type === 'shopping') return 'shopping';
-  if (type === 'train') return 'transport';
-  if (type === 'normal') return 'sightseeing';
+  if (type === 'train' || type === 'transfer') return 'transport';
   return 'sightseeing';
 }
 
@@ -93,10 +87,6 @@ function toLpActivityTypeFromSchedule(type?: string | null, entityKind?: string 
   return toLpActivityType(type);
 }
 
-function compactKorean(value: string): string {
-  return value.replace(/\s+/g, '').trim();
-}
-
 function numericField(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : null;
@@ -105,7 +95,7 @@ function numericField(value: unknown): number | null {
 function normalizeTripStyle(value: unknown): string | null {
   const match = String(value ?? '').trim().match(/(\d+)\s*박\s*(\d+)\s*일/);
   if (!match) return null;
-  return `${Number(match[1])}박 ${Number(match[2])}일`;
+  return `${Number(match[1])}박${Number(match[2])}일`;
 }
 
 function formatLandingDuration(pkg: Record<string, unknown>): string {
@@ -115,46 +105,41 @@ function formatLandingDuration(pkg: Record<string, unknown>): string {
   const itineraryData = pkg.itinerary_data as { meta?: { nights?: unknown; days?: unknown } } | null | undefined;
   const metaNights = numericField(itineraryData?.meta?.nights);
   const metaDays = numericField(itineraryData?.meta?.days);
-  if (metaNights != null && metaDays != null && metaDays > 0) return `${metaNights}박 ${metaDays}일`;
+  if (metaNights != null && metaDays != null && metaDays > 0) return `${metaNights}박${metaDays}일`;
 
   const nights = numericField(pkg.nights);
   const days = numericField(pkg.duration);
-  if (nights != null && days != null && days > 0) return `${nights}박 ${days}일`;
-  if (days != null && days > 0) return `${Math.max(0, days - 1)}박 ${days}일`;
+  if (nights != null && days != null && days > 0) return `${nights}박${days}일`;
+  if (days != null && days > 0) return `${Math.max(0, days - 1)}박${days}일`;
 
   return '기간 미정';
 }
 
-function isSupplierTableFragment(
-  label: string,
-  type: DayActivity['type'],
-  attractionNames?: string[],
-  regions?: string[],
-): boolean {
-  const text = label.replace(/\s+/g, ' ').trim();
-  const compact = compactKorean(text);
-  if (!compact) return true;
+function compact(value: string): string {
+  return normalizeCustomerVisibleCopy(value).replace(/\s+/g, '').trim();
+}
+
+function isSupplierTableFragment(label: string, type: DayActivity['type'], attractionNames?: string[], regions?: string[]): boolean {
+  const text = normalizeCustomerVisibleCopy(label);
+  const compactText = compact(text);
+  if (!compactText) return true;
   if ((attractionNames?.length ?? 0) > 0) return false;
-  const regionLabels = (regions ?? []).map(region => compactKorean(region)).filter(Boolean);
-  if (regionLabels.includes(compact)) return true;
+  if ((regions ?? []).map(compact).includes(compactText)) return true;
   if (type === 'hotel' || type === 'optional' || type === 'shopping') return false;
-
   if (/^\d{1,2}:\d{2}$/.test(text)) return true;
-  if (/^[A-Z0-9]{2}\d{3,4}$/i.test(compact)) return true;
+  if (/^[A-Z0-9]{2}\d{3,4}$/i.test(compactText)) return true;
   if (/^\$?\d+/.test(text)) return true;
-  if (/^(?:\uC870|\uC911|\uC11D)\s*:/.test(text)) return true;
-  if (/^(?:\uD638\uD154\s*)?(?:\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD)\s*\uD6C4$/.test(text)) return true;
-  if (
-    type === 'sightseeing'
-    && !attractionNames?.length
-    && /^[\uAC00-\uD7A3A-Za-z/·.-]{2,12}$/.test(compact)
-    && !/(\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uD0D1\uC2B9|\uCCB4\uD5D8|\uACF5\uD56D|\uB85C\uD504\uC6E8\uC774|\uC2E0\uC0AC|\uD638\uC218|\uB9C8\uC744|\uACF5\uC6D0|\uAC70\uB9AC|\uD3ED\uD3EC|\uC628\uCC9C|\uC0AC\uC6D0|\uC2DC\uC7A5|\uBC15\uBB3C\uAD00|\uC804\uB9DD\uB300|\uC2A4\uCE74\uC774|\uC6CC\uD06C|\uD56B\uCE74\uC774|\uB9C8\uCE20\uBC14\uB77C|\uC0AC\uC0AC\uBC14|\uB2C8\uD63C\uB2E4\uC774\uB77C)/.test(text)
-  ) return true;
-  if (/^(?:\uBD80\uC0B0|\uC5F0\uAE38|\uB3C4\uBB38|\uC6A9\uC815|\uC774\uB3C4\uBC31\uD558|\uBD81\uD30C|\uC11C\uD30C)$/.test(compact)) return true;
-  if (/^(?:\uC804\uC6A9\uCC28\uB7C9|\uC804\uC77C)$/.test(compact)) return true;
-  if (/^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/.test(compact)) return true;
-
+  if (/^(?:조|중|석)\s*:/.test(text)) return true;
+  if (/^(?:호텔\s*)?(?:조식|중식|석식)\s*후$/.test(text)) return true;
+  if (/^(?:부산|연길|도문|용정|북파|서파|전용차량|전일)$/.test(compactText)) return true;
+  if (/^(?:호텔식|현지식|김밥|냉면|샤브샤브|삼겹살|양꼬치|비빔밥|무제한|매운탕)$/.test(compactText)) return true;
   return false;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(item => normalizeCustomerVisibleCopy(String(item))).filter(Boolean)
+    : [];
 }
 
 function toLpActivities(
@@ -170,41 +155,47 @@ function toLpActivities(
   regions?: string[],
 ): DayActivity[] {
   return schedule
-    .map((s): DayActivity => {
-      const type = toLpActivityTypeFromSchedule(s.type, s.entity_kind);
-      const attractionNames = Array.isArray(s.attraction_names) ? s.attraction_names.filter(Boolean) : undefined;
+    .map((item): DayActivity => {
+      const type = toLpActivityTypeFromSchedule(item.type, item.entity_kind);
+      const attractionNames = Array.isArray(item.attraction_names)
+        ? item.attraction_names.map(name => normalizeCustomerVisibleCopy(name)).filter(Boolean)
+        : undefined;
       return {
         type,
-        label: s.landing_sentence || s.activity || '',
-        detail: s.note ?? undefined,
-        attractionIds: Array.isArray(s.attraction_ids) ? s.attraction_ids.filter(Boolean) : undefined,
+        label: normalizeCustomerVisibleCopy(item.landing_sentence || item.activity || ''),
+        detail: item.note ? normalizeCustomerVisibleCopy(item.note) : undefined,
+        attractionIds: Array.isArray(item.attraction_ids) ? item.attraction_ids.filter(Boolean) : undefined,
         attractionNames,
       };
     })
-    .filter((activity) => !isSupplierTableFragment(activity.label, activity.type, activity.attractionNames, regions));
+    .filter(activity => !isSupplierTableFragment(activity.label, activity.type, activity.attractionNames, regions));
 }
 
-/** 서버에서만 호출 — 채팅 URL 은 env 채널 ID 기준 */
-export function mapTravelPackageToLandingData(
-  pkg: Record<string, unknown>,
-  lpHeroImageUrl: string | null,
-): LandingProductData {
-  const view = renderPackage(pkg);
+function readInternalCode(pkg: Record<string, unknown>): string | undefined {
   const products = pkg.products as
     | { internal_code?: string }
     | { internal_code?: string }[]
     | null
     | undefined;
-  const internalCode = Array.isArray(products)
-    ? products[0]?.internal_code
-    : products?.internal_code;
+  return Array.isArray(products) ? products[0]?.internal_code : products?.internal_code;
+}
 
-  const eff = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
-  const sortedDates = [...eff].filter(d => d.date).sort((a, b) => a.date.localeCompare(b.date));
+export function mapTravelPackageToLandingData(
+  pkg: Record<string, unknown>,
+  lpHeroImageUrl: string | null,
+): LandingProductData {
+  const view = renderPackage(pkg);
+  const internalCode = readInternalCode(pkg);
+  const cleanTitle = normalizeCustomerVisibleCopy(String(pkg.title || ''));
+  const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
+  const cleanSummary = normalizeCustomerVisibleCopy(String(pkg.product_summary || ''));
+
+  const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
+  const sortedDates = [...effectiveDates].filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date));
   const todayStr = new Date().toISOString().slice(0, 10);
-  const upcoming = sortedDates.find(d => d.date >= todayStr) ?? sortedDates[0];
+  const upcoming = sortedDates.find(row => row.date >= todayStr) ?? sortedDates[0];
 
-  const priceNums = eff.map(d => d.price).filter((p): p is number => typeof p === 'number' && p > 0);
+  const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
   const minPrice = priceNums.length > 0 ? Math.min(...priceNums) : (Number(pkg.price) || 0);
   const maxPrice = priceNums.length > 0 ? Math.max(...priceNums) : null;
   const compareAtPrice = maxPrice != null && maxPrice > minPrice ? maxPrice : null;
@@ -215,18 +206,12 @@ export function mapTravelPackageToLandingData(
   const scarcityRemaining = remaining >= 1 && remaining <= 5 ? remaining : null;
 
   let deadlineDays: number | null = null;
-  const tick = pkg.ticketing_deadline;
-  if (tick && /^\d{4}-\d{2}-\d{2}/.test(String(tick))) {
-    const tStr = String(tick).slice(0, 10);
-    const end = new Date(`${tStr}T23:59:59`);
-    const now = new Date();
-    const diff = Math.ceil((end.getTime() - now.getTime()) / 86400000);
+  const ticketingDeadline = pkg.ticketing_deadline;
+  if (ticketingDeadline && /^\d{4}-\d{2}-\d{2}/.test(String(ticketingDeadline))) {
+    const deadline = new Date(`${String(ticketingDeadline).slice(0, 10)}T23:59:59`);
+    const diff = Math.ceil((deadline.getTime() - Date.now()) / 86400000);
     if (diff >= 0 && diff <= 30) deadlineDays = diff;
   }
-
-  const rc = typeof pkg.review_count === 'number' ? pkg.review_count : 0;
-  const rs = typeof pkg.avg_rating === 'number' ? pkg.avg_rating : 0;
-  const heroUrl = lpHeroImageUrl || '';
 
   const departureFullDate =
     upcoming?.date && /^\d{4}-\d{2}-\d{2}/.test(upcoming.date) ? upcoming.date : todayStr;
@@ -235,46 +220,43 @@ export function mapTravelPackageToLandingData(
       ? `${parseInt(upcoming.date.slice(5, 7), 10)}/${parseInt(upcoming.date.slice(8, 10), 10)}`
       : '미정';
 
-  const duration = formatLandingDuration(pkg);
   const scoreRows = Array.isArray(pkg._packageScores)
     ? (pkg._packageScores as PackageScoreDisplayRow[])
     : [];
   const scoreRow =
-    scoreRows.find(s => s.departure_date === departureFullDate && (s.group_size ?? 0) >= 2)
-    ?? scoreRows.find(s => (s.group_size ?? 0) >= 2)
+    scoreRows.find(row => row.departure_date === departureFullDate && (row.group_size ?? 0) >= 2)
+    ?? scoreRows.find(row => (row.group_size ?? 0) >= 2)
     ?? scoreRows[0]
     ?? null;
 
-  // A4·모바일 상세·LP 동일 규칙: 문자열 JSON·day_list·순수 배열 등
-  const dayRows = normalizeDays(
-    pkg.itinerary_data as Parameters<typeof normalizeDays>[0],
-  ) as Record<string, unknown>[];
+  const dayRows = normalizeDays(pkg.itinerary_data as Parameters<typeof normalizeDays>[0]) as Record<string, unknown>[];
   const canonicalDays = view.days;
-  const legalNotices = extractLegalNoticeLinesFromPkg(pkg, 3);
+  const legalNotices = extractLegalNoticeLinesFromPkg(pkg, 3).map(line => normalizeCustomerVisibleCopy(line));
+  const duration = formatLandingDuration(pkg);
 
   return {
     id: String(pkg.id),
     internalCode: internalCode || undefined,
-    destination: (pkg.destination as string) || '여행지',
+    destination: cleanDestination,
     duration,
-    heroImageA: heroUrl,
-    heroImageB: heroUrl,
+    heroImageA: lpHeroImageUrl || '',
+    heroImageB: lpHeroImageUrl || '',
     scarcityRemaining,
     departureDateLabel,
     departureFullDate,
     deadlineDays,
     customMessage: {
       insta: {
-        headline: `${pkg.destination || '여행지'}의\n아름다운 순간`,
-        subline: String(pkg.title || ''),
+        headline: `${cleanDestination}의\n아름다운 순간`,
+        subline: cleanTitle,
       },
       kakao: {
-        headline: `${pkg.title || ''}\n상담문의가 많습니다`,
-        subline: '전 일정 정품 호텔 · 직항 · 직판 최저가 보장',
+        headline: `${cleanTitle}\n상담 문의가 많습니다`,
+        subline: '전 일정 확인 · 항공/호텔 조건 상담 · 직판가 안내',
       },
       default: {
-        headline: String(pkg.title || ''),
-        subline: String(pkg.product_summary || ''),
+        headline: cleanTitle,
+        subline: cleanSummary,
       },
     },
     priceFrom: minPrice,
@@ -283,18 +265,18 @@ export function mapTravelPackageToLandingData(
     price_dates:
       Array.isArray(pkg.price_dates) && (pkg.price_dates as unknown[]).length > 0
         ? (pkg.price_dates as LandingProductData['price_dates'])
-        : eff,
+        : effectiveDates,
     singleSupplement:
       pkg.single_supplement == null
         ? '별도문의'
         : typeof pkg.single_supplement === 'number'
           ? `${pkg.single_supplement.toLocaleString()}원`
-          : String(pkg.single_supplement),
+          : normalizeCustomerVisibleCopy(String(pkg.single_supplement)),
     guideTrip: pkg.guide_tip ? `$${pkg.guide_tip}/인` : '별도문의',
     kakaoChannelUrl: getKakaoChannelChatUrl(),
-    reviewCount: rc,
-    reviewScore: rs,
-    departureGuaranteed: eff.some(d => d.confirmed),
+    reviewCount: typeof pkg.review_count === 'number' ? pkg.review_count : 0,
+    reviewScore: typeof pkg.avg_rating === 'number' ? pkg.avg_rating : 0,
+    departureGuaranteed: effectiveDates.some(row => row.confirmed),
     recommendation: buildRecommendationDisplay(scoreRow),
     flightSummary: {
       outbound: view.flightHeader.outbound ? {
@@ -313,48 +295,48 @@ export function mapTravelPackageToLandingData(
       } : null,
     },
     itinerary: {
-      highlights: (pkg.product_highlights as string[]) || [],
+      highlights: asStringArray(pkg.product_highlights),
       includes: view.inclusions.flat.length > 0
-        ? view.inclusions.flat
-        : ((pkg.inclusions as string[]) || []),
+        ? view.inclusions.flat.map(item => normalizeCustomerVisibleCopy(item))
+        : asStringArray(pkg.inclusions),
       excludes: view.excludes.basic.length > 0
-        ? view.excludes.basic
-        : ((pkg.excludes as string[]) || []),
+        ? view.excludes.basic.map(item => normalizeCustomerVisibleCopy(item))
+        : asStringArray(pkg.excludes),
       legalNotices,
-      days: (canonicalDays.length > 0
-        ? canonicalDays.map((d): ItineraryDay => ({
-            day: d.day,
-            title: d.regions.length > 0 ? d.regions.join(' · ') : '상세 일정',
-            regions: d.regions.join(' · '),
+      days: canonicalDays.length > 0
+        ? canonicalDays.map((day): ItineraryDay => ({
+            day: day.day,
+            title: day.regions.length > 0 ? day.regions.map(region => normalizeCustomerVisibleCopy(region)).join(' · ') : '상세 일정',
+            regions: day.regions.map(region => normalizeCustomerVisibleCopy(region)).join(' · '),
             meals: {
-              breakfast: !!d.meals?.breakfast,
-              lunch: !!d.meals?.lunch,
-              dinner: !!d.meals?.dinner,
+              breakfast: Boolean(day.meals?.breakfast),
+              lunch: Boolean(day.meals?.lunch),
+              dinner: Boolean(day.meals?.dinner),
             },
             activities: [
-              ...toLpActivities(d.schedule, d.regions),
-              ...(d.hotelCard?.name
+              ...toLpActivities(day.schedule, day.regions),
+              ...(day.hotelCard?.name
                 ? [{
                     type: 'hotel' as const,
-                    label: `호텔: ${d.hotelCard.name}`,
-                    detail: d.hotelCard.note ?? undefined,
+                    label: `호텔: ${normalizeCustomerVisibleCopy(day.hotelCard.name)}`,
+                    detail: day.hotelCard.note ? normalizeCustomerVisibleCopy(day.hotelCard.note) : undefined,
                   }]
                 : []),
             ],
-            hotel: d.hotelCard?.name ?? undefined,
+            hotel: day.hotelCard?.name ? normalizeCustomerVisibleCopy(day.hotelCard.name) : undefined,
           }))
         : dayRows.map((row): ItineraryDay => {
-            const d = row as Record<string, unknown>;
+            const regions = asStringArray(row.regions);
             return {
-              day: d.day as number,
-              title: (Array.isArray(d.regions) ? (d.regions as string[]).join(' · ') : '') || '상세 일정',
-              regions: Array.isArray(d.regions) ? (d.regions as string[]).join(' · ') : '',
-              meals: (d.meals as ItineraryDay['meals']) || {
+              day: Number(row.day) || 1,
+              title: regions.length > 0 ? regions.join(' · ') : '상세 일정',
+              regions: regions.join(' · '),
+              meals: (row.meals as ItineraryDay['meals']) || {
                 breakfast: false,
                 lunch: false,
                 dinner: false,
               },
-              activities: toLpActivities((d.schedule as {
+              activities: toLpActivities((row.schedule as {
                 activity: string;
                 type?: string;
                 note?: string;
@@ -362,10 +344,12 @@ export function mapTravelPackageToLandingData(
                 attraction_names?: string[];
                 entity_kind?: string | null;
                 landing_sentence?: string | null;
-              }[]) || []),
-              hotel: (d.hotel as { name?: string } | null)?.name,
+              }[]) || [], regions),
+              hotel: (row.hotel as { name?: string } | null)?.name
+                ? normalizeCustomerVisibleCopy((row.hotel as { name: string }).name)
+                : undefined,
             };
-          })),
+          }),
     },
   };
 }

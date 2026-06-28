@@ -10,6 +10,7 @@ import { resolveOAuthToken } from '../token-resolver';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { getSecret } from '@/lib/secret-registry';
+import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
 
 interface PackageRow {
   id: string;
@@ -48,10 +49,23 @@ export class AdAgent extends BaseMarketingAgent {
 
     if (!packages?.length) return this.skip('활성 패키지 없음');
 
-    const results: { packages_processed: number; items: unknown[] } = { packages_processed: 0, items: [] };
+    const results: { packages_processed: number; blocked_by_customer_open_contract: number; items: unknown[] } = {
+      packages_processed: 0,
+      blocked_by_customer_open_contract: 0,
+      items: [],
+    };
 
     for (const pkg of packages as PackageRow[]) {
       const item: Record<string, unknown> = { package_id: pkg.id, title: pkg.title };
+      const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, pkg.id);
+      if (!openContract.ok) {
+        item.skipped = true;
+        item.reason = 'customer_open_contract_blocked';
+        item.blockers = openContract.blockers.slice(0, 5);
+        results.blocked_by_customer_open_contract += 1;
+        results.items.push(item);
+        continue;
+      }
 
       // ── Meta 광고 카피 생성 + DRAFT 저장 ─────────────────────────────────
       if (metaToken) {

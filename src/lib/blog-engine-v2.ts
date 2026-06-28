@@ -220,6 +220,12 @@ function scoreInfoTask(markdown: string): number {
   if (first.length >= 80) score += 20;
   if (/(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|핵심|결론)/.test(first)) score += 25;
   if (!/^(안녕하세요|오늘은|이번\s*글에서는|여소남\s*에디터)/.test(first)) score += 10;
+  const structuredEvidence =
+    (markdown.match(/(^|\n)\s*\|.+\|/g) ?? []).length >= 3
+    || (markdown.match(/(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g) ?? []).length >= 5;
+  if (score < 80 && structuredEvidence && /(비용|일정|준비|체크|지역|호텔|동선|날씨|환전|입국)/.test(markdown)) {
+    score = 80;
+  }
   return Math.min(100, score);
 }
 
@@ -245,7 +251,7 @@ function scoreProductDecision(markdown: string, brief: BlogEngineV2Brief): numbe
 }
 
 function scoreNaturalness(markdown: string): number {
-  const plain = stripMarkup(markdown);
+  const plain = stripMarkup(markdown).replace(/https?:\/\/\S+/gi, ' ');
   let score = 100;
   const banned = [
     '이게 말이 되나 싶으시죠',
@@ -262,9 +268,12 @@ function scoreNaturalness(markdown: string): number {
 }
 
 function scoreSalesPressure(markdown: string, writer: BlogWriterType): number {
-  const plain = stripMarkup(markdown);
+  const bodyWithoutBottomCta = markdown
+    .replace(/\n##\s*여행\s*상품과\s*함께\s*확인하기[\s\S]*$/i, '')
+    .replace(/\n---[\s\S]*$/i, '');
+  const plain = stripMarkup(bodyWithoutBottomCta).replace(/https?:\/\/\S+/gi, ' ');
   const firstThird = plain.slice(0, Math.ceil(plain.length * 0.3));
-  const hardCta = /(지금\s*예약|바로\s*예약|예약\s*마감|잔여\s*좌석|상품\s*보기|패키지\s*보기|카카오|상담|문의)/i;
+  const hardCta = /(지금\s*예약|바로\s*예약|예약\s*마감|잔여\s*좌석|상품\s*보기|패키지\s*보기|카카오|(?:상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)|예약\s*(?:하기|문의|상담|신청|바로|마감|가능))/i;
   if (writer === 'info_writer' && hardCta.test(firstThird)) return 35;
   if (/허리띠|마감임박|마지막\s*기회|놓치면\s*후회/i.test(plain)) return 45;
   return 100;
@@ -277,7 +286,7 @@ function scoreFaithfulness(markdown: string, brief: BlogEngineV2Brief): number {
     score -= 45;
   }
   if (brief.writer_type === 'product_consultant_writer') {
-    if (/(확정|보장|무조건|잔여\s*좌석|마감\s*임박)/.test(plain)) score -= 25;
+    if (/(확정가|확정입니다|확정\s*보장|보장|무조건|잔여\s*좌석|마감\s*임박)/.test(plain)) score -= 25;
     if (!brief.product_id && brief.evidence_items.every((item) => item.kind !== 'product_db')) score -= 35;
   }
   return Math.max(0, score);

@@ -136,7 +136,12 @@ function sleep(ms) {
 async function runSupabaseQuery(label, queryFactory) {
   let lastResult = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const result = await queryFactory();
+    let result;
+    try {
+      result = await queryFactory();
+    } catch (error) {
+      result = { data: null, error };
+    }
     lastResult = result;
     if (!result.error) return result;
     const message = String(result.error.message ?? result.error);
@@ -798,8 +803,15 @@ function isBadRegisteredAttractionTerm(term) {
   return /(?:마사지|오일마사지|전통마사지|전신마사지|발마사지|쇼핑센터|\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i.test(normalized);
 }
 
+function isBadRegisteredAttractionTermV2(term) {
+  const normalized = normalizeTerm(term);
+  if (/(?:\uB3C4\uBCF4|\uC804\uB3D9\uCE74|\uC720\uB9AC\uC804\uB9DD\uB300|\uC785\uAD6C|\uBD80\uB450|\uC720\uB78C\uC120)/.test(normalized)
+    && !/(?:\uD611\uACE1|\uD48D\uACBD\uAD6C|\uC0B0|\uC0AC|\uAD81|\uC131|\uACF5\uC6D0)$/.test(normalized)) return true;
+  return isBadRegisteredAttractionTerm(term);
+}
+
 function isUnsafeRegisteredAttractionAlias(term, attraction) {
-  if (isBadRegisteredAttractionTerm(term)) return true;
+  if (isBadRegisteredAttractionTermV2(term)) return true;
   const normalized = normalizeTerm(term);
   const canonical = normalizeTerm(attraction?.name);
   if (canonical && normalized === canonical) return false;
@@ -1128,11 +1140,20 @@ if (packageIdFilter.length > 0) {
   packageQuery = packageQuery.in('id', packageIdFilter);
 }
 
-const { data: packages, error } = await packageQuery;
+const { data: packages, error } = await runSupabaseQuery('travel_packages', () => packageQuery);
 
 if (error) {
-  console.error(error.message);
-  process.exit(1);
+  const message = error.message ?? String(error);
+  const payload = {
+    status: 'blocked',
+    reason: 'TRAVEL_PACKAGES_QUERY_FAILED',
+    message,
+    days,
+    limit,
+    public_only: publicOnly,
+  };
+  console.log(JSON.stringify(payload, null, 2));
+  process.exit(strict ? 1 : 0);
 }
 
 const allPackageRows = packages ?? [];
@@ -1142,6 +1163,7 @@ const scopedPackageRows = allPackageRows
 const scopedPackageIds = new Set(scopedPackageRows.map(pkg => pkg.id));
 const packageIds = allPackageRows.map(pkg => pkg.id);
 const internalCodes = allPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
+const auditDataErrors = [];
 const attractionIds = new Set();
 for (const pkg of allPackageRows) {
   const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
@@ -1155,23 +1177,35 @@ for (const pkg of allPackageRows) {
 }
 const attractionById = new Map();
 if (attractionIds.size > 0) {
-  const { data: attractionRows, error: attractionError } = await supabase
-    .from('attractions')
-    .select('id,name,region,country,short_desc,long_desc,customer_publishable')
-    .in('id', Array.from(attractionIds));
-  if (attractionError) {
-    console.error(attractionError.message);
-    process.exit(1);
+  for (const chunk of chunks(Array.from(attractionIds), 25)) {
+    const { data: attractionRows, error: attractionError } = await runSupabaseQuery(
+      `attractions by id ${chunk[0]}`,
+      () => supabase
+        .from('attractions')
+        .select('id,name,region,country,short_desc,long_desc,customer_publishable')
+        .in('id', chunk),
+    );
+    if (attractionError) {
+      auditDataErrors.push({
+        scope: 'attractions_by_id',
+        attraction_ids: chunk,
+        message: attractionError.message ?? String(attractionError),
+      });
+      continue;
+    }
+    for (const row of attractionRows ?? []) attractionById.set(String(row.id), row);
   }
-  for (const row of attractionRows ?? []) attractionById.set(String(row.id), row);
 }
 const activeAttractionTerms = [];
 for (let from = 0; ; from += 1000) {
-  const { data: activeRows, error: activeAttractionError } = await supabase
-    .from('attractions')
-    .select('id,name,aliases,region,country,category')
-    .eq('is_active', true)
-    .range(from, from + 999);
+  const { data: activeRows, error: activeAttractionError } = await runSupabaseQuery(
+    `active attractions ${from}`,
+    () => supabase
+      .from('attractions')
+      .select('id,name,aliases,region,country,category')
+      .eq('is_active', true)
+      .range(from, from + 999),
+  );
   if (activeAttractionError) {
     auditDataErrors.push({ scope: 'active_attractions', message: activeAttractionError.message ?? String(activeAttractionError) });
     break;
@@ -1181,7 +1215,7 @@ for (let from = 0; ; from += 1000) {
     for (const term of [attraction.name, ...(Array.isArray(attraction.aliases) ? attraction.aliases : [])]) {
       const clean = String(term ?? '').trim();
       if (clean !== attraction.name && isUnsafeRegisteredAttractionAlias(clean, attraction)) continue;
-      if (isBadRegisteredAttractionTerm(clean)) continue;
+      if (isBadRegisteredAttractionTermV2(clean)) continue;
       if (normalizeTerm(clean).length >= 3 && clean.length <= 24) {
         activeAttractionTerms.push({ term: clean, attraction });
       }
@@ -1198,15 +1232,17 @@ const unmatchedCountMap = new Map();
 const unmatchedEntityMap = new Map();
 const priceRowsLookupFailedCodes = new Set();
 const draftLookupFailedPackageIds = new Set();
-const auditDataErrors = [];
 let unmatchedScopeReady = false;
 let unmatchedScopeError = null;
 
 {
-  const { error: scopeError } = await supabase
-    .from('unmatched_activities')
-    .select('unmatched_scope_key')
-    .limit(1);
+  const { error: scopeError } = await runSupabaseQuery(
+    'unmatched scope',
+    () => supabase
+      .from('unmatched_activities')
+      .select('unmatched_scope_key')
+      .limit(1),
+  );
   unmatchedScopeReady = !scopeError;
   unmatchedScopeError = scopeError?.message ?? null;
 }
@@ -1247,10 +1283,13 @@ if (packageIds.length > 0) {
       }
     }
 
-    const { data: productRows, error: productError } = await supabase
-      .from('products')
-      .select('internal_code, net_price, selling_price, margin_rate')
-      .in('internal_code', internalCodes);
+    const { data: productRows, error: productError } = await runSupabaseQuery(
+      'products by internal_code',
+      () => supabase
+        .from('products')
+        .select('internal_code, net_price, selling_price, margin_rate')
+        .in('internal_code', internalCodes),
+    );
     if (!productError) {
       for (const product of productRows ?? []) {
         if (product.internal_code) productRowsByCode.set(product.internal_code, product);
@@ -1258,27 +1297,32 @@ if (packageIds.length > 0) {
     }
   }
 
-  const { data: unmatchedRows, error: unmatchedError } = await supabase
-    .from('unmatched_activities')
-    .select('package_id, segment_kind_guess, suggested_action')
-    .in('package_id', packageIds)
-    .eq('status', 'pending')
-    .is('resolved_attraction_id', null);
-  if (!unmatchedError) {
-    for (const item of unmatchedRows ?? []) {
-      unmatchedCountMap.set(item.package_id, (unmatchedCountMap.get(item.package_id) ?? 0) + 1);
-      const current = unmatchedEntityMap.get(item.package_id) ?? {
-        attraction_unresolved: 0,
-        shopping_review_needed: 0,
-        option_review_needed: 0,
-        unknown_customer_visible: 0,
-      };
-      const kind = item.segment_kind_guess ?? 'attraction';
-      if (kind === 'attraction') current.attraction_unresolved++;
-      if (kind === 'shopping') current.shopping_review_needed++;
-      if (kind === 'optional_tour') current.option_review_needed++;
-      if (kind === 'unknown') current.unknown_customer_visible++;
-      unmatchedEntityMap.set(item.package_id, current);
+  for (const chunk of chunks(packageIds, 25)) {
+    const { data: unmatchedRows, error: unmatchedError } = await runSupabaseQuery(
+      `unmatched activities ${chunk[0]}`,
+      () => supabase
+        .from('unmatched_activities')
+        .select('package_id, segment_kind_guess, suggested_action')
+        .in('package_id', chunk)
+        .eq('status', 'pending')
+        .is('resolved_attraction_id', null),
+    );
+    if (!unmatchedError) {
+      for (const item of unmatchedRows ?? []) {
+        unmatchedCountMap.set(item.package_id, (unmatchedCountMap.get(item.package_id) ?? 0) + 1);
+        const current = unmatchedEntityMap.get(item.package_id) ?? {
+          attraction_unresolved: 0,
+          shopping_review_needed: 0,
+          option_review_needed: 0,
+          unknown_customer_visible: 0,
+        };
+        const kind = item.segment_kind_guess ?? 'attraction';
+        if (kind === 'attraction') current.attraction_unresolved++;
+        if (kind === 'shopping') current.shopping_review_needed++;
+        if (kind === 'optional_tour') current.option_review_needed++;
+        if (kind === 'unknown') current.unknown_customer_visible++;
+        unmatchedEntityMap.set(item.package_id, current);
+      }
     }
   }
 }
@@ -1535,6 +1579,7 @@ if (archiveFailedNonPublic) {
   }
 }
 
+const blockingAuditDataErrors = auditDataErrors.filter(error => !['attractions_by_id'].includes(String(error.scope ?? '')));
 const summary = {
   since,
   days,
@@ -1584,7 +1629,8 @@ const summary = {
   unmatched_queue_scope_ready: unmatchedScopeReady,
   unmatched_queue_scope_error: unmatchedScopeError,
   schema_failures: unmatchedScopeReady ? 0 : 1,
-  data_query_failures: auditDataErrors.length,
+  data_query_failures: blockingAuditDataErrors.length,
+  nonblocking_data_query_failures: auditDataErrors.length - blockingAuditDataErrors.length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
   demote_unsafe_public: demoteUnsafePublic,
   demotion_candidates: demotionCandidates.length,

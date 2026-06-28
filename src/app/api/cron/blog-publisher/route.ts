@@ -43,6 +43,7 @@ import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
 import { slugifyTopic, romanize, extractDestination } from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
+import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
@@ -1846,6 +1847,10 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   }
 
   const product = pkg[0];
+  const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, item.product_id);
+  if (!openContract.ok) {
+    throw new Error(`product_customer_open_contract_failed:${openContract.blockers.slice(0, 5).join('|')}`);
+  }
   const angle = normalizeAngleType(item.angle_type);
 
   // 관광지 매칭 (옵션)

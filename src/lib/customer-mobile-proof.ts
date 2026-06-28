@@ -3,6 +3,7 @@ export type CustomerMobileProof = {
   checked_at?: string | null;
   package_updated_at?: string | null;
   surfaces?: string[] | null;
+  surface_results?: Array<{ surface?: string | null; status?: string | null }> | null;
 };
 
 export type CustomerMobileProofResult = {
@@ -27,6 +28,20 @@ function asStringArray(value: unknown): string[] | null {
     : null;
 }
 
+function extractSurfaceResults(value: unknown): Array<{ surface?: string | null; status?: string | null }> | null {
+  if (!Array.isArray(value)) return null;
+  const results: Array<{ surface?: string | null; status?: string | null }> = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    if (!record) continue;
+    results.push({
+      surface: asString(record.surface),
+      status: asString(record.status),
+    });
+  }
+  return results;
+}
+
 export function extractCustomerMobileProof(auditReport: unknown): CustomerMobileProof | null {
   const report = asRecord(auditReport);
   if (!report) return null;
@@ -39,6 +54,7 @@ export function extractCustomerMobileProof(auditReport: unknown): CustomerMobile
     checked_at: asString(rawProof.checked_at),
     package_updated_at: asString(rawProof.package_updated_at),
     surfaces: asStringArray(rawProof.surfaces),
+    surface_results: extractSurfaceResults(rawProof.surface_results),
   };
 }
 
@@ -75,6 +91,24 @@ export function evaluateCustomerMobileProof(input: {
       proof,
     };
   }
+  const surfaces = new Set(proof.surfaces ?? []);
+  for (const surfaceResult of proof.surface_results ?? []) {
+    if (surfaceResult.surface) surfaces.add(surfaceResult.surface);
+    if (surfaceResult.status && surfaceResult.status !== 'pass') {
+      return {
+        ok: false,
+        reason: `actual customer mobile browser proof ${surfaceResult.surface ?? 'surface'} status is ${surfaceResult.status}`,
+        proof,
+      };
+    }
+  }
+  if (!surfaces.has('lp')) {
+    return {
+      ok: false,
+      reason: 'actual customer mobile browser proof did not include the lp surface',
+      proof,
+    };
+  }
   const packageUpdatedAt = input.packageUpdatedAt?.trim();
   if (packageUpdatedAt && proof.package_updated_at && proof.package_updated_at !== packageUpdatedAt) {
     return {
@@ -83,5 +117,5 @@ export function evaluateCustomerMobileProof(input: {
       proof,
     };
   }
-  return { ok: true, reason: 'actual /packages mobile browser proof passed', proof };
+  return { ok: true, reason: 'actual /packages and /lp mobile browser proof passed', proof };
 }

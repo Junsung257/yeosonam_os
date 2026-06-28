@@ -33,7 +33,7 @@ describe('checkAccentDensity', () => {
   });
 
   it('fails when h2 or h3 heading counts are excessive', async () => {
-    const tooManyH2 = Array.from({ length: 11 }, (_, index) => `## Section ${index + 1}\nBody`).join('\n\n');
+    const tooManyH2 = Array.from({ length: 13 }, (_, index) => `## Section ${index + 1}\nBody`).join('\n\n');
     const tooManyH3 = Array.from({ length: 21 }, (_, index) => `### Detail ${index + 1}\nBody`).join('\n\n');
 
     const h2Gate = await checkAccentDensity(tooManyH2);
@@ -45,12 +45,12 @@ describe('checkAccentDensity', () => {
     expect(h3Gate.reason).toContain('h3_density');
   });
 
-  it('fails when a paragraph is longer than 450 characters', async () => {
-    const gate = await checkAccentDensity(`<p>${'a'.repeat(451)}</p>`);
+  it('fails when a paragraph is longer than 480 characters', async () => {
+    const gate = await checkAccentDensity(`<p>${'a'.repeat(481)}</p>`);
 
     expect(gate.passed).toBe(false);
     expect(gate.reason).toContain('long_paragraph');
-    expect(gate.evidence?.longestParagraph).toBe(451);
+    expect(gate.evidence?.longestParagraph).toBe(481);
   });
 
   it('passes restrained article markup', async () => {

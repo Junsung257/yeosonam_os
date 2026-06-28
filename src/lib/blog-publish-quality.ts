@@ -23,6 +23,7 @@ export interface BlogPublishQualityInput {
   product_id?: string | null;
   primary_keyword?: string | null;
   secondary_keywords?: string[] | null;
+  generation_meta?: Record<string, unknown> | null;
   excludeContentCreativeId?: string | null;
   skipFuzzyDuplicate?: boolean;
 }
@@ -120,6 +121,7 @@ export async function evaluateBlogPublishQuality(
     category: input.category ?? null,
     content_type: input.content_type ?? null,
     product_id: input.product_id ?? null,
+    generation_meta: input.generation_meta ?? null,
     excludeContentCreativeId: input.excludeContentCreativeId ?? input.id ?? null,
     skipFuzzyDuplicate: input.skipFuzzyDuplicate ?? false,
   });

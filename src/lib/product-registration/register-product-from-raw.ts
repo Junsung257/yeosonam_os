@@ -30,6 +30,7 @@ import { normalizeUploadItinerary, type ItineraryDataLike } from './itinerary-no
 import { resolvePriceRecoveryYear } from './price-year';
 import { recoverUploadPriceData } from './price-recovery';
 import { normalizeUploadTitle } from './title-normalization';
+import { repairCustomerVisibleCopyPayload } from './customer-visible-copy-repair';
 import type { SourceEvidenceSpan, StandardProductRegistrationObject } from './types';
 
 const NOTICE_TYPES = new Set<NoticeItem['type']>(['CRITICAL', 'PAYMENT', 'POLICY', 'INFO']);
@@ -735,6 +736,72 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     includePhotoAudit: false,
   });
 
+  const customerCopyRepair = repairCustomerVisibleCopyPayload({
+    title: ed.title ?? input.title,
+    product_summary: ed.product_summary,
+    destination: ed.destination,
+    trip_style: ed.trip_style,
+    airline: ed.airline,
+    departure_airport: ed.departure_airport,
+    departure_days: ed.departure_days,
+    price_dates: priceRecovery.priceDates,
+    price_tiers: ed.price_tiers,
+    itinerary_data: itinerary.itineraryDataToSave,
+    inclusions: ed.inclusions,
+    excludes: ed.excludes,
+    surcharges: ed.surcharges,
+    optional_tours: ed.optional_tours,
+    accommodations: ed.accommodations,
+    notices_parsed: ed.notices_parsed,
+    customer_notes: (ed as { customer_notes?: unknown }).customer_notes,
+    product_prices: priceRecovery.priceRows,
+  });
+  const repairedCustomerCopy = customerCopyRepair.value as {
+    title?: string | null;
+    product_summary?: string | null;
+    destination?: string | null;
+    trip_style?: string | null;
+    airline?: string | null;
+    departure_airport?: string | null;
+    departure_days?: string | null;
+    price_tiers?: ExtractedData['price_tiers'];
+    itinerary_data?: ItineraryDataLike | null;
+    inclusions?: string[];
+    excludes?: string[];
+    surcharges?: ExtractedData['surcharges'];
+    optional_tours?: ExtractedData['optional_tours'];
+    accommodations?: string[];
+    notices_parsed?: ExtractedData['notices_parsed'];
+    customer_notes?: unknown;
+    product_prices?: ProductPriceRowInput[];
+  };
+  if (repairedCustomerCopy.title) ed.title = repairedCustomerCopy.title;
+  if (repairedCustomerCopy.product_summary !== undefined) ed.product_summary = repairedCustomerCopy.product_summary ?? undefined;
+  if (repairedCustomerCopy.destination) ed.destination = repairedCustomerCopy.destination;
+  if (repairedCustomerCopy.trip_style !== undefined) ed.trip_style = repairedCustomerCopy.trip_style ?? undefined;
+  if (repairedCustomerCopy.airline !== undefined) ed.airline = repairedCustomerCopy.airline ?? undefined;
+  if (repairedCustomerCopy.departure_airport !== undefined) ed.departure_airport = repairedCustomerCopy.departure_airport ?? undefined;
+  if (repairedCustomerCopy.departure_days !== undefined) ed.departure_days = repairedCustomerCopy.departure_days ?? undefined;
+  if (repairedCustomerCopy.price_tiers !== undefined) ed.price_tiers = repairedCustomerCopy.price_tiers;
+  if (repairedCustomerCopy.inclusions !== undefined) ed.inclusions = repairedCustomerCopy.inclusions;
+  if (repairedCustomerCopy.excludes !== undefined) ed.excludes = repairedCustomerCopy.excludes;
+  if (repairedCustomerCopy.surcharges !== undefined) ed.surcharges = repairedCustomerCopy.surcharges;
+  if (repairedCustomerCopy.optional_tours !== undefined) ed.optional_tours = repairedCustomerCopy.optional_tours;
+  if (repairedCustomerCopy.accommodations !== undefined) ed.accommodations = repairedCustomerCopy.accommodations;
+  if (repairedCustomerCopy.notices_parsed !== undefined) ed.notices_parsed = repairedCustomerCopy.notices_parsed;
+  if (repairedCustomerCopy.customer_notes !== undefined) {
+    (ed as { customer_notes?: unknown }).customer_notes = repairedCustomerCopy.customer_notes;
+  }
+  if (repairedCustomerCopy.itinerary_data !== undefined) {
+    itinerary.itineraryDataToSave = repairedCustomerCopy.itinerary_data;
+  }
+  if (repairedCustomerCopy.product_prices !== undefined) {
+    priceRecovery = {
+      ...priceRecovery,
+      priceRows: repairedCustomerCopy.product_prices,
+    };
+  }
+
   const v3GateFailures = v3.result?.gate_result.status === 'blocked'
     ? v3.result.gate_result.checks
       .filter(check => check.status === 'fail')
@@ -750,6 +817,27 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     itineraryDays: itinerary.itineraryDataToSave?.days ?? itinerary.itineraryInput?.days ?? [],
     durationDays: ed.duration,
     rawText,
+    customerVisibleText: {
+      title: ed.title ?? input.title,
+      display_title: ed.title ?? input.title,
+      product_summary: ed.product_summary,
+      destination: ed.destination,
+      trip_style: ed.trip_style,
+      airline: ed.airline,
+      departure_airport: ed.departure_airport,
+      departure_days: ed.departure_days,
+      price_dates: priceRecovery.priceDates,
+      price_tiers: ed.price_tiers,
+      itinerary_data: repairedCustomerCopy.itinerary_data ?? itinerary.itineraryDataToSave,
+      inclusions: ed.inclusions,
+      excludes: ed.excludes,
+      surcharges: ed.surcharges,
+      optional_tours: ed.optional_tours,
+      accommodations: ed.accommodations,
+      notices_parsed: ed.notices_parsed,
+      customer_notes: (ed as { customer_notes?: unknown }).customer_notes,
+      product_prices: repairedCustomerCopy.product_prices ?? priceRecovery.priceRows,
+    },
     priceRecoveryFailures: priceRecovery.failures,
     extraFailures: [
       ...priceAudit.blockers.map(reason => `Price source audit failed: ${reason}`),
@@ -769,6 +857,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     ...priceAudit.warnings.map(reason => `price_source_audit:${reason}`),
     ...v3GateFailures,
     ...itinerary.warnings,
+    ...customerCopyRepair.changes.map(change => `customer_copy:${change.action}:${change.fieldPath}:${change.codes.join(',')}`),
     ...attractionMedia.warnings.map(reason => `mobile_media:${reason}`),
     ...(v3.result?.gate_result.status === 'needs_review' ? ['v3:needs_review'] : []),
   ];

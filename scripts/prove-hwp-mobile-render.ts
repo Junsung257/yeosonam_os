@@ -4,10 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { chromium, type Browser, type Page } from 'playwright';
+import AxeBuilder from '@axe-core/playwright';
 
 import { supabaseAdmin } from '../src/lib/supabase';
 import { getSecret } from '../src/lib/secret-registry';
 import { renderPackage } from '../src/lib/render-contract';
+import { customerCopyQualityIssues } from '../src/lib/customer-copy-quality';
 
 type PackageRow = {
   id: string;
@@ -38,6 +40,18 @@ type CheckResult = {
   detail?: string;
 };
 
+type SurfaceName = 'packages' | 'lp';
+
+type SurfaceProofResult = {
+  surface: SurfaceName;
+  url: string;
+  http_status: number | null;
+  status: 'pass' | 'fail';
+  checks: CheckResult[];
+  screenshot_path?: string;
+  error?: string;
+};
+
 type PackageProofResult = {
   id: string;
   title: string | null;
@@ -49,6 +63,7 @@ type PackageProofResult = {
   package_updated_at: string | null;
   mobile_checks: CheckResult[];
   a4_checks: CheckResult[];
+  surface_results: SurfaceProofResult[];
   screenshot_path?: string;
   error?: string;
 };
@@ -66,7 +81,9 @@ Options:
   --limit=...         Max packages to load, default 200.
   --base=...          Customer site base URL, default NEXT_PUBLIC_BASE_URL or http://127.0.0.1:3000.
   --output-dir=...    Report and screenshot directory.
-  --apply             Persist passing mobile_browser_proof into travel_packages.audit_report.
+  --apply             Persist mobile_browser_proof into travel_packages.audit_report.
+  --skip-lp           Check /packages only. Default checks /packages and /lp.
+  --skip-axe          Skip automated WCAG accessibility scan.
   --json              Print the full JSON report.
 `);
   process.exit(0);
@@ -91,6 +108,8 @@ function parseList(value: string | null): string[] {
 
 const apply = hasFlag('apply');
 const jsonOnly = hasFlag('json');
+const checkLp = !hasFlag('skip-lp');
+const runAxe = !hasFlag('skip-axe');
 const baseUrl = (argValue('base') || process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 const packageIds = parseList(argValue('package-ids'));
 const since = argValue('since');
@@ -126,15 +145,16 @@ function representativeScheduleTerms(pkg: PackageRow): string[] {
   for (const day of days) {
     for (const item of asArray((day as { schedule?: unknown }).schedule)) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-      const activity = normalizeText((item as { activity?: unknown }).activity);
+      const record = item as { activity?: unknown; landing_sentence?: unknown; type?: unknown; entity_kind?: unknown };
+      const activity = normalizeText(record.landing_sentence || record.activity);
       if (activity.length < 3) continue;
-      if (/공항|출발|도착|호텔|조식|중식|석식|이동|체크|미팅|가이드/.test(activity)) continue;
-      if (/추천\s*옵션|강력추천옵션|현지옵션|선택관광|현지지불옵션|옵션[:：]|^\s*[※\[]/.test(activity)) continue;
+      if (/공항|출발|도착|호텔|조식|중식|석식|식사|이동|체크|미팅|가이드|옵션|쇼핑|전용차량|자유시간/i.test(activity)) continue;
+      if (['meal', 'transfer', 'hotel_stay', 'shopping', 'optional_tour'].includes(String(record.entity_kind ?? record.type ?? ''))) continue;
       const token = activity
         .replace(/[()[\]{}"'`]/g, ' ')
         .split(/[,\s/]+/)
         .map(part => part.trim())
-        .find(part => /[가-힣A-Za-z]/.test(part) && part.length >= 3 && !/추천|옵션|선택관광/.test(part));
+        .find(part => /[\uAC00-\uD7A3A-Za-z]/.test(part) && part.length >= 2);
       if (token) terms.push(token);
       if (terms.length >= 3) return [...new Set(terms)];
     }
@@ -143,7 +163,46 @@ function representativeScheduleTerms(pkg: PackageRow): string[] {
 }
 
 function containsAny(text: string, markers: string[]): boolean {
-  return markers.some(marker => text.includes(marker));
+  return markers.some(marker => marker && text.includes(marker));
+}
+
+function visibleTextQualityIssues(text: string): string[] {
+  const lines = text
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const issues: string[] = [];
+  const brokenLines = lines.filter(line => /\?{2,}/.test(line)).slice(0, 8);
+  if (brokenLines.length > 0) {
+    issues.push(`question_mark_placeholders: ${brokenLines.join(' | ')}`);
+  }
+  if (/[�ÃÂ]|(?:챙|챘|챗|챠|챨)[\u0080-\u00ff]/i.test(text)) {
+    issues.push('mojibake_characters_visible');
+  }
+  const koreanMojibakeLines = lines
+    .filter(line => /(?:李|留|硫|紐|吏|泥|媛|怨|臾|諛|異|痍|蹂|湲|踰|쨌|竊)/.test(line))
+    .slice(0, 8);
+  if (koreanMojibakeLines.length > 0) {
+    issues.push(`korean_mojibake_lines_visible: ${koreanMojibakeLines.join(' | ')}`);
+  }
+  const htmlEntityLines = lines.filter(line => /&#(?:x[0-9a-f]+|\d+);/i.test(line)).slice(0, 8);
+  if (htmlEntityLines.length > 0) {
+    issues.push(`html_entities_visible: ${htmlEntityLines.join(' | ')}`);
+  }
+  const customerUnsafePhrases = [
+    '자동 생성 설명',
+    '사진은 정확한 자료가 확인될 때만 노출합니다',
+    '일정에서 소개되는 관광 포인트입니다',
+  ];
+  const unsafeHits = customerUnsafePhrases.filter(phrase => text.includes(phrase));
+  if (unsafeHits.length > 0) {
+    issues.push(`generic_internal_copy_visible: ${unsafeHits.join(', ')}`);
+  }
+  const copyIssues = customerCopyQualityIssues(text);
+  if (copyIssues.length > 0) {
+    issues.push(`customer_copy_quality: ${copyIssues.map(issue => issue.code).join(', ')}`);
+  }
+  return issues;
 }
 
 function buildRenderPackageInput(pkg: PackageRow): Record<string, unknown> {
@@ -197,7 +256,7 @@ function auditA4PayloadForPackage(pkg: PackageRow): CheckResult[] {
 }
 
 async function clickLikelyItinerary(page: Page) {
-  for (const label of ['여행 일정', '일정표', '일정']) {
+  for (const label of ['여행 일정', '상세 일정', '일정', 'DAY 1']) {
     const locator = page.getByText(label, { exact: false }).first();
     if (await locator.count().catch(() => 0)) {
       await locator.click({ timeout: 1500 }).catch(() => undefined);
@@ -207,20 +266,45 @@ async function clickLikelyItinerary(page: Page) {
   }
 }
 
-async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: string): Promise<PackageProofResult> {
-  const checkedAt = new Date().toISOString();
-  const url = `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`;
-  const result: PackageProofResult = {
-    id: pkg.id,
-    title: pkg.display_title || pkg.title,
-    internal_code: pkg.internal_code,
+async function runAccessibilityCheck(page: Page, surface: SurfaceName): Promise<CheckResult> {
+  if (!runAxe) return { name: `${surface}_accessibility_wcag`, ok: true, detail: 'skipped' };
+  try {
+    const { violations } = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    const warningRuleIds = new Set(['color-contrast', 'scrollable-region-focusable']);
+    const serious = violations.filter(violation =>
+      ['critical', 'serious'].includes(String(violation.impact ?? '')),
+    );
+    const blocking = serious.filter(violation => !warningRuleIds.has(violation.id));
+    const warnings = serious.filter(violation => warningRuleIds.has(violation.id));
+    return {
+      name: `${surface}_accessibility_wcag`,
+      ok: blocking.length === 0,
+      detail: serious.length === 0
+        ? 'ok'
+        : [
+            blocking.length > 0 ? `blocking=${blocking.slice(0, 8).map(violation => `${violation.id}:${violation.nodes.length}`).join(',')}` : null,
+            warnings.length > 0 ? `warnings=${warnings.slice(0, 8).map(violation => `${violation.id}:${violation.nodes.length}`).join(',')}` : null,
+          ].filter(Boolean).join(' '),
+    };
+  } catch (error) {
+    return {
+      name: `${surface}_accessibility_wcag`,
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: string, surface: SurfaceName): Promise<SurfaceProofResult> {
+  const url = `${baseUrl}/${surface}/${encodeURIComponent(pkg.id)}`;
+  const result: SurfaceProofResult = {
+    surface,
     url,
     http_status: null,
     status: 'fail',
-    checked_at: checkedAt,
-    package_updated_at: pkg.updated_at,
-    mobile_checks: [],
-    a4_checks: auditA4PayloadForPackage(pkg),
+    checks: [],
   };
 
   try {
@@ -231,70 +315,154 @@ async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: strin
     const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     result.http_status = response?.status() ?? null;
     await page.waitForTimeout(1800);
-    await clickLikelyItinerary(page);
-    await page.evaluate(() => window.scrollTo(0, Math.min(document.body.scrollHeight, 1200))).catch(() => undefined);
+
+    if (surface === 'packages') {
+      await clickLikelyItinerary(page);
+      await page.evaluate(() => window.scrollTo(0, Math.min(document.body.scrollHeight, 1200))).catch(() => undefined);
+    } else {
+      await page.evaluate(() => window.scrollTo(0, Math.min(document.body.scrollHeight, 900))).catch(() => undefined);
+    }
     await page.waitForTimeout(500);
 
-    const bodyText = normalizeText(await page.locator('body').innerText({ timeout: 15_000 }).catch(() => ''));
+    const rawBodyText = await page.locator('body').innerText({ timeout: 15_000 }).catch(() => '');
+    const bodyText = normalizeText(rawBodyText);
     const html = await page.content().catch(() => '');
     const days = getItineraryDays(pkg.itinerary_data);
     const expectedTerms = representativeScheduleTerms(pkg);
     const missingTerms = expectedTerms.filter(term => !bodyText.includes(term));
+    const textQualityIssues = visibleTextQualityIssues(rawBodyText);
 
-    result.mobile_checks.push(
-      { name: 'http_200', ok: result.http_status === 200, detail: String(result.http_status ?? 'no response') },
+    result.checks.push(
+      { name: `${surface}_http_200`, ok: result.http_status === 200, detail: String(result.http_status ?? 'no response') },
       {
-        name: 'no_application_error',
+        name: `${surface}_no_application_error`,
         ok: !/Application error|Internal Server Error|FUNCTION_INVOCATION_TIMEOUT|client-side exception|server-side exception/i.test(`${html} ${bodyText}`),
       },
       {
-        name: 'not_not_found',
+        name: `${surface}_not_not_found`,
         ok: !/not found|404|상품을 찾을 수|Package not found/i.test(bodyText),
       },
       {
-        name: 'price_marker_visible',
+        name: `${surface}_price_marker_visible`,
         ok: containsAny(bodyText, ['판매가', '요금', '가격', '출발일']) || /\d{1,3}(,\d{3})+\s*원/.test(bodyText),
       },
       {
-        name: 'itinerary_marker_visible',
-        ok: containsAny(bodyText, ['DAY 1', '여행 일정', '일정표']),
+        name: `${surface}_itinerary_marker_visible`,
+        ok: containsAny(bodyText, ['DAY 1', '여행 일정', '상세 일정', '일정']),
       },
       {
-        name: 'booking_marker_visible',
-        ok: containsAny(bodyText, ['예약 문의', '카톡 상담', '상담하기', '문의']),
+        name: `${surface}_booking_marker_visible`,
+        ok: containsAny(bodyText, ['예약 문의', '카카오', '상담', '문의']),
       },
       {
-        name: 'last_day_visible',
-        ok: days.length === 0 || bodyText.includes(`DAY ${days.length}`),
+        name: `${surface}_last_day_visible`,
+        ok: surface === 'lp' || days.length === 0 || bodyText.includes(`DAY ${days.length}`),
         detail: `${days.length} day(s)`,
       },
       {
-        name: 'representative_schedule_terms_visible',
-        ok: expectedTerms.length === 0 || missingTerms.length === 0,
+        name: `${surface}_representative_schedule_terms_visible`,
+        ok: surface === 'lp' || expectedTerms.length === 0 || missingTerms.length === 0,
         detail: missingTerms.length ? `missing: ${missingTerms.join(', ')}` : `checked: ${expectedTerms.join(', ')}`,
       },
       {
-        name: 'image_present',
+        name: `${surface}_image_present`,
         ok: /<img\b|_next\/image|images\.pexels\.com|supabase\.co\/storage/i.test(html),
+      },
+      {
+        name: `${surface}_visible_text_readable`,
+        ok: textQualityIssues.length === 0,
+        detail: textQualityIssues.join(' / ') || 'ok',
       },
     );
 
     for (const forbidden of ['supplier_raw_departure_dates', 'net_price', 'internal_memo', 'land_operator']) {
-      result.mobile_checks.push({
-        name: `mobile_forbidden_${forbidden}`,
+      result.checks.push({
+        name: `${surface}_forbidden_${forbidden}`,
         ok: !bodyText.includes(forbidden),
       });
     }
 
+    if (surface === 'packages') {
+      const cta = page.locator('[data-analytics-id="mobile_sticky_reservation"]').first();
+      const ctaVisible = await cta.isVisible({ timeout: 3000 }).catch(() => false);
+      result.checks.push({ name: 'packages_reservation_cta_visible', ok: ctaVisible });
+      if (ctaVisible) {
+        await cta.click({ timeout: 3000 }).catch(() => undefined);
+        await page.waitForTimeout(500);
+        const dialog = page.locator('[role="dialog"][aria-labelledby="reservation-inquiry-title"]').first();
+        const dialogVisible = await dialog.isVisible({ timeout: 3000 }).catch(() => false);
+        const dialogText = dialogVisible ? normalizeText(await dialog.innerText().catch(() => '')) : '';
+        const titleNeedle = normalizeText(pkg.display_title || pkg.title).slice(0, 12);
+        result.checks.push(
+          { name: 'packages_reservation_sheet_opens', ok: dialogVisible },
+          {
+            name: 'packages_reservation_sheet_has_product_context',
+            ok: dialogVisible && containsAny(dialogText, [titleNeedle, '예약 문의']),
+            detail: dialogText.slice(0, 180),
+          },
+        );
+      }
+    } else {
+      const cta = page.locator('[data-analytics-id="lp_sticky_lead"]').first();
+      const ctaVisible = await cta.isVisible({ timeout: 3000 }).catch(() => false);
+      result.checks.push({ name: 'lp_lead_cta_visible', ok: ctaVisible });
+      if (ctaVisible) {
+        await cta.click({ timeout: 3000 }).catch(() => undefined);
+        await page.waitForTimeout(500);
+        const sheet = page.locator('[data-testid="lp-lead-bottom-sheet"]').first();
+        const sheetVisible = await sheet.isVisible({ timeout: 3000 }).catch(() => false);
+        const sheetText = sheetVisible ? normalizeText(await sheet.innerText().catch(() => '')) : '';
+        result.checks.push(
+          { name: 'lp_lead_sheet_opens', ok: sheetVisible },
+          {
+            name: 'lp_lead_sheet_has_customer_copy',
+            ok: sheetVisible && containsAny(sheetText, ['상담 신청', '출발일', '인원', '연락처']),
+            detail: sheetText.slice(0, 180),
+          },
+        );
+      }
+    }
+
+    result.checks.push(await runAccessibilityCheck(page, surface));
+
     ensureDir(screenshotDir);
     const safeName = `${pkg.internal_code || pkg.id}`.replace(/[^A-Za-z0-9_.-]+/g, '_').slice(0, 120);
-    const screenshotPath = path.join(screenshotDir, `${safeName}.png`);
+    const screenshotPath = path.join(screenshotDir, `${safeName}-${surface}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
     result.screenshot_path = screenshotPath;
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
-    result.mobile_checks.push({ name: 'browser_navigation', ok: false, detail: result.error });
+    result.checks.push({ name: `${surface}_browser_navigation`, ok: false, detail: result.error });
   }
+
+  result.status = result.checks.every(check => check.ok) ? 'pass' : 'fail';
+  return result;
+}
+
+async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: string): Promise<PackageProofResult> {
+  const checkedAt = new Date().toISOString();
+  const result: PackageProofResult = {
+    id: pkg.id,
+    title: pkg.display_title || pkg.title,
+    internal_code: pkg.internal_code,
+    url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
+    http_status: null,
+    status: 'fail',
+    checked_at: checkedAt,
+    package_updated_at: pkg.updated_at,
+    mobile_checks: [],
+    a4_checks: auditA4PayloadForPackage(pkg),
+    surface_results: [],
+  };
+
+  const packagesResult = await inspectCustomerSurface(page, pkg, proofSecret, 'packages');
+  result.surface_results.push(packagesResult);
+  result.http_status = packagesResult.http_status;
+  result.screenshot_path = packagesResult.screenshot_path;
+  if (checkLp) {
+    result.surface_results.push(await inspectCustomerSurface(page, pkg, proofSecret, 'lp'));
+  }
+  result.mobile_checks = result.surface_results.flatMap(surface => surface.checks);
 
   const allChecks = [...result.mobile_checks, ...result.a4_checks];
   result.status = allChecks.every(check => check.ok) ? 'pass' : 'fail';
@@ -319,7 +487,60 @@ async function loadPackages(): Promise<PackageRow[]> {
   return (data ?? []) as PackageRow[];
 }
 
+function buildProofPayload(result: PackageProofResult, status: 'pass' | 'fail', failedChecks: CheckResult[] = []) {
+  const surfaces = result.surface_results.map(surface => surface.surface);
+  return {
+    status,
+    checked_at: result.checked_at,
+    package_updated_at: result.package_updated_at,
+    surfaces,
+    url: result.url,
+    http_status: result.http_status,
+    viewport,
+    surface_results: result.surface_results,
+    ...(status === 'fail' ? { failed_checks: failedChecks } : {}),
+    checks: result.mobile_checks,
+    a4: {
+      status: result.a4_checks.every(check => check.ok) ? 'pass' : 'fail',
+      checks: result.a4_checks,
+    },
+    screenshot_path: result.screenshot_path,
+    source: 'hwp-mobile-browser-proof',
+  };
+}
+
 async function persistPassProof(result: PackageProofResult) {
+  const { data: current, error: loadError } = await supabaseAdmin
+    .from('travel_packages')
+    .select('audit_status,audit_report')
+    .eq('id', result.id)
+    .maybeSingle();
+  if (loadError) throw new Error(loadError.message);
+
+  const existing = current?.audit_report && typeof current.audit_report === 'object' && !Array.isArray(current.audit_report)
+    ? current.audit_report as Record<string, unknown>
+    : {};
+  const wasBlockedByMobileProof = current?.audit_status === 'blocked' && Boolean(existing.mobile_browser_proof_required);
+  const nextReport = { ...existing };
+  delete nextReport.mobile_browser_proof_required;
+  nextReport.mobile_browser_proof = buildProofPayload(result, 'pass');
+
+  const update: Record<string, unknown> = {
+    audit_report: nextReport,
+    audit_checked_at: result.checked_at,
+  };
+  if (wasBlockedByMobileProof) {
+    update.audit_status = 'warnings';
+  }
+
+  const { error } = await supabaseAdmin
+    .from('travel_packages')
+    .update(update)
+    .eq('id', result.id);
+  if (error) throw new Error(error.message);
+}
+
+async function persistFailProof(result: PackageProofResult) {
   const { data: current, error: loadError } = await supabaseAdmin
     .from('travel_packages')
     .select('audit_report')
@@ -330,28 +551,20 @@ async function persistPassProof(result: PackageProofResult) {
   const existing = current?.audit_report && typeof current.audit_report === 'object' && !Array.isArray(current.audit_report)
     ? current.audit_report as Record<string, unknown>
     : {};
-  const nextReport = { ...existing };
-  delete nextReport.mobile_browser_proof_required;
-  nextReport.mobile_browser_proof = {
-    status: 'pass',
-    checked_at: result.checked_at,
-    package_updated_at: result.package_updated_at,
-    surfaces: ['packages'],
-    url: result.url,
-    http_status: result.http_status,
-    viewport,
-    checks: result.mobile_checks,
-    a4: {
-      status: result.a4_checks.every(check => check.ok) ? 'pass' : 'fail',
-      checks: result.a4_checks,
+  const failedChecks = [...result.mobile_checks, ...result.a4_checks].filter(check => !check.ok);
+  const nextReport = {
+    ...existing,
+    mobile_browser_proof: buildProofPayload(result, 'fail', failedChecks),
+    mobile_browser_proof_required: {
+      reason: failedChecks.map(check => `${check.name}${check.detail ? `: ${check.detail}` : ''}`).join(' / '),
+      checked_at: result.checked_at,
     },
-    screenshot_path: result.screenshot_path,
-    source: 'hwp-mobile-browser-proof',
   };
 
   const { error } = await supabaseAdmin
     .from('travel_packages')
     .update({
+      audit_status: 'blocked',
       audit_report: nextReport,
       audit_checked_at: result.checked_at,
     })
@@ -391,8 +604,12 @@ async function main() {
         const failed = [...result.mobile_checks, ...result.a4_checks].filter(check => !check.ok);
         console.log(`${result.status.toUpperCase()} ${pkg.internal_code || pkg.id} ${failed.length ? failed.map(item => item.name).join(', ') : ''}`);
       }
-      if (apply && result.status === 'pass') {
-        await persistPassProof(result);
+      if (apply) {
+        if (result.status === 'pass') {
+          await persistPassProof(result);
+        } else {
+          await persistFailProof(result);
+        }
       }
     }
   } finally {
@@ -404,6 +621,8 @@ async function main() {
     pass: results.filter(result => result.status === 'pass').length,
     fail: results.filter(result => result.status === 'fail').length,
     applied: apply,
+    checkedSurfaces: checkLp ? ['packages', 'lp'] : ['packages'],
+    accessibility: runAxe ? 'axe_wcag2a_2aa_21a_21aa' : 'skipped',
     baseUrl,
     outputDir,
   };

@@ -6,6 +6,7 @@ import {
   type TravelPackageForSearchAds,
 } from '@/lib/search-ads-auto-planner';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
 
 type AutopilotMode = 'dry_run' | 'guarded' | 'full';
 
@@ -322,6 +323,13 @@ export async function runAdOsProductAutopilot(options: ProductAutopilotOptions):
 
   try {
     const pkg = await loadPackage(options.packageId);
+    const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, options.packageId);
+    if (!openContract.ok) {
+      result.ok = false;
+      warnings.push(`CUSTOMER_OPEN_CONTRACT_BLOCKED:${openContract.blockers.slice(0, 5).join('|')}`);
+      await finishRun(runId, result);
+      return result;
+    }
     const tenantId = options.tenantId ?? (pkg as { tenant_id?: string | null }).tenant_id ?? null;
     const learning = await getAdOsLearningContextForPackage(pkg);
     const scenarios = deriveAdOsProductScenarios(pkg);

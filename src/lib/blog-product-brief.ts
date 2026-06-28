@@ -19,7 +19,9 @@ type ProductWithOpsFields = {
   display_title?: string | null;
   price_dates?: unknown;
   price_tiers?: unknown;
+  price_list?: unknown;
   confirmed_dates?: unknown;
+  itinerary_data?: { days?: unknown[] } | null;
   ticketing_deadline?: string | null;
 };
 
@@ -82,12 +84,36 @@ function collectDateStrings(value: unknown, dates = new Set<string>()): Set<stri
   }
 
   if (value && typeof value === 'object') {
-    for (const item of Object.values(value as Record<string, unknown>)) {
-      collectDateStrings(item, dates);
-    }
+    for (const item of Object.values(value as Record<string, unknown>)) collectDateStrings(item, dates);
   }
 
   return dates;
+}
+
+function numberFrom(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(/,/g, ''));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function collectPrices(value: unknown, prices = new Set<number>()): Set<number> {
+  const direct = numberFrom(value);
+  if (direct) prices.add(direct);
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectPrices(item, prices);
+    return prices;
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    for (const key of ['price', 'adult_price', 'adult_selling_price', 'selling_price', 'net_price']) {
+      const price = numberFrom(record[key]);
+      if (price) prices.add(price);
+    }
+    for (const item of Object.values(record)) collectPrices(item, prices);
+  }
+
+  return prices;
 }
 
 export function resolveProductDepartureDate(product: ProductWithOpsFields): string | null {
@@ -95,29 +121,30 @@ export function resolveProductDepartureDate(product: ProductWithOpsFields): stri
   collectDateStrings(product.price_dates, dates);
   collectDateStrings(product.confirmed_dates, dates);
   collectDateStrings(product.price_tiers, dates);
-  const futureOrAll = [...dates].sort();
-  return futureOrAll[0] ?? null;
+  return [...dates].sort()[0] ?? null;
+}
+
+export function resolveProductPriceFrom(product: ProductWithOpsFields): number | null {
+  const direct = numberFrom(product.price);
+  if (direct) return direct;
+  const prices = new Set<number>();
+  collectPrices(product.price_dates, prices);
+  collectPrices(product.price_tiers, prices);
+  collectPrices(product.price_list, prices);
+  return [...prices].sort((a, b) => a - b)[0] ?? null;
 }
 
 export function resolveProductSupplierCode(product: ProductWithOpsFields): string | null {
-  const raw =
-    product.supplier_code ||
-    product.land_operator ||
-    product.land_operator_id ||
-    product.internal_code ||
-    null;
+  const raw = product.supplier_code || product.land_operator || product.land_operator_id || product.internal_code || null;
   return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
 }
 
 export function buildProductDedupKey(product: ProductWithOpsFields): string {
-  const departureDate = resolveProductDepartureDate(product) ?? 'open-date';
-  const duration = product.duration ? `${product.duration}d` : 'duration-open';
-  const supplier = resolveProductSupplierCode(product) ?? 'supplier-open';
   return [
     product.id,
-    departureDate,
-    duration,
-    supplier,
+    resolveProductDepartureDate(product) ?? 'open-date',
+    product.duration ? `${product.duration}d` : 'duration-open',
+    resolveProductSupplierCode(product) ?? 'supplier-open',
   ].map((part) => String(part).trim()).join('|');
 }
 
@@ -129,44 +156,35 @@ export function buildProductSlugSuffix(product: ProductWithOpsFields): string {
   return [idPart, datePart, durationPart, supplierPart].filter(Boolean).join('-');
 }
 
-export function buildProductBlogBrief(
-  product: ProductWithOpsFields,
-  angle: AngleType,
-): ProductBlogBrief {
+export function buildProductBlogBrief(product: ProductWithOpsFields, angle: AngleType): ProductBlogBrief {
   const destination = product.destination ?? null;
   const title = product.title || product.display_title || 'package';
-  const price =
-    typeof product.price === 'number' && Number.isFinite(product.price)
-      ? product.price
-      : null;
   const departureDate = resolveProductDepartureDate(product);
   const supplierCode = resolveProductSupplierCode(product);
   const primaryKeyword = [destination, title].filter(Boolean).join(' ').trim() || title;
   const nights = product.nights ?? (product.duration ? product.duration - 1 : null);
-  const duration = product.duration
-    ? `${nights ? `${nights}박` : ''}${product.duration}일`
-    : null;
+  const duration = product.duration ? `${nights ? `${nights}박 ` : ''}${product.duration}일` : null;
   const departureCity = product.departure_airport ?? null;
   const included = Array.isArray(product.inclusions) ? product.inclusions.slice(0, 12) : [];
   const excluded = Array.isArray(product.excludes) ? product.excludes.slice(0, 12) : [];
   const fitFor = [
-    destination ? `${destination} 패키지를 가격과 동선 기준으로 먼저 비교하려는 고객` : '패키지 가격과 동선을 먼저 비교하려는 고객',
-    departureCity ? `${departureCity} 출발 상품을 찾는 고객` : '출발지와 항공 조건을 상담으로 확인할 고객',
+    destination ? `${destination} 패키지를 가격과 일정 기준으로 먼저 비교하려는 고객` : '패키지 가격과 일정을 먼저 비교하려는 고객',
+    departureCity ? `${departureCity} 출발 상품을 찾는 고객` : '출발지와 항공 조건을 상담으로 확인하려는 고객',
     '포함사항과 추가 비용을 나눠 보고 문의하고 싶은 고객',
   ];
   const notFitFor = [
     '호텔명, 객실 타입, 항공 시간이 확정된 뒤에만 결정하려는 고객',
-    '자유일정이 많은 개별여행을 원하는 고객',
+    '자유일정 비중이 큰 개별여행을 원하는 고객',
   ];
   const riskNotes = [
-    '가격과 좌석은 발권/예약 시점에 달라질 수 있음',
+    '가격과 좌석은 발권/예약 시점에 따라 달라질 수 있음',
     '포함/불포함, 선택관광, 취소 규정은 상담 전에 재확인 필요',
     departureDate ? `대표 출발일은 ${departureDate} 기준으로 추출됨` : '대표 출발일은 상담에서 확인 필요',
   ];
   const consultQuestions = [
-    '인원과 출발 가능일이 어떻게 되나요?',
-    '항공 시간과 호텔 등급을 확정 기준으로 볼 수 있나요?',
-    '선택관광, 가이드/기사 경비, 싱글차지가 있나요?',
+    '인원과 출발 가능일은 어떻게 되나요?',
+    '항공 시간과 호텔 등급은 확정 기준으로 볼 수 있나요?',
+    '선택관광, 가이드/기사 경비, 추가 차지가 있나요?',
     '취소/변경 규정은 출발일 기준으로 어떻게 적용되나요?',
   ];
 
@@ -183,12 +201,14 @@ export function buildProductBlogBrief(
     duration,
     duration_days: product.duration ?? null,
     supplier_code: supplierCode,
-    price_from: price,
+    price_from: resolveProductPriceFrom(product),
     inclusions: included,
     exclusions: excluded,
     included,
     excluded,
-    itinerary_days: Array.isArray(product.itinerary) ? product.itinerary.length : 0,
+    itinerary_days: Array.isArray(product.itinerary_data?.days)
+      ? product.itinerary_data.days.length
+      : Array.isArray(product.itinerary) ? product.itinerary.length : 0,
     fit_for: fitFor,
     not_fit_for: notFitFor,
     risk_notes: riskNotes,

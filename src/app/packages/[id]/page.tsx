@@ -1,4 +1,4 @@
-import type React from 'react';
+﻿import type React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { headers } from 'next/headers';
@@ -64,13 +64,36 @@ function getStringList(value: unknown): string[] {
     : [];
 }
 
+function decodeCustomerHtmlEntities(value: string | null | undefined): string {
+  let text = String(value ?? '');
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = text;
+    text = text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;|&apos;/g, "'")
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+        const code = Number.parseInt(hex, 16);
+        return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
+      })
+      .replace(/&#(\d+);/g, (_, decimal: string) => {
+        const code = Number.parseInt(decimal, 10);
+        return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
+      });
+    if (text === before) break;
+  }
+  return text.trim();
+}
+
 function buildPackageSeoTitle(input: {
   title: string;
   productType?: string | null;
   price?: number | null;
   id: string;
 }): string {
-  const parts = [input.title.trim()];
+  const parts = [decodeCustomerHtmlEntities(input.title)];
   const productTypeLabel = formatProductTypeLabel(input.productType);
   if (productTypeLabel) parts.push(productTypeLabel);
   if (Number.isFinite(Number(input.price))) {
@@ -82,38 +105,38 @@ function buildPackageSeoTitle(input: {
 
 function buildPackageNoindexMetadata(id: string, canonical: string): Metadata {
   return {
-    title: '상품 상세',
+    title: '?곹뭹 ?곸꽭',
     alternates: { canonical },
     robots: { index: false, follow: true },
     openGraph: {
-      title: '상품 상세',
+      title: '?곹뭹 ?곸꽭',
       url: canonical,
     },
   };
 }
 
-// 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
-//   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
-//   원인: Next.js 15 dynamic route ([id]) 는 `revalidate` 만으로는 ISR 미활성화.
-//     `generateStaticParams` + `dynamicParams = true` 조합이 필수.
-//   증거 — 동일 production 측정:
-//     - /things-to-do/[region] (generateStaticParams ✅): X-Vercel-Cache: PRERENDER, X-Nextjs-Prerender: 1
-//     - /destinations/[city]  (generateStaticParams ❌): MISS, no-store
-//     - /packages/[id]        (generateStaticParams ❌): MISS, no-store (PR #152 후에도)
-//   해결: 활성 상품 top 50개를 빌드 시 prerender + 나머지는 first-request ISR (dynamicParams=true).
-//   invalidation 인프라는 동일: /api/packages/[id]/approve · /api/packages (bulk PATCH/POST)
-//     · /api/admin/attractions/[id]/{feedback,aliases} · section-extractors · itinerary-llm-extractor
-//     모두 revalidatePath('/packages/{id}') 또는 revalidatePackagePaths() 호출.
+// 2026-05-19 諛뺤젣 (PR #152 ?꾩냽 ??ISR ?쒖꽦???꾧껐):
+//   PR #152 (force-dynamic ??revalidate=60) 癒몄? ??production ?ㅼ륫 寃곌낵 ?ъ쟾??MISS ??＜.
+//   ?먯씤: Next.js 15 dynamic route ([id]) ??`revalidate` 留뚯쑝濡쒕뒗 ISR 誘명솢?깊솕.
+//     `generateStaticParams` + `dynamicParams = true` 議고빀???꾩닔.
+//   利앷굅 ???숈씪 production 痢≪젙:
+//     - /things-to-do/[region] (generateStaticParams ??: X-Vercel-Cache: PRERENDER, X-Nextjs-Prerender: 1
+//     - /destinations/[city]  (generateStaticParams ??: MISS, no-store
+//     - /packages/[id]        (generateStaticParams ??: MISS, no-store (PR #152 ?꾩뿉??
+//   ?닿껐: ?쒖꽦 ?곹뭹 top 50媛쒕? 鍮뚮뱶 ??prerender + ?섎㉧吏??first-request ISR (dynamicParams=true).
+//   invalidation ?명봽?쇰뒗 ?숈씪: /api/packages/[id]/approve 쨌 /api/packages (bulk PATCH/POST)
+//     쨌 /api/admin/attractions/[id]/{feedback,aliases} 쨌 section-extractors 쨌 itinerary-llm-extractor
+//     紐⑤몢 revalidatePath('/packages/{id}') ?먮뒗 revalidatePackagePaths() ?몄텧.
 // Customer package pages must render from the latest saved package row.
 // Static package prerendering made audit results diverge from the real mobile page.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /**
- * 빌드 시 prerender 대상: 최근 활성 상품 50개. 인기 핫패스를 0ms 응답으로 즉시 처리.
- * 나머지 상품(아카이브·승인대기 등)은 첫 요청 시 ISR 캐시 생성 + 60초 재사용.
- * - 빌드 환경에 supabase 가용 시에만 실행 (CI sandbox 등 가용성 보장 안 되면 빈 배열).
- * - 50개 선정 기준: status in (active, approved) + updated_at desc — 최근 운영 상품 우선.
+ * 鍮뚮뱶 ??prerender ??? 理쒓렐 ?쒖꽦 ?곹뭹 50媛? ?멸린 ?ロ뙣?ㅻ? 0ms ?묐떟?쇰줈 利됱떆 泥섎━.
+ * ?섎㉧吏 ?곹뭹(?꾩뭅?대툕쨌?뱀씤?湲???? 泥??붿껌 ??ISR 罹먯떆 ?앹꽦 + 60珥??ъ궗??
+ * - 鍮뚮뱶 ?섍꼍??supabase 媛???쒖뿉留??ㅽ뻾 (CI sandbox ??媛?⑹꽦 蹂댁옣 ???섎㈃ 鍮?諛곗뿴).
+ * - 50媛??좎젙 湲곗?: status in (active, approved) + updated_at desc ??理쒓렐 ?댁쁺 ?곹뭹 ?곗꽑.
  */
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
@@ -121,11 +144,10 @@ function getPackageReadClient(): SupabaseClient | null {
   return (getSupabaseAdmin() ?? getSupabase()) as SupabaseClient | null;
 }
 
-// 2026-05-16 박제 (시즈오카 사고 결정타): 존재하지 않는 컬럼 `min_people`, `thumbnail_urls`
-//   가 DETAIL_FIELDS 에 포함되어 PostgREST select 가 일부 fields(destination/itinerary_data)
-//   를 silent 누락. pkg.destination=undefined → matchAttractions destination 매칭 fail →
-//   matchedNames=0 + idsFromItinerary=0 → relevantAttractions 빈 배열 → 모든 attraction 카드
-//   미표출. min_participants 가 정식 컬럼이고 min_people 은 미존재. thumbnail_urls 도 미존재.
+// 2026-05-16 諛뺤젣 (?쒖쫰?ㅼ뭅 ?ш퀬 寃곗젙?): 議댁옱?섏? ?딅뒗 而щ읆 `min_people`, `thumbnail_urls`
+//   媛 DETAIL_FIELDS ???ы븿?섏뼱 PostgREST select 媛 ?쇰? fields(destination/itinerary_data)
+//   瑜?silent ?꾨씫. pkg.destination=undefined ??matchAttractions destination 留ㅼ묶 fail ??//   matchedNames=0 + idsFromItinerary=0 ??relevantAttractions 鍮?諛곗뿴 ??紐⑤뱺 attraction 移대뱶
+//   誘명몴異? min_participants 媛 ?뺤떇 而щ읆?닿퀬 min_people ? 誘몄〈?? thumbnail_urls ??誘몄〈??
 const DETAIL_FIELDS = `
   id, title, destination, duration, nights, trip_style, price, airline, departure_airport, departure_days,
   min_participants, ticketing_deadline, product_type,
@@ -138,11 +160,11 @@ const DETAIL_FIELDS = `
 `;
 
 /**
- * 고객 상세 노출 게이트 — SSOT 는 `src/lib/visibility-status.ts`.
- * 2026-05-16 박제: 어휘 불일치(예: 'available' 누락)로 사일런트 미노출 사고 차단.
+ * 怨좉컼 ?곸꽭 ?몄텧 寃뚯씠????SSOT ??`src/lib/visibility-status.ts`.
+ * 2026-05-16 諛뺤젣: ?댄쐶 遺덉씪移??? 'available' ?꾨씫)濡??ъ씪?고듃 誘몃끂異??ш퀬 李⑤떒.
  */
 
-// SEO: 동적 메타데이터
+// SEO: dynamic metadata
 export async function generateMetadata({
   params,
 }: {
@@ -162,7 +184,7 @@ export async function generateMetadata({
   }
   const sb = getPackageReadClient();
   if (!sb) {
-    return { title: '?곹뭹 ?곸꽭', alternates: { canonical }, robots: { index: false, follow: true } };
+    return { title: '?怨밸? ?怨멸쉭', alternates: { canonical }, robots: { index: false, follow: true } };
   }
   let data: {
     title?: string | null;
@@ -212,7 +234,7 @@ export async function generateMetadata({
     return buildPackageNoindexMetadata(id, canonical);
   }
 
-  // 비공개 상품(REVIEW_NEEDED/draft/blocked 등) 의 메타데이터는 SEO 노출 금지
+  // 鍮꾧났媛??곹뭹(REVIEW_NEEDED/draft/blocked ?? ??硫뷀??곗씠?곕뒗 SEO ?몄텧 湲덉?
   if (!data) notFound();
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
@@ -220,15 +242,15 @@ export async function generateMetadata({
   if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) {
     notFound();
   }
-  const title = String(data.title || data.destination || '여소남 패키지 여행');
+  const title = decodeCustomerHtmlEntities(String(data.title || data.destination || '?ъ냼???⑦궎吏 ?ы뻾'));
   const seoTitle = buildPackageSeoTitle({
     title,
     productType: data.product_type,
     price: data.price,
     id,
   });
-  const destination = String(data.destination || '패키지');
-  const description = data.product_summary || `${destination} ${title} - 여소남 패키지 여행`;
+  const destination = decodeCustomerHtmlEntities(String(data.destination || '패키지'));
+  const description = decodeCustomerHtmlEntities(data.product_summary || `${destination} ${title} - 여소남 패키지 여행`);
 
   return {
     title: { absolute: `${seoTitle} | 여소남` },
@@ -256,8 +278,8 @@ export default async function PackageDetailPage({
   const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
   const allowInternalProof = await isInternalRenderProofRequest();
 
-  // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
-  // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
+  // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
+  // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
   let pkgResult = await runSupabaseQueryWithTimeout(
     sb.from('travel_packages')
       .select(DETAIL_FIELDS)
@@ -290,7 +312,7 @@ export default async function PackageDetailPage({
 
   const pkg = pkgResult.data;
 
-  // 존재하지 않는 패키지 → 404
+  // 議댁옱?섏? ?딅뒗 ?⑦궎吏 ??404
   if (!pkg && pkgResult.error) {
     console.error('[packages/detail] package detail lookup unavailable', {
       id,
@@ -303,43 +325,43 @@ export default async function PackageDetailPage({
     notFound();
   }
 
-  // 감사 차단 상품은 고객 상세도 404 처리 (감사 게이트 이중 가드)
+  // 媛먯궗 李⑤떒 ?곹뭹? 怨좉컼 ?곸꽭??404 泥섎━ (媛먯궗 寃뚯씠???댁쨷 媛??
   if ('audit_status' in pkg && pkg.audit_status === 'blocked') {
     if (!allowInternalProof) notFound();
   }
 
-  // status 게이트 — REVIEW_NEEDED/draft/expired/archived 등은 고객 노출 차단
+  // status 寃뚯씠????REVIEW_NEEDED/draft/expired/archived ?깆? 怨좉컼 ?몄텧 李⑤떒
   const pkgStatus = 'status' in pkg ? pkg.status : undefined;
   if (!allowInternalProof && !isCustomerVisibleStatus(pkgStatus)) {
     notFound();
   }
 
-  // ── 2-단계 Fetch 전략 (Next.js 2MB 캐시 한계 + 성능 최적화) ─────────────────
-  // Step A: 매칭 전용 경량 fetch (name, country, region, aliases만) — 수백 KB
-  // Step B: 매칭된 N개에 한해 사진/설명 상세 fetch — 수십 KB
+  // ?? 2-?④퀎 Fetch ?꾨왂 (Next.js 2MB 罹먯떆 ?쒓퀎 + ?깅뒫 理쒖쟻?? ?????????????????
+  // Step A: 留ㅼ묶 ?꾩슜 寃쎈웾 fetch (name, country, region, aliases留? ???섎갚 KB
+  // Step B: 留ㅼ묶??N媛쒖뿉 ?쒗빐 ?ъ쭊/?ㅻ챸 ?곸꽭 fetch ???섏떗 KB
   //
-  // 기존: select('*') + limit(3000) + photos 포함 → 2MB 초과 → fetch cache 실패 + 30s timeout
-  // 2026-05-15 박제: category + mrt_gid 추가 — attraction-matcher 가 accommodation/mrt_product
-  //   카테고리를 매칭 후보에서 제외하는데 SELECT 에 누락돼 있어 호텔/투어가 잘못 매칭되던 사고.
-  //   mrt_gid 는 동일 fuzzy 점수일 때 MRT canonical 우선 선택용.
+  // 湲곗〈: select('*') + limit(3000) + photos ?ы븿 ??2MB 珥덇낵 ??fetch cache ?ㅽ뙣 + 30s timeout
+  // 2026-05-15 諛뺤젣: category + mrt_gid 異붽? ??attraction-matcher 媛 accommodation/mrt_product
+  //   移댄뀒怨좊━瑜?留ㅼ묶 ?꾨낫?먯꽌 ?쒖쇅?섎뒗??SELECT ???꾨씫???덉뼱 ?명뀛/?ъ뼱媛 ?섎せ 留ㅼ묶?섎뜕 ?ш퀬.
+  //   mrt_gid ???숈씪 fuzzy ?먯닔????MRT canonical ?곗꽑 ?좏깮??
   let matchQuery = sb.from('attractions')
     .select('name, country, region, aliases, category, mrt_gid');
 
   if (pkg && pkg.destination) {
     const destTokens = pkg.destination.split(/[\/,·&]/).map((t: string) => t.trim()).filter(Boolean);
-    const regionClauses = destTokens.map((t: string) => `region.ilike.%${t}%`).join(',');
-    // 2026-05-15 박제: ISO 정규화 후 한글 country 사라짐 (VN/JP/CN/TH 등). 매핑 SSOT 사용.
+    const regionClauses = destTokens.map((t: string) => 'region.ilike.%' + t + '%').join(',');
+    // 2026-05-15 諛뺤젣: ISO ?뺢퇋?????쒓? country ?щ씪吏?(VN/JP/CN/TH ??. 留ㅽ븨 SSOT ?ъ슜.
     const destIsoCountries = destinationToIsoSet(pkg.destination);
-    const isoCountryClauses = [...destIsoCountries].map(c => `country.eq.${c}`).join(',');
-    // 한글 country fallback — 옛 데이터(trigger 적용 이전) 호환
-    const koreanCountryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,홍콩,마카오';
-    const koreanCountryClauses = koreanCountryList.split(',').map(c => `country.eq.${c}`).join(',');
+    const isoCountryClauses = [...destIsoCountries].map(c => 'country.eq.' + c).join(',');
+    // ?쒓? country fallback ?????곗씠??trigger ?곸슜 ?댁쟾) ?명솚
+    const koreanCountryList = '중국,베트남,일본,필리핀,태국,말레이시아,싱가포르,대만,몽골,라오스,인도네시아,마카오';
+    const koreanCountryClauses = koreanCountryList.split(',').map(c => 'country.eq.' + c).join(',');
     const clauses = [regionClauses, isoCountryClauses, koreanCountryClauses].filter(Boolean).join(',');
     matchQuery = matchQuery.or(clauses);
   }
 
-  // C6 박제 (2026-05-15): JP=793 + TW=160 + 인접 region 매칭이 1200 한계에 근접 → 2000 으로 확장.
-  //   light SELECT (id 제외 9컬럼) 이라 payload 부담 작음. Step B 의 relevantAttractions 가 진짜 페이로드.
+  // C6 諛뺤젣 (2026-05-15): JP=793 + TW=160 + ?몄젒 region 留ㅼ묶??1200 ?쒓퀎??洹쇱젒 ??2000 ?쇰줈 ?뺤옣.
+  //   light SELECT (id ?쒖쇅 9而щ읆) ?대씪 payload 遺???묒쓬. Step B ??relevantAttractions 媛 吏꾩쭨 ?섏씠濡쒕뱶.
   const matchResult = skipNonCriticalDbReads
     ? { data: [] }
     : await runOptionalSupabaseQuery(
@@ -349,7 +371,7 @@ export default async function PackageDetailPage({
       );
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
 
-  // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)
+  // 留ㅼ묶??愿愿묒? ?대쫫 紐⑸줉留?異붿텧 (?쒕쾭?ъ씠??1??
   const matchedNames = new Set<string>();
   if (pkg?.itinerary_data && lightAttractions.length) {
     const index = buildAttractionIndex(lightAttractions, pkg.destination);
@@ -359,8 +381,8 @@ export default async function PackageDetailPage({
         if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') continue;
         const single = matchAttractionIndexed(item.activity, index);
         if (single) matchedNames.add(single.name);
-        if (!single && /[,，]/.test(item.activity)) {
-          const parts = item.activity.replace(/^▶/, '').split(/[,，]\s*/).map(s => s.trim()).filter(s => s.length >= 2);
+        if (!single && /[,>→·]/.test(item.activity)) {
+          const parts = item.activity.replace(/^[-–—>→·,\s]+/, '').split(/[,>→·]\s*/).map(s => s.trim()).filter(s => s.length >= 2);
           for (const part of parts) {
             const m = matchAttractionIndexed(part, index);
             if (m) matchedNames.add(m.name);
@@ -370,10 +392,8 @@ export default async function PackageDetailPage({
     }
   }
 
-  // Step B: 매칭된 관광지만 photos/short_desc 등 상세 가져오기 (일반적으로 10개 미만)
-  // 2026-05-16 박제 (시즈오카 사고): name 기반 매칭만 의존하면 destination/region 정규화 실패 시
-  //   사진/설명 전부 누락 → 카드 미표출. itinerary_data.days[].schedule[].attraction_ids 에
-  //   이미 박힌 ID 를 SSOT 로 합쳐 detail fetch (매칭 우회 fallback).
+  // Step B: 留ㅼ묶??愿愿묒?留?photos/short_desc ???곸꽭 媛?몄삤湲?(?쇰컲?곸쑝濡?10媛?誘몃쭔)
+  // 2026-05-16 諛뺤젣 (?쒖쫰?ㅼ뭅 ?ш퀬): name 湲곕컲 留ㅼ묶留??섏〈?섎㈃ destination/region ?뺢퇋???ㅽ뙣 ??  //   ?ъ쭊/?ㅻ챸 ?꾨? ?꾨씫 ??移대뱶 誘명몴異? itinerary_data.days[].schedule[].attraction_ids ??  //   ?대? 諛뺥엺 ID 瑜?SSOT 濡??⑹퀜 detail fetch (留ㅼ묶 ?고쉶 fallback).
   let relevantAttractions: AttractionData[] = [];
   const idsFromItinerary = new Set<string>();
   if (pkg?.itinerary_data) {
@@ -390,9 +410,8 @@ export default async function PackageDetailPage({
     type DetailRow = { id: string; name: string; short_desc: string | null; long_desc: string | null; photos: unknown; country: string | null; region: string | null; badge_type: string | null; emoji: string | null; aliases: unknown; category: string | null };
     const SELECT = 'id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category';
     const merged = new Map<string, DetailRow>();
-    // 2026-05-16 박제: .or() 합성으로 id + name 동시 매칭 시 한글 name 의 PostgREST OR 절
-    //   파싱 실패 (공백/따옴표 escape 비표준) → 0건 반환되어 모든 attraction 카드 미표출.
-    //   두 번 fetch + 합집합으로 단순화.
+    // 2026-05-16 諛뺤젣: .or() ?⑹꽦?쇰줈 id + name ?숈떆 留ㅼ묶 ???쒓? name ??PostgREST OR ??    //   ?뚯떛 ?ㅽ뙣 (怨듬갚/?곗샂??escape 鍮꾪몴以) ??0嫄?諛섑솚?섏뼱 紐⑤뱺 attraction 移대뱶 誘명몴異?
+    //   ??踰?fetch + ?⑹쭛?⑹쑝濡??⑥닚??
     if (idsFromItinerary.size > 0 && !skipNonCriticalDbReads) {
       const { data } = await runOptionalSupabaseQuery(
         sb.from('attractions').select(SELECT).in('id', Array.from(idsFromItinerary)),
@@ -411,7 +430,7 @@ export default async function PackageDetailPage({
     }
     relevantAttractions = (Array.from(merged.values()) as unknown) as AttractionData[];
   }
-  // 기존 fallback 호환 — 매칭 0건 시 전체 대신 경량 목록 전달 (payload 과다 방지)
+  // 湲곗〈 fallback ?명솚 ??留ㅼ묶 0嫄????꾩껜 ???寃쎈웾 紐⑸줉 ?꾨떖 (payload 怨쇰떎 諛⑹?)
   const attrResult = { data: relevantAttractions };
 
   const parserVersion = String((pkg as { parser_version?: string } | null)?.parser_version ?? '');
@@ -445,9 +464,9 @@ export default async function PackageDetailPage({
       })()
     : null;
 
-  // 관련 블로그 글 조회 (1) — 이 상품을 홍보하는 글 (product_id 직접 매칭)
+  // 愿??釉붾줈洹?湲 議고쉶 (1) ?????곹뭹???띾낫?섎뒗 湲 (product_id 吏곸젒 留ㅼ묶)
   let relatedBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string }[] = [];
-  // 관련 블로그 글 조회 (2) — 같은 destination의 정보성 글 (여행 준비물/날씨/가이드 등)
+  // 愿??釉붾줈洹?湲 議고쉶 (2) ??媛숈? destination???뺣낫??湲 (?ы뻾 以鍮꾨Ъ/?좎뵪/媛?대뱶 ??
   let destinationBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string; seo_description: string | null }[] = [];
   if (pkg?.destination && !skipNonCriticalDbReads) {
     const [productScoped, destinationScoped] = await Promise.all([
@@ -472,13 +491,12 @@ export default async function PackageDetailPage({
 
     relatedBlogPosts = (productScoped.data ?? []) as typeof relatedBlogPosts;
 
-    // 중복 slug 제거 + 정보성 글만 + 상위 4개
-    // ERR-LB-DAD-editor-section@2026-04-20:
-    //   "여소남 에디터의 가이드" 섹션은 destination이 같은 다른 상품의 콘텐츠를 노출하는데,
-    //   angle_type='value' (가성비/가격형) 글은 다른 상품의 가격(73만원 등)을 우리 상품(110만)
-    //   페이지에서 광고하는 꼴이 되어 부적절. 정보성(가이드/날씨/준비물) 글만 노출.
+    // 以묐났 slug ?쒓굅 + ?뺣낫??湲留?+ ?곸쐞 4媛?    // ERR-LB-DAD-editor-section@2026-04-20:
+    //   "?ъ냼???먮뵒?곗쓽 媛?대뱶" ?뱀뀡? destination??媛숈? ?ㅻⅨ ?곹뭹??肄섑뀗痢좊? ?몄텧?섎뒗??
+    //   angle_type='value' (媛?깅퉬/媛寃⑺삎) 湲? ?ㅻⅨ ?곹뭹??媛寃?73留뚯썝 ?????곕━ ?곹뭹(110留?
+    //   ?섏씠吏?먯꽌 愿묎퀬?섎뒗 瑗댁씠 ?섏뼱 遺?곸젅. ?뺣낫??媛?대뱶/?좎뵪/以鍮꾨Ъ) 湲留??몄텧.
     const FORBIDDEN_ANGLES = ['value', 'price', 'sale', 'deal', 'discount', 'promotion', 'comparison'];
-    const PRICE_PATTERN = /\d+만원|\d+,\d{3},?\d*\s*원|\₩\s*\d|\d+만\s*~|특가|최저가/;
+    const PRICE_PATTERN = /\d+\s*만원|\d{1,3}(,\d{3})+\s*원|\d+\s*만\s*~|특가|최저가/;
     const seenSlugs = new Set(relatedBlogPosts.map(p => p.slug));
     destinationBlogPosts = ((destinationScoped.data ?? []) as typeof destinationBlogPosts)
       .filter(p => !seenSlugs.has(p.slug))
@@ -488,36 +506,33 @@ export default async function PackageDetailPage({
       .slice(0, 4);
   }
 
-  // 미매칭 관광지 수집 (서버사이드 1회만) — 경량 목록으로 매칭 시도
+  // 誘몃ℓ移?愿愿묒? ?섏쭛 (?쒕쾭?ъ씠??1?뚮쭔) ??寃쎈웾 紐⑸줉?쇰줈 留ㅼ묶 ?쒕룄
   const unmatchedItems: { activity: string; package_id: string; package_title: string; day_number: number; country?: string }[] = [];
   if (pkg?.itinerary_data && lightAttractions.length) {
-    const skipPattern = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
+    const skipPattern = /^(호텔|리조트)?\s*(조식|중식|석식|식사|체크|휴식|이동|출발|도착|공항|탑승|기내|자유시간|미팅|가이드)/;
     const daysData = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
     for (const day of daysData) {
       (day.schedule || []).forEach((item) => {
         if (skipPattern.test(item.activity)) return;
         if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') return;
-        if (/공항|출발|도착|이동|수속|탑승|귀환|체크인|체크아웃|투숙|휴식|미팅|조식|중식|석식/.test(item.activity)) return;
+        if (/공항|출발|도착|이동|휴식|탑승|기내|체크인|체크아웃|식사|미팅|조식|중식|석식/.test(item.activity)) return;
         const attr = matchAttractions(item.activity, lightAttractions, pkg.destination)[0] || null;
         if (!attr) unmatchedItems.push({ activity: item.activity, package_id: id, package_title: pkg.title, day_number: day.day, country: pkg.destination });
       });
     }
   }
 
-  // 서버에서 매칭된 관광지(photos/short_desc 포함)만 전달
+  // ?쒕쾭?먯꽌 留ㅼ묶??愿愿묒?(photos/short_desc ?ы븿)留??꾨떖
   const attractionsForClient = (attrResult.data ?? []) as React.ComponentProps<typeof DetailClient>['initialAttractions'];
 
-  // ── destination_climate 조인 (여행 적합도 + 시차 카드용) ────────────────
-  // 2026-05-16 박제: `eq('destination', …)` 완전일치 매칭으로 "계림/양삭" 같은
-  //   alias 미시드 destination 에서 날씨·시차·짐싸기 3종이 통째 사라지던 사고.
-  //   정규화 lookup 으로 폴백 (`src/lib/destination-climate-lookup.ts`).
+  // Destination climate lookup
   let climateData: Awaited<ReturnType<typeof resolveDestinationClimate>> = null;
   let representativeMonth = new Date().getMonth() + 1;
   let departureDistribution: Record<number, number> = {};
   if (pkg?.destination && !skipNonCriticalDbReads) {
     climateData = await resolveDestinationClimate(pkg.destination);
 
-    // 출발일 평균월 산출 — price_dates 우선, 없으면 price_tiers.departure_dates
+    // 異쒕컻???됯퇏???곗텧 ??price_dates ?곗꽑, ?놁쑝硫?price_tiers.departure_dates
     const dates: string[] = [];
     const pd = (pkg as { price_dates?: { date: string }[] }).price_dates ?? [];
     for (const d of pd) if (d?.date) dates.push(d.date);
@@ -530,9 +545,9 @@ export default async function PackageDetailPage({
     }
   }
 
-  // ── package_scores 조인 (모바일 추천 카드용) ───────────────────────
-  // 활성 정책 1건만. group_size>=2 일 때만 의미 있음 (단일 그룹은 비교 불가)
-  // ── package_scores 출발일별 row N개 fetch (v3 옵션 A) ──────────────
+  // ?? package_scores 議곗씤 (紐⑤컮??異붿쿇 移대뱶?? ???????????????????????
+  // ?쒖꽦 ?뺤콉 1嫄대쭔. group_size>=2 ???뚮쭔 ?섎? ?덉쓬 (?⑥씪 洹몃９? 鍮꾧탳 遺덇?)
+  // ?? package_scores 異쒕컻?쇰퀎 row N媛?fetch (v3 ?듭뀡 A) ??????????????
   type ScoreRow = {
     departure_date: string | null;
     rank_in_group: number;
@@ -571,8 +586,8 @@ export default async function PackageDetailPage({
     if (sc) scoreRows = sc as ScoreRow[];
   }
 
-  // ── pairwise rivals: 같은 날 그룹의 다른 패키지 1~2개 ──────────────
-  // 추천 카드에서 "다른 옵션과 비교" UI로 사용
+  // ?? pairwise rivals: 媛숈? ??洹몃９???ㅻⅨ ?⑦궎吏 1~2媛???????????????
+  // 異붿쿇 移대뱶?먯꽌 "?ㅻⅨ ?듭뀡怨?鍮꾧탳" UI濡??ъ슜
   type Rival = {
     package_id: string; title: string; departure_date: string | null;
     list_price: number; effective_price: number; rank_in_group: number;
@@ -584,13 +599,13 @@ export default async function PackageDetailPage({
   if (!skipNonCriticalDbReads) {
     const groupKeys = scoreRows
       .filter(r => r.group_size >= 2 && r.departure_date)
-      .map(r => `${pkg?.destination ?? ''}|${r.departure_date}`);
+      .map(r => (pkg?.destination ?? '') + '|' + r.departure_date);
     const uniqueGroupKeys = Array.from(new Set(groupKeys)).slice(0, 20);
     if (uniqueGroupKeys.length > 0) {
       const { data } = await runOptionalSupabaseQuery(
         sb
           .from('package_scores')
-          .select(`departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)`)
+          .select('departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)')
           .in('group_key', uniqueGroupKeys)
           .neq('package_id', id)
           .limit(80),
@@ -602,9 +617,8 @@ export default async function PackageDetailPage({
         const t = Array.isArray(row.travel_packages) ? row.travel_packages[0]?.title : row.travel_packages?.title;
         if (!row.departure_date) continue;
         if (!rivalsByDate[row.departure_date]) rivalsByDate[row.departure_date] = [];
-        rivalsByDate[row.departure_date].push({ ...row, title: t ?? '' });
+        rivalsByDate[row.departure_date].push({ ...row, title: decodeCustomerHtmlEntities(t ?? '') });
       }
-      // 각 날짜별 rank 순 정렬, 최대 2개
       for (const date of Object.keys(rivalsByDate)) {
         rivalsByDate[date].sort((a, b) => a.rank_in_group - b.rank_in_group);
         rivalsByDate[date] = rivalsByDate[date].slice(0, 2);
@@ -612,8 +626,8 @@ export default async function PackageDetailPage({
     }
   }
 
-  // ── 사회적 증거 카운트 (Cialdini Principle 4) ───────────────────────
-  // destination 단위 30일 인기도 + 오늘 조회수 + 다음 출발일 예약 현황
+  // ?? ?ы쉶??利앷굅 移댁슫??(Cialdini Principle 4) ???????????????????????
+  // destination ?⑥쐞 30???멸린??+ ?ㅻ뒛 議고쉶??+ ?ㅼ쓬 異쒕컻???덉빟 ?꾪솴
   let socialProof: {
     bookings: number;
     interest: number;
@@ -627,9 +641,9 @@ export default async function PackageDetailPage({
     const since24h = new Date(Date.now() - 86400000).toISOString();
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    // 2026-05-18 박제 (ERR-social-proof-eq-mismatch):
-    //   기존 raw `.eq('destination', pkg.destination)` 는 "다낭" 패키지가 "다낭/호이안" 패키지를 못 봄.
-    //   tokenize 후 첫 토큰(메인 도시) ilike 매칭으로 회복 + raw eq 도 합집합으로 fallback 보존.
+    // 2026-05-18 諛뺤젣 (ERR-social-proof-eq-mismatch):
+    //   湲곗〈 raw `.eq('destination', pkg.destination)` ??"?ㅻ궘" ?⑦궎吏媛 "?ㅻ궘/?몄씠?? ?⑦궎吏瑜?紐?遊?
+    //   tokenize ??泥??좏겙(硫붿씤 ?꾩떆) ilike 留ㅼ묶?쇰줈 ?뚮났 + raw eq ???⑹쭛?⑹쑝濡?fallback 蹂댁〈.
     const destPkgIdsSet = new Set<string>();
     const destTokens = extractDestinationTokens(pkg.destination);
     const mainDestToken = destTokens[0] ?? null;
@@ -641,7 +655,7 @@ export default async function PackageDetailPage({
       ),
       mainDestToken
         ? runOptionalSupabaseQuery(
-            sb.from('travel_packages').select('id').ilike('destination', `%${mainDestToken}%`),
+            sb.from('travel_packages').select('id').ilike('destination', '%' + mainDestToken + '%'),
             { data: [] as Array<{ id: string }> },
             { label: 'package.social.same-destination-token', timeoutMs: 1000 },
           )
@@ -654,7 +668,7 @@ export default async function PackageDetailPage({
     }
     const destPkgIds = Array.from(destPkgIdsSet);
 
-    // 가장 가까운 미래 출발일 탐색 (price_dates 또는 price_tiers에서)
+    // 媛??媛源뚯슫 誘몃옒 異쒕컻???먯깋 (price_dates ?먮뒗 price_tiers?먯꽌)
     const pd = (pkg as { price_dates?: { date: string }[] }).price_dates ?? [];
     const pt = (pkg as { price_tiers?: { departure_dates?: string[] }[] }).price_tiers ?? [];
     const allDates: string[] = [];
@@ -663,7 +677,7 @@ export default async function PackageDetailPage({
     const nextDate = allDates.filter(d => d >= todayStr).sort()[0] ?? null;
 
     const [bk, sg, tv, nb] = await Promise.all([
-      // 30일 예약 (destination 단위)
+      // 30???덉빟 (destination ?⑥쐞)
       runOptionalSupabaseQuery(
         sb.from('bookings').select('id', { count: 'exact', head: true })
           .in('status', ['confirmed', 'waiting_balance', 'fully_paid'])
@@ -672,7 +686,7 @@ export default async function PackageDetailPage({
         { count: 0 },
         { label: 'package.social.bookings', timeoutMs: 1000 },
       ),
-      // 30일 조회 신호
+      // 30??議고쉶 ?좏샇
       runOptionalSupabaseQuery(
         sb.from('package_score_signals').select('id', { count: 'exact', head: true })
           .gte('created_at', since30d)
@@ -680,7 +694,7 @@ export default async function PackageDetailPage({
         { count: 0 },
         { label: 'package.social.signals-30d', timeoutMs: 1000 },
       ),
-      // 오늘 이 상품 조회수 (24h)
+      // ?ㅻ뒛 ???곹뭹 議고쉶??(24h)
       runOptionalSupabaseQuery(
         sb.from('package_score_signals').select('id', { count: 'exact', head: true })
           .gte('created_at', since24h)
@@ -688,7 +702,6 @@ export default async function PackageDetailPage({
         { count: 0 },
         { label: 'package.social.signals-24h', timeoutMs: 1000 },
       ),
-      // 다음 출발일 현재 예약자 수
       nextDate
         ? runOptionalSupabaseQuery(
             sb.from('bookings').select('id', { count: 'exact', head: true })
@@ -710,7 +723,7 @@ export default async function PackageDetailPage({
     };
   }
 
-  // 4-level 약관 해소 (mobile surface) — 출발일 가장 이른 날짜 기준으로 날짜 병기
+  // 4-level ?쎄? ?댁냼 (mobile surface) ??異쒕컻??媛???대Ⅸ ?좎쭨 湲곗??쇰줈 ?좎쭨 蹂묎린
   let initialNotices: NoticeBlock[] = [];
   if (normalizedPkg && !skipNonCriticalDbReads) {
     const rawPriceDates = (normalizedPkg as { price_dates?: { date: string }[] }).price_dates ?? [];
@@ -727,8 +740,7 @@ export default async function PackageDetailPage({
     initialNotices = formatCancellationDates(resolved, earliestDate);
   }
 
-  // 2026-05-19 박제 (P2-A / A3): 같은 catalog_id 다른 패키지 fetch — 모바일 상세 페이지 selector 용
-  //   "단수이 vs 베이토우 vs 우라이" 같은 분기 선택 UI. 사용자가 현재 패키지에서 즉시 다른 옵션으로 이동 가능.
+  // 2026-05-19 諛뺤젣 (P2-A / A3): 媛숈? catalog_id ?ㅻⅨ ?⑦궎吏 fetch ??紐⑤컮???곸꽭 ?섏씠吏 selector ??  //   "?⑥닔??vs 踰좎씠?좎슦 vs ?곕씪?? 媛숈? 遺꾧린 ?좏깮 UI. ?ъ슜?먭? ?꾩옱 ?⑦궎吏?먯꽌 利됱떆 ?ㅻⅨ ?듭뀡?쇰줈 ?대룞 媛??
   type CatalogSibling = { id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null };
   let catalogSiblings: CatalogSibling[] = [];
   const currentCatalogId = (pkg as { catalog_id?: string | null }).catalog_id;
@@ -746,7 +758,11 @@ export default async function PackageDetailPage({
     catalogSiblings = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; audit_status?: string }>)
       .filter(s => s.audit_status !== 'blocked' && isCustomerVisibleStatus(s.status))
       .map(({ id: sid, title, display_title, destination, product_highlights }) => ({
-        id: sid, title, display_title, destination, product_highlights,
+        id: sid,
+        title: decodeCustomerHtmlEntities(title),
+        display_title: display_title ? decodeCustomerHtmlEntities(display_title) : null,
+        destination: destination ? decodeCustomerHtmlEntities(destination) : null,
+        product_highlights: product_highlights?.map(item => decodeCustomerHtmlEntities(item)) ?? null,
       }));
   }
 
@@ -760,11 +776,11 @@ export default async function PackageDetailPage({
     return {
       '@context': 'https://schema.org',
       '@type': 'Product',
-      name: getNonEmptyString(normalizedPkg.title) ?? '여소남 패키지 여행',
+      name: decodeCustomerHtmlEntities(getNonEmptyString(normalizedPkg.title) ?? '여소남 패키지 여행'),
       description:
-        getNonEmptyString(normalizedPkg.product_summary) ??
-        `${getNonEmptyString(normalizedPkg.destination) ?? '패키지'} 여행 패키지`,
-      category: getNonEmptyString(normalizedPkg.destination) ?? '패키지',
+        decodeCustomerHtmlEntities(getNonEmptyString(normalizedPkg.product_summary)) ||
+        decodeCustomerHtmlEntities(getNonEmptyString(normalizedPkg.destination) ?? '패키지') + ' 여행 패키지',
+      category: decodeCustomerHtmlEntities(getNonEmptyString(normalizedPkg.destination) ?? '패키지'),
       offers: {
         '@type': 'AggregateOffer',
         priceCurrency: 'KRW',
@@ -776,7 +792,7 @@ export default async function PackageDetailPage({
         seller: { '@type': 'Organization', name: '여소남' },
       },
       ...(highlights.length > 0
-        ? { award: highlights.slice(0, 3).map((name) => ({ '@type': 'Award', name })) }
+        ? { award: highlights.slice(0, 3).map((name) => ({ '@type': 'Award', name: decodeCustomerHtmlEntities(name) })) }
         : {}),
     };
   })() : null;
@@ -791,6 +807,9 @@ export default async function PackageDetailPage({
   const clientPackage = normalizedPkg
     ? ({
         ...sanitizeCustomerPackageForClient(normalizedPkg),
+        title: decodeCustomerHtmlEntities(normalizedPkg.title),
+        display_title: normalizedPkg.display_title ? decodeCustomerHtmlEntities(normalizedPkg.display_title) : normalizedPkg.display_title,
+        product_summary: normalizedPkg.product_summary ? decodeCustomerHtmlEntities(normalizedPkg.product_summary) : normalizedPkg.product_summary,
         lp_hero_image_url: lpHeroImageUrl,
       } as React.ComponentProps<typeof DetailClient>['initialPackage'])
     : null;
@@ -800,9 +819,9 @@ export default async function PackageDetailPage({
       <UnmatchedActivitiesBeacon items={unmatchedItems} />
       {normalizedPkg && (
         <div className="sr-only">
-          <h1>{normalizedPkg.display_title || normalizedPkg.title || '여소남 패키지 여행 상품 상세'}</h1>
+          <h1>{decodeCustomerHtmlEntities(normalizedPkg.display_title || normalizedPkg.title || '여소남 패키지 여행 상품 상세')}</h1>
           <p>
-            {normalizedPkg.destination ? `${normalizedPkg.destination} 여행 ` : ''}
+            {normalizedPkg.destination ? decodeCustomerHtmlEntities(normalizedPkg.destination) + ' 여행 ' : ''}
             일정, 가격, 포함 사항, 취소 규정, 예약 문의 정보를 확인할 수 있는 여소남 패키지 상품 상세 페이지입니다.
           </p>
           <Link href="/group-inquiry">예약 문의</Link>
@@ -832,11 +851,11 @@ export default async function PackageDetailPage({
         catalogSiblings={catalogSiblings}
       />
       <div className="pb-64 md:pb-12">
-        {/* 고객 후기 (approved 리뷰 있을 때만 렌더) */}
+        {/* 怨좉컼 ?꾧린 (approved 由щ럭 ?덉쓣 ?뚮쭔 ?뚮뜑) */}
         <div className="mx-auto max-w-4xl px-4">
           <ReviewsSection packageId={id} limit={5} />
         </div>
-        {/* 최근 본 상품 / 유사 상품 */}
+        {/* 理쒓렐 蹂??곹뭹 / ?좎궗 ?곹뭹 */}
         <RecentViewsDeferred currentPackageId={id} />
       </div>
     </>

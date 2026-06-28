@@ -215,7 +215,7 @@ export function scheduleUploadPostRegistrationTasks(input: {
       await Promise.allSettled([
         runCoVeInBackground(input.packageId),
         runUploadVerify(input.packageId),
-        runAutoMobileQA(input.packageId, input.auditBaseUrl),
+        runAutoMobileQA(input.packageId, input.auditBaseUrl, { includeLpForProof: true }),
       ]);
     } catch (e) {
       console.warn('[upload-after] post-audit bundle failed:', e instanceof Error ? e.message : e);

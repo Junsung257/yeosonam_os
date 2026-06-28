@@ -897,7 +897,9 @@ describe('upload route registration pipeline boundary', () => {
     expect(lib).toContain('buildSourceBackedFieldRepair');
     expect(lib).toContain('buildSourceBackedTermsRepair');
     expect(lib).toContain('runUploadVerify(pkg.id)');
-    expect(lib).toContain('runAutoMobileQA(pkg.id, baseUrl)');
+    expect(lib).toContain("runAutoMobileQA(pkg.id, baseUrl, { includeLpForProof: true })");
+    expect(lib).toContain('evaluateCustomerOpenContract');
+    expect(lib).toContain('customer_open_contract');
     expect(lib).toContain('evaluateV3CustomerNoticeGate');
     expect(lib).toContain('restoreLatestReadyV3DraftAsCurrent');
     expect(lib).toContain("v3_rebuild_skipped:restored_existing_ready_to_publish");
@@ -917,5 +919,11 @@ describe('upload route registration pipeline boundary', () => {
     expect(response).toContain('openEligible');
     expect(response).toContain('wait_for_upload_to_open_autopilot');
     expect(response).toContain('run_upload_to_open_autopilot_mobile_proof');
+  });
+
+  it('runs post-save mobile QA against both customer landing surfaces', () => {
+    const postTasks = readPostRegistrationTasks();
+
+    expect(postTasks).toContain("runAutoMobileQA(input.packageId, input.auditBaseUrl, { includeLpForProof: true })");
   });
 });

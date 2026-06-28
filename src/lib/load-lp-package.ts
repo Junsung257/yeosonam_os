@@ -5,7 +5,10 @@ import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/ma
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 
-export async function fetchLpPackageUncached(id: string): Promise<LandingProductData | null> {
+export async function fetchLpPackageUncached(
+  id: string,
+  options: { allowNonPublicProof?: boolean } = {},
+): Promise<LandingProductData | null> {
   if (!isSupabaseConfigured || !supabaseAdmin) return null;
 
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -20,10 +23,10 @@ export async function fetchLpPackageUncached(id: string): Promise<LandingProduct
   if (error || !pkg) return null;
   const status = (pkg as { status?: string | null }).status;
   const auditStatus = (pkg as { audit_status?: string | null }).audit_status;
-  if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) return null;
+  if (!options.allowNonPublicProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) return null;
 
   const liveVerify = evaluateVerifyChecks(pkg as Parameters<typeof evaluateVerifyChecks>[0]);
-  if (liveVerify.status === 'blocked') return null;
+  if (!options.allowNonPublicProof && liveVerify.status === 'blocked') return null;
 
   const { data: scores } = await supabaseAdmin
     .from('package_scores')

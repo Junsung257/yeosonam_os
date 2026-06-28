@@ -104,6 +104,21 @@ describe('fetchLpPackageUncached', () => {
     expect(mocks.mappedInput).toBeNull();
   });
 
+  it('allows blocked packages only for internal mobile proof rendering', async () => {
+    mocks.packageRow = {
+      id: 'pkg-1',
+      title: 'Blocked proof package',
+      status: 'pending',
+      audit_status: 'blocked',
+      price: 100000,
+    };
+
+    const result = await fetchLpPackageUncached('pkg-1', { allowNonPublicProof: true });
+
+    expect(result).toMatchObject({ id: 'pkg-1', title: 'Blocked proof package' });
+    expect(mocks.mappedInput).toMatchObject({ id: 'pkg-1', audit_status: 'blocked' });
+  });
+
   it('blocks stale active packages when the live source audit now fails', async () => {
     mocks.packageRow = {
       id: 'pkg-1',
@@ -131,5 +146,34 @@ premium villa golf package 3n5d
 
     expect(result).toBeNull();
     expect(mocks.mappedInput).toBeNull();
+  });
+
+  it('allows live-audit-blocked packages only for internal mobile proof rendering', async () => {
+    mocks.packageRow = {
+      id: 'pkg-1',
+      title: 'Stale proof package',
+      status: 'active',
+      audit_status: 'clean',
+      duration: 5,
+      raw_text: `
+spot
+7/2,9
+999,-
+1,159,-
+
+PKG
+premium villa golf package 3n5d
+`,
+      accommodations: ['villa'],
+      price_dates: [
+        { date: '2027-07-02', price: 999000 },
+        { date: '2027-07-09', price: 999000 },
+      ],
+    };
+
+    const result = await fetchLpPackageUncached('pkg-1', { allowNonPublicProof: true });
+
+    expect(result).toMatchObject({ id: 'pkg-1', title: 'Stale proof package' });
+    expect(mocks.mappedInput).toMatchObject({ id: 'pkg-1', status: 'active' });
   });
 });

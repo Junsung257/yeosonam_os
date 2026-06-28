@@ -25,8 +25,16 @@ function formatPhone(raw: string): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
 }
 
-export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate = '', priceDates, hasSpecialTerms = false, termsSummary }: Props) {
-  const [step, setStep] = useState(0);          // 0-indexed
+export default function LeadBottomSheet({
+  open,
+  onClose,
+  onSubmit,
+  defaultDate = '',
+  priceDates,
+  hasSpecialTerms = false,
+  termsSummary,
+}: Props) {
+  const [step, setStep] = useState(0);
   const [desiredDate, setDesiredDate] = useState(defaultDate);
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
@@ -38,39 +46,39 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  // 열릴 때마다 초기화
-  useEffect(() => {
-    if (open) {
-      setStep(0);
-      setDesiredDate(defaultDate);
-      setAdults(2);
-      setChildren(0);
-      setName('');
-      setPhone('');
-      setPrivacy(false);
-      setTerms(false);
-      setTermsExpanded(false);
-      setSubmitting(false);
-      setSuccess(false);
-    }
-  }, [open, defaultDate]);
-
-  // ESC 닫기
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    setStep(0);
+    setDesiredDate(defaultDate);
+    setAdults(2);
+    setChildren(0);
+    setName('');
+    setPhone('');
+    setPrivacy(false);
+    setTerms(false);
+    setTermsExpanded(false);
+    setSubmitting(false);
+    setSuccess(false);
+  }, [open, defaultDate]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
-  // body scroll lock
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [open]);
 
   const canNext = useCallback(() => {
-    if (step === 0) return !!desiredDate;
+    if (step === 0) return Boolean(desiredDate);
     if (step === 1) return adults >= 1;
     if (step === 2) return name.trim().length >= 2 && phone.replace(/\D/g, '').length === 11 && privacy && terms;
     return false;
@@ -79,26 +87,26 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
   const handleNext = async () => {
     if (!canNext()) return;
     if (step < TOTAL_STEPS - 1) {
-      setStep(s => s + 1);
-    } else {
-      setSubmitting(true);
-      try {
-        await onSubmit({
-          desiredDate,
-          adults,
-          children,
-          name: name.trim(),
-          phone,
-          privacyConsent: privacy,
-          termsConsent: terms,
-        });
-        setSuccess(true);
-      } catch {
-        // 에러는 onSubmit 내부에서 처리 (pipeline은 실패해도 진행)
-        setSuccess(true);
-      } finally {
-        setSubmitting(false);
-      }
+      setStep(current => current + 1);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        desiredDate,
+        adults,
+        children,
+        name: name.trim(),
+        phone,
+        privacyConsent: privacy,
+        termsConsent: terms,
+      });
+      setSuccess(true);
+    } catch {
+      setSuccess(true);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -106,38 +114,40 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
 
   return (
     <>
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-40 transition-opacity"
+        className="fixed inset-0 z-40 bg-black/50 transition-opacity"
         onClick={onClose}
         aria-hidden
       />
 
-      {/* Sheet */}
-      <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[90dvh] md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-md md:rounded-2xl">
-        {/* Handle bar (모바일) */}
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-auto md:left-1/2 md:top-1/2 md:w-full md:max-w-md md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lp-lead-bottom-sheet-title"
+        data-testid="lp-lead-bottom-sheet"
+      >
+        <div className="flex justify-center pb-1 pt-3 md:hidden">
+          <div className="h-1 w-10 rounded-full bg-gray-300" />
         </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
           <button
-            onClick={() => step > 0 ? setStep(s => s - 1) : onClose()}
-            className="p-1 rounded-full hover:bg-gray-100 transition"
-            aria-label="뒤로"
+            type="button"
+            onClick={() => (step > 0 ? setStep(current => current - 1) : onClose())}
+            className="rounded-full p-1 transition hover:bg-gray-100"
+            aria-label={step > 0 ? '이전 단계' : '닫기'}
           >
             {step > 0 ? <ChevronLeft size={20} /> : <X size={20} />}
           </button>
-          <div className="text-sm font-semibold text-gray-700">
+          <div id="lp-lead-bottom-sheet-title" className="text-sm font-semibold text-gray-700">
             {success ? '신청 완료' : `상담 신청 (${step + 1}/${TOTAL_STEPS})`}
           </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 transition">
+          <button type="button" onClick={onClose} className="rounded-full p-1 transition hover:bg-gray-100" aria-label="닫기">
             <X size={20} />
           </button>
         </div>
 
-        {/* Progress bar */}
         {!success && (
           <div className="h-1 bg-gray-100">
             <div
@@ -147,21 +157,19 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
           </div>
         )}
 
-        {/* Content */}
         <div className="flex-1 overflow-hidden">
           {success ? (
             <SuccessView onClose={onClose} />
           ) : (
             <div
-              className="flex transition-transform duration-300 ease-in-out h-full"
+              className="flex h-full transition-transform duration-300 ease-in-out"
               style={{ transform: `translateX(-${(step / TOTAL_STEPS) * 100}%)`, width: `${TOTAL_STEPS * 100}%` }}
             >
-              {/* Step 1: 희망 출발일 */}
               <StepWrapper>
                 <StepIcon icon={<Calendar size={28} className="text-yellow-500" />} />
-                <h2 className="text-lg font-bold text-gray-900 text-center">희망 출발일을 선택해주세요</h2>
-                <p className="text-sm text-gray-500 text-center">
-                  {priceDates && priceDates.length > 0 ? '확정/가능 출발일에서 선택하세요' : '일정 조율을 위해 필요해요'}
+                <h2 className="text-center text-lg font-bold text-gray-900">희망 출발일을 선택해 주세요</h2>
+                <p className="text-center text-sm text-gray-500">
+                  {priceDates && priceDates.length > 0 ? '확정 또는 가능 출발일에서 선택하세요.' : '일정 조율을 위해 필요해요.'}
                 </p>
                 {priceDates && priceDates.length > 0 ? (
                   <DepartureCalendar
@@ -173,95 +181,95 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
                   <input
                     type="date"
                     value={desiredDate}
-                    onChange={e => setDesiredDate(e.target.value)}
+                    onChange={event => setDesiredDate(event.target.value)}
                     min={new Date().toISOString().slice(0, 10)}
-                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-yellow-400 transition text-center"
+                    className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-center text-base transition focus:border-yellow-400 focus:outline-none"
                   />
                 )}
               </StepWrapper>
 
-              {/* Step 2: 인원 선택 */}
               <StepWrapper>
                 <StepIcon icon={<Users size={28} className="text-yellow-500" />} />
-                <h2 className="text-lg font-bold text-gray-900 text-center">인원을 알려주세요</h2>
-                <p className="text-sm text-gray-500 text-center">정확한 견적을 드릴게요</p>
+                <h2 className="text-center text-lg font-bold text-gray-900">인원을 알려주세요</h2>
+                <p className="text-center text-sm text-gray-500">정확한 견적을 빠르게 확인해 드릴게요.</p>
                 <CounterRow
                   label="성인"
                   subLabel="만 12세 이상"
                   value={adults}
-                  onMinus={() => setAdults(v => Math.max(1, v - 1))}
-                  onPlus={() => setAdults(v => v + 1)}
+                  onMinus={() => setAdults(value => Math.max(1, value - 1))}
+                  onPlus={() => setAdults(value => value + 1)}
                 />
                 <CounterRow
-                  label="소아"
+                  label="아동"
                   subLabel="만 2-11세"
                   value={children}
-                  onMinus={() => setChildren(v => Math.max(0, v - 1))}
-                  onPlus={() => setChildren(v => v + 1)}
+                  onMinus={() => setChildren(value => Math.max(0, value - 1))}
+                  onPlus={() => setChildren(value => value + 1)}
                 />
               </StepWrapper>
 
-              {/* Step 3: 이름/전화번호 */}
               <StepWrapper>
-                <h2 className="text-lg font-bold text-gray-900 text-center">연락처를 알려주세요</h2>
-                <p className="text-sm text-gray-500 text-center">상담사가 빠르게 연락드릴게요</p>
+                <h2 className="text-center text-lg font-bold text-gray-900">연락처를 알려주세요</h2>
+                <p className="text-center text-sm text-gray-500">상담사가 빠르게 연락드릴게요.</p>
                 <div className="space-y-3">
                   <div>
-                    <label htmlFor="lead-bottom-name" className="block text-sm font-medium text-gray-700 mb-1">이름</label>
+                    <label htmlFor="lead-bottom-name" className="mb-1 block text-sm font-medium text-gray-700">이름</label>
                     <input
                       id="lead-bottom-name"
                       type="text"
                       value={name}
-                      onChange={e => setName(e.target.value)}
+                      onChange={event => setName(event.target.value)}
                       placeholder="홍길동"
-                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-yellow-400 transition"
+                      className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-base transition focus:border-yellow-400 focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label htmlFor="lead-bottom-phone" className="block text-sm font-medium text-gray-700 mb-1">휴대폰 번호</label>
+                    <label htmlFor="lead-bottom-phone" className="mb-1 block text-sm font-medium text-gray-700">휴대폰 번호</label>
                     <input
                       id="lead-bottom-phone"
                       type="tel"
                       value={phone}
-                      onChange={e => setPhone(formatPhone(e.target.value))}
+                      onChange={event => setPhone(formatPhone(event.target.value))}
                       placeholder="010-0000-0000"
-                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-yellow-400 transition"
+                      className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-base transition focus:border-yellow-400 focus:outline-none"
                     />
                   </div>
-                  <label className="flex items-start gap-2.5 cursor-pointer">
+                  <label className="flex cursor-pointer items-start gap-2.5">
                     <button
                       type="button"
                       aria-label="개인정보 수집 및 이용 동의"
-                      onClick={() => setPrivacy(v => !v)}
-                      className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition ${
-                        privacy ? 'bg-yellow-400 border-yellow-400' : 'border-gray-300'
+                      aria-pressed={privacy}
+                      onClick={() => setPrivacy(value => !value)}
+                      className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition ${
+                        privacy ? 'border-yellow-400 bg-yellow-400' : 'border-gray-300'
                       }`}
                     >
                       {privacy && <Check size={12} className="text-white" strokeWidth={3} />}
                     </button>
-                    <span className="text-sm text-gray-600 leading-snug">
+                    <span className="text-sm leading-snug text-gray-600">
                       <span className="font-medium text-gray-800">[필수]</span> 개인정보 수집 및 이용에 동의합니다.
-                      수집된 정보는 여행 상담 목적으로만 사용되며, 상담 완료 후 즉시 파기됩니다.
+                      입력한 정보는 여행 상담 목적으로만 사용하며, 상담 완료 후 내부 정책에 따라 안전하게 관리합니다.
                     </span>
                   </label>
-                  {/* 취소·약관 동의 */}
+
                   <div className="flex items-start gap-2.5">
                     <button
                       type="button"
                       aria-label="취소 및 약관 동의"
-                      onClick={() => setTerms(v => !v)}
-                      className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition cursor-pointer ${
-                        terms ? 'bg-yellow-400 border-yellow-400' : 'border-gray-300'
+                      aria-pressed={terms}
+                      onClick={() => setTerms(value => !value)}
+                      className={`mt-0.5 flex h-5 w-5 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 transition ${
+                        terms ? 'border-yellow-400 bg-yellow-400' : 'border-gray-300'
                       }`}
                     >
                       {terms && <Check size={12} className="text-white" strokeWidth={3} />}
                     </button>
                     <div className="flex-1">
-                      <p className="text-sm text-gray-600 leading-snug">
+                      <p className="text-sm leading-snug text-gray-600">
                         {hasSpecialTerms ? (
                           <>
                             <span className="font-medium text-red-700">[필수]</span>{' '}
-                            본 상품은 특별약관 적용 상품으로, 예약 즉시 항공/호텔이 자동 확정되며 취소 시 실비 위약금이 청구됨에 동의합니다.
+                            본 상품은 특별약관 적용 상품으로, 예약 즉시 항공·호텔 정보가 확정될 수 있으며 취소 시 비용이 발생할 수 있음에 동의합니다.
                           </>
                         ) : (
                           <>
@@ -273,15 +281,15 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
                       {termsSummary && (
                         <button
                           type="button"
-                          onClick={() => setTermsExpanded(v => !v)}
-                          className="mt-1 text-xs text-yellow-600 font-medium flex items-center gap-0.5"
+                          onClick={() => setTermsExpanded(value => !value)}
+                          className="mt-1 flex items-center gap-0.5 text-xs font-medium text-yellow-600"
                         >
                           약관 보기
                           {termsExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                         </button>
                       )}
                       {termsExpanded && termsSummary && (
-                        <div className="mt-2 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto border border-gray-200">
+                        <div className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs leading-relaxed text-gray-600">
                           {termsSummary}
                         </div>
                       )}
@@ -293,20 +301,20 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
           )}
         </div>
 
-        {/* Footer CTA */}
         {!success && (
-          <div className="px-5 py-4 border-t border-gray-100">
+          <div className="border-t border-gray-100 px-5 py-4">
             <button
+              type="button"
               onClick={handleNext}
               disabled={!canNext() || submitting}
-              className="w-full py-4 rounded-2xl font-bold text-base transition bg-yellow-400 text-gray-900 hover:bg-yellow-500 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-yellow-400 py-4 text-base font-bold text-gray-900 transition hover:bg-yellow-500 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
             >
               {submitting ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
                   처리 중...
                 </>
-              ) : step < TOTAL_STEPS - 1 ? '다음' : '💬 카카오로 상담 신청'}
+              ) : step < TOTAL_STEPS - 1 ? '다음' : '카카오로 상담 신청'}
             </button>
           </div>
         )}
@@ -317,7 +325,7 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
 
 function StepWrapper({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex-shrink-0 px-5 py-5 space-y-4 overflow-y-auto" style={{ width: `${100 / TOTAL_STEPS}%` }}>
+    <div className="flex-shrink-0 space-y-4 overflow-y-auto px-5 py-5" style={{ width: `${100 / TOTAL_STEPS}%` }}>
       {children}
     </div>
   );
@@ -328,27 +336,39 @@ function StepIcon({ icon }: { icon: React.ReactNode }) {
 }
 
 function CounterRow({
-  label, subLabel, value, onMinus, onPlus,
+  label,
+  subLabel,
+  value,
+  onMinus,
+  onPlus,
 }: {
-  label: string; subLabel: string; value: number; onMinus: () => void; onPlus: () => void;
+  label: string;
+  subLabel: string;
+  value: number;
+  onMinus: () => void;
+  onPlus: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+    <div className="flex items-center justify-between border-b border-gray-100 py-3 last:border-0">
       <div>
         <p className="font-medium text-gray-900">{label}</p>
         <p className="text-xs text-gray-400">{subLabel}</p>
       </div>
       <div className="flex items-center gap-4">
         <button
+          type="button"
           onClick={onMinus}
-          className="w-9 h-9 rounded-full border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-yellow-400 hover:text-yellow-600 transition text-xl font-light"
+          aria-label={`${label} 1명 줄이기`}
+          className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-gray-200 text-xl font-light text-gray-600 transition hover:border-yellow-400 hover:text-yellow-600"
         >
-          −
+          -
         </button>
         <span className="w-6 text-center text-lg font-bold text-gray-900">{value}</span>
         <button
+          type="button"
           onClick={onPlus}
-          className="w-9 h-9 rounded-full border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:border-yellow-400 hover:text-yellow-600 transition text-xl font-light"
+          aria-label={`${label} 1명 늘리기`}
+          className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-gray-200 text-xl font-light text-gray-600 transition hover:border-yellow-400 hover:text-yellow-600"
         >
           +
         </button>
@@ -359,15 +379,16 @@ function CounterRow({
 
 function SuccessView({ onClose }: { onClose: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-10 px-5">
-      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center animate-bounce">
+    <div className="flex flex-col items-center justify-center gap-4 px-5 py-10">
+      <div className="flex h-16 w-16 animate-bounce items-center justify-center rounded-full bg-green-100">
         <Check size={32} className="text-green-500" strokeWidth={3} />
       </div>
-      <div className="text-center space-y-1">
-        <h2 className="text-xl font-bold text-gray-900">상담 신청이 완료됐어요!</h2>
-        <p className="text-sm text-gray-500">카카오 채널로 이동하여 상담사와 바로 연결할게요.</p>
+      <div className="space-y-1 text-center">
+        <h2 className="text-xl font-bold text-gray-900">상담 신청이 완료됐어요</h2>
+        <p className="text-sm text-gray-500">카카오 채널로 이동해 상담사와 바로 연결할게요.</p>
       </div>
       <button
+        type="button"
         onClick={onClose}
         className="mt-4 text-sm text-gray-400 underline underline-offset-2"
       >

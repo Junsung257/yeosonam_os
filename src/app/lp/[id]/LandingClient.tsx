@@ -378,9 +378,10 @@ export function LandingClient({
             {utmTerm ? `${utmTerm} · ${msg.subline}`.slice(0, 220) : msg.subline}
           </p>
           <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              className="flex-1 py-3 rounded-xl bg-[#FEE500] text-sm font-bold text-text-primary active:scale-[0.98] transition-transform shadow-md"
+          <button
+            type="button"
+            data-analytics-id="lp_hero_kakao"
+            className="flex-1 py-3 rounded-xl bg-[#FEE500] text-sm font-bold text-text-primary active:scale-[0.98] transition-transform shadow-md"
               onClick={async () => {
                 trackLead({
                   content_name: data.customMessage.default.headline,
@@ -471,6 +472,8 @@ export function LandingClient({
         <div className="w-full max-w-[430px] px-4 pb-5 pt-3 bg-gradient-to-t from-white via-white/90 to-transparent">
           <button
             type="button"
+            data-analytics-id="lp_sticky_lead"
+            aria-label="상담 신청 열기"
             onClick={() => {
               setSheetOpen(true);
               fetch('/api/tracking/score-signal', {

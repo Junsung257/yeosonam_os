@@ -27,6 +27,20 @@ import { runUploadVerify, evaluateVerifyChecks } from '@/lib/upload-verify';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import { buildCustomerSourceRawText } from './source-evidence-raw-text';
 import { replaceProductPricesForProduct } from './product-price-replacement';
+import {
+  evaluateRegistrationQualityScorecard,
+  type RegistrationQualityProductPrice,
+  type RegistrationQualityScorecard,
+} from './registration-quality-scorecard';
+import {
+  customerOpenContractAuditPayload,
+  evaluateCustomerOpenContract,
+} from './customer-open-contract';
+import {
+  buildRepairFirstOpenabilitySummary,
+  type RepairFirstOpenabilityState,
+  type RepairFirstOpenabilitySummary,
+} from './repair-first-openability';
 
 export type UploadToOpenAutopilotPackage = {
   id: string;
@@ -82,9 +96,27 @@ export type UploadToOpenPackageResult = {
   title: string | null;
   code: string | null;
   status: 'opened' | 'ready_not_opened' | 'blocked' | 'error';
+  openabilityState: RepairFirstOpenabilityState;
   stage: string;
   reasons: string[];
   repairs: string[];
+  repairFirstSummary: RepairFirstOpenabilitySummary;
+  reviewActions?: UploadToOpenReviewAction[];
+};
+
+export type UploadToOpenReviewAction = {
+  reason: string;
+  category:
+    | 'auto_repair_exhausted'
+    | 'proof_retry_required'
+    | 'source_evidence_required'
+    | 'customer_copy_required'
+    | 'entity_resolution_required'
+    | 'v3_notice_required'
+    | 'publish_gate_required'
+    | 'possibly_unusable_source';
+  canBeMadeUsable: boolean;
+  nextAction: string;
 };
 
 type QualityLogRow = {
@@ -97,6 +129,14 @@ type IntakeRow = {
 
 type ProductSourceRow = {
   raw_extracted_text?: string | null;
+};
+
+type ProductPriceDbRow = RegistrationQualityProductPrice & {
+  target_date?: string | null;
+  net_price?: number | string | null;
+  adult_selling_price?: number | string | null;
+  child_price?: number | string | null;
+  note?: string | null;
 };
 
 type RestorableV3DraftRow = LatestV3DraftForPackage & {
@@ -172,6 +212,108 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+export function classifyUploadToOpenReviewReason(reason: string): UploadToOpenReviewAction {
+  if (/raw_text_too_short|source deterministic price table not recognized|product_prices_not_safely_rebuildable/i.test(reason)) {
+    return {
+      reason,
+      category: 'possibly_unusable_source',
+      canBeMadeUsable: false,
+      nextAction: '원문 텍스트 또는 가격표 근거가 부족합니다. 원문을 보강하거나 해당 상품은 세이브/보류로 정리합니다.',
+    };
+  }
+  if (/mobile_proof|packages_mobile|lp_mobile|browser proof/i.test(reason)) {
+    return {
+      reason,
+      category: 'proof_retry_required',
+      canBeMadeUsable: true,
+      nextAction: '비공개 proof 헤더로 /packages와 /lp를 다시 렌더링하고 깨진 화면/CTA를 자동 QA로 재검사합니다.',
+    };
+  }
+  if (/price_dates|price storage|product_prices|C12|가격/i.test(reason)) {
+    return {
+      reason,
+      category: 'auto_repair_exhausted',
+      canBeMadeUsable: true,
+      nextAction: '원문 가격표 또는 저장된 product_prices를 기준으로 가격 저장소를 재동기화하고 재점수화합니다.',
+    };
+  }
+  if (/C18|customer_copy|customer visible|forbidden|supplier_remark|금지|문구/i.test(reason)) {
+    return {
+      reason,
+      category: 'customer_copy_required',
+      canBeMadeUsable: true,
+      nextAction: '고객 금지문구와 내부 지시문만 제거하고 가격/일정/호텔 같은 핵심값은 보존한 뒤 재검증합니다.',
+    };
+  }
+  if (/C15|entity|attraction|hotel|unmatched|관광지|호텔/i.test(reason)) {
+    return {
+      reason,
+      category: 'entity_resolution_required',
+      canBeMadeUsable: true,
+      nextAction: '내부 alias, Naver, Wikidata, OSM 증거로 entity_master_candidates를 재분류하고 다시 상품에 연결합니다.',
+    };
+  }
+  if (/^v3:|v3_payload/i.test(reason)) {
+    return {
+      reason,
+      category: 'v3_notice_required',
+      canBeMadeUsable: true,
+      nextAction: 'V3 고객 고지/약관 초안을 원문 근거 기준으로 재생성하고 ready_to_publish 초안으로 승격합니다.',
+    };
+  }
+  if (/source_verify|publish_gate|publish_warning/i.test(reason)) {
+    return {
+      reason,
+      category: 'publish_gate_required',
+      canBeMadeUsable: true,
+      nextAction: '공개 게이트의 남은 원문 대조 실패를 자동수정 가능한 필드별로 분해한 뒤 재검증합니다.',
+    };
+  }
+  return {
+    reason,
+    category: 'source_evidence_required',
+    canBeMadeUsable: true,
+    nextAction: '원문 근거와 저장값 차이를 확인해 deterministic repair 후보로 승격합니다.',
+  };
+}
+
+function classifyReviewReasons(reasons: string[]): UploadToOpenReviewAction[] {
+  return [...new Map(reasons.map(reason => {
+    const action = classifyUploadToOpenReviewReason(reason);
+    return [reason, { ...action, nextAction: readableRepairNextAction(action.category) }];
+  })).values()];
+}
+
+function readableRepairNextAction(category: UploadToOpenReviewAction['category']): string {
+  switch (category) {
+    case 'possibly_unusable_source':
+      return '원문 텍스트 또는 가격표 근거가 부족합니다. 원문을 보강하거나 해당 상품은 세이브/보류로 정리합니다.';
+    case 'proof_retry_required':
+      return '비공개 proof 헤더로 /packages와 /lp를 다시 렌더링하고 깨진 화면/CTA를 자동 QA로 재검사합니다.';
+    case 'auto_repair_exhausted':
+      return '원문 가격표 또는 저장된 product_prices를 기준으로 가격 저장소를 재동기화하고 재점수화합니다.';
+    case 'customer_copy_required':
+      return '고객 금지문구와 내부 지시문만 제거하고 가격/일정/호텔 같은 핵심값은 보존한 뒤 재검증합니다.';
+    case 'entity_resolution_required':
+      return '내부 alias, Naver, Wikidata, OSM 증거로 entity_master_candidates를 재분류하고 다시 상품에 연결합니다.';
+    case 'v3_notice_required':
+      return 'V3 고객 고지/약관 초안을 원문 근거 기준으로 재생성하고 ready_to_publish 초안으로 승격합니다.';
+    case 'publish_gate_required':
+      return '공개 게이트의 남은 원문 대조 실패를 자동수정 가능한 필드별로 분해한 뒤 재검증합니다.';
+    case 'source_evidence_required':
+    default:
+      return '원문 근거와 저장값 차이를 확인해 deterministic repair 후보로 승격합니다.';
+  }
+}
+
+function repairFirstSummary(input: {
+  reasons: string[];
+  repairs: string[];
+  reviewActions?: UploadToOpenReviewAction[];
+}): RepairFirstOpenabilitySummary {
+  return buildRepairFirstOpenabilitySummary(input);
+}
+
 function validPriceDates(priceDates: PriceDate[]): PriceDate[] {
   return priceDates
     .filter(row =>
@@ -198,6 +340,43 @@ function productPriceRowsFromPriceDates(priceDates: PriceDate[]): ProductPriceRo
     child_price: typeof row.child_price === 'number' && row.child_price > 0 ? row.child_price : null,
     note: 'source-backed autopilot price repair',
   }));
+}
+
+function numberValue(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function priceDatesFromProductPrices(rows: ProductPriceDbRow[], currentPriceDates: PriceDate[]): PriceDate[] | null {
+  const byDate = new Map<string, ProductPriceDbRow[]>();
+  for (const row of rows) {
+    const date = typeof row.target_date === 'string' ? row.target_date : '';
+    const netPrice = numberValue(row.net_price);
+    const adultSellingPrice = numberValue(row.adult_selling_price);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || netPrice == null || netPrice <= 0) continue;
+    if (adultSellingPrice == null || adultSellingPrice <= 0) return null;
+    byDate.set(date, [...(byDate.get(date) ?? []), row]);
+  }
+  if (byDate.size === 0) return null;
+
+  const existingByDate = new Map(currentPriceDates.map(row => [row.date, row]));
+  return [...byDate.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, dateRows]) => {
+      const minRow = dateRows.reduce((best, row) => {
+        const rowPrice = numberValue(row.net_price) ?? Infinity;
+        const bestPrice = numberValue(best.net_price) ?? Infinity;
+        return rowPrice < bestPrice ? row : best;
+      });
+      const minPrice = numberValue(minRow.net_price) ?? 0;
+      const childPrice = numberValue(minRow.child_price);
+      return {
+        date,
+        price: minPrice,
+        ...(childPrice != null && childPrice > 0 ? { child_price: childPrice } : {}),
+        confirmed: existingByDate.get(date)?.confirmed ?? false,
+      };
+    });
 }
 
 function priceTiersFromPriceDates(priceDates: PriceDate[]): Array<Record<string, unknown>> {
@@ -269,6 +448,80 @@ async function syncSourceBackedPriceStores(input: {
   if (error) throw new Error(`products price sync failed: ${error.message}`);
 
   input.repairs.push('price_stores:products_product_prices_price_tiers_synced');
+}
+
+async function loadProductPriceRows(
+  supabase: SupabaseClient,
+  internalCode: string | null,
+): Promise<ProductPriceDbRow[]> {
+  if (!internalCode) return [];
+  const { data, error } = await supabase
+    .from('product_prices')
+    .select('target_date,net_price,adult_selling_price,child_price,note')
+    .eq('product_id', internalCode)
+    .limit(1000);
+  if (error) throw new Error(`product_prices load failed: ${error.message}`);
+  return (data ?? []) as ProductPriceDbRow[];
+}
+
+async function applyScorecardDrivenRepairs(input: {
+  supabase: SupabaseClient;
+  pkg: UploadToOpenAutopilotPackage;
+  scorecard: RegistrationQualityScorecard;
+  productPrices: ProductPriceDbRow[];
+}): Promise<{ pkg: UploadToOpenAutopilotPackage; repairs: string[]; blockedReasons: string[] }> {
+  const repairs: string[] = [];
+  const blockedReasons: string[] = [];
+  const priceStorageBlocked = input.scorecard.blockers.some(blocker =>
+    /^price_dates:|^db_consistency: price storage mismatch/.test(blocker)
+  );
+  if (!priceStorageBlocked) return { pkg: input.pkg, repairs, blockedReasons };
+
+  const repairedPriceDates = priceDatesFromProductPrices(input.productPrices, coercePackagePriceDates(input.pkg));
+  if (!repairedPriceDates || validPriceDates(repairedPriceDates).length === 0) {
+    blockedReasons.push('quality_scorecard_price_repair_requires_review:product_prices_not_safely_rebuildable');
+    return { pkg: input.pkg, repairs, blockedReasons };
+  }
+
+  const updates: Record<string, unknown> = {};
+  await syncSourceBackedPriceStores({
+    supabase: input.supabase,
+    pkg: input.pkg,
+    priceDates: repairedPriceDates,
+    updates,
+    repairs,
+  });
+  repairs.push('quality_scorecard:price_dates_rebuilt_from_product_prices');
+
+  const updatedAt = nowIso();
+  const { data, error } = await input.supabase
+    .from('travel_packages')
+    .update({
+      ...updates,
+      audit_status: 'blocked',
+      audit_report: {
+        ...asRecord(input.pkg.audit_report),
+        upload_to_open_autopilot: {
+          ...asRecord(asRecord(input.pkg.audit_report).upload_to_open_autopilot),
+          stage: 'quality_scorecard_repaired',
+          repairs,
+          previous_quality_scorecard: input.scorecard,
+          checked_at: updatedAt,
+        },
+        mobile_browser_proof_required: {
+          status: 'fail',
+          reason: 'quality scorecard repair changed customer-visible price data; mobile/A4 proof must be regenerated',
+          checked_at: updatedAt,
+        },
+      },
+      audit_checked_at: updatedAt,
+      updated_at: updatedAt,
+    })
+    .eq('id', input.pkg.id)
+    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .single();
+  if (error) throw error;
+  return { pkg: data as UploadToOpenAutopilotPackage, repairs, blockedReasons };
 }
 
 async function markAutopilotStage(
@@ -567,9 +820,32 @@ async function evaluateAndMaybeOpenPackage(input: {
   const allRepairs = [...repairsResult.repairs, ...v3RebuildNotes];
 
   await runUploadVerify(pkg.id);
-  const afterVerify = await reloadPackage(input.supabase, pkg.id);
+  pkg = await reloadPackage(input.supabase, pkg.id);
+  const preMobileProductPrices = await loadProductPriceRows(input.supabase, pkg.internal_code);
+  const preMobileScorecard = evaluateRegistrationQualityScorecard({
+    pkg: pkg as unknown as Record<string, unknown>,
+    verifyChecks: evaluateVerifyChecks({
+      ...pkg,
+      status: 'active',
+      audit_status: 'clean',
+    } as Parameters<typeof evaluateVerifyChecks>[0]).checks,
+    productPrices: preMobileProductPrices,
+    mobileProof: null,
+  });
+  const scorecardRepairs = await applyScorecardDrivenRepairs({
+    supabase: input.supabase,
+    pkg,
+    scorecard: preMobileScorecard,
+    productPrices: preMobileProductPrices,
+  });
+  if (scorecardRepairs.repairs.length > 0) {
+    allRepairs.push(...scorecardRepairs.repairs);
+    pkg = scorecardRepairs.pkg;
+    await runUploadVerify(pkg.id);
+  }
+  reasons.push(...scorecardRepairs.blockedReasons);
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
-  await runAutoMobileQA(pkg.id, baseUrl);
+  await runAutoMobileQA(pkg.id, baseUrl, { includeLpForProof: true });
   pkg = await reloadPackage(input.supabase, pkg.id);
 
   const sourceVerify = evaluateVerifyChecks({
@@ -602,6 +878,29 @@ async function evaluateAndMaybeOpenPackage(input: {
     reasons.push(`mobile_proof:${mobileProof.reason}`);
   }
 
+  const finalProductPrices = await loadProductPriceRows(input.supabase, pkg.internal_code);
+  const finalQualityScorecard = evaluateRegistrationQualityScorecard({
+    pkg: {
+      ...(pkg as unknown as Record<string, unknown>),
+      audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
+    },
+    verifyChecks: sourceVerify.checks,
+    productPrices: finalProductPrices,
+    mobileProof,
+  });
+  const customerOpenContract = evaluateCustomerOpenContract({
+    pkg: {
+      ...(pkg as unknown as Record<string, unknown>),
+      audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
+    },
+    verifyChecks: sourceVerify.checks,
+    productPrices: finalProductPrices,
+    mobileProof,
+    v3Gate,
+    sourceVerifyStatus: sourceVerify.status,
+  });
+  if (!customerOpenContract.ok) reasons.push(...customerOpenContract.blockers);
+
   const deliveryContext = await loadDeliveryContext(input.supabase, pkg.id);
   const delivery = evaluateCustomerDeliveryReadiness({
     pkg: {
@@ -625,39 +924,55 @@ async function evaluateAndMaybeOpenPackage(input: {
 
   const uniqueReasons = [...new Set(reasons)].filter(Boolean);
   if (uniqueReasons.length > 0) {
+    const reviewActions = classifyReviewReasons(uniqueReasons);
+    const summary = repairFirstSummary({ reasons: uniqueReasons, repairs: allRepairs, reviewActions });
     await markAutopilotStage(input.supabase, pkg.id, 'blocked_after_mobile_proof', {
       reasons: uniqueReasons.slice(0, 20),
+      review_actions: reviewActions.slice(0, 20),
       repairs: allRepairs,
+      repair_first_summary: summary,
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
       mobile_proof: mobileProof,
+      quality_scorecard: finalQualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
     });
     return {
       id: pkg.id,
       title: pkg.title,
       code: pkg.internal_code,
       status: 'blocked',
+      openabilityState: summary.state,
       stage: 'blocked_after_mobile_proof',
       reasons: uniqueReasons,
       repairs: allRepairs,
+      repairFirstSummary: summary,
+      reviewActions,
     };
   }
 
   if (!input.autoOpen) {
+    const summary = repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] });
     await markAutopilotStage(input.supabase, pkg.id, 'ready_not_opened', {
       repairs: allRepairs,
+      repair_first_summary: summary,
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
       mobile_proof: mobileProof.proof,
+      quality_scorecard: finalQualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
     });
     return {
       id: pkg.id,
       title: pkg.title,
       code: pkg.internal_code,
       status: 'ready_not_opened',
+      openabilityState: summary.state,
       stage: 'ready_not_opened',
       reasons: [],
       repairs: allRepairs,
+      repairFirstSummary: summary,
+      reviewActions: [],
     };
   }
 
@@ -672,9 +987,12 @@ async function evaluateAndMaybeOpenPackage(input: {
       stage: 'opened',
       opened_at: openedAt,
       repairs: allRepairs,
+      repair_first_summary: repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] }),
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
       mobile_browser_proof: openedMobileProof,
+      quality_scorecard: finalQualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
     },
   };
 
@@ -701,14 +1019,18 @@ async function evaluateAndMaybeOpenPackage(input: {
       .eq('internal_code', pkg.internal_code);
   }
 
+  const openedSummary = repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] });
   return {
     id: pkg.id,
     title: pkg.title,
     code: pkg.internal_code,
     status: 'opened',
+    openabilityState: openedSummary.state,
     stage: 'opened',
     reasons: [],
     repairs: allRepairs,
+    repairFirstSummary: openedSummary,
+    reviewActions: [],
   };
 }
 
@@ -722,11 +1044,25 @@ export async function runUploadToOpenAutopilot(input: {
   opened: number;
   ready_not_opened: number;
   blocked: number;
+  openable: number;
+  auto_fixed_openable: number;
+  needs_human_source_review: number;
   errors: string[];
   results: UploadToOpenPackageResult[];
 }> {
   if (!input.isSupabaseConfigured) {
-    return { ok: false, scanned: 0, opened: 0, ready_not_opened: 0, blocked: 0, errors: ['Supabase is not configured'], results: [] };
+    return {
+      ok: false,
+      scanned: 0,
+      opened: 0,
+      ready_not_opened: 0,
+      blocked: 0,
+      openable: 0,
+      auto_fixed_openable: 0,
+      needs_human_source_review: 0,
+      errors: ['Supabase is not configured'],
+      results: [],
+    };
   }
 
   const options = input.options ?? {};
@@ -744,17 +1080,26 @@ export async function runUploadToOpenAutopilot(input: {
       }));
     } catch (error) {
       const message = sanitizeDbError(error, `upload-to-open autopilot failed for ${pkg.id}`);
+      const reviewActions = classifyReviewReasons([message]);
+      const summary = repairFirstSummary({ reasons: [message], repairs: [], reviewActions });
       errors.push(message);
       results.push({
         id: pkg.id,
         title: pkg.title,
         code: pkg.internal_code,
         status: 'error',
+        openabilityState: summary.state,
         stage: 'error',
         reasons: [message],
         repairs: [],
+        repairFirstSummary: summary,
+        reviewActions,
       });
-      await markAutopilotStage(input.supabase, pkg.id, 'error', { reasons: [message] }).catch(() => undefined);
+      await markAutopilotStage(input.supabase, pkg.id, 'error', {
+        reasons: [message],
+        review_actions: reviewActions,
+        repair_first_summary: summary,
+      }).catch(() => undefined);
     }
   }
 
@@ -764,6 +1109,9 @@ export async function runUploadToOpenAutopilot(input: {
     opened: results.filter(result => result.status === 'opened').length,
     ready_not_opened: results.filter(result => result.status === 'ready_not_opened').length,
     blocked: results.filter(result => result.status === 'blocked').length,
+    openable: results.filter(result => result.openabilityState === 'openable').length,
+    auto_fixed_openable: results.filter(result => result.openabilityState === 'auto_fixed_openable').length,
+    needs_human_source_review: results.filter(result => result.openabilityState === 'needs_human_source_review').length,
     errors,
     results,
   };

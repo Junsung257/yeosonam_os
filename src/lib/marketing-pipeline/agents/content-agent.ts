@@ -9,6 +9,7 @@ import { BaseMarketingAgent, type MarketingContext, type AgentResult } from '../
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { getSecret } from '@/lib/secret-registry';
+import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
 
 const CaptionSchema = z.object({
   caption: z.string().min(50).max(2200),
@@ -49,8 +50,15 @@ export class ContentAgent extends BaseMarketingAgent {
     if (!packages?.length) return this.skip('활성 패키지 없음');
 
     let generated = 0;
+    let blockedByCustomerOpenContract = 0;
 
     for (const pkg of packages as PackageRow[]) {
+      const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, pkg.id);
+      if (!openContract.ok) {
+        blockedByCustomerOpenContract++;
+        continue;
+      }
+
       const systemPrompt = `당신은 여행 마케터입니다. 인스타그램 캡션을 JSON으로 생성하세요.`;
       const userPrompt = buildCaptionPrompt(pkg);
 
@@ -91,7 +99,11 @@ export class ContentAgent extends BaseMarketingAgent {
       generated++;
     }
 
-    return { ok: true, data: { generated, packages: packages.length } };
+    if (generated === 0 && blockedByCustomerOpenContract > 0) {
+      return this.skip('customer_open_contract blocked every candidate package');
+    }
+
+    return { ok: true, data: { generated, packages: packages.length, blocked_by_customer_open_contract: blockedByCustomerOpenContract } };
   }
 }
 
