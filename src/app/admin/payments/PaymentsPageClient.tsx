@@ -384,6 +384,12 @@ interface PaymentsClientProps {
   initialErp?: ErpStats;
 }
 
+interface OpsQueueSummary {
+  total: number;
+  ledger_drift: number;
+  payment_attention: number;
+}
+
 type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow';
 type OutflowSubTab = 'unmatched' | 'matched' | 'all';
 type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'trash';
@@ -474,6 +480,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [erp, setErp] = useState<ErpStats | null>(initialErp ?? null);
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [opsQueueSummary, setOpsQueueSummary] = useState<OpsQueueSummary | null>(null);
 
   // 수동 매칭 모달
   const [selectedTx, setSelectedTx] = useState<BankTransaction | null>(null);
@@ -548,6 +555,17 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     } finally { setIsLoading(false); }
   }, []);
 
+  const loadOpsQueue = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/ops/work-queue', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setOpsQueueSummary(data.summary ?? null);
+    } catch {
+      setOpsQueueSummary(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (_skipInitialFetch.current) {
       _skipInitialFetch.current = false;
@@ -555,7 +573,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     }
     load();
     loadErp();
-  }, [load, loadErp]);
+    loadOpsQueue();
+  }, [load, loadErp, loadOpsQueue]);
+
+  useEffect(() => {
+    loadOpsQueue();
+  }, [loadOpsQueue]);
 
   useEffect(() => {
     if (initialBookings?.length) return;
@@ -696,7 +719,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
         metadata: { surface: 'payments_resync', action: 'resync', count: data.updated },
       });
-      load(); loadErp();
+      load(); loadErp(); loadOpsQueue();
     } catch { showToast('처리 중 오류', 'err'); }
     finally { setBulkProcessing(false); }
   }
@@ -710,7 +733,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       const data = await res.json();
       if (!res.ok) { showToast(data.error || '처리 실패', 'err'); return; }
       showToast(`${data.matched}건 자동 매칭 완료 (스킵 ${data.skipped}건)`, 'ok');
-      load(); loadErp();
+      load(); loadErp(); loadOpsQueue();
     } catch { showToast('처리 중 오류', 'err'); }
     finally { setBulkProcessing(false); }
   }
@@ -814,6 +837,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       setSelectedTx(null);
       showToast('매칭 완료');
       loadErp();
+      loadOpsQueue();
     } catch { showToast('처리 중 오류', 'err'); }
     finally { setProcessing(false); }
   }
@@ -860,6 +884,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       });
       showToast('매칭 취소 완료');
       loadErp();
+      loadOpsQueue();
     } catch { showToast('처리 중 오류', 'err'); }
   }
 
@@ -900,7 +925,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       const data = await res.json();
       setImportResult(data);
       setImportStep('done');
-      load(); loadErp();
+      load(); loadErp(); loadOpsQueue();
     } finally { setImporting(false); }
   }
 
@@ -1033,7 +1058,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   page_url: '/admin/payments',
                   metadata: { surface: 'payments_auto_suggest', action: 'confirm_suggestion', transactionId: tx.id },
                 });
-                load(); loadErp();
+                load(); loadErp(); loadOpsQueue();
               }}
             />
             {tx.transaction_type === '출금' && !tx.is_refund ? (
@@ -1137,6 +1162,20 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           <div className="flex items-center gap-2">
             <h1 className="text-admin-lg font-semibold text-admin-text-2">입금 관리</h1>
             <LedgerStatusChip />
+            {opsQueueSummary && (
+              <span
+                className={`rounded border px-2 py-0.5 text-[11px] tabular-nums ${
+                  opsQueueSummary.ledger_drift > 0
+                    ? 'border-red-200 bg-red-50 text-red-700'
+                    : opsQueueSummary.payment_attention > 0
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-admin-border-mid bg-admin-surface-2 text-admin-muted'
+                }`}
+                title={`운영 큐 ${opsQueueSummary.total}건 / 결제 확인 ${opsQueueSummary.payment_attention}건`}
+              >
+                운영 큐 {opsQueueSummary.total}건
+              </span>
+            )}
           </div>
           <p className="text-admin-sm text-admin-muted mt-0.5">Slack(Clobe.ai) 입출금 자동 파싱 및 예약 매칭</p>
         </div>
@@ -1153,7 +1192,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
             과거 내역 가져오기
           </button>
-          <button type="button" onClick={() => { load(); loadErp(); }}
+          <button type="button" onClick={() => { load(); loadErp(); loadOpsQueue(); }}
             className="px-3 py-2 text-admin-sm text-admin-text-2 border border-admin-border-strong rounded bg-white hover:bg-admin-bg transition">
             새로고침
           </button>
@@ -1817,28 +1856,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         // 대표자명만 추출 ("손지연,양동기" → "손지연")
                         const cleanName = extractPrimaryName(selectedTx.counterparty_name) || '미확인 고객';
 
-                        // 1. 고객 생성 — 서버 dedup 결과 활용 (reused:true 시 기존 고객 재사용)
-                        const custRes = await fetch('/api/customers', {
+                        const quickRes = await fetch('/api/payments/quick-create-match', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            name: cleanName,
+                            transactionId: selectedTx.id,
+                            customerName: cleanName,
                             phone: quickForm.phone || undefined,
-                            quick_created: true,
-                            quick_created_tx_id: selectedTx.id,
-                          }),
-                        });
-                        const custData = await custRes.json();
-                        const customerId = custData.customer?.id;
-                        if (!customerId) throw new Error(custData.error || '고객 생성 실패');
-                        const customerReused = custData.reused === true;
-
-                        // 2. 예약 생성 — quick_created 마킹 (undo 시 자동 청소)
-                        const bookRes = await fetch('/api/bookings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            leadCustomerId: customerId,
                             packageTitle: quickForm.packageTitle || '미지정 상품',
                             adultCount: 1,
                             childCount: 0,
@@ -1846,36 +1870,20 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             adultPrice: selectedTx.amount,
                             childCost: 0,
                             childPrice: 0,
+                            fuelSurcharge: 0,
                             departureDate: quickForm.departureDate || undefined,
-                            quickCreated: true,
-                            quickCreatedTxId: selectedTx.id,
                           }),
                         });
-                        const bookData = await bookRes.json();
-                        const bookingId = bookData.booking?.id;
-                        if (!bookingId) throw new Error(bookData.error || '예약 생성 실패');
-
-                        // 3. 입금 매칭 (bank-transactions PATCH는 transactionId + bookingId 필요)
-                        const matchRes = await fetch('/api/bank-transactions', {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            action: 'match',
-                            transactionId: selectedTx.id,
-                            bookingId: bookingId,
-                          }),
-                        });
-                        if (!matchRes.ok) {
-                          const errData = await matchRes.json().catch(() => ({}));
-                          throw new Error(errData.error || '매칭 실패');
+                        const quickData = await quickRes.json().catch(() => ({}));
+                        if (!quickRes.ok) {
+                          throw new Error(quickData.error?.message || quickData.error || '빠른 생성+매칭 실패');
                         }
-                        // applyToBooking이 paid_amount를 자동으로 업데이트하므로 별도 PATCH 불필요
 
                         setSelectedTx(null);
                         setShowQuickCreate(false);
-                        const prefix = customerReused ? '기존 고객 재사용' : '신규 고객 생성';
+                        const prefix = quickData.reused_customer ? '기존 고객 재사용' : '신규 고객 생성';
                         showToast(`${cleanName} — ${prefix} + 예약 생성 + 매칭 완료`);
-                        load();
+                        load(); loadOpsQueue();
                       } catch (err) {
                         showToast(err instanceof Error ? err.message : '처리 실패');
                       } finally {
@@ -2162,7 +2170,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             event_type: ANALYTICS_EVENTS.adminActionCompleted,
             metadata: { surface: 'payments_command_bar', action: 'command_match' },
           });
-          load(); loadErp();
+          load(); loadErp(); loadOpsQueue();
         }}
       />
 
@@ -2175,7 +2183,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             event_type: ANALYTICS_EVENTS.adminActionCompleted,
             metadata: { surface: 'payments_settlement_bundle', action: 'settle_bundle', transactionId: bundleTx?.id },
           });
-          load(); loadErp();
+          load(); loadErp(); loadOpsQueue();
         }}
       />
     </>

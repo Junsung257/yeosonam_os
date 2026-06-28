@@ -57,11 +57,40 @@ interface MileageHistory {
   created_at: string;
 }
 
+interface ActivityItem {
+  id: string;
+  type: string;
+  title: string;
+  description?: string | null;
+  created_at: string;
+  severity?: 'info' | 'warning' | 'critical';
+  status?: string;
+  booking_id?: string | null;
+  bank_transaction_id?: string | null;
+  amount?: number | null;
+}
+
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
 const BOOKING_STATUS: Record<string, string> = BOOKING_STATUS_LABEL;
 const CHANNEL_LABEL: Record<string, string> = {
   phone: '전화', kakao: '카카오', email: '이메일', visit: '방문', cafe: '카페', sms: 'SMS',
+};
+const ACTIVITY_LABEL: Record<string, string> = {
+  booking_created: '예약 생성',
+  payment_matched: '입금 매칭',
+  payment_unmatched: '매칭 취소',
+  payment_excluded: '입출금 제외',
+  payment_refund: '환불',
+  customer_note: '상담 메모',
+  customer_updated: '고객 수정',
+  mileage_adjusted: '마일리지',
+  ledger_drift: '원장 점검',
+};
+const ACTIVITY_SEVERITY_CLASS: Record<string, string> = {
+  critical: 'bg-red-50 text-red-600 border-red-100',
+  warning: 'bg-amber-50 text-amber-700 border-amber-100',
+  info: 'bg-blue-50 text-blue-700 border-blue-100',
 };
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -132,7 +161,7 @@ export default function CustomersPage() {
   // ── 사이드 드로어 ──────────────────────────────────────────────────────────
   // 감사(2026-05-11): 3개 fetch → useSWR (mileage 는 탭 조건부). drawer 재오픈 시 캐시 적중.
   const [drawer, setDrawer]                     = useState<Customer | null>(null);
-  const [drawerTab, setDrawerTab]               = useState<'info' | 'bookings' | 'consultations' | 'mileage'>('info');
+  const [drawerTab, setDrawerTab]               = useState<'info' | 'bookings' | 'consultations' | 'mileage' | 'activity'>('info');
   const [editInfo, setEditInfo]                 = useState<Partial<Customer>>({});
   const [savingInfo, setSavingInfo]             = useState(false);
 
@@ -160,10 +189,20 @@ export default function CustomersPage() {
       ? `/api/customers/${drawerCustomerId}/mileage-history`
       : null,
   );
+  const {
+    data: drawerActivityData,
+    isLoading: activityLoading,
+    mutate: mutateDrawerActivity,
+  } = useSWR<{ items: ActivityItem[] }>(
+    drawerCustomerId && drawerTab === 'activity'
+      ? `/api/customers/${drawerCustomerId}/activity`
+      : null,
+  );
   const drawerBookings = drawerBookingsData?.bookings ?? [];
   const drawerNotes    = drawerNotesData?.notes ?? [];
   const drawerMileage  = drawerMileageData?.history ?? [];
-  const drawerLoading  = bookingsLoading || notesLoading;
+  const drawerActivity = drawerActivityData?.items ?? [];
+  const drawerLoading  = bookingsLoading || notesLoading || (drawerTab === 'activity' && activityLoading);
 
   // ── 상담로그 ───────────────────────────────────────────────────────────────
   const [noteInput, setNoteInput]       = useState('');
@@ -272,6 +311,7 @@ export default function CustomersPage() {
       if (data.customer) {
         setDrawer(prev => prev ? { ...prev, ...data.customer } : prev);
         setCustomers(prev => prev.map(c => c.id === drawer.id ? { ...c, ...data.customer } : c));
+        mutateDrawerActivity();
         showToast('저장 완료');
       } else {
         showToast(data.error || '저장 실패', 'error');
@@ -297,6 +337,7 @@ export default function CustomersPage() {
         { revalidate: false },
       );
       setNoteInput('');
+      mutateDrawerActivity();
       showToast('상담 기록 저장');
     }
     setAddingNote(false);
@@ -319,6 +360,7 @@ export default function CustomersPage() {
       setDrawer(prev => prev ? { ...prev, mileage: data.mileage } : prev);
       setCustomers(prev => prev.map(c => c.id === drawer.id ? { ...c, mileage: data.mileage } : c));
       await mutateDrawerMileage();
+      mutateDrawerActivity();
       setMileageInput('');
       showToast(`마일리지 ${delta > 0 ? '+' : ''}${delta.toLocaleString()}P 조정`);
     } else {
@@ -987,6 +1029,7 @@ export default function CustomersPage() {
                 ['bookings',      '예약내역'],
                 ['consultations', '상담로그'],
                 ['mileage',       '마일리지'],
+                ['activity',      '활동'],
               ] as const).map(([key, label]) => (
                 <button key={key} onClick={() => handleDrawerTabChange(key)}
                   className={`flex-1 py-2.5 text-admin-sm font-semibold transition-colors ${drawerTab === key ? 'text-blue-600 border-b-2 border-blue-600' : 'text-admin-muted hover:text-admin-text-2'}`}>
@@ -1138,6 +1181,46 @@ export default function CustomersPage() {
                           </button>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* 활동 타임라인 */}
+                  {drawerTab === 'activity' && (
+                    <div className="p-4 space-y-3">
+                      {drawerActivity.length === 0 ? (
+                        <p className="text-center text-admin-muted-2 text-admin-base py-16">활동 기록 없음</p>
+                      ) : drawerActivity.map(item => (
+                        <div key={`${item.type}:${item.id}`} className="bg-white rounded border border-admin-border-mid p-3">
+                          <div className="flex items-start gap-3">
+                            <span className={`mt-0.5 shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${ACTIVITY_SEVERITY_CLASS[item.severity ?? 'info'] ?? ACTIVITY_SEVERITY_CLASS.info}`}>
+                              {ACTIVITY_LABEL[item.type] ?? item.type}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-admin-sm font-semibold text-admin-text-2 break-words">{item.title}</p>
+                                <span className="shrink-0 text-[11px] text-admin-muted-2">{fmtDate(item.created_at)}</span>
+                              </div>
+                              {item.description && (
+                                <p className="mt-1 text-[12px] leading-relaxed text-admin-muted break-words">{item.description}</p>
+                              )}
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-admin-muted-2">
+                                {item.amount != null && <span>{fmtNum(item.amount)}원</span>}
+                                {item.status && <span>상태 {item.status}</span>}
+                                {item.booking_id && (
+                                  <Link className="text-blue-600 hover:underline" href={`/admin/bookings/${item.booking_id}`}>
+                                    예약 보기
+                                  </Link>
+                                )}
+                                {item.bank_transaction_id && (
+                                  <Link className="text-blue-600 hover:underline" href={`/admin/payments?tx=${item.bank_transaction_id}`}>
+                                    입출금 보기
+                                  </Link>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
 
