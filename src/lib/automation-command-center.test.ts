@@ -106,4 +106,35 @@ describe('buildAutomationCommandCenterSnapshot', () => {
     });
     expect(snapshot.safety.database_mutation).toBe(false);
   });
+
+  it('keeps operator-facing recommendations readable and action-only', () => {
+    const currentGapScorecard = buildMarketingDeepScorecard({
+      summary: {},
+      sourceLedgerCount: 0,
+    });
+    const snapshot = buildAutomationCommandCenterSnapshot({
+      generatedAt: '2026-06-29T00:00:00.000Z',
+      jarvisSummary: passingJarvisSummary(),
+      adOsCurrentScorecard: currentGapScorecard,
+      adOsReadyFixtureScorecard: readyAdOsScorecard(),
+      approvalQueue: {
+        pending_count: 0,
+        high_risk_count: 0,
+        top_packets: [],
+      },
+    });
+
+    expect(snapshot.one_click_recommendation).toMatchObject({
+      label: 'Ad OS 수리 계획 보기',
+      action_type: 'navigate',
+      safe: true,
+    });
+    expect(snapshot.jarvis.next_action).toBe('자비스는 운영 승인 패킷을 생성할 수 있습니다.');
+    expect(snapshot.safety).toMatchObject({
+      read_only: true,
+      database_mutation: false,
+      external_api_write: false,
+      full_auto_allowed: false,
+    });
+  });
 });

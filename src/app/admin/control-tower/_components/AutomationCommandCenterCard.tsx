@@ -137,7 +137,7 @@ export function AutomationCommandCenterCard() {
             </span>
           </div>
           <p className="mt-1 text-[11px] leading-snug text-admin-muted">
-            자비스, Ad OS, 승인 대기 패킷을 한 번에 보고 다음 클릭만 고르는 읽기 전용 운영 요약입니다.
+            자비스, Ad OS, 승인 대기 패킷, 차단 사유, 다음 안전 액션을 한 화면에서 보는 읽기 전용 운영 요약입니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -163,7 +163,7 @@ export function AutomationCommandCenterCard() {
         <MetricBlock
           label="전체 점수"
           value={`${snapshot.score}/100`}
-          detail={primaryBlocker?.next_action || '차단 사유 없이 운영 가능한 상태입니다.'}
+          detail={primaryBlocker?.next_action || '현재 보고된 차단 사유가 없습니다.'}
           status={snapshot.status}
         />
         <MetricBlock
@@ -175,13 +175,13 @@ export function AutomationCommandCenterCard() {
         <MetricBlock
           label="Ad OS"
           value={`${snapshot.ad_os.current_lowest_score}/95`}
-          detail={`가능 증명 ${snapshot.ad_os.ready_fixture_lowest_score}/95, gap ${snapshot.ad_os.gap_count}`}
+          detail={`가능 증명 ${snapshot.ad_os.ready_fixture_lowest_score}/95; 현재 gap ${snapshot.ad_os.gap_count}, P0 ${snapshot.ad_os.p0_gap_count}`}
           status={snapshot.ad_os.status}
         />
         <MetricBlock
           label="승인 대기"
           value={`${snapshot.approval_queue.pending_count}`}
-          detail={`고위험 ${snapshot.approval_queue.high_risk_count}건. ${snapshot.approval_queue.next_action}`}
+          detail={`고위험 ${snapshot.approval_queue.high_risk_count}건; ${snapshot.approval_queue.next_action}`}
           status={snapshot.approval_queue.status}
         />
       </div>
@@ -195,16 +195,16 @@ export function AutomationCommandCenterCard() {
               <p className="mt-1 text-[11px] text-admin-muted">{primaryBlocker.next_action}</p>
             </div>
           ) : (
-            <p className="mt-1 text-admin-xs text-admin-muted">현재 차단 사유가 없습니다.</p>
+            <p className="mt-1 text-admin-xs text-admin-muted">현재 보고된 차단 사유가 없습니다.</p>
           )}
         </div>
         <div className="rounded-admin-md border border-admin-border bg-admin-bg px-3 py-2">
           <p className="text-[10px] font-semibold uppercase text-admin-muted-2">Safety boundary</p>
           <p className="mt-1 text-admin-xs font-semibold text-admin-text-2">
-            Read-only, 외부 API write 0, live spend 0원, full-auto off
+            읽기 전용, 외부 API 쓰기 0건, 실 광고비 0원, 완전 자동 실행 off
           </p>
           <p className="mt-1 text-[11px] text-admin-muted">
-            예약, 결제, 환불, PII, 광고비 집행은 기존 승인 화면에서만 처리합니다.
+            예약, 결제, 환불, PII, credential, 외부 발행, 광고비 집행은 기존 승인 화면에서만 처리합니다.
           </p>
         </div>
       </div>
