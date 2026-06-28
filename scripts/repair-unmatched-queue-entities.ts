@@ -86,7 +86,8 @@ async function fetchActiveRows(): Promise<ActiveRow[]> {
 }
 
 function actionFor(classified: ClassifiedUnmatched): PlannedAction {
-  if (['meal', 'transfer', 'hotel'].includes(classified.category)) return 'close_nonblocking_entity';
+  if (classified.suggestedAction === 'structure_non_master') return 'close_nonblocking_entity';
+  if (['meal', 'transfer', 'hotel', 'shopping'].includes(classified.category)) return 'close_nonblocking_entity';
   if (['notice', 'free_time', 'price_noise'].includes(classified.category)) return 'ignore_noise';
   if (classified.category === 'attraction') return 'keep_attraction_gap';
   return 'keep_manual_review';

@@ -66,8 +66,8 @@ describe('classifyUnmatchedActivity', () => {
     });
     expect(classifyUnmatchedActivity('호화호특 쇼핑센터 방문')).toMatchObject({
       category: 'shopping',
-      terminalStatus: 'pending',
-      suggestedAction: 'needs_review',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
     });
     expect(classifyUnmatchedActivity('항공 및 현지 사정에 따라 일정이 변경될 수 있습니다')).toMatchObject({
       category: 'notice',
@@ -97,9 +97,20 @@ describe('classifyUnmatchedActivity', () => {
       category: 'optional_tour',
       terminalStatus: 'pending',
     });
+    expect(classifyUnmatchedActivity('【추천옵션】')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+      suggestedAction: 'auto_ignore_noise',
+    });
+    expect(classifyUnmatchedActivity('#다색골프')).toMatchObject({
+      category: 'optional_tour',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
+    });
     expect(classifyUnmatchedActivity('명품샵 방문')).toMatchObject({
       category: 'shopping',
-      terminalStatus: 'pending',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
     });
   });
 

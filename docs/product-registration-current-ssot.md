@@ -115,7 +115,8 @@ Upload verification must fail before customer opening when the saved data would 
 
 The upload verify layer owns these customer-render gates:
 
-- `C15 entity review gate`: unresolved customer-visible unmatched entities block clean verification. This includes pending attraction, shopping, optional_tour, notice, and unknown rows. Meal, transfer, free_time, price_noise, and resolved hotel rows may pass only when they are non-blocking and not marked `needs_review`.
+- `C15 entity review gate`: unresolved customer-visible unmatched entities block clean verification. This includes pending attraction, optional_tour, notice, unknown rows, and shopping rows that are not confidently structured. Meal, transfer, confidently structured shopping, free_time, price_noise, and resolved hotel rows may pass only when they are non-blocking and not marked `needs_review`.
+- Shopping review blockers must use the live pending unmatched queue, not stale V3 draft summary counts, because resolved shopping rows are structured schedule facts and must not require attraction master creation.
 - `C16 customer render duration contract`: saved itinerary day count, duplicate day numbers, `itinerary_data.meta.days`, `itinerary_data.meta.nights`, `duration`, `nights`, and `trip_style` must agree. A product such as `2박 3일` must not carry `itinerary_data.meta.nights=1`.
 - `C17 customer render entity contract`: schedule rows that are meals, shopping, options, notices, hotels, transfers, free time, or price noise must not carry attraction cards/photos. Meal-only tokens such as `꿔바로우`, shopping rows such as `면세점 1곳`, and hotel/service rows must not render as normal attraction timeline cards.
 
@@ -578,10 +579,10 @@ The verification state is stored on `entity_master_candidates` as `auto_verifica
 Recommended actions:
 
 - `reject_noise`: section headings, date/price fragments, movement tokens, URLs, and other non-entity scraps.
-- `structure_non_master`: room types, golf fee fragments, table cells, and other useful structured data that should not become a master record.
+- `structure_non_master`: room types, shopping visits, golf product tags, golf fee fragments, table cells, and other useful structured data that should not become a master record.
 - `create_internal_master`: probable attraction/hotel identity that can reduce future matching noise, but must remain hidden from customer payloads.
 - `create_publishable_master`: only when the candidate has reliable independent external identity evidence and passes the publish gate.
-- `needs_review`: shopping, optional tour, notice, unclear hotel, and any customer-visible phrase with insufficient evidence.
+- `needs_review`: optional tour, notice, unclear hotel, ambiguous shopping, and any customer-visible phrase with insufficient evidence.
 
 Run `npx tsx scripts/analyze-unmatched-master-candidates.ts --json` to inspect the queue. Add `--apply` to persist candidate groups. Add `--promote-internal` only after confirming the migration is applied; it may create internal non-customer-publishable attraction records, never public customer records.
 
