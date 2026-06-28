@@ -16,6 +16,11 @@ type SitemapQueryResponse<T> = {
   error: { message?: string } | null;
 };
 
+type ActiveDestinationSitemapRow = {
+  destination: string | null;
+  package_count?: number | string | null;
+};
+
 export const revalidate = 3600;
 
 function safeLastModified(iso: string | null | undefined): Date {
@@ -31,6 +36,15 @@ function isSafeSitemapBlogSlug(slug: string | null | undefined): slug is string 
   if (s.startsWith('/') || s.includes('/') || s.includes('\\')) return false;
   if (s.includes('//') || s.includes('?') || s.includes('#')) return false;
   return encodeURIComponent(s).length <= 1024;
+}
+
+function getSafeSitemapDestination(row: ActiveDestinationSitemapRow): string | null {
+  const destination = row.destination?.trim();
+  if (!destination || destination.length > 160) return null;
+  if (destination.includes('\\') || destination.includes('?') || destination.includes('#')) return null;
+  const packageCount = row.package_count == null ? null : Number(row.package_count);
+  if (packageCount != null && (!Number.isFinite(packageCount) || packageCount <= 0)) return null;
+  return destination;
 }
 
 function isAbortLikeError(err: unknown): boolean {
@@ -80,10 +94,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const [activeDests, queriedPosts] = await Promise.all([
-    runSitemapQuery<{ destination: string }>('destinations', (signal) =>
+    runSitemapQuery<ActiveDestinationSitemapRow>('destinations', (signal) =>
       supabaseAdmin
         .from('active_destinations')
-        .select('destination')
+        .select('destination, package_count')
         .limit(DESTINATION_LIMIT)
         .abortSignal(signal),
     ),
@@ -108,9 +122,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const posts = queriedPosts.length > 0 ? queriedPosts : getFallbackBlogPosts();
 
   for (const d of activeDests) {
-    if (d.destination) {
+    const destination = getSafeSitemapDestination(d);
+    if (destination) {
       routes.push({
-        url: `${BASE_URL}/destinations/${encodeDestinationPathSegment(d.destination)}`,
+        url: `${BASE_URL}/destinations/${encodeDestinationPathSegment(destination)}`,
         lastModified: new Date(),
         changeFrequency: 'daily',
         priority: 0.9,

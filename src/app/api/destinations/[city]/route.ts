@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { destinationSlugMatches } from '@/lib/regions';
 
+function isOptionalDestinationMetadataError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === 'PGRST205' || /destination_metadata/i.test(error.message ?? '');
+}
+
 async function resolveDestinationRouteParam(city: string): Promise<string> {
   const decoded = decodeURIComponent(city).trim();
   if (!decoded || !isSupabaseConfigured) return decoded;
@@ -35,6 +40,11 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ city: st
     .eq('destination', destination)
     .maybeSingle();
 
+  if (isOptionalDestinationMetadataError(error)) {
+    return NextResponse.json({ data: null }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' },
+    });
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data }, {
     headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' },

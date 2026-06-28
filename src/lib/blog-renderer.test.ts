@@ -48,6 +48,22 @@ describe('blog-renderer', () => {
     );
   });
 
+  it('splits question-answer prose that was accidentally rendered as a heading', async () => {
+    const source = [
+      '### 예약 전 무엇을 먼저 확인해야 할까요? 답부터 말하면, 2026년 기준 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다. 포함/불포함과 이동 시간까지 같이 보면 1~2시간의 불필요한 이동을 줄이는 데 도움이 됩니다.',
+      '',
+      '본문입니다.',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).toContain('<h3>예약 전 무엇을 먼저 확인해야 할까요?</h3>');
+    expect(html).toContain('<p>답부터 말하면, <strong class="num">2026년</strong> 기준 비용·일정·준비 조건');
+    expect(html).not.toContain('같이 보면 1~2시간의 불필요한 이동을 줄이는 데 도움이 됩니다.</h3>');
+    expect(report.passed).toBe(true);
+  });
+
   it('keeps Supabase blog asset images without remote checks by default', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
     const html = '<p><img src="https://example.supabase.co/storage/v1/object/public/blog-assets/post/image.jpg" alt="hero"></p>';

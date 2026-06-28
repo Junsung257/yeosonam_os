@@ -129,6 +129,28 @@ async function destinationExistsForMetadata(city: string): Promise<boolean | nul
   }
 }
 
+async function destinationHasPublicInventory(city: string): Promise<boolean | null> {
+  const active = await destinationExistsForMetadata(city);
+  if (active === true) return true;
+
+  if (!isSupabaseConfigured) return active;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return active;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('travel_packages')
+      .select('id')
+      .eq('destination', city)
+      .in('status', ['approved', 'active'])
+      .limit(1);
+    if (error) return active;
+    if (Array.isArray(data) && data.length > 0) return true;
+    return active === false ? false : null;
+  } catch {
+    return active;
+  }
+}
+
 async function resolveDestinationRouteParam(value: string): Promise<string | null> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded) return null;
@@ -143,13 +165,30 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
       .from('active_destinations')
       .select('destination')
       .limit(2000);
+    if (!error) {
+      const match = ((data ?? []) as Array<{ destination: string | null }>)
+        .map(row => row.destination?.trim() ?? '')
+        .find(destination => destination && destinationSlugMatches(destination, decoded));
+
+      if (match) return match;
+    }
+  } catch {
+    // Continue to package-backed resolution below.
+  }
+
+  try {
+    const { data: packageRows, error } = await supabaseAdmin
+      .from('travel_packages')
+      .select('destination')
+      .in('status', ['approved', 'active'])
+      .limit(2000);
     if (error) return decoded;
 
-    const match = ((data ?? []) as Array<{ destination: string | null }>)
+    const packageMatch = ((packageRows ?? []) as Array<{ destination: string | null }>)
       .map(row => row.destination?.trim() ?? '')
       .find(destination => destination && destinationSlugMatches(destination, decoded));
 
-    return match || decoded;
+    return packageMatch || decoded;
   } catch {
     return decoded;
   }
@@ -404,9 +443,6 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     departureQuery,
   ]);
 
-  if (!stats || stats.length === 0) return null;
-  const stat = stats[0];
-
   const alivePkgs = ((packages as unknown[] | null) ?? [])
     .map(normalizePackageRow)
     .filter((p): p is PillarData['packages'][number] => p !== null)
@@ -415,6 +451,22 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       if (pd.length === 0) return true;
       return pd.some((d) => d.date && d.date >= today);
     });
+
+  const stat = Array.isArray(stats) && stats.length > 0 ? stats[0] : null;
+  if (!stat && alivePkgs.length === 0) return null;
+
+  const packageCount = Math.max(
+    0,
+    Math.trunc(getFiniteNumber((stat as Record<string, unknown> | null)?.package_count) ?? alivePkgs.length),
+  );
+  const reviewCount = Math.max(
+    0,
+    Math.trunc(getFiniteNumber((stat as Record<string, unknown> | null)?.total_reviews) ?? 0),
+  );
+  const prices = alivePkgs
+    .map((pkg) => pkg.price)
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  const fallbackMinPrice = prices.length > 0 ? Math.min(...prices) : null;
 
   let siblingCities: string[] = [];
   if (region && allDests) {
@@ -442,10 +494,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 
   return {
     destination: city,
-    packageCount: stat.package_count || 0,
-    avgRating: stat.avg_rating ? Number(stat.avg_rating) : null,
-    reviewCount: stat.total_reviews || 0,
-    minPrice: stat.min_price || null,
+    packageCount,
+    avgRating: getFiniteNumber((stat as Record<string, unknown> | null)?.avg_rating),
+    reviewCount,
+    minPrice: getFiniteNumber((stat as Record<string, unknown> | null)?.min_price) ?? fallbackMinPrice,
     attractions: ((attractions as unknown[] | null) ?? [])
       .map(normalizeAttractionRow)
       .filter((row): row is PillarData['attractions'][number] => row !== null),
@@ -488,7 +540,7 @@ export async function generateMetadata({ params }: { params: Promise<{ city?: st
 
   const title = `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`;
   const description = `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`;
-  const destinationExists = await destinationExistsForMetadata(decoded);
+  const destinationExists = await destinationHasPublicInventory(decoded);
   if (destinationExists === false) {
     notFound();
   }
