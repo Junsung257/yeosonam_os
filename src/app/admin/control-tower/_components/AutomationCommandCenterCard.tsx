@@ -101,6 +101,7 @@ export function AutomationCommandCenterCard() {
   }, [load]);
 
   const primaryBlocker = useMemo(() => snapshot?.blockers[0] ?? null, [snapshot]);
+  const adOsRepairFocus = useMemo(() => snapshot?.ad_os.top_repair_items[0] ?? null, [snapshot]);
 
   if (state === 'loading' || state === 'idle') return <Skeleton />;
 
@@ -175,7 +176,9 @@ export function AutomationCommandCenterCard() {
         <MetricBlock
           label="Ad OS"
           value={`${snapshot.ad_os.current_lowest_score}/95`}
-          detail={`가능 증명 ${snapshot.ad_os.ready_fixture_lowest_score}/95; 현재 gap ${snapshot.ad_os.gap_count}, P0 ${snapshot.ad_os.p0_gap_count}`}
+          detail={adOsRepairFocus
+            ? `가능 증명 ${snapshot.ad_os.ready_fixture_lowest_score}/95; P0 ${snapshot.ad_os.p0_gap_count}; ${adOsRepairFocus.priority} ${adOsRepairFocus.title}`
+            : `가능 증명 ${snapshot.ad_os.ready_fixture_lowest_score}/95; 현재 gap ${snapshot.ad_os.gap_count}, P0 ${snapshot.ad_os.p0_gap_count}`}
           status={snapshot.ad_os.status}
         />
         <MetricBlock
