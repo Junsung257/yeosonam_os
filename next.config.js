@@ -414,8 +414,11 @@ const sentryConfig = {
 };
 
 const hasSentry = !!(process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN);
+// Vercel production builds are memory-constrained; keep the Sentry webpack wrapper opt-in there.
+const enableSentryNextConfig =
+  hasSentry && (process.env.VERCEL !== '1' || process.env.SENTRY_ENABLE_NEXT_CONFIG_ON_VERCEL === '1');
 
-const composedConfig = hasSentry
+const composedConfig = enableSentryNextConfig
   ? withSentryConfig(withSerwist(nextConfig), sentryConfig)
   : withSerwist(nextConfig);
 
