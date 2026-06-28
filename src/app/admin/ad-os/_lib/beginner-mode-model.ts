@@ -38,6 +38,12 @@ function isBeginnerSafeAction(action: Summary['launch_action_queue'][number]) {
   return BEGINNER_SAFE_ACTIONS.has(action.ui_action);
 }
 
+function platformLabel(platform: string): string {
+  if (platform === 'naver') return '네이버';
+  if (platform === 'google') return '구글';
+  return platform;
+}
+
 export function buildBeginnerAdOpsModel(
   summary: Summary,
   aiModel: AdOsAgentOperatingModel | null,
@@ -60,22 +66,48 @@ export function buildBeginnerAdOpsModel(
     num(summary.enterprise_layer?.channel_adapters?.external_api_write_count) +
     num(summary.enterprise_layer?.write_packets?.external_api_write_count);
   const policyBlocked = ['restricted', 'blocked'].includes(String(summary.tenant_policy?.risk_status || ''));
+  const completionAudit = summary.enterprise_layer?.completion_audit;
+  const completionScore = completionAudit ? num(completionAudit.readiness_score) : null;
+  const limitedPilot = summary.enterprise_layer?.limited_write_pilot;
+  const activeBudgetPlatforms = activeSearchBudgets.map((budget) => budget.platform);
+  const unreadyActivePublishers = activeBudgetPlatforms.filter((platform) => !summary.external_launch_status?.[platform]?.ready);
 
-  const blockers: string[] = [];
-  if (!publisherConnected) blockers.push('네이버/구글 광고 계정 API 연결이 필요합니다.');
-  if (activeSearchBudgets.length === 0) blockers.push('월예산, 일한도, 최대 CPC가 설정된 검색광고 예산이 필요합니다.');
-  if (keywordCandidates === 0) blockers.push('광고에 쓸 키워드 후보가 아직 없습니다.');
-  if (approvedOrTestingKeywords === 0) blockers.push('승인 또는 테스트 상태의 키워드가 필요합니다.');
-  if (draftCampaigns === 0) blockers.push('외부 반영 전 내부 캠페인/소재 초안이 필요합니다.');
-  if (policyBlocked) blockers.push('현재 테넌트 안전 정책이 제한 또는 차단 상태입니다.');
+  const hardBlockers: string[] = [];
+  if (!publisherConnected) hardBlockers.push('네이버/구글 광고 계정 API 연결이 필요합니다.');
+  if (activeSearchBudgets.length === 0) hardBlockers.push('월예산, 일한도, 최대 CPC가 설정된 검색광고 예산이 필요합니다.');
+  if (keywordCandidates === 0) hardBlockers.push('광고에 쓸 키워드 후보가 아직 없습니다.');
+  if (approvedOrTestingKeywords === 0) hardBlockers.push('승인 또는 테스트 상태의 키워드가 필요합니다.');
+  if (draftCampaigns === 0) hardBlockers.push('외부 반영 전 내부 캠페인/소재 초안이 필요합니다.');
+  if (policyBlocked) hardBlockers.push('현재 테넌트 안전 정책이 제한 또는 차단 상태입니다.');
+
+  const readinessBlockers: string[] = [];
+  if (unreadyActivePublishers.length > 0) {
+    readinessBlockers.push(`${unreadyActivePublishers.map(platformLabel).join(', ')} 집행 준비가 아직 끝나지 않았습니다.`);
+  }
+  if (!completionAudit) {
+    readinessBlockers.push('Ad OS 완성도 감사 근거가 아직 없습니다.');
+  } else if (completionAudit.status !== 'ready' || num(completionAudit.readiness_score) < 95) {
+    readinessBlockers.push(`Ad OS 완성도 감사가 ${num(completionAudit.readiness_score).toLocaleString('ko-KR')}%로 95점 미만입니다.`);
+  }
+  if (limitedPilot && num(limitedPilot.active_policies) > 0 && num(limitedPilot.dry_run_succeeded) === 0) {
+    readinessBlockers.push('제한 실행 정책은 켜져 있지만 성공한 드라이런 근거가 없습니다.');
+  }
+  const blockers = [...hardBlockers, ...readinessBlockers];
 
   const visibleActions = (summary.launch_action_queue || [])
     .filter(isBeginnerSafeAction)
     .slice(0, 3);
   const primaryAction = visibleActions[0] || null;
   const hiddenAdvancedCount = Math.max(0, (summary.launch_action_queue || []).length - visibleActions.length) + 10;
-  const ready = readyPublishers.length > 0 && blockers.length === 0 && externalWriteCount === 0;
-  const status: BeginnerAdOpsStatus = ready ? 'ready' : blockers.length >= 3 || policyBlocked ? 'blocked' : 'attention';
+  const ready = activeBudgetPlatforms.length > 0 &&
+    readyPublishers.length >= activeBudgetPlatforms.length &&
+    blockers.length === 0 &&
+    externalWriteCount === 0;
+  const status: BeginnerAdOpsStatus = ready
+    ? 'ready'
+    : hardBlockers.length >= 3 || policyBlocked
+      ? 'blocked'
+      : 'attention';
 
   const title = status === 'ready'
     ? '광고 시작 준비 완료'
@@ -105,6 +137,7 @@ export function buildBeginnerAdOpsModel(
       { label: '광고 계정', value: publisherConnected ? '연결됨' : '미연결', tone: publisherConnected ? 'ready' : 'blocked' },
       { label: '활성 예산', value: `${activeSearchBudgets.length}개`, tone: activeSearchBudgets.length > 0 ? 'ready' : 'blocked' },
       { label: '승인 키워드', value: `${approvedOrTestingKeywords.toLocaleString('ko-KR')}개`, tone: approvedOrTestingKeywords > 0 ? 'ready' : 'attention' },
+      { label: '95 게이트', value: completionScore === null ? '미확인' : `${completionScore.toLocaleString('ko-KR')}%`, tone: completionScore !== null && completionScore >= 95 ? 'ready' : 'attention' },
       { label: 'AI 팀 점수', value: `${aiModel?.teamScore ?? 0}%`, tone: (aiModel?.teamScore ?? 0) >= 80 ? 'ready' : 'attention' },
       { label: '외부 쓰기', value: `${externalWriteCount.toLocaleString('ko-KR')}건`, tone: externalWriteCount === 0 ? 'ready' : 'blocked' },
     ],
