@@ -5,12 +5,21 @@ import { createClient } from '@supabase/supabase-js';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 
-for (const file of ['.env.local', '.env']) {
+for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) {
   const fullPath = path.join(process.cwd(), file);
   if (fs.existsSync(fullPath)) dotenv.config({ path: fullPath, quiet: true });
 }
 
 const apply = process.argv.includes('--apply');
+const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(code => code.trim())
+  .filter(Boolean);
+const statusFilter = (process.argv.find(arg => arg.startsWith('--status='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(status => status.trim())
+  .filter(Boolean);
+
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -21,6 +30,8 @@ const supabase = createClient(url, key, { auth: { persistSession: false } });
 type PackageRow = {
   id: string;
   title: string | null;
+  internal_code: string | null;
+  status: string | null;
   destination: string | null;
   itinerary_data: ItineraryDataLike | null;
 };
@@ -55,18 +66,38 @@ async function fetchAllActiveAttractions(): Promise<AttractionData[]> {
   return out;
 }
 
+async function fetchPackages(): Promise<PackageRow[]> {
+  let query = supabase
+    .from('travel_packages')
+    .select('id,title,internal_code,status,destination,itinerary_data')
+    .order('updated_at', { ascending: false });
+
+  if (codeFilter.length > 0) {
+    query = query.in('internal_code', codeFilter);
+  } else if (statusFilter.length > 0) {
+    query = query.in('status', statusFilter);
+  } else {
+    query = query
+      .eq('status', 'active')
+      .or('title.ilike.%백두%,title.ilike.%연길%,destination.ilike.%백두%,destination.ilike.%연길%');
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as PackageRow[];
+}
+
 async function main() {
   const attractions = await fetchAllActiveAttractions();
-  const { data, error } = await supabase
-    .from('travel_packages')
-    .select('id,title,destination,itinerary_data')
-    .eq('status', 'active')
-    .or('title.ilike.%백두산%,title.ilike.%연길%,destination.ilike.%백두산%,destination.ilike.%연길%');
-
-  if (error) throw error;
-
-  const rows = (data ?? []) as PackageRow[];
-  const changed: Array<{ id: string; title: string | null; added_ids: string[]; matched_names: string[] }> = [];
+  const rows = await fetchPackages();
+  const changed: Array<{
+    id: string;
+    code: string | null;
+    title: string | null;
+    status: string | null;
+    added_ids: string[];
+    matched_names: string[];
+  }> = [];
 
   for (const row of rows) {
     const before = attractionIdSet(row.itinerary_data);
@@ -76,7 +107,9 @@ async function main() {
     if (added.length === 0) continue;
     changed.push({
       id: row.id,
+      code: row.internal_code,
       title: row.title,
+      status: row.status,
       added_ids: added,
       matched_names: enriched.matchedCanonicalNames,
     });
@@ -92,6 +125,8 @@ async function main() {
   console.log(JSON.stringify({
     apply,
     active_attractions: attractions.length,
+    code_filter: codeFilter,
+    status_filter: statusFilter,
     scanned: rows.length,
     changed: changed.length,
     rows: changed,

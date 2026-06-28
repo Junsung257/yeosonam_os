@@ -37,6 +37,8 @@ The same incident also exposed a route-scope verification gap. `/lp/{id}` and `/
 
 ## Non-Negotiable Rule
 
+A product is not customer-ready until the actual mobile page is checked.
+
 A product is not customer-ready until the actual mobile pages and CTA path are checked.
 
 The approval gate must enforce this rule in code. A product is not customer-openable just because upload verification, source comparison, or render-contract checks are clean. `audit_report.mobile_browser_proof.status="pass"` with both `/packages/{id}` and `/lp/{id}` surfaces is the minimum proof required before approval. The proof must click the customer CTA enough to verify the reservation/lead sheet opens and carries customer-safe context. If the proof is absent, the correct state is review/blocked with `MOBILE_BROWSER_PROOF_REQUIRED`, not "검증 통과".

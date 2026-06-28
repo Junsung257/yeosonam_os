@@ -117,6 +117,17 @@ tmp-*.log
 .tmp/
 tsconfig.*.tmp.*
 
+# Product mobile/attraction repair audit outputs generated at repo root
+/attraction-reference-repair-*.json
+/attraction-unlinked-codes.json
+/db-health-report.json
+/price-source-evidence-codes.json
+/product-mobile-readiness-*.json
+/product-mobile-readiness-*.log
+/product-mobile-readiness-*.err.log
+/product-mobile-repair-*.json
+/product-mobile-repair-*.log
+
 # Lighthouse 로컬 분석 산출물
 .tmp-lh-*.json
 
