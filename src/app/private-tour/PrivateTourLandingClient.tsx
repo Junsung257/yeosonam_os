@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { trackLead } from '@/components/MetaPixel';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 
 declare global {
   interface Window {
@@ -54,7 +55,7 @@ function ShareSection({ shareUrl }: { shareUrl: string }) {
     } else {
       // fallback: 모바일 카카오톡 앱 스킴
       const kakaoUrl = `kakaotalk://sendurl?url=${encodeURIComponent(shareUrl)}`;
-      window.open(kakaoUrl, '_blank');
+      safeOpenNewWindow(kakaoUrl);
     }
   };
 

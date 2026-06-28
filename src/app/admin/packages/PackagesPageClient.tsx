@@ -15,6 +15,7 @@ import {
 } from '@/lib/package-status';
 import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import { trackEngagement } from '@/lib/tracker';
 
 // 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
@@ -779,14 +780,14 @@ const PackageRow = React.memo(function PackageRow({
             >A4</button>
             <button
               type="button"
-              onClick={() => window.open(`/packages/${pkg.id}`, '_blank')}
+              onClick={() => safeOpenNewWindow(`/packages/${pkg.id}`)}
               className="px-1.5 py-1 border border-orange-300 text-orange-600 rounded text-[10px] hover:bg-orange-50 whitespace-nowrap"
               title="모바일 랜딩페이지 (고객용)"
               aria-label={`${pkg.title} 고객용 모바일 페이지 열기`}
             >모바일</button>
             <button
               type="button"
-              onClick={() => window.open(`/admin/packages/${pkg.id}/reviews`, '_blank')}
+              onClick={() => safeOpenNewWindow(`/admin/packages/${pkg.id}/reviews`)}
               className="px-1.5 py-1 border border-amber-300 text-amber-600 rounded text-[10px] hover:bg-amber-50 whitespace-nowrap"
               title="고객 후기 관리 (카카오 피드백 등록)"
               aria-label={`${pkg.title} 고객 후기 관리 열기`}
@@ -950,7 +951,7 @@ const PackageRow = React.memo(function PackageRow({
                 const data = await res.json();
                 if (!res.ok) { alert(data.error || '복제 실패'); return; }
                 if (confirm(`복제 완료: "${data.title}". 검수 페이지로 이동할까요?`)) {
-                  window.open(data.edit_url, '_blank');
+                  safeOpenNewWindow(data.edit_url);
                 }
               } catch (err) { alert(err instanceof Error ? err.message : '복제 실패'); }
             }}
