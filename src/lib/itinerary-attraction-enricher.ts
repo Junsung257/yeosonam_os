@@ -140,9 +140,18 @@ function isSupplierHeaderOrCommerceLine(text: string): boolean {
     || /(?:\uBAA9\uC694\uC77C|\uC77C\uC694\uC77C)\d*\uBC15\d*\uC77C/.test(compact);
 }
 
+function isHotelStayLine(text: string): boolean {
+  const compact = compactScheduleText(text);
+  if (!/(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uD22C\uC219|\uB3D9\uAE09|\uC900\s*5\uC131|\uB178\uBCF4\uD154|\uD558\uC580\uD2B8|hotel|resort|novotel|hyatt)/i.test(compact)) {
+    return false;
+  }
+  return !hasAttractionVisitHint(text);
+}
+
 function shouldStripAttractionReferences(item: ItineraryScheduleItem): boolean {
   const text = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
   if (isHotelOperationLine(text)) return true;
+  if (isHotelStayLine(text)) return true;
   if (isSupplierHeaderOrCommerceLine(text)) return true;
   if (item.entity_kind === 'optional_tour' || item.entity_kind === 'perk') return true;
   if (item.entity_kind === 'transfer' && !hasAttractionVisitHint(text)) return true;
@@ -203,6 +212,21 @@ function dedupeAttractionMatches(values: AttractionData[], text: string): Attrac
     }
     return true;
   });
+}
+
+function customerSafeAttractionNote(item: ItineraryScheduleItem, attraction?: AttractionData): string | null {
+  const existing = typeof item.attraction_note === 'string' ? item.attraction_note.replace(/\s+/g, ' ').trim() : '';
+  if (existing) return existing;
+
+  const shortDesc = String(attraction?.short_desc ?? '').replace(/\s+/g, ' ').trim();
+  if (shortDesc) return shortDesc;
+
+  const note = typeof item.note === 'string' ? item.note.replace(/\s+/g, ' ').trim() : '';
+  if (note && !isSupplierHeaderOrCommerceLine(note)) return note.slice(0, 140);
+
+  const activity = String(item.activity ?? '').replace(/\s+/g, ' ').trim();
+  if (!activity || isSupplierHeaderOrCommerceLine(activity) || isHotelStayLine(activity)) return null;
+  return activity.slice(0, 140);
 }
 
 function findRegisteredAttractionTermsInText(
@@ -333,7 +357,7 @@ export function enrichItineraryWithAttractionReferences(
             ...item,
             attraction_ids: directValues.map(v => v.id).filter(Boolean),
             attraction_names: directValues.map(v => v.name),
-            attraction_note: directValues[0]?.short_desc ?? item.note ?? null,
+            attraction_note: customerSafeAttractionNote(item, directValues[0]),
           };
         }
         const rawValues = existingIds
@@ -349,7 +373,7 @@ export function enrichItineraryWithAttractionReferences(
             ...item,
             attraction_ids: values.map(v => v.id).filter(Boolean),
             attraction_names: values.map(v => v.name),
-            attraction_note: values[0]?.short_desc ?? item.note ?? null,
+            attraction_note: customerSafeAttractionNote(item, values[0]),
           };
         }
         unmatched.push({ activity: item.activity, day_number: day.day ?? 0 });
@@ -372,7 +396,7 @@ export function enrichItineraryWithAttractionReferences(
           ...item,
           attraction_ids: values.map(v => v.id).filter(Boolean),
           attraction_names: values.map(v => v.name),
-          attraction_note: values[0]?.short_desc ?? item.note ?? null,
+          attraction_note: customerSafeAttractionNote(item, values[0]),
         };
       }
 
@@ -392,7 +416,7 @@ export function enrichItineraryWithAttractionReferences(
           ...item,
           attraction_ids: values.map(v => v.id).filter(Boolean),
           attraction_names: values.map(v => v.name),
-          attraction_note: values[0]?.short_desc ?? item.note ?? null,
+          attraction_note: customerSafeAttractionNote(item, values[0]),
         };
       }
 
@@ -422,7 +446,7 @@ export function enrichItineraryWithAttractionReferences(
         ...item,
         attraction_ids: values.map(v => v.id).filter(Boolean),
         attraction_names: values.map(v => v.name),
-        attraction_note: values[0]?.short_desc ?? item.note ?? null,
+        attraction_note: customerSafeAttractionNote(item, values[0]),
       };
     });
 

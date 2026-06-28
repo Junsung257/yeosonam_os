@@ -127,6 +127,8 @@ tsconfig.*.tmp.*
 /product-mobile-readiness-*.err.log
 /product-mobile-repair-*.json
 /product-mobile-repair-*.log
+/attraction-description-*.json
+/itinerary-display-repair-*.json
 
 # Lighthouse 로컬 분석 산출물
 .tmp-lh-*.json
