@@ -95,7 +95,7 @@ function numericField(value: unknown): number | null {
 function normalizeTripStyle(value: unknown): string | null {
   const match = String(value ?? '').trim().match(/(\d+)\s*박\s*(\d+)\s*일/);
   if (!match) return null;
-  return `${Number(match[1])}박${Number(match[2])}일`;
+  return `${Number(match[1])}박 ${Number(match[2])}일`;
 }
 
 function formatLandingDuration(pkg: Record<string, unknown>): string {
@@ -105,12 +105,12 @@ function formatLandingDuration(pkg: Record<string, unknown>): string {
   const itineraryData = pkg.itinerary_data as { meta?: { nights?: unknown; days?: unknown } } | null | undefined;
   const metaNights = numericField(itineraryData?.meta?.nights);
   const metaDays = numericField(itineraryData?.meta?.days);
-  if (metaNights != null && metaDays != null && metaDays > 0) return `${metaNights}박${metaDays}일`;
+  if (metaNights != null && metaDays != null && metaDays > 0) return `${metaNights}박 ${metaDays}일`;
 
   const nights = numericField(pkg.nights);
   const days = numericField(pkg.duration);
-  if (nights != null && days != null && days > 0) return `${nights}박${days}일`;
-  if (days != null && days > 0) return `${Math.max(0, days - 1)}박${days}일`;
+  if (nights != null && days != null && days > 0) return `${nights}박 ${days}일`;
+  if (days != null && days > 0) return `${Math.max(0, days - 1)}박 ${days}일`;
 
   return '기간 미정';
 }
