@@ -89,7 +89,7 @@ describe('buildAutomationCommandCenterSnapshot', () => {
           id: 'action-1',
           agent_type: 'sales',
           action_type: 'booking_change',
-          summary: '예약 변경 승인 필요',
+          summary: 'Booking change approval required',
           priority: 'critical',
           status: 'pending',
           created_at: '2026-06-29T00:00:00.000Z',
@@ -105,5 +105,36 @@ describe('buildAutomationCommandCenterSnapshot', () => {
       safe: true,
     });
     expect(snapshot.safety.database_mutation).toBe(false);
+  });
+
+  it('keeps operator-facing recommendations readable and action-only', () => {
+    const currentGapScorecard = buildMarketingDeepScorecard({
+      summary: {},
+      sourceLedgerCount: 0,
+    });
+    const snapshot = buildAutomationCommandCenterSnapshot({
+      generatedAt: '2026-06-29T00:00:00.000Z',
+      jarvisSummary: passingJarvisSummary(),
+      adOsCurrentScorecard: currentGapScorecard,
+      adOsReadyFixtureScorecard: readyAdOsScorecard(),
+      approvalQueue: {
+        pending_count: 0,
+        high_risk_count: 0,
+        top_packets: [],
+      },
+    });
+
+    expect(snapshot.one_click_recommendation).toMatchObject({
+      label: 'Review Ad OS repair plan',
+      action_type: 'navigate',
+      safe: true,
+    });
+    expect(snapshot.jarvis.next_action).toBe('Jarvis is ready to create operator approval packets.');
+    expect(snapshot.safety).toMatchObject({
+      read_only: true,
+      database_mutation: false,
+      external_api_write: false,
+      full_auto_allowed: false,
+    });
   });
 });

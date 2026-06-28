@@ -6,7 +6,7 @@ describe('AutomationCommandCenterCard', () => {
   it('renders a visible loading state before the command center snapshot arrives', () => {
     const html = renderToStaticMarkup(<AutomationCommandCenterCard />);
 
-    expect(html).toContain('AI 운영 커맨드센터');
+    expect(html).toContain('AI command center');
     expect(html).toContain('Loading automation command center snapshot.');
   });
 });

@@ -100,7 +100,9 @@ function statusFromAdOs(scorecard: MarketingDeepScorecard | null): AutomationCom
   return 'watch';
 }
 
-function statusFromApprovalQueue(input: BuildAutomationCommandCenterInput['approvalQueue']): AutomationCommandCenterStatus {
+function statusFromApprovalQueue(
+  input: BuildAutomationCommandCenterInput['approvalQueue'],
+): AutomationCommandCenterStatus {
   if (input.unavailable_reason) return 'watch';
   if (input.high_risk_count > 0) return 'watch';
   if (input.pending_count > 0) return 'watch';
@@ -108,7 +110,7 @@ function statusFromApprovalQueue(input: BuildAutomationCommandCenterInput['appro
 }
 
 function firstAdOsRepairActions(scorecard: MarketingDeepScorecard | null): string[] {
-  if (!scorecard) return ['Ad OS evidence snapshot을 다시 불러오세요.'];
+  if (!scorecard) return ['Reload the Ad OS evidence snapshot.'];
   return scorecard.repair_queue
     .slice(0, 3)
     .map((item) => item.action || item.title)
@@ -188,7 +190,7 @@ function buildOneClickRecommendation(input: {
 }): AutomationCommandCenterSnapshot['one_click_recommendation'] {
   if (input.jarvisStatus === 'blocked' || input.jarvisStatus === 'watch') {
     return {
-      label: '자비스 readiness 확인',
+      label: 'Review Jarvis readiness',
       action_type: 'navigate',
       target_href: '/admin/jarvis',
       safe: true,
@@ -197,7 +199,7 @@ function buildOneClickRecommendation(input: {
   }
   if (input.adOsStatus === 'blocked' || input.adOsStatus === 'watch') {
     return {
-      label: 'Ad OS 수리 계획 보기',
+      label: 'Review Ad OS repair plan',
       action_type: 'navigate',
       target_href: '/admin/ad-os',
       safe: true,
@@ -206,7 +208,7 @@ function buildOneClickRecommendation(input: {
   }
   if (input.approvalPendingCount > 0 || input.approvalStatus === 'watch') {
     return {
-      label: '승인 대기 패킷 검토',
+      label: 'Review approval queue',
       action_type: 'navigate',
       target_href: '/admin/jarvis?tab=actions',
       safe: true,
@@ -214,7 +216,7 @@ function buildOneClickRecommendation(input: {
     };
   }
   return {
-    label: '운영 상태 새로고침',
+    label: 'Refresh operating status',
     action_type: 'refresh',
     target_href: '/admin/control-tower',
     safe: true,
@@ -258,8 +260,8 @@ export function buildAutomationCommandCenterSnapshot(
       blocking_sections: input.jarvisSummary?.blockingSections ?? ['snapshot_unavailable'],
       warning_sections: input.jarvisSummary?.warningSections ?? [],
       next_action: jarvisStatus === 'ready'
-        ? '자비스는 운영 승인 패킷을 생성할 수 있습니다.'
-        : '자비스 readiness와 RAG evidence를 먼저 확인하세요.',
+        ? 'Jarvis is ready to create operator approval packets.'
+        : 'Review Jarvis readiness and RAG evidence first.',
     },
     ad_os: {
       status: adOsStatus,
@@ -270,7 +272,7 @@ export function buildAutomationCommandCenterSnapshot(
       top_repair_actions: adOsTopRepairActions,
       next_action: adOsStatus === 'ready'
         ? 'Ad OS current evidence meets the 95+ gate.'
-        : adOsTopRepairActions[0] || 'Ad OS repair queue를 먼저 확인하세요.',
+        : adOsTopRepairActions[0] || 'Review the Ad OS repair queue first.',
     },
     approval_queue: {
       status: approvalStatus,
@@ -278,8 +280,8 @@ export function buildAutomationCommandCenterSnapshot(
       high_risk_count: input.approvalQueue.high_risk_count,
       top_packets: input.approvalQueue.top_packets,
       next_action: input.approvalQueue.pending_count > 0
-        ? '승인 대기 패킷을 검토하세요.'
-        : '현재 승인 대기 패킷은 없습니다.',
+        ? 'Review pending approval packets.'
+        : 'There are no pending approval packets.',
     },
     blockers: buildBlockers(input),
     one_click_recommendation: buildOneClickRecommendation({

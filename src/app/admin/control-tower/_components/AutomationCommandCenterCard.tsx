@@ -11,9 +11,9 @@ import type {
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 
 const STATUS_LABEL: Record<AutomationCommandCenterStatus, string> = {
-  ready: '운영 가능',
-  watch: '확인 필요',
-  blocked: '차단',
+  ready: 'Operational',
+  watch: 'Review needed',
+  blocked: 'Blocked',
 };
 
 const STATUS_CLASS: Record<AutomationCommandCenterStatus, string> = {
@@ -62,7 +62,7 @@ function Skeleton() {
     <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-admin-sm font-semibold text-admin-text-2">AI 운영 커맨드센터</p>
+          <p className="text-admin-sm font-semibold text-admin-text-2">AI command center</p>
           <p className="mt-1 text-[11px] text-admin-muted">Loading automation command center snapshot.</p>
         </div>
         <div className="h-4 w-20 animate-pulse rounded bg-admin-surface-2" />
@@ -87,11 +87,11 @@ export function AutomationCommandCenterCard() {
     try {
       const res = await fetch('/api/admin/automation-command-center', { cache: 'no-store' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'AI 운영 커맨드센터를 불러오지 못했습니다.');
+      if (!res.ok) throw new Error(data?.error || 'Could not load the AI command center.');
       setSnapshot(data as AutomationCommandCenterSnapshot);
       setState('ready');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI 운영 커맨드센터를 불러오지 못했습니다.');
+      setError(err instanceof Error ? err.message : 'Could not load the AI command center.');
       setState('error');
     }
   }, []);
@@ -109,7 +109,7 @@ export function AutomationCommandCenterCard() {
       <section className="rounded-admin-md border border-rose-200 bg-rose-50 px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-admin-sm font-semibold text-rose-800">AI 운영 커맨드센터 차단</p>
+            <p className="text-admin-sm font-semibold text-rose-800">AI command center blocked</p>
             <p className="mt-1 text-[11px] text-rose-700">{error}</p>
           </div>
           <button
@@ -118,7 +118,7 @@ export function AutomationCommandCenterCard() {
             className="inline-flex h-8 items-center gap-1 rounded-admin-sm border border-rose-200 bg-white px-2 text-[11px] font-medium text-rose-700"
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            다시 확인
+            Retry
           </button>
         </div>
       </section>
@@ -130,14 +130,14 @@ export function AutomationCommandCenterCard() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-admin-md font-semibold text-admin-text-2">AI 운영 커맨드센터</h2>
+            <h2 className="text-admin-md font-semibold text-admin-text-2">AI command center</h2>
             <span className={`inline-flex items-center gap-1 rounded-admin-sm border px-2 py-0.5 text-[11px] font-semibold ${STATUS_CLASS[snapshot.status]}`}>
               {statusIcon(snapshot.status)}
               {STATUS_LABEL[snapshot.status]}
             </span>
           </div>
           <p className="mt-1 text-[11px] leading-snug text-admin-muted">
-            자비스, Ad OS, 승인 대기 패킷을 한 번에 보고 다음 클릭만 고르는 읽기 전용 운영 요약입니다.
+            One read-only view for Jarvis readiness, Ad OS evidence, approval packets, blockers, and the next safe action.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -147,7 +147,7 @@ export function AutomationCommandCenterCard() {
             className="inline-flex h-8 items-center gap-1 rounded-admin-sm border border-admin-border-mid bg-admin-surface-2 px-2 text-[11px] font-medium text-admin-text-2"
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            새로고침
+            Refresh
           </button>
           <Link
             href={snapshot.one_click_recommendation.target_href}
@@ -161,13 +161,13 @@ export function AutomationCommandCenterCard() {
 
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
         <MetricBlock
-          label="전체 점수"
+          label="Overall score"
           value={`${snapshot.score}/100`}
-          detail={primaryBlocker?.next_action || '차단 사유 없이 운영 가능한 상태입니다.'}
+          detail={primaryBlocker?.next_action || 'No blockers are currently reported.'}
           status={snapshot.status}
         />
         <MetricBlock
-          label="자비스"
+          label="Jarvis"
           value={`${snapshot.jarvis.score}/${snapshot.jarvis.max_score}`}
           detail={snapshot.jarvis.next_action}
           status={snapshot.jarvis.status}
@@ -175,13 +175,13 @@ export function AutomationCommandCenterCard() {
         <MetricBlock
           label="Ad OS"
           value={`${snapshot.ad_os.current_lowest_score}/95`}
-          detail={`가능 증명 ${snapshot.ad_os.ready_fixture_lowest_score}/95, gap ${snapshot.ad_os.gap_count}`}
+          detail={`Ready proof ${snapshot.ad_os.ready_fixture_lowest_score}/95; current gaps ${snapshot.ad_os.gap_count}, P0 ${snapshot.ad_os.p0_gap_count}`}
           status={snapshot.ad_os.status}
         />
         <MetricBlock
-          label="승인 대기"
+          label="Approval queue"
           value={`${snapshot.approval_queue.pending_count}`}
-          detail={`고위험 ${snapshot.approval_queue.high_risk_count}건. ${snapshot.approval_queue.next_action}`}
+          detail={`High risk ${snapshot.approval_queue.high_risk_count}; ${snapshot.approval_queue.next_action}`}
           status={snapshot.approval_queue.status}
         />
       </div>
@@ -195,16 +195,16 @@ export function AutomationCommandCenterCard() {
               <p className="mt-1 text-[11px] text-admin-muted">{primaryBlocker.next_action}</p>
             </div>
           ) : (
-            <p className="mt-1 text-admin-xs text-admin-muted">현재 차단 사유가 없습니다.</p>
+            <p className="mt-1 text-admin-xs text-admin-muted">No blocker is currently reported.</p>
           )}
         </div>
         <div className="rounded-admin-md border border-admin-border bg-admin-bg px-3 py-2">
           <p className="text-[10px] font-semibold uppercase text-admin-muted-2">Safety boundary</p>
           <p className="mt-1 text-admin-xs font-semibold text-admin-text-2">
-            Read-only, 외부 API write 0, live spend 0원, full-auto off
+            Read-only, external API writes 0, live spend 0 KRW, full-auto off
           </p>
           <p className="mt-1 text-[11px] text-admin-muted">
-            예약, 결제, 환불, PII, 광고비 집행은 기존 승인 화면에서만 처리합니다.
+            Bookings, payments, payouts, PII, credentials, external publishing, and ad spend still require the existing approval screens.
           </p>
         </div>
       </div>
