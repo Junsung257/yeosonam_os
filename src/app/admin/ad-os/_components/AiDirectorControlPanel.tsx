@@ -146,6 +146,8 @@ type SourceImportResponse = {
   error?: string;
 };
 
+const EMPTY_SECTION_SCORES: SectionScore[] = [];
+
 function statusClass(status: string) {
   if (status === 'pass' || status === 'planned' || status === 'ready') {
     return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -272,7 +274,7 @@ export function AiDirectorControlPanel() {
     loadDeepScorecard();
   }, []);
 
-  const sections = scores?.section_scores || [];
+  const sections = scores?.section_scores ?? EMPTY_SECTION_SCORES;
   const deepDomains = deepScorecard?.domains || [];
   const deepSubcategories = deepDomains.flatMap((domain) => domain.subcategories);
   const topGaps = useMemo(
