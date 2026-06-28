@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import type { SharedRfqData } from '@/lib/db/rfq-share';
 
 declare global {
@@ -141,7 +142,7 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
     } else {
       // fallback: 카카오톡 앱 스킴 (모바일)
       const kakaoScheme = `kakaotalk://sendurl?url=${encodeURIComponent(shareUrl)}&appname=여소남`;
-      window.open(kakaoScheme, '_blank');
+      safeOpenNewWindow(kakaoScheme);
     }
   };
 

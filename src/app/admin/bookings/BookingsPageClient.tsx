@@ -30,6 +30,7 @@ import { useLocations } from '@/hooks/useLocations';
 import { isValidTransition } from '@/lib/booking-state-machine';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { maskPhone } from '@/lib/pii-mask';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import { trackEngagement } from '@/lib/tracker';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -2483,7 +2484,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         )}
                         {!isTrash ? (
                           <>
-                            <button type="button" onClick={() => window.open(`/admin/bookings/${b.id}`, '_blank')}
+                            <button type="button" onClick={() => safeOpenNewWindow(`/admin/bookings/${b.id}`)}
                               aria-label={`${b.customers?.name || b.booking_no || '예약'} 수정 화면 열기`}
                               className="text-[11px] text-admin-text-2 border border-admin-border-strong px-2.5 py-1.5 rounded-lg hover:bg-admin-bg whitespace-nowrap">수정</button>
                             {!isCancelled && (
@@ -2614,7 +2615,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">예약번호 복사</button>
           <button type="button" onClick={() => { sendAlimtalk(ctxMenu.b); setCtxMenu(null); }}
             className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">알림톡 발송</button>
-          <button type="button" onClick={() => { window.open(`/admin/bookings/${ctxMenu.b.id}`, '_blank'); setCtxMenu(null); }}
+          <button type="button" onClick={() => { safeOpenNewWindow(`/admin/bookings/${ctxMenu.b.id}`); setCtxMenu(null); }}
             className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">새 탭에서 열기</button>
           <div className="border-t border-admin-border-mid my-1" />
           {ctxMenu.b.status !== 'cancelled' ? (

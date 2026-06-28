@@ -5,6 +5,7 @@ import {
   MousePointerClick, UserPlus, TrendingUp, ExternalLink,
   Copy, Trash2, MoreVertical, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 
 // ─── Mock 데이터 ──────────────────────────────────────────────────────────────
 
@@ -266,7 +267,7 @@ export default function AnalyticsDashboard() {
                         <ActionBtn
                           label="열기"
                           icon={<ExternalLink size={15} />}
-                          onClick={() => window.open(link.url, '_blank')}
+                          onClick={() => safeOpenNewWindow(link.url)}
                           color="hover:bg-blue-50 hover:text-blue-600"
                         />
                         {/* 복사 */}
