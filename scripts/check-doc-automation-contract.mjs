@@ -7,7 +7,7 @@ const strict = process.argv.includes('--strict');
 
 function gitLines(args) {
   try {
-    return execSync(`git ${args}`, { encoding: 'utf8' })
+    return execSync(`git ${args}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
@@ -25,6 +25,9 @@ function changedFiles() {
 
   const baseRef = process.env.GITHUB_BASE_REF;
   if (baseRef) {
+    if (/^[A-Za-z0-9._/-]+$/.test(baseRef)) {
+      gitLines(`fetch --no-tags origin ${baseRef}:refs/remotes/origin/${baseRef}`);
+    }
     for (const file of gitLines(`diff --name-only origin/${baseRef}...HEAD`)) {
       files.add(file);
     }
