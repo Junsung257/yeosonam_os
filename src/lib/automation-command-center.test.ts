@@ -73,6 +73,11 @@ describe('buildAutomationCommandCenterSnapshot', () => {
     expect(snapshot.ad_os.current_lowest_score).toBeLessThan(95);
     expect(snapshot.ad_os.ready_fixture_lowest_score).toBeGreaterThanOrEqual(95);
     expect(snapshot.ad_os.gap_count).toBeGreaterThan(0);
+    expect(snapshot.ad_os.top_repair_items[0]).toMatchObject({
+      priority: 'P0',
+      approval_required: true,
+    });
+    expect(snapshot.ad_os.top_repair_items[0]?.title.length).toBeGreaterThan(10);
     expect(snapshot.one_click_recommendation.target_href).toBe('/admin/ad-os');
   });
 
