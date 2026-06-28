@@ -36,6 +36,7 @@ const repairPriceSourceEvidence = process.argv.includes('--repair-price-source-e
 const repairItineraryDisplay = process.argv.includes('--repair-itinerary-display');
 const repairExcludeFragments = process.argv.includes('--repair-exclude-fragments');
 const repairDurationTripStyle = process.argv.includes('--repair-duration-trip-style');
+const repairEmptyItineraryDays = process.argv.includes('--repair-empty-itinerary-days');
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const verifyPublicHtml = process.argv.includes('--verify-public-html');
@@ -469,6 +470,42 @@ function repairItineraryDisplayQuality(pkg) {
 
   if (removed.length === 0) return null;
   return { itinerary_data: itineraryData, removed };
+}
+
+function repairEmptyItineraryDaysQuality(pkg) {
+  const itineraryData = pkg.itinerary_data && typeof pkg.itinerary_data === 'object'
+    ? JSON.parse(JSON.stringify(pkg.itinerary_data))
+    : null;
+  const days = Array.isArray(itineraryData?.days) ? itineraryData.days : [];
+  if (days.length === 0) return null;
+
+  const destination = String(pkg.destination ?? itineraryData?.meta?.destination ?? '').replace(/\s+/g, ' ').trim();
+  const filled = [];
+  for (const day of days) {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    if (schedule.length > 0) continue;
+    const region = String((Array.isArray(day?.regions) ? day.regions[0] : null) ?? destination).replace(/\s+/g, ' ').trim();
+    const place = region || destination;
+    if (!place) continue;
+    const activity = `${place} 현지 일정 진행`;
+    day.schedule = [{
+      note: '세부 일정은 상품 상담 시 안내',
+      time: null,
+      type: 'free_time',
+      badge: null,
+      activity,
+      transport: null,
+      a4_sentence: activity,
+      entity_kind: 'free_time',
+      service_name: null,
+      service_detail: null,
+      attraction_query: null,
+      landing_sentence: activity,
+    }];
+    filled.push({ day: day?.day ?? null, activity });
+  }
+
+  return filled.length > 0 ? { itinerary_data: itineraryData, filled } : null;
 }
 
 function hasUnresolvedCodeOrDestination(pkg) {
@@ -1859,6 +1896,42 @@ if (repairItineraryDisplay) {
   }
 }
 
+const emptyItineraryDayRepairs = [];
+if (repairEmptyItineraryDays) {
+  const checkedAt = new Date().toISOString();
+  for (const pkg of scopedPackageRows) {
+    if (!pkg.id) continue;
+    const repaired = repairEmptyItineraryDaysQuality(pkg);
+    if (!repaired) continue;
+
+    const { error: packageError } = await supabase
+      .from('travel_packages')
+      .update({
+        itinerary_data: repaired.itinerary_data,
+        updated_at: checkedAt,
+      })
+      .eq('id', pkg.id);
+    if (packageError) {
+      emptyItineraryDayRepairs.push({
+        code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
+        title: pkg.title,
+        ok: false,
+        reason: packageError.message,
+        filled: repaired.filled,
+      });
+      continue;
+    }
+
+    pkg.itinerary_data = repaired.itinerary_data;
+    emptyItineraryDayRepairs.push({
+      code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
+      title: pkg.title,
+      ok: true,
+      filled: repaired.filled,
+    });
+  }
+}
+
 const excludeFragmentRepairs = [];
 if (repairExcludeFragments) {
   const checkedAt = new Date().toISOString();
@@ -2194,6 +2267,7 @@ const summary = {
   repaired_price_source_evidence: priceSourceEvidenceRepairs.filter(repair => repair.ok).length,
   repaired_price_tiers: priceTierRepairs.filter(repair => repair.ok).length,
   repaired_itinerary_display: itineraryDisplayRepairs.filter(repair => repair.ok).length,
+  repaired_empty_itinerary_days: emptyItineraryDayRepairs.filter(repair => repair.ok).length,
   repaired_exclude_fragments: excludeFragmentRepairs.filter(repair => repair.ok).length,
   repaired_duration_trip_style: durationTripStyleRepairs.filter(repair => repair.ok).length,
   demote_unsafe_public: demoteUnsafePublic,
@@ -2217,6 +2291,7 @@ const report = {
     ...priceSourceEvidenceRepairs.map(repair => ({ ...repair, type: 'price_source_evidence' })),
     ...priceTierRepairs.map(repair => ({ ...repair, type: 'price_tiers' })),
     ...itineraryDisplayRepairs.map(repair => ({ ...repair, type: 'itinerary_display' })),
+    ...emptyItineraryDayRepairs.map(repair => ({ ...repair, type: 'empty_itinerary_days' })),
     ...excludeFragmentRepairs.map(repair => ({ ...repair, type: 'exclude_fragments' })),
     ...durationTripStyleRepairs.map(repair => ({ ...repair, type: 'duration_trip_style' })),
   ],
