@@ -1,6 +1,6 @@
 # Marketing Current SSOT
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 This is the current operating contract for marketing automation, Ad OS, campaign actions, card-news distribution, external ad-platform writes, and marketing performance dashboards. Strategy research and campaign plans are not the source of truth for current execution behavior.
 
@@ -24,7 +24,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 | Marketing pipeline | `src/lib/marketing-pipeline/**` |
 | Marketing OS utilities | `src/lib/marketing/**`, `src/lib/marketing-cron.ts`, `src/lib/marketing-osmu.ts` |
 | External publish decisions | `src/lib/marketing-pipeline/publish-saga.ts`, `/api/admin/ad-os/**` |
-| Admin surfaces | `/admin/marketing/**`, `/admin/ad-os` |
+| Admin surfaces | `/admin/marketing/**`, `/admin/ad-os`, `/admin/control-tower` AI operations command center |
 | Runtime checks | `scripts/verify-marketing-automation-readiness.mjs`, `scripts/verify-marketing-release-readiness.mjs`, `scripts/verify-marketing-95-scorecard.mjs` |
 | Error memory | `docs/errors/marketing.md` |
 
@@ -40,6 +40,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Marketing dashboards must show degraded or blocked when required evidence is unavailable. Missing data is not healthy data.
 - Ad OS deep scorecards must separate current evidence scores from target/post-repair scores. A ready fixture can prove the 95+ gate is reachable, but live current scores only pass when runtime summary evidence is present.
 - Ad OS AI Director repair runs may persist internal score snapshots and repair queue rows only. They must not perform external ad-platform writes, live spend, or full-auto mutations.
+- Control-tower Ad OS status must show current evidence gaps separately from the 95+ ready fixture; a reachable fixture is not proof that live current execution is ready.
 
 ## External Write Boundary
 

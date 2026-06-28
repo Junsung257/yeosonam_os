@@ -1,6 +1,6 @@
 # AI Ops Current SSOT
 
-Last updated: 2026-06-23
+Last updated: 2026-06-29
 
 This is the current operating contract for AI provider policy, Jarvis, RAG, QA, prompt routing, evals, model fallback, and learning-loop evidence.
 
@@ -25,6 +25,7 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 | Jarvis APIs | `/api/jarvis`, `/api/jarvis/stream`, `/api/admin/jarvis/**` |
 | Jarvis orchestration | `src/lib/jarvis/orchestration/**`, `src/lib/jarvis/v2-dispatch.ts` |
 | Jarvis RAG/evals | `src/lib/jarvis/rag/**`, `src/lib/jarvis/eval/**` |
+| AI operations command center | `/api/admin/automation-command-center`, `src/lib/automation-command-center.ts`, `/admin/control-tower` |
 | Prompt behavior | domain-specific prompt files plus active DB prompt versions when used |
 | Error memory | `docs/errors/ai-ops.md` |
 
@@ -36,6 +37,7 @@ Detailed provider policy operations remain in `docs/ai-policy-operations.md`. Ja
 - Jarvis tool access must remain scoped by tenant, role, and approved table/tool allowlists.
 - RAG answers must distinguish retrieved evidence, inferred reasoning, and missing context.
 - Human-in-the-loop actions must not be auto-executed when the action mutates money, bookings, customer data, external publishing, or credentials.
+- The AI operations command center is read-only. Its one-click recommendation may only navigate to review/approval surfaces or refresh the snapshot.
 - Prompt fixes for repeated failures must become an eval, regression test, deterministic gate, or error-registry entry.
 
 ## Provider And Prompt Boundary
@@ -67,6 +69,7 @@ Use the narrowest applicable checks first:
 npm run verify:jarvis-readiness
 npm run eval:jarvis
 npm run audit:jarvis-rag
+npx vitest run src/lib/automation-command-center.test.ts src/app/admin/control-tower/_components/AutomationCommandCenterCard.test.tsx
 npm run type-check
 ```
 
