@@ -1,5 +1,5 @@
 import type { AllScenarioReadinessSummary } from './jarvis/eval/all-scenarios-readiness';
-import type { MarketingDeepScorecard } from './marketing-deep-scorecard';
+import type { MarketingDeepRepairQueueItem, MarketingDeepScorecard } from './marketing-deep-scorecard';
 
 export type AutomationCommandCenterStatus = 'ready' | 'watch' | 'blocked';
 
@@ -20,6 +20,11 @@ export type AutomationCommandCenterTopPacket = {
   created_at: string | null;
 };
 
+export type AutomationCommandCenterRepairFocus = Pick<
+  MarketingDeepRepairQueueItem,
+  'title' | 'priority' | 'owner' | 'automation_phase' | 'action' | 'approval_required'
+>;
+
 export type AutomationCommandCenterSnapshot = {
   generated_at: string;
   status: AutomationCommandCenterStatus;
@@ -39,6 +44,7 @@ export type AutomationCommandCenterSnapshot = {
     gap_count: number;
     p0_gap_count: number;
     top_repair_actions: string[];
+    top_repair_items: AutomationCommandCenterRepairFocus[];
     next_action: string;
   };
   approval_queue: {
@@ -111,10 +117,19 @@ function statusFromApprovalQueue(
 
 function firstAdOsRepairActions(scorecard: MarketingDeepScorecard | null): string[] {
   if (!scorecard) return ['Ad OS evidence snapshot을 다시 불러오세요.'];
-  return scorecard.repair_queue
-    .slice(0, 3)
-    .map((item) => item.action || item.title)
-    .filter(Boolean);
+  return firstAdOsRepairItems(scorecard).map((item) => item.action || item.title).filter(Boolean);
+}
+
+function firstAdOsRepairItems(scorecard: MarketingDeepScorecard | null): AutomationCommandCenterRepairFocus[] {
+  if (!scorecard) return [];
+  return scorecard.repair_queue.slice(0, 3).map((item) => ({
+    title: item.title,
+    priority: item.priority,
+    owner: item.owner,
+    automation_phase: item.automation_phase,
+    action: item.action,
+    approval_required: item.approval_required,
+  }));
 }
 
 function buildBlockers(input: BuildAutomationCommandCenterInput): AutomationCommandCenterBlocker[] {
@@ -247,7 +262,10 @@ export function buildAutomationCommandCenterSnapshot(
         ? 80
         : 100;
   const score = boundedScore((jarvisScore * 0.45) + (adOsScore * 0.45) + (approvalScore * 0.1));
-  const adOsTopRepairActions = firstAdOsRepairActions(input.adOsCurrentScorecard);
+  const adOsTopRepairItems = firstAdOsRepairItems(input.adOsCurrentScorecard);
+  const adOsTopRepairActions = input.adOsCurrentScorecard
+    ? adOsTopRepairItems.map((item) => item.action || item.title).filter(Boolean)
+    : firstAdOsRepairActions(null);
 
   return {
     generated_at: input.generatedAt ?? new Date().toISOString(),
@@ -270,6 +288,7 @@ export function buildAutomationCommandCenterSnapshot(
       gap_count: input.adOsCurrentScorecard?.summary.gap_subcategories ?? 0,
       p0_gap_count: input.adOsCurrentScorecard?.summary.p0_gaps ?? 0,
       top_repair_actions: adOsTopRepairActions,
+      top_repair_items: adOsTopRepairItems,
       next_action: adOsStatus === 'ready'
         ? 'Ad OS current evidence meets the 95+ gate.'
         : adOsTopRepairActions[0] || 'Ad OS repair queue를 먼저 확인하세요.',

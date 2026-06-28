@@ -30,6 +30,7 @@ const scorecard = buildMarketingDeepScorecard({
   generatedAt: '2026-06-28T00:00:00.000Z',
 });
 const subcategories = scorecard.domains.flatMap((domain) => domain.subcategories);
+const p0RepairQueue = scorecard.repair_queue.filter((item) => item.priority === 'P0');
 const failures = [];
 const urls = new Set(MARKETING_SOURCE_LEDGER_REVIEWS.map((source) => source.source_url));
 
@@ -40,6 +41,8 @@ if (urls.size !== MARKETING_SOURCE_LEDGER_REVIEWS.length) failures.push('source 
 if (subcategories.some((item) => item.target_score < MARKETING_DEEP_SCORE_TARGET)) failures.push('all target scores must be 95+');
 if (subcategories.some((item) => item.post_repair_score < MARKETING_DEEP_SCORE_TARGET)) failures.push('all post-repair scores must be 95+');
 if (subcategories.some((item) => item.score < MARKETING_DEEP_SCORE_TARGET && item.repair_action.length < 10)) failures.push('every gap needs a concrete repair action');
+if (p0RepairQueue.length !== scorecard.summary.p0_gaps) failures.push('P0 repair queue count must match P0 gap count');
+if (scorecard.summary.p0_gaps > 0 && scorecard.repair_queue[0]?.priority !== 'P0') failures.push('repair queue must put P0 gaps first');
 if (scorecard.repair_queue.some((item) => item.safety.external_api_write !== false || item.safety.live_spend_krw !== 0)) failures.push('repair queue must not allow external writes or live spend');
 if (scorecard.safety.external_api_write !== false || scorecard.safety.live_spend_krw !== 0 || scorecard.safety.full_auto_allowed !== false) failures.push('scorecard safety flags must block external writes, live spend, and full auto');
 if (strictCurrent && subcategories.some((item) => item.score < MARKETING_DEEP_SCORE_TARGET)) failures.push('--strict-current failed: at least one current score is below 95');
@@ -53,6 +56,14 @@ const result = {
   target_score: MARKETING_DEEP_SCORE_TARGET,
   current_lowest_score: scorecard.score_gate.lowest_score,
   current_gap_subcategories: scorecard.summary.gap_subcategories,
+  p0_gap_subcategories: scorecard.summary.p0_gaps,
+  top_repair_focus: scorecard.repair_queue.slice(0, 3).map((item) => ({
+    title: item.title,
+    priority: item.priority,
+    owner: item.owner,
+    automation_phase: item.automation_phase,
+    approval_required: item.approval_required,
+  })),
   strict_current: strictCurrent,
   ready_fixture: readyFixture,
 };
@@ -70,6 +81,10 @@ if (json) {
       'target_score=' + result.target_score,
       'current_lowest_score=' + result.current_lowest_score,
       'current_gap_subcategories=' + result.current_gap_subcategories,
+      'p0_gap_subcategories=' + result.p0_gap_subcategories,
+      ...result.top_repair_focus.map((item, index) =>
+        'top_repair_' + (index + 1) + '=' + item.priority + ' ' + item.title,
+      ),
       'ready_fixture=' + result.ready_fixture,
       ...failures.map((failure) => 'FAIL ' + failure),
     ].join('\n'),
