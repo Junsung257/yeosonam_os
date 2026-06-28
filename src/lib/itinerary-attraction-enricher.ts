@@ -87,14 +87,26 @@ function directTermOccurs(text: string, term: string): boolean {
   return normalizeDirectTerm(text).includes(compact);
 }
 
-function isDirectScanEligibleTerm(term: string, attraction: AttractionData, destination?: string): boolean {
+function contextAllowsAttractionScope(attraction: AttractionData, text: string): boolean {
+  const compact = normalizeDirectTerm(text);
+  const region = normalizeDirectTerm(attraction.region);
+  if (!region) return true;
+  if (compact.includes(region) || region.includes(compact)) return true;
+  return region
+    .split(/[,/|&]+/)
+    .map(token => token.trim())
+    .filter(token => token.length >= 2)
+    .some(token => compact.includes(token));
+}
+
+function isDirectScanEligibleTerm(term: string, attraction: AttractionData, destination?: string, text = ''): boolean {
   const clean = term.trim();
   if (clean.length < 2 || clean.length > 24) return false;
   if (DIRECT_SCAN_STOP_TERMS.has(clean)) return false;
   if (clean !== attraction.name && !isMatchableAttractionAlias(clean, attraction)) return false;
   if (!isSightseeingAttractionRow(attraction)) return false;
   if (attraction.category && DIRECT_SCAN_EXCLUDED_CATEGORIES.has(attraction.category)) return false;
-  if (destination && !destinationAllowsAttraction(attraction, destination)) return false;
+  if (destination && !destinationAllowsAttraction(attraction, destination) && !contextAllowsAttractionScope(attraction, text)) return false;
   return true;
 }
 
@@ -204,7 +216,7 @@ function findRegisteredAttractionTermsInText(
   const sorted = attractions.slice().sort((a, b) => normalizeDirectTerm(b.name).length - normalizeDirectTerm(a.name).length);
   for (const attraction of sorted) {
     for (const term of [attraction.name, ...(attraction.aliases ?? [])]) {
-      if (!isDirectScanEligibleTerm(term, attraction, destination)) continue;
+      if (!isDirectScanEligibleTerm(term, attraction, destination, text)) continue;
       if (!directTermOccurs(text, term)) continue;
       found.set(String(attraction.id ?? attraction.name), attraction);
       break;

@@ -31,6 +31,8 @@ const publicOnly = process.argv.includes('--public-only');
 const jsonOnly = process.argv.includes('--json');
 const strict = process.argv.includes('--strict');
 const repairPriceStorage = process.argv.includes('--repair-price-storage');
+const repairPriceTiers = process.argv.includes('--repair-price-tiers');
+const repairPriceSourceEvidence = process.argv.includes('--repair-price-source-evidence');
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const verifyPublicHtml = process.argv.includes('--verify-public-html');
@@ -407,6 +409,105 @@ function normalizedPriceDates(pkg) {
     }));
 }
 
+function validPackagePriceDates(pkg) {
+  return (Array.isArray(pkg.price_dates) ? pkg.price_dates : [])
+    .filter(row => (
+      typeof row?.date === 'string'
+      && /^\d{4}-\d{2}-\d{2}$/.test(row.date)
+      && Number.isFinite(Number(row.price))
+      && Number(row.price) > 0
+    ))
+    .map(row => ({
+      date: row.date,
+      price: Number(row.price),
+      child_price: Number.isFinite(Number(row.child_price)) && Number(row.child_price) > 0
+        ? Number(row.child_price)
+        : null,
+      confirmed: row.confirmed === true,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function minimumPackagePrice(priceDates) {
+  const prices = priceDates.map(row => Number(row.price)).filter(price => Number.isFinite(price) && price > 0);
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
+
+function priceTiersFromPackagePriceDates(priceDates) {
+  const groupedByPrice = new Map();
+  for (const row of priceDates) {
+    const rows = groupedByPrice.get(row.price) ?? [];
+    rows.push(row);
+    groupedByPrice.set(row.price, rows);
+  }
+
+  return [...groupedByPrice.entries()]
+    .sort((a, b) => a[1][0].date.localeCompare(b[1][0].date))
+    .map(([price, rows]) => {
+      const childPrices = rows
+        .map(row => row.child_price)
+        .filter(childPrice => Number.isFinite(Number(childPrice)) && Number(childPrice) > 0)
+        .map(Number);
+      return {
+        period_label: 'source-backed departure dates',
+        departure_dates: rows.map(row => row.date),
+        adult_price: price,
+        ...(childPrices.length > 0 ? { child_price: Math.min(...childPrices) } : {}),
+        status: rows.some(row => row.confirmed) ? 'confirmed' : 'available',
+      };
+    });
+}
+
+function unsupportedPriceEvidenceDate(message) {
+  return String(message ?? '').match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0] ?? null;
+}
+
+function pruneUnsupportedPriceDates(pkg, productPriceRows) {
+  const priceDates = validPackagePriceDates(pkg);
+  if (priceDates.length === 0) return null;
+  const draft = { ...pkg, price_dates: priceDates };
+  const removed = [];
+  for (let attempt = 0; attempt < priceDates.length; attempt++) {
+    const mismatch = priceDateSourceEvidenceMismatch(draft, productPriceRows);
+    if (!mismatch) break;
+    const date = unsupportedPriceEvidenceDate(mismatch);
+    if (!date) {
+      return {
+        ok: false,
+        reason: mismatch,
+        removed,
+        price_dates: draft.price_dates,
+      };
+    }
+    const before = draft.price_dates.length;
+    draft.price_dates = draft.price_dates.filter(row => row.date !== date);
+    if (draft.price_dates.length === before) {
+      return {
+        ok: false,
+        reason: mismatch,
+        removed,
+        price_dates: draft.price_dates,
+      };
+    }
+    removed.push({ date, reason: mismatch });
+    if (draft.price_dates.length === 0) {
+      return {
+        ok: false,
+        reason: 'all_price_dates_lack_source_evidence',
+        removed,
+        price_dates: [],
+      };
+    }
+  }
+  const finalMismatch = priceDateSourceEvidenceMismatch(draft, productPriceRows);
+  return {
+    ok: !finalMismatch,
+    reason: finalMismatch,
+    removed,
+    price_dates: draft.price_dates,
+  };
+}
+
 function priceStorageMismatch(pkg, productPriceRows) {
   const priceDates = Array.isArray(pkg.price_dates) ? [...pkg.price_dates].filter(row => row?.date) : [];
   const datedRows = productPriceRows.filter(row => row?.target_date);
@@ -681,7 +782,19 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
     for (let i = 0; i < lines.length; i++) {
       const range = parseSlashRange(lines[i], parts.year);
       if (!range || target < range.start || target > range.end) continue;
-      const window = lines.slice(i, Math.min(lines.length, i + 12));
+      let end = Math.min(lines.length, i + 80);
+      for (let j = i + 1; j < end; j++) {
+        const nextRange = parseSlashRange(lines[j], parts.year);
+        if (nextRange && (target < nextRange.start || target > nextRange.end)) {
+          end = j;
+          break;
+        }
+        if (/^(?:\uC81C\s*\d+\s*\uC77C|DAY\s*\d+|\uD3EC\uD568|\uBD88\uD3EC\uD568|\uC120\ud0dd\uAD00\uAD11|\uC1FC\uD551|\uCDE8\uC18C|\uC57D\uAD00)/i.test(lines[j])) {
+          end = j;
+          break;
+        }
+      }
+      const window = lines.slice(i, end);
       if (window.some(line => lineHasAmount(line, row.price))) return true;
     }
     return false;
@@ -799,12 +912,14 @@ function isBadRegisteredAttractionTerm(term) {
     '\uD639\uC740',
     '\uC815\uADDC',
     '\uC99D\uD3B8',
+    '\uAC00\uC774\uB4DC\uBBF8\uD305',
   ]).has(normalized)) return true;
   return /(?:마사지|오일마사지|전통마사지|전신마사지|발마사지|쇼핑센터|\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i.test(normalized);
 }
 
 function isBadRegisteredAttractionTermV2(term) {
   const normalized = normalizeTerm(term);
+  if (/(?:\uB3C4\uCC29|\uAC00\uC774\uB4DC\uBBF8\uD305|\uBBF8\uD305|\uD638\uD154\uD22C\uC219)/.test(normalized)) return true;
   if (/(?:\uB3C4\uBCF4|\uC804\uB3D9\uCE74|\uC720\uB9AC\uC804\uB9DD\uB300|\uC785\uAD6C|\uBD80\uB450|\uC720\uB78C\uC120)/.test(normalized)
     && !/(?:\uD611\uACE1|\uD48D\uACBD\uAD6C|\uC0B0|\uC0AC|\uAD81|\uC131|\uACF5\uC6D0)$/.test(normalized)) return true;
   return isBadRegisteredAttractionTerm(term);
@@ -1375,6 +1490,229 @@ if (repairPriceStorage) {
   }
 }
 
+const priceSourceEvidenceRepairs = [];
+if (repairPriceSourceEvidence) {
+  const checkedAt = new Date().toISOString();
+  for (const pkg of scopedPackageRows) {
+    if (!pkg.id || !pkg.internal_code) continue;
+    const currentPriceRows = productPriceRowsByCode.get(pkg.internal_code) ?? [];
+    const mismatch = priceDateSourceEvidenceMismatch(pkg, currentPriceRows);
+    if (!mismatch) continue;
+
+    const pruned = pruneUnsupportedPriceDates(pkg, currentPriceRows);
+    if (!pruned || pruned.removed.length === 0) continue;
+    if (!pruned.ok || pruned.price_dates.length === 0) {
+      priceSourceEvidenceRepairs.push({
+        code: pkg.internal_code,
+        title: pkg.title,
+        ok: false,
+        before: mismatch,
+        removed: pruned.removed,
+        reason: pruned?.reason ?? 'unable_to_prune_source_evidence',
+      });
+      continue;
+    }
+
+    const minPrice = minimumPackagePrice(pruned.price_dates);
+    const nextPriceTiers = priceTiersFromPackagePriceDates(pruned.price_dates);
+    if (minPrice == null || nextPriceTiers.length === 0) {
+      priceSourceEvidenceRepairs.push({
+        code: pkg.internal_code,
+        title: pkg.title,
+        ok: false,
+        before: mismatch,
+        removed: pruned.removed,
+        reason: 'price_dates_pruned_to_invalid_price_store',
+      });
+      continue;
+    }
+
+    const replacementPackage = {
+      ...pkg,
+      price_dates: pruned.price_dates,
+      price_tiers: nextPriceTiers,
+      price: minPrice,
+    };
+    const replacementRows = normalizedPriceDates(replacementPackage);
+    const { error: deleteError } = await supabase
+      .from('product_prices')
+      .delete()
+      .eq('product_id', pkg.internal_code);
+    if (deleteError) {
+      priceSourceEvidenceRepairs.push({
+        code: pkg.internal_code,
+        title: pkg.title,
+        ok: false,
+        before: mismatch,
+        removed: pruned.removed,
+        reason: deleteError.message,
+      });
+      continue;
+    }
+
+    const { error: insertError } = await supabase
+      .from('product_prices')
+      .insert(replacementRows);
+    if (insertError) {
+      priceSourceEvidenceRepairs.push({
+        code: pkg.internal_code,
+        title: pkg.title,
+        ok: false,
+        before: mismatch,
+        removed: pruned.removed,
+        reason: insertError.message,
+      });
+      continue;
+    }
+
+    const { error: packageError } = await supabase
+      .from('travel_packages')
+      .update({
+        price: minPrice,
+        price_dates: pruned.price_dates,
+        price_tiers: nextPriceTiers,
+        updated_at: checkedAt,
+      })
+      .eq('id', pkg.id);
+    if (packageError) {
+      priceSourceEvidenceRepairs.push({
+        code: pkg.internal_code,
+        title: pkg.title,
+        ok: false,
+        before: mismatch,
+        removed: pruned.removed,
+        reason: packageError.message,
+      });
+      continue;
+    }
+
+    let productLedgerSynced = false;
+    let productLedgerSyncError = null;
+    const { error: productError } = await supabase
+      .from('products')
+      .update({
+        net_price: minPrice,
+        updated_at: checkedAt,
+      })
+      .eq('internal_code', pkg.internal_code);
+    productLedgerSynced = !productError;
+    productLedgerSyncError = productError?.message ?? null;
+    if (!productError) {
+      const currentProduct = productRowsByCode.get(pkg.internal_code) ?? {};
+      productRowsByCode.set(pkg.internal_code, {
+        ...currentProduct,
+        internal_code: pkg.internal_code,
+        net_price: minPrice,
+      });
+    }
+
+    pkg.price = minPrice;
+    pkg.price_dates = pruned.price_dates;
+    pkg.price_tiers = nextPriceTiers;
+    productPriceRowsByCode.set(pkg.internal_code, replacementRows);
+    priceCountMap.set(pkg.internal_code, replacementRows.length);
+    priceSourceEvidenceRepairs.push({
+      code: pkg.internal_code,
+      title: pkg.title,
+      ok: productLedgerSyncError == null,
+      before: mismatch,
+      removed: pruned.removed,
+      remaining_price_dates: pruned.price_dates.length,
+      product_ledger_synced: productLedgerSynced,
+      ...(productLedgerSyncError ? { reason: productLedgerSyncError } : {}),
+    });
+  }
+}
+
+const priceTierRepairs = [];
+if (repairPriceTiers) {
+  const checkedAt = new Date().toISOString();
+  for (const pkg of scopedPackageRows) {
+    if (!pkg.id) continue;
+    const mismatch = priceTiersMismatch(pkg);
+    if (!mismatch) continue;
+
+    const priceDates = validPackagePriceDates(pkg);
+    const minPrice = minimumPackagePrice(priceDates);
+    if (priceDates.length === 0 || minPrice == null) {
+      priceTierRepairs.push({
+        code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
+        title: pkg.title,
+        ok: false,
+        reason: 'price_dates_missing_or_invalid',
+      });
+      continue;
+    }
+
+    if (pkg.internal_code) {
+      const storageMismatch = priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []);
+      if (storageMismatch) {
+        priceTierRepairs.push({
+          code: pkg.internal_code,
+          title: pkg.title,
+          ok: false,
+          reason: `price_storage_mismatch_remaining: ${storageMismatch}`,
+        });
+        continue;
+      }
+    }
+
+    const nextPriceTiers = priceTiersFromPackagePriceDates(priceDates);
+    const { error: packageError } = await supabase
+      .from('travel_packages')
+      .update({
+        price: minPrice,
+        price_tiers: nextPriceTiers,
+        updated_at: checkedAt,
+      })
+      .eq('id', pkg.id);
+    if (packageError) {
+      priceTierRepairs.push({
+        code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
+        title: pkg.title,
+        ok: false,
+        reason: packageError.message,
+      });
+      continue;
+    }
+
+    let productLedgerSynced = false;
+    let productLedgerSyncError = null;
+    if (pkg.internal_code) {
+      const { error: productError } = await supabase
+        .from('products')
+        .update({
+          net_price: minPrice,
+          updated_at: checkedAt,
+        })
+        .eq('internal_code', pkg.internal_code);
+      productLedgerSynced = !productError;
+      productLedgerSyncError = productError?.message ?? null;
+      if (!productError) {
+        const currentProduct = productRowsByCode.get(pkg.internal_code) ?? {};
+        productRowsByCode.set(pkg.internal_code, {
+          ...currentProduct,
+          internal_code: pkg.internal_code,
+          net_price: minPrice,
+        });
+      }
+    }
+
+    pkg.price = minPrice;
+    pkg.price_tiers = nextPriceTiers;
+    priceTierRepairs.push({
+      code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
+      title: pkg.title,
+      ok: productLedgerSyncError == null,
+      before: mismatch,
+      rows: nextPriceTiers.length,
+      min_price: minPrice,
+      product_ledger_synced: productLedgerSynced,
+      ...(productLedgerSyncError ? { reason: productLedgerSyncError } : {}),
+    });
+  }
+}
+
 let rows = allPackageRows
   .filter(pkg => scopedPackageIds.has(pkg.id))
   .map(pkg => {
@@ -1632,6 +1970,8 @@ const summary = {
   data_query_failures: blockingAuditDataErrors.length,
   nonblocking_data_query_failures: auditDataErrors.length - blockingAuditDataErrors.length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
+  repaired_price_source_evidence: priceSourceEvidenceRepairs.filter(repair => repair.ok).length,
+  repaired_price_tiers: priceTierRepairs.filter(repair => repair.ok).length,
   demote_unsafe_public: demoteUnsafePublic,
   demotion_candidates: demotionCandidates.length,
   demoted_public: demotions.filter(row => row.ok).length,
@@ -1648,7 +1988,11 @@ const report = {
     required_migration: unmatchedScopeReady ? null : 'supabase/migrations/20260605001000_unmatched_activities_package_scope.sql',
   },
   data_query_errors: auditDataErrors,
-  repairs: priceStorageRepairs,
+  repairs: [
+    ...priceStorageRepairs,
+    ...priceSourceEvidenceRepairs.map(repair => ({ ...repair, type: 'price_source_evidence' })),
+    ...priceTierRepairs.map(repair => ({ ...repair, type: 'price_tiers' })),
+  ],
   demotions,
   archives,
   failed: failedRows.map(row => ({
@@ -1664,6 +2008,7 @@ const report = {
     price_tiers_mismatch: row.price_tiers_mismatch,
     price_source_evidence_mismatch: row.price_source_evidence_mismatch,
     attraction_context_mismatch: row.attraction_context_mismatch,
+    attraction_unlinked_registered: row.attraction_unlinked_registered,
     attraction_description_missing: row.attraction_description_missing,
     itinerary_semantic_mismatch: row.itinerary_semantic_mismatch,
     render_failure: row.render_failure,
