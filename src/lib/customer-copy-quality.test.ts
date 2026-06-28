@@ -50,4 +50,9 @@ describe('customer visible copy quality', () => {
       'html_entity_visible',
     ]));
   });
+  it('flags internal comparison and point memo copy from supplier terms', () => {
+    expect(issueCodes('타사비교필수★ POINT① 4명 이상 예약 시 무료 업그레이드')).toContain(
+      'customer_forbidden_internal_terms',
+    );
+  });
 });

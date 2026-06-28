@@ -94,8 +94,19 @@ function argValue(name: string, fallback: string): string {
   return found ? found.slice(prefix.length) : fallback;
 }
 
+function canonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(item => item === undefined ? null : canonicalJsonValue(item));
+  if (!value || typeof value !== 'object') return value ?? null;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, canonicalJsonValue(item)]),
+  );
+}
+
 function stableJson(value: unknown): string {
-  return JSON.stringify(value ?? null);
+  return JSON.stringify(canonicalJsonValue(value));
 }
 
 function isChanged(before: unknown, after: unknown): boolean {
@@ -302,11 +313,37 @@ async function repairPackage(pkg: PackageRow, activeAttractions: AttractionRow[]
     const now = new Date().toISOString();
     updates.audit_report = auditReportWithRepair(pkg, { actions, details });
     updates.updated_at = now;
-    const { error } = await supabase
-      .from('travel_packages')
-      .update(updates)
-      .eq('id', pkg.id);
-    if (error) throw error;
+    try {
+      const { error } = await supabase
+        .from('travel_packages')
+        .update(updates)
+        .eq('id', pkg.id);
+      if (error) {
+        details.update_error = error.message || String(error);
+        return {
+          id: pkg.id,
+          code: pkg.internal_code,
+          title: pkg.title,
+          status: pkg.status,
+          action: 'repair_failed',
+          actions,
+          details,
+          updated_fields: Object.keys(updates),
+        };
+      }
+    } catch (error) {
+      details.update_error = error instanceof Error ? error.message : String(error);
+      return {
+        id: pkg.id,
+        code: pkg.internal_code,
+        title: pkg.title,
+        status: pkg.status,
+        action: 'repair_failed',
+        actions,
+        details,
+        updated_fields: Object.keys(updates),
+      };
+    }
   }
 
   return {
