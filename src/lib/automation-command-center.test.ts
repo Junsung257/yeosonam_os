@@ -89,7 +89,7 @@ describe('buildAutomationCommandCenterSnapshot', () => {
           id: 'action-1',
           agent_type: 'sales',
           action_type: 'booking_change',
-          summary: 'Booking change approval required',
+          summary: '예약 변경 승인 필요',
           priority: 'critical',
           status: 'pending',
           created_at: '2026-06-29T00:00:00.000Z',
@@ -125,11 +125,11 @@ describe('buildAutomationCommandCenterSnapshot', () => {
     });
 
     expect(snapshot.one_click_recommendation).toMatchObject({
-      label: 'Review Ad OS repair plan',
+      label: 'Ad OS 수리 계획 보기',
       action_type: 'navigate',
       safe: true,
     });
-    expect(snapshot.jarvis.next_action).toBe('Jarvis is ready to create operator approval packets.');
+    expect(snapshot.jarvis.next_action).toBe('자비스는 운영 승인 패킷을 생성할 수 있습니다.');
     expect(snapshot.safety).toMatchObject({
       read_only: true,
       database_mutation: false,
