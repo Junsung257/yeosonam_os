@@ -4,7 +4,10 @@ const queriedTables: string[] = [];
 
 function queryResult(table: string) {
   const dataByTable: Record<string, unknown[]> = {
-    active_destinations: [{ destination: '오사카' }],
+    active_destinations: [
+      { destination: '오사카', package_count: 2 },
+      { destination: '석가장', package_count: 0 },
+    ],
     content_creatives: [
       {
         slug: 'osaka-weather',
@@ -55,6 +58,8 @@ describe('sitemap', () => {
       .replace(/\/+$/, '');
 
     expect(urls).toContain(`${expectedBaseUrl}/packages`);
+    expect(urls).toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('오사카')}`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('석가장')}`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).not.toContain('travel_packages');

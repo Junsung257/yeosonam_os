@@ -472,6 +472,72 @@ async function activeDestinationExists(destinationOrSlug: string): Promise<boole
   }
 }
 
+async function packageDestinationExists(destinationOrSlug: string): Promise<boolean | null> {
+  const config = getSupabaseRestConfig();
+  if (!config) return null;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    const endpoint = new URL(`${config.url}/rest/v1/travel_packages`);
+    endpoint.searchParams.set('select', 'id');
+    endpoint.searchParams.set('destination', `eq.${destinationOrSlug}`);
+    endpoint.searchParams.set('status', 'in.(approved,active)');
+    endpoint.searchParams.set('limit', '1');
+
+    const res = await fetch(endpoint, {
+      headers: {
+        apikey: config.key,
+        authorization: `Bearer ${config.key}`,
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) return true;
+  } catch {
+    return null;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    const endpoint = new URL(`${config.url}/rest/v1/travel_packages`);
+    endpoint.searchParams.set('select', 'destination');
+    endpoint.searchParams.set('status', 'in.(approved,active)');
+    endpoint.searchParams.set('limit', '2000');
+
+    const res = await fetch(endpoint, {
+      headers: {
+        apikey: config.key,
+        authorization: `Bearer ${config.key}`,
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return null;
+
+    const targetSlug = destinationSlugFromRouteValue(destinationOrSlug);
+    const data = await res.json();
+    return Array.isArray(data) && data.some((row) => {
+      const destination = typeof row?.destination === 'string' ? row.destination : '';
+      return destinationSlugFromRouteValue(destination) === targetSlug;
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function publicDestinationExists(destinationOrSlug: string): Promise<boolean | null> {
+  const active = await activeDestinationExists(destinationOrSlug);
+  if (active !== false) return active;
+  return packageDestinationExists(destinationOrSlug);
+}
+
 async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextResponse | null> {
   const segments = pathname.split('/').filter(Boolean);
 
@@ -494,7 +560,7 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
   if (segments[0] === 'destinations' && segments.length === 2) {
     const destination = safeDecodePathSegment(segments[1]).trim();
     if (!destination) return plainNotFound();
-    const exists = await activeDestinationExists(destination);
+    const exists = await publicDestinationExists(destination);
     if (exists === false) return plainNotFound();
   }
 
@@ -507,6 +573,14 @@ function isPublicPath(request: NextRequest) {
   // /api/packages는 GET 요청만 PUBLIC 허용
   if (pathname === '/api/packages' || pathname.startsWith('/api/packages/')) {
     return request.method === 'GET';
+  }
+
+  if (pathname.startsWith('/api/destinations/')) {
+    const segments = pathname.split('/').filter(Boolean);
+    const routeName = segments[2] ?? '';
+    return request.method === 'GET' &&
+      segments.length === 3 &&
+      !['hero-photo', 'meta-list'].includes(routeName);
   }
 
   if (pathname === '/api/unmatched') {

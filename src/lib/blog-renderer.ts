@@ -469,6 +469,31 @@ function unwrapDecorativeStrongParagraphs(html: string): string {
   });
 }
 
+function splitProseLikeRenderedHeadings(html: string): string {
+  return html.replace(/<h([2-4])([^>]*)>\s*([^<]+?)\s*<\/h\1>/gi, (match, level: string, attrs: string, rawText: string) => {
+    const text = rawText.replace(/\s+/g, ' ').trim();
+    if (text.length < 80) return match;
+
+    const questionAnswer = text.match(/^(.{8,100}?[?？])\s+(답부터\s*말하면[,\s].{20,})$/);
+    if (questionAnswer) {
+      return `<h${level}${attrs}>${questionAnswer[1].trim()}</h${level}>\n<p>${questionAnswer[2].trim()}</p>`;
+    }
+
+    const looksLikeBodyCopy =
+      /답부터\s*말하면|같이\s*보면|함께\s*확인|도움이\s*됩니다|줄이는\s*데\s*도움/i.test(text) &&
+      /[.?!。？！]\s+\S/.test(text);
+    if (!looksLikeBodyCopy) return match;
+
+    const sentenceEnd = text.search(/[.?!。？！]\s+/);
+    if (sentenceEnd < 16) return `<p>${text}</p>`;
+
+    const heading = text.slice(0, sentenceEnd + 1).trim();
+    const rest = text.slice(sentenceEnd + 1).trim();
+    if (!rest || heading.length > 100) return `<p>${text}</p>`;
+    return `<h${level}${attrs}>${heading}</h${level}>\n<p>${rest}</p>`;
+  });
+}
+
 function splitInlineMarkdownHeadingsInParagraphs(html: string): string {
   return html.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/g, (match, body) => {
     if (!/##\s+\S/.test(body) || /<(?:p|div|ul|ol|li|table|h[1-6]|blockquote)\b/i.test(body)) return match;
@@ -495,7 +520,7 @@ function splitInlineMarkdownHeadingsInParagraphs(html: string): string {
 
 function normalizeRenderedHeadingArtifacts(html: string): string {
   const seenCore = new Set<string>();
-  return unwrapDecorativeStrongParagraphs(html)
+  return splitProseLikeRenderedHeadings(unwrapDecorativeStrongParagraphs(html))
     .replace(/<p\b[^>]*>([\s\S]*?##\s+[\s\S]*?)<\/p>/gi, (match) => splitInlineMarkdownHeadingsInParagraphs(match))
     .replace(
       /<h([23])([^>]*)>\s*([^<]*?)\s*<strong>\s*(Q\d+[.:)]?\s*[^<]+?)<\/strong>\s*<\/h\1>/gi,
