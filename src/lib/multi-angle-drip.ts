@@ -18,6 +18,7 @@ import { supabaseAdmin } from './supabase';
 import { getBlogPublishingPolicy } from './blog-scheduler';
 import type { AngleType } from './content-generator';
 import { researchKeywordsBatch, classifyKeywordTier } from './keyword-research';
+import { loadCustomerOpenContractForPackage } from './product-registration/customer-open-contract';
 
 interface PackageRow {
   id: string;
@@ -120,6 +121,12 @@ export async function enqueueMultiAngleDrip(
   const pkg = pkgs[0] as PackageRow;
   if (!pkg.destination) {
     result.errors.push('destination 없음 — drip 스킵');
+    return result;
+  }
+
+  const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, productId);
+  if (!openContract.ok) {
+    result.errors.push(`CUSTOMER_OPEN_CONTRACT_BLOCKED:${openContract.blockers.slice(0, 5).join('|')}`);
     return result;
   }
 

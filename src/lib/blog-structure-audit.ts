@@ -119,7 +119,7 @@ function inspectRenderArtifacts(input: BlogStructureAuditInput, issues: BlogStru
   const $ = load(input.renderedHtml);
   const visibleText = normalizeText($.root().text());
   const sourceText = normalizeText(`${input.rawMarkdown} ${visibleText}`);
-  const artifact = sourceText.match(/(?:^|[\s>])(?:\$[0-9]+|\$\{[^}]+}|undefined|null|null원|NaN|object Object)(?:[\s<.,!?]|$)/i);
+  const artifact = sourceText.match(/(?:^|[\s>])(?:\$[1-9](?![\d.,])|\$\{[^}]+}|undefined|null|null원|NaN|object Object)(?:[\s<.,!?]|$)/i);
 
   if (artifact) {
     addIssue(
@@ -207,8 +207,17 @@ function closestListItemText($: ReturnType<typeof load>, checklistHeading: Eleme
   return sectionTexts;
 }
 
+function isReadableChecklistHeading(text: string): boolean {
+  if (/체크리스트|준비물|필수 아이템/.test(text)) return true;
+  return /체크리스트|준비물|필수 아이템/.test(text);
+}
+
 function inspectChecklist(input: BlogStructureAuditInput, issues: BlogStructureIssue[]): void {
   const $ = load(input.renderedHtml);
+  const readableChecklistHeadings = $('h2, h3')
+    .toArray()
+    .filter((heading) => isReadableChecklistHeading(normalizeText($(heading).text())));
+  if (readableChecklistHeadings.some((heading) => closestListItemText($, heading).length >= 3)) return;
   const checklistHeadings = $('h2, h3')
     .toArray()
     .filter((heading) => /체크리스트|준비물|필수 아이템/.test(normalizeText($(heading).text())));

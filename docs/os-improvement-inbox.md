@@ -1,70 +1,160 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-29T20:28:38+09:00
-- actionable_changed_files: 43
-- todo_markers: 0
-- areas: ETC 18, LIB 14, DB 8, API 3
+- generated_at_kst: 2026-06-28T14:25:58+09:00
+- actionable_changed_files: 82
+- todo_markers: 59
+- areas: ETC 44, LIB 24, APP 6, UI 3, API 3, DOCS 2
 
 ## 1) Actionable Changed Files
 
-- ` M` `src/app/api/qa/chat/route.ts`
-- ` M` `src/app/api/qa/chat/v2/route.ts`
-- ` M` `src/lib/jarvis/cost-tracker.ts`
-- ` M` `src/lib/jarvis/response-critic.ts`
-- ` M` `src/lib/jarvis/scoped-tables.ts`
-- ` M` `src/lib/llm-gateway.ts`
-- ` M` `src/lib/prompt-loader.ts`
-- ` M` `src/lib/secret-registry.ts`
-- `??` `api_test.json`
-- `??` `api_total.txt`
-- `??` `packages_response.txt`
-- `??` `response1.json`
-- `??` `response2.json`
-- `??` `response3.json`
-- `??` `response4.json`
-- `??` `response5.json`
-- `??` `result-01.txt`
-- `??` `result-sc12.txt`
-- `??` `scripts/demand-forecast-pipeline.py`
-- `??` `scripts/qa-chat-scenario-test.mjs`
-- `??` `scripts/requirements.txt`
-- `??` `src/app/api/v1/`
-- `??` `src/lib/anomaly-detection.ts`
-- `??` `src/lib/api-key-middleware.ts`
-- `??` `src/lib/api-key-service.ts`
-- `??` `src/lib/customer-events.ts`
-- `??` `src/lib/multimodal-sdk.ts`
-- `??` `src/lib/qa-chat-engine.ts`
-- `??` `src/lib/recommendation-events.ts`
-- `??` `src/lib/toss-billing.ts`
-- `??` `supabase/migrations/20260529100000_customer_events.sql`
-- `??` `supabase/migrations/20260529110000_prompt_registry.sql`
-- `??` `supabase/migrations/20260529120000_recommendation_events.sql`
-- `??` `supabase/migrations/20260529130000_demand_forecasts.sql`
-- `??` `supabase/migrations/20260529140000_anomaly_detection.sql`
-- `??` `supabase/migrations/20260529150000_api_keys.sql`
-- `??` `supabase/migrations/20260529160000_toss_billing.sql`
-- `??` `supabase/migrations/20260529170000_agent_tasks.sql`
-- `??` `test_quick.mjs`
-- `??` `test_sc_12.mjs`
-- `??` `test_scenario_01.mjs`
-- `??` `test_scenarios.mjs`
-- `??` `test_ux.mjs`
+- `M ` `docs/product-mobile-landing-quality-runbook.md`
+- ` M` `docs/product-registration-current-ssot.md`
+- ` M` `package-lock.json`
+- ` M` `package.json`
+- ` M` `scripts/audit-open-archive-ticketing-products.ts`
+- ` M` `scripts/prove-hwp-mobile-render.ts`
+- ` M` `src/app/api/packages/[id]/approve/route.test.ts`
+- ` M` `src/app/api/packages/[id]/approve/route.ts`
+- ` M` `src/app/api/user-actions/route.ts`
+- ` M` `src/app/lp/[id]/LandingClient.tsx`
+- ` M` `src/app/lp/[id]/LpDeferSections.tsx`
+- ` M` `src/app/lp/[id]/page.tsx`
+- ` M` `src/app/packages/[id]/DetailClient.tsx`
+- ` M` `src/app/packages/[id]/layout.tsx`
+- ` M` `src/app/packages/[id]/page.tsx`
+- ` M` `src/components/customer/RecentViews.tsx`
+- ` M` `src/components/lp/LeadBottomSheet.tsx`
+- ` M` `src/components/lp/PriceSection.tsx`
+- ` M` `src/lib/attraction-source-backed-description.ts`
+- ` M` `src/lib/auto-mobile-qa.ts`
+- ` M` `src/lib/customer-mobile-proof.test.ts`
+- ` M` `src/lib/customer-mobile-proof.ts`
+- ` M` `src/lib/load-lp-package.test.ts`
+- ` M` `src/lib/load-lp-package.ts`
+- ` M` `src/lib/map-travel-package-to-lp.ts`
+- ` M` `src/lib/parser/recommendation-copy.test.ts`
+- ` M` `src/lib/parser/recommendation-copy.ts`
+- ` M` `src/lib/product-registration/deliverability-gate.test.ts`
+- ` M` `src/lib/product-registration/deliverability-gate.ts`
+- ` M` `src/lib/product-registration/register-product-from-raw.ts`
+- ` M` `src/lib/product-registration/upload-route-boundary.test.ts`
+- ` M` `src/lib/product-registration/upload-to-open-autopilot.ts`
+- ` M` `src/lib/upload-verify.test.ts`
+- ` M` `src/lib/upload-verify.ts`
+- `??` `data/product-registration/customer-text-audit-20260628-after/`
+- `??` `data/product-registration/customer-text-audit-20260628-applied/`
+- `??` `data/product-registration/customer-text-audit-20260628-blocked/`
+- `??` `data/product-registration/customer-text-audit-20260628-dangling-applied-2/`
+- `??` `data/product-registration/customer-text-audit-20260628-dangling-applied/`
+- `??` `data/product-registration/customer-text-audit-20260628-dangling-final/`
+- `??` `data/product-registration/customer-text-audit-20260628-dangling-openable/`
+- `??` `data/product-registration/customer-text-audit-20260628-dangling/`
+- `??` `data/product-registration/customer-text-audit-20260628-final/`
+- `??` `data/product-registration/customer-text-audit-20260628-mobile-proof/`
+- `??` `data/product-registration/customer-text-audit-20260628-openable/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-after-block/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-after/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-applied-2/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-applied/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-blocked/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-final-2/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-final/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-mobile-proof/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing-openable/`
+- `??` `data/product-registration/customer-text-audit-20260628-spacing/`
+- `??` `data/product-registration/customer-text-audit-20260628-text-final/`
+- `??` `data/product-registration/customer-text-audit-20260628-text-mobile-proof/`
+- `??` `data/product-registration/customer-text-audit-20260628-text-openable/`
+- `??` `data/product-registration/customer-text-audit-20260628/`
+- `??` `data/product-registration/manual-ticketing-mobile-copy-20260628/`
+- `??` `data/product-registration/manual-ticketing-mobile-proof-20260628/`
+- `??` `data/product-registration/sjw-current-mobile-copy-20260628/`
+- `??` `data/product-registration/sjw-current-mobile-proof-20260628/`
+- `??` `data/product-registration/sjw-current-mobile-proof-applied-20260628/`
+- `??` `data/product-registration/sjw-opened-final-mobile-copy-20260628/`
+- `??` `data/product-registration/sjw-opened-final-mobile-proof-v2-20260628-rerun/`
+- `??` `data/product-registration/sjw-opened-final-mobile-proof-v2-20260628/`
+- `??` `data/product-registration/sjw-opened-final-mobile-proof-v2-applied-20260628/`
+- `??` `data/product-registration/sjw-opened-final-mobile-proof-v2-applied-pass-20260628/`
+- `??` `data/product-registration/sjw-opened-final-mobile-proof-v2-pass-20260628/`
+- `??` `data/product-registration/sjw-opened-final-mobile-proof-v2-recheck-20260628/`
+- `??` `data/product-registration/sjw-opened-final-mobile-proof-v2-recheck2-20260628/`
+- `??` `scripts/audit-customer-visible-product-text.ts`
+- `??` `scripts/audit-mobile-landing-copy.ts`
+- `??` `src/lib/customer-copy-quality.test.ts`
+- `??` `src/lib/customer-copy-quality.ts`
+- `??` `src/lib/customer-visible-text-audit.ts`
+- `??` `src/lib/product-registration/customer-visible-copy-repair.test.ts`
+- `??` `src/lib/product-registration/customer-visible-copy-repair.ts`
+- `??` `src/lib/product-registration/registration-quality-scorecard.test.ts`
+- `??` `src/lib/product-registration/registration-quality-scorecard.ts`
+- `??` `src/lib/product-registration/upload-to-open-autopilot.test.ts`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
-- 없음
+- src\components\GA4Tracker.tsx:6: * NEXT_PUBLIC_GA4_ID 환경변수 (예: G-XXXXXXXXXX) 가 있을 때만 활성.
+- src\components\admin\AdPerformanceDashboard.tsx:82:          setImportResult(`파싱 가능한 데이터가 없습니다. 캠페인 이름에 YSN-XXX-XXXX 형식의 Tracking ID가 필요합니다.`);
+- src\components\admin\AdPerformanceDashboard.tsx:176:            <p className="text-[11px] text-admin-muted-2">캠페인 이름에 YSN-XXX-XXXX 형식의 Tracking ID가 포함되어야 합니다</p>
+- src\lib\ad-controller.ts:115:  // TODO: 실제 네이버·구글·Meta 광고 잔액 API — 연동 시 secret-registry·전용 클라이언트 경유
+- src\lib\ad-controller.ts:277: * TODO: 실제 구현 방향
+- src\lib\ad-brain.ts:6: * - Creative ID 발급 (YSN-XXX-XXXX)
+- src\lib\ad-brain.ts:85:  // creative_id 추출 (YSN-XXX-XXXX 패턴)
+- src\app\admin\products\[id]\distribute\page.tsx:75:  // V2 Studio 에서 넘어올 때 ?card_news_id=XXX 로 들어옴. 상품이 없거나 고아 참조일 때 이 카드뉴스로 fallback.
+- src\app\admin\products\[id]\distribute\page.tsx:214:            URL 에 <code className="bg-red-100 px-1 rounded">?card_news_id=XXX</code> 를 추가하거나 목록에서 다시 진입해 주세요.
+- src\lib\api-validation.ts:125:  .regex(/^010\d{8}$|^010-\d{4}-\d{4}$/, '010-XXXX-XXXX 형식이어야 합니다');
+- src\app\admin\free-travel\FreeTravelPageClient.tsx:796:                  placeholder="예) MRT-2026-XXXXX"
+- src\lib\blog-topic-fit-gate.ts:68:const PLACEHOLDER_RE = /관련\s*지역|목적지명|여행지명|undefined|null|\[object\s+object\]|\{\{[^}]+}}|TODO|TBD/i;
+- src\lib\content-pipeline\publishers\meta-ads-publisher.ts:15: *   META_AD_ACCOUNT_ID     = 'act_XXXXXXXXXX' (Meta Business Manager)
+- src\lib\customer-name.ts:79:  // DB 트리거(format_phone_number)가 010-XXXX-XXXX 형식으로 저장하므로 쿼리도 동일 형식 사용
+- src\lib\briefing-ppt-generator.ts:376:  // TODO: 타임라인 레이아웃 구현
+- src\lib\briefing-ppt-generator.ts:388:  // TODO: 그리드 레이아웃 구현
+- src\lib\jarvis\v2-dispatch.ts:11: *   ⏳ products / finance / marketing / sales / system — TODO, Phase 2 후속 PR 에서 확장
+- src\app\api\rfq\route.ts:271:  // 3. TODO: Solapi 카카오 알림톡 (템플릿 등록 후 활성화)
+- src\lib\jarvis\agents\affiliate.ts:30:- 유효 클릭: XXX회 / 고유 방문: XXX명
+- src\lib\jarvis\agents\affiliate.ts:31:- 전환: XX건 (매출 XXX만원)
+- src\app\api\register-via-ir\route.ts:46:  return 'XXX';
+- src\lib\jarvis\prompts\product.ts:22:- 형식: "📅 3일 앞당기면 52,000원 절약 → 3월 14일(화) 판매가 XXX,XXX원"
+- src\lib\jarvis\prompts\product.ts:30:      판매가: N,NNN,NNN원 (성인 XXX,XXX×N + 아동 XXX,XXX×N)
+- src\lib\jarvis\prompts\product.ts:82:문의: 여소남여행 010-XXXX-XXXX`;
+- src\lib\jarvis\prompts\finance.ts:10:- 미수금(잔금) 있으면 강조: "⚠️ 미수금 XXX만원 있습니다"
+- src\lib\jarvis\prompts\finance.ts:14:📊 총 판매가: XXX만원 (XX건)
+- src\lib\jarvis\prompts\finance.ts:15:✅ 입금 완료: XXX만원
+- src\lib\jarvis\prompts\finance.ts:16:⚠️ 미수금(잔금): XXX만원
+- src\lib\jarvis\prompts\finance.ts:17:💰 순마진(결제완료 기준): XXX만원
+- src\lib\meta-webhook.ts:8: *    Header: X-Hub-Signature-256: sha256=XXXX
+- src\lib\meta-api.ts:15:  const adAccountId = getSecret('META_AD_ACCOUNT_ID'); // "act_XXXXXXXXX" 형식
+- src\lib\mta-bid-feedback.ts:338:  // TODO: 추후 Meta Ads API / Google Ads API 연동
+- src\lib\mileage-service.ts:359:// TODO: 추후 bank-transactions에서 conversion 파이프라인에 netProfit을
+- src\lib\pii-mask.ts:33:  // 010-XXXX-XXXX 계열 (11자리) 또는 지역번호 (10자리)
+- src\lib\registration-write-pipeline.test.ts:56:      shortCode: 'TST-XXX-05-01',
+- src\lib\semantic-cache.ts:58:  // 한국 일반전화 (02-XXX-XXXX, 0XX-XXX-XXXX, 0XX-XXXX-XXXX)
+- src\lib\trend-feature-extractor.ts:117: *   - 010-XXXX-XXXX 전화번호
+- src\lib\travel-providers\yeosonam.ts:29:    // TODO Phase 2: travel_packages 직판 항공편 조회
+- src\lib\travel-providers\yeosonam.ts:34:    // TODO Phase 2: travel_packages 직판 숙박 조회
+- src\lib\travel-providers\yeosonam.ts:39:    // TODO Phase 2: travel_packages 액티비티 조회
+- src\lib\travel-providers\yeosonam.ts:44:    // TODO Phase 2: 기존 /api/bookings로 라우팅
+- src\lib\travel-providers\yeosonam.ts:53:    // TODO Phase 2: 기존 예약 취소 API로 라우팅
+- docs\API_REFERENCE.md:1542:4. 실제 광고 플랫폼 API로 키워드 상태 반영 (TODO 주석)
+- docs\API_REFERENCE.md:1741:// TODO: 출발 D-7 준비물 안내 알림톡
+- docs\API_REFERENCE.md:1744:// TODO: 잔금 납부 D-3 알림톡
+- docs\API_REFERENCE.md:1747:// TODO: 여권 만료 임박 알림톡
+- docs\API_REFERENCE.md:1751:// TODO: C2C 공유 전환율 집계
+- src\lib\travel-providers\agoda.ts:28:    // TODO Phase 1: Agoda Affiliate API 구현
+- src\lib\travel-providers\agoda.ts:38:    // TODO Phase 1: Agoda 딥링크 파라미터 주입
+- src\app\api\cron\slack-gap-fill\route.ts:17: *   - SLACK_CHANNEL_ID  : C0XXXXXX (Clobe.ai가 포스팅하는 채널)
+- docs\deploy-checklist.md:263:문제 발견 시 → 위 "롤백 준비" 섹션대로 대응 + 해당 섹션 TODO 로 기록.
+- docs\git-commit-handoff.md:95:- `AI-TODO`: 다음에 해야 할 후속 작업
+- docs\errors\product-registration.md:728:- **증상**: 신규 지역 상품을 등록하고도 **지역 전용 어셈블러(`db/assembler_XXX.js`)를 생성하지 않음**
+- docs\audits\2026-05-30-full-stack-admin-final-audit.md:212:### P3-3. `as any`/TODO/ESLint disable ?뺣━
+- docs\os-automation-runbook.md:20:- `src`, `docs`의 `TODO/FIXME/HACK/XXX` 마커
+- docs\os-improvement-inbox.md:54:## 2) TODO/FIXME/HACK/XXX Markers
+- docs\P3_ADVANCED_SETUP.md:49:SLACK_WEBHOOK=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX
+- docs\P3_ADVANCED_SETUP.md:137:SLACK_WEBHOOK=https://hooks.slack.com/services/T00/B00/XXX
+- docs\STAGE1_COMPLETE.md:248:SLACK_WEBHOOK=https://hooks.slack.com/services/T00/B00/XXX
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P1 `??` `supabase/migrations/20260529100000_customer_events.sql`
-- [ ] P1 `??` `supabase/migrations/20260529110000_prompt_registry.sql`
-- [ ] P1 `??` `supabase/migrations/20260529120000_recommendation_events.sql`
-- [ ] P1 `??` `supabase/migrations/20260529130000_demand_forecasts.sql`
-- [ ] P1 `??` `supabase/migrations/20260529140000_anomaly_detection.sql`
-- [ ] P1 `??` `supabase/migrations/20260529150000_api_keys.sql`
-- [ ] P1 `??` `supabase/migrations/20260529160000_toss_billing.sql`
-- [ ] P1 `??` `supabase/migrations/20260529170000_agent_tasks.sql`
+- 없음
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

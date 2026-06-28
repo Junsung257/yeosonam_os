@@ -36,6 +36,7 @@ Repeated failures belong in `docs/errors/marketing.md`.
 - Missing OAuth/API tokens must produce a blocked or manual-review state, not a fake success.
 - Spend-affecting changes need budget, channel, tenant, and rollback evidence before execution.
 - Blog/card-news/social content can be generated without publishing; public/external publishing requires the same quality and approval boundary as the destination channel.
+- Product-backed marketing drafts must only use packages whose unified `customer_open_contract` passes. `registration_evidence_pack_v1.downstream_eligibility.marketing_stage=false` means the product is repair/re-proof work, not a marketing candidate.
 - Marketing dashboards must show degraded or blocked when required evidence is unavailable. Missing data is not healthy data.
 
 ## External Write Boundary

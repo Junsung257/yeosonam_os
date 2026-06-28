@@ -11,6 +11,7 @@ import { renderPackage, type RenderPackageInput } from '@/lib/render-contract';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
 import { resolveUploadDestinationAndCodes } from '@/lib/product-registration/destination-resolution';
+import { blockingCustomerVisibleTextIssues } from '@/lib/customer-visible-text-audit';
 
 type Options = {
   apply: boolean;
@@ -49,6 +50,7 @@ type PackageRow = {
   raw_text_hash: string | null;
   confidence: number | null;
   ticketing_deadline: string | null;
+  audit_report: Record<string, unknown> | null;
 };
 
 type ProductPriceRow = {
@@ -101,6 +103,14 @@ function sha256(value: string): string {
 
 function asArray<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function nonEmpty(value: unknown): string | null {
@@ -215,6 +225,12 @@ function customerOptionMismatch(pkg: PackageRow, productPrices: ProductPriceRow[
   return null;
 }
 
+function customerVisibleTextFailure(pkg: PackageRow): string | null {
+  const issues = blockingCustomerVisibleTextIssues(pkg as unknown as Record<string, unknown>);
+  if (issues.length === 0) return null;
+  return `customer text quality blocked: ${issues.slice(0, 4).map(issue => `${issue.fieldPath}=${issue.value}`).join(' / ')}`;
+}
+
 function hasRawNoticeLeakRisk(pkg: PackageRow): boolean {
   const notices = asArray(pkg.notices_parsed);
   const hasStandardMeta = notices.some(notice =>
@@ -243,6 +259,38 @@ function hasSchedulePolicyLeak(pkg: PackageRow): boolean {
     const activity = String(item.activity ?? '');
     return /취소규정|현금영수증|예약금|수수료|환불|300,000/.test(activity);
   }));
+}
+
+function auditReportRecord(pkg: PackageRow): Record<string, unknown> {
+  return pkg.audit_report && typeof pkg.audit_report === 'object' && !Array.isArray(pkg.audit_report)
+    ? pkg.audit_report
+    : {};
+}
+
+function mobileBrowserProofFailure(pkg: PackageRow): string | null {
+  const report = auditReportRecord(pkg);
+  const proof = report.mobile_browser_proof && typeof report.mobile_browser_proof === 'object' && !Array.isArray(report.mobile_browser_proof)
+    ? report.mobile_browser_proof as Record<string, unknown>
+    : null;
+  if (!proof) return 'mobile_browser_proof missing';
+  if (proof.status !== 'pass') return `mobile_browser_proof ${String(proof.status ?? 'missing')}`;
+
+  const surfaces = new Set<string>();
+  for (const surface of asArray(proof.surfaces)) {
+    if (typeof surface === 'string') surfaces.add(surface);
+  }
+  for (const surfaceResult of asArray(proof.surface_results)) {
+    if (!surfaceResult || typeof surfaceResult !== 'object' || Array.isArray(surfaceResult)) continue;
+    const record = surfaceResult as Record<string, unknown>;
+    if (typeof record.surface === 'string') surfaces.add(record.surface);
+    if (record.status && record.status !== 'pass') {
+      return `mobile_browser_proof ${String(record.surface ?? 'surface')} ${String(record.status)}`;
+    }
+  }
+  if (!surfaces.has('packages')) return 'mobile_browser_proof packages surface missing';
+  if (!surfaces.has('lp')) return 'mobile_browser_proof lp surface missing';
+
+  return null;
 }
 
 function hasUnresolvedIdentity(pkg: PackageRow): boolean {
@@ -337,7 +385,7 @@ async function main(): Promise<void> {
   const supabase = createClient(url, key, { auth: { persistSession: false } });
   const { data: packages, error } = await supabase
     .from('travel_packages')
-    .select('id,title,status,audit_status,created_at,updated_at,internal_code,short_code,destination,duration,departure_airport,airline,accommodations,inclusions,excludes,optional_tours,notices_parsed,customer_notes,price,price_tiers,price_dates,itinerary,itinerary_data,min_participants,trip_style,raw_text,raw_text_hash,confidence,ticketing_deadline')
+    .select('id,title,status,audit_status,audit_report,created_at,updated_at,internal_code,short_code,destination,duration,departure_airport,airline,accommodations,inclusions,excludes,optional_tours,notices_parsed,customer_notes,price,price_tiers,price_dates,itinerary,itinerary_data,min_participants,trip_style,raw_text,raw_text_hash,confidence,ticketing_deadline')
     .in('status', MANAGED_STATUSES)
     .order('created_at', { ascending: false })
     .limit(options.limit);
@@ -348,11 +396,13 @@ async function main(): Promise<void> {
   const codes = packageRows.map(row => row.internal_code).filter((code): code is string => Boolean(code));
 
   const priceRowsByCode = new Map<string, ProductPriceRow[]>();
-  if (codes.length > 0) {
+  const uniqueCodes = [...new Set(codes)];
+  for (const codeChunk of chunkArray(uniqueCodes, 40)) {
     const { data: priceRows, error: priceError } = await supabase
       .from('product_prices')
       .select('product_id,target_date,net_price,adult_selling_price,note')
-      .in('product_id', codes);
+      .in('product_id', codeChunk)
+      .limit(5000);
     if (priceError) throw new Error(priceError.message);
     for (const row of (priceRows ?? []) as ProductPriceRow[]) {
       if (!row.product_id) continue;
@@ -396,6 +446,8 @@ async function main(): Promise<void> {
       hasUnresolvedIdentity(pkg) ? 'destination or internal code unresolved' : null,
       hasRawNoticeLeakRisk(pkg) ? 'customer notice raw leak risk' : null,
       hasSchedulePolicyLeak(pkg) ? 'schedule contains policy/payment text' : null,
+      customerVisibleTextFailure(pkg),
+      mobileBrowserProofFailure(pkg),
     ].filter((item): item is string => Boolean(item));
     const v3Status = getDraftStatus(draft);
     const standardNotices = countLedgerRows(draft, 'standard_notices');
@@ -436,6 +488,7 @@ async function main(): Promise<void> {
       itineraryDays: itineraryDays(pkg),
       mobileFailures,
       sourceFailures,
+      auditReport: auditReportRecord(pkg),
       openEligible,
       archiveReasons,
     });
@@ -455,15 +508,19 @@ async function main(): Promise<void> {
   if (options.apply) {
     for (const row of toOpen) {
       const auditReport = {
+        ...row.auditReport,
         source: 'ticketing-mobile-landing-open-audit',
-        checked_at: now,
-        ticketing_deadline: row.ticketingDeadline,
-        latest_departure: row.latestDeparture,
-        v3_status: row.v3Status,
-        standard_notices: row.standardNotices,
-        structured_facts: row.structuredFacts,
-        mobile_failures: row.mobileFailures,
-        source_failures: row.sourceFailures,
+        customer_opening: {
+          status: 'opened',
+          checked_at: now,
+          ticketing_deadline: row.ticketingDeadline,
+          latest_departure: row.latestDeparture,
+          v3_status: row.v3Status,
+          standard_notices: row.standardNotices,
+          structured_facts: row.structuredFacts,
+          mobile_failures: row.mobileFailures,
+          source_failures: row.sourceFailures,
+        },
       };
       const { error: updateError } = await supabase
         .from('travel_packages')
@@ -482,19 +539,24 @@ async function main(): Promise<void> {
           .from('products')
           .update({ status: 'active', updated_at: now })
           .eq('internal_code', row.code);
-        if (!productError) applied.productRowsOpened += 1;
+        if (productError) throw new Error(productError.message);
+        applied.productRowsOpened += 1;
       }
     }
 
     for (const row of toArchive) {
       const auditReport = {
+        ...row.auditReport,
         source: 'ticketing-mobile-landing-archive-audit',
-        checked_at: now,
-        reasons: row.archiveReasons,
-        ticketing_deadline: row.ticketingDeadline,
-        latest_departure: row.latestDeparture,
-        v3_status: row.v3Status,
-        mobile_failures: row.mobileFailures,
+        customer_opening: {
+          status: 'archived',
+          checked_at: now,
+          reasons: row.archiveReasons,
+          ticketing_deadline: row.ticketingDeadline,
+          latest_departure: row.latestDeparture,
+          v3_status: row.v3Status,
+          mobile_failures: row.mobileFailures,
+        },
       };
       const statusPatch: Record<string, unknown> = {
         status: 'archived',
@@ -514,9 +576,10 @@ async function main(): Promise<void> {
       if (row.code) {
         const { error: productError } = await supabase
           .from('products')
-          .update({ status: 'archived', updated_at: now })
+          .update({ status: 'expired', updated_at: now })
           .eq('internal_code', row.code);
-        if (!productError) applied.productRowsArchived += 1;
+        if (productError) throw new Error(productError.message);
+        applied.productRowsArchived += 1;
       }
     }
   }

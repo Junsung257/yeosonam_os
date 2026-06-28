@@ -21,6 +21,32 @@ describe('evaluateUploadDeliverability', () => {
     expect(result.blockers.join(' | ')).toContain('itinerary duplicate day number');
   });
 
+  it('blocks internal supplier terms and broken copy before upload persistence', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-16', day_of_week: null, net_price: 1429000, adult_selling_price: 1429000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-16', price: 1429000, confirmed: false }],
+      destination: 'Da Nang',
+      destinationCode: 'DAD',
+      internalCode: 'PUS-ETC-DAD-05-0001',
+      durationDays: 5,
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }, { day: 5 }],
+      customerVisibleText: {
+        title: 'Da Nang package',
+        itinerary_data: {
+          days: [
+            { day: 1, schedule: [{ activity: '랜드사 NET 기준 수배 후 컨펌되면 인폼 나가주세요' }] },
+            { day: 2, schedule: [{ activity: '????' }] },
+          ],
+        },
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join('\n')).toContain('customer visible text blocked');
+    expect(result.blockers.join('\n')).toContain('customer_forbidden_internal_terms');
+    expect(result.blockers.join('\n')).toContain('placeholder_or_mojibake');
+  });
+
   it('blocks source-backed round-trip flight times when saved flight segments are incomplete', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [{ target_date: '2026-07-16', day_of_week: null, net_price: 1429000, adult_selling_price: 1429000, child_price: null, note: null }],

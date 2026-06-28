@@ -10,7 +10,7 @@ describe('evaluateCustomerMobileProof', () => {
     expect(result.reason).toContain('/packages mobile browser proof is missing');
   });
 
-  it('passes only when packages mobile browser proof is successful', () => {
+  it('blocks when lp proof surface is missing', () => {
     const result = evaluateCustomerMobileProof({
       auditReport: {
         mobile_browser_proof: {
@@ -18,6 +18,27 @@ describe('evaluateCustomerMobileProof', () => {
           checked_at: '2026-06-22T09:00:00.000Z',
           package_updated_at: '2026-06-22T08:59:00.000Z',
           surfaces: ['packages'],
+        },
+      },
+      packageUpdatedAt: '2026-06-22T08:59:00.000Z',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('lp surface');
+  });
+
+  it('passes only when packages and lp mobile browser proof are successful', () => {
+    const result = evaluateCustomerMobileProof({
+      auditReport: {
+        mobile_browser_proof: {
+          status: 'pass',
+          checked_at: '2026-06-22T09:00:00.000Z',
+          package_updated_at: '2026-06-22T08:59:00.000Z',
+          surfaces: ['packages', 'lp'],
+          surface_results: [
+            { surface: 'packages', status: 'pass' },
+            { surface: 'lp', status: 'pass' },
+          ],
         },
       },
       packageUpdatedAt: '2026-06-22T08:59:00.000Z',
@@ -33,7 +54,7 @@ describe('evaluateCustomerMobileProof', () => {
           status: 'pass',
           checked_at: '2026-06-22T09:00:00.000Z',
           package_updated_at: '2026-06-22T08:59:00.000Z',
-          surfaces: ['packages'],
+          surfaces: ['packages', 'lp'],
         },
       },
       packageUpdatedAt: '2026-06-22T09:10:00.000Z',

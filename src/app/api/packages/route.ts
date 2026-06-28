@@ -37,6 +37,11 @@ import {
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { evaluateCustomerMobileProof, extractCustomerMobileProof } from '@/lib/customer-mobile-proof';
+import {
+  customerOpenContractAuditPayload,
+  loadCustomerOpenContractForPackage,
+} from '@/lib/product-registration/customer-open-contract';
+import { summarizeEvidencePackForApi } from '@/lib/product-registration/registration-evidence-pack';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -180,7 +185,6 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
         ...(existingMobileProof ? { mobile_browser_proof: existingMobileProof } : {}),
       },
       audit_checked_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     })
     .eq('id', packageId);
 
@@ -220,6 +224,28 @@ async function assertPackageSourceAuditAllowsPublication(packageId: string) {
       packageId,
       mobile_browser_proof: mobileProof,
       source_verify: result,
+    });
+  }
+
+  const customerOpenContract = await loadCustomerOpenContractForPackage(supabaseAdmin, packageId);
+  if (!customerOpenContract.ok) {
+    await supabaseAdmin
+      .from('travel_packages')
+      .update({
+        audit_status: 'blocked',
+        audit_report: {
+          ...auditReport,
+          mobile_browser_proof: mobileProof.proof,
+          customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+        },
+        audit_checked_at: new Date().toISOString(),
+      })
+      .eq('id', packageId);
+    return ApiErrors.conflict('Customer publishing is blocked by the unified customer-open contract.', {
+      code: 'CUSTOMER_OPEN_CONTRACT_BLOCKED',
+      packageId,
+      customer_open_contract: customerOpenContract,
+      ...summarizeEvidencePackForApi(customerOpenContract.evidencePack),
     });
   }
 

@@ -17,6 +17,15 @@ import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import { buildSourceBackedFieldRepair } from '@/lib/source-package-field-repair';
 import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
 import {
+  evaluateRegistrationQualityScorecard,
+  type RegistrationQualityProductPrice,
+} from '@/lib/product-registration/registration-quality-scorecard';
+import {
+  customerOpenContractAuditPayload,
+  evaluateCustomerOpenContract,
+} from '@/lib/product-registration/customer-open-contract';
+import { summarizeEvidencePackForApi } from '@/lib/product-registration/registration-evidence-pack';
+import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
   loadLatestV3DraftForPackage,
@@ -30,6 +39,21 @@ interface ApproveBody {
   selectedCopyType?: string;
   /** Allows approval when the publish gate requires an explicit warning override. */
   force?: boolean;
+}
+
+async function loadProductPricesForQualityScore(internalCode: unknown): Promise<RegistrationQualityProductPrice[] | null> {
+  const code = typeof internalCode === 'string' && internalCode.trim() ? internalCode.trim() : null;
+  if (!code) return [];
+  const { data, error } = await supabaseAdmin
+    .from('product_prices')
+    .select('target_date,net_price,adult_selling_price,child_price,note')
+    .eq('product_id', code)
+    .limit(1000);
+  if (error) {
+    console.warn('[Approve API] product_prices quality score load failed:', error.message);
+    return null;
+  }
+  return (data ?? []) as RegistrationQualityProductPrice[];
 }
 
 async function patchHandler(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -306,9 +330,61 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         .eq('id', id);
       return NextResponse.json(
         {
-          error: 'Customer publishing is blocked. Actual /packages mobile browser proof is required before approval.',
+          error: 'Customer publishing is blocked. Actual /packages and /lp mobile browser proof is required before approval.',
           trust_score: approvalTrustScore,
           mobile_browser_proof: mobileProof,
+          source_verify: sourceVerify,
+        },
+        { status: 409 },
+      );
+    }
+    const productPricesForQualityScore = await loadProductPricesForQualityScore((pkg as { internal_code?: unknown }).internal_code);
+    const qualityScorecard = evaluateRegistrationQualityScorecard({
+      pkg: {
+        ...(verifiedPkgForDelivery as Record<string, unknown>),
+        id,
+        internal_code: (pkg as { internal_code?: unknown }).internal_code ?? null,
+      },
+      verifyChecks: sourceVerify.checks,
+      productPrices: productPricesForQualityScore,
+      mobileProof,
+    });
+    const customerOpenContract = evaluateCustomerOpenContract({
+      pkg: {
+        ...(verifiedPkgForDelivery as Record<string, unknown>),
+        id,
+        internal_code: (pkg as { internal_code?: unknown }).internal_code ?? null,
+      },
+      verifyChecks: sourceVerify.checks,
+      productPrices: productPricesForQualityScore,
+      mobileProof,
+      v3Gate: v3NoticeGate,
+      sourceVerifyStatus: sourceVerify.status,
+    });
+    if (!customerOpenContract.ok) {
+      const qualityAuditReport = {
+        ...sourceAuditReport,
+        mobile_browser_proof: mobileProof.proof,
+        quality_scorecard: qualityScorecard,
+        customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      };
+      await supabaseAdmin
+        .from('travel_packages')
+        .update({
+          audit_status: 'blocked',
+          audit_report: qualityAuditReport,
+          audit_checked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      return NextResponse.json(
+        {
+          error: 'Customer publishing is blocked. The registration quality scorecard is below the 95/97 opening threshold.',
+          code: 'QUALITY_SCORECARD_BELOW_95',
+          trust_score: approvalTrustScore,
+          quality_scorecard: qualityScorecard,
+          customer_open_contract: customerOpenContract,
+          ...summarizeEvidencePackForApi(customerOpenContract.evidencePack),
           source_verify: sourceVerify,
         },
         { status: 409 },
@@ -375,6 +451,8 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
           ...sourceAuditReport,
           mobile_browser_proof: mobileProof.proof,
           approved_from_mobile_browser_proof_at: mobileProof.proof?.checked_at ?? null,
+          quality_scorecard: qualityScorecard,
+          customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
         },
         audit_checked_at: new Date().toISOString(),
         updated_at:       new Date().toISOString(),

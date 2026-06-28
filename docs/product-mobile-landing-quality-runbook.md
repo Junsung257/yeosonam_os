@@ -37,11 +37,11 @@ The same incident also exposed a route-scope verification gap. `/lp/{id}` and `/
 
 ## Non-Negotiable Rule
 
-A product is not customer-ready until the actual mobile page is checked.
+A product is not customer-ready until the actual mobile pages and CTA path are checked.
 
-The approval gate must enforce this rule in code. A product is not customer-openable just because upload verification, source comparison, or render-contract checks are clean. `audit_report.mobile_browser_proof.status="pass"` with the `/packages/{id}` surface is the minimum proof required before approval. If the proof is absent, the correct state is review/blocked with `MOBILE_BROWSER_PROOF_REQUIRED`, not "검증 통과".
+The approval gate must enforce this rule in code. A product is not customer-openable just because upload verification, source comparison, or render-contract checks are clean. `audit_report.mobile_browser_proof.status="pass"` with both `/packages/{id}` and `/lp/{id}` surfaces is the minimum proof required before approval. The proof must click the customer CTA enough to verify the reservation/lead sheet opens and carries customer-safe context. If the proof is absent, the correct state is review/blocked with `MOBILE_BROWSER_PROOF_REQUIRED`, not "검증 통과".
 
-For pre-publication QA, the system may fetch `/packages/{id}` with the internal `x-yeosonam-render-proof` header. This is the only allowed bypass for non-public packages, and it is for QA rendering only. `/lp/{id}` may still be checked after the product is customer-visible, but `/packages/{id}` is the required source-of-truth customer page.
+For pre-publication QA, the system may fetch `/packages/{id}` and `/lp/{id}` with the internal `x-yeosonam-render-proof` header. This is the only allowed bypass for non-public packages, and it is for QA rendering only. `/packages/{id}` remains the required source-of-truth customer page; `/lp/{id}` is an additional landing proof surface that must not regress.
 
 Do not report completion based only on:
 

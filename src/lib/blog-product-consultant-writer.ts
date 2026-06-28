@@ -58,8 +58,12 @@ export function generateProductConsultantBlogPost(
   const price = money(brief.price_from);
   const departure = text(brief.departure_city || product.departure_airport, '출발지 상담 확인');
   const airline = text(product.airline, '항공 상담 확인');
-  const highlights = Array.isArray(product.product_highlights) ? product.product_highlights.map((item) => text(item)).filter(Boolean).slice(0, 4) : [];
-  const itinerary = Array.isArray(product.itinerary) ? product.itinerary.map((item) => text(item)).filter(Boolean).slice(0, 5) : [];
+  const highlights = Array.isArray(product.product_highlights)
+    ? product.product_highlights.map((item) => text(item)).filter(Boolean).slice(0, 4)
+    : [];
+  const itinerary = Array.isArray(product.itinerary)
+    ? product.itinerary.map((item) => text(item)).filter(Boolean).slice(0, 5)
+    : [];
   const optionalTours = Array.isArray(product.optional_tours)
     ? product.optional_tours
       .map((tour) => [tour.name, tour.price_usd ? `$${tour.price_usd}` : null].filter(Boolean).join(' '))
@@ -71,16 +75,16 @@ export function generateProductConsultantBlogPost(
   return [
     `# ${destination} ${duration} 패키지: ${priceText}, 이런 분께 맞습니다`,
     '',
-    `${departure} 출발 ${destination} ${duration} 상품을 보고 있다면, 이 글은 가격보다 먼저 포함사항과 일정 체감이 맞는지 확인하는 용도입니다. ${price ? `현재 확인 가능한 시작가는 ${priceText}이고, ` : ''}항공 시간, 호텔 등급, 선택관광은 문의 전에 다시 확인해야 합니다.`,
+    `${destination} ${duration} 패키지는 가격, 포함사항, 일정 강도를 함께 봐야 판단이 쉬운 여행상품입니다. ${departure} 출발 기준으로 ${price ? `현재 확인 가능한 시작가는 ${priceText}이고, ` : ''}항공 시간, 호텔 등급, 선택관광은 문의 전에 다시 확인해야 합니다.`,
     '',
     '## 10초 판단',
     '',
-    '| 확인 항목 | 현재 기준 | 문의 전 볼 점 |',
+    '| 확인 항목 | 현재 기준 | 문의 때 볼 점 |',
     '| --- | --- | --- |',
-    `| 가격 | ${priceText} | 출발일, 좌석, 유류세에 따라 달라질 수 있음 |`,
+    `| 가격 | ${priceText} | 출발일, 좌석, 유류할증료에 따라 달라질 수 있음 |`,
     `| 출발 | ${departure} / ${airline} | 항공 시간과 수하물 조건 확인 |`,
-    `| 기간 | ${duration} | 이동 많은 날과 휴식 시간 확인 |`,
-    `| 적합 고객 | ${brief.fit_for[0] || '패키지 구성을 비교하는 고객'} | 동행자 연령과 이동 부담 확인 |`,
+    `| 기간 | ${duration} | 이동량과 휴식 시간 확인 |`,
+    `| 맞는 고객 | ${brief.fit_for[0] || '패키지 구성을 비교하는 고객'} | 동행자 연령과 이동 부담 확인 |`,
     '',
     '## 포함/불포함',
     '',
@@ -98,28 +102,48 @@ export function generateProductConsultantBlogPost(
     highlights.length > 0 ? '### 먼저 볼 포인트' : '',
     highlights.length > 0 ? list(highlights, '상품 핵심 포인트는 상담에서 확인합니다.') : '',
     '',
-    '## 이런 분께 맞습니다',
+    '## 이런 분께 맞고, 맞지 않을 수 있는 사람',
+    '',
+    '### 맞는 사람',
     '',
     list(brief.fit_for, `${destination} 패키지를 가격, 일정, 포함사항 기준으로 비교하려는 고객`),
     '',
-    '## 이런 분께는 맞지 않을 수 있습니다',
+    '### 맞지 않을 수 있는 사람',
     '',
     list(brief.not_fit_for, '자유일정 비중이 큰 여행을 원하는 고객'),
     '',
-    '## 가격이 달라질 수 있는 조건',
+    '## 가격이 달라질 수 있는 조건과 문의 전 질문',
+    '',
+    '### 가격 변동 조건',
     '',
     list(brief.risk_notes, '가격과 조건은 예약 시점에 달라질 수 있습니다.'),
     optionalTours.length > 0 ? '\n### 선택관광 확인\n' + list(optionalTours, '선택관광은 상담에서 확인합니다.') : '',
     '',
-    '## 문의 전 질문',
+    '### 문의 전 질문',
     '',
-    list(brief.consult_questions, '내 출발일과 인원 기준으로 가능한지 확인합니다.'),
+    list(brief.consult_questions, '출발일과 인원 기준으로 가능한지 확인합니다.'),
     '',
-    '## 내 일정 기준으로 확인하기',
+    '## 자주 묻는 질문?',
+    '',
+    `Q. ${destination} ${duration} 가격은 확정인가요?`,
+    `A. 시작가 기준이며 출발일, 좌석, 유류할증료, 객실 조건에 따라 달라질 수 있습니다.`,
+    '',
+    'Q. 포함/불포함은 어디를 봐야 하나요?',
+    'A. 위 표의 포함/불포함을 먼저 보고, 개인경비와 선택관광은 상담 때 다시 확인하는 편이 안전합니다.',
+    '',
+    'Q. 일정 강도는 어떻게 판단하나요?',
+    'A. 이동 시간이 긴 날, 자유시간, 호텔 위치를 함께 보면 동행자에게 맞는지 판단하기 쉽습니다.',
+    '',
+    '공식 출입국·항공 조건은 아래 자료도 함께 확인하세요.',
+    '',
+    '- [외교부 해외안전여행](https://www.0404.go.kr/)',
+    '- [IATA 여행센터](https://www.iatatravelcentre.com/)',
+    '',
+    '### 내 일정 기준으로 확인하기',
     '',
     `- [상품 상세 먼저 보기](${packageUrl(product.id)})`,
-    `- [이 출발일/인원 기준 가능 여부 확인](${inquiryUrl(product.id)})`,
+    `- [출발일과 인원 기준 가능 여부 확인](${inquiryUrl(product.id)})`,
     '',
     '<!-- writer: product_consultant_writer prompt_version: product-template-v2 -->',
-  ].filter((part) => part !== '').join('\n');
+  ].join('\n').replace(/\n{4,}/g, '\n\n\n').trim();
 }

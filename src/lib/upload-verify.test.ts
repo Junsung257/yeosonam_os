@@ -178,6 +178,29 @@ describe('evaluateVerifyChecks customer visibility gate', () => {
     }));
   });
 
+  it('blocks customer-visible mojibake text even when the audit status was clean', () => {
+    const result = evaluateVerifyChecks({
+      id: 'pkg-mojibake-text',
+      title: 'Clean-looking package',
+      status: 'active',
+      audit_status: 'clean',
+      raw_text: 'PKG clean-looking package\n2099.1.1\n3/1\n1,000,-\nDAY 1 arrival\nDAY 2 return',
+      itinerary_data: {
+        days: [
+          { schedule: [{ activity: 'arrival', attraction_names: ['???'] }] },
+          { schedule: [{ activity: 'return' }] },
+        ],
+      },
+      price_dates: [{ date: '2099-03-01', price: 1000000 }],
+      display_title: 'Clean-looking package sample',
+    } as never);
+
+    expect(result.status).toBe('blocked');
+    expect(findCheck(result, 'C18')).toEqual(expect.objectContaining({
+      status: 'fail',
+    }));
+  });
+
   it('passes date freshness when at least one future departure remains', () => {
     const result = evaluateVerifyChecks({
       id: 'pkg-future-price-dates',

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 
 interface RecentPkg {
   id: string;
@@ -46,6 +47,23 @@ function getComparisonBadges(pkg: RecentPkg): string[] {
   return Array.from(new Set(badges)).slice(0, 3);
 }
 
+function normalizeRecentPackages(value: unknown): RecentPkg[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item): RecentPkg | null => {
+      if (!item || typeof item !== 'object') return null;
+      const row = item as Partial<RecentPkg>;
+      if (typeof row.id !== 'string' || !row.id) return null;
+      return {
+        id: row.id,
+        title: normalizeCustomerVisibleCopy(row.title || ''),
+        destination: normalizeCustomerVisibleCopy(row.destination || ''),
+        price: typeof row.price === 'number' && Number.isFinite(row.price) ? row.price : null,
+      };
+    })
+    .filter((item): item is RecentPkg => Boolean(item));
+}
+
 export default function RecentViews({ customerId, sessionId, currentPackageId }: Props) {
   const [packages, setPackages] = useState<RecentPkg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +100,7 @@ export default function RecentViews({ customerId, sessionId, currentPackageId }:
         const res = await fetch(`/api/user-actions?${params.toString()}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({ packages: [] }));
         if (!cancelled) {
-          setPackages(Array.isArray(data.packages) ? data.packages : []);
+          setPackages(normalizeRecentPackages(data.packages));
           setType('similar');
         }
       } else {
@@ -95,7 +113,7 @@ export default function RecentViews({ customerId, sessionId, currentPackageId }:
         const res = await fetch(`/api/user-actions?${params.toString()}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({ packages: [] }));
         if (!cancelled) {
-          setPackages(Array.isArray(data.packages) ? data.packages : []);
+          setPackages(normalizeRecentPackages(data.packages));
           setType('recent');
         }
       }

@@ -34,6 +34,8 @@ describe('packages bulk/customer publication gate', () => {
     const v3GateIndex = source.indexOf('const gate = evaluateV3CustomerNoticeGate(id, latestDraft)');
     const mobileProofIndex = source.indexOf('const mobileProofBlocks = packageIds', v3GateIndex);
     const mobileProofGateIndex = source.indexOf('MOBILE_BROWSER_PROOF_REQUIRED_FOR_BULK_APPROVAL', mobileProofIndex);
+    const sourceAuditHelperIndex = source.indexOf('async function assertPackageSourceAuditAllowsPublication');
+    const customerOpenContractIndex = source.indexOf('CUSTOMER_OPEN_CONTRACT_BLOCKED', sourceAuditHelperIndex);
     const updateIndex = source.indexOf("status: 'approved'", mobileProofGateIndex);
 
     expect(bulkIndex).toBeGreaterThanOrEqual(0);
@@ -41,6 +43,7 @@ describe('packages bulk/customer publication gate', () => {
     expect(v3GateIndex).toBeGreaterThan(sourceGateIndex);
     expect(mobileProofIndex).toBeGreaterThan(v3GateIndex);
     expect(mobileProofGateIndex).toBeGreaterThan(mobileProofIndex);
+    expect(customerOpenContractIndex).toBeGreaterThan(sourceAuditHelperIndex);
     expect(updateIndex).toBeGreaterThan(mobileProofGateIndex);
   });
 });

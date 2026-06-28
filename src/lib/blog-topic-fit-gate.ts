@@ -59,6 +59,7 @@ export interface BlogTopicQueueGateInput {
 }
 
 const MACHINE_SLUG_RE = /(?:^|\s)(?:post|guide)[-_][a-z0-9]{3,}(?:\s|$)|(?:^|\s)\d+[-_](?:post|guide)[-_][a-z0-9]{2,}(?:\s|$)/i;
+const CLEAR_TRAVEL_TOPIC_RE = /(?:여행|관광|일정|코스|날씨|옷차림|준비|준비물|체크|비용|예산|경비|항공|호텔|숙소|입국|비자|환전|유심|로밍|eSIM|USIM|패키지|투어|guide|travel|itinerary|weather|budget|visa|hotel|flight|tour)/i;
 const KO_MONTH_TOKEN_RE = /\d{1,2}\s*(?:\uC6D4|month)/i;
 const KO_SEASONAL_LODGING_TANGENT_RE = /(?:\uC5D0\uC5B4\uCEE8|\uC5D0\uC5B4\uCF58|\uC219\uC18C|\uD638\uD154|\uB9AC\uC870\uD2B8|\uAC1D\uC2E4|air\s*con|aircon|a\/c|accommodation|hotel|resort)/i;
 const KO_SEASONAL_CORE_INTENT_RE = /(?:\uB0A0\uC528|\uC637\uCC28\uB9BC|\uC900\uBE44\uBB3C|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC6B0\uAE30|\uAC74\uAE30|\uAE30\uC628|\uAC15\uC218|\uBC29\uC218|\uBAA8\uAE30|weather|clothing|packing|checklist)/i;
@@ -83,6 +84,21 @@ function compact(values: Array<string | null | undefined>): string {
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join(' ')
     .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactUnique(values: Array<string | null | undefined>): string {
+  const seen = new Set<string>();
+  return values
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => value.replace(/\s+/g, ' ').trim())
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(' ')
     .trim();
 }
 
@@ -150,8 +166,8 @@ function countGenericImageContext(input: BlogEditorialQualityInput): number {
 
 export function evaluateBlogTopicFit(input: BlogTopicFitInput): BlogGateReport {
   const issues: BlogGateIssue[] = [];
-  const topicText = compact([input.topic, input.primaryKeyword]);
-  const allText = compact([
+  const topicText = compactUnique([input.topic, input.primaryKeyword]);
+  const allText = compactUnique([
     input.topic,
     input.destination,
     input.primaryKeyword,
@@ -161,7 +177,10 @@ export function evaluateBlogTopicFit(input: BlogTopicFitInput): BlogGateReport {
     input.source,
   ]);
 
-  if (topicText.length < 4) {
+  const hasClearShortDestinationContext = topicText.length >= 1
+    && /[\uAC00-\uD7A3]/.test(topicText)
+    && CLEAR_TRAVEL_TOPIC_RE.test(allText);
+  if (topicText.length < 4 && !hasClearShortDestinationContext) {
     addIssue(issues, 'missing_topic', 'critical', 'Topic or primary keyword is too short for autonomous publishing.', {
       topic: input.topic,
       primaryKeyword: input.primaryKeyword,
@@ -279,7 +298,12 @@ export function evaluateBlogEditorialQuality(input: BlogEditorialQualityInput): 
     });
   }
 
-  if (MACHINE_SLUG_RE.test(compact([input.slug, input.topic, input.primaryKeyword]))) {
+  const readerFacingTopic = compactUnique([input.topic, input.primaryKeyword]);
+  const machineSlug = MACHINE_SLUG_RE.test(input.slug ?? '');
+  const machineTopic = MACHINE_SLUG_RE.test(readerFacingTopic)
+    || PLACEHOLDER_RE.test(readerFacingTopic)
+    || readerFacingTopic.length < 4;
+  if (MACHINE_SLUG_RE.test(compact([input.slug, input.topic, input.primaryKeyword])) && (!machineSlug || machineTopic)) {
     addIssue(issues, 'machine_slug_topic', 'critical', 'Slug or title still looks machine-generated.', {
       slug: input.slug,
       topic: input.topic,

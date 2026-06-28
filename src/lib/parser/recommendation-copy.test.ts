@@ -61,7 +61,8 @@ describe('generateRecommendationCopy', () => {
     });
 
     expect(copy).toContain('✈️');
-    expect(copy).toContain('장가계를 처음 방문해도 하루 흐름을 따라가기 쉬운 상품입니다.');
+    expect(copy).toContain('장가계의 주요 일정과 이동 흐름을 한 화면에서 확인할 수 있는 패키지입니다.');
+    expect(copy).not.toContain('처음 방문해도 하루 흐름');
     expect(copy).toContain('천문산 케이블카');
     expect(copy).not.toContain('선발특가');
     expect(copy).not.toContain('배포');

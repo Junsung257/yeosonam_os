@@ -55,7 +55,7 @@ describe('package approve route customer delivery gate', () => {
     expect(blockBody).toContain('customer_deliverable: delivery.customerDeliverable');
   });
 
-  it('requires actual packages mobile browser proof before active status update', () => {
+  it('requires actual packages and LP mobile browser proof before active status update', () => {
     const source = routeSourceWithoutComments();
     const mobileProofIndex = source.indexOf('const mobileProof = evaluateCustomerMobileProof');
     const mobileProofBlockIndex = source.indexOf('if (!mobileProof.ok)');
@@ -66,6 +66,18 @@ describe('package approve route customer delivery gate', () => {
     expect(mobileProofBlockIndex).toBeGreaterThan(mobileProofIndex);
     expect(publishGateBlockIndex).toBeGreaterThan(mobileProofBlockIndex);
     expect(activeIndex).toBeGreaterThan(mobileProofBlockIndex);
-    expect(source.slice(mobileProofBlockIndex, activeIndex)).toContain('Actual /packages mobile browser proof is required before approval.');
+    expect(source.slice(mobileProofBlockIndex, activeIndex)).toContain('Actual /packages and /lp mobile browser proof is required before approval.');
+  });
+
+  it('requires the unified customer-open contract before active status update', () => {
+    const source = routeSourceWithoutComments();
+    const contractIndex = source.indexOf('const customerOpenContract = evaluateCustomerOpenContract');
+    const contractBlockIndex = source.indexOf('if (!customerOpenContract.ok)');
+    const activeIndex = source.indexOf("status:           'active'");
+
+    expect(contractIndex).toBeGreaterThanOrEqual(0);
+    expect(contractBlockIndex).toBeGreaterThan(contractIndex);
+    expect(activeIndex).toBeGreaterThan(contractBlockIndex);
+    expect(source.slice(contractBlockIndex, activeIndex)).toContain('customer_open_contract');
   });
 });

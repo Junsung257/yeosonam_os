@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+﻿import type { Metadata } from 'next';
 import { getPackageById } from '@/lib/supabase';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { isUuid } from '@/lib/uuid';
@@ -14,10 +14,10 @@ const PACKAGE_METADATA_QUERY_TIMEOUT_MS = Math.max(
   Number(process.env.PACKAGE_DETAIL_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '3500') || 3500,
 );
 
-// 2026-05-18 박제 (ERR-layout-page-source-drift):
-//   기존 fetch('/api/packages?id=...') 는 page.tsx 의 supabaseAdmin 직접 쿼리 와
-//   별도 데이터 소스 (BASE_URL HTTP 왕복 + ISR 300s 캐시). 캐시 만료 타이밍 어긋나면
-//   meta 와 본문 drift 가능. getPackageById SSOT 통일.
+// 2026-05-18 諛뺤젣 (ERR-layout-page-source-drift):
+//   湲곗〈 fetch('/api/packages?id=...') ??page.tsx ??supabaseAdmin 吏곸젒 荑쇰━ ?
+//   蹂꾨룄 ?곗씠???뚯뒪 (BASE_URL HTTP ?뺣났 + ISR 300s 罹먯떆). 罹먯떆 留뚮즺 ??대컢 ?닿툔?섎㈃
+//   meta ? 蹂몃Ц drift 媛?? getPackageById SSOT ?듭씪.
 async function getPackage(id: string) {
   return await getPackageById(id);
 }
@@ -48,19 +48,42 @@ function resolveOgImage(candidate: unknown) {
   return `${BASE_URL}/og-image.png`;
 }
 
+function decodeCustomerHtmlEntities(value: string | null | undefined): string {
+  let text = String(value ?? '');
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = text;
+    text = text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;|&apos;/g, "'")
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+        const code = Number.parseInt(hex, 16);
+        return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
+      })
+      .replace(/&#(\d+);/g, (_, decimal: string) => {
+        const code = Number.parseInt(decimal, 10);
+        return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
+      });
+    if (text === before) break;
+  }
+  return text.trim();
+}
+
 function buildPackageSeoTitle(input: {
   title: string;
   productType?: unknown;
   price?: unknown;
   id: string;
 }): string {
-  const parts = [input.title.trim()];
+  const parts = [decodeCustomerHtmlEntities(input.title)];
   if (typeof input.productType === 'string' && input.productType.trim()) {
     parts.push(input.productType.trim());
   }
   const price = Number(input.price);
-  if (Number.isFinite(price)) parts.push(`${price.toLocaleString('ko-KR')}원~`);
-  parts.push(`상품번호 ${input.id.slice(0, 8)}`);
+  if (Number.isFinite(price)) parts.push(`${price.toLocaleString('ko-KR')}??`);
+  parts.push(`?곹뭹踰덊샇 ${input.id.slice(0, 8)}`);
   return parts.filter(Boolean).join(' | ');
 }
 
@@ -75,14 +98,13 @@ export async function generateMetadata({
   const pkg = id && isUuid(id) ? await safeGetPackage(id) : null;
   if (!pkg) {
     return {
-      title: '상품을 찾을 수 없습니다',
+      title: '?곹뭹??李얠쓣 ???놁뒿?덈떎',
       alternates: { canonical },
       robots: { index: false, follow: true },
     };
   }
 
-  // 제목: 랜드사명 제거, 여소남 브랜딩
-  const rawTitle = (pkg.title ?? '여행 상품') as string;
+  const rawTitle = decodeCustomerHtmlEntities((pkg.title ?? '여행 상품') as string);
   const title = rawTitle
     .replace(/투어폰|랜드부산|더투어|투어비|현지투어/g, '')
     .trim();
@@ -93,21 +115,20 @@ export async function generateMetadata({
     id,
   });
 
-  // 설명: 핵심 정보 조합
   const parts: string[] = [];
-  if (pkg.destination) parts.push(pkg.destination);
+  if (pkg.destination) parts.push(decodeCustomerHtmlEntities(String(pkg.destination)));
   if (pkg.duration) parts.push(`${pkg.duration}일`);
-  if (pkg.price) parts.push(`₩${Number(pkg.price).toLocaleString('ko-KR')}~`);
+  if (pkg.price) parts.push(`${Number(pkg.price).toLocaleString('ko-KR')}원~`);
   if (pkg.product_highlights?.length) {
-    parts.push((pkg.product_highlights as string[]).slice(0, 3).join(', '));
+    parts.push(decodeCustomerHtmlEntities((pkg.product_highlights as string[]).slice(0, 3).join(', ')));
   }
   const description = parts.length > 0
     ? parts.join(' | ')
-    : '여소남에서 안심 여행을 예약하세요.';
+    : '여소남에서 여행 상품을 확인하세요.';
 
-  // OG 이미지: itinerary_data 의 호텔/관광지 사진 → 브랜드 기본 이미지 폴백.
-  // 2026-05-18 박제 (PR #102 패턴): thumbnail_urls, hero_image_url 은 travel_packages 에 미존재 컬럼.
-  //   기존 코드는 undefined 로 silently fallback 했지만 dead-code 위생 정리.
+  // OG ?대?吏: itinerary_data ???명뀛/愿愿묒? ?ъ쭊 ??釉뚮옖??湲곕낯 ?대?吏 ?대갚.
+  // 2026-05-18 諛뺤젣 (PR #102 ?⑦꽩): thumbnail_urls, hero_image_url ? travel_packages ??誘몄〈??而щ읆.
+  //   湲곗〈 肄붾뱶??undefined 濡?silently fallback ?덉?留?dead-code ?꾩깮 ?뺣━.
   const firstItineraryPhoto = (() => {
     try {
       const root = pkg.itinerary_data as { days?: Array<Record<string, unknown>> } | null;

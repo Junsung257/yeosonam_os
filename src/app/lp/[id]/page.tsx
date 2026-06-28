@@ -1,9 +1,11 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import type { Metadata } from 'next';
-import { loadLpPackageForPage } from '@/lib/load-lp-package';
+import { fetchLpPackageUncached, loadLpPackageForPage } from '@/lib/load-lp-package';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { getSecret } from '@/lib/secret-registry';
 import { LandingClient } from './LandingClient';
 import { LpRouteSkeleton } from './LpRouteSkeleton';
 
@@ -22,15 +24,23 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
-async function safeLoadLpPackage(id: string) {
+async function safeLoadLpPackage(id: string, allowNonPublicProof = false) {
   const normalizedId = id.trim();
   if (!normalizedId) return null;
 
   try {
+    if (allowNonPublicProof) return await fetchLpPackageUncached(normalizedId, { allowNonPublicProof: true });
     return await loadLpPackageForPage(normalizedId);
   } catch {
     return null;
   }
+}
+
+async function hasRenderProofAccess(): Promise<boolean> {
+  const incomingHeaders = await headers();
+  const proofHeader = incomingHeaders.get('x-yeosonam-render-proof')?.trim();
+  const proofSecret = getSecret('REVALIDATE_SECRET') || getSecret('ADMIN_API_TOKEN');
+  return Boolean(proofHeader && proofSecret && proofHeader === proofSecret);
 }
 
 export async function generateMetadata(
@@ -100,7 +110,7 @@ export async function generateMetadata(
 export default async function LpPage(props: { params: Promise<{ id?: string | string[] }> }) {
   const params = await props.params;
   const id = getRouteParam(params.id);
-  const data = await safeLoadLpPackage(id);
+  const data = await safeLoadLpPackage(id, await hasRenderProofAccess());
   if (!data) notFound();
 
   let initialNotices: NoticeBlock[] = [];

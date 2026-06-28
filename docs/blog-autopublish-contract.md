@@ -95,6 +95,7 @@ The post must not be published when any of these are true:
 - `accent_density` fails because highlight markup exists, numeric emphasis is excessive, heading counts are excessive, or paragraph walls remain.
 - `table_integrity` fails because a Markdown table is missing a separator row, has inconsistent cells, or is too short to be useful.
 - `cta_destination_integrity` fails because a package CTA has an empty or mismatched destination parameter.
+- A product-backed post references a package whose unified `customer_open_contract` fails or whose `registration_evidence_pack_v1.downstream_eligibility.blog_publish` is false.
 - Readability has repeated phrase spam that cannot be repaired.
 - The article has no usable image path or missing image alt evidence.
 - The article has no internal CTA and no official external reference.

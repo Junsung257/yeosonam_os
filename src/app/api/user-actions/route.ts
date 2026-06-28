@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { trackUserAction, type UserActionType } from '@/lib/user-actions';
+import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 
 const ACTION_TYPES = new Set<UserActionType>([
   'page_view',
@@ -22,6 +23,19 @@ function cleanLimit(value: string | null): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 6;
   return Math.max(1, Math.min(12, Math.floor(parsed)));
+}
+
+function normalizePackageCards(rows: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(rows)
+    ? rows.map((row) => {
+        const item = row && typeof row === 'object' ? row as Record<string, unknown> : {};
+        return {
+          ...item,
+          title: normalizeCustomerVisibleCopy(typeof item.title === 'string' ? item.title : ''),
+          destination: normalizeCustomerVisibleCopy(typeof item.destination === 'string' ? item.destination : ''),
+        };
+      })
+    : [];
 }
 
 export async function POST(request: NextRequest) {
@@ -90,7 +104,7 @@ export async function GET(request: NextRequest) {
       }
 
       const { data } = await query;
-      return NextResponse.json({ packages: data ?? [] });
+      return NextResponse.json({ packages: normalizePackageCards(data) });
     }
 
     if (mode === 'recent') {
@@ -134,7 +148,7 @@ export async function GET(request: NextRequest) {
       const packages = (data ?? []).sort(
         (a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999),
       );
-      return NextResponse.json({ packages });
+      return NextResponse.json({ packages: normalizePackageCards(packages) });
     }
 
     return NextResponse.json({ packages: [] });

@@ -3,8 +3,17 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
-  ChevronDown, ChevronUp, MapPin, Utensils, Hotel, Camera, Bus, Star,
-  Clock, CheckCircle2, XCircle,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  Utensils,
+  Hotel,
+  Camera,
+  Bus,
+  Star,
+  Clock,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import type { ItineraryDay, DayActivity, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
@@ -14,33 +23,33 @@ function fmt(n: number) {
 }
 
 const ACTIVITY_ICON: Record<DayActivity['type'], ReactNode> = {
-  sightseeing: <Camera className="w-4 h-4 text-blue-500" />,
-  meal:        <Utensils className="w-4 h-4 text-orange-400" />,
-  hotel:       <Hotel className="w-4 h-4 text-purple-500" />,
-  flight:      <span className="text-sm">✈️</span>,
-  transport:   <Bus className="w-4 h-4 text-gray-400" />,
-  optional:    <Star className="w-4 h-4 text-yellow-500" />,
-  shopping:    <span className="text-sm">🛍</span>,
+  sightseeing: <Camera className="h-4 w-4 text-blue-500" />,
+  meal: <Utensils className="h-4 w-4 text-orange-400" />,
+  hotel: <Hotel className="h-4 w-4 text-purple-500" />,
+  flight: <span className="text-sm" aria-hidden="true">✈</span>,
+  transport: <Bus className="h-4 w-4 text-gray-400" />,
+  optional: <Star className="h-4 w-4 text-yellow-500" />,
+  shopping: <span className="text-sm" aria-hidden="true">🛍</span>,
 };
 
 function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: string[] }) {
   return (
-    <section className="px-5 py-5 bg-white border-t border-gray-100">
-      <h3 className="text-base font-bold text-gray-500 uppercase tracking-wider mb-4">포함 / 불포함</h3>
+    <section className="border-t border-gray-100 bg-white px-5 py-5">
+      <h3 className="mb-4 text-base font-bold uppercase tracking-wider text-gray-500">포함 / 불포함</h3>
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <div className="space-y-2">
-          {includes.map(i => (
-            <div key={i} className="flex items-start gap-2 text-sm text-gray-700">
-              <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-              {i}
+          {includes.map(item => (
+            <div key={item} className="flex items-start gap-2 text-sm text-gray-700">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+              {item}
             </div>
           ))}
         </div>
         <div className="space-y-2">
-          {excludes.map(e => (
-            <div key={e} className="flex items-start gap-2 text-sm text-gray-500">
-              <XCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-              {e}
+          {excludes.map(item => (
+            <div key={item} className="flex items-start gap-2 text-sm text-gray-500">
+              <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+              {item}
             </div>
           ))}
         </div>
@@ -52,32 +61,16 @@ function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: 
 function LegalNotice({ legalNotices }: { legalNotices: string[] }) {
   const renderLines = getLegalNoticeLinesOrDefault(legalNotices, 3);
   return (
-    <section className="px-5 py-4 bg-orange-50 border-t border-orange-100">
-      <h3 className="text-sm font-bold text-orange-800 mb-2">특별약관 및 취소수수료 안내</h3>
+    <section className="border-t border-orange-100 bg-orange-50 px-5 py-4">
+      <h3 className="mb-2 text-sm font-bold text-orange-800">약관 및 취소 수수료 안내</h3>
       <div className="space-y-1.5">
-        {renderLines.map((line, idx) => (
-          <p key={`${idx}-${line.slice(0, 12)}`} className="text-xs text-orange-900 leading-relaxed">
-            • {line}
+        {renderLines.map((line, index) => (
+          <p key={`${index}-${line.slice(0, 12)}`} className="text-xs leading-relaxed text-orange-900">
+            · {line}
           </p>
         ))}
       </div>
     </section>
-  );
-}
-
-function MealRow({ meals }: { meals: ItineraryDay['meals'] }) {
-  return (
-    <div className="flex gap-3 mt-1">
-      <span className={`flex items-center gap-0.5 text-xs ${meals.breakfast ? 'text-orange-500' : 'text-gray-300'}`}>
-        <Utensils className="w-3 h-3" /> 조
-      </span>
-      <span className={`flex items-center gap-0.5 text-xs ${meals.lunch ? 'text-orange-500' : 'text-gray-300'}`}>
-        <Utensils className="w-3 h-3" /> 중
-      </span>
-      <span className={`flex items-center gap-0.5 text-xs ${meals.dinner ? 'text-orange-500' : 'text-gray-300'}`}>
-        <Utensils className="w-3 h-3" /> 석
-      </span>
-    </div>
   );
 }
 
@@ -89,13 +82,13 @@ function CleanMealRow({ meals }: { meals: ItineraryDay['meals'] }) {
   ];
 
   return (
-    <div className="flex gap-3 mt-1">
+    <div className="mt-1 flex gap-3">
       {rows.map(row => (
         <span
           key={row.label}
           className={`flex items-center gap-0.5 text-xs ${row.active ? 'text-orange-500' : 'text-gray-300'}`}
         >
-          <Utensils className="w-3 h-3" /> {row.label}
+          <Utensils className="h-3 w-3" /> {row.label}
         </span>
       ))}
     </div>
@@ -109,17 +102,17 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
     <div className="border-b border-gray-100 last:border-0">
       <button
         type="button"
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-start justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
+        onClick={() => setOpen(value => !value)}
+        className="flex w-full items-start justify-between px-5 py-4 text-left transition-colors hover:bg-gray-50"
       >
-        <div className="flex gap-3 items-start">
-          <div className="mt-0.5 w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
             D{dayData.day}
           </div>
           <div>
-            <p className="font-semibold text-gray-900 text-base leading-snug">{dayData.title}</p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <MapPin className="w-3 h-3 text-gray-400" />
+            <p className="text-base font-semibold leading-snug text-gray-900">{dayData.title}</p>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <MapPin className="h-3 w-3 text-gray-400" />
               <span className="text-sm text-gray-400">{dayData.regions}</span>
             </div>
             {(dayData.meals.breakfast || dayData.meals.lunch || dayData.meals.dinner) && (
@@ -127,33 +120,33 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
             )}
           </div>
         </div>
-        <div className="mt-1 shrink-0 ml-2 text-gray-400">
-          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        <div className="ml-2 mt-1 shrink-0 text-gray-400">
+          {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
       </button>
 
       <div className={`overflow-hidden transition-all duration-300 ${open ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
-        <div className="px-5 pb-4 space-y-2.5 bg-gray-50/60">
-          <div className="ml-4 border-l-2 border-blue-100 pl-4 space-y-2.5 pt-1">
-            {dayData.activities.map((act, i) => (
-              <div key={i} className={`flex items-start gap-2.5 ${act.type === 'optional' ? 'opacity-70' : ''}`}>
-                <div className="mt-0.5 shrink-0">{ACTIVITY_ICON[act.type]}</div>
+        <div className="space-y-2.5 bg-gray-50/60 px-5 pb-4">
+          <div className="ml-4 space-y-2.5 border-l-2 border-blue-100 pl-4 pt-1">
+            {dayData.activities.map((activity, index) => (
+              <div key={`${activity.type}-${index}-${activity.label}`} className={`flex items-start gap-2.5 ${activity.type === 'optional' ? 'opacity-70' : ''}`}>
+                <div className="mt-0.5 shrink-0">{ACTIVITY_ICON[activity.type]}</div>
                 <div>
-                  <p className="text-sm text-gray-800 font-medium leading-snug">{act.label}</p>
-                  {act.detail && (
-                    <p className="text-xs text-gray-400 mt-0.5">{act.detail}</p>
+                  <p className="text-sm font-medium leading-snug text-gray-800">{activity.label}</p>
+                  {activity.detail && (
+                    <p className="mt-0.5 text-xs text-gray-400">{activity.detail}</p>
                   )}
-                  {act.attractionNames && act.attractionNames.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {act.attractionNames.map((name, ai) => (
-                        <span key={ai} className="inline-block text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">
+                  {activity.attractionNames && activity.attractionNames.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {activity.attractionNames.map((name, attractionIndex) => (
+                        <span key={`${name}-${attractionIndex}`} className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                           {name}
                         </span>
                       ))}
                     </div>
                   )}
-                  {act.type === 'optional' && (
-                    <span className="inline-block mt-1 text-xs px-2 py-0.5 bg-yellow-50 text-yellow-700 rounded-full font-medium">선택관광</span>
+                  {activity.type === 'optional' && (
+                    <span className="mt-1 inline-block rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-700">선택 관광</span>
                   )}
                 </div>
               </div>
@@ -161,8 +154,8 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
           </div>
           {dayData.hotel && (
             <div className="flex items-center gap-2 pl-0.5 pt-1">
-              <Hotel className="w-4 h-4 text-purple-400 shrink-0" />
-              <span className="text-xs text-gray-600 font-medium">{dayData.hotel}</span>
+              <Hotel className="h-4 w-4 shrink-0 text-purple-400" />
+              <span className="text-xs font-medium text-gray-600">{dayData.hotel}</span>
             </div>
           )}
         </div>
@@ -191,22 +184,22 @@ function ItinerarySection({
           observer.disconnect();
         }
       },
-      { threshold: 0.5 }
+      { threshold: 0.5 },
     );
     observer.observe(el);
     return () => observer.disconnect();
   }, [onViewed]);
 
   return (
-    <section ref={sectionRef} className="bg-white border-t border-gray-100 mt-2">
-      <div className="px-5 py-4 flex items-center justify-between border-b border-gray-100">
+    <section ref={sectionRef} className="mt-2 border-t border-gray-100 bg-white">
+      <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
         <h3 className="text-base font-bold text-gray-900">상세 일정</h3>
-        <span className="text-xs text-gray-400 flex items-center gap-1">
-          <Clock className="w-3.5 h-3.5" /> {days.length}일 전체 일정
+        <span className="flex items-center gap-1 text-xs text-gray-400">
+          <Clock className="h-3.5 w-3.5" /> {days.length}일 전체 일정
         </span>
       </div>
-      {days.map((d, i) => (
-        <DayAccordion key={d.day} dayData={d} defaultOpen={i === 0} />
+      {days.map((day, index) => (
+        <DayAccordion key={day.day} dayData={day} defaultOpen={index === 0} />
       ))}
     </section>
   );
@@ -229,11 +222,11 @@ function ReviewSummaryStrip({
       <section className="mt-2 border-t border-[var(--border-mid)] bg-white px-5 py-5">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg">
-            🔍
+            Pick
           </div>
           <div className="min-w-0">
             <p className="text-base font-bold text-[var(--text-primary)]">{recommendation.label}</p>
-            <p className="mt-1 text-sm text-[var(--text-muted)] leading-relaxed break-keep">
+            <p className="mt-1 break-keep text-sm leading-relaxed text-[var(--text-muted)]">
               {recommendation.comparisonSummary}
             </p>
           </div>
@@ -244,16 +237,16 @@ function ReviewSummaryStrip({
   return (
     <section className="mt-2 border-t border-[var(--border-mid)] bg-white px-5 py-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <Star className="w-5 h-5 shrink-0 fill-yellow-400 text-yellow-400" />
+        <div className="flex min-w-0 items-center gap-2">
+          <Star className="h-5 w-5 shrink-0 fill-yellow-400 text-yellow-400" />
           <span className="text-base font-bold text-[var(--text-primary)]">{score.toFixed(1)}</span>
-          <span className="text-sm text-[var(--text-muted)] truncate">({fmt(count)}건)</span>
+          <span className="truncate text-sm text-[var(--text-muted)]">({fmt(count)}건 후기)</span>
         </div>
         <Link
           href={`/packages/${encodeURIComponent(packageId)}`}
-          className="text-sm font-semibold text-[var(--brand)] shrink-0 hover:underline"
+          className="shrink-0 text-sm font-semibold text-[var(--brand)] hover:underline"
         >
-          상세·후기 →
+          상세·후기 보기
         </Link>
       </div>
     </section>
@@ -272,7 +265,6 @@ export interface LpDeferSectionsProps {
   recommendation?: LandingProductData['recommendation'];
 }
 
-/** 일정·포함불포·후기 — 초기 JS 번들 분리용 동적 청크 */
 export function LpDeferSections({
   days,
   onItineraryViewed,

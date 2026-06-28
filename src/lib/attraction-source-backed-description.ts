@@ -1,6 +1,6 @@
 export type SourceBackedAttractionDescriptions = {
-  shortDesc: string;
-  longDesc: string;
+  shortDesc: string | null;
+  longDesc: string | null;
 };
 
 type DescriptionInput = {
@@ -55,6 +55,14 @@ function clean(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
+function readableName(value: string): string {
+  return value
+    .replace(/^[-–—>→·,\s]+/, '')
+    .replace(/\s*\([^)]*\)\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function sourceExample(examples?: string[] | null): string | null {
   const found = (examples ?? [])
     .map(clean)
@@ -78,15 +86,13 @@ export function buildSourceBackedAttractionDescriptions(input: DescriptionInput)
   }
 
   const example = sourceExample(input.examples);
-  const region = clean(input.region);
-  const regionPrefix = region ? `${region} 일정에서 소개되는` : '일정에서 소개되는';
-  const name = clean(input.name) || '관광지';
+  const name = readableName(clean(input.name)) || '관광지';
   const shortDesc = example
-    ? example.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), name).slice(0, 60)
-    : `${regionPrefix} 관광 포인트`;
+    ? `${name} 포함 일정`
+    : null;
   const longDesc = example
-    ? `원문 일정에는 "${example}"로 기재된 ${name}입니다. 고객 화면에서는 원문 표현을 기준으로 관광 포인트를 설명하며, 세부 관람 동선은 현지 사정에 따라 달라질 수 있습니다.`
-    : `${name}은 ${regionPrefix} 관광 포인트입니다. 자동 생성 설명은 원문 일정과 매칭 결과를 기준으로 제공되며, 사진은 정확한 자료가 확인될 때만 노출됩니다.`;
+    ? `${name} 방문은 원문 일정 기준으로 확인된 코스입니다. 실제 관람 순서와 체류 시간은 현지 상황과 항공 일정에 따라 조정될 수 있습니다.`
+    : null;
 
   return {
     shortDesc,

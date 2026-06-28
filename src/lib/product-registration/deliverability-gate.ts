@@ -1,5 +1,6 @@
 import type { PriceDate } from '@/lib/price-dates';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
+import { blockingCustomerVisibleTextIssues } from '@/lib/customer-visible-text-audit';
 import { findItineraryScheduleQualityIssues, type ItineraryScheduleQualityDay } from './itinerary-quality-gate';
 
 export type UploadDeliverabilityResult = {
@@ -17,6 +18,7 @@ export type UploadDeliverabilityInput = {
   itineraryDays?: ItineraryScheduleQualityDay[] | null;
   durationDays?: number | null;
   rawText?: string | null;
+  customerVisibleText?: Record<string, unknown> | null;
   priceRecoveryFailures?: string[];
   extraFailures?: string[];
 };
@@ -309,6 +311,14 @@ export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): 
   const flightTimeError = findFlightTimeCompletenessError(input);
   if (flightTimeError) {
     blockers.push(`flight time source mismatch: ${flightTimeError}`);
+  }
+
+  const customerTextIssues = blockingCustomerVisibleTextIssues(input.customerVisibleText ?? {});
+  for (const issue of customerTextIssues.slice(0, 8)) {
+    blockers.push(`customer visible text blocked: ${issue.code}: ${issue.fieldPath} "${issue.value}"`);
+  }
+  if (customerTextIssues.length > 8) {
+    blockers.push(`customer visible text blocked: ${customerTextIssues.length - 8} additional customer-copy issues.`);
   }
 
   const rawText = input.rawText ?? '';

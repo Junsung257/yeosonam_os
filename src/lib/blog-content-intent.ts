@@ -297,6 +297,19 @@ function inspectProductContract(
 function inspectReadingDesign(source: string, plain: string, issues: BlogIntentIssue[]) {
   const paragraphs = source
     .split(/\n{2,}/)
+    .filter((p) => {
+      const lines = p.split('\n').map((line) => line.trim()).filter(Boolean);
+      if (lines.length === 0) return false;
+      const structuralLines = lines.filter((line) =>
+        /^#{1,6}\s+/.test(line)
+        || /^\|.*\|$/.test(line)
+        || /^[-*]\s+/.test(line)
+        || /^\d+\.\s+/.test(line)
+        || /^Q[\.:)]\s*/i.test(line)
+        || /^A[\.:)]\s*/i.test(line),
+      ).length;
+      return structuralLines / lines.length < 0.75;
+    })
     .map((p) => stripMarkup(p).replace(/\s+/g, ' ').trim())
     .filter(Boolean);
   const longParagraphs = paragraphs.filter((p) => p.length >= 520);
@@ -351,6 +364,7 @@ function firstBodyParagraph(source: string): string {
       .filter((line) => {
         if (!line) return false;
         if (/^#{1,6}\s+/.test(line)) return false;
+        if (/^!\[[^\]]*]\([^)]+\)/.test(line)) return false;
         if (/^\|.*\|$/.test(line)) return false;
         if (/^[-*]\s+/.test(line)) return false;
         if (/^\d+\.\s+/.test(line)) return false;
@@ -401,8 +415,10 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
   const first = firstBodyParagraph(source);
   const startsLikeGreeting = /^(안녕하세요|소중한\s*여행|여소남\s*에디터|오늘은|이번\s*글에서는)/.test(first);
   const hasAnswerSignal = /(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|줄일 수|해야|핵심|결론)/.test(first);
+  const hasReadableAnswerSignal = /답부터|먼저|기준|확인|비용|가격|준비|주의|환전|입국|날씨|일정|현지|선택|쉽습니다|안전합니다/.test(first);
+  const hasAnyAnswerSignal = hasAnswerSignal || hasReadableAnswerSignal;
 
-  if (first.length < 60 || startsLikeGreeting || !hasAnswerSignal) {
+  if ((first.length < 60 && !hasAnyAnswerSignal) || startsLikeGreeting || !hasAnyAnswerSignal) {
     addIssue(
       issues,
       'missing_answer_first',
@@ -417,9 +433,16 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
     );
   }
 
-  const firstThirtyPercent = plain.slice(0, Math.ceil(plain.length * 0.3));
-  const earlySource = `${source.slice(0, Math.ceil(source.length * 0.3))} ${firstThirtyPercent}`;
-  if (/(상담|문의|예약|상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(earlySource)) {
+  const contentBeforeBottomCta = source
+    .replace(/\n##\s*여행\s*상품과\s*함께\s*확인하기[\s\S]*$/i, '')
+    .replace(/\n---[\s\S]*$/i, '');
+  const earlySource = contentBeforeBottomCta.slice(0, Math.ceil(contentBeforeBottomCta.length * 0.3));
+  const hasEarlyHardCta =
+    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(earlySource)
+    || /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(earlySource)
+    || /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(earlySource);
+  const hasReadableHardAction = /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(earlySource);
+  if (hasEarlyHardCta && hasReadableHardAction) {
     addIssue(
       issues,
       'early_strong_cta',
@@ -456,7 +479,8 @@ function inspectProductConsultContract(source: string, issues: BlogIntentIssue[]
 export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQualityReport {
   const intent = classifyBlogIntent(input);
   const source = input.blogHtml || '';
-  const plain = stripMarkup(source).replace(/\s+/g, ' ').trim();
+  const sourceWithoutUrls = source.replace(/https?:\/\/\S+/gi, ' ');
+  const plain = stripMarkup(sourceWithoutUrls).replace(/\s+/g, ' ').trim();
   const issues: BlogIntentIssue[] = [];
 
   if (intent.confidence < 60) {
@@ -475,7 +499,7 @@ export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQual
 
   if (intent.infoSubtype) inspectInfoContract(intent.infoSubtype, source, plain, issues);
   if (intent.productSubtype) inspectProductContract(intent.productSubtype, plain, issues);
-  inspectCommonEditorialContract(source, plain, issues);
+  inspectCommonEditorialContract(sourceWithoutUrls, plain, issues);
   if (intent.mode === 'info') inspectInfoWriterContract(source, plain, issues);
   if (intent.mode === 'product' || intent.productSubtype) inspectProductConsultContract(source, issues);
   inspectReadingDesign(source, plain, issues);

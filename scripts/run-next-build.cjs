@@ -71,6 +71,12 @@ function appendNodeOption(current, option) {
   return current ? `${current} ${option}` : option;
 }
 
+function buildMaxOldSpaceSizeMb() {
+  const configured = Number(process.env.NEXT_BUILD_MAX_OLD_SPACE_SIZE);
+  if (Number.isFinite(configured) && configured >= 1024) return Math.floor(configured);
+  return process.env.VERCEL === '1' ? 4096 : 6144;
+}
+
 function cleanDistDir() {
   if (process.env.NEXT_BUILD_CLEAN === '0') return;
   if (!fs.existsSync(distDir)) return;
@@ -414,7 +420,7 @@ function runBuild() {
   const nextBin = require.resolve('next/dist/bin/next');
   const env = {
     ...process.env,
-    NODE_OPTIONS: appendNodeOption(process.env.NODE_OPTIONS || '', '--max_old_space_size=6144'),
+    NODE_OPTIONS: appendNodeOption(process.env.NODE_OPTIONS || '', `--max_old_space_size=${buildMaxOldSpaceSizeMb()}`),
   };
 
   return new Promise((resolve, reject) => {

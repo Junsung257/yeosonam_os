@@ -35,6 +35,8 @@ import {
   type CustomerProductPriceRow,
 } from '@/lib/customer-package-price-options';
 import { formatProductTypeLabel } from '@/lib/product-type-label';
+import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
+import { hasCustomerCopyQualityIssues, normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -71,6 +73,7 @@ interface DaySchedule {
     attraction_names?: string[] | null;
     service_name?: string | null;
     service_detail?: string | null;
+    attraction_ids?: string[] | null;
   }[];
   hotel?: { name: string; grade?: string; note?: string } | null;
 }
@@ -271,8 +274,8 @@ function scheduleDisplayText(item: {
   attraction_queries?: string[] | null;
   attraction_names?: string[] | null;
 }): string {
-  const activity = (item.activity || '').trim();
-  const landing = (item.landing_sentence || '').trim();
+  const activity = customerVisibleText(item.activity);
+  const landing = customerVisibleText(item.landing_sentence);
   if (!landing) return activity;
   const sourceText = [
     item.source_activity,
@@ -289,6 +292,104 @@ function isIncludedServiceScheduleItem(item: { activity?: string | null; entity_
   const text = item.activity || '';
   if (/(?:\uC120\uD0DD\s*\uAD00\uAD11|\uC635\uC158|\uBCC4\uB3C4\s*\uC694\uAE08|\$)/.test(text)) return false;
   return /(?:\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0|\uC2A4\uD30C|\uC628\uCC9C\uC695)/.test(text);
+}
+
+function hasBrokenCustomerText(value: string | null | undefined): boolean {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  return /\?{2,}|[�ÃÂ]|(?:ì|ë|ê|í|ð)[\u0080-\u00ff]/i.test(text);
+}
+
+function isInternalAttractionFallbackText(value: string | null | undefined): boolean {
+  const text = String(value ?? '');
+  return [
+    '자동 생성 설명',
+    '사진은 정확한 자료가 확인될 때만 노출됩니다',
+    '일정에서 소개되는 관광 포인트',
+    '원문 일정에는',
+    '고객 화면에서는',
+    '원문 표현',
+    '세부 관람 동선',
+  ].some(phrase => text.includes(phrase));
+}
+
+function customerSafeAttractionText(value: string | null | undefined): string | null {
+  const text = customerVisibleText(value);
+  if (!text) return null;
+  if (hasBrokenCustomerText(text) || isInternalAttractionFallbackText(text)) return null;
+  return text;
+}
+
+function isCustomerSafeAttraction(attr: AttractionInfo | AttractionData | null | undefined): attr is AttractionInfo & AttractionData {
+  if (!attr) return false;
+  const name = customerSafeAttractionText(attr.name);
+  if (!name) return false;
+  if (name.length > 45) return false;
+  if (/상품|추천|직장인|특가|출발|일정표|패키지/.test(name)) return false;
+  return true;
+}
+
+function decodeCustomerHtmlEntities(value: string | null | undefined): string {
+  let text = String(value ?? '');
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = text;
+    text = text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;|&apos;/g, "'")
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+      const code = Number.parseInt(hex, 16);
+      return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
+      })
+      .replace(/&#(\d+);/g, (_, decimal: string) => {
+      const code = Number.parseInt(decimal, 10);
+      return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
+      });
+    if (text === before) break;
+  }
+  return text;
+}
+
+function customerVisibleText(value: string | null | undefined): string {
+  return normalizeCustomerVisibleCopy(decodeCustomerHtmlEntities(value));
+}
+
+function customerSafeProductSummary(pkg: Package): string {
+  const existing = customerVisibleText(pkg.product_summary);
+  if (existing && !isWeakCopy(existing, pkg.title) && !hasCustomerCopyQualityIssues(existing)) {
+    return existing;
+  }
+
+  return generateRecommendationCopy({
+    title: pkg.title,
+    destination: pkg.destination,
+    duration: pkg.duration,
+    trip_style: pkg.trip_style,
+    product_type: pkg.product_type,
+    inclusions: pkg.inclusions ?? null,
+    product_highlights: pkg.product_highlights ?? null,
+    airline: pkg.airline,
+  });
+}
+
+function decodeCustomerVisibleValue(value: unknown): unknown {
+  if (typeof value === 'string') return normalizeCustomerVisibleCopy(decodeCustomerHtmlEntities(value));
+  if (Array.isArray(value)) return value.map(item => decodeCustomerVisibleValue(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        decodeCustomerVisibleValue(item),
+      ]),
+    );
+  }
+  return value;
+}
+
+function sanitizePackageForCustomerDisplay(pkg: Package): Package {
+  return decodeCustomerVisibleValue(pkg) as Package;
 }
 
 const INCLUDED_SERVICE_LABEL = '\uD3EC\uD568 \uC11C\uBE44\uC2A4';
@@ -421,7 +522,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     }
   };
   const id = packageId;
-  const [pkg, setPkg] = useState<Package | null>(initialPackage);
+  const [pkg, setPkg] = useState<Package | null>(() => (
+    initialPackage ? sanitizePackageForCustomerDisplay(initialPackage) : null
+  ));
   const [isLoading, setIsLoading] = useState(!initialPackage);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', message: '', date: '' });
@@ -535,7 +638,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     // 폴백: 클라이언트에서 직접 fetch
     fetch(`/api/packages?id=${encodeURIComponent(id)}`).then(r => r.json()).then(data => {
       const p = data.package ?? null;
-      setPkg(p);
+      setPkg(p ? sanitizePackageForCustomerDisplay(p) : null);
       if (p) {
         trackViewContent({
           content_name: p.title || '',
@@ -914,6 +1017,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       : reservationConsentMissing
         ? '개인정보 안내에 동의하면 문의를 접수할 수 있어요.'
         : '담당자가 출발 가능일과 인원을 확인해 연락드립니다.';
+  const customerSummary = customerSafeProductSummary(pkg);
   // currentDay는 일정표 days.map 루프 내에서 정의됨
 
   return (
@@ -1052,7 +1156,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             </button>
           </div>
           {firstScreenBadges.length > 0 && (
-            <div className="mt-3 flex gap-1.5 overflow-x-auto no-scrollbar">
+            <div className="mt-3 flex gap-1.5 overflow-x-auto no-scrollbar" aria-label="상품 핵심 배지 가로 목록">
               {firstScreenBadges.map((badge) => (
                 <span key={badge} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
                   {badge}
@@ -1073,7 +1177,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             {/* 2026-05-19 박제 (Plan 에이전트 design review P1):
                 5+ 분기 wrap 폭발 방지 — chip max-width 180px + truncate.
                 모바일: 가로 스크롤 (overflow-x-auto + flex-nowrap), 데스크탑: wrap (md:flex-wrap). */}
-            <div className="flex flex-nowrap md:flex-wrap gap-2 overflow-x-auto md:overflow-visible no-scrollbar -mx-1 px-1">
+            <div className="flex flex-nowrap md:flex-wrap gap-2 overflow-x-auto md:overflow-visible no-scrollbar -mx-1 px-1" aria-label="일정 옵션 선택 목록">
               {/* 현재 패키지 (selected) */}
               <span className="inline-flex items-center max-w-[190px] px-3 py-2 rounded-full bg-slate-950 text-white text-xs font-semibold shadow-sm shrink-0">
                 <span className="truncate">{pkg.display_title || pkg.title}</span>
@@ -1289,10 +1393,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* product_summary 포맷 (feedback_product_summary_tone.md):
           [이모지+따옴표 헤더 한 줄]\n\n[본문 2~3문장]
           첫 \n\n으로 분리: 첫 단락은 헤더 강조, 나머지는 본문 */}
-      {pkg.product_summary && (() => {
-        const parts = pkg.product_summary.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+      {customerSummary && (() => {
+        const parts = customerSummary.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
         const header = parts.length > 1 ? parts[0] : null;
-        const body = parts.length > 1 ? parts.slice(1).join('\n\n') : pkg.product_summary;
+        const body = parts.length > 1 ? parts.slice(1).join('\n\n') : customerSummary;
         return (
           <div className="mx-4 mt-6 mb-2 rounded-2xl bg-gradient-to-br from-brand-light/40 to-white border border-brand-light/60 p-5 relative overflow-hidden">
             <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand" />
@@ -1586,7 +1690,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           </div>
 
           {decisionGuide.proofs.length > 0 && (
-            <div className="mt-4 flex gap-2 overflow-x-auto no-scrollbar">
+            <div className="mt-4 flex gap-2 overflow-x-auto no-scrollbar" aria-label="출발일 선택 목록">
               {decisionGuide.proofs.map(item => (
                 <span key={item} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-bold text-slate-700">
                   {item}
@@ -1671,11 +1775,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       ? ((attractions as AttractionData[]).find(a => a.id === itemIds![0]) || null)
                       : null
                   );
+                  const safeAttrCandidate = isCustomerSafeAttraction(attrCandidate) ? attrCandidate : null;
                   // DAY 내 dedup: 이미 같은 DAY 에 표시한 관광지면 카드 생략 (activity 텍스트는 유지).
                   // 키는 id 우선, 없으면 name. page.tsx 의 attractions select 에 id 가 빠져 있어도 name 으로 안전.
-                  const candidateKey = attrCandidate?.id || attrCandidate?.name || null;
+                  const candidateKey = safeAttrCandidate?.id || safeAttrCandidate?.name || null;
                   const isDuplicateInDay = !!(candidateKey && seenAttractionIds.has(candidateKey));
-                  const attr = isDuplicateInDay ? null : attrCandidate;
+                  const attr = isDuplicateInDay ? null : safeAttrCandidate;
                   if (candidateKey) seenAttractionIds.add(candidateKey);
                   const validAttrPhotoUrls = (attr?.photos ?? [])
                     .map(p => {
@@ -1853,6 +1958,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             : (attr.badge_type === 'optional' && !isScheduleOptional)
                               ? 'tour'
                               : attr.badge_type;
+                          const safeShortDesc = customerSafeAttractionText(attr.short_desc);
+                          const safeLongDesc = customerSafeAttractionText(attr.long_desc);
                           return (
                           <div className="mt-2 text-left">
                             {/* 관광지명 — 클릭 시 바텀시트 상세 팝업 */}
@@ -1867,8 +1974,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                               <span className="text-blue-400 text-xs">›</span>
                             </div>
                             {/* 한줄설명 */}
-                            {attr.short_desc && (
-                              <p className="text-sm font-medium text-gray-700 mt-0.5 leading-relaxed">{attr.short_desc}</p>
+                            {safeShortDesc && (
+                              <p className="text-sm font-medium text-gray-700 mt-0.5 leading-relaxed">{safeShortDesc}</p>
                             )}
                             
                             {/* 사진 슬라이더 (모바일 스와이프 캐러셀) */}
@@ -1901,10 +2008,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             )}
                             
                             {/* 지역 스토리 매거진 뷰 (long_desc 상시 노출) */}
-                            {attr.long_desc && (
+                            {safeLongDesc && (
                               <div className="mt-2 bg-gradient-to-br from-brand-light to-[#F2F4F6] rounded-xl p-3 border border-blue-200/50">
                                 <p className="text-sm text-gray-700 leading-loose break-keep">
-                                  {attr.long_desc}
+                                  {safeLongDesc}
                                 </p>
                               </div>
                             )}
@@ -2360,13 +2467,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 <h3 id="attraction-modal-title" className="font-extrabold text-lg text-gray-900">{attractionModal.name}</h3>
                 <button type="button" aria-label="Close attraction details" onClick={() => setAttractionModal(null)} className="text-gray-400 text-xl ml-3 shrink-0">✕</button>
               </div>
-              {attractionModal.short_desc && (
-                <p className="text-sm font-medium text-gray-700 mb-3">{attractionModal.short_desc}</p>
+              {customerSafeAttractionText(attractionModal.short_desc) && (
+                <p className="text-sm font-medium text-gray-700 mb-3">{customerSafeAttractionText(attractionModal.short_desc)}</p>
               )}
-              {attractionModal.long_desc && (
-                <p className="text-sm text-gray-600 leading-relaxed">{attractionModal.long_desc}</p>
+              {customerSafeAttractionText(attractionModal.long_desc) && (
+                <p className="text-sm text-gray-600 leading-relaxed">{customerSafeAttractionText(attractionModal.long_desc)}</p>
               )}
-              {(!attractionModal.short_desc && !attractionModal.long_desc) && (
+              {(!customerSafeAttractionText(attractionModal.short_desc) && !customerSafeAttractionText(attractionModal.long_desc)) && (
                 <p className="text-sm text-gray-400">상세 정보가 준비 중입니다.</p>
               )}
             </div>

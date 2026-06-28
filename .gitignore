@@ -73,6 +73,12 @@ scratch/
 /data/product-registration/hwp-inbox/reports/
 !/data/product-registration/hwp-inbox/README.md
 
+# Local product-registration mobile/text audit outputs. These can contain
+# supplier/customer-facing proof screenshots and are regenerated during QA.
+/data/product-registration/customer-text-audit-*/
+/data/product-registration/manual-ticketing-mobile-*/
+/data/product-registration/sjw-*/
+
 # Playwright 실패 덤프 (재현용)
 test-results/
 playwright-report/

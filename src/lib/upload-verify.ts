@@ -22,6 +22,13 @@ import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year'
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { selectSourceBackedPriceRows } from '@/lib/source-price-date-repair';
+import { blockingCustomerVisibleTextIssues } from '@/lib/customer-visible-text-audit';
+import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
+import {
+  evaluateRegistrationQualityScorecard,
+  type RegistrationQualityProductPrice,
+  type RegistrationQualityScorecard,
+} from '@/lib/product-registration/registration-quality-scorecard';
 
 export interface VerifyCheck {
   id: string;
@@ -37,6 +44,7 @@ export interface VerifyResult {
   passCount: number;
   warnCount: number;
   failCount: number;
+  qualityScorecard?: RegistrationQualityScorecard;
 }
 
 type PackageRow = {
@@ -49,8 +57,13 @@ type PackageRow = {
   price?: number | null;
   display_title?: string | null;
   hero_tagline?: string | null;
+  product_summary?: string | null;
+  destination?: string | null;
   raw_text?: string | null;
+  internal_code?: string | null;
   trip_style?: string | null;
+  airline?: string | null;
+  departure_airport?: string | null;
   itinerary_data?: {
     meta?: Record<string, unknown> | null;
     days?: Array<{
@@ -71,11 +84,18 @@ type PackageRow = {
   } | null;
   accommodations?: string[] | null;
   inclusions?: string[] | string | null;
+  excludes?: unknown;
   optional_tours?: Array<{ name?: string; price?: number | string | null; price_currency?: string | null } | string | null> | null;
   price_dates?: Array<{ date?: string; price?: number; adult_selling_price?: number; selling_price?: number; currency?: string | null }> | null;
   price_list?: Array<{ adult_selling_price?: number; selling_price?: number; currency?: string | null }> | null;
+  price_tiers?: unknown;
   departure_days?: unknown;
   surcharges?: Array<{ amount?: number | string | null; currency?: string | null } | string | null> | null;
+  notices_parsed?: unknown;
+  customer_notes?: string | null;
+  products?: unknown;
+  audit_report?: unknown;
+  updated_at?: string | null;
 };
 
 type QualityFailedCheck = {
@@ -84,6 +104,60 @@ type QualityFailedCheck = {
   message?: string;
   passed?: boolean;
 };
+
+function summarizeVerifyChecks(checks: VerifyCheck[], fixable: string[], qualityScorecard?: RegistrationQualityScorecard): VerifyResult {
+  const hasFail = checks.some(c => c.status === 'fail');
+  const hasWarn = checks.some(c => c.status === 'warn');
+  return {
+    status: hasFail ? 'blocked' : hasWarn ? 'warnings' : 'clean',
+    checks,
+    fixable,
+    passCount: checks.filter(c => c.status === 'pass').length,
+    warnCount: checks.filter(c => c.status === 'warn').length,
+    failCount: checks.filter(c => c.status === 'fail').length,
+    ...(qualityScorecard ? { qualityScorecard } : {}),
+  };
+}
+
+function extractInternalCode(pkg: PackageRow): string | null {
+  const ownCode = typeof pkg.internal_code === 'string' && pkg.internal_code.trim() ? pkg.internal_code.trim() : null;
+  if (ownCode) return ownCode;
+  const products = pkg.products;
+  if (Array.isArray(products)) {
+    const first = products.find(item => item && typeof item === 'object') as { internal_code?: unknown } | undefined;
+    const code = typeof first?.internal_code === 'string' ? first.internal_code.trim() : '';
+    return code || null;
+  }
+  if (products && typeof products === 'object') {
+    const code = typeof (products as { internal_code?: unknown }).internal_code === 'string'
+      ? String((products as { internal_code?: unknown }).internal_code).trim()
+      : '';
+    return code || null;
+  }
+  return null;
+}
+
+async function loadProductPricesForPackage(pkg: PackageRow): Promise<RegistrationQualityProductPrice[] | null> {
+  const internalCode = extractInternalCode(pkg);
+  if (!internalCode) return [];
+  const { data, error } = await supabaseAdmin
+    .from('product_prices')
+    .select('target_date,net_price,adult_selling_price,child_price,note')
+    .eq('product_id', internalCode)
+    .limit(1000);
+  if (error) {
+    console.warn('[upload-verify] product_prices load failed for scorecard:', error.message);
+    return null;
+  }
+  return (data ?? []) as RegistrationQualityProductPrice[];
+}
+
+function scorecardCheckStatus(pkg: PackageRow, scorecard: RegistrationQualityScorecard): VerifyCheck['status'] {
+  if (scorecard.customerOpenCandidate) return 'pass';
+  const nonProofBlockers = scorecard.blockers.filter(blocker => !/^packages_mobile:|^lp_mobile:/.test(blocker));
+  if (isCustomerVisibleStatus(pkg.status ?? null) || nonProofBlockers.length > 0) return 'fail';
+  return 'warn';
+}
 
 export type EntityQueueRow = {
   id?: string | null;
@@ -798,6 +872,26 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   const renderContractChecks = evaluateCustomerRenderContractChecks(pkg);
   checks.push(...renderContractChecks);
 
+  const textIssues = blockingCustomerVisibleTextIssues(pkg as Record<string, unknown>);
+  if (textIssues.length > 0) {
+    checks.push({
+      id: 'C18',
+      label: 'customer visible text quality',
+      status: 'fail',
+      detail: textIssues
+        .slice(0, 6)
+        .map(issue => `${issue.fieldPath}: ${issue.value}`)
+        .join(' / '),
+    });
+  } else {
+    checks.push({
+      id: 'C18',
+      label: 'customer visible text quality',
+      status: 'pass',
+      detail: 'customer-visible text has no blocking mojibake/internal-copy issues',
+    });
+  }
+
   if (pkg.status === undefined && pkg.audit_status === undefined) {
     checks.push({
       id: 'C13',
@@ -821,21 +915,10 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
     });
   }
 
-  const hasFail = checks.some(c => c.status === 'fail');
-  const hasWarn = checks.some(c => c.status === 'warn');
-  const status: VerifyResult['status'] = hasFail ? 'blocked' : hasWarn ? 'warnings' : 'clean';
-
   const fixable: string[] = [];
   if (checks.find(c => c.id === 'C5')?.status === 'warn') fixable.push('C5:departure_days');
 
-  return {
-    status,
-    checks,
-    fixable,
-    passCount: checks.filter(c => c.status === 'pass').length,
-    warnCount: checks.filter(c => c.status === 'warn').length,
-    failCount: checks.filter(c => c.status === 'fail').length,
-  };
+  return summarizeVerifyChecks(checks, fixable);
 }
 
 /**
@@ -854,7 +937,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
     const { data: rows, error } = await supabaseAdmin
       .from('travel_packages')
       .select(
-        'id, title, status, audit_status, duration, nights, price, display_title, hero_tagline, raw_text, trip_style, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
+        'id, title, status, audit_status, duration, nights, price, display_title, hero_tagline, product_summary, destination, raw_text, internal_code, trip_style, airline, departure_airport, itinerary_data, accommodations, inclusions, excludes, optional_tours, price_dates, price_list, price_tiers, departure_days, surcharges, notices_parsed, customer_notes, audit_report, updated_at, products(internal_code,display_name,departure_region)',
       )
       .eq('id', packageId)
       .limit(1);
@@ -864,8 +947,32 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       return null;
     }
 
-    let result = evaluateVerifyChecks(rows[0] as PackageRow);
+    const pkg = rows[0] as PackageRow;
+    let result = evaluateVerifyChecks(pkg);
     result = await mergeEntityQueueChecks(packageId, result);
+    const productPrices = await loadProductPricesForPackage(pkg);
+    const mobileProof = evaluateCustomerMobileProof({
+      auditReport: pkg.audit_report,
+      packageUpdatedAt: pkg.updated_at ?? null,
+    });
+    const qualityScorecard = evaluateRegistrationQualityScorecard({
+      pkg: {
+        ...(pkg as unknown as Record<string, unknown>),
+        internal_code: extractInternalCode(pkg),
+      },
+      verifyChecks: result.checks,
+      productPrices,
+      mobileProof,
+    });
+    const scorecardCheck: VerifyCheck = {
+      id: 'C19',
+      label: 'registration quality scorecard',
+      status: scorecardCheckStatus(pkg, qualityScorecard),
+      detail: qualityScorecard.customerOpenCandidate
+        ? `open candidate pass avg=${qualityScorecard.averageScore} min=${qualityScorecard.minScore}`
+        : `open candidate false avg=${qualityScorecard.averageScore} min=${qualityScorecard.minScore}; ${qualityScorecard.blockers.slice(0, 5).join(' | ')}`,
+    };
+    result = summarizeVerifyChecks([...result.checks.filter(check => check.id !== 'C19'), scorecardCheck], result.fixable, qualityScorecard);
 
     const { data: latestQualityLog } = await supabaseAdmin
       .from('ai_quality_log')
@@ -890,6 +997,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
           fixable: result.fixable,
           source: 'auto-upload-verify',
           version: 2,
+          quality_scorecard: qualityScorecard,
           quality_status: qualityStatus,
           quality_failed_checks: existingQualityChecks.filter(c => c && c.passed === false).slice(0, 20),
         },
