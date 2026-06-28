@@ -1,6 +1,6 @@
 # 99 Next Steps
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 Status: Implementation handoff after `docs/yeosonam-os-constitution.md`
 
 ## 한글 요약
@@ -19,6 +19,7 @@ Build the first daily-use Yeosonam OS around this sequence:
 6. Blog/Threads/card-news/ad-copy drafts: generated only from eligible products or clearly marked editorial briefs.
 7. Simple dashboard: today actions, blocked products, overdue follow-ups, lead sources, quote status, and AI approval packets.
 8. Jarvis packet layer: evidence, dry-run, risk, recommendation, rollback hint, and approval state.
+9. AI operations command center: one read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click.
 
 ## First Implementation Slice
 
@@ -66,6 +67,7 @@ Rules:
 - Respect customer/internal data separation.
 - AI output must be a draft requiring human confirmation.
 - Money, booking, PII, external publishing, credentials, and customer mutations need existing approval/evidence paths.
+- AI command-center recommendations may navigate operators to safe review screens, but must not directly execute high-risk actions.
 - Do not copy product-registration or blog guard mechanics into other domains; choose the domain-specific guard that matches the risk.
 - Keep the change narrow and verify it.
 

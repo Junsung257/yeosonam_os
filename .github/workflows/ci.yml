@@ -121,23 +121,40 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-key-for-ci"
           NEXT_PUBLIC_BASE_URL: "https://example.com"
 
-      - name: Start dev server
+      - name: Lighthouse CI
+        continue-on-error: true
         env:
           NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-anon-key-for-ci"
           SUPABASE_SERVICE_ROLE_KEY: "dummy-service-role-key-for-ci"
-          NEXT_PUBLIC_BASE_URL: "https://example.com"
+          NEXT_PUBLIC_BASE_URL: "http://127.0.0.1:3000"
         run: |
-          npm run dev &
-          for i in {1..60}; do
-            curl -s http://localhost:3000 && exit 0
+          mkdir -p .tmp
+          npm run start -- -p 3000 > .tmp/lighthouse-next-start.log 2>&1 &
+          SERVER_PID=$!
+          cleanup() {
+            kill "$SERVER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health >/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              cat .tmp/lighthouse-next-start.log
+              exit 1
+            fi
             sleep 1
           done
-          exit 1
 
-      - name: Lighthouse CI
-        continue-on-error: true
-        run: |
+          if [ "$ready" != "1" ]; then
+            cat .tmp/lighthouse-next-start.log
+            exit 1
+          fi
+
           npm install -g @lhci/cli@latest
           if ! lhci autorun; then
             echo "::warning::Lighthouse CI reported performance findings. This workflow treats them as advisory; release gates are covered by build, test, and readiness jobs."

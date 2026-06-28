@@ -195,6 +195,7 @@ export async function stopProcessTree(server, { keepServer = false, timeoutMs = 
   } finally {
     await stopLingeringNextDevServers(server);
     server.closeLogs?.();
+    restoreFileSnapshot(server.nextEnvSnapshot);
     restoreFileSnapshot(server.tsconfigSnapshot);
     removeOwnedDistDir(server);
   }
@@ -222,6 +223,9 @@ export function startNextServer({
   const tsconfigSnapshot = mode === 'dev'
     ? snapshotFile(resolve(process.cwd(), 'tsconfig.json'))
     : null;
+  const nextEnvSnapshot = mode === 'dev'
+    ? snapshotFile(resolve(process.cwd(), 'next-env.d.ts'))
+    : null;
 
   const child = spawn(command, args, {
     cwd: process.cwd(),
@@ -248,6 +252,7 @@ export function startNextServer({
     distDir: env.NEXT_DIST_DIR || '',
     ownsDistDir,
     tsconfigSnapshot,
+    nextEnvSnapshot,
     markStopping() {
       expectedStop = true;
     },

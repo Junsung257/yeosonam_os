@@ -27,7 +27,7 @@ function hasFlag(name) {
 const port = Number(argValue('--port', process.env.MARKETING_RUNTIME_PORT || '3033'));
 const mode = argValue('--mode', process.env.MARKETING_RUNTIME_MODE || 'dev');
 const timeoutMs = Number(argValue('--timeout-ms', process.env.MARKETING_RUNTIME_TIMEOUT_MS || '60000'));
-const readyTimeoutMs = Number(argValue('--ready-timeout-ms', process.env.MARKETING_RUNTIME_READY_TIMEOUT_MS || '90000'));
+const readyTimeoutMs = Number(argValue('--ready-timeout-ms', process.env.MARKETING_RUNTIME_READY_TIMEOUT_MS || '180000'));
 const keepServer = hasFlag('--keep-server');
 const strict = hasFlag('--strict') || process.env.MARKETING_RUNTIME_STRICT === '1';
 const explicitBase = argValue('--base', process.env.MARKETING_RUNTIME_BASE_URL || '').replace(/\/$/, '');
