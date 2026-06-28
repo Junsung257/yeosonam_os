@@ -2034,7 +2034,10 @@ let rows = allPackageRows
       structured_facts: countLedgerRows(draft, 'structured_facts'),
       unmatched_activities: draftAttractionUnmatchedCount(draft) ?? unmatchedCountMap.get(pkg.id) ?? 0,
       entity_attraction_unresolved: draft && !draftLookupFailed ? draftEntities.attraction_unresolved : queueEntities.attraction_unresolved || 0,
-      entity_shopping_review_needed: draft && !draftLookupFailed ? draftEntities.shopping_review_needed : queueEntities.shopping_review_needed || 0,
+      // Shopping visits are customer-visible structured facts, not attraction masters.
+      // Older V3 drafts can keep stale shopping review counts after the unmatched queue
+      // has already resolved those rows, so use the live pending queue as the blocker.
+      entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
       entity_option_review_needed: draft && !draftLookupFailed ? draftEntities.option_review_needed : queueEntities.option_review_needed || 0,
       entity_unknown_customer_visible: draft && !draftLookupFailed ? draftEntities.unknown_customer_visible : queueEntities.unknown_customer_visible || 0,
       entity_noise_removed: draftEntities.noise_removed,

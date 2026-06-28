@@ -20,6 +20,7 @@ export type ClassifiedUnmatched = {
   suggestedAction:
     | 'auto_resolve_existing'
     | 'auto_ignore_noise'
+    | 'structure_non_master'
     | 'needs_new_master'
     | 'suggest_alias'
     | 'needs_review';
@@ -94,6 +95,10 @@ const NORMAL_SHOPPING_RE =
   /(?:쇼핑|면세|명품샵|기념품|토산품|특산품|농수산|라텍스|잡화|쇼핑센터|아울렛|mall|outlet|shopping)/i;
 const NORMAL_OPTION_RE =
   /(?:선택\s*관광|옵션|마사지|스파|공연|쇼|입장권|자유이용권|케이블카|왕복케이블카|전통복장체험|소원배|소원등|드론촬영|나룻배|골프|라운드|라운딩|optional|option|spa|massage|ticket|show)/i;
+const NORMAL_OPTION_HEADING_NOISE_RE =
+  /^\s*[【[\(]?\s*(?:추천\s*)?(?:옵션|선택관광)\s*[】\]\)]?\s*$/i;
+const NORMAL_GOLF_TAG_RE =
+  /^\s*#\s*다색골프\s*$/i;
 const NORMAL_FREE_TIME_RE =
   /(?:자유\s*시간|자유\s*일정|휴식|리조트\s*내\s*자유|오전\s*자유|오후\s*자유|free\s*time|rest)/i;
 const NORMAL_NOISE_RE =
@@ -134,6 +139,9 @@ export function classifyUnmatchedActivity(
   if (!text || KO_PRICE_NOISE_RE.test(text) || NORMAL_PRICE_NOISE_RE.test(text)) {
     category = 'price_noise';
     confidence = 0.92;
+  } else if (NORMAL_OPTION_HEADING_NOISE_RE.test(text)) {
+    category = 'free_time';
+    confidence = 0.9;
   } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text) || NORMAL_MEAL_RE.test(text)) {
     category = 'meal';
     confidence = 0.9;
@@ -170,6 +178,26 @@ export function classifyUnmatchedActivity(
       terminalStatus: confidence >= 0.85 ? 'added' : 'pending',
       suggestedAction: confidence >= 0.85 ? 'auto_resolve_existing' : 'needs_review',
       resolvedKind: confidence >= 0.85 ? `auto_entity_${category}` : null,
+    };
+  }
+
+  if (category === 'shopping') {
+    return {
+      category,
+      confidence,
+      terminalStatus: confidence >= 0.85 ? 'added' : 'pending',
+      suggestedAction: confidence >= 0.85 ? 'structure_non_master' : 'needs_review',
+      resolvedKind: confidence >= 0.85 ? 'auto_entity_shopping_non_master' : null,
+    };
+  }
+
+  if (category === 'optional_tour' && NORMAL_GOLF_TAG_RE.test(text)) {
+    return {
+      category,
+      confidence,
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
+      resolvedKind: 'auto_entity_optional_tour_non_master',
     };
   }
 
