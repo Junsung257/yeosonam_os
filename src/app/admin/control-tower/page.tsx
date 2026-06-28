@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/components/ui/Toast';
+import { AutomationCommandCenterCard } from './_components/AutomationCommandCenterCard';
 
 // ── 타입 ─────────────────────────────────────────────────
 type PolicyCategory = 'pricing' | 'mileage' | 'booking' | 'notification' | 'display' | 'product' | 'operations' | 'marketing' | 'saas' | 'commission';
@@ -406,6 +407,8 @@ export default function ControlTowerPage() {
       </div>
 
       {/* ── KPI ────────────────────────────────────────── */}
+      <AutomationCommandCenterCard />
+
       <div className="grid grid-cols-4 gap-2">
         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-3 py-2">
           <p className="text-[10px] text-admin-muted-2">전체 정책</p>
