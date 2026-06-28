@@ -174,15 +174,41 @@ Do not hard-code one AI model, one vector store, one storage backend, one ad pla
 
 Every customer-impacting, operationally meaningful, security/privacy, money, booking, settlement, product, marketing, or AI failure must leave a durable guard before it is called resolved. The guard may be a fixture, regression test, eval, deterministic gate, SSOT rule, error-registry entry, readiness check, or monitored action queue rule.
 
+The guard must fit the domain. Do not force product-registration fixtures, blog editorial gates, mobile proof, or macro mining onto domains where they do not match the risk.
+
 A one-time manual repair is not a system fix. If a guard is intentionally not added, the closeout must state why the failure is non-repeatable or too small to warrant a durable artifact.
 
 Repeated failures get a higher bar: they must be added to the active error registry or the matching domain error file, and the next fix must include a prevention mechanism.
 
-### 5.12 Small MVP, Strong Spine
+### 5.12 Pattern, Not Playbook
+
+Product registration and blog automation are strong examples, not templates to copy into every feature. The reusable pattern is:
+
+```text
+failure or risky behavior
+  -> domain evidence
+  -> domain-specific guard
+  -> verification proof
+  -> operator-visible status
+```
+
+Domain-specific guard examples:
+
+| Domain | Guard shape |
+|---|---|
+| 상품등록 참고 | source evidence, customer render proof, fixture/eval when parser behavior changes |
+| 블로그 참고 | topic/editorial/render/image/SEO/indexing gates before public publish |
+| Settlement | ledger path, reconciliation, reversal proof, idempotency key |
+| Affiliate | attribution snapshot, commission eligibility check, payout boundary |
+| Marketing | draft/stage/approve/provider confirmation, spend guardrail |
+| Jarvis/AI | eval, trace, HITL, decision packet, scoped tool allowlist |
+| Consultation/CRM | consent, PII minimization, customer fact audit, tenant scope |
+
+### 5.13 Small MVP, Strong Spine
 
 The MVP must stay small, but its spine must be correct: inquiry, consultation memory, source-backed product, quote/recommendation draft, follow-up action, booking/payment evidence, and marketing handoff.
 
-### 5.13 Learning Improves Every Process
+### 5.14 Learning Improves Every Process
 
 Every process that produces repeated work or risky decisions should generate learning evidence:
 
@@ -198,6 +224,8 @@ event or failure
 ```
 
 Learning must improve the process, not mutate production blindly. Macro learning may propose parser rules, prompt changes, product repairs, marketing actions, or Jarvis tools, but production behavior changes still go through review, tests, and domain gates.
+
+Do not require every domain to build the same learning mechanism. Product registration may need golden corpus and macro mining; settlement may need ledger drift checks; marketing may need provider confirmation and spend guardrails; CRM may need consent and PII checks. The common rule is evidence-backed improvement, not identical machinery.
 
 ## 6. MVP Scope
 

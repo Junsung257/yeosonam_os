@@ -32,6 +32,7 @@ This file maps constitution claims to local repo evidence and external research.
 | Consultation memory is core | `supabase/migrations/20260414120000_add_customer_facts.sql` | Customer facts store reusable preferences, constraints, and history with tenant/customer/conversation scope. |
 | AI learning must be PII-aware | `supabase/migrations/20260502160000_platform_learning_events.sql`, `docs/platform-ai-roadmap.md` | Learning events store message hashes and structured payloads by default, separating platform learning from raw PII. |
 | Product source truth controls public eligibility | `docs/product-registration-current-ssot.md`, `db/FIELD_POLICY.md` | Upload/product engine requires source evidence, customer render proof, and customer/internal field separation. |
+| Strong guard systems are references, not universal playbooks | `docs/product-registration-current-ssot.md`, `docs/blog-autopublish-contract.md` | 상품등록 참고 and 블로그 참고 mean reuse the pattern of evidence -> guard -> verification, not their exact mechanics. |
 | Recommendations should explain reasons, not fake certainty | `docs/recommendation-comparison-v1-plan.md` | V1 strategy is package comparison and "least regret" recommendation, not OTA-style unlimited planning. |
 | Affiliate attribution and payout are separate | `docs/affiliate-current-ssot.md`, `docs/settlement-current-ssot.md` | Referral capture is evidence; payable commission requires booking/payment/settlement state. |
 | Ledger is finance truth | `docs/settlement-current-ssot.md` | Payments, refunds, settlements, reversals, and adjustments must create or reference ledger evidence. |
@@ -74,6 +75,20 @@ Yeosonam OS should exist because it combines these into a Korean, AI-assisted, e
 
 The key missing category in generic tools is not "AI text generation." The missing category is a source-backed sales operating system where content, consultation, quote, booking, payment, settlement, and marketing are connected by evidence and approval gates.
 
+## Pattern Reference Boundary
+
+Product registration and blog automation are the strongest current guard examples, but they are not copy-paste standards. Each domain should choose its own minimum guard:
+
+| Domain | Evidence | Guard |
+|---|---|---|
+| Product registration | supplier source, source spans, render proof | fixture/eval, customer-open contract, mobile proof |
+| Blog | content brief, rendered page, image/SEO/indexing evidence | editorial/render/SEO/indexing gates |
+| Settlement | ledger entries, allocations, reconciliation status | idempotent ledger path, reversal proof, drift block |
+| Affiliate | referral touchpoints, booking snapshot, settlement state | attribution snapshot, payout eligibility boundary |
+| Marketing | product eligibility, provider result, budget state | draft/stage/approve/confirmed boundary |
+| Jarvis/AI | prompt/version, trace, decision packet, eval result | HITL, scoped tools, eval/readiness gate |
+| Consultation/CRM | consent, customer facts, tenant/customer scope | PII guard, customer fact audit, scope check |
+
 ## MVP Evidence Checklist
 
 Before building or expanding an MVP feature, answer:
@@ -81,7 +96,7 @@ Before building or expanding an MVP feature, answer:
 | Question | Evidence needed |
 |---|---|
 | Does this help the daily inquiry-to-booking workflow? | User journey, route/service path, or action queue item |
-| If this fixes a failure, what prevents recurrence? | Fixture, regression test, eval, deterministic gate, error-registry entry, SSOT rule, readiness check, or explicit no-guard rationale |
+| If this fixes a failure, what prevents recurrence? | Domain-specific guard: fixture, regression test, eval, deterministic gate, error-registry entry, SSOT rule, readiness check, or explicit no-guard rationale |
 | Is customer-facing travel information source-backed? | Product source hash, supplier data, eligibility proof, or explicit manual-review state |
 | Is AI output a draft or an approved fact? | Approval state, schema validation, eval, or domain gate |
 | Does it reduce manual duplicate entry? | Existing data reuse or one-write/many-read flow |

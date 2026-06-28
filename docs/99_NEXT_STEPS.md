@@ -66,6 +66,7 @@ Rules:
 - Respect customer/internal data separation.
 - AI output must be a draft requiring human confirmation.
 - Money, booking, PII, external publishing, credentials, and customer mutations need existing approval/evidence paths.
+- Do not copy product-registration or blog guard mechanics into other domains; choose the domain-specific guard that matches the risk.
 - Keep the change narrow and verify it.
 
 Before coding:
@@ -90,3 +91,4 @@ After coding:
 | CRM breadth vs sales workflow | Build the inquiry-to-booking workflow first. |
 | Marketing automation vs live spend | Draft/stage/approve/confirm; no live spend autopilot before evidence gates. |
 | Vector search vs source truth | Vector/RAG can retrieve context, but source-backed structured data remains truth. |
+| Guard pattern vs feature playbook | Reuse evidence -> guard -> verification, not product-registration/blog mechanics. |
