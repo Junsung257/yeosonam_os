@@ -7,6 +7,7 @@ node_modules
 
 # Next.js
 /.next/
+/.next-dev-*/
 /out/
 
 # Partytown — `postinstall` / `npm run partytown:copy` 가 node_modules 에서 복사 (원본은 커밋 안 함)
