@@ -25,6 +25,11 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
     label: '랜드사/운영자용 내부 용어가 고객 문구에 보입니다.',
   },
   {
+    code: 'customer_forbidden_internal_terms',
+    pattern: /\uD0C0\uC0AC\s*\uBE44\uAD50\s*\uD544\uC218|\uBE44\uAD50\s*\uD544\uC218|POINT\s*[\u2460-\u24690-9]|\uD3EC\uC778\uD2B8\s*[\u2460-\u24690-9]|\uB2E8\uB3C5\s*\uD2B9\uC804/i,
+    label: '내부 비교/프로모션 메모가 고객 문구에 노출됩니다.',
+  },
+  {
     code: 'stale_generic_recommendation',
     pattern: /처음 방문해도 부담 없이|같은 일정 사진|관광\s*행사,\s*이동도 매끄럽게/i,
     label: '범용 추천 문구가 반복됩니다.',
