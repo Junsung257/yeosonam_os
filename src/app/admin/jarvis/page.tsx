@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import { ActionCard } from './components/ActionCard'
 import AgentActionsPanel from './components/AgentActionsPanel'
 import JarvisReadinessCard from '@/components/admin/JarvisReadinessCard'
+import JarvisScenarioReadinessCard from '@/components/admin/JarvisScenarioReadinessCard'
 import JarvisRagStatusCard from '@/components/admin/JarvisRagStatusCard'
 import McpToolGuide from './components/McpToolGuide'
 import { useJarvisStream, type JarvisStreamEvent } from '@/lib/jarvis/useJarvisStream'
@@ -304,6 +305,7 @@ function JarvisPageContent() {
         {/* Readiness / RAG 색인 상태 */}
         <div className="mb-4 grid gap-3">
           <JarvisReadinessCard />
+          <JarvisScenarioReadinessCard />
           <JarvisRagStatusCard />
         </div>
         {/* 헤더 */}

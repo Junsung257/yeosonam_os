@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CUSTOMER_INQUIRY_SCENARIOS,
+  CUSTOMER_SUPPORT_SOP_MATRIX,
   evaluateCustomerInquiryReadiness,
   evaluateCustomerInquiryScenario,
 } from './customer-inquiry-readiness';
@@ -33,5 +34,17 @@ describe('customer inquiry readiness', () => {
 
     expect(result.passed).toBe(true);
     expect(result.checks.filter((check) => check.name.startsWith('guest_blocks_')).every((check) => check.actual === false)).toBe(true);
+  });
+
+  it('covers professional support SOPs with evidence and handoff rules', () => {
+    const sopResults = CUSTOMER_INQUIRY_SCENARIOS
+      .filter((scenario) => scenario.category === 'sop')
+      .map(evaluateCustomerInquiryScenario);
+
+    expect(CUSTOMER_SUPPORT_SOP_MATRIX.length).toBeGreaterThanOrEqual(10);
+    expect(sopResults).toHaveLength(CUSTOMER_SUPPORT_SOP_MATRIX.length);
+    expect(sopResults.every((result) => result.passed)).toBe(true);
+    expect(sopResults.some((result) => result.checks.some((check) => check.name === 'sop_handoff_required' && check.actual === true))).toBe(true);
+    expect(sopResults.every((result) => result.checks.some((check) => check.name === 'sop_forbidden_auto_execute' && check.actual === true))).toBe(true);
   });
 });

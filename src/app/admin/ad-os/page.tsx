@@ -53,6 +53,7 @@ import {
   getTotalMappingStatus,
 } from './_lib/view-model';
 import { AiAdTeamPanel } from './_components/AiAdTeamPanel';
+import { AiDirectorControlPanel } from './_components/AiDirectorControlPanel';
 import {
   AdOsWorkspaceTabs,
   parseAdOsWorkspaceTab,
@@ -2055,6 +2056,8 @@ export default function AdOsPage() {
           <AdOsWorkspaceTabs activeTab={activeTab} onTabChange={selectWorkspaceTab}>
             {activeTab === 'run' && (
               <div className="space-y-4">
+                <AiDirectorControlPanel />
+
                 <LaunchWizardPanel
                   launchSteps={launchSteps}
                   launchWizardSteps={launchWizardSteps}

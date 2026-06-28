@@ -44,6 +44,7 @@ import { FINANCE_TOOLS, executeFinanceTool } from './agents/finance'
 import { MARKETING_TOOLS, executeMarketingTool } from './agents/marketing'
 import { SALES_TOOLS, executeSalesTool } from './agents/sales'
 import { SYSTEM_TOOLS, executeSystemTool } from './agents/system'
+import { requiresActionApproval } from '@/lib/agent-action-registry'
 
 // ============================================================
 // Tool 레지스트리 — 모든 agent tool을 MCP 스키마로 변환
@@ -89,6 +90,11 @@ const TOOL_SCOPE_MAP: Record<string, { scope: McpToolScope; hitl: boolean }> = {
   find_duplicate_customers:  { scope: 'read', hitl: false },
   propose_merge_customers:   { scope: 'write', hitl: true },
   get_recent_errors:         { scope: 'read', hitl: false },
+  list_travel_insurances:    { scope: 'read', hitl: false },
+  create_itinerary:          { scope: 'write', hitl: true },
+  get_visa_info:             { scope: 'read', hitl: false },
+  list_guest_names:          { scope: 'read', hitl: false },
+  update_guest_names:        { scope: 'write', hitl: true },
 
   // --- products ---
   search_packages:           { scope: 'read', hitl: false },
@@ -118,6 +124,7 @@ const TOOL_SCOPE_MAP: Record<string, { scope: McpToolScope; hitl: boolean }> = {
   create_settlement:         { scope: 'admin', hitl: true },
   list_pending_settlements:  { scope: 'admin', hitl: false },
   propose_bulk_confirm_settlements: { scope: 'admin', hitl: true },
+  export_settlement_report:  { scope: 'admin', hitl: true },
 
   // --- marketing ---
   generate_card_news:              { scope: 'write', hitl: false },
@@ -126,6 +133,7 @@ const TOOL_SCOPE_MAP: Record<string, { scope: McpToolScope; hitl: boolean }> = {
   list_campaigns:                  { scope: 'read', hitl: false },
   get_keyword_performance:         { scope: 'read', hitl: false },
   propose_blog_draft:              { scope: 'write', hitl: true },
+  approve_content:                 { scope: 'write', hitl: true },
   get_keyword_stats:               { scope: 'read', hitl: false },
   get_optimization_logs:           { scope: 'read', hitl: false },
   get_ad_budget_summary:           { scope: 'read', hitl: false },
@@ -142,12 +150,33 @@ const TOOL_SCOPE_MAP: Record<string, { scope: McpToolScope; hitl: boolean }> = {
   preview_commission_policy: { scope: 'read', hitl: false },
   draft_commission_policy:   { scope: 'write', hitl: true },
   send_content_24h_report:   { scope: 'write', hitl: false },
+  generate_affiliate_link:   { scope: 'write', hitl: true },
+  update_influencer_tier:    { scope: 'write', hitl: true },
+  create_rfq_proposal:       { scope: 'write', hitl: true },
 
   // --- system ---
   list_policies:             { scope: 'read', hitl: false },
   update_policy:             { scope: 'admin', hitl: true },
   list_escalations:          { scope: 'read', hitl: false },
   get_audit_logs:            { scope: 'admin', hitl: false },
+  resolve_escalation:        { scope: 'write', hitl: true },
+  get_os_health:             { scope: 'admin', hitl: false },
+  list_cron_jobs:            { scope: 'admin', hitl: false },
+  trigger_cron_job:          { scope: 'admin', hitl: true },
+  get_registration_status:   { scope: 'admin', hitl: false },
+  list_fraud_quarantine:     { scope: 'admin', hitl: false },
+  resolve_fraud_case:        { scope: 'admin', hitl: true },
+  list_gdpr_requests:        { scope: 'admin', hitl: false },
+  process_gdpr_request:      { scope: 'admin', hitl: true },
+  list_integrations:         { scope: 'admin', hitl: false },
+  toggle_integration:        { scope: 'admin', hitl: true },
+  list_api_tokens:           { scope: 'admin', hitl: false },
+  list_admin_alerts_full:    { scope: 'admin', hitl: false },
+  dismiss_alert:             { scope: 'write', hitl: true },
+  list_system_config:        { scope: 'admin', hitl: false },
+  update_system_config:      { scope: 'admin', hitl: true },
+  list_prompt_templates:     { scope: 'admin', hitl: false },
+  get_blog_system_status:    { scope: 'admin', hitl: false },
 }
 
 function buildRegistry(): ToolRegistryEntry[] {
@@ -162,7 +191,7 @@ function buildRegistry(): ToolRegistryEntry[] {
       const mapping = TOOL_SCOPE_MAP[t.name]
       if (!mapping) continue // 미등록 tool은 스킵
       entries.push({
-        mcpSchema: toMcpSchema(t, agentType, mapping.scope, mapping.hitl),
+        mcpSchema: toMcpSchema(t, agentType, mapping.scope, mapping.hitl || requiresActionApproval(t.name)),
         execute: (args, ctx) => exec(t.name, { ...args, _ctx: undefined }),
         agentType,
       })

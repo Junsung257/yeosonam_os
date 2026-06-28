@@ -15,6 +15,7 @@
  */
 
 import type { JarvisContext } from './types';
+import { getJarvisMutatingToolNames } from '@/lib/agent-action-registry';
 
 const GUEST_GUARDRAIL = `
 [게스트 모드 가드레일 — 매직링크로 진입한 고객 응대 중]
@@ -120,5 +121,6 @@ type ToolLike = { name?: string } & Record<string, unknown>;
 export function filterGuestTools<T extends ToolLike>(tools: T[], ctx: JarvisContext): T[] {
   const isGuest = ctx.userRole === 'customer' && ctx.surface === 'customer';
   if (!isGuest) return tools;
-  return tools.filter((t) => typeof t.name === 'string' && !GUEST_BLOCKED_TOOLS.has(t.name));
+  const blocked = new Set([...GUEST_BLOCKED_TOOLS, ...getJarvisMutatingToolNames()]);
+  return tools.filter((t) => typeof t.name === 'string' && !blocked.has(t.name));
 }

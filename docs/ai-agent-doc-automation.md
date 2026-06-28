@@ -30,6 +30,10 @@ completed investigation -> docs/audits/YYYY-MM-DD-*.md
 temporary note -> no docs; final answer only
 ```
 
+A customer-impacting, operationally meaningful, security/privacy, money, booking, settlement, product, marketing, or AI failure is not "resolved" by a manual repair alone. Before closeout, add a prevention artifact such as a fixture, regression test, eval, deterministic gate, SSOT rule, error-registry entry, readiness check, or monitored action queue rule. If no artifact is added, explicitly state why the issue is non-repeatable or too small to guard.
+
+The artifact must be domain-specific. Do not copy product-registration golden corpus, mobile proof, or macro mining into every domain. Do not copy blog editorial gates into settlement, affiliate, or CRM. Use the smallest guard that prevents the same class of failure in that domain.
+
 Exception: Tier 2 and Tier 3 work under `docs/agent-workflow-current-ssot.md` may create a feature packet at `docs/specs/YYYYMMDD-short-slug/` using `docs/specs/_template/`. This is not a default planning note; it is a durable implementation contract for large or high-risk work. Tier 0 and Tier 1 work must still avoid new spec packets unless the user explicitly asks for one.
 
 ## Document Hierarchy
@@ -64,6 +68,8 @@ rg "keyword" docs AGENTS.md .claude --glob "!docs/audits/**"
 
 ## Automatic Doc Decision Matrix
 
+Choose the smallest domain-specific guard. The examples below are not interchangeable across domains.
+
 | Change type | Required durable artifact |
 |---|---|
 | New product-registration parser behavior | golden fixture and expected JSON |
@@ -84,6 +90,8 @@ rg "keyword" docs AGENTS.md .claude --glob "!docs/audits/**"
 
 ## Product Registration Specific Flow
 
+This is a domain-specific example, not a universal playbook.
+
 For supplier upload registration:
 
 ```text
@@ -99,6 +107,8 @@ source failure
 Never make the document the only fix. The document records the fix; the fixture/test prevents regression.
 
 ## Blog Automation Specific Flow
+
+This is a domain-specific example, not a universal playbook.
 
 For blog generation, publishing, rendering, images, SEO, or indexing:
 
@@ -147,7 +157,7 @@ Use MCP/app tools carefully:
 |---|---:|---|
 | One current SSOT per domain | 20 | Any agent can identify the active rule document in under 30 seconds. |
 | No stale-doc ambiguity | 15 | Historical docs are labeled historical or superseded. |
-| Mistakes become guards | 20 | Repeated failures enter tests, fixtures, or error registry. |
+| Mistakes become guards | 20 | Meaningful failures enter the right domain-specific guard: tests, fixtures, evals, gates, error registry, readiness checks, or an explicit no-guard rationale. |
 | Customer safety | 15 | Customer-visible rules distinguish evidence, fallback, manual approval, and internal-only data. |
 | Automation fit | 10 | Prompt/cache/eval/structured-output practices are encoded in repo rules. |
 | Minimality | 10 | New docs are rare; existing SSOT is updated first. |
@@ -163,6 +173,7 @@ At the end of meaningful work, the agent should report:
 - what durable artifact captured it,
 - what verification ran,
 - what remains manual or intentionally deferred.
+- if the work fixed a failure, what domain-specific guard prevents recurrence or why no guard was justified.
 
 If no document was updated, say why: already covered, no behavior change, or temporary investigation.
 

@@ -106,6 +106,8 @@ const MEDIUM_TERMS = [
   '\ucd9c\ubc1c \ud655\uc815',
   '\uc0c1\ub2f4\uc6d0',
   '\uc0c1\ub2f4 \uc5f0\uacb0',
+  '\uae34\uae09',
+  '\uc0ac\uace0',
   '\ube44\uc790',
   '\uc5ec\uad8c',
   'booking status',
@@ -113,6 +115,8 @@ const MEDIUM_TERMS = [
   'unmatched payment',
   'escalation',
   'complaint',
+  'emergency',
+  'urgent',
 ];
 
 const CRITICAL_TOOLS = new Set([

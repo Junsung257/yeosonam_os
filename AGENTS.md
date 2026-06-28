@@ -50,6 +50,7 @@
 
 | 주제 | 파일 |
 |------|------|
+| **프로젝트 헌법·최상위 제품 원칙** | **`docs/yeosonam-os-constitution.md`**, `docs/yeosonam-os-constitution-evidence-map.md` |
 | **제휴 현재 SSOT·추천코드·커미션 계약** | **`docs/affiliate-current-ssot.md`** |
 | 제휴 추적·쿠키·코브랜딩 세부 | `docs/affiliate-attribution.md` |
 | **블로그 자동발행 현재 SSOT·품질 계약** | **`docs/blog-autopublish-contract.md`** |

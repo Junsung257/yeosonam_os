@@ -2,12 +2,57 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { applySettlementApproval, type SettlementDraft } from '@/lib/affiliate/settlement-calc'
 import { executeGenerateVariantsJob } from '@/lib/card-news-html/variant-job'
 import { getSecret } from '@/lib/secret-registry'
+import { executeOperationsTool } from '@/lib/jarvis/agents/operations'
+import { executeProductsTool } from '@/lib/jarvis/agents/products'
+import { executeFinanceTool } from '@/lib/jarvis/agents/finance'
+import { executeMarketingTool } from '@/lib/jarvis/agents/marketing'
+import { executeSalesTool } from '@/lib/jarvis/agents/sales'
+import { executeSystemTool } from '@/lib/jarvis/agents/system'
 
 function resolveAppOriginForInternalFetch(): string {
   const explicit = getSecret('NEXT_PUBLIC_APP_URL') || getSecret('NEXT_PUBLIC_BASE_URL')
   if (explicit) return explicit.replace(/\/$/, '')
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
   return `http://127.0.0.1:${process.env.PORT ?? 3000}`
+}
+
+function resolvePublicSiteOrigin(): string {
+  const explicit = getSecret('NEXT_PUBLIC_SITE_URL')
+    || getSecret('NEXT_PUBLIC_BASE_URL')
+    || getSecret('NEXT_PUBLIC_APP_URL')
+  if (explicit) return explicit.replace(/\/$/, '')
+  return 'https://yeosonam.co.kr'
+}
+
+function readRequiredString(args: Record<string, unknown>, key: string): string {
+  const value = args[key]
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${key} is required`)
+  }
+  return value.trim()
+}
+
+function readRequiredNumber(args: Record<string, unknown>, key: string): number {
+  const value = Number(args[key])
+  if (!Number.isFinite(value)) {
+    throw new Error(`${key} must be a number`)
+  }
+  return value
+}
+
+function extractPackageIdFromLandingUrl(rawUrl: string): string | null {
+  const match = rawUrl.match(/\/packages\/([^/?#]+)/)
+  return match?.[1] ? decodeURIComponent(match[1]) : null
+}
+
+function buildAffiliateTrackingUrl(rawLandingUrl: string, referralCode: string, subId?: unknown): string {
+  const origin = resolvePublicSiteOrigin()
+  const url = new URL(rawLandingUrl, origin)
+  url.searchParams.set('ref', referralCode)
+  if (typeof subId === 'string' && subId.trim()) {
+    url.searchParams.set('sub', subId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40))
+  }
+  return url.toString()
 }
 
 async function triggerCardNewsRenderFromVariants(result: any): Promise<{
@@ -246,6 +291,176 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
     return { updated: true }
   },
 
+  create_affiliate_link: async (args) => {
+    const affiliateId = readRequiredString(args, 'affiliate_id')
+    const landingUrl = readRequiredString(args, 'landing_url')
+    const { data: affiliate, error: affiliateError } = await supabaseAdmin
+      .from('affiliates')
+      .select('id, name, referral_code')
+      .eq('id', affiliateId)
+      .maybeSingle()
+    if (affiliateError) throw affiliateError
+    if (!affiliate?.referral_code) throw new Error(`affiliate not found: ${affiliateId}`)
+
+    const referralCode = String(affiliate.referral_code)
+    const trackingUrl = buildAffiliateTrackingUrl(landingUrl, referralCode, args.sub_id)
+    const packageId = typeof args.package_id === 'string' && args.package_id
+      ? args.package_id
+      : extractPackageIdFromLandingUrl(landingUrl)
+
+    if (!packageId) {
+      return {
+        created: false,
+        persisted: false,
+        affiliate_id: affiliateId,
+        referral_code: referralCode,
+        tracking_url: trackingUrl,
+        note: 'No package_id detected; tracking URL generated without influencer_links row.',
+      }
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('influencer_links')
+      .select('id, short_url')
+      .eq('affiliate_id', affiliateId)
+      .eq('package_id', packageId)
+      .eq('short_url', trackingUrl)
+      .maybeSingle()
+    if (existingError) throw existingError
+    if (existing?.id) {
+      return {
+        created: false,
+        persisted: true,
+        link_id: existing.id,
+        affiliate_id: affiliateId,
+        referral_code: referralCode,
+        tracking_url: existing.short_url,
+      }
+    }
+
+    const { data: inserted, error } = await supabaseAdmin
+      .from('influencer_links')
+      .insert({
+        affiliate_id: affiliateId,
+        referral_code: referralCode,
+        package_id: packageId,
+        package_title: typeof args.package_title === 'string' ? args.package_title : null,
+        short_url: trackingUrl,
+      })
+      .select('id, short_url')
+      .single()
+    if (error) throw error
+    return {
+      created: true,
+      persisted: true,
+      link_id: inserted?.id,
+      affiliate_id: affiliateId,
+      referral_code: referralCode,
+      tracking_url: inserted?.short_url ?? trackingUrl,
+    }
+  },
+
+  submit_rfq_proposal: async (args) => {
+    const rfqId = readRequiredString(args, 'rfq_id')
+    const bidId = readRequiredString(args, 'bid_id')
+    const tenantId = readRequiredString(args, 'tenant_id')
+    const totalCost = readRequiredNumber(args, 'total_cost')
+    const totalSellingPrice = readRequiredNumber(args, 'total_selling_price')
+    const checklist = args.checklist && typeof args.checklist === 'object' ? args.checklist : null
+    if (!checklist) throw new Error('checklist is required')
+
+    const { data: proposal, error } = await supabaseAdmin
+      .from('rfq_proposals')
+      .insert({
+        rfq_id: rfqId,
+        bid_id: bidId,
+        tenant_id: tenantId,
+        proposal_title: typeof args.proposal_title === 'string' ? args.proposal_title : null,
+        itinerary_summary: typeof args.proposal_text === 'string'
+          ? args.proposal_text
+          : (typeof args.itinerary_summary === 'string' ? args.itinerary_summary : null),
+        total_cost: totalCost,
+        total_selling_price: totalSellingPrice,
+        hidden_cost_estimate: 0,
+        checklist,
+        checklist_completed: true,
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+      })
+      .select('id, status')
+      .single()
+    if (error) throw error
+
+    await supabaseAdmin
+      .from('rfq_bids')
+      .update({ status: 'submitted', submitted_at: new Date().toISOString() })
+      .eq('id', bidId)
+
+    return { submitted: true, rfq_id: rfqId, bid_id: bidId, proposal_id: proposal?.id }
+  },
+
+  ad_optimization: async (args) => {
+    const platform = typeof args.platform === 'string' && ['naver', 'google', 'meta', 'kakao'].includes(args.platform)
+      ? args.platform
+      : null
+    const { data: run, error } = await supabaseAdmin
+      .from('ad_os_automation_runs')
+      .insert({
+        tenant_id: typeof args.tenant_id === 'string' ? args.tenant_id : null,
+        run_type: 'bid_optimization',
+        mode: args.dry_run ? 'dry_run' : 'guarded',
+        platform,
+        status: 'completed',
+        finished_at: new Date().toISOString(),
+        summary: {
+          source: 'jarvis_agent_action',
+          platform: platform ?? 'all',
+          requested_at: args.requested_at ?? new Date().toISOString(),
+          external_write: false,
+        },
+      })
+      .select('id')
+      .single()
+    if (error) throw error
+    return {
+      queued: true,
+      run_id: run?.id,
+      platform: platform ?? 'all',
+      external_write: false,
+    }
+  },
+
+  export_report: async (args) => {
+    const targetType = readRequiredString(args, 'target_type')
+    const periodFrom = typeof args.period_from === 'string' ? args.period_from : null
+    const periodTo = typeof args.period_to === 'string' ? args.period_to : null
+    let query = supabaseAdmin
+      .from('settlements')
+      .select('id, affiliate_id, booking_id, amount, status, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500)
+
+    if (periodFrom) query = query.gte('created_at', periodFrom)
+    if (periodTo) query = query.lte('created_at', periodTo)
+    if (typeof args.affiliate_id === 'string' && args.affiliate_id) {
+      query = query.eq('affiliate_id', args.affiliate_id)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    const rows = data ?? []
+    const totalAmount = rows.reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
+    return {
+      exported: true,
+      target_type: targetType,
+      period_from: periodFrom,
+      period_to: periodTo,
+      row_count: rows.length,
+      total_amount: totalAmount,
+      preview_rows: rows.slice(0, 25),
+    }
+  },
+
   update_policy: async (args) => {
     const { id, ...updateFields } = args
     const { error } = await supabaseAdmin
@@ -431,12 +646,44 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
   },
 }
 
+const jarvisToolHandlers: Record<string, (args: any) => Promise<any>> = {
+  create_itinerary: (args) => executeOperationsTool('create_itinerary', args),
+  update_guest_names: (args) => executeOperationsTool('update_guest_names', args),
+  propose_merge_customers: (args) => executeOperationsTool('propose_merge_customers', args),
+
+  activate_policy: (args) => executeProductsTool('activate_policy', args),
+  register_product_draft: (args) => executeProductsTool('register_product_draft', args),
+  update_package_field: (args) => executeProductsTool('update_package_field', args),
+  delete_package: (args) => executeProductsTool('delete_package', args),
+  propose_product_registration: (args) => executeProductsTool('propose_product_registration', args),
+
+  propose_bulk_confirm_settlements: (args) => executeFinanceTool('propose_bulk_confirm_settlements', args),
+  export_settlement_report: (args) => executeFinanceTool('export_settlement_report', args),
+
+  propose_blog_draft: (args) => executeMarketingTool('propose_blog_draft', args),
+  approve_content: (args) => executeMarketingTool('approve_content', args),
+  run_ad_optimization: (args) => executeMarketingTool('run_ad_optimization', args),
+
+  generate_affiliate_link: (args) => executeSalesTool('generate_affiliate_link', args),
+  update_influencer_tier: (args) => executeSalesTool('update_influencer_tier', args),
+  create_rfq_proposal: (args) => executeSalesTool('create_rfq_proposal', args),
+
+  resolve_escalation: (args) => executeSystemTool('resolve_escalation', args),
+  trigger_cron_job: (args) => executeSystemTool('trigger_cron_job', args),
+  resolve_fraud_case: (args) => executeSystemTool('resolve_fraud_case', args),
+  process_gdpr_request: (args) => executeSystemTool('process_gdpr_request', args),
+  toggle_integration: (args) => executeSystemTool('toggle_integration', args),
+  dismiss_alert: (args) => executeSystemTool('dismiss_alert', args),
+  update_system_config: (args) => executeSystemTool('update_system_config', args),
+}
+
 // ── 공통 실행 함수 ──────────────────────────────────────────────────
 export async function executeAction(
   actionType: string,
   payload: any,
 ): Promise<ExecutionResult> {
   const handler = handlers[actionType]
+    ?? jarvisToolHandlers[actionType]
   if (!handler) {
     return { success: false, error: `핸들러 미구현: ${actionType}` }
   }
