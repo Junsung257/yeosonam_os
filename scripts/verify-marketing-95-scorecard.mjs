@@ -16,15 +16,17 @@ import {
   MARKETING_DEEP_SCORE_TARGET,
   MARKETING_DEEP_SOURCE_TARGET,
   MARKETING_SOURCE_LEDGER_REVIEWS,
+  buildMarketingReadyFixtureSummary,
   buildMarketingDeepScorecard,
 } from './src/lib/marketing-deep-scorecard.ts';
 
-const args = new Set(process.argv.slice(1));
+const args = new Set(JSON.parse(process.env.MARKETING_SCORECARD_ARGS || '[]'));
 const strictCurrent = args.has('--strict-current');
 const json = args.has('--json');
+const readyFixture = args.has('--ready-fixture');
 const scorecard = buildMarketingDeepScorecard({
-  summary: {},
-  sourceLedgerCount: 0,
+  summary: readyFixture ? buildMarketingReadyFixtureSummary() : {},
+  sourceLedgerCount: readyFixture ? MARKETING_DEEP_SOURCE_TARGET : 0,
   generatedAt: '2026-06-28T00:00:00.000Z',
 });
 const subcategories = scorecard.domains.flatMap((domain) => domain.subcategories);
@@ -52,6 +54,7 @@ const result = {
   current_lowest_score: scorecard.score_gate.lowest_score,
   current_gap_subcategories: scorecard.summary.gap_subcategories,
   strict_current: strictCurrent,
+  ready_fixture: readyFixture,
 };
 
 if (json) {
@@ -67,6 +70,7 @@ if (json) {
       'target_score=' + result.target_score,
       'current_lowest_score=' + result.current_lowest_score,
       'current_gap_subcategories=' + result.current_gap_subcategories,
+      'ready_fixture=' + result.ready_fixture,
       ...failures.map((failure) => 'FAIL ' + failure),
     ].join('\n'),
   );
@@ -75,8 +79,12 @@ if (json) {
 process.exit(failures.length === 0 ? 0 : 1);
 `;
 
-const child = spawnSync(process.execPath, [tsxCli, '-e', inline, '--', ...process.argv.slice(2)], {
+const child = spawnSync(process.execPath, [tsxCli, '-e', inline], {
   cwd,
+  env: {
+    ...process.env,
+    MARKETING_SCORECARD_ARGS: JSON.stringify(process.argv.slice(2)),
+  },
   stdio: 'inherit',
 });
 

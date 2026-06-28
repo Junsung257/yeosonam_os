@@ -3,65 +3,14 @@ import {
   MARKETING_DEEP_SCORE_TARGET,
   MARKETING_DEEP_SOURCE_TARGET,
   MARKETING_SOURCE_LEDGER_REVIEWS,
+  buildMarketingReadyFixtureSummary,
   buildMarketingDeepRepairQueue,
   buildMarketingDeepScorecard,
   summarizeMarketingDeepScoreGate,
 } from './marketing-deep-scorecard';
 
 function readySummary() {
-  return {
-    ok: true,
-    degraded: false,
-    kpis: {
-      keyword_candidates: 40,
-      keyword_clusters: 8,
-      search_term_candidates: 12,
-      tracked_cta_clicks: 24,
-      change_requests_proposed: 4,
-    },
-    recent_decisions: [{ id: 'decision-1' }],
-    integration_status: { naver: true, google: true, meta: true, kakao: true },
-    tenant_policy: {
-      configured: true,
-      max_automation_level: 3,
-      full_auto_enabled: false,
-      risk_status: 'normal',
-    },
-    channel_budgets: ['naver', 'google', 'meta', 'kakao'].map((platform) => ({
-      platform,
-      status: 'active',
-      monthly_budget_krw: 100000,
-      daily_budget_cap_krw: 10000,
-      max_cpc_krw: 500,
-      max_test_loss_krw: 20000,
-      automation_level: 3,
-    })),
-    enterprise_layer: {
-      runtime_execution: { external_api_write_count: 0 },
-      write_packets: { external_api_write_count: 0 },
-      channel_adapters: { rollback_drills: 'pass' },
-      admin_surface_qa: { status: 'pass' },
-    },
-    learning_loop: {
-      metrics: {
-        clicks: 50,
-        cta_clicks: 8,
-        fact_clicks_30d: 50,
-        fact_margin_krw_30d: 200000,
-        fact_margin_roas_pct_30d: 400,
-        attribution_events_30d: 6,
-      },
-    },
-    samples: {
-      keyword_plans: [{ id: 'kw-1' }],
-      keyword_clusters: [{ id: 'cluster-1' }],
-      search_term_candidates: [{ id: 'term-1' }],
-      change_requests: [{ id: 'cr-1' }],
-      creative_asset_variants: [{ id: 'creative-1' }],
-      performance_facts: [{ id: 'fact-1' }],
-      conversion_events: [{ id: 'conversion-1' }],
-    },
-  };
+  return buildMarketingReadyFixtureSummary();
 }
 
 describe('MARKETING_SOURCE_LEDGER_REVIEWS', () => {
@@ -87,6 +36,18 @@ describe('buildMarketingDeepScorecard', () => {
     expect(scorecard.summary.subcategory_count).toBeGreaterThanOrEqual(70);
     expect(subcategories.every((item) => item.target_score >= MARKETING_DEEP_SCORE_TARGET)).toBe(true);
     expect(subcategories.every((item) => item.post_repair_score >= MARKETING_DEEP_SCORE_TARGET)).toBe(true);
+  });
+
+  it('passes every current score when the ready evidence fixture is present', () => {
+    const scorecard = buildMarketingDeepScorecard({
+      summary: readySummary(),
+      sourceLedgerCount: MARKETING_DEEP_SOURCE_TARGET,
+      generatedAt: '2026-06-28T00:00:00.000Z',
+    });
+
+    expect(scorecard.score_gate.passed).toBe(true);
+    expect(scorecard.score_gate.lowest_score).toBeGreaterThanOrEqual(MARKETING_DEEP_SCORE_TARGET);
+    expect(scorecard.summary.gap_subcategories).toBe(0);
   });
 
   it('keeps source ledger readiness tied to imported reviewed sources', () => {

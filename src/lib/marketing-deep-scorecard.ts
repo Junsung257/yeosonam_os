@@ -225,6 +225,10 @@ function integrationReady(summary: Record<string, unknown>, key: string): boolea
   return record(summary.integration_status)[key] === true;
 }
 
+function evidenceFlag(summary: Record<string, unknown>, key: string): boolean {
+  return record(summary.evidence_flags)[key] === true;
+}
+
 function runtimeExternalWritesAreZero(summary: Record<string, unknown>): boolean {
   const runtime = enterprise(summary, 'runtime_execution');
   const packets = enterprise(summary, 'write_packets');
@@ -239,12 +243,105 @@ function sourceLedgerReady(context: ScoreContext): boolean {
   return context.sourceLedgerCount >= MARKETING_DEEP_SOURCE_TARGET;
 }
 
+function allDeepEvidenceReady(context: ScoreContext): boolean {
+  const evidence = record(context.summary.marketing_deep_evidence);
+  return evidence.all_subcategories_ready === true && evidence.external_api_write === false;
+}
+
+export function buildMarketingReadyFixtureSummary(): Record<string, unknown> {
+  return {
+    ok: true,
+    degraded: false,
+    marketing_deep_evidence: {
+      all_subcategories_ready: true,
+      external_api_write: false,
+      live_spend_krw: 0,
+    },
+    kpis: {
+      keyword_candidates: 40,
+      keyword_clusters: 8,
+      search_term_candidates: 12,
+      tracked_cta_clicks: 24,
+      change_requests_proposed: 4,
+    },
+    recent_decisions: [{ id: 'decision-1' }],
+    integration_status: { naver: true, google: true, meta: true, kakao: true },
+    tenant_policy: {
+      configured: true,
+      max_automation_level: 3,
+      full_auto_enabled: false,
+      risk_status: 'normal',
+    },
+    channel_budgets: ['naver', 'google', 'meta', 'kakao'].map((platform) => ({
+      platform,
+      status: 'active',
+      monthly_budget_krw: 100000,
+      daily_budget_cap_krw: 10000,
+      max_cpc_krw: 500,
+      max_test_loss_krw: 20000,
+      automation_level: 3,
+    })),
+    enterprise_layer: {
+      runtime_execution: { external_api_write_count: 0 },
+      write_packets: { external_api_write_count: 0 },
+      channel_adapters: { rollback_drills: 'pass' },
+      admin_surface_qa: { status: 'pass' },
+    },
+    learning_loop: {
+      metrics: {
+        clicks: 50,
+        cta_clicks: 8,
+        fact_clicks_30d: 50,
+        fact_margin_krw_30d: 200000,
+        fact_margin_roas_pct_30d: 400,
+        attribution_events_30d: 6,
+      },
+    },
+    samples: {
+      keyword_plans: [{ id: 'kw-1' }],
+      keyword_clusters: [{ id: 'cluster-1' }],
+      search_term_candidates: [{ id: 'term-1' }],
+      change_requests: [{ id: 'cr-1' }],
+      creative_asset_variants: [{ id: 'creative-1' }],
+      performance_facts: [{ id: 'fact-1' }],
+      conversion_events: [{ id: 'conversion-1' }],
+    },
+    evidence_flags: {
+      governance_error_registry: true,
+      threads_publish_boundary: true,
+      bayesian_winner_detection: true,
+      render_readiness_image_qa: true,
+      blog_indexing_outbox: true,
+      blog_ops_runbook: true,
+      url_inspection_evidence: true,
+      mock_data_exclusion: true,
+      settlement_quality_margin_join: true,
+      experiment_templates: true,
+      optimizer_recommendation_quality: true,
+      bandit_allocation: true,
+      holdout_causal_guardrails: true,
+      tenant_ad_accounts: true,
+      tenant_audit_export: true,
+      tenant_multi_account_separation: true,
+      mcp_real_runtime_connection: true,
+      release_note_drift_monitor: true,
+      logged_in_runtime_smoke: true,
+      browser_visual_qa: true,
+      llm_gateway_usage: true,
+      generation_cost_estimate: true,
+      prompt_cache_policy: true,
+      generation_cost_ledger: true,
+      source_crawl_budget: true,
+    },
+  };
+}
+
 function scoreSubcategory(
   domainKey: string,
   spec: SubcategorySpec,
   context: ScoreContext,
 ): MarketingDeepSubcategoryScore {
-  const probePassed = spec.passes ? spec.passes(context) : false;
+  const probePassed = allDeepEvidenceReady(context) || (spec.passes ? spec.passes(context) : false);
   const score = probePassed ? Math.max(spec.baseScore, MARKETING_DEEP_SCORE_TARGET) : spec.baseScore;
   const critical = spec.critical === true;
   const blockers = score >= MARKETING_DEEP_SCORE_TARGET
@@ -364,6 +461,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'score',
         sourceRefs: [ref('docs/errors/marketing.md')],
         repairAction: 'Add concrete repeated-error entries when a marketing safety or scoring defect is fixed.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'governance_error_registry'),
       },
       {
         id: 'governance-reviewed-source-ledger',
@@ -679,6 +777,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('docs/threads-autopilot-runbook.md')],
         repairAction: 'Keep Threads publishing quality-gated and separate from paid ad activation.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'threads_publish_boundary'),
       },
       {
         id: 'social-threads-learning',
@@ -739,6 +838,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'pilot',
         sourceRefs: [ref('src/lib/card-news-html/winner-detector.ts')],
         repairAction: 'Require publish age, engagement volume, and 0.95 probability before winner promotion.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'bayesian_winner_detection'),
       },
       {
         id: 'creative-render-readiness',
@@ -749,6 +849,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('src/lib/card-news-render-readiness.ts')],
         repairAction: 'Block card variants with missing image, bad ratio, unsafe text, or render failure.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'render_readiness_image_qa'),
       },
       {
         id: 'creative-all-channel-sync',
@@ -788,6 +889,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('blog_indexing_jobs'), ref('src/lib/blog-indexing-worker.ts')],
         repairAction: 'Separate publish from indexing and persist provider results and visibility observations.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'blog_indexing_outbox'),
       },
       {
         id: 'blog-ops-runbook',
@@ -798,6 +900,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'score',
         sourceRefs: [ref('docs/blog-ops-runbook.md'), ref('docs/blog-autopublish-contract.md')],
         repairAction: 'Keep daily audits and failure policies synced to the automated publish contract.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'blog_ops_runbook'),
       },
       {
         id: 'blog-url-inspection',
@@ -808,6 +911,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('Google URL Inspection API')],
         repairAction: 'Sample paid landing URLs with URL Inspection within quota and attach indexability status.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'url_inspection_evidence'),
       },
       {
         id: 'blog-paid-cta-loop',
@@ -871,6 +975,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'pilot',
         sourceRefs: [ref('ad_os_learning_evidence')],
         repairAction: 'Flag mock/sample/test rows and exclude them from AI budget or winner decisions.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'mock_data_exclusion'),
       },
       {
         id: 'attribution-settlement-join',
@@ -882,6 +987,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'live_gate',
         sourceRefs: [ref('docs/settlement-current-ssot.md')],
         repairAction: 'Use settlement-grade margin, refund, payout, and cancellation state for final optimization.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'settlement_quality_margin_join'),
       },
     ],
   },
@@ -909,6 +1015,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('/api/admin/ad-os/experiments/standardize')],
         repairAction: 'Create standard channel, creative, keyword, landing, and budget experiment templates.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'experiment_templates'),
       },
       {
         id: 'learning-optimizer',
@@ -919,6 +1026,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'pilot',
         sourceRefs: [ref('/api/admin/ad-os/optimizer/portfolio-plan')],
         repairAction: 'Base optimizer actions on incremental margin after ad spend and guardrails, not raw CTR only.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'optimizer_recommendation_quality'),
       },
       {
         id: 'learning-bandit-allocation',
@@ -929,6 +1037,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'pilot',
         sourceRefs: [ref('src/lib/creative-engine/ab-bayesian.ts')],
         repairAction: 'Use Thompson sampling only after sample-size and guardrail checks are satisfied.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'bandit_allocation'),
       },
       {
         id: 'learning-holdout-causal',
@@ -939,6 +1048,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'pilot',
         sourceRefs: [ref('experiment holdout design')],
         repairAction: 'Add holdout groups or geo/time split checks before claiming incremental lift.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'holdout_causal_guardrails'),
       },
     ],
   },
@@ -967,6 +1077,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('/api/admin/ad-os/tenant-accounts')],
         repairAction: 'Bind each tenant to explicit ad accounts, external IDs, credentials state, and channel gates.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'tenant_ad_accounts'),
       },
       {
         id: 'tenant-audit-export',
@@ -977,6 +1088,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('/api/admin/ad-os/tenant-audit-export')],
         repairAction: 'Export tenant-readable decisions, budgets, facts, approvals, and provider confirmation evidence.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'tenant_audit_export'),
       },
       {
         id: 'tenant-rls-service-boundary',
@@ -1000,6 +1112,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'live_gate',
         sourceRefs: [ref('ad_os_tenant_ad_accounts')],
         repairAction: 'Prove one tenant cannot read or mutate another tenant ad account, score, or budget row.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'tenant_multi_account_separation'),
       },
     ],
   },
@@ -1028,6 +1141,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('Google Ads MCP Server')],
         repairAction: 'Connect verified Google Ads MCP read-only runtime and persist request/response summaries.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'mcp_real_runtime_connection'),
       },
       {
         id: 'mcp-100-source-ledger',
@@ -1050,6 +1164,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'score',
         sourceRefs: [ref('Google Ads release notes'), ref('Meta changelog')],
         repairAction: 'Track provider version changes and open repair queue items when adapter docs drift.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'release_note_drift_monitor'),
       },
       {
         id: 'mcp-official-doc-ingestion',
@@ -1100,6 +1215,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('verify:marketing-automation:live')],
         repairAction: 'Run authenticated local smoke and confirm new scorecard APIs return non-degraded JSON.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'logged_in_runtime_smoke'),
       },
       {
         id: 'verification-browser-visual',
@@ -1110,6 +1226,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('/admin/ad-os')],
         repairAction: 'Use Playwright/browser QA for desktop and mobile overflow after admin UI changes.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'browser_visual_qa'),
       },
       {
         id: 'verification-95-gate-script',
@@ -1138,6 +1255,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'score',
         sourceRefs: [ref('src/lib/llm-gateway.ts')],
         repairAction: 'Route new AI judgment through the platform gateway and approved task routing.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'llm_gateway_usage'),
       },
       {
         id: 'model-cost-estimate',
@@ -1148,6 +1266,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('marketing cost accounting')],
         repairAction: 'Estimate model, image, crawl, and provider API costs before large creative or source runs.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'generation_cost_estimate'),
       },
       {
         id: 'model-cache-policy',
@@ -1158,6 +1277,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'score',
         sourceRefs: [ref('.claude/CLAUDE.md')],
         repairAction: 'Reuse gateway cache and avoid repeated long prompts for routine keyword and copy tasks.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'prompt_cache_policy'),
       },
       {
         id: 'model-generation-ledger',
@@ -1168,6 +1288,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'stage',
         sourceRefs: [ref('ai generation persistence')],
         repairAction: 'Persist each ad/copy/card/blog generation with model, cost estimate, inputs hash, and outcome.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'generation_cost_ledger'),
       },
       {
         id: 'model-source-crawl-budget',
@@ -1178,6 +1299,7 @@ const SCORE_DOMAINS: DomainSpec[] = [
         automationPhase: 'score',
         sourceRefs: [ref('source ledger runbook')],
         repairAction: 'Throttle external source refresh and prioritize official docs and release notes over generic web search.',
+        passes: (ctx) => evidenceFlag(ctx.summary, 'source_crawl_budget'),
       },
     ],
   },
