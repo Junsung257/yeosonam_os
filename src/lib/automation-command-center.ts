@@ -100,7 +100,9 @@ function statusFromAdOs(scorecard: MarketingDeepScorecard | null): AutomationCom
   return 'watch';
 }
 
-function statusFromApprovalQueue(input: BuildAutomationCommandCenterInput['approvalQueue']): AutomationCommandCenterStatus {
+function statusFromApprovalQueue(
+  input: BuildAutomationCommandCenterInput['approvalQueue'],
+): AutomationCommandCenterStatus {
   if (input.unavailable_reason) return 'watch';
   if (input.high_risk_count > 0) return 'watch';
   if (input.pending_count > 0) return 'watch';
