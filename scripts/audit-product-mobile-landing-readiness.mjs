@@ -35,6 +35,7 @@ const repairPriceTiers = process.argv.includes('--repair-price-tiers');
 const repairPriceSourceEvidence = process.argv.includes('--repair-price-source-evidence');
 const repairItineraryDisplay = process.argv.includes('--repair-itinerary-display');
 const repairExcludeFragments = process.argv.includes('--repair-exclude-fragments');
+const repairDurationTripStyle = process.argv.includes('--repair-duration-trip-style');
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const verifyPublicHtml = process.argv.includes('--verify-public-html');
@@ -322,6 +323,52 @@ function durationTripStyleMismatch(pkg) {
     return `itinerary_data.meta.nights ${metaNights} != trip_style nights ${trip.nights}`;
   }
   return null;
+}
+
+function repairDurationTripStyleValues(pkg) {
+  const trip = parseTripStyle(pkg.trip_style ?? pkg.title);
+  if (!trip) return null;
+  const nextItineraryData = pkg.itinerary_data && typeof pkg.itinerary_data === 'object'
+    ? structuredClone(pkg.itinerary_data)
+    : null;
+  const nextMeta = nextItineraryData && typeof nextItineraryData.meta === 'object'
+    ? { ...nextItineraryData.meta }
+    : null;
+  const before = {
+    duration: pkg.duration ?? null,
+    nights: pkg.nights ?? null,
+    meta_days: nextMeta?.days ?? null,
+    meta_nights: nextMeta?.nights ?? null,
+  };
+  const patch = {};
+  if (Number(pkg.duration) !== trip.days) patch.duration = trip.days;
+  if (Number(pkg.nights) !== trip.nights) patch.nights = trip.nights;
+  if (nextItineraryData && nextMeta) {
+    let metaChanged = false;
+    if (Number(nextMeta.days) !== trip.days) {
+      nextMeta.days = trip.days;
+      metaChanged = true;
+    }
+    if (Number(nextMeta.nights) !== trip.nights) {
+      nextMeta.nights = trip.nights;
+      metaChanged = true;
+    }
+    if (metaChanged) {
+      nextItineraryData.meta = nextMeta;
+      patch.itinerary_data = nextItineraryData;
+    }
+  }
+  if (Object.keys(patch).length === 0) return null;
+  return {
+    patch,
+    before,
+    after: {
+      duration: patch.duration ?? pkg.duration ?? null,
+      nights: patch.nights ?? pkg.nights ?? null,
+      meta_days: patch.itinerary_data?.meta?.days ?? nextMeta?.days ?? null,
+      meta_nights: patch.itinerary_data?.meta?.nights ?? nextMeta?.nights ?? null,
+    },
+  };
 }
 
 function hotelFieldSemanticMismatch(pkg) {
@@ -1849,6 +1896,44 @@ if (repairExcludeFragments) {
   }
 }
 
+const durationTripStyleRepairs = [];
+if (repairDurationTripStyle) {
+  const checkedAt = new Date().toISOString();
+  for (const pkg of scopedPackageRows) {
+    if (!pkg.id) continue;
+    const repaired = repairDurationTripStyleValues(pkg);
+    if (!repaired) continue;
+
+    const { error: packageError } = await supabase
+      .from('travel_packages')
+      .update({
+        ...repaired.patch,
+        updated_at: checkedAt,
+      })
+      .eq('id', pkg.id);
+    if (packageError) {
+      durationTripStyleRepairs.push({
+        code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
+        title: pkg.title,
+        ok: false,
+        reason: packageError.message,
+        before: repaired.before,
+        after: repaired.after,
+      });
+      continue;
+    }
+
+    Object.assign(pkg, repaired.patch);
+    durationTripStyleRepairs.push({
+      code: pkg.internal_code ?? pkg.short_code ?? pkg.id,
+      title: pkg.title,
+      ok: true,
+      before: repaired.before,
+      after: repaired.after,
+    });
+  }
+}
+
 let rows = allPackageRows
   .filter(pkg => scopedPackageIds.has(pkg.id))
   .map(pkg => {
@@ -2110,6 +2195,7 @@ const summary = {
   repaired_price_tiers: priceTierRepairs.filter(repair => repair.ok).length,
   repaired_itinerary_display: itineraryDisplayRepairs.filter(repair => repair.ok).length,
   repaired_exclude_fragments: excludeFragmentRepairs.filter(repair => repair.ok).length,
+  repaired_duration_trip_style: durationTripStyleRepairs.filter(repair => repair.ok).length,
   demote_unsafe_public: demoteUnsafePublic,
   demotion_candidates: demotionCandidates.length,
   demoted_public: demotions.filter(row => row.ok).length,
@@ -2132,6 +2218,7 @@ const report = {
     ...priceTierRepairs.map(repair => ({ ...repair, type: 'price_tiers' })),
     ...itineraryDisplayRepairs.map(repair => ({ ...repair, type: 'itinerary_display' })),
     ...excludeFragmentRepairs.map(repair => ({ ...repair, type: 'exclude_fragments' })),
+    ...durationTripStyleRepairs.map(repair => ({ ...repair, type: 'duration_trip_style' })),
   ],
   demotions,
   archives,
