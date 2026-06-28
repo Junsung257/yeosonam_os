@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Database, Gauge, ShieldCheck, Wrench } from 'lucide-react';
+import { Bot, Database, Gauge, Settings, ShieldCheck } from 'lucide-react';
 import Button from '@/components/ui/Button';
 
 type SectionScore = {
@@ -337,7 +337,7 @@ export function AiDirectorControlPanel() {
             Stage L3
           </Button>
           <Button variant="secondary" size="sm" onClick={stageRepairQueue} loading={stagingRepair}>
-            <Wrench size={14} />
+            <Settings size={14} />
             Stage repairs
           </Button>
           <Button variant="secondary" size="sm" onClick={importReviewedSources} loading={importingSources}>
