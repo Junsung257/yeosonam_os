@@ -4,6 +4,29 @@ import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreC
 import { normalizePhone } from '@/lib/customer-name';
 import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
 import { isAdminRequest, requireAdminRequest } from '@/lib/admin-guard';
+import { getAdminContext } from '@/lib/admin-context';
+
+function auditCustomerAction(input: {
+  action: string;
+  targetId?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  description?: string;
+  actor?: string | null;
+}) {
+  if (!isSupabaseConfigured) return;
+  void supabaseAdmin.from('audit_logs').insert({
+    action: input.action,
+    target_type: 'customers',
+    target_id: input.targetId ?? null,
+    before_value: input.before ?? null,
+    after_value: input.after ?? null,
+    description: input.description ?? null,
+    user_id: input.actor ?? null,
+  }).then(() => undefined, error => {
+    console.warn('[customers audit] 실패:', error?.message ?? error);
+  });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,8 +37,12 @@ export async function GET(request: NextRequest) {
     const id    = searchParams.get('id');
     const phone = searchParams.get('phone');
 
-    // 전화번호 중복 확인 (신규 등록 폼 실시간 체크용 — public)
+    // 전화번호 중복 확인 (신규 등록 폼 실시간 체크용 — admin only)
     if (phone) {
+      const isAdmin = await isAdminRequest(request);
+      if (!isAdmin) {
+        return ApiErrors.unauthorized('관리자 권한이 필요합니다');
+      }
       const safePhone = escapePostgrestFilterValue(phone);
       const normalized = phone.replace(/[^0-9]/g, '');
       if (!safePhone && !normalized) {
@@ -75,6 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const actor = getAdminContext(request).actor;
 
     if (body.action === 'restore') {
       if (!body.id) return ApiErrors.badRequest('id 필요');
@@ -106,6 +134,12 @@ export async function POST(request: NextRequest) {
         .update({ [field]: value, updated_at: new Date().toISOString() })
         .in('id', ids);
       if (error) return ApiErrors.internalError(error.message);
+      auditCustomerAction({
+        action: 'customers_bulk_field',
+        after: { field, value, count: ids.length },
+        description: `고객 ${ids.length}명 ${field} 일괄 변경`,
+        actor,
+      });
       return successResponse({ ok: true, updated: ids.length });
     }
 
@@ -141,8 +175,8 @@ export async function POST(request: NextRequest) {
       let processed = 0;
       for (const uid of targetIds) {
         const { error } = await supabaseAdmin.rpc('increment_customer_mileage', {
-          p_user_id: uid,
-          p_amount: amount,
+          p_customer_id: uid,
+          p_delta: amount,
         });
         if (!error) {
           processed++;
@@ -158,6 +192,18 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+
+      auditCustomerAction({
+        action: 'customers_bulk_grant_mileage',
+        after: {
+          amount,
+          reason: reason || '관리자 일괄 지급',
+          processed,
+          total: targetIds.length,
+        },
+        description: `고객 ${processed}명 마일리지 일괄 지급`,
+        actor,
+      });
 
       return successResponse({ ok: true, processed, total: targetIds.length });
     }
@@ -197,6 +243,15 @@ export async function POST(request: NextRequest) {
     }
 
     const customer = await upsertCustomer(body);
+    auditCustomerAction({
+      action: body.id ? 'customer_updated' : 'customer_created',
+      targetId: customer?.id ?? body.id ?? null,
+      after: {
+        fields: Object.keys(body).filter((key: string) => !['passport_no', 'phone', 'email'].includes(key)),
+        pii_changed: ['passport_no', 'phone', 'email', 'birth_date'].some(key => key in body),
+      },
+      actor,
+    });
     return successResponse({ customer });
   } catch (err) {
     console.error('[POST /api/customers] 오류:', err);
@@ -214,6 +269,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const { id } = body;
+    const actor = getAdminContext(request).actor;
     if (!id) return ApiErrors.badRequest('id 필요');
 
     // 단일 필드 인라인 편집 (기존 호환)
@@ -223,6 +279,12 @@ export async function PATCH(request: NextRequest) {
       if (!allowed.includes(body.field))
         return ApiErrors.badRequest('허용되지 않은 필드');
       const customer = await upsertCustomer({ id, [body.field]: body.value });
+      auditCustomerAction({
+        action: 'customer_field_updated',
+        targetId: id,
+        after: { field: body.field, pii_changed: ['passport_no', 'phone', 'email', 'birth_date'].includes(body.field) },
+        actor,
+      });
       return successResponse({ customer });
     }
 
@@ -238,6 +300,15 @@ export async function PATCH(request: NextRequest) {
       return ApiErrors.badRequest('변경할 필드 없음');
 
     const customer = await upsertCustomer({ id, ...updates });
+    auditCustomerAction({
+      action: 'customer_updated',
+      targetId: id,
+      after: {
+        fields: Object.keys(updates).filter(field => !['passport_no', 'phone', 'email'].includes(field)),
+        pii_changed: ['passport_no', 'phone', 'email', 'birth_date'].some(field => field in updates),
+      },
+      actor,
+    });
     return successResponse({ customer });
   } catch (error) {
     return ApiErrors.internalError(error instanceof Error ? error.message : '수정 실패');
@@ -252,16 +323,23 @@ export async function DELETE(request: NextRequest) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
+    const actor = getAdminContext(request).actor;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (id) {
       await deleteCustomer(id);
+      auditCustomerAction({ action: 'customer_deleted', targetId: id, actor });
       return successResponse({ ok: true });
     }
     const body = await request.json();
     const ids: string[] = body.ids || [];
     if (!ids.length) return ApiErrors.badRequest('ids 필요');
     for (const cid of ids) await deleteCustomer(cid);
+    auditCustomerAction({
+      action: 'customers_bulk_deleted',
+      after: { count: ids.length },
+      actor,
+    });
     return successResponse({ ok: true });
   } catch (error) {
     return ApiErrors.internalError(error instanceof Error ? error.message : '삭제 실패');

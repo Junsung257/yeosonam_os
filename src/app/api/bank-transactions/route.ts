@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { creditMileageForBooking } from '@/lib/mileage-service';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { getAdminContext } from '@/lib/admin-context';
 import {
   matchPaymentToBookings,
   applyDuplicateNameGuard,
@@ -82,6 +83,16 @@ interface BookingWithCustomer {
   status: string;
   payment_status: string;
   customer_name?: string;
+}
+
+interface BankTransactionAllocationRow {
+  id: string;
+  booking_id: string;
+  ledger_account: 'paid_amount' | 'total_paid_out';
+  allocated_amount: number;
+  ledger_delta: number;
+  allocation_type: 'deposit' | 'refund' | 'payout';
+  idempotency_key: string;
 }
 
 // ─── 공통 유틸 ────────────────────────────────────────────────────────────────
@@ -267,7 +278,7 @@ async function applyToBooking(
 
   if (rpcErr) {
     console.error('[applyToBooking] RPC 실패:', bookingId, rpcErr.message);
-    return;
+    throw new Error(`원장 반영 실패: ${sanitizeDbError(rpcErr)}`);
   }
 
   const row = Array.isArray(data) ? data[0] : data;
@@ -314,6 +325,69 @@ async function applyToBooking(
       }
     }
   }
+}
+
+async function matchTransactionAllocations(params: {
+  transactionId: string;
+  allocations: { bookingId: string; amount: number; ledgerDelta?: number }[];
+  confidence?: number;
+  actor: string;
+  notes?: string;
+}) {
+  const { data, error } = await supabaseAdmin.rpc('match_bank_transaction_allocations', {
+    p_transaction_id: params.transactionId,
+    p_allocations: params.allocations,
+    p_match_confidence: params.confidence ?? 1,
+    p_matched_by: params.actor,
+    p_notes: params.notes ?? null,
+  });
+  if (error) {
+    const code = (error as { code?: string }).code;
+    const status = code === 'P0002' ? 404 : 400;
+    throw Object.assign(new Error(sanitizeDbError(error)), { status });
+  }
+  return data;
+}
+
+async function reverseAllocationsForTransaction(transactionId: string, actor: string): Promise<number> {
+  const { data, error } = await supabaseAdmin
+    .from('bank_transaction_allocations')
+    .select('id, booking_id, ledger_account, allocated_amount, ledger_delta, allocation_type, idempotency_key')
+    .eq('bank_transaction_id', transactionId)
+    .eq('status', 'active');
+
+  if (error) {
+    // 새 마이그레이션 전 데이터/환경에서는 기존 롤백 경로로 fallback.
+    console.warn('[reverse allocations] allocation 조회 실패:', sanitizeDbError(error));
+    return 0;
+  }
+
+  const rows = (data ?? []) as BankTransactionAllocationRow[];
+  for (const row of rows) {
+    const reverseDelta = -Number(row.ledger_delta);
+    const { error: rpcErr } = await supabaseAdmin.rpc('update_booking_ledger', {
+      p_booking_id: row.booking_id,
+      p_paid_delta: row.ledger_account === 'paid_amount' ? reverseDelta : 0,
+      p_payout_delta: row.ledger_account === 'total_paid_out' ? reverseDelta : 0,
+      p_source: 'bank_tx_manual_match',
+      p_source_ref_id: transactionId,
+      p_idempotency_key: `${row.idempotency_key}:rollback`,
+      p_memo: `bank transaction allocation rollback (${row.allocation_type})`,
+      p_created_by: actor,
+    });
+    if (rpcErr) throw new Error(`배정 롤백 실패: ${sanitizeDbError(rpcErr)}`);
+  }
+
+  if (rows.length > 0) {
+    const { error: updateErr } = await supabaseAdmin
+      .from('bank_transaction_allocations')
+      .update({ status: 'reversed', reversed_at: new Date().toISOString() })
+      .eq('bank_transaction_id', transactionId)
+      .eq('status', 'active');
+    if (updateErr) throw new Error(`배정 상태 변경 실패: ${sanitizeDbError(updateErr)}`);
+  }
+
+  return rows.length;
 }
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
@@ -430,6 +504,7 @@ export async function PUT(request: NextRequest) {
   if (authError) return authError;
 
   try {
+    const actor = getAdminContext(request).actor;
     // 미매칭 건 전체 로드
     const { data: unmatched } = await supabaseAdmin
       .from('bank_transactions')
@@ -456,29 +531,22 @@ export async function PUT(request: NextRequest) {
       const best = guarded[0];
       if (!best || best.confidence < AUTO_THRESHOLD) { skipped++; continue; }
 
-      // DB 업데이트
-      await supabaseAdmin
-        .from('bank_transactions')
-        .update({
-          booking_id:       best.booking.id,
-          match_status:     'auto',
-          match_confidence: best.confidence,
-          matched_by:       'auto',
-          matched_at:       new Date().toISOString(),
-        })
-        .eq('id', tx.id);
-
-      await applyToBooking(best.booking.id, tx.transaction_type, tx.amount, tx.is_refund, 1, {
-        counterpartyName: tx.counterparty_name ?? undefined,
-        bankTxId: tx.id,
-        createdBy: 'auto',
+      await matchTransactionAllocations({
+        transactionId: tx.id,
+        allocations: [{ bookingId: best.booking.id, amount: tx.amount }],
+        confidence: best.confidence,
+        actor: actor === 'admin' ? 'auto' : actor,
+        notes: 'auto payment match',
       });
       matched++;
     }
 
     return NextResponse.json({ matched, skipped });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : '처리 실패' }, { status: 500 });
+    const status = typeof e === 'object' && e !== null && 'status' in e
+      ? Number((e as { status?: number }).status) || 500
+      : 500;
+    return NextResponse.json({ error: e instanceof Error ? e.message : '처리 실패' }, { status });
   }
 }
 
@@ -493,6 +561,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const { action = 'match', transactionId } = body;
+    const actor = getAdminContext(request).actor;
 
     const BULK_ACTIONS = ['trash_bulk', 'restore_bulk', 'hard_delete_bulk'];
     if (!transactionId && action !== 'resync' && !BULK_ACTIONS.includes(action))
@@ -500,10 +569,28 @@ export async function PATCH(request: NextRequest) {
 
     // ── trash: 단건 소프트 삭제 ────────────────────────────────────────────
     if (action === 'trash') {
+      const { count: allocationCount } = await supabaseAdmin
+        .from('bank_transaction_allocations')
+        .select('id', { count: 'exact', head: true })
+        .eq('bank_transaction_id', transactionId)
+        .eq('status', 'active');
+      if ((allocationCount ?? 0) > 0) {
+        return NextResponse.json({ error: '배정 원장이 있는 거래는 먼저 매칭 취소 후 제외할 수 있습니다.' }, { status: 409 });
+      }
       await supabaseAdmin
         .from('bank_transactions')
         .update({ status: 'excluded', deleted_at: new Date().toISOString() })
         .eq('id', transactionId);
+      await supabaseAdmin.from('ops_events').insert({
+        event_type: 'payment_excluded',
+        severity: 'warning',
+        title: '입출금 내역 제외',
+        bank_transaction_id: transactionId,
+        target_type: 'bank_transactions',
+        target_id: transactionId,
+        metadata: { action: 'trash' },
+        created_by: actor,
+      } as Record<string, unknown>);
       return NextResponse.json({ success: true });
     }
 
@@ -518,6 +605,13 @@ export async function PATCH(request: NextRequest) {
 
     // ── hard_delete: 단건 영구 삭제 ──────────────────────────────────────
     if (action === 'hard_delete') {
+      const { count: allocationCount } = await supabaseAdmin
+        .from('bank_transaction_allocations')
+        .select('id', { count: 'exact', head: true })
+        .eq('bank_transaction_id', transactionId);
+      if ((allocationCount ?? 0) > 0) {
+        return NextResponse.json({ error: '배정/원장 증거가 있는 거래는 영구 삭제할 수 없습니다.' }, { status: 409 });
+      }
       await supabaseAdmin
         .from('bank_transactions')
         .delete()
@@ -529,11 +623,21 @@ export async function PATCH(request: NextRequest) {
     if (action === 'trash_bulk') {
       const ids: string[] = body.ids || [];
       if (ids.length === 0) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+      const { data: allocated } = await supabaseAdmin
+        .from('bank_transaction_allocations')
+        .select('bank_transaction_id')
+        .in('bank_transaction_id', ids)
+        .eq('status', 'active');
+      const blocked = new Set(((allocated ?? []) as Array<{ bank_transaction_id: string }>).map(r => r.bank_transaction_id));
+      const allowed = ids.filter(id => !blocked.has(id));
+      if (allowed.length === 0) {
+        return NextResponse.json({ error: '선택 거래는 모두 배정 원장이 있어 제외할 수 없습니다.' }, { status: 409 });
+      }
       await supabaseAdmin
         .from('bank_transactions')
         .update({ status: 'excluded', deleted_at: new Date().toISOString() })
-        .in('id', ids);
-      return NextResponse.json({ success: true, count: ids.length });
+        .in('id', allowed);
+      return NextResponse.json({ success: true, count: allowed.length, blocked: blocked.size });
     }
 
     // ── restore_bulk: 다건 복원 ──────────────────────────────────────────
@@ -551,6 +655,13 @@ export async function PATCH(request: NextRequest) {
     if (action === 'hard_delete_bulk') {
       const ids: string[] = body.ids || [];
       if (ids.length === 0) return NextResponse.json({ error: 'ids 필요' }, { status: 400 });
+      const { data: allocated } = await supabaseAdmin
+        .from('bank_transaction_allocations')
+        .select('bank_transaction_id')
+        .in('bank_transaction_id', ids);
+      if ((allocated ?? []).length > 0) {
+        return NextResponse.json({ error: '배정/원장 증거가 있는 거래가 포함되어 영구 삭제할 수 없습니다.' }, { status: 409 });
+      }
       await supabaseAdmin
         .from('bank_transactions')
         .delete()
@@ -584,12 +695,14 @@ export async function PATCH(request: NextRequest) {
 
       const quickCleanup: { bookings: number; customers: number } = { bookings: 0, customers: 0 };
 
-      if (tx) {
+      const reversedCount = await reverseAllocationsForTransaction(transactionId, actor);
+
+      if (tx && reversedCount === 0) {
         const t = tx as BankTxRow;
         if (t.booking_id) {
           await applyToBooking(t.booking_id, t.transaction_type, t.amount, t.is_refund, -1, {
             bankTxId: transactionId,
-            createdBy: 'undo',
+            createdBy: actor,
           });
         }
       }
@@ -721,30 +834,19 @@ export async function PATCH(request: NextRequest) {
         }, { status: 400 });
       }
 
+      await matchTransactionAllocations({
+        transactionId,
+        allocations: splits,
+        confidence: 1,
+        actor,
+        notes: 'multi booking allocation',
+      });
+
       for (const split of splits) {
-        // Phase 2a — split 매칭은 1 tx → N booking. idempotency_key 에 split.bookingId 까지 포함해야
-        // 같은 거래 재실행 시 중복 INSERT 방지하면서 split 별 entry 분리.
-        await applyToBooking(split.bookingId, txType, split.amount, isRefund, 1, {
-          counterpartyName,
-          bankTxId: `${transactionId}:${split.bookingId}`,
-          createdBy: 'multi',
-        });
-        // 다중 매칭도 학습 대상 — 모든 split 예약 고객에 대해 alias 저장
         if (txType === '입금' && !isRefund) {
           learnAliasForMatch(split.bookingId, counterpartyName).catch(() => {});
         }
       }
-
-      await supabaseAdmin
-        .from('bank_transactions')
-        .update({
-          booking_id:       splits[0].bookingId,
-          match_status:     'manual',
-          match_confidence: 1.0,
-          matched_by:       'multi',
-          matched_at:       new Date().toISOString(),
-        })
-        .eq('id', transactionId);
 
       return NextResponse.json({ success: true });
     }
@@ -770,15 +872,8 @@ export async function PATCH(request: NextRequest) {
 
     const { data: txData, error: txErr } = await supabaseAdmin
       .from('bank_transactions')
-      .update({
-        booking_id:       bookingId,
-        match_status:     'manual',
-        match_confidence: 1.0,
-        matched_by:       'manual',
-        matched_at:       new Date().toISOString(),
-      })
-      .eq('id', transactionId)
       .select('amount, transaction_type, is_refund, counterparty_name')
+      .eq('id', transactionId)
       .single();
 
     if (txErr) throw txErr;
@@ -789,11 +884,32 @@ export async function PATCH(request: NextRequest) {
     const txType           = txRow.transaction_type;
     const isRefund         = txRow.is_refund;
     const counterpartyName = txRow.counterparty_name ?? undefined;
+    let bookingLedgerDelta = txAmount;
+    let overflowMileage = 0;
+    let overflowCustomerId: string | null = null;
 
-    await applyToBooking(bookingId, txType, txAmount, isRefund, 1, {
-      counterpartyName,
-      bankTxId: transactionId,
-      createdBy: 'manual',
+    if (overflowAction === 'mileage' && txType === '입금' && !isRefund) {
+      const { data: bk } = await supabaseAdmin
+        .from('bookings')
+        .select('total_price, paid_amount, lead_customer_id')
+        .eq('id', bookingId)
+        .single();
+
+      if (bk) {
+        const bkRow = bk as { total_price: number; paid_amount: number | null; lead_customer_id: string | null };
+        const balance = Math.max(0, Number(bkRow.total_price ?? 0) - Number(bkRow.paid_amount ?? 0));
+        bookingLedgerDelta = Math.min(txAmount, balance);
+        overflowMileage = Math.max(0, txAmount - bookingLedgerDelta);
+        overflowCustomerId = bkRow.lead_customer_id;
+      }
+    }
+
+    await matchTransactionAllocations({
+      transactionId,
+      allocations: [{ bookingId, amount: txAmount, ledgerDelta: bookingLedgerDelta }],
+      confidence: 1,
+      actor,
+      notes: 'manual payment match',
     });
 
     // Alias 학습 — 다음 같은 입금자가 오면 자동 매칭 신뢰도 +0.3
@@ -802,49 +918,54 @@ export async function PATCH(request: NextRequest) {
     }
 
     // 입금 매칭 시 마일리지 자동 적립 (등급 적립률 기반)
-    if (txType === '입금' && !isRefund) {
-      creditMileageForBooking(bookingId, txAmount, transactionId).catch(e =>
+    if (txType === '입금' && !isRefund && bookingLedgerDelta > 0) {
+      creditMileageForBooking(bookingId, bookingLedgerDelta, transactionId).catch(e =>
         console.warn('[마일리지 적립 실패]', e)
       );
     }
 
     // 과오납 마일리지 적립
     if (overflowAction === 'mileage' && txType === '입금') {
-      const { data: bk } = await supabaseAdmin
-        .from('bookings')
-        .select('total_price, lead_customer_id')
-        .eq('id', bookingId)
-        .single();
-
-      if (bk) {
-        const bkRow = bk as { total_price: number; lead_customer_id: string | null };
-        const { data: bkAfter } = await supabaseAdmin
-          .from('bookings')
-          .select('paid_amount')
-          .eq('id', bookingId)
-          .single();
-
-        const paidAmount = bkAfter ? (bkAfter as { paid_amount: number }).paid_amount : 0;
-        const overflow = Math.max(0, paidAmount - bkRow.total_price);
-        if (overflow > 0 && bkRow.lead_customer_id) {
-          const { data: cust } = await supabaseAdmin
-            .from('customers')
-            .select('mileage')
-            .eq('id', bkRow.lead_customer_id)
-            .single();
-
-          const mileage = cust ? (cust as { mileage: number }).mileage : 0;
-          await supabaseAdmin
-            .from('customers')
-            .update({ mileage: mileage + overflow })
-            .eq('id', bkRow.lead_customer_id);
-        }
+      const overflow = overflowMileage;
+      if (overflow > 0 && overflowCustomerId) {
+        await supabaseAdmin.from('mileage_transactions').insert({
+          user_id: overflowCustomerId,
+          booking_id: bookingId,
+          amount: overflow,
+          type: 'EARNED',
+          margin_impact: 0,
+          base_net_profit: 0,
+          mileage_rate: 0,
+          memo: `과오납 마일리지 전환: bank_tx=${transactionId}`,
+        } as Record<string, unknown>);
+        const { error: mileageErr } = await supabaseAdmin.rpc('increment_customer_mileage', {
+          p_customer_id: overflowCustomerId,
+          p_delta: overflow,
+        });
+        if (mileageErr) throw new Error(`마일리지 적립 실패: ${sanitizeDbError(mileageErr)}`);
+        await supabaseAdmin.from('ops_events').insert({
+          event_type: 'mileage_adjusted',
+          severity: 'info',
+          title: '과오납 마일리지 전환',
+          description: `${overflow.toLocaleString('ko-KR')}P 적립`,
+          booking_id: bookingId,
+          customer_id: overflowCustomerId,
+          bank_transaction_id: transactionId,
+          target_type: 'customers',
+          target_id: overflowCustomerId,
+          status: 'resolved',
+          metadata: { overflow, source: 'bank_transaction_match' },
+          created_by: actor,
+        } as Record<string, unknown>);
       }
     }
 
     return NextResponse.json({ success: true });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : '처리 실패' }, { status: 500 });
+    const status = typeof e === 'object' && e !== null && 'status' in e
+      ? Number((e as { status?: number }).status) || 500
+      : 500;
+    return NextResponse.json({ error: e instanceof Error ? e.message : '처리 실패' }, { status });
   }
 }
 
@@ -981,11 +1102,12 @@ export async function POST(request: NextRequest) {
           transaction_type: txType, amount,
           counterparty_name: row.counterpartyName, memo: row.memo,
           received_at: row.receivedAt,
-          booking_id: matchStatus === 'auto' ? (matchedBooking?.id ?? null) : null,
+          booking_id: null,
           is_refund: false, is_fee: false, fee_amount: 0,
-          match_status: matchStatus, match_confidence: confidence,
-          matched_by: matchStatus === 'auto' ? 'retroactive' : null,
-          matched_at: matchStatus === 'auto' ? new Date().toISOString() : null,
+          match_status: matchStatus === 'auto' ? 'unmatched' : matchStatus,
+          match_confidence: matchStatus === 'auto' ? 0 : confidence,
+          matched_by: null,
+          matched_at: null,
         } as Record<string, unknown>])
         .select('id').single();
 
@@ -993,16 +1115,13 @@ export async function POST(request: NextRequest) {
       if (insertError) { results.push({ ...previewRow, status: 'error', error: insertError.message }); continue; }
 
       if (matchStatus === 'auto' && matchedBooking) {
-        // Phase 2a — bulk insert auto-match. update_booking_ledger RPC 로 atomic + ledger 이중쓰기.
-        await supabaseAdmin.rpc('update_booking_ledger', {
-          p_booking_id: matchedBooking.id,
-          p_paid_delta: txType === '입금' ? amount : 0,
-          p_payout_delta: txType === '출금' ? amount : 0,
-          p_source: 'bank_tx_manual_match',
-          p_source_ref_id: (inserted as { id?: string })?.id ?? null,
-          p_idempotency_key: (inserted as { id?: string })?.id ? `bulk:${(inserted as { id?: string }).id}` : null,
-          p_memo: `bulk insert auto-match ${txType}`,
-          p_created_by: 'bulk_retroactive',
+        const insertedId = (inserted as { id?: string })?.id;
+        if (insertedId) await matchTransactionAllocations({
+          transactionId: insertedId,
+          allocations: [{ bookingId: matchedBooking.id, amount }],
+          confidence,
+          actor: 'bulk_retroactive',
+          notes: `bulk insert auto-match ${txType}`,
         });
       }
 

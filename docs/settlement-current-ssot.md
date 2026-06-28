@@ -1,6 +1,6 @@
 # Settlement Current SSOT
 
-Last updated: 2026-06-23
+Last updated: 2026-06-28
 
 This is the current operating contract for payments, ledger entries, land settlements, affiliate settlements, tenant settlements, refunds, and reconciliation. Historical audits are evidence; this file is the current rulebook.
 
@@ -26,6 +26,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Settlement accounting | `src/lib/settlement-accounting.ts` |
 | Affiliate settlement math | `src/lib/affiliate/settlement-calc.ts` |
 | Payment/settlement APIs | `/api/payments/**`, `/api/settlements/**`, `/api/tenant/settlements` |
+| Bank allocation evidence | `bank_transaction_allocations`, `ops_events`, `match_bank_transaction_allocations` |
 | Admin surfaces | `/admin/payments`, `/admin/ledger`, `/admin/settlements`, `/admin/land-settlements` |
 | Drift monitor | `/api/cron/ledger-reconcile` |
 | Error memory | `docs/errors/settlement.md` |
@@ -39,6 +40,10 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Reversal must create compensating evidence. Do not delete historical settlement or ledger rows to "fix" a payout.
 - Customer-visible payment status and internal finance status may differ, but the difference must be explicit in data, not hidden in UI-only labels.
 - Drift is blocking. If ledger totals and booking totals disagree, settlement automation must pause or quarantine affected records until reconciliation evidence is created.
+- Bank transaction matching must go through `match_bank_transaction_allocations` for new manual/auto paths. The RPC writes allocation evidence, booking ledger updates, operational events, and audit evidence in one transaction.
+- A bank transaction may be allocated to multiple bookings, but the allocated total may not exceed the transaction amount. Under-allocation is only tolerated up to 500 KRW unless a future schema explicitly accounts for the remainder.
+- Overpayment converted to mileage must separate `allocated_amount` from `ledger_delta`: the bank transaction evidence keeps the full amount, while the booking ledger receives only the outstanding booking balance and the remainder is recorded as mileage.
+- Matched transactions with active allocation evidence must not be soft-deleted or hard-deleted. Reverse the allocation first, then exclude if needed.
 
 ## State Boundary
 
