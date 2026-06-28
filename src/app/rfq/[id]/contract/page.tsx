@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'dompurify';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 
 const getRouteParam = (value: string | string[] | undefined) =>
   (Array.isArray(value) ? value[0] : value ?? '').trim();
@@ -36,7 +37,7 @@ export default function ContractPage() {
   }, [rfqId, encodedRfqId]);
 
   function handlePrint() {
-    const win = window.open('', '_blank');
+    const win = safeOpenNewWindow('');
     if (!win) return;
     win.document.write(html);
     win.document.close();

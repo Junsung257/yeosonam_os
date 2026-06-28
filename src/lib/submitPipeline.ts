@@ -1,5 +1,6 @@
 import type { TrackingData } from '@/hooks/useTracking';
 import { trackLead } from '@/components/MetaPixel';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 
 export interface KakaoLeadContext {
   productTitle?: string;
@@ -115,7 +116,7 @@ export function redirectToKakao(kakaoChannelUrl: string): void {
     const fallback = kakaoChannelUrl;
     window.location.href = fallback;
   } else {
-    window.open(kakaoChannelUrl, '_blank');
+    safeOpenNewWindow(kakaoChannelUrl);
   }
 }
 

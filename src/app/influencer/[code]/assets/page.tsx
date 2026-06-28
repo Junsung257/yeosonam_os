@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { useInfluencerAuth } from '../auth-context';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 interface CardNewsAsset {
@@ -136,7 +137,7 @@ export default function InfluencerAssets() {
                     className="mt-2 w-full py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
                     onClick={() => {
                       // 카드뉴스 상세 보기 (추후 모달 또는 페이지)
-                      window.open(`/api/card-news/${cn.id}`, '_blank');
+                      safeOpenNewWindow(`/api/card-news/${cn.id}`);
                     }}
                   >
                     소재 보기
