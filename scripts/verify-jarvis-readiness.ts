@@ -170,7 +170,12 @@ async function buildReadinessPayload(options: CliOptions) {
       'run',
       'src/lib/jarvis/eval/rag-index-audit.test.ts',
       'src/lib/jarvis/eval/readiness-gate.test.ts',
+      'src/lib/jarvis/eval/all-scenarios-readiness.test.ts',
+      'src/lib/free-travel/eval/scenario-evaluator.test.ts',
+      'src/lib/agent-action-registry.test.ts',
+      'src/lib/jarvis/hitl.test.ts',
       'src/components/admin/JarvisReadinessCard.test.tsx',
+      'src/components/admin/JarvisScenarioReadinessCard.test.tsx',
       'src/components/admin/JarvisRagStatusCard.test.tsx',
     ]));
     commands.push(runCommand('node', ['--test', 'db/smoke_jarvis_v2.js']));

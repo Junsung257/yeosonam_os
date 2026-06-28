@@ -1,6 +1,6 @@
 export type AgentType = 'operations' | 'products' | 'finance' | 'marketing' | 'sales' | 'system'
 
-export type RiskLevel = 'low' | 'medium' | 'high'
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical'
 
 export interface JarvisMessage {
   role: 'user' | 'assistant' | 'tool'
