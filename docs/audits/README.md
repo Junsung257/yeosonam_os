@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-06-26
+Last updated: 2026-06-29
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -83,6 +83,7 @@ These audits contain recent evidence for the current product-registration engine
 | 2026-06-09 | `2026-06-09-blog-editorial-intent-quality-engine.md` | Blog editorial intent quality gate, audit results, and 3-4/day publishing quota hardening. |
 | 2026-06-09 | `2026-06-09-blog-revenue-funnel-code-research.md` | Codebase and external-research evidence for turning blog SEO content into a product recommendation and revenue funnel engine. |
 | 2026-06-10 | `2026-06-10-search-indexability-diagnostics.md` | GSC/Naver indexability root-cause audit and sitemap/canonical/title prevention gate evidence. |
+| 2026-06-29 | `2026-06-29-ad-os-real-use-smoke/` | Ad OS real-use smoke screenshots for public destination/blog render and admin marketing/Ad OS desktop/mobile flows. |
 | 2026-06-06 | `2026-06-06-blog-automation-hardening.md` | Blog automation hardening evidence. |
 | 2026-06-05 | `2026-06-05-serpapi-naver-rank-provider.md` | SERP/Naver rank provider evidence. |
 | 2026-06-04 | `2026-06-04-blog-automation-audit.md` | Blog automation audit evidence. |
