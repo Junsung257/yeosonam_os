@@ -91,7 +91,7 @@ export function buildSourceBackedAttractionDescriptions(input: DescriptionInput)
     ? `${name} 포함 일정`
     : null;
   const longDesc = example
-    ? `${name}은 일정표에 포함된 방문 코스입니다. 실제 관람 순서와 체류 시간은 현지 상황과 항공 일정에 따라 조정될 수 있습니다.`
+    ? `${name} 방문은 원문 일정 기준으로 확인된 코스입니다. 실제 관람 순서와 체류 시간은 현지 상황과 항공 일정에 따라 조정될 수 있습니다.`
     : null;
 
   return {
