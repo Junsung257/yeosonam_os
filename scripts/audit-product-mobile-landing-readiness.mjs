@@ -1455,8 +1455,13 @@ function hasNeedsHumanSourceReview(row) {
   const autopilot = report.upload_to_open_autopilot && typeof report.upload_to_open_autopilot === 'object'
     ? report.upload_to_open_autopilot
     : {};
+  const repairFirstSummary = autopilot.repair_first_summary && typeof autopilot.repair_first_summary === 'object'
+    ? autopilot.repair_first_summary
+    : {};
   return autopilot.final_state === 'needs_human_source_review'
     || autopilot.status === 'needs_human_source_review'
+    || autopilot.openabilityState === 'needs_human_source_review'
+    || repairFirstSummary.state === 'needs_human_source_review'
     || row.audit === 'needs_human_source_review';
 }
 
@@ -1464,6 +1469,9 @@ function readinessFor(row) {
   const failures = [];
   const warnings = [];
   const nonPublicSourceReview = !row.public && hasNeedsHumanSourceReview(row);
+  const addHumanReviewWarning = () => {
+    if (!warnings.includes('needs_human_source_review')) warnings.push('needs_human_source_review');
+  };
   const hardV3Blocked = row.v3 === 'blocked' && (
     row.entity_attraction_unresolved > 0
     || row.entity_unknown_customer_visible > 0
@@ -1495,11 +1503,26 @@ function readinessFor(row) {
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
-  if (hardV3Blocked) failures.push('v3_blocked');
-  if (row.entity_attraction_unresolved > 0) failures.push('entity_attraction_unresolved');
-  if (row.entity_shopping_review_needed > 0) failures.push('entity_shopping_review_needed');
-  if (row.entity_option_review_needed > 0) failures.push('entity_option_review_needed');
-  if (row.entity_unknown_customer_visible > 0) failures.push('entity_unknown_customer_visible');
+  if (hardV3Blocked) {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else failures.push('v3_blocked');
+  }
+  if (row.entity_attraction_unresolved > 0) {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else failures.push('entity_attraction_unresolved');
+  }
+  if (row.entity_shopping_review_needed > 0) {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else failures.push('entity_shopping_review_needed');
+  }
+  if (row.entity_option_review_needed > 0) {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else failures.push('entity_option_review_needed');
+  }
+  if (row.entity_unknown_customer_visible > 0) {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else failures.push('entity_unknown_customer_visible');
+  }
   if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
   if (row.v3 === 'blocked' && !hardV3Blocked) warnings.push('v3_blocked_nonblocking');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
@@ -2451,13 +2474,7 @@ const summary = {
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
   no_itinerary_days: rows.filter(row => row.itinerary_days === 0).length,
   v3_lookup_failed: rows.filter(row => row.v3 === 'lookup_failed').length,
-  v3_blocked: rows.filter(row =>
-    row.v3 === 'blocked' && (
-      row.entity_attraction_unresolved > 0
-      || row.entity_unknown_customer_visible > 0
-      || Boolean(row.render_failure)
-      || Boolean(row.public_html_failure)
-    )).length,
+  v3_blocked: rows.filter(row => row.readiness.failures.includes('v3_blocked')).length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
