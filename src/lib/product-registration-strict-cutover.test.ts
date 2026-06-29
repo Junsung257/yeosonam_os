@@ -14,7 +14,9 @@ describe('product registration strict cutover policy', () => {
     const pipeline = source('src/lib/product-registration/upload-registration-pipeline.ts');
     const intake = source('src/lib/product-registration/upload-request-intake.ts');
     const intakeCallIndex = upload.indexOf('const intake = await prepareUploadRequestIntake(request)');
-    const qualityIndex = intake.indexOf('const inputAnalysis = analyzeUploadInputText(directRawText)');
+    const qualityIndex = intake.indexOf(
+      'const inputAnalysis = analyzeUploadInputText(originalRawText ?? directRawText)'
+    );
     const pipelineCallIndex = upload.indexOf('const pipelinePromise = runUploadRegistrationPipeline({');
     const duplicateIndex = pipeline.indexOf('const initialDuplicate = await checkInitialUploadDuplicate({');
     const parseIndex = pipeline.indexOf('const parsedForRegistration = await parseUploadDocumentForRegistration({');
@@ -31,7 +33,9 @@ describe('product registration strict cutover policy', () => {
 
   it('does not let force reprocess bypass contaminated direct text', () => {
     const intake = source('src/lib/product-registration/upload-request-intake.ts');
-    const qualityIndex = intake.indexOf('const inputAnalysis = analyzeUploadInputText(directRawText)');
+    const qualityIndex = intake.indexOf(
+      'const inputAnalysis = analyzeUploadInputText(originalRawText ?? directRawText)'
+    );
     const forceIndex = intake.indexOf('const forceReprocess');
 
     expect(qualityIndex).toBeGreaterThanOrEqual(0);
