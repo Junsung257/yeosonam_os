@@ -58,6 +58,10 @@ function intake(overrides: Partial<UploadRequestIntakeSuccess> = {}): UploadRequ
     fileHash: 'file-hash',
     fileName: 'upload.txt',
     directRawText: 'supplier raw text',
+    originalRawText: 'supplier raw text',
+    parserRawText: 'supplier raw text',
+    documentRawText: 'supplier raw text',
+    analysisNormalizedText: 'supplier raw text',
     uploadSourceMetadata: {
       commissionRate: 10,
       marginRate: 0.1,

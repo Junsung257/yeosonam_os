@@ -96,6 +96,10 @@ export async function processUploadRegistrationProducts(input: {
   irCanaryPrimary: boolean;
   forceReprocess: boolean;
   inputAnalysisForTrust?: UploadInputAnalysis | null;
+  originalRawText?: string | null;
+  parserRawText?: string | null;
+  documentRawText?: string | null;
+  analysisNormalizedText?: string | null;
 }): Promise<ProcessUploadProductsResult> {
   const savedIds: string[] = [];
   const savedTitles: string[] = [];
@@ -141,12 +145,13 @@ export async function processUploadRegistrationProducts(input: {
 
     try {
       const rawForDeterm = productRawText || input.parsedDocument.rawText || '';
+      const registrationDocumentRawText = input.documentRawText ?? input.parsedDocument.rawText ?? rawForDeterm;
       const sectionClaim = await claimUploadProductSection({
         supabase: input.supabase,
         isSupabaseConfigured: input.isSupabaseConfigured,
         forceReprocess: input.forceReprocess,
         uploadId: input.fileHash,
-        documentRawText: input.parsedDocument.rawText ?? rawForDeterm,
+        documentRawText: registrationDocumentRawText,
         sectionRawText: rawForDeterm,
         supplierCode: input.effectiveSupplierCode,
         title,
@@ -166,7 +171,10 @@ export async function processUploadRegistrationProducts(input: {
       const autoGatePolicy = await getRegistrationPolicy();
       const registrationResult: StandardProductRegistrationObject = await registerProductFromRaw({
         rawText: rawForDeterm,
-        documentRawText: input.parsedDocument.rawText,
+        originalRawText: input.originalRawText ?? rawForDeterm,
+        parserRawText: input.parserRawText ?? input.parsedDocument.rawText ?? rawForDeterm,
+        analysisNormalizedText: input.analysisNormalizedText ?? input.inputAnalysisForTrust?.normalizedText ?? null,
+        documentRawText: registrationDocumentRawText,
         extractedData: ed,
         itineraryData: (product.itineraryData ?? null) as ItineraryDataLike | null,
         title,
@@ -216,6 +224,11 @@ export async function processUploadRegistrationProducts(input: {
           fileHash: input.fileHash,
           normalizedContentHash: input.normalizedCatalogHash,
           rawText: productRawText,
+          originalRawText: input.originalRawText,
+          parserRawText: input.parserRawText,
+          documentRawText: registrationDocumentRawText,
+          sectionRawText: productRawText,
+          analysisNormalizedText: input.analysisNormalizedText ?? input.inputAnalysisForTrust?.normalizedText,
           parsedDraftJson: ed as unknown as Record<string, unknown>,
           productTitle: title,
           landOperatorId: input.effectiveLandOperatorId,
@@ -263,6 +276,11 @@ export async function processUploadRegistrationProducts(input: {
           fileHash: input.fileHash,
           normalizedContentHash: input.normalizedCatalogHash,
           rawText: productRawText,
+          originalRawText: input.originalRawText,
+          parserRawText: input.parserRawText,
+          documentRawText: registrationDocumentRawText,
+          sectionRawText: productRawText,
+          analysisNormalizedText: input.analysisNormalizedText ?? input.inputAnalysisForTrust?.normalizedText,
           parsedDraftJson: ed as unknown as Record<string, unknown>,
           productTitle: title,
           landOperatorId: input.effectiveLandOperatorId,
@@ -345,7 +363,12 @@ export async function processUploadRegistrationProducts(input: {
           sourceFilename: input.fileName,
           fileHash: input.fileHash,
           normalizedContentHash: input.normalizedCatalogHash,
-          rawText: input.parsedDocument.rawText,
+          rawText: productRawText,
+          originalRawText: input.originalRawText,
+          parserRawText: input.parserRawText,
+          documentRawText: registrationDocumentRawText,
+          sectionRawText: productRawText,
+          analysisNormalizedText: input.analysisNormalizedText ?? input.inputAnalysisForTrust?.normalizedText,
           parsedDraftJson: ed as unknown as Record<string, unknown>,
           productTitle: title,
           landOperatorId: input.effectiveLandOperatorId,
@@ -394,7 +417,7 @@ export async function processUploadRegistrationProducts(input: {
         departingLocationId: input.departingLocationId,
         fileType: input.parsedDocument.fileType,
         productRawText,
-        documentRawText: input.parsedDocument.rawText,
+        documentRawText: registrationDocumentRawText,
         priceRows,
         priceDates: projectedPriceDates,
         marketingCopies: [],
@@ -483,7 +506,7 @@ export async function processUploadRegistrationProducts(input: {
           sourceType: input.parsedDocument.fileType,
           activeAttractions: input.activeAttractions,
           rawText: intakeRawText,
-          documentRawText: input.parsedDocument.rawText ?? '',
+          documentRawText: registrationDocumentRawText ?? '',
           landOperatorName: intakeLandOperatorName,
           landOperatorId: input.effectiveLandOperatorId,
           commissionRate: intakeCommissionRate,
@@ -555,7 +578,12 @@ export async function processUploadRegistrationProducts(input: {
         sourceFilename: input.fileName,
         fileHash: input.fileHash,
         normalizedContentHash: input.normalizedCatalogHash,
-        rawText: input.parsedDocument.rawText,
+        rawText: productRawText,
+        originalRawText: input.originalRawText,
+        parserRawText: input.parserRawText,
+        documentRawText: input.documentRawText ?? input.parsedDocument.rawText,
+        sectionRawText: productRawText,
+        analysisNormalizedText: input.analysisNormalizedText ?? input.inputAnalysisForTrust?.normalizedText,
         parsedDraftJson: ed as unknown as Record<string, unknown>,
         productTitle: title,
         landOperatorId: input.effectiveLandOperatorId,

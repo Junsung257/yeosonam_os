@@ -3,6 +3,7 @@ import './load-script-env';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { createHash } from 'node:crypto';
 import { chromium, type Browser, type Page } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -48,6 +49,8 @@ type SurfaceProofResult = {
   http_status: number | null;
   status: 'pass' | 'fail';
   checks: CheckResult[];
+  screen_hash?: string;
+  customer_visible_hash?: string;
   screenshot_path?: string;
   error?: string;
 };
@@ -69,6 +72,10 @@ type PackageProofResult = {
 };
 
 const args = process.argv.slice(2);
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`Usage:
@@ -327,6 +334,8 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
     const rawBodyText = await page.locator('body').innerText({ timeout: 15_000 }).catch(() => '');
     const bodyText = normalizeText(rawBodyText);
     const html = await page.content().catch(() => '');
+    result.screen_hash = sha256(html);
+    result.customer_visible_hash = sha256(bodyText);
     const days = getItineraryDays(pkg.itinerary_data);
     const expectedTerms = representativeScheduleTerms(pkg);
     const missingTerms = expectedTerms.filter(term => !bodyText.includes(term));
@@ -489,10 +498,14 @@ async function loadPackages(): Promise<PackageRow[]> {
 
 function buildProofPayload(result: PackageProofResult, status: 'pass' | 'fail', failedChecks: CheckResult[] = []) {
   const surfaces = result.surface_results.map(surface => surface.surface);
+  const screenHashSource = result.surface_results.map(surface => `${surface.surface}:${surface.screen_hash ?? ''}`).join('|');
+  const visibleHashSource = result.surface_results.map(surface => `${surface.surface}:${surface.customer_visible_hash ?? ''}`).join('|');
   return {
     status,
     checked_at: result.checked_at,
     package_updated_at: result.package_updated_at,
+    screen_hash: sha256(screenHashSource),
+    customer_visible_hash: sha256(visibleHashSource),
     surfaces,
     url: result.url,
     http_status: result.http_status,

@@ -81,6 +81,8 @@ const KO_ATTRACTION_HINT_RE =
 
 const NORMAL_PRICE_NOISE_RE =
   /(?:^\s*\d{3,5}\s*M\s*$|^\s*\d{1,4}(?:,\d{3})*(?:\s*(?:원|KRW|USD|\$))?\s*$|가격|판매가|출발\s*마감|예약금|취소료|수수료)/i;
+const NORMAL_TRAVEL_COST_RE =
+  /^(?:여행\s*경비|경비|총\s*경비|현지\s*경비)$/i;
 const NORMAL_MEAL_RE =
   /(?:조식|중식|석식|식사|식당|뷔페|특식|현지식|호텔식|한식|제육|찌개|보쌈|쌀국수|김밥|샤브샤브|양꼬치|삼겹살|씨푸드|해산물|맥주\s*1\s*병|노미호다이|breakfast|lunch|dinner|meal|restaurant|pho)/i;
 const NORMAL_NOTICE_RE =
@@ -89,6 +91,28 @@ const NORMAL_TRANSFER_RE =
   /(?:^[A-Z]{3}(?:-[A-Z]{3})?$|이동|차량|버스|공항|픽업|샌딩|전용차|기사|미팅|귀환|부산-광저우|샤오관|transfer|pickup|drop[-\s]?off|airport)/i;
 const NORMAL_PLACE_TRANSFER_RE =
   /^(?:하노이|파타야|삿포로|치토세|후쿠오카|석가장|임주|다낭|푸꾸옥|나트랑|달랏|광저우|천저우|샤오관)$/i;
+const NORMAL_DESTINATION_ONLY_RE =
+  /^(?:타이베이|대만|다낭|호이안|푸꾸옥|나트랑|달랏|하노이|하롱베이|방콕|파타야|세부|보홀|시즈오카|삿포로|후쿠오카|몽골|장가계)$/i;
+const NORMAL_SHORT_LABEL_NOISE_RE =
+  /^(?:상동|동일|전일\s*동일|또는|&\s*마감일|출\s*발\s*일\s*자|출발\s*제외일|계림의\s*상징,?|정규\)?|증편\)?|기본\)?|특가\)?|행사\)?)$/i;
+const NORMAL_PACKAGE_TIER_NOISE_RE =
+  /^(?:크라운|품격|실속|프리미엄|스마트|세이브|라이트|LIGHT)$/i;
+const NORMAL_DURATION_NOISE_RE =
+  /^\s*\d+\s*박\s*\d+\s*일\s*$/i;
+const NORMAL_TIME_LABEL_NOISE_RE =
+  /^\s*\d{1,2}:\d{2}(?:\+\d)?\s*$/i;
+const NORMAL_EXTRA_PRICE_NOISE_RE =
+  /^\s*\d{1,4}(?:,\d{3})*(?:\.\d+)?\s*(?:엔|円|동|VND|JPY|USD|\$)\)?\s*$/i;
+const NORMAL_MEAL_SHORT_RE =
+  /^(?:정식|현지식|호텔식|한식|중식|석식|조식|특식|전통식|선상식\)?|세트|생수|스테이크|교자연|서안\s*면요리\)?|OR\s*룩락|커피\s*\d*\s*잔(?:\s*제공)?(?:\s*-\s*)?(?:위즐|코코넛)?\)?|커피\s*배달.*|위즐커피|코코넛커피|랍스터(?:\s*\d+\/\d+|\s*\d+⁄\d+|½)?\)?|오리구이|하이디라오\)?|하이다라오\)?|\d+\s*인\s*\d+\s*마리\)?)$/i;
+const NORMAL_BEVERAGE_SERVICE_RE =
+  /(?:커피|위즐|코코넛).*(?:제공|배달|위즐|코코넛)/i;
+const NORMAL_DESSERT_OR_FOOD_SERVICE_RE =
+  /(?:디저트|반짱느엉|못\s*주스|전통\s*음료|베트남식\s*피자|음료|식사\s*제공)/i;
+const NORMAL_PREP_NOTICE_RE =
+  /(?:민소매|반바지|옷\s*대여|샤워용품|속옷|수영복|아쿠아슈즈|선크림|준비물)/i;
+const NORMAL_OPTION_FEE_RE =
+  /(?:싱글\s*카트비|카트비|캐디피|그린피|18\s*홀|맛사지|마사지|발\s*\+\s*전신)/i;
 const NORMAL_HOTEL_RE =
   /(?:호텔|리조트|숙박|객실|체크\s*인|체크\s*아웃|뉴카멜리아|hotel|resort|villa|room|check[-\s]?in|check[-\s]?out)/i;
 const NORMAL_SHOPPING_RE =
@@ -136,22 +160,25 @@ export function classifyUnmatchedActivity(
   let category: UnmatchedEntityCategory = existing ?? 'attraction';
   let confidence = existing ? 0.72 : 0.65;
 
-  if (!text || KO_PRICE_NOISE_RE.test(text) || NORMAL_PRICE_NOISE_RE.test(text)) {
+  if (!text || KO_PRICE_NOISE_RE.test(text) || NORMAL_PRICE_NOISE_RE.test(text) || NORMAL_EXTRA_PRICE_NOISE_RE.test(text) || NORMAL_TRAVEL_COST_RE.test(text)) {
     category = 'price_noise';
     confidence = 0.92;
   } else if (NORMAL_OPTION_HEADING_NOISE_RE.test(text)) {
     category = 'free_time';
     confidence = 0.9;
-  } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text) || NORMAL_MEAL_RE.test(text)) {
+  } else if (NORMAL_SHORT_LABEL_NOISE_RE.test(text) || NORMAL_PACKAGE_TIER_NOISE_RE.test(text) || NORMAL_DURATION_NOISE_RE.test(text) || NORMAL_TIME_LABEL_NOISE_RE.test(text)) {
+    category = 'free_time';
+    confidence = 0.92;
+  } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text) || NORMAL_MEAL_RE.test(text) || NORMAL_MEAL_SHORT_RE.test(text) || NORMAL_BEVERAGE_SERVICE_RE.test(text) || NORMAL_DESSERT_OR_FOOD_SERVICE_RE.test(text)) {
     category = 'meal';
     confidence = 0.9;
-  } else if (KO_NOTICE_RE.test(text) || NORMAL_NOTICE_RE.test(text)) {
+  } else if (KO_NOTICE_RE.test(text) || NORMAL_NOTICE_RE.test(text) || NORMAL_PREP_NOTICE_RE.test(text)) {
     category = 'notice';
     confidence = 0.84;
   } else if (NORMAL_NOISE_RE.test(text)) {
     category = 'free_time';
     confidence = 0.9;
-  } else if (KO_TRANSFER_RE.test(text) || NORMAL_TRANSFER_RE.test(text) || NORMAL_PLACE_TRANSFER_RE.test(text)) {
+  } else if (KO_TRANSFER_RE.test(text) || NORMAL_TRANSFER_RE.test(text) || NORMAL_PLACE_TRANSFER_RE.test(text) || NORMAL_DESTINATION_ONLY_RE.test(text)) {
     category = 'transfer';
     confidence = 0.9;
   } else if (KO_HOTEL_RE.test(text) || NORMAL_HOTEL_RE.test(text)) {
@@ -160,7 +187,7 @@ export function classifyUnmatchedActivity(
   } else if (KO_SHOPPING_RE.test(text) || NORMAL_SHOPPING_RE.test(text)) {
     category = 'shopping';
     confidence = 0.86;
-  } else if (KO_OPTION_RE.test(text) || NORMAL_OPTION_RE.test(text)) {
+  } else if (KO_OPTION_RE.test(text) || NORMAL_OPTION_RE.test(text) || NORMAL_OPTION_FEE_RE.test(text)) {
     category = 'optional_tour';
     confidence = 0.86;
   } else if (KO_FREE_TIME_RE.test(text) || NORMAL_FREE_TIME_RE.test(text)) {
@@ -191,7 +218,7 @@ export function classifyUnmatchedActivity(
     };
   }
 
-  if (category === 'optional_tour' && NORMAL_GOLF_TAG_RE.test(text)) {
+  if (category === 'optional_tour' && confidence >= 0.85) {
     return {
       category,
       confidence,

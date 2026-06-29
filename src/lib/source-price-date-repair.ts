@@ -34,6 +34,7 @@ export type SourceBackedPriceDateRepair =
       expectedCount?: number;
       existingCount?: number;
       addedCount?: number;
+      excludedPriceCandidates?: ExcludedPriceCandidate[];
     }
   | {
       status: 'repaired';
@@ -43,6 +44,7 @@ export type SourceBackedPriceDateRepair =
       existingCount: number;
       addedCount: number;
       priceDates: PriceDate[];
+      excludedPriceCandidates?: ExcludedPriceCandidate[];
     };
 
 type SourcePriceIRRow = {
@@ -54,7 +56,64 @@ type SourcePriceIRRow = {
 
 type DuplicatePricePreference = 'min' | 'max' | null;
 
+export type ExcludedPriceCandidate = {
+  date?: string | null;
+  amount: number;
+  currency: 'KRW' | 'USD' | 'JPY' | 'VND';
+  reason:
+    | 'optional_tour_candidate'
+    | 'local_expense_candidate'
+    | 'golf_option_candidate'
+    | 'option_sized_price_candidate'
+    | 'duplicate_variant_not_selected';
+  sourceStatus?: string | null;
+  quote?: string | null;
+};
+
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const OPTION_SIZED_PRICE_CEILING = 100_000;
+const PACKAGE_PRICE_FLOOR = 300_000;
+
+function classifyExcludedPriceReason(line: string): ExcludedPriceCandidate['reason'] {
+  if (/(?:golf|green\s*fee|caddie|cart|tee\s*time|골프|그린피|캐디|카트)/i.test(line)) return 'golf_option_candidate';
+  if (/(?:local|onsite|on-site|현지|불포함|가이드\s*팁|기사\s*팁)/i.test(line)) return 'local_expense_candidate';
+  return 'optional_tour_candidate';
+}
+
+export function extractExcludedPriceCandidatesFromRawText(rawText: string): ExcludedPriceCandidate[] {
+  const candidates: ExcludedPriceCandidate[] = [];
+  const seen = new Set<string>();
+  const currencyPatterns: Array<{ currency: ExcludedPriceCandidate['currency']; regex: RegExp; amountGroup: number }> = [
+    { currency: 'USD', regex: /\b(?:USD|US\$)\s*([0-9]+(?:\.[0-9]+)?)/gi, amountGroup: 1 },
+    { currency: 'USD', regex: /(^|[^\w])\$\s*([0-9]+(?:\.[0-9]+)?)/g, amountGroup: 2 },
+    { currency: 'JPY', regex: /\bJPY\s*([0-9][0-9,]*)/gi, amountGroup: 1 },
+    { currency: 'VND', regex: /\bVND\s*([0-9][0-9,]*)/gi, amountGroup: 1 },
+  ];
+
+  for (const line of rawText.split(/\r?\n/)) {
+    if (!/(?:optional|tour|local|onsite|on-site|golf|green|caddie|cart|USD|US\$|\$|JPY|VND|선택|현지|골프|그린피|캐디|카트)/i.test(line)) continue;
+    const reason = classifyExcludedPriceReason(line);
+    for (const pattern of currencyPatterns) {
+      pattern.regex.lastIndex = 0;
+      for (const match of line.matchAll(pattern.regex)) {
+        const rawAmount = match[pattern.amountGroup]?.replace(/,/g, '');
+        const amount = Number(rawAmount);
+        if (!Number.isFinite(amount) || amount <= 0) continue;
+        const key = `${pattern.currency}:${amount}:${reason}:${line.trim()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push({
+          amount,
+          currency: pattern.currency,
+          reason,
+          quote: line.trim().slice(0, 240),
+        });
+      }
+    }
+  }
+
+  return candidates;
+}
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && ISO_DATE_RE.test(value);
@@ -156,20 +215,56 @@ export function selectSourceBackedPriceRows(
   pkg: SourcePriceRepairPackage,
   rows: SourcePriceIRRow[],
 ): SourcePriceIRRow[] {
+  return selectSourceBackedPriceRowsWithExclusions(pkg, rows).selected;
+}
+
+export function selectSourceBackedPriceRowsWithExclusions(
+  pkg: SourcePriceRepairPackage,
+  rows: SourcePriceIRRow[],
+): { selected: SourcePriceIRRow[]; excludedPriceCandidates: ExcludedPriceCandidate[] } {
   const preference = duplicatePricePreference(pkg);
+  const numericRows = rows.filter(row => Number.isFinite(row.adult_price) && row.adult_price > 0);
+  const hasPackageSizedPrice = numericRows.some(row => row.adult_price >= PACKAGE_PRICE_FLOOR);
+  const optionSizedRows = hasPackageSizedPrice
+    ? numericRows.filter(row => row.adult_price <= OPTION_SIZED_PRICE_CEILING)
+    : [];
+  const candidateRows = hasPackageSizedPrice
+    ? numericRows.filter(row => row.adult_price >= PACKAGE_PRICE_FLOOR)
+    : numericRows;
   const byDate = new Map<string, SourcePriceIRRow[]>();
-  for (const row of rows) {
+  for (const row of candidateRows) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
     byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
   }
 
-  return [...byDate.values()]
+  const selected = [...byDate.values()]
     .map(candidates => {
       const sorted = [...candidates].sort((a, b) => a.adult_price - b.adult_price);
       if (preference === 'max') return sorted[sorted.length - 1];
       return sorted[0];
     })
     .sort((a, b) => a.date.localeCompare(b.date));
+  const selectedKeys = new Set(selected.map(row => `${row.date}:${row.adult_price}`));
+  const excludedPriceCandidates: ExcludedPriceCandidate[] = [
+    ...optionSizedRows.map(row => ({
+      date: row.date,
+      amount: row.adult_price,
+      currency: 'KRW' as const,
+      reason: 'option_sized_price_candidate' as const,
+      sourceStatus: row.status ?? null,
+    })),
+    ...candidateRows
+      .filter(row => isIsoDate(row.date) && !selectedKeys.has(`${row.date}:${row.adult_price}`))
+      .map(row => ({
+        date: row.date,
+        amount: row.adult_price,
+        currency: 'KRW' as const,
+        reason: 'duplicate_variant_not_selected' as const,
+        sourceStatus: row.status ?? null,
+      })),
+  ];
+
+  return { selected, excludedPriceCandidates };
 }
 
 function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number {
@@ -193,9 +288,11 @@ function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number 
 function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   source: string;
   rows: PriceDate[];
+  excludedPriceCandidates: ExcludedPriceCandidate[];
 } {
   const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
-  if (rawText.length < 50) return { source: 'none', rows: [] };
+  const rawExcludedPriceCandidates = extractExcludedPriceCandidatesFromRawText(rawText);
+  if (rawText.length < 50) return { source: 'none', rows: [], excludedPriceCandidates: rawExcludedPriceCandidates };
 
   const departureDays = typeof pkg.departure_days === 'string'
     ? pkg.departure_days
@@ -207,10 +304,11 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
     departureDays,
     accommodations: pkg.accommodations ?? [],
   });
-  if (ir.source === 'none' || ir.rows.length === 0) return { source: ir.source, rows: [] };
+  if (ir.source === 'none' || ir.rows.length === 0) return { source: ir.source, rows: [], excludedPriceCandidates: rawExcludedPriceCandidates };
 
   const byDate = new Map<string, PriceDate>();
-  for (const row of selectSourceBackedPriceRows(pkg, ir.rows)) {
+  const selection = selectSourceBackedPriceRowsWithExclusions(pkg, ir.rows);
+  for (const row of selection.selected) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
     const current = byDate.get(row.date);
     if (current && current.price <= row.adult_price) continue;
@@ -225,6 +323,10 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   return {
     source: ir.source,
     rows: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    excludedPriceCandidates: [
+      ...rawExcludedPriceCandidates,
+      ...selection.excludedPriceCandidates,
+    ],
   };
 }
 
@@ -241,6 +343,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
       expectedCount: 0,
       existingCount: existingRows.length,
       addedCount: 0,
+      excludedPriceCandidates: expected.excludedPriceCandidates,
     };
   }
 
@@ -256,6 +359,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
         expectedCount: expected.rows.length,
         existingCount: existingRows.length,
         addedCount: 0,
+        excludedPriceCandidates: expected.excludedPriceCandidates,
       };
     }
 
@@ -269,6 +373,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
         existingCount: existingRows.length,
         addedCount: expected.rows.filter(expectedRow => !existingRows.some(existingRow => existingRow.date === expectedRow.date)).length,
         priceDates: expected.rows,
+        excludedPriceCandidates: expected.excludedPriceCandidates,
       };
     }
     if (expectedRow.price !== price) {
@@ -280,6 +385,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
         existingCount: existingRows.length,
         addedCount: expected.rows.filter(expectedRow => !existingRows.some(existingRow => existingRow.date === expectedRow.date)).length,
         priceDates: expected.rows,
+        excludedPriceCandidates: expected.excludedPriceCandidates,
       };
     }
 
@@ -300,6 +406,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
       expectedCount: expected.rows.length,
       existingCount: existingRows.length,
       addedCount: 0,
+      excludedPriceCandidates: expected.excludedPriceCandidates,
     };
   }
 
@@ -314,5 +421,6 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
     existingCount: existingRows.length,
     addedCount: missing.length,
     priceDates,
+    excludedPriceCandidates: expected.excludedPriceCandidates,
   };
 }

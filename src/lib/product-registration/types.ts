@@ -9,10 +9,12 @@ import type { HumanReaderResult } from './ai-human-reader';
 import type { UploadItineraryNormalizationResult } from './itinerary-normalization';
 import type { PriceRedTeamAuditResult } from './price-red-team-auditor';
 import type { UploadPriceRecoveryResult } from './price-recovery';
+import type { ExcludedPriceCandidate } from '@/lib/source-price-date-repair';
 
 export type ProductRegistrationEvidence = {
   rawTextLength: number;
   rawTextHash: string;
+  sourceDocuments?: SourceEvidenceDocument[];
   priceSource: string;
   v3DraftStatus: string | null;
   v3RawTextHash: string | null;
@@ -28,9 +30,26 @@ export type ProductRegistrationEvidence = {
   priceAudit?: PriceRedTeamAuditResult;
 };
 
+export type SourceEvidenceDocumentRole =
+  | 'original'
+  | 'parser'
+  | 'document'
+  | 'section'
+  | 'analysis'
+  | 'legacy';
+
+export type SourceEvidenceDocument = {
+  sourceId: 'original_raw' | 'parser_raw' | 'document_raw' | 'section_raw' | 'analysis_normalized' | string;
+  rawTextHash: string;
+  rawTextLength: number;
+  role: SourceEvidenceDocumentRole;
+  label?: string | null;
+};
+
 export type SourceEvidenceSpan = {
   field: string;
   rawTextHash: string;
+  sourceId?: SourceEvidenceDocument['sourceId'] | null;
   start: number;
   end: number;
   quote: string;
@@ -63,6 +82,7 @@ export type ProductRegistrationPricing = {
   minPrice: number | null;
   selectedPriceBasis: string | null;
   optionalPriceCandidatesExcluded: boolean;
+  excludedPriceCandidates?: ExcludedPriceCandidate[];
   failures: string[];
 };
 

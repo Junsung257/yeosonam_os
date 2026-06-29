@@ -136,7 +136,11 @@ function priceStorageMismatch(
     prices.push(price);
     pricesByDate.set(date, prices);
   }
-  if (priceDateByDate.size === 0) return pricesByDate.size > 0 ? 'price_dates missing all product_prices dates' : null;
+  if (priceDateByDate.size === 0) {
+    return pricesByDate.size > 0
+      ? 'price_dates missing all product_prices dates'
+      : 'price_dates and product_prices missing';
+  }
   for (const date of pricesByDate.keys()) {
     if (!priceDateByDate.has(date)) return `price_dates missing date ${date}`;
   }

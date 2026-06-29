@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildSourceBackedPriceDateRepair, selectSourceBackedPriceRows } from './source-price-date-repair';
+import {
+  buildSourceBackedPriceDateRepair,
+  extractExcludedPriceCandidatesFromRawText,
+  selectSourceBackedPriceRows,
+  selectSourceBackedPriceRowsWithExclusions,
+} from './source-price-date-repair';
 
 const BAEKDU_GRADE_PATTERN_MATRIX = `
 ★연길/백두산 7-8월 목/일 출발 증편★
@@ -222,5 +227,54 @@ describe('buildSourceBackedPriceDateRepair', () => {
       },
     }, rows);
     expect(rail.map(row => row.adult_price)).toEqual([1369000, 1399000]);
+  });
+
+  it('drops option-sized same-date prices when package-sized rows are present', () => {
+    const rows = [
+      { date: '2026-09-01', adult_price: 30000, child_price: null, status: 'available' },
+      { date: '2026-09-01', adult_price: 729000, child_price: null, status: 'available' },
+      { date: '2026-09-02', adult_price: 50000, child_price: null, status: 'available' },
+      { date: '2026-09-02', adult_price: 739000, child_price: null, status: 'available' },
+    ];
+
+    const selected = selectSourceBackedPriceRows({
+      title: 'Da Nang Hoi An 3N5D package',
+      duration: 5,
+    }, rows);
+
+    expect(selected.map(row => row.adult_price)).toEqual([729000, 739000]);
+  });
+
+  it('preserves dropped option-sized rows as excluded price candidates', () => {
+    const rows = [
+      { date: '2026-09-01', adult_price: 30000, child_price: null, status: 'available' },
+      { date: '2026-09-01', adult_price: 729000, child_price: null, status: 'available' },
+      { date: '2026-09-02', adult_price: 50000, child_price: null, status: 'available' },
+      { date: '2026-09-02', adult_price: 739000, child_price: null, status: 'available' },
+    ];
+
+    const result = selectSourceBackedPriceRowsWithExclusions({
+      title: 'Da Nang Hoi An 3N5D package',
+      duration: 5,
+    }, rows);
+
+    expect(result.selected.map(row => row.adult_price)).toEqual([729000, 739000]);
+    expect(result.excludedPriceCandidates).toEqual([
+      expect.objectContaining({ date: '2026-09-01', amount: 30000, reason: 'option_sized_price_candidate' }),
+      expect.objectContaining({ date: '2026-09-02', amount: 50000, reason: 'option_sized_price_candidate' }),
+    ]);
+  });
+
+  it('preserves USD optional tour prices as excluded price candidates', () => {
+    const result = extractExcludedPriceCandidatesFromRawText([
+      'Optional tour: massage USD30 per person',
+      'Optional tour: river cruise $50 per person',
+      'Package adult price KRW 699,000',
+    ].join('\n'));
+
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({ amount: 30, currency: 'USD', reason: 'optional_tour_candidate' }),
+      expect.objectContaining({ amount: 50, currency: 'USD', reason: 'optional_tour_candidate' }),
+    ]));
   });
 });

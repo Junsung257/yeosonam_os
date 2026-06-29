@@ -95,7 +95,8 @@ describe('classifyUnmatchedActivity', () => {
     });
     expect(classifyUnmatchedActivity('왕복케이블카')).toMatchObject({
       category: 'optional_tour',
-      terminalStatus: 'pending',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
     });
     expect(classifyUnmatchedActivity('【추천옵션】')).toMatchObject({
       category: 'free_time',
@@ -111,6 +112,97 @@ describe('classifyUnmatchedActivity', () => {
       category: 'shopping',
       terminalStatus: 'added',
       suggestedAction: 'structure_non_master',
+    });
+  });
+
+  it('auto-closes destination labels and schedule fragments without making attraction masters', () => {
+    expect(classifyUnmatchedActivity('타이베이')).toMatchObject({
+      category: 'transfer',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('상동')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('정규)')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('1,320엔)')).toMatchObject({
+      category: 'price_noise',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('정식')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('하이디라오)')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('크라운')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('3박4일')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('공중전원 $40 / 중국전통 발+전신 맛사지(90분) $50')).toMatchObject({
+      category: 'optional_tour',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('* 싱글카트비 18홀 기준 빈펄 450,000동 / 에스츄리 500,000동 추가 됩니다.')).toMatchObject({
+      category: 'optional_tour',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('커피 1잔제공-위즐또는코코넛)')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('민소매티+반바지 가능 / 옷 대여 가능 / 간단한 샤워용품+속옷 준비)')).toMatchObject({
+      category: 'notice',
+      terminalStatus: 'pending',
+    });
+    expect(classifyUnmatchedActivity('또는')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('00:10+1')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('호이안 디저트 - 반짱느엉 + 못 주스(베트남식 피자, 호이안 전통음료)')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('전통식')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('여행경비')).toMatchObject({
+      category: 'price_noise',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('& 마감일')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('출 발 일 자')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('OR 룩락')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('랍스터½)')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
+    });
+    expect(classifyUnmatchedActivity('생수')).toMatchObject({
+      category: 'meal',
+      terminalStatus: 'added',
     });
   });
 
@@ -130,7 +222,8 @@ describe('classifyUnmatchedActivity', () => {
   it('does not ignore real optional activities only because they mention inclusion', () => {
     expect(classifyUnmatchedActivity('천등 날리기 체험 포함(4인 기준)')).toMatchObject({
       category: 'optional_tour',
-      terminalStatus: 'pending',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
     });
   });
 });

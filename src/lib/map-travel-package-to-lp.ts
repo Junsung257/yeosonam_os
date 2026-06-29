@@ -6,6 +6,7 @@ import { renderPackage } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -40,7 +41,7 @@ export interface LandingProductData {
   heroImageB: string;
   scarcityRemaining: number | null;
   departureDateLabel: string;
-  departureFullDate: string;
+  departureFullDate: string | null;
   deadlineDays: number | null;
   customMessage: Record<ChannelSource, ChannelMessage>;
   priceFrom: number;
@@ -55,8 +56,8 @@ export interface LandingProductData {
   departureGuaranteed: boolean;
   recommendation?: RecommendationDisplay | null;
   flightSummary?: {
-    outbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null } | null;
-    inbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null } | null;
+    outbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null; arrDayOffset?: number | null } | null;
+    inbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null; arrDayOffset?: number | null } | null;
   };
   itinerary: {
     days: ItineraryDay[];
@@ -192,8 +193,8 @@ export function mapTravelPackageToLandingData(
 
   const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
   const sortedDates = [...effectiveDates].filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date));
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const upcoming = sortedDates.find(row => row.date >= todayStr) ?? sortedDates[0];
+  const todayStr = formatKstDate();
+  const upcoming = sortedDates.find(row => isUpcomingKstDate(row.date, todayStr)) ?? sortedDates[0] ?? null;
 
   const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
   const minPrice = priceNums.length > 0 ? Math.min(...priceNums) : (Number(pkg.price) || 0);
@@ -214,9 +215,9 @@ export function mapTravelPackageToLandingData(
   }
 
   const departureFullDate =
-    upcoming?.date && /^\d{4}-\d{2}-\d{2}/.test(upcoming.date) ? upcoming.date : todayStr;
+    upcoming?.date && isValidIsoDateKst(upcoming.date) ? upcoming.date : null;
   const departureDateLabel =
-    upcoming?.date && upcoming.date.length >= 10
+    upcoming?.date && isValidIsoDateKst(upcoming.date)
       ? `${parseInt(upcoming.date.slice(5, 7), 10)}/${parseInt(upcoming.date.slice(8, 10), 10)}`
       : '미정';
 
@@ -285,6 +286,7 @@ export function mapTravelPackageToLandingData(
         arrTime: view.flightHeader.outbound.arrTime,
         depCity: view.flightHeader.outbound.depCity,
         arrCity: view.flightHeader.outbound.arrCity,
+        arrDayOffset: view.flightHeader.outbound.arrDayOffset ?? null,
       } : null,
       inbound: view.flightHeader.inbound ? {
         code: view.flightHeader.inbound.code,
@@ -292,6 +294,7 @@ export function mapTravelPackageToLandingData(
         arrTime: view.flightHeader.inbound.arrTime,
         depCity: view.flightHeader.inbound.depCity,
         arrCity: view.flightHeader.inbound.arrCity,
+        arrDayOffset: view.flightHeader.inbound.arrDayOffset ?? null,
       } : null,
     },
     itinerary: {

@@ -105,14 +105,6 @@ function asArray<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
 }
 
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
-}
-
 function nonEmpty(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
@@ -159,6 +151,31 @@ function priceDateRows(pkg: PackageRow): Array<{ date: string; price: number }> 
       price: Number(row.price),
     }))
     .filter(row => row.date && Number.isFinite(row.price) && row.price > 0);
+}
+
+async function loadProductPriceRowsByCode(
+  // Supabase's generated client generic differs between script inference and helper
+  // inference, but this helper only needs the runtime query surface.
+  supabase: any,
+  codes: string[],
+): Promise<Map<string, ProductPriceRow[]>> {
+  const priceRowsByCode = new Map<string, ProductPriceRow[]>();
+  for (const code of codes) {
+    const rows: ProductPriceRow[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase
+        .from('product_prices')
+        .select('product_id,target_date,net_price,adult_selling_price,note')
+        .eq('product_id', code)
+        .range(from, from + 999);
+      if (error) throw new Error(error.message);
+      const page = (data ?? []) as ProductPriceRow[];
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+    priceRowsByCode.set(code, rows);
+  }
+  return priceRowsByCode;
 }
 
 function hasFutureDeparture(pkg: PackageRow, today: string): boolean {
@@ -395,22 +412,8 @@ async function main(): Promise<void> {
   const packageIds = packageRows.map(row => row.id);
   const codes = packageRows.map(row => row.internal_code).filter((code): code is string => Boolean(code));
 
-  const priceRowsByCode = new Map<string, ProductPriceRow[]>();
   const uniqueCodes = [...new Set(codes)];
-  for (const codeChunk of chunkArray(uniqueCodes, 40)) {
-    const { data: priceRows, error: priceError } = await supabase
-      .from('product_prices')
-      .select('product_id,target_date,net_price,adult_selling_price,note')
-      .in('product_id', codeChunk)
-      .limit(5000);
-    if (priceError) throw new Error(priceError.message);
-    for (const row of (priceRows ?? []) as ProductPriceRow[]) {
-      if (!row.product_id) continue;
-      const rows = priceRowsByCode.get(row.product_id) ?? [];
-      rows.push(row);
-      priceRowsByCode.set(row.product_id, rows);
-    }
-  }
+  const priceRowsByCode = await loadProductPriceRowsByCode(supabase, uniqueCodes);
 
   const latestDraftByPackage = new Map<string, DraftRow>();
   if (packageIds.length > 0) {
