@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createClient } from '@supabase/supabase-js';
+import { extractPriceIR } from '../src/lib/parser/deterministic/price-ir/index.ts';
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -824,6 +825,16 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
   const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates.filter(row => row?.date && Number(row?.price) > 0) : [];
   const raw = String(pkg.raw_text ?? '');
   if (priceDates.length === 0 || !raw.trim()) return null;
+  const firstPriceYear = Number(String(priceDates[0]?.date ?? '').slice(0, 4));
+  const deterministicPriceIr = extractPriceIR(raw, {
+    year: Number.isFinite(firstPriceYear) && firstPriceYear >= 2000 ? firstPriceYear : undefined,
+    title: pkg.title ?? undefined,
+    durationDays: typeof pkg.duration === 'number' ? pkg.duration : null,
+    departureDays: pkg.departure_days ?? null,
+    accommodations: Array.isArray(pkg.accommodations) ? pkg.accommodations : [],
+  });
+  const deterministicPriceIrCovers = row => deterministicPriceIr.rows.some(irRow =>
+    irRow.date === row.date && Number(irRow.adult_price) === Number(row.price));
   const lines = raw.split(/\r?\n/).map(line => line.replace(/\s+/g, ' ').trim());
   const dateOnlyRe = /^\d{1,2}\s*\uC6D4\s*\d{1,2}\s*\uC77C(?:\s*\([^)]+\))?$/;
   const headerRe = /^(?:\d{1,2}\s*\uC6D4|\uC6D4\uC694\uC77C|\uD654\uC694\uC77C|\uC218\uC694\uC77C|\uBAA9\uC694\uC77C|\uAE08\uC694\uC77C|\uD1A0\uC694\uC77C|\uC77C\uC694\uC77C|\uCD9C\s*\uBC1C\s*\uC77C|\uD328\uD134|\uc77c\s*\uc790|\uC120\ud0dd\uAD00\uAD11|\uC1FC\uD551\uC13C\uD130|---)$/;
@@ -1089,6 +1100,7 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
       return indices;
     }, []);
     if (starts.length === 0) {
+      if (deterministicPriceIrCovers(row)) continue;
       if (productPriceProvenanceCovers(row)) continue;
       if (rangeEvidenceCovers(row) || dateListEvidenceCovers(row) || verticalTableEvidenceCovers(row)) continue;
       return `source missing date ${row.date}`;
@@ -1115,6 +1127,7 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
       if (found) break;
     }
     if ((!found || sawAnotherDateBeforePrice) && !rangeEvidenceCovers(row) && !dateListEvidenceCovers(row) && !verticalTableEvidenceCovers(row)) {
+      if (deterministicPriceIrCovers(row)) continue;
       if (productPriceProvenanceCovers(row)) continue;
       if (rangeLineWithProductPriceProvenanceCovers(row)) continue;
       return `source price evidence missing for ${row.date} ${amount}`;

@@ -2,6 +2,7 @@ import { normalizeOptionalTours } from '@/lib/package-acl';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import type { FinalizeUploadRegistrationResult } from './finalize-registration';
 import { buildCustomerSourceRawText } from './source-evidence-raw-text';
+import { extractSourceTicketingDeadline } from './ticketing-deadline';
 import type { ProductRegistrationResult } from './types';
 
 export type UploadPersistenceRowsInput = {
@@ -90,6 +91,18 @@ function resolveCustomerProductSummary(value: unknown): string | null {
   return stripInternalDistributionCopy(value);
 }
 
+function resolveTicketingDeadline(input: {
+  extractedDeadline?: string | null;
+  productRawText: string;
+  documentRawText: string;
+  priceDates: unknown[];
+}): string | null {
+  return input.extractedDeadline
+    ?? extractSourceTicketingDeadline(`${input.productRawText}\n${input.documentRawText}`, {
+      priceDates: input.priceDates,
+    });
+}
+
 export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): UploadPersistenceRows {
   const ed = input.registration.extractedData;
   const draftRow = input.finalized.draftRow;
@@ -105,13 +118,19 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
     priceDates: input.priceDates as Array<{ date?: string | null; price?: number | null }> | null,
     priceRows: input.priceRows,
   });
+  const ticketingDeadline = resolveTicketingDeadline({
+    extractedDeadline: ed.ticketing_deadline ?? null,
+    productRawText: input.productRawText,
+    documentRawText: input.documentRawText,
+    priceDates: input.priceDates,
+  });
   const productRow = input.internalCode
     ? {
         internal_code: input.internalCode,
         display_name: input.title,
         departure_region: input.departureRegion,
         supplier_code: input.supplierCode,
-        departure_date: ed.ticketing_deadline ?? null,
+        departure_date: ticketingDeadline,
         net_price: input.netPrice,
         margin_rate: input.marginRate,
         discount_amount: 0,
@@ -171,7 +190,7 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
       departure_airport: ed.departure_airport ?? '부산/김해',
       airline: ed.airline,
       min_participants: ed.min_participants ?? 4,
-      ticketing_deadline: ed.ticketing_deadline ?? null,
+      ticketing_deadline: ticketingDeadline,
       guide_tip: ed.guide_tip,
       single_supplement: ed.single_supplement,
       small_group_surcharge: ed.small_group_surcharge,
