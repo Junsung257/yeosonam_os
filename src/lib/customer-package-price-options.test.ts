@@ -21,7 +21,25 @@ describe('customer package price options', () => {
     expect(getCustomerPriceOptionsForDate([
       { target_date: '2026-07-01', adult_selling_price: 1_290_000, note: '   ' },
     ], '2026-07-01')).toEqual([
-      { targetDate: '2026-07-01', label: '요금 옵션', price: 1_290_000 },
+      { targetDate: '2026-07-01', label: '요금 옵션 1', price: 1_290_000 },
+    ]);
+  });
+
+  it('does not expose provenance notes as customer option labels', () => {
+    expect(getCustomerPriceOptionsForDate([
+      { target_date: '2026-07-01', adult_selling_price: 1_290_000, note: 'pdf_date_price_table' },
+    ], '2026-07-01')).toEqual([
+      { targetDate: '2026-07-01', label: '요금 옵션 1', price: 1_290_000 },
+    ]);
+  });
+
+  it('disambiguates duplicate same-date option labels after sorting by price', () => {
+    expect(getCustomerPriceOptionsForDate([
+      { target_date: '2026-07-01', adult_selling_price: 1_290_000, note: '동일 라벨' },
+      { target_date: '2026-07-01', adult_selling_price: 1_190_000, note: '동일 라벨' },
+    ], '2026-07-01')).toEqual([
+      { targetDate: '2026-07-01', label: '요금 옵션 1', price: 1_190_000 },
+      { targetDate: '2026-07-01', label: '요금 옵션 2', price: 1_290_000 },
     ]);
   });
 
