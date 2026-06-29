@@ -503,7 +503,7 @@ export function LandingClient({
       <LeadBottomSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        defaultDate={data.departureFullDate}
+        defaultDate={data.departureFullDate ?? undefined}
         priceDates={data.price_dates}
         hasSpecialTerms={hasSpecialTerms}
         termsSummary={termsSummary}

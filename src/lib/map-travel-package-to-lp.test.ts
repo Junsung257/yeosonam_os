@@ -186,4 +186,26 @@ describe('mapTravelPackageToLandingData', () => {
 
     expect(mapped.duration).toBe('3박 5일');
   });
+
+  it('keeps LP departure date unknown instead of falling back to today', () => {
+    const mapped = mapTravelPackageToLandingData({
+      id: 'pkg-no-date',
+      title: '출발일 미정 테스트',
+      destination: '다낭',
+      duration: 5,
+      price: 699000,
+      price_dates: [],
+      price_tiers: [],
+      inclusions: [],
+      excludes: [],
+      itinerary_data: {
+        days: [
+          { day: 1, regions: ['다낭'], meals: {}, schedule: [{ activity: '부산 출발', type: 'flight' }] },
+        ],
+      },
+    } as unknown as Record<string, unknown>, null);
+
+    expect(mapped.departureFullDate).toBeNull();
+    expect(mapped.departureDateLabel).toBe('미정');
+  });
 });

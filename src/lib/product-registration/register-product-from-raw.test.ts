@@ -136,6 +136,11 @@ describe('registerProductFromRaw', () => {
     });
 
     expect(result.evidence.rawTextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.evidence.sourceDocuments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceId: 'original_raw', role: 'original' }),
+      expect.objectContaining({ sourceId: 'parser_raw', role: 'parser' }),
+      expect.objectContaining({ sourceId: 'document_raw', role: 'document' }),
+    ]));
     expect(result.evidence.spans.length).toBeGreaterThan(0);
     expect(result.evidence.spans).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -145,6 +150,63 @@ describe('registerProductFromRaw', () => {
         sourceKind: 'line',
       }),
     ]));
+  });
+
+  it('stores inbound next-day arrival with arr_day_offset instead of extending itinerary day_pair', async () => {
+    const rawText = [
+      'Nha Trang next-day arrival 3N5D',
+      'BX781 19:20 Busan departure 22:20 Nha Trang arrival',
+      'BX782 23:20 Nha Trang departure 06:20+1 Busan arrival 익일도착',
+      'Departure 2026-08-30',
+      'Price 1,099,000 KRW',
+      'DAY 1 Busan to Nha Trang',
+      'DAY 2 Nha Trang city tour',
+      'DAY 3 free time',
+      'DAY 4 airport transfer and return flight',
+      'DAY 5 Busan arrival',
+      'Include airfare hotel meal',
+      'Exclude personal expenses',
+    ].join('\n');
+
+    const result = await registerProductFromRaw({
+      rawText,
+      documentRawText: rawText,
+      extractedData: {
+        title: 'Nha Trang next-day arrival 3N5D',
+        destination: 'Nha Trang',
+        duration: 5,
+        rawText,
+        price_tiers: [],
+      },
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: 'Busan departure' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: 'Nha Trang city tour' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: 'free time' }] },
+          { day: 4, schedule: [{ type: 'flight', activity: 'Nha Trang departure' }] },
+          { day: 5, schedule: [{ type: 'flight', activity: 'Busan arrival' }] },
+        ],
+        flight_segments: [
+          { leg: 'outbound', flight_no: 'BX781', dep_time: '19:20', arr_time: '22:20', arr_day_offset: 0, day_pair: [0, 0] },
+          { leg: 'inbound', flight_no: 'BX782', dep_time: '23:20', arr_time: '06:20', arr_day_offset: 1, day_pair: [3, 4] },
+        ],
+      } as never,
+      title: 'Nha Trang next-day arrival 3N5D',
+      activeAttractions: [],
+      destinationCode: 'CXR',
+      internalCode: 'PUS-ETC-CXR-05-TEST',
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+
+    const inbound = (result.itinerary.itineraryDataToSave as { flight_segments?: Array<Record<string, unknown>> } | null)
+      ?.flight_segments
+      ?.find(segment => segment.leg === 'inbound');
+
+    expect(inbound).toMatchObject({
+      arr_day_offset: 1,
+      day_pair: [3, 3],
+    });
   });
 
   it('keeps external gate failures inside the same standard deliverability decision', async () => {

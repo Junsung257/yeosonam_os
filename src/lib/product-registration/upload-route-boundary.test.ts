@@ -188,7 +188,10 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).not.toContain('createHash(');
     expect(route).not.toContain('ALLOWED_UPLOAD_EXTENSIONS');
     expect(intake).toContain('parseUploadSourceMetadata({');
-    expect(intake).toContain('analyzeUploadInputText(directRawText)');
+    expect(intake).toContain('analyzeUploadInputText(originalRawText ?? directRawText)');
+    expect(intake).toContain('originalRawText');
+    expect(intake).toContain('parserRawText');
+    expect(intake).toContain('analysisNormalizedText');
     expect(intake).toContain('const contentType = request.headers.get');
     expect(intake).toContain('await request.formData()');
     expect(intake).toContain('await request.json()');

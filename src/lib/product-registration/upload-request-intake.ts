@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import type { NextRequest } from 'next/server';
 
-import { analyzeUploadInputText, type UploadInputAnalysis } from '@/lib/product-registration-input-guard';
+import { analyzeUploadInputText, normalizePastedSupplierText, type UploadInputAnalysis } from '@/lib/product-registration-input-guard';
 import { parseUploadSourceMetadata, type UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
 
 const ALLOWED_UPLOAD_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp', '.hwpx', '.txt', '.md'];
@@ -12,6 +12,9 @@ export type UploadRequestIntakeResult = {
   fileHash: string;
   fileName: string;
   directRawText: string | null;
+  originalRawText: string | null;
+  parserRawText: string | null;
+  analysisNormalizedText: string | null;
   uploadSourceMetadata: UploadSourceMetadataResult;
   inputAnalysisForTrust: UploadInputAnalysis | null;
   archiveMode: boolean;
@@ -64,16 +67,20 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   const contentType = request.headers.get('content-type') || '';
   const urlParams = new URL(request.url).searchParams;
   let directRawText: string | null = null;
+  let originalRawText: string | null = null;
+  let parserRawText: string | null = null;
+  let analysisNormalizedText: string | null = null;
   let textSourceLabel: string | null = null;
   let uploadSourceMetadata: UploadSourceMetadataResult | null = null;
   let file: File | null = null;
 
   if (contentType.includes('application/json')) {
     const body = await request.json();
-    directRawText = typeof body.rawText === 'string' ? body.rawText : '';
+    originalRawText = typeof body.rawText === 'string' ? body.rawText : '';
+    directRawText = originalRawText;
     textSourceLabel = typeof body.sourceLabel === 'string' ? body.sourceLabel : null;
     uploadSourceMetadata = parseUploadSourceMetadata({
-      rawText: directRawText,
+      rawText: originalRawText,
       sourceLabel: textSourceLabel,
       explicitLandOperator: typeof body.landOperator === 'string' ? body.landOperator : undefined,
       explicitCommissionRate: typeof body.commissionRate !== 'undefined' ? body.commissionRate : undefined,
@@ -98,8 +105,10 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
       };
     }
 
-    directRawText = uploadSourceMetadata.parserRawText ?? directRawText;
-    if (!directRawText || directRawText.trim().length < 50) {
+    parserRawText = uploadSourceMetadata.parserRawText ?? originalRawText ?? '';
+    analysisNormalizedText = normalizePastedSupplierText(parserRawText).normalizedText;
+    directRawText = parserRawText;
+    if (!parserRawText || parserRawText.trim().length < 50) {
       return {
         ok: false,
         status: 400,
@@ -107,7 +116,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
       };
     }
 
-    console.log('[Upload API] text mode:', directRawText.length, 'chars', {
+    console.log('[Upload API] text mode:', parserRawText.length, 'chars', {
       landOperator: uploadSourceMetadata.landOperator,
       commissionRate: uploadSourceMetadata.commissionRate,
       source: uploadSourceMetadata.source,
@@ -147,7 +156,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   let buffer: Buffer;
   let inputAnalysisForTrust: UploadInputAnalysis | null = null;
   if (directRawText) {
-    const inputAnalysis = analyzeUploadInputText(directRawText);
+    const inputAnalysis = analyzeUploadInputText(originalRawText ?? directRawText);
     inputAnalysisForTrust = inputAnalysis;
     if (inputAnalysis.blocked) {
       return {
@@ -156,7 +165,8 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
         payload: buildUploadInputQualityError(inputAnalysis, 'text'),
       };
     }
-    buffer = Buffer.from(directRawText, 'utf-8');
+    if (!analysisNormalizedText) analysisNormalizedText = inputAnalysis.normalizedText;
+    buffer = Buffer.from(parserRawText ?? directRawText, 'utf-8');
   } else {
     const ext = '.' + (file!.name.split('.').pop()?.toLowerCase() ?? '');
     if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
@@ -182,6 +192,9 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     fileHash,
     fileName,
     directRawText,
+    originalRawText,
+    parserRawText,
+    analysisNormalizedText,
     uploadSourceMetadata,
     inputAnalysisForTrust,
     archiveMode,

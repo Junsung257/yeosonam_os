@@ -34,6 +34,7 @@ export type SourceBackedPriceDateRepair =
       expectedCount?: number;
       existingCount?: number;
       addedCount?: number;
+      excludedPriceCandidates?: ExcludedPriceCandidate[];
     }
   | {
       status: 'repaired';
@@ -43,6 +44,7 @@ export type SourceBackedPriceDateRepair =
       existingCount: number;
       addedCount: number;
       priceDates: PriceDate[];
+      excludedPriceCandidates?: ExcludedPriceCandidate[];
     };
 
 type SourcePriceIRRow = {
@@ -53,6 +55,14 @@ type SourcePriceIRRow = {
 };
 
 type DuplicatePricePreference = 'min' | 'max' | null;
+
+export type ExcludedPriceCandidate = {
+  date?: string | null;
+  amount: number;
+  currency: 'KRW';
+  reason: 'option_sized_price_candidate' | 'duplicate_variant_not_selected';
+  sourceStatus?: string | null;
+};
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OPTION_SIZED_PRICE_CEILING = 100_000;
@@ -158,11 +168,21 @@ export function selectSourceBackedPriceRows(
   pkg: SourcePriceRepairPackage,
   rows: SourcePriceIRRow[],
 ): SourcePriceIRRow[] {
+  return selectSourceBackedPriceRowsWithExclusions(pkg, rows).selected;
+}
+
+export function selectSourceBackedPriceRowsWithExclusions(
+  pkg: SourcePriceRepairPackage,
+  rows: SourcePriceIRRow[],
+): { selected: SourcePriceIRRow[]; excludedPriceCandidates: ExcludedPriceCandidate[] } {
   const preference = duplicatePricePreference(pkg);
   const numericRows = rows.filter(row => Number.isFinite(row.adult_price) && row.adult_price > 0);
   const hasPackageSizedPrice = numericRows.some(row => row.adult_price >= PACKAGE_PRICE_FLOOR);
+  const optionSizedRows = hasPackageSizedPrice
+    ? numericRows.filter(row => row.adult_price <= OPTION_SIZED_PRICE_CEILING)
+    : [];
   const candidateRows = hasPackageSizedPrice
-    ? numericRows.filter(row => row.adult_price >= OPTION_SIZED_PRICE_CEILING)
+    ? numericRows.filter(row => row.adult_price >= PACKAGE_PRICE_FLOOR)
     : numericRows;
   const byDate = new Map<string, SourcePriceIRRow[]>();
   for (const row of candidateRows) {
@@ -170,13 +190,34 @@ export function selectSourceBackedPriceRows(
     byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
   }
 
-  return [...byDate.values()]
+  const selected = [...byDate.values()]
     .map(candidates => {
       const sorted = [...candidates].sort((a, b) => a.adult_price - b.adult_price);
       if (preference === 'max') return sorted[sorted.length - 1];
       return sorted[0];
     })
     .sort((a, b) => a.date.localeCompare(b.date));
+  const selectedKeys = new Set(selected.map(row => `${row.date}:${row.adult_price}`));
+  const excludedPriceCandidates: ExcludedPriceCandidate[] = [
+    ...optionSizedRows.map(row => ({
+      date: row.date,
+      amount: row.adult_price,
+      currency: 'KRW' as const,
+      reason: 'option_sized_price_candidate' as const,
+      sourceStatus: row.status ?? null,
+    })),
+    ...candidateRows
+      .filter(row => isIsoDate(row.date) && !selectedKeys.has(`${row.date}:${row.adult_price}`))
+      .map(row => ({
+        date: row.date,
+        amount: row.adult_price,
+        currency: 'KRW' as const,
+        reason: 'duplicate_variant_not_selected' as const,
+        sourceStatus: row.status ?? null,
+      })),
+  ];
+
+  return { selected, excludedPriceCandidates };
 }
 
 function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number {
@@ -200,9 +241,10 @@ function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number 
 function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   source: string;
   rows: PriceDate[];
+  excludedPriceCandidates: ExcludedPriceCandidate[];
 } {
   const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
-  if (rawText.length < 50) return { source: 'none', rows: [] };
+  if (rawText.length < 50) return { source: 'none', rows: [], excludedPriceCandidates: [] };
 
   const departureDays = typeof pkg.departure_days === 'string'
     ? pkg.departure_days
@@ -214,10 +256,11 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
     departureDays,
     accommodations: pkg.accommodations ?? [],
   });
-  if (ir.source === 'none' || ir.rows.length === 0) return { source: ir.source, rows: [] };
+  if (ir.source === 'none' || ir.rows.length === 0) return { source: ir.source, rows: [], excludedPriceCandidates: [] };
 
   const byDate = new Map<string, PriceDate>();
-  for (const row of selectSourceBackedPriceRows(pkg, ir.rows)) {
+  const selection = selectSourceBackedPriceRowsWithExclusions(pkg, ir.rows);
+  for (const row of selection.selected) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
     const current = byDate.get(row.date);
     if (current && current.price <= row.adult_price) continue;
@@ -232,6 +275,7 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   return {
     source: ir.source,
     rows: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    excludedPriceCandidates: selection.excludedPriceCandidates,
   };
 }
 
@@ -248,6 +292,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
       expectedCount: 0,
       existingCount: existingRows.length,
       addedCount: 0,
+      excludedPriceCandidates: expected.excludedPriceCandidates,
     };
   }
 
@@ -263,6 +308,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
         expectedCount: expected.rows.length,
         existingCount: existingRows.length,
         addedCount: 0,
+        excludedPriceCandidates: expected.excludedPriceCandidates,
       };
     }
 
@@ -276,6 +322,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
         existingCount: existingRows.length,
         addedCount: expected.rows.filter(expectedRow => !existingRows.some(existingRow => existingRow.date === expectedRow.date)).length,
         priceDates: expected.rows,
+        excludedPriceCandidates: expected.excludedPriceCandidates,
       };
     }
     if (expectedRow.price !== price) {
@@ -287,6 +334,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
         existingCount: existingRows.length,
         addedCount: expected.rows.filter(expectedRow => !existingRows.some(existingRow => existingRow.date === expectedRow.date)).length,
         priceDates: expected.rows,
+        excludedPriceCandidates: expected.excludedPriceCandidates,
       };
     }
 
@@ -307,6 +355,7 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
       expectedCount: expected.rows.length,
       existingCount: existingRows.length,
       addedCount: 0,
+      excludedPriceCandidates: expected.excludedPriceCandidates,
     };
   }
 
@@ -321,5 +370,6 @@ export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage):
     existingCount: existingRows.length,
     addedCount: missing.length,
     priceDates,
+    excludedPriceCandidates: expected.excludedPriceCandidates,
   };
 }

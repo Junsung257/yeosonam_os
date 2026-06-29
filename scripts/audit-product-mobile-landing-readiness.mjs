@@ -783,11 +783,16 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
     const compactLine = String(line ?? '').replace(/\s+/g, '');
     return amountVariantsFor(price).some(amount => compactLine.includes(amount.replace(/\s+/g, '')));
   };
+  const hasAllowedProductPriceProvenance = priceRow => {
+    const note = String(priceRow?.note ?? '').trim();
+    if (!note) return false;
+    return /(?:source_|pdf_date_price_table|human_reader|document_raw|evidenceSpanId|evidenceHash|sourcePriceIrId)/i.test(note);
+  };
   const productPriceProvenanceCovers = row => productPriceRows.some(priceRow => {
     if (priceRow?.target_date !== row.date) return false;
     const storedAmount = Number(priceRow.adult_selling_price ?? priceRow.net_price);
     if (!Number.isFinite(storedAmount) || storedAmount !== Number(row.price)) return false;
-    return String(priceRow.note ?? '').trim().length > 0;
+    return hasAllowedProductPriceProvenance(priceRow);
   });
   const dateLabel = iso => {
     const [, , month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];

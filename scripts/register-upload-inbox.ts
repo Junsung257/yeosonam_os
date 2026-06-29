@@ -448,6 +448,7 @@ function buildIntake(input: {
     defaultCommissionRate: 9,
   });
   const parserRawText = metadata.parserRawText ?? input.rawText;
+  const inputAnalysisForTrust = analyzeUploadInputText(input.rawText);
   const buffer = Buffer.from(parserRawText, 'utf8');
   return {
     ok: true,
@@ -455,8 +456,11 @@ function buildIntake(input: {
     fileHash: createHash('sha256').update(buffer).digest('hex'),
     fileName: metadata.cleanSourceLabel || input.fileName,
     directRawText: parserRawText,
+    originalRawText: input.rawText,
+    parserRawText,
+    analysisNormalizedText: inputAnalysisForTrust.normalizedText,
     uploadSourceMetadata: metadata,
-    inputAnalysisForTrust: analyzeUploadInputText(parserRawText),
+    inputAnalysisForTrust,
     archiveMode: false,
     bulkMode: false,
     forceReprocess: input.options.forceReprocess,

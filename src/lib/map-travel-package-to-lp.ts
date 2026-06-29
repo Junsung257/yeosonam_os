@@ -6,6 +6,7 @@ import { renderPackage } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -40,7 +41,7 @@ export interface LandingProductData {
   heroImageB: string;
   scarcityRemaining: number | null;
   departureDateLabel: string;
-  departureFullDate: string;
+  departureFullDate: string | null;
   deadlineDays: number | null;
   customMessage: Record<ChannelSource, ChannelMessage>;
   priceFrom: number;
@@ -192,8 +193,8 @@ export function mapTravelPackageToLandingData(
 
   const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
   const sortedDates = [...effectiveDates].filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date));
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const upcoming = sortedDates.find(row => row.date >= todayStr) ?? sortedDates[0];
+  const todayStr = formatKstDate();
+  const upcoming = sortedDates.find(row => isUpcomingKstDate(row.date, todayStr)) ?? sortedDates[0] ?? null;
 
   const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
   const minPrice = priceNums.length > 0 ? Math.min(...priceNums) : (Number(pkg.price) || 0);
@@ -214,7 +215,7 @@ export function mapTravelPackageToLandingData(
   }
 
   const departureFullDate =
-    upcoming?.date && /^\d{4}-\d{2}-\d{2}/.test(upcoming.date) ? upcoming.date : todayStr;
+    upcoming?.date && /^\d{4}-\d{2}-\d{2}/.test(upcoming.date) ? upcoming.date : null;
   const departureDateLabel =
     upcoming?.date && upcoming.date.length >= 10
       ? `${parseInt(upcoming.date.slice(5, 7), 10)}/${parseInt(upcoming.date.slice(8, 10), 10)}`

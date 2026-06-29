@@ -96,6 +96,9 @@ export async function processUploadRegistrationProducts(input: {
   irCanaryPrimary: boolean;
   forceReprocess: boolean;
   inputAnalysisForTrust?: UploadInputAnalysis | null;
+  originalRawText?: string | null;
+  parserRawText?: string | null;
+  analysisNormalizedText?: string | null;
 }): Promise<ProcessUploadProductsResult> {
   const savedIds: string[] = [];
   const savedTitles: string[] = [];
@@ -166,6 +169,9 @@ export async function processUploadRegistrationProducts(input: {
       const autoGatePolicy = await getRegistrationPolicy();
       const registrationResult: StandardProductRegistrationObject = await registerProductFromRaw({
         rawText: rawForDeterm,
+        originalRawText: input.originalRawText ?? rawForDeterm,
+        parserRawText: input.parserRawText ?? input.parsedDocument.rawText ?? rawForDeterm,
+        analysisNormalizedText: input.analysisNormalizedText ?? input.inputAnalysisForTrust?.normalizedText ?? null,
         documentRawText: input.parsedDocument.rawText,
         extractedData: ed,
         itineraryData: (product.itineraryData ?? null) as ItineraryDataLike | null,

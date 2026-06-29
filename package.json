@@ -147,6 +147,7 @@
     "eval:concierge": "node scripts/eval-concierge.mjs",
     "eval:product-registration": "npx tsx scripts/eval-product-registration-corpus.ts",
     "eval:product-registration:ci": "npx tsx scripts/eval-product-registration-corpus.ts --strict",
+    "eval:product-registration:paste": "npx tsx scripts/report-golden-paste-e2e-corpus.ts",
     "audit:entity-review-candidates": "npx tsx scripts/auto-audit-entity-review-candidates.ts",
     "audit:entity-review-candidates:apply": "npx tsx scripts/auto-audit-entity-review-candidates.ts --apply",
     "audit:unmatched-queue": "npx tsx scripts/audit-unmatched-queue.ts",
