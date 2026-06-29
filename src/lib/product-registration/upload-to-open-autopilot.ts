@@ -21,7 +21,11 @@ import {
 } from '@/lib/product-registration-v3';
 import type { V3PipelineResult } from '@/lib/product-registration-v3';
 import { buildSourceBackedFieldRepair } from '@/lib/source-package-field-repair';
-import { buildSourceBackedPriceDateRepair, hasTransportPriceVariantCue } from '@/lib/source-price-date-repair';
+import {
+  buildSourceBackedPriceDateRepair,
+  hasTransportPriceVariantCue,
+  type SourceBackedPriceDateRepair,
+} from '@/lib/source-price-date-repair';
 import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
 import { runUploadVerify, evaluateVerifyChecks } from '@/lib/upload-verify';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
@@ -417,6 +421,33 @@ function hasFailingDeterministicPriceCheck(pkg: UploadToOpenAutopilotPackage): b
   return result.checks.some(check => check.id === 'C12' && check.status === 'fail');
 }
 
+const AUTO_APPLY_SOURCE_PRICE_REPAIR_SOURCES = new Set<string>([
+  'compact_grade_period_table',
+  'period_dow_matrix',
+  'hotel_column_matrix',
+  'spot_weekday_table',
+  'labeled_date_list_price',
+  'pdf_date_price_table',
+  'cruise_cabin_price_table',
+  'product_price_vertical_date_table',
+  'grade_pattern_date_matrix',
+  'weekday_period_table',
+  'month_dow_table',
+  'month_duration_price_table',
+  'vertical_grade_table',
+]);
+
+export function shouldAutoApplySourceBackedPriceRepair(
+  repair: SourceBackedPriceDateRepair,
+  deterministicPriceCheckFailed: boolean,
+): boolean {
+  return repair.status === 'repaired'
+    && AUTO_APPLY_SOURCE_PRICE_REPAIR_SOURCES.has(repair.source)
+    && validPriceDates(repair.priceDates).length > 0
+    && (repair.priceDates.length >= repair.existingCount || repair.existingCount <= 1)
+    && !deterministicPriceCheckFailed;
+}
+
 async function syncSourceBackedPriceStores(input: {
   supabase: SupabaseClient;
   pkg: UploadToOpenAutopilotPackage;
@@ -613,7 +644,12 @@ async function applySourceBackedRepairs(
   const priceRepair = buildSourceBackedPriceDateRepair(workingPkg);
   if (priceRepair.status === 'repaired') {
     const repairedPkg = { ...workingPkg, price_dates: priceRepair.priceDates };
-    if (hasTransportPriceVariantCue(workingPkg) && !hasFailingDeterministicPriceCheck(repairedPkg)) {
+    const deterministicPriceCheckFailed = hasFailingDeterministicPriceCheck(repairedPkg);
+    const autoApplySourceBackedRepair = shouldAutoApplySourceBackedPriceRepair(
+      priceRepair,
+      deterministicPriceCheckFailed,
+    );
+    if ((hasTransportPriceVariantCue(workingPkg) || autoApplySourceBackedRepair) && !deterministicPriceCheckFailed) {
       await syncSourceBackedPriceStores({
         supabase,
         pkg,
