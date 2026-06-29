@@ -4,7 +4,9 @@ import type { AttractionData } from '@/lib/attraction-matcher';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
+import { isCustomerOptionalTourCandidate } from '@/lib/customer-option-classifier';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { normalizeOptionalTours } from '@/lib/package-acl';
 import type { PriceDate } from '@/lib/price-dates';
 import {
   evaluateV3CustomerNoticeGate,
@@ -19,7 +21,8 @@ import {
   persistProductRegistrationDraftV3,
   runProductRegistrationV3,
 } from '@/lib/product-registration-v3';
-import type { V3PipelineResult } from '@/lib/product-registration-v3';
+import type { V3Evidence, V3PipelineResult } from '@/lib/product-registration-v3';
+import type { V3LedgerVariant } from '@/lib/product-registration-v3/types';
 import { buildSourceBackedFieldRepair } from '@/lib/source-package-field-repair';
 import {
   buildSourceBackedPriceDateRepair,
@@ -84,6 +87,7 @@ export type UploadToOpenAutopilotPackage = {
   surcharges: unknown;
   notices_parsed?: unknown;
   customer_notes?: unknown;
+  min_participants?: number | null;
 };
 
 export type UploadToOpenAutopilotOptions = {
@@ -154,6 +158,7 @@ type RestorableV3DraftRow = LatestV3DraftForPackage & {
   evidence_index?: unknown;
   match_summary?: unknown;
 };
+type V3VariantDay = V3LedgerVariant['days'][number];
 
 async function loadActiveAttractionsForV3(supabase: SupabaseClient): Promise<AttractionData[]> {
   const rows: AttractionData[] = [];
@@ -203,7 +208,223 @@ function collapseV3ToCurrentPackageVariant(
   };
 }
 
+function packageFieldEvidence(field: string, value: unknown): V3Evidence {
+  const quote = `travel_packages.${field}: ${String(value ?? '').slice(0, 220)}`;
+  return {
+    line_start: 0,
+    line_end: 0,
+    char_start: 0,
+    char_end: quote.length,
+    quote,
+  };
+}
+
+function textList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => typeof item === 'string' ? item.trim() : '')
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/\r?\n|[;；]/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function firstText(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      const nested = firstText(record.raw_text, record.name, record.note, record.value, record.title);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function mealRecord(value: unknown, note?: unknown): Record<string, unknown> {
+  const text = firstText(value, note);
+  if (!text && value === true) return { raw_text: 'included' };
+  return text ? { raw_text: text } : {};
+}
+
+function packageDaysForV3(itineraryData: unknown): V3LedgerVariant['days'] {
+  const root = objectRecord(itineraryData);
+  const rawDays = Array.isArray(root.days)
+    ? root.days
+    : Array.isArray(itineraryData)
+      ? itineraryData
+      : [];
+  return rawDays
+    .map((rawDay, index) => {
+      const day = objectRecord(rawDay);
+      const dayNumber = Number(day.day ?? day.day_number ?? day.dayIndex ?? index + 1);
+      if (!Number.isFinite(dayNumber) || dayNumber <= 0) return null;
+      const meals = objectRecord(day.meals);
+      const hotelText = firstText(day.hotel, day.accommodation, day.hotel_name, day.hotelName);
+      const dayPayload: V3VariantDay = {
+        day: dayNumber,
+        route: Array.isArray(day.regions)
+          ? day.regions.map(String).filter(Boolean)
+          : Array.isArray(day.route)
+            ? day.route.map(String).filter(Boolean)
+            : [],
+        events: [],
+        meals: {
+          breakfast: mealRecord(meals.breakfast ?? day.breakfast, meals.breakfast_note ?? day.breakfast_note),
+          lunch: mealRecord(meals.lunch ?? day.lunch, meals.lunch_note ?? day.lunch_note),
+          dinner: mealRecord(meals.dinner ?? day.dinner, meals.dinner_note ?? day.dinner_note),
+        },
+        hotel: hotelText ? { raw_text: hotelText } : {},
+      };
+      return dayPayload;
+    })
+    .filter((day): day is V3VariantDay => Boolean(day));
+}
+
+function hasMealEvidence(variant: V3LedgerVariant): boolean {
+  return variant.days.some(day => Object.values(day.meals).some(value => Object.keys(value).length > 0));
+}
+
+function hasHotelEvidence(variant: V3LedgerVariant): boolean {
+  return variant.days.some(day => Object.keys(day.hotel).length > 0);
+}
+
+function mergePackageBackedDays(
+  variant: V3LedgerVariant,
+  packageDays: V3LedgerVariant['days'],
+): boolean {
+  if (packageDays.length === 0) return false;
+  if (variant.days.length === 0) {
+    variant.days = packageDays;
+    return true;
+  }
+
+  let changed = false;
+  const byDay = new Map(packageDays.map(day => [day.day, day]));
+  for (const day of variant.days) {
+    const sourceDay = byDay.get(day.day);
+    if (!sourceDay) continue;
+    for (const meal of ['breakfast', 'lunch', 'dinner'] as const) {
+      if (Object.keys(day.meals[meal]).length === 0 && Object.keys(sourceDay.meals[meal]).length > 0) {
+        day.meals[meal] = sourceDay.meals[meal];
+        changed = true;
+      }
+    }
+    if (Object.keys(day.hotel).length === 0 && Object.keys(sourceDay.hotel).length > 0) {
+      day.hotel = sourceDay.hotel;
+      changed = true;
+    }
+    if (day.route.length === 0 && sourceDay.route.length > 0) {
+      day.route = sourceDay.route;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+export function patchV3WithPackageBackedEvidence(
+  v3: V3PipelineResult,
+  pkg: Pick<UploadToOpenAutopilotPackage, 'min_participants' | 'inclusions' | 'excludes' | 'itinerary_data'>,
+): boolean {
+  const packageDays = packageDaysForV3(pkg.itinerary_data);
+  const inclusions = textList(pkg.inclusions);
+  const exclusions = textList(pkg.excludes);
+  const minParticipants = Number(pkg.min_participants);
+  let changed = false;
+
+  for (const variant of v3.ledger.variants) {
+    if (!variant.minimum_departure && Number.isFinite(minParticipants) && minParticipants > 0) {
+      variant.minimum_departure = {
+        value: minParticipants,
+        evidence: packageFieldEvidence('min_participants', minParticipants),
+      };
+      changed = true;
+    }
+
+    if (variant.inclusions.length === 0 && inclusions.length > 0) {
+      variant.inclusions = inclusions.map(value => ({
+        value,
+        evidence: packageFieldEvidence('inclusions', value),
+      }));
+      changed = true;
+    }
+
+    if (variant.exclusions.length === 0 && exclusions.length > 0) {
+      variant.exclusions = exclusions.map(value => ({
+        value,
+        evidence: packageFieldEvidence('excludes', value),
+      }));
+      changed = true;
+    }
+
+    changed = mergePackageBackedDays(variant, packageDays) || changed;
+    variant.evidence_coverage = {
+      ...variant.evidence_coverage,
+      itinerary: variant.days.length > 0,
+      meals: hasMealEvidence(variant),
+      hotel: hasHotelEvidence(variant),
+      inclusions: variant.inclusions.length > 0,
+      exclusions: variant.exclusions.length > 0,
+      minimum_departure: Boolean(variant.minimum_departure),
+    };
+  }
+
+  if (changed) {
+    v3.gate_result = evaluateProductRegistrationV3Gate(v3.structure_plan, v3.ledger, v3.match_summary);
+  }
+  return changed;
+}
+
+export function sanitizeCustomerOptionalTours(raw: unknown): unknown[] {
+  return normalizeOptionalTours(raw)
+    .filter(tour => isCustomerOptionalTourCandidate([
+      tour.name,
+      tour.price,
+      tour.note,
+    ].filter(Boolean).join(' ')));
+}
+
 const DEFAULT_STATUSES = ['pending_review', 'approved'];
+const UPLOAD_TO_OPEN_PACKAGE_SELECT = [
+  'id',
+  'title',
+  'internal_code',
+  'destination',
+  'status',
+  'audit_status',
+  'audit_report',
+  'updated_at',
+  'raw_text',
+  'airline',
+  'duration',
+  'nights',
+  'price',
+  'display_title',
+  'hero_tagline',
+  'trip_style',
+  'itinerary_data',
+  'accommodations',
+  'inclusions',
+  'excludes',
+  'optional_tours',
+  'price_tiers',
+  'price_dates',
+  'price_list',
+  'departure_days',
+  'surcharges',
+  'notices_parsed',
+  'customer_notes',
+  'min_participants',
+].join(',');
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -550,10 +771,10 @@ async function applyScorecardDrivenRepairs(input: {
       updated_at: updatedAt,
     })
     .eq('id', input.pkg.id)
-    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select(UPLOAD_TO_OPEN_PACKAGE_SELECT)
     .single();
   if (error) throw error;
-  return { pkg: data as UploadToOpenAutopilotPackage, repairs, blockedReasons };
+  return { pkg: data as unknown as UploadToOpenAutopilotPackage, repairs, blockedReasons };
 }
 
 async function markAutopilotStage(
@@ -593,7 +814,7 @@ async function loadPackages(
   const ids = uniqueIds(options.packageIds);
   let query = supabase
     .from('travel_packages')
-    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select(UPLOAD_TO_OPEN_PACKAGE_SELECT)
     .order('updated_at', { ascending: false })
     .limit(Math.max(1, Math.min(50, options.limit ?? 10)));
 
@@ -607,7 +828,7 @@ async function loadPackages(
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as UploadToOpenAutopilotPackage[];
+  return (data ?? []) as unknown as UploadToOpenAutopilotPackage[];
 }
 
 async function applySourceBackedRepairs(
@@ -699,6 +920,14 @@ async function applySourceBackedRepairs(
     repairs.push(`terms:${termsRepair.reason}`);
   }
 
+  const sanitizedOptionalTours = sanitizeCustomerOptionalTours(workingPkg.optional_tours);
+  const currentOptionalTours = Array.isArray(workingPkg.optional_tours) ? workingPkg.optional_tours : [];
+  if (JSON.stringify(sanitizedOptionalTours) !== JSON.stringify(normalizeOptionalTours(currentOptionalTours))) {
+    updates.optional_tours = sanitizedOptionalTours;
+    workingPkg = { ...workingPkg, optional_tours: sanitizedOptionalTours };
+    repairs.push('optional_tours:non_customer_noise_removed');
+  }
+
   if (Object.keys(updates).length === 0) {
     return { pkg, repairs, blockedReasons };
   }
@@ -727,10 +956,10 @@ async function applySourceBackedRepairs(
       updated_at: updatedAt,
     })
     .eq('id', pkg.id)
-    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select(UPLOAD_TO_OPEN_PACKAGE_SELECT)
     .single();
   if (error) throw error;
-  return { pkg: data as UploadToOpenAutopilotPackage, repairs, blockedReasons };
+  return { pkg: data as unknown as UploadToOpenAutopilotPackage, repairs, blockedReasons };
 }
 
 async function loadDeliveryContext(supabase: SupabaseClient, packageId: string) {
@@ -761,11 +990,11 @@ async function loadDeliveryContext(supabase: SupabaseClient, packageId: string) 
 async function reloadPackage(supabase: SupabaseClient, packageId: string): Promise<UploadToOpenAutopilotPackage> {
   const { data, error } = await supabase
     .from('travel_packages')
-    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select(UPLOAD_TO_OPEN_PACKAGE_SELECT)
     .eq('id', packageId)
     .single();
   if (error) throw error;
-  return data as UploadToOpenAutopilotPackage;
+  return data as unknown as UploadToOpenAutopilotPackage;
 }
 
 async function rebuildV3DraftFromCurrentPackage(input: {
@@ -792,6 +1021,7 @@ async function rebuildV3DraftFromCurrentPackage(input: {
     sourceType: 'upload-to-open-autopilot',
   });
   const v3 = collapseV3ToCurrentPackageVariant(rawV3, attractions);
+  const packageBackedPatched = patchV3WithPackageBackedEvidence(v3, input.pkg);
   const persisted = await persistProductRegistrationDraftV3(input.supabase, {
     packageId: input.pkg.id,
     packageTitle: input.pkg.title,
@@ -803,7 +1033,7 @@ async function rebuildV3DraftFromCurrentPackage(input: {
     result: v3,
   });
   if (persisted.error) return [`v3_rebuild_failed:${persisted.error}`];
-  return [`v3_rebuilt:${v3.gate_result.status}:queued=${persisted.queuedUnmatched}`];
+  return [`v3_rebuilt:${v3.gate_result.status}:queued=${persisted.queuedUnmatched}${packageBackedPatched ? ':package_backed_evidence' : ''}`];
 }
 
 async function restoreLatestReadyV3DraftAsCurrent(

@@ -27,6 +27,15 @@ export function evaluateProductRegistrationV3Gate(
   );
 
   for (const variant of ledger.variants) {
+    const hasMealEvidence = variant.days.some(day => Object.values(day.meals).some(value => Object.keys(value).length > 0))
+      || variant.standard_notices.some(notice => notice.category === 'meal_plan' && notice.review_status !== 'rejected')
+      || (variant.structured_facts ?? []).some(fact => fact.category === 'meal_plan' && fact.review_status !== 'rejected');
+    const hasHotelEvidence = variant.days.some(day => Object.keys(day.hotel).length > 0)
+      || variant.standard_notices.some(notice => notice.category === 'hotel_notice' && notice.review_status !== 'rejected')
+      || (variant.structured_facts ?? []).some(fact =>
+        (fact.category === 'hotel_grade' || fact.category === 'room_policy')
+        && fact.review_status !== 'rejected'
+      );
     check(checks, `${variant.variant_key}.price`, variant.price_calendar.length > 0, 'info', 'variant has price evidence; final price is owned by ProductRegistrationResult pricing');
     check(checks, `${variant.variant_key}.flight`, variant.flight_segments.length > 0, 'critical', 'variant has flight evidence');
     check(
@@ -46,16 +55,16 @@ export function evaluateProductRegistrationV3Gate(
     check(
       checks,
       `${variant.variant_key}.meals_or_notice`,
-      variant.days.some(day => Object.values(day.meals).some(value => Object.keys(value).length > 0)),
+      hasMealEvidence,
       'medium',
-      'meal evidence exists',
+      'meal evidence exists or explicit meal notice is present',
     );
     check(
       checks,
       `${variant.variant_key}.hotel_or_notice`,
-      variant.days.some(day => Object.keys(day.hotel).length > 0),
+      hasHotelEvidence,
       'medium',
-      'hotel evidence exists',
+      'hotel evidence exists or explicit hotel notice is present',
     );
     check(
       checks,
