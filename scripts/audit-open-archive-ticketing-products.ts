@@ -11,6 +11,7 @@ import { renderPackage, type RenderPackageInput } from '@/lib/render-contract';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
 import { resolveUploadDestinationAndCodes } from '@/lib/product-registration/destination-resolution';
+import { extractSourceTicketingDeadline } from '@/lib/product-registration/ticketing-deadline';
 import { blockingCustomerVisibleTextIssues } from '@/lib/customer-visible-text-audit';
 
 type Options = {
@@ -151,6 +152,14 @@ function priceDateRows(pkg: PackageRow): Array<{ date: string; price: number }> 
       price: Number(row.price),
     }))
     .filter(row => row.date && Number.isFinite(row.price) && row.price > 0);
+}
+
+function resolveTicketingDeadline(pkg: PackageRow, today: string): string | null {
+  return parseIsoDate(pkg.ticketing_deadline)
+    ?? extractSourceTicketingDeadline(pkg.raw_text, {
+      priceDates: pkg.price_dates,
+      today,
+    });
 }
 
 async function loadProductPriceRowsByCode(
@@ -434,7 +443,7 @@ async function main(): Promise<void> {
   for (const pkg of packageRows) {
     const draft = latestDraftByPackage.get(pkg.id) ?? null;
     const productPrices = priceRowsByCode.get(pkg.internal_code ?? '') ?? [];
-    const ticketingDeadline = parseIsoDate(pkg.ticketing_deadline);
+    const ticketingDeadline = resolveTicketingDeadline(pkg, options.today);
     const expiredTicketing = Boolean(ticketingDeadline && ticketingDeadline < options.today);
     const futureTicketing = Boolean(ticketingDeadline && ticketingDeadline >= options.today);
     const latestDate = latestDeparture(pkg);
@@ -563,6 +572,7 @@ async function main(): Promise<void> {
       };
       const statusPatch: Record<string, unknown> = {
         status: 'archived',
+        ticketing_deadline: row.ticketingDeadline,
         audit_checked_at: now,
         audit_report: auditReport,
         updated_at: now,

@@ -215,6 +215,27 @@ describe('extractPriceIR Korean vertical supplier price tables', () => {
     expect(result.rows.some(row => row.date === '2026-07-04')).toBe(false);
     expect(result.rows.some(row => row.adult_price === 1139000)).toBe(false);
   });
+
+  it('recovers same-line Korean departure dates with selling price', () => {
+    const rawText = `
+서안(병마용.화청지), 화산 3박5일 [수出]
+2026년 04월~10월 (수요일)
+7월 1,8,15,22 (수)출발 판매가 ₩899,000/인 (7/1까지발권)
+기타개인비용, 유류할증료 변동 분, 싱글차지($90/전일정)
+제1일
+BX341 21:55 01:25
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toEqual([
+      expect.objectContaining({ date: '2026-07-01', adult_price: 899000 }),
+      expect.objectContaining({ date: '2026-07-08', adult_price: 899000 }),
+      expect.objectContaining({ date: '2026-07-15', adult_price: 899000 }),
+      expect.objectContaining({ date: '2026-07-22', adult_price: 899000 }),
+    ]);
+  });
 });
 
 const HOTEL_COLUMN_MATRIX = `
