@@ -20,7 +20,7 @@ interface GroupRfq {
   budget_per_person: number;
   hotel_grade: string;
   meal_plan: string;
-  transport: string;
+  transportation: string;
   special_requests: string;
   customer_name?: string;
   bid_deadline: string | null;
@@ -307,7 +307,7 @@ export default function AdminRfqDetailPage() {
                 ['예산 (1인)', `₩${fmt(rfq.budget_per_person)}`],
                 ['호텔등급', rfq.hotel_grade || '—'],
                 ['식사', rfq.meal_plan || '—'],
-                ['교통', rfq.transport || '—'],
+                ['교통', rfq.transportation || '—'],
                 ['입찰 마감', fmtDate(rfq.bid_deadline)],
                 ['등록일', fmtDate(rfq.created_at)],
               ].map(([label, value]) => (

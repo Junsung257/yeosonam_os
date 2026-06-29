@@ -29,9 +29,9 @@ export interface SharedRfqData {
   child_count: number;
   hotel_grade?: string;
   custom_requirements?: { group_type?: string; special_notes?: string };
-  proposal_a?: { title: string; summary: string; price: number; ai_score?: number; tenant_name?: string };
-  proposal_b?: { title: string; summary: string; price: number; ai_score?: number; tenant_name?: string };
-  proposal_c?: { title: string; summary: string; price: number; ai_score?: number; tenant_name?: string };
+  proposal_a?: { id: string; title: string; summary: string; price: number; ai_score?: number; tenant_name?: string };
+  proposal_b?: { id: string; title: string; summary: string; price: number; ai_score?: number; tenant_name?: string };
+  proposal_c?: { id: string; title: string; summary: string; price: number; ai_score?: number; tenant_name?: string };
   selected_proposal_id?: string;
   status: string;
   created_at: string;
@@ -60,11 +60,14 @@ export async function getSharedRfq(token: string): Promise<SharedRfqData | null>
 
   const d = rawData as unknown as { id: string };
 
-  // proposals 조회 (selected_proposal_id만 살아있는 것)
   const { data: proposals } = await sb
     .from('rfq_proposals')
-    .select('id, title, summary, price, ai_review, tenants!inner(name)')
-    .eq('rfq_id', d.id);
+    .select('id, proposal_title, itinerary_summary, total_selling_price, ai_review, rank, status, tenants!inner(name)')
+    .eq('rfq_id', d.id)
+    .in('status', ['submitted', 'approved', 'selected'])
+    .order('rank', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+    .limit(3);
 
   const result: Record<string, unknown> = { ...d };
 
@@ -73,11 +76,21 @@ export async function getSharedRfq(token: string): Promise<SharedRfqData | null>
     const resultAny = result;
     proposals.forEach((p, i) => {
       if (i < 3) {
-        const pp = p as unknown as { id: string; title: string; summary: string; price: number; ai_review?: { score?: number }; tenants?: { name: string } };
+        const pp = p as unknown as {
+          id: string;
+          proposal_title: string | null;
+          itinerary_summary: string | null;
+          total_selling_price: number;
+          ai_review?: { score?: number };
+          tenants?: { name: string };
+        };
         const score = pp.ai_review?.score ?? null;
         const tenantName = pp.tenants?.name ?? null;
         resultAny[labels[i]] = {
-          ...pp,
+          id: pp.id,
+          title: pp.proposal_title ?? '맞춤 제안',
+          summary: pp.itinerary_summary ?? '일정 요약을 준비 중입니다.',
+          price: pp.total_selling_price,
           ai_score: score,
           tenant_name: tenantName,
         };

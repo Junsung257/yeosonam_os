@@ -309,8 +309,11 @@ export default function GroupInquiryPage() {
       })),
       custom_requirements: {
         source: 'group_inquiry_ai',
+        segment: 'group_custom_travel',
         intent: selectedIntent?.intent ?? null,
         party_type: selectedIntent?.partyType ?? null,
+        organization_type: selectedIntent?.partyType ?? null,
+        approval_view_required: true,
         budget_range_label: getSummaryValue(extractedSummary, 'budget'),
         privacy_consent: privacyConsent,
       },
@@ -325,12 +328,12 @@ export default function GroupInquiryPage() {
 
       if (!res.ok) throw new Error('RFQ registration failed');
 
-      const data = await res.json() as { id?: string; rfq?: { id?: string } };
+      const data = await res.json() as { id?: string; rfq?: { id?: string }; share_token?: string | null; share_url?: string | null };
       const rfqId = data.id ?? data.rfq?.id;
       if (!rfqId) throw new Error('RFQ id missing');
 
       trackEngagement({
-        event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+        event_type: ANALYTICS_EVENTS.rfqSubmitted,
         page_url: window.location.pathname,
         intent: selectedIntent?.intent ?? null,
         budget: getSummaryValue(extractedSummary, 'budget'),
@@ -339,10 +342,14 @@ export default function GroupInquiryPage() {
         metadata: {
           source: 'group_inquiry_rfq_submit',
           rfq_id: rfqId,
+          share_token: data.share_token ?? null,
         },
       });
 
-      router.push(`/rfq/${rfqId}`);
+      const nextPath = data.share_url
+        ? new URL(data.share_url, window.location.origin).pathname
+        : `/rfq/${rfqId}`;
+      router.push(nextPath);
     } catch {
       setStatusMessage('');
       setContactErrors({
