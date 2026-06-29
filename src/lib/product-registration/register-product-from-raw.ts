@@ -11,6 +11,7 @@ import { detectFerry } from '@/lib/parser/deterministic/ferry-classifier';
 import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repair';
 import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
 import { runProductRegistrationV3, type V3PipelineResult } from '@/lib/product-registration-v3';
+import { extractExcludedPriceCandidatesFromRawText } from '@/lib/source-price-date-repair';
 import {
   buildSupplierRawDeterministicItinerary,
   extractSupplierRawDeterministicFacts,
@@ -138,6 +139,7 @@ function pushEvidenceDocument(
 function buildEvidenceSourceDocuments(input: {
   originalRawText: string;
   parserRawText: string;
+  sectionRawText: string;
   documentRawText?: string | null;
   analysisNormalizedText?: string | null;
 }): SourceEvidenceDocument[] {
@@ -145,6 +147,7 @@ function buildEvidenceSourceDocuments(input: {
   const seen = new Set<string>();
   const originalRawText = input.originalRawText ?? '';
   const parserRawText = input.parserRawText ?? originalRawText;
+  const sectionRawText = input.sectionRawText ?? parserRawText;
   const documentRawText = input.documentRawText?.trim() ? input.documentRawText : null;
   const analysisNormalizedText = input.analysisNormalizedText?.trim() ? input.analysisNormalizedText : null;
 
@@ -159,6 +162,12 @@ function buildEvidenceSourceDocuments(input: {
     rawTextHash: hashRawText(parserRawText),
     rawTextLength: parserRawText.length,
     role: 'parser',
+  });
+  pushEvidenceDocument(documents, seen, {
+    sourceId: 'section_raw',
+    rawTextHash: hashRawText(sectionRawText),
+    rawTextLength: sectionRawText.length,
+    role: 'section',
   });
   if (documentRawText) {
     pushEvidenceDocument(documents, seen, {
@@ -790,7 +799,11 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   const priceEvidenceSourceId = priceRecovery.source.startsWith('document_raw:')
     && documentRawText
     ? 'document_raw'
-    : 'parser_raw';
+    : 'section_raw';
+  const excludedPriceCandidates = extractExcludedPriceCandidatesFromRawText([
+    rawText,
+    documentRawText,
+  ].filter(Boolean).join('\n'));
   const humanReader = readSupplierDocumentLikeHuman({
     rawText: priceEvidenceRawText,
     title: registrationTitle ?? ed.title,
@@ -996,6 +1009,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
       minPrice: priceRecovery.minPrice,
       selectedPriceBasis: priceRecovery.source,
       optionalPriceCandidatesExcluded: !priceRecovery.failures.some(failure => failure.includes('optional-tour')),
+      excludedPriceCandidates,
       failures: priceRecovery.failures,
     },
     itinerary,
@@ -1014,6 +1028,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
       sourceDocuments: buildEvidenceSourceDocuments({
         originalRawText,
         parserRawText,
+        sectionRawText: rawText,
         documentRawText: input.documentRawText,
         analysisNormalizedText,
       }),

@@ -14,6 +14,7 @@ export type UploadRequestIntakeResult = {
   directRawText: string | null;
   originalRawText: string | null;
   parserRawText: string | null;
+  documentRawText: string | null;
   analysisNormalizedText: string | null;
   uploadSourceMetadata: UploadSourceMetadataResult;
   inputAnalysisForTrust: UploadInputAnalysis | null;
@@ -69,6 +70,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
   let directRawText: string | null = null;
   let originalRawText: string | null = null;
   let parserRawText: string | null = null;
+  const documentRawText: string | null = null;
   let analysisNormalizedText: string | null = null;
   let textSourceLabel: string | null = null;
   let uploadSourceMetadata: UploadSourceMetadataResult | null = null;
@@ -194,6 +196,7 @@ export async function prepareUploadRequestIntake(request: NextRequest): Promise<
     directRawText,
     originalRawText,
     parserRawText,
+    documentRawText,
     analysisNormalizedText,
     uploadSourceMetadata,
     inputAnalysisForTrust,

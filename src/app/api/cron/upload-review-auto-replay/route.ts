@@ -130,6 +130,7 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
       directRawText: rawText,
       originalRawText: rawText,
       parserRawText: metadata.parserRawText ?? rawText,
+      documentRawText: rawText,
       analysisNormalizedText: inputAnalysisForTrust.normalizedText,
       uploadSourceMetadata: metadata,
       inputAnalysisForTrust,

@@ -36,6 +36,7 @@ export async function runUploadRegistrationPipeline(input: {
     directRawText,
     originalRawText,
     parserRawText,
+    documentRawText,
     analysisNormalizedText,
     uploadSourceMetadata,
     inputAnalysisForTrust,
@@ -204,6 +205,7 @@ export async function runUploadRegistrationPipeline(input: {
     inputAnalysisForTrust,
     originalRawText,
     parserRawText,
+    documentRawText,
     analysisNormalizedText,
   });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildSourceBackedPriceDateRepair,
+  extractExcludedPriceCandidatesFromRawText,
   selectSourceBackedPriceRows,
   selectSourceBackedPriceRowsWithExclusions,
 } from './source-price-date-repair';
@@ -262,5 +263,18 @@ describe('buildSourceBackedPriceDateRepair', () => {
       expect.objectContaining({ date: '2026-09-01', amount: 30000, reason: 'option_sized_price_candidate' }),
       expect.objectContaining({ date: '2026-09-02', amount: 50000, reason: 'option_sized_price_candidate' }),
     ]);
+  });
+
+  it('preserves USD optional tour prices as excluded price candidates', () => {
+    const result = extractExcludedPriceCandidatesFromRawText([
+      'Optional tour: massage USD30 per person',
+      'Optional tour: river cruise $50 per person',
+      'Package adult price KRW 699,000',
+    ].join('\n'));
+
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({ amount: 30, currency: 'USD', reason: 'optional_tour_candidate' }),
+      expect.objectContaining({ amount: 50, currency: 'USD', reason: 'optional_tour_candidate' }),
+    ]));
   });
 });

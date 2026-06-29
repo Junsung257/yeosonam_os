@@ -14,10 +14,23 @@ export function formatKstDate(date: Date = new Date()): string {
 export function compareKstDate(a: string | null | undefined, b: string | null | undefined): number {
   const left = String(a ?? '');
   const right = String(b ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(left) || !/^\d{4}-\d{2}-\d{2}$/.test(right)) return 0;
+  if (!isValidIsoDateKst(left) || !isValidIsoDateKst(right)) return 0;
   return left.localeCompare(right);
 }
 
+export function isValidIsoDateKst(date: string | null | undefined): date is string {
+  const value = String(date ?? '');
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  return utc.getUTCFullYear() === year
+    && utc.getUTCMonth() === month - 1
+    && utc.getUTCDate() === day;
+}
+
 export function isUpcomingKstDate(date: string | null | undefined, today: string = formatKstDate()): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(date ?? '')) && compareKstDate(date, today) >= 0;
+  return isValidIsoDateKst(date) && isValidIsoDateKst(today) && compareKstDate(date, today) >= 0;
 }

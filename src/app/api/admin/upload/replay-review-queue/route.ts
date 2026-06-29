@@ -64,7 +64,7 @@ const postHandler = async (request: NextRequest) => {
 
   const { data: queueRow, error: queueError } = await supabaseAdmin
     .from('upload_review_queue')
-    .select('id, raw_text_chunk, source_filename, product_title, file_hash, normalized_content_hash')
+    .select('id, raw_text_chunk, source_filename, product_title, file_hash, normalized_content_hash, parsed_draft_json')
     .eq('id', queueId)
     .maybeSingle();
 
@@ -94,16 +94,39 @@ const postHandler = async (request: NextRequest) => {
     ?? stringValue((queueRow as { source_filename?: unknown }).source_filename)
     ?? stringValue((queueRow as { product_title?: unknown }).product_title)
     ?? 'review-queue-replay.txt';
+  const parsedDraftJson = (queueRow as { parsed_draft_json?: unknown }).parsed_draft_json;
+  const sourceTextEvidence = parsedDraftJson && typeof parsedDraftJson === 'object' && !Array.isArray(parsedDraftJson)
+    ? (parsedDraftJson as { _source_text_evidence_v2?: unknown })._source_text_evidence_v2
+    : null;
+  const evidenceDocuments = sourceTextEvidence && typeof sourceTextEvidence === 'object' && !Array.isArray(sourceTextEvidence)
+    ? (sourceTextEvidence as { documents?: unknown }).documents
+    : null;
+  const evidenceExcerptBySourceId = new Map<string, string>();
+  if (Array.isArray(evidenceDocuments)) {
+    for (const document of evidenceDocuments) {
+      if (!document || typeof document !== 'object' || Array.isArray(document)) continue;
+      const record = document as { sourceId?: unknown; excerpt?: unknown };
+      const sourceId = stringValue(record.sourceId);
+      const excerpt = stringValue(record.excerpt);
+      if (sourceId && excerpt) evidenceExcerptBySourceId.set(sourceId, excerpt);
+    }
+  }
+  const replayOriginalRawText = evidenceExcerptBySourceId.get('original_raw') ?? rawText;
+  const replayParserRawText = evidenceExcerptBySourceId.get('parser_raw') ?? rawText;
+  const replayDocumentRawText =
+    evidenceExcerptBySourceId.get('document_raw')
+    ?? evidenceExcerptBySourceId.get('parser_raw')
+    ?? rawText;
   const commissionRate = Number(body.commissionRate);
   const metadata = parseUploadSourceMetadata({
-    rawText,
+    rawText: replayOriginalRawText,
     sourceLabel,
     explicitCommissionRate: Number.isFinite(commissionRate) ? commissionRate : undefined,
     defaultCommissionRate: 10,
   });
 
   const fileHash = stringValue((queueRow as { file_hash?: unknown }).file_hash) ?? randomUUID();
-  const inputAnalysisForTrust = analyzeUploadInputText(rawText);
+  const inputAnalysisForTrust = analyzeUploadInputText(replayOriginalRawText);
   if (inputAnalysisForTrust.blocked) {
     return NextResponse.json(
       {
@@ -123,8 +146,9 @@ const postHandler = async (request: NextRequest) => {
       fileHash,
       fileName: sourceLabel,
       directRawText: rawText,
-      originalRawText: rawText,
-      parserRawText: metadata.parserRawText ?? rawText,
+      originalRawText: replayOriginalRawText,
+      parserRawText: metadata.parserRawText ?? replayParserRawText,
+      documentRawText: replayDocumentRawText,
       analysisNormalizedText: inputAnalysisForTrust.normalizedText,
       uploadSourceMetadata: metadata,
       inputAnalysisForTrust,

@@ -27,7 +27,7 @@ const EvidenceSourceDocumentSchema = z.object({
   sourceId: z.string().min(1),
   rawTextHash: Hash64Schema,
   rawTextLength: z.number().int().min(0),
-  role: z.enum(['original', 'parser', 'document', 'analysis', 'legacy']),
+  role: z.enum(['original', 'parser', 'document', 'section', 'analysis', 'legacy']),
   label: z.string().optional().nullable(),
 }).passthrough();
 
@@ -87,13 +87,36 @@ export const StandardProductRegistrationObjectSchema = z.object({
     }
   }
 
-  const allowedEvidenceHashes = new Set([
+  const evidenceDocumentsBySourceId = new Map(
+    registration.evidence.sourceDocuments.map(document => [document.sourceId, document]),
+  );
+  const allowedLegacyEvidenceHashes = new Set([
     registration.evidence.rawTextHash,
     ...registration.evidence.sourceDocuments.map(document => document.rawTextHash),
   ]);
 
   for (const span of registration.evidence.spans) {
-    if (!allowedEvidenceHashes.has(span.rawTextHash)) {
+    if (span.sourceId) {
+      const sourceDocument = evidenceDocumentsBySourceId.get(span.sourceId);
+      if (!sourceDocument) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['evidence', 'spans'],
+          message: `evidence span source document missing for ${span.field}`,
+        });
+        break;
+      }
+      if (sourceDocument.rawTextHash !== span.rawTextHash) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['evidence', 'spans'],
+          message: `evidence span sourceId/hash mismatch for ${span.field}`,
+        });
+        break;
+      }
+      continue;
+    }
+    if (!allowedLegacyEvidenceHashes.has(span.rawTextHash)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['evidence', 'spans'],

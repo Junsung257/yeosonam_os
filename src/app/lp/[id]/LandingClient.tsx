@@ -193,6 +193,9 @@ function FlightSummary({ flight }: { flight: LandingProductData['flightSummary']
               </div>
               <div className="text-right">
                 {data?.code && <p className="text-xs font-semibold text-gray-500">{data.code}</p>}
+                {data?.arrDayOffset === 1 && (
+                  <p className="text-xs font-bold text-orange-600">+1 익일 도착</p>
+                )}
                 <p className="mt-1 text-sm font-black text-gray-900 tabular-nums">
                   {[data?.depTime, data?.arrTime].filter(Boolean).join(' - ') || '시간 미정'}
                 </p>
@@ -328,7 +331,7 @@ export function LandingClient({
         </Link>
       </div>
 
-      {data.scarcityRemaining != null && (
+      {data.departureFullDate && data.scarcityRemaining != null && (
         <ScarcityTicker seats={data.scarcityRemaining} dateLabel={data.departureDateLabel} />
       )}
 

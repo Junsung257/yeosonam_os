@@ -60,6 +60,7 @@ function intake(overrides: Partial<UploadRequestIntakeSuccess> = {}): UploadRequ
     directRawText: 'supplier raw text',
     originalRawText: 'supplier raw text',
     parserRawText: 'supplier raw text',
+    documentRawText: 'supplier raw text',
     analysisNormalizedText: 'supplier raw text',
     uploadSourceMetadata: {
       commissionRate: 10,

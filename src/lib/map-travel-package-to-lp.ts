@@ -6,7 +6,7 @@ import { renderPackage } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
-import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
+import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -56,8 +56,8 @@ export interface LandingProductData {
   departureGuaranteed: boolean;
   recommendation?: RecommendationDisplay | null;
   flightSummary?: {
-    outbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null } | null;
-    inbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null } | null;
+    outbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null; arrDayOffset?: number | null } | null;
+    inbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null; arrDayOffset?: number | null } | null;
   };
   itinerary: {
     days: ItineraryDay[];
@@ -215,9 +215,9 @@ export function mapTravelPackageToLandingData(
   }
 
   const departureFullDate =
-    upcoming?.date && /^\d{4}-\d{2}-\d{2}/.test(upcoming.date) ? upcoming.date : null;
+    upcoming?.date && isValidIsoDateKst(upcoming.date) ? upcoming.date : null;
   const departureDateLabel =
-    upcoming?.date && upcoming.date.length >= 10
+    upcoming?.date && isValidIsoDateKst(upcoming.date)
       ? `${parseInt(upcoming.date.slice(5, 7), 10)}/${parseInt(upcoming.date.slice(8, 10), 10)}`
       : '미정';
 
@@ -286,6 +286,7 @@ export function mapTravelPackageToLandingData(
         arrTime: view.flightHeader.outbound.arrTime,
         depCity: view.flightHeader.outbound.depCity,
         arrCity: view.flightHeader.outbound.arrCity,
+        arrDayOffset: view.flightHeader.outbound.arrDayOffset ?? null,
       } : null,
       inbound: view.flightHeader.inbound ? {
         code: view.flightHeader.inbound.code,
@@ -293,6 +294,7 @@ export function mapTravelPackageToLandingData(
         arrTime: view.flightHeader.inbound.arrTime,
         depCity: view.flightHeader.inbound.depCity,
         arrCity: view.flightHeader.inbound.arrCity,
+        arrDayOffset: view.flightHeader.inbound.arrDayOffset ?? null,
       } : null,
     },
     itinerary: {

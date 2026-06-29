@@ -59,14 +59,61 @@ type DuplicatePricePreference = 'min' | 'max' | null;
 export type ExcludedPriceCandidate = {
   date?: string | null;
   amount: number;
-  currency: 'KRW';
-  reason: 'option_sized_price_candidate' | 'duplicate_variant_not_selected';
+  currency: 'KRW' | 'USD' | 'JPY' | 'VND';
+  reason:
+    | 'optional_tour_candidate'
+    | 'local_expense_candidate'
+    | 'golf_option_candidate'
+    | 'option_sized_price_candidate'
+    | 'duplicate_variant_not_selected';
   sourceStatus?: string | null;
+  quote?: string | null;
 };
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OPTION_SIZED_PRICE_CEILING = 100_000;
 const PACKAGE_PRICE_FLOOR = 300_000;
+
+function classifyExcludedPriceReason(line: string): ExcludedPriceCandidate['reason'] {
+  if (/(?:golf|green\s*fee|caddie|cart|tee\s*time|골프|그린피|캐디|카트)/i.test(line)) return 'golf_option_candidate';
+  if (/(?:local|onsite|on-site|현지|불포함|가이드\s*팁|기사\s*팁)/i.test(line)) return 'local_expense_candidate';
+  return 'optional_tour_candidate';
+}
+
+export function extractExcludedPriceCandidatesFromRawText(rawText: string): ExcludedPriceCandidate[] {
+  const candidates: ExcludedPriceCandidate[] = [];
+  const seen = new Set<string>();
+  const currencyPatterns: Array<{ currency: ExcludedPriceCandidate['currency']; regex: RegExp; amountGroup: number }> = [
+    { currency: 'USD', regex: /\b(?:USD|US\$)\s*([0-9]+(?:\.[0-9]+)?)/gi, amountGroup: 1 },
+    { currency: 'USD', regex: /(^|[^\w])\$\s*([0-9]+(?:\.[0-9]+)?)/g, amountGroup: 2 },
+    { currency: 'JPY', regex: /\bJPY\s*([0-9][0-9,]*)/gi, amountGroup: 1 },
+    { currency: 'VND', regex: /\bVND\s*([0-9][0-9,]*)/gi, amountGroup: 1 },
+  ];
+
+  for (const line of rawText.split(/\r?\n/)) {
+    if (!/(?:optional|tour|local|onsite|on-site|golf|green|caddie|cart|USD|US\$|\$|JPY|VND|선택|현지|골프|그린피|캐디|카트)/i.test(line)) continue;
+    const reason = classifyExcludedPriceReason(line);
+    for (const pattern of currencyPatterns) {
+      pattern.regex.lastIndex = 0;
+      for (const match of line.matchAll(pattern.regex)) {
+        const rawAmount = match[pattern.amountGroup]?.replace(/,/g, '');
+        const amount = Number(rawAmount);
+        if (!Number.isFinite(amount) || amount <= 0) continue;
+        const key = `${pattern.currency}:${amount}:${reason}:${line.trim()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push({
+          amount,
+          currency: pattern.currency,
+          reason,
+          quote: line.trim().slice(0, 240),
+        });
+      }
+    }
+  }
+
+  return candidates;
+}
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && ISO_DATE_RE.test(value);
@@ -244,7 +291,8 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   excludedPriceCandidates: ExcludedPriceCandidate[];
 } {
   const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
-  if (rawText.length < 50) return { source: 'none', rows: [], excludedPriceCandidates: [] };
+  const rawExcludedPriceCandidates = extractExcludedPriceCandidatesFromRawText(rawText);
+  if (rawText.length < 50) return { source: 'none', rows: [], excludedPriceCandidates: rawExcludedPriceCandidates };
 
   const departureDays = typeof pkg.departure_days === 'string'
     ? pkg.departure_days
@@ -256,7 +304,7 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
     departureDays,
     accommodations: pkg.accommodations ?? [],
   });
-  if (ir.source === 'none' || ir.rows.length === 0) return { source: ir.source, rows: [], excludedPriceCandidates: [] };
+  if (ir.source === 'none' || ir.rows.length === 0) return { source: ir.source, rows: [], excludedPriceCandidates: rawExcludedPriceCandidates };
 
   const byDate = new Map<string, PriceDate>();
   const selection = selectSourceBackedPriceRowsWithExclusions(pkg, ir.rows);
@@ -275,7 +323,10 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   return {
     source: ir.source,
     rows: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
-    excludedPriceCandidates: selection.excludedPriceCandidates,
+    excludedPriceCandidates: [
+      ...rawExcludedPriceCandidates,
+      ...selection.excludedPriceCandidates,
+    ],
   };
 }
 

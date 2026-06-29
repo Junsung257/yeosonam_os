@@ -140,12 +140,14 @@ describe('registerProductFromRaw', () => {
       expect.objectContaining({ sourceId: 'original_raw', role: 'original' }),
       expect.objectContaining({ sourceId: 'parser_raw', role: 'parser' }),
       expect.objectContaining({ sourceId: 'document_raw', role: 'document' }),
+      expect.objectContaining({ sourceId: 'section_raw', role: 'section' }),
     ]));
     expect(result.evidence.spans.length).toBeGreaterThan(0);
     expect(result.evidence.spans).toEqual(expect.arrayContaining([
       expect.objectContaining({
         field: 'title',
         rawTextHash: result.evidence.rawTextHash,
+        sourceId: 'section_raw',
         productIndex: null,
         sourceKind: 'line',
       }),

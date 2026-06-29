@@ -9,6 +9,7 @@ import type { HumanReaderResult } from './ai-human-reader';
 import type { UploadItineraryNormalizationResult } from './itinerary-normalization';
 import type { PriceRedTeamAuditResult } from './price-red-team-auditor';
 import type { UploadPriceRecoveryResult } from './price-recovery';
+import type { ExcludedPriceCandidate } from '@/lib/source-price-date-repair';
 
 export type ProductRegistrationEvidence = {
   rawTextLength: number;
@@ -33,11 +34,12 @@ export type SourceEvidenceDocumentRole =
   | 'original'
   | 'parser'
   | 'document'
+  | 'section'
   | 'analysis'
   | 'legacy';
 
 export type SourceEvidenceDocument = {
-  sourceId: 'original_raw' | 'parser_raw' | 'document_raw' | 'analysis_normalized' | string;
+  sourceId: 'original_raw' | 'parser_raw' | 'document_raw' | 'section_raw' | 'analysis_normalized' | string;
   rawTextHash: string;
   rawTextLength: number;
   role: SourceEvidenceDocumentRole;
@@ -80,6 +82,7 @@ export type ProductRegistrationPricing = {
   minPrice: number | null;
   selectedPriceBasis: string | null;
   optionalPriceCandidatesExcluded: boolean;
+  excludedPriceCandidates?: ExcludedPriceCandidate[];
   failures: string[];
 };
 

@@ -286,6 +286,7 @@ function buildIntake(input: {
     directRawText: parserRawText,
     originalRawText: input.rawText,
     parserRawText,
+    documentRawText: input.rawText,
     analysisNormalizedText: inputAnalysisForTrust.normalizedText,
     uploadSourceMetadata: metadata,
     inputAnalysisForTrust,
