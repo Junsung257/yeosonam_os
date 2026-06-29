@@ -223,4 +223,20 @@ describe('buildSourceBackedPriceDateRepair', () => {
     }, rows);
     expect(rail.map(row => row.adult_price)).toEqual([1369000, 1399000]);
   });
+
+  it('drops option-sized same-date prices when package-sized rows are present', () => {
+    const rows = [
+      { date: '2026-09-01', adult_price: 30000, child_price: null, status: 'available' },
+      { date: '2026-09-01', adult_price: 729000, child_price: null, status: 'available' },
+      { date: '2026-09-02', adult_price: 50000, child_price: null, status: 'available' },
+      { date: '2026-09-02', adult_price: 739000, child_price: null, status: 'available' },
+    ];
+
+    const selected = selectSourceBackedPriceRows({
+      title: 'Da Nang Hoi An 3N5D package',
+      duration: 5,
+    }, rows);
+
+    expect(selected.map(row => row.adult_price)).toEqual([729000, 739000]);
+  });
 });

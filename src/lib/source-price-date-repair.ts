@@ -55,6 +55,8 @@ type SourcePriceIRRow = {
 type DuplicatePricePreference = 'min' | 'max' | null;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const OPTION_SIZED_PRICE_CEILING = 100_000;
+const PACKAGE_PRICE_FLOOR = 300_000;
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && ISO_DATE_RE.test(value);
@@ -157,8 +159,13 @@ export function selectSourceBackedPriceRows(
   rows: SourcePriceIRRow[],
 ): SourcePriceIRRow[] {
   const preference = duplicatePricePreference(pkg);
+  const numericRows = rows.filter(row => Number.isFinite(row.adult_price) && row.adult_price > 0);
+  const hasPackageSizedPrice = numericRows.some(row => row.adult_price >= PACKAGE_PRICE_FLOOR);
+  const candidateRows = hasPackageSizedPrice
+    ? numericRows.filter(row => row.adult_price >= OPTION_SIZED_PRICE_CEILING)
+    : numericRows;
   const byDate = new Map<string, SourcePriceIRRow[]>();
-  for (const row of rows) {
+  for (const row of candidateRows) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
     byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
   }

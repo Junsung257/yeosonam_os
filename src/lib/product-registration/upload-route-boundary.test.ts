@@ -30,6 +30,10 @@ function readPackageJson(): string {
   return readFileSync(join(process.cwd(), 'package.json'), 'utf8');
 }
 
+function readNextConfig(): string {
+  return readFileSync(join(process.cwd(), 'next.config.js'), 'utf8');
+}
+
 function readMiddleware(): string {
   return readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8');
 }
@@ -131,6 +135,12 @@ function readUploadResponse(): string {
 }
 
 describe('upload route registration pipeline boundary', () => {
+  it('allows the production fallback image host used by customer package pages', () => {
+    const config = readNextConfig();
+
+    expect(config).toContain("hostname: 'www.yeosonam.com'");
+  });
+
   it('keeps the production upload request within a long-running Node function envelope', () => {
     const route = readUploadRoute();
 
@@ -764,7 +774,9 @@ describe('upload route registration pipeline boundary', () => {
     expect(audit).toContain('match_summary, created_at');
     expect(audit).toContain("eq('status', 'pending')");
     expect(audit).toContain("is('resolved_attraction_id', null)");
-    expect(audit).toContain('draftAttractionUnmatchedCount(draft) ?? unmatchedCountMap.get(pkg.id) ?? 0');
+    expect(audit).toContain('unmatchedCountMap.get(pkg.id) ?? draftAttractionUnmatchedCount(draft) ?? 0');
+    expect(audit).toContain('entity_attraction_unresolved: queueEntities.attraction_unresolved || 0');
+    expect(audit).toContain('entity_option_review_needed: queueEntities.option_review_needed || 0');
   });
 
   it('normalizes itinerary before the deliverability gate evaluates A4/mobile inputs', () => {

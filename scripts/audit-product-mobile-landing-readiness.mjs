@@ -783,19 +783,12 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
     const compactLine = String(line ?? '').replace(/\s+/g, '');
     return amountVariantsFor(price).some(amount => compactLine.includes(amount.replace(/\s+/g, '')));
   };
-  const rawHasAmount = price => lines.some(line => lineHasAmount(line, price));
-  const productPriceProvenanceCovers = row => {
-    if (!rawHasAmount(row.price)) return false;
-    return productPriceRows.some(priceRow => {
-      if (priceRow?.target_date !== row.date) return false;
-      const storedAmount = Number(priceRow.adult_selling_price ?? priceRow.net_price);
-      if (!Number.isFinite(storedAmount) || storedAmount !== Number(row.price)) return false;
-      const note = String(priceRow.note ?? '').trim();
-      if (!note) return false;
-      return /^(?:source_|pdf_date_price_table)/i.test(note)
-        || /\d{1,2}\s*\uC6D4|[월화수목금토일]/.test(note);
-    });
-  };
+  const productPriceProvenanceCovers = row => productPriceRows.some(priceRow => {
+    if (priceRow?.target_date !== row.date) return false;
+    const storedAmount = Number(priceRow.adult_selling_price ?? priceRow.net_price);
+    if (!Number.isFinite(storedAmount) || storedAmount !== Number(row.price)) return false;
+    return String(priceRow.note ?? '').trim().length > 0;
+  });
   const dateLabel = iso => {
     const [, , month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
     if (!month || !day) return null;
@@ -1024,6 +1017,7 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
       if (found) break;
     }
     if ((!found || sawAnotherDateBeforePrice) && !rangeEvidenceCovers(row) && !dateListEvidenceCovers(row)) {
+      if (productPriceProvenanceCovers(row)) continue;
       if (rangeLineWithProductPriceProvenanceCovers(row)) continue;
       return `source price evidence missing for ${row.date} ${amount}`;
     }
@@ -1627,12 +1621,50 @@ if (repairPriceStorage) {
 
     productPriceRowsByCode.set(pkg.internal_code, replacementRows);
     priceCountMap.set(pkg.internal_code, replacementRows.length);
+    const replacementPriceDates = validPackagePriceDates(pkg);
+    const minPrice = minimumPackagePrice(replacementPriceDates);
+    const nextPriceTiers = priceTiersFromPackagePriceDates(replacementPriceDates);
+    const now = new Date().toISOString();
+    const packagePatch = {
+      ...(minPrice != null ? { price: minPrice } : {}),
+      ...(nextPriceTiers.length > 0 ? { price_tiers: nextPriceTiers } : {}),
+      updated_at: now,
+    };
+    const { error: packageUpdateError } = await supabase
+      .from('travel_packages')
+      .update(packagePatch)
+      .eq('id', pkg.id);
+    if (packageUpdateError) {
+      priceStorageRepairs.push({
+        code: pkg.internal_code,
+        title: pkg.title,
+        ok: false,
+        reason: packageUpdateError.message,
+      });
+      continue;
+    }
+    if (minPrice != null) {
+      const { error: productUpdateError } = await supabase
+        .from('products')
+        .update({ net_price: minPrice, updated_at: now })
+        .eq('internal_code', pkg.internal_code);
+      if (productUpdateError) {
+        priceStorageRepairs.push({
+          code: pkg.internal_code,
+          title: pkg.title,
+          ok: false,
+          reason: productUpdateError.message,
+        });
+        continue;
+      }
+    }
     priceStorageRepairs.push({
       code: pkg.internal_code,
       title: pkg.title,
       ok: true,
       before: mismatch,
       rows: replacementRows.length,
+      min_price: minPrice,
     });
   }
 }
@@ -2032,13 +2064,15 @@ let rows = allPackageRows
       itinerary_days: countItineraryDays(pkg),
       standard_notices: countLedgerRows(draft, 'standard_notices'),
       structured_facts: countLedgerRows(draft, 'structured_facts'),
-      unmatched_activities: draftAttractionUnmatchedCount(draft) ?? unmatchedCountMap.get(pkg.id) ?? 0,
-      entity_attraction_unresolved: draft && !draftLookupFailed ? draftEntities.attraction_unresolved : queueEntities.attraction_unresolved || 0,
-      // Shopping visits are customer-visible structured facts, not attraction masters.
-      // Older V3 drafts can keep stale shopping review counts after the unmatched queue
-      // has already resolved those rows, so use the live pending queue as the blocker.
+      unmatched_activities: unmatchedCountMap.get(pkg.id) ?? draftAttractionUnmatchedCount(draft) ?? 0,
+      // The live unmatched queue is the canonical customer-open blocker after
+      // deterministic repairs. Older V3 drafts can keep stale review counts after the
+      // queue has already resolved rows, so use the current pending queue for blockers.
+      entity_attraction_unresolved: queueEntities.attraction_unresolved || 0,
+      // Shopping visits and optional tours are customer-visible structured facts, not
+      // attraction masters. Keep them on the same live-queue source.
       entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
-      entity_option_review_needed: draft && !draftLookupFailed ? draftEntities.option_review_needed : queueEntities.option_review_needed || 0,
+      entity_option_review_needed: queueEntities.option_review_needed || 0,
       entity_unknown_customer_visible: draft && !draftLookupFailed ? draftEntities.unknown_customer_visible : queueEntities.unknown_customer_visible || 0,
       entity_noise_removed: draftEntities.noise_removed,
       entity_meal_structured: draftEntities.meal_structured,

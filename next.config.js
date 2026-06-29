@@ -228,6 +228,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: '*.wikimedia.org', // Wikimedia Commons (attraction photos)
       },
+      {
+        protocol: 'https',
+        hostname: 'www.yeosonam.com',
+      },
     ],
   },
   // 상품 상세 라우트 통일 — /packages/[id] 를 단일 진실 소스로
