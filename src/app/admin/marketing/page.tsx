@@ -76,6 +76,10 @@ function adOsToneClass(tone: 'good' | 'warn' | 'bad' | 'neutral'): string {
   return 'bg-slate-100 text-slate-600';
 }
 
+const ACTION_LINK_CLASS = 'inline-flex h-9 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-admin-sm border border-admin-border-strong bg-white px-3 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg sm:flex-none sm:px-4 sm:text-admin-sm';
+const PRIMARY_ACTION_CLASS = 'inline-flex h-9 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-admin-sm bg-blue-600 px-3 text-admin-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 sm:flex-none sm:px-4 sm:text-admin-sm';
+const TAB_BUTTON_BASE = 'min-w-0 rounded-admin-sm px-3 py-2 text-admin-xs font-semibold transition-all sm:px-5 sm:text-admin-sm';
+
 export default function MarketingDashboardPage() {
   const [mainTab, setMainTab] = useState<MainTab>('dashboard');
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -187,59 +191,59 @@ export default function MarketingDashboardPage() {
   return (
     <div className="space-y-6">
       {/* ── 헤더 ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-admin-lg font-bold text-admin-text-2">통합 광고 마케팅</h1>
-          <p className="text-admin-sm text-admin-muted mt-1">
+          <p className="mt-1 text-admin-sm text-admin-muted">
             Google Ads · Naver Ads · Meta Ads · Organic 통합 성과 대시보드
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
           {mainTab === 'meta' && (
             <>
               <button
                 onClick={handleOptimize}
                 disabled={optimizing}
-                className="px-4 py-2 bg-blue-600 text-white text-admin-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className={PRIMARY_ACTION_CLASS}
               >
                 {optimizing ? '최적화 중...' : '자동 최적화 실행'}
               </button>
-              <Link href="/admin/marketing/campaigns" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+              <Link href="/admin/marketing/campaigns" className={ACTION_LINK_CLASS}>
                 + 캠페인 생성
               </Link>
-              <Link href="/admin/marketing/creatives" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+              <Link href="/admin/marketing/creatives" className={ACTION_LINK_CLASS}>
                 AI 소재 생성
               </Link>
             </>
           )}
           {mainTab === 'links' && (
-            <button onClick={() => setBuilderOpen(true)} className="px-4 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded-lg hover:bg-blue-700 transition">
+            <button onClick={() => setBuilderOpen(true)} className={PRIMARY_ACTION_CLASS}>
               + 새 링크 만들기
             </button>
           )}
-          <Link href="/admin/marketing/command-center" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+          <Link href="/admin/marketing/command-center" className={ACTION_LINK_CLASS}>
             Command Center
           </Link>
-          <Link href="/admin/marketing/system-health" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+          <Link href="/admin/marketing/system-health" className={ACTION_LINK_CLASS}>
             System Health
           </Link>
-          <Link href="/admin/marketing/card-news" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+          <Link href="/admin/marketing/card-news" className={ACTION_LINK_CLASS}>
             카드뉴스
           </Link>
-          <Link href="/admin/marketing/brand-kits" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+          <Link href="/admin/marketing/brand-kits" className={ACTION_LINK_CLASS}>
             브랜드킷
           </Link>
-          <Link href="/admin/marketing/social-configs" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+          <Link href="/admin/marketing/social-configs" className={ACTION_LINK_CLASS}>
             소셜 설정
           </Link>
-          <Link href="/admin/marketing-intelligence" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+          <Link href="/admin/marketing-intelligence" className={ACTION_LINK_CLASS}>
             인텔리전스
           </Link>
         </div>
       </div>
 
       {/* ── 탭 스위처 ── */}
-      <div className="flex gap-1 p-1 bg-admin-surface-2 rounded-lg w-fit border border-admin-border-mid">
+      <div className="grid w-full grid-cols-3 gap-1 rounded-admin-md border border-admin-border-mid bg-admin-surface-2 p-1 sm:w-fit">
         {([
           { key: 'dashboard', label: '통합 대시보드' },
           { key: 'meta', label: 'Meta 광고' },
@@ -248,13 +252,13 @@ export default function MarketingDashboardPage() {
           <button
             key={tab.key}
             onClick={() => setMainTab(tab.key)}
-            className={`px-5 py-2 rounded-md text-admin-sm font-semibold transition-all ${
+            className={`${TAB_BUTTON_BASE} ${
               mainTab === tab.key
                 ? 'bg-white text-admin-text-2 border border-admin-border-mid shadow-sm'
                 : 'text-admin-muted hover:text-admin-text-2 border border-transparent'
             }`}
           >
-            {tab.label}
+            <span className="block truncate">{tab.label}</span>
           </button>
         ))}
       </div>
@@ -272,7 +276,7 @@ export default function MarketingDashboardPage() {
                   마케팅 대시보드는 성과를 보고, Ad OS는 네이버/구글 집행 가능 여부와 자동화 권한을 통제합니다.
                 </p>
               </div>
-              <Link href="/admin/ad-os" className="rounded-lg border border-admin-border-strong bg-white px-4 py-2 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg">
+              <Link href="/admin/ad-os" className="inline-flex h-9 w-full items-center justify-center rounded-admin-sm border border-admin-border-strong bg-white px-4 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg sm:w-auto">
                 Ad OS 열기
               </Link>
             </div>
@@ -329,11 +333,11 @@ export default function MarketingDashboardPage() {
                         {completionAudit?.next_action ?? 'System Health에서 Ad OS readiness를 확인하세요.'}
                       </p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      <Link href="/admin/marketing/command-center" className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
+                    <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+                      <Link href="/admin/marketing/command-center" className="inline-flex h-9 items-center justify-center rounded-admin-sm border border-admin-border-strong bg-white px-3 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
                         Command Center
                       </Link>
-                      <Link href="/admin/marketing/system-health" className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
+                      <Link href="/admin/marketing/system-health" className="inline-flex h-9 items-center justify-center rounded-admin-sm border border-admin-border-strong bg-white px-3 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
                         System Health
                       </Link>
                     </div>
@@ -345,11 +349,11 @@ export default function MarketingDashboardPage() {
           {/* Executive Summary Strip (상단 KPI 바) */}
           {dashboardStatus !== 'ready' && !dashLoading && (
             <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4 text-admin-sm text-amber-800">
-              Marketing performance is showing an empty or degraded state: {dashboardMessage ?? dashboardStatus}.
+              마케팅 성과 데이터가 비어 있거나 제한 상태입니다: {dashboardMessage ?? dashboardStatus}.
               <button
                 type="button"
                 onClick={refreshDash}
-                className="ml-3 rounded-md border border-amber-300 bg-white px-3 py-1 text-admin-xs font-semibold text-amber-800 hover:bg-amber-100"
+                className="mt-2 inline-flex h-8 items-center rounded-admin-sm border border-amber-300 bg-white px-3 text-admin-xs font-semibold text-amber-800 hover:bg-amber-100 sm:ml-3 sm:mt-0"
               >
                 Refresh
               </button>
