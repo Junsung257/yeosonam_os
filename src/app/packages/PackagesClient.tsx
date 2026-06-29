@@ -498,7 +498,7 @@ export default function PackagesClient() {
     <div className="min-h-screen bg-white">
       <GlobalNav />
       <h1 className="sr-only">여소남 패키지 여행 상품</h1>
-      <a href={consultTelHref || '/group-inquiry'} className="sr-only">
+      <a href={consultTelHref || '/group'} className="sr-only">
         여행 상품 문의
       </a>
 
