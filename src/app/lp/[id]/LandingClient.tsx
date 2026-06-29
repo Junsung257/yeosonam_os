@@ -497,6 +497,7 @@ export function LandingClient({
         onItineraryViewed={handleItineraryViewed}
         includes={data.itinerary.includes}
         excludes={data.itinerary.excludes}
+        optionalTours={data.itinerary.optionalTours}
         legalNotices={data.itinerary.legalNotices}
         packageId={data.id}
         reviewScore={data.reviewScore}

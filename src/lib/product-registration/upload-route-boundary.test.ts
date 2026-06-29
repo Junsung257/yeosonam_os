@@ -381,6 +381,12 @@ describe('upload route registration pipeline boundary', () => {
     expect(autoMobileQa).toContain(".from('products')");
     expect(autoMobileQa).toContain('persistImprovementLedgerEvents');
     expect(autoMobileQa).toContain("detectedFormat: 'post_save_mobile_landing'");
+    expect(autoMobileQa).toContain("source: 'hwp-mobile-browser-proof'");
+    expect(autoMobileQa).toContain('screen_hash');
+    expect(autoMobileQa).toContain('customer_visible_hash');
+    expect(autoMobileQa).toContain('surface_results');
+    expect(autoMobileQa).toContain('auto mobile QA found customer render incidents below hard-block severity');
+    expect(autoMobileQa).toContain("rule.id === 'room_pax_config'");
   });
 
   it('post-save mobile QA checks semantic package render failures, not only page availability', () => {

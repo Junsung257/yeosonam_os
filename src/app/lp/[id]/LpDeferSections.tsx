@@ -58,6 +58,30 @@ function IncludeExclude({ includes, excludes }: { includes: string[]; excludes: 
   );
 }
 
+function OptionalToursSection({ tours }: { tours: LandingProductData['itinerary']['optionalTours'] }) {
+  if (!tours.length) return null;
+  return (
+    <section className="border-t border-pink-100 bg-white px-5 py-5">
+      <div className="mb-3 flex items-center gap-2">
+        <Star className="h-4 w-4 text-pink-500" />
+        <h3 className="text-base font-bold text-gray-900">선택관광</h3>
+        <span className="rounded-full bg-pink-50 px-2 py-0.5 text-xs font-semibold text-pink-700">별도 비용</span>
+      </div>
+      <div className="space-y-2">
+        {tours.map((tour, index) => (
+          <div key={`${tour.displayName}-${index}`} className="rounded-lg border border-pink-50 bg-pink-50/40 px-3 py-2">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-semibold leading-snug text-gray-900">{tour.displayName}</p>
+              {tour.price && <p className="shrink-0 text-sm font-black text-pink-700">{tour.price}</p>}
+            </div>
+            {tour.note && <p className="mt-1 text-xs leading-relaxed text-gray-500">{tour.note}</p>}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function LegalNotice({ legalNotices }: { legalNotices: string[] }) {
   const renderLines = getLegalNoticeLinesOrDefault(legalNotices, 3);
   return (
@@ -258,6 +282,7 @@ export interface LpDeferSectionsProps {
   onItineraryViewed: () => void;
   includes: string[];
   excludes: string[];
+  optionalTours: LandingProductData['itinerary']['optionalTours'];
   legalNotices: string[];
   packageId: string;
   reviewScore: number;
@@ -270,6 +295,7 @@ export function LpDeferSections({
   onItineraryViewed,
   includes,
   excludes,
+  optionalTours,
   legalNotices,
   packageId,
   reviewScore,
@@ -279,6 +305,7 @@ export function LpDeferSections({
   return (
     <>
       <ItinerarySection days={days} onViewed={onItineraryViewed} />
+      <OptionalToursSection tours={optionalTours} />
       <IncludeExclude includes={includes} excludes={excludes} />
       <LegalNotice legalNotices={legalNotices} />
       <ReviewSummaryStrip packageId={packageId} score={reviewScore} count={reviewCount} recommendation={recommendation} />
