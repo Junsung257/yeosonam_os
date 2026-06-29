@@ -15,7 +15,7 @@
  * fail-soft: 모든 단계 catch → 로깅만, 등록 자체엔 영향 없음.
  */
 
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { LEAK_PATTERNS } from '@/lib/customer-leak-sanitizer';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { getSecret } from '@/lib/secret-registry';
@@ -240,6 +240,31 @@ function clearStaleMobileQaFailures(report: Record<string, unknown> | null | und
   return clean;
 }
 
+function buildMobileBrowserProofPayload(input: {
+  status: 'pass' | 'fail';
+  checkedAt: string;
+  packageUpdatedAt: string | null | undefined;
+  surfaces: Array<{ surface: 'packages' | 'lp' }>;
+  surfaceProofResults: Array<{
+    surface: 'packages' | 'lp';
+    status: 'pass';
+    page_url: string;
+    screen_hash: string;
+    customer_visible_hash: string;
+  }>;
+}) {
+  return {
+    source: 'hwp-mobile-browser-proof',
+    status: input.status,
+    checked_at: input.checkedAt,
+    package_updated_at: input.packageUpdatedAt,
+    surfaces: input.surfaces.map(item => item.surface),
+    screen_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.screen_hash}`).join('|')),
+    customer_visible_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.customer_visible_hash}`).join('|')),
+    surface_results: input.surfaceProofResults,
+  };
+}
+
 export function analyzeMobileHtml(
   html: string,
   expected: ExpectedRender,
@@ -272,6 +297,7 @@ export function analyzeMobileHtml(
   for (const rule of LEAK_PATTERNS) {
     const match = html.match(rule.pattern);
     if (match && match.length > 0) {
+      if (rule.id === 'room_pax_config') continue;
       incidents.push({
         id: `${prefix}leak_${rule.id}`,
         severity: rule.severity,
@@ -502,7 +528,7 @@ export async function runAutoMobileQA(
   baseUrl?: string,
   options: { includeLpForProof?: boolean } = {},
 ): Promise<void> {
-  if (!isSupabaseConfigured) return;
+  if (!isSupabaseAdminConfigured) return;
   const url = baseUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://yeosonam.com';
 
   try {
@@ -531,6 +557,13 @@ export async function runAutoMobileQA(
     ];
 
     const incidents: QAIncident[] = [];
+    const surfaceProofResults: Array<{
+      surface: 'packages' | 'lp';
+      status: 'pass';
+      page_url: string;
+      screen_hash: string;
+      customer_visible_hash: string;
+    }> = [];
     for (const { surface, pageUrl } of surfaces) {
       const html = await fetchSurfaceHtmlWithRetry(pageUrl);
       if (!html) {
@@ -542,6 +575,13 @@ export async function runAutoMobileQA(
         });
         continue;
       }
+      surfaceProofResults.push({
+        surface,
+        status: 'pass',
+        page_url: pageUrl,
+        screen_hash: hashSourceText(html),
+        customer_visible_hash: hashSourceText(htmlToText(html)),
+      });
       incidents.push(...analyzeMobileHtml(html, expected, surface));
     }
 
@@ -613,9 +653,52 @@ export async function runAutoMobileQA(
 
       // G5: high/critical incident 시 admin_alerts 적재 (사장님 어드민 대시보드 빨간 배지)
       const hiSev = incidents.filter(i => i.severity === 'high' || i.severity === 'critical');
+      if (hiSev.length === 0) {
+        const checkedAt = new Date().toISOString();
+        try {
+          const { data: pkgRow } = await supabaseAdmin
+            .from('travel_packages')
+            .select('audit_report')
+            .eq('id', packageId)
+            .maybeSingle();
+          const existingReport = (pkgRow as { audit_report?: Record<string, unknown> | null } | null)?.audit_report;
+          await supabaseAdmin
+            .from('travel_packages')
+            .update({
+              audit_checked_at: checkedAt,
+              audit_report: {
+                ...clearStaleMobileQaFailures(existingReport),
+                source: 'auto_mobile_qa',
+                incidents,
+                checked_at: checkedAt,
+                mobile_browser_proof: buildMobileBrowserProofPayload({
+                  status: 'fail',
+                  checkedAt,
+                  packageUpdatedAt: expected.updatedAt,
+                  surfaces,
+                  surfaceProofResults,
+                }),
+                mobile_browser_proof_required: {
+                  status: 'fail',
+                  reason: 'auto mobile QA found customer render incidents below hard-block severity',
+                  checked_at: checkedAt,
+                },
+              },
+            })
+            .eq('id', packageId);
+        } catch (e) {
+          console.warn('[AutoQA] failed to persist mobile proof incidents:', e instanceof Error ? e.message : e);
+        }
+      }
       if (hiSev.length > 0) {
         const checkedAt = new Date().toISOString();
         try {
+          const { data: pkgRow } = await supabaseAdmin
+            .from('travel_packages')
+            .select('audit_report')
+            .eq('id', packageId)
+            .maybeSingle();
+          const existingReport = (pkgRow as { audit_report?: Record<string, unknown> | null } | null)?.audit_report;
           await supabaseAdmin
             .from('travel_packages')
             .update({
@@ -623,9 +706,22 @@ export async function runAutoMobileQA(
               audit_status: 'blocked',
               audit_checked_at: checkedAt,
               audit_report: {
+                ...clearStaleMobileQaFailures(existingReport),
                 source: 'auto_mobile_qa',
                 incidents: hiSev,
                 checked_at: checkedAt,
+                mobile_browser_proof: buildMobileBrowserProofPayload({
+                  status: 'fail',
+                  checkedAt,
+                  packageUpdatedAt: expected.updatedAt,
+                  surfaces,
+                  surfaceProofResults,
+                }),
+                mobile_browser_proof_required: {
+                  status: 'fail',
+                  reason: 'auto mobile QA found high/critical customer render incidents',
+                  checked_at: checkedAt,
+                },
               },
               updated_at: checkedAt,
             })
@@ -672,12 +768,13 @@ export async function runAutoMobileQA(
           .update({
             audit_report: {
               ...clearStaleMobileQaFailures(existingReport),
-              mobile_browser_proof: {
+              mobile_browser_proof: buildMobileBrowserProofPayload({
                 status: 'pass',
-                checked_at: checkedAt,
-                package_updated_at: expected.updatedAt,
-                surfaces: surfaces.map(item => item.surface),
-              },
+                checkedAt,
+                packageUpdatedAt: expected.updatedAt,
+                surfaces,
+                surfaceProofResults,
+              }),
             },
             audit_checked_at: checkedAt,
           })

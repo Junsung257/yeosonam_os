@@ -7,6 +7,7 @@ import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
+import type { NormalizedOptionalTour } from '@/lib/itinerary-render';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -64,6 +65,7 @@ export interface LandingProductData {
     highlights: string[];
     includes: string[];
     excludes: string[];
+    optionalTours: NormalizedOptionalTour[];
     legalNotices: string[];
   };
 }
@@ -305,6 +307,13 @@ export function mapTravelPackageToLandingData(
       excludes: view.excludes.basic.length > 0
         ? view.excludes.basic.map(item => normalizeCustomerVisibleCopy(item))
         : asStringArray(pkg.excludes),
+      optionalTours: view.optionalTours.flat.map(tour => ({
+        ...tour,
+        name: normalizeCustomerVisibleCopy(tour.name),
+        displayName: normalizeCustomerVisibleCopy(tour.displayName),
+        price: tour.price ? normalizeCustomerVisibleCopy(tour.price) : null,
+        note: tour.note ? normalizeCustomerVisibleCopy(tour.note) : null,
+      })),
       legalNotices,
       days: canonicalDays.length > 0
         ? canonicalDays.map((day): ItineraryDay => ({

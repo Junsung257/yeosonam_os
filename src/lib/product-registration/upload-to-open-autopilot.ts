@@ -46,6 +46,7 @@ export type UploadToOpenAutopilotPackage = {
   id: string;
   title: string | null;
   internal_code: string | null;
+  destination: string | null;
   status: string | null;
   audit_status: string | null;
   audit_report: unknown;
@@ -518,7 +519,7 @@ async function applyScorecardDrivenRepairs(input: {
       updated_at: updatedAt,
     })
     .eq('id', input.pkg.id)
-    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
     .single();
   if (error) throw error;
   return { pkg: data as UploadToOpenAutopilotPackage, repairs, blockedReasons };
@@ -550,7 +551,6 @@ async function markAutopilotStage(
         },
       },
       audit_checked_at: checkedAt,
-      updated_at: checkedAt,
     })
     .eq('id', packageId);
 }
@@ -562,7 +562,7 @@ async function loadPackages(
   const ids = uniqueIds(options.packageIds);
   let query = supabase
     .from('travel_packages')
-    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
     .order('updated_at', { ascending: false })
     .limit(Math.max(1, Math.min(50, options.limit ?? 10)));
 
@@ -691,7 +691,7 @@ async function applySourceBackedRepairs(
       updated_at: updatedAt,
     })
     .eq('id', pkg.id)
-    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
     .single();
   if (error) throw error;
   return { pkg: data as UploadToOpenAutopilotPackage, repairs, blockedReasons };
@@ -725,7 +725,7 @@ async function loadDeliveryContext(supabase: SupabaseClient, packageId: string) 
 async function reloadPackage(supabase: SupabaseClient, packageId: string): Promise<UploadToOpenAutopilotPackage> {
   const { data, error } = await supabase
     .from('travel_packages')
-    .select('id,title,internal_code,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
+    .select('id,title,internal_code,destination,status,audit_status,audit_report,updated_at,raw_text,airline,duration,nights,price,display_title,hero_tagline,trip_style,itinerary_data,accommodations,inclusions,excludes,optional_tours,price_tiers,price_dates,price_list,departure_days,surcharges,notices_parsed,customer_notes')
     .eq('id', packageId)
     .single();
   if (error) throw error;
@@ -844,7 +844,7 @@ async function evaluateAndMaybeOpenPackage(input: {
     await runUploadVerify(pkg.id);
   }
   reasons.push(...scorecardRepairs.blockedReasons);
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
   await runAutoMobileQA(pkg.id, baseUrl, { includeLpForProof: true });
   pkg = await reloadPackage(input.supabase, pkg.id);
 
