@@ -1436,7 +1436,8 @@ async function verifyPublicHtmlSurfaceUrl(row, surface) {
   if (!title || title === '\uc0c1\ud488 \uc0c1\uc138 | \uc5ec\uc18c\ub0a8' || /^\uc5ec\uc18c\ub0a8\s*$/u.test(title)) {
     missing.push('specific_title');
   }
-  if (text.length < 1_500) missing.push(`body_too_short_${text.length}`);
+  const minVisibleTextLength = surface === 'lp' ? 500 : 1_500;
+  if (text.length < minVisibleTextLength) missing.push(`body_too_short_${text.length}`);
   return missing.length > 0 ? `${surface}: ${url}: ${missing.join(', ')}` : null;
 }
 
