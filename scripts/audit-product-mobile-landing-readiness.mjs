@@ -40,6 +40,7 @@ const repairEmptyItineraryDays = process.argv.includes('--repair-empty-itinerary
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const verifyPublicHtml = process.argv.includes('--verify-public-html');
+const baseArg = process.argv.find(arg => arg.startsWith('--base='))?.split('=')[1]?.trim();
 const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
   .split(',')
   .map(code => code.trim())
@@ -49,11 +50,19 @@ const packageIdFilter = (process.argv.find(arg => arg.startsWith('--package-ids=
   .map(id => id.trim())
   .filter(Boolean);
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-const siteBaseUrl = String(
-  process.env.NEXT_PUBLIC_BASE_URL
-    || process.env.NEXT_PUBLIC_SITE_URL
-    || 'https://www.yeosonam.com',
-).replace(/\/+$/, '');
+function isLocalBaseUrl(value) {
+  return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(String(value || '').trim());
+}
+
+function resolveSiteBaseUrl() {
+  if (baseArg) return baseArg;
+  const publicBase = process.env.NEXT_PUBLIC_BASE_URL;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (publicOnly && verifyPublicHtml && isLocalBaseUrl(publicBase) && siteUrl) return siteUrl;
+  return publicBase || siteUrl || 'https://www.yeosonam.com';
+}
+
+const siteBaseUrl = String(resolveSiteBaseUrl()).replace(/\/+$/, '');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -1292,33 +1301,41 @@ function htmlToVisibleText(html) {
     .trim();
 }
 
-async function fetchWithTimeout(url, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      cache: 'no-store',
-      headers: {
-        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-        accept: 'text/html,application/xhtml+xml',
-        'cache-control': 'no-cache',
-        pragma: 'no-cache',
-      },
-    });
-  } finally {
-    clearTimeout(timer);
+async function fetchWithTimeout(url, timeoutMs, attempts = 3) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        cache: 'no-store',
+        headers: {
+          'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+          accept: 'text/html,application/xhtml+xml',
+          'cache-control': 'no-cache',
+          pragma: 'no-cache',
+        },
+      });
+      if (response.status < 500 || attempt === attempts) return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+    await sleep(250 * attempt);
   }
+  throw lastError ?? new Error(`fetch failed after ${attempts} attempts`);
 }
 
-async function verifyPublicHtmlSurface(row) {
-  if (!verifyPublicHtml || !row.public) return null;
-  const url = `${siteBaseUrl}/packages/${encodeURIComponent(row.id)}?readiness=${Date.now()}`;
+async function verifyPublicHtmlSurfaceUrl(row, surface) {
+  const url = `${siteBaseUrl}/${surface}/${encodeURIComponent(row.id)}?readiness=${Date.now()}`;
   let response;
   try {
     response = await fetchWithTimeout(url, 30_000);
   } catch (error) {
-    return `fetch failed: ${error instanceof Error ? error.message : String(error)}`;
+    return `${surface}: fetch failed for ${url}: ${error instanceof Error ? error.message : String(error)}`;
   }
   const html = await response.text().catch(error => `__READ_ERROR__ ${error instanceof Error ? error.message : String(error)}`);
   const text = htmlToVisibleText(html);
@@ -1336,7 +1353,17 @@ async function verifyPublicHtmlSurface(row) {
     missing.push('specific_title');
   }
   if (text.length < 1_500) missing.push(`body_too_short_${text.length}`);
-  return missing.length > 0 ? `${url}: ${missing.join(', ')}` : null;
+  return missing.length > 0 ? `${surface}: ${url}: ${missing.join(', ')}` : null;
+}
+
+async function verifyPublicHtmlSurface(row) {
+  if (!verifyPublicHtml || !row.public) return null;
+  const failures = [];
+  for (const surface of ['packages', 'lp']) {
+    const failure = await verifyPublicHtmlSurfaceUrl(row, surface);
+    if (failure) failures.push(failure);
+  }
+  return failures.length > 0 ? failures.join(' | ') : null;
 }
 
 function readinessFor(row) {

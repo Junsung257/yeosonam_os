@@ -119,6 +119,8 @@ Upload verification must fail before customer opening when the saved data would 
 
 LP date fallback must not invent a departure date. If no valid departure date exists, landing data must use `departureFullDate=null` and `departureDateLabel='미정'`; proof, lead forms, and cancellation-date formatting must handle the unknown date explicitly.
 
+The customer LP must expose enough server-rendered product context to be audited without relying only on deferred lead UI. When source-backed `price_dates` exist, `/lp/{id}` must render a visible departure-date summary near the price block. Public HTML readiness must fetch and validate both `/packages/{id}` and `/lp/{id}`; if local env points `NEXT_PUBLIC_BASE_URL` to localhost, production public audits must use `NEXT_PUBLIC_SITE_URL` or an explicit `--base` value instead of treating localhost fetch failures as product failures.
+
 The upload verify layer owns these customer-render gates:
 
 - `C15 entity review gate`: unresolved customer-visible unmatched entities block clean verification. This includes pending attraction, optional_tour, notice, unknown rows, and shopping rows that are not confidently structured. Meal, transfer, confidently structured shopping, free_time, price_noise, and resolved hotel rows may pass only when they are non-blocking and not marked `needs_review`.
@@ -344,7 +346,9 @@ Required behavior:
 
 ## Customer Page Audit Contract
 
-상품 등록 완료 검수의 고객 화면 기준은 `/packages/{packageId}`다. `/lp/{packageId}`는 랜딩/디자인 실험면일 수 있으므로 상품 원문 대조, 모바일 상세, A4 readiness의 최종 기준으로 쓰지 않는다.
+The current customer page audit contract covers both `/packages/{packageId}` and `/lp/{packageId}`. `/packages` remains the full product detail/A4 semantic reference, but `/lp` is also a customer-visible surface and must pass public HTML and mobile proof checks before a product is treated as open-ready.
+
+상품 등록 완료 검수의 고객 화면 기준은 `/packages/{packageId}`와 `/lp/{packageId}` 양쪽이다. `/packages`는 상품 원문 대조, 모바일 상세, A4 readiness의 상세 기준이고, `/lp`는 고객 유입 랜딩 surface이므로 가격, 출발 가능일, 일정, CTA, 고객 금지문구, broken text를 별도로 통과해야 한다.
 
 For pasted catalog itinerary tables (`일 자 / 지 역 / 교통편 / 시 간 / 주요 행사 일정 / 식 사`):
 
