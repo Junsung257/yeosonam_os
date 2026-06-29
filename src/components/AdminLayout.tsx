@@ -718,7 +718,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
       {/* ── 메인 영역 ────────────────────────────────── */}
       <div
-        className={`flex-1 flex flex-col min-h-screen transition-all duration-200 ${
+        className={`flex-1 flex min-w-0 flex-col min-h-screen transition-all duration-200 ${
           sidebarMode === 'slim' ? 'md:ml-14' : 'md:ml-52'
         }`}
       >
@@ -758,7 +758,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* 콘텐츠 */}
         <main
-          className="flex-1 px-4 lg:px-6 py-5"
+          className="flex-1 min-w-0 overflow-x-hidden px-4 lg:px-6 py-5"
         >
           {/* 인텐트 기반 AI 추천 바 */}
           {sidebarMode === 'full' && (
