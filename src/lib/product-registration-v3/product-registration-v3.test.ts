@@ -1340,6 +1340,101 @@ ZE982
     expect(gate.status).toBe('ready_to_publish');
   });
 
+  it('accepts explicit meal and hotel notices as V3 gate evidence', () => {
+    const mealNotice = buildStandardNoticeDraft({
+      source_text: 'meal summary',
+      category: 'meal_plan',
+      template_key: 'meal.summary',
+      values: { summary: 'source meal plan' },
+      evidence: [testEvidence],
+    });
+    const hotelNotice = buildStandardNoticeDraft({
+      source_text: 'hotel grade',
+      category: 'hotel_notice',
+      template_key: 'hotel.grade',
+      values: { grade: '4성급' },
+      evidence: [testEvidence],
+    });
+    expect(mealNotice).not.toBeNull();
+    expect(hotelNotice).not.toBeNull();
+
+    const gate = evaluateProductRegistrationV3Gate(
+      {
+        document_type: 'single_package',
+        planner_source: 'deterministic',
+        expected_products: 1,
+        shared_sections: [],
+        product_boundaries: [{ index: 0, line_start: 1, line_end: 1, title_hint: 'notice fixture' }],
+        variant_axes: [],
+        price_table_location: null,
+        price_mapping_strategy: 'none',
+        flight_pattern: { outbound_codes: [], inbound_codes: [], meeting_times: [] },
+        itinerary_boundary_pattern: null,
+        option_section_locations: [],
+        shopping_section_locations: [],
+        confidence: 1,
+        unresolved_parts: [],
+      },
+      {
+        document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+        variants: [{
+          variant_key: 'v1',
+          grade: null,
+          course: 'notice fixture',
+          duration_days: 1,
+          nights: 0,
+          title_parts: ['notice fixture'],
+          price_calendar: [],
+          flight_segments: [{ leg: 'outbound', code: 'BX0000', dep_time: '10:00', arr_time: '11:00', evidence: testEvidence }],
+          days: [{ day: 1, route: [], events: [], meals: { breakfast: {}, lunch: {}, dinner: {} }, hotel: {} }],
+          inclusions: [{ value: 'flight', evidence: testEvidence }],
+          exclusions: [{ value: 'personal expense', evidence: testEvidence }],
+          options: [],
+          shopping: [],
+          structured_facts: [],
+          standard_notices: [mealNotice!, hotelNotice!],
+          minimum_departure: { value: 4, evidence: testEvidence },
+          evidence_coverage: {},
+        }],
+      },
+      {
+        attraction_matched_count: 0,
+        attraction_unmatched_count: 0,
+        option_review_count: 0,
+        shopping_count: 0,
+        unmatched: [],
+        entity_summary: {
+          counts: {
+            attraction: 0,
+            hotel: 0,
+            meal: 0,
+            transfer: 0,
+            shopping: 0,
+            optional_tour: 0,
+            free_time: 0,
+            notice: 0,
+            price_noise: 0,
+            unknown: 0,
+          },
+          review_required_count: 0,
+          attraction_unresolved_count: 0,
+          shopping_review_needed_count: 0,
+          option_review_needed_count: 0,
+          unknown_customer_visible_count: 0,
+          auto_ignored_noise_count: 0,
+          meal_structured_count: 0,
+          transfer_structured_count: 0,
+          hotel_structured_count: 0,
+          free_time_structured_count: 0,
+          review_items: [],
+        },
+      },
+    );
+
+    expect(gate.checks.find(check => check.id === 'v1.meals_or_notice')?.status).toBe('pass');
+    expect(gate.checks.find(check => check.id === 'v1.hotel_or_notice')?.status).toBe('pass');
+  });
+
   it('keeps regional meal terms scoped by destination without attraction queue pollution', async () => {
     const raw = [
       'Product: Regional Meal Scope',

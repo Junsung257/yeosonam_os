@@ -8,6 +8,7 @@ import {
   filterResolvedUploadToOpenReasons,
   filterCustomerOpenPriceDates,
   missingPriceDatesFromScorecard,
+  patchV3WithPackageBackedEvidence,
   reconcileV3DraftWithLiveEntityQueueClear,
   repairMojibakeAttractionNamesInItinerary,
   repairNonLodgingHotelNamesInItinerary,
@@ -20,7 +21,9 @@ import {
   repairPolicyLeakInItinerarySchedule,
   repairProductTitleScheduleNoise,
   repairSupplierNoticeTerms,
+  sanitizeCustomerOptionalTours,
   sanitizeCustomerVisibleTitle,
+  shouldAutoApplySourceBackedPriceRepair,
 } from './upload-to-open-autopilot';
 
 describe('classifyUploadToOpenReviewReason', () => {
@@ -84,6 +87,116 @@ describe('filterResolvedUploadToOpenReasons', () => {
     });
 
     expect(reasons).toEqual(['price_dates_repair_requires_review:filled 1 missing source-backed departure dates']);
+  });
+});
+
+describe('source-backed price and package evidence policies', () => {
+  it('auto-applies whitelisted source-backed price repairs when deterministic checks are clean', () => {
+    expect(shouldAutoApplySourceBackedPriceRepair({
+      status: 'repaired',
+      reason: 'shared vertical date table',
+      source: 'product_price_vertical_date_table',
+      expectedCount: 2,
+      existingCount: 1,
+      addedCount: 1,
+      priceDates: [
+        { date: '2026-09-30', price: 1429000, confirmed: false },
+        { date: '2026-10-07', price: 1439000, confirmed: false },
+      ],
+    }, false)).toBe(true);
+  });
+
+  it('keeps deterministic price repairs in review when C12 still fails', () => {
+    expect(shouldAutoApplySourceBackedPriceRepair({
+      status: 'repaired',
+      reason: 'shared table but inconsistent stores',
+      source: 'pdf_date_price_table',
+      expectedCount: 1,
+      existingCount: 13,
+      addedCount: 0,
+      priceDates: [{ date: '2026-08-14', price: 1749000, confirmed: false }],
+    }, true)).toBe(false);
+  });
+
+  it('removes non-customer option noise from optional tours', () => {
+    expect(sanitizeCustomerOptionalTours([
+      { name: '선택관광 아일랜드 호핑투어', price: '$80/인' },
+      { name: '쇼핑 3회', price: null },
+    ])).toEqual([
+      expect.objectContaining({ name: '선택관광 아일랜드 호핑투어' }),
+    ]);
+  });
+
+  it('uses saved package facts to patch missing V3 minimum departure and terms', () => {
+    const v3 = {
+      structure_plan: {
+        document_type: 'single_package',
+        planner_source: 'deterministic',
+        expected_products: 1,
+        shared_sections: [],
+        product_boundaries: [{ index: 0, line_start: 1, line_end: 10, title_hint: '테스트 상품' }],
+        variant_axes: [],
+        price_table_location: null,
+        price_mapping_strategy: 'none',
+        flight_pattern: { outbound_codes: [], inbound_codes: [], meeting_times: [] },
+        itinerary_boundary_pattern: null,
+        option_section_locations: [],
+        shopping_section_locations: [],
+        confidence: 1,
+        unresolved_parts: [],
+      },
+      ledger: {
+        variants: [{
+          variant_key: 'v1',
+          minimum_departure: null,
+          inclusions: [],
+          exclusions: [],
+          days: [],
+          price_calendar: [],
+          flight_segments: [],
+          options: [],
+          shopping: [],
+          standard_notices: [],
+          structured_facts: [],
+          evidence_coverage: {},
+        }],
+      },
+      match_summary: {
+        attraction_matched_count: 0,
+        attraction_unmatched_count: 0,
+        option_review_count: 0,
+        shopping_count: 0,
+        unmatched: [],
+        entity_summary: {
+          counts: {},
+          review_required_count: 0,
+          attraction_unresolved_count: 0,
+          shopping_review_needed_count: 0,
+          option_review_needed_count: 0,
+          unknown_customer_visible_count: 0,
+          review_items: [],
+        },
+      },
+      gate_result: { status: 'blocked', customer_publishable: false, checks: [] },
+      render_contract_preview: [],
+    };
+
+    const changed = patchV3WithPackageBackedEvidence(v3 as never, {
+      min_participants: 4,
+      inclusions: ['왕복 항공권'],
+      excludes: ['개인경비'],
+      itinerary_data: { days: [] },
+    });
+
+    const variant = (v3.ledger.variants[0] as {
+      minimum_departure: { value: number } | null;
+      inclusions: Array<{ value: string }>;
+      exclusions: Array<{ value: string }>;
+    });
+    expect(changed).toBe(true);
+    expect(variant.minimum_departure?.value).toBe(4);
+    expect(variant.inclusions[0]?.value).toBe('왕복 항공권');
+    expect(variant.exclusions[0]?.value).toBe('개인경비');
   });
 });
 

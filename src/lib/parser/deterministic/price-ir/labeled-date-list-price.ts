@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 function toIsoDate(year: number, month: number, day: number): string | null {
   const date = new Date(year, month - 1, day);
