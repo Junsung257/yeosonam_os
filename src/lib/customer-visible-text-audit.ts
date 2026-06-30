@@ -155,7 +155,7 @@ function addSingleValueContextIssues(rows: TextRow[], issues: CustomerVisibleTex
   const duplicateDestinationRe = /(^|[^가-힣A-Za-z0-9])([가-힣A-Za-z][가-힣A-Za-z0-9·]{1,12})\s+\2(?=$|[^가-힣A-Za-z0-9])/u;
 
   for (const row of rows) {
-    if (duplicateDestinationRe.test(row.normalized)) {
+    if (duplicateDestinationRe.test(row.value) || duplicateDestinationRe.test(row.normalized)) {
       issues.push(issueFromRow(
         row,
         'duplicate_destination_token',

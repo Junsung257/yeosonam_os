@@ -33,6 +33,12 @@ describe('customer visible copy quality', () => {
     expect(normalizeCustomerVisibleCopy('호이안 갑니다')).toBe('호이안 이동');
   });
 
+  it('collapses duplicated customer-facing words in schedule copy', () => {
+    expect(normalizeCustomerVisibleCopy('실크로드쇼 관람 관람 일정을 진행합니다.')).toBe(
+      '실크로드쇼 관람 일정을 진행합니다.',
+    );
+  });
+
   it('detects generic marketing fallback and incomplete sentence noise', () => {
     expect(issueCodes('여행의 피로를 풀어 줄 아름다운 시간')).toContain('generic_marketing_fallback');
     expect(issueCodes('/ 바나힐 관광..')).toEqual(expect.arrayContaining([
