@@ -151,6 +151,64 @@ describe('blog editorial repair', () => {
     expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
   });
 
+  it('softens early hard CTA sentences without dropping informational context', () => {
+    const source = [
+      '# 몽골 가족여행 2026 실제 경비표',
+      '',
+      '예약하기 전에 상담 신청을 바로 남기고 출발일, 인원, 숙소 위치를 먼저 확인하세요.',
+      '',
+      '몽골 가족여행 비용은 항공, 숙소, 차량 이동, 식비를 따로 나눠 봐야 판단이 쉽습니다. 성인과 아이 동행 여부에 따라 하루 예산과 이동 피로가 달라집니다.',
+      '',
+      '## 비용 빠른 판단표',
+      '',
+      '| 항목 | 확인 기준 | 주의할 점 |',
+      '| --- | --- | --- |',
+      '| 항공 | 출발 도시와 시간대 | 성수기에는 총액 차이가 큽니다. |',
+      '| 숙소 | 위치와 조식 포함 여부 | 가족 여행은 이동 시간이 중요합니다. |',
+      '| 차량 | 전용차와 합승 여부 | 아이 동반이면 대기 시간을 줄입니다. |',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '몽골 가족여행 2026 실제 경비표',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: '몽골 가족여행 경비',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('moved_early_info_cta_to_bottom');
+    expect(result.blogHtml).toContain('출발일, 인원, 숙소 위치를 먼저 확인하세요.');
+    expect(result.blogHtml).not.toContain('예약하기');
+    expect(result.blogHtml).not.toContain('상담 신청');
+    expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
+  });
+
+  it('softens unsupported Yeosonam data claims before intent gates', () => {
+    const source = [
+      '# 오사카 여행 준비물',
+      '',
+      '오사카 여행 준비물은 이동 동선, 결제 수단, 날씨 변수를 먼저 나눠 보면 판단이 쉽습니다. 출발 전에는 여권과 현지 결제 수단을 다시 확인해야 합니다.',
+      '',
+      '## 판단 기준',
+      '',
+      '여소남 데이터로 보면 이 준비물이 가장 좋습니다. 여행자는 같은 기준을 그대로 따르면 됩니다.',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '오사카 여행 준비물',
+      category: 'preparation',
+      contentType: 'guide',
+      primaryKeyword: '오사카 여행 준비물',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('softened_unsupported_yeosonam_data_claims');
+    expect(result.blogHtml).not.toContain('여소남 데이터');
+    expect(result.after.issues.some((issue) => issue.code === 'unsupported_yeosonam_data')).toBe(false);
+  });
+
   it('repairs raw directive leaks and collapsed checklist items', () => {
     const source = [
       '# 여행 준비 체크',
