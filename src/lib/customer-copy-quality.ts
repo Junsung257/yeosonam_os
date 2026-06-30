@@ -110,6 +110,7 @@ export function normalizeCustomerVisibleCopy(value: string | null | undefined): 
     .replace(/^([가-힣A-Za-z0-9·.,&()/\-\s]{1,24}?)(?:으로|로)?\s*방문합니다\.?$/i, '$1 방문')
     .replace(/^([가-힣A-Za-z0-9·.,&()/\-\s]{1,24}?)(?:으로|로)\s*이동합니다\.?$/i, '$1 이동')
     .replace(/^([가-힣A-Za-z0-9·.,&()/\-\s]{1,24}?)\s*갑니다\.?$/i, '$1 이동')
+    .replace(/([가-힣A-Za-z0-9·]{2,20})\s+\1(?=\s|[.!?,)]|$)/g, '$1')
     .replace(/\\\s*(\d{1,3}(?:,\d{3})+)(?!\s*원)/g, '$1원')
     .replace(/\.{2,}/g, '.')
     .replace(/(?:\s*[-–—/]\s*)+$/g, '')
