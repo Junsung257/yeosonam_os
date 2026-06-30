@@ -75,6 +75,29 @@ function sanitizeInfoSalesTone(markdown: string): { text: string; changed: boole
   return { text, changed: text !== before };
 }
 
+const YEOSONAM_DATA_EVIDENCE_RE = /(예약|상담|검색)\s*(로그|건수|데이터|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i;
+
+function softenUnsupportedYeosonamDataClaims(markdown: string): { text: string; changed: boolean } {
+  const plain = stripMarkup(markdown);
+  if (!plain.includes('여소남 데이터') || YEOSONAM_DATA_EVIDENCE_RE.test(plain)) {
+    return { text: markdown, changed: false };
+  }
+
+  let text = markdown;
+  const before = text;
+  const replacements: Array<[RegExp, string]> = [
+    [/여소남\s*데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
+    [/여소남\s*데이터\s*기준(?:으로)?/g, '현재 확인 가능한 기준으로'],
+    [/여소남\s*데이터(?:에\s*따르면|상으로는|상)?/g, '일반적인 여행 준비 기준으로'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return { text, changed: text !== before };
+}
+
 function hasHardCtaSignal(text: string): boolean {
   return (
     /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(text) ||
@@ -85,6 +108,32 @@ function hasHardCtaSignal(text: string): boolean {
 
 function hasReadableHardAction(text: string): boolean {
   return /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(text);
+}
+
+function hasMarkdownLink(text: string): boolean {
+  return /\[[^\]\n]{2,80}]\([^)]+(?:\s+"[^"]*")?\)/.test(text);
+}
+
+function softenHardCtaText(markdown: string): { text: string; changed: boolean } {
+  let text = markdown;
+  const before = text;
+  const replacements: Array<[RegExp, string]> = [
+    [/지금\s*예약(?:하기|문의|상담|신청|바로)?/gi, '출발 조건 확인'],
+    [/바로\s*예약(?:하기|문의|상담|신청)?/gi, '출발 조건 확인'],
+    [/예약\s*(?:하기|문의|상담|신청|바로)/gi, '출발 조건 확인'],
+    [/예약\s*마감/gi, '확인 필요'],
+    [/잔여\s*좌석/gi, '가능 여부'],
+    [/상품\s*보기|패키지\s*보기/gi, '관련 조건 확인'],
+    [/카카오톡?\s*(?:무료\s*)?상담/gi, '일정 조건 확인'],
+    [/상담\s*(?:하기|신청|문의|남기기|바로)/gi, '필요한 조건 확인'],
+    [/문의\s*(?:하기|신청|바로)/gi, '조건 확인'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return { text, changed: text !== before };
 }
 
 function safeDecodeUriComponent(value: string): string {
@@ -107,6 +156,17 @@ function moveEarlyStrongInfoCtaToBottom(markdown: string): { text: string; chang
     const start = cursor;
     cursor += block.length + 2;
     if (start <= earlyLimit && hasHardCtaSignal(block) && hasReadableHardAction(block)) {
+      if (!hasMarkdownLink(block)) {
+        const softened = softenHardCtaText(block.trim());
+        if (
+          softened.changed
+          && !(hasHardCtaSignal(softened.text) && hasReadableHardAction(softened.text))
+        ) {
+          kept.push(softened.text);
+          changed = true;
+          continue;
+        }
+      }
       moved.push(block.trim());
       changed = true;
       continue;
@@ -1349,6 +1409,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (accentRepair.changed) {
     blogHtml = accentRepair.text;
     changes.push('normalized_visual_accents');
+  }
+
+  const yeosonamDataRepair = softenUnsupportedYeosonamDataClaims(blogHtml);
+  if (yeosonamDataRepair.changed) {
+    blogHtml = yeosonamDataRepair.text;
+    changes.push('softened_unsupported_yeosonam_data_claims');
   }
 
   if (intent.mode === 'info') {

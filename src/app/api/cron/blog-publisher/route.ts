@@ -426,6 +426,24 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
+    if (failed.has('intent_quality') || failed.has('engine_v2')) {
+      const editorialRepair = repairBlogEditorialQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        angleType: normalizeAngleType(item.angle_type),
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (editorialRepair.changed) {
+        generated.blog_html = editorialRepair.blogHtml;
+        changes.push(...editorialRepair.changes);
+        changed = true;
+      }
+    }
+
     if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity')) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
