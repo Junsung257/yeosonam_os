@@ -112,10 +112,11 @@ export function shouldSelfHealBlogQueueItem(input: {
   const meta = input.meta && typeof input.meta === 'object' && !Array.isArray(input.meta)
     ? input.meta as Record<string, unknown>
     : {};
-  const code = typeof meta.failure_code === 'string'
+  const storedCode = typeof meta.failure_code === 'string' && meta.failure_code !== 'unknown'
     ? meta.failure_code as BlogQueueFailureCode
-    : classifyBlogQueueFailure(input.lastError ?? '').code;
-  const blockedByMeta = meta.self_heal_blocked === true || meta.quarantine_reason === 'non_retryable_failure';
+    : null;
+  const code = storedCode ?? classifyBlogQueueFailure(input.lastError ?? '').code;
+  const blockedByMeta = meta.self_heal_blocked === true || typeof meta.quarantine_reason === 'string';
 
   return !blockedByMeta && !SELF_HEAL_BLOCKED_CODES.has(code);
 }
