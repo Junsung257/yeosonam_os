@@ -4,6 +4,7 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from './blog-editorial-repair';
+import { checkMarkdownTableIntegrity } from './blog-quality-gate';
 
 describe('blog editorial repair', () => {
   it('repairs loose markdown tables with blank lines and missing separators', () => {
@@ -297,6 +298,57 @@ describe('blog editorial repair', () => {
     expect(result.changed).toBe(true);
     expect(result.changes).toContain('added_markdown_table_boundaries');
     expect(result.blogHtml).toContain('- City: Oslo / Weather: mild\n\nCheck point: July northern Europe');
+  });
+
+  it('force-repairs mismatched markdown table rows that would fail the publish gate', () => {
+    const source = [
+      '# Mongolia hotel area budget',
+      '',
+      '| Area | Fit | Note |',
+      '| --- | --- | --- |',
+      '| Ulaanbaatar center | first timers | easiest transfer |',
+      '| Terelj | family |',
+      '| Airport side | late arrival | fewer dinner options |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Mongolia hotel area budget',
+      slug: 'mongolia-hotel-area-budget',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: 'Mongolia hotel area',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('force_repaired_broken_markdown_tables');
+    expect(result.blogHtml).not.toContain('| Area | Fit | Note |');
+    expect(result.blogHtml).toContain('- Area: Ulaanbaatar center / Fit: first timers / Note: easiest transfer');
+    expect(checkMarkdownTableIntegrity(result.blogHtml).passed).toBe(true);
+  });
+
+  it('adds missing separators to otherwise valid 3-row tables before gate checks', () => {
+    const source = [
+      '# Mongolia food budget',
+      '',
+      '| Item | Budget | Check |',
+      '| Breakfast | 10000 KRW | hotel inclusion |',
+      '| Lunch | 15000 KRW | local restaurant |',
+      '| Dinner | 25000 KRW | tourist area premium |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Mongolia food budget',
+      slug: 'mongolia-food-budget',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: 'Mongolia food budget',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('| --- | --- | --- |');
+    expect(checkMarkdownTableIntegrity(result.blogHtml).passed).toBe(true);
   });
 
   it('caps excessive h2 headings by demoting later support sections', () => {
