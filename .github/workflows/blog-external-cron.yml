@@ -6,6 +6,8 @@ on:
     - cron: '50 2 * * *'
     # KST 12:07, 15:07, 18:07, 21:07.
     - cron: '7 3,6,9,12 * * *'
+    # KST 12:27, 15:27, 18:27, 21:27, decouple indexing from publisher success.
+    - cron: '27 3,6,9,12 * * *'
     # KST 22:12, after the final daily publisher slot.
     - cron: '12 13 * * *'
   workflow_dispatch:
@@ -18,6 +20,7 @@ on:
         options:
           - blog-scheduler
           - blog-publisher
+          - blog-indexing-worker
           - blog-daily-summary
       force:
         description: Add force=true for manual publisher checks.
@@ -54,6 +57,9 @@ jobs:
             case "${{ github.event.schedule }}" in
               "50 2 * * *")
                 endpoint="blog-scheduler"
+                ;;
+              "27 3,6,9,12 * * *")
+                endpoint="blog-indexing-worker"
                 ;;
               "12 13 * * *")
                 endpoint="blog-daily-summary"
@@ -124,6 +130,14 @@ jobs:
             if (remainingBeforeRun > 0 && published === 0) {
               console.error(`Publisher produced zero posts with remaining quota (${remainingBeforeRun}).`);
               console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
+              process.exit(1);
+            }
+          }
+          if (endpoint === 'blog-indexing-worker') {
+            const failed = Number(data?.failed ?? 0);
+            const errors = Array.isArray(data?.errors) ? data.errors : [];
+            if (failed > 0 || errors.length > 0) {
+              console.error(`Indexing worker reported failures. failed=${failed}, errors=${JSON.stringify(errors)}`);
               process.exit(1);
             }
           }
