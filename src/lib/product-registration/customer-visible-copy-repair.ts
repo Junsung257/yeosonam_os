@@ -104,14 +104,14 @@ function repairString(value: string, fieldPath: string): { value: string | null;
 function dedupeCandidateSignature(value: unknown): string | null {
   if (typeof value === 'string') {
     const key = normalizeCustomerVisibleCopy(value).replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
-    return key.length >= 8 ? key : null;
+    return key.length >= 5 ? key : null;
   }
   if (!value || typeof value !== 'object') return null;
   const obj = value as Record<string, unknown>;
   const source = obj.displayName ?? obj.name ?? obj.title ?? obj.label ?? obj.activity;
   if (typeof source !== 'string') return null;
   const key = normalizeCustomerVisibleCopy(source).replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
-  return key.length >= 8 ? key : null;
+  return key.length >= 5 ? key : null;
 }
 
 function shouldDeduplicateCustomerArray(pathParts: string[]): boolean {
@@ -180,6 +180,108 @@ function pruneDuplicateOptionalTours(value: unknown, changes: CustomerVisibleCop
   return { ...obj, optional_tours: nextTours };
 }
 
+function pruneDuplicateHighlights(value: unknown, changes: CustomerVisibleCopyRepairChange[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const obj = value as Record<string, unknown>;
+  const itineraryData = obj.itinerary_data;
+  if (!itineraryData || typeof itineraryData !== 'object' || Array.isArray(itineraryData)) return value;
+  const itineraryObj = itineraryData as Record<string, unknown>;
+  const highlights = itineraryObj.highlights;
+  if (!highlights || typeof highlights !== 'object' || Array.isArray(highlights)) return value;
+
+  const protectedSignatures = new Set<string>();
+  collectReferenceSignatures(obj.title, protectedSignatures);
+  collectReferenceSignatures(obj.display_title, protectedSignatures);
+  collectReferenceSignatures(obj.product_summary, protectedSignatures);
+  collectReferenceSignatures(obj.inclusions, protectedSignatures);
+  collectReferenceSignatures(obj.excludes, protectedSignatures);
+  collectReferenceSignatures(obj.surcharges, protectedSignatures);
+  collectReferenceSignatures(obj.optional_tours, protectedSignatures);
+  collectReferenceSignatures(obj.notices_parsed, protectedSignatures);
+
+  const nextHighlights: Record<string, unknown> = {};
+  let changed = false;
+  const seenHighlightSignatures = new Set<string>();
+
+  for (const [key, item] of Object.entries(highlights as Record<string, unknown>)) {
+    if (!Array.isArray(item)) {
+      nextHighlights[key] = item;
+      continue;
+    }
+
+    const nextItems: unknown[] = [];
+    item.forEach((entry, index) => {
+      const signature = dedupeCandidateSignature(entry);
+      if (signature && protectedSignatures.has(signature)) {
+        changes.push({
+          fieldPath: `itinerary_data.highlights.${key}.${index}`,
+          action: 'removed',
+          codes: ['duplicate_customer_visible_phrase'],
+          before: typeof entry === 'string' ? entry : JSON.stringify(entry),
+          after: null,
+        });
+        changed = true;
+        return;
+      }
+      if (signature && seenHighlightSignatures.has(signature)) {
+        changes.push({
+          fieldPath: `itinerary_data.highlights.${key}.${index}`,
+          action: 'removed',
+          codes: ['duplicate_customer_visible_phrase'],
+          before: typeof entry === 'string' ? entry : JSON.stringify(entry),
+          after: null,
+        });
+        changed = true;
+        return;
+      }
+      if (signature) seenHighlightSignatures.add(signature);
+      nextItems.push(entry);
+    });
+    nextHighlights[key] = nextItems;
+  }
+
+  if (!changed) return value;
+  return {
+    ...obj,
+    itinerary_data: {
+      ...itineraryObj,
+      highlights: nextHighlights,
+    },
+  };
+}
+
+function pruneDuplicateOptionalTourNotes(value: unknown, changes: CustomerVisibleCopyRepairChange[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.optional_tours)) return value;
+
+  let changed = false;
+  const seenNotes = new Set<string>();
+  const nextTours = obj.optional_tours.map((tour, index) => {
+    if (!tour || typeof tour !== 'object' || Array.isArray(tour)) return tour;
+    const tourObj = tour as Record<string, unknown>;
+    const signature = dedupeCandidateSignature(tourObj.note);
+    if (!signature) return tour;
+    if (!seenNotes.has(signature)) {
+      seenNotes.add(signature);
+      return tour;
+    }
+    changed = true;
+    changes.push({
+      fieldPath: `optional_tours.${index}.note`,
+      action: 'removed',
+      codes: ['duplicate_customer_visible_phrase'],
+      before: String(tourObj.note),
+      after: null,
+    });
+    const { note: _note, ...rest } = tourObj;
+    return rest;
+  });
+
+  if (!changed) return value;
+  return { ...obj, optional_tours: nextTours };
+}
+
 function repairValue(value: unknown, pathParts: string[]): { value: unknown; changes: CustomerVisibleCopyRepairChange[] } {
   const key = pathParts[pathParts.length - 1] ?? '';
   if (CUSTOMER_COPY_REPAIR_SKIP_KEYS.has(key)) return { value, changes: [] };
@@ -241,8 +343,10 @@ export function repairCustomerVisibleCopyPayload<T>(value: T): CustomerVisibleCo
   const repaired = repairValue(value, []);
   const changes = [...repaired.changes];
   const valueWithOptionalTours = pruneDuplicateOptionalTours(repaired.value, changes);
+  const valueWithPrunedTourNotes = pruneDuplicateOptionalTourNotes(valueWithOptionalTours, changes);
+  const valueWithPrunedHighlights = pruneDuplicateHighlights(valueWithPrunedTourNotes, changes);
   return {
-    value: valueWithOptionalTours as T,
+    value: valueWithPrunedHighlights as T,
     changes,
   };
 }

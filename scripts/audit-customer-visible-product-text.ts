@@ -302,11 +302,15 @@ function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<stri
     if (field === 'products') continue;
     repairInput[field] = row[field as keyof TravelPackageRow];
   }
-  const repaired = repairCustomerVisibleCopyPayload(repairInput).value as Record<string, unknown>;
+  const repairResult = repairCustomerVisibleCopyPayload(repairInput);
+  const repaired = repairResult.value as Record<string, unknown>;
+  const repairChangePaths = new Set(repairResult.changes.map(change => change.fieldPath));
 
   for (const field of CUSTOMER_TEXT_FIELDS) {
     if (field === 'products') continue;
-    if (!issues.some(issue => issue.field_path === field || issue.field_path.startsWith(`${field}.`))) continue;
+    const hasIssue = issues.some(issue => issue.field_path === field || issue.field_path.startsWith(`${field}.`));
+    const hasRepairChange = [...repairChangePaths].some(path => path === field || path.startsWith(`${field}.`));
+    if (!hasIssue && !hasRepairChange) continue;
     const before = row[field as keyof TravelPackageRow];
     const after = repaired[field];
     if (JSON.stringify(after) !== JSON.stringify(before)) patch[field] = after;
