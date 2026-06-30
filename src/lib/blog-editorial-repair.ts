@@ -75,25 +75,53 @@ function sanitizeInfoSalesTone(markdown: string): { text: string; changed: boole
   return { text, changed: text !== before };
 }
 
-const YEOSONAM_DATA_EVIDENCE_RE = /(예약|상담|검색)\s*(로그|건수|데이터|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i;
+const YEOSONAM_DATA_EVIDENCE_RE = /(예약|상담|검색)\s*(로그|건수|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i;
+const UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
+  /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i;
+const YEOSONAM_EDITOR_VOICE_RE = /여소남\s*에디터(?:가|는|의)?/i;
 
 function softenUnsupportedYeosonamDataClaims(markdown: string): { text: string; changed: boolean } {
   const plain = stripMarkup(markdown);
-  if (!plain.includes('여소남 데이터') || YEOSONAM_DATA_EVIDENCE_RE.test(plain)) {
+  if (!UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain) || YEOSONAM_DATA_EVIDENCE_RE.test(plain)) {
     return { text: markdown, changed: false };
   }
 
   let text = markdown;
   const before = text;
   const replacements: Array<[RegExp, string]> = [
+    [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*본/g, '출발 전 확인 기준으로 본'],
+    [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
     [/여소남\s*데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
     [/여소남\s*데이터\s*기준(?:으로)?/g, '현재 확인 가능한 기준으로'],
     [/여소남\s*데이터(?:에\s*따르면|상으로는|상)?/g, '일반적인 여행 준비 기준으로'],
+    [/여소남(?:의)?\s*(?:예약|상담)\s*데이터(?:에\s*따르면|상으로는|상)?/g, '현재 확인 가능한 여행 준비 기준으로'],
   ];
 
   for (const [pattern, replacement] of replacements) {
     text = text.replace(pattern, replacement);
   }
+
+  return { text, changed: text !== before };
+}
+
+function removeYeosonamEditorVoice(markdown: string): { text: string; changed: boolean } {
+  if (!YEOSONAM_EDITOR_VOICE_RE.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const before = markdown;
+  const text = markdown
+    .split('\n')
+    .map((line) => {
+      if (!YEOSONAM_EDITOR_VOICE_RE.test(line)) return line;
+      return line
+        .replace(/여소남\s*에디터가\s*여러\s*정보를\s*비교\s*분석하여,?\s*/g, '')
+        .replace(/여소남\s*에디터가\s*꼼꼼(?:하|히)게\s*정리(?:해\s*드립니다|했습니다|합니다)\.?/g, '핵심 기준을 정리했습니다.')
+        .replace(/여소남\s*에디터가\s*추천(?:하는|한)?/g, '여행 전 확인할')
+        .replace(/여소남\s*에디터(?:가|는|의)?\s*/g, '');
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
 
   return { text, changed: text !== before };
 }
@@ -1461,6 +1489,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (yeosonamDataRepair.changed) {
     blogHtml = yeosonamDataRepair.text;
     changes.push('softened_unsupported_yeosonam_data_claims');
+  }
+
+  const editorVoiceRepair = removeYeosonamEditorVoice(blogHtml);
+  if (editorVoiceRepair.changed) {
+    blogHtml = editorVoiceRepair.text;
+    changes.push('removed_yeosonam_editor_voice');
   }
 
   if (intent.mode === 'info') {

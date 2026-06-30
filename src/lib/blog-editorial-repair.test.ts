@@ -209,6 +209,39 @@ describe('blog editorial repair', () => {
     expect(result.after.issues.some((issue) => issue.code === 'unsupported_yeosonam_data')).toBe(false);
   });
 
+  it('removes editor persona and Yeosonam data variants that make posts sound generated', () => {
+    const source = [
+      '# 몽골 식비 예산',
+      '',
+      '몽골 식비 예산은 먼저 하루 식사 횟수와 현지 이동 동선을 같이 보면 판단하기 쉽습니다. 출발 전에는 포함 식사와 현지 결제 수단을 함께 확인해야 합니다.',
+      '',
+      '## 판단 기준',
+      '',
+      '여소남 에디터가 여러 정보를 비교 분석하여, 여러분의 몽골 여행이 더욱 투명하고 만족스러울 수 있도록 꼼꼼히 정리해 드립니다.',
+      '',
+      '## 여소남의 데이터로 본 몽골 여행 식비 팁',
+      '',
+      '여소남의 데이터로 보면 하루 식비는 일정과 숙소 위치를 같이 볼 때 더 정확합니다.',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '몽골 식비 예산',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: '몽골 식비 예산',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(expect.arrayContaining([
+      'removed_yeosonam_editor_voice',
+      'softened_unsupported_yeosonam_data_claims',
+    ]));
+    expect(result.blogHtml).not.toContain('여소남 에디터');
+    expect(result.blogHtml).not.toContain('여소남의 데이터');
+    expect(result.blogHtml).toContain('출발 전 확인 기준');
+  });
+
   it('repairs raw directive leaks and collapsed checklist items', () => {
     const source = [
       '# 여행 준비 체크',

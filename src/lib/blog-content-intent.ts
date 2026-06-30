@@ -385,6 +385,7 @@ function inspectCommonEditorialContract(source: string, plain: string, issues: B
     '완벽 가이드',
     '총정리',
     '여소남 에디터가 추천',
+    '여소남 에디터',
     '놓치면 후회',
     '최고의 선택',
   ];
@@ -401,8 +402,10 @@ function inspectCommonEditorialContract(source: string, plain: string, issues: B
     );
   }
 
-  const hasYeosonamEvidence = /(예약|상담|검색)\s*(로그|건수|데이터|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain);
-  if (plain.includes('여소남 데이터') && !hasYeosonamEvidence) {
+  const hasYeosonamEvidence = /(예약|상담|검색)\s*(로그|건수|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain);
+  const hasUnsupportedYeosonamData =
+    /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i.test(plain);
+  if (hasUnsupportedYeosonamData && !hasYeosonamEvidence) {
     addIssue(
       issues,
       'unsupported_yeosonam_data',
