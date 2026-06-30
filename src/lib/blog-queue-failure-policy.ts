@@ -1,6 +1,7 @@
 type BlogQueueFailureCode =
   | 'duplicate_content'
   | 'context_missing'
+  | 'product_open_contract'
   | 'keyword_density'
   | 'structure_integrity'
   | 'intent_quality'
@@ -23,6 +24,7 @@ export interface BlogQueueFailureDecision {
 const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'duplicate_content',
   'context_missing',
+  'product_open_contract',
   'keyword_density',
   'structure_integrity',
   'intent_quality',
@@ -58,6 +60,10 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (/linked_blog_id|orphan_linked_blog|invalid_linked_draft|linked draft/i.test(text)) {
     return { code: 'linked_draft_invalid', retryable: false, selfHealAllowed: false, skipped: false };
+  }
+
+  if (/product_customer_open_contract_failed|customer_open_contract|mobile_proof|registration_evidence_pack|blog_publish/i.test(text)) {
+    return { code: 'product_open_contract', retryable: false, selfHealAllowed: false, skipped: false };
   }
 
   if (/render_buffer|png .*대기|render pending|card_news.*pending/i.test(text)) {

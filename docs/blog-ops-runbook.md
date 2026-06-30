@@ -162,6 +162,14 @@ The blog system is complete only when the admin UI can answer these questions wi
 - If `--date=YYYY-MM-DD` is passed to `diagnose:blog-autopublish`, the script audits that explicit KST date instead of applying the closed-day default.
 - The diagnosis JSON exposes `report_period_closed`, `used_previous_day_for_pre_close_run`, and `close_minute_kst` so admin/operator tooling can show why a previous day was selected.
 
+## 2026-07-01 Product Candidate Preflight Evidence
+
+- Product-backed blog candidates must not consume publisher claim slots when their package cannot pass the unified customer-open contract.
+- `blog-publisher` preflight now checks due queued rows with `product_id` before `claim_queue_items`.
+- Candidates blocked by stale or missing customer mobile proof, failed scorecard evidence, or downstream `blog_publish` eligibility are marked `failed` with `failure_code='product_open_contract'` and `quarantine_reason='product_open_contract'`.
+- `countPublishableQueueCandidates()`, `blog-daily-summary`, and `diagnose:blog-autopublish` exclude these rows from publishable candidate counts and treat them as evidence collection work, not as ready inventory.
+- Do not requeue these rows until the linked package has fresh customer mobile proof and its customer-open contract passes.
+
 ## Vercel Cron Bypass Fallback
 
 - `.github/workflows/blog-external-cron.yml` is the Vercel-Cron-independent scheduler.

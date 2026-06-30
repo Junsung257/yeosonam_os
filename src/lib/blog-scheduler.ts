@@ -159,6 +159,12 @@ function hasEvidenceInsufficientFlag(row: QueueCandidateLike): boolean {
     row.generation_meta?.failure_bucket === 'evidence_insufficient';
 }
 
+function hasProductOpenContractBlock(row: QueueCandidateLike): boolean {
+  return row.meta?.failure_code === 'product_open_contract' ||
+    row.meta?.quarantine_reason === 'product_open_contract' ||
+    row.generation_meta?.failure_bucket === 'product_open_contract';
+}
+
 function publishableQueueKey(row: QueueCandidateLike): string | null {
   const writer = readWriterType(row);
   const productDedupKey = readProductDedupKey(row);
@@ -182,6 +188,7 @@ export function countPublishableQueueCandidates(input: {
   blockedRecentDuplicate: number;
   duplicateQueued: number;
   evidenceInsufficient: number;
+  productOpenContractBlocked: number;
 } {
   const recentKeys = new Set<string>();
   for (const row of input.recentPublished) {
@@ -193,9 +200,14 @@ export function countPublishableQueueCandidates(input: {
   let blockedRecentDuplicate = 0;
   let duplicateQueued = 0;
   let evidenceInsufficient = 0;
+  let productOpenContractBlocked = 0;
 
   for (const row of input.activeQueue) {
     if (row.source === 'pillar') continue;
+    if (hasProductOpenContractBlock(row)) {
+      productOpenContractBlocked += 1;
+      continue;
+    }
     if (hasEvidenceInsufficientFlag(row)) {
       evidenceInsufficient += 1;
       continue;
@@ -218,6 +230,7 @@ export function countPublishableQueueCandidates(input: {
     blockedRecentDuplicate,
     duplicateQueued,
     evidenceInsufficient,
+    productOpenContractBlocked,
   };
 }
 
@@ -234,7 +247,7 @@ async function quarantineDuplicatePublishableCandidates(input: {
   const seen = new Set<string>();
   const duplicateRows: Array<{ id: string; key: string; meta: Record<string, unknown> }> = [];
   for (const row of input.activeQueue) {
-    if (!row.id || row.source === 'pillar' || hasEvidenceInsufficientFlag(row)) continue;
+    if (!row.id || row.source === 'pillar' || hasEvidenceInsufficientFlag(row) || hasProductOpenContractBlock(row)) continue;
     const key = publishableQueueKey(row);
     if (!key) continue;
     const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
@@ -320,9 +333,9 @@ export async function ensureDailyPublishableQueue(opts?: {
     queued_total: queuedTotal,
     publishable_count: queueCandidateStats.publishableCount,
     duplicate_count: duplicateCount,
-    evidence_insufficient_count: queueCandidateStats.evidenceInsufficient,
+    evidence_insufficient_count: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
     candidate_shortage: queueCandidateStats.publishableCount < targetCandidates,
-    next_action: queueCandidateStats.evidenceInsufficient > 0
+    next_action: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
       : duplicateCount > 0
         ? 'quarantine_duplicates'
@@ -342,7 +355,7 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate: queueCandidateStats.blockedRecentDuplicate,
       skippedQueuedDuplicate: queueCandidateStats.duplicateQueued,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
       quarantinedDuplicateCandidates,
       publishabilitySnapshot,
       rejectedByTopicFit: 0,
@@ -423,7 +436,7 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate,
       skippedQueuedDuplicate,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
       quarantinedDuplicateCandidates,
       publishabilitySnapshot,
       rejectedByTopicFit: rejected.length,
@@ -444,7 +457,7 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate,
       skippedQueuedDuplicate,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
       quarantinedDuplicateCandidates,
       publishabilitySnapshot,
       rejectedByTopicFit: rejected.length,
@@ -462,7 +475,7 @@ export async function ensureDailyPublishableQueue(opts?: {
     targetCandidates,
     skippedRecentDuplicate,
     skippedQueuedDuplicate,
-    evidenceInsufficient: queueCandidateStats.evidenceInsufficient,
+    evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
     quarantinedDuplicateCandidates,
     publishabilitySnapshot: {
       ...publishabilitySnapshot,

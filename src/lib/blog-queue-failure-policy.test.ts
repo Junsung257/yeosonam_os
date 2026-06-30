@@ -89,4 +89,25 @@ describe('blog queue failure policy', () => {
       reason: 'evidence_insufficient',
     });
   });
+
+  it('treats product open-contract failures as non-retryable publisher blockers', () => {
+    expect(classifyBlogQueueFailure(
+      'product_customer_open_contract_failed:mobile_proof:actual /packages mobile browser proof is stale',
+    )).toMatchObject({
+      code: 'product_open_contract',
+      retryable: false,
+      selfHealAllowed: false,
+      skipped: false,
+    });
+
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 0,
+      lastError: 'product_customer_open_contract_failed:mobile_proof:actual customer mobile browser proof hashes are missing',
+      meta: {},
+    })).toMatchObject({
+      quarantine: true,
+      status: 'failed',
+      reason: 'product_open_contract',
+    });
+  });
 });
