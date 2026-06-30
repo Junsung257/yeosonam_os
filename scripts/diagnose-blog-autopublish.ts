@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { countPublishableQueueCandidates } from '../src/lib/blog-scheduler';
+import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-window';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -48,6 +49,30 @@ function kstDayRange(dayKey: string): { dayKey: string; start: Date; end: Date }
   return { dayKey, start, end };
 }
 
+function resolveReportDay(): {
+  dayKey: string;
+  start: Date;
+  end: Date;
+  closed: boolean;
+  usedPreviousDayForPreCloseRun: boolean;
+  closeMinuteKst: number | null;
+} {
+  if (dateArg) {
+    return {
+      ...kstDayRange(dateArg),
+      closed: true,
+      usedPreviousDayForPreCloseRun: false,
+      closeMinuteKst: null,
+    };
+  }
+
+  const closedDay = getClosedKstDailySummaryRange();
+  return {
+    ...closedDay,
+    usedPreviousDayForPreCloseRun: closedDay.usedPreviousDay,
+  };
+}
+
 function numberFrom(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
@@ -84,7 +109,7 @@ async function countByStatus(table: string, statuses: string[]) {
 }
 
 async function main() {
-  const day = kstDayRange(dateArg || kstDayKey());
+  const day = resolveReportDay();
   const yesterday = kstDayRange(kstDayKey(new Date(day.start.getTime() - 1)));
 
   const [
@@ -290,7 +315,12 @@ async function main() {
     date: day.dayKey,
     timezone: 'Asia/Seoul',
     generated_at: new Date().toISOString(),
+    report_period_closed: day.closed,
+    used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
+    close_minute_kst: day.closeMinuteKst,
     published: {
+      selected_day: publishedTodayRes.count ?? 0,
+      previous_day: publishedYesterdayRes.count ?? 0,
       today: publishedTodayRes.count ?? 0,
       yesterday: publishedYesterdayRes.count ?? 0,
       daily_target: dailyTarget,
@@ -310,7 +340,7 @@ async function main() {
   }
 
   console.log(`Blog autopublish diagnosis (${report.date} KST)`);
-  console.log(`Published: ${report.published.today}/${dailyTarget} today, ${report.published.yesterday} yesterday`);
+  console.log(`Published: ${report.published.today}/${dailyTarget} selected day, ${report.published.yesterday} previous day`);
   console.log(`Queue: ${JSON.stringify(queueCounts)}`);
   console.log(`Indexing jobs: ${JSON.stringify(indexingCounts)}`);
   console.log('Buckets:');
