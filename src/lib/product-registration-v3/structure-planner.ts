@@ -7,7 +7,7 @@ import {
   collectVariantCatalogBlockStarts,
 } from '@/lib/parser/catalog-pre-split';
 
-const FLIGHT_CODE_RE = /\b[A-Z0-9]{2}\s*\d{3,4}\b/g;
+const FLIGHT_CODE_RE = /\b(?:[A-Z][A-Z0-9]|[0-9][A-Z])\s*\d{3,4}\b/g;
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(?:\uc6d0|KRW|USD|\$)?/i;
 const DAY_HEADER_RE = /^(?:day\s*\d{1,2}(?:\b|\s|$)|\uc81c\s*\d{1,2}\s*\uc77c(?:\s|$)|\d{1,2}\s*\uc77c\ucc28(?:\s|$))/i;
@@ -15,6 +15,10 @@ const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54
 const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\ud604\uc9c0\s*\uc9c0\ubd88\s*\uc635\uc158|\uac15\ub825\s*\ucd94\ucc9c\s*\uc635\uc158|\ucd94\ucc9c\s*\uc120\ud0dd\s*\uad00\uad11/i;
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const MEETING_RE = /meeting|\ubbf8\ud305|\uc9d1\uacb0|\ud53d\uc5c5|\uacf5\ud56d\s*\ubbf8\ud305/i;
+const AIR_MODE_RE = /flight|airline|airport|\ud56d\uacf5|\ube44\ud589|\ud3b8\uba85|\ucd9c\ubc1c\ud3b8|\uadc0\uad6d\ud3b8|\uacf5\ud56d|\uad6d\uc81c\uacf5\ud56d/i;
+const FERRY_MODE_RE = /ferry|cruise|\ud6fc\ub9ac|\ud398\ub9ac|\uc120\ubc15|\ud06c\ub8e8\uc988|\ubd80\uad00\ud6fc\ub9ac|\ub274\uce74\uba5c\ub9ac\uc544|\uce74\uba5c\ub9ac\uc544|\ubd80\uc0b0\ud56d|\ud558\uce74\ub2e4\ud56d/i;
+const RAIL_MODE_RE = /rail|train|\uace0\uc18d\uc5f4\ucc28|\uae30\ucc28|\uc5f4\ucc28|\uc2e0\uce78\uc13c/i;
+const BUS_MODE_RE = /bus|\ubc84\uc2a4|\ub9ac\ubb34\uc9c4|\uc154\ud2c0/i;
 
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -120,11 +124,33 @@ function collectVariantAxes(boundaries: V3StructurePlan['product_boundaries']): 
   return axes;
 }
 
+function detectTransportProfile(raw: string, flightCodes: string[]): NonNullable<V3StructurePlan['transport_profile']> {
+  const detected = new Set<NonNullable<V3StructurePlan['transport_profile']>['detected_modes'][number]>();
+  if (flightCodes.length > 0 || AIR_MODE_RE.test(raw)) detected.add('air');
+  if (FERRY_MODE_RE.test(raw)) detected.add('ferry');
+  if (/cruise|\ud06c\ub8e8\uc988/i.test(raw)) detected.add('cruise');
+  if (RAIL_MODE_RE.test(raw)) detected.add('rail');
+  if (BUS_MODE_RE.test(raw)) detected.add('bus');
+  if (detected.size === 0) detected.add('unknown');
+
+  const requiresAir = flightCodes.length > 0 || (detected.has('air') && !detected.has('ferry') && !detected.has('cruise'));
+  return {
+    requires_air: requiresAir,
+    detected_modes: [...detected],
+    air_requirement_reason: requiresAir
+      ? flightCodes.length > 0
+        ? 'flight_code_detected'
+        : 'air_keyword_detected'
+      : null,
+  };
+}
+
 export function planProductRegistrationV3(lines: V3SourceLine[]): V3StructurePlan {
   const raw = lines.map(line => line.quote).join('\n');
   const product_boundaries = collectBoundaries(lines);
   const priceLine = lines.find(line => PRICE_RE.test(line.quote));
   const flightCodes = [...raw.matchAll(FLIGHT_CODE_RE)].map(m => m[0].replace(/\s+/g, ''));
+  const transportProfile = detectTransportProfile(raw, flightCodes);
   const meetingTimes = lines
     .filter(line => MEETING_RE.test(line.quote))
     .flatMap(line => [...line.quote.matchAll(TIME_RE)].map(m => m[0]));
@@ -163,6 +189,7 @@ export function planProductRegistrationV3(lines: V3SourceLine[]): V3StructurePla
       inbound_codes: flightCodes.slice(1, 2),
       meeting_times: [...new Set(meetingTimes)],
     },
+    transport_profile: transportProfile,
     itinerary_boundary_pattern: dayHeaders.length > 0 ? 'day header lines' : null,
     option_section_locations: optionSections,
     shopping_section_locations: shoppingSections,

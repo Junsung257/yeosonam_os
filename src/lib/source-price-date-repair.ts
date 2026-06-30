@@ -2,6 +2,7 @@ import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
 import type { PriceDate } from '@/lib/price-dates';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year';
+import { formatKstDate, isUpcomingKstDate } from '@/lib/kst-date';
 
 export type SourcePriceRepairPackage = {
   id?: string | null;
@@ -119,6 +120,10 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && ISO_DATE_RE.test(value);
 }
 
+function isUpcomingSourceDate(date: string, today: string = formatKstDate()): boolean {
+  return isUpcomingKstDate(date, today);
+}
+
 function priceValue(row: SourcePriceRepairPackage['price_dates'] extends Array<infer R> | null | undefined ? R : never): number | null {
   const value = row?.price ?? row?.adult_price ?? row?.adult_selling_price ?? row?.selling_price;
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
@@ -195,6 +200,9 @@ function selectedVariantText(pkg: SourcePriceRepairPackage): string {
 
 function duplicatePricePreference(pkg: SourcePriceRepairPackage): DuplicatePricePreference {
   const text = selectedVariantText(pkg);
+  if (/(?:\ub77c\uc774\ud2b8|\uc2e4\uc18d|light|basic)/i.test(text)) return 'min';
+  if (/(?:\uace0\s*\ud488\uaca9|\ud488\uaca9|premium|deluxe)/i.test(text)) return 'max';
+
   const hasTrainNumber = /\bG\s*\d{3,5}\b/i.test(text);
   if (hasTrainNumber) return 'max';
 
@@ -310,6 +318,7 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   const selection = selectSourceBackedPriceRowsWithExclusions(pkg, ir.rows);
   for (const row of selection.selected) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
+    if (!isUpcomingSourceDate(row.date)) continue;
     const current = byDate.get(row.date);
     if (current && current.price <= row.adult_price) continue;
     byDate.set(row.date, {
@@ -332,7 +341,9 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
 
 export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage): SourceBackedPriceDateRepair {
   const expected = expectedPriceDatesByDate(pkg);
-  const existingRows = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
+  const existingRows = Array.isArray(pkg.price_dates)
+    ? pkg.price_dates.filter(row => !isIsoDate(row.date) || isUpcomingSourceDate(row.date))
+    : [];
   const existingByDate = new Map<string, PriceDate>();
 
   if (expected.rows.length === 0) {

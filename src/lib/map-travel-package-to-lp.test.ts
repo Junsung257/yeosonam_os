@@ -73,6 +73,7 @@ describe('mapTravelPackageToLandingData', () => {
     expect(mapped.internalCode).toBe('PUS-TEST-0001');
     expect(mapped.itinerary.includes).toEqual(view.inclusions.flat);
     expect(mapped.itinerary.excludes).toEqual(view.excludes.basic);
+    expect(mapped.itinerary.optionalTours).toEqual(view.optionalTours.flat);
     expect(mapped.itinerary.legalNotices).toEqual(['출발 7일 전 취소 시 수수료 발생', '현지 사정으로 일정 변경 가능']);
     expect(mapped.itinerary.days).toHaveLength(view.days.length);
 

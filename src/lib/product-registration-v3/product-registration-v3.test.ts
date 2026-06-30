@@ -1571,6 +1571,23 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
   });
 
+  it('fills prohibited e-cigarette notice country from known Thai city context', async () => {
+    const raw = `
+상품: 파타야 전자담배 고지 검증
+가격 499,000원 / 최소출발 4명
+DAY 1 KE123 출발 10:00 도착 12:00
+REMARK
+파타야 해변 절대금연(전자담배불가)
+DAY 3 KE124 출발 13:00 도착 15:00
+`.trim();
+    const result = await runProductRegistrationV3(raw);
+    const notice = result.ledger.variants[0].standard_notices.find(n => n.category === 'local_law_restriction');
+    expect(notice?.values.item).toBe('전자담배');
+    expect(notice?.values.country).toBe('태국');
+    expect(notice?.review_status).toBe('auto_clean');
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(false);
+  });
+
   it('matches descriptive HWP attraction lines and ignores price/meal noise in V3 entity review', async () => {
     const raw = [
       '상품명: 북해도/달랏 HWP 회귀',

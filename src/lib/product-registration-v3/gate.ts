@@ -12,6 +12,13 @@ function check(
   checks.push({ id, status: passed ? 'pass' : severity === 'info' ? 'warn' : 'fail', severity, message });
 }
 
+function planRequiresAirTransport(plan: V3StructurePlan): boolean {
+  if (typeof plan.transport_profile?.requires_air === 'boolean') {
+    return plan.transport_profile.requires_air;
+  }
+  return plan.flight_pattern.outbound_codes.length > 0 || plan.flight_pattern.inbound_codes.length > 0;
+}
+
 export function evaluateProductRegistrationV3Gate(
   plan: V3StructurePlan,
   ledger: V3DraftLedger,
@@ -27,12 +34,19 @@ export function evaluateProductRegistrationV3Gate(
   );
 
   for (const variant of ledger.variants) {
+    const requiresAirTransport = planRequiresAirTransport(plan);
     check(checks, `${variant.variant_key}.price`, variant.price_calendar.length > 0, 'info', 'variant has price evidence; final price is owned by ProductRegistrationResult pricing');
-    check(checks, `${variant.variant_key}.flight`, variant.flight_segments.length > 0, 'critical', 'variant has flight evidence');
+    check(
+      checks,
+      `${variant.variant_key}.flight`,
+      !requiresAirTransport || variant.flight_segments.length > 0,
+      'critical',
+      requiresAirTransport ? 'air package has flight evidence' : 'air flight evidence is not required for this transport profile',
+    );
     check(
       checks,
       `${variant.variant_key}.flight_times_complete`,
-      variant.flight_segments
+      !requiresAirTransport || variant.flight_segments
         .filter(segment => segment.leg === 'outbound' || segment.leg === 'inbound')
         .filter(segment => Boolean(segment.dep_time || segment.arr_time))
         .every(segment => Boolean(segment.dep_time && segment.arr_time)),
@@ -80,7 +94,8 @@ export function evaluateProductRegistrationV3Gate(
       plan.shopping_section_locations.length === 0
         || variant.shopping.length > 0
         || variant.standard_notices.some(notice => notice.category === 'shopping_visit' && notice.template_key === 'shopping.none')
-        || (variant.structured_facts ?? []).some(fact => fact.category === 'shopping_policy' && fact.values.none === true),
+        || variant.standard_notices.some(notice => notice.category === 'shopping_visit' && notice.review_status === 'auto_clean')
+        || (variant.structured_facts ?? []).some(fact => fact.category === 'shopping_policy' && (fact.values.none === true || fact.review_status === 'auto_clean')),
       'high',
       'source shopping section is reflected in ledger',
     );
