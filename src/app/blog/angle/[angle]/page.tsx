@@ -14,21 +14,13 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
 
 export const revalidate = 300;
 export const dynamicParams = true;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-
-const ANGLE_META: Record<string, { label: string; tagline: string; emoji: string }> = {
-  value:     { label: '가성비',   tagline: '합리적인 가격으로 즐기는 알찬 여행',         emoji: '💰' },
-  emotional: { label: '감성',     tagline: '잊지 못할 순간을 만드는 감성 여행',          emoji: '🌸' },
-  filial:    { label: '효도',     tagline: '부모님과 함께하는 편안한 효도 여행',         emoji: '👨‍👩‍👧' },
-  luxury:    { label: '럭셔리',   tagline: '특별한 하루를 위한 프리미엄 여행',           emoji: '✨' },
-  urgency:   { label: '긴급특가', tagline: '지금 떠나야 가장 저렴한 한정 특가 여행',     emoji: '⏰' },
-  activity:  { label: '액티비티', tagline: '온몸으로 즐기는 다이내믹한 액티비티 여행',   emoji: '🏄' },
-  food:      { label: '미식',     tagline: '현지 입맛으로 즐기는 미식 여행',             emoji: '🍴' },
-};
 
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
@@ -47,6 +39,10 @@ type AbortableQuery<T> = {
 };
 
 type BlogAngleQueryResult<T> = T & { __blogQueryUnavailable?: true };
+
+function getDisplayImageUrl(post: BlogPost): string | null {
+  return toBlogImageDisplaySrc(post.og_image_url);
+}
 
 function isBlogAngleQueryUnavailable(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false;
@@ -161,7 +157,7 @@ export async function generateMetadata({ params }: { params: Promise<{ angle?: s
   const { angle: rawAngle } = await params;
   const angle = getRouteParam(rawAngle);
   const canonical = `${BASE_URL}/blog/angle/${encodeURIComponent(angle)}`;
-  const meta = ANGLE_META[angle];
+  const meta = BLOG_PUBLIC_ANGLE_META[angle];
   if (!meta) return { title: '블로그' };
   return {
     title: `${meta.label} 여행 가이드 | 여소남`,
@@ -178,7 +174,7 @@ export async function generateMetadata({ params }: { params: Promise<{ angle?: s
 export default async function AngleBlogPage({ params }: { params: Promise<{ angle?: string | string[] }> }) {
   const { angle: rawAngle } = await params;
   const angle = getRouteParam(rawAngle);
-  const meta = ANGLE_META[angle];
+  const meta = BLOG_PUBLIC_ANGLE_META[angle];
   if (!meta) notFound();
 
   const { posts, recommendedPackages, unavailable } = await getAnglePageData(angle);
@@ -221,7 +217,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
               <span>/</span>
               <span className="text-white">{meta.label}</span>
             </div>
-            <div className="text-2xl md:text-4xl mb-2 opacity-90">{meta.emoji}</div>
+            <div className="text-2xl md:text-4xl mb-2 opacity-90">{meta.icon}</div>
             <h1 className="text-[40px] md:text-[60px] font-black tracking-tight leading-[1.05]">
               {meta.label} 여행 가이드
             </h1>
@@ -266,17 +262,17 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
 
           {/* 다른 앵글 둘러보기 */}
           <nav className="flex flex-wrap gap-2" aria-label="다른 앵글 둘러보기">
-            {Object.entries(ANGLE_META).map(([key, m]) => (
+            {BLOG_PUBLIC_ANGLES.map((m) => (
               <Link
-                key={key}
-                href={`/blog/angle/${key}`}
+                key={m.key}
+                href={`/blog/angle/${m.key}`}
                 className={`rounded-full px-4 py-2 text-base font-medium transition ${
-                  key === angle
+                  m.key === angle
                     ? 'bg-slate-900 text-white'
                     : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-900 hover:text-slate-900'
                 }`}
               >
-                {m.emoji} {m.label}
+                {m.icon} {m.label}
               </Link>
             ))}
           </nav>
@@ -299,13 +295,13 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                     className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
                     <div className="aspect-[16/9] overflow-hidden bg-slate-100 relative">
                       <SafeCoverImg
-                        src={post.og_image_url}
+                        src={getDisplayImageUrl(post)}
                         alt={post.seo_title || ''}
                         className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
                         loading="lazy"
                         fallback={
                           <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-brand-light to-[#F2F4F6]">
-                            <span className="text-4xl">{meta.emoji}</span>
+                            <span className="text-4xl">{meta.icon}</span>
                           </div>
                         }
                       />

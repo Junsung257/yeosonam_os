@@ -83,10 +83,10 @@ const INFO_SUBTYPE_PATTERNS: Array<[BlogInfoSubtype, RegExp, string]> = [
   ['weather', /(weather|날씨|옷차림|월별|우기|건기|기온|강수량|장마|계절)/i, 'weather terms'],
   ['preparation', /(preparation|checklist|준비물|체크리스트|챙겨|필수\s*아이템|짐\s*싸기|출국\s*준비)/i, 'preparation terms'],
   ['itinerary', /(itinerary|route|course|일정|코스|동선|몇\s*박|당일치기|1일차|2일차|DAY\s*\d+)/i, 'itinerary terms'],
-  ['cost', /(cost|budget|expense|비용|가격|예산|경비|얼마|가성비|요금)/i, 'cost terms'],
+  ['cost', /(cost|budget|expense|비용|가격|예산|경비|얼마|가성비|요금|이동비|교통비|차량비|렌터카|택시|픽업)/i, 'cost terms'],
   ['visa', /(visa|immigration|passport|비자|입국|여권|서류|면세|체류|출입국)/i, 'visa terms'],
   ['currency', /(currency|exchange|money|tip|환전|환율|화폐|달러|카드|현금|결제|팁\s*문화|트래블월렛|트래블로그)/i, 'currency terms'],
-  ['transport', /(transport|flight|airport|transfer|공항|항공권|비행|교통|이동|버스|기차|택시|픽업)/i, 'transport terms'],
+  ['transport', /(transport|flight|airport|transfer|공항|항공권|비행|교통|이동|버스|기차|택시|픽업|렌터카|차량)/i, 'transport terms'],
   ['food', /(food|restaurant|cafe|맛집|음식|먹거리|식당|카페|메뉴|현지식)/i, 'food terms'],
   ['attraction', /(attraction|activity|tour|spot|관광지|명소|가볼만한|입장권|투어|액티비티|스팟)/i, 'attraction terms'],
   ['comparison', /(comparison|compare|pros|cons|analysis|best|ranking|recommend|비교|차이|장단점|분석|추천|BEST|베스트|순위|랭킹|vs|대비|어디가\s*좋|선택)/i, 'comparison terms'],
@@ -160,7 +160,8 @@ function matchBestWeighted<T extends string>(
       score += 1;
       evidence.push(`${reason} in body`);
     }
-    if (score > best.score) {
+    const shouldBreakWeatherTie = score === best.score && best.value === 'weather' && value !== 'weather';
+    if (score > best.score || shouldBreakWeatherTie) {
       best = { value, evidence, score };
     }
   }

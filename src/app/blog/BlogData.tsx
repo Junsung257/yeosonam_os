@@ -9,6 +9,11 @@ import { getDestinationUrl } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import {
+  BLOG_PUBLIC_ANGLES,
+  BLOG_PUBLIC_ANGLE_CHIP_CLASSES,
+  BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON,
+} from '@/lib/blog-public-taxonomy';
+import {
   BLOG_LIST_CACHE_TAG,
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
@@ -19,31 +24,6 @@ import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count';
-
-const ANGLE_LABELS: Record<string, string> = {
-  value: '💰 가성비', emotional: '🌸 감성', filial: '🎁 효도', luxury: '✨ 럭셔리',
-  urgency: '⚡ 긴급특가', activity: '🏄 액티비티', food: '🍜 미식',
-};
-
-const ANGLE_CHIPS = [
-  { v: 'value',    label: '💰 가성비' },
-  { v: 'luxury',   label: '✨ 럭셔리' },
-  { v: 'filial',   label: '🎁 효도' },
-  { v: 'emotional',label: '🌸 감성' },
-  { v: 'activity', label: '🏄 액티비티' },
-  { v: 'food',     label: '🍜 미식' },
-];
-
-// 카테고리별 칩 색상 (Tailwind 클래스)
-const ANGLE_CHIP_STYLE: Record<string, string> = {
-  value:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  luxury:   'bg-amber-50 text-amber-700 border border-amber-200',
-  filial:   'bg-pink-50 text-pink-700 border border-pink-200',
-  emotional:'bg-purple-50 text-purple-700 border border-purple-200',
-  activity: 'bg-blue-50 text-blue-700 border border-blue-200',
-  food:     'bg-orange-50 text-orange-700 border border-orange-200',
-  urgency:  'bg-red-50 text-red-700 border border-red-200',
-};
 
 // 콘텐츠 타입별 읽기 시간 추정 (분)
 const READING_TIME: Record<string, number> = {
@@ -293,7 +273,7 @@ function HeroCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 7;
-  const angleLabel = post.angle_type ? ANGLE_LABELS[post.angle_type] : null;
+  const angleLabel = post.angle_type ? BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] : null;
   const imageUrl = getDisplayImageUrl(post);
 
   return (
@@ -350,7 +330,7 @@ function SideCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 5;
-  const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
+  const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 
   return (
@@ -381,9 +361,9 @@ function SideCard({ post }: { post: BlogPost }) {
           <span className="bg-bg-section text-text-body text-[11px] font-medium px-2 py-0.5 rounded">
             {CONTENT_TYPE_LABELS[ct]}
           </span>
-          {post.angle_type && ANGLE_LABELS[post.angle_type] && angleChipStyle && (
+          {post.angle_type && BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] && angleChipStyle && (
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${angleChipStyle}`}>
-              {ANGLE_LABELS[post.angle_type]}
+              {BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type]}
             </span>
           )}
         </div>
@@ -412,7 +392,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const price = post.travel_packages?.price;
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 5;
-  const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
+  const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 
   return (
@@ -447,9 +427,9 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
               {dest}
             </span>
           )}
-          {post.angle_type && ANGLE_LABELS[post.angle_type] && angleChipStyle && (
+          {post.angle_type && BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] && angleChipStyle && (
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${angleChipStyle}`}>
-              {ANGLE_LABELS[post.angle_type]}
+              {BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type]}
             </span>
           )}
         </div>
@@ -498,10 +478,10 @@ export default async function BlogData({ searchParams }: Props) {
   const page = Math.max(1, parseInt(params.page || '1'));
   const destination = params.destination || undefined;
   const angle = params.angle || undefined;
-  const { featured, posts, total, destinations, angleCounts, unavailable, fallback, fallbackReason } = await getBlogData(page, { destination, angle });
+  const { featured, posts, total, destinations, unavailable, fallback, fallbackReason } = await getBlogData(page, { destination, angle });
   const totalPages = unavailable ? 0 : Math.ceil(total / PER_PAGE);
   const totalLabel = unavailable ? '확인 중' : total.toLocaleString();
-  const visibleAngleChips = ANGLE_CHIPS.filter(c => (angleCounts[c.v] ?? 0) > 0 || c.v === angle);
+  const visibleAngleChips = BLOG_PUBLIC_ANGLES;
 
   const buildHref = (override: Partial<{ page: number; destination: string | null; angle: string }>) => {
     const next = new URLSearchParams();
@@ -602,11 +582,11 @@ export default async function BlogData({ searchParams }: Props) {
               </Link>
               {visibleAngleChips.map(c => (
                 <Link
-                  key={c.v}
-                  href={buildHref({ angle: c.v, page: 1 })}
-                  className={`${chipBase} ${angle === c.v ? chipActive : chipIdle}`}
+                  key={c.key}
+                  href={buildHref({ angle: c.key, page: 1 })}
+                  className={`${chipBase} ${angle === c.key ? chipActive : chipIdle}`}
                 >
-                  {c.label}
+                  {c.icon} {c.label}
                 </Link>
               ))}
             </div>
@@ -699,7 +679,7 @@ export default async function BlogData({ searchParams }: Props) {
           {(destination || angle) && (
             <div className="mb-6 flex items-center gap-2 text-[13px]">
               <span className="text-text-primary font-semibold">
-                {destination || ''}{destination && angle ? ' · ' : ''}{angle ? ANGLE_LABELS[angle] : ''}
+                {destination || ''}{destination && angle ? ' · ' : ''}{angle ? BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[angle] : ''}
               </span>
               <span className="text-text-secondary">{unavailable ? 'DB 확인 중' : `관련 글 ${total}편`}</span>
               <Link href="/blog" className="ml-1 text-brand hover:underline">필터 해제</Link>

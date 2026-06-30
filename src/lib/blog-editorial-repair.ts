@@ -75,6 +75,90 @@ function sanitizeInfoSalesTone(markdown: string): { text: string; changed: boole
   return { text, changed: text !== before };
 }
 
+function hasHardCtaSignal(text: string): boolean {
+  return (
+    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(text) ||
+    /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(text) ||
+    /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(text)
+  );
+}
+
+function hasReadableHardAction(text: string): boolean {
+  return /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(text);
+}
+
+function safeDecodeUriComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function moveEarlyStrongInfoCtaToBottom(markdown: string): { text: string; changed: boolean } {
+  const blocks = markdown.split(/\n{2,}/);
+  const earlyLimit = Math.ceil(markdown.length * 0.3);
+  let cursor = 0;
+  let changed = false;
+  const kept: string[] = [];
+  const moved: string[] = [];
+
+  for (const block of blocks) {
+    const start = cursor;
+    cursor += block.length + 2;
+    if (start <= earlyLimit && hasHardCtaSignal(block) && hasReadableHardAction(block)) {
+      moved.push(block.trim());
+      changed = true;
+      continue;
+    }
+    kept.push(block);
+  }
+
+  if (!changed) return { text: markdown, changed: false };
+
+  let text = kept.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (/^##\s*여행\s*상품과\s*함께\s*확인하기\b/im.test(text)) {
+    return { text, changed: text !== markdown };
+  }
+
+  const seen = new Set<string>();
+  const linkLines = [...moved.join('\n').matchAll(/\[([^\]\n]{2,80})]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)]
+    .map((match) => {
+      const rawLabel = match[1].trim();
+      const href = match[2].trim();
+      if (!/\/packages|group-inquiry|kakao|pf\.kakao|utm_|consult|yeosonam\.com/i.test(safeDecodeUriComponent(href))) {
+        return null;
+      }
+      const key = `${rawLabel}|${href}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      const label = /상품|패키지/i.test(rawLabel)
+        ? '관련 패키지 보기'
+        : /카카오/i.test(rawLabel)
+          ? '카카오톡으로 일정 확인'
+          : /상담|문의|예약/i.test(rawLabel)
+            ? '내 일정 기준으로 가능 여부 확인'
+            : rawLabel;
+      return `- [${label}](${href})`;
+    })
+    .filter((line): line is string => Boolean(line))
+    .slice(0, 3);
+
+  if (linkLines.length > 0) {
+    text = [
+      text,
+      '',
+      '## 여행 상품과 함께 확인하기',
+      '',
+      '위 내용을 먼저 확인한 뒤, 실제 출발일과 인원 기준으로 가능한 상품만 따로 확인하면 됩니다.',
+      '',
+      ...linkLines,
+    ].join('\n');
+  }
+
+  return { text, changed: text !== markdown };
+}
+
 function appendOfficialReferences(markdown: string, subtype: BlogInfoSubtype | null): { text: string; changed: boolean } {
   if (!subtype || hasExternalLink(markdown)) return { text: markdown, changed: false };
   const links = OFFICIAL_REFERENCE_LINKS[subtype];
@@ -923,6 +1007,7 @@ export function repairKeywordDensityToTarget(
 
 export function repairBlogStructureQuality(input: BlogEditorialRepairInput): BlogEditorialRepairResult {
   const before = inspectBlogIntentQuality(input);
+  const intent = classifyBlogIntent(input);
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
 
@@ -942,6 +1027,14 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (toneRepair.changed) {
     blogHtml = toneRepair.text;
     changes.push('softened_promotional_info_tone');
+  }
+
+  if (intent.mode === 'info') {
+    const ctaRepair = moveEarlyStrongInfoCtaToBottom(blogHtml);
+    if (ctaRepair.changed) {
+      blogHtml = ctaRepair.text;
+      changes.push('moved_early_info_cta_to_bottom');
+    }
   }
 
   const directiveRepair = removeRawDirectiveLeaks(blogHtml);
@@ -1202,6 +1295,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (salesRepair.changed) {
       blogHtml = salesRepair.text;
       changes.push('sanitized_info_sales_tone');
+    }
+
+    const ctaRepair = moveEarlyStrongInfoCtaToBottom(blogHtml);
+    if (ctaRepair.changed) {
+      blogHtml = ctaRepair.text;
+      changes.push('moved_early_info_cta_to_bottom');
     }
   }
 
