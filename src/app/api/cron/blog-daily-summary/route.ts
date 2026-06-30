@@ -4,6 +4,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 import { countPublishableQueueCandidates, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { getClosedKstDailySummaryRange } from '@/lib/blog-daily-summary-window';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -21,22 +22,6 @@ export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
 const MIN_DAILY_SUMMARY_ALERT_POSTS = 3;
-
-function getKstDayRange(offsetDays = 0): { start: Date; end: Date; dayKey: string } {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  kst.setUTCDate(kst.getUTCDate() + offsetDays);
-  const year = kst.getUTCFullYear();
-  const month = kst.getUTCMonth();
-  const date = kst.getUTCDate();
-  const start = new Date(Date.UTC(year, month, date, -9, 0, 0, 0));
-  const end = new Date(Date.UTC(year, month, date + 1, -9, 0, 0, 0));
-  return {
-    start,
-    end,
-    dayKey: `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
-  };
-}
 
 async function insertDedupedBlogAlert(input: {
   severity: string;
@@ -224,8 +209,10 @@ async function runDailySummary(request: NextRequest) {
   const policy = policyRow?.[0];
   const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
 
-  // Today in KST. The cron runs after the final daily publisher slot.
-  const reportDay = getKstDayRange();
+  // Report the latest closed KST publishing day. If the route is delayed past
+  // midnight or called manually before 22:12 KST, it must not evaluate the new
+  // in-progress day as an SLA failure.
+  const reportDay = getClosedKstDailySummaryRange();
   const recentSearchStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const thirtyDaysAgo = new Date();
@@ -377,6 +364,9 @@ async function runDailySummary(request: NextRequest) {
     date: reportDay.dayKey,
     timezone: 'Asia/Seoul',
     generated_at: new Date().toISOString(),
+    report_period_closed: reportDay.closed,
+    used_previous_day_for_pre_close_run: reportDay.usedPreviousDay,
+    close_minute_kst: reportDay.closeMinuteKst,
     published: pubRes.count || 0,
     min_daily_target: dailyTarget,
     under_daily_target: (pubRes.count || 0) < dailyTarget,
