@@ -713,6 +713,61 @@ function repairLooseMarkdownTables(markdown: string): { text: string; changed: b
   return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
 }
 
+function hasQualityGateTableSeparator(line: string): boolean {
+  return /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line.trim());
+}
+
+function forceRepairRemainingBrokenMarkdownTables(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+    if (!line.startsWith('|') || !line.endsWith('|')) {
+      next.push(lines[index] ?? '');
+      continue;
+    }
+
+    const block: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length) {
+      const current = lines[cursor]?.trim() ?? '';
+      if (!current.startsWith('|') || !current.endsWith('|')) break;
+      block.push(current);
+      cursor += 1;
+    }
+
+    const headerCells = parseMarkdownTableCells(block[0] ?? '');
+    if (headerCells.length < 2) {
+      next.push(stripMarkup(block.join(' ')).replace(/\s*\|\s*/g, ' / ').trim());
+      changed = true;
+      index = cursor - 1;
+      continue;
+    }
+
+    const hasSeparator = block.length >= 2 && hasQualityGateTableSeparator(block[1] ?? '');
+    const withSeparator = hasSeparator
+      ? [block[0], block[1], ...block.slice(2)]
+      : [block[0], markdownTableSeparatorFor(block[0] ?? ''), ...block.slice(1)];
+    const bodyRows = withSeparator.slice(2);
+    const hasMismatchedCells = bodyRows.some((row) => parseMarkdownTableCells(row).length !== headerCells.length);
+
+    if (!hasSeparator) changed = true;
+
+    if (withSeparator.length < 5 || hasMismatchedCells) {
+      next.push(...markdownTableBlockToBullets(withSeparator));
+      changed = true;
+    } else {
+      next.push(...withSeparator);
+    }
+
+    index = cursor - 1;
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
 function capH2Headings(markdown: string, maxH2 = 9): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   let h2Count = 0;
@@ -1157,6 +1212,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     if (!changes.includes('repaired_loose_markdown_tables')) {
       changes.push('repaired_loose_markdown_tables');
     }
+  }
+
+  const finalBrokenTableRepair = forceRepairRemainingBrokenMarkdownTables(blogHtml);
+  if (finalBrokenTableRepair.changed) {
+    blogHtml = finalBrokenTableRepair.text;
+    changes.push('force_repaired_broken_markdown_tables');
   }
 
   const finalAccentRepair = normalizeBlogVisualAccents(blogHtml);
