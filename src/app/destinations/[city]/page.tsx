@@ -579,8 +579,16 @@ async function renderPillarBody(md: string): Promise<string> {
   const { marked } = await import('marked');
   const html = marked.parse(accented) as string;
   const colored = applyHtmlAccents(html);
-  const { default: DOMPurify } = await import('isomorphic-dompurify');
-  return DOMPurify.sanitize(colored, { ADD_TAGS: ['mark', 'aside'], ADD_ATTR: ['class'] });
+  return sanitizePillarHtml(colored);
+}
+
+function sanitizePillarHtml(html: string): string {
+  return html
+    .replace(/<\s*(script|style|iframe|object|embed|form|input|textarea)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*(script|style|iframe|object|embed|form|input|textarea)\b[^>]*\/?>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, '')
+    .replace(/\s+(href|src)\s*=\s*javascript:[^\s>]+/gi, '');
 }
 
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city?: string | string[] }> }) {
