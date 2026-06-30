@@ -15,6 +15,7 @@ let extractDestination: typeof import('../src/lib/slug-utils').extractDestinatio
 let repairBlogEditorialQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogEditorialQuality;
 let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogStructureQuality;
 let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
+let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildBlogContentBrief;
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
 let generateProductConsultantBlogPost: typeof import('../src/lib/blog-product-consultant-writer').generateProductConsultantBlogPost;
 let loadCustomerOpenContractForPackage: typeof import('../src/lib/product-registration/customer-open-contract').loadCustomerOpenContractForPackage;
@@ -26,6 +27,7 @@ async function loadLocalModules() {
   ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
   ({ extractDestination } = await import('../src/lib/slug-utils'));
   ({ repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
+  ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
   ({ generateProductConsultantBlogPost } = await import('../src/lib/blog-product-consultant-writer'));
   ({ loadCustomerOpenContractForPackage } = await import('../src/lib/product-registration/customer-open-contract'));
@@ -156,6 +158,7 @@ async function rebuildProductConsultantHtml(productId: string): Promise<{
   return {
     html: generateProductConsultantBlogPost(data as Parameters<typeof generateProductConsultantBlogPost>[0], brief),
     generationMeta: {
+      prompt_version: brief.prompt_version,
       writer: 'product_consultant_writer',
       product_consult_brief: brief,
       content_brief: {
@@ -828,6 +831,167 @@ function keywordFromStoredMeta(row: BlogRow): string | null {
     || null;
 }
 
+const ENGLISH_MICRO_ANGLE_RE = /\b(?:family budget|transport cost|hotel area budget|weather packing|local mobility)\b/i;
+
+function containsEnglishMicroAngle(value: unknown): boolean {
+  if (typeof value === 'string') return ENGLISH_MICRO_ANGLE_RE.test(value);
+  if (Array.isArray(value)) return value.some((item) => containsEnglishMicroAngle(item));
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some((item) => containsEnglishMicroAngle(item));
+  }
+  return false;
+}
+
+function microAngleKoreanLabel(row: BlogRow): string | null {
+  const text = [
+    row.slug,
+    row.seo_title,
+    row.target_ad_keywords?.join(' '),
+    typeof row.generation_meta?.micro_angle === 'string' ? row.generation_meta.micro_angle : null,
+    row.generation_meta?.content_brief,
+  ].filter(Boolean).map(String).join(' ').toLowerCase();
+
+  if (/budget_family|family budget/.test(text)) return '가족 여행 경비';
+  if (/transport_cost|transport cost/.test(text)) return '교통비';
+  if (/hotel_area|hotel area budget/.test(text)) return '숙소 지역별 예산';
+  if (/weather_packing|weather packing/.test(text)) return '날씨와 옷차림';
+  if (/local_mobility|local mobility/.test(text)) return '현지 이동';
+  return null;
+}
+
+function localizedMicroAngleKeyword(row: BlogRow): string | null {
+  const label = microAngleKoreanLabel(row);
+  if (!label) return null;
+  const destination = cleanTravelKeyword(row.destination)
+    || cleanTravelKeyword(extractDestination(row.seo_title || row.slug || ''));
+  return destination ? `${destination} ${label}` : label;
+}
+
+function replaceEnglishMicroAngleSurface(markdown: string, row: BlogRow, primaryKeyword: string): string {
+  const label = microAngleKoreanLabel(row);
+  if (!label) return markdown;
+  const destination = cleanTravelKeyword(row.destination)
+    || cleanTravelKeyword(extractDestination(row.seo_title || row.slug || ''))
+    || '';
+  const keyword = cleanTravelKeyword(primaryKeyword) || localizedMicroAngleKeyword(row) || label;
+  const destinationPrefix = destination ? `${escapeRegExp(destination)}\\s*` : '';
+  const slugDestination = (row.slug || '').match(/^[a-z]+/)?.[0] ?? '';
+
+  let next = markdown
+    .replace(new RegExp(`${destinationPrefix}family\\s+budget`, 'gi'), keyword)
+    .replace(new RegExp(`${destinationPrefix}budget\\s+family`, 'gi'), keyword)
+    .replace(new RegExp(`${destinationPrefix}hotel\\s+area\\s+budget`, 'gi'), keyword)
+    .replace(new RegExp(`${destinationPrefix}hotel\\s+area`, 'gi'), keyword)
+    .replace(new RegExp(`${destinationPrefix}transport\\s+cost`, 'gi'), keyword)
+    .replace(new RegExp(`${destinationPrefix}weather\\s+packing`, 'gi'), keyword)
+    .replace(new RegExp(`${destinationPrefix}local\\s+mobility`, 'gi'), keyword)
+    .replace(/\bfamily\s+budget\b/gi, label)
+    .replace(/\bbudget\s+family\b/gi, label)
+    .replace(/\bhotel\s+area\s+budget\b/gi, label)
+    .replace(/\bhotel\s+area\b/gi, label)
+    .replace(/\btransport\s+cost\b/gi, label)
+    .replace(/\bweather\s+packing\b/gi, label)
+    .replace(/\blocal\s+mobility\b/gi, label)
+    .replace(/\bbudget\b/gi, '예산')
+    .replace(/familybudget/gi, label.replace(/\s+/g, ''))
+    .replace(/budgetfamily/gi, label.replace(/\s+/g, ''))
+    .replace(/hotelareabudget/gi, label.replace(/\s+/g, ''))
+    .replace(/transportcost/gi, label.replace(/\s+/g, ''))
+    .replace(/weatherpacking/gi, label.replace(/\s+/g, ''))
+    .replace(/localmobility/gi, label.replace(/\s+/g, ''));
+  if (destination && slugDestination) {
+    next = next.replace(new RegExp(`\\b${escapeRegExp(slugDestination)}\\s+${escapeRegExp(label)}`, 'gi'), `${destination} ${label}`);
+  }
+  return next;
+}
+
+function usableBriefText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim();
+  return cleaned && !containsEnglishMicroAngle(cleaned) ? cleaned : null;
+}
+
+function usableBriefList(value: unknown): unknown[] | null {
+  if (!Array.isArray(value)) return null;
+  const cleaned = value.filter((item) => !containsEnglishMicroAngle(item));
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+}
+
+function buildInfoContractGenerationMeta(
+  row: BlogRow,
+  params: {
+    normalizedTitle: string;
+    primaryKeyword: string;
+    destination: string | null;
+    contentType: string;
+    secondaryKeywords: string[];
+  },
+): Record<string, unknown> {
+  const existing = row.generation_meta && typeof row.generation_meta === 'object'
+    ? { ...row.generation_meta }
+    : {};
+  const existingBrief = existing.content_brief && typeof existing.content_brief === 'object'
+    ? existing.content_brief as Record<string, unknown>
+    : null;
+  const legacyEnglishBrief = containsEnglishMicroAngle(existingBrief);
+  const storedSerp = row.generation_meta?.serp_analysis && typeof row.generation_meta.serp_analysis === 'object'
+    && typeof (row.generation_meta.serp_analysis as { source?: unknown }).source === 'string'
+    ? row.generation_meta.serp_analysis as Parameters<typeof buildBlogContentBrief>[0]['serp']
+    : null;
+  const brief = buildBlogContentBrief({
+    topic: params.normalizedTitle || row.seo_title || row.slug || params.primaryKeyword,
+    destination: params.destination,
+    primaryKeyword: params.primaryKeyword,
+    category: params.contentType,
+    source: 'blog_quality_backfill',
+    keywords: params.secondaryKeywords,
+    serp: storedSerp,
+  });
+
+  return {
+    ...existing,
+    prompt_version: typeof existing.prompt_version === 'string' && existing.prompt_version.trim()
+      ? existing.prompt_version
+      : 'backfill-info-writer-v2',
+    writer: typeof existing.writer === 'string' && existing.writer.trim()
+      ? existing.writer
+      : 'info_writer',
+    content_brief: {
+      ...(existingBrief ?? {}),
+      title: usableBriefText(existingBrief?.title) ?? brief.title,
+      primary_keyword: usableBriefText(existingBrief?.primary_keyword) ?? brief.primaryKeyword,
+      secondary_keywords: usableBriefList(existingBrief?.secondary_keywords)
+        ? usableBriefList(existingBrief?.secondary_keywords)
+        : brief.secondaryKeywords,
+      search_intent: !legacyEnglishBrief && typeof existingBrief?.search_intent === 'string' && existingBrief.search_intent.trim()
+        ? existingBrief.search_intent
+        : brief.searchIntent,
+      required_sections: !legacyEnglishBrief && Array.isArray(existingBrief?.required_sections) && existingBrief.required_sections.length > 0
+        ? existingBrief.required_sections
+        : brief.requiredSections,
+      forbidden_angles: Array.isArray(existingBrief?.forbidden_angles)
+        ? existingBrief.forbidden_angles
+        : brief.forbiddenAngles,
+      source_requirements: Array.isArray(existingBrief?.source_requirements)
+        ? existingBrief.source_requirements
+        : brief.sourceRequirements,
+      evidence: Array.isArray(existingBrief?.evidence) && existingBrief.evidence.length > 0
+        ? existingBrief.evidence
+        : brief.evidence,
+      passed: typeof existingBrief?.passed === 'boolean' ? existingBrief.passed : brief.passed,
+      issues: Array.isArray(existingBrief?.issues) ? existingBrief.issues : brief.issues,
+      backfilled_contract: true,
+    },
+  };
+}
+
 function replacePlaceholderContext(markdown: string, primaryKeyword: string, destination: string | null, slug: string | null): string {
   const label = cleanDescriptionPart(destination) || cleanDescriptionPart(primaryKeyword) || primaryKeyword || '여행';
   const campaignBasis = slug && !isWeakGeneratedSlug(slug) ? slug : label;
@@ -1044,7 +1208,8 @@ function cleanTravelKeyword(value: string | null | undefined): string | null {
 }
 
 function primaryKeywordForCustomer(row: BlogRow): string {
-  const base = cleanTravelKeyword(row.destination)
+  const base = (!row.product_id ? localizedMicroAngleKeyword(row) : null)
+    || cleanTravelKeyword(row.destination)
     || cleanTravelKeyword(keywordFromStoredMeta(row))
     || cleanTravelKeyword(row.seo_title)
     || cleanTravelKeyword(extractDestination(row.slug || ''))
@@ -1086,7 +1251,7 @@ function improveBackfillSeoTitleCustomer(title: string, row: BlogRow, primaryKey
   const kind = topicKindForCustomer(row, keyword);
   const hasKeyword = keyword.length > 1 && cleaned.includes(keyword);
   const hasUsefulModifier = /20\d{2}|최신|날씨|비용|일정|준비|체크|입국|환전|유심|eSIM|로밍|항공권/.test(cleaned);
-  const weak = isWeakGeneratedSlug(row.slug) || cleaned.length < 18 || cleaned.length > 60 || !hasKeyword || !hasUsefulModifier;
+  const weak = isWeakGeneratedSlug(row.slug) || cleaned.length < 18 || cleaned.length > 60 || !hasKeyword || !hasUsefulModifier || containsEnglishMicroAngle(cleaned);
   if (!weak) return cleaned;
 
   const modifier = customerTopicLabel(kind);
@@ -1113,6 +1278,17 @@ function buildSecondaryKeywordsCustomer(primaryKeyword: string, destination?: st
     `${keyword} 예약`,
     `${keyword} 날씨`,
   ]));
+}
+
+function buildTargetAdKeywordsCustomer(row: BlogRow, primaryKeyword: string, secondaryKeywords: string[]): string[] | null {
+  const existing = (row.target_ad_keywords ?? [])
+    .filter((keyword) => typeof keyword === 'string' && keyword.trim() && !containsEnglishMicroAngle(keyword));
+  const keywords = Array.from(new Set([
+    primaryKeyword,
+    ...existing,
+    ...secondaryKeywords.slice(0, 2),
+  ].map((keyword) => cleanTravelKeyword(keyword)).filter((keyword): keyword is string => Boolean(keyword))));
+  return keywords.length > 0 ? keywords : null;
 }
 
 function repairMarkdownTables(markdown: string): string {
@@ -2020,7 +2196,12 @@ async function main() {
         continue;
       }
     }
-    const repairSourceHtml = replacePlaceholderContextCustomer(repairSourceHtmlBase, primaryKeyword, destination, row.slug);
+    const repairSourceHtml = replacePlaceholderContextCustomer(
+      replaceEnglishMicroAngleSurface(repairSourceHtmlBase, row, primaryKeyword),
+      primaryKeyword,
+      destination,
+      row.slug,
+    );
     const resolvedOgImage = await resolveOgImage(row);
     const normalizedTitle = improveBackfillSeoTitleCustomer(
       normalizeBlogTitle(row.seo_title) || row.seo_title || row.slug || '여행 가이드',
@@ -2033,6 +2214,9 @@ async function main() {
       primaryKeyword,
     ), row, primaryKeyword);
     const secondaryKeywords = buildSecondaryKeywordsCustomer(primaryKeyword, destination);
+    const nextTargetAdKeywords = !productId
+      ? buildTargetAdKeywordsCustomer(row, primaryKeyword, secondaryKeywords)
+      : row.target_ad_keywords ?? null;
     const editorialRepair = repairBlogEditorialQuality({
       title: normalizedTitle,
       slug,
@@ -2105,13 +2289,24 @@ async function main() {
       blogHtml: preStructureHtml,
     });
     const nextOg = finalized.ogImageUrl;
-    let nextGenerationMeta = row.generation_meta ?? null;
+    let nextGenerationMeta: Record<string, unknown> = row.generation_meta && typeof row.generation_meta === 'object'
+      ? { ...row.generation_meta }
+      : {};
+    if (!productId) {
+      nextGenerationMeta = buildInfoContractGenerationMeta(row, {
+        normalizedTitle,
+        primaryKeyword,
+        destination,
+        contentType,
+        secondaryKeywords,
+      });
+    }
     let nextHtml = repairMarkdownTables(removeLoneHashHeadings(ensureMinimumInlineImagesFromOg(structureRepair.blogHtml, destination, slug, nextOg)));
     if (productId) {
       const rebuiltProduct = await rebuildProductConsultantHtml(productId);
       if (rebuiltProduct) {
         nextGenerationMeta = {
-          ...(row.generation_meta ?? {}),
+          ...nextGenerationMeta,
           ...rebuiltProduct.generationMeta,
         };
         nextHtml = removeLoneHashHeadings(ensureMinimumInlineImagesFromOg(
@@ -2120,6 +2315,16 @@ async function main() {
           slug,
           nextOg,
         ));
+      } else {
+        nextGenerationMeta = {
+          ...nextGenerationMeta,
+          prompt_version: typeof nextGenerationMeta.prompt_version === 'string' && nextGenerationMeta.prompt_version.trim()
+            ? nextGenerationMeta.prompt_version
+            : 'product-template-v2',
+          writer: typeof nextGenerationMeta.writer === 'string' && nextGenerationMeta.writer.trim()
+            ? nextGenerationMeta.writer
+            : 'product_consultant_writer',
+        };
       }
     }
     const densityRepair = repairKeywordDensityToTarget(nextHtml, primaryKeyword, blogType);
@@ -2146,7 +2351,12 @@ async function main() {
       normalizedTitle,
       blogType,
     );
-    nextHtml = ensureMinimumInlineImagesFromOg(nextHtml, destination, slug, nextOg);
+    nextHtml = replaceEnglishMicroAngleSurface(
+      ensureMinimumInlineImagesFromOg(nextHtml, destination, slug, nextOg),
+      row,
+      primaryKeyword,
+    );
+    nextHtml = finalKeywordDensityRepair(nextHtml, primaryKeyword, blogType);
     nextHtml = normalizeMarkdownLinkLabels(ensureInternalFunnelLinks(nextHtml, destination, slug));
     nextHtml = normalizeFinalMarkdownSurface(nextHtml);
     const qaReport = await evaluateBlogPublishQuality({
@@ -2168,16 +2378,22 @@ async function main() {
     });
     const publishReady = !hasBlockingBlogIssue(qaReport);
     const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
+    const metaChanged = stableJson(nextGenerationMeta) !== stableJson(row.generation_meta ?? {});
+    const targetKeywordsChanged = stableJson(nextTargetAdKeywords ?? []) !== stableJson(row.target_ad_keywords ?? []);
     const changed =
       htmlChanged ||
       nextOg !== originalOg ||
       normalizedTitle !== originalTitle ||
-      normalizedDescription !== originalDescription;
+      normalizedDescription !== originalDescription ||
+      metaChanged ||
+      targetKeywordsChanged;
     const changeReasons = [
       htmlChanged ? 'blog_html' : null,
       nextOg !== originalOg ? 'og_image_url' : null,
       normalizedTitle !== originalTitle ? 'seo_title' : null,
       normalizedDescription !== originalDescription ? 'seo_description' : null,
+      metaChanged ? 'generation_meta' : null,
+      targetKeywordsChanged ? 'target_ad_keywords' : null,
     ].filter((value): value is string => Boolean(value));
 
     auditRows.push({
@@ -2238,6 +2454,8 @@ async function main() {
         seo_score: qaReport.seoScore,
         readability_score: qaReport.readability.score,
         readability_issues: qaReport.readability.issues,
+        generation_meta: nextGenerationMeta,
+        target_ad_keywords: nextTargetAdKeywords,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
@@ -2247,14 +2465,16 @@ async function main() {
       continue;
     }
 
-    try {
-      await enqueueIndexingJob({ id: row.id, slug }, 'blog_quality_backfill');
-      indexingQueued += 1;
-    } catch (indexingError) {
-      console.error(
-        `[blog-quality] indexing enqueue failed for ${slug}:`,
-        indexingError instanceof Error ? indexingError.message : indexingError,
-      );
+    if (htmlChanged || nextOg !== originalOg || normalizedTitle !== originalTitle || normalizedDescription !== originalDescription) {
+      try {
+        await enqueueIndexingJob({ id: row.id, slug }, 'blog_quality_backfill');
+        indexingQueued += 1;
+      } catch (indexingError) {
+        console.error(
+          `[blog-quality] indexing enqueue failed for ${slug}:`,
+          indexingError instanceof Error ? indexingError.message : indexingError,
+        );
+      }
     }
 
     changedSlugs.push(slug);
