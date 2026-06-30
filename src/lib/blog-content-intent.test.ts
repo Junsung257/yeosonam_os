@@ -39,6 +39,34 @@ describe('blog content intent quality', () => {
     expect(itinerary.infoSubtype).toBe('itinerary');
   });
 
+  it('classifies transport cost topics as cost even when stale category says weather', () => {
+    const intent = classifyBlogIntent({
+      title: '몽골 렌터카 택시 픽업 이동비 비교 2026',
+      slug: 'mongolia-transport-cost',
+      primaryKeyword: '몽골 렌터카 택시 픽업 이동비',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: '비 예보가 있어도 이 글의 핵심은 공항 픽업, 렌터카, 택시 이동비와 하루 교통비 비교입니다.',
+    });
+
+    expect(intent.mode).toBe('info');
+    expect(intent.infoSubtype).toBe('cost');
+  });
+
+  it('uses a specific cost slug over stale weather category when scores tie', () => {
+    const intent = classifyBlogIntent({
+      title: '몽골 여행',
+      slug: 'mongolia-transport-cost',
+      primaryKeyword: '몽골 여행',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: '날씨와 옷차림도 확인하지만, 핵심은 공항 픽업과 택시 이동비 비교입니다.',
+    });
+
+    expect(intent.infoSubtype).toBe('cost');
+    expect(intent.evidence).toContain('cost terms in category/type');
+  });
+
   it('blocks sales tone in informational weather posts', () => {
     const report = inspectBlogIntentQuality({
       title: '장가계 날씨 월별 옷차림',

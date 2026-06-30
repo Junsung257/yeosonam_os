@@ -1951,13 +1951,6 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   const queueSlug = buildQueueSlug(item);
   const utmCamp = encodeURIComponent(queueSlug);
   const utmSrc = 'naver_blog';
-  const introPackageCtaUrl = buildBlogPackageCtaUrl({
-    destination: item.destination,
-    slug: queueSlug,
-    baseUrl: baseForUtm,
-    utmSource: utmSrc,
-    content: 'intro_cta',
-  });
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
     destination: item.destination ?? null,
@@ -2027,7 +2020,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 - 본문 1,500자 이상
 - H2 5개
 - 매우 구체적 사용자 시나리오에 1:1 답변 (예: "${primaryKw} 검색하는 사람의 1순위 궁금증 = 가격/일정/포함")
-- 상품 랜딩(/packages?destination=...)으로 강한 CTA
+- 상품 랜딩은 본문 하단 1회만 약하게 연결. 검색 의도 해결이 우선이며, 도입부·중간 강CTA 금지
 - 내부링크 ≥1 (head pillar로)
 `,
   };
@@ -2122,10 +2115,8 @@ ${serpGapBlock}
 - 표는 반드시 GitHub Flavored Markdown 형식으로 작성: 헤더 행 바로 다음 줄에 | --- | --- | 구분선을 넣고, 표 행 사이에 빈 줄을 넣지 말 것
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
-- 3-Tier CTA 분산:
-  - 도입부: [관련 패키지 보기](${introPackageCtaUrl})
-  - 중간: [여소남 큐레이터에게 문의](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=mid_cta)
-  - 마지막: [여소남에서 안심 여행 준비하세요](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_cta)`;
+- CTA는 본문 마지막에만 1회 사용. 도입부와 본문 중간에는 상품 보기, 카카오, 상담 신청, 예약하기 링크를 넣지 말 것
+- 마지막 CTA 문장 예시: [내 일정 기준으로 가능 여부 확인](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_soft_cta)`;
 
   const raw = await generateBlogText(prompt, { temperature: 0.7 });
   let blog_html = raw

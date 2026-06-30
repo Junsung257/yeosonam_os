@@ -100,6 +100,56 @@ describe('blog editorial repair', () => {
     expect(result.changes).toContain('added_official_reference_links');
     expect(result.blogHtml).toContain('외교부 해외안전여행');
   });
+
+  it('moves early hard CTA blocks to the bottom for informational posts', () => {
+    const source = [
+      '# 몽골 가족여행 2026 실제 경비표',
+      '',
+      '몽골 가족여행 비용은 항공, 숙소, 차량 이동, 식비를 따로 나눠 봐야 판단이 쉽습니다. 성인과 아이 동행 여부에 따라 하루 예산과 이동 피로가 달라집니다.',
+      '',
+      '[관련 패키지 보기](/packages?destination=%EB%AA%BD%EA%B3%A8&utm_source=naver_blog)',
+      '',
+      '## 비용 빠른 판단표',
+      '',
+      '| 항목 | 확인 기준 | 주의할 점 |',
+      '| --- | --- | --- |',
+      '| 항공 | 출발 도시와 시간대 | 성수기에는 총액 차이가 큽니다. |',
+      '| 숙소 | 위치와 조식 포함 여부 | 가족 여행은 이동 시간이 중요합니다. |',
+      '| 차량 | 전용차와 합승 여부 | 아이 동반이면 대기 시간을 줄입니다. |',
+      '',
+      '## 가족 구성별 체크리스트',
+      '',
+      '- 아이 여권 유효기간을 확인합니다.',
+      '- 차량 이동 시간을 2시간 단위로 나눕니다.',
+      '- 방한복과 방수 신발을 따로 챙깁니다.',
+      '- 현지 식비와 간식비를 분리합니다.',
+      '- 비상 연락처를 저장합니다.',
+      '',
+      '## 가격 변동 리스크',
+      '',
+      '항공 좌석, 환율, 차량 배정에 따라 실제 총액은 달라질 수 있습니다.',
+      '',
+      '## FAQ',
+      '',
+      'Q. 가족 여행 예산은 언제 다시 확인해야 하나요?',
+      '',
+      'A. 출발 2주 전과 결제 직전에 다시 확인하는 편이 안전합니다.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '몽골 가족여행 2026 실제 경비표',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: '몽골 가족여행 경비',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('moved_early_info_cta_to_bottom');
+    expect(result.blogHtml.indexOf('[관련 패키지 보기]')).toBeGreaterThan(result.blogHtml.indexOf('## 여행 상품과 함께 확인하기'));
+    expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
+  });
+
   it('repairs raw directive leaks and collapsed checklist items', () => {
     const source = [
       '# 여행 준비 체크',
