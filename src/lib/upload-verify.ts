@@ -22,7 +22,9 @@ import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year'
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { selectSourceBackedPriceRows } from '@/lib/source-price-date-repair';
-import { blockingCustomerVisibleTextIssues } from '@/lib/customer-visible-text-audit';
+import {
+  auditCustomerVisibleProductText,
+} from '@/lib/customer-visible-text-audit';
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import {
   evaluateRegistrationQualityScorecard,
@@ -895,7 +897,9 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   const renderContractChecks = evaluateCustomerRenderContractChecks(pkg);
   checks.push(...renderContractChecks);
 
-  const textIssues = blockingCustomerVisibleTextIssues(pkg as Record<string, unknown>);
+  const allTextIssues = auditCustomerVisibleProductText(pkg as Record<string, unknown>);
+  const textIssues = allTextIssues.filter(issue => !issue.safeFixable);
+  const safeFixIssues = allTextIssues.filter(issue => issue.safeFixable);
   if (textIssues.length > 0) {
     checks.push({
       id: 'C18',
@@ -904,6 +908,16 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       detail: textIssues
         .slice(0, 6)
         .map(issue => `${issue.fieldPath}: ${issue.value}`)
+        .join(' / '),
+    });
+  } else if (safeFixIssues.length > 0) {
+    checks.push({
+      id: 'C18',
+      label: 'customer visible text quality',
+      status: 'warn',
+      detail: safeFixIssues
+        .slice(0, 6)
+        .map(issue => `${issue.fieldPath}: ${issue.code} -> ${issue.normalizedValue}`)
         .join(' / '),
     });
   } else {

@@ -12,6 +12,7 @@ import {
   normalizeCustomerVisibleCopy,
 } from '@/lib/customer-copy-quality';
 import { auditCustomerVisibleProductText } from '@/lib/customer-visible-text-audit';
+import { repairCustomerVisibleCopyPayload } from '@/lib/product-registration/customer-visible-copy-repair';
 
 type StatusScope = 'all' | 'openable' | 'active' | 'non-archived';
 
@@ -264,7 +265,7 @@ function safelyRepairCustomerValue(value: unknown, pathParts: string[]): { value
   return { value, changed: false };
 }
 
-function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<string, unknown> {
+function buildSafePatchLegacy(row: TravelPackageRow, issues: TextIssue[]): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   const issuePaths = new Set(issues.map(issue => issue.field_path));
   for (const field of SAFE_TOP_LEVEL_FIELDS) {
@@ -289,6 +290,39 @@ function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<stri
     const repaired = safelyRepairCustomerValue(row[field], [field]);
     if (repaired.changed) patch[field] = repaired.value;
   }
+  return patch;
+}
+
+function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  const issuePaths = new Set(issues.map(issue => issue.field_path));
+  const repairInput: Record<string, unknown> = {};
+
+  for (const field of CUSTOMER_TEXT_FIELDS) {
+    if (field === 'products') continue;
+    repairInput[field] = row[field as keyof TravelPackageRow];
+  }
+  const repaired = repairCustomerVisibleCopyPayload(repairInput).value as Record<string, unknown>;
+
+  for (const field of CUSTOMER_TEXT_FIELDS) {
+    if (field === 'products') continue;
+    if (!issues.some(issue => issue.field_path === field || issue.field_path.startsWith(`${field}.`))) continue;
+    const before = row[field as keyof TravelPackageRow];
+    const after = repaired[field];
+    if (JSON.stringify(after) !== JSON.stringify(before)) patch[field] = after;
+  }
+
+  if (
+    issuePaths.has('display_title')
+    && typeof row.display_title === 'string'
+    && /\s[-–—/]\s*$/.test(row.display_title)
+    && typeof row.title === 'string'
+    && !/\s[-–—/]\s*$/.test(row.title)
+  ) {
+    const normalized = normalizeCustomerVisibleCopy(row.title);
+    if (normalized && normalized !== row.display_title) patch.display_title = normalized;
+  }
+
   return patch;
 }
 

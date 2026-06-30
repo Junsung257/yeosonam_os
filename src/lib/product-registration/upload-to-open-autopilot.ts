@@ -944,10 +944,21 @@ function repairCustomerVisibleCopyTree(value: unknown, path: string[] = []): {
   }
   if (Array.isArray(value)) {
     let changed = false;
-    const next = value.map((item, index) => {
+    const seen = new Set<string>();
+    const shouldDedupe = shouldDeduplicateCustomerCopyArray(path);
+    const next: unknown[] = [];
+    value.forEach((item, index) => {
       const repaired = repairCustomerVisibleCopyTree(item, [...path, String(index)]);
       changed ||= repaired.changed;
-      return repaired.value;
+      if (shouldDedupe) {
+        const signature = customerCopyDedupeSignature(repaired.value);
+        if (signature && seen.has(signature)) {
+          changed = true;
+          return;
+        }
+        if (signature) seen.add(signature);
+      }
+      next.push(repaired.value);
     });
     return { value: changed ? next : value, changed };
   }
@@ -964,6 +975,57 @@ function repairCustomerVisibleCopyTree(value: unknown, path: string[] = []): {
   return { value: changed ? next : value, changed };
 }
 
+function customerCopyDedupeSignature(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const key = normalizeCustomerVisibleCopy(value).replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+    return key.length >= 8 ? key : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const obj = value as Record<string, unknown>;
+  const source = obj.displayName ?? obj.name ?? obj.title ?? obj.label ?? obj.activity;
+  if (typeof source !== 'string') return null;
+  const key = normalizeCustomerVisibleCopy(source).replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+  return key.length >= 8 ? key : null;
+}
+
+function shouldDeduplicateCustomerCopyArray(path: string[]): boolean {
+  const joined = path.join('.');
+  if (joined.includes('.schedule')) return false;
+  return (
+    joined.endsWith('inclusions')
+    || joined.endsWith('excludes')
+    || joined.endsWith('optional_tours')
+    || joined.endsWith('surcharges')
+    || joined.endsWith('customer_notes')
+    || joined.endsWith('notices_parsed')
+    || joined.includes('highlights')
+  );
+}
+
+function hasOptionalTourPriceForCustomerCopy(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+  return ['price', 'price_usd', 'price_krw', 'price_jpy', 'price_vnd', 'amount'].some(key => {
+    const candidate = obj[key];
+    if (typeof candidate === 'number') return candidate > 0;
+    if (typeof candidate === 'string') return /\d/.test(candidate);
+    return false;
+  });
+}
+
+function collectCustomerCopyReferenceSignatures(value: unknown, signatures: Set<string>) {
+  const signature = customerCopyDedupeSignature(value);
+  if (signature) signatures.add(signature);
+  if (Array.isArray(value)) {
+    value.forEach(item => collectCustomerCopyReferenceSignatures(item, signatures));
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    collectCustomerCopyReferenceSignatures(item, signatures);
+  }
+}
+
 export function repairCustomerVisibleCopyPayload(input: Pick<UploadToOpenAutopilotPackage,
   'itinerary_data'
   | 'inclusions'
@@ -972,12 +1034,14 @@ export function repairCustomerVisibleCopyPayload(input: Pick<UploadToOpenAutopil
   | 'customer_notes'
   | 'notices_parsed'
   | 'hero_tagline'
->): {
+> & Partial<Pick<UploadToOpenAutopilotPackage, 'title' | 'display_title'>>): {
   updates: Record<string, unknown>;
   repaired: boolean;
 } {
   const updates: Record<string, unknown> = {};
   const fields: Array<keyof typeof input> = [
+    'title',
+    'display_title',
     'itinerary_data',
     'inclusions',
     'excludes',
@@ -989,6 +1053,20 @@ export function repairCustomerVisibleCopyPayload(input: Pick<UploadToOpenAutopil
   for (const field of fields) {
     const repaired = repairCustomerVisibleCopyTree(input[field], [field]);
     if (repaired.changed) updates[field] = repaired.value;
+  }
+  const referenceSignatures = new Set<string>();
+  collectCustomerCopyReferenceSignatures(updates.title ?? input.title, referenceSignatures);
+  collectCustomerCopyReferenceSignatures(updates.display_title ?? input.display_title, referenceSignatures);
+  collectCustomerCopyReferenceSignatures(updates.inclusions ?? input.inclusions, referenceSignatures);
+  const itineraryData = (updates.itinerary_data ?? input.itinerary_data) as { highlights?: unknown } | null | undefined;
+  collectCustomerCopyReferenceSignatures(itineraryData?.highlights, referenceSignatures);
+  const optionalTours = (updates.optional_tours ?? input.optional_tours) as unknown;
+  if (Array.isArray(optionalTours) && referenceSignatures.size > 0) {
+    const filtered = optionalTours.filter(tour => {
+      const signature = customerCopyDedupeSignature(tour);
+      return !signature || hasOptionalTourPriceForCustomerCopy(tour) || !referenceSignatures.has(signature);
+    });
+    if (filtered.length !== optionalTours.length) updates.optional_tours = filtered;
   }
   return { updates, repaired: Object.keys(updates).length > 0 };
 }

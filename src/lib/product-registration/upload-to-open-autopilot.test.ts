@@ -403,6 +403,7 @@ describe('repairOptionalTourScheduleDuplicates', () => {
     expect(result.updates.inclusions).toEqual([
       '\uD2B9\uC2DD \u2013 \uBC14\uB098\uC0B0 \uC815\uC0C1 \uB808\uC2A4\uD1A0\uB791\uC5D0\uC11C \uC800\uB141\uC2DD\uC0AC(\uB9E5\uC8FC \uB610\uB294 \uC74C\uB8CC 1\uC794)',
     ]);
+    expect(result.updates.optional_tours).toEqual([]);
     expect(JSON.stringify(result.updates.itinerary_data)).toContain('\uBC14\uB098\uC0B0 \uC815\uC0C1');
     expect(JSON.stringify(result.updates.itinerary_data)).toContain('\uBC14\uB098\uC0B0 \uC815\uC0B0 \uC6D0\uBB38 \uADFC\uAC70');
   });
