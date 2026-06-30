@@ -51,6 +51,7 @@ describe('refresh-baselines env handling', () => {
     );
 
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://env.supabase.co';
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     const loaded = loadEnvFileIfExists(envPath);
 
     expect(loaded.loaded).toBe(true);
