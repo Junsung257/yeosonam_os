@@ -10,7 +10,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { supabaseAdmin } from '../src/lib/supabase';
 import { getSecret } from '../src/lib/secret-registry';
 import { renderPackage } from '../src/lib/render-contract';
-import { customerCopyQualityIssues } from '../src/lib/customer-copy-quality';
+import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
 
 type PackageRow = {
   id: string;
@@ -205,9 +205,12 @@ function visibleTextQualityIssues(text: string): string[] {
   if (unsafeHits.length > 0) {
     issues.push(`generic_internal_copy_visible: ${unsafeHits.join(', ')}`);
   }
-  const copyIssues = customerCopyQualityIssues(text);
+  const copyIssues = auditCustomerVisibleScreenText(text, { surface: 'mobile-proof' });
   if (copyIssues.length > 0) {
-    issues.push(`customer_copy_quality: ${copyIssues.map(issue => issue.code).join(', ')}`);
+    issues.push(`customer_copy_quality: ${copyIssues
+      .slice(0, 12)
+      .map(issue => `${issue.code}@${issue.line ?? issue.fieldPath}:${issue.value}`)
+      .join(' | ')}`);
   }
   return issues;
 }

@@ -53,9 +53,9 @@ function getTzParts(now: Date, timezone: string): { hour: number; minute: number
 }
 
 function fmtTimeInTz(now: Date | null, timezone: string): string {
-  if (!now) return '--:--';
+  if (!now) return '시간 확인 중';
   const parts = getTzParts(now, timezone);
-  if (!parts) return '—';
+  if (!parts) return '시간 확인 중';
   const period = parts.hour < 12 ? '오전' : '오후';
   const hour12 = parts.hour % 12 === 0 ? 12 : parts.hour % 12;
   return `${period} ${hour12}:${String(parts.minute).padStart(2, '0')}`;
@@ -81,7 +81,7 @@ function timezoneTips(offsetMinutes: number): string[] {
   }
   if (absH <= 1) {
     return [
-      '시차 적응 거의 없음 👍',
+      '시차 적응 거의 없음',
       '도착 당일 저녁부터 꽉 찬 일정 가능',
       '귀국 후 다음날 바로 업무 복귀 — 연차 아껴도 충분',
     ];
@@ -134,7 +134,7 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
     <section className="px-4 mt-4">
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[15px] font-extrabold text-slate-900">⏰ 시차 안내</h3>
+          <h3 className="text-[15px] font-extrabold text-slate-900">시차 안내</h3>
           <span className="text-[11px] text-slate-500 font-semibold">{offsetText}</span>
         </div>
 
@@ -142,14 +142,12 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-slate-50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-base">🇰🇷</span>
               <span className="text-xs text-slate-500 font-medium">서울 (KST)</span>
             </div>
             <div className="text-lg font-extrabold text-slate-900 tabular-nums">{seoulTime}</div>
           </div>
           <div className="bg-violet-50 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-base">📍</span>
               <span className="text-xs text-violet-700 font-medium">{displayCity}</span>
             </div>
             <div className="text-xl font-extrabold text-violet-900 tabular-nums">{localTime}</div>
@@ -159,7 +157,7 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
 
         {/* 실용 팁 */}
         <div className="bg-gradient-to-br from-[#F5F0FF]/60 to-brand-light/40 border border-[#E9D5FF]/60 rounded-xl p-3.5">
-          <p className="text-micro font-bold text-violet-700 mb-2">💡 여행 팁</p>
+          <p className="text-micro font-bold text-violet-700 mb-2">여행 팁</p>
           <ul className="space-y-1.5">
             {tips.map((t, i) => (
               <li key={i} className="text-[13px] text-slate-700 leading-snug flex gap-1.5 break-keep">

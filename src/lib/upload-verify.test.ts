@@ -223,6 +223,29 @@ describe('evaluateVerifyChecks customer visibility gate', () => {
     }));
   });
 
+  it('warns on safe-fixable customer copy so autopilot can repair and re-verify', () => {
+    const result = evaluateVerifyChecks({
+      id: 'pkg-safe-copy-repair',
+      title: 'Da Nang package',
+      status: 'active',
+      audit_status: 'clean',
+      raw_text: 'PKG da nang package\n2099.1.1\n3/1\n1,000,-\nDAY 1 arrival\nDAY 2 return',
+      itinerary_data: {
+        days: [
+          { schedule: [{ activity: 'arrival' }] },
+          { schedule: [{ activity: 'return' }] },
+        ],
+      },
+      price_dates: [{ date: '2099-03-01', price: 1000000 }],
+      display_title: 'Da Nang package sample',
+      inclusions: ['특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)'],
+    } as never);
+
+    expect(findCheck(result, 'C18')).toEqual(expect.objectContaining({
+      status: 'warn',
+    }));
+  });
+
   it('passes date freshness when at least one future departure remains', () => {
     const result = evaluateVerifyChecks({
       id: 'pkg-future-price-dates',

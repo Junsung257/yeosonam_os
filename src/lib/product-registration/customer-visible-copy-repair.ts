@@ -22,13 +22,27 @@ const UNSAFE_CODES = new Set([
   'customer_forbidden_internal_terms',
 ]);
 
+const CUSTOMER_COPY_REPAIR_SKIP_KEYS = new Set([
+  'raw_text',
+  'sourceText',
+  'source',
+  'sources',
+  'evidence',
+  'evidence_index',
+  'evidenceIndex',
+  'quote',
+  'quotes',
+  'raw_quote',
+  'rawQuote',
+]);
+
 const CUSTOMER_FORBIDDEN_TOKEN_RE =
-  /\b(?:NET|OP|PAX)\b|랜드사|공급사|거래처|원가|마진|수익|정산|송금|인폼|컨펌|수배|어드민|내부\s*확인|담당자\s*확인|대기\s*인폼|인폼\s*나가/i;
+  /\b(?:NET|OP|PAX)\b|랜드사|공급가|거래처\s*원가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민|담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|내부|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/i;
 const CUSTOMER_FORBIDDEN_TOKEN_RE_GLOBAL =
-  /\b(?:NET|OP|PAX)\b|랜드사|공급사|거래처|원가|마진|수익|정산|송금|인폼|컨펌|수배|어드민|내부\s*확인|담당자\s*확인|대기\s*인폼|인폼\s*나가/gi;
+  /\b(?:NET|OP|PAX)\b|랜드사|공급가|거래처\s*원가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민|담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|내부|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/gi;
 
 const OPERATIONAL_RESIDUE_RE =
-  /(?:기준으로|기준|후|되면|나가주세요|진행해주세요|확인해주세요)|대기\s*$/g;
+  /(?:기준으로|기준|하시면|해주세요|진행해주세요|확인해주세요|확인 후|대기)\s*$/g;
 
 function compactText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -40,7 +54,7 @@ function hasUnsafeIssue(codes: string[]): boolean {
 
 function stripForbiddenOperationalCopy(value: string): string | null {
   const parts = value
-    .split(/(?:\r?\n|[;|]|(?:\s+[-–—]\s+))/)
+    .split(/\r?\n|[;|]|(?:\s+[-–—]\s+)/)
     .map(part => compactText(part))
     .filter(Boolean)
     .filter(part => !CUSTOMER_FORBIDDEN_TOKEN_RE.test(part));
@@ -51,7 +65,7 @@ function stripForbiddenOperationalCopy(value: string): string | null {
       .replace(OPERATIONAL_RESIDUE_RE, ''),
   );
 
-  if (candidate.length < 2) return null;
+  if (candidate.length <= 4 || /^(확인|요청|메모|기준|기준으로|확인 후|후)$/.test(candidate)) return null;
   const remainingCodes = customerCopyQualityIssues(candidate).map(issue => issue.code);
   return hasUnsafeIssue(remainingCodes) ? null : candidate;
 }
@@ -87,17 +101,114 @@ function repairString(value: string, fieldPath: string): { value: string | null;
   return { value: stripped, changes };
 }
 
+function dedupeCandidateSignature(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const key = normalizeCustomerVisibleCopy(value).replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+    return key.length >= 8 ? key : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const obj = value as Record<string, unknown>;
+  const source = obj.displayName ?? obj.name ?? obj.title ?? obj.label ?? obj.activity;
+  if (typeof source !== 'string') return null;
+  const key = normalizeCustomerVisibleCopy(source).replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+  return key.length >= 8 ? key : null;
+}
+
+function shouldDeduplicateCustomerArray(pathParts: string[]): boolean {
+  const joined = pathParts.join('.');
+  if (joined.includes('.schedule')) return false;
+  return (
+    joined.endsWith('inclusions')
+    || joined.endsWith('excludes')
+    || joined.endsWith('optional_tours')
+    || joined.endsWith('surcharges')
+    || joined.endsWith('customer_notes')
+    || joined.endsWith('notices_parsed')
+    || joined.includes('highlights')
+  );
+}
+
+function hasOptionalTourPrice(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+  return ['price', 'price_usd', 'price_krw', 'price_jpy', 'price_vnd', 'amount'].some(key => {
+    const candidate = obj[key];
+    if (typeof candidate === 'number') return candidate > 0;
+    if (typeof candidate === 'string') return /\d/.test(candidate);
+    return false;
+  });
+}
+
+function collectReferenceSignatures(value: unknown, signatures: Set<string>) {
+  const signature = dedupeCandidateSignature(value);
+  if (signature) signatures.add(signature);
+  if (Array.isArray(value)) {
+    value.forEach(item => collectReferenceSignatures(item, signatures));
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    collectReferenceSignatures(item, signatures);
+  }
+}
+
+function pruneDuplicateOptionalTours(value: unknown, changes: CustomerVisibleCopyRepairChange[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.optional_tours)) return value;
+
+  const referenceSignatures = new Set<string>();
+  collectReferenceSignatures(obj.title, referenceSignatures);
+  collectReferenceSignatures(obj.display_title, referenceSignatures);
+  collectReferenceSignatures(obj.inclusions, referenceSignatures);
+  const itineraryData = obj.itinerary_data as { highlights?: unknown } | null | undefined;
+  collectReferenceSignatures(itineraryData?.highlights, referenceSignatures);
+
+  const nextTours = obj.optional_tours.filter((tour, index) => {
+    const signature = dedupeCandidateSignature(tour);
+    if (!signature || hasOptionalTourPrice(tour) || !referenceSignatures.has(signature)) return true;
+    changes.push({
+      fieldPath: `optional_tours.${index}`,
+      action: 'removed',
+      codes: ['optional_inclusion_duplicate'],
+      before: typeof tour === 'string' ? tour : JSON.stringify(tour),
+      after: null,
+    });
+    return false;
+  });
+  if (nextTours.length === obj.optional_tours.length) return value;
+  return { ...obj, optional_tours: nextTours };
+}
+
 function repairValue(value: unknown, pathParts: string[]): { value: unknown; changes: CustomerVisibleCopyRepairChange[] } {
+  const key = pathParts[pathParts.length - 1] ?? '';
+  if (CUSTOMER_COPY_REPAIR_SKIP_KEYS.has(key)) return { value, changes: [] };
+
   if (typeof value === 'string') return repairString(value, pathParts.join('.'));
 
   if (Array.isArray(value)) {
     const changes: CustomerVisibleCopyRepairChange[] = [];
     const next: unknown[] = [];
+    const seen = new Set<string>();
     value.forEach((item, index) => {
       const repaired = repairValue(item, [...pathParts, String(index)]);
       changes.push(...repaired.changes);
       if (repaired.value == null) return;
       if (typeof repaired.value === 'string' && repaired.value.trim() === '') return;
+      if (shouldDeduplicateCustomerArray(pathParts)) {
+        const signature = dedupeCandidateSignature(repaired.value);
+        if (signature && seen.has(signature)) {
+          changes.push({
+            fieldPath: [...pathParts, String(index)].join('.'),
+            action: 'removed',
+            codes: ['duplicate_customer_visible_phrase'],
+            before: typeof item === 'string' ? item : JSON.stringify(item),
+            after: null,
+          });
+          return;
+        }
+        if (signature) seen.add(signature);
+      }
       next.push(repaired.value);
     });
     return { value: next, changes };
@@ -128,8 +239,10 @@ function repairValue(value: unknown, pathParts: string[]): { value: unknown; cha
 
 export function repairCustomerVisibleCopyPayload<T>(value: T): CustomerVisibleCopyRepairResult<T> {
   const repaired = repairValue(value, []);
+  const changes = [...repaired.changes];
+  const valueWithOptionalTours = pruneDuplicateOptionalTours(repaired.value, changes);
   return {
-    value: repaired.value as T,
-    changes: repaired.changes,
+    value: valueWithOptionalTours as T,
+    changes,
   };
 }
