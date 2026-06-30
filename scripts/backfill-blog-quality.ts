@@ -332,8 +332,10 @@ function sanitizeInfoSalesPhrases(markdown: string): string {
     .replace(/^\s*(?:[-*]\s*)?\[[^\]]*(?:상품|패키지|상담|문의|예약|조건\s*확인|일정\s*확인|관련\s*일정)[^\]]*]\((?:\/packages|\/group-inquiry|https?:\/\/(?:www\.)?yeosonam\.com\/packages|[^)]*(?:utm|consult|kakao)[^)]*)\)\s*$/gim, '')
     .replace(/\s*\[[^\]]*(?:상품|패키지|상담|문의|예약|조건\s*확인|일정\s*확인|관련\s*일정)[^\]]*]\((?:\/packages|\/group-inquiry|https?:\/\/(?:www\.)?yeosonam\.com\/packages|[^)]*(?:utm|consult|kakao)[^)]*)\)\s*/gi, ' ')
     .replace(/\s*\[[^\]]*(?:여소남|상담|문의|안심\s*여행)[^\]]*]\(https?:\/\/(?:www\.)?yeosonam\.com\/[^)]*\)\s*/gi, '\n\n')
-    .replace(/(?:^|\n)[^\n]*(?:여소남이\s*검토한|과거\s*데이터를\s*기반으로|여소남\s*큐레이터|활성\s*상태로\s*조회|현재\s*예약\s*신호|더\s*나은\s*상품|맞춤형\s*.*상품|소중한\s*.*여행을\s*위해)[^\n]*(?:\n|$)/g, '\n')
-    .replace(/여소남\s*데이터/g, '확인된 근거')
+    .replace(/(?:^|\n)[^\n]*(?:여소남이\s*검토한|과거\s*데이터를\s*기반으로|여소남\s*큐레이터|여소남\s*에디터|활성\s*상태로\s*조회|현재\s*예약\s*신호|더\s*나은\s*상품|맞춤형\s*.*상품|소중한\s*.*여행을\s*위해)[^\n]*(?:\n|$)/g, '\n')
+    .replace(/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*본/g, '출발 전 확인 기준으로 본')
+    .replace(/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*보면/g, '출발 전 확인 기준으로 보면')
+    .replace(/여소남(?:의)?\s*(?:내부\s*)?데이터/g, '확인된 근거')
     .replace(/여소남은\s*/g, '')
     .replace(/여소남과\s*함께\s*/g, '')
     .replace(/여소남\s*에디터가\s*추천(?:하는|한)?/g, '여행 전 확인할')
@@ -1463,6 +1465,11 @@ function strengthenIntroHookCustomer(markdown: string, destination?: string | nu
 
 function sanitizeCustomerMarketingPressure(markdown: string): string {
   return markdown
+    .replace(/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*본/g, '출발 전 확인 기준으로 본')
+    .replace(/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*보면/g, '출발 전 확인 기준으로 보면')
+    .replace(/여소남\s*에디터가\s*여러\s*정보를\s*비교\s*분석하여,?\s*/g, '')
+    .replace(/여소남\s*에디터가\s*꼼꼼(?:하|히)게\s*정리(?:해\s*드립니다|했습니다|합니다)\.?/g, '핵심 기준을 정리했습니다.')
+    .replace(/여소남\s*에디터(?:가|는|의)?\s*/g, '')
     .replace(/놓치면\s*후회(?:할|하는)?/g, '미리 확인하면 좋은')
     .replace(/무조건\s*예약/g, '조건 확인')
     .replace(/지금\s*바로\s*예약/g, '예약 전 조건 확인')
