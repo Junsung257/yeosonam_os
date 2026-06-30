@@ -828,6 +828,46 @@ function forceRepairRemainingBrokenMarkdownTables(markdown: string): { text: str
   return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
 }
 
+function repairTooShortMarkdownTables(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+    if (!line.startsWith('|') || !line.endsWith('|')) {
+      next.push(lines[index] ?? '');
+      continue;
+    }
+
+    const block: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length) {
+      const current = lines[cursor]?.trim() ?? '';
+      if (!current.startsWith('|') || !current.endsWith('|')) break;
+      block.push(current);
+      cursor += 1;
+    }
+
+    const hasSeparator = block.length >= 2 && hasQualityGateTableSeparator(block[1] ?? '');
+    const bodyRows = block.slice(hasSeparator ? 2 : 1).filter((row) => parseMarkdownTableCells(row).length >= 2);
+
+    if (bodyRows.length < 2) {
+      const normalizedBlock = hasSeparator
+        ? block
+        : [block[0] ?? '', markdownTableSeparatorFor(block[0] ?? ''), ...block.slice(1)];
+      next.push(...markdownTableBlockToBullets(normalizedBlock));
+      changed = true;
+    } else {
+      next.push(...block);
+    }
+
+    index = cursor - 1;
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
 function capH2Headings(markdown: string, maxH2 = 9): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   let h2Count = 0;
@@ -1278,6 +1318,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (finalBrokenTableRepair.changed) {
     blogHtml = finalBrokenTableRepair.text;
     changes.push('force_repaired_broken_markdown_tables');
+  }
+
+  const shortTableRepair = repairTooShortMarkdownTables(blogHtml);
+  if (shortTableRepair.changed) {
+    blogHtml = shortTableRepair.text;
+    changes.push('repaired_too_short_markdown_tables');
   }
 
   const finalAccentRepair = normalizeBlogVisualAccents(blogHtml);

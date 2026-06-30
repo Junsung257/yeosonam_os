@@ -409,6 +409,34 @@ describe('blog editorial repair', () => {
     expect(checkMarkdownTableIntegrity(result.blogHtml).passed).toBe(true);
   });
 
+  it('converts too-short markdown tables into scan-friendly bullets', () => {
+    const source = [
+      '# Mongolia family budget',
+      '',
+      '| Item | Low | Mid | High | Note |',
+      '| --- | --- | --- | --- | --- |',
+      '| Meals | 50,000 KRW | 80,000 KRW | 120,000 KRW | depends on restaurants |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Mongolia family budget',
+      slug: 'mongolia-budget-family',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: 'Mongolia family budget',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/repaired_(?:too_short|loose)_markdown_tables/),
+      ]),
+    );
+    expect(result.blogHtml).toContain('- Item: Meals / Low: 50,000 KRW');
+    expect(checkMarkdownTableIntegrity(result.blogHtml).passed).toBe(true);
+  });
+
   it('caps excessive h2 headings by demoting later support sections', () => {
     const source = [
       '# City planning guide',

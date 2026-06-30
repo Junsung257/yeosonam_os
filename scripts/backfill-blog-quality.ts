@@ -1292,6 +1292,27 @@ function buildTargetAdKeywordsCustomer(row: BlogRow, primaryKeyword: string, sec
 }
 
 function repairMarkdownTables(markdown: string): string {
+  const cellsFor = (row: string) => row.split('|').slice(1, -1).map((cell) => cell.trim());
+  const bulletizeShortTable = (block: string[], hasSeparator: boolean): string[] => {
+    const header = cellsFor(block[0] ?? '');
+    const bodyRows = block.slice(hasSeparator ? 2 : 1)
+      .map((row) => cellsFor(row))
+      .filter((cells) => cells.length >= 2);
+
+    if (bodyRows.length === 0) {
+      const text = (block[0] ?? '')
+        .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+        .replace(/\s*\|\s*/g, ' / ')
+        .trim();
+      return text ? [`- ${text}`] : [];
+    }
+
+    return bodyRows.map((cells) => {
+      const pairs = cells.map((cell, index) => `${header[index] || `Column ${index + 1}`}: ${cell}`);
+      return `- ${pairs.join(' / ')}`;
+    });
+  };
+
   const lines = markdown.split('\n');
   const next: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -1324,6 +1345,15 @@ function repairMarkdownTables(markdown: string): string {
     }
 
     const hasSeparator = block.length >= 2 && /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(block[1]?.trim() ?? '');
+    const bodyRows = block.slice(hasSeparator ? 2 : 1)
+      .map((row) => cellsFor(row))
+      .filter((cells) => cells.length >= 2);
+    if (bodyRows.length < 2) {
+      next.push(...bulletizeShortTable(block, hasSeparator));
+      index = cursor - 1;
+      continue;
+    }
+
     next.push(block[0] ?? '');
     if (!hasSeparator) {
       next.push(`| ${Array.from({ length: headerCells }, () => '---').join(' | ')} |`);
@@ -1821,6 +1851,24 @@ function ensureChecklistBlockFinal(markdown: string): string {
   return `${markdown.trim()}\n\n${block}\n`;
 }
 
+function ensureCanonicalChecklistBlockFinal(markdown: string): string {
+  if (/^##\s*(?:travel\s*)?(?:checklist|packing\s+list)/im.test(markdown)) return markdown;
+  if (/^##\s*(?:\uC5EC\uD589\s*)?(?:\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC900\uBE44\uBB3C|\uD544\uC218\s*\uC544\uC774\uD15C|\uD655\uC778\s*\uBAA9\uB85D)/m.test(markdown)) return markdown;
+  if (/<h[23]\b[^>]*>\s*(?:\uC5EC\uD589\s*)?(?:\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC900\uBE44\uBB3C|\uD544\uC218\s*\uC544\uC774\uD15C|\uD655\uC778\s*\uBAA9\uB85D)\s*<\/h[23]>/i.test(markdown)) return markdown;
+
+  const block = [
+    '<h2>\uC5EC\uD589 \uCCB4\uD06C\uB9AC\uC2A4\uD2B8</h2>',
+    '<ul>',
+    '<li>\uCD9C\uBC1C\uC77C\uACFC \uD56D\uACF5 \uC2DC\uAC04\uC744 \uB2E4\uC2DC \uD655\uC778\uD569\uB2C8\uB2E4.</li>',
+    '<li>\uD3EC\uD568/\uBD88\uD3EC\uD568\uACFC \uD604\uC9C0 \uCD94\uAC00 \uBE44\uC6A9\uC744 \uBD84\uB9AC\uD574\uC11C \uBD05\uB2C8\uB2E4.</li>',
+    '<li>\uC219\uC18C \uC704\uCE58, \uAC1D\uC2E4 \uAE30\uC900, \uC774\uB3D9 \uC2DC\uAC04\uC744 \uD568\uAED8 \uD655\uC778\uD569\uB2C8\uB2E4.</li>',
+    '<li>\uCDE8\uC18C \uADDC\uC815\uACFC \uACB0\uC81C \uAE30\uD55C\uC740 \uBCC4\uB3C4\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.</li>',
+    '</ul>',
+  ].join('\n');
+
+  return `${markdown.trim()}\n\n${block}\n`;
+}
+
 function ensureCostRangeBlockFinal(markdown: string, row: BlogRow, primaryKeyword: string): string {
   const text = `${row.slug || ''} ${row.seo_title || ''} ${row.destination || ''} ${primaryKeyword} ${markdown.slice(0, 1200)}`.toLowerCase();
   if (!/(cost|budget|경비|비용|항공권|예약|성수기|유럽)/i.test(text)) return markdown;
@@ -1926,7 +1974,7 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
         ensureRainySeasonTableFinal(
           ensureWeatherTableFinal(
             ensureCostRangeBlockFinal(
-              ensureChecklistBlockFinal(
+              ensureCanonicalChecklistBlockFinal(
                 ensureReadableFaqFinal(repairCollapsedChecklistFinal(repairCollapsedFaqFinal(next, primaryKeyword)), primaryKeyword),
               ),
               row,
