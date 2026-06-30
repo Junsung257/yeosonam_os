@@ -112,7 +112,7 @@ Correct sequence:
 1. Publish only after all gates pass.
 2. Revalidate `/blog`, `/blog/[slug]`, and the blog list tag.
 3. Enqueue a durable `blog_indexing_jobs` row with `content_creative_id`, `slug`, `url`, and source.
-4. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`. `/api/cron/blog-indexing-worker` remains available for manual runs.
+4. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
 5. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.
 6. The worker submits changed URLs through IndexNow batch endpoints when `INDEXNOW_KEY` is configured.
 7. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
@@ -155,8 +155,8 @@ Priority 1:
   - Migration: `supabase/migrations/20260615150000_blog_indexing_jobs.sql`.
   - Enqueue helper: `src/lib/blog-indexing-outbox.ts`.
   - Worker core: `src/lib/blog-indexing-worker.ts`.
-  - Manual endpoint: `src/app/api/cron/blog-indexing-worker/route.ts`.
-  - Scheduler: existing `/api/cron/blog-publisher` drains due indexing jobs to avoid Vercel's 100-cron limit.
+  - Independent endpoint: `src/app/api/cron/blog-indexing-worker/route.ts`.
+  - Scheduler: existing `/api/cron/blog-publisher` drains due indexing jobs, and `.github/workflows/blog-external-cron.yml` runs `blog-indexing-worker` through the custom domain after publisher slots to avoid coupling indexing to publisher health.
 - Slug migration and recent-post quality backfill completed on 2026-06-15 after redirects and indexing worker were live:
   - `npx tsx scripts/migrate-blog-slugs.ts --write`
   - `npm run audit:blog-quality -- --limit=50 --write`
