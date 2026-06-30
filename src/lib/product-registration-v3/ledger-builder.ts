@@ -15,7 +15,7 @@ import { isCustomerOptionalTourCandidate, isNonCustomerOptionText } from '@/lib/
 
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
-const FLIGHT_CODE_RE = /\b([A-Z0-9]{2})\s*(\d{3,4})\b/;
+const FLIGHT_CODE_RE = /\b([A-Z][A-Z0-9]|[0-9][A-Z])\s*(\d{3,4})\b/;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(\uc6d0|KRW|USD|\$)?/i;
 const ABBREVIATED_PRICE_RE = /^[1-9]\d{1,2},\s*-$/;
 const USD_RE = /\$\s*(\d+(?:\.\d+)?)/;
@@ -87,6 +87,12 @@ const TRANSPORT_PATH_FRAGMENT_RE =
   /(?:케이블카|전망대|에스컬레이터|엘리베이터|식당|하산|협곡식당).*(?:-|–|—)/;
 const DESCRIPTION_ONLY_FRAGMENT_RE =
   /^(?:▶|[-•])?\s*(?:멀리서도|붉은색의|이름\s*붙여진)/;
+const XIAN_MEAL_TERM_RE =
+  /(?:\uC11C\uC548\s*\uBA74\s*\uC694\uB9AC|\uAD50\s*\uC790\s*\uC5F0)/u;
+const XIAN_FREE_TREKKING_ROUTE_RE =
+  /(?:\uC790\uC720\s*\uD2B8\uB808\uD0B9|\uD2B8\uB808\uD0B9).*(?:-|[\u2013\u2014]).*(?:\uC18C\uC694|\uBD81\uBD09|\uAE08\uC0AC\uAD00)/u;
+const XIAN_HUAQINGJI_DESCRIPTION_FRAGMENT_RE =
+  /^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b]*\uC11C\uC548\uC758\s*\uC720\uBA85\uD55C\s*\uC628\uCC9C\uC9C0/u;
 
 function normalizePrice(token: string): number {
   const number = Number(token.replace(/[,\s]/g, ''));
@@ -98,6 +104,9 @@ function eventTypeForLine(line: string): V3EventType | null {
   const text = line.trim();
   if (!text) return null;
   const compact = text.replace(/\s+/g, '');
+  if (XIAN_MEAL_TERM_RE.test(text) || XIAN_MEAL_TERM_RE.test(compact)) return 'meal';
+  if (XIAN_FREE_TREKKING_ROUTE_RE.test(text) || XIAN_FREE_TREKKING_ROUTE_RE.test(compact)) return 'free_time';
+  if (XIAN_HUAQINGJI_DESCRIPTION_FRAGMENT_RE.test(text)) return 'notice';
   if (SOURCE_EVIDENCE_HEADER_RE.test(text)) return 'price_noise';
   if (TIME_WITH_ARRIVAL_OFFSET_ONLY_RE.test(compact)) return 'price_noise';
   if (HOLIDAY_PRICE_NOISE_RE.test(text)) return 'price_noise';
@@ -328,6 +337,21 @@ function resolveAdjacentFlightTimes(
   return { depTime, arrTime };
 }
 
+function resolveSeparatedArrivalTime(
+  sectionLines: V3SourceLine[],
+  sectionIndex: number,
+): string | null {
+  const lookahead = sectionLines.slice(sectionIndex + 1, sectionIndex + 32);
+  let previousTime: string | null = null;
+  for (const next of lookahead) {
+    if (FLIGHT_CODE_RE.test(next.quote)) break;
+    const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
+    if (/\ub3c4\ucc29/.test(next.quote)) return nextTime ?? previousTime;
+    if (nextTime) previousTime = nextTime;
+  }
+  return null;
+}
+
 function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_boundaries'][number]): V3LedgerVariant {
   const sectionLines = lines.slice(boundary.line_start - 1, boundary.line_end);
   const linePrices = sectionLines
@@ -361,6 +385,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
         }
       }
     }
+    arrTime ??= resolveSeparatedArrivalTime(sectionLines, sectionIndex);
     return {
       leg: index === 0 ? 'outbound' as const : index === 1 ? 'inbound' as const : 'unknown' as const,
       code: `${match[1]}${match[2]}`,
@@ -517,9 +542,31 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       )
     );
   });
+  const hasIncludedGuideTipNotice = cleanStandardNotices.some(notice =>
+    notice.category === 'tip_guideline'
+    && notice.template_key === 'guide.tip_included'
+    && notice.review_status !== 'review_needed'
+  );
+  const customerSafeStandardNotices = cleanStandardNotices.filter(notice => {
+    if (
+      notice.category !== 'tip_guideline'
+      || notice.template_key !== 'guide.tip_amount_local_payment'
+      || notice.review_status !== 'review_needed'
+      || notice.values.amount != null
+    ) {
+      return true;
+    }
+    return !hasIncludedGuideTipNotice;
+  });
   const minDepartureLine = sectionLines.find(line =>
     /minimum|min\.?|\ucd5c\uc18c|\uc778\s*\uc6d0|\d+\s*(?:\uba85|\uc778)\s*(?:\uc774\uc0c1|\ubd80\ud130)\s*\ucd9c\ubc1c/i.test(line.quote)
     && /\d+/.test(line.quote)
+  );
+  const structuredMinPaxFact = structured.structuredFacts.find(fact =>
+    fact.category === 'min_pax'
+    && typeof fact.values.count === 'number'
+    && Number.isFinite(fact.values.count)
+    && fact.values.count > 0
   );
   const minimum_departure = minDepartureLine
     ? {
@@ -533,6 +580,11 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
         ),
         evidence: evidenceFromLines(lines, minDepartureLine.lineNumber),
       }
+    : structuredMinPaxFact
+      ? {
+          value: Number(structuredMinPaxFact.values.count),
+          evidence: structuredMinPaxFact.evidence[0] ?? evidenceFromLines(lines, sectionLines[0]?.lineNumber ?? 1),
+        }
     : null;
   const title = boundary.title_hint;
   const duration = parseDuration(title, days.length);
@@ -552,7 +604,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     options,
     shopping,
     structured_facts: structured.structuredFacts,
-    standard_notices: cleanStandardNotices,
+    standard_notices: customerSafeStandardNotices,
     minimum_departure,
     evidence_coverage: {
       price: prices.length > 0,

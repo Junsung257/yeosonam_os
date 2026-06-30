@@ -21,7 +21,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'customer_forbidden_internal_terms',
-    pattern: /\b(?:NET|OP|PAX)\b|랜드사|공급사|거래처|원가|마진|수익|정산|송금|인폼|컨펌|수배|어드민|내부\s*확인|담당자\s*확인|대기\s*인폼|인폼\s*나가/i,
+    pattern: /\b(?:NET|OP|PAX)\b|랜드사|공급사|거래처|원가(?!계)|마진|수익|정산|송금|인폼|컨펌|수배|어드민|내부\s*확인|담당자\s*확인|대기\s*인폼|인폼\s*나가/i,
     label: '랜드사/운영자용 내부 용어가 고객 문구에 보입니다.',
   },
   {
@@ -88,6 +88,8 @@ export function normalizeCustomerVisibleCopy(value: string | null | undefined): 
     .replace(/예약\s+시/g, '예약 시')
     .replace(/월기준/g, '월 기준')
     .replace(/기사가이드\s*경비/g, '가이드/기사 경비')
+    .replace(/바나산\s*정산/g, '바나산 정상')
+    .replace(/([가-힣])\s*OR\s*([가-힣])/gi, '$1 또는 $2')
     .replace(/\\(?=\d{1,3}(?:,\d{3})+)/g, ' ')
     .replace(/(?:\s*[-–—|/]\s*)+$/g, '')
     .replace(/\s+/g, ' ')

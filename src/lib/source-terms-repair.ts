@@ -137,6 +137,7 @@ function extractSection(rawText: string, section: 'include' | 'exclude'): string
 
 function hasBrokenOrUnsupportedTerms(pkg: SourceTermsRepairPackage): boolean {
   const current = [...(pkg.inclusions ?? []), ...(pkg.excludes ?? [])].filter(Boolean);
+  if ((pkg.inclusions ?? []).length === 0 || (pkg.excludes ?? []).length === 0) return true;
   if (current.some(item => /\(\s*\)/.test(item))) return true;
   if (current.some(item => HTML_ENTITY_RE.test(item))) return true;
   if (current.some(item => INTERNAL_PROMO_RE.test(item))) return true;

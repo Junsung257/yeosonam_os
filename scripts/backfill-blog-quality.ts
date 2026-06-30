@@ -17,6 +17,7 @@ let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair'
 let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
 let generateProductConsultantBlogPost: typeof import('../src/lib/blog-product-consultant-writer').generateProductConsultantBlogPost;
+let loadCustomerOpenContractForPackage: typeof import('../src/lib/product-registration/customer-open-contract').loadCustomerOpenContractForPackage;
 
 async function loadLocalModules() {
   ({ finalizeBlogPost } = await import('../src/lib/blog-post-finalizer'));
@@ -27,6 +28,7 @@ async function loadLocalModules() {
   ({ repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
   ({ generateProductConsultantBlogPost } = await import('../src/lib/blog-product-consultant-writer'));
+  ({ loadCustomerOpenContractForPackage } = await import('../src/lib/product-registration/customer-open-contract'));
 }
 
 type BlogRow = {
@@ -37,11 +39,13 @@ type BlogRow = {
   og_image_url: string | null;
   destination: string | null;
   content_type?: string | null;
+  status?: string | null;
   product_id?: string | null;
   blog_html: string | null;
   generation_meta?: {
     keywords?: string[] | null;
     serp_analysis?: { keyword?: string | null } | null;
+    [key: string]: unknown;
   } | null;
   target_ad_keywords?: string[] | null;
 };
@@ -1899,7 +1903,7 @@ async function main() {
 
   let query = supabase
     .from('content_creatives')
-    .select('id, slug, seo_title, seo_description, og_image_url, destination, content_type, product_id, blog_html, generation_meta, target_ad_keywords')
+    .select('id, slug, status, seo_title, seo_description, og_image_url, destination, content_type, product_id, blog_html, generation_meta, target_ad_keywords')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .not('slug', 'is', null)
@@ -1930,6 +1934,92 @@ async function main() {
     const productId = typeof row.product_id === 'string' && row.product_id.trim() ? row.product_id : null;
     const contentType = row.content_type || (productId ? 'package_intro' : 'guide');
     const blogType = productId ? 'product' : 'info';
+    const slug = row.slug || row.id;
+    if (productId) {
+      const openContract = await loadCustomerOpenContractForPackage(supabase, productId);
+      if (!openContract.ok || openContract.evidencePack.downstream_eligibility.blog_publish === false) {
+        const reason = `product_customer_open_contract_failed:${openContract.blockers.slice(0, 5).join('|') || 'downstream_blog_publish_false'}`;
+        auditRows.push({
+          slug,
+          missingOgBefore: !originalOg,
+          missingOgAfter: !originalOg,
+          imageCountBefore: countInlineImages(originalHtml),
+          imageCountAfter: countInlineImages(originalHtml),
+          faqMissingBefore: !hasFaq(originalHtml),
+          faqMissingAfter: !hasFaq(originalHtml),
+          tldrMissingBefore: !hasSummary(originalHtml),
+          tldrMissingAfter: !hasSummary(originalHtml),
+          rewriteTraceBefore: hasRewriteTrace(`${row.seo_title || ''}\n${originalHtml}`),
+          rewriteTraceAfter: hasRewriteTrace(`${row.seo_title || ''}\n${originalHtml}`),
+          highlightCountBefore: countHighlights(originalHtml),
+          highlightCountAfter: countHighlights(originalHtml),
+          qualityGatePassed: false,
+          publishReady: false,
+          qualityGateSummary: reason,
+          failedGates: [{
+            gate: 'product_customer_open_contract',
+            reason,
+            evidence: {
+              product_id: productId,
+              blockers: openContract.blockers,
+              downstream_eligibility: openContract.evidencePack.downstream_eligibility,
+            },
+          }],
+          qualityIssues: [{
+            code: 'product_customer_open_contract_failed',
+            source: 'product_contract',
+            severity: 'blocker',
+            message: reason,
+            evidence: {
+              product_id: productId,
+              downstream_eligibility: openContract.evidencePack.downstream_eligibility,
+            },
+          }],
+          seoScore: null,
+          readabilityScore: null,
+          titleChanged: false,
+          descriptionChanged: false,
+          changeReasons: ['product_contract_archived'],
+          changed: true,
+        });
+
+        if (!dryRun) {
+          const archivedAt = new Date().toISOString();
+          const { error: archiveError } = await supabase
+            .from('content_creatives')
+            .update({
+              status: 'archived',
+              generation_meta: {
+                ...(row.generation_meta ?? {}),
+                product_customer_open_contract: {
+                  status: 'blocked',
+                  archived_at: archivedAt,
+                  blockers: openContract.blockers,
+                  downstream_eligibility: openContract.evidencePack.downstream_eligibility,
+                },
+              },
+              updated_at: archivedAt,
+            })
+            .eq('id', row.id);
+          if (archiveError) {
+            console.error(`[blog-quality] product contract archive failed for ${slug}:`, archiveError.message);
+          } else {
+            try {
+              await enqueueIndexingJob({ id: row.id, slug }, 'blog_product_contract_archive');
+              indexingQueued += 1;
+            } catch (indexingError) {
+              console.error(
+                `[blog-quality] indexing enqueue failed for archived ${slug}:`,
+                indexingError instanceof Error ? indexingError.message : indexingError,
+              );
+            }
+            changedSlugs.push(slug);
+            console.log(`[blog-quality] archived ${slug}: ${reason}`);
+          }
+        }
+        continue;
+      }
+    }
     const repairSourceHtml = replacePlaceholderContextCustomer(repairSourceHtmlBase, primaryKeyword, destination, row.slug);
     const resolvedOgImage = await resolveOgImage(row);
     const normalizedTitle = improveBackfillSeoTitleCustomer(
@@ -1943,7 +2033,6 @@ async function main() {
       primaryKeyword,
     ), row, primaryKeyword);
     const secondaryKeywords = buildSecondaryKeywordsCustomer(primaryKeyword, destination);
-    const slug = row.slug || row.id;
     const editorialRepair = repairBlogEditorialQuality({
       title: normalizedTitle,
       slug,

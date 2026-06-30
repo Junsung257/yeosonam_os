@@ -189,7 +189,7 @@ export function mapTravelPackageToLandingData(
 ): LandingProductData {
   const view = renderPackage(pkg);
   const internalCode = readInternalCode(pkg);
-  const cleanTitle = normalizeCustomerVisibleCopy(String(pkg.title || ''));
+  const cleanTitle = normalizeCustomerVisibleCopy(String(pkg.display_title || pkg.title || ''));
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
   const cleanSummary = normalizeCustomerVisibleCopy(String(pkg.product_summary || ''));
 

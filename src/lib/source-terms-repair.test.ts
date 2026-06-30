@@ -3,6 +3,29 @@ import { describe, expect, it } from 'vitest';
 import { buildSourceBackedTermsRepair } from './source-terms-repair';
 
 describe('buildSourceBackedTermsRepair', () => {
+  it('repairs empty include and exclude arrays when source sections are present', () => {
+    const rawText = [
+      '상품명: 장가계 4박5일',
+      '포함내역',
+      '왕복 항공료, 호텔(2인1실), 전용차량, 식사, 기사/가이드팁',
+      '불포함내역',
+      '개인경비, 매너팁, 유류변동분',
+      '선택관광',
+      '노옵션',
+    ].join('\n');
+
+    const result = buildSourceBackedTermsRepair({
+      raw_text: rawText,
+      inclusions: [],
+      excludes: [],
+    });
+
+    expect(result.status).toBe('repaired');
+    if (result.status !== 'repaired') throw new Error('expected repair');
+    expect(result.inclusions).toEqual(['왕복 항공료', '호텔(2인1실)', '전용차량', '식사', '기사/가이드팁']);
+    expect(result.excludes).toEqual(['개인경비', '매너팁', '유류변동분']);
+  });
+
   it('repairs broken hotel parentheses and over-normalized customer terms from raw sections', () => {
     const rawText = [
       '포    함',

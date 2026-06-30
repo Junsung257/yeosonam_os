@@ -68,6 +68,19 @@ const siteBaseUrl = String(resolveSiteBaseUrl()).replace(/\/+$/, '');
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
+function todayKstDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  return year && month && day ? `${year}-${month}-${day}` : date.toISOString().slice(0, 10);
+}
+
 function isPlaceholderSecret(value) {
   const normalized = String(value || '').trim().toLowerCase();
   return !normalized
@@ -825,6 +838,7 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
   const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates.filter(row => row?.date && Number(row?.price) > 0) : [];
   const raw = String(pkg.raw_text ?? '');
   if (priceDates.length === 0 || !raw.trim()) return null;
+  const today = todayKstDateKey();
   const firstPriceYear = Number(String(priceDates[0]?.date ?? '').slice(0, 4));
   const deterministicPriceIr = extractPriceIR(raw, {
     year: Number.isFinite(firstPriceYear) && firstPriceYear >= 2000 ? firstPriceYear : undefined,
@@ -964,7 +978,7 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
       .replace(/\[[^\]]*\]/g, '')
       .replace(/\s+/g, '');
     const out = [];
-    for (const match of compact.matchAll(/(\d{1,2})\uC6D4(\d{1,2}(?:,\d{1,2})*)\uC77C/g)) {
+    for (const match of compact.matchAll(/(\d{1,2})\uC6D4(\d{1,2}(?:,\d{1,2})*)(?:\uC77C|(?=[^0-9]|$))/g)) {
       const month = Number(match[1]);
       for (const dayText of match[2].split(',')) {
         const dayNumber = dateToDayNumber({ year, month, day: Number(dayText) });
@@ -983,8 +997,9 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
     const compact = String(line ?? '').replace(/\s+/g, '');
     if (!month || !compact) return [];
     if (/(?:원|월|출발|상품|붉은색|초록색|확정|임박|일-수|일,월|목|금|토|특정일)/.test(compact)) return [];
-    if (!/^\d{1,2}(?:,\d{1,2})*$/.test(compact)) return [];
-    return compact
+    const dayList = compact.replace(/일$/, '');
+    if (!/^\d{1,2}(?:,\d{1,2})*$/.test(dayList)) return [];
+    return dayList
       .split(',')
       .map(day => dateToDayNumber({ year, month, day: Number(day) }))
       .filter(day => day != null);
@@ -1082,6 +1097,7 @@ function priceDateSourceEvidenceMismatch(pkg, productPriceRows = []) {
   };
 
   for (const row of priceDates) {
+    if (typeof row.date === 'string' && row.date < today) continue;
     const label = dateLabel(row.date);
     const slashLabel = slashDateLabel(row.date);
     const amount = amountFor(row.price);
@@ -1479,6 +1495,10 @@ function hasNeedsHumanSourceReview(row) {
     || row.audit === 'needs_human_source_review';
 }
 
+function isBlockingV3NeedsReview(row) {
+  return row.v3 === 'needs_review' && (row.public || !hasNeedsHumanSourceReview(row));
+}
+
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
@@ -1537,7 +1557,10 @@ function readinessFor(row) {
     if (nonPublicSourceReview) addHumanReviewWarning();
     else failures.push('entity_unknown_customer_visible');
   }
-  if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
+  if (row.v3 === 'needs_review') {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else warnings.push('v3_needs_review');
+  }
   if (row.v3 === 'blocked' && !hardV3Blocked) warnings.push('v3_blocked_nonblocking');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
   if (row.unmatched_activities > 0) warnings.push('unmatched_activities_pending');
@@ -2490,6 +2513,7 @@ const summary = {
   v3_lookup_failed: rows.filter(row => row.v3 === 'lookup_failed').length,
   v3_blocked: rows.filter(row => row.readiness.failures.includes('v3_blocked')).length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
+  v3_needs_review_blocking: rows.filter(row => isBlockingV3NeedsReview(row)).length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
   entity_attraction_unresolved_packages: rows.filter(row => row.entity_attraction_unresolved > 0).length,
@@ -2614,7 +2638,7 @@ if (strict) {
   if (summary.no_itinerary_days > 0) strictFailures.push('no_itinerary_days');
   if (summary.v3_lookup_failed > 0) strictFailures.push('v3_lookup_failed');
   if (summary.v3_blocked > 0) strictFailures.push('v3_blocked');
-  if (summary.v3_needs_review > 0) strictFailures.push('v3_needs_review');
+  if (summary.v3_needs_review_blocking > 0) strictFailures.push('v3_needs_review');
   if (summary.missing_v3_draft > 0) strictFailures.push('missing_v3_draft');
   if (strictFailures.length > 0) {
     console.error(`Strict product mobile readiness audit failed: ${strictFailures.join(', ')}`);

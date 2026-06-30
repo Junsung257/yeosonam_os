@@ -22,8 +22,14 @@ function addClaim(claims: RenderClaim[], claim: RenderClaim): void {
   const value = claim.value.trim();
   if (!value || value === '?' || value === '--:--') return;
   if (value.length < 2) return;
+  if (claim.surface === 'itinerary' && isNonStandaloneItineraryFragment(value)) return;
   if (claims.some(c => c.surface === claim.surface && c.value === value)) return;
   claims.push({ ...claim, value });
+}
+
+function isNonStandaloneItineraryFragment(value: string): boolean {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return /^(?:으|로|으로|에|에서|까지|후|전|및|\/)\s*(?:이동|관광|도착|출발|투숙|휴식)$/.test(normalized);
 }
 
 export function extractRenderClaims(pkg: RenderPackageInput): RenderClaim[] {
@@ -99,8 +105,23 @@ function evidenceSupports(evidence: SourceEvidenceMap | null | undefined, value:
   return false;
 }
 
+function decodeCommonHtmlEntities(value: string): string {
+  return value
+    .replace(/&#(\d+);/g, (_match, code: string) => {
+      const n = Number(code);
+      return Number.isFinite(n) ? String.fromCodePoint(n) : _match;
+    })
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"');
+}
+
 function rawSupports(rawText: string, value: string): boolean {
   if (!rawText || !value) return false;
+  rawText = decodeCommonHtmlEntities(rawText);
+  value = decodeCommonHtmlEntities(value);
   if (rawText.includes(value)) return true;
   const compactRaw = rawText.replace(/\s+/g, '');
   const compactValue = value.replace(/\s+/g, '');
@@ -109,6 +130,19 @@ function rawSupports(rawText: string, value: string): boolean {
   const normalizedValue = compactValue.replace(/[·ㆍ•]/g, '');
   if (normalizedValue.length >= 4 && normalizedRaw.includes(normalizedValue)) return true;
   return false;
+}
+
+function looseCustomerTermComparable(value: string): string {
+  return value
+    .replace(/[\s()[\]{}<>.,/\\|:;'"!?~\-*+]+/g, '')
+    .replace(/[•·▪◦★☆◆◇■□●○♦※]/g, '')
+    .trim();
+}
+
+function rawSupportsLooseTermLabel(rawText: string, value: string): boolean {
+  const raw = looseCustomerTermComparable(rawText);
+  const claim = looseCustomerTermComparable(value);
+  return claim.length >= 2 && raw.includes(claim);
 }
 
 function compactComparable(value: string): string {
@@ -151,6 +185,8 @@ function rawSupportsItineraryLabel(rawText: string, value: string): boolean {
 function normalizeTermClaim(value: string): string[] {
   const compact = value.replace(/\s+/g, ' ').trim();
   const variants = new Set<string>([compact]);
+  variants.add(compact.replace(/\uAC1C\uC778\s*\uACBD\uBE44/g, '\uAC1C\uC778 \uBE44\uC6A9'));
+  variants.add(compact.replace(/\uAC1C\uC778\s*\uBE44\uC6A9/g, '\uAC1C\uC778\uACBD\uBE44'));
   variants.add(compact.replace(/골프\s*비용/g, '골피비용'));
   variants.add(compact.replace(/골프비용/g, '골피비용'));
   // render-contract excludes 표시 포맷: "개인경비 · 불포함"
@@ -161,6 +197,7 @@ function normalizeTermClaim(value: string): string[] {
 }
 
 function rawSupportsTermLabel(rawText: string, value: string): boolean {
+  if (rawSupportsLooseTermLabel(rawText, value)) return true;
   const variants = normalizeTermClaim(value);
   if (variants.some(variant => rawSupports(rawText, variant) || rawSupportsComparable(rawText, variant))) return true;
   const tokens = value
@@ -175,11 +212,25 @@ function normalizeOptionalClaim(value: string): string[] {
   const variants = new Set<string>([compact]);
   // displayName 형태: "마사지 (베트남)" -> "마사지"
   variants.add(compact.replace(/\s*\([^)]*\)\s*$/, '').trim());
+  variants.add(compact.replace(/\s*등$/u, '').trim());
+  variants.add(compact.replace(/\s*\/\s*(?:인|명|person|pax)\s*$/iu, '').trim());
   // 통화 포맷 차이: USD4 <-> $4
   const usd = compact.match(/^USD\s*(\d+(?:\.\d+)?)$/i);
   if (usd) variants.add(`$${usd[1]}`);
   const dollar = compact.match(/^\$\s*(\d+(?:\.\d+)?)$/);
   if (dollar) variants.add(`USD${dollar[1]}`);
+  const dollarPerPerson = compact.match(/^\$\s*(\d+(?:\.\d+)?)\s*\/\s*(?:인|명|person|pax)$/i);
+  if (dollarPerPerson) {
+    variants.add(`$${dollarPerPerson[1]}`);
+    variants.add(`USD${dollarPerPerson[1]}`);
+    variants.add(`USD ${dollarPerPerson[1]}`);
+  }
+  const usdPerPerson = compact.match(/^USD\s*(\d+(?:\.\d+)?)\s*\/\s*(?:인|명|person|pax)$/i);
+  if (usdPerPerson) {
+    variants.add(`$${usdPerPerson[1]}`);
+    variants.add(`USD${usdPerPerson[1]}`);
+    variants.add(`USD ${usdPerPerson[1]}`);
+  }
   // 날짜형 가격/라벨 토큰(예: 2027-02-04)도 raw의 2/4, 2월 4일과 매칭 허용
   normalizeDateClaim(compact).forEach(v => variants.add(v));
   return [...variants].filter(v => v.length >= 2);
@@ -187,7 +238,9 @@ function normalizeOptionalClaim(value: string): string[] {
 
 function rawSupportsOptionalLabel(rawText: string, value: string): boolean {
   const variants = normalizeOptionalClaim(value);
-  return variants.some(variant => rawSupports(rawText, variant));
+  return variants.some(variant => rawSupports(rawText, variant))
+    || rawSupportsTokensInNearbyLine(rawText, value)
+    || variants.some(variant => rawSupportsTokensInNearbyLine(rawText, variant));
 }
 
 function stripHotelGradeParentheticals(value: string): string {
@@ -304,6 +357,26 @@ function rawSupportsKoreanDateRange(rawText: string, value: string): boolean {
   return false;
 }
 
+function rawSupportsKoreanMonthHeaderDayList(rawText: string, value: string): boolean {
+  const iso = value.match(/\b20\d{2}-(\d{1,2})-(\d{1,2})\b/);
+  if (!iso) return false;
+  const month = Number(iso[1]);
+  const day = Number(iso[2]);
+  if (!Number.isFinite(month) || !Number.isFinite(day)) return false;
+
+  const lines = decodeCommonHtmlEntities(rawText).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!new RegExp(`^0?${month}\\s*\\uC6D4(?:\\s|$)`).test(lines[i])) continue;
+    const window = lines.slice(i + 1, i + 40);
+    for (const line of window) {
+      if (/^\d{1,2}\s*\uC6D4\b/.test(line)) break;
+      const dayTokens = line.match(/\d{1,2}/g)?.map(token => Number(token)) ?? [];
+      if (dayTokens.includes(day)) return true;
+    }
+  }
+  return false;
+}
+
 function rawSupportsDateLabel(rawText: string, value: string): boolean {
   const variants = normalizeDateClaim(value);
   if (variants.some(variant => rawSupports(rawText, variant))) return true;
@@ -323,6 +396,7 @@ function rawSupportsDateLabel(rawText: string, value: string): boolean {
     }
   }
   if (rawSupportsKoreanDateRange(rawText, value)) return true;
+  if (rawSupportsKoreanMonthHeaderDayList(rawText, value)) return true;
   const monthListPattern = new RegExp(`\\b0?${escapeRegExp(month)}\\s*/`);
   const dayPattern = new RegExp(`(?:^|[^0-9])0?${escapeRegExp(day)}(?:[^0-9]|$)`);
   return rawText

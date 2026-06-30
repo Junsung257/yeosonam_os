@@ -184,6 +184,27 @@ function mergeAuditStatus(a: VerifyResult['status'], b: VerifyResult['status'] |
   return a;
 }
 
+function positiveInteger(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(/,/g, '').trim());
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function expectedHotelNights(pkg: PackageRow, rawText: string): { nights: number; source: string } | null {
+  const storedNights = positiveInteger(pkg.nights);
+  if (storedNights !== null) return { nights: storedNights, source: 'stored nights' };
+
+  const metaNights = positiveInteger(pkg.itinerary_data?.meta?.nights);
+  if (metaNights !== null) return { nights: metaNights, source: 'itinerary meta.nights' };
+
+  const tripStyleMatch = String(pkg.trip_style ?? '').match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (tripStyleMatch) return { nights: Number(tripStyleMatch[1]), source: 'trip_style' };
+
+  const rawMatch = rawText.match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (rawMatch) return { nights: Number(rawMatch[1]), source: 'raw_text' };
+
+  return null;
+}
+
 const ENTITY_BLOCKING_KINDS = new Set(['attraction', 'shopping', 'optional_tour', 'notice', 'unknown']);
 const ENTITY_REVIEW_ACTIONS = new Set(['needs_review', 'needs_new_master', 'suggest_alias']);
 const ENTITY_NON_BLOCKING_KINDS = new Set(['meal', 'transfer', 'free_time', 'price_noise', 'hotel']);
@@ -682,8 +703,12 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       departureDays: depDays,
       accommodations: pkg.accommodations ?? [],
     });
-    const expectedRows = selectSourceBackedPriceRows(pkg, expected.rows);
-    const dbPriceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
+    const today = todayKstDateKey();
+    const expectedRows = selectSourceBackedPriceRows(pkg, expected.rows)
+      .filter(row => row.date >= today);
+    const dbPriceDates = Array.isArray(pkg.price_dates)
+      ? pkg.price_dates.filter(row => typeof row.date === 'string' && row.date >= today)
+      : [];
     if (expectedRows.length === 0) {
       checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: 'deterministic 가격표 미인식' });
     } else if (dbPriceDates.length === 0) {
@@ -747,27 +772,25 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   // C7: 호텔 수 대조 (원문 "박" 수 ≤ days-1 vs hotel.name 채워진 day 수)
   // 박수 = duration - 1. 마지막 day 는 귀국일이라 hotel null 정상.
   // 호텔 없는 중간 day = 환각 또는 정규화 누락 신호.
-  if (hasRaw) {
-    const nightsMatch = rawText.match(/(\d+)\s*박\s*(\d+)\s*일/);
-    const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data!.days! : [];
-    if (nightsMatch && days.length > 0) {
-      const expectedHotelDays = parseInt(nightsMatch[1]);
-      const filledHotels = days.filter(d => (d?.hotel?.name ?? '').trim().length >= 2).length;
-      if (filledHotels < expectedHotelDays) {
-        checks.push({
-          id: 'C7',
-          label: '호텔 채움',
-          status: 'warn',
-          detail: `${expectedHotelDays}박 기대, hotel.name 채워진 일정 ${filledHotels}일 — 추출 누락 가능`,
-        });
-      } else {
-        checks.push({ id: 'C7', label: '호텔 채움', status: 'pass', detail: `${filledHotels}/${expectedHotelDays}박 충족` });
-      }
+  const c7Days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data!.days! : [];
+  const expectedNights = expectedHotelNights(pkg, rawText);
+  if (expectedNights && c7Days.length > 0) {
+    const expectedHotelDays = expectedNights.nights;
+    const filledHotels = c7Days.filter(d => (d?.hotel?.name ?? '').trim().length >= 2).length;
+    if (filledHotels < expectedHotelDays) {
+      checks.push({
+        id: 'C7',
+        label: '호텔 채움',
+        status: 'warn',
+        detail: `${expectedHotelDays}박 기대(${expectedNights.source}), hotel.name 채워진 일정 ${filledHotels}일 — 추출 누락 가능`,
+      });
     } else {
-      checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '원문에 박수 표기 없음' });
+      checks.push({ id: 'C7', label: '호텔 채움', status: 'pass', detail: `${filledHotels}/${expectedHotelDays}박 충족(${expectedNights.source})` });
     }
-  } else {
+  } else if (!hasRaw) {
     checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '원문 없음' });
+  } else {
+    checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '박수 표기 없음' });
   }
 
   // C8: 통화 일관성 — price_dates / surcharges / optional_tours 모두 동일 currency 또는 NULL.

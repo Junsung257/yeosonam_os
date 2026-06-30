@@ -93,6 +93,16 @@ function isNonAttractionCandidate(rawText: string): boolean {
     || NON_ATTRACTION_TEXT_RE.test(compact);
 }
 
+function isDestinationScopedNonAttractionCandidate(rawText: string, destination?: string | null): boolean {
+  const compactDestination = String(destination ?? '').replace(/\s+/g, '');
+  if (!compactDestination.includes('\uC11C\uC548')) return false;
+
+  const cleaned = normalizedAttractionCandidate(rawText);
+  const compact = cleaned.replace(/\s+/g, '');
+  return /^(?:\(?\uC11C\uC548\uBA74\uC694\uB9AC\)?|\uAD50\uC790\uC5F0|\uAE08\uC0AC\uAD00)$/.test(compact)
+    || /^[\u25B6\u25CF\u2022\u00B7\u25C6\u25C7\u25A0\u25A1\u2605\u2606+\-\u2663\u220E\u203B]*\uC11C\uC548\uC758\uC720\uBA85\uD55C\uC628\uCC9C\uC9C0/.test(compact);
+}
+
 function extractAttractionCandidateLabels(rawText: string): string[] {
   const candidates: string[] = [];
   pushCandidate(candidates, rawText);
@@ -128,13 +138,26 @@ export function applyProductRegistrationV3Matching(
   let shoppingCount = 0;
 
   for (const variant of next.variants) {
+    const variantHasAutoCleanOptionalDisclosure = variant.structured_facts.some(fact =>
+      fact.category === 'optional_tour'
+      && fact.review_status === 'auto_clean'
+    ) || variant.standard_notices.some(notice =>
+      notice.category === 'optional_tour'
+      && notice.review_status === 'auto_clean'
+    );
     for (const day of variant.days) {
       for (const event of day.events) {
         if (event.type === 'shopping') shoppingCount++;
-        if (event.type === 'option') optionReview++;
+        if (event.type === 'option' && !variantHasAutoCleanOptionalDisclosure) optionReview++;
         if (event.type !== 'attraction') continue;
 
-        if (isNonAttractionCandidate(event.raw_text)) {
+        if (event.canonical_id && event.match_status === 'matched') {
+          event.canonical_type = event.canonical_type ?? 'attraction';
+          attractionMatched++;
+          continue;
+        }
+
+        if (isNonAttractionCandidate(event.raw_text) || isDestinationScopedNonAttractionCandidate(event.raw_text, destination)) {
           event.type = 'notice';
           event.canonical_type = null;
           event.match_status = 'ignored';

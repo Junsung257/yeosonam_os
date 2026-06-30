@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 function parseKoreanWonPrice(line: string): number {
   const prices = [...line.matchAll(/(\d{1,3}(?:,\d{3})+|\d{5,8})\s*(?:원|KRW)?/gi)]

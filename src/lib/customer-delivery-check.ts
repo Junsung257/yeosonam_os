@@ -78,6 +78,26 @@ function isNonCustomerBlockingOperationalCheck(check: PublishGateFailedCheck): b
   return check.id === 'cove_unknown' && /CoVe unknown:\s*$/.test(check.message ?? '');
 }
 
+function parseTripStyleDays(value: string): number | null {
+  const compact = value.replace(/\s+/g, '');
+  const korean = compact.match(/(?:\d+\uBC15)?(\d+)\uC77C/);
+  if (korean) return Number(korean[1]);
+  const english = compact.match(/(\d+)\s*D/i);
+  return english ? Number(english[1]) : null;
+}
+
+function findTripStyleDayEvidence(rawText: string, days: number): string | null {
+  const patterns = [
+    new RegExp(`${days}\\s*\\uC77C`),
+    new RegExp(`${days}\\s*D`, 'i'),
+  ];
+  for (const pattern of patterns) {
+    const match = rawText.match(pattern);
+    if (match?.[0]) return match[0];
+  }
+  return null;
+}
+
 function addCompactTripStyleEvidence(
   evidence: SourceEvidenceMap | null,
   pkg: CustomerDeliveryCheckInput['pkg'],
@@ -89,15 +109,20 @@ function addCompactTripStyleEvidence(
   if (!rawText || !tripStyle) return evidence;
   const compactRaw = rawText.replace(/\s+/g, '');
   const compactTripStyle = tripStyle.replace(/\s+/g, '');
-  if (!compactTripStyle || !compactRaw.includes(compactTripStyle)) return evidence;
+  const rowDuration = typeof row.duration === 'number' ? row.duration : null;
+  const tripStyleDays = parseTripStyleDays(tripStyle);
+  const derivedDayEvidence = tripStyleDays && rowDuration === tripStyleDays
+    ? findTripStyleDayEvidence(rawText, tripStyleDays)
+    : null;
+  if (!compactTripStyle || (!compactRaw.includes(compactTripStyle) && !derivedDayEvidence)) return evidence;
   return {
     ...evidence,
     'meta.tripStyle': [{
-      rawTextHash: 'compact-trip-style',
+      rawTextHash: derivedDayEvidence ? 'derived-trip-style-days' : 'compact-trip-style',
       start: 0,
       end: 0,
-      quote: tripStyle,
-      confidence: 0.95,
+      quote: derivedDayEvidence ?? tripStyle,
+      confidence: derivedDayEvidence ? 0.9 : 0.95,
       source: 'deterministic',
     }],
   };

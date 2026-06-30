@@ -1,6 +1,6 @@
-import { extractPriceTable } from '../price-table';
-import type { PriceIROptions, PriceIRResult } from './types';
-import { tiersToRows } from './utils';
+import { extractPriceTable } from '../price-table.ts';
+import type { PriceIROptions, PriceIRResult } from './types.ts';
+import { tiersToRows } from './utils.ts';
 
 export function extractMonthDowPriceIR(rawText: string, options: PriceIROptions = {}): PriceIRResult {
   const tiers = extractPriceTable(rawText, options.year);

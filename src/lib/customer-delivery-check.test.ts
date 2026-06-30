@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateCustomerDeliveryReadiness } from './customer-delivery-check';
+import { evaluateRenderClaimCoverage } from './render-claim-coverage';
 import { TOURCOCONUT_NHA_TRANG_DALAT_RAW } from './product-registration-golden-fixtures';
 import { buildSupplierRawDeterministicItinerary } from './supplier-raw-deterministic-facts';
 import type { SourceEvidenceMap } from './source-evidence';
@@ -83,6 +84,24 @@ describe('evaluateCustomerDeliveryReadiness', () => {
     expect(result.renderClaimCoverage.unsupported.map(c => c.value)).not.toContain('죽림선원 관광');
   });
 
+  it('accepts derived trip style evidence when raw text proves the day count', () => {
+    const evidenceWithoutTripStyle = { ...FULL_EVIDENCE };
+    delete evidenceWithoutTripStyle['meta.tripStyle'];
+    const result = evaluateCustomerDeliveryReadiness({
+      pkg: basePkg({
+        raw_text: '\uBD80\uAD00\uD6FC\uB9AC \uD6C4\uCFE0\uC624\uCE74 3\uC77C\nLJ115 21:35',
+        trip_style: '2\uBC153\uC77C',
+        duration: 3,
+        nights: 2,
+      }) as Parameters<typeof evaluateCustomerDeliveryReadiness>[0]['pkg'],
+      sourceEvidence: evidenceWithoutTripStyle,
+      failedChecks: [],
+      requireCompletedAudit: true,
+    });
+
+    expect(result.sourceEvidenceCoverage.missing).not.toContain('meta.tripStyle');
+  });
+
   it('blocks customer delivery for unsupported final render claims', () => {
     const result = evaluateCustomerDeliveryReadiness({
       pkg: basePkg({
@@ -99,6 +118,18 @@ describe('evaluateCustomerDeliveryReadiness', () => {
     expect(result.customerDeliverable).toBe(false);
     expect(result.publishGate.decision).toBe('block');
     expect(result.finalRenderFailedChecks.some(c => c.id?.startsWith('final_render_unsupported'))).toBe(true);
+  });
+
+  it('does not treat Korean particle movement fragments as standalone customer claims', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '공항으로 이동',
+      itinerary_data: {
+        days: [{ day: 1, schedule: [{ activity: '으 이동', type: 'normal' }] }],
+      },
+    });
+
+    expect(result.claims.map(claim => claim.value)).not.toContain('으 이동');
+    expect(result.unsupported.map(claim => claim.value)).not.toContain('으 이동');
   });
 
   it('ignores stale persisted render failures and recomputes them from the current render', () => {
@@ -139,6 +170,19 @@ describe('evaluateCustomerDeliveryReadiness', () => {
     expect(result.publishGate.decision).toBe('force_required');
     expect(result.publishGate.reasons).toHaveLength(0);
     expect(result.publishGate.warnings.some(w => w.includes('calibration candidate'))).toBe(true);
+  });
+
+  it('accepts source-backed optional tour names and per-person USD prices without promoting them to package prices', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '선택관광 화산(서봉)$180/인, 한양능박물관$35/인 등',
+      optional_tours: [
+        { name: '화산(서봉)', price: '$180/인' },
+        { name: '한양능박물관 등', price: '$35/인' },
+      ],
+    });
+
+    expect(result.unsupported.map(claim => claim.value)).not.toContain('$180/인');
+    expect(result.unsupported.map(claim => claim.value)).not.toContain('한양능박물관 등');
   });
 
   it('allows a supplier raw golden sample when deterministic fields and render claims are source-backed', () => {

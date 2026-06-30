@@ -1,19 +1,19 @@
-import type { PriceIROptions, PriceIRResult } from './types';
-import { extractCompactGradePeriodRows } from './compact-grade-period-table';
-import { extractHotelColumnMatrixRows } from './hotel-column-matrix';
-import { extractLabeledDateListPriceRows } from './labeled-date-list-price';
-import { extractMonthDowPriceIR } from './month-dow-table';
-import { extractMonthDurationPriceRows } from './month-duration-price-table';
-import { extractPeriodDowMatrixRows } from './period-dow-matrix';
-import { extractPdfDatePriceRows } from './pdf-date-price-table';
-import { extractCruiseCabinPriceRows } from './cruise-cabin-price-table';
-import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table';
-import { extractSinglePeriodProductPriceRows } from './single-period-product-price';
-import { extractSpotWeekdayRows } from './spot-weekday-table';
-import { extractGradePatternDateMatrixRows } from './grade-pattern-date-matrix';
-import { rowsToTiers } from './utils';
-import { extractVerticalGradePriceIR } from './vertical-grade-table';
-import { extractWeekdayPeriodRows } from './weekday-period-table';
+import type { PriceIROptions, PriceIRResult } from './types.ts';
+import { extractCompactGradePeriodRows } from './compact-grade-period-table.ts';
+import { extractHotelColumnMatrixRows } from './hotel-column-matrix.ts';
+import { extractLabeledDateListPriceRows } from './labeled-date-list-price.ts';
+import { extractMonthDowPriceIR } from './month-dow-table.ts';
+import { extractMonthDurationPriceRows } from './month-duration-price-table.ts';
+import { extractPeriodDowMatrixRows } from './period-dow-matrix.ts';
+import { extractPdfDatePriceRows } from './pdf-date-price-table.ts';
+import { extractCruiseCabinPriceRows } from './cruise-cabin-price-table.ts';
+import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table.ts';
+import { extractSinglePeriodProductPriceRows } from './single-period-product-price.ts';
+import { extractSpotWeekdayRows } from './spot-weekday-table.ts';
+import { extractGradePatternDateMatrixRows } from './grade-pattern-date-matrix.ts';
+import { rowsToTiers } from './utils.ts';
+import { extractVerticalGradePriceIR } from './vertical-grade-table.ts';
+import { extractWeekdayPeriodRows } from './weekday-period-table.ts';
 
 export function extractPriceIR(rawText: string, options: PriceIROptions = {}): PriceIRResult {
   const spotWeekdayRows = extractSpotWeekdayRows(rawText, options);
@@ -133,4 +133,4 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
   return { source: 'none', tiers: [], rows: [] };
 }
 
-export type { PriceIROptions, PriceIRResult, PriceIRSource } from './types';
+export type { PriceIROptions, PriceIRResult, PriceIRSource } from './types.ts';

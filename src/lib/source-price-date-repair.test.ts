@@ -229,6 +229,27 @@ describe('buildSourceBackedPriceDateRepair', () => {
     expect(rail.map(row => row.adult_price)).toEqual([1369000, 1399000]);
   });
 
+  it('selects duplicate same-date package prices from title grade cues', () => {
+    const rows = [
+      { date: '2026-07-01', adult_price: 779000, child_price: null, status: 'available' },
+      { date: '2026-07-01', adult_price: 869000, child_price: null, status: 'available' },
+      { date: '2026-07-02', adult_price: 779000, child_price: null, status: 'available' },
+      { date: '2026-07-02', adult_price: 869000, child_price: null, status: 'available' },
+    ];
+
+    const light = selectSourceBackedPriceRows({
+      title: '[나트랑+달랏] 라이트PKG 3박5일',
+      duration: 5,
+    }, rows);
+    expect(light.map(row => row.adult_price)).toEqual([779000, 779000]);
+
+    const premium = selectSourceBackedPriceRows({
+      title: '[나트랑+달랏] 품격PKG 3박5일',
+      duration: 5,
+    }, rows);
+    expect(premium.map(row => row.adult_price)).toEqual([869000, 869000]);
+  });
+
   it('drops option-sized same-date prices when package-sized rows are present', () => {
     const rows = [
       { date: '2026-09-01', adult_price: 30000, child_price: null, status: 'available' },

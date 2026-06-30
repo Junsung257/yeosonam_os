@@ -1,5 +1,5 @@
-import { extractPriceMatrix } from '../price-matrix';
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import { extractPriceMatrix } from '../price-matrix.ts';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 const PERIOD_RE = /(\d{1,2})[./](\d{1,2})\s*[~\-–—]\s*(\d{1,2})[./](\d{1,2})/;
 const PRICE_RE = /^([\d,]{3,10})(?:\s*[,\-]|\s*원)?\s*$/;

@@ -76,6 +76,11 @@ export interface V3StructurePlan {
     inbound_codes: string[];
     meeting_times: string[];
   };
+  transport_profile?: {
+    requires_air: boolean;
+    detected_modes: Array<'air' | 'ferry' | 'cruise' | 'rail' | 'bus' | 'unknown'>;
+    air_requirement_reason: string | null;
+  };
   itinerary_boundary_pattern: string | null;
   option_section_locations: Array<{ line_start: number; line_end: number; label: string }>;
   shopping_section_locations: Array<{ line_start: number; line_end: number; label: string }>;

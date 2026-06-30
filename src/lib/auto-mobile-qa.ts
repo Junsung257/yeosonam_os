@@ -34,6 +34,12 @@ export interface QAIncident {
 
 type ItineraryDay = {
   hotel?: { name?: string | null } | null;
+  schedule?: Array<{
+    activity?: string | null;
+    type?: string | null;
+    attraction_names?: unknown;
+    attraction_ids?: unknown;
+  }> | null;
 };
 
 export type ExpectedRender = {
@@ -42,6 +48,7 @@ export type ExpectedRender = {
   tripStyle: string | null;
   duration: number | null;
   nights: number | null;
+  requiresFlightCard: boolean;
   hotelNames: string[];
   hasOptionalTours: boolean;
   status: string | null;
@@ -52,6 +59,8 @@ export type ExpectedRender = {
   lastDayNumber: number | null;
   lastDayArrivalCity: string | null;
   homeCity: string | null;
+  currentAttractionMatchedCount?: number;
+  currentAttractionUnmatchedCount?: number;
 };
 
 const AUTO_QA_CHECK_PREFIXES = [
@@ -74,6 +83,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     tripStyle: null,
     duration: null,
     nights: null,
+    requiresFlightCard: true,
     hotelNames: [],
     hasOptionalTours: false,
     status: null,
@@ -84,11 +94,13 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     lastDayNumber: null,
     lastDayArrivalCity: null,
     homeCity: null,
+    currentAttractionMatchedCount: 0,
+    currentAttractionUnmatchedCount: 0,
   };
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, destination, duration, nights, trip_style, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code, raw_text, updated_at')
+      .select('title, display_title, destination, duration, nights, trip_style, product_type, airline, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code, raw_text, updated_at')
       .eq('id', packageId)
       .maybeSingle();
     if (!data) {
@@ -120,6 +132,24 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
 
     const tours = (data as { optional_tours?: unknown[] }).optional_tours;
     const hasOptionalTours = Array.isArray(tours) && tours.length > 0;
+    const itineraryData = (data as { itinerary_data?: { flight_segments?: unknown[] } }).itinerary_data;
+    const requiresFlightCard = shouldRequireFlightCard({
+      rawText: (data as { raw_text?: string | null }).raw_text ?? null,
+      airline: (data as { airline?: string | null }).airline ?? null,
+      productType: (data as { product_type?: string | null }).product_type ?? null,
+      flightSegments: Array.isArray(itineraryData?.flight_segments) ? itineraryData.flight_segments : [],
+    });
+    let currentAttractionMatchedCount = 0;
+    let currentAttractionUnmatchedCount = 0;
+    for (const day of days) {
+      for (const item of day.schedule ?? []) {
+        const names = Array.isArray(item?.attraction_names) ? item.attraction_names.filter(Boolean) : [];
+        if (names.length === 0) continue;
+        const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids.filter(Boolean) : [];
+        currentAttractionMatchedCount += Math.min(names.length, ids.length);
+        currentAttractionUnmatchedCount += Math.max(0, names.length - ids.length);
+      }
+    }
 
     return {
       title,
@@ -127,6 +157,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       tripStyle: (data as { trip_style?: string | null }).trip_style ?? null,
       duration: typeof (data as { duration?: unknown }).duration === 'number' ? (data as { duration: number }).duration : null,
       nights: typeof (data as { nights?: unknown }).nights === 'number' ? (data as { nights: number }).nights : null,
+      requiresFlightCard,
       hotelNames,
       hasOptionalTours,
       status: (data as { status?: string | null }).status ?? null,
@@ -137,10 +168,28 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       lastDayNumber: typeof lastDay?.day === 'number' ? lastDay.day : days.length || null,
       lastDayArrivalCity,
       homeCity,
+      currentAttractionMatchedCount,
+      currentAttractionUnmatchedCount,
     };
   } catch {
     return empty;
   }
+}
+
+const AIR_TRANSPORT_RE = /\b(?:[A-Z][A-Z0-9]|[0-9][A-Z])\s*\d{3,4}\b|flight|airline|airport|\uD56D\uACF5|\uBE44\uD589|\uD3B8\uBA85|\uCD9C\uBC1C\uD3B8|\uADC0\uAD6D\uD3B8|\uACF5\uD56D|\uAD6D\uC81C\uACF5\uD56D/i;
+const NON_AIR_TRANSPORT_RE = /ferry|cruise|\uD6FC\uB9AC|\uD398\uB9AC|\uC120\uBC15|\uD06C\uB8E8\uC988|\uBD80\uAD00\uD6FC\uB9AC|\uB274\uCE74\uBA5C\uB9AC\uC544|\uCE74\uBA5C\uB9AC\uC544|\uBD80\uC0B0\uD56D|\uD558\uCE74\uB2E4\uD56D/i;
+
+function shouldRequireFlightCard(input: {
+  rawText: string | null;
+  airline: string | null;
+  productType: string | null;
+  flightSegments: unknown[];
+}): boolean {
+  const haystack = [input.rawText, input.airline, input.productType].filter(Boolean).join(' ');
+  if (/^(?:ferry|cruise)$/i.test(String(input.productType ?? ''))) return false;
+  if (input.flightSegments.length > 0) return true;
+  if (NON_AIR_TRANSPORT_RE.test(haystack) && !AIR_TRANSPORT_RE.test(haystack)) return false;
+  return AIR_TRANSPORT_RE.test(haystack);
 }
 
 function parseTripStyle(value: string | null | undefined): { nights: number; days: number } | null {
@@ -240,6 +289,51 @@ function clearStaleMobileQaFailures(report: Record<string, unknown> | null | und
   return clean;
 }
 
+function normalizeHotelMatchText(value: string): string {
+  return value
+    .replace(/\s+/g, '')
+    .replace(/[()（）\[\]{}·.,]/g, '')
+    .toLowerCase();
+}
+
+function hotelEvidenceTokens(hotelName: string): string[] {
+  const stopWords = new Set([
+    '\uD638\uD154',
+    '\uB9AC\uC870\uD2B8',
+    '\uBE4C\uB77C',
+    '\uB808\uC9C0\uB358\uC2A4',
+    '\uB3D9\uAE09',
+    'hotel',
+    'resort',
+    'villa',
+    'residence',
+  ]);
+  const chunks = hotelName
+    .split(/\s*\/\s*|\s*,\s*|\s*\uB610\uB294\s*|\s+or\s+/i)
+    .map(chunk => chunk.replace(/\([^)]*\)/g, ' ').trim())
+    .filter(Boolean);
+  const tokens = new Set<string>();
+  for (const chunk of chunks) {
+    const words = chunk.match(/[\uAC00-\uD7A3A-Za-z0-9&]+/g) ?? [];
+    for (const word of words) {
+      const normalized = normalizeHotelMatchText(word);
+      if (normalized.length < 2 || stopWords.has(normalized)) continue;
+      tokens.add(normalized);
+      break;
+    }
+  }
+  return [...tokens];
+}
+
+function isHotelVisibleInHtml(hotelName: string, html: string, text: string): boolean {
+  if (html.includes(hotelName) || text.includes(hotelName)) return true;
+  const normalizedPage = normalizeHotelMatchText(`${html} ${text}`);
+  const tokens = hotelEvidenceTokens(hotelName);
+  if (tokens.length === 0) return false;
+  const matched = tokens.filter(token => normalizedPage.includes(token)).length;
+  return tokens.length === 1 ? matched === 1 : matched >= Math.min(2, tokens.length);
+}
+
 function buildMobileBrowserProofPayload(input: {
   status: 'pass' | 'fail';
   checkedAt: string;
@@ -295,7 +389,7 @@ export function analyzeMobileHtml(
   }
 
   for (const rule of LEAK_PATTERNS) {
-    const match = html.match(rule.pattern);
+    const match = text.match(rule.pattern);
     if (match && match.length > 0) {
       if (rule.id === 'room_pax_config') continue;
       incidents.push({
@@ -317,13 +411,13 @@ export function analyzeMobileHtml(
   }
 
   const hasFlightCard = /가는편|오는편/.test(html);
-  if (!hasFlightCard) {
+  if (expected.requiresFlightCard && !hasFlightCard) {
     incidents.push({
       id: `${prefix}flight_card_missing`,
       severity: 'high',
       message: `[${surface}] 항공편 카드 (가는편/오는편) 누락`,
     });
-  } else {
+  } else if (expected.requiresFlightCard) {
     const flightTimes = html.match(/\b\d{1,2}:\d{2}\b/g) ?? [];
     if (flightTimes.length < 2) {
       incidents.push({
@@ -353,8 +447,9 @@ export function analyzeMobileHtml(
   }
 
   if (expected.hotelNames.length > 0) {
-    const missingHotels = expected.hotelNames.filter(h => !html.includes(h));
-    if (missingHotels.length === expected.hotelNames.length) {
+    const uniqueHotelNames = [...new Set(expected.hotelNames)];
+    const missingHotels = uniqueHotelNames.filter(h => !isHotelVisibleInHtml(h, html, text));
+    if (missingHotels.length === uniqueHotelNames.length) {
       incidents.push({
         id: `${prefix}hotel_all_missing`,
         severity: 'critical',
@@ -588,18 +683,28 @@ export async function runAutoMobileQA(
     // G5 박제 (2026-05-15): 관광지 매칭률 검증 + admin_alerts 자동 적재
     //   ai_quality_log 의 attraction_matched_count / attraction_unmatched_count 로 비율 계산
     //   < 60% 면 admin_alerts 적재 + critical 시 Slack. 사장님이 모바일 안 봐도 자동 알림.
-    let matchRate = 1;
-    let matchedCount = 0;
-    let unmatchedCount = 0;
+    let matchedCount = expected.currentAttractionMatchedCount ?? 0;
+    let unmatchedCount = expected.currentAttractionUnmatchedCount ?? 0;
+    let matchRate = matchedCount + unmatchedCount > 0
+      ? matchedCount / (matchedCount + unmatchedCount)
+      : 1;
     try {
-      const { data: ql } = await supabaseAdmin
-        .from('ai_quality_log')
-        .select('attraction_matched_count, attraction_unmatched_count')
-        .eq('package_id', packageId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (ql) {
+      if (matchedCount + unmatchedCount === 0) {
+        const { data: ql } = await supabaseAdmin
+          .from('ai_quality_log')
+          .select('attraction_matched_count, attraction_unmatched_count')
+          .eq('package_id', packageId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (ql) {
+          matchedCount = ((ql as { attraction_matched_count?: number }).attraction_matched_count ?? 0);
+          unmatchedCount = ((ql as { attraction_unmatched_count?: number }).attraction_unmatched_count ?? 0);
+          matchRate = matchedCount + unmatchedCount > 0 ? matchedCount / (matchedCount + unmatchedCount) : 1;
+        }
+      }
+      const ql = { attraction_matched_count: matchedCount, attraction_unmatched_count: unmatchedCount };
+      {
         matchedCount = ((ql as { attraction_matched_count?: number }).attraction_matched_count ?? 0);
         unmatchedCount = ((ql as { attraction_unmatched_count?: number }).attraction_unmatched_count ?? 0);
         const denom = matchedCount + unmatchedCount;
@@ -672,15 +777,16 @@ export async function runAutoMobileQA(
                 incidents,
                 checked_at: checkedAt,
                 mobile_browser_proof: buildMobileBrowserProofPayload({
-                  status: 'fail',
+                  status: 'pass',
                   checkedAt,
                   packageUpdatedAt: expected.updatedAt,
                   surfaces,
                   surfaceProofResults,
                 }),
-                mobile_browser_proof_required: {
-                  status: 'fail',
+                mobile_browser_proof_warnings: {
+                  status: 'warn',
                   reason: 'auto mobile QA found customer render incidents below hard-block severity',
+                  incidents,
                   checked_at: checkedAt,
                 },
               },

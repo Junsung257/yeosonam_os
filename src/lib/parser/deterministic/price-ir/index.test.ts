@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extractPriceIR } from './index';
+import { extractPriceIR } from './index.ts';
 
 afterEach(() => {
   vi.useRealTimers();
