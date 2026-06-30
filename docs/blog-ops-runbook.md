@@ -155,6 +155,13 @@ The blog system is complete only when the admin UI can answer these questions wi
 - The daily summary now includes a `Blog Ops Watcher` report and checks whether `blog-publisher` ran today. It writes deduped unresolved alerts by issue code, so repeat failures accumulate in `cron_run_logs` without spamming duplicate open alerts.
 - Required production fix: allow Vercel Cron to reach the cron API route despite Deployment Protection. Prefer a secure Vercel-supported automation bypass or a protection setting scoped to production cron traffic; do not commit the bypass secret into `vercel.json`.
 
+## 2026-07-01 Daily Diagnosis Window Evidence
+
+- `blog-daily-summary` and `scripts/diagnose-blog-autopublish.ts` must use the same closed-day rule.
+- If the current KST time is before 22:12, both tools report the previous KST publishing day. This prevents a midnight or early manual run from flagging the new in-progress day as `publisher_cron_not_observed`.
+- If `--date=YYYY-MM-DD` is passed to `diagnose:blog-autopublish`, the script audits that explicit KST date instead of applying the closed-day default.
+- The diagnosis JSON exposes `report_period_closed`, `used_previous_day_for_pre_close_run`, and `close_minute_kst` so admin/operator tooling can show why a previous day was selected.
+
 ## Vercel Cron Bypass Fallback
 
 - `.github/workflows/blog-external-cron.yml` is the Vercel-Cron-independent scheduler.
