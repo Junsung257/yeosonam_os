@@ -24,6 +24,20 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_KEY) 
 type AuditScope = 'public' | 'non-archived' | 'all';
 type AuditSurface = 'packages' | 'lp';
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 type PackageRow = Record<string, unknown> & {
   id: string;
   title: string | null;
@@ -128,6 +142,8 @@ async function scrapeSurface(browser: Browser, input: {
   surface: AuditSurface;
   textDir: string;
   proofSecret: string | null;
+  pageTimeoutMs: number;
+  textTimeoutMs: number;
 }): Promise<SurfaceResult> {
   const url = `${input.baseUrl}${surfacePath(input.surface, input.pkg.id)}`;
   const context = await browser.newContext({
@@ -141,9 +157,17 @@ async function scrapeSurface(browser: Browser, input: {
   });
   const page = await context.newPage();
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-    await page.waitForTimeout(800);
-    const text = await page.locator('body').innerText({ timeout: 15_000 }).catch(() => '');
+    await withTimeout(
+      page.goto(url, { waitUntil: 'domcontentloaded', timeout: input.pageTimeoutMs }),
+      input.pageTimeoutMs + 2_000,
+      `${input.surface} navigation`,
+    );
+    await page.waitForTimeout(Math.min(800, Math.max(0, Math.floor(input.textTimeoutMs / 10))));
+    const text = await withTimeout(
+      page.locator('body').innerText({ timeout: input.textTimeoutMs }).catch(() => ''),
+      input.textTimeoutMs + 2_000,
+      `${input.surface} text scrape`,
+    );
     const textPath = path.join(
       input.textDir,
       `${safeName(input.pkg.internal_code || input.pkg.id)}-${input.surface}.txt`,
@@ -181,7 +205,7 @@ async function scrapeSurface(browser: Browser, input: {
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    await context.close();
+    await withTimeout(context.close(), 3_000, `${input.surface} context close`).catch(() => undefined);
   }
 }
 
@@ -225,6 +249,8 @@ async function main() {
   const surfaces = parseSurfaces(argValue('surfaces'));
   const concurrency = Math.max(1, Math.min(Number(argValue('concurrency') ?? '4') || 4, 8));
   const limit = Math.max(1, Math.min(Number(argValue('limit') ?? '200') || 200, 2_000));
+  const pageTimeoutMs = Math.max(5_000, Math.min(Number(argValue('page-timeout-ms') ?? '15_000') || 15_000, 60_000));
+  const textTimeoutMs = Math.max(2_000, Math.min(Number(argValue('text-timeout-ms') ?? '5_000') || 5_000, 30_000));
   const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/mobile-copy-audit');
   const textDir = path.join(outputDir, 'texts');
   const jsonOnly = hasFlag('json');
@@ -245,9 +271,11 @@ async function main() {
       surface: target.surface,
       textDir,
       proofSecret,
+      pageTimeoutMs,
+      textTimeoutMs,
     }))
     : [];
-  if (browser) await browser.close();
+  if (browser) await withTimeout(browser.close(), 5_000, 'browser close').catch(() => undefined);
 
   const dbResults = dbTargets.map(auditDbFields);
   const results = [...screenResults, ...dbResults];

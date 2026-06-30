@@ -626,6 +626,27 @@ describe('repairMojibakeAttractionNamesInItinerary', () => {
     expect((result.itineraryData as typeof itinerary).days[0].schedule[0].attraction_names).toEqual(['\uAE34\uB9B0 \uD638\uC218']);
   });
 
+  it('normalizes Datanla Falls mojibake names without keeping ride/action words', () => {
+    const itinerary = {
+      days: [
+        {
+          day: 3,
+          schedule: [
+            {
+              activity: '\uBCA0\uD2B8\uB0A8\uC5D0\uC11C \uAC00\uC7A5 \uC720\uBA85\uD55C \uB2E4\uB534\uB780 \uD3ED\uD3EC \uB808\uC77C\uBC14\uC774\uD06C \uD0D1\uC2B9',
+              attraction_names: ['????? ?????'],
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = repairMojibakeAttractionNamesInItinerary(itinerary);
+
+    expect(result.repaired).toBe(true);
+    expect((result.itineraryData as typeof itinerary).days[0].schedule[0].attraction_names).toEqual(['\uB2E4\uB534\uB77C \uD3ED\uD3EC']);
+  });
+
   it('repairs cable-car mojibake names from activity context', () => {
     const itinerary = {
       days: [

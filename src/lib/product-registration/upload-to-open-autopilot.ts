@@ -585,6 +585,9 @@ function inferAttractionNameFromActivity(activity: unknown): string | null {
   if (/\uD574\uC0C1\s*\uCF00\uC774\uBE14\uCE74|\uCF00\uC774\uBE14\uCE74\s*\uC655\uBCF5/.test(text)) {
     return '\uD63C\uB610\uC12C \uD574\uC0C1 \uCF00\uC774\uBE14\uCE74';
   }
+  if (/\uB2E4\uB534[\uB77C\uB780]\s*\uD3ED\uD3EC/.test(text)) {
+    return '\uB2E4\uB534\uB77C \uD3ED\uD3EC';
+  }
 
   const descriptiveMatch = text.match(/(?:\uC720\uBA85\uD55C|\uAC00\uC7A5 \uD070|\uBC29\uBB38|\uAD00\uAD11)\s+([\uAC00-\uD7A3A-Za-z0-9&().\-\s]{2,30}?)(?:\s*\(|\s+\uAD00\uAD11|\s+\uBC29\uBB38|$)/);
   return descriptiveMatch?.[1]?.trim() || null;

@@ -77,4 +77,34 @@ describe('repairCustomerVisibleCopyPayload', () => {
     expect(JSON.stringify(result.value)).toContain('바나산 정산 원문 근거');
     expect(auditCustomerVisibleProductText(result.value as Record<string, unknown>).filter(issue => !issue.safeFixable)).toEqual([]);
   });
+
+  it('removes highlight duplicates when the same customer copy exists in top-level sections', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      itinerary_data: {
+        highlights: {
+          inclusions: ['왕복 항공료 및 유류할증료', '전 일정 식사'],
+          remarks: ['전 일정 식사'],
+        },
+      },
+      inclusions: ['왕복 항공료 및 유류할증료', '전 일정 식사'],
+    });
+
+    expect((result.value as { itinerary_data: { highlights: { inclusions: unknown[]; remarks: unknown[] } } }).itinerary_data.highlights.inclusions).toEqual([]);
+    expect((result.value as { itinerary_data: { highlights: { inclusions: unknown[]; remarks: unknown[] } } }).itinerary_data.highlights.remarks).toEqual([]);
+    expect((result.value as { inclusions: string[] }).inclusions).toEqual(['왕복 항공료 및 유류할증료', '전 일정 식사']);
+  });
+
+  it('removes repeated optional tour notes while preserving each tour name', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      optional_tours: [
+        { name: '5D 영화관', note: '요금: 성인 $40, 아동 $40' },
+        { name: 'VIP 마사지', note: '요금: 성인 $40, 아동 $40' },
+      ],
+    });
+
+    expect((result.value as { optional_tours: Array<{ name: string; note?: string }> }).optional_tours).toEqual([
+      { name: '5D 영화관', note: '요금: 성인 $40, 아동 $40' },
+      { name: 'VIP 마사지' },
+    ]);
+  });
 });

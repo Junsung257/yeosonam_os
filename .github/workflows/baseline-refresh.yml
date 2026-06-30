@@ -2,7 +2,7 @@ name: Baseline Refresh (Option B)
 
 on:
   schedule:
-    # 2시간마다 baseline 큐 처리 (승인된 상품 자동 반영)
+    # Process approved/active packages that requested a visual baseline refresh.
     - cron: '0 */2 * * *'
   workflow_dispatch:
 
@@ -37,14 +37,11 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           BASE_URL: ${{ secrets.PRODUCTION_URL || 'https://yeosonam.com' }}
           VISUAL_TEST_URL: ${{ secrets.PRODUCTION_URL || 'https://yeosonam.com' }}
         run: |
-          # .env.local 임시 생성 (refresh-baselines.js가 읽음)
-          cat > .env.local <<EOF
-          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          EOF
+          node scripts/refresh-baselines.js --preflight
           node scripts/refresh-baselines.js
 
       - name: Commit updated baselines
@@ -58,7 +55,7 @@ jobs:
           git checkout -b "$BRANCH"
           git add tests/visual/ || true
           if git diff --cached --quiet; then
-            echo "ℹ️  변경사항 없음"
+            echo "No baseline fixture or snapshot changes."
           else
             git commit -m "test: refresh visual baselines (automated) [vercel skip]"
             git push --set-upstream origin "$BRANCH"

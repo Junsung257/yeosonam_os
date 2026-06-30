@@ -55,6 +55,14 @@ For marketing-only release readiness, run the single gate:
 npm run verify:marketing-release -- --json --report=.tmp/marketing-release-readiness-report.json
 ```
 
+For product upload -> customer landing release readiness, run the customer-open operational gate:
+
+```bash
+npx tsx scripts/run-customer-open-operational-gate.ts --base=https://www.yeosonam.com
+```
+
+This gate must pass before calling a new upload flow ready for customer exposure. It checks baseline refresh dry-run/preflight, production `/packages` + `/lp` customer-visible text audit, openable DB customer-visible audit, and non-archived blocker audit. A product may be approved only when `/packages` proof, `/lp` proof, `customer_open_contract`, customer copy blocking count, safe-fix residuals, price/date consistency, unresolved attraction/hotel blockers, and proof staleness all pass.
+
 The same gate is wired to the `Marketing Release Readiness` GitHub workflow,
 which renders the readiness summary, opens or updates the attention-item issue,
 and uploads the generated operational input artifacts.

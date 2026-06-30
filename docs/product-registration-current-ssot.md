@@ -74,6 +74,30 @@ upload route
 
 `src/app/api/upload/route.ts` is an HTTP adapter only. It must not contain supplier-specific regexes, price table rescue logic, destination rescue logic, itinerary normalization, or persistence decisions.
 
+### Customer Open Operational Gate
+
+New supplier uploads are not "auto published." They become automatic customer-open candidates only after the same repeatable gate passes: registration schema, customer copy V2 safe repair, source-backed price/date/flight/hotel/entity checks, `/packages/{id}` proof, `/lp/{id}` proof, and `customer_open_contract`.
+
+The operational gate is scripted so release readiness does not depend on memory or one-off audits:
+
+```bash
+npx tsx scripts/run-customer-open-operational-gate.ts --base=https://www.yeosonam.com
+```
+
+For a newly saved pending package rehearsal, run:
+
+```bash
+npx tsx scripts/rehearse-customer-open-candidate.ts --code=<INTERNAL_CODE> --base=https://www.yeosonam.com --json
+```
+
+The rehearsal must run with `autoOpen:false`. A pass means `customer_open_candidate`; a fail must end as `needs_human_source_review` with attempted repairs, remaining blockers, and next action. Do not expose the product to customers from a rehearsal result alone.
+
+Baseline refresh is also part of this gate. `scripts/refresh-baselines.js` must use environment variables first, load `.env.local` only as a local fallback, accept `SUPABASE_SERVICE_KEY` when `SUPABASE_SERVICE_ROLE_KEY` is absent, and fail during preflight before Playwright when Supabase URL/key values are missing or invalid:
+
+```bash
+node scripts/refresh-baselines.js --dry-run
+```
+
 ### Text Paste Upload Contract
 
 `admin/upload` treats supplier pasted text as the primary input path. File, HWP, OCR, and PDF parsing are helper paths that must produce text for the same central engine; they must not become a separate registration engine.
