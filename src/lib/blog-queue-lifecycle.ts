@@ -85,7 +85,9 @@ export function shouldQuarantineQueuedBlogItem(input: {
     ? input.meta as Record<string, unknown>
     : {};
   const lastError = input.lastError ?? '';
-  const storedFailureCode = typeof meta.failure_code === 'string' ? meta.failure_code : null;
+  const storedFailureCode = typeof meta.failure_code === 'string' && meta.failure_code !== 'unknown'
+    ? meta.failure_code
+    : null;
   const decision = classifyBlogQueueFailure(storedFailureCode || lastError);
   const attempts = input.attempts ?? 0;
   const maxAttempts = input.maxAttempts ?? 2;

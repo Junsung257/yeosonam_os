@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { countPublishableQueueCandidates } from '../src/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-window';
+import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -121,6 +122,7 @@ async function main() {
     indexingCounts,
     indexingProblemRes,
     activeQueueRes,
+    queueOperationalRes,
     cronHealthRes,
     publisherLogsRes,
     policyRes,
@@ -160,6 +162,11 @@ async function main() {
       .in('status', ['queued', 'generating'])
       .limit(500),
     supabase
+      .from('blog_topic_queue')
+      .select('id, status, attempts, last_error, created_at, updated_at, target_publish_at, meta')
+      .in('status', ['queued', 'generating', 'failed'])
+      .limit(1000),
+    supabase
       .from('cron_health')
       .select('cron_name, last_status, last_run_at, last_error_count, last_elapsed_ms, last_summary')
       .in('cron_name', ['blog-scheduler', 'blog-publisher', 'blog-daily-summary', 'blog-indexing-worker']),
@@ -184,6 +191,7 @@ async function main() {
     recentPublishedRes,
     indexingProblemRes,
     activeQueueRes,
+    queueOperationalRes,
     cronHealthRes,
     publisherLogsRes,
     policyRes,
@@ -200,6 +208,7 @@ async function main() {
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
   });
+  const queueOperationalHealth = summarizeBlogQueueOperationalHealth(queueOperationalRes.data ?? []);
   const publishabilitySnapshot = {
     queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
@@ -261,14 +270,12 @@ async function main() {
     });
   }
 
-  const productOpenContractFailures =
-    failureCount(combinedPublisherSummary, 'product_open_contract') ||
-    (containsText(publisherLogs, /product_customer_open_contract_failed|mobile_proof|customer_open_contract/i) ? 1 : 0);
+  const productOpenContractFailures = publishabilityStats.productOpenContractBlocked;
   if (productOpenContractFailures > 0) {
     buckets.push({
       code: 'product_open_contract_blocked',
       severity: 'high',
-      detail: 'Product-backed candidate(s) are blocked by stale or missing customer-open contract evidence.',
+      detail: 'Active product-backed candidate(s) are blocked by stale or missing customer-open contract evidence.',
       evidence: {
         failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
         hint: 'Repair package customer mobile proof/evidence pack before requeueing product-backed blog rows.',
@@ -277,11 +284,14 @@ async function main() {
   }
 
   const tableFailures = failureCount(combinedPublisherSummary, 'table_integrity');
-  if (tableFailures > 0 || containsText(publisherLogs, /table_integrity|too_few_table_rows/i)) {
+  if (
+    queueOperationalHealth.actionable_failed_count > 0 &&
+    (tableFailures > 0 || containsText(publisherLogs, /table_integrity|too_few_table_rows/i))
+  ) {
     buckets.push({
       code: 'table_integrity_fail',
       severity: 'high',
-      detail: `${tableFailures || 'Some'} candidate(s) failed table integrity checks.`,
+      detail: `${tableFailures || 'Some'} retryable candidate(s) failed table integrity checks.`,
       evidence: combinedPublisherSummary.failure_breakdown ?? null,
     });
   }
@@ -343,6 +353,7 @@ async function main() {
       under_target: (publishedTodayRes.count ?? 0) < dailyTarget,
     },
     queue: queueCounts,
+    queue_operational_health: queueOperationalHealth,
     publishability: publishabilitySnapshot,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,

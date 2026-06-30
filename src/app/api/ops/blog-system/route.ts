@@ -8,6 +8,7 @@ import { checkPublicBlogSurfaces, type BlogPublicSurfaceCheckReport } from '@/li
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { summarizeBlogQueueOperationalHealth } from '@/lib/blog-queue-operational-health';
 import type { NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -94,6 +95,7 @@ function emptyBlogSystemPayload(publicSurfaces: BlogPublicSurfaceCheckReport, db
     blog_failures_24h: [],
     blog_success_rate_7d_percent: {},
     blog_queue_counts: {},
+    blog_queue_health: null,
     indexing_recent: [],
     public_surfaces: publicSurfaces,
     db_error: dbError ?? null,
@@ -147,7 +149,7 @@ export async function GET(request: NextRequest) {
         'cron_run_logs_week',
       ),
       withBlogSystemDbTimeout(
-        supabaseAdmin.from('blog_topic_queue').select('status', { count: 'exact' }),
+        supabaseAdmin.from('blog_topic_queue').select('status, attempts, last_error, created_at, updated_at, target_publish_at, meta', { count: 'exact' }),
         'blog_topic_queue',
       ),
       withBlogSystemDbTimeout(
@@ -201,6 +203,7 @@ export async function GET(request: NextRequest) {
       blog_failures_24h: blogFailures,
       blog_success_rate_7d_percent: successRate7dPercent,
       blog_queue_counts: queueCounts,
+      blog_queue_health: summarizeBlogQueueOperationalHealth(qStats || []),
       indexing_recent: indexingRecent || [],
       public_surfaces: publicSurfaces,
       db_error: null,

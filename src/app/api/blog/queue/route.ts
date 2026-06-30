@@ -5,6 +5,7 @@ import { classifySearchIntent, intentPriorityDelta } from '@/lib/blog-search-int
 import { computeSeasonalTargetPublishAt } from '@/lib/blog-season-publish';
 import { attachTopicFitMeta, evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
+import { getBlogQueueOperationalState } from '@/lib/blog-queue-operational-health';
 
 /** 서버에서 자기 호스트 크론 URL 호출 시 CRON_SECRET 전달 (프로덕션에서 발행자·트렌드 마이너 401 방지) */
 async function fetchCronEndpoint(path: string): Promise<Response> {
@@ -46,74 +47,18 @@ const EMPTY_QUEUE_RESPONSE = {
 };
 
 function isQueueHistory(row: any, now = new Date()): boolean {
-  if (['published', 'skipped'].includes(String(row.status))) return true;
-  if (row.status === 'queued') {
-    const created = row.created_at ? new Date(row.created_at) : null;
-    const target = row.target_publish_at ? new Date(row.target_publish_at) : null;
-    const recent = created ? now.getTime() - created.getTime() <= 7 * 24 * 60 * 60 * 1000 : false;
-    const dueSoon = target ? target.getTime() <= now.getTime() + 14 * 24 * 60 * 60 * 1000 : false;
-    return !recent && !dueSoon;
-  }
-  return false;
+  return getBlogQueueOperationalState(row, now).history;
 }
 
 function isManualReviewQueue(row: any): boolean {
-  const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta) ? row.meta : {};
-  return (
-    row.status === 'failed' &&
-    (meta.self_heal_blocked === true || meta.self_heal_closed_at || meta.quarantine_reason) &&
-    Number(row.attempts || 0) >= 3
-  );
-}
-
-function isQueueAttention(row: any, now = new Date()): boolean {
-  if (row.status === 'failed') return true;
-  if (row.status === 'generating') {
-    const created = row.created_at ? new Date(row.created_at) : null;
-    return !created || now.getTime() - created.getTime() > 90 * 60 * 1000;
-  }
-  if (row.status === 'queued' && row.target_publish_at) return new Date(row.target_publish_at) < now;
-  return false;
-}
-
-function classifyQueueIssueCode(code: unknown): string | null {
-  const value = typeof code === 'string' ? code.toLowerCase() : '';
-  if (!value) return null;
-  if (value === 'context_missing' || value === 'linked_draft_invalid') return 'context_missing';
-  if (value === 'duplicate_content') return 'duplicate_content';
-  if (value === 'keyword_density') return 'keyword_density';
-  if (value === 'structure_integrity') return 'structure_integrity';
-  if (value === 'intent_quality') return 'intent_quality';
-  if (value === 'seo_score') return 'seo_score';
-  if (value === 'db_write') return 'db_write';
-  if (value === 'card_news_render_pending') return 'card_news_render_pending';
-  return value;
-}
-
-function classifyQueueIssue(row: any): string {
-  const metaIssue = classifyQueueIssueCode(row.meta?.failure_code);
-  if (metaIssue) return metaIssue;
-  const text = String(row.last_error || '').toLowerCase();
-  if (!text) return row.status === 'failed' ? 'unknown_failure' : 'none';
-  if (text.includes('context missing') || text.includes('insufficient context')) return 'context_missing';
-  if (text.includes('duplicate') || text.includes('slug already')) return 'duplicate_content';
-  if (text.includes('keyword_density')) return 'keyword_density';
-  if (text.includes('structure_integrity')) return 'structure_integrity';
-  if (text.includes('intent_quality')) return 'intent_quality';
-  if (text.includes('topic_fit') || text.includes('intent_mismatch')) return 'topic_fit';
-  if (text.includes('editorial')) return 'editorial_quality';
-  if (text.includes('seo')) return 'seo_score';
-  if (text.includes('constraint')) return 'schema_constraint';
-  if (text.includes('self-heal') || text.includes('self_heal')) return 'self_heal_blocked';
-  if (text.includes('image')) return 'image_quality';
-  if (text.includes('timeout')) return 'timeout';
-  return 'other';
+  return getBlogQueueOperationalState(row).manualReview;
 }
 
 function enrichQueueItem(row: any, now = new Date()) {
-  const manualReview = isManualReviewQueue(row);
-  const attention = isQueueAttention(row, now);
-  const history = isQueueHistory(row, now);
+  const state = getBlogQueueOperationalState(row, now);
+  const manualReview = state.manualReview;
+  const attention = state.attention;
+  const history = state.history;
   const target = row.target_publish_at ? new Date(row.target_publish_at) : null;
   const urgency =
     manualReview ? 'manual_review'
@@ -129,7 +74,10 @@ function enrichQueueItem(row: any, now = new Date()) {
       history,
       manual_review: manualReview,
       urgency,
-      issue: classifyQueueIssue(row),
+      issue: state.issue,
+      action: state.action,
+      retryable: state.retryable,
+      terminal: state.terminal,
     },
   };
 }

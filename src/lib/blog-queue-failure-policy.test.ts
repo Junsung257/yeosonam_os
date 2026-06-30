@@ -110,4 +110,22 @@ describe('blog queue failure policy', () => {
       reason: 'product_open_contract',
     });
   });
+
+  it('does not let stored unknown failure_code hide a product open-contract blocker', () => {
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: 'product_customer_open_contract_failed:mobile_proof stale',
+      meta: { failure_code: 'unknown' },
+    })).toBe(false);
+
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 1,
+      lastError: 'product_customer_open_contract_failed:mobile_proof stale',
+      meta: { failure_code: 'unknown' },
+      maxAttempts: 2,
+    })).toMatchObject({
+      quarantine: true,
+      status: 'failed',
+      reason: 'product_open_contract',
+    });
+  });
 });

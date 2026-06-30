@@ -5,6 +5,7 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 import { countPublishableQueueCandidates, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '@/lib/blog-daily-summary-window';
+import { summarizeBlogQueueOperationalHealth } from '@/lib/blog-queue-operational-health';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -126,12 +127,12 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
-  if (summary.queue_failed > 0) {
+  if ((summary.queue_actionable_failed ?? summary.queue_failed ?? 0) > 0) {
     issues.push({
       code: 'queue_failures_present',
       severity: 'high',
       title: 'Blog queue has failed rows',
-      detail: `${summary.queue_failed} failed queue rows are present.`,
+      detail: `${summary.queue_actionable_failed ?? summary.queue_failed} retryable failed queue row(s) need action; ${summary.queue_failed_total ?? summary.queue_failed ?? 0} total failed rows exist.`,
       recommendation: 'Group failures by failure_code, fix repeat classes, then requeue only retryable rows.',
     });
   }
@@ -231,7 +232,7 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
-    supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, destination, angle_type, topic, source, meta', { count: 'exact' })
+    supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, destination, angle_type, topic, source, attempts, last_error, created_at, updated_at, target_publish_at, meta', { count: 'exact' })
       .in('status', ['queued', 'generating', 'failed']),
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
       .is('resolved_at', null),
@@ -313,6 +314,7 @@ async function runDailySummary(request: NextRequest) {
     acc[r.status] = (acc[r.status] || 0) + 1;
     return acc;
   }, {});
+  const queueOperationalHealth = summarizeBlogQueueOperationalHealth(queueRes.data || []);
   const publishabilityStats = countPublishableQueueCandidates({
     activeQueue: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
     recentPublished: recentPublishedRes.data || [],
@@ -371,7 +373,12 @@ async function runDailySummary(request: NextRequest) {
     min_daily_target: dailyTarget,
     under_daily_target: (pubRes.count || 0) < dailyTarget,
     queue_pending: queueCounts.queued || 0,
-    queue_failed: queueCounts.failed || 0,
+    queue_failed: queueOperationalHealth.actionable_failed_count,
+    queue_failed_total: queueCounts.failed || 0,
+    queue_actionable_failed: queueOperationalHealth.actionable_failed_count,
+    queue_manual_review: queueOperationalHealth.manual_review_count,
+    queue_stale_generating: queueOperationalHealth.stale_generating_count,
+    queue_operational_health: queueOperationalHealth,
     publishability,
     rank_alerts_open: alertRes.count || 0,
     indexing_success_rate: +indexRate.toFixed(1),
@@ -436,6 +443,8 @@ async function runDailySummary(request: NextRequest) {
         min_daily_target: dailyTarget,
         queue_pending: summary.queue_pending,
         queue_failed: summary.queue_failed,
+        queue_failed_total: summary.queue_failed_total,
+        queue_operational_health: summary.queue_operational_health,
         recommendation: '품질 게이트 실패 또는 큐 부족 원인을 확인하고 대체 토픽을 큐잉하세요.',
       },
     });
@@ -472,6 +481,8 @@ async function runDailySummary(request: NextRequest) {
         min_daily_target: summary.min_daily_target,
         queue_pending: summary.queue_pending,
         queue_failed: summary.queue_failed,
+        queue_failed_total: summary.queue_failed_total,
+        queue_operational_health: summary.queue_operational_health,
         publisher_cron: summary.publisher_cron,
         search_health_issues: summary.search_standard.health_issues,
       },
@@ -494,7 +505,7 @@ async function runDailySummary(request: NextRequest) {
   if (policy?.daily_summary_webhook) {
     try {
       const text = `📊 *여소남 블로그 발행 요약 ${summary.date}*\n` +
-        `• 발행: ${summary.published}편 (대기 ${summary.queue_pending} / 실패 ${summary.queue_failed})\n` +
+        `• 발행: ${summary.published}편 (대기 ${summary.queue_pending} / 조치필요 실패 ${summary.queue_failed} / 총 실패 ${summary.queue_failed_total})\n` +
         `• 색인 성공률: ${summary.indexing_success_rate}%\n` +
         `• 평균 가독성: ${summary.avg_readability ?? '-'}/100\n` +
         `• 순위 경보: ${summary.rank_alerts_open}건` +
