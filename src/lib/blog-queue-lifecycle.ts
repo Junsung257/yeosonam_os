@@ -1,5 +1,6 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
+import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
 
 /**
  * 판매 불가·아카이브 등으로 블로그 자동발행 큐를 중단한다.
@@ -112,6 +113,11 @@ export function shouldQuarantineQueuedBlogItem(input: {
   return { quarantine: false, status: 'failed', reason: null };
 }
 
+function buildProductOpenContractFailure(blockers: string[]): string {
+  const summary = blockers.slice(0, 5).join('|') || 'unknown_product_open_contract_blocker';
+  return `product_customer_open_contract_failed:${summary}`;
+}
+
 export async function quarantineNonRetryableBlogQueueItems(opts?: {
   limit?: number;
   maxAttempts?: number;
@@ -121,7 +127,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id, attempts, last_error, meta')
+    .select('id, attempts, last_error, meta, product_id, source')
     .eq('status', 'queued')
     .or(`target_publish_at.is.null,target_publish_at.lte.${now}`)
     .order('priority', { ascending: false })
@@ -135,29 +141,65 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
   let quarantined = 0;
   let skipped = 0;
   let failed = 0;
+  const productContractCache = new Map<string, string | null>();
 
-  for (const row of data as Array<{ id: string; attempts: number | null; last_error: string | null; meta?: unknown }>) {
+  for (const row of data as Array<{
+    id: string;
+    attempts: number | null;
+    last_error: string | null;
+    meta?: unknown;
+    product_id?: string | null;
+    source?: string | null;
+  }>) {
+    let lastError = row.last_error ?? null;
+    let forcedReason: string | null = null;
+    if (row.product_id) {
+      if (!productContractCache.has(row.product_id)) {
+        try {
+          const contract = await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id);
+          productContractCache.set(
+            row.product_id,
+            contract.ok ? null : buildProductOpenContractFailure(contract.blockers),
+          );
+        } catch (err) {
+          productContractCache.set(
+            row.product_id,
+            `product_customer_open_contract_failed:contract_lookup_error:${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      const contractFailure = productContractCache.get(row.product_id) ?? null;
+      if (contractFailure) {
+        lastError = contractFailure;
+        forcedReason = 'product_open_contract';
+      }
+    }
+
     const decision = shouldQuarantineQueuedBlogItem({
       attempts: row.attempts,
-      lastError: row.last_error,
+      lastError,
       meta: row.meta,
       maxAttempts: opts?.maxAttempts,
     });
-    if (!decision.quarantine) continue;
+    const shouldQuarantine = forcedReason ? true : decision.quarantine;
+    if (!shouldQuarantine) continue;
 
     const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
       ? row.meta as Record<string, unknown>
       : {};
+    const reason = forcedReason ?? decision.reason ?? 'publisher_preflight';
+    const status = forcedReason ? 'failed' : decision.status;
     const { error: updateError } = await supabaseAdmin
       .from('blog_topic_queue')
       .update({
-        status: decision.status,
-        last_error: row.last_error ?? `publisher preflight quarantine: ${decision.reason ?? 'non_retryable'}`,
+        status,
+        last_error: lastError ?? `publisher preflight quarantine: ${reason}`,
         updated_at: now,
         meta: {
           ...meta,
+          failure_code: reason,
           self_heal_blocked: true,
-          quarantine_reason: decision.reason ?? 'publisher_preflight',
+          quarantine_reason: reason,
           quarantined_by: 'blog-publisher-preflight',
           quarantined_at: now,
         },
@@ -167,7 +209,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
 
     if (!updateError) {
       quarantined += 1;
-      if (decision.status === 'skipped') skipped += 1;
+      if (status === 'skipped') skipped += 1;
       else failed += 1;
     }
   }

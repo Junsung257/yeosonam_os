@@ -10,6 +10,7 @@ type BucketCode =
   | 'publisher_cron_not_observed'
   | 'publisher_timeout'
   | 'duplicate_candidate_burn'
+  | 'product_open_contract_blocked'
   | 'table_integrity_fail'
   | 'candidate_shortage'
   | 'audit_contract_mismatch'
@@ -203,9 +204,9 @@ async function main() {
     queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidence_insufficient_count: publishabilityStats.evidenceInsufficient,
+    evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
-    next_action: publishabilityStats.evidenceInsufficient > 0
+    next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
       : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
         ? 'quarantine_duplicates'
@@ -257,6 +258,21 @@ async function main() {
       severity: 'high',
       detail: `${duplicateFailures} candidate(s) were consumed by duplicate checks in the latest publisher summary.`,
       evidence: combinedPublisherSummary.failure_breakdown,
+    });
+  }
+
+  const productOpenContractFailures =
+    failureCount(combinedPublisherSummary, 'product_open_contract') ||
+    (containsText(publisherLogs, /product_customer_open_contract_failed|mobile_proof|customer_open_contract/i) ? 1 : 0);
+  if (productOpenContractFailures > 0) {
+    buckets.push({
+      code: 'product_open_contract_blocked',
+      severity: 'high',
+      detail: 'Product-backed candidate(s) are blocked by stale or missing customer-open contract evidence.',
+      evidence: {
+        failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
+        hint: 'Repair package customer mobile proof/evidence pack before requeueing product-backed blog rows.',
+      },
     });
   }
 

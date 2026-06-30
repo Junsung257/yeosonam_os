@@ -30,6 +30,7 @@ describe('blog scheduler queue refill helpers', () => {
       blockedRecentDuplicate: 1,
       duplicateQueued: 1,
       evidenceInsufficient: 0,
+      productOpenContractBlocked: 0,
     });
   });
 
@@ -49,6 +50,26 @@ describe('blog scheduler queue refill helpers', () => {
       blockedRecentDuplicate: 0,
       duplicateQueued: 1,
       evidenceInsufficient: 1,
+      productOpenContractBlocked: 0,
+    });
+  });
+
+  it('excludes product rows blocked by the customer-open contract from publishable counts', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeQueue: [
+        { product_id: 'pkg-ok', meta: { product_dedup_key: 'pkg-ok|2026-07-01|4d|YSN' } },
+        { product_id: 'pkg-blocked', meta: { failure_code: 'product_open_contract' } },
+        { product_id: 'pkg-blocked-2', meta: { quarantine_reason: 'product_open_contract' } },
+      ],
+    });
+
+    expect(stats).toEqual({
+      publishableCount: 1,
+      blockedRecentDuplicate: 0,
+      duplicateQueued: 0,
+      evidenceInsufficient: 0,
+      productOpenContractBlocked: 2,
     });
   });
 });
