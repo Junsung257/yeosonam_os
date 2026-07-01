@@ -72,7 +72,7 @@ const checks = [
     owner: 'naver',
     required: true,
     script: 'audit:blog-seo',
-    args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
+    args: withLimit([`--base=${baseUrl}`, '--json', ...(strict ? ['--strict-warnings'] : []), timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'editorial_intent',

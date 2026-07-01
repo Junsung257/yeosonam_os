@@ -8,6 +8,7 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 type BucketCode =
+  | 'daily_publish_sla_miss'
   | 'publisher_cron_not_observed'
   | 'publisher_timeout'
   | 'duplicate_candidate_burn'
@@ -231,11 +232,29 @@ async function main() {
     : healthPublisherSummary;
 
   const buckets: Bucket[] = [];
+  const selectedDayPublished = publishedTodayRes.count ?? 0;
+  const selectedDayUnderTarget = selectedDayPublished < dailyTarget;
   const publisherRanToday = publisherLogs.length > 0 || (
     publisherHealth?.last_run_at &&
     new Date(publisherHealth.last_run_at) >= day.start &&
     new Date(publisherHealth.last_run_at) < day.end
   );
+
+  if (selectedDayUnderTarget) {
+    buckets.push({
+      code: 'daily_publish_sla_miss',
+      severity: selectedDayPublished === 0 ? 'critical' : 'high',
+      detail: `Selected KST day published ${selectedDayPublished}/${dailyTarget} posts.`,
+      evidence: {
+        report_day: day.dayKey,
+        published: selectedDayPublished,
+        daily_target: dailyTarget,
+        report_period_closed: day.closed,
+        used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
+        latest_publisher_failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
+      },
+    });
+  }
 
   if (!publisherRanToday) {
     buckets.push({
@@ -350,7 +369,7 @@ async function main() {
       today: publishedTodayRes.count ?? 0,
       yesterday: publishedYesterdayRes.count ?? 0,
       daily_target: dailyTarget,
-      under_target: (publishedTodayRes.count ?? 0) < dailyTarget,
+      under_target: selectedDayUnderTarget,
     },
     queue: queueCounts,
     queue_operational_health: queueOperationalHealth,

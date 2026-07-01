@@ -19,7 +19,8 @@ const timeoutMs = Math.max(1000, Number(getArg('--timeout-ms', process.env.BLOG_
 const requestedHardTimeoutMs = Number(getArg('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
 const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const outputJson = hasFlag('--json');
-const strictWarnings = hasFlag('--strict-warnings');
+const strictMode = hasFlag('--strict');
+const strictWarnings = strictMode || hasFlag('--strict-warnings');
 
 let hardTimer = null;
 if (hardTimeoutMs > 0) {
@@ -358,6 +359,7 @@ function summarize(rows) {
     failed: failed.length,
     passed: fetched.length - failed.length,
     score: fetched.length === 0 ? 0 : Math.round(((fetched.length - failed.length) / fetched.length) * 100),
+    strictMode,
     strictWarnings,
     warningCount,
     avgTitleLength: Number((fetched.reduce((sum, row) => sum + (row.title?.length || 0), 0) / Math.max(1, fetched.length)).toFixed(1)),
