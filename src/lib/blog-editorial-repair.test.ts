@@ -209,6 +209,35 @@ describe('blog editorial repair', () => {
     expect(result.after.issues.some((issue) => issue.code === 'unsupported_yeosonam_data')).toBe(false);
   });
 
+  it('repairs awkward semantic surface wording and generic destination placeholders', () => {
+    const result = repairBlogEditorialQuality({
+      title: '보라카이 7월 날씨 여행 가이드 2026',
+      primaryKeyword: '보라카이 7월 날씨',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: [
+        '# 보라카이 7월 날씨 여행 가이드',
+        '',
+        '보라카이는 푸른 자연을 즐기기할 수 있어 가족 여행객에게 좋습니다.',
+        '',
+        '![현지 참고 이미지 3 현지 가이드 옷차림](/images/boracay.jpg)',
+        '',
+        '## 현지 7월 날씨 준비물',
+        '',
+        '현지 현지 결제 조건도 같이 확인합니다.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_semantic_surface');
+    expect(result.blogHtml).toContain('즐길 수 있어');
+    expect(result.blogHtml).toContain('보라카이 참고 이미지');
+    expect(result.blogHtml).toContain('## 보라카이 7월 날씨 준비물');
+    expect(result.blogHtml).not.toContain('현지 현지');
+    expect(result.after.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(false);
+    expect(result.after.issues.some((issue) => issue.code === 'placeholder_destination_context')).toBe(false);
+  });
+
   it('removes editor persona and Yeosonam data variants that make posts sound generated', () => {
     const source = [
       '# 몽골 식비 예산',

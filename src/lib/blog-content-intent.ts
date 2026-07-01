@@ -33,6 +33,7 @@ export interface BlogIntentInput {
   title?: string | null;
   slug?: string | null;
   primaryKeyword?: string | null;
+  destination?: string | null;
   angleType?: string | null;
   category?: string | null;
   contentType?: string | null;
@@ -64,6 +65,9 @@ export interface BlogIntentIssue {
     | 'machine_title_format'
     | 'generic_image_alt'
     | 'broken_editorial_voice'
+    | 'awkward_korean_surface'
+    | 'placeholder_destination_context'
+    | 'title_intent_mismatch'
     | 'missing_answer_first'
     | 'early_strong_cta'
     | 'unsupported_yeosonam_data'
@@ -401,6 +405,65 @@ function extractImageAlts(source: string): string[] {
   return alts.filter(Boolean);
 }
 
+const WEATHER_INTENT_RE = /weather|날씨|옷차림|월별|기온|우기|건기|강수|rainy|season/i;
+const NON_WEATHER_INTENT_RE =
+  /insurance|보험|visa|비자|입국|여권|currency|환전|결제|카드|esim|e-sim|usim|유심|로밍|transport|교통|이동|airport|공항|hotel|숙소|식비|맛집|food|budget|경비|비용/i;
+const AWKWARD_KOREAN_SURFACE_RE =
+  /즐기기(?:하|할|합니다|하세요|했습니다|할지|하기)|확인하시는 것이 좋습니다|현지\s+현지|같이 보면 판단하기 쉽습니다\.?\s*출발 전에는/i;
+const PLACEHOLDER_DESTINATION_CONTEXT_RE =
+  /현지\s+(?:참고\s*이미지|[1-9]\d?월\s+날씨|월별\s+날씨|날씨와\s+옷차림|가이드\s+옷차림)/;
+
+function hasWeatherIntent(text: string): boolean {
+  return WEATHER_INTENT_RE.test(text);
+}
+
+function inspectSemanticSurfaceContract(input: BlogIntentInput, plain: string, issues: BlogIntentIssue[]) {
+  const title = (input.title || '').trim();
+  const categorySignal = input.category && input.category.trim().length <= 32 ? input.category : '';
+  const topicText = [
+    input.slug || '',
+    input.primaryKeyword || '',
+    categorySignal,
+    input.contentType || '',
+    input.angleType || '',
+  ].join(' ');
+
+  const awkwardSurface = plain.match(AWKWARD_KOREAN_SURFACE_RE)?.[0];
+  if (awkwardSurface) {
+    addIssue(
+      issues,
+      'awkward_korean_surface',
+      'critical',
+      'Article contains unnatural Korean surface wording that makes the post read like machine output.',
+      { sample: awkwardSurface },
+    );
+  }
+
+  const placeholderContext = plain.match(PLACEHOLDER_DESTINATION_CONTEXT_RE)?.[0];
+  if (placeholderContext) {
+    addIssue(
+      issues,
+      'placeholder_destination_context',
+      'critical',
+      'Destination-specific copy must not expose generic placeholder wording such as "현지" where the real destination should appear.',
+      { sample: placeholderContext },
+    );
+  }
+
+  const titleLooksWeather = hasWeatherIntent(title);
+  const topicLooksWeather = hasWeatherIntent(topicText);
+  const topicLooksNonWeather = NON_WEATHER_INTENT_RE.test(topicText);
+  if (titleLooksWeather && !topicLooksWeather && topicLooksNonWeather) {
+    addIssue(
+      issues,
+      'title_intent_mismatch',
+      'critical',
+      'SEO title intent conflicts with the actual topic intent.',
+      { title, topicText },
+    );
+  }
+}
+
 function inspectHumanSurfaceContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
   const title = (input.title || '').trim();
   if (/[^\s]\||\|[^\s]/.test(title)) {
@@ -479,6 +542,7 @@ function inspectCommonEditorialContract(input: BlogIntentInput, source: string, 
   }
 
   inspectHumanSurfaceContract(input, source, plain, issues);
+  inspectSemanticSurfaceContract(input, plain, issues);
 }
 
 function inspectInfoWriterContract(source: string, plain: string, issues: BlogIntentIssue[]) {

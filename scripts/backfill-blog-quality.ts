@@ -13,6 +13,7 @@ let getRandomPexelsPhoto: typeof import('../src/lib/pexels').getRandomPexelsPhot
 let isPexelsConfigured: typeof import('../src/lib/pexels').isPexelsConfigured;
 let extractDestination: typeof import('../src/lib/slug-utils').extractDestination;
 let repairBlogEditorialQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogEditorialQuality;
+let repairBlogSemanticSurface: typeof import('../src/lib/blog-editorial-repair').repairBlogSemanticSurface;
 let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogStructureQuality;
 let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
 let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildBlogContentBrief;
@@ -26,7 +27,7 @@ async function loadLocalModules() {
   ({ evaluateBlogPublishQuality } = await import('../src/lib/blog-publish-quality'));
   ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
   ({ extractDestination } = await import('../src/lib/slug-utils'));
-  ({ repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
+  ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
   ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
   ({ generateProductConsultantBlogPost } = await import('../src/lib/blog-product-consultant-writer'));
@@ -311,7 +312,7 @@ function neutralizeLegacyCliches(markdown: string): string {
     [/잊지 못할/g, '기억에 남을'],
     [/제대로/g, '차근차근'],
     [/알찬/g, '구성이 분명한'],
-    [/만끽/g, '즐기기'],
+    [/만끽/g, '즐길 수 있는'],
     [/편안한/g, '부담이 적은'],
     [/숨겨진/g, '덜 알려진'],
     [/만족스러운/g, '만족도가 높은'],
@@ -1227,6 +1228,8 @@ function topicKindForCustomer(row: BlogRow, primaryKeyword: string): 'weather' |
   const strongText = `${row.slug || ''} ${row.destination || ''} ${primaryKeyword}`.toLowerCase();
   const titleText = `${row.seo_title || ''}`.toLowerCase();
   const text = `${strongText} ${titleText}`;
+
+  if (/insurance|보험|보장|coverage/.test(strongText)) return 'general';
 
   if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(strongText)) return 'transport';
   if (/cost|비용|예산|경비|가격|항공권|가성비/.test(strongText)) return 'cost';
@@ -2438,6 +2441,7 @@ async function main() {
       title: normalizedTitle,
       slug,
       primaryKeyword,
+      destination,
       category: normalizedTitle,
       contentType,
       productId,
@@ -2500,6 +2504,7 @@ async function main() {
       title: normalizedTitle,
       slug,
       primaryKeyword,
+      destination,
       category: normalizedTitle,
       contentType,
       productId,
@@ -2574,6 +2579,19 @@ async function main() {
     nextHtml = finalKeywordDensityRepair(nextHtml, primaryKeyword, blogType);
     nextHtml = normalizeMarkdownLinkLabels(ensureInternalFunnelLinks(nextHtml, destination, slug));
     nextHtml = normalizeFinalMarkdownSurface(nextHtml);
+    const semanticSurfaceFinalRepair = repairBlogSemanticSurface({
+      title: normalizedTitle,
+      slug,
+      primaryKeyword,
+      destination,
+      category: normalizedTitle,
+      contentType,
+      productId,
+      blogHtml: nextHtml,
+    });
+    if (semanticSurfaceFinalRepair.changed) {
+      nextHtml = semanticSurfaceFinalRepair.blogHtml;
+    }
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
