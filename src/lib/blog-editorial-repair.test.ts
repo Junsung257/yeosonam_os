@@ -239,6 +239,43 @@ describe('blog editorial repair', () => {
     expect(result.after.issues.some((issue) => issue.code === 'placeholder_destination_context')).toBe(false);
   });
 
+  it('repairs local placeholder entities, duplicated short words, and placeholder reference links', () => {
+    const result = repairBlogEditorialQuality({
+      title: '나가사키 여행 준비 가이드 2026',
+      primaryKeyword: '나가사키 여행 준비',
+      destination: '나가사키',
+      category: 'preparation',
+      contentType: 'guide',
+      blogHtml: [
+        '# 나가사키 여행 준비',
+        '',
+        '나가사키 여행은 항공권, 숙소 위치, 교통패스 조건을 먼저 확인하면 준비 시간을 줄일 수 있습니다.',
+        '',
+        '여소남이 이 이 정보를 정리한 이유는 현지역, 현지항, 현지 마츠리 동선이 헷갈리기 때문입니다.',
+        '',
+        '## 준비 체크리스트',
+        '- 항공권',
+        '- 숙소 위치',
+        '- 교통패스',
+        '- 환전',
+        '',
+        '## 공식 확인',
+        '- [예시링크](https://blog.naver.com/yeosonam/%EC%98%88%EC%8B%9C%EB%A7%81%ED%81%AC)',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(expect.arrayContaining(['repaired_semantic_surface', 'removed_placeholder_reference_links']));
+    expect(result.blogHtml).toContain('여소남이 이 정보를');
+    expect(result.blogHtml).toContain('나가사키 지역');
+    expect(result.blogHtml).toContain('나가사키 공항');
+    expect(result.blogHtml).toContain('나가사키 축제');
+    expect(result.blogHtml).not.toContain('예시링크');
+    expect(result.after.issues.some((issue) => issue.code === 'placeholder_destination_context')).toBe(false);
+    expect(result.after.issues.some((issue) => issue.code === 'placeholder_reference_link')).toBe(false);
+    expect(result.after.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(false);
+  });
+
   it('repairs generated image context and removes repeated answer scaffolds', () => {
     const result = repairBlogEditorialQuality({
       title: '몽골 숙소 지역별 예산 여행 가이드 2026',

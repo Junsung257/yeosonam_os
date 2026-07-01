@@ -203,6 +203,41 @@ function dedupeRepeatedFaqBlocks(markdown: string): { text: string; changed: boo
   return { text, changed: changed && text !== markdown };
 }
 
+function isQuickDecisionHeadingLine(line: string): boolean {
+  return /^#{2,3}\s+(?:.+\s+)?빠른 판단표\s*$/i.test(line.trim());
+}
+
+function dedupeRepeatedQuickDecisionBlocks(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let seen = false;
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!isQuickDecisionHeadingLine(line)) {
+      next.push(line);
+      continue;
+    }
+
+    if (!seen) {
+      seen = true;
+      next.push(line);
+      continue;
+    }
+
+    changed = true;
+    let cursor = index + 1;
+    while (cursor < lines.length && !/^#{1,3}\s+\S/.test((lines[cursor] ?? '').trim())) {
+      cursor += 1;
+    }
+    index = cursor - 1;
+  }
+
+  const text = next.join('\n').replace(/\n{3,}/g, '\n\n');
+  return { text, changed: changed && text !== markdown };
+}
+
 function dedupeRepeatedShortParagraphs(markdown: string): { text: string; changed: boolean } {
   const blocks = markdown.split(/\n{2,}/);
   const seen = new Set<string>();
@@ -226,6 +261,18 @@ function dedupeRepeatedShortParagraphs(markdown: string): { text: string; change
   return { text: next.join('\n\n'), changed };
 }
 
+function removePlaceholderReferenceLinks(markdown: string): { text: string; changed: boolean } {
+  const before = markdown.trim();
+  const placeholderLinkRe = /(?:예시링크|%EC%98%88%EC%8B%9C%EB%A7%81%ED%81%AC|placeholder\s*link|example\s*link)/i;
+  const text = markdown
+    .split('\n')
+    .filter((line) => !placeholderLinkRe.test(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { text, changed: text !== before };
+}
+
 function repairAwkwardSemanticSurface(
   markdown: string,
   input: BlogEditorialRepairInput,
@@ -243,7 +290,11 @@ function repairAwkwardSemanticSurface(
     .replace(/즐기기하기/g, '즐기기')
     .replace(/즐기기하/g, '즐기')
     .replace(/확인하시는 것이 좋습니다/g, '확인하는 편이 안전합니다')
-    .replace(/현지\s+현지/g, '현지');
+    .replace(/현지\s+현지/g, '현지')
+    .replace(/정보를(?:를)+/g, '정보를')
+    .replace(/여소남이\s+이\s+이\s+정보/g, '여소남이 이 정보')
+    .replace(/(^|\s)(이|그|저|여행|준비|정보)\s+\2(?=\s|$|[.,!?])/g, '$1$2')
+    .replace(/여소남이\s+이\s+정보(?!를)/g, '여소남이 이 정보를');
 
   const destination = inferDestinationLabelForSurfaceRepair(input);
   if (destination) {
@@ -252,7 +303,17 @@ function repairAwkwardSemanticSurface(
       .replace(/현지\s+([1-9]\d?월\s+날씨)/g, `${destination} $1`)
       .replace(/현지\s+월별\s+날씨/g, `${destination} 월별 날씨`)
       .replace(/현지\s+날씨와\s+옷차림/g, `${destination} 날씨와 옷차림`)
-      .replace(/현지\s+가이드\s+옷차림/g, `${destination} 날씨 옷차림`);
+      .replace(/현지\s+가이드\s+옷차림/g, `${destination} 날씨 옷차림`)
+      .replace(/현지역/g, `${destination} 지역`)
+      .replace(/현지\s+지역/g, `${destination} 지역`)
+      .replace(/현지현/g, destination)
+      .replace(/현지항/g, `${destination} 공항`)
+      .replace(/부산→현지/g, `부산→${destination}`)
+      .replace(/현지\s+마츠리/g, `${destination} 축제`)
+      .replace(/현지\s+명물\s*['"‘’“”]?현지['"‘’“”]?/g, `${destination} 명물`)
+      .replace(/현지\s+명물/g, `${destination} 명물`)
+      .replace(/현지\s+명물관/g, `${destination} 명소`)
+      .replace(/현지\s+자체예요/g, `${destination} 현지 분위기입니다`);
   }
 
   return { text, changed: text !== before };
@@ -262,15 +323,19 @@ export function repairBlogSemanticSurface(input: BlogEditorialRepairInput): Blog
   const before = inspectBlogIntentQuality(input);
   const semanticRepair = repairAwkwardSemanticSurface(input.blogHtml, input);
   const imageRepair = repairGeneratedImageContext(semanticRepair.text, input);
-  const answerRepair = removeRepetitiveAnswerScaffold(imageRepair.text);
+  const placeholderLinkRepair = removePlaceholderReferenceLinks(imageRepair.text);
+  const answerRepair = removeRepetitiveAnswerScaffold(placeholderLinkRepair.text);
   const faqRepair = dedupeRepeatedFaqBlocks(answerRepair.text);
-  const paragraphRepair = dedupeRepeatedShortParagraphs(faqRepair.text);
+  const decisionRepair = dedupeRepeatedQuickDecisionBlocks(faqRepair.text);
+  const paragraphRepair = dedupeRepeatedShortParagraphs(decisionRepair.text);
   const blogHtml = paragraphRepair.text;
   const changes = [
     semanticRepair.changed ? 'repaired_semantic_surface' : null,
     imageRepair.changed ? 'repaired_generated_image_context' : null,
+    placeholderLinkRepair.changed ? 'removed_placeholder_reference_links' : null,
     answerRepair.changed ? 'removed_repetitive_answer_scaffold' : null,
     faqRepair.changed ? 'deduped_repeated_faq_blocks' : null,
+    decisionRepair.changed ? 'deduped_repeated_quick_decision_blocks' : null,
     paragraphRepair.changed ? 'deduped_repeated_short_paragraphs' : null,
   ].filter((value): value is string => Boolean(value));
   return {
@@ -1449,7 +1514,7 @@ export function repairKeywordDensityToTarget(
   }
 
   const words = keyword.split(/\s+/).filter(Boolean);
-  const replacement = words.length > 1 ? words[words.length - 1] : '현지';
+  const replacement = words.length > 1 ? words[words.length - 1] : '여행지';
   let seen = 0;
   const blogHtml = markdown.replace(pattern, () => {
     seen += 1;
@@ -1491,6 +1556,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('repaired_generated_image_context');
   }
 
+  const placeholderReferenceRepair = removePlaceholderReferenceLinks(blogHtml);
+  if (placeholderReferenceRepair.changed) {
+    blogHtml = placeholderReferenceRepair.text;
+    changes.push('removed_placeholder_reference_links');
+  }
+
   const answerScaffoldRepair = removeRepetitiveAnswerScaffold(blogHtml);
   if (answerScaffoldRepair.changed) {
     blogHtml = answerScaffoldRepair.text;
@@ -1501,6 +1572,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (faqRepair.changed) {
     blogHtml = faqRepair.text;
     changes.push('deduped_repeated_faq_blocks');
+  }
+
+  const quickDecisionRepair = dedupeRepeatedQuickDecisionBlocks(blogHtml);
+  if (quickDecisionRepair.changed) {
+    blogHtml = quickDecisionRepair.text;
+    changes.push('deduped_repeated_quick_decision_blocks');
   }
 
   const shortParagraphRepair = dedupeRepeatedShortParagraphs(blogHtml);
@@ -1812,6 +1889,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     changes.push('repaired_generated_image_context');
   }
 
+  const placeholderReferenceRepair = removePlaceholderReferenceLinks(blogHtml);
+  if (placeholderReferenceRepair.changed) {
+    blogHtml = placeholderReferenceRepair.text;
+    changes.push('removed_placeholder_reference_links');
+  }
+
   const answerScaffoldRepair = removeRepetitiveAnswerScaffold(blogHtml);
   if (answerScaffoldRepair.changed) {
     blogHtml = answerScaffoldRepair.text;
@@ -1822,6 +1905,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (faqRepair.changed) {
     blogHtml = faqRepair.text;
     changes.push('deduped_repeated_faq_blocks');
+  }
+
+  const quickDecisionRepair = dedupeRepeatedQuickDecisionBlocks(blogHtml);
+  if (quickDecisionRepair.changed) {
+    blogHtml = quickDecisionRepair.text;
+    changes.push('deduped_repeated_quick_decision_blocks');
   }
 
   const shortParagraphRepair = dedupeRepeatedShortParagraphs(blogHtml);

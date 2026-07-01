@@ -2,7 +2,7 @@ import { runQualityGates, type QualityGateReport } from './blog-quality-gate';
 import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-quality-score';
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
-import { repairBlogEditorialQuality, repairBlogStructureQuality } from './blog-editorial-repair';
+import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -190,6 +190,12 @@ export async function prepareBlogForPublish(
   if (structureRepair.changed) {
     blogHtml = structureRepair.blogHtml;
     changes.push(...structureRepair.changes);
+  }
+
+  const densityRepair = repairKeywordDensityToTarget(blogHtml, primaryKeyword, input.product_id ? 'product' : 'info');
+  if (densityRepair.changed) {
+    blogHtml = densityRepair.blogHtml;
+    changes.push('repaired_keyword_density_after_surface_repair');
   }
 
   const report = await evaluateBlogPublishQuality({

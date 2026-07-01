@@ -61,6 +61,21 @@ function removeBoosterSuffixes(value: string): string {
     .trim();
 }
 
+function collapseAdjacentDuplicateTitleTokens(value: string): string {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const collapsed: string[] = [];
+  for (const token of tokens) {
+    const previous = collapsed[collapsed.length - 1];
+    const normalized = token.replace(/[|·ㆍ•,()[\]{}:!?]/g, '').toLowerCase();
+    const previousNormalized = previous?.replace(/[|·ㆍ•,()[\]{}:!?]/g, '').toLowerCase();
+    if (normalized.length >= 2 && normalized === previousNormalized && !/^20\d{2}$/.test(normalized)) {
+      continue;
+    }
+    collapsed.push(token);
+  }
+  return collapsed.join(' ');
+}
+
 function limitHighlights(markdown: string, maxHighlights: number): string {
   let count = 0;
   let next = markdown.replace(/==([^=]+)==/g, (full, inner) => {
@@ -128,11 +143,11 @@ function ensureFaqSection(markdown: string, destination: string, primaryKeyword:
 
 export function normalizeBlogTitle(title: string | null | undefined): string | null {
   if (typeof title !== 'string') return null;
-  const cleaned = removeBoosterSuffixes(removeRewriteArtifactsTitle(title))
+  const cleaned = collapseAdjacentDuplicateTitleTokens(removeBoosterSuffixes(removeRewriteArtifactsTitle(title))
     .replace(/\s*\|\s*/g, ' | ')
     .replace(/\s*·\s*/g, ' · ')
     .replace(/\s{2,}/g, ' ')
-    .trim();
+    .trim());
   return cleaned || null;
 }
 
