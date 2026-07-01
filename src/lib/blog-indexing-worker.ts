@@ -1,6 +1,7 @@
 import { notifyIndexing } from '@/lib/indexing';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
+  canonicalizeBlogIndexingJobUrl,
   isIndexingReportSuccessful,
   persistBlogIndexingReport,
   type BlogIndexingJobRow,
@@ -165,8 +166,13 @@ export async function processDueBlogIndexingJobs(options: {
     }
 
     try {
-      const baseUrl = resolveBlogIndexingBaseUrl(job.url, options.baseUrl);
-      const report = await notifyIndexing(job.url, baseUrl, { type: job.type });
+      const canonicalUrl = canonicalizeBlogIndexingJobUrl({
+        url: job.url,
+        slug: job.slug,
+        baseUrl: options.baseUrl,
+      });
+      const baseUrl = resolveBlogIndexingBaseUrl(canonicalUrl, options.baseUrl);
+      const report = await notifyIndexing(canonicalUrl, baseUrl, { type: job.type });
       await persistBlogIndexingReport(job, report);
 
       if (!isIndexingReportSuccessful(report)) {

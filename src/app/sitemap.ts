@@ -3,9 +3,9 @@ import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
-  .replace(/\/+$/, '');
+const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
 const BLOG_LIMIT = 2000;
 const DESTINATION_LIMIT = 500;

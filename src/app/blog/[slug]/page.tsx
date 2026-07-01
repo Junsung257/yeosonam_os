@@ -39,6 +39,7 @@ import {
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -85,7 +86,7 @@ export const revalidate = 0;
 // 자동 발행 글은 계속 늘어나므로 정적 slug 목록을 빌드/개발 서버에 고정하지 않는다.
 // 각 상세 페이지는 첫 요청 시 on-demand ISR로 생성하고, 미존재 slug는 noindex 404로 방어한다.
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = resolveBlogCanonicalOrigin();
 
 // ── 타입 ────────────────────────────────────────────────────
 interface BlogPost {

@@ -16,6 +16,7 @@ import {
 } from '@/lib/blog-editorial-voice';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
@@ -939,7 +940,7 @@ async function runBlogPublisher(request: NextRequest) {
       }
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+    const baseUrl = resolveBlogCanonicalOrigin();
     const publishedSlugs = results
       .filter((r): r is typeof r & { reason: string } => r.status === 'published' && !!r.reason)
       .map(r => r.reason);
@@ -1581,7 +1582,7 @@ async function processQueueItem(
       })
       .eq('id', item.id);
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+    const baseUrl = resolveBlogCanonicalOrigin();
     try {
       await recordAutoPublishLog({
         platform: 'blog',
@@ -1900,7 +1901,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   // 3. 첫 매칭된 관광지의 첫 사진
   // 4. 어떤 관광지든 첫 가용 사진
   // 5. 브랜드 기본 OG (절대 null 반환 X)
-  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+  const baseUrl = resolveBlogCanonicalOrigin();
   const firstAttrPhoto =
     attractions[0]?.photos?.[0]?.src_medium ||
     attractions
@@ -1965,7 +1966,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   }
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
-  const baseForUtm = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+  const baseForUtm = resolveBlogCanonicalOrigin();
   const queueSlug = buildQueueSlug(item);
   const utmCamp = encodeURIComponent(queueSlug);
   const utmSrc = 'naver_blog';

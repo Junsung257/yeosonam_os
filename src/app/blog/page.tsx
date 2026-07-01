@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import BlogData from './BlogData';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 export const revalidate = 0;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = resolveBlogCanonicalOrigin();
 
 export const metadata: Metadata = {
   title: '여행 매거진',
