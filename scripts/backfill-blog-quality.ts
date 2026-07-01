@@ -1688,6 +1688,9 @@ function ensureSafeDayByDayBlock(markdown: string, contentType: string, productI
 function removeAiEditorialClichesFinal(markdown: string): string {
   return markdown
     .replace(/이게\s*말이\s*되나\s*싶으시죠\??\s*/g, '')
+    .replace(/안녕하세요[!.\s]*\s*친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다\.?\s*/g, '')
+    .replace(/친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다\.?\s*/g, '')
+    .replace(/가치\s+있는\s+여행을\s+소개하는\s*입니다\.?\s*/g, '')
     .replace(/완벽\s*가이드/g, '실전 가이드')
     .replace(/총정리/g, '정리')
     .replace(/놓치면\s*후회(?:하는|할)?/g, '미리 확인할')
@@ -1948,6 +1951,7 @@ function ensureContextualImageTextFinal(markdown: string, primaryKeyword: string
       .split(/\s+/)
       .map((token) => token.trim())
       .filter((token) => token.length >= 3 && token.length <= 14)
+      .filter((token) => /[가-힣]/.test(token))
       .filter((token) => !/^(?:pkg|package|post|guide|travel|image|photo|rewritten|draft|v\d+)$/.test(token))
       .slice(0, 4),
   ));
@@ -1958,7 +1962,10 @@ function ensureContextualImageTextFinal(markdown: string, primaryKeyword: string
       imageNo += 1;
       const cleanAlt = String(alt || '').trim();
       const hasToken = tokens.length === 0 || tokens.some((token) => cleanAlt.toLowerCase().includes(token));
-      const needsRepair = cleanAlt.length < 3 || /^(?:photo|travel image|image|이미지|여행 이미지)\s*\d*$/i.test(cleanAlt) || !hasToken;
+      const hasEnglishMicroAngle = /\b(?:family budget|budget family|transport cost|hotel area(?: budget)?|weather clothes|weather packing|weather preparation|local mobility|best food|july weather clothes)\b/i.test(cleanAlt)
+        || /참고\s*이미지\s*\d+\s+[a-z][a-z\s_-]{6,}$/i.test(cleanAlt)
+        || /[가-힣].*\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b/i.test(cleanAlt);
+      const needsRepair = cleanAlt.length < 3 || /^(?:photo|travel image|image|이미지|여행 이미지)\s*\d*$/i.test(cleanAlt) || !hasToken || hasEnglishMicroAngle;
       return `![${needsRepair ? `${keyword} 참고 이미지 ${imageNo}${suffix}` : cleanAlt}](${src})`;
     })
     .replace(/<figcaption>[\s\S]*?<\/figcaption>/gi, () => {

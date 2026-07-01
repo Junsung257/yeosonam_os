@@ -85,6 +85,9 @@ function removeAiEditorialCliches(markdown: string): { text: string; changed: bo
   const before = text;
   const replacements: Array<[RegExp, string]> = [
     [/이게\s*말이\s*되나\s*싶으시죠\??\s*/g, ''],
+    [/안녕하세요[!.\s]*\s*친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다\.?\s*/g, ''],
+    [/친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다\.?\s*/g, ''],
+    [/가치\s+있는\s+여행을\s+소개하는\s*입니다\.?\s*/g, ''],
     [/완벽\s*가이드/g, '실전 가이드'],
     [/총정리/g, '정리'],
     [/놓치면\s*후회(?:하는|할)?/g, '미리 확인할'],
