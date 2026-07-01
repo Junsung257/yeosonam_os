@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { countPublishableQueueCandidates } from '../src/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-window';
 import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
+import { buildBlogProductEvidenceWorkReport } from '../src/lib/blog-product-evidence-work';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -164,7 +165,7 @@ async function main() {
       .limit(500),
     supabase
       .from('blog_topic_queue')
-      .select('id, status, attempts, last_error, created_at, updated_at, target_publish_at, meta')
+      .select('id, status, product_id, destination, topic, source, attempts, last_error, created_at, updated_at, target_publish_at, meta')
       .in('status', ['queued', 'generating', 'failed'])
       .limit(1000),
     supabase
@@ -210,6 +211,27 @@ async function main() {
     recentPublished: recentPublishedRes.data ?? [],
   });
   const queueOperationalHealth = summarizeBlogQueueOperationalHealth(queueOperationalRes.data ?? []);
+  const productEvidenceProductIds = Array.from(new Set(
+    (queueOperationalRes.data ?? [])
+      .map((row: any) => typeof row.product_id === 'string' ? row.product_id : null)
+      .filter((id: string | null): id is string => Boolean(id)),
+  ));
+  const productsById = new Map<string, any>();
+  if (productEvidenceProductIds.length > 0) {
+    const { data: products, error: productsError } = await supabase
+      .from('travel_packages')
+      .select('id, title, status, destination, updated_at')
+      .in('id', productEvidenceProductIds.slice(0, 200));
+    if (productsError) throw productsError;
+    for (const product of products ?? []) {
+      productsById.set(String(product.id), product);
+    }
+  }
+  const productEvidenceWork = buildBlogProductEvidenceWorkReport({
+    rows: queueOperationalRes.data ?? [],
+    productsById,
+    limit,
+  });
   const publishabilitySnapshot = {
     queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
@@ -297,6 +319,7 @@ async function main() {
       detail: 'Active product-backed candidate(s) are blocked by stale or missing customer-open contract evidence.',
       evidence: {
         failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
+        product_evidence_work: productEvidenceWork.samples.slice(0, 5),
         hint: 'Repair package customer mobile proof/evidence pack before requeueing product-backed blog rows.',
       },
     });
@@ -373,6 +396,7 @@ async function main() {
     },
     queue: queueCounts,
     queue_operational_health: queueOperationalHealth,
+    product_evidence_work: productEvidenceWork,
     publishability: publishabilitySnapshot,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
