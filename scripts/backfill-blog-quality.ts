@@ -265,7 +265,7 @@ function countHighlights(html: string): number {
 
 function hasFaq(html: string): boolean {
   if (/(^|\n)#{2,3}\s*(FAQ|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38)/im.test(html)) return true;
-  return /(^|\n)##\s*(FAQ|자주 묻는 질문)/im.test(html);
+  return /(^|\n)\s*(?:#{2,3}\s*)?(?:\*\*)?\s*(FAQ|Q\s*&\s*A|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38|\uC790\uC8FC\s*\uD558\uB294\s*\uC9C8\uBB38)\s*(?:\*\*)?\s*$/im.test(html);
 }
 
 function hasSummary(html: string): boolean {
@@ -1688,6 +1688,65 @@ function ensureSafeDayByDayBlock(markdown: string, contentType: string, productI
   return `${markdown.trim()}\n\n## DAY별 확인 포인트\n\n### DAY 1. 출발과 도착 조건 확인\n항공 시간, 공항 미팅, 도착 후 이동 동선을 최종 안내 기준으로 확인하세요.\n\n### DAY 2. 핵심 일정과 현지 이동 확인\n${keyword}의 주요 일정은 현지 사정에 따라 순서가 조정될 수 있으니 포함/불포함과 이동 시간을 함께 보세요.\n\n### DAY 3. 귀국 또는 다음 일정 준비\n체크아웃, 공항 이동, 수하물과 여권을 출발 전 다시 확인하세요.\n`;
 }
 
+function isFaqHeadingLineCustomer(line: string): boolean {
+  const trimmed = line.trim();
+  return /^(?:#{2,3}\s*)?(?:\*\*)?\s*(?:FAQ|Q\s*&\s*A|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38|\uC790\uC8FC\s*\uD558\uB294\s*\uC9C8\uBB38)(?:\*\*)?\s*$/i.test(trimmed);
+}
+
+function isFaqBlockBoundaryCustomer(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (/^#{1,3}\s+\S/.test(trimmed) && !isFaqHeadingLineCustomer(trimmed)) return true;
+  if (/^---+$/.test(trimmed)) return true;
+  return /^\*\*(?:\uACF5\uC2DD\s*\uD655\uC778\s*\uB9C1\uD06C|\uC5EC\uD589\s*\uC0C1\uD488\uACFC\s*\uD568\uAED8\s*\uD655\uC778\uD558\uAE30|\uC0C1\uD488\uACFC\s*\uD568\uAED8\s*\uD655\uC778\uD558\uAE30)\*\*/.test(trimmed);
+}
+
+function dedupeRepeatedFaqBlocksCustomer(markdown: string): string {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let seenFaq = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!isFaqHeadingLineCustomer(line)) {
+      next.push(line);
+      continue;
+    }
+
+    if (!seenFaq) {
+      seenFaq = true;
+      next.push(line);
+      continue;
+    }
+
+    let cursor = index + 1;
+    while (cursor < lines.length && !isFaqBlockBoundaryCustomer(lines[cursor] ?? '')) {
+      cursor += 1;
+    }
+    index = cursor - 1;
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function dedupeRepeatedShortParagraphsCustomer(markdown: string): string {
+  const blocks = markdown.split(/\n{2,}/);
+  const seen = new Set<string>();
+  return blocks
+    .filter((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) return true;
+      if (/^#{1,6}\s|^\s*[-*]\s|^\s*\||^!\[|^<\w+/i.test(trimmed)) return true;
+      const plain = trimmed.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (plain.length < 35 || plain.length > 220) return true;
+      const key = plain.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join('\n\n');
+}
+
 function removeAiEditorialClichesFinal(markdown: string): string {
   return markdown
     .replace(/이게\s*말이\s*되나\s*싶으시죠\??\s*/g, '')
@@ -2134,7 +2193,7 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
     )))));
   }
   next = removeAiEditorialClichesFinal(finalKeywordDensityRepair(next, primaryKeyword, blogType));
-  return normalizeFinalMarkdownSurface(capHeadingDensityFinal(
+  return dedupeRepeatedShortParagraphsCustomer(dedupeRepeatedFaqBlocksCustomer(normalizeFinalMarkdownSurface(capHeadingDensityFinal(
     ensureMinimumReadableSectionsFinal(
       ensureAuthorityLinksFinal(
         ensureRainySeasonTableFinal(
@@ -2160,7 +2219,7 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
         row,
       ),
     ),
-  ));
+  ))));
 }
 
 function ensureCustomerSummary(markdown: string, primaryKeyword: string): string {

@@ -231,11 +231,94 @@ describe('blog editorial repair', () => {
     expect(result.changed).toBe(true);
     expect(result.changes).toContain('repaired_semantic_surface');
     expect(result.blogHtml).toContain('즐길 수 있어');
-    expect(result.blogHtml).toContain('보라카이 참고 이미지');
+    expect(result.blogHtml).toContain('보라카이 여행 준비 장면');
+    expect(result.blogHtml).not.toContain('보라카이 참고 이미지');
     expect(result.blogHtml).toContain('## 보라카이 7월 날씨 준비물');
     expect(result.blogHtml).not.toContain('현지 현지');
     expect(result.after.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(false);
     expect(result.after.issues.some((issue) => issue.code === 'placeholder_destination_context')).toBe(false);
+  });
+
+  it('repairs generated image context and removes repeated answer scaffolds', () => {
+    const result = repairBlogEditorialQuality({
+      title: '몽골 숙소 지역별 예산 여행 가이드 2026',
+      primaryKeyword: '몽골 숙소 지역별 예산',
+      destination: '몽골',
+      category: 'cost',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 숙소 지역별 예산 여행 가이드',
+        '',
+        '답부터 말하면, 몽골 숙소는 울란바토르 시내와 테를지 게르 캠프를 나눠 예산을 봐야 합니다.',
+        '',
+        '![몽골 숙소 지역별 예산 참고 이미지 3 지역별 가이드 예산과](/images/mongolia.jpg)',
+        '<figcaption>몽골 숙소 지역별 예산 참고 이미지 3 지역별 가이드 예산과</figcaption>',
+        '',
+        '## 예약 전 무엇을 먼저 확인해야 할까요?',
+        '',
+        '답부터 말하면, 2026년 기준 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다.',
+        '',
+        '## 숙소 예산 표',
+        '',
+        '| 지역 | 기준 | 비용 |',
+        '| --- | --- | --- |',
+        '| 울란바토르 | 시내 접근 | 7만 원대 |',
+        '| 테를지 | 자연 체험 | 5만 원대 |',
+        '| 공항 근처 | 늦은 도착 | 8만 원대 |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_generated_image_context');
+    expect(result.changes).toContain('removed_repetitive_answer_scaffold');
+    expect(result.blogHtml).toContain('![몽골 여행 준비 장면](/images/mongolia.jpg)');
+    expect(result.blogHtml).not.toContain('<figcaption>');
+    expect(result.blogHtml).not.toContain('## 예약 전 무엇을 먼저 확인해야 할까요?');
+    expect(result.after.issues.some((issue) => issue.code === 'generated_image_context')).toBe(false);
+    expect(result.after.issues.some((issue) => issue.code === 'repetitive_answer_scaffold')).toBe(false);
+  });
+
+  it('dedupes repeated FAQ blocks while keeping downstream CTA sections', () => {
+    const result = repairBlogEditorialQuality({
+      title: '다낭 여행 준비물 여행 가이드 2026',
+      primaryKeyword: '다낭 여행 준비물',
+      destination: '다낭',
+      category: 'preparation',
+      contentType: 'guide',
+      blogHtml: [
+        '# 다낭 여행 준비물 여행 가이드',
+        '',
+        '답부터 말하면, 다낭은 우기와 건기를 나눠 준비물을 확인해야 합니다.',
+        '',
+        '## 자주 묻는 질문',
+        '',
+        '**Q1. 다낭 준비에서 가장 먼저 볼 것은 무엇인가요?**',
+        'A. 여권, 날씨, 이동 시간을 먼저 확인하세요.',
+        '',
+        '**자주 묻는 질문**',
+        '',
+        '**Q1. 다낭 준비에서 가장 먼저 볼 것은 무엇인가요?**',
+        'A. 비용, 일정, 이동 시간을 확인하세요.',
+        '',
+        '---',
+        '',
+        '**여행 상품과 함께 확인하기**',
+        '- [현재 판매 중인 여행조건 확인](/packages?destination=다낭)',
+        '',
+        '항공권, 숙소, 환율, 현지 운영시간을 함께 보려면 최소 2~4주 전에 다낭 관련 조건을 비교하는 편이 안전합니다.',
+        '',
+        '항공권, 숙소, 환율, 현지 운영시간을 함께 보려면 최소 2~4주 전에 다낭 관련 조건을 비교하는 편이 안전합니다.',
+      ].join('\n'),
+    });
+
+    const faqHeadings = result.blogHtml.match(/자주\s*묻는\s*질문/g) || [];
+    const repeatedPlanning = result.blogHtml.match(/항공권, 숙소, 환율, 현지 운영시간을 함께 보려면/g) || [];
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('deduped_repeated_faq_blocks');
+    expect(result.changes).toContain('deduped_repeated_short_paragraphs');
+    expect(faqHeadings).toHaveLength(1);
+    expect(repeatedPlanning).toHaveLength(1);
+    expect(result.blogHtml).toContain('**여행 상품과 함께 확인하기**');
   });
 
   it('removes editor persona and Yeosonam data variants that make posts sound generated', () => {

@@ -64,10 +64,12 @@ export interface BlogIntentIssue {
     | 'repeated_ai_opening_pattern'
     | 'machine_title_format'
     | 'generic_image_alt'
+    | 'generated_image_context'
     | 'broken_editorial_voice'
     | 'awkward_korean_surface'
     | 'placeholder_destination_context'
     | 'title_intent_mismatch'
+    | 'repetitive_answer_scaffold'
     | 'missing_answer_first'
     | 'early_strong_cta'
     | 'unsupported_yeosonam_data'
@@ -391,6 +393,11 @@ const BROKEN_EDITORIAL_VOICE_RE =
 
 const ENGLISH_MICRO_ANGLE_ALT_RE =
   /\b(?:family budget|budget family|transport cost|hotel area(?: budget)?|weather clothes|weather packing|weather preparation|local mobility|best food|july weather clothes)\b/i;
+const GENERATED_IMAGE_CONTEXT_RE =
+  /(?:참고\s*이미지|여행\s*준비\s*이미지|travel\s*image|image|photo)\s*\d+|[a-f0-9]{6,}|(?:\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b)/i;
+const GENERIC_ANSWER_SCAFFOLD_HEADING_RE = /^##\s+예약\s*전\s+무엇을\s+먼저\s+확인해야\s*할까요\??\s*$/m;
+const GENERIC_ANSWER_SCAFFOLD_BODY_RE =
+  /답부터\s+말하면[^.\n]*(?:비용[·,\s]+일정|일정[·,\s]+준비|준비\s*조건|현지에서\s+생기는\s+추가\s+부담|1\s*[~–-]\s*2시간)[^.\n]*\./;
 
 function extractImageAlts(source: string): string[] {
   const alts: string[] = [];
@@ -405,6 +412,15 @@ function extractImageAlts(source: string): string[] {
   return alts.filter(Boolean);
 }
 
+function extractImageCaptions(source: string): string[] {
+  const captions: string[] = [];
+  source.replace(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/gi, (_match, caption: string) => {
+    captions.push(stripMarkup(String(caption || '')).replace(/\s+/g, ' ').trim());
+    return _match;
+  });
+  return captions.filter(Boolean);
+}
+
 const WEATHER_INTENT_RE = /weather|날씨|옷차림|월별|기온|우기|건기|강수|rainy|season/i;
 const NON_WEATHER_INTENT_RE =
   /insurance|보험|visa|비자|입국|여권|currency|환전|결제|카드|esim|e-sim|usim|유심|로밍|transport|교통|이동|airport|공항|hotel|숙소|식비|맛집|food|budget|경비|비용/i;
@@ -417,7 +433,7 @@ function hasWeatherIntent(text: string): boolean {
   return WEATHER_INTENT_RE.test(text);
 }
 
-function inspectSemanticSurfaceContract(input: BlogIntentInput, plain: string, issues: BlogIntentIssue[]) {
+function inspectSemanticSurfaceContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
   const title = (input.title || '').trim();
   const categorySignal = input.category && input.category.trim().length <= 32 ? input.category : '';
   const topicText = [
@@ -462,6 +478,17 @@ function inspectSemanticSurfaceContract(input: BlogIntentInput, plain: string, i
       { title, topicText },
     );
   }
+
+  const answerFirstCount = (plain.match(/답부터\s+말하면/g) || []).length;
+  if (answerFirstCount >= 2 && GENERIC_ANSWER_SCAFFOLD_HEADING_RE.test(source) && GENERIC_ANSWER_SCAFFOLD_BODY_RE.test(plain)) {
+    addIssue(
+      issues,
+      'repetitive_answer_scaffold',
+      'critical',
+      'Article repeats a generic answer-first scaffold after already answering the reader question.',
+      { answerFirstCount },
+    );
+  }
 }
 
 function inspectHumanSurfaceContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
@@ -494,6 +521,18 @@ function inspectHumanSurfaceContract(input: BlogIntentInput, source: string, pla
       || /[가-힣].*\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b/i.test(alt),
     )
     .slice(0, 5);
+  const generatedImageContext = [...extractImageAlts(source), ...extractImageCaptions(source)]
+    .filter((text) => GENERATED_IMAGE_CONTEXT_RE.test(text) && /(?:참고\s*이미지|이미지|image|photo|\b[a-z]{3,})/i.test(text))
+    .slice(0, 5);
+  if (generatedImageContext.length > 0) {
+    addIssue(
+      issues,
+      'generated_image_context',
+      'critical',
+      'Image alt/caption text must describe the travel context naturally and must not expose generated image slots or filename-like fragments.',
+      { generatedImageContext },
+    );
+  }
   if (badAlts.length > 0) {
     addIssue(
       issues,
@@ -542,7 +581,7 @@ function inspectCommonEditorialContract(input: BlogIntentInput, source: string, 
   }
 
   inspectHumanSurfaceContract(input, source, plain, issues);
-  inspectSemanticSurfaceContract(input, plain, issues);
+  inspectSemanticSurfaceContract(input, source, plain, issues);
 }
 
 function inspectInfoWriterContract(source: string, plain: string, issues: BlogIntentIssue[]) {
