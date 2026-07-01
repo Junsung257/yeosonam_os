@@ -80,6 +80,15 @@ function isGoogleIndexedReport(report: any): boolean {
     || coverage.includes('색인 생성');
 }
 
+function isLocalhostIndexingReport(report: any): boolean {
+  const text = [
+    report?.url,
+    report?.google_error,
+    report?.indexnow_error,
+  ].filter(Boolean).join(' ');
+  return /localhost|127\.0\.0\.1|0\.0\.0\.0|sc-domain:localhost/i.test(text);
+}
+
 type BlogOpsWatcherIssue = {
   code: string;
   severity: 'info' | 'warning' | 'high' | 'critical';
@@ -259,7 +268,7 @@ async function runDailySummary(request: NextRequest) {
   const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes, publisherCronRes, recentPublishedRes] = summaryResults;
 
   const published = pubRes.data || [];
-  const indexReports = indexRes.data || [];
+  const indexReports = (indexRes.data || []).filter((report: any) => !isLocalhostIndexingReport(report));
   const indexSuccess = indexReports.filter((r: any) => r.google_status === 'success' || r.indexnow_status === 'success').length;
   const indexRate = indexReports.length > 0 ? (indexSuccess / indexReports.length) * 100 : 0;
   const googleInspectionReports = indexReports.filter((r: any) =>

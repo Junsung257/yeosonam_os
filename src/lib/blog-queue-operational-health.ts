@@ -31,6 +31,7 @@ export interface BlogQueueOperationalState {
 
 const DEFAULT_MAX_ATTEMPTS = 2;
 const STALE_GENERATING_MS = 30 * 60 * 1000;
+const QUEUED_OVERDUE_GRACE_MS = 24 * 60 * 60 * 1000;
 const HISTORY_FAILED_MS = 14 * 24 * 60 * 60 * 1000;
 const NON_RETRYABLE_OPERATIONAL_ISSUES = new Set([
   'duplicate_content',
@@ -100,7 +101,7 @@ export function getBlogQueueOperationalState(
   }
 
   if (status === 'queued') {
-    const overdue = Boolean(targetAt && targetAt.getTime() < now.getTime());
+    const overdue = Boolean(targetAt && now.getTime() - targetAt.getTime() > QUEUED_OVERDUE_GRACE_MS);
     const oldQueued = createdAt
       ? now.getTime() - createdAt.getTime() > HISTORY_FAILED_MS && !overdue
       : false;
