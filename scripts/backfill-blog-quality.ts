@@ -1223,12 +1223,24 @@ function primaryKeywordForCustomer(row: BlogRow): string {
   return base;
 }
 
-function topicKindForCustomer(row: BlogRow, primaryKeyword: string): 'weather' | 'communication' | 'visa' | 'currency' | 'cost' | 'itinerary' | 'general' {
-  const text = `${row.slug || ''} ${row.seo_title || ''} ${row.destination || ''} ${primaryKeyword}`.toLowerCase();
+function topicKindForCustomer(row: BlogRow, primaryKeyword: string): 'weather' | 'communication' | 'visa' | 'currency' | 'cost' | 'transport' | 'itinerary' | 'general' {
+  const strongText = `${row.slug || ''} ${row.destination || ''} ${primaryKeyword}`.toLowerCase();
+  const titleText = `${row.seo_title || ''}`.toLowerCase();
+  const text = `${strongText} ${titleText}`;
+
+  if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(strongText)) return 'transport';
+  if (/cost|비용|예산|경비|가격|항공권|가성비/.test(strongText)) return 'cost';
+  if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(strongText)) return 'weather';
+  if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(strongText)) return 'communication';
+  if (/visa|비자|입국|여권|서류|esta|etias/.test(strongText)) return 'visa';
+  if (/currency|환전|환율|동전|카드|현금/.test(strongText)) return 'currency';
+  if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(strongText)) return 'itinerary';
+
   if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(text)) return 'weather';
   if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(text)) return 'communication';
   if (/visa|비자|입국|여권|서류|esta|etias/.test(text)) return 'visa';
   if (/currency|환전|환율|동전|카드|현금/.test(text)) return 'currency';
+  if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(text)) return 'transport';
   if (/cost|비용|예산|경비|가격|항공권/.test(text)) return 'cost';
   if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(text)) return 'itinerary';
   return 'general';
@@ -1240,8 +1252,28 @@ function customerTopicLabel(kind: ReturnType<typeof topicKindForCustomer>): stri
   if (kind === 'visa') return '입국 조건과 준비 서류';
   if (kind === 'currency') return '환전, 카드, 현금 준비';
   if (kind === 'cost') return '예산과 실제 비용';
+  if (kind === 'transport') return '교통비와 이동 동선';
   if (kind === 'itinerary') return '일정과 이동 동선';
   return '일정, 비용, 준비물';
+}
+
+function hasConflictingCustomerTitleIntent(title: string, kind: ReturnType<typeof topicKindForCustomer>, primaryKeyword: string): boolean {
+  const keyword = primaryKeyword.toLowerCase();
+  const text = title.toLowerCase();
+  const keywordAlreadyAllowsWeather = /weather|날씨|옷차림|기온|우기|건기/.test(keyword);
+  const keywordAlreadyAllowsCost = /cost|비용|예산|경비|가격|교통비|이동비|항공권/.test(keyword);
+  const keywordAlreadyAllowsTransport = /transport|mobility|transfer|교통|이동|픽업|공항/.test(keyword);
+
+  if (kind !== 'weather' && !keywordAlreadyAllowsWeather && /weather|날씨|옷차림|기온|우기|건기/.test(text)) {
+    return true;
+  }
+  if (!['cost', 'transport', 'food', 'accommodation'].includes(kind) && !keywordAlreadyAllowsCost && /cost|비용|예산|경비|가격|교통비|이동비|항공권/.test(text)) {
+    return true;
+  }
+  if (kind !== 'transport' && !keywordAlreadyAllowsTransport && /transport|mobility|transfer|교통|이동|픽업|공항/.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 function improveBackfillSeoTitleCustomer(title: string, row: BlogRow, primaryKeyword: string): string {
@@ -1253,7 +1285,8 @@ function improveBackfillSeoTitleCustomer(title: string, row: BlogRow, primaryKey
   const kind = topicKindForCustomer(row, keyword);
   const hasKeyword = keyword.length > 1 && cleaned.includes(keyword);
   const hasUsefulModifier = /20\d{2}|최신|날씨|비용|일정|준비|체크|입국|환전|유심|eSIM|로밍|항공권/.test(cleaned);
-  const weak = isWeakGeneratedSlug(row.slug) || cleaned.length < 18 || cleaned.length > 60 || !hasKeyword || !hasUsefulModifier || containsEnglishMicroAngle(cleaned);
+  const conflictsWithPrimaryIntent = hasConflictingCustomerTitleIntent(cleaned, kind, keyword);
+  const weak = isWeakGeneratedSlug(row.slug) || cleaned.length < 18 || cleaned.length > 60 || !hasKeyword || !hasUsefulModifier || containsEnglishMicroAngle(cleaned) || conflictsWithPrimaryIntent;
   if (!weak) return cleaned;
 
   const modifier = customerTopicLabel(kind);
