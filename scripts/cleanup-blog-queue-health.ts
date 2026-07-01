@@ -71,7 +71,7 @@ async function main() {
   const { data, error } = await supabase
     .from('blog_topic_queue')
     .select('id, status, source, product_id, attempts, last_error, created_at, updated_at, target_publish_at, meta')
-    .in('status', ['generating', 'failed'])
+    .in('status', ['queued', 'generating', 'failed'])
     .order('updated_at', { ascending: false })
     .limit(limit);
 

@@ -66,4 +66,26 @@ describe('blog queue operational health', () => {
       action: 'recover_stale_generating',
     });
   });
+
+  it('does not flag same-day queued inventory as overdue', () => {
+    const now = new Date('2026-07-01T13:00:00.000Z');
+
+    const sameDayReady = getBlogQueueOperationalState({
+      status: 'queued',
+      target_publish_at: '2026-07-01T03:00:00.000Z',
+    }, now);
+    const oldReady = getBlogQueueOperationalState({
+      status: 'queued',
+      target_publish_at: '2026-06-29T03:00:00.000Z',
+    }, now);
+
+    expect(sameDayReady).toMatchObject({
+      attention: false,
+      action: 'publish_ready',
+    });
+    expect(oldReady).toMatchObject({
+      attention: true,
+      action: 'publish_ready',
+    });
+  });
 });

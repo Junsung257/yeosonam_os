@@ -46,6 +46,35 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+function isPublicIndexingOrigin(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return !['localhost', '127.0.0.1', '0.0.0.0'].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function resolveBlogIndexingBaseUrl(jobUrl: string, optionBaseUrl?: string): string {
+  const candidates = [
+    optionBaseUrl,
+    jobUrl,
+    process.env.BLOG_CANONICAL_ORIGIN,
+    process.env.NEXT_PUBLIC_BASE_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    'https://www.yeosonam.com',
+  ];
+
+  for (const candidate of candidates) {
+    if (!isPublicIndexingOrigin(candidate)) continue;
+    const parsed = new URL(candidate);
+    return parsed.origin;
+  }
+
+  return 'https://www.yeosonam.com';
+}
+
 async function resetStaleProcessingJobs(now: Date): Promise<number> {
   const staleBefore = new Date(now.getTime() - STALE_PROCESSING_MS).toISOString();
   const { data, error } = await supabaseAdmin
@@ -108,8 +137,6 @@ export async function processDueBlogIndexingJobs(options: {
     return { processed: 0, stale_reset: staleReset, errors, results };
   }
 
-  const baseUrl = (options.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/+$/, '');
-
   for (const job of (jobs ?? []) as BlogIndexingJobRow[]) {
     const attempt = (job.attempts ?? 0) + 1;
     const claimedAt = new Date().toISOString();
@@ -138,6 +165,7 @@ export async function processDueBlogIndexingJobs(options: {
     }
 
     try {
+      const baseUrl = resolveBlogIndexingBaseUrl(job.url, options.baseUrl);
       const report = await notifyIndexing(job.url, baseUrl, { type: job.type });
       await persistBlogIndexingReport(job, report);
 
