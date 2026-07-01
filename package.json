@@ -122,6 +122,7 @@
     "verify:blog-bridge": "node scripts/verify-blog-publisher-bridge.mjs",
     "verify:blog-bridge:dry": "node scripts/verify-blog-publisher-bridge.mjs --dry-run",
     "diagnose:blog-autopublish": "npx tsx scripts/diagnose-blog-autopublish.ts",
+    "recheck:blog-product-evidence": "npx tsx scripts/recheck-blog-product-evidence.ts",
     "cleanup:blog-queue-health": "npx tsx scripts/cleanup-blog-queue-health.ts",
     "audit:blog-quality": "npx tsx scripts/backfill-blog-quality.ts",
     "audit:blog-render": "node scripts/audit-blog-render-integrity.mjs --browser-fallback",

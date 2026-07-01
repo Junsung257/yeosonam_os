@@ -169,6 +169,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Candidates blocked by stale or missing customer mobile proof, failed scorecard evidence, or downstream `blog_publish` eligibility are marked `failed` with `failure_code='product_open_contract'` and `quarantine_reason='product_open_contract'`.
 - `countPublishableQueueCandidates()`, `blog-daily-summary`, and `diagnose:blog-autopublish` exclude these rows from publishable candidate counts and treat them as evidence collection work, not as ready inventory.
 - `diagnose:blog-autopublish -- --json` includes `product_evidence_work` so operators can see the blocked product title, queue row, blocker categories, raw blockers, and next action without reading raw DB rows.
+- If the product proof may have been repaired after the queue row failed, run `npm run recheck:blog-product-evidence -- --json` first. Use `--write` only when the dry-run shows `requeue > 0`; it re-evaluates the current `customer_open_contract`, requeues passing product rows, and refreshes blocker metadata for rows that still fail.
 - Do not requeue these rows until the linked package has fresh customer mobile proof and its customer-open contract passes.
 
 ## Vercel Cron Bypass Fallback
