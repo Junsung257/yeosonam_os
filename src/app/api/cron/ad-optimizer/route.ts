@@ -129,7 +129,20 @@ const handleAdOptimizer = async (request: NextRequest) => {
   if (new Date().getHours() === 0) {
     push('롱테일 키워드 발굴 시작 (자정 실행)');
     try {
-      const seedKeywords = ['단체여행', '패키지여행', '허니문', '효도여행'];
+      const seedKeywords = [
+        '단체여행',
+        '기업 워크샵',
+        '인센티브투어',
+        '기업연수',
+        '해외연수',
+        '부산 출발 단체여행',
+        '김해공항 단체여행',
+        '협회 연수',
+        '법인 맞춤여행',
+        '패키지여행',
+        '허니문',
+        '효도여행',
+      ];
       const longtails = await discoverLongtailKeywords({ platform: 'naver', seedKeywords });
       push(`롱테일 발굴 ${longtails.length}개 후보 — ${longtails.map((l) => l.keyword).join(', ')}`);
     } catch (err) {

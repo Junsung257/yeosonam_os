@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import type { SharedRfqData } from '@/lib/db/rfq-share';
+import { trackEngagement } from '@/lib/tracker';
 
 declare global {
   interface Window {
@@ -67,6 +69,9 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
   const [myReactions, setMyReactions] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [commentMap, setCommentMap] = useState<Record<string, string>>({});
+  const [selectedProposalId, setSelectedProposalId] = useState(rfq.selected_proposal_id ?? '');
+  const [selectingProposalId, setSelectingProposalId] = useState('');
+  const [selectionError, setSelectionError] = useState('');
   const visitorToken = getVisitorToken();
 
   // 현재 페이지 URL
@@ -78,9 +83,27 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
     rfq.proposal_a && { key: 'proposal_a', ...rfq.proposal_a },
     rfq.proposal_b && { key: 'proposal_b', ...rfq.proposal_b },
     rfq.proposal_c && { key: 'proposal_c', ...rfq.proposal_c },
-  ].filter(Boolean) as Array<{ key: string; title: string; summary: string; price: number; ai_score?: number; tenant_name?: string }>;
+  ].filter(Boolean) as Array<{ key: string; id: string; title: string; summary: string; price: number; ai_score?: number; tenant_name?: string }>;
 
   const hasProposals = proposals.length > 0;
+  const canSelectProposal = rfq.status === 'awaiting_selection' || rfq.status === 'bidding';
+
+  useEffect(() => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.rfqShareOpened,
+      page_url: window.location.pathname,
+      destination: rfq.destination,
+      party_type: 'rfq_share',
+      metadata: {
+        source: 'rfq_share_page',
+        rfq_id: rfq.id,
+        share_token: shareToken,
+        proposal_count: proposals.length,
+        status: rfq.status,
+      },
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per share page open
+  }, []);
 
   /** 반응 추가 */
   const addReaction = useCallback(async (type: string) => {
@@ -101,6 +124,43 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
       }),
     });
   }, [myReactions, rfq.id, visitorToken, commentMap]);
+
+  const selectProposal = useCallback(async (proposalId: string) => {
+    if (selectedProposalId || selectingProposalId) return;
+    setSelectionError('');
+    setSelectingProposalId(proposalId);
+
+    try {
+      const res = await fetch(`/api/rfq/${rfq.id}/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: proposalId, share_token: shareToken }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data?.error === 'string' ? data.error : '제안 선택에 실패했습니다.');
+      }
+
+      setSelectedProposalId(proposalId);
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.rfqSelected,
+        page_url: window.location.pathname,
+        destination: rfq.destination,
+        party_type: 'rfq_share',
+        metadata: {
+          source: 'rfq_share_page',
+          rfq_id: rfq.id,
+          proposal_id: proposalId,
+          share_token: shareToken,
+        },
+      });
+    } catch (error) {
+      setSelectionError(error instanceof Error ? error.message : '제안 선택에 실패했습니다.');
+    } finally {
+      setSelectingProposalId('');
+    }
+  }, [rfq.destination, rfq.id, selectedProposalId, selectingProposalId, shareToken]);
 
   const handleCopyLink = async () => {
     try {
@@ -209,8 +269,13 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
         {hasProposals && (
           <div className="space-y-3">
             <h2 className="font-semibold text-gray-900 text-sm px-1">🏆 제안 비교</h2>
+            {selectionError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+                {selectionError}
+              </p>
+            )}
             {proposals.map((p) => {
-              const isSelected = rfq.selected_proposal_id && p.key.endsWith(rfq.selected_proposal_id.slice(0, 8));
+              const isSelected = selectedProposalId === p.id;
               const aiScore = p.ai_score ?? null;
               return (
                 <div
@@ -254,6 +319,24 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
                       </div>
                     )}
                   </div>
+                  {canSelectProposal && (
+                    <button
+                      type="button"
+                      onClick={() => void selectProposal(p.id)}
+                      disabled={Boolean(selectedProposalId) || selectingProposalId === p.id}
+                      className={`mt-4 w-full rounded-lg px-4 py-3 text-sm font-extrabold transition ${
+                        isSelected
+                          ? 'bg-green-600 text-white'
+                          : 'bg-brand text-white hover:bg-[#1B64DA] disabled:bg-gray-300'
+                      }`}
+                    >
+                      {isSelected
+                        ? '선택 완료'
+                        : selectingProposalId === p.id
+                          ? '선택 처리 중...'
+                          : '이 제안으로 진행'}
+                    </button>
+                  )}
                 </div>
               );
             })}

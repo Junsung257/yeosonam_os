@@ -105,7 +105,7 @@ export default function TenantRfqsPage() {
       const res = await fetch(`/api/tenant/rfqs?tenant_id=${encodedTenantId}`);
       if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');
       const data = await res.json();
-      setRfqs(Array.isArray(data) ? data : []);
+      setRfqs(Array.isArray(data) ? data : (data.rfqs ?? []));
     } catch (e) {
       setError(e instanceof Error ? e.message : '오류가 발생했습니다');
     } finally {

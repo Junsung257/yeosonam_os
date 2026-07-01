@@ -289,7 +289,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             <span aria-hidden>🔥</span>마감·특가
           </Link>
           <Link
-            href="/group-inquiry"
+            href="/group"
             onClick={() => trackGroupInquiryClick('home_hero_compact')}
             className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}
           >
@@ -364,7 +364,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           마감·특가
         </Link>
         <Link
-          href="/group-inquiry"
+          href="/group"
           onClick={() => trackGroupInquiryClick('home_hero_expanded')}
           className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40 hover:bg-[#F8FAFF]`}
         >

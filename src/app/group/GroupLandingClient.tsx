@@ -266,8 +266,12 @@ export default function GroupLandingClient() {
         // 랜딩 전용 메타데이터는 JSONB 에 집어넣어 보존
         custom_requirements: {
           source: 'group_landing',
+          segment: 'group_custom_travel',
+          organization_name: form.group_name,
+          organization_type: form.purpose,
           group_name: form.group_name,
           purpose: form.purpose,
+          approval_view_required: true,
           shopping_preference: form.shopping || undefined,
           budget_range_label: form.budget_label,
           pax_label: form.pax_label,
@@ -292,7 +296,7 @@ export default function GroupLandingClient() {
       // ── Meta Pixel Lead 이벤트 ───────────────────────────
       trackLead({ content_name: '단체여행 견적', value: 0 });
       trackEngagement({
-        event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+        event_type: ANALYTICS_EVENTS.rfqSubmitted,
         page_url: window.location.pathname,
         intent: form.purpose || null,
         budget: form.budget_label || null,
@@ -301,12 +305,16 @@ export default function GroupLandingClient() {
         metadata: {
           source: 'group_landing_submit',
           rfq_id: data.rfq.id,
+          share_token: data.share_token ?? null,
           pax_label: form.pax_label,
         },
       });
 
-      // ── 성공: 고객 전용 진행 링크로 이동 ──────────────────
-      router.push(`/rfq/${data.rfq.id}`);
+      // ── 성공: 고객 전용 공유/진행 링크로 이동 ───────────────
+      const nextPath = data.share_url
+        ? new URL(data.share_url, window.location.origin).pathname
+        : `/rfq/${data.rfq.id}`;
+      router.push(nextPath);
     } catch (err) {
       console.error('견적 요청 실패:', err);
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');

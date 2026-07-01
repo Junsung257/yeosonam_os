@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { trackLead } from '@/components/MetaPixel';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
+import { trackEngagement } from '@/lib/tracker';
 
 declare global {
   interface Window {
@@ -305,7 +307,12 @@ export default function PrivateTourLandingClient() {
         special_requests: form.notes || undefined,
         custom_requirements: {
           source: 'private_tour_landing',
+          segment: form.group_type === '회사 단체' ? 'group_custom_travel' : 'private_custom_travel',
           group_type: form.group_type,
+          organization_type: form.group_type || undefined,
+          seminar_required: form.needs_seminar || undefined,
+          corporate_payment: form.corporate_card || undefined,
+          approval_view_required: form.group_type === '회사 단체',
           duration_range: form.duration_days,
           pax_range: form.pax,
           budget_range_label: form.budget_label,
@@ -329,6 +336,20 @@ export default function PrivateTourLandingClient() {
       }
 
       trackLead({ content_name: '단독맞춤여행 견적', value: 0 });
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.rfqSubmitted,
+        page_url: window.location.pathname,
+        intent: form.group_type || null,
+        budget: form.budget_label || null,
+        destination: form.destination || null,
+        party_type: 'private_tour',
+        metadata: {
+          source: 'private_tour_submit',
+          rfq_id: data.rfq.id,
+          share_token: data.share_token ?? null,
+          pax_label: form.pax,
+        },
+      });
 
       // share_url이 있으면 완료 화면 표시, 없으면 기존 RFQ 페이지로 이동
       if (data.share_url) {
@@ -912,7 +933,7 @@ export default function PrivateTourLandingClient() {
             </p>
 
             <a
-              href={`/rfq/${doneData.rfqId}`}
+              href={doneData.shareUrl ? new URL(doneData.shareUrl, window.location.origin).pathname : `/rfq/${doneData.rfqId}`}
               className="block w-full bg-brand text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition"
             >
               📋 견적 진행 상황 보기
