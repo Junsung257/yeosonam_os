@@ -277,6 +277,7 @@ async function main() {
   const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/mobile-copy-audit');
   const textDir = path.join(outputDir, 'texts');
   const jsonOnly = hasFlag('json');
+  ensureDir(outputDir);
   ensureDir(textDir);
 
   const proofSecret = process.env.REVALIDATE_SECRET || process.env.ADMIN_API_TOKEN || null;
