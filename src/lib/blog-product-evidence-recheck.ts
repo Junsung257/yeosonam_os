@@ -21,7 +21,7 @@ function productOpenContractFailure(blockers: string[]): string {
   return `product_customer_open_contract_failed:${summary}`;
 }
 
-function withoutProductOpenContractBlock(meta: Record<string, unknown>, checkedAt: string): Record<string, unknown> {
+function clearProductOpenContractBlock(meta: Record<string, unknown>, checkedAt: string): Record<string, unknown> {
   const next = { ...meta };
   delete next.failure_code;
   delete next.quarantine_reason;
@@ -31,8 +31,41 @@ function withoutProductOpenContractBlock(meta: Record<string, unknown>, checkedA
     ...next,
     product_open_contract_rechecked_at: checkedAt,
     product_open_contract_recheck_result: 'pass',
+  };
+}
+
+function withoutProductOpenContractBlock(meta: Record<string, unknown>, checkedAt: string): Record<string, unknown> {
+  return {
+    ...clearProductOpenContractBlock(meta, checkedAt),
     requeued_by: 'blog-product-evidence-recheck',
     requeued_at: checkedAt,
+  };
+}
+
+export function readBlogProductEvidenceDedupKey(input: {
+  product_id?: string | null;
+  meta?: unknown;
+}): string | null {
+  const meta = asRecord(input.meta);
+  const raw = meta.product_dedup_key ?? meta.dedup_key ?? input.product_id;
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : null;
+}
+
+export function buildBlogProductEvidenceDuplicateMeta(input: {
+  meta?: unknown;
+  checkedAt?: string;
+  duplicateKey?: string | null;
+  duplicateKeepId?: string | null;
+}): Record<string, unknown> {
+  const checkedAt = input.checkedAt ?? new Date().toISOString();
+  return {
+    ...clearProductOpenContractBlock(asRecord(input.meta), checkedAt),
+    duplicate_product_recheck: true,
+    duplicate_product_recheck_at: checkedAt,
+    quarantine_reason: 'duplicate_preclaim',
+    self_heal_blocked: true,
+    ...(input.duplicateKey ? { duplicate_key: input.duplicateKey } : {}),
+    ...(input.duplicateKeepId ? { duplicate_keep_id: input.duplicateKeepId } : {}),
   };
 }
 
