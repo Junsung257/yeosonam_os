@@ -28,6 +28,81 @@ export interface BlogKeywordDensityRepairResult {
   allowedCount: number;
 }
 
+const GENERIC_DESTINATION_STOPWORDS = new Set([
+  '가족',
+  '여름',
+  '휴가',
+  '해외여행자',
+  '보험',
+  '여행',
+  '가이드',
+  '준비물',
+  '체크리스트',
+]);
+
+function inferDestinationLabelForSurfaceRepair(input: BlogEditorialRepairInput): string | null {
+  const candidates = [input.destination, input.primaryKeyword, input.title, input.category].filter((value): value is string =>
+    Boolean(value && value.trim()),
+  );
+  for (const candidate of candidates) {
+    const first = candidate
+      .replace(/[|·:()[\]{}]/g, ' ')
+      .trim()
+      .split(/\s+/)[0]
+      ?.trim();
+    if (!first) continue;
+    if (!/^[가-힣]{2,10}$/.test(first)) continue;
+    if (GENERIC_DESTINATION_STOPWORDS.has(first)) continue;
+    return first;
+  }
+  return null;
+}
+
+function repairAwkwardSemanticSurface(
+  markdown: string,
+  input: BlogEditorialRepairInput,
+): { text: string; changed: boolean } {
+  const before = markdown;
+  let text = markdown
+    .replace(/즐기기할\s+수/g, '즐길 수')
+    .replace(/즐기기할/g, '즐길')
+    .replace(/즐기기하세요/g, '즐기세요')
+    .replace(/즐기기합니다/g, '즐깁니다')
+    .replace(/즐기기했습니다/g, '즐겼습니다')
+    .replace(/즐기기하는/g, '즐기는')
+    .replace(/즐기기하고/g, '즐기고')
+    .replace(/즐기기하며/g, '즐기며')
+    .replace(/즐기기하기/g, '즐기기')
+    .replace(/즐기기하/g, '즐기')
+    .replace(/확인하시는 것이 좋습니다/g, '확인하는 편이 안전합니다')
+    .replace(/현지\s+현지/g, '현지');
+
+  const destination = inferDestinationLabelForSurfaceRepair(input);
+  if (destination) {
+    text = text
+      .replace(/현지\s+참고\s*이미지/g, `${destination} 참고 이미지`)
+      .replace(/현지\s+([1-9]\d?월\s+날씨)/g, `${destination} $1`)
+      .replace(/현지\s+월별\s+날씨/g, `${destination} 월별 날씨`)
+      .replace(/현지\s+날씨와\s+옷차림/g, `${destination} 날씨와 옷차림`)
+      .replace(/현지\s+가이드\s+옷차림/g, `${destination} 날씨 옷차림`);
+  }
+
+  return { text, changed: text !== before };
+}
+
+export function repairBlogSemanticSurface(input: BlogEditorialRepairInput): BlogEditorialRepairResult {
+  const before = inspectBlogIntentQuality(input);
+  const repair = repairAwkwardSemanticSurface(input.blogHtml, input);
+  const blogHtml = repair.text;
+  return {
+    blogHtml,
+    changed: repair.changed,
+    changes: repair.changed ? ['repaired_semantic_surface'] : [],
+    before,
+    after: inspectBlogIntentQuality({ ...input, blogHtml }),
+  };
+}
+
 const OFFICIAL_REFERENCE_LINKS: Partial<Record<BlogInfoSubtype, string[]>> = {
   visa: [
     '- [외교부 해외안전여행](https://www.0404.go.kr/dev/main.mofa)',
@@ -1225,6 +1300,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('removed_ai_editorial_cliches');
   }
 
+  const semanticSurfaceRepair = repairAwkwardSemanticSurface(blogHtml, input);
+  if (semanticSurfaceRepair.changed) {
+    blogHtml = semanticSurfaceRepair.text;
+    changes.push('repaired_semantic_surface');
+  }
+
   const accentRepair = normalizeBlogVisualAccents(blogHtml);
   if (accentRepair.changed) {
     blogHtml = accentRepair.text;
@@ -1514,6 +1595,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (clicheRepair.changed) {
     blogHtml = clicheRepair.text;
     changes.push('removed_ai_editorial_cliches');
+  }
+
+  const semanticSurfaceRepair = repairAwkwardSemanticSurface(blogHtml, input);
+  if (semanticSurfaceRepair.changed) {
+    blogHtml = semanticSurfaceRepair.text;
+    changes.push('repaired_semantic_surface');
   }
 
   const accentRepair = normalizeBlogVisualAccents(blogHtml);
