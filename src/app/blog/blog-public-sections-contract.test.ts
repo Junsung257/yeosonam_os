@@ -38,5 +38,36 @@ describe('blog public sections contract', () => {
       expect(source).not.toContain('src={post.og_image_url}');
     }
   });
-});
 
+  it('keeps public blog surfaces on the shared canonical origin contract', () => {
+    const files = [
+      'src/app/blog/page.tsx',
+      'src/app/blog/BlogData.tsx',
+      'src/app/blog/[slug]/page.tsx',
+      'src/app/blog/destination/[dest]/page.tsx',
+      'src/app/blog/angle/[angle]/page.tsx',
+      'src/app/sitemap.ts',
+    ];
+
+    for (const file of files) {
+      expect(readSource(file)).toContain('resolveBlogCanonicalOrigin');
+    }
+  });
+
+  it('keeps destination guide cards inside the blog topical cluster', () => {
+    const source = readSource('src/app/blog/BlogData.tsx');
+
+    expect(source).toContain(".from('active_destinations')");
+    expect(source).toContain("order('package_count'");
+    expect(source).toContain('/blog/destination/${encodeDestinationPathSegment(d.destination)}');
+    expect(source).not.toContain('getDestinationUrl(d.destination)');
+  });
+
+  it('does not expose empty style filters without site-wide angle evidence', () => {
+    const source = readSource('src/app/blog/BlogData.tsx');
+
+    expect(source).toContain("runBlogQuery(\n    'angles'");
+    expect(source).toContain('(angleCounts[candidate.key] ?? 0) > 0');
+    expect(source).not.toContain('const visibleAngleChips = BLOG_PUBLIC_ANGLES;');
+  });
+});

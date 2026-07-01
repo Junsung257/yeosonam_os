@@ -188,6 +188,20 @@ The blog system is complete only when the admin UI can answer these questions wi
 - If Vercel hosting/functions are fully down, move the publisher worker itself to an external runtime such as a small VPS, Cloudflare Worker plus queue, or Supabase Edge Function; do not rely on HTTP calls into the Vercel app in that failure mode.
 - `vercel.json` is also aligned to the same daily blog-scheduler and four publisher slots as a redundant path; keep GitHub Actions as the custom-domain fallback when Deployment Protection or Vercel Cron delivery is unreliable.
 
+## 2026-07-02 Canonical Indexing URL Evidence
+
+- Blog publishing, CTA links, indexing outbox jobs, and indexing worker submissions must use the same public canonical origin: `https://www.yeosonam.com`.
+- Do not fall back to `https://yeosonam.com` for blog indexing or public blog CTA URLs. Non-www URLs redirect publicly, but indexing evidence, sitemap URLs, canonical tags, and visibility snapshots should stay on the www origin.
+- `src/lib/blog-canonical-url.ts` is the shared helper for blog canonical origin and `/blog/{slug}` indexing URLs.
+- `enqueueBlogIndexingJob()` canonicalizes newly inserted indexing jobs, and `processDueBlogIndexingJobs()` canonicalizes existing pending jobs before provider submission. If a queued job's stored URL and slug disagree, the slug is treated as the durable source of truth.
+- Manual safe drain command:
+
+```bash
+npm run run:blog-indexing-worker -- --json --limit=15
+```
+
+- This command loads `.env.local` before importing the worker. Keep that order; importing the worker first makes Supabase configuration look missing because the Supabase client reads env at module load.
+
 ## 2026-06-24 Micro-Angle Publish Recovery
 
 - Root cause after cron/auth recovery: the active queue was mostly stale duplicate candidates, especially broad `destination + value` topics. Keeping the duplicate gate is correct; the fix is to generate more specific candidates before publishing.

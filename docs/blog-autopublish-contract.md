@@ -28,7 +28,9 @@ Local code references:
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`
+- Blog canonical URL helper: `src/lib/blog-canonical-url.ts`
 - Backfill/audit tool: `scripts/backfill-blog-quality.ts`
+- Manual indexing worker runner: `scripts/run-blog-indexing-worker.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
 - Slug migration dry-run/write tool: `scripts/migrate-blog-slugs.ts`
 
@@ -112,15 +114,36 @@ Correct sequence:
 1. Publish only after all gates pass.
 2. Revalidate `/blog`, `/blog/[slug]`, and the blog list tag.
 3. Enqueue a durable `blog_indexing_jobs` row with `content_creative_id`, `slug`, `url`, and source.
-4. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
-5. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.
-6. The worker submits changed URLs through IndexNow batch endpoints when `INDEXNOW_KEY` is configured.
-7. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
-8. Observe Google status through URL Inspection within quota.
+4. Blog indexing URLs must be canonical `https://www.yeosonam.com/blog/{slug}` URLs. `BLOG_CANONICAL_ORIGIN` is the first-choice origin, and queued job URLs are canonicalized again before provider submission.
+5. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
+6. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.
+7. The worker submits changed URLs through IndexNow batch endpoints when `INDEXNOW_KEY` is configured.
+8. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
+9. Observe Google status through URL Inspection within quota.
 
 Google sitemap submission is a hint, not a guarantee of indexing. Google no longer supports the old unauthenticated sitemap ping as the core path. URL Inspection is for status visibility and troubleshooting, not bulk indexing guarantees.
 
 Publishing routes must not call external indexing providers directly. They may only enqueue `blog_indexing_jobs`; retries and evidence persistence belong to the worker.
+
+## Public Section Contract
+
+The public blog is a topical cluster, not just a chronological list.
+
+Required public surfaces:
+
+- `/blog`
+- `/blog/[slug]`
+- `/blog/destination/[dest]`
+- `/blog/angle/[angle]`
+- `/sitemap.xml`
+
+Rules:
+
+- All public blog surfaces must use the shared canonical origin helper, `resolveBlogCanonicalOrigin()`.
+- `/blog` destination guide cards must link to `/blog/destination/{dest}`, not the general `/destinations/{dest}` page. General destination pages can still exist, but blog destination pages carry the blog topical cluster.
+- `/blog` destination sections should use site-wide active destination evidence (`active_destinations`) and only fall back to current-page posts when DB reads are unavailable.
+- Destination and angle pages must use the same image display helper as the main blog list, so Supabase/remote images are normalized consistently.
+- Sitemap must include blog destination and blog angle collection URLs when corresponding published posts exist.
 
 ## Daily Verification
 
@@ -132,6 +155,7 @@ npm run audit:blog-search-daily:strict
 npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict
 npm run audit:blog-images -- --base=https://www.yeosonam.com --json
 npm run audit:blog-seo -- --base=https://www.yeosonam.com --json
+npm run diagnose:blog-autopublish -- --json
 ```
 
 Failure policy:

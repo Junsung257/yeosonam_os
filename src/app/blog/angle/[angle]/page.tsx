@@ -16,11 +16,12 @@ import {
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
 export const revalidate = 300;
 export const dynamicParams = true;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = resolveBlogCanonicalOrigin();
 
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;

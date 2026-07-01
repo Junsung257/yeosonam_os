@@ -5,9 +5,10 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
-import { getDestinationUrl } from '@/lib/regions';
+import { encodeDestinationPathSegment } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import {
   BLOG_PUBLIC_ANGLES,
   BLOG_PUBLIC_ANGLE_CHIP_CLASSES,
@@ -21,7 +22,7 @@ import {
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = resolveBlogCanonicalOrigin();
 const PER_PAGE = 12;
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count';
 
@@ -64,6 +65,12 @@ interface DestinationStat {
   package_count: number;
   min_price: number | null;
 }
+
+type ActiveDestinationRow = {
+  destination: string | null;
+  package_count: number | string | null;
+  min_price: number | string | null;
+};
 
 function isGenericBlogImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
@@ -164,6 +171,57 @@ function unavailableBlogData(filter: { destination?: string; angle?: string } = 
 
 const lastGoodBlogData = new Map<string, BlogListData>();
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function destinationsFromPosts(posts: BlogPost[]): DestinationStat[] {
+  return [...new Set(posts.map((post) => post.destination).filter(Boolean))]
+    .map((destination) => ({
+      destination: String(destination),
+      package_count: posts.filter((post) => post.destination === destination).length,
+      min_price: null,
+    }));
+}
+
+function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Record<string, number> {
+  return posts.reduce<Record<string, number>>((acc, post) => {
+    const angle = post.angle_type?.trim();
+    if (angle) acc[angle] = (acc[angle] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function normalizeActiveDestinations(rows: ActiveDestinationRow[], postFallback: DestinationStat[]): DestinationStat[] {
+  const normalized = rows
+    .map((row) => {
+      const destination = row.destination?.trim();
+      if (!destination) return null;
+      const packageCount = Math.max(0, Math.trunc(toFiniteNumber(row.package_count) ?? 0));
+      if (packageCount <= 0) return null;
+      return {
+        destination,
+        package_count: packageCount,
+        min_price: toFiniteNumber(row.min_price),
+      };
+    })
+    .filter((row): row is DestinationStat => row !== null);
+
+  if (normalized.length === 0) return postFallback;
+
+  const seen = new Set(normalized.map((row) => row.destination));
+  for (const fallback of postFallback) {
+    if (!seen.has(fallback.destination)) normalized.push(fallback);
+  }
+
+  return normalized;
+}
+
 function blogDataCacheKey(page: number, filter: { destination?: string; angle?: string }): string {
   return JSON.stringify({
     page,
@@ -205,18 +263,40 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const hasNextPage = fetchedPosts.length > PER_PAGE;
   const posts = fetchedPosts.slice(0, PER_PAGE);
 
-  const angleCounts = posts.reduce<Record<string, number>>((acc, post) => {
-    const angle = post.angle_type?.trim();
-    if (angle) acc[angle] = (acc[angle] ?? 0) + 1;
-    return acc;
-  }, {});
+  const pageAngleCounts = countAnglesFromPosts(posts);
 
-  const destinations = [...new Set(posts.map((post) => post.destination).filter(Boolean))]
-    .map((destination) => ({
-      destination: String(destination),
-      package_count: posts.filter((post) => post.destination === destination).length,
-      min_price: null,
-    }));
+  const angleRes = await runBlogQuery(
+    'angles',
+    supabaseAdmin
+      .from('content_creatives')
+      .select('angle_type')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
+      .limit(500),
+    { data: [] as Array<Pick<BlogPost, 'angle_type'>>, error: null },
+    publicReadSaverActive ? 2000 : 3000,
+  );
+  const angleRows = isBlogQueryUnavailable(angleRes) || angleRes.error
+    ? []
+    : ((angleRes.data || []) as unknown as Array<Pick<BlogPost, 'angle_type'>>);
+  const angleCounts = angleRows.length > 0 ? countAnglesFromPosts(angleRows) : pageAngleCounts;
+
+  const postDestinations = destinationsFromPosts(posts);
+  const destinationRes = await runBlogQuery(
+    'activeDestinations',
+    supabaseAdmin
+      .from('active_destinations')
+      .select('destination, package_count, min_price')
+      .order('package_count', { ascending: false })
+      .limit(24),
+    { data: [] as ActiveDestinationRow[], error: null },
+    publicReadSaverActive ? 2000 : 3000,
+  );
+  const destinationRows = isBlogQueryUnavailable(destinationRes) || destinationRes.error
+    ? []
+    : ((destinationRes.data || []) as unknown as ActiveDestinationRow[]);
+  const destinations = normalizeActiveDestinations(destinationRows, postDestinations);
 
   const featured = posts
     .filter((post) => Boolean(getDisplayImageUrl(post)))
@@ -478,10 +558,13 @@ export default async function BlogData({ searchParams }: Props) {
   const page = Math.max(1, parseInt(params.page || '1'));
   const destination = params.destination || undefined;
   const angle = params.angle || undefined;
-  const { featured, posts, total, destinations, unavailable, fallback, fallbackReason } = await getBlogData(page, { destination, angle });
+  const { featured, posts, total, destinations, angleCounts, unavailable, fallback, fallbackReason } = await getBlogData(page, { destination, angle });
   const totalPages = unavailable ? 0 : Math.ceil(total / PER_PAGE);
   const totalLabel = unavailable ? '확인 중' : total.toLocaleString();
-  const visibleAngleChips = BLOG_PUBLIC_ANGLES;
+  const visibleAngleChips = BLOG_PUBLIC_ANGLES.filter((candidate) => {
+    if (candidate.key === angle) return true;
+    return (angleCounts[candidate.key] ?? 0) > 0;
+  });
 
   const buildHref = (override: Partial<{ page: number; destination: string | null; angle: string }>) => {
     const next = new URLSearchParams();
@@ -658,7 +741,7 @@ export default async function BlogData({ searchParams }: Props) {
                 {destinations.slice(0, 8).map(d => (
                   <Link
                     key={d.destination}
-                    href={getDestinationUrl(d.destination)}
+                    href={`/blog/destination/${encodeDestinationPathSegment(d.destination)}`}
                     className="flex items-center justify-between py-5 group"
                   >
                     <span className="text-[15px] font-semibold text-text-primary group-hover:text-brand transition-colors">
