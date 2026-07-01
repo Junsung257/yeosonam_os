@@ -148,4 +148,29 @@ describe('computeSeoScore', () => {
     expect(title?.message).toContain('mixed intent');
     expect(result.passed).toBe(false);
   });
+
+  it('blocks generated hash suffix slugs even when the article body is otherwise strong', () => {
+    const result = computeSeoScore({
+      blogHtml: strongMarkdown,
+      slug: 'travel-guide-q35bf6ed0',
+      seoTitle: '오사카 7월 날씨 여행 가이드 2026 | 월별 날씨와 옷차림 체크',
+      seoDescription: '오사카 7월 날씨를 2026년 기준으로 정리했습니다. 월별 기온, 옷차림, 준비물, 비 오는 날 동선까지 확인하세요.',
+      primaryKeyword: '오사카 7월 날씨',
+      secondaryKeywords: ['오사카 옷차림', '오사카 준비물'],
+      destination: '오사카',
+      blogType: 'info',
+      imageCount: 3,
+      imagesWithAlt: 3,
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: true,
+      },
+    });
+
+    const slug = result.details.find((detail) => detail.name === 'url_slug');
+    expect(slug?.status).toBe('fail');
+    expect(slug?.message).toContain('hash_suffix_slug');
+    expect(result.passed).toBe(false);
+  });
 });

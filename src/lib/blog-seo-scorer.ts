@@ -5,6 +5,8 @@
  * New auto-published posts should clear a high bar before they can be indexed.
  */
 
+import { inspectBlogSlugQuality } from './blog-slug-quality';
+
 const SEMANTIC_DICTIONARY: Record<string, string[]> = {
   destination: ['여행', '목적지', '방문', '현지', '출발', '일정'],
   transport: ['항공권', '비행기', '공항', '기차', '버스', '픽업', '교통', '이동'],
@@ -423,6 +425,22 @@ function scoreMobile(blogHtml: string): SeoScoreDetail {
 
 function scoreSlug(input: ScorerInput, keyword: string): SeoScoreDetail {
   const slug = input.slug || '';
+  const slugQuality = inspectBlogSlugQuality({
+    slug,
+    primaryKeyword: keyword,
+    destination: input.destination,
+  });
+  if (!slugQuality.passed) {
+    return detail(
+      'url_slug',
+      0,
+      4,
+      3,
+      2,
+      slugQuality.issues.map((issue) => issue.code).join(', '),
+    );
+  }
+
   let score = 0;
   if (slug.length >= 12 && slug.length <= 90) score += 1;
   if (!/untitled|draft|test|v\d+$/i.test(slug)) score += 1;
@@ -458,7 +476,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
   const minScore = BLOG_SEO_MIN_SCORE[input.blogType];
   const criticalFailures = details.filter((item) =>
     item.status === 'fail' &&
-    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'structured_data', 'helpful_content_eeat'].includes(item.name),
+    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'structured_data', 'helpful_content_eeat', 'url_slug'].includes(item.name),
   );
   const passed = score >= minScore && criticalFailures.length === 0;
   const summary = passed
