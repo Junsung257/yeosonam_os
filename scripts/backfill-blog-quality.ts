@@ -1489,9 +1489,55 @@ function dedupeRepeatedCalloutsFinal(markdown: string): string {
     .replace(/\n{3,}/g, '\n\n');
 }
 
+function hasItineraryFlowTableFinal(markdown: string): boolean {
+  return (
+    /^#{2,4}\s*일정\s*흐름\s*빠른\s*보기/m.test(markdown) ||
+    /^#{2,4}\s*DAY별\s*확인\s*포인트/m.test(markdown) ||
+    /\|\s*구간\s*\|\s*추천\s*흐름\s*\|\s*확인\s*포인트\s*\|/.test(markdown)
+  );
+}
+
+function dedupeItineraryFlowBlocksFinal(markdown: string): string {
+  let keptFlowHeading = false;
+  let keptFlowTable = false;
+  let skippingDuplicateFlowTable = false;
+  return markdown
+    .split('\n')
+    .filter((line) => {
+      if (/^#{2,4}\s*일정\s*흐름\s*빠른\s*보기\s*$/.test(line.trim())) {
+        if (keptFlowHeading) return false;
+        keptFlowHeading = true;
+        return true;
+      }
+
+      if (/\|\s*구간\s*\|\s*추천\s*흐름\s*\|\s*확인\s*포인트\s*\|/.test(line)) {
+        if (keptFlowTable) {
+          skippingDuplicateFlowTable = true;
+          return false;
+        }
+        keptFlowTable = true;
+        skippingDuplicateFlowTable = false;
+        return true;
+      }
+
+      if (skippingDuplicateFlowTable && /^\|.*\|\s*$/.test(line)) {
+        return false;
+      }
+      skippingDuplicateFlowTable = false;
+
+      return true;
+    })
+    .join('\n')
+    .replace(
+      /(\n이 일정표는 실제 항공 시간과 숙소 위치에 맞춰 조정해야 합니다\.\n)(?:\n?이 일정표는 실제 항공 시간과 숙소 위치에 맞춰 조정해야 합니다\.\n)+/g,
+      '$1',
+    )
+    .replace(/\n{3,}/g, '\n\n');
+}
+
 function normalizeFinalMarkdownSurface(markdown: string): string {
   return capHeadingDensityFinal(
-    repairMarkdownTables(removeTinyBrokenTablesFinal(dedupeRepeatedCalloutsFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(normalizeMarkdownImageUrlsFinal(markdown)))))),
+    repairMarkdownTables(removeTinyBrokenTablesFinal(dedupeItineraryFlowBlocksFinal(dedupeRepeatedCalloutsFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(normalizeMarkdownImageUrlsFinal(markdown))))))),
   );
 }
 
@@ -1599,9 +1645,20 @@ function ensureContextualImageText(markdown: string, primaryKeyword: string) : s
 function ensureSafeDayByDayBlock(markdown: string, contentType: string, productId: string | null, primaryKeyword: string): string {
   const text = `${contentType} ${primaryKeyword} ${markdown.slice(0, 2000)}`;
   const needsItinerary = productId || /일정|코스|itinerary|package|패키지/i.test(text);
-  if (!needsItinerary || /(?:^|\n)\s*(?:DAY|Day|day)\s*\d+|(?:^|\n)\s*\d+\s*일차/u.test(markdown)) return markdown;
+  if (!needsItinerary || hasItineraryFlowTableFinal(markdown)) return markdown;
+  const auditMarkers = (markdown.match(/1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째/gi) || []).length;
+  if (auditMarkers >= 2) return markdown;
   const keyword = cleanTravelKeyword(primaryKeyword) || '상품';
   return `${markdown.trim()}\n\n## DAY별 확인 포인트\n\n### DAY 1. 출발과 도착 조건 확인\n항공 시간, 공항 미팅, 도착 후 이동 동선을 최종 안내 기준으로 확인하세요.\n\n### DAY 2. 핵심 일정과 현지 이동 확인\n${keyword}의 주요 일정은 현지 사정에 따라 순서가 조정될 수 있으니 포함/불포함과 이동 시간을 함께 보세요.\n\n### DAY 3. 귀국 또는 다음 일정 준비\n체크아웃, 공항 이동, 수하물과 여권을 출발 전 다시 확인하세요.\n`;
+}
+
+function removeAiEditorialClichesFinal(markdown: string): string {
+  return markdown
+    .replace(/이게\s*말이\s*되나\s*싶으시죠\??\s*/g, '')
+    .replace(/완벽\s*가이드/g, '실전 가이드')
+    .replace(/총정리/g, '정리')
+    .replace(/놓치면\s*후회(?:하는|할)?/g, '미리 확인할')
+    .replace(/최고의\s*선택/g, '선택 기준');
 }
 
 function ensureH1AtTop(markdown: string, title: string): string {
@@ -2011,7 +2068,7 @@ function ensureRainySeasonTableFinal(markdown: string, row: BlogRow, primaryKeyw
 }
 
 function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeyword: string, normalizedTitle: string, blogType: 'product' | 'info'): string {
-  let next = stripGeneratedTailArtifactsFinal(markdown);
+  let next = removeAiEditorialClichesFinal(stripGeneratedTailArtifactsFinal(markdown));
   for (let attempt = 0; attempt < 2; attempt += 1) {
     next = repairMarkdownTables(capHeadingDensityFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(removeEarlyHardCtaFinal(
       ensurePrimaryKeywordEvidence(
@@ -2033,7 +2090,7 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
       ),
     )))));
   }
-  next = finalKeywordDensityRepair(next, primaryKeyword, blogType);
+  next = removeAiEditorialClichesFinal(finalKeywordDensityRepair(next, primaryKeyword, blogType));
   return normalizeFinalMarkdownSurface(capHeadingDensityFinal(
     ensureMinimumReadableSectionsFinal(
       ensureAuthorityLinksFinal(
@@ -2041,7 +2098,12 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
           ensureWeatherTableFinal(
             ensureCostRangeBlockFinal(
               ensureCanonicalChecklistBlockFinal(
-                ensureReadableFaqFinal(repairCollapsedChecklistFinal(repairCollapsedFaqFinal(next, primaryKeyword)), primaryKeyword),
+                ensureSafeDayByDayBlock(
+                  ensureReadableFaqFinal(repairCollapsedChecklistFinal(repairCollapsedFaqFinal(next, primaryKeyword)), primaryKeyword),
+                  row.content_type || 'guide',
+                  row.product_id ?? null,
+                  primaryKeyword,
+                ),
               ),
               row,
               primaryKeyword,
@@ -2450,14 +2512,12 @@ async function main() {
     const customerBlocksHtml = ensureCustomerFaq(ensureCustomerSummary(splitLongParagraphs(nextHtml), primaryKeyword), primaryKeyword);
     nextHtml = finalCustomerVisibleRepair(
       strengthenIntroHookCustomer(
-        productId
-          ? ensureSafeDayByDayBlock(
-            customerBlocksHtml,
-            contentType,
-            productId,
-            primaryKeyword,
-          )
-          : customerBlocksHtml,
+        ensureSafeDayByDayBlock(
+          customerBlocksHtml,
+          contentType,
+          productId,
+          primaryKeyword,
+        ),
         destination,
         primaryKeyword,
       ),

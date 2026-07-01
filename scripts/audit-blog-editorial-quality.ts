@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 import dotenv from 'dotenv';
 import * as cheerio from 'cheerio';
+import type { Element } from 'domhandler';
 import { inspectBlogIntentQuality } from '../src/lib/blog-content-intent';
 import { repairBlogEditorialQuality } from '../src/lib/blog-editorial-repair';
 
@@ -83,6 +84,17 @@ async function getText(path: string): Promise<string> {
   return res.text();
 }
 
+function textWithMarkdownLinks($: cheerio.CheerioAPI, element: Element): string {
+  const clone = $(element).clone();
+  clone.find('a[href]').each((_index, anchor) => {
+    const label = $(anchor).text().replace(/\s+/g, ' ').trim();
+    const href = ($(anchor).attr('href') || '').trim();
+    if (!label || !href) return;
+    $(anchor).replaceWith(`[${label}](${href})`);
+  });
+  return clone.text().replace(/\s+/g, ' ').trim();
+}
+
 async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPost> {
   if (!post.slug) throw new Error('missing slug');
   const html = await getText(`/blog/${post.slug}`);
@@ -93,7 +105,7 @@ async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPo
 
   root.find('h1,h2,h3,p,li,table,blockquote,mark,aside').each((_index, element) => {
     const tag = element.tagName.toLowerCase();
-    const text = $(element).text().replace(/\s+/g, ' ').trim();
+    const text = textWithMarkdownLinks($, element);
     if (!text) return;
     if (tag === 'h1') sourceParts.push(`# ${text}`);
     else if (tag === 'h2') sourceParts.push(`## ${text}`);
@@ -117,6 +129,20 @@ async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPo
     seo_title: $('h1').first().text().trim() || post.seo_title,
     blog_html: sourceParts.join('\n\n'),
   };
+}
+
+async function fetchDbPostById(post: BlogListPost): Promise<BlogDetailPost | null> {
+  if (!post.id) return null;
+  const { supabaseAdmin } = await import('../src/lib/supabase');
+  const { data, error } = await supabaseAdmin
+    .from('content_creatives')
+    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html')
+    .eq('id', post.id)
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as BlogDetailPost;
 }
 
 async function collectPosts(): Promise<BlogListPost[]> {
@@ -179,6 +205,10 @@ async function inspectPost(post: BlogListPost) {
     }
     if (!row?.blog_html && post.slug) {
       row = await fetchRenderedPostSource(post);
+    }
+    if ((!row?.blog_html || row.blog_html.replace(/\s+/g, '').length < 80) && source !== 'db') {
+      const dbRow = await fetchDbPostById(post);
+      if (dbRow?.blog_html) row = dbRow;
     }
 
     if (row?.status && row.status !== 'published') {

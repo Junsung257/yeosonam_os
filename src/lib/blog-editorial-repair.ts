@@ -80,6 +80,24 @@ const UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
   /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i;
 const YEOSONAM_EDITOR_VOICE_RE = /여소남\s*에디터(?:가|는|의)?/i;
 
+function removeAiEditorialCliches(markdown: string): { text: string; changed: boolean } {
+  let text = markdown;
+  const before = text;
+  const replacements: Array<[RegExp, string]> = [
+    [/이게\s*말이\s*되나\s*싶으시죠\??\s*/g, ''],
+    [/완벽\s*가이드/g, '실전 가이드'],
+    [/총정리/g, '정리'],
+    [/놓치면\s*후회(?:하는|할)?/g, '미리 확인할'],
+    [/최고의\s*선택/g, '선택 기준'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return { text, changed: text !== before };
+}
+
 function softenUnsupportedYeosonamDataClaims(markdown: string): { text: string; changed: boolean } {
   const plain = stripMarkup(markdown);
   if (!UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain) || YEOSONAM_DATA_EVIDENCE_RE.test(plain)) {
@@ -362,13 +380,17 @@ function ensureCostAnchorBlock(markdown: string, subtype: BlogInfoSubtype | null
   return { text: `${markdown.trim()}\n${block}`, changed: true };
 }
 
+function hasItineraryFlowTable(markdown: string): boolean {
+  return (
+    /^#{2,4}\s*\uC77C\uC815\s*\uD750\uB984\s*\uBE60\uB978\s*\uBCF4\uAE30/m.test(markdown) ||
+    /\|\s*\uAD6C\uAC04\s*\|\s*\uCD94\uCC9C\s*\uD750\uB984\s*\|\s*\uD655\uC778\s*\uD3EC\uC778\uD2B8\s*\|/.test(markdown)
+  );
+}
+
 function ensureItineraryStructure(markdown: string): { text: string; changed: boolean } {
-  if (/^##\s*\uC77C\uC815\s*\uD750\uB984\s*\uBE60\uB978\s*\uBCF4\uAE30/m.test(markdown)) {
+  if (hasItineraryFlowTable(markdown)) {
     return { text: markdown, changed: false };
   }
-  const dayMarkers = countMatches(markdown, /(^|\n)\s*(?:#{2,4}\s*)?(?:DAY\s*\d+|Day\s*\d+|\d+\s*일차|\d+\s*일\s*차|\d+일차)/gi);
-  const timeMarkers = countMatches(markdown, /\b(?:오전|오후|아침|점심|저녁|\d{1,2}:\d{2})\b/g);
-  if (dayMarkers >= 2 || timeMarkers >= 3) return { text: markdown, changed: false };
 
   const block = [
     '',
@@ -1194,6 +1216,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
 
+  const clicheRepair = removeAiEditorialCliches(blogHtml);
+  if (clicheRepair.changed) {
+    blogHtml = clicheRepair.text;
+    changes.push('removed_ai_editorial_cliches');
+  }
+
   const accentRepair = normalizeBlogVisualAccents(blogHtml);
   if (accentRepair.changed) {
     blogHtml = accentRepair.text;
@@ -1478,6 +1506,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   const intent = classifyBlogIntent(input);
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
+
+  const clicheRepair = removeAiEditorialCliches(blogHtml);
+  if (clicheRepair.changed) {
+    blogHtml = clicheRepair.text;
+    changes.push('removed_ai_editorial_cliches');
+  }
 
   const accentRepair = normalizeBlogVisualAccents(blogHtml);
   if (accentRepair.changed) {
