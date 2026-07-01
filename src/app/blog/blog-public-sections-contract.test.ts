@@ -58,6 +58,8 @@ describe('blog public sections contract', () => {
     const source = readSource('src/app/blog/BlogData.tsx');
 
     expect(source).toContain(".from('active_destinations')");
+    expect(source).toContain("'publishedDestinations'");
+    expect(source).toContain('publishedDestinations.has(destination)');
     expect(source).toContain("order('package_count'");
     expect(source).toContain('/blog/destination/${encodeDestinationPathSegment(d.destination)}');
     expect(source).not.toContain('getDestinationUrl(d.destination)');

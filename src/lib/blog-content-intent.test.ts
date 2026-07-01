@@ -205,6 +205,50 @@ A. 4월, 5월, 9월, 10월이 걷기 좋습니다.
     expect(report.issues.some((issue) => issue.code === 'repeated_ai_opening_pattern')).toBe(true);
   });
 
+  it('flags machine-looking title separators, broken persona copy, and English micro-angle image alts', () => {
+    const report = inspectBlogIntentQuality({
+      title: '오사카 7월 날씨 여행 가이드 2026|월별 날씨·옷차림 체크리스트',
+      primaryKeyword: '오사카 7월 날씨',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: `# 오사카 7월 날씨 여행 가이드 2026|월별 날씨·옷차림 체크리스트
+
+오사카 7월 날씨는 고온다습하고 소나기가 잦아 통풍 좋은 옷, 접이식 우산, 실내 대체 일정을 먼저 확인해야 합니다.
+
+안녕하세요! 친구에게 좋은 여행을 추천해 드리는 입니다.
+
+![오사카 참고 이미지 1 osaka july weather clothes](https://example.com/osaka.jpg)
+
+## 예약 전 무엇을 먼저 확인해야 할까요?
+답부터 말하면 항공 시간, 실내 대체 일정, 더위 대응 준비물을 함께 확인해야 합니다.
+
+## 날씨 기준
+- 평균 기온 28도 이상
+- 강수 가능성 확인
+- 냉방 대비 겉옷 준비
+
+## 준비물 체크
+| 항목 | 이유 |
+| --- | --- |
+| 우산 | 소나기 대비 |
+| 얇은 겉옷 | 실내 냉방 대비 |
+| 보조배터리 | 이동 중 지도 확인 |
+
+## 공식 확인
+- [외교부 해외안전여행](https://www.0404.go.kr/)
+
+## 자주 묻는 질문
+Q. 비가 와도 여행할 수 있나요?
+A. 짧은 소나기라면 실내 동선을 섞어 조정하는 편이 안전합니다.
+`,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'machine_title_format')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'broken_editorial_voice')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'generic_image_alt')).toBe(true);
+  });
+
   it('blocks unsupported Yeosonam data claims', () => {
     const report = inspectBlogIntentQuality({
       title: '다낭 여행 준비물',

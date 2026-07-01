@@ -61,6 +61,9 @@ export interface BlogIntentIssue {
     | 'weak_list_or_table_shape'
     | 'weak_source_backing'
     | 'repeated_ai_opening_pattern'
+    | 'machine_title_format'
+    | 'generic_image_alt'
+    | 'broken_editorial_voice'
     | 'missing_answer_first'
     | 'early_strong_cta'
     | 'unsupported_yeosonam_data'
@@ -379,7 +382,67 @@ function firstBodyParagraph(source: string): string {
   return '';
 }
 
-function inspectCommonEditorialContract(source: string, plain: string, issues: BlogIntentIssue[]) {
+const BROKEN_EDITORIAL_VOICE_RE =
+  /(안녕하세요[!.\s]*친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다|친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다|가치\s+있는\s+여행을\s+소개하는\s*입니다|추천해\s+드리는\s*입니다)/;
+
+const ENGLISH_MICRO_ANGLE_ALT_RE =
+  /\b(?:family budget|budget family|transport cost|hotel area(?: budget)?|weather clothes|weather packing|weather preparation|local mobility|best food|july weather clothes)\b/i;
+
+function extractImageAlts(source: string): string[] {
+  const alts: string[] = [];
+  source.replace(/!\[([^\]\n]*)]\((?:https?:\/\/|\/)[^)]+\)/g, (_match, alt: string) => {
+    alts.push(String(alt || '').trim());
+    return _match;
+  });
+  source.replace(/\balt=["']([^"']*)["']/gi, (_match, alt: string) => {
+    alts.push(String(alt || '').trim());
+    return _match;
+  });
+  return alts.filter(Boolean);
+}
+
+function inspectHumanSurfaceContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
+  const title = (input.title || '').trim();
+  if (/[^\s]\||\|[^\s]/.test(title)) {
+    addIssue(
+      issues,
+      'machine_title_format',
+      'warning',
+      'Title separator must be spaced naturally, for example "2026 | 체크리스트" instead of "2026|체크리스트".',
+      { title },
+    );
+  }
+
+  const brokenVoice = plain.match(BROKEN_EDITORIAL_VOICE_RE)?.[0];
+  if (brokenVoice) {
+    addIssue(
+      issues,
+      'broken_editorial_voice',
+      'critical',
+      'Article contains a broken greeting or empty editorial persona sentence.',
+      { sample: brokenVoice },
+    );
+  }
+
+  const badAlts = extractImageAlts(source)
+    .filter((alt) =>
+      ENGLISH_MICRO_ANGLE_ALT_RE.test(alt)
+      || /참고\s*이미지\s*\d+\s+[a-z][a-z\s_-]{6,}$/i.test(alt)
+      || /[가-힣].*\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b/i.test(alt),
+    )
+    .slice(0, 5);
+  if (badAlts.length > 0) {
+    addIssue(
+      issues,
+      'generic_image_alt',
+      'warning',
+      'Image alt text should be natural Korean reader-facing copy, not English micro-angle or generated filename fragments.',
+      { badAlts },
+    );
+  }
+}
+
+function inspectCommonEditorialContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
   const bannedPatterns = [
     '이게 말이 되나 싶으시죠',
     '완벽 가이드',
@@ -388,6 +451,7 @@ function inspectCommonEditorialContract(source: string, plain: string, issues: B
     '여소남 에디터',
     '놓치면 후회',
     '최고의 선택',
+    '친구에게 좋은 여행을 추천해 드리는 입니다',
   ];
   const matched = bannedPatterns.filter((pattern) => plain.includes(pattern) || source.includes(pattern));
   const highlightCount = countMatches(source, /==[^=\n]{3,120}==|<mark\b/gi);
@@ -413,6 +477,8 @@ function inspectCommonEditorialContract(source: string, plain: string, issues: B
       'Do not mention Yeosonam data unless the evidence source or aggregation basis is stated.',
     );
   }
+
+  inspectHumanSurfaceContract(input, source, plain, issues);
 }
 
 function inspectInfoWriterContract(source: string, plain: string, issues: BlogIntentIssue[]) {
@@ -503,7 +569,7 @@ export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQual
 
   if (intent.infoSubtype) inspectInfoContract(intent.infoSubtype, source, plain, issues);
   if (intent.productSubtype) inspectProductContract(intent.productSubtype, plain, issues);
-  inspectCommonEditorialContract(sourceWithoutUrls, plain, issues);
+  inspectCommonEditorialContract(input, source, plain, issues);
   if (intent.mode === 'info') inspectInfoWriterContract(source, plain, issues);
   if (intent.mode === 'product' || intent.productSubtype) inspectProductConsultContract(source, issues);
   inspectReadingDesign(source, plain, issues);

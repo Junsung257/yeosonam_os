@@ -622,4 +622,45 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).not.toMatch(/총정리|완벽 가이드|이게 말이 되나/);
     expect(result.changes).toContain('removed_ai_editorial_cliches');
   });
+
+  it('removes broken empty persona greetings before quality inspection', () => {
+    const result = repairBlogEditorialQuality({
+      title: '오사카 7월 날씨 여행 가이드',
+      slug: 'osaka-july-weather',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: '오사카 7월 날씨',
+      blogHtml: [
+        '# 오사카 7월 날씨 여행 가이드',
+        '',
+        '오사카 7월 날씨는 고온다습해 통풍 좋은 옷과 소나기 대비용 우산을 먼저 준비해야 합니다.',
+        '',
+        '안녕하세요! 친구에게 좋은 여행을 추천해 드리는 입니다.',
+        '',
+        '## 예약 전 무엇을 먼저 확인해야 할까요?',
+        '',
+        '답부터 말하면 더위, 비 예보, 실내 대체 동선을 함께 확인해야 안전합니다.',
+        '',
+        '## 준비물 체크',
+        '',
+        '- 접이식 우산',
+        '- 얇은 겉옷',
+        '- 보조배터리',
+        '',
+        '## 공식 확인',
+        '',
+        '- [외교부 해외안전여행](https://www.0404.go.kr/)',
+        '',
+        '## 자주 묻는 질문',
+        '',
+        'Q. 비가 와도 여행할 수 있나요?',
+        'A. 짧은 소나기라면 실내 동선을 섞는 편이 좋습니다.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).not.toContain('추천해 드리는 입니다');
+    expect(result.changes).toContain('removed_ai_editorial_cliches');
+    expect(result.after.issues.map((issue) => issue.code)).not.toContain('broken_editorial_voice');
+  });
 });

@@ -72,6 +72,10 @@ type ActiveDestinationRow = {
   min_price: number | string | null;
 };
 
+type BlogDestinationEvidenceRow = {
+  destination: string | null;
+};
+
 function isGenericBlogImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
   try {
@@ -189,6 +193,22 @@ function destinationsFromPosts(posts: BlogPost[]): DestinationStat[] {
     }));
 }
 
+function destinationsFromEvidenceRows(rows: BlogDestinationEvidenceRow[]): DestinationStat[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const destination = row.destination?.trim();
+    if (!destination) continue;
+    counts.set(destination, (counts.get(destination) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([destination, count]) => ({
+      destination,
+      package_count: count,
+      min_price: null,
+    }))
+    .sort((a, b) => b.package_count - a.package_count);
+}
+
 function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Record<string, number> {
   return posts.reduce<Record<string, number>>((acc, post) => {
     const angle = post.angle_type?.trim();
@@ -198,10 +218,12 @@ function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Recor
 }
 
 function normalizeActiveDestinations(rows: ActiveDestinationRow[], postFallback: DestinationStat[]): DestinationStat[] {
+  const publishedDestinations = new Map(postFallback.map((row) => [row.destination, row]));
   const normalized = rows
     .map((row) => {
       const destination = row.destination?.trim();
       if (!destination) return null;
+      if (!publishedDestinations.has(destination)) return null;
       const packageCount = Math.max(0, Math.trunc(toFiniteNumber(row.package_count) ?? 0));
       if (packageCount <= 0) return null;
       return {
@@ -282,7 +304,25 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
     : ((angleRes.data || []) as unknown as Array<Pick<BlogPost, 'angle_type'>>);
   const angleCounts = angleRows.length > 0 ? countAnglesFromPosts(angleRows) : pageAngleCounts;
 
-  const postDestinations = destinationsFromPosts(posts);
+  const publishedDestinationRes = await runBlogQuery(
+    'publishedDestinations',
+    supabaseAdmin
+      .from('content_creatives')
+      .select('destination')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('destination', 'is', null)
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .limit(500),
+    { data: [] as BlogDestinationEvidenceRow[], error: null },
+    publicReadSaverActive ? 2000 : 3000,
+  );
+  const publishedDestinationRows = isBlogQueryUnavailable(publishedDestinationRes) || publishedDestinationRes.error
+    ? []
+    : ((publishedDestinationRes.data || []) as unknown as BlogDestinationEvidenceRow[]);
+  const postDestinations = publishedDestinationRows.length > 0
+    ? destinationsFromEvidenceRows(publishedDestinationRows)
+    : destinationsFromPosts(posts);
   const destinationRes = await runBlogQuery(
     'activeDestinations',
     supabaseAdmin

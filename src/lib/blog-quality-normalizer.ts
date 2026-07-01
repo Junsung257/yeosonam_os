@@ -129,6 +129,8 @@ function ensureFaqSection(markdown: string, destination: string, primaryKeyword:
 export function normalizeBlogTitle(title: string | null | undefined): string | null {
   if (typeof title !== 'string') return null;
   const cleaned = removeBoosterSuffixes(removeRewriteArtifactsTitle(title))
+    .replace(/\s*\|\s*/g, ' | ')
+    .replace(/\s*·\s*/g, ' · ')
     .replace(/\s{2,}/g, ' ')
     .trim();
   return cleaned || null;
