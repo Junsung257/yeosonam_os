@@ -536,4 +536,90 @@ describe('blog editorial repair', () => {
     expect(result.afterCount).toBeLessThanOrEqual(result.allowedCount);
     expect(result.blogHtml).toContain('비상약');
   });
+
+  it('adds a dedicated itinerary flow block even when loose meal-time words exist', () => {
+    const source = [
+      '# 후쿠오카 실내 코스',
+      '',
+      '비 오는 날에는 점심과 저녁 동선을 짧게 잡는 편이 좋습니다.',
+      '',
+      '## 하카타역 주변',
+      '',
+      '오후에는 실내 쇼핑몰을 먼저 보고 이동 시간을 줄입니다.',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '6월 후쿠오카 실내 여행 코스 추천',
+      slug: '6-fukuoka',
+      category: '후쿠오카 코스',
+      contentType: 'guide',
+      primaryKeyword: '후쿠오카 실내 여행 코스',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('added_itinerary_structure');
+    expect(result.blogHtml).toContain('## 일정 흐름 빠른 보기');
+    expect(result.blogHtml).toContain('| 1일차 |');
+    expect(result.after.issues.map((issue) => issue.code)).not.toContain('missing_required_block');
+  });
+
+  it('does not duplicate an existing demoted itinerary flow block', () => {
+    const source = [
+      '# 후쿠오카 실내 코스',
+      '',
+      '답부터 말하면, 비 오는 날 후쿠오카는 하카타역과 텐진을 중심으로 이동 시간을 줄이는 편이 좋습니다.',
+      '',
+      '### 일정 흐름 빠른 보기',
+      '',
+      '| 구간 | 추천 흐름 | 확인 포인트 |',
+      '| --- | --- | --- |',
+      '| 1일차 | 하카타역 주변 실내 동선 | 늦은 도착이면 이동을 줄입니다. |',
+      '| 2일차 | 텐진 쇼핑몰과 카페 | 우산 없이 이동 가능한 구간을 봅니다. |',
+      '| 3일차 | 공항 이동 전 가벼운 일정 | 수하물 보관 시간을 확인합니다. |',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '6월 후쿠오카 실내 여행 코스 추천',
+      slug: '6-fukuoka',
+      category: '후쿠오카 코스',
+      contentType: 'guide',
+      primaryKeyword: '후쿠오카 실내 여행 코스',
+      blogHtml: source,
+    });
+
+    expect(result.changes).not.toContain('added_itinerary_structure');
+    expect(result.blogHtml.match(/\|\s*구간\s*\|\s*추천\s*흐름\s*\|\s*확인\s*포인트\s*\|/g) || []).toHaveLength(1);
+  });
+
+  it('removes AI-like editorial cliches before quality inspection', () => {
+    const source = [
+      '# 태국 입국 서류 총정리',
+      '',
+      '이게 말이 되나 싶으시죠? 태국 입국 서류를 완벽 가이드처럼 길게 보지 말고 필요한 기준만 확인하세요.',
+      '',
+      '## 확인 기준',
+      '',
+      '- 여권 유효기간을 확인합니다.',
+      '- 입국 서류를 확인합니다.',
+      '- 면세 한도를 확인합니다.',
+      '',
+      '## 공식 확인 링크',
+      '',
+      '- [외교부 해외안전여행](https://www.0404.go.kr/dev/main.mofa)',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '태국 입국 서류 정리',
+      slug: 'thailand-entry-documents',
+      category: 'visa',
+      contentType: 'guide',
+      primaryKeyword: '태국 입국 서류',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).not.toMatch(/총정리|완벽 가이드|이게 말이 되나/);
+    expect(result.changes).toContain('removed_ai_editorial_cliches');
+  });
 });

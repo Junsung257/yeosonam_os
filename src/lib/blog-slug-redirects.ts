@@ -16,6 +16,7 @@ export const BLOG_SLUG_REDIRECTS: Record<string, string> = {
   '7-guide-f4aa5972': 'europe-independent-travel-tips-july-2026',
   'post-uo8h': 'summer-airport-crowding-departure-tips-2026',
   '7-post-s3gj': 'july-overseas-flight-ticket-booking-tips-2026',
+  '태국-입국-시-필요한-서류와-면세-한도-총정리-2026년-기준-재작성-v2': 'thailand-entry-documents-duty-free-2026',
 };
 
 export function resolveBlogSlugRedirect(slug: string): string | null {
