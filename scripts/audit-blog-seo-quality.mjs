@@ -52,6 +52,24 @@ const AUTHORITY_HOST_HINTS = [
   'travel.state.gov',
   'cbp.dhs.gov',
 ];
+const TITLE_INTENT_GROUPS = {
+  cost: /비용|예산|경비|가격|요금|교통비|이동비|항공권|가성비|cost|budget|price/i,
+  weather: /날씨|기온|우기|건기|옷차림|월별|weather|clothes|packing/i,
+  transport: /교통|이동|픽업|공항|transfer|transport|mobility/i,
+  document: /비자|여권|입국|서류|검역|visa|passport|immigration|document/i,
+  communication: /유심|eSIM|로밍|와이파이|통신|wifi|roaming|sim/i,
+  accommodation: /숙소|호텔|리조트|객실|hotel|resort|stay/i,
+  food: /식비|맛집|음식|식사|레스토랑|food|restaurant|meal/i,
+};
+const TITLE_INTENT_COMPANIONS = {
+  cost: ['transport', 'food', 'accommodation'],
+  weather: [],
+  transport: ['cost'],
+  document: [],
+  communication: [],
+  accommodation: ['cost'],
+  food: ['cost'],
+};
 
 async function fetchText(path) {
   const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
@@ -171,6 +189,26 @@ function hostMatchesAuthority(url) {
   }
 }
 
+function inferTitleIntents(value) {
+  return Object.entries(TITLE_INTENT_GROUPS)
+    .filter(([, pattern]) => pattern.test(value || ''))
+    .map(([group]) => group);
+}
+
+function inferPrimaryTitleIntent(row) {
+  const pathHint = safeDecodePath(row.path || '').replace(/[-_]+/g, ' ');
+  const text = `${pathHint} ${row.h1Text || ''}`;
+  return inferTitleIntents(text)[0] || null;
+}
+
+function hasConflictingTitleIntent(row) {
+  const primary = inferPrimaryTitleIntent(row);
+  if (!primary) return false;
+  const allowed = new Set([primary, ...(TITLE_INTENT_COMPANIONS[primary] || [])]);
+  return inferTitleIntents(`${row.title || ''} ${row.h1Text || ''}`)
+    .some((intent) => !allowed.has(intent));
+}
+
 function judge(row) {
   const issues = [];
   const warnings = [];
@@ -191,6 +229,7 @@ function judge(row) {
 
   if (!title || title.length < 20 || title.length > 70) issues.push('bad_title_length');
   else if (title.length < 25) warnings.push('short_title');
+  if (hasConflictingTitleIntent(row)) issues.push('mixed_title_intent');
   if (!description || description.length < 50 || description.length > 180) issues.push('bad_meta_description_length');
   if (!canonicalPath || canonicalPath !== expectedCanonicalPath) issues.push('bad_canonical');
   if (!canonicalOrigin || !isAllowedCanonicalOrigin(canonicalOrigin, expectedCanonicalOrigin)) issues.push('bad_canonical_origin');

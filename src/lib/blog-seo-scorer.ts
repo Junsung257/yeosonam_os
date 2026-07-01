@@ -39,6 +39,28 @@ const AUTHORITATIVE_HOST_HINTS = [
   'cbp.dhs.gov',
 ];
 
+const TITLE_INTENT_GROUPS = {
+  cost: /비용|예산|경비|가격|요금|교통비|이동비|항공권|가성비|cost|budget|price/i,
+  weather: /날씨|기온|우기|건기|옷차림|월별|weather|clothes|packing/i,
+  transport: /교통|이동|픽업|공항|transfer|transport|mobility/i,
+  document: /비자|여권|입국|서류|검역|visa|passport|immigration|document/i,
+  communication: /유심|eSIM|로밍|와이파이|통신|wifi|roaming|sim/i,
+  accommodation: /숙소|호텔|리조트|객실|hotel|resort|stay/i,
+  food: /식비|맛집|음식|식사|레스토랑|food|restaurant|meal/i,
+} as const;
+
+type TitleIntentGroup = keyof typeof TITLE_INTENT_GROUPS;
+
+const TITLE_INTENT_COMPANIONS: Record<TitleIntentGroup, TitleIntentGroup[]> = {
+  cost: ['transport', 'food', 'accommodation'],
+  weather: [],
+  transport: ['cost'],
+  document: [],
+  communication: [],
+  accommodation: ['cost'],
+  food: ['cost'],
+};
+
 export const BLOG_SEO_MAX_SCORE = 100;
 export const BLOG_SEO_MIN_SCORE = {
   info: 85,
@@ -192,7 +214,29 @@ function scoreTitle(input: ScorerInput, keyword: string, dest: string): SeoScore
   if (/\b20\d{2}\b|최신|월별|비용|일정|준비물|가격|코스|날씨|체크리스트/.test(title)) score += 3;
   if (!/(완벽|끝판왕|무조건|충격|대박|실화)/.test(title)) score += 1;
 
+  const primaryIntent = inferTitleIntent(keyword || dest || input.slug);
+  const titleIntents = inferTitleIntents(title);
+  const conflictingIntents = primaryIntent
+    ? titleIntents.filter((intent) =>
+      intent !== primaryIntent && !TITLE_INTENT_COMPANIONS[primaryIntent].includes(intent),
+    )
+    : [];
+  if (conflictingIntents.length > 0) {
+    score -= 7;
+    messages.push(`mixed intent ${primaryIntent}->${conflictingIntents.join('/')}`);
+  }
+
   return detail('title', score, 12, 10, 6, messages.join(', '));
+}
+
+function inferTitleIntents(value: string): TitleIntentGroup[] {
+  return (Object.entries(TITLE_INTENT_GROUPS) as Array<[TitleIntentGroup, RegExp]>)
+    .filter(([, pattern]) => pattern.test(value))
+    .map(([group]) => group);
+}
+
+function inferTitleIntent(value: string): TitleIntentGroup | null {
+  return inferTitleIntents(value)[0] ?? null;
 }
 
 function scoreMeta(input: ScorerInput, keyword: string): SeoScoreDetail {

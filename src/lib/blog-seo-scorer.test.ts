@@ -123,4 +123,29 @@ describe('computeSeoScore', () => {
     expect(primary?.score).toBeGreaterThan(0);
     expect(primary?.message).not.toContain('0회');
   });
+
+  it('blocks mixed-intent titles that attach weather modifiers to a cost article', () => {
+    const result = computeSeoScore({
+      blogHtml: strongMarkdown.replaceAll('방콕 날씨', '발리 교통비'),
+      slug: 'bali-transport-cost',
+      seoTitle: '발리 교통비 여행 가이드 2026 | 날씨와 옷차림 체크',
+      seoDescription: '발리 교통비를 공항 픽업, 택시, 이동 시간, 예약 전 확인 비용 기준으로 정리했습니다.',
+      primaryKeyword: '발리 교통비',
+      secondaryKeywords: ['발리 공항 픽업', '발리 택시 비용'],
+      destination: '발리',
+      blogType: 'info',
+      imageCount: 3,
+      imagesWithAlt: 3,
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: true,
+      },
+    });
+
+    const title = result.details.find((detail) => detail.name === 'title');
+    expect(title?.status).toBe('fail');
+    expect(title?.message).toContain('mixed intent');
+    expect(result.passed).toBe(false);
+  });
 });
