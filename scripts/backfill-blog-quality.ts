@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+﻿import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config({ path: '.env.local' });
@@ -1328,6 +1328,23 @@ function normalizeDescriptionKey(value: string): string {
   return (normalizeBlogDescription(value) || value).replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function seoDescriptionUniqueHint(row: BlogRow, destination: string, primaryKeyword: string): string {
+  const escapedDestination = destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const raw = [row.seo_title, primaryKeyword, row.slug].filter(Boolean).join(' ');
+  const cleaned = raw
+    .replace(new RegExp(escapedDestination, 'g'), ' ')
+    .replace(/2026|여행|완벽|총정리|추천|필수|checklist|complete|guide/gi, ' ')
+    .replace(/[|·:_\-\/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const hint = cleaned
+    .split(' ')
+    .filter((word) => word.length >= 2)
+    .slice(0, 4)
+    .join(' ');
+  return hint || cleanTravelKeyword(row.seo_title) || cleanTravelKeyword(primaryKeyword) || row.slug || '핵심 기준';
+}
+
 function ensureBatchUniqueSeoDescription(
   description: string,
   row: BlogRow,
@@ -1342,9 +1359,32 @@ function ensureBatchUniqueSeoDescription(
     return normalized;
   }
 
+  const current = row.seo_description ? normalizeBlogDescription(row.seo_description) : null;
+  const currentKey = current ? normalizeDescriptionKey(current) : null;
+  if (current && currentKey && currentKey !== key && !seenDescriptions.has(currentKey)) {
+    seenDescriptions.set(currentKey, 1);
+    return current;
+  }
+
   const keyword = primaryKeywordForCustomer({ ...row, destination: row.destination || primaryKeyword });
   const destination = cleanTravelKeyword(row.destination) || cleanTravelKeyword(keyword) || '여행';
   const intent = descriptionIntentLabel(row, keyword);
+  const uniqueHint = seoDescriptionUniqueHint(row, destination, keyword);
+  const stableCandidate = ensureStrictSeoDescription(
+    `${destination} ${uniqueHint} 기준을 2026년 기준으로 정리했습니다. 비용, 일정, 준비물, 현지 체크 포인트와 공식 확인 링크를 함께 확인하세요.`,
+    row,
+    keyword,
+  );
+  const stableCandidateKey = normalizeDescriptionKey(stableCandidate);
+  if (currentKey === stableCandidateKey) {
+    seenDescriptions.set(stableCandidateKey, (seenDescriptions.get(stableCandidateKey) || 0) + 1);
+    return current || stableCandidate;
+  }
+  if (!seenDescriptions.has(stableCandidateKey)) {
+    seenDescriptions.set(stableCandidateKey, 1);
+    return stableCandidate;
+  }
+
   const candidates = [
     `${destination} ${intent}을 2026년 기준으로 따로 정리했습니다. 비용, 일정, 준비물, 예약 전 확인 변수를 글별 체크 포인트로 확인하세요.`,
     `${keyword} 중 ${intent}이 궁금한 분을 위한 2026년 기준 정리입니다. 상담 전 비용, 일정, 준비물, 현지 리스크를 먼저 확인하세요.`,
@@ -2005,6 +2045,9 @@ function stripGeneratedTailArtifactsFinal(markdown: string): string {
 
 function ensureContextualImageTextFinal(markdown: string, primaryKeyword: string, row: BlogRow, normalizedTitle: string): string {
   const keyword = cleanTravelKeyword(primaryKeyword) || cleanTravelKeyword(row.destination) || '여행';
+  const destinationKeyword = cleanTravelKeyword(row.destination)
+    || (typeof row.destination === 'string' && /[가-힣]/.test(row.destination.trim()) ? row.destination.trim() : null);
+  const contextualKeyword = destinationKeyword || keyword;
   const tokens = Array.from(new Set(
     `${row.slug || ''} ${row.destination || ''} ${normalizedTitle} ${keyword}`
       .toLowerCase()
@@ -2027,13 +2070,47 @@ function ensureContextualImageTextFinal(markdown: string, primaryKeyword: string
       const hasEnglishMicroAngle = /\b(?:family budget|budget family|transport cost|hotel area(?: budget)?|weather clothes|weather packing|weather preparation|local mobility|best food|july weather clothes)\b/i.test(cleanAlt)
         || /참고\s*이미지\s*\d+\s+[a-z][a-z\s_-]{6,}$/i.test(cleanAlt)
         || /[가-힣].*\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b/i.test(cleanAlt);
-      const needsRepair = cleanAlt.length < 3 || /^(?:photo|travel image|image|이미지|여행 이미지)\s*\d*$/i.test(cleanAlt) || !hasToken || hasEnglishMicroAngle;
-      return `![${needsRepair ? `${keyword} 참고 이미지 ${imageNo}${suffix}` : cleanAlt}](${src})`;
+      const needsRepair = cleanAlt.length < 3 || /^(?:photo|travel image|image|이미지|여행 이미지)\s*\d*$/i.test(cleanAlt) || !hasToken || hasEnglishMicroAngle || Boolean(destinationKeyword && !cleanAlt.includes(destinationKeyword));
+      const naturalAlt = imageNo === 1
+        ? `${contextualKeyword} 여행 예산 체크 장면`
+        : imageNo === 2
+          ? `${contextualKeyword} 일정 준비 장면`
+          : `${contextualKeyword} 현지 비용 확인 장면`;
+      return `![${needsRepair ? `${naturalAlt}${suffix}` : cleanAlt}](${src})`;
     })
     .replace(/<figcaption>[\s\S]*?<\/figcaption>/gi, () => {
       const slot = Math.max(1, imageNo);
-      return `<figcaption>${keyword} 참고 이미지 ${slot}${suffix}</figcaption>`;
+      return `<figcaption>${contextualKeyword} 여행 준비 장면${suffix}</figcaption>`;
     });
+}
+
+function destinationImageKeyword(value?: string | null): string | null {
+  const cleaned = cleanTravelKeyword(value);
+  if (cleaned) return cleaned;
+  const raw = typeof value === 'string' ? value.trim() : '';
+  return /[가-힣]/.test(raw) ? raw : null;
+}
+
+function ensureDestinationImageAltsFinal(markdown: string, destination?: string | null): string {
+  const keyword = destinationImageKeyword(destination);
+  if (!keyword) return markdown;
+  let imageNo = 0;
+  return markdown.replace(/!\[([^\]\n]*)]\((https?:\/\/[^\n)]+)\)/g, (_match, alt: string, src: string) => {
+    imageNo += 1;
+    const cleanAlt = String(alt || '').trim();
+    const naturalAlt = imageNo === 1
+      ? `${keyword} 여행 예산 체크 장면`
+      : imageNo === 2
+        ? `${keyword} 일정 준비 장면`
+        : `${keyword} 현지 비용 확인 장면`;
+    if (cleanAlt.includes(keyword)) {
+      if (/여행 예산 체크 장면|일정 준비 장면|현지 비용 확인 장면/.test(cleanAlt)) {
+        return `![${naturalAlt}](${src})`;
+      }
+      return `![${cleanAlt}](${src})`;
+    }
+    return `![${naturalAlt}](${src})`;
+  });
 }
 
 function repairCollapsedFaqFinal(markdown: string, primaryKeyword: string): string {
@@ -2651,6 +2728,21 @@ async function main() {
     if (semanticSurfaceFinalRepair.changed) {
       nextHtml = semanticSurfaceFinalRepair.blogHtml;
     }
+    nextHtml = finalKeywordDensityRepair(nextHtml, primaryKeyword, blogType);
+    const postDensitySemanticRepair = repairBlogSemanticSurface({
+      title: normalizedTitle,
+      slug,
+      primaryKeyword,
+      destination,
+      category: normalizedTitle,
+      contentType,
+      productId,
+      blogHtml: nextHtml,
+    });
+    if (postDensitySemanticRepair.changed) {
+      nextHtml = postDensitySemanticRepair.blogHtml;
+    }
+    nextHtml = ensureDestinationImageAltsFinal(nextHtml, destination);
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,

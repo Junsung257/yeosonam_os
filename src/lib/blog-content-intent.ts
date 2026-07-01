@@ -68,6 +68,8 @@ export interface BlogIntentIssue {
     | 'broken_editorial_voice'
     | 'awkward_korean_surface'
     | 'placeholder_destination_context'
+    | 'placeholder_reference_link'
+    | 'duplicate_title_token'
     | 'title_intent_mismatch'
     | 'repetitive_answer_scaffold'
     | 'missing_answer_first'
@@ -428,6 +430,28 @@ const AWKWARD_KOREAN_SURFACE_RE =
   /즐기기(?:하|할|합니다|하세요|했습니다|할지|하기)|확인하시는 것이 좋습니다|현지\s+현지|같이 보면 판단하기 쉽습니다\.?\s*출발 전에는/i;
 const PLACEHOLDER_DESTINATION_CONTEXT_RE =
   /현지\s+(?:참고\s*이미지|[1-9]\d?월\s+날씨|월별\s+날씨|날씨와\s+옷차림|가이드\s+옷차림)/;
+const PLACEHOLDER_REFERENCE_LINK_RE =
+  /(?:\uC608\uC2DC\uB9C1\uD06C|%EC%98%88%EC%8B%9C%EB%A7%81%ED%81%AC|placeholder\s*link|example\s*link)/i;
+const LOCAL_PLACEHOLDER_ENTITY_RE =
+  /(?:\uD604\uC9C0(?:\uC5ED|\uD604|\uD56D|\s*\uC9C0\uC5ED|\s*\uB9C8\uCE20\uB9AC|\s*\uBA85\uBB3C\uAD00|\s*\uBA85\uBB3C\s*['"‘’“”]?\uD604\uC9C0['"‘’“”]?|\s*\uC790\uCCB4)|\uBD80\uC0B0\u2192\uD604\uC9C0|\uC5EC\uC18C\uB0A8\uC774\s+\uC774\s+\uC774\s+\uC815\uBCF4)/u;
+const DUPLICATED_SHORT_SURFACE_RE =
+  /(?:^|[\s"'“‘(])(\uC774|\uADF8|\uC800|\uC5EC\uD589|\uC900\uBE44|\uC815\uBCF4)\s+\1(?=$|[\s"'”’).,!?])/u;
+const DUPLICATED_PARTICLE_SURFACE_RE = /\uC815\uBCF4\uB97C(?:\uB97C)+/u;
+
+function duplicateTitleToken(title: string): string | null {
+  const tokens = title
+    .replace(/[|·ㆍ•,()[\]{}:!?]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.toLowerCase())
+    .filter((token) => token.length >= 2 && !/^20\d{2}$/.test(token));
+
+  for (let index = 1; index < tokens.length; index += 1) {
+    if (tokens[index] === tokens[index - 1]) return tokens[index];
+  }
+  return null;
+}
 
 function hasWeatherIntent(text: string): boolean {
   return WEATHER_INTENT_RE.test(text);
@@ -456,13 +480,25 @@ function inspectSemanticSurfaceContract(input: BlogIntentInput, source: string, 
   }
 
   const placeholderContext = plain.match(PLACEHOLDER_DESTINATION_CONTEXT_RE)?.[0];
-  if (placeholderContext) {
+  const localPlaceholderContext = plain.match(LOCAL_PLACEHOLDER_ENTITY_RE)?.[0];
+  if (placeholderContext || localPlaceholderContext) {
     addIssue(
       issues,
       'placeholder_destination_context',
       'critical',
       'Destination-specific copy must not expose generic placeholder wording such as "현지" where the real destination should appear.',
-      { sample: placeholderContext },
+      { sample: placeholderContext || localPlaceholderContext },
+    );
+  }
+
+  const duplicatedSurface = plain.match(DUPLICATED_SHORT_SURFACE_RE)?.[0] || plain.match(DUPLICATED_PARTICLE_SURFACE_RE)?.[0];
+  if (duplicatedSurface) {
+    addIssue(
+      issues,
+      'awkward_korean_surface',
+      'critical',
+      'Article contains duplicated short words that make the Korean copy read like generated output.',
+      { sample: duplicatedSurface.trim() },
     );
   }
 
@@ -500,6 +536,17 @@ function inspectHumanSurfaceContract(input: BlogIntentInput, source: string, pla
       'warning',
       'Title separator must be spaced naturally, for example "2026 | 체크리스트" instead of "2026|체크리스트".',
       { title },
+    );
+  }
+
+  const duplicatedTitleToken = duplicateTitleToken(title);
+  if (duplicatedTitleToken) {
+    addIssue(
+      issues,
+      'duplicate_title_token',
+      'critical',
+      'Title repeats the same token back-to-back, which looks generated and should be normalized before publishing.',
+      { title, token: duplicatedTitleToken },
     );
   }
 
@@ -557,6 +604,7 @@ function inspectCommonEditorialContract(input: BlogIntentInput, source: string, 
   ];
   const matched = bannedPatterns.filter((pattern) => plain.includes(pattern) || source.includes(pattern));
   const highlightCount = countMatches(source, /==[^=\n]{3,120}==|<mark\b/gi);
+  const placeholderReference = source.match(PLACEHOLDER_REFERENCE_LINK_RE)?.[0] || plain.match(PLACEHOLDER_REFERENCE_LINK_RE)?.[0];
 
   if (matched.length > 0 || highlightCount > 0) {
     addIssue(
@@ -565,6 +613,16 @@ function inspectCommonEditorialContract(input: BlogIntentInput, source: string, 
       matched.includes('이게 말이 되나 싶으시죠') || highlightCount > 0 ? 'critical' : 'warning',
       'Article contains repeated AI-like editorial patterns or highlight markup that should not appear in natural blog copy.',
       { matched, highlightCount },
+    );
+  }
+
+  if (placeholderReference) {
+    addIssue(
+      issues,
+      'placeholder_reference_link',
+      'critical',
+      'Published posts must not contain placeholder/example reference links.',
+      { sample: placeholderReference },
     );
   }
 
