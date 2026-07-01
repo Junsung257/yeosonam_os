@@ -63,6 +63,20 @@ npx tsx scripts/run-customer-open-operational-gate.ts --base=https://www.yeosona
 
 This gate must pass before calling a new upload flow ready for customer exposure. It checks baseline refresh dry-run/preflight, production `/packages` + `/lp` customer-visible text audit, openable DB customer-visible audit, and non-archived blocker audit. A product may be approved only when `/packages` proof, `/lp` proof, `customer_open_contract`, customer copy blocking count, safe-fix residuals, price/date consistency, unresolved attraction/hotel blockers, and proof staleness all pass.
 
+Before release, also check stored mobile proof freshness:
+
+```bash
+npm run refresh:customer-mobile-proofs -- --summary-only --json
+```
+
+If candidates remain, refresh them in bounded batches:
+
+```bash
+npm run refresh:customer-mobile-proofs:apply -- --base=https://www.yeosonam.com --limit=50 --batch-size=10
+```
+
+This is a proof refresh, not an auto-publication step. Products still require the normal approval gate.
+
 The same gate is wired to the `Marketing Release Readiness` GitHub workflow,
 which renders the readiness summary, opens or updates the attention-item issue,
 and uploads the generated operational input artifacts.

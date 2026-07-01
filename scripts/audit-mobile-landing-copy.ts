@@ -23,6 +23,15 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_KEY) 
 
 type AuditScope = 'public' | 'non-archived' | 'all';
 type AuditSurface = 'packages' | 'lp';
+type ScrapeInput = {
+  baseUrl: string;
+  pkg: PackageRow;
+  surface: AuditSurface;
+  textDir: string;
+  proofSecret: string | null;
+  pageTimeoutMs: number;
+  textTimeoutMs: number;
+};
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeout: NodeJS.Timeout | null = null;
@@ -60,6 +69,8 @@ type SurfaceResult = {
   issues: CustomerVisibleTextIssue[];
   text_path?: string;
   error?: string;
+  transient_error?: boolean;
+  attempts?: number;
 };
 
 const args = process.argv.slice(2);
@@ -93,6 +104,10 @@ function parseList(value: string | null): string[] {
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function isTransientScrapeError(error: string | undefined): boolean {
+  return Boolean(error && /Timeout|timed out|ERR_NETWORK_CHANGED|ERR_CONNECTION|ERR_HTTP2|fetch failed|terminated|Navigation failed/i.test(error));
 }
 
 function ensureDir(dir: string) {
@@ -136,15 +151,7 @@ async function loadPackages(ids: string[], limit: number, scope: AuditScope): Pr
   return (data ?? []) as PackageRow[];
 }
 
-async function scrapeSurface(browser: Browser, input: {
-  baseUrl: string;
-  pkg: PackageRow;
-  surface: AuditSurface;
-  textDir: string;
-  proofSecret: string | null;
-  pageTimeoutMs: number;
-  textTimeoutMs: number;
-}): Promise<SurfaceResult> {
+async function scrapeSurface(browser: Browser, input: ScrapeInput): Promise<SurfaceResult> {
   const url = `${input.baseUrl}${surfacePath(input.surface, input.pkg.id)}`;
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -203,10 +210,25 @@ async function scrapeSurface(browser: Browser, input: {
       blocking_count: 1,
       issues: [],
       error: error instanceof Error ? error.message : String(error),
+      transient_error: isTransientScrapeError(error instanceof Error ? error.message : String(error)),
     };
   } finally {
     await withTimeout(context.close(), 3_000, `${input.surface} context close`).catch(() => undefined);
   }
+}
+
+async function scrapeSurfaceWithRetry(browser: Browser, input: ScrapeInput & { maxRetries: number }): Promise<SurfaceResult> {
+  let last: SurfaceResult | null = null;
+  for (let attempt = 0; attempt <= input.maxRetries; attempt += 1) {
+    const result = await scrapeSurface(browser, input);
+    result.attempts = attempt + 1;
+    if (result.result === 'pass' || !isTransientScrapeError(result.error) || attempt === input.maxRetries) {
+      return result;
+    }
+    last = result;
+    await new Promise(resolve => setTimeout(resolve, Math.min(2_000, 500 * (attempt + 1))));
+  }
+  return last ?? await scrapeSurface(browser, input);
 }
 
 function auditDbFields(pkg: PackageRow): SurfaceResult {
@@ -251,9 +273,11 @@ async function main() {
   const limit = Math.max(1, Math.min(Number(argValue('limit') ?? '200') || 200, 2_000));
   const pageTimeoutMs = Math.max(5_000, Math.min(Number(argValue('page-timeout-ms') ?? '15_000') || 15_000, 60_000));
   const textTimeoutMs = Math.max(2_000, Math.min(Number(argValue('text-timeout-ms') ?? '5_000') || 5_000, 30_000));
+  const retryCount = Math.max(0, Math.min(Number(argValue('retry') ?? '1') || 1, 3));
   const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/mobile-copy-audit');
   const textDir = path.join(outputDir, 'texts');
   const jsonOnly = hasFlag('json');
+  ensureDir(outputDir);
   ensureDir(textDir);
 
   const proofSecret = process.env.REVALIDATE_SECRET || process.env.ADMIN_API_TOKEN || null;
@@ -265,7 +289,7 @@ async function main() {
 
   const browser = screenTargets.length > 0 ? await chromium.launch({ headless: true }) : null;
   const screenResults = browser
-    ? await runConcurrently(screenTargets, concurrency, target => scrapeSurface(browser, {
+    ? await runConcurrently(screenTargets, concurrency, target => scrapeSurfaceWithRetry(browser, {
       baseUrl,
       pkg: target.pkg,
       surface: target.surface,
@@ -273,6 +297,7 @@ async function main() {
       proofSecret,
       pageTimeoutMs,
       textTimeoutMs,
+      maxRetries: retryCount,
     }))
     : [];
   if (browser) await withTimeout(browser.close(), 5_000, 'browser close').catch(() => undefined);
@@ -296,6 +321,8 @@ async function main() {
     blocking: results.reduce((sum, result) => sum + result.blocking_count, 0),
     safeFixable: results.reduce((sum, result) => sum + Math.max(0, result.issue_count - result.blocking_count), 0),
     issueCountsByCode,
+    transientFailures: results.filter(result => result.result === 'fail' && result.transient_error).length,
+    retryCount,
     outputDir,
     checkedAt: new Date().toISOString(),
   };
@@ -314,6 +341,8 @@ async function main() {
     `- Fail: ${summary.fail}`,
     `- Blocking issues: ${summary.blocking}`,
     `- Safe-fix issues: ${summary.safeFixable}`,
+    `- Transient failures: ${summary.transientFailures}`,
+    `- Retry count: ${summary.retryCount}`,
     '',
     ...results
       .filter(result => result.result === 'fail')
