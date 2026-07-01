@@ -1271,6 +1271,65 @@ function improveBackfillSeoDescriptionCustomer(_description: string | null, row:
   return candidate.length <= 160 ? candidate : `${destination} ${topic} 2026년 기준 비용, 일정, 준비물, 예약 전 체크 포인트를 정리했습니다.`;
 }
 
+function descriptionIntentLabel(row: BlogRow, primaryKeyword: string): string {
+  const text = `${row.slug || ''} ${row.seo_title || ''} ${row.destination || ''} ${primaryKeyword}`.toLowerCase();
+  const microAngle = microAngleKoreanLabel(row);
+  if (/food|meal|restaurant|맛집|식비|음식/.test(text)) return '식비와 맛집 예산';
+  if (/shopping|souvenir|쇼핑|기념품/.test(text)) return '쇼핑과 기념품 예산';
+  if (/transport|mobility|transfer|교통|이동|동선/.test(text)) return '교통비와 이동 동선';
+  if (/hotel|resort|stay|숙소|호텔|리조트/.test(text)) return '숙소 지역과 예산';
+  if (/family|kid|child|가족|아이|자녀/.test(text)) return '가족 일정과 경비';
+  if (/medicine|emergency|hospital|비상약|응급|병원/.test(text)) return '비상약과 현지 응급 준비';
+  if (/weather|packing|clothes|날씨|옷차림|준비물/.test(text)) return '날씨별 준비물';
+  if (/visa|passport|immigration|입국|비자|여권|서류/.test(text)) return '입국 서류와 확인 절차';
+  if (/currency|exchange|card|환전|환율|카드|현금/.test(text)) return '환전과 결제 준비';
+  if (/itinerary|route|course|일정|코스/.test(text)) return '일정과 코스 선택';
+  if (microAngle) return microAngle;
+  return customerTopicLabel(topicKindForCustomer(row, primaryKeyword));
+}
+
+function normalizeDescriptionKey(value: string): string {
+  return (normalizeBlogDescription(value) || value).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function ensureBatchUniqueSeoDescription(
+  description: string,
+  row: BlogRow,
+  primaryKeyword: string,
+  seenDescriptions: Map<string, number>,
+): string {
+  const normalized = normalizeBlogDescription(description) || description;
+  const key = normalizeDescriptionKey(normalized);
+  const seen = seenDescriptions.get(key) || 0;
+  if (seen === 0) {
+    seenDescriptions.set(key, 1);
+    return normalized;
+  }
+
+  const keyword = primaryKeywordForCustomer({ ...row, destination: row.destination || primaryKeyword });
+  const destination = cleanTravelKeyword(row.destination) || cleanTravelKeyword(keyword) || '여행';
+  const intent = descriptionIntentLabel(row, keyword);
+  const candidates = [
+    `${destination} ${intent}을 2026년 기준으로 따로 정리했습니다. 비용, 일정, 준비물, 예약 전 확인 변수를 글별 체크 포인트로 확인하세요.`,
+    `${keyword} 중 ${intent}이 궁금한 분을 위한 2026년 기준 정리입니다. 상담 전 비용, 일정, 준비물, 현지 리스크를 먼저 확인하세요.`,
+    `${destination} 여행에서 ${intent}을 먼저 판단할 수 있게 2026년 기준 비용, 일정, 준비물, 예약 전 질문을 정리했습니다.`,
+  ];
+
+  for (const candidate of candidates) {
+    const strict = ensureStrictSeoDescription(candidate, row, keyword);
+    const candidateKey = normalizeDescriptionKey(strict);
+    if (!seenDescriptions.has(candidateKey)) {
+      seenDescriptions.set(candidateKey, 1);
+      return strict;
+    }
+  }
+
+  const fallback = ensureStrictSeoDescription(`${keyword} ${intent} 2026년 기준 비용, 일정, 준비물 체크. ${row.slug || row.id}`, row, keyword);
+  const fallbackKey = normalizeDescriptionKey(fallback);
+  seenDescriptions.set(fallbackKey, (seenDescriptions.get(fallbackKey) || 0) + 1);
+  return fallback;
+}
+
 function buildSecondaryKeywordsCustomer(primaryKeyword: string, destination?: string | null): string[] {
   const keyword = cleanTravelKeyword(primaryKeyword) || cleanTravelKeyword(destination) || '여행';
   return Array.from(new Set([
@@ -2152,6 +2211,7 @@ async function main() {
   const rows = ((data || []) as BlogRow[]).filter((row) => typeof row.slug === 'string' && typeof row.blog_html === 'string');
   const auditRows: AuditRow[] = [];
   const changedSlugs: string[] = [];
+  const seenSeoDescriptions = new Map<string, number>();
   let indexingQueued = 0;
 
   for (const row of rows) {
@@ -2263,11 +2323,11 @@ async function main() {
       row,
       primaryKeyword,
     );
-    const normalizedDescription = ensureStrictSeoDescription(improveBackfillSeoDescriptionCustomer(
+    const normalizedDescription = ensureBatchUniqueSeoDescription(ensureStrictSeoDescription(improveBackfillSeoDescriptionCustomer(
       normalizeBlogDescription(row.seo_description) || row.seo_description || null,
       row,
       primaryKeyword,
-    ), row, primaryKeyword);
+    ), row, primaryKeyword), row, primaryKeyword, seenSeoDescriptions);
     const secondaryKeywords = buildSecondaryKeywordsCustomer(primaryKeyword, destination);
     const nextTargetAdKeywords = !productId
       ? buildTargetAdKeywordsCustomer(row, primaryKeyword, secondaryKeywords)

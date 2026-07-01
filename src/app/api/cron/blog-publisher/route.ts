@@ -2163,7 +2163,7 @@ ${serpGapBlock}
   } else if (cat.includes('local') || cat.includes('현지')) {
     descTemplate = `${effectiveTopic} | 현지인 추천 맛집·교통 꿀팁·쇼핑 명소·숨은 여행지 정보를 여소남이 전해드립니다.`;
   } else {
-    descTemplate = `${effectiveTopic} | 실용적인 여행 정보와 팁을 여소남이 정리한 완벽 가이드. 준비부터 현지까지 한 번에 해결.`;
+    descTemplate = `${effectiveTopic} | 2026년 기준 비용, 일정, 준비물, 예약 전 확인할 현지 체크 포인트를 차분하게 정리했습니다.`;
   }
   const seo_description = descTemplate.substring(0, 160);
 
