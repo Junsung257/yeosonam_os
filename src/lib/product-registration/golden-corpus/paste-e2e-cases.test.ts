@@ -15,9 +15,14 @@ describe('golden paste E2E cases', () => {
       'long_inclusions_exclusions',
       'shopping_option_meal_noise',
       'separate_cancellation_policy',
+      'monthly_weekday_price_grid',
+      'multiproduct_mixed_catalog',
+      'net_gross_margin_lines',
+      'ticketing_deadline_soon',
+      'local_expense_multi_currency',
     ];
 
-    expect(GOLDEN_PASTE_E2E_CASES).toHaveLength(10);
+    expect(GOLDEN_PASTE_E2E_CASES).toHaveLength(15);
     expect(new Set(GOLDEN_PASTE_E2E_CASES.map(testCase => testCase.kind))).toEqual(new Set(requiredKinds));
     for (const testCase of GOLDEN_PASTE_E2E_CASES) {
       expect(testCase.rawText.length).toBeGreaterThan(40);
@@ -61,7 +66,7 @@ describe('golden paste E2E cases', () => {
           })),
           ...(testCase.kind === 'inbound_next_day_arrival' ? {
             flight_segments: [
-              { leg: 'inbound', flight_no: 'BX782', dep_time: '23:20', arr_time: '06:20', arr_day_offset: 1, day_pair: [dayCount - 1, dayCount] },
+              { leg: 'inbound', flight_no: 'BX782', dep_time: '23:20', arr_time: '06:20', arr_day_offset: 1, day_pair: [dayCount, dayCount] },
             ],
           } : {}),
         },
