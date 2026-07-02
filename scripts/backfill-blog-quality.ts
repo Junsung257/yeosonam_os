@@ -16,6 +16,7 @@ let repairBlogEditorialQuality: typeof import('../src/lib/blog-editorial-repair'
 let repairBlogSemanticSurface: typeof import('../src/lib/blog-editorial-repair').repairBlogSemanticSurface;
 let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogStructureQuality;
 let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
+let canonicalizeBlogPublicLinks: typeof import('../src/lib/blog-link-surface').canonicalizeBlogPublicLinks;
 let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildBlogContentBrief;
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
 let generateProductConsultantBlogPost: typeof import('../src/lib/blog-product-consultant-writer').generateProductConsultantBlogPost;
@@ -28,6 +29,7 @@ async function loadLocalModules() {
   ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
   ({ extractDestination } = await import('../src/lib/slug-utils'));
   ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
+  ({ canonicalizeBlogPublicLinks } = await import('../src/lib/blog-link-surface'));
   ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
   ({ generateProductConsultantBlogPost } = await import('../src/lib/blog-product-consultant-writer'));
@@ -359,7 +361,12 @@ function sanitizeInfoSalesPhrases(markdown: string): string {
 }
 
 function normalizeMarkdownLinkLabels(markdown: string): string {
-  return markdown.replace(/(?<!!)\[([\s\S]*?)]\(((?:https?:\/\/|\/)[^)]+)\)/g, (_match, label: string, href: string) => {
+  const collapsedBrokenLabels = markdown.replace(
+    /(?<!!)\[([^\]\n]{1,160})\s*\r?\n\s*\r?\n\s*([^\]]{1,180})]\(/g,
+    (_match, first: string, second: string) => `[${`${first} ${second}`.replace(/\s+/g, ' ').trim()}](`,
+  );
+  const publicLinks = canonicalizeBlogPublicLinks ? canonicalizeBlogPublicLinks(collapsedBrokenLabels, baseUrl) : collapsedBrokenLabels;
+  return publicLinks.replace(/(?<!!)\[([\s\S]*?)]\(((?:https?:\/\/|\/)[^)]+)\)/g, (_match, label: string, href: string) => {
     const cleanLabel = label.replace(/\s+/g, ' ').trim();
     return `[${cleanLabel}](${href})`;
   });
@@ -1612,8 +1619,9 @@ function dedupeItineraryFlowBlocksFinal(markdown: string): string {
 }
 
 function normalizeFinalMarkdownSurface(markdown: string): string {
+  const normalizedLinks = canonicalizeBlogPublicLinks ? canonicalizeBlogPublicLinks(markdown, baseUrl) : markdown;
   return capHeadingDensityFinal(
-    repairMarkdownTables(removeTinyBrokenTablesFinal(dedupeItineraryFlowBlocksFinal(dedupeRepeatedCalloutsFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(normalizeMarkdownImageUrlsFinal(markdown))))))),
+    repairMarkdownTables(removeTinyBrokenTablesFinal(dedupeItineraryFlowBlocksFinal(dedupeRepeatedCalloutsFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(normalizeMarkdownImageUrlsFinal(normalizedLinks))))))),
   );
 }
 
@@ -2743,6 +2751,7 @@ async function main() {
       nextHtml = postDensitySemanticRepair.blogHtml;
     }
     nextHtml = ensureDestinationImageAltsFinal(nextHtml, destination);
+    nextHtml = normalizeFinalMarkdownSurface(normalizeMarkdownLinkLabels(nextHtml));
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
