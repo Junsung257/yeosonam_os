@@ -88,7 +88,7 @@ function inferDestinationFromTitle(title: string): string | null {
 
 function compactSeoKeyword(parts: Array<string | null | undefined>): string {
   const uniqueParts = [...new Set(parts.map(cleanKeywordPart).filter((part): part is string => Boolean(part)))];
-  let keyword = uniqueParts.join(' ').replace(/\s+/g, ' ').trim();
+  const keyword = uniqueParts.join(' ').replace(/\s+/g, ' ').trim();
   if (keyword.length <= 42) return keyword;
 
   const withoutMiddle = uniqueParts.filter((part) => !/\d+\s*일/.test(part)).join(' ').trim();
