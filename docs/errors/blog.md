@@ -2,6 +2,14 @@
 
 Last updated: 2026-07-03
 
+## ERR-BLOG-legacy-surface-artifacts@2026-07-03
+
+- [x] **ERR-BLOG-legacy-surface-artifacts@2026-07-03**: Public SEO/render audits found legacy generated surface text on live blog posts, including raw `::tip TL;DR`, lone list markers, paragraph-ending `---`, machine hyphen keywords, and markdown image residue inside headings.
+- **Root cause**: The publish/backfill repair path handled core render artifacts, tables, and prompt residue, but did not normalize older article-level presentation traces that only become obvious in the rendered public article text.
+- **Fix**: `repairBlogEditorialQuality()` and `repairBlogStructureQuality()` now remove legacy surface artifacts, normalize machine hyphen keywords into Korean reading text, clean image residue from headings, and repair broken split CTA wording before publish gates/backfill writes.
+- **Prevention**: Public SEO/render audit failures for `surface_text_noise`, visible `TL;DR`, lone bullets, heading image residue, or machine keyword strings must become deterministic repair tests before live backfill.
+- **Verification**: `npx vitest run src/lib/blog-editorial-repair.test.ts`; then focused `npm run audit:blog-quality -- --slug=<affected-slug> --write`, indexing drain, and public `npm run audit:blog-seo` / `npm run audit:blog-render:browser`.
+
 ## ERR-BLOG-audit-sample-partial-coverage@2026-07-03
 
 - [x] **ERR-BLOG-audit-sample-partial-coverage@2026-07-03**: Render and SEO audits could report a perfect score while auditing fewer detail articles than the requested sample when `/blog` listing/API collection returned a partial set.

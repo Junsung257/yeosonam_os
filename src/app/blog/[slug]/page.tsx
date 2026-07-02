@@ -1458,9 +1458,9 @@ async function RelatedPostsSection({
     <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
       <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
         <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
-          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+          <div className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
             함께 보면 좋은 여행 가이드
-          </h2>
+          </div>
           <Link
             href="/blog"
             className="text-[13px] md:text-sm text-slate-700 hover:text-slate-900 font-semibold whitespace-nowrap"

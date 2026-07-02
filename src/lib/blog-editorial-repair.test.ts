@@ -614,6 +614,96 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('판단 기준 빠른 비교');
   });
 
+  it('removes legacy surface artifacts before they reach public blog pages', () => {
+    const source = [
+      '# 보홀 환전 체크',
+      '',
+      '::tip TL;DR',
+      '',
+      '- 레스토랑은 계산서의 10% ---',
+      '-',
+      '- 포인트를 먼저 확인하세요 보홀 현지 결제는 카드와 현금을 나눠 준비합니다.',
+      '',
+      '## 보라카이 백사장과 블루워터 ![5월 보라카이 여행 이미지](https://images.example.com/boracay.jpg)',
+      '',
+      '5월-황금연휴-해외여행-비행시간-에서 항공 시간과 환승 부담을 먼저 비교하세요.',
+      '',
+      '여여소남 상품 상세 보기 → 여소남',
+      '',
+      '예약하시면 현재',
+      '',
+      '5월 좌석 현황도 바로 확인 가능합니다.',
+      '',
+      '--- > 여소남 여행 준비',
+      '',
+      '- [목적지 블로그 더 보기](https://www.yeosonam.com/blog/destination/bohol) >',
+      '',
+      '<aside class="blog-callout blog-callout-tip">',
+      '<strong>읽는 순서</strong>',
+      '</aside>',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '보홀 환전 체크',
+      category: 'currency',
+      contentType: 'guide',
+      primaryKeyword: '보홀 환전',
+      destination: '보홀',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('removed_legacy_surface_artifacts');
+    expect(result.blogHtml).toContain('**핵심 요약**');
+    expect(result.blogHtml).toContain('5월 황금연휴 해외여행 비행시간에서');
+    expect(result.blogHtml).toContain('문의하시면 현재 5월 좌석 현황도 바로 확인 가능합니다.');
+    expect(result.blogHtml).not.toContain('::tip');
+    expect(result.blogHtml).not.toContain('TL;DR');
+    expect(result.blogHtml).not.toContain('계산서의 10% ---');
+    expect(result.blogHtml).not.toContain('\n-\n');
+    expect(result.blogHtml).not.toContain('포인트를 먼저 확인하세요');
+    expect(result.blogHtml).not.toContain('![');
+    expect(result.blogHtml).not.toContain('여여소남');
+    expect(result.blogHtml).not.toContain('상품 상세 보기 → 여소남');
+    expect(result.blogHtml).not.toContain('목적지 블로그 더 보기');
+  });
+
+  it('removes repeated generic answer headings that pollute article structure', () => {
+    const source = [
+      '# 석가장 맛집',
+      '',
+      '석가장 맛집에서 가장 먼저 확인할 것은 무엇일까요?',
+      '',
+      '답부터 말하면, 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다.',
+      '',
+      '## 예약 전 무엇을 먼저 확인해야 할까요? 답부터 말하면, 2026년 기준 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다. 포함/불포함과 이동 시간까지 같이 보면 1~2시간의 불필요한 이동을 줄이는 데 도움이 됩니다.',
+      '',
+      '## 출발 전 핵심 조건 할까요? 답부터 말하면, 2026년 기준 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다.',
+      '',
+      '## 일정별 확인 항목 할까요? 답부터 말하면, 2026년 기준 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다.',
+      '',
+      '## 핵심 요약',
+      '',
+      '- 현지 식당 위치와 이동 시간을 확인합니다.',
+      '- 결제 수단과 영업시간을 확인합니다.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '석가장 맛집',
+      category: 'food',
+      contentType: 'guide',
+      primaryKeyword: '석가장 맛집',
+      destination: '석가장',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('removed_repeated_generic_answer_headings');
+    expect((result.blogHtml.match(/예약 전 무엇을 먼저 확인해야 할까요/g) || []).length).toBe(1);
+    expect(result.blogHtml).not.toContain('출발 전 핵심 조건 할까요');
+    expect(result.blogHtml).not.toContain('일정별 확인 항목 할까요');
+  });
+
   it('adds a publish checklist and splits overlong headings before publish gates', () => {
     const source = [
       '# Cebu budget checklist',

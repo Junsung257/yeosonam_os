@@ -162,6 +162,47 @@ function removeRepetitiveAnswerScaffold(markdown: string): { text: string; chang
   return { text, changed: removed && text !== before };
 }
 
+function removeRepeatedGenericAnswerHeadings(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let keptQuestion = false;
+  let changed = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const questionMatch = trimmed.match(
+      /^##\s+(예약\s*전\s*무엇을\s*먼저\s*확인해야\s*할까요\?|출발\s*전\s*핵심\s*조건\s*할까요\?|일정별\s*확인\s*항목\s*할까요\?)(.*)$/i,
+    );
+    if (!questionMatch) {
+      next.push(line);
+      continue;
+    }
+
+    const heading = questionMatch[1] ?? '';
+    const tail = questionMatch[2] ?? '';
+    const isGenericTail = /답부터\s+말하면|추가\s+부담을\s+줄일\s+수\s+있습니다|불필요한\s+이동/.test(tail);
+    if (/출발\s*전\s*핵심\s*조건|일정별\s*확인\s*항목/.test(heading) || keptQuestion) {
+      changed = true;
+      continue;
+    }
+
+    keptQuestion = true;
+    if (isGenericTail) {
+      next.push(`## ${heading}`);
+      next.push('');
+      next.push('답부터 말하면, 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다.');
+      changed = true;
+      continue;
+    }
+
+    next.push(line);
+  }
+
+  const text = next.join('\n').replace(/\n{3,}/g, '\n\n');
+  return { text, changed: changed && text !== before };
+}
+
 function isFaqHeadingLine(line: string): boolean {
   const trimmed = line.trim();
   return /^(?:#{2,3}\s*)?(?:\*\*)?(?:자주\s*묻는\s*질문|FAQ|Q\s*&\s*A)(?:\*\*)?\s*$/i.test(trimmed);
@@ -847,6 +888,53 @@ function removeRenderArtifacts(markdown: string): { text: string; changed: boole
     .replace(/null원/g, '')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n');
+
+  return { text, changed: text !== before };
+}
+
+function cleanMachineHyphenKeyword(value: string): string {
+  return value
+    .replace(
+      /(^|[\s([{"'`])((?=[가-힣A-Za-z0-9-]*[가-힣])(?:[0-9]{1,2}월|[가-힣A-Za-z0-9]+)(?:-[가-힣A-Za-z0-9]+){2,})(?=(?:에서|은|는|을|를|이|가|로|과|와|도|까지|부터|처럼|이라면|\s|[.,!?)]|$))/g,
+      (_match, prefix: string, phrase: string) => `${prefix}${phrase.replace(/-/g, ' ')}`,
+    )
+    .replace(/\s+(?=(?:에서|은|는|을|를|이|가|로|과|와|도|까지|부터|처럼|이라면)(?:\s|[.,!?)]|$))/g, '');
+}
+
+function removeLegacySurfaceArtifacts(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .split('\n')
+    .map((line) => {
+      let next = line
+        .replace(/^\s*:{2,3}\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '**핵심 요약**')
+        .replace(/\bTL;?\s*DR\s*:/gi, '핵심 요약:')
+        .replace(/\bTL;?\s*DR\s*[—-]\s*/gi, '핵심 요약: ')
+        .replace(/!\[[^\]\n]*]\([^)]+\)/g, (match) => (/^#{1,6}\s/.test(line.trim()) ? '' : match))
+        .replace(/\s+![가-힣A-Za-z0-9][^\n]{0,120}$/g, '')
+        .replace(/[ \t]+---(?=\s*$)/g, '')
+        .replace(/여여소남/g, '여소남')
+        .replace(/여소남이이/g, '여소남이 이')
+        .replace(/여소남\s+여소남/g, '여소남')
+        .replace(/상품\s*상세\s*보기\s*→\s*여소남/g, '여소남에서 상품 상세 보기');
+      if (!/https?:\/\//i.test(next) && /[가-힣A-Za-z0-9]+-[가-힣A-Za-z0-9]+-[가-힣A-Za-z0-9-]+/.test(next)) {
+        next = cleanMachineHyphenKeyword(next);
+      }
+      return next;
+    })
+    .filter((line) => !/^\s*-\s*$/.test(line))
+    .join('\n')
+    .replace(/포인트를\s+먼저\s+확인하세요[.。]?\s*/g, '')
+    .replace(
+      /(?:예약|문의)?하시면\s+(?:현재\s*)?(?:\n\s*)+([0-9]{1,2}월\s+좌석\s+현황도\s+바로\s+확인\s+가능합니다[.。]?)/g,
+      '문의하시면 현재 $1',
+    )
+    .replace(/\s*하시면\s+현지\s+여행\s+Q&A를\s+더\s+상세히\s+알려드려요\.?/g, '')
+    .replace(/[ \t]+---[ \t]+(?=(?:#{1,6}\s|\*\*|해시태그|#))/g, '\n\n')
+    .replace(/\n?---\s*>\s*여소남\s+여행\s+준비[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s*준비|#{2,4}\s*빠른|#{2,4}\s*공식|#{2,4}\s*여행\s*상품|$))/g, '\n')
+    .replace(/\n?---\s*\*\*함께\s*보면\s*좋은\s*글\*\*[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 
   return { text, changed: text !== before };
 }
@@ -1699,6 +1787,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('removed_repetitive_answer_scaffold');
   }
 
+  const repeatedAnswerHeadingRepair = removeRepeatedGenericAnswerHeadings(blogHtml);
+  if (repeatedAnswerHeadingRepair.changed) {
+    blogHtml = repeatedAnswerHeadingRepair.text;
+    changes.push('removed_repeated_generic_answer_headings');
+  }
+
   const faqRepair = dedupeRepeatedFaqBlocks(blogHtml);
   if (faqRepair.changed) {
     blogHtml = faqRepair.text;
@@ -1727,6 +1821,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (artifactRepair.changed) {
     blogHtml = artifactRepair.text;
     changes.push('removed_render_artifacts');
+  }
+
+  const legacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (legacySurfaceRepair.changed) {
+    blogHtml = legacySurfaceRepair.text;
+    changes.push('removed_legacy_surface_artifacts');
   }
 
   const toneRepair = softenPromotionalInfoTone(blogHtml);
@@ -1887,6 +1987,14 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (finalAccentRepair.changed) {
     blogHtml = finalAccentRepair.text;
     changes.push('normalized_visual_accents_final');
+  }
+
+  const finalLegacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (finalLegacySurfaceRepair.changed) {
+    blogHtml = finalLegacySurfaceRepair.text;
+    if (!changes.includes('removed_legacy_surface_artifacts')) {
+      changes.push('removed_legacy_surface_artifacts');
+    }
   }
 
   const publicLinksRepaired = canonicalizeBlogPublicLinks(blogHtml);
@@ -2050,6 +2158,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     changes.push('removed_repetitive_answer_scaffold');
   }
 
+  const repeatedAnswerHeadingRepair = removeRepeatedGenericAnswerHeadings(blogHtml);
+  if (repeatedAnswerHeadingRepair.changed) {
+    blogHtml = repeatedAnswerHeadingRepair.text;
+    changes.push('removed_repeated_generic_answer_headings');
+  }
+
   const faqRepair = dedupeRepeatedFaqBlocks(blogHtml);
   if (faqRepair.changed) {
     blogHtml = faqRepair.text;
@@ -2078,6 +2192,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (accentRepair.changed) {
     blogHtml = accentRepair.text;
     changes.push('normalized_visual_accents');
+  }
+
+  const legacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (legacySurfaceRepair.changed) {
+    blogHtml = legacySurfaceRepair.text;
+    changes.push('removed_legacy_surface_artifacts');
   }
 
   const yeosonamDataRepair = softenUnsupportedYeosonamDataClaims(blogHtml);
@@ -2178,6 +2298,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (finalAccentRepair.changed) {
     blogHtml = finalAccentRepair.text;
     changes.push('normalized_visual_accents_final');
+  }
+
+  const finalLegacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (finalLegacySurfaceRepair.changed) {
+    blogHtml = finalLegacySurfaceRepair.text;
+    if (!changes.includes('removed_legacy_surface_artifacts')) {
+      changes.push('removed_legacy_surface_artifacts');
+    }
   }
 
   const after = inspectBlogIntentQuality({ ...input, blogHtml });
