@@ -236,9 +236,26 @@ function normalizeOptionalClaim(value: string): string[] {
   return [...variants].filter(v => v.length >= 2);
 }
 
+function optionalClaimComparable(value: string): string {
+  return decodeCommonHtmlEntities(value)
+    .replace(/OR/gi, '\uB610\uB294')
+    .replace(/\([^)]*(?:\$|USD|KRW|JPY|VND|\uC6D0|\uC778)[^)]*\)/gi, '')
+    .replace(/\$\s*\d+(?:\.\d+)?\s*\/?\s*(?:\uC778|\uBA85|person|pax)?/gi, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/[\s()[\]{}<>.,/\\|:;'"!?~\-*+&]+/g, '')
+    .trim();
+}
+
+function rawSupportsOptionalComparable(rawText: string, value: string): boolean {
+  const raw = optionalClaimComparable(rawText);
+  const claim = optionalClaimComparable(value);
+  return claim.length >= 2 && raw.includes(claim);
+}
+
 function rawSupportsOptionalLabel(rawText: string, value: string): boolean {
   const variants = normalizeOptionalClaim(value);
   return variants.some(variant => rawSupports(rawText, variant))
+    || rawSupportsOptionalComparable(rawText, value)
     || rawSupportsTokensInNearbyLine(rawText, value)
     || variants.some(variant => rawSupportsTokensInNearbyLine(rawText, variant));
 }

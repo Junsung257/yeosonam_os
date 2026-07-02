@@ -128,6 +128,32 @@ function shouldDeduplicateCustomerArray(pathParts: string[]): boolean {
   );
 }
 
+function shouldPreserveStructuredNull(pathParts: string[], key: string): boolean {
+  const parent = pathParts.at(-1);
+  const collection = parent && /^\d+$/.test(parent) ? pathParts.at(-2) : parent;
+  if (collection === 'product_prices') {
+    return [
+      'target_date',
+      'day_of_week',
+      'adult_selling_price',
+      'child_price',
+      'note',
+    ].includes(key);
+  }
+  if (collection === 'price_dates') {
+    return key === 'child_price' || key === 'confirmed';
+  }
+  if (collection === 'price_tiers') {
+    return [
+      'departure_day_of_week',
+      'child_price',
+      'infant_price',
+      'note',
+    ].includes(key);
+  }
+  return false;
+}
+
 function hasOptionalTourPrice(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   const obj = value as Record<string, unknown>;
@@ -323,7 +349,7 @@ function repairValue(value: unknown, pathParts: string[]): { value: unknown; cha
     for (const [key, item] of Object.entries(inputObject)) {
       const repaired = repairValue(item, [...pathParts, key]);
       changes.push(...repaired.changes);
-      if (repaired.value == null) continue;
+      if (repaired.value == null && !shouldPreserveStructuredNull(pathParts, key)) continue;
       if (typeof repaired.value === 'string' && repaired.value.trim() === '') continue;
       next[key] = repaired.value;
     }

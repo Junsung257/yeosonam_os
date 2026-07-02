@@ -63,9 +63,16 @@ function stripRegionFromName(name: string): string {
   if (parenMatch) {
     const inside = parenMatch[1];
     const hasRegionKw = Object.keys(REGION_KEYWORD_MAP).some(kw => inside.includes(kw));
-    if (hasRegionKw) return name.replace(/\s*\([^)]+\)\s*$/, '').trim();
+    if (hasRegionKw) return cleanOptionalTourBaseName(name.replace(/\s*\([^)]+\)\s*$/, ''));
   }
-  return name.trim();
+  return cleanOptionalTourBaseName(name);
+}
+
+function cleanOptionalTourBaseName(name: string): string {
+  return name
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 /**
