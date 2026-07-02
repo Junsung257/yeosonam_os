@@ -188,7 +188,7 @@ export function buildBlogEditorialBacklogRecheckDecision(input: {
   const reasons = recoverableReasons(blockers, categories);
   const dedupKey = readBlogEditorialBacklogDedupKey(input.row);
 
-  if (reasons.length === 0 || input.row.product_id) {
+  if (reasons.length === 0) {
     return {
       action: 'keep_blocked',
       reasons: reasons.length > 0 ? reasons : blockers,

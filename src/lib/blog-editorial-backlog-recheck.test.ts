@@ -57,6 +57,52 @@ describe('blog editorial backlog recheck', () => {
     });
   });
 
+  it('requeues product rows when only the generator contract caused the failure', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-02T00:00:00.000Z',
+      row: {
+        id: 'queue-product',
+        status: 'failed',
+        attempts: 2,
+        topic: '푸꾸옥 PKG ZE 푸꾸옥 2색골프 4박6일 가성비 리뷰',
+        destination: '푸꾸옥',
+        product_id: 'pkg-1',
+        last_error: '2/19 failed: [keyword_density] stuffing risk, [engine_v2] faithfulness',
+        meta: {
+          writer_type: 'product_consultant_writer',
+          product_dedup_key: 'pkg-1|2026-07-11|6d|ZE',
+          failure_code: 'keyword_density',
+          quarantine_reason: 'keyword_density',
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.dedup_key).toBe('product_consultant_writer::product::pkg-1|2026-07-11|6d|ze');
+    expect(decision.last_error).toBeNull();
+  });
+
+  it('keeps product evidence failures blocked until product proof is repaired', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      row: {
+        id: 'queue-product-proof',
+        status: 'failed',
+        attempts: 0,
+        topic: '광저우 품격패키지 가성비 리뷰',
+        destination: '광저우',
+        product_id: 'pkg-proof',
+        last_error: 'product_open_contract: quality_scorecard price_dates mismatch',
+        meta: {
+          writer_type: 'product_consultant_writer',
+          failure_code: 'product_open_contract',
+          quarantine_reason: 'product_open_contract',
+        },
+      },
+    });
+
+    expect(decision.action).toBe('keep_blocked');
+  });
+
   it('skips recoverable rows when an active duplicate is already available', () => {
     const decision = buildBlogEditorialBacklogRecheckDecision({
       activeDuplicateId: 'active-queue',
