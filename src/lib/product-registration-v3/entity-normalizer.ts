@@ -43,6 +43,13 @@ function regionalFoodTerm(rawText: string): string | null {
   return null;
 }
 
+const STANDALONE_MEAL_LABEL_RE =
+  /^(?:\uC804\uD1B5\uC2DD|BBQ|\uBC14\uBCA0\uD050|\uD604\uC9C0\uC2DD|\uD2B9\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uD638\uD154\uC2DD|\uD55C\uC2DD|\uC591\uC2DD|\uC77C\uC2DD)$/i;
+
+function isStandaloneMealLabel(rawText: string): boolean {
+  return STANDALONE_MEAL_LABEL_RE.test(rawText.replace(/\s+/g, '').trim());
+}
+
 function confidenceFor(category: V3EntityCategory, event: V3LedgerEvent): number {
   if (category === 'attraction') return event.match_status === 'matched' ? 0.95 : 0.6;
   if (category === 'meal' || category === 'transfer' || category === 'free_time' || category === 'price_noise') return 0.9;
@@ -292,12 +299,15 @@ export function buildEntityReviewItem(input: {
   country?: string | null;
 }): V3EntityReviewItem {
   const initialCategory = entityCategoryForEventType(input.event.type);
-  const attractionReviewText = initialCategory === 'attraction'
+  const preclassifiedCategory: V3EntityCategory = initialCategory === 'attraction' && isStandaloneMealLabel(input.event.raw_text)
+    ? 'meal'
+    : initialCategory;
+  const attractionReviewText = preclassifiedCategory === 'attraction'
     ? normalizeAttractionReviewText(input.event.raw_text)
     : input.event.raw_text;
-  const category: V3EntityCategory = initialCategory === 'attraction' && !attractionReviewText
+  const category: V3EntityCategory = preclassifiedCategory === 'attraction' && !attractionReviewText
     ? 'notice'
-    : initialCategory;
+    : preclassifiedCategory;
   const foodTerm = category === 'meal' ? regionalFoodTerm(input.event.raw_text) : null;
   const confidence = confidenceFor(category, input.event);
   const suggested_action = suggestedActionFor(category, input.event);

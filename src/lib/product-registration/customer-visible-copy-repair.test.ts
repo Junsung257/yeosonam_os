@@ -107,4 +107,58 @@ describe('repairCustomerVisibleCopyPayload', () => {
       { name: 'VIP 마사지' },
     ]);
   });
+
+  it('preserves required nullable fields inside structured price rows', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      product_prices: [{
+        target_date: '2026-07-23',
+        day_of_week: null,
+        net_price: 529000,
+        adult_selling_price: null,
+        child_price: null,
+        note: null,
+      }],
+      price_dates: [{
+        date: '2026-07-23',
+        price: 529000,
+        child_price: null,
+        confirmed: null,
+      }],
+      price_tiers: [{
+        period_label: '2026-07-23',
+        departure_dates: ['2026-07-23'],
+        departure_day_of_week: null,
+        adult_price: 529000,
+        child_price: null,
+        infant_price: null,
+        note: null,
+      }],
+    });
+
+    expect(result.value).toMatchObject({
+      product_prices: [{
+        target_date: '2026-07-23',
+        day_of_week: null,
+        net_price: 529000,
+        adult_selling_price: null,
+        child_price: null,
+        note: null,
+      }],
+      price_dates: [{
+        date: '2026-07-23',
+        price: 529000,
+        child_price: null,
+        confirmed: null,
+      }],
+      price_tiers: [{
+        period_label: '2026-07-23',
+        departure_dates: ['2026-07-23'],
+        departure_day_of_week: null,
+        adult_price: 529000,
+        child_price: null,
+        infant_price: null,
+        note: null,
+      }],
+    });
+  });
 });

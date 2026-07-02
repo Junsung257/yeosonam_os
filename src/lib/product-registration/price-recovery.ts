@@ -46,6 +46,43 @@ function priceDatesToRows(priceDates: PriceDate[]): ProductPriceRowInput[] {
   }));
 }
 
+function normalizeProductPriceDayOfWeek(value: unknown): ProductPriceRowInput['day_of_week'] {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  const compact = normalized.replace(/\s+/g, '');
+  const map: Record<string, NonNullable<ProductPriceRowInput['day_of_week']>> = {
+    mon: 'MON',
+    monday: 'MON',
+    tue: 'TUE',
+    tuesday: 'TUE',
+    wed: 'WED',
+    wednesday: 'WED',
+    thu: 'THU',
+    thursday: 'THU',
+    fri: 'FRI',
+    friday: 'FRI',
+    sat: 'SAT',
+    saturday: 'SAT',
+    sun: 'SUN',
+    sunday: 'SUN',
+    월: 'MON',
+    월요일: 'MON',
+    화: 'TUE',
+    화요일: 'TUE',
+    수: 'WED',
+    수요일: 'WED',
+    목: 'THU',
+    목요일: 'THU',
+    금: 'FRI',
+    금요일: 'FRI',
+    토: 'SAT',
+    토요일: 'SAT',
+    일: 'SUN',
+    일요일: 'SUN',
+  };
+  return map[compact] ?? null;
+}
+
 function tiersToProductPriceRows(tiers: PriceTier[]): ProductPriceRowInput[] {
   const rows: ProductPriceRowInput[] = [];
   const seen = new Set<string>();
@@ -61,7 +98,7 @@ function tiersToProductPriceRows(tiers: PriceTier[]): ProductPriceRowInput[] {
       seen.add(key);
       rows.push({
         target_date: date,
-        day_of_week: null,
+        day_of_week: normalizeProductPriceDayOfWeek(tier.departure_day_of_week ?? tier.note),
         net_price: netPrice,
         adult_selling_price: null,
         child_price: tier.child_price ?? null,

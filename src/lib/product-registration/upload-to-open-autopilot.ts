@@ -2404,9 +2404,14 @@ async function markAutopilotStage(
     .eq('id', packageId)
     .maybeSingle();
   const existing = asRecord((data as { audit_report?: unknown } | null)?.audit_report);
+  const sourceVerifyStatus = typeof patch.source_verify === 'string' ? patch.source_verify : null;
+  const readyAuditStatus = stage === 'ready_not_opened' && (sourceVerifyStatus === 'clean' || sourceVerifyStatus === 'warnings')
+    ? sourceVerifyStatus
+    : null;
   await supabase
     .from('travel_packages')
     .update({
+      ...(readyAuditStatus ? { audit_status: readyAuditStatus } : {}),
       audit_report: {
         ...existing,
         upload_to_open_autopilot: {

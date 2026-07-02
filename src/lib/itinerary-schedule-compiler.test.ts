@@ -180,6 +180,22 @@ describe('Baekdu landing regression guards', () => {
     expect(includedMassage.service_name).toBe('\uC804\uC2E0\uB9C8\uC0AC\uC9C0');
   });
 
+  it('classifies included Aodai experiences and shows as perks instead of attractions', () => {
+    const aodai = compileScheduleItemForLanding({
+      activity: '\uBCA0\uD2B8\uB0A8 \uC804\uD1B5\uC758\uC0C1 \uC544\uC624\uC790\uC774 \uCCB4\uD5D8\uAD00 + \uCEE4\uD53C \uB610\uB294 \uC74C\uB8CC 1\uC778 1\uC794 \uC81C\uACF5',
+      type: 'normal',
+    });
+    const show = compileScheduleItemForLanding({
+      activity: '\uCC28\uBC0D\uC1FC \uB610\uB294 \uC544\uC624\uC790\uC774\uC1FC()',
+      type: 'normal',
+    });
+
+    expect(aodai.entity_kind).toBe('perk');
+    expect(aodai.attraction_query).toBeNull();
+    expect(show.entity_kind).toBe('perk');
+    expect(show.attraction_query).toBeNull();
+  });
+
   it('reclassifies stale flight and hotel-like labels before mobile landing render', () => {
     const baekduCheonji = compileScheduleItemForLanding({
       activity: '\u0031\u0034\u0034\u0032\uACC4\uB2E8 \uB4F1\uC815 \uB8E8 \uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11',
