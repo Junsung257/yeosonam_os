@@ -33,6 +33,7 @@ export type ProductBlogBrief = {
   destination: string | null;
   angle: AngleType;
   primary_keyword: string;
+  seo_keyword: string;
   departure_date: string | null;
   departure_city: string | null;
   duration: string | null;
@@ -64,6 +65,46 @@ function sanitizeSlugPart(value: unknown, fallback = ''): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return text || fallback;
+}
+
+function cleanKeywordPart(value: unknown): string | null {
+  const text = String(value ?? '')
+    .replace(/&#8211;|&ndash;|&mdash;|&amp;/gi, ' ')
+    .replace(/\[[^\]]*]/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[\/|,+·ㆍ:–—-]+/g, ' ')
+    .replace(/\b(?:PKG|ZE|LJ|7C|TW|KE|OZ|BX|RS|YP|YSN)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length >= 2 ? text : null;
+}
+
+function inferDestinationFromTitle(title: string): string | null {
+  const cleaned = cleanKeywordPart(title);
+  if (!cleaned) return null;
+  const first = cleaned.split(/\s+/).find((part) => /[가-힣]{2,}/.test(part));
+  return first ?? null;
+}
+
+function compactSeoKeyword(parts: Array<string | null | undefined>): string {
+  const uniqueParts = [...new Set(parts.map(cleanKeywordPart).filter((part): part is string => Boolean(part)))];
+  const keyword = uniqueParts.join(' ').replace(/\s+/g, ' ').trim();
+  if (keyword.length <= 42) return keyword;
+
+  const withoutMiddle = uniqueParts.filter((part) => !/\d+\s*일/.test(part)).join(' ').trim();
+  if (withoutMiddle && withoutMiddle.length <= 42) return withoutMiddle;
+  return keyword.slice(0, 42).trim();
+}
+
+export function buildProductSeoKeyword(product: ProductWithOpsFields): string {
+  const title = product.title || product.display_title || 'package';
+  const destination = cleanKeywordPart(product.destination) ?? inferDestinationFromTitle(title);
+  const duration = product.duration ? `${product.duration}일` : null;
+  const base = compactSeoKeyword([destination, duration, '패키지']);
+  if (base) return base;
+
+  const titleFallback = cleanKeywordPart(title);
+  return compactSeoKeyword([titleFallback, '패키지']) || '여행 패키지';
 }
 
 function asDateString(value: unknown): string | null {
@@ -161,7 +202,8 @@ export function buildProductBlogBrief(product: ProductWithOpsFields, angle: Angl
   const title = product.title || product.display_title || 'package';
   const departureDate = resolveProductDepartureDate(product);
   const supplierCode = resolveProductSupplierCode(product);
-  const primaryKeyword = [destination, title].filter(Boolean).join(' ').trim() || title;
+  const seoKeyword = buildProductSeoKeyword(product);
+  const primaryKeyword = seoKeyword;
   const nights = product.nights ?? (product.duration ? product.duration - 1 : null);
   const duration = product.duration ? `${nights ? `${nights}박 ` : ''}${product.duration}일` : null;
   const departureCity = product.departure_airport ?? null;
@@ -196,6 +238,7 @@ export function buildProductBlogBrief(product: ProductWithOpsFields, angle: Angl
     destination,
     angle,
     primary_keyword: primaryKeyword,
+    seo_keyword: seoKeyword,
     departure_date: departureDate,
     departure_city: departureCity,
     duration,

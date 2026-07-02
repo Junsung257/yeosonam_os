@@ -79,7 +79,6 @@ function asOperationalRow(row: QueueRow) {
 }
 
 function isEditorialBacklogRow(row: QueueRow): boolean {
-  if (row.product_id) return false;
   return getBlogQueueOperationalState(asOperationalRow(row)).action === 'editorial_backlog';
 }
 
@@ -88,7 +87,6 @@ async function loadRows(limit: number): Promise<QueueRow[]> {
     .from('blog_topic_queue')
     .select('id,product_id,topic,destination,source,status,attempts,priority,angle_type,last_error,target_publish_at,updated_at,created_at,meta')
     .eq('status', 'failed')
-    .is('product_id', null)
     .order('updated_at', { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);

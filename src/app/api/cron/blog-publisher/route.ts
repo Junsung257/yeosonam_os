@@ -1278,10 +1278,19 @@ async function processQueueItem(
     const blogType: 'product' | 'info' = item.product_id ? 'product' : 'info';
     // Pillar posts: skip keyword density (destination name dominates by design)
     // Compound destinations (X/Y/Z) stay broad enough to avoid single-city keyword stuffing.
-    const generatedPrimaryKeyword =
-      (generated.generation_meta?.content_brief as { primary_keyword?: string } | undefined)?.primary_keyword
-      || (generated.generation_meta?.seo as { primary_keyword?: string } | undefined)?.primary_keyword
-      || null;
+    const generatedContentBrief =
+      generated.generation_meta?.content_brief as { primary_keyword?: string; seo_keyword?: string } | undefined;
+    const generatedSeoMeta =
+      generated.generation_meta?.seo as { primary_keyword?: string; seo_keyword?: string } | undefined;
+    const generatedPrimaryKeyword = item.product_id
+      ? generatedSeoMeta?.seo_keyword
+        || generatedSeoMeta?.primary_keyword
+        || generatedContentBrief?.seo_keyword
+        || generatedContentBrief?.primary_keyword
+        || null
+      : generatedContentBrief?.primary_keyword
+        || generatedSeoMeta?.primary_keyword
+        || null;
     const primaryKeyword = choosePublisherPrimaryKeyword({
       source: item.source,
       productId: item.product_id ?? null,
@@ -1954,6 +1963,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
       content_brief: {
         title: productBrief.product_title,
         primary_keyword: productBrief.primary_keyword,
+        seo_keyword: productBrief.seo_keyword,
         secondary_keywords: [productBrief.destination, productBrief.supplier_code, productBrief.departure_date]
           .filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
         search_intent: 'commercial_package_comparison',
@@ -1977,6 +1987,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
       product_dedup_key: productBrief.dedup_key,
       seo: {
         primary_keyword: seo.primaryKeyword,
+        seo_keyword: productBrief.seo_keyword,
         secondary_keywords: seo.secondaryKeywords,
       },
     },
