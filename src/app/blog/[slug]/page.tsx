@@ -30,7 +30,7 @@ import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
-import { classifyBlogIntent } from '@/lib/blog-content-intent';
+import { classifyBlogIntent, inspectBlogIntentQuality } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import {
   BLOG_DETAIL_CACHE_TAG,
@@ -440,12 +440,42 @@ function isNextCacheContextUnavailable(error: unknown): boolean {
   return error instanceof Error && /incrementalCache missing in unstable_cache/i.test(error.message);
 }
 
+function hasUsableBlogBody(post: BlogPost | null | undefined): boolean {
+  const text = (post?.blog_html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_`>\-\[\]\(\)!|:]/g, ' ')
+    .replace(/\s+/g, '')
+    .trim();
+  return text.length >= 200;
+}
+
+function shouldRefreshCachedBlogPost(post: BlogPost | null | undefined, slug: string): boolean {
+  if (!post) return false;
+  if (!hasUsableBlogBody(post)) return true;
+  const editorial = inspectBlogIntentQuality({
+    title: post.seo_title || slug,
+    slug: post.slug || slug,
+    primaryKeyword: post.seo_title || post.destination || slug,
+    angleType: post.angle_type,
+    category: post.seo_title || undefined,
+    contentType: post.product_id ? 'package_intro' : 'guide',
+    productId: post.product_id,
+    blogHtml: post.blog_html || '',
+  });
+  return !editorial.passed || editorial.issues.some((issue) => issue.severity === 'critical');
+}
+
 async function getPostFast(slug: string): Promise<BlogPost | null> {
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
     return getPostFastUncached(slug);
   }
   try {
-    return await getCachedPostFast(slug);
+    const cached = await getCachedPostFast(slug);
+    if (shouldRefreshCachedBlogPost(cached, slug)) {
+      const fresh = await getPostFastUncached(slug).catch(() => null);
+      if (hasUsableBlogBody(fresh)) return fresh;
+    }
+    return cached;
   } catch (error) {
     if (isNextCacheContextUnavailable(error)) {
       return getPostFastUncached(slug);
