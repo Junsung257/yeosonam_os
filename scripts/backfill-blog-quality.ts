@@ -2884,6 +2884,14 @@ async function main() {
     for (const reason of row.changeReasons) acc[reason] = (acc[reason] || 0) + 1;
     return acc;
   }, {});
+  const minorIssueRows = auditRows.filter((row) => row.publishReady && row.qualityIssues.length > 0);
+  const minorIssueCounts = minorIssueRows.reduce<Record<string, number>>((acc, row) => {
+    for (const issue of row.qualityIssues) {
+      const key = `${issue.severity}:${issue.code}`;
+      acc[key] = (acc[key] || 0) + 1;
+    }
+    return acc;
+  }, {});
   const summary = {
     mode: dryRun ? 'dry-run' : 'write',
     scanned: auditRows.length,
@@ -2904,7 +2912,24 @@ async function main() {
     rewriteTraceAfter: auditRows.filter((row) => row.rewriteTraceAfter).length,
     qualityGateFailed: auditRows.filter((row) => !row.qualityGatePassed).length,
     publishBlocked: auditRows.filter((row) => !row.publishReady).length,
-    minorOnlyIssues: auditRows.filter((row) => row.publishReady && row.qualityIssues.length > 0).length,
+    minorOnlyIssues: minorIssueRows.length,
+    minorIssueCounts,
+    minorIssueSamples: minorIssueRows
+      .slice(0, 10)
+      .map((row) => ({
+        slug: row.slug,
+        seoScore: row.seoScore,
+        readabilityScore: row.readabilityScore,
+        issues: row.qualityIssues
+          .slice(0, 5)
+          .map((issue) => ({
+            code: issue.code,
+            source: issue.source,
+            severity: issue.severity,
+            message: issue.message,
+            evidence: issue.evidence,
+          })),
+      })),
     highlightAverageBefore: highlightCountsBefore.length > 0
       ? Number((highlightCountsBefore.reduce((sum, value) => sum + value, 0) / highlightCountsBefore.length).toFixed(2))
       : 0,

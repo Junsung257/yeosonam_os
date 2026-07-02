@@ -162,6 +162,16 @@ Last updated: 2026-07-03
 
 ---
 
+## ERR-BLOG-quality-audit-minor-blindspot@2026-07-03
+
+- [x] **ERR-BLOG-quality-audit-minor-blindspot@2026-07-03**: `npm run audit:blog-quality -- --limit=50` exposed `minorOnlyIssues=7` but did not show which posts or issue types caused the warnings, so operators could not distinguish harmless SEO length warnings from recurring naturalness or CTA problems.
+- **Root cause**: The backfill/audit summary only emitted detailed samples for blocking quality failures. Publish-ready rows with non-blocking quality issues were reduced to a single count.
+- **Fix**: `scripts/backfill-blog-quality.ts` now emits `minorIssueCounts` and `minorIssueSamples` with slug, SEO/readability scores, issue code, source, severity, message, and evidence for publish-ready warning rows.
+- **Prevention**: Daily blog quality evidence must be diagnosable without raw DB reads. A nonzero `minorOnlyIssues` count is acceptable only when the JSON also shows the recurring issue classes and sample slugs.
+- **Verification**: `npm run audit:blog-quality -- --limit=50` now identifies the current warning mix (`seo.title`, `seo.meta_description`, `seo.heading_structure`, `seo.image_seo`, `seo.url_slug`, `seo.internal_links_cta`, and one readability repetition warning). `npm run type-check` passed.
+
+---
+
 ## ERR-BLOG-card-news-dead-image-url@2026-06-07
 
 > Original source before 2026-06-07 split: `db/error-registry.md:1033`
