@@ -108,9 +108,14 @@ function isBlogQueryUnavailable(result: unknown): boolean {
   return /abort|timeout|timed out|connection timeout/i.test(message);
 }
 
+function logBlogListDegraded(label: string, message: unknown): void {
+  console.info(`[blog/list][degraded] ${label} query unavailable`, message instanceof Error ? message.message : message);
+}
+
 async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: unknown, timeoutMs = 3500): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
   const unavailableFallback = () => {
     if (fallback && typeof fallback === 'object') {
       return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogQueryResult<T>;
@@ -118,13 +123,14 @@ async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback
     return fallback as T;
   };
   const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
-    console.warn(`[blog/list] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    if (!timedOut) logBlogListDegraded(label, err);
     return unavailableFallback();
   });
   const timeoutPromise = new Promise<T>((resolve) => {
     timer = setTimeout(() => {
+      timedOut = true;
       controller.abort();
-      console.warn(`[blog/list] ${label} query timed out after ${timeoutMs}ms`);
+      logBlogListDegraded(label, `timed out after ${timeoutMs}ms`);
       resolve(unavailableFallback());
     }, timeoutMs);
   });
@@ -278,7 +284,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
 
   const listUnavailable = isBlogQueryUnavailable(listRes);
   if (listUnavailable) {
-    throw createBlogDatabaseUnavailableError();
+    return unavailableBlogData(filter);
   }
 
   const fetchedPosts = (listRes.data as unknown as BlogPost[]) || [];
