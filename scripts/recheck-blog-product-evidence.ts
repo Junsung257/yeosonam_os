@@ -7,6 +7,7 @@ import { loadCustomerOpenContractForPackage } from '../src/lib/product-registrat
 import {
   buildBlogProductEvidenceDuplicateMeta,
   buildBlogProductEvidenceRecheckDecision,
+  buildBlogProductEvidenceRecheckGuidance,
   readBlogProductEvidenceDedupKey,
 } from '../src/lib/blog-product-evidence-recheck';
 
@@ -207,6 +208,11 @@ async function main() {
     results.push(result);
   }
 
+  const guidance = buildBlogProductEvidenceRecheckGuidance({
+    requeue,
+    duplicateSkipped,
+    keepBlocked,
+  });
   const report = {
     mode: write ? 'write' : 'dry-run',
     checked_at: now,
@@ -215,12 +221,19 @@ async function main() {
     duplicate_skipped: duplicateSkipped,
     keep_blocked: keepBlocked,
     updated,
+    ...guidance,
     results,
   };
 
   if (json) console.log(JSON.stringify(report, null, 2));
   else {
-    console.log(`[blog-product-evidence-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} keep_blocked=${keepBlocked} updated=${updated}`);
+    console.log(`[blog-product-evidence-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} keep_blocked=${keepBlocked} updated=${updated} write_recommended=${guidance.write_recommended}`);
+    if (guidance.write_reasons.length > 0) {
+      console.log(`write_reasons=${guidance.write_reasons.join(',')}`);
+    }
+    if (guidance.metadata_refresh_available) {
+      console.log('metadata_refresh_available=true');
+    }
     for (const row of results.slice(0, 20)) {
       console.log(`- ${row.action} ${row.product_id} ${row.topic ?? ''}`);
     }

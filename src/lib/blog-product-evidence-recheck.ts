@@ -10,6 +10,12 @@ export type BlogProductEvidenceRecheckDecision =
       meta: Record<string, unknown>;
     };
 
+export type BlogProductEvidenceRecheckGuidance = {
+  write_recommended: boolean;
+  write_reasons: string[];
+  metadata_refresh_available: boolean;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -66,6 +72,21 @@ export function buildBlogProductEvidenceDuplicateMeta(input: {
     self_heal_blocked: true,
     ...(input.duplicateKey ? { duplicate_key: input.duplicateKey } : {}),
     ...(input.duplicateKeepId ? { duplicate_keep_id: input.duplicateKeepId } : {}),
+  };
+}
+
+export function buildBlogProductEvidenceRecheckGuidance(input: {
+  requeue: number;
+  duplicateSkipped: number;
+  keepBlocked: number;
+}): BlogProductEvidenceRecheckGuidance {
+  const writeReasons: string[] = [];
+  if (input.requeue > 0) writeReasons.push('requeue_recovered_product_rows');
+  if (input.duplicateSkipped > 0) writeReasons.push('skip_duplicate_product_rows');
+  return {
+    write_recommended: writeReasons.length > 0,
+    write_reasons: writeReasons,
+    metadata_refresh_available: input.keepBlocked > 0,
   };
 }
 
