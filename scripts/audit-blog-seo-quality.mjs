@@ -70,6 +70,21 @@ const TITLE_INTENT_COMPANIONS = {
   accommodation: ['cost'],
   food: ['cost'],
 };
+const PRODUCT_BLOG_TITLE_SIGNALS = /패키지|상품 리뷰|가성비 리뷰|특가|노팁|노옵션|노쇼핑|출발가|package review|product review/i;
+const PRODUCT_BLOG_BODY_SIGNALS = [
+  /포함|included/i,
+  /불포함|excluded/i,
+  /맞는 사람|추천 대상|fit for/i,
+  /안 맞는 사람|비추천|not fit/i,
+  /가격 변동|출발일|상담|문의|가능 여부|availability/i,
+];
+const PRODUCT_DECISION_HELP_SIGNALS = [
+  /포함|included/i,
+  /불포함|excluded/i,
+  /맞는 사람|추천 대상|fit for/i,
+  /안 맞는 사람|비추천|not fit/i,
+  /상담|문의|확인/i,
+];
 
 async function fetchText(path) {
   const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
@@ -209,9 +224,23 @@ function hasConflictingTitleIntent(row) {
     .some((intent) => !allowed.has(intent));
 }
 
+function isProductConsultBlog(row) {
+  if (row.hasProductJsonLd) return true;
+  const header = `${row.path || ''} ${row.title || ''} ${row.h1Text || ''}`;
+  if (PRODUCT_BLOG_TITLE_SIGNALS.test(header)) return true;
+  const body = row.articleTextSample || '';
+  return PRODUCT_BLOG_BODY_SIGNALS.filter((pattern) => pattern.test(body)).length >= 4;
+}
+
+function hasProductDecisionHelp(row) {
+  const text = `${row.title || ''} ${row.h1Text || ''} ${row.articleTextSample || ''}`;
+  return PRODUCT_DECISION_HELP_SIGNALS.filter((pattern) => pattern.test(text)).length >= 3;
+}
+
 function judge(row) {
   const issues = [];
   const warnings = [];
+  const productConsultBlog = isProductConsultBlog(row);
   const expectedCanonicalPath = safeDecodePath(row.path).replace(/\/$/, '');
   const expectedCanonicalOrigin = new URL(expectedCanonicalOriginInput).origin;
   let canonicalPath = '';
@@ -237,7 +266,12 @@ function judge(row) {
   if (row.h1Count !== 1) issues.push('bad_h1_count');
   if (row.h2Count < 3) issues.push('not_enough_h2');
   if (row.articleTextLength < 1200) issues.push('thin_content');
-  if (row.articleTextLength < 2500) warnings.push('below_info_blog_ideal_length');
+  if (productConsultBlog) {
+    if (row.articleTextLength < 1800) warnings.push('below_product_blog_ideal_length');
+    if (!hasProductDecisionHelp(row)) warnings.push('weak_product_decision_help');
+  } else if (row.articleTextLength < 2500) {
+    warnings.push('below_info_blog_ideal_length');
+  }
   if (row.imageCount < 2) issues.push('not_enough_article_images');
   if (row.imagesMissingAlt > 0) issues.push('image_alt_missing');
   if (row.ogImageMissing) issues.push('missing_og_image');
@@ -339,6 +373,7 @@ async function auditPage(page, path) {
       jsonLdTypes,
       hasBlogPostingJsonLd: jsonLdTypes.includes('BlogPosting') || jsonLdTypes.includes('Article'),
       hasBreadcrumbJsonLd: jsonLdTypes.includes('BreadcrumbList'),
+      hasProductJsonLd: jsonLdTypes.includes('Product'),
     };
   }, path);
 }

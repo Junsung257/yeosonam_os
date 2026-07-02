@@ -44,7 +44,11 @@ import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
 import { slugifyTopic, romanize, extractDestination } from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
-import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
+import {
+  customerOpenContractBlogBlockReason,
+  isCustomerOpenContractBlogPublishable,
+  loadCustomerOpenContractForPackage,
+} from '@/lib/product-registration/customer-open-contract';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
@@ -60,7 +64,10 @@ import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPos
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
-import { quarantineNonRetryableBlogQueueItems } from '@/lib/blog-queue-lifecycle';
+import {
+  quarantineNonRetryableBlogQueueItems,
+  rescheduleOverdueQueuedBlogQueueItems,
+} from '@/lib/blog-queue-lifecycle';
 import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
 import { readBoundedIntEnv } from '@/lib/env-utils';
 
@@ -736,6 +743,14 @@ async function runBlogPublisher(request: NextRequest) {
   try {
     blogStyleGuideCache = null;
     const staleRecovery = await recoverStaleGeneratingQueueItems();
+    const queueHealthCleanup = await rescheduleOverdueQueuedBlogQueueItems({
+      limit: MAX_CANDIDATE_POOL * 3,
+      rescheduledBy: 'blog-publisher-preflight',
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`queue_health_cleanup_failed: ${message}`);
+      return { scanned: 0, rescheduled: 0, actions: [] };
+    });
     const preflightQuarantine = await quarantineNonRetryableBlogQueueItems({
       limit: MAX_CANDIDATE_POOL * 3,
       maxAttempts: MAX_ATTEMPTS,
@@ -758,6 +773,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
         errors,
@@ -807,6 +823,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
         queueRefill,
@@ -1046,6 +1063,7 @@ async function runBlogPublisher(request: NextRequest) {
         remainingAfterRun: Math.max(0, remainingToday - publishedCount),
       },
       staleRecovery,
+      queueHealthCleanup,
       preflightQuarantine,
       pillarDeferral,
       queueRefill,
@@ -1872,8 +1890,8 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
 
   const product = pkg[0];
   const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, item.product_id);
-  if (!openContract.ok) {
-    throw new Error(`product_customer_open_contract_failed:${openContract.blockers.slice(0, 5).join('|')}`);
+  if (!isCustomerOpenContractBlogPublishable(openContract)) {
+    throw new Error(`product_customer_open_contract_failed:${customerOpenContractBlogBlockReason(openContract)}`);
   }
   const angle = normalizeAngleType(item.angle_type);
 

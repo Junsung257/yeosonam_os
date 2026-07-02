@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { shouldSelfHealBlogQueueItem } from '../src/lib/blog-queue-failure-policy';
+import { rescheduleOverdueQueuedBlogQueueItems } from '../src/lib/blog-queue-lifecycle';
 import {
   classifyBlogQueueOperationalIssue,
   getBlogQueueOperationalState,
@@ -139,30 +140,6 @@ async function main() {
       continue;
     }
 
-    if (row.status === 'queued' && state.attention) {
-      const payload = {
-        target_publish_at: now.toISOString(),
-        updated_at: now.toISOString(),
-        meta: {
-          ...meta,
-          overdue_queued_rescheduled_at: now.toISOString(),
-          overdue_queued_previous_target_publish_at: row.target_publish_at ?? null,
-          rescheduled_by: 'cleanup-blog-queue-health',
-        },
-      };
-      const result = await updateRow(row.id, payload);
-      if (!result.error) overdueQueuedRescheduled += 1;
-      actions.push({
-        id: row.id,
-        status_before: row.status,
-        action: 'reschedule_overdue_queued',
-        issue,
-        write,
-        error: result.error ? result.error.message : null,
-      });
-      continue;
-    }
-
     if (needsFailureMetaRepair(row, issue)) {
       const payload = {
         updated_at: now.toISOString(),
@@ -191,6 +168,22 @@ async function main() {
       });
     }
   }
+
+  const overdueQueuedResult = await rescheduleOverdueQueuedBlogQueueItems({
+    limit,
+    now,
+    write,
+    rescheduledBy: 'cleanup-blog-queue-health',
+  });
+  overdueQueuedRescheduled = overdueQueuedResult.rescheduled;
+  actions.push(...overdueQueuedResult.actions.map((action) => ({
+    id: action.id,
+    status_before: 'queued',
+    action: 'reschedule_overdue_queued',
+    issue: 'overdue_queued',
+    write,
+    error: action.error,
+  })));
 
   const { data: afterRows } = await supabase
     .from('blog_topic_queue')
