@@ -149,6 +149,7 @@ async function main() {
   const results: Array<Record<string, unknown>> = [];
   let requeue = 0;
   let duplicateSkipped = 0;
+  let retiredLegacySeeds = 0;
   let keepBlocked = 0;
   let updated = 0;
 
@@ -214,6 +215,26 @@ async function main() {
           result.after_status = 'skipped';
         }
       }
+    } else if (decision.action === 'retire_legacy_seed') {
+      retiredLegacySeeds += 1;
+      if (write) {
+        const { error } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'skipped',
+            attempts: Math.max(Number(row.attempts ?? 0), 3),
+            last_error: decision.last_error,
+            updated_at: now,
+            meta: decision.meta,
+          } as never)
+          .eq('id', row.id)
+          .eq('status', 'failed');
+        if (error) result.update_error = error.message;
+        else {
+          updated += 1;
+          result.after_status = 'skipped';
+        }
+      }
     } else {
       keepBlocked += 1;
       if (write) {
@@ -237,6 +258,7 @@ async function main() {
   const guidance = buildBlogEditorialBacklogRecheckGuidance({
     requeue,
     duplicateSkipped,
+    retiredLegacySeeds,
   });
   const report = {
     mode: write ? 'write' : 'dry-run',
@@ -244,6 +266,7 @@ async function main() {
     scanned: rows.length,
     requeue,
     duplicate_skipped: duplicateSkipped,
+    retired_legacy_seed: retiredLegacySeeds,
     keep_blocked: keepBlocked,
     updated,
     ...guidance,
@@ -253,7 +276,7 @@ async function main() {
   if (json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
-    console.log(`[blog-editorial-backlog-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} keep_blocked=${keepBlocked} updated=${updated} write_recommended=${guidance.write_recommended}`);
+    console.log(`[blog-editorial-backlog-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} retired_legacy_seed=${retiredLegacySeeds} keep_blocked=${keepBlocked} updated=${updated} write_recommended=${guidance.write_recommended}`);
     if (guidance.write_reasons.length > 0) console.log(`write_reasons=${guidance.write_reasons.join(',')}`);
     for (const row of results.slice(0, 25)) {
       console.log(`- ${row.action} ${row.topic ?? ''}`);

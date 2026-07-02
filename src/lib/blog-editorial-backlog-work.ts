@@ -60,6 +60,26 @@ function extractBracketedFailures(error: string): string[] {
   return failures;
 }
 
+function extractNamedFailures(error: string): string[] {
+  const failures: string[] = [];
+  if (!error) return failures;
+
+  const briefFailure = error.match(/\bblog_content_brief_failed:([a-z0-9_:-]+)/i);
+  if (briefFailure?.[1]) {
+    failures.push(`blog_content_brief_failed:${briefFailure[1].toLowerCase()}`);
+  }
+
+  if (/stale_generating_or_non_retryable_failure/i.test(error)) {
+    failures.push('stale_generating_or_non_retryable_failure');
+  } else if (/stale generating/i.test(error)) {
+    failures.push('stale_generating');
+  }
+
+  if (/context_missing/i.test(error)) failures.push('context_missing');
+  if (/missing_primary_keyword/i.test(error)) failures.push('missing_primary_keyword');
+  return failures;
+}
+
 export function extractEditorialBacklogBlockers(row: BlogEditorialBacklogQueueRow): string[] {
   const meta = readMeta(row.meta);
   const metaFailures = [
@@ -75,6 +95,7 @@ export function extractEditorialBacklogBlockers(row: BlogEditorialBacklogQueueRo
   return unique([
     ...metaFailures,
     ...extractBracketedFailures(error),
+    ...extractNamedFailures(error),
     classifyBlogQueueOperationalIssue(row),
   ]);
 }
@@ -104,6 +125,8 @@ export function categorizeEditorialBacklogBlocker(blocker: string): string {
     return 'engine_contract';
   }
   if (lower.includes('topic_fit') || lower.includes('intent_mismatch')) return 'topic_fit';
+  if (lower.includes('blog_content_brief') || lower.includes('missing_primary_keyword')) return 'brief_contract';
+  if (lower.includes('stale_generating')) return 'stale_recovery';
   if (lower.includes('seo_score') || lower.includes('seo')) return 'seo_metadata';
   if (lower.includes('image')) return 'image_evidence';
   if (lower.includes('self_heal')) return 'self_heal_contract';
@@ -116,6 +139,8 @@ function actionForCategories(categories: string[]): string {
   if (categories.includes('keyword_use')) return 'repair_keyword_density_and_surface_copy';
   if (categories.includes('engine_contract')) return 'repair_engine_v2_brief_or_product_consult_sections';
   if (categories.includes('topic_fit')) return 'retire_or_regenerate_topic_seed';
+  if (categories.includes('brief_contract')) return 'repair_content_brief_contract';
+  if (categories.includes('stale_recovery')) return 'requeue_stale_generation_after_contract_fix';
   if (categories.includes('seo_metadata')) return 'repair_seo_metadata_generation';
   if (categories.includes('image_evidence')) return 'repair_image_selection_or_alt_evidence';
   if (categories.includes('self_heal_contract')) return 'inspect_non_retryable_self_heal_contract';
