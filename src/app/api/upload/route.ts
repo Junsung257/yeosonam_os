@@ -32,8 +32,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const UPLOAD_PIPELINE_SOFT_TIMEOUT_MS = Math.max(
-  30_000,
-  Math.min(120_000, Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 45_000)),
+  60_000,
+  Math.min(270_000, Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 240_000)),
 );
 const UPLOAD_QUEUE_FIRST_TEXT_LENGTH = Math.max(
   5_000,

@@ -81,6 +81,13 @@ function extractSavedIds(payload: Record<string, unknown>): string[] {
   return typeof payload.dbId === 'string' && payload.dbId.trim() ? [payload.dbId] : [];
 }
 
+function extractDuplicateInternalCode(payload: Record<string, unknown>): string | null {
+  if (payload.duplicate !== true) return null;
+  return typeof payload.internal_code === 'string' && payload.internal_code.trim()
+    ? payload.internal_code.trim()
+    : null;
+}
+
 async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest): Promise<ReplaySummary> {
   const rawText = row.raw_text_chunk?.trim() ?? '';
   if (rawText.length < 50) {
@@ -148,7 +155,8 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
 
   const payload = result.payload as Record<string, unknown>;
   const savedIds = extractSavedIds(payload);
-  if (result.status >= 200 && result.status < 300 && savedIds.length > 0) {
+  const duplicateInternalCode = extractDuplicateInternalCode(payload);
+  if (result.status >= 200 && result.status < 300 && (savedIds.length > 0 || duplicateInternalCode)) {
     await supabaseAdmin
       .from('upload_review_queue')
       .update({
@@ -161,7 +169,7 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
       id: row.id,
       title: row.product_title,
       status: 'replayed',
-      reason: check.reason,
+      reason: duplicateInternalCode ? `duplicate already processed: ${duplicateInternalCode}` : check.reason,
       httpStatus: result.status,
       savedIds,
     };

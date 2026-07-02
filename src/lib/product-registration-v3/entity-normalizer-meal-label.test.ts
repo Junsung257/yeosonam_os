@@ -23,7 +23,7 @@ function attractionEvent(rawText: string) {
 
 describe('V3 entity meal label normalization', () => {
   it('does not block standalone meal labels as unresolved attractions', () => {
-    for (const label of ['\uC804\uD1B5\uC2DD', 'BBQ']) {
+    for (const label of ['\uC804\uD1B5\uC2DD', 'BBQ', '(\uD558\uC774\uB514\uB77C\uC624)', '+\uC0DD\uC218']) {
       const item = buildEntityReviewItem({
         event: attractionEvent(label),
         dayNumber: 2,
