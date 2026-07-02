@@ -134,6 +134,7 @@ const configuredBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/
 const baseUrl = /localhost|127\.0\.0\.1/i.test(configuredBaseUrl)
   ? 'https://www.yeosonam.com'
   : (configuredBaseUrl || 'https://www.yeosonam.com');
+const BLOG_DETAIL_REVALIDATE_TAG = 'blog-detail';
 const rewriteTracePattern = new RegExp('\\uC7AC\\uC791\\uC131\\s*v?\\d|rewrite\\s*v?\\d', 'i');
 const KEYWORD_SPLIT_RE = /[,，、/|·•:：]/;
 
@@ -2430,7 +2431,7 @@ async function revalidate(paths: string[]) {
     await fetch(`${baseUrl}/api/revalidate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths, secret }),
+      body: JSON.stringify({ paths, tags: [BLOG_DETAIL_REVALIDATE_TAG], secret }),
     });
   } catch (err) {
     console.warn('[blog-quality] revalidate failed:', err instanceof Error ? err.message : err);
