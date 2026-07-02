@@ -165,6 +165,7 @@ function inspectArticle(html, path) {
     markdownLinks: count(text, /\[[^\]]+]\((?:https?:\/\/|\/)/g),
     markdownTables: count(text, /\|---|---\|/g),
     markdownBold: count(text, /\*\*[^*]+?\*\*/g),
+    legacyHighlights: count(text, /==[^=\n]{1,180}==|<mark\b/gi),
   };
   const artifactTotal = Object.values(artifacts).reduce((sum, value) => sum + value, 0);
   const imgCount = root.find('img').length;
@@ -238,6 +239,7 @@ async function inspectArticleInBrowser(browser, path) {
         markdownLinks: count(text, /\[[^\]]+]\((?:https?:\/\/|\/)/g),
         markdownTables: count(text, /\|---|---\|/g),
         markdownBold: count(text, /\*\*[^*]+?\*\*/g),
+        legacyHighlights: count(text, /==[^=\n]{1,180}==|<mark\b/gi),
       };
       const artifactTotal = Object.values(artifacts).reduce((sum, value) => sum + value, 0);
       const imgCount = root.querySelectorAll('img').length;
