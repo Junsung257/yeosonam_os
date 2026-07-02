@@ -1,4 +1,5 @@
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -258,6 +259,11 @@ export async function buildBlogOpsSummary(supabase: any) {
   const manualReviewQueue = queueRows.filter(isManualReviewQueue);
   const retryableFailedQueue = queueRows.filter((row) => row.status === 'failed' && !isManualReviewQueue(row));
   const failureBuckets = countBy(queueRows.filter((row) => row.status === 'failed'), (row) => classifyQueueError(row.last_error, row.meta?.failure_code));
+  const editorialBacklogWork = buildBlogEditorialBacklogWorkReport({
+    rows: queueRows,
+    limit: 12,
+    now,
+  });
 
   const publishedRows = postRows.filter((row) => row.status === 'published');
   const publishedToday = publishedRows.filter((row) => row.published_at && new Date(row.published_at) >= todayStart && new Date(row.published_at) < tomorrowStart).length;
@@ -455,6 +461,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       overdue_queued: overdueQueued,
       stale_generating: staleGenerating,
       failure_buckets: failureBuckets,
+      editorial_backlog_work: editorialBacklogWork,
       recent_attention: activeQueue.slice(0, 12),
       level: queueLevel,
     },
