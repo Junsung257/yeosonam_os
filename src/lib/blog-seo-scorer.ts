@@ -64,6 +64,9 @@ const TITLE_INTENT_COMPANIONS: Record<TitleIntentGroup, TitleIntentGroup[]> = {
   food: ['cost'],
 };
 
+const PRODUCT_DECISION_SIGNAL_RE = /가성비|패키지|특가|출발|포함|불포함|노팁|노옵션|리뷰|만원|박\d일|\d박|상담|예약|출발일|인원|일정/i;
+const INFO_SOFT_CTA_RE = /\/packages|\/blog|\/group-inquiry|utm_|consult|문의|상담|확인/i;
+
 export const BLOG_SEO_MAX_SCORE = 100;
 export const BLOG_SEO_MIN_SCORE = {
   info: 85,
@@ -215,6 +218,8 @@ function scoreTitle(input: ScorerInput, keyword: string, dest: string): SeoScore
   if (keyword && title.includes(keyword)) score += 3;
   if (dest && dest !== keyword && title.includes(dest)) score += 1;
   if (/\b20\d{2}\b|최신|월별|비용|일정|준비물|가격|코스|날씨|체크리스트/.test(title)) score += 3;
+  else if (input.blogType === 'product' && PRODUCT_DECISION_SIGNAL_RE.test(title)) score += 3;
+  if (input.blogType === 'product' && PRODUCT_DECISION_SIGNAL_RE.test(title)) score += 1;
   if (!/(완벽|끝판왕|무조건|충격|대박|실화)/.test(title)) score += 1;
 
   const primaryIntent = inferTitleIntent(keyword || dest || input.slug);
@@ -250,7 +255,13 @@ function scoreMeta(input: ScorerInput, keyword: string): SeoScoreDetail {
   if (desc.length >= 70 && desc.length <= 160) score += 4;
   else if (desc.length >= 50 && desc.length <= 180) score += 2;
   if (keyword && desc.includes(keyword)) score += 3;
+  else if (
+    input.blogType === 'product' &&
+    input.destination &&
+    input.destination.split(/[\/,\s·|]+/).filter((token) => token.length >= 2).some((token) => desc.includes(token))
+  ) score += 1;
   if (/\d|비용|일정|준비|예약|포함|날씨|월별|체크/.test(desc)) score += 2;
+  else if (input.blogType === 'product' && PRODUCT_DECISION_SIGNAL_RE.test(desc)) score += 2;
   if (desc && desc !== input.seoTitle) score += 1;
 
   return detail('meta_description', score, 10, 8, 5, messages.join(', '));
@@ -261,7 +272,7 @@ function scoreHeadings(input: ScorerInput, keyword: string, dest: string): SeoSc
   const h1 = text.match(/^#[ \t]+.+$/gm) || [];
   const h2 = text.match(/^##[ \t]+.+$/gm) || [];
   let score = 0;
-  const expected = input.blogType === 'info' ? { min: 5, max: 9 } : { min: 3, max: 7 };
+  const expected = input.blogType === 'info' ? { min: 5, max: 9 } : { min: 3, max: 8 };
 
   if (h1.length === 1) score += 3;
   if (h2.length >= expected.min && h2.length <= expected.max) score += 3;
@@ -332,16 +343,23 @@ function scoreImages(input: ScorerInput, keyword: string, dest: string): SeoScor
   if (imageCount > 0 && altCount / imageCount >= 0.9) score += 3;
   else if (altCount > 0) score += 1;
 
-  if ((keyword && altText.includes(keyword)) || (dest && altText.includes(dest))) score += 1;
+  const destinationTokens = dest.split(/[\/,\s·|]+/).filter((token) => token.length >= 2);
+  const keywordTokens = keyword.split(/[\/,\s·|]+/).filter((token) => token.length >= 2);
+  if (
+    (keyword && altText.includes(keyword)) ||
+    (dest && altText.includes(dest)) ||
+    destinationTokens.some((token) => altText.includes(token)) ||
+    keywordTokens.some((token) => altText.includes(token))
+  ) score += 1;
   if (images.some((image) => /pexels|supabase|images\.unsplash|cdn/i.test(image.src))) score += 1;
 
   return detail('image_seo', score, 8, 7, 4, `images ${imageCount}, alt ${altCount}`);
 }
 
-function scoreInternalLinks(blogHtml: string): SeoScoreDetail {
+function scoreInternalLinks(blogHtml: string, blogType: 'product' | 'info'): SeoScoreDetail {
   const links = extractLinks(blogHtml);
   const internal = links.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href));
-  const cta = internal.filter((href) => /\/packages|utm_|kakao|consult|문의|예약/i.test(href));
+  const cta = internal.filter((href) => /\/packages|utm_|kakao|consult|문의|예약|상담|확인/i.test(href));
   let score = 0;
 
   if (internal.length >= 3) score += 4;
@@ -349,6 +367,7 @@ function scoreInternalLinks(blogHtml: string): SeoScoreDetail {
   else if (internal.length >= 1) score += 1;
   if (cta.length >= 2) score += 3;
   else if (cta.length >= 1) score += 1;
+  if (blogType === 'info' && internal.length >= 2 && cta.length >= 1 && internal.some((href) => INFO_SOFT_CTA_RE.test(href))) score += 2;
 
   return detail('internal_links_cta', score, 7, 6, 3, `internal ${internal.length}, cta ${cta.length}`);
 }
@@ -468,6 +487,7 @@ function scoreSlug(input: ScorerInput, keyword: string): SeoScoreDetail {
   if (slug.length >= 12 && slug.length <= 90) score += 1;
   if (!/untitled|draft|test|v\d+$/i.test(slug)) score += 1;
   if (/^[a-z0-9가-힣-]+$/i.test(slug)) score += 1;
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(slug) && slug.length >= 8) score += 1;
   if (keyword && keyword.split(/\s+/).some((part) => part.length >= 2 && slug.toLowerCase().includes(part.toLowerCase()))) score += 1;
   else if (!keyword) score += 1;
 
@@ -486,7 +506,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
     scorePrimaryKeyword(plainText, keyword, input.blogType),
     scoreSemanticCoverage(plainText, input.secondaryKeywords),
     scoreImages(input, keyword, dest),
-    scoreInternalLinks(input.blogHtml),
+    scoreInternalLinks(input.blogHtml, input.blogType),
     scoreExternalLinks(input.blogHtml),
     scorePublicLinkIntegrity(input.blogHtml),
     scoreReadability(input.blogHtml, plainText),
