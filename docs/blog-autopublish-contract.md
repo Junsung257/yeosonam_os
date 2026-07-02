@@ -89,7 +89,7 @@ The post must not be published when any of these are true:
 - `generation_meta.content_brief` is missing, failed, or contradicts the raw topic/search intent.
 - SERP/free-intent evidence is presented as ranking proof when it came from autocomplete fallback.
 - `topic_fit` fails because the topic is a machine slug, placeholder, weak travel intent, or bad destination/intent combination.
-- `editorial_quality` fails because the article contains placeholder text, broken Korean particles, excessive highlights, generic image context, or machine-looking slug/title.
+- `editorial_quality` fails because the article contains placeholder text, visible prompt/writing-rule residue such as `규칙 A (감각 디테일)`, broken Korean particles, excessive highlights, generic image context, or machine-looking slug/title.
 - SEO score fails after metadata repair.
 - The slug is weak, generated-looking, numeric-leading, or hash-suffixed.
 - Render integrity fails.
