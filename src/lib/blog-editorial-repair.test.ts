@@ -242,6 +242,64 @@ describe('blog editorial repair', () => {
     expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
   });
 
+  it('adds an answer-first intro and softens readable Korean hard CTA in info posts', () => {
+    const source = [
+      '# 몽골 6월 날씨와 옷차림 준비물 체크',
+      '',
+      '이번 글에서는 몽골 6월 날씨를 여행 준비 관점에서 살펴봅니다.',
+      '',
+      '지금 예약하기 전에 상담 신청을 바로 남기면 잔여 좌석과 상품 보기를 빠르게 확인할 수 있습니다.',
+      '',
+      '## 날씨 판단 기준',
+      '',
+      '| 항목 | 확인 기준 | 주의할 점 |',
+      '| --- | --- | --- |',
+      '| 낮 기온 | 일교차 | 얇은 겉옷을 준비합니다. |',
+      '| 이동 | 비포장 구간 | 방풍과 방진 준비가 필요합니다. |',
+      '| 일정 | 숙소 위치 | 이동 시간이 달라집니다. |',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '몽골 6월 날씨와 옷차림 준비물 체크',
+      category: 'weather',
+      contentType: 'guide',
+      destination: '몽골',
+      primaryKeyword: '몽골 6월 날씨',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('added_answer_first_intro');
+    expect(result.changes).toEqual(expect.arrayContaining(['sanitized_info_sales_tone']));
+    expect(result.after.issues.some((issue) => issue.code === 'missing_answer_first')).toBe(false);
+    expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
+    expect(result.blogHtml.slice(0, Math.ceil(result.blogHtml.length * 0.3))).not.toMatch(/지금\s*예약|상담\s*신청|잔여\s*좌석|상품\s*보기/);
+  });
+
+  it('softens readable unsupported Yeosonam data claims before intent gates', () => {
+    const source = [
+      '# 몽골 식비 예산 현지 맛집 비용 가이드 2026',
+      '',
+      '몽골 식비 예산은 먼저 도시 이동 동선, 식사 포함 여부, 환율을 함께 확인하면 판단이 쉽습니다.',
+      '',
+      '여소남 데이터로 보면 현지 맛집 비용은 이 기준을 그대로 따르면 됩니다.',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '몽골 식비 예산 현지 맛집 비용 가이드 2026',
+      category: 'cost',
+      contentType: 'guide',
+      destination: '몽골',
+      primaryKeyword: '몽골 식비 예산',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('softened_unsupported_yeosonam_data_claims');
+    expect(result.blogHtml).not.toContain('여소남 데이터');
+    expect(result.after.issues.some((issue) => issue.code === 'unsupported_yeosonam_data')).toBe(false);
+  });
+
   it('softens unsupported Yeosonam data claims before intent gates', () => {
     const source = [
       '# 오사카 여행 준비물',

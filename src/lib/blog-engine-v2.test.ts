@@ -66,6 +66,44 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.failure_bucket).toBe('evidence_insufficient');
   });
 
+  it('treats readable Korean opening CTA as sales pressure for info writer posts', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 몽골 6월 날씨와 옷차림 준비물 체크',
+        '',
+        '몽골 6월 날씨는 먼저 일교차, 비포장 이동 동선, 방풍 준비를 확인하면 판단이 쉽습니다. 지금 예약하기 전에 상담 신청을 바로 남기면 잔여 좌석도 빠르게 볼 수 있습니다.',
+        '',
+        '## 날씨 판단 기준',
+        '| 항목 | 확인 기준 | 주의할 점 |',
+        '| --- | --- | --- |',
+        '| 낮 기온 | 일교차 | 얇은 겉옷을 준비합니다. |',
+        '| 이동 | 비포장 구간 | 방풍과 방진 준비가 필요합니다. |',
+        '| 일정 | 숙소 위치 | 이동 시간이 달라집니다. |',
+        '',
+        '## 공식 확인',
+        '[몽골 기상 정보](https://example.com/weather)',
+      ].join('\n'),
+      primaryKeyword: '몽골 6월 날씨',
+      destination: '몽골',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '몽골 6월 날씨와 옷차림은 어떻게 준비하나요?',
+          answer_first: '일교차와 이동 동선을 먼저 확인합니다.',
+          official_sources_required: true,
+        },
+        content_brief: {
+          search_intent: 'weather',
+          evidence: ['기상 정보 확인 필요'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('sales_pressure');
+    expect(evaluation.metrics.sales_pressure).toBe(35);
+  });
+
   it('passes product consultant posts only when DB-backed decision blocks exist', () => {
     const blogHtml = `# 발리 4박5일 패키지: 899,000원부터, 이런 분께 맞습니다
 

@@ -629,7 +629,9 @@ function inspectCommonEditorialContract(input: BlogIntentInput, source: string, 
   const hasYeosonamEvidence = /(예약|상담|검색)\s*(로그|건수|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain);
   const hasUnsupportedYeosonamData =
     /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i.test(plain);
-  if (hasUnsupportedYeosonamData && !hasYeosonamEvidence) {
+  const hasReadableYeosonamEvidence = /(?:\uC608\uC57D|\uC0C1\uB2F4|\uAC80\uC0C9)\s*(?:\uB85C\uADF8|\uAC74\uC218|\uC9D1\uACC4)|GSC|\uC11C\uCE58\uCF58\uC194|SERP|\uCD9C\uCC98|\uC9D1\uACC4\s*\uAE30\uAC04|\uD45C\uBCF8|\uB85C\uADF8/i.test(plain);
+  const hasReadableUnsupportedYeosonamData = /\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?(?:\uB370\uC774\uD130|\uC608\uC57D\s*\uB370\uC774\uD130|\uC0C1\uB2F4\s*\uB370\uC774\uD130)(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/i.test(plain);
+  if ((hasUnsupportedYeosonamData || hasReadableUnsupportedYeosonamData) && !(hasYeosonamEvidence || hasReadableYeosonamEvidence)) {
     addIssue(
       issues,
       'unsupported_yeosonam_data',
@@ -644,12 +646,14 @@ function inspectCommonEditorialContract(input: BlogIntentInput, source: string, 
 
 function inspectInfoWriterContract(source: string, plain: string, issues: BlogIntentIssue[]) {
   const first = firstBodyParagraph(source);
+  const startsLikeReadableGreeting = /^(?:\uC548\uB155\uD558\uC138\uC694|\uC624\uB298\uC740|\uC774\uBC88\s*\uAE00(?:\uC5D0\uC11C\uB294|\uC740)|\uC5EC\uC18C\uB0A8\s*\uC5D0\uB514\uD130)/.test(first);
   const startsLikeGreeting = /^(안녕하세요|소중한\s*여행|여소남\s*에디터|오늘은|이번\s*글에서는)/.test(first);
   const hasAnswerSignal = /(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|줄일 수|해야|핵심|결론)/.test(first);
   const hasReadableAnswerSignal = /답부터|먼저|기준|확인|비용|가격|준비|주의|환전|입국|날씨|일정|현지|선택|쉽습니다|안전합니다/.test(first);
-  const hasAnyAnswerSignal = hasAnswerSignal || hasReadableAnswerSignal;
+  const hasReadableKoreanAnswerSignal = /(?:\uB2F5\uBD80\uD130|\uBA3C\uC800|\uAE30\uC900|\uD655\uC778|\uBE44\uC6A9|\uAC00\uACA9|\uC900\uBE44|\uC8FC\uC758|\uC0AC\uC804|\uC785\uAD6D|\uC120\uD0DD|\uC77C\uC815|\uB3D9\uC120|\uD310\uB2E8|\uC815\uB9AC\uD569\uB2C8\uB2E4|\uC548\uC804\uD569\uB2C8\uB2E4)/.test(first);
+  const hasAnyAnswerSignal = hasAnswerSignal || hasReadableAnswerSignal || hasReadableKoreanAnswerSignal;
 
-  if ((first.length < 60 && !hasAnyAnswerSignal) || startsLikeGreeting || !hasAnyAnswerSignal) {
+  if ((first.length < 60 && !hasAnyAnswerSignal) || startsLikeGreeting || startsLikeReadableGreeting || !hasAnyAnswerSignal) {
     addIssue(
       issues,
       'missing_answer_first',
@@ -668,12 +672,14 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
     .replace(/\n##\s*여행\s*상품과\s*함께\s*확인하기[\s\S]*$/i, '')
     .replace(/\n---[\s\S]*$/i, '');
   const earlySource = contentBeforeBottomCta.slice(0, Math.ceil(contentBeforeBottomCta.length * 0.3));
+  const hasReadableKoreanHardCta = /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i.test(earlySource);
   const hasEarlyHardCta =
+    hasReadableKoreanHardCta ||
     /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(earlySource)
     || /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(earlySource)
     || /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(earlySource);
   const hasReadableHardAction = /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(earlySource);
-  if (hasEarlyHardCta && hasReadableHardAction) {
+  if (hasEarlyHardCta && (hasReadableHardAction || hasReadableKoreanHardCta)) {
     addIssue(
       issues,
       'early_strong_cta',
