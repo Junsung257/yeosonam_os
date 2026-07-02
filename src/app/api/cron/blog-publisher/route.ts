@@ -1734,7 +1734,7 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const baseUrl = resolveBlogCanonicalOrigin();
   const cronSecret = getSecret('CRON_SECRET');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cronSecret) headers.Authorization = `Bearer ${cronSecret}`;

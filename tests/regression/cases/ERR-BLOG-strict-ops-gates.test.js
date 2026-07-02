@@ -31,6 +31,16 @@ test('ERR-BLOG-strict-ops-gates: product consult posts do not inherit info guide
   assert.match(source, /else if \(row\.articleTextLength < 2500\)/);
 });
 
+test('ERR-BLOG-strict-ops-gates: public SEO checks fail localhost links', () => {
+  const auditSource = read('scripts', 'audit-blog-seo-quality.mjs');
+  const scorerSource = read('src', 'lib', 'blog-seo-scorer.ts');
+
+  assert.match(auditSource, /NON_PUBLIC_LINK_HOSTS/);
+  assert.match(auditSource, /non_public_link/);
+  assert.match(scorerSource, /public_link_integrity/);
+  assert.match(scorerSource, /NON_PUBLIC_LINK_HOSTS/);
+});
+
 test('ERR-BLOG-strict-ops-gates: daily strict search audit forwards SEO warning strictness', () => {
   const source = read('scripts', 'blog-search-quality-daily.mjs');
 

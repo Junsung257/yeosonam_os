@@ -102,6 +102,7 @@ The post must not be published when any of these are true:
 - The article has no usable image path or missing image alt evidence.
 - The article has no internal CTA and no official external reference.
 - Canonical URL, sitemap URL, and stored slug disagree.
+- Public article links contain localhost, 127.0.0.1, 0.0.0.0, or any non-public HTTP origin. Product CTA links must use the blog canonical public origin.
 
 SEO score alone is not a publish success signal. A post is complete only when topic fit, editorial quality, render integrity, image quality, SEO, readability, indexing enqueue, and later visibility observation all have durable evidence.
 
