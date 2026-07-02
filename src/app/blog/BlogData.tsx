@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
+import type { ReactNode } from 'react';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
@@ -42,6 +43,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
 interface BlogPost {
   id: string;
   slug: string;
+  detail_available?: boolean | null;
   seo_title: string | null;
   seo_description: string | null;
   og_image_url: string | null;
@@ -88,6 +90,35 @@ function isGenericBlogImageUrl(url: string | null | undefined): boolean {
 function getDisplayImageUrl(post: BlogPost): string | null {
   if (!isGenericBlogImageUrl(post.og_image_url)) return toBlogImageDisplaySrc(post.og_image_url);
   return null;
+}
+
+function getBlogPostHref(post: BlogPost): string | null {
+  if (!post.slug || post.detail_available === false) return null;
+  return `/blog/${post.slug}`;
+}
+
+function BlogPostCardFrame({
+  post,
+  className,
+  children,
+}: {
+  post: BlogPost;
+  className: string;
+  children: ReactNode;
+}) {
+  const href = getBlogPostHref(post);
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <article className={className} aria-label={post.seo_title || 'Blog fallback guide'}>
+      {children}
+    </article>
+  );
 }
 
 type AbortableQuery<T> = {
@@ -403,8 +434,8 @@ function HeroCard({ post }: { post: BlogPost }) {
   const imageUrl = getDisplayImageUrl(post);
 
   return (
-    <Link
-      href={`/blog/${post.slug}`}
+    <BlogPostCardFrame
+      post={post}
       className="group relative block overflow-hidden rounded-2xl"
     >
       <div className="aspect-[16/9] overflow-hidden relative">
@@ -447,7 +478,7 @@ function HeroCard({ post }: { post: BlogPost }) {
           <span className="text-[12px] text-white/60">📖 {readMin}분 읽기</span>
         </div>
       </div>
-    </Link>
+    </BlogPostCardFrame>
   );
 }
 
@@ -460,8 +491,8 @@ function SideCard({ post }: { post: BlogPost }) {
   const imageUrl = getDisplayImageUrl(post);
 
   return (
-    <Link
-      href={`/blog/${post.slug}`}
+    <BlogPostCardFrame
+      post={post}
       className="group flex gap-4 overflow-hidden rounded-xl border border-admin-border bg-white p-4 transition-all hover:shadow-[0_2px_16px_rgba(0,0,0,0.08)] hover:border-brand/20"
     >
       {/* 섬네일 — 112×112 */}
@@ -508,7 +539,7 @@ function SideCard({ post }: { post: BlogPost }) {
           )}
         </div>
       </div>
-    </Link>
+    </BlogPostCardFrame>
   );
 }
 
@@ -522,8 +553,8 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const imageUrl = getDisplayImageUrl(post);
 
   return (
-    <Link
-      href={`/blog/${post.slug}`}
+    <BlogPostCardFrame
+      post={post}
       className="group overflow-hidden rounded-2xl border border-admin-border bg-white transition-all hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:border-brand/25"
     >
       <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-bg-section relative`}>
@@ -589,7 +620,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
           )}
         </div>
       </div>
-    </Link>
+    </BlogPostCardFrame>
   );
 }
 
@@ -611,6 +642,11 @@ export default async function BlogData({ searchParams }: Props) {
     if (candidate.key === angle) return true;
     return (angleCounts[candidate.key] ?? 0) > 0;
   });
+  const jsonLdPosts = posts
+    .map((post) => ({ post, href: getBlogPostHref(post) }))
+    .filter((item): item is { post: BlogPost; href: string } => Boolean(item.href))
+    .slice(0, 10);
+  const jsonLdItemCount = fallback ? jsonLdPosts.length : total;
 
   const buildHref = (override: Partial<{ page: number; destination: string | null; angle: string }>) => {
     const next = new URLSearchParams();
@@ -655,11 +691,11 @@ export default async function BlogData({ searchParams }: Props) {
                 inLanguage: 'ko-KR',
                 mainEntity: {
                   '@type': 'ItemList',
-                  numberOfItems: unavailable ? undefined : total,
-                  itemListElement: unavailable ? [] : posts.slice(0, 10).map((p, i) => ({
+                  numberOfItems: unavailable ? undefined : jsonLdItemCount,
+                  itemListElement: unavailable ? [] : jsonLdPosts.map(({ post: p, href }, i) => ({
                     '@type': 'ListItem',
                     position: i + 1,
-                    url: `${BASE_URL}/blog/${p.slug}`,
+                    url: `${BASE_URL}${href}`,
                     name: p.seo_title || p.travel_packages?.title || '여행 가이드',
                   })),
                 },
