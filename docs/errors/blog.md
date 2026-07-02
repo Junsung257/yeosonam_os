@@ -182,6 +182,15 @@ Last updated: 2026-07-03
 
 ---
 
+## ERR-BLOG-product-seo-minor-false-positive@2026-07-03
+
+- [x] **ERR-BLOG-product-seo-minor-false-positive@2026-07-03**: Recent product-consult posts passed publish gates but still showed minor SEO warnings for title, meta description, heading count, and image alt because the scorer treated them like generic info guides.
+- **Root cause**: `computeSeoScore()` did not fully recognize product-consult decision signals such as package, departure, price-from, duration, fit/consult language, partial destination tokens in image alt text, or the bottom-soft CTA policy for info guides.
+- **Fix**: The SEO scorer now gives product-consult credit for commercial decision metadata, accepts up to 8 H2 sections for product decision articles, matches split destination tokens in image alt text, treats one soft bottom CTA as valid for info guides, and accepts concise readable two-word English slugs after slug-quality validation.
+- **Verification**: `npx vitest run src/lib/blog-seo-scorer.test.ts` passed, and `npm run audit:blog-quality -- --limit=50` reported `minorOnlyIssues=0`, `qualityGateFailed=0`, and `publishBlocked=0` without rewriting published rows.
+
+---
+
 ## ERR-BLOG-card-news-dead-image-url@2026-06-07
 
 > Original source before 2026-06-07 split: `db/error-registry.md:1033`
