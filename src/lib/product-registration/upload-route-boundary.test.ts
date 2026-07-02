@@ -94,6 +94,10 @@ function readUploadReviewAutoReplayCron(): string {
   return readFileSync(join(process.cwd(), 'src/app/api/cron/upload-review-auto-replay/route.ts'), 'utf8');
 }
 
+function readAdminUploadReplayReviewQueueRoute(): string {
+  return readFileSync(join(process.cwd(), 'src/app/api/admin/upload/replay-review-queue/route.ts'), 'utf8');
+}
+
 function readUploadToOpenAutopilotCron(): string {
   return readFileSync(join(process.cwd(), 'src/app/api/cron/upload-to-open-autopilot/route.ts'), 'utf8');
 }
@@ -148,6 +152,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).toContain("export const dynamic = 'force-dynamic'");
     expect(route).toContain('export const maxDuration = 300');
     expect(route).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT_MS');
+    expect(route).toContain('Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 240_000)');
+    expect(route).toContain('Math.min(270_000');
     expect(route).toContain('enqueueUploadTimeoutReplay({');
     expect(route).toContain("code: 'UPLOAD_DEFERRED_FOR_REPLAY'");
     expect(route).toContain('x-upload-request-id');
@@ -871,6 +877,9 @@ describe('upload route registration pipeline boundary', () => {
     expect(cron).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT');
     expect(cron).toContain('shouldUseDuplicateGuard');
     expect(cron).toContain('forceReprocess: !shouldUseDuplicateGuard');
+    expect(cron).toContain('extractDuplicateInternalCode');
+    expect(cron).toContain('savedIds.length > 0 || duplicateInternalCode');
+    expect(cron).toContain('duplicate already processed');
     expect(cron).toContain("request.nextUrl.searchParams.get('queueId')");
     expect(cron).toContain(".eq('id', queueId)");
     expect(cron).not.toContain('.or(RECOVERABLE_REASON_FILTER)');
@@ -878,6 +887,16 @@ describe('upload route registration pipeline boundary', () => {
     expect(cron).toContain("order('created_at', { ascending: false })");
     expect(cron).toContain('buildUploadReviewRegressionReport({ rows: [row] })');
     expect(cron).toContain('runUploadRegistrationPipeline({');
+  });
+
+  it('resolves manual upload replay rows when the duplicate guard proves the product was saved', () => {
+    const route = readAdminUploadReplayReviewQueueRoute();
+
+    expect(route).toContain('extractDuplicateInternalCode');
+    expect(route).toContain('forceReprocess: body.forceReprocess === true');
+    expect(route).toContain('savedIds.length > 0 || duplicateInternalCode');
+    expect(route).toContain('replayResolved');
+    expect(route).toContain('duplicateInternalCode');
   });
 
   it('wires saved uploads into the upload-to-open autopilot instead of stopping at blocked review', () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   buildSourceBackedPriceDateRepair,
@@ -81,6 +81,15 @@ const BAEKDU_GRADE_PATTERN_MATRIX = `
 `;
 
 describe('buildSourceBackedPriceDateRepair', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-01T00:00:00+09:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('fills missing source-backed Baekdu departure dates without changing matching rows', () => {
     const result = buildSourceBackedPriceDateRepair({
       title: '연길/백두산(북+남파) 3박4일',
