@@ -102,11 +102,25 @@ async function fetchText(path) {
   return res.text();
 }
 
+function normalizeBlogHref(href) {
+  if (!href) return null;
+  try {
+    const url = /^https?:\/\//i.test(href)
+      ? new URL(href)
+      : new URL(href, baseUrl);
+    if (url.origin !== new URL(baseUrl).origin) return null;
+    return url.pathname;
+  } catch {
+    return null;
+  }
+}
+
 function addBlogLink(links, href) {
-  if (!href || !/^\/blog\//.test(href)) return;
-  if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) return;
-  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
-  links.add(href.split('#')[0]);
+  const pathname = normalizeBlogHref(href);
+  if (!pathname || !/^\/blog\/[^/]+/.test(pathname)) return;
+  if (pathname.startsWith('/blog/angle/') || pathname.startsWith('/blog/destination/')) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(pathname)) return;
+  links.add(pathname);
 }
 
 async function collectBlogLinksFromSitemap(links) {
@@ -124,15 +138,16 @@ async function collectBlogLinksFromSitemap(links) {
 
 async function collectBlogLinks() {
   const apiLinks = await collectBlogLinksFromApi().catch(() => []);
-  if (apiLinks.length > 0) return limit > 0 ? apiLinks.slice(0, limit) : apiLinks;
-
   const links = new Set();
+  for (const link of apiLinks) addBlogLink(links, link);
+  if (limit > 0 && links.size >= limit) return [...links].slice(0, limit);
+
   let page = 1;
 
   while (page <= 20) {
     const path = page === 1 ? '/blog' : `/blog?page=${page}`;
     const html = await fetchText(path);
-    const matches = html.matchAll(/href="(\/blog\/[^"#?]+)"/g);
+    const matches = html.matchAll(/href=["']([^"']*\/blog\/[^"']+)["']/g);
     const before = links.size;
     for (const match of matches) {
       addBlogLink(links, match[1]);
@@ -143,7 +158,7 @@ async function collectBlogLinks() {
     page += 1;
   }
 
-  if (links.size === 0) {
+  if (links.size === 0 || (limit > 0 && links.size < limit)) {
     await collectBlogLinksFromSitemap(links);
   }
 
