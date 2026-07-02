@@ -1,6 +1,7 @@
 export type PublicFallbackBlogPost = {
   id: string;
   slug: string;
+  detail_available: boolean;
   seo_title: string;
   seo_description: string;
   og_image_url: string;
@@ -50,6 +51,7 @@ const DESTINATION_ALIASES: Record<string, string> = {
 
 type FallbackSeed = {
   slug: string;
+  detailAvailable?: boolean;
   title: string;
   description: string;
   destination: string;
@@ -99,6 +101,7 @@ function buildFallbackPost(seed: FallbackSeed, index: number): PublicFallbackBlo
   return {
     id: `fallback-${seed.slug}`,
     slug: seed.slug,
+    detail_available: seed.detailAvailable === true,
     seo_title: seed.title,
     seo_description: seed.description,
     og_image_url: proxyImageUrl(imageUrl),
@@ -125,6 +128,7 @@ function buildFallbackPost(seed: FallbackSeed, index: number): PublicFallbackBlo
 const FALLBACK_SEEDS: FallbackSeed[] = [
   {
     slug: 'zhangjiajie-weather',
+    detailAvailable: true,
     title: '장가계 월별 날씨와 옷차림 가이드 2026',
     description: '장가계 여행 전 월별 날씨, 옷차림, 준비물, 우천 시 일정 조정 팁을 정리했습니다.',
     destination: '장가계',
@@ -225,5 +229,5 @@ export function getFallbackBlogPosts(filter: { destination?: string | null; angl
 }
 
 export function getFallbackBlogPost(slug: string) {
-  return FALLBACK_BLOG_POSTS.find((post) => post.slug === slug) ?? null;
+  return FALLBACK_BLOG_POSTS.find((post) => post.slug === slug && post.detail_available) ?? null;
 }

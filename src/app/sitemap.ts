@@ -119,7 +119,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .abortSignal(signal),
     ),
   ]);
-  const posts = queriedPosts.length > 0 ? queriedPosts : getFallbackBlogPosts();
+  const posts = queriedPosts.length > 0
+    ? queriedPosts
+    : getFallbackBlogPosts().filter((post) => post.detail_available);
 
   for (const d of activeDests) {
     const destination = getSafeSitemapDestination(d);
