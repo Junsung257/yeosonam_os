@@ -128,4 +128,24 @@ describe('blog topic fit gate', () => {
       ]),
     );
   });
+
+  it('blocks visible prompt writing-rule residue before publish', () => {
+    const report = evaluateBlogEditorialQuality({
+      slug: 'singapore-july-weather',
+      topic: '싱가포르 7월 날씨',
+      destination: '싱가포르',
+      primaryKeyword: '싱가포르 7월 날씨',
+      category: 'weather',
+      blogHtml: [
+        '# 싱가포르 7월 날씨',
+        '',
+        '싱가포르 7월은 덥고 습해서 우산과 얇은 겉옷을 함께 챙기는 편이 좋습니다.',
+        '',
+        '규칙 A (감각 디테일): 높은 습도 때문에 땀이 잘 마르지 않을 수 있습니다.',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('visible_prompt_instruction');
+  });
 });

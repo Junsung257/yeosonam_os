@@ -1,4 +1,5 @@
 import { stripMarkup } from './blog-text-utils';
+import { findBlogPromptInstructionResidue } from './blog-prompt-residue';
 
 type BlogGateSeverity = 'critical' | 'warning';
 
@@ -18,7 +19,8 @@ interface BlogGateIssue {
     | 'excessive_highlights'
     | 'generic_image_context'
     | 'meaningless_faq'
-    | 'repetitive_support_blocks';
+    | 'repetitive_support_blocks'
+    | 'visible_prompt_instruction';
   severity: BlogGateSeverity;
   message: string;
   evidence?: Record<string, unknown>;
@@ -295,6 +297,13 @@ export function evaluateBlogEditorialQuality(input: BlogEditorialQualityInput): 
   if (PLACEHOLDER_RE.test(combined)) {
     addIssue(issues, 'placeholder_text', 'critical', 'Article contains visible placeholder or template text.', {
       sample: combined.match(PLACEHOLDER_RE)?.[0],
+    });
+  }
+
+  const promptResidue = findBlogPromptInstructionResidue(source);
+  if (promptResidue.length > 0) {
+    addIssue(issues, 'visible_prompt_instruction', 'critical', 'Article contains visible internal prompt or writing-rule residue.', {
+      samples: promptResidue,
     });
   }
 

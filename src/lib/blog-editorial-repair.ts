@@ -5,6 +5,7 @@ import {
   type BlogIntentInput,
   type BlogIntentQualityReport,
 } from './blog-content-intent';
+import { repairBlogPromptInstructionResidue } from './blog-prompt-residue';
 import { stripMarkup } from './blog-text-utils';
 
 export interface BlogEditorialRepairInput extends BlogIntentInput {
@@ -324,7 +325,8 @@ export function repairBlogSemanticSurface(input: BlogEditorialRepairInput): Blog
   const semanticRepair = repairAwkwardSemanticSurface(input.blogHtml, input);
   const imageRepair = repairGeneratedImageContext(semanticRepair.text, input);
   const placeholderLinkRepair = removePlaceholderReferenceLinks(imageRepair.text);
-  const answerRepair = removeRepetitiveAnswerScaffold(placeholderLinkRepair.text);
+  const directiveRepair = removeRawDirectiveLeaks(placeholderLinkRepair.text);
+  const answerRepair = removeRepetitiveAnswerScaffold(directiveRepair.text);
   const faqRepair = dedupeRepeatedFaqBlocks(answerRepair.text);
   const decisionRepair = dedupeRepeatedQuickDecisionBlocks(faqRepair.text);
   const paragraphRepair = dedupeRepeatedShortParagraphs(decisionRepair.text);
@@ -333,6 +335,7 @@ export function repairBlogSemanticSurface(input: BlogEditorialRepairInput): Blog
     semanticRepair.changed ? 'repaired_semantic_surface' : null,
     imageRepair.changed ? 'repaired_generated_image_context' : null,
     placeholderLinkRepair.changed ? 'removed_placeholder_reference_links' : null,
+    directiveRepair.changed ? 'removed_raw_directive_leaks' : null,
     answerRepair.changed ? 'removed_repetitive_answer_scaffold' : null,
     faqRepair.changed ? 'deduped_repeated_faq_blocks' : null,
     decisionRepair.changed ? 'deduped_repeated_quick_decision_blocks' : null,
@@ -750,7 +753,8 @@ function addReadingDesignAid(markdown: string): { text: string; changed: boolean
 
 function removeRawDirectiveLeaks(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
-  const text = markdown
+  const promptResidueRepair = repairBlogPromptInstructionResidue(markdown);
+  const text = promptResidueRepair.text
     .replace(/^\s*:::\s*(?:[A-Za-z][\w-]*)?\s*$/gm, '')
     .replace(/:::\s*(?:[A-Za-z][\w-]*)?/g, '')
     .replace(/\n{3,}/g, '\n\n');
@@ -1893,6 +1897,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (placeholderReferenceRepair.changed) {
     blogHtml = placeholderReferenceRepair.text;
     changes.push('removed_placeholder_reference_links');
+  }
+
+  const directiveRepair = removeRawDirectiveLeaks(blogHtml);
+  if (directiveRepair.changed) {
+    blogHtml = directiveRepair.text;
+    changes.push('removed_raw_directive_leaks');
   }
 
   const answerScaffoldRepair = removeRepetitiveAnswerScaffold(blogHtml);

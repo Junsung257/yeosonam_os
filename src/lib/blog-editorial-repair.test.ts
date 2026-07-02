@@ -772,6 +772,39 @@ describe('blog editorial repair', () => {
     expect(result.changes).toContain('removed_ai_editorial_cliches');
   });
 
+  it('removes leaked prompt writing-rule labels while preserving useful travel sentences', () => {
+    const result = repairBlogEditorialQuality({
+      title: '싱가포르 7월 날씨',
+      slug: 'singapore-july-weather',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: '싱가포르 7월 날씨',
+      blogHtml: [
+        '# 싱가포르 7월 날씨',
+        '',
+        '싱가포르 7월은 덥고 습해서 우산과 얇은 겉옷을 함께 챙기는 편이 좋습니다.',
+        '',
+        '규칙 A (감각 디테일): 높은 습도 때문에 땀이 잘 마르지 않을 수 있습니다.',
+        '',
+        '규칙 B (2인칭 시나리오): 실내 냉방이 강해 얇은 가디건이 유용합니다.',
+        '',
+        '규칙 C (구체 수치): 평균 습도는 80% 안팎으로 보는 편이 안전합니다.',
+        '',
+        '* **감각 디테일:** 실내 냉방은 생각보다 강하게 느껴질 수 있습니다.',
+        '',
+        '봄 일정이라면 2인칭 시나리오를 드리자면, 얇은 겉옷 하나가 체감 차이를 크게 줄입니다.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('removed_raw_directive_leaks');
+    expect(result.blogHtml).not.toMatch(/규칙\s*[ABC]|감각\s*디테일|2인칭\s*시나리오|구체\s*수치/);
+    expect(result.blogHtml).toContain('높은 습도 때문에 땀이 잘 마르지 않을 수 있습니다.');
+    expect(result.blogHtml).toContain('평균 습도는 80% 안팎으로 보는 편이 안전합니다.');
+    expect(result.blogHtml).toContain('실내 냉방은 생각보다 강하게 느껴질 수 있습니다.');
+    expect(result.blogHtml).toContain('얇은 겉옷 하나가 체감 차이를 크게 줄입니다.');
+  });
+
   it('removes broken empty persona greetings before quality inspection', () => {
     const result = repairBlogEditorialQuality({
       title: '오사카 7월 날씨 여행 가이드',
