@@ -119,6 +119,16 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('getPostFastUncached(slug).catch(() => null)');
   });
 
+  it('keeps decorative author avatars out of extracted article text', () => {
+    const detailSource = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+    const authorSource = readFileSync(join(process.cwd(), 'src/components/blog/AuthorBox.tsx'), 'utf8');
+    const seoAuditSource = readFileSync(join(process.cwd(), 'scripts/audit-blog-seo-quality.mjs'), 'utf8');
+
+    expect(detailSource).not.toContain('>\n                여\n              </span>');
+    expect(authorSource).not.toContain('>\n          여\n        </div>');
+    expect(seoAuditSource).toContain('surface_text_noise');
+  });
+
   it('renders a published blog detail without falling through to the global 404', async () => {
     const mod = await import('./page');
     const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
