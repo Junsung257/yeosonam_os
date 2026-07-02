@@ -47,6 +47,10 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   assert.match(source, /__blogQueryUnavailable/);
   assert.match(source, /Promise\.race/);
   assert.match(source, /isBlogQueryUnavailable/);
+  assert.match(source, /return unavailableBlogData\(filter\)/);
+  assert.match(source, /logBlogListDegraded/);
+  assert.match(source, /console\.info\(`\[blog\/list\]\[degraded\]/);
+  assert.doesNotMatch(source, /console\.warn\(`\\\[blog\/list\\\]/);
   assert.match(source, /range\(offset, offset \+ PER_PAGE\)/);
   assert.doesNotMatch(source, /count:\s*['"]exact['"]/);
   assert.doesNotMatch(source, /runBlogQuery\(['"]destinations['"]/);

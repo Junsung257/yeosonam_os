@@ -145,6 +145,7 @@ Rules:
 - `/blog` destination sections should use site-wide active destination evidence (`active_destinations`) and only fall back to current-page posts when DB reads are unavailable.
 - Destination and angle pages must use the same image display helper as the main blog list, so Supabase/remote images are normalized consistently.
 - Sitemap must include blog destination and blog angle collection URLs when corresponding published posts exist.
+- `/blog` list cache revalidation must not turn a transient DB timeout into a production error log or a silent empty list. If the primary list query times out, the page should serve last-good or Korean fallback content and record the event as degraded telemetry, not as a published-post count of zero.
 
 ## Daily Verification
 
