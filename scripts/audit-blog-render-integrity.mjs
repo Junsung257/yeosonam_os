@@ -71,11 +71,25 @@ function absolutize(path) {
   return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+function normalizeBlogHref(href) {
+  if (!href) return null;
+  try {
+    const url = /^https?:\/\//i.test(href)
+      ? new URL(href)
+      : new URL(href, baseUrl);
+    if (url.origin !== new URL(baseUrl).origin) return null;
+    return url.pathname;
+  } catch {
+    return null;
+  }
+}
+
 function addBlogLink(links, href) {
-  if (!href || !/^\/blog\//.test(href)) return;
-  if (/\/blog\/(angle|destination)\//.test(href)) return;
-  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
-  links.add(href.split('#')[0]);
+  const pathname = normalizeBlogHref(href);
+  if (!pathname || !/^\/blog\/[^/]+/.test(pathname)) return;
+  if (/\/blog\/(angle|destination)\//.test(pathname)) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(pathname)) return;
+  links.add(pathname);
 }
 
 async function collectBlogLinksFromSitemap(links, errors) {
@@ -122,18 +136,17 @@ async function collectBlogLinks() {
     }
     const $ = cheerio.load(html);
     const before = links.size;
-    $('a[href^="/blog/"]').each((_index, element) => {
+    $('a[href]').each((_index, element) => {
       addBlogLink(links, $(element).attr('href') || '');
     });
-    if (limit > 0 && links.size >= limit) {
-      const limited = [...links].slice(0, limit);
-      limited.collectionErrors = errors;
-      return limited;
-    }
     if (page > 1 && links.size === before) break;
   }
-  if (links.size === 0) {
-    logProgress('No blog links found on listing pages; trying sitemap fallback');
+  if (links.size === 0 || (limit > 0 && links.size < limit)) {
+    logProgress(
+      links.size === 0
+        ? 'No blog links found on listing pages; trying sitemap fallback'
+        : `Only collected ${links.size}/${limit} blog link(s) from listing pages; filling from sitemap`,
+    );
     await collectBlogLinksFromSitemap(links, errors);
   }
   const all = [...links];

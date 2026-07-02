@@ -2,6 +2,14 @@
 
 Last updated: 2026-07-03
 
+## ERR-BLOG-audit-sample-partial-coverage@2026-07-03
+
+- [x] **ERR-BLOG-audit-sample-partial-coverage@2026-07-03**: Render and SEO audits could report a perfect score while auditing fewer detail articles than the requested sample when `/blog` listing/API collection returned a partial set.
+- **Root cause**: Audit collectors treated any non-empty source as enough. `audit-blog-render-integrity` only used sitemap fallback when listing pages returned zero links, and `audit-blog-seo-quality` returned API links immediately even if the API sample did not meet `--limit`.
+- **Fix**: Render and SEO audits now normalize absolute and relative blog hrefs, ignore non-article collection pages consistently, and fill from sitemap whenever the collected article count is below the requested limit.
+- **Prevention**: A 100 score for render, image, or SEO audits is only meaningful when `summary.totalLinks`/audited count matches the requested sample size, unless the sitemap itself has fewer public article URLs. Do not accept partial collection as a healthy fleet signal.
+- **Verification**: `npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict --limit=30 --timeout-ms=20000 --hard-timeout-ms=180000`; `npm run audit:blog-seo -- --base=https://www.yeosonam.com --json --strict --limit=30 --timeout-ms=20000 --hard-timeout-ms=180000`; `npm run audit:blog-search-daily:strict`; `npm run type-check`.
+
 ## ERR-BLOG-prompt-contract-drift@2026-06-22
 
 - [x] **ERR-BLOG-prompt-contract-drift@2026-06-22**: Blog visual/publish rules were hardened to remove highlight clutter and malformed tables, but the live `blog-publisher` prompt still instructed the model to wrap key sentences with `==...==` highlights.
