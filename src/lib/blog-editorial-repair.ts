@@ -908,10 +908,16 @@ function removeLegacySurfaceArtifacts(markdown: string): { text: string; changed
     .map((line) => {
       let next = line
         .replace(/^\s*:{2,3}\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '**핵심 요약**')
+        .replace(/^\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '**핵심 요약**')
+        .replace(/^\s*tip\s*$/i, '')
+        .replace(/\btip\s+\*{0,2}\s*TL;?\s*DR\b\s*\*{0,2}\s*(?:[—-]\s*)?/gi, '핵심 요약: ')
+        .replace(/\btip\s+(?=[가-힣])/gi, '')
+        .replace(/\btip\s+TL;?\s*DR\b\s*:?\s*/gi, '핵심 요약: ')
         .replace(/\bTL;?\s*DR\s*:/gi, '핵심 요약:')
         .replace(/\bTL;?\s*DR\s*[—-]\s*/gi, '핵심 요약: ')
         .replace(/!\[[^\]\n]*]\([^)]+\)/g, (match) => (/^#{1,6}\s/.test(line.trim()) ? '' : match))
         .replace(/\s+![가-힣A-Za-z0-9][^\n]{0,120}$/g, '')
+        .replace(/\s+tip\s*$/i, '')
         .replace(/[ \t]+---(?=\s*$)/g, '')
         .replace(/여여소남/g, '여소남')
         .replace(/여소남이이/g, '여소남이 이')
@@ -924,14 +930,19 @@ function removeLegacySurfaceArtifacts(markdown: string): { text: string; changed
     })
     .filter((line) => !/^\s*-\s*$/.test(line))
     .join('\n')
+    .replace(/\btip\s*\n\s*\*{0,2}\s*TL;?\s*DR\*{0,2}\s*:?\s*/gi, '핵심 요약: ')
     .replace(/포인트를\s+먼저\s+확인하세요[.。]?\s*/g, '')
     .replace(
       /(?:예약|문의)?하시면\s+(?:현재\s*)?(?:\n\s*)+([0-9]{1,2}월\s+좌석\s+현황도\s+바로\s+확인\s+가능합니다[.。]?)/g,
       '문의하시면 현재 $1',
     )
     .replace(/\s*하시면\s+현지\s+여행\s+Q&A를\s+더\s+상세히\s+알려드려요\.?/g, '')
+    .replace(/(^|\s)에서\s+실시간\s+좌석과\s+요금을\s+바로\s+확인하실\s+수\s+있습니다[.。]?/g, '$1여소남에서 실시간 좌석과 요금을 바로 확인하실 수 있습니다.')
     .replace(/[ \t]+---[ \t]+(?=(?:#{1,6}\s|\*\*|해시태그|#))/g, '\n\n')
     .replace(/\n?---\s*>\s*여소남\s+여행\s+준비[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s*준비|#{2,4}\s*빠른|#{2,4}\s*공식|#{2,4}\s*여행\s*상품|$))/g, '\n')
+    .replace(/\s*(?:---\s*(?:>|&gt;|\\u0026gt;)\s*)?여소남\s+여행\s+준비\*{0,2}[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
+    .replace(/\n+여소남\s+여행\s+준비\s*\n[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
+    .replace(/\n+여소남\s+여행\s+준비\s+[^\n]{0,500}(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
     .replace(/\n?---\s*\*\*함께\s*보면\s*좋은\s*글\*\*[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

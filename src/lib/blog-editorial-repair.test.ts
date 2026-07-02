@@ -628,15 +628,42 @@ describe('blog editorial repair', () => {
       '',
       '5월-황금연휴-해외여행-비행시간-에서 항공 시간과 환승 부담을 먼저 비교하세요.',
       '',
+      '해변 이동은 짧게 잡는 편이 좋아요. tip TL;DR',
+      '',
+      'tip',
+      'TL;DR: 우산과 현금은 따로 챙기세요.',
+      '',
+      '![세부 현지 비용 확인 장면](https://images.example.com/cebu.jpg) tip',
+      '',
+      'tip **TL;DR – 이 네 가지만 챙기세요**',
+      '',
+      '12월 28 24 80 반팔 기본, 간절기 크리스마스 조명, 마린파티 tip 여소남 체크 포인트',
+      '',
       '여여소남 상품 상세 보기 → 여소남',
       '',
       '예약하시면 현재',
       '',
       '5월 좌석 현황도 바로 확인 가능합니다.',
       '',
+      '에서 실시간 좌석과 요금을 바로 확인하실 수 있습니다.',
+      '',
       '--- > 여소남 여행 준비',
       '',
       '- [목적지 블로그 더 보기](https://www.yeosonam.com/blog/destination/bohol) >',
+      '',
+      '여소남 여행 준비',
+      '',
+      '출발 전에는 날씨, 이동, 비용 변수를 먼저 확인하세요.',
+      '',
+      '#여행팁 #여소남 #중국자유여행 --- >여소남 여행 준비**',
+      '',
+      '목적지 블로그 더 보기 >',
+      '',
+      '여소남 여행 준비 5월 여행 전에는 날씨, 이동, 비용 변수를 먼저 확인하세요.',
+      '',
+      '준비물 체크리스트',
+      '',
+      '여권, 항공권, 보조배터리',
       '',
       '<aside class="blog-callout blog-callout-tip">',
       '<strong>읽는 순서</strong>',
@@ -655,17 +682,23 @@ describe('blog editorial repair', () => {
     expect(result.changed).toBe(true);
     expect(result.changes).toContain('removed_legacy_surface_artifacts');
     expect(result.blogHtml).toContain('**핵심 요약**');
+    expect(result.blogHtml).toContain('핵심 요약:');
     expect(result.blogHtml).toContain('5월 황금연휴 해외여행 비행시간에서');
     expect(result.blogHtml).toContain('문의하시면 현재 5월 좌석 현황도 바로 확인 가능합니다.');
+    expect(result.blogHtml).toContain('여소남에서 실시간 좌석과 요금을 바로 확인하실 수 있습니다.');
     expect(result.blogHtml).not.toContain('::tip');
     expect(result.blogHtml).not.toContain('TL;DR');
+    expect(result.blogHtml).not.toContain('tip TL;DR');
+    expect(result.blogHtml).not.toContain('마린파티 tip 여소남');
     expect(result.blogHtml).not.toContain('계산서의 10% ---');
     expect(result.blogHtml).not.toContain('\n-\n');
     expect(result.blogHtml).not.toContain('포인트를 먼저 확인하세요');
-    expect(result.blogHtml).not.toContain('![');
+    expect(result.blogHtml).not.toContain('보라카이 여행 이미지');
+    expect(result.blogHtml).not.toContain('**TL;DR');
     expect(result.blogHtml).not.toContain('여여소남');
     expect(result.blogHtml).not.toContain('상품 상세 보기 → 여소남');
     expect(result.blogHtml).not.toContain('목적지 블로그 더 보기');
+    expect(result.blogHtml).not.toContain('여소남 여행 준비');
   });
 
   it('removes repeated generic answer headings that pollute article structure', () => {
