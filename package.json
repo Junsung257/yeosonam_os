@@ -124,6 +124,8 @@
     "diagnose:blog-autopublish": "npx tsx scripts/diagnose-blog-autopublish.ts",
     "run:blog-indexing-worker": "npx tsx scripts/run-blog-indexing-worker.ts",
     "recheck:blog-product-evidence": "npx tsx scripts/recheck-blog-product-evidence.ts",
+    "recheck:blog-editorial-backlog": "npx tsx scripts/recheck-blog-editorial-backlog.ts",
+    "cleanup:blog-publishable-duplicates": "npx tsx scripts/cleanup-blog-publishable-duplicates.ts",
     "cleanup:blog-queue-health": "npx tsx scripts/cleanup-blog-queue-health.ts",
     "audit:blog-quality": "npx tsx scripts/backfill-blog-quality.ts",
     "audit:blog-render": "node scripts/audit-blog-render-integrity.mjs --browser-fallback",
