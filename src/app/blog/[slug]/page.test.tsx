@@ -126,6 +126,9 @@ describe('/blog/[slug] page smoke', () => {
 
     expect(detailSource).not.toContain('>\n                여\n              </span>');
     expect(authorSource).not.toContain('>\n          여\n        </div>');
+    expect(detailSource).toContain('data-blog-supporting="share"');
+    expect(authorSource).toContain('data-blog-supporting="author"');
+    expect(seoAuditSource).toContain("querySelectorAll('[data-blog-supporting]')");
     expect(seoAuditSource).toContain('surface_text_noise');
   });
 

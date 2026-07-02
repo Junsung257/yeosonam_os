@@ -337,9 +337,11 @@ async function auditPage(page, path) {
       document.querySelector(`meta[property="${name}"]`)?.getAttribute('content') ||
       '';
     const article = document.querySelector('article') || document.body;
-    const articleText = article.textContent || '';
-    const links = [...article.querySelectorAll('a[href]')].map((a) => a.getAttribute('href') || '');
-    const images = [...article.querySelectorAll('img')].map((img) => ({
+    const auditArticle = article.cloneNode(true);
+    auditArticle.querySelectorAll('[data-blog-supporting]').forEach((node) => node.remove());
+    const articleText = auditArticle.textContent || '';
+    const links = [...auditArticle.querySelectorAll('a[href]')].map((a) => a.getAttribute('href') || '');
+    const images = [...auditArticle.querySelectorAll('img')].map((img) => ({
       src: img.currentSrc || img.src || '',
       alt: img.getAttribute('alt') || '',
     }));
@@ -377,10 +379,10 @@ async function auditPage(page, path) {
       twitterCard: meta('twitter:card'),
       h1Count: document.querySelectorAll('h1').length,
       h1Text: document.querySelector('h1')?.textContent?.trim() || '',
-      h2Count: article.querySelectorAll('h2').length,
+      h2Count: auditArticle.querySelectorAll('h2').length,
       articleTextLength: articleText.replace(/\s+/g, ' ').trim().length,
       articleTextSample: articleText.slice(0, 4000),
-      strikethroughCount: article.querySelectorAll('del, s, strike, [style*="line-through"], .line-through').length,
+      strikethroughCount: auditArticle.querySelectorAll('del, s, strike, [style*="line-through"], .line-through').length,
       imageCount: images.length,
       imagesMissingAlt: images.filter((image) => image.alt.trim().length < 3).length,
       ogImageMissing: !meta('og:image'),
