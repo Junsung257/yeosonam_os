@@ -169,7 +169,9 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Candidates blocked by stale or missing customer mobile proof, failed scorecard evidence, or downstream `blog_publish` eligibility are marked `failed` with `failure_code='product_open_contract'` and `quarantine_reason='product_open_contract'`.
 - `countPublishableQueueCandidates()`, `blog-daily-summary`, and `diagnose:blog-autopublish` exclude these rows from publishable candidate counts and treat them as evidence collection work, not as ready inventory.
 - `diagnose:blog-autopublish -- --json` includes `product_evidence_work` so operators can see the blocked product title, queue row, blocker categories, raw blockers, and next action without reading raw DB rows.
-- If the product proof may have been repaired after the queue row failed, run `npm run recheck:blog-product-evidence -- --json` first. Use `--write` only when the dry-run shows `requeue > 0`; it re-evaluates the current `customer_open_contract`, requeues passing product rows, and refreshes blocker metadata for rows that still fail.
+- If the product proof may have been repaired after the queue row failed, run `npm run recheck:blog-product-evidence -- --json` first. The JSON now includes `write_recommended`, `write_reasons`, and `metadata_refresh_available`.
+- Use `--write` when `write_recommended=true`, especially when `write_reasons` includes `requeue_recovered_product_rows` or `skip_duplicate_product_rows`. Passing product rows are requeued; duplicate product candidates are moved to `skipped` so they stop inflating failed evidence work.
+- If `write_recommended=false` but `metadata_refresh_available=true`, the remaining rows are still blocked by current product evidence. Do not keep rewriting them just to refresh timestamps; fix the linked package proof, then rerun the dry-run.
 - Do not requeue these rows until the linked package has fresh customer mobile proof and its customer-open contract passes.
 
 ## Vercel Cron Bypass Fallback

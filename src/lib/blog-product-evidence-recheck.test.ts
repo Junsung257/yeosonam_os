@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBlogProductEvidenceDuplicateMeta,
   buildBlogProductEvidenceRecheckDecision,
+  buildBlogProductEvidenceRecheckGuidance,
   readBlogProductEvidenceDedupKey,
 } from './blog-product-evidence-recheck';
 
@@ -87,5 +88,27 @@ describe('blog product evidence recheck', () => {
     expect(meta).not.toHaveProperty('product_open_contract_blockers');
     expect(meta).not.toHaveProperty('requeued_by');
     expect(meta).not.toHaveProperty('requeued_at');
+  });
+
+  it('recommends writes only for recovered or duplicate product rows', () => {
+    expect(buildBlogProductEvidenceRecheckGuidance({
+      requeue: 1,
+      duplicateSkipped: 2,
+      keepBlocked: 3,
+    })).toEqual({
+      write_recommended: true,
+      write_reasons: ['requeue_recovered_product_rows', 'skip_duplicate_product_rows'],
+      metadata_refresh_available: true,
+    });
+
+    expect(buildBlogProductEvidenceRecheckGuidance({
+      requeue: 0,
+      duplicateSkipped: 0,
+      keepBlocked: 3,
+    })).toEqual({
+      write_recommended: false,
+      write_reasons: [],
+      metadata_refresh_available: true,
+    });
   });
 });
