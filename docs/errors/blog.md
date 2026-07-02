@@ -1,6 +1,6 @@
 # Blog Errors
 
-Last updated: 2026-06-22
+Last updated: 2026-07-03
 
 ## ERR-BLOG-prompt-contract-drift@2026-06-22
 
@@ -141,6 +141,16 @@ Last updated: 2026-06-22
 > Original source before 2026-06-07 split: `db/error-registry.md:1031`
 
 - [x] **ERR-BLOG-image-quality-gate@2026-06-07** (블로그 이미지 품질/주제 적합성 하한선): 렌더 복구만으로는 Pexels/OG 이미지가 실제 글 주제에 맞는지, alt/caption이 비었는지, 같은 글 안에서 중복되는지 보장할 수 없었다. 해결: `src/lib/blog-image-quality.ts` 추가, `runQualityGates()`에 `image_quality` 게이트 연결, `scripts/audit-blog-image-quality.mjs` 전수 감사 스크립트와 `npm run audit:blog-images` 명령 등록. 게이트는 최소 이미지 수, 빈 alt, generic alt, 중복 URL, 깨진 Pexels URL, 목적지/키워드 토큰 없는 alt/caption을 발행 전에 차단한다. 한계: 실제 사진의 시각적 의미 적합성은 자동으로 완전 판정할 수 없으므로 감사 스크립트의 제목 토큰/alt/caption 검사를 하한선으로 두고, 신규 목적지 대량 발행 전에는 실패 예시와 샘플을 사람이 확인한다.
+
+---
+
+## ERR-BLOG-image-audit-sample-collapse@2026-07-03
+
+- [x] **ERR-BLOG-image-audit-sample-collapse@2026-07-03**: `npm run audit:blog-images -- --base=https://www.yeosonam.com --json --limit=30` could report 100/100 while auditing only one article. If the `/blog` listing temporarily exposed only a fallback/detail link, the script did not use the sitemap unless it found zero links.
+- **Root cause**: The image audit treated "some links found" as enough coverage and returned early before filling the requested sample. Link extraction also only matched relative `/blog/...` hrefs, so it was brittle against absolute links and query-heavy listing markup.
+- **Fix**: `scripts/audit-blog-image-quality.mjs` now normalizes absolute and relative blog hrefs, excludes blog collection/query/image links by parsed pathname, and supplements listing links from `/sitemap.xml` whenever the requested `--limit` is not reached.
+- **Prevention**: Image audit success is only meaningful when `summary.totalLinks` matches the requested sample or the sitemap has fewer valid blog detail URLs. Do not accept a 100 score from a collapsed one-row sample as proof of public image health.
+- **Verification**: `npm run audit:blog-images -- --base=https://www.yeosonam.com --json --limit=30 --timeout-ms=20000 --hard-timeout-ms=180000` now audits 30 posts and 90 images with score 100. `npm run audit:blog-search-daily:strict`, `npm run type-check`, and `git diff --check` passed.
 
 ---
 
