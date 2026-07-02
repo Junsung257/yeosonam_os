@@ -374,10 +374,20 @@ function hasExternalLink(markdown: string): boolean {
   return /\]\(https?:\/\/(?!www\.yeosonam\.com|yeosonam\.com)[^)]+\)/i.test(markdown);
 }
 
+const READABLE_HARD_CTA_RE =
+  /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i;
+
 function sanitizeInfoSalesTone(markdown: string): { text: string; changed: boolean } {
   let text = markdown;
   const before = text;
   const replacements: Array<[RegExp, string]> = [
+    [/(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4)?/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*\uB9C8\uAC10|\uB9C8\uAC10\s*\uC784\uBC15|\uC794\uC5EC\s*\uC88C\uC11D/gi, '\uD655\uC778\uC774 \uD544\uC694\uD55C \uC870\uAC74'],
+    [/\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30/gi, '\uAD00\uB828 \uC870\uAC74 \uD655\uC778'],
+    [/\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)/gi, '\uC77C\uC815 \uC870\uAC74 \uD655\uC778'],
+    [/\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)/gi, '\uD544\uC694\uD55C \uC870\uAC74 \uD655\uC778'],
+    [/\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uC870\uAC74 \uD655\uC778'],
     [/상품을\s*고른\s*이유/g, '이 정보를 정리한 이유'],
     [/이\s*상품/g, '이 여행 정보'],
     [/상품\s*상세/g, '상세 정보'],
@@ -399,9 +409,13 @@ function sanitizeInfoSalesTone(markdown: string): { text: string; changed: boole
 }
 
 const YEOSONAM_DATA_EVIDENCE_RE = /(예약|상담|검색)\s*(로그|건수|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i;
+const READABLE_YEOSONAM_DATA_EVIDENCE_RE = /(?:\uC608\uC57D|\uC0C1\uB2F4|\uAC80\uC0C9)\s*(?:\uB85C\uADF8|\uAC74\uC218|\uC9D1\uACC4)|GSC|\uC11C\uCE58\uCF58\uC194|SERP|\uCD9C\uCC98|\uC9D1\uACC4\s*\uAE30\uAC04|\uD45C\uBCF8|\uB85C\uADF8/i;
 const UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
   /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i;
 const YEOSONAM_EDITOR_VOICE_RE = /여소남\s*에디터(?:가|는|의)?/i;
+
+const READABLE_UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
+  /\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?(?:\uB370\uC774\uD130|\uC608\uC57D\s*\uB370\uC774\uD130|\uC0C1\uB2F4\s*\uB370\uC774\uD130)(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/i;
 
 function removeAiEditorialCliches(markdown: string): { text: string; changed: boolean } {
   let text = markdown;
@@ -426,13 +440,18 @@ function removeAiEditorialCliches(markdown: string): { text: string; changed: bo
 
 function softenUnsupportedYeosonamDataClaims(markdown: string): { text: string; changed: boolean } {
   const plain = stripMarkup(markdown);
-  if (!UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain) || YEOSONAM_DATA_EVIDENCE_RE.test(plain)) {
+  const hasUnsupportedClaim =
+    UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain) || READABLE_UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain);
+  const hasEvidence = YEOSONAM_DATA_EVIDENCE_RE.test(plain) || READABLE_YEOSONAM_DATA_EVIDENCE_RE.test(plain);
+  if (!hasUnsupportedClaim || hasEvidence) {
     return { text: markdown, changed: false };
   }
 
   let text = markdown;
   const before = text;
   const replacements: Array<[RegExp, string]> = [
+    [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uCD9C\uBC1C \uC804 \uD655\uC778 \uAE30\uC900'],
+    [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uC608\uC57D|\uC0C1\uB2F4)\s*\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uCD9C\uBC1C \uC804 \uD655\uC778 \uAE30\uC900'],
     [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*본/g, '출발 전 확인 기준으로 본'],
     [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
     [/여소남\s*데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
@@ -472,6 +491,7 @@ function removeYeosonamEditorVoice(markdown: string): { text: string; changed: b
 
 function hasHardCtaSignal(text: string): boolean {
   return (
+    READABLE_HARD_CTA_RE.test(text) ||
     /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(text) ||
     /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(text) ||
     /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(text)
@@ -479,6 +499,7 @@ function hasHardCtaSignal(text: string): boolean {
 }
 
 function hasReadableHardAction(text: string): boolean {
+  if (READABLE_HARD_CTA_RE.test(text)) return true;
   return /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(text);
 }
 
@@ -490,6 +511,13 @@ function softenHardCtaText(markdown: string): { text: string; changed: boolean }
   let text = markdown;
   const before = text;
   const replacements: Array<[RegExp, string]> = [
+    [/(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4)?/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*\uB9C8\uAC10|\uB9C8\uAC10\s*\uC784\uBC15|\uC794\uC5EC\s*\uC88C\uC11D/gi, '\uD655\uC778\uC774 \uD544\uC694\uD55C \uC870\uAC74'],
+    [/\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30/gi, '\uAD00\uB828 \uC870\uAC74 \uD655\uC778'],
+    [/\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)/gi, '\uC77C\uC815 \uC870\uAC74 \uD655\uC778'],
+    [/\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)/gi, '\uD544\uC694\uD55C \uC870\uAC74 \uD655\uC778'],
+    [/\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uC870\uAC74 \uD655\uC778'],
     [/지금\s*예약(?:하기|문의|상담|신청|바로)?/gi, '출발 조건 확인'],
     [/바로\s*예약(?:하기|문의|상담|신청)?/gi, '출발 조건 확인'],
     [/예약\s*(?:하기|문의|상담|신청|바로)/gi, '출발 조건 확인'],
@@ -506,6 +534,52 @@ function softenHardCtaText(markdown: string): { text: string; changed: boolean }
   }
 
   return { text, changed: text !== before };
+}
+
+function compactAnswerFirstLabel(value?: string | null): string {
+  return stripMarkup(value ?? '')
+    .replace(/[#*_`[\]()>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+}
+
+function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
+  const topic = compactAnswerFirstLabel(input.primaryKeyword || input.title || input.category)
+    || '\uC5EC\uD589 \uC900\uBE44';
+  const destination = compactAnswerFirstLabel(input.destination);
+  const destinationPrefix = destination ? `${destination} ` : '';
+  return `${topic}\uC740 \uBA3C\uC800 ${destinationPrefix}\uD604\uC9C0 \uC0C1\uD669, \uBE44\uC6A9, \uC774\uB3D9 \uB3D9\uC120, \uACC4\uC808 \uBCC0\uC218\uB97C \uD568\uAED8 \uD655\uC778\uD558\uBA74 \uD310\uB2E8\uC774 \uC26C\uC6CC\uC9D1\uB2C8\uB2E4. \uC774 \uAE00\uC740 \uBC14\uB85C \uACB0\uC815\uD560 \uAE30\uC900\uACFC \uCD9C\uBC1C \uC804 \uD655\uC778 \uC21C\uC11C\uB97C \uC815\uB9AC\uD569\uB2C8\uB2E4.`;
+}
+
+function insertIntroAfterTitle(markdown: string, intro: string): string {
+  const lines = markdown.split('\n');
+  const headingIndex = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (headingIndex < 0) {
+    return `${intro}\n\n${markdown.trim()}`;
+  }
+
+  let restStart = headingIndex + 1;
+  while (restStart < lines.length && lines[restStart].trim() === '') restStart += 1;
+  return [
+    ...lines.slice(0, headingIndex + 1),
+    '',
+    intro,
+    '',
+    ...lines.slice(restStart),
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function ensureInfoAnswerFirst(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const report = inspectBlogIntentQuality({ ...input, blogHtml: markdown });
+  if (!report.issues.some((issue) => issue.code === 'missing_answer_first')) {
+    return { text: markdown, changed: false };
+  }
+
+  const intro = buildAnswerFirstIntro(input);
+  if (markdown.includes(intro)) return { text: markdown, changed: false };
+  const text = insertIntroAfterTitle(markdown, intro);
+  return { text, changed: text !== markdown };
 }
 
 function safeDecodeUriComponent(value: string): string {
@@ -1955,16 +2029,22 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   }
 
   if (intent.mode === 'info') {
-    const salesRepair = sanitizeInfoSalesTone(blogHtml);
-    if (salesRepair.changed) {
-      blogHtml = salesRepair.text;
-      changes.push('sanitized_info_sales_tone');
+    const answerFirstRepair = ensureInfoAnswerFirst(blogHtml, { ...input, blogHtml });
+    if (answerFirstRepair.changed) {
+      blogHtml = answerFirstRepair.text;
+      changes.push('added_answer_first_intro');
     }
 
     const ctaRepair = moveEarlyStrongInfoCtaToBottom(blogHtml);
     if (ctaRepair.changed) {
       blogHtml = ctaRepair.text;
       changes.push('moved_early_info_cta_to_bottom');
+    }
+
+    const salesRepair = sanitizeInfoSalesTone(blogHtml);
+    if (salesRepair.changed) {
+      blogHtml = salesRepair.text;
+      changes.push('sanitized_info_sales_tone');
     }
   }
 
