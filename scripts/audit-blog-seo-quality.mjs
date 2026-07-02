@@ -33,6 +33,7 @@ if (hardTimeoutMs > 0) {
 const LONGTAIL_MODIFIERS = /20\d{2}|비용|가격|일정|코스|날씨|월별|준비물|체크|체크리스트|환전|입국|서류|항공권|숙소|맛집|추천|가이드|후기|예약|포함|주의/i;
 const RAW_MARKDOWN_ARTIFACTS = /!\[[^\]]*]\(|\[[^\]]+]\((?:https?:\/\/|\/)|(^|\n)#{1,6}\s|\*\*[^*]+\*\*/m;
 const LEGACY_HIGHLIGHT_ARTIFACTS = /==[^=\n]{1,180}==|<mark\b/i;
+const SURFACE_TEXT_NOISE = /여여소남|여소남\s+여소남|상품\s*상세\s*보기\s*→\s*여소남|상품\s*상세\s*보기\s*→\s*여여소남/;
 const AUTHORITY_HOST_HINTS = [
   '.go.kr',
   '.gov',
@@ -295,6 +296,7 @@ function judge(row) {
   if (!LONGTAIL_MODIFIERS.test(visibleTitle)) warnings.push('weak_longtail_modifier');
   if (RAW_MARKDOWN_ARTIFACTS.test(row.articleTextSample)) issues.push('raw_markdown_visible');
   if (LEGACY_HIGHLIGHT_ARTIFACTS.test(row.articleTextSample)) issues.push('legacy_highlight_visible');
+  if (SURFACE_TEXT_NOISE.test(row.articleTextSample)) issues.push('surface_text_noise');
   if (row.strikethroughCount > 0) issues.push('visible_strikethrough_or_deletion');
   if (!row.viewportMeta) issues.push('missing_viewport_meta');
   if (!row.ogTitle || !row.ogDescription) issues.push('missing_og_title_description');

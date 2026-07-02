@@ -24,11 +24,9 @@ export default function AuthorBox({ publishedAt, updatedAt, destination }: Props
     >
       <div className="flex items-start gap-4">
         <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-lg font-bold text-white shadow-sm"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-lg font-bold text-white shadow-sm before:content-['Y']"
           aria-hidden="true"
-        >
-          여
-        </div>
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-[15px] font-semibold text-slate-900">여소남 에디터</p>

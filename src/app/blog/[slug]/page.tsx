@@ -1235,11 +1235,9 @@ async function renderBlogDetail({
           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4 text-sm text-slate-500">
             <div className="flex items-center gap-2">
               <span
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-xs font-bold text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-xs font-bold text-white before:content-['Y']"
                 aria-hidden="true"
-              >
-                여
-              </span>
+              />
               <span className="font-medium text-slate-700">여소남 에디터</span>
             </div>
             <span aria-hidden="true" className="text-slate-300">·</span>
