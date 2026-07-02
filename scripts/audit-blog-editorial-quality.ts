@@ -100,12 +100,33 @@ function textWithMarkdownLinks($: cheerio.CheerioAPI, element: Element): string 
   return clone.text().replace(/\s+/g, ' ').trim();
 }
 
+function textLength($: cheerio.CheerioAPI, element: Element): number {
+  return $(element).text().replace(/\s+/g, '').trim().length;
+}
+
+function selectRenderedContentRoot($: cheerio.CheerioAPI): cheerio.Cheerio<Element> {
+  const article = $('article').first();
+  const articleElement = article.get(0);
+  if (articleElement && textLength($, articleElement) >= 200) return article;
+
+  let best = article.length ? article : $('main').first();
+  const bestElement = best.get(0);
+  let bestLength = bestElement ? textLength($, bestElement) : 0;
+  $('article, .prose-blog, .prose, [data-blog-body], main').each((_index, element) => {
+    const length = textLength($, element);
+    if (length > bestLength) {
+      best = $(element);
+      bestLength = length;
+    }
+  });
+  return best;
+}
+
 async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPost> {
   if (!post.slug) throw new Error('missing slug');
   const html = await getText(`/blog/${post.slug}`);
   const $ = cheerio.load(html);
-  const article = $('article').first();
-  const root = article.length ? article : $('main').first();
+  const root = selectRenderedContentRoot($);
   const sourceParts: string[] = [];
 
   root.find('h1,h2,h3,p,li,table,blockquote,mark,aside').each((_index, element) => {
