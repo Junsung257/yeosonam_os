@@ -44,10 +44,13 @@ function regionalFoodTerm(rawText: string): string | null {
 }
 
 const STANDALONE_MEAL_LABEL_RE =
-  /^(?:\uC804\uD1B5\uC2DD|BBQ|\uBC14\uBCA0\uD050|\uD604\uC9C0\uC2DD|\uD2B9\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uD638\uD154\uC2DD|\uD55C\uC2DD|\uC591\uC2DD|\uC77C\uC2DD)$/i;
+  /^(?:\uC804\uD1B5\uC2DD|BBQ|\uBC14\uBCA0\uD050|\uD604\uC9C0\uC2DD|\uD2B9\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uD638\uD154\uC2DD|\uD55C\uC2DD|\uC591\uC2DD|\uC77C\uC2DD|\uD558\uC774\uB514\uB77C\uC624|\uBC31\uC219|\uB204\uB8FD\uC9C0|\uC0B0\uCC44\uBE44\uBE54\uBC25|\uC18C\uACE0\uAE30\uBAA8\uB4EC\uAD6C\uC774|\uD6E0\uAD88|\uC0DD\uC218|\uB9E5\uC8FC\d*\uBCD1?)$/i;
 
 function isStandaloneMealLabel(rawText: string): boolean {
-  return STANDALONE_MEAL_LABEL_RE.test(rawText.replace(/\s+/g, '').trim());
+  return STANDALONE_MEAL_LABEL_RE.test(rawText
+    .replace(/^[\s+\-()]+|[\s+\-()]+$/g, '')
+    .replace(/\s+/g, '')
+    .trim());
 }
 
 function confidenceFor(category: V3EntityCategory, event: V3LedgerEvent): number {

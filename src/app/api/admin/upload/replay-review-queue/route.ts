@@ -38,6 +38,18 @@ function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function extractSavedIds(payload: Record<string, unknown>): string[] {
+  if (Array.isArray(payload.dbIds)) {
+    return payload.dbIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+  }
+  return typeof payload.dbId === 'string' && payload.dbId.trim() ? [payload.dbId] : [];
+}
+
+function extractDuplicateInternalCode(payload: Record<string, unknown>): string | null {
+  if (payload.duplicate !== true) return null;
+  return stringValue(payload.internal_code);
+}
+
 const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ success: false, error: 'Supabase is not configured.' }, { status: 503 });
@@ -154,7 +166,7 @@ const postHandler = async (request: NextRequest) => {
       inputAnalysisForTrust,
       archiveMode: false,
       bulkMode: false,
-      forceReprocess: body.forceReprocess !== false,
+      forceReprocess: body.forceReprocess === true,
     },
     supabase: supabaseAdmin,
     isSupabaseConfigured,
@@ -165,13 +177,10 @@ const postHandler = async (request: NextRequest) => {
   });
 
   const payload = result.payload as Record<string, unknown>;
-  const savedIds = Array.isArray(payload.dbIds)
-    ? payload.dbIds.filter((id): id is string => typeof id === 'string')
-    : typeof payload.dbId === 'string'
-      ? [payload.dbId]
-      : [];
+  const savedIds = extractSavedIds(payload);
+  const duplicateInternalCode = extractDuplicateInternalCode(payload);
 
-  if (savedIds.length > 0) {
+  if (savedIds.length > 0 || duplicateInternalCode) {
     await supabaseAdmin
       .from('upload_review_queue')
       .update({
@@ -186,6 +195,8 @@ const postHandler = async (request: NextRequest) => {
       ...payload,
       replayed: true,
       queueId,
+      replayResolved: savedIds.length > 0 || Boolean(duplicateInternalCode),
+      duplicateInternalCode,
       uploadRequestId: requestId,
     },
     { status: result.status },
