@@ -95,7 +95,6 @@ describe('buildSourceBackedPriceDateRepair', () => {
       title: '연길/백두산(북+남파) 3박4일',
       duration: 4,
       raw_text: BAEKDU_GRADE_PATTERN_MATRIX,
-      referenceDate: '2026-07-01',
       price_dates: [
         { date: '2026-07-02', price: 1429000, confirmed: false },
         { date: '2026-07-16', price: 1649000, confirmed: false },
@@ -125,7 +124,6 @@ describe('buildSourceBackedPriceDateRepair', () => {
       title: '연길/백두산(북+남파) 3박4일',
       duration: 4,
       raw_text: BAEKDU_GRADE_PATTERN_MATRIX,
-      referenceDate: '2026-07-01',
       price_dates: [
         { date: '2026-07-02', price: 1129000, confirmed: false },
       ],
@@ -158,7 +156,6 @@ describe('buildSourceBackedPriceDateRepair', () => {
       title: '[LJ] Da Nang Hoi An 3N5D',
       duration: 5,
       raw_text: rawText,
-      referenceDate: '2026-07-01',
       price_dates: [
         { date: '2026-07-01', price: 799000, confirmed: false },
         { date: '2026-07-28', price: 799000, confirmed: false },
@@ -198,7 +195,6 @@ describe('buildSourceBackedPriceDateRepair', () => {
       title: 'PKG ZE Phu Quoc golf 4N6D',
       duration: 6,
       raw_text: rawText,
-      referenceDate: '2026-07-01',
       departure_days: '토',
       price_dates: [
         { date: '2027-03-06', price: 1319000, confirmed: false },

@@ -14,7 +14,6 @@ export type SourcePriceRepairPackage = {
   raw_text?: string | null;
   itinerary_data?: unknown;
   accommodations?: string[] | null;
-  referenceDate?: string | null;
   price_dates?: Array<{
     date?: string | null;
     price?: number | null;
@@ -123,10 +122,6 @@ function isIsoDate(value: unknown): value is string {
 
 function isUpcomingSourceDate(date: string, today: string = formatKstDate()): boolean {
   return isUpcomingKstDate(date, today);
-}
-
-function sourceRepairReferenceDate(pkg: SourcePriceRepairPackage): string {
-  return isIsoDate(pkg.referenceDate) ? pkg.referenceDate : formatKstDate();
 }
 
 function priceValue(row: SourcePriceRepairPackage['price_dates'] extends Array<infer R> | null | undefined ? R : never): number | null {
@@ -303,7 +298,6 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   rows: PriceDate[];
   excludedPriceCandidates: ExcludedPriceCandidate[];
 } {
-  const referenceDate = sourceRepairReferenceDate(pkg);
   const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
   const rawExcludedPriceCandidates = extractExcludedPriceCandidatesFromRawText(rawText);
   if (rawText.length < 50) return { source: 'none', rows: [], excludedPriceCandidates: rawExcludedPriceCandidates };
@@ -324,7 +318,7 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   const selection = selectSourceBackedPriceRowsWithExclusions(pkg, ir.rows);
   for (const row of selection.selected) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
-    if (!isUpcomingSourceDate(row.date, referenceDate)) continue;
+    if (!isUpcomingSourceDate(row.date)) continue;
     const current = byDate.get(row.date);
     if (current && current.price <= row.adult_price) continue;
     byDate.set(row.date, {
@@ -346,10 +340,9 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
 }
 
 export function buildSourceBackedPriceDateRepair(pkg: SourcePriceRepairPackage): SourceBackedPriceDateRepair {
-  const referenceDate = sourceRepairReferenceDate(pkg);
   const expected = expectedPriceDatesByDate(pkg);
   const existingRows = Array.isArray(pkg.price_dates)
-    ? pkg.price_dates.filter(row => !isIsoDate(row.date) || isUpcomingSourceDate(row.date, referenceDate))
+    ? pkg.price_dates.filter(row => !isIsoDate(row.date) || isUpcomingSourceDate(row.date))
     : [];
   const existingByDate = new Map<string, PriceDate>();
 
