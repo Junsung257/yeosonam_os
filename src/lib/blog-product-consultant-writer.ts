@@ -1,4 +1,5 @@
 import type { ProductBlogBrief } from './blog-product-brief';
+import { resolveBlogCanonicalOrigin } from './blog-canonical-url';
 
 type ProductForConsultant = {
   id: string;
@@ -39,12 +40,12 @@ function tableRows(label: string, items: string[], fallback: string): string[] {
 }
 
 function packageUrl(productId: string): string {
-  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/$/, '');
+  const baseUrl = resolveBlogCanonicalOrigin();
   return `${baseUrl}/packages/${productId}?utm=blog_bottom`;
 }
 
 function inquiryUrl(productId: string): string {
-  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/$/, '');
+  const baseUrl = resolveBlogCanonicalOrigin();
   return `${baseUrl}/group-inquiry?utm_source=naver_blog&utm_medium=organic&utm_campaign=product_consultant&utm_content=${encodeURIComponent(productId)}`;
 }
 

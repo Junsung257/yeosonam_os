@@ -104,6 +104,32 @@ describe('computeSeoScore', () => {
     expect(mobile?.message).toContain('long raw urls 0');
   });
 
+  it('blocks public posts that contain localhost CTA links', () => {
+    const result = computeSeoScore({
+      blogHtml: strongMarkdown.replace(
+        '/packages?destination=%EB%B0%A9%EC%BD%95&utm_source=organic&utm_medium=blog',
+        'http://localhost:3000/packages/pkg-1?utm=blog_bottom',
+      ),
+      slug: 'bangkok-weather-monthly-clothes-checklist',
+      seoTitle: '諛⑹퐬 ?좎뵪 ?붾퀎 ?룹감由쇨낵 ?ы뻾 以鍮꾨Ъ 泥댄겕由ъ뒪??2026',
+      seoDescription: '諛⑹퐬 ?좎뵪瑜??붾퀎 湲곗삩, ?곌린쨌嫄닿린, ?룹감由? ?ы뻾 鍮꾩슜, ?낃뎅 ?쒕쪟 湲곗??쇰줈 ?뺣━??2026??以鍮?泥댄겕由ъ뒪?몄엯?덈떎.',
+      primaryKeyword: '諛⑹퐬 ?좎뵪',
+      secondaryKeywords: ['諛⑹퐬 ?룹감由?', '諛⑹퐬 ?ы뻾 鍮꾩슜', '諛⑹퐬 ?낃뎅 ?쒕쪟'],
+      destination: '諛⑹퐬',
+      blogType: 'info',
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: true,
+      },
+    });
+
+    const linkIntegrity = result.details.find((detail) => detail.name === 'public_link_integrity');
+    expect(linkIntegrity?.status).toBe('fail');
+    expect(linkIntegrity?.message).toContain('localhost');
+    expect(result.passed).toBe(false);
+  });
+
   it('matches hyphenated slug keywords against readable spaced article text', () => {
     const result = computeSeoScore({
       blogHtml: [

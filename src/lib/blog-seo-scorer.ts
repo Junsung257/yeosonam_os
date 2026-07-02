@@ -40,6 +40,7 @@ const AUTHORITATIVE_HOST_HINTS = [
   'travel.state.gov',
   'cbp.dhs.gov',
 ];
+const NON_PUBLIC_LINK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
 
 const TITLE_INTENT_GROUPS = {
   cost: /비용|예산|경비|가격|요금|교통비|이동비|항공권|가성비|cost|budget|price/i,
@@ -352,6 +353,28 @@ function scoreInternalLinks(blogHtml: string): SeoScoreDetail {
   return detail('internal_links_cta', score, 7, 6, 3, `internal ${internal.length}, cta ${cta.length}`);
 }
 
+function isNonPublicHttpLink(href: string): boolean {
+  if (!/^https?:\/\//i.test(href)) return false;
+  try {
+    const parsed = new URL(href);
+    return NON_PUBLIC_LINK_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function scorePublicLinkIntegrity(blogHtml: string): SeoScoreDetail {
+  const links = extractLinks(blogHtml);
+  const nonPublic = links.filter(isNonPublicHttpLink);
+  return {
+    name: 'public_link_integrity',
+    score: 0,
+    maxScore: 0,
+    status: nonPublic.length === 0 ? 'pass' : 'fail',
+    message: nonPublic.length === 0 ? 'all links public' : `non-public links ${nonPublic.slice(0, 3).join(', ')}`,
+  };
+}
+
 function scoreExternalLinks(blogHtml: string): SeoScoreDetail {
   const links = extractLinks(blogHtml);
   const external = links.filter((href) => /^https?:\/\//i.test(href) && !/yeosonam\.com/i.test(href));
@@ -465,6 +488,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
     scoreImages(input, keyword, dest),
     scoreInternalLinks(input.blogHtml),
     scoreExternalLinks(input.blogHtml),
+    scorePublicLinkIntegrity(input.blogHtml),
     scoreReadability(input.blogHtml, plainText),
     scoreSchema(input),
     scoreHelpfulContent(input, plainText),
@@ -476,7 +500,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
   const minScore = BLOG_SEO_MIN_SCORE[input.blogType];
   const criticalFailures = details.filter((item) =>
     item.status === 'fail' &&
-    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'structured_data', 'helpful_content_eeat', 'url_slug'].includes(item.name),
+    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'public_link_integrity', 'structured_data', 'helpful_content_eeat', 'url_slug'].includes(item.name),
   );
   const passed = score >= minScore && criticalFailures.length === 0;
   const summary = passed

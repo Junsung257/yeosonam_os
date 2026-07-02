@@ -85,6 +85,7 @@ const PRODUCT_DECISION_HELP_SIGNALS = [
   /안 맞는 사람|비추천|not fit/i,
   /상담|문의|확인/i,
 ];
+const NON_PUBLIC_LINK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
 
 async function fetchText(path) {
   const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
@@ -237,6 +238,16 @@ function hasProductDecisionHelp(row) {
   return PRODUCT_DECISION_HELP_SIGNALS.filter((pattern) => pattern.test(text)).length >= 3;
 }
 
+function isNonPublicHttpLink(href) {
+  if (!/^https?:\/\//i.test(href || '')) return false;
+  try {
+    const parsed = new URL(href);
+    return NON_PUBLIC_LINK_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function judge(row) {
   const issues = [];
   const warnings = [];
@@ -266,6 +277,7 @@ function judge(row) {
   if (row.h1Count !== 1) issues.push('bad_h1_count');
   if (row.h2Count < 3) issues.push('not_enough_h2');
   if (row.articleTextLength < 1200) issues.push('thin_content');
+  if ((row.links || []).some(isNonPublicHttpLink)) issues.push('non_public_link');
   if (productConsultBlog) {
     if (row.articleTextLength < 1800) warnings.push('below_product_blog_ideal_length');
     if (!hasProductDecisionHelp(row)) warnings.push('weak_product_decision_help');
