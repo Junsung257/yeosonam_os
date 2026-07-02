@@ -5,6 +5,7 @@ import {
   type BlogIntentInput,
   type BlogIntentQualityReport,
 } from './blog-content-intent';
+import { canonicalizeBlogPublicLinks } from './blog-link-surface';
 import { repairBlogPromptInstructionResidue } from './blog-prompt-residue';
 import { stripMarkup } from './blog-text-utils';
 
@@ -1754,6 +1755,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (finalAccentRepair.changed) {
     blogHtml = finalAccentRepair.text;
     changes.push('normalized_visual_accents_final');
+  }
+
+  const publicLinksRepaired = canonicalizeBlogPublicLinks(blogHtml);
+  if (publicLinksRepaired !== blogHtml) {
+    blogHtml = publicLinksRepaired;
+    changes.push('repaired_public_link_surface');
   }
 
   const after = inspectBlogIntentQuality({ ...input, blogHtml });

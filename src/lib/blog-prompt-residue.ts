@@ -13,7 +13,7 @@ const STANDALONE_PROMPT_RESIDUE_RE =
   /^\s*(?:[-*]\s*)?(?:#{1,6}\s*)?(?:\*\*)?(?:규칙\s*[A-Z가-힣0-9]{1,3}\s*(?:\([^)\n]{0,50}\))?|감각\s*디테일|2인칭\s*시나리오|구체\s*수치|프롬프트\s*(?:지시|규칙|출력|작성)|(?:내부|작성|출력)\s*(?:지시|규칙|가이드라인))(?:\*\*)?\s*[:：]?\s*$/i;
 
 const INLINE_PROMPT_RESIDUE_RE =
-  /\s*(?:2인칭\s*시나리오를\s*드리자면\s*,?|감각\s*디테일\s*[:：]\s*|구체\s*수치\s*[:：]\s*)\s*/gi;
+  /\s*(?:(?:\*\*)?(?:규칙\s*[A-Z가-힣0-9]{1,3}\s*(?:\([^)\n]{0,50}\))?|감각\s*디테일|2인칭\s*시나리오|구체\s*수치)(?:\*\*)?\s*[:：]\s*|2인칭\s*시나리오를\s*드리자면\s*,?)\s*/gi;
 
 export function findBlogPromptInstructionResidue(text: string): string[] {
   const samples: string[] = [];

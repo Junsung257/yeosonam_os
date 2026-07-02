@@ -151,6 +151,64 @@ describe('blog editorial repair', () => {
     expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
   });
 
+  it('canonicalizes non-public internal links before publish checks', () => {
+    const result = repairBlogStructureQuality({
+      title: 'Bohol June weather guide',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: 'Bohol June weather',
+      blogHtml: [
+        '# Bohol June weather guide',
+        '',
+        'Check current travel conditions before departure.',
+        '',
+        '[Bohol destination guide](http://localhost:3000/blog/destination/bohol?utm_source=blog)',
+        '',
+        '<a href="http://127.0.0.1:3000/group-inquiry?utm_source=blog">Check my dates</a>',
+        '',
+        '| Item | Check | Note |',
+        '| --- | --- | --- |',
+        '| Weather | Rain | Pack light rain gear |',
+        '| Transport | Ferry | Reconfirm time |',
+        '| Booking | Hotel | Compare cancellation terms |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_public_link_surface');
+    expect(result.blogHtml).toContain('https://www.yeosonam.com/blog/destination/bohol?utm_source=blog');
+    expect(result.blogHtml).toContain('href="https://www.yeosonam.com/group-inquiry?utm_source=blog"');
+    expect(result.blogHtml).not.toContain('localhost');
+    expect(result.blogHtml).not.toContain('127.0.0.1');
+  });
+
+  it('normalizes broken multiline markdown link labels before rendering', () => {
+    const result = repairBlogStructureQuality({
+      title: 'Bohol June weather guide',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: 'Bohol June weather',
+      blogHtml: [
+        '# Bohol June weather guide',
+        '',
+        '[Bohol restaurants',
+        '',
+        '& cafe checklist](https://www.yeosonam.com/?utm_source=naver_blog&utm_content=internal_link2)',
+        '',
+        '| Item | Check | Note |',
+        '| --- | --- | --- |',
+        '| Weather | Rain | Pack light rain gear |',
+        '| Transport | Ferry | Reconfirm time |',
+        '| Booking | Hotel | Compare cancellation terms |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_public_link_surface');
+    expect(result.blogHtml).toContain('[Bohol restaurants & cafe checklist](https://www.yeosonam.com/?utm_source=naver_blog&utm_content=internal_link2)');
+    expect(result.blogHtml).not.toContain('[Bohol restaurants\n\n& cafe checklist]');
+  });
+
   it('softens early hard CTA sentences without dropping informational context', () => {
     const source = [
       '# 몽골 가족여행 2026 실제 경비표',
@@ -793,6 +851,8 @@ describe('blog editorial repair', () => {
         '* **감각 디테일:** 실내 냉방은 생각보다 강하게 느껴질 수 있습니다.',
         '',
         '봄 일정이라면 2인칭 시나리오를 드리자면, 얇은 겉옷 하나가 체감 차이를 크게 줄입니다.',
+        '',
+        '- **Day 5**: 쇼핑 후 귀국 **2인칭 시나리오**: 오전 일찍 움직이면 대기 시간을 줄일 수 있습니다.',
       ].join('\n'),
     });
 
@@ -803,6 +863,7 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('평균 습도는 80% 안팎으로 보는 편이 안전합니다.');
     expect(result.blogHtml).toContain('실내 냉방은 생각보다 강하게 느껴질 수 있습니다.');
     expect(result.blogHtml).toContain('얇은 겉옷 하나가 체감 차이를 크게 줄입니다.');
+    expect(result.blogHtml).toContain('오전 일찍 움직이면 대기 시간을 줄일 수 있습니다.');
   });
 
   it('removes broken empty persona greetings before quality inspection', () => {
