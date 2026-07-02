@@ -7,6 +7,7 @@ import {
 } from './blog-content-intent';
 import { canonicalizeBlogPublicLinks } from './blog-link-surface';
 import { repairBlogPromptInstructionResidue } from './blog-prompt-residue';
+import { computeReadability } from './blog-readability';
 import { stripMarkup } from './blog-text-utils';
 
 export interface BlogEditorialRepairInput extends BlogIntentInput {
@@ -1447,6 +1448,57 @@ function flattenMalformedInlineTables(markdown: string): { text: string; changed
   return { text: next.join('\n\n'), changed };
 }
 
+const REPEATED_PLANNING_PHRASE_SIGNAL_RE =
+  /(?:\uC608\uC57D|\uBE44\uC6A9|\uC77C\uC815|\uD604\uC9C0|\uD655\uC778|\uC900\uBE44|\uCCB4\uD06C|\uC0C1\uB2F4)/;
+
+const READABILITY_PHRASE_ALTERNATIVES = [
+  '\uCD9C\uBC1C \uC804 \uD575\uC2EC \uC870\uAC74',
+  '\uC77C\uC815\uBCC4 \uD655\uC778 \uD56D\uBAA9',
+  '\uD604\uC9C0\uC5D0\uC11C \uB2EC\uB77C\uC9C0\uB294 \uBCC0\uC218',
+  '\uC0C1\uB2F4 \uC804 \uC810\uAC80 \uD3EC\uC778\uD2B8',
+];
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function softenRepeatedReadabilityPhrases(markdown: string, maxExactRepeats = 3): { text: string; changed: boolean } {
+  let text = markdown;
+  let changed = false;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const duplicates = computeReadability(text).duplicate_phrases
+      .filter((item) =>
+        item.count > maxExactRepeats &&
+        REPEATED_PLANNING_PHRASE_SIGNAL_RE.test(item.phrase) &&
+        !READABILITY_PHRASE_ALTERNATIVES.some((alternative) => item.phrase.includes(alternative)));
+    if (duplicates.length === 0) break;
+
+    let passChanged = false;
+    for (const duplicate of duplicates) {
+      let seen = 0;
+      const pattern = new RegExp(escapeRegexLiteral(duplicate.phrase), 'g');
+      text = text.replace(pattern, (match) => {
+        seen += 1;
+        if (seen <= maxExactRepeats) return match;
+        passChanged = true;
+        changed = true;
+        return READABILITY_PHRASE_ALTERNATIVES[(seen - maxExactRepeats - 1) % READABILITY_PHRASE_ALTERNATIVES.length] || match;
+      });
+    }
+    if (!passChanged) break;
+  }
+
+  for (const alternative of READABILITY_PHRASE_ALTERNATIVES) {
+    const pattern = new RegExp(`${escapeRegexLiteral(alternative)}(?:\\s+${escapeRegexLiteral(alternative)})+`, 'g');
+    text = text.replace(pattern, () => {
+      changed = true;
+      return alternative;
+    });
+  }
+
+  return { text, changed: changed && text !== markdown };
+}
+
 function limitRepeatedPlanningHooks(markdown: string): { text: string; changed: boolean } {
   let definitionCount = 0;
   let planningCount = 0;
@@ -1805,6 +1857,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('limited_repeated_planning_hooks');
   }
 
+  const repeatedReadabilityPhraseRepair = softenRepeatedReadabilityPhrases(blogHtml);
+  if (repeatedReadabilityPhraseRepair.changed) {
+    blogHtml = repeatedReadabilityPhraseRepair.text;
+    changes.push('softened_repeated_readability_phrases');
+  }
+
   const finalLooseTableRepair = repairLooseMarkdownTables(blogHtml);
   if (finalLooseTableRepair.changed) {
     blogHtml = finalLooseTableRepair.text;
@@ -2008,6 +2066,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (shortParagraphRepair.changed) {
     blogHtml = shortParagraphRepair.text;
     changes.push('deduped_repeated_short_paragraphs');
+  }
+
+  const repeatedReadabilityPhraseRepair = softenRepeatedReadabilityPhrases(blogHtml);
+  if (repeatedReadabilityPhraseRepair.changed) {
+    blogHtml = repeatedReadabilityPhraseRepair.text;
+    changes.push('softened_repeated_readability_phrases');
   }
 
   const accentRepair = normalizeBlogVisualAccents(blogHtml);
