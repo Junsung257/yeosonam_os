@@ -6,6 +6,7 @@ import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 import { countPublishableQueueCandidates, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '@/lib/blog-daily-summary-window';
 import { summarizeBlogQueueOperationalHealth } from '@/lib/blog-queue-operational-health';
+import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -324,6 +325,10 @@ async function runDailySummary(request: NextRequest) {
     return acc;
   }, {});
   const queueOperationalHealth = summarizeBlogQueueOperationalHealth(queueRes.data || []);
+  const editorialBacklogWork = buildBlogEditorialBacklogWorkReport({
+    rows: queueRes.data || [],
+    limit: 12,
+  });
   const publishabilityStats = countPublishableQueueCandidates({
     activeQueue: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
     recentPublished: recentPublishedRes.data || [],
@@ -388,6 +393,7 @@ async function runDailySummary(request: NextRequest) {
     queue_manual_review: queueOperationalHealth.manual_review_count,
     queue_stale_generating: queueOperationalHealth.stale_generating_count,
     queue_operational_health: queueOperationalHealth,
+    editorial_backlog_work: editorialBacklogWork,
     publishability,
     rank_alerts_open: alertRes.count || 0,
     indexing_success_rate: +indexRate.toFixed(1),
@@ -433,6 +439,8 @@ async function runDailySummary(request: NextRequest) {
       ? `Resolve publishability issue: ${publishability.next_action}.`
       : Object.keys(failureBreakdown).length > 0
       ? 'Fix the largest publisher failure bucket before requeueing duplicate topics.'
+      : editorialBacklogWork.total > 0
+      ? 'Review editorial backlog samples before regenerating more failed topics.'
       : 'Keep scheduler and publisher running; refill queue if pending candidates drop below target.',
   };
   const opsWatcher = buildBlogOpsWatcherReport(summary, errors);

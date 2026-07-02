@@ -4,6 +4,7 @@ import { countPublishableQueueCandidates } from '../src/lib/blog-scheduler';
 import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-window';
 import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
 import { buildBlogProductEvidenceWorkReport } from '../src/lib/blog-product-evidence-work';
+import { buildBlogEditorialBacklogWorkReport } from '../src/lib/blog-editorial-backlog-work';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -14,6 +15,7 @@ type BucketCode =
   | 'publisher_timeout'
   | 'duplicate_candidate_burn'
   | 'product_open_contract_blocked'
+  | 'editorial_backlog_work'
   | 'table_integrity_fail'
   | 'candidate_shortage'
   | 'audit_contract_mismatch'
@@ -232,6 +234,10 @@ async function main() {
     productsById,
     limit,
   });
+  const editorialBacklogWork = buildBlogEditorialBacklogWorkReport({
+    rows: queueOperationalRes.data ?? [],
+    limit,
+  });
   const publishabilitySnapshot = {
     queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
@@ -325,6 +331,20 @@ async function main() {
     });
   }
 
+  if (editorialBacklogWork.total > 0) {
+    buckets.push({
+      code: 'editorial_backlog_work',
+      severity: 'warning',
+      detail: `${editorialBacklogWork.total} quarantined editorial backlog row(s) need generator, prompt, or quality-contract repair before requeueing.`,
+      evidence: {
+        issue_counts: editorialBacklogWork.issue_counts,
+        category_counts: editorialBacklogWork.category_counts,
+        next_actions: editorialBacklogWork.next_actions,
+        samples: editorialBacklogWork.samples.slice(0, 5),
+      },
+    });
+  }
+
   const tableFailures = failureCount(combinedPublisherSummary, 'table_integrity');
   if (
     queueOperationalHealth.actionable_failed_count > 0 &&
@@ -397,6 +417,7 @@ async function main() {
     queue: queueCounts,
     queue_operational_health: queueOperationalHealth,
     product_evidence_work: productEvidenceWork,
+    editorial_backlog_work: editorialBacklogWork,
     publishability: publishabilitySnapshot,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
