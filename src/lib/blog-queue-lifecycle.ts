@@ -1,6 +1,11 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
-import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
+import { getBlogQueueOperationalState, type BlogQueueOperationalRow } from '@/lib/blog-queue-operational-health';
+import {
+  customerOpenContractBlogBlockReason,
+  isCustomerOpenContractBlogPublishable,
+  loadCustomerOpenContractForPackage,
+} from '@/lib/product-registration/customer-open-contract';
 
 /**
  * 판매 불가·아카이브 등으로 블로그 자동발행 큐를 중단한다.
@@ -161,7 +166,9 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
           const contract = await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id);
           productContractCache.set(
             row.product_id,
-            contract.ok ? null : buildProductOpenContractFailure(contract.blockers),
+            isCustomerOpenContractBlogPublishable(contract)
+              ? null
+              : buildProductOpenContractFailure([customerOpenContractBlogBlockReason(contract)]),
           );
         } catch (err) {
           productContractCache.set(
@@ -217,4 +224,83 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
   }
 
   return { scanned: data.length, quarantined, skipped, failed };
+}
+
+export async function rescheduleOverdueQueuedBlogQueueItems(opts?: {
+  limit?: number;
+  now?: Date;
+  write?: boolean;
+  rescheduledBy?: string;
+}): Promise<{
+  scanned: number;
+  rescheduled: number;
+  actions: Array<{
+    id: string;
+    previous_target_publish_at: string | null;
+    write: boolean;
+    error: string | null;
+  }>;
+}> {
+  if (!isSupabaseConfigured) return { scanned: 0, rescheduled: 0, actions: [] };
+
+  const now = opts?.now ?? new Date();
+  const nowIso = now.toISOString();
+  const write = opts?.write !== false;
+  const { data, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id, status, attempts, last_error, created_at, updated_at, target_publish_at, meta')
+    .eq('status', 'queued')
+    .not('target_publish_at', 'is', null)
+    .lt('target_publish_at', nowIso)
+    .order('target_publish_at', { ascending: true })
+    .limit(opts?.limit ?? 100);
+
+  if (error || !data || data.length === 0) {
+    return { scanned: data?.length ?? 0, rescheduled: 0, actions: [] };
+  }
+
+  let rescheduled = 0;
+  const actions: Array<{
+    id: string;
+    previous_target_publish_at: string | null;
+    write: boolean;
+    error: string | null;
+  }> = [];
+
+  for (const row of data as Array<BlogQueueOperationalRow & { id: string; meta?: unknown }>) {
+    const state = getBlogQueueOperationalState(row, now);
+    if (!state.attention) continue;
+
+    const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+      ? row.meta as Record<string, unknown>
+      : {};
+    let updateError: string | null = null;
+    if (write) {
+      const { error: rescheduleError } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .update({
+          target_publish_at: nowIso,
+          updated_at: nowIso,
+          meta: {
+            ...meta,
+            overdue_queued_rescheduled_at: nowIso,
+            overdue_queued_previous_target_publish_at: row.target_publish_at ?? null,
+            rescheduled_by: opts?.rescheduledBy ?? 'blog-queue-health-cleanup',
+          },
+        } as never)
+        .eq('id', row.id)
+        .eq('status', 'queued');
+      updateError = rescheduleError?.message ?? null;
+    }
+
+    if (!updateError) rescheduled += 1;
+    actions.push({
+      id: row.id,
+      previous_target_publish_at: row.target_publish_at ?? null,
+      write,
+      error: updateError,
+    });
+  }
+
+  return { scanned: data.length, rescheduled, actions };
 }

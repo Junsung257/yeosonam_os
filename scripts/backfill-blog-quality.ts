@@ -2866,7 +2866,7 @@ async function main() {
   }
 
   if (!dryRun && changedSlugs.length > 0) {
-    await revalidate(['/blog', ...changedSlugs.map((slug) => `/blog/${slug}`)]);
+    await revalidate(['/blog', '/sitemap.xml', ...changedSlugs.map((slug) => `/blog/${slug}`)]);
   }
 
   const highlightCountsBefore = auditRows.map((row) => row.highlightCountBefore);
