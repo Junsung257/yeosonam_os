@@ -21,6 +21,11 @@ const BLOG_PUBLIC_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=3
 const BLOG_DEGRADED_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120, stale-if-error=600';
 const BLOG_STALE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=300, stale-if-error=86400';
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination';
+const CONTENT_CREATIVE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidContentCreativeId(id: string): boolean {
+  return CONTENT_CREATIVE_ID_RE.test(id);
+}
 
 type BlogListPayload = {
   posts: unknown[];
@@ -153,8 +158,7 @@ export async function GET(request: NextRequest) {
 
   try {
     if (id) {
-      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!UUID_RE.test(id)) {
+      if (!isValidContentCreativeId(id)) {
         return apiResponse({ error: 'Post not found' }, { status: 404 });
       }
       const { data, error } = await runApiBlogQuery('id', supabaseAdmin
