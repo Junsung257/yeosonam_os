@@ -21,6 +21,7 @@ export default function AuthorBox({ publishedAt, updatedAt, destination }: Props
     <section
       className="not-prose my-12 rounded-2xl border border-slate-100 bg-slate-50/70 p-5 md:p-6"
       aria-label="작성자 정보"
+      data-blog-supporting="author"
     >
       <div className="flex items-start gap-4">
         <div

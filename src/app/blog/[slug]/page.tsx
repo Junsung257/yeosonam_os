@@ -1397,7 +1397,9 @@ async function renderBlogDetail({
             />
 
             {/* 공유 버튼 */}
-            <ShareButtons url={pageUrl} title={abTestTitle} utmCampaign={slug} />
+            <div data-blog-supporting="share">
+              <ShareButtons url={pageUrl} title={abTestTitle} utmCampaign={slug} />
+            </div>
 
             {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (PPR Suspense) */}
             {curationSection}
