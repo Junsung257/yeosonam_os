@@ -103,6 +103,78 @@ describe('blog editorial backlog recheck', () => {
     expect(decision.action).toBe('keep_blocked');
   });
 
+  it('requeues content brief failures after the current brief contract can rebuild the keyword', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-02T00:00:00.000Z',
+      row: {
+        id: 'queue-brief',
+        status: 'failed',
+        attempts: 2,
+        topic: 'Guam budget guide',
+        destination: 'Guam',
+        last_error: 'blog_content_brief_failed:missing_primary_keyword',
+        meta: {
+          failure_code: 'other',
+          quarantine_reason: 'other',
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.reasons).toContain('blog_content_brief_failed:missing_primary_keyword');
+    expect(decision.last_error).toBeNull();
+  });
+
+  it('requeues stale generation quarantines when there is no topic or evidence blocker', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-02T00:00:00.000Z',
+      row: {
+        id: 'queue-stale',
+        status: 'failed',
+        attempts: 2,
+        topic: 'Da Nang weather guide',
+        destination: 'Da Nang/Hoi An',
+        last_error: 'publisher quarantined stale generating 2026-06-27T14:02:48.227Z',
+        meta: {
+          expected_slug: 'danang-hoian-weather',
+          quarantine_reason: 'stale_generating_or_non_retryable_failure',
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.reasons).toContain('stale_generating_or_non_retryable_failure');
+  });
+
+  it('retires legacy pillar seeds that were blocked by missing context', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-02T00:00:00.000Z',
+      row: {
+        id: 'queue-pillar',
+        status: 'failed',
+        attempts: 3,
+        topic: 'Phu Quoc travel guide (Pillar)',
+        destination: 'Phu Quoc',
+        source: 'pillar',
+        last_error: 'self-heal quarantined 2026-06-16: context_missing requires manual/editorial rebuild',
+        meta: {
+          failure_code: 'self_heal_blocked',
+          quarantine_reason: 'non_retryable_failure',
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('retire_legacy_seed');
+    expect(decision.last_error).toBe('editorial_backlog_recheck_retired_legacy_pillar_seed');
+    expect(decision.meta).toMatchObject({
+      editorial_backlog_recheck_result: 'retired_legacy_seed',
+      retired_legacy_pillar_seed: true,
+    });
+  });
+
   it('skips recoverable rows when an active duplicate is already available', () => {
     const decision = buildBlogEditorialBacklogRecheckDecision({
       activeDuplicateId: 'active-queue',
@@ -151,9 +223,10 @@ describe('blog editorial backlog recheck', () => {
     expect(buildBlogEditorialBacklogRecheckGuidance({
       requeue: 2,
       duplicateSkipped: 1,
+      retiredLegacySeeds: 1,
     })).toEqual({
       write_recommended: true,
-      write_reasons: ['requeue_repaired_editorial_rows', 'skip_duplicate_editorial_rows'],
+      write_reasons: ['requeue_repaired_editorial_rows', 'skip_duplicate_editorial_rows', 'retire_legacy_pillar_rows'],
     });
 
     expect(buildBlogEditorialBacklogRecheckGuidance({

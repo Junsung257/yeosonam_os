@@ -9,6 +9,7 @@ export const BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION = 'blog-editorial-backlog-re
 export type BlogEditorialBacklogRecheckAction =
   | 'requeue'
   | 'skip_duplicate'
+  | 'retire_legacy_seed'
   | 'keep_blocked';
 
 export type BlogEditorialBacklogRecheckDecision = {
@@ -50,6 +51,10 @@ const HARD_BLOCKER_PATTERNS = [
 ];
 
 const RECOVERABLE_PATTERNS = [
+  /blog_content_brief_failed/i,
+  /missing_primary_keyword/i,
+  /stale_generating/i,
+  /stale_generating_or_non_retryable_failure/i,
   /intent_quality/i,
   /early_strong_cta/i,
   /missing_answer_first/i,
@@ -147,6 +152,16 @@ function recoverableReasons(blockers: string[], categories: string[]): string[] 
   return unique(blockers.filter(blocker => hasPattern(blocker, RECOVERABLE_PATTERNS)));
 }
 
+function isRetirableLegacySeed(row: RecheckRow, blockers: string[], categories: string[]): boolean {
+  const source = normalized(String(row.source ?? ''));
+  const topic = normalized(String(row.topic ?? ''));
+  const joined = blockers.join(' ');
+  return source === 'pillar'
+    && topic.includes('pillar')
+    && categories.includes('self_heal_contract')
+    && /context_missing|non_retryable_failure|self_heal/i.test(joined);
+}
+
 function clearEditorialBlockMeta(meta: Record<string, unknown>, checkedAt: string): Record<string, unknown> {
   const next = { ...meta };
   delete next.failure_code;
@@ -165,10 +180,12 @@ function clearEditorialBlockMeta(meta: Record<string, unknown>, checkedAt: strin
 export function buildBlogEditorialBacklogRecheckGuidance(input: {
   requeue: number;
   duplicateSkipped: number;
+  retiredLegacySeeds?: number;
 }): BlogEditorialBacklogRecheckGuidance {
   const writeReasons: string[] = [];
   if (input.requeue > 0) writeReasons.push('requeue_repaired_editorial_rows');
   if (input.duplicateSkipped > 0) writeReasons.push('skip_duplicate_editorial_rows');
+  if ((input.retiredLegacySeeds ?? 0) > 0) writeReasons.push('retire_legacy_pillar_rows');
   return {
     write_recommended: writeReasons.length > 0,
     write_reasons: writeReasons,
@@ -187,6 +204,24 @@ export function buildBlogEditorialBacklogRecheckDecision(input: {
   const categories = unique(blockers.map(categorizeEditorialBacklogBlocker));
   const reasons = recoverableReasons(blockers, categories);
   const dedupKey = readBlogEditorialBacklogDedupKey(input.row);
+
+  if (isRetirableLegacySeed(input.row, blockers, categories)) {
+    return {
+      action: 'retire_legacy_seed',
+      reasons: blockers,
+      dedup_key: dedupKey,
+      last_error: 'editorial_backlog_recheck_retired_legacy_pillar_seed',
+      meta: {
+        ...meta,
+        editorial_backlog_rechecked_at: checkedAt,
+        editorial_backlog_recheck_result: 'retired_legacy_seed',
+        editorial_backlog_recheck_version: BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION,
+        editorial_backlog_recheck_blockers: blockers,
+        retired_legacy_pillar_seed: true,
+        retired_legacy_pillar_seed_at: checkedAt,
+      },
+    };
+  }
 
   if (reasons.length === 0) {
     return {
