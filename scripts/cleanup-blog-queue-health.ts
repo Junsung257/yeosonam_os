@@ -82,12 +82,14 @@ async function main() {
   const actions: Array<Record<string, unknown>> = [];
   let staleRecovered = 0;
   let staleClosed = 0;
+  let overdueQueuedRescheduled = 0;
   let metaRepaired = 0;
 
   for (const row of rows) {
     const meta = asMeta(row.meta);
     const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
     const issue = classifyBlogQueueOperationalIssue(row);
+    const state = getBlogQueueOperationalState(row, now);
 
     if (row.status === 'generating' && (!updatedAt || updatedAt < cutoff)) {
       const canRequeue = Number(row.attempts || 0) < 2 && shouldSelfHealBlogQueueItem({
@@ -137,8 +139,31 @@ async function main() {
       continue;
     }
 
+    if (row.status === 'queued' && state.attention) {
+      const payload = {
+        target_publish_at: now.toISOString(),
+        updated_at: now.toISOString(),
+        meta: {
+          ...meta,
+          overdue_queued_rescheduled_at: now.toISOString(),
+          overdue_queued_previous_target_publish_at: row.target_publish_at ?? null,
+          rescheduled_by: 'cleanup-blog-queue-health',
+        },
+      };
+      const result = await updateRow(row.id, payload);
+      if (!result.error) overdueQueuedRescheduled += 1;
+      actions.push({
+        id: row.id,
+        status_before: row.status,
+        action: 'reschedule_overdue_queued',
+        issue,
+        write,
+        error: result.error ? result.error.message : null,
+      });
+      continue;
+    }
+
     if (needsFailureMetaRepair(row, issue)) {
-      const state = getBlogQueueOperationalState(row, now);
       const payload = {
         updated_at: now.toISOString(),
         meta: {
@@ -182,8 +207,9 @@ async function main() {
     changed: {
       stale_generating_recovered: staleRecovered,
       stale_generating_closed: staleClosed,
+      overdue_queued_rescheduled: overdueQueuedRescheduled,
       failure_meta_repaired: metaRepaired,
-      total: staleRecovered + staleClosed + metaRepaired,
+      total: staleRecovered + staleClosed + overdueQueuedRescheduled + metaRepaired,
     },
     actions,
   };
@@ -194,7 +220,7 @@ async function main() {
   }
 
   console.log(`[cleanup-blog-queue-health] mode=${report.mode} scanned=${report.scanned} changed=${report.changed.total}`);
-  console.log(`stale recovered=${staleRecovered} closed=${staleClosed} meta_repaired=${metaRepaired}`);
+  console.log(`stale recovered=${staleRecovered} closed=${staleClosed} overdue_rescheduled=${overdueQueuedRescheduled} meta_repaired=${metaRepaired}`);
   console.log(`actionable_failed before=${before.actionable_failed_count} after=${report.after.actionable_failed_count}`);
   if (!write && actions.length > 0) {
     console.log('Dry-run only. Re-run with --write to apply safe queue health repairs.');
