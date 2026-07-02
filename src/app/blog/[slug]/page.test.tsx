@@ -111,6 +111,14 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('if (/<table\\b/i.test(html)) return null;');
   });
 
+  it('bypasses stale cached blog detail rows when the article body is empty or editorially failed', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('function shouldRefreshCachedBlogPost');
+    expect(source).toContain('inspectBlogIntentQuality');
+    expect(source).toContain('getPostFastUncached(slug).catch(() => null)');
+  });
+
   it('renders a published blog detail without falling through to the global 404', async () => {
     const mod = await import('./page');
     const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;

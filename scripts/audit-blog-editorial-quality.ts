@@ -40,10 +40,15 @@ const source = argValue('--source', 'web') || 'web';
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const repairPreview = hasFlag('--repair-preview');
+const allowDbFallback = hasFlag('--allow-db-fallback');
 const concurrency = Math.max(1, Math.min(8, Number(argValue('--concurrency', '4')) || 4));
 const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
 const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
 const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
+const hasSupabaseAdminEnv = Boolean(
+  (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) &&
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 let hardTimer: NodeJS.Timeout | null = null;
 if (hardTimeoutMs > 0) {
@@ -132,6 +137,7 @@ async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPo
 }
 
 async function fetchDbPostById(post: BlogListPost): Promise<BlogDetailPost | null> {
+  if (!hasSupabaseAdminEnv) return null;
   if (!post.id) return null;
   const { supabaseAdmin } = await import('../src/lib/supabase');
   const { data, error } = await supabaseAdmin
@@ -206,7 +212,7 @@ async function inspectPost(post: BlogListPost) {
     if (!row?.blog_html && post.slug) {
       row = await fetchRenderedPostSource(post);
     }
-    if ((!row?.blog_html || row.blog_html.replace(/\s+/g, '').length < 80) && source !== 'db') {
+    if ((!row?.blog_html || row.blog_html.replace(/\s+/g, '').length < 80) && source !== 'db' && allowDbFallback && hasSupabaseAdminEnv) {
       const dbRow = await fetchDbPostById(post);
       if (dbRow?.blog_html) row = dbRow;
     }

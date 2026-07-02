@@ -161,6 +161,35 @@ function errorsFromPayload(payload) {
   return 0;
 }
 
+function compactRows(rows, limit = 20) {
+  if (!Array.isArray(rows)) return undefined;
+  const failed = rows.filter((row) => row && (row.failed === true || row.passed === false || Array.isArray(row.issues) && row.issues.length > 0));
+  const selected = failed.length > 0 ? failed : rows.slice(0, Math.min(5, rows.length));
+  return selected.slice(0, limit).map((row) => ({
+    slug: row.slug ?? row.path ?? row.url ?? null,
+    title: row.title ?? null,
+    score: typeof row.score === 'number' ? row.score : undefined,
+    passed: typeof row.passed === 'boolean' ? row.passed : undefined,
+    failed: typeof row.failed === 'boolean' ? row.failed : undefined,
+    issues: Array.isArray(row.issues) ? row.issues.slice(0, 8) : undefined,
+  }));
+}
+
+function compactPayload(payload) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const compact = {};
+  if (payload.status !== undefined) compact.status = payload.status;
+  if (payload.summary !== undefined) compact.summary = payload.summary;
+  if (payload.score !== undefined) compact.score = payload.score;
+  if (payload.failed !== undefined) compact.failed = payload.failed;
+  if (payload.errors !== undefined) compact.errors = payload.errors;
+  if (Array.isArray(payload.failedExamples)) compact.failedExamples = payload.failedExamples.slice(0, 20);
+  if (Array.isArray(payload.rows)) compact.rows = compactRows(payload.rows);
+  if (Array.isArray(payload.checks)) compact.checks = compactRows(payload.checks);
+  if (payload.summary?.worst) compact.worst = payload.summary.worst.slice(0, 10);
+  return compact;
+}
+
 function blockedFromPayload(payload) {
   if (!payload || typeof payload !== 'object') return 0;
   if (typeof payload.blocked === 'number') return payload.blocked;
@@ -252,7 +281,7 @@ function runCheck(check) {
   const result = spawnSync(command, commandArgs, {
     cwd: process.cwd(),
     encoding: 'utf8',
-    maxBuffer: 1024 * 1024 * 20,
+    maxBuffer: 1024 * 1024 * 80,
     shell: false,
     timeout: Math.max(10000, hardTimeoutMs + 5000),
   });
@@ -280,7 +309,7 @@ function runCheck(check) {
       result.error ? result.error.message : '',
       String(result.stderr || '').trim(),
     ].filter(Boolean).join('\n').slice(-4000),
-    payload,
+    payload: compactPayload(payload),
   };
 }
 
