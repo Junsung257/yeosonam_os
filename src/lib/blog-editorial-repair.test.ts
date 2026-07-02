@@ -5,6 +5,7 @@ import {
   repairKeywordDensityToTarget,
 } from './blog-editorial-repair';
 import { checkMarkdownTableIntegrity } from './blog-quality-gate';
+import { computeReadability } from './blog-readability';
 
 describe('blog editorial repair', () => {
   it('repairs loose markdown tables with blank lines and missing separators', () => {
@@ -472,6 +473,47 @@ describe('blog editorial repair', () => {
     expect(faqHeadings).toHaveLength(1);
     expect(repeatedPlanning).toHaveLength(1);
     expect(result.blogHtml).toContain('**여행 상품과 함께 확인하기**');
+  });
+
+  it('softens repeated planning phrases that make generated posts sound templated', () => {
+    const repeated = '예약 전 비용, 일정, 현지 체크 포인트를';
+    const source = [
+      '# 푸꾸옥 여행 준비',
+      '',
+      `${repeated} 먼저 확인하면 출발 준비가 쉬워집니다.`,
+      '',
+      '## 빠른 판단',
+      '',
+      `- ${repeated} 항공권과 함께 봅니다.`,
+      `- ${repeated} 숙소 위치와 함께 봅니다.`,
+      `- ${repeated} 현지 이동과 함께 봅니다.`,
+      `- ${repeated} 환전 조건과 함께 봅니다.`,
+      `- ${repeated} 비상 연락처와 함께 봅니다.`,
+      `- ${repeated} 출발 직전에 다시 봅니다.`,
+      '',
+      '## 상담 전 질문',
+      '',
+      '출발일과 인원, 숙소 위치가 정해지면 세부 조건을 좁힐 수 있습니다.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '푸꾸옥 여행 준비',
+      category: 'preparation',
+      contentType: 'guide',
+      primaryKeyword: '푸꾸옥 여행 준비',
+      destination: '푸꾸옥',
+      blogHtml: source,
+    });
+
+    const exactRepeats = result.blogHtml.match(new RegExp(repeated, 'g')) || [];
+    const readability = computeReadability(result.blogHtml);
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('softened_repeated_readability_phrases');
+    expect(exactRepeats.length).toBeLessThanOrEqual(3);
+    expect(result.blogHtml).not.toContain('출발 전 핵심 조건 출발 전 핵심 조건');
+    expect(readability.duplicate_phrases).toHaveLength(0);
+    expect(readability.duplicate_phrases.some((item) => item.phrase.includes(repeated))).toBe(false);
   });
 
   it('removes editor persona and Yeosonam data variants that make posts sound generated', () => {

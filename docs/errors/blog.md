@@ -172,6 +172,16 @@ Last updated: 2026-07-03
 
 ---
 
+## ERR-BLOG-repeated-planning-phrase@2026-07-03
+
+- [x] **ERR-BLOG-repeated-planning-phrase@2026-07-03**: Recent info posts could pass publish gates while repeating planning boilerplate such as "예약 전 비용, 일정, 현지..." enough times to trigger readability warnings and make the article sound templated.
+- **Root cause**: Existing repairs deduped repeated FAQ/support blocks, but did not use the readability duplicate-phrase evidence to soften overlapping 5-word planning phrases scattered across keyword/checklist sections.
+- **Fix**: `repairBlogEditorialQuality()` and `repairBlogStructureQuality()` now use `computeReadability().duplicate_phrases` to soften repeated travel-planning phrases after three exact uses, collapse duplicated replacement phrases, and leave already softened replacements stable.
+- **Live repair**: `npm run audit:blog-quality -- --limit=50 --write` repaired five published posts, followed by a focused second write for `phuquoc-preparation` after idempotency tightening. The indexing worker processed the resulting jobs successfully.
+- **Verification**: `npx vitest run src/lib/blog-editorial-repair.test.ts`, `npm run type-check`, `npm run audit:blog-quality -- --limit=50`, `npm run run:blog-indexing-worker -- --json --limit=15`, and `npm run diagnose:blog-autopublish -- --json` passed. Final quality dry-run reported `changed=0`, `qualityGateFailed=0`, and no readability minor issue.
+
+---
+
 ## ERR-BLOG-card-news-dead-image-url@2026-06-07
 
 > Original source before 2026-06-07 split: `db/error-registry.md:1033`
