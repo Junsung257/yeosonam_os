@@ -61,6 +61,7 @@ const CHECK_LABELS: Record<string, string> = {
   indexing_outbox_missing: '색인 작업 누락',
   publish_preflight_blocked: '발행 전 점검 차단',
   canary_candidates_unavailable: 'Canary 후보 부족',
+  current_day_publisher_failure: '오늘 발행자 실패',
   google_url_unknown: '구글 미인지 URL 존재',
 };
 

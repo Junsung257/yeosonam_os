@@ -33,6 +33,7 @@ Local code references:
 - Manual indexing worker runner: `scripts/run-blog-indexing-worker.ts`
 - Publish preflight evaluator: `src/lib/blog-publish-preflight.ts`
 - Canary candidate preflight evaluator: `src/lib/blog-canary-preflight.ts`
+- Current-day publisher health evaluator: `src/lib/blog-current-day-publisher-health.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
 - Slug migration dry-run/write tool: `scripts/migrate-blog-slugs.ts`
 
@@ -94,6 +95,14 @@ Before expanding or manually forcing automatic publishing, the operator-facing p
 - at least three recent published samples passing quality gate, content brief, SEO, and readability evidence.
 
 The preflight may pass when overdue queued rows exist if the publishable candidate buffer is sufficient and publisher preflight can reschedule them. It must block when the issue changes publish safety, not when the row is harmless queue history.
+
+## Current-Day Publisher Health Contract
+
+Before the daily close window, reports may intentionally evaluate the previous KST day. That must not hide a current-day publisher failure.
+
+- If the latest `blog-publisher` run is inside the current KST day and ran with remaining quota but published `0`, diagnostics must expose `current_day_publisher_failure`.
+- The admin health summary must mark this as an active operating issue even when the closed-day SLA was already met.
+- A quota-reached no-op with `remaining=0` remains healthy.
 
 ## Canary Candidate Contract
 

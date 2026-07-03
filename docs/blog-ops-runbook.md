@@ -260,3 +260,13 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - Verification on 2026-07-03:
   - `npx vitest run src/lib/blog-canary-preflight.test.ts` passed;
   - `npm run diagnose:blog-autopublish -- --json` reported `canary_preflight.status="pass"`, ready `3/3`, and mixed writer coverage.
+
+## 2026-07-03 Current-Day Publisher Failure Evidence
+
+- Closed-day diagnosis intentionally reports the previous KST day before 22:12. This must not hide an active same-day publisher failure.
+- `src/lib/blog-current-day-publisher-health.ts` evaluates the latest `blog-publisher` `cron_health` row separately from the closed-day SLA window.
+- If the latest current-day publisher run had remaining quota and published `0`, `diagnose:blog-autopublish` reports `current_day_publisher_failure` and `/admin/blog` marks the contract as failed.
+- A quota-reached no-op with `remaining=0` remains healthy.
+- Verification on 2026-07-03:
+  - `npx vitest run src/lib/blog-current-day-publisher-health.test.ts src/lib/blog-publish-preflight.test.ts src/lib/blog-canary-preflight.test.ts src/app/api/cron/blog-daily-summary/route.test.ts` passed;
+  - `npm run diagnose:blog-autopublish -- --json` reported `current_day_publisher_health.status="risk"` and bucket `current_day_publisher_failure` for the current-day zero-published run.

@@ -8,6 +8,7 @@ import { buildBlogEditorialBacklogWorkReport } from '../src/lib/blog-editorial-b
 import { summarizeBlogIndexingCoverage } from '../src/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '../src/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
+import { evaluateCurrentDayPublisherHealth } from '../src/lib/blog-current-day-publisher-health';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -25,7 +26,8 @@ type BucketCode =
   | 'indexing_queue_error'
   | 'indexing_outbox_missing'
   | 'publish_preflight_blocked'
-  | 'canary_candidates_unavailable';
+  | 'canary_candidates_unavailable'
+  | 'current_day_publisher_failure';
 
 type Bucket = {
   code: BucketCode;
@@ -296,6 +298,9 @@ async function main() {
   const combinedPublisherSummary = Object.keys(latestPublisherSummary).length > 0
     ? latestPublisherSummary
     : healthPublisherSummary;
+  const currentDayPublisherHealth = evaluateCurrentDayPublisherHealth({
+    cronHealth: publisherHealth,
+  });
 
   const buckets: Bucket[] = [];
   const selectedDayPublished = publishedTodayRes.count ?? 0;
@@ -460,6 +465,14 @@ async function main() {
       evidence: canaryPreflight,
     });
   }
+  if (currentDayPublisherHealth.status === 'risk') {
+    buckets.push({
+      code: 'current_day_publisher_failure',
+      severity: 'critical',
+      detail: currentDayPublisherHealth.detail,
+      evidence: currentDayPublisherHealth.evidence,
+    });
+  }
 
   const report = {
     date: day.dayKey,
@@ -483,6 +496,7 @@ async function main() {
     publishability: publishabilitySnapshot,
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
+    current_day_publisher_health: currentDayPublisherHealth,
     indexing_outbox_coverage: indexingOutboxCoverage,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
@@ -500,6 +514,7 @@ async function main() {
   console.log(`Queue: ${JSON.stringify(queueCounts)}`);
   console.log(`Publish preflight: ${publishPreflight.status} (${publishPreflight.score}/100)`);
   console.log(`Canary preflight: ${canaryPreflight.status} (${canaryPreflight.ready_count}/${canaryPreflight.requested})`);
+  console.log(`Current-day publisher: ${currentDayPublisherHealth.status}`);
   console.log(`Indexing jobs: ${JSON.stringify(indexingCounts)}`);
   console.log(`Indexing outbox coverage: ${indexingOutboxCoverage.coverage_rate ?? '-'}% (${indexingOutboxCoverage.missing_count} missing)`);
   console.log('Buckets:');
