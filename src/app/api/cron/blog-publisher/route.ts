@@ -118,6 +118,8 @@ function getQueueMicroAngle(item: any): string | null {
 function classifyPublisherFailure(reason?: string): string {
   const text = (reason ?? '').toLowerCase();
   if (!text) return 'other';
+  if (text.includes('[length]') || text.includes('thin content') || text.includes('min length')) return 'length';
+  if (text.includes('[links]') || text.includes('internal link') || text.includes('external authority') || text.includes('link')) return 'links';
   if (text.includes('duplicate') || text.includes('slug') || text.includes('중복')) return 'duplicate';
   if (text.includes('topic_fit') || text.includes('destination_prefix')) return 'topic_fit';
   if (text.includes('structure_integrity') || text.includes('structure')) return 'structure_integrity';
@@ -448,6 +450,75 @@ function failedGateSet(qa: QualityGateReport): Set<string> {
   return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
 }
 
+function appendPublishReadinessSupport(
+  markdown: string,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): { markdown: string; changed: boolean; changes: string[] } {
+  const trimmed = markdown.trimEnd();
+  const plain = trimmed.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+  const minLength = blogType === 'info' ? 2550 : 1300;
+  if (plain.length >= minLength || /##\s+문의 전 최종 확인/.test(trimmed)) {
+    return { markdown, changed: false, changes: [] };
+  }
+
+  const destination = item.destination || primaryKeyword || item.topic || '여행';
+  const topic = primaryKeyword || item.topic || destination;
+  const support = blogType === 'product'
+    ? [
+        '## 문의 전 최종 확인',
+        '',
+        `${destination} 상품은 출발일, 인원, 항공 좌석, 객실 가능 여부에 따라 최종 금액과 포함 조건이 달라질 수 있습니다. 문의 전에는 희망 출발일과 인원, 원하는 객실 기준, 꼭 필요한 포함 항목을 함께 정리해 두면 상담 시간이 줄어듭니다.`,
+        '',
+        '| 확인 항목 | 왜 필요한가 |',
+        '| --- | --- |',
+        `| 출발일과 인원 | ${topic} 가능 좌석과 객실을 먼저 확인해야 합니다. |`,
+        '| 포함/불포함 | 현지에서 추가 결제할 항목을 미리 분리해야 합니다. |',
+        '| 변경 가능성 | 항공, 호텔, 현지 일정은 확정 전까지 조건이 달라질 수 있습니다. |',
+      ].join('\n')
+    : [
+        '## 문의 전 최종 확인',
+        '',
+        `${destination} 일정은 계절, 항공 시간, 숙소 위치, 동행 구성에 따라 같은 키워드라도 실제 선택지가 달라집니다. 이 글의 기준으로 먼저 큰 방향을 정하고, 출발일과 인원, 예산 범위를 함께 확인하면 불필요한 비교 시간을 줄일 수 있습니다.`,
+        '',
+        '| 확인 항목 | 체크 기준 |',
+        '| --- | --- |',
+        `| 일정 | ${topic}에서 가장 먼저 확정해야 할 날짜와 이동 동선입니다. |`,
+        '| 예산 | 항공, 숙소, 현지 이동, 선택 투어를 나눠 봅니다. |',
+        '| 리스크 | 날씨, 취소 규정, 현지 휴무처럼 바뀔 수 있는 정보를 다시 확인합니다. |',
+      ].join('\n');
+
+  return {
+    markdown: `${trimmed}\n\n${support}`,
+    changed: true,
+    changes: ['appended_publish_readiness_support'],
+  };
+}
+
+function ensurePublisherInternalLinks(
+  markdown: string,
+  item: any,
+  slug: string,
+): { markdown: string; changed: boolean; changes: string[] } {
+  const linkUrls = [...markdown.matchAll(/(?<!!)\[[^\]]+]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)]
+    .map((match) => match[1] || '')
+    .filter(Boolean);
+  const internalCount = linkUrls.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href)).length;
+  if (internalCount >= 1) return { markdown, changed: false, changes: [] };
+
+  const cta = buildStandardBlogCtaMarkdown({
+    destination: item.destination,
+    slug,
+    utmSource: 'naver_blog',
+  });
+  return {
+    markdown: `${markdown.trimEnd()}\n\n---\n\n${cta}`,
+    changed: true,
+    changes: ['appended_standard_internal_cta'],
+  };
+}
+
 async function repairFailedQualityGates(
   generated: GeneratedBlog,
   item: any,
@@ -512,6 +583,22 @@ async function repairFailedQualityGates(
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
       if (generated.blog_html !== before) {
         changes.push('forced_official_reference_links');
+        changed = true;
+      }
+
+      const internalLinks = ensurePublisherInternalLinks(generated.blog_html, item, generated.slug);
+      if (internalLinks.changed) {
+        generated.blog_html = internalLinks.markdown;
+        changes.push(...internalLinks.changes);
+        changed = true;
+      }
+    }
+
+    if (failed.has('length')) {
+      const support = appendPublishReadinessSupport(generated.blog_html, item, blogType, primaryKeyword);
+      if (support.changed) {
+        generated.blog_html = support.markdown;
+        changes.push(...support.changes);
         changed = true;
       }
     }
