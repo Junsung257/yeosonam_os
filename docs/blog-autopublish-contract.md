@@ -266,4 +266,6 @@ Priority 3:
   - Cron integration: `src/app/api/cron/gsc-index-rank/route.ts`.
   - Test: `src/lib/gsc-url-inspection-quota.test.ts`.
 - Add IndexNow retry/cache/rate-limit behavior based on the external implementation pattern.
-- Add a dashboard card for “publish health” versus “indexing health.”
+- A dashboard card for publish health versus indexing health was added on 2026-07-04:
+  - UI: `src/app/admin/blog/system/page.tsx`.
+  - Contract test: `src/app/admin/blog/blog-admin-ops-ui-contract.test.ts`.
