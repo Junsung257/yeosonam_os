@@ -91,6 +91,14 @@ const checks = [
     args: ['--json'],
   },
   {
+    id: 'public_surfaces',
+    label: 'Blog public section health',
+    owner: 'content',
+    required: true,
+    script: 'audit:blog-public-surfaces',
+    args: [`--base=${baseUrl}`, '--strict', '--json'],
+  },
+  {
     id: 'google_domain',
     label: 'Google canonical/GSC domain alignment',
     owner: 'google',
@@ -113,6 +121,7 @@ const PROCESS_PATTERNS_BY_CHECK_ID = {
   image_quality: 'audit-blog-image-quality',
   seo_quality: 'audit-blog-seo-quality',
   editorial_intent: 'audit-blog-editorial-quality',
+  public_surfaces: 'audit-blog-public-surfaces',
   google_domain: 'audit-blog-gsc-domain',
   site_indexability: 'audit-site-indexability',
 };

@@ -13,6 +13,7 @@ A day is healthy only when all of these are true:
 - `/admin/blog/queue` has no failed, overdue, or stale generating rows in `운영 필요`.
 - `/admin/blog/system` shows `blog-publisher`, `blog-scheduler`, `blog-daily-summary`, `blog-indexing-worker`, `gsc-index-rank`, and `serp-rank-snapshot` as successful or explainably skipped.
 - Published posts have current `quality_gate`, `seo_score`, `readability_score`, `generation_meta.content_brief`, final slug, title, description, and image evidence.
+- Public blog sections (`/blog`, `/blog/[slug]`, `/blog/destination/[dest]`, `/blog/angle/[angle]`, sitemap, blog API) return healthy titles, canonical URLs, indexability signals, and non-empty collection evidence.
 - New or changed published URLs are enqueued through `blog_indexing_jobs`; indexing provider calls are handled by the worker, not inline publish code.
 - Google actual URL knowledge is tracked separately from IndexNow or sitemap request success.
 
@@ -51,6 +52,7 @@ Run these after code changes that affect blog generation, rendering, indexing, o
 npm run type-check
 npx vitest run src/lib/blog-editorial-repair.test.ts src/lib/blog-seo-scorer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-topic-fit-gate.test.ts
 npm run audit:blog-quality -- --limit=50
+npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
 npm run audit:blog-search-daily:strict
 ```
 

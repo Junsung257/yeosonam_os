@@ -51,14 +51,46 @@ function hasUnavailablePageMessage(body: string): boolean {
   return body.includes(DB_UNAVAILABLE_PAGE_TEXT);
 }
 
+function textContent(body: string, pattern: RegExp): string {
+  return (body.match(pattern)?.[1] || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeSurfaceUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    parsed.hash = '';
+    if (parsed.pathname !== '/' && parsed.pathname.endsWith('/')) {
+      parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function hasDuplicateBrandTitle(title: string): boolean {
+  return /\uC5EC\uC18C\uB0A8\s*\|\s*\uC5EC\uC18C\uB0A8/.test(title);
+}
+
 function classifySurfaceIssues(spec: BlogPublicSurfaceSpec, status: number, body: string, elapsedMs: number): string[] {
   const issues: string[] = [];
 
-  if (status >= 500) issues.push(`http_${status}`);
-  if (status === 404) issues.push('http_404');
+  if (status < 200 || status >= 400) issues.push(`http_${status}`);
   if (elapsedMs > spec.warnAfterMs) issues.push(`slow_${elapsedMs}ms`);
 
   if (spec.kind === 'page') {
+    const title = textContent(body, /<title[^>]*>([\s\S]*?)<\/title>/i);
+    const canonical = textContent(body, /<link\s+rel=["']canonical["']\s+href=["']([^"']+)/i);
+    const robots = textContent(body, /<meta\s+name=["']robots["']\s+content=["']([^"']+)/i);
+
+    if (!title) issues.push('missing_title');
+    if (hasDuplicateBrandTitle(title)) issues.push('duplicate_brand_title');
+    if (!canonical) {
+      issues.push('missing_canonical');
+    } else if (normalizeSurfaceUrl(canonical) !== normalizeSurfaceUrl(spec.url)) {
+      issues.push('canonical_mismatch');
+    }
+    if (/noindex/i.test(robots)) issues.push('noindex_public_surface');
     if (hasSilentEmptyPosts(body)) issues.push('silent_zero_posts');
     if (hasUnavailablePageMessage(body)) issues.push('db_unavailable_page');
   }
@@ -73,6 +105,12 @@ function classifySurfaceIssues(spec: BlogPublicSurfaceSpec, status: number, body
 
   if (spec.kind === 'sitemap' && !body.includes('/blog')) {
     issues.push('sitemap_missing_blog');
+  }
+  if (spec.kind === 'sitemap' && !body.includes('/blog/destination/')) {
+    issues.push('sitemap_missing_blog_destination_collections');
+  }
+  if (spec.kind === 'sitemap' && !body.includes('/blog/angle/')) {
+    issues.push('sitemap_missing_blog_angle_collections');
   }
 
   if (spec.kind === 'api' && hasDbTimeoutSignal(body)) {

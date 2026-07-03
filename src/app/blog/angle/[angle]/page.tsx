@@ -161,7 +161,7 @@ export async function generateMetadata({ params }: { params: Promise<{ angle?: s
   const meta = BLOG_PUBLIC_ANGLE_META[angle];
   if (!meta) return { title: '블로그' };
   return {
-    title: `${meta.label} 여행 가이드 | 여소남`,
+    title: `${meta.label} 여행 가이드`,
     description: `${meta.tagline}. 여소남이 엄선한 ${meta.label} 여행 콘텐츠 모음.`,
     alternates: { canonical },
     openGraph: {
