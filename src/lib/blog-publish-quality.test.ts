@@ -6,6 +6,7 @@ import {
   applyBlogPublishQualityToUpdate,
   blogPublishQualityWarnings,
   evaluateBlogPublishQuality,
+  prepareBlogForPublish,
   resolveBlogDestination,
 } from './blog-publish-quality';
 
@@ -129,5 +130,37 @@ describe('blog publish quality', () => {
       destination: 'fallback',
       travel_packages: [{ destination: '장가계' }],
     })).toBe('장가계');
+  });
+
+  it('prepares thin info posts with readiness support and internal CTA evidence', async () => {
+    const result = await prepareBlogForPublish({
+      blog_html: [
+        '# 세부 쇼핑 예산 선물 리스트와 면세점 체크',
+        '',
+        '세부 쇼핑 예산은 선물, 면세점, 현지 마트 가격을 나눠서 보면 판단이 쉽습니다. '.repeat(55),
+        '',
+        '## 예산 체크',
+        '',
+        '| 항목 | 확인 기준 |',
+        '| --- | --- |',
+        '| 선물 | 수량과 무게 |',
+        '| 면세점 | 출국장 재고 |',
+        '| 마트 | 결제 수단 |',
+        '',
+        '## 공식 확인',
+        '',
+        '- [외교부 해외안전여행](https://www.0404.go.kr/)',
+        '- [인천국제공항](https://www.airport.kr/)',
+      ].join('\n'),
+      slug: 'cebu-shopping-budget-checklist',
+      seo_title: '세부 쇼핑 예산 선물 리스트와 면세점 체크',
+      seo_description: '세부 쇼핑 예산과 면세점 체크 기준',
+      destination: '세부',
+      content_type: 'guide',
+      primary_keyword: '세부 쇼핑 예산',
+    });
+
+    expect(result.changes).toContain('appended_standard_internal_cta');
+    expect(result.blogHtml).toContain('/packages?');
   });
 });
