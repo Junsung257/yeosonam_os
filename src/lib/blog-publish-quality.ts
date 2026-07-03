@@ -3,6 +3,7 @@ import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-q
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
 import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
+import { repairPublishReadiness } from './blog-publish-readiness-repair';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -196,6 +197,19 @@ export async function prepareBlogForPublish(
   if (densityRepair.changed) {
     blogHtml = densityRepair.blogHtml;
     changes.push('repaired_keyword_density_after_surface_repair');
+  }
+
+  const readinessRepair = repairPublishReadiness({
+    markdown: blogHtml,
+    blogType: input.product_id ? 'product' : 'info',
+    slug: input.slug,
+    destination: input.destination ?? null,
+    topic: input.seo_title ?? input.slug,
+    primaryKeyword,
+  });
+  if (readinessRepair.changed) {
+    blogHtml = readinessRepair.markdown;
+    changes.push(...readinessRepair.changes);
   }
 
   const report = await evaluateBlogPublishQuality({
