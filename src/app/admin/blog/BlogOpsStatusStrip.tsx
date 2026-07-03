@@ -37,6 +37,23 @@ const LEVEL_LABEL: Record<OpsLevel, string> = {
   blocked: '차단',
 };
 
+const CHECK_LABELS: Record<string, string> = {
+  daily_publish_sla: '오늘 발행 목표 미달',
+  queue_failures_or_stale_generation: '큐 실패 또는 생성 정체',
+  published_state_mismatch: '발행 상태 불일치',
+  cron_health: '자동 실행 이상',
+  recent_quality_gate: '최근 글 품질',
+  indexing_outbox_missing: '색인 작업 누락',
+  publish_preflight_blocked: '발행 전 점검 차단',
+  canary_candidates_unavailable: 'Canary 후보 부족',
+  current_day_publisher_failure: '오늘 발행자 실패',
+  google_url_unknown: '구글 미인지 URL',
+};
+
+function checkLabels(checks: string[]) {
+  return checks.map((check) => CHECK_LABELS[check] || check).join(', ');
+}
+
 export default function BlogOpsStatusStrip() {
   const pathname = usePathname();
   const [ops, setOps] = useState<OpsSummary | null>(null);
@@ -79,7 +96,7 @@ export default function BlogOpsStatusStrip() {
           {hasIssue ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
           <span className="font-semibold">블로그 OS {LEVEL_LABEL[ops.level]}</span>
           <span className="opacity-80">
-            계약 {ops.contract.passed ? '통과' : `미통과: ${ops.contract.failed_checks.join(', ')}`}
+            계약 {ops.contract.passed ? '통과' : `미통과: ${checkLabels(ops.contract.failed_checks)}`}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-admin-2xs">
