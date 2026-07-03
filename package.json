@@ -127,6 +127,7 @@
     "recheck:blog-product-evidence": "npx tsx scripts/recheck-blog-product-evidence.ts",
     "recheck:blog-editorial-backlog": "npx tsx scripts/recheck-blog-editorial-backlog.ts",
     "recheck:blog-destinationless-info": "npx tsx scripts/recheck-blog-destinationless-info.ts",
+    "recheck:blog-published-info-destinations": "npx tsx scripts/recheck-blog-published-info-destinations.ts",
     "cleanup:blog-publishable-duplicates": "npx tsx scripts/cleanup-blog-publishable-duplicates.ts",
     "cleanup:blog-queue-health": "npx tsx scripts/cleanup-blog-queue-health.ts",
     "audit:blog-quality": "npx tsx scripts/backfill-blog-quality.ts",

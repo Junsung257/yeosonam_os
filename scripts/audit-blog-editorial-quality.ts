@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 import type { Element } from 'domhandler';
 import { inspectBlogIntentQuality } from '../src/lib/blog-content-intent';
 import { repairBlogEditorialQuality } from '../src/lib/blog-editorial-repair';
+import { classifyDestinationlessInfoCandidate } from '../src/lib/blog-destinationless-info';
 
 dotenv.config({ path: '.env.local', quiet: true });
 dotenv.config({ quiet: true });
@@ -17,6 +18,7 @@ type BlogListPost = {
   product_id?: string | null;
   status?: string | null;
   destination?: string | null;
+  generation_meta?: Record<string, unknown> | null;
   travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
 };
 
@@ -163,7 +165,7 @@ async function fetchDbPostById(post: BlogListPost): Promise<BlogDetailPost | nul
   const { supabaseAdmin } = await import('../src/lib/supabase');
   const { data, error } = await supabaseAdmin
     .from('content_creatives')
-    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html')
+    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html, generation_meta')
     .eq('id', post.id)
     .eq('status', 'published')
     .eq('channel', 'naver_blog')
@@ -190,7 +192,7 @@ async function collectDbPosts(): Promise<BlogDetailPost[]> {
   const { supabaseAdmin } = await import('../src/lib/supabase');
   const query = supabaseAdmin
     .from('content_creatives')
-    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html, published_at')
+    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html, published_at, generation_meta')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .order('published_at', { ascending: false });
@@ -276,7 +278,38 @@ async function inspectPost(post: BlogListPost) {
     };
     const repair = repairPreview ? repairBlogEditorialQuality(input) : null;
     const report = repair?.after ?? inspectBlogIntentQuality(input);
-    const passed = report.passed && report.issues.length === 0 && report.score === 100;
+    const destinationIssue = classifyDestinationlessInfoCandidate({
+      id: row.id ?? post.id,
+      slug: row.slug ?? post.slug,
+      topic: row.seo_title ?? post.seo_title,
+      seo_title: row.seo_title ?? post.seo_title,
+      destination: destinationFrom(row) ?? destinationFrom(post),
+      category: row.category ?? post.category,
+      product_id: row.product_id ?? post.product_id ?? null,
+      generation_meta: row.generation_meta ?? post.generation_meta ?? null,
+      source: 'content_creatives',
+    });
+    const issues = [...report.issues];
+    if (destinationIssue === 'invalid_destination') {
+      issues.push({
+        code: 'missing_intent_contract',
+        severity: 'critical',
+        message: 'Info guide destination is a reader segment or month, not a real destination.',
+      });
+    } else if (destinationIssue === 'missing_destination') {
+      issues.push({
+        code: 'missing_intent_contract',
+        severity: 'critical',
+        message: 'Info guide requires a concrete destination or an intentionally generic marker.',
+      });
+    } else if (source === 'db' && destinationIssue === 'generic_unmarked') {
+      issues.push({
+        code: 'missing_intent_contract',
+        severity: 'critical',
+        message: 'Generic info guide must be durably marked intentionally_generic before it is treated as healthy.',
+      });
+    }
+    const passed = report.passed && issues.length === 0 && report.score === 100;
 
     return {
       id: row.id ?? post.id,
@@ -286,7 +319,7 @@ async function inspectPost(post: BlogListPost) {
       passed,
       score: report.score,
       intent: report.intent,
-      issues: report.issues,
+      issues,
       repairPreview: repair ? {
         changed: repair.changed,
         changes: repair.changes,

@@ -107,4 +107,23 @@ describe('buildBlogCanaryPreflight', () => {
     });
     expect(result.rejected_counts.info_generic_unmarked).toBeUndefined();
   });
+
+  it('rejects info canaries whose destination is a reader segment, not a place', () => {
+    const result = buildBlogCanaryPreflight({
+      requested: 1,
+      recentPublished: [],
+      activeQueue: [
+        {
+          id: 'fake-destination',
+          topic: '가족 7월 날씨 여행 가이드 2026',
+          destination: '가족',
+          category: 'travel_tips',
+          meta: { writer_type: 'info_writer' },
+        },
+      ],
+    });
+
+    expect(result.status).toBe('block');
+    expect(result.rejected_counts.info_invalid_destination).toBe(1);
+  });
 });

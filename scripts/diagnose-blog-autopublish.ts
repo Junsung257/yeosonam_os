@@ -22,6 +22,7 @@ type BucketCode =
   | 'product_open_contract_blocked'
   | 'editorial_backlog_work'
   | 'destinationless_info_work'
+  | 'published_info_destination_work'
   | 'table_integrity_fail'
   | 'candidate_shortage'
   | 'audit_contract_mismatch'
@@ -167,7 +168,7 @@ async function main() {
       .lt('published_at', currentDay.end.toISOString()),
     supabase
       .from('content_creatives')
-      .select('id, slug, content_type, product_id, destination, published_at, generation_meta, quality_gate, seo_score, readability_score')
+      .select('id, slug, seo_title, category, content_type, product_id, destination, published_at, generation_meta, quality_gate, seo_score, readability_score')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
@@ -272,6 +273,14 @@ async function main() {
   });
   const destinationlessInfoWork = buildBlogDestinationlessInfoWorkReport({
     rows: activeQueueRes.data ?? [],
+    limit,
+  });
+  const publishedInfoDestinationWork = buildBlogDestinationlessInfoWorkReport({
+    rows: (recentPublishedRes.data ?? []).map((row: any) => ({
+      ...row,
+      topic: row.seo_title ?? row.slug,
+      source: 'content_creatives',
+    })),
     limit,
   });
   const publishabilitySnapshot = {
@@ -417,6 +426,14 @@ async function main() {
       evidence: destinationlessInfoWork,
     });
   }
+  if (publishedInfoDestinationWork.total > 0) {
+    buckets.push({
+      code: 'published_info_destination_work',
+      severity: 'warning',
+      detail: `${publishedInfoDestinationWork.total} recent published info post(s) need explicit generic intent, a real destination, or archival.`,
+      evidence: publishedInfoDestinationWork,
+    });
+  }
 
   const tableFailures = failureCount(combinedPublisherSummary, 'table_integrity');
   if (
@@ -526,6 +543,7 @@ async function main() {
     product_evidence_work: productEvidenceWork,
     editorial_backlog_work: editorialBacklogWork,
     destinationless_info_work: destinationlessInfoWork,
+    published_info_destination_work: publishedInfoDestinationWork,
     publishability: publishabilitySnapshot,
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,

@@ -137,13 +137,17 @@ export function buildBlogCanaryPreflight(input: {
       continue;
     }
     const writerType = readWriterType(row);
-    if (writerType === 'info_writer' && !row.destination?.trim()) {
+    if (writerType === 'info_writer') {
       const destinationlessIssue = classifyDestinationlessInfoCandidate(row);
       if (destinationlessIssue === 'generic_unmarked') {
         addRejected(rejectedCounts, 'info_generic_unmarked');
         continue;
       }
-      if (destinationlessIssue !== 'intentionally_generic') {
+      if (destinationlessIssue === 'invalid_destination') {
+        addRejected(rejectedCounts, 'info_invalid_destination');
+        continue;
+      }
+      if (destinationlessIssue && destinationlessIssue !== 'intentionally_generic') {
         addRejected(rejectedCounts, 'info_missing_destination');
         continue;
       }

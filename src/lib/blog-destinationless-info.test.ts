@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBlogDestinationlessInfoWorkReport,
+  buildDestinationlessInfoGenericGenerationMeta,
   buildDestinationlessInfoGenericMeta,
   classifyDestinationlessInfoCandidate,
   destinationlessInfoBlocksPublishability,
@@ -32,6 +33,18 @@ describe('blog destinationless info candidates', () => {
     expect(destinationlessInfoBlocksPublishability(row)).toBe(false);
   });
 
+  it('blocks fake destinations that are reader segments or months, not places', () => {
+    const row = {
+      topic: '가족 7월 날씨 여행 가이드 2026',
+      destination: '가족',
+      category: 'travel_tips',
+      meta: { writer_type: 'info_writer' },
+    };
+
+    expect(classifyDestinationlessInfoCandidate(row)).toBe('invalid_destination');
+    expect(destinationlessInfoBlocksPublishability(row)).toBe(true);
+  });
+
   it('builds durable metadata for approved generic info rows', () => {
     const meta = buildDestinationlessInfoGenericMeta({
       checkedAt: '2026-07-03T00:00:00.000Z',
@@ -47,6 +60,24 @@ describe('blog destinationless info candidates', () => {
       generic_info_candidate: true,
       generic_info_marked_at: '2026-07-03T00:00:00.000Z',
       generic_info_marked_by: 'blog-destinationless-info-recheck',
+    });
+  });
+
+  it('builds durable generation metadata for already published generic info rows', () => {
+    const generationMeta = buildDestinationlessInfoGenericGenerationMeta({
+      checkedAt: '2026-07-03T00:00:00.000Z',
+      row: {
+        seo_title: '대학생 여름방학 여행 — 추천',
+        generation_meta: { writer: 'info_writer' },
+      },
+    });
+
+    expect(generationMeta).toMatchObject({
+      writer: 'info_writer',
+      intentionally_generic: true,
+      generic_info_candidate: true,
+      generic_info_marked_at: '2026-07-03T00:00:00.000Z',
+      generic_info_marked_by: 'blog-published-info-destination-recheck',
     });
   });
 
@@ -71,14 +102,22 @@ describe('blog destinationless info candidates', () => {
           category: 'food',
           meta: { writer_type: 'info_writer' },
         },
+        {
+          id: 'q4',
+          topic: '가족 7월 날씨 여행 가이드',
+          destination: '가족',
+          category: 'travel_tips',
+          meta: { writer_type: 'info_writer' },
+        },
       ],
     });
 
-    expect(report.total).toBe(2);
+    expect(report.total).toBe(3);
     expect(report.issue_counts).toEqual({
       generic_unmarked: 1,
       missing_destination: 1,
+      invalid_destination: 1,
     });
-    expect(report.next_actions).toEqual(['mark_intentionally_generic', 'add_destination_or_skip']);
+    expect(report.next_actions).toEqual(['mark_intentionally_generic', 'add_destination_or_skip', 'archive_or_rewrite']);
   });
 });
