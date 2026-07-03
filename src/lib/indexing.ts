@@ -12,6 +12,13 @@
 import { requestGoogleIndexing, submitGoogleSitemap, IndexingResult } from './gsc-client';
 import { getSecret } from '@/lib/secret-registry';
 
+const DEFAULT_INDEXNOW_RECENT_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_INDEXNOW_PROVIDER_MIN_INTERVAL_MS = 250;
+const DEFAULT_INDEXNOW_MAX_URLS_PER_REQUEST = 10_000;
+
+const recentIndexNowSubmissions = new Map<string, number>();
+const indexNowProviderNextAllowedAt = new Map<string, number>();
+
 // 모듈 톱레벨이 아니라 함수 내부에서 getSecret() 호출로 변경 (서버 재시작 없이 env 변경 반영)
 function getIndexNowKey(): string {
   return getSecret('INDEXNOW_KEY') ?? '';
@@ -35,6 +42,107 @@ function shouldUseGoogleIndexingApi(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function getPositiveNumberSecret(name: Parameters<typeof getSecret>[0], fallback: number): number {
+  const raw = getSecret(name);
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function getIndexNowRecentTtlMs(): number {
+  return getPositiveNumberSecret('INDEXNOW_RECENT_TTL_MS', DEFAULT_INDEXNOW_RECENT_TTL_MS);
+}
+
+function getIndexNowProviderMinIntervalMs(): number {
+  return getPositiveNumberSecret('INDEXNOW_PROVIDER_MIN_INTERVAL_MS', DEFAULT_INDEXNOW_PROVIDER_MIN_INTERVAL_MS);
+}
+
+function getIndexNowMaxUrlsPerRequest(): number {
+  return Math.max(
+    1,
+    Math.floor(getPositiveNumberSecret('INDEXNOW_MAX_URLS_PER_REQUEST', DEFAULT_INDEXNOW_MAX_URLS_PER_REQUEST)),
+  );
+}
+
+function pruneRecentIndexNowSubmissions(now = Date.now()): void {
+  const ttlMs = getIndexNowRecentTtlMs();
+  for (const [url, submittedAt] of recentIndexNowSubmissions.entries()) {
+    if (now - submittedAt > ttlMs) recentIndexNowSubmissions.delete(url);
+  }
+}
+
+function splitIndexNowUrlsByCache(
+  urls: string[],
+  type: 'URL_UPDATED' | 'URL_DELETED',
+  now = Date.now(),
+): { submitUrls: string[]; cachedUrls: string[] } {
+  pruneRecentIndexNowSubmissions(now);
+  const seen = new Set<string>();
+  const submitUrls: string[] = [];
+  const cachedUrls: string[] = [];
+  const ttlMs = getIndexNowRecentTtlMs();
+
+  for (const url of urls) {
+    if (seen.has(url)) {
+      cachedUrls.push(url);
+      continue;
+    }
+    seen.add(url);
+
+    const submittedAt = recentIndexNowSubmissions.get(url);
+    if (type !== 'URL_DELETED' && submittedAt && now - submittedAt <= ttlMs) {
+      cachedUrls.push(url);
+      continue;
+    }
+
+    submitUrls.push(url);
+  }
+
+  return { submitUrls, cachedUrls };
+}
+
+function rememberIndexNowSubmissions(urls: string[], type: 'URL_UPDATED' | 'URL_DELETED', now = Date.now()): void {
+  if (type === 'URL_DELETED') return;
+  pruneRecentIndexNowSubmissions(now);
+  for (const url of urls) {
+    recentIndexNowSubmissions.set(url, now);
+  }
+}
+
+function chunkUrls(urls: string[], size: number): string[][] {
+  const chunks: string[][] = [];
+  for (let idx = 0; idx < urls.length; idx += size) {
+    chunks.push(urls.slice(idx, idx + size));
+  }
+  return chunks;
+}
+
+async function waitForIndexNowProvider(provider: string): Promise<void> {
+  const minIntervalMs = getIndexNowProviderMinIntervalMs();
+  if (minIntervalMs <= 0) return;
+
+  const now = Date.now();
+  const nextAllowedAt = indexNowProviderNextAllowedAt.get(provider) ?? 0;
+  if (nextAllowedAt > now) {
+    await new Promise((resolve) => setTimeout(resolve, nextAllowedAt - now));
+  }
+  indexNowProviderNextAllowedAt.set(provider, Date.now() + minIntervalMs);
+}
+
+async function postIndexNowPayload(provider: string, endpoint: string, payload: unknown): Promise<Response> {
+  await waitForIndexNowProvider(provider);
+  return fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function clearIndexNowRuntimeStateForTests(): void {
+  recentIndexNowSubmissions.clear();
+  indexNowProviderNextAllowedAt.clear();
 }
 
 /**
@@ -115,53 +223,64 @@ export async function notifyIndexing(
     report.indexnow = 'skipped';
     report.indexnow_error = 'INDEXNOW_KEY 미설정';
   } else {
-    const indexNowPayload = {
-      host,
-      key: indexNowKey,
-      keyLocation: `${baseUrl}/${indexNowKey}.txt`,
-      urlList: [url],
-    };
-    // 글로벌 IndexNow (Bing, Yandex, Seznam 등)
-    try {
-      const globalRes = await fetch('https://api.indexnow.org/indexnow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(indexNowPayload),
-      });
-      report.indexnow = globalRes.status === 200 || globalRes.status === 202 ? 'success' : 'failed';
-      report.sitemap_pings.push({ provider: 'global_indexnow', ok: report.indexnow === 'success' });
-      if (report.indexnow !== 'success') {
-        report.indexnow_error = `global HTTP ${globalRes.status}`;
-      }
-    } catch (err) {
-      report.indexnow_error = err instanceof Error ? err.message : String(err);
-      report.sitemap_pings.push({ provider: 'global_indexnow', ok: false });
-    }
-    // 네이버 전용 IndexNow (별도 엔드포인트 — 동일 key 사용)
-    try {
-      const naverRes = await fetch('https://searchadvisor.naver.com/indexnow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(indexNowPayload),
-      });
-      // 성공 시 indexnow 상태 유지, 실패 시에도 전체 실패로 처리하지 않음
-      const naverOk = naverRes.status === 200 || naverRes.status === 202;
-      report.sitemap_pings.push({ provider: 'naver_indexnow', ok: naverOk });
-      if (!naverOk) {
-        // naver 실패는 별도 로그만 (Bing/Yandex 경로는 이미 성공했을 수 있음)
-        report.indexnow_error = report.indexnow_error
-          ? `${report.indexnow_error}; naver HTTP ${naverRes.status}`
-          : `naver HTTP ${naverRes.status}`;
-        if (report.indexnow === 'success') {
-          // 글로벌은 성공했으니 naver 실패는 부차 정보로만 남김
+    const { submitUrls, cachedUrls } = splitIndexNowUrlsByCache([url], type);
+    if (submitUrls.length === 0) {
+      report.indexnow = 'skipped';
+      report.indexnow_error = 'recent_indexnow_submission_cached';
+      report.sitemap_pings.push({ provider: 'recent_indexnow_cache', ok: cachedUrls.length > 0 });
+    } else {
+      const indexNowPayload = {
+        host,
+        key: indexNowKey,
+        keyLocation: `${baseUrl}/${indexNowKey}.txt`,
+        urlList: submitUrls,
+      };
+      // 글로벌 IndexNow (Bing, Yandex, Seznam 등)
+      try {
+        const globalRes = await postIndexNowPayload(
+          'global_indexnow',
+          'https://api.indexnow.org/indexnow',
+          indexNowPayload,
+        );
+        report.indexnow = globalRes.status === 200 || globalRes.status === 202 ? 'success' : 'failed';
+        report.sitemap_pings.push({ provider: 'global_indexnow', ok: report.indexnow === 'success' });
+        if (report.indexnow !== 'success') {
+          report.indexnow_error = `global HTTP ${globalRes.status}`;
         }
+      } catch (err) {
+        report.indexnow_error = err instanceof Error ? err.message : String(err);
+        report.sitemap_pings.push({ provider: 'global_indexnow', ok: false });
       }
-    } catch (err) {
-      const naverErr = err instanceof Error ? err.message : String(err);
-      report.sitemap_pings.push({ provider: 'naver_indexnow', ok: false });
-      report.indexnow_error = report.indexnow_error
-        ? `${report.indexnow_error}; naver ${naverErr}`
-        : `naver ${naverErr}`;
+      // 네이버 전용 IndexNow (별도 엔드포인트 — 동일 key 사용)
+      let naverOk = false;
+      try {
+        const naverRes = await postIndexNowPayload(
+          'naver_indexnow',
+          'https://searchadvisor.naver.com/indexnow',
+          indexNowPayload,
+        );
+        // 성공 시 indexnow 상태 유지, 실패 시에도 전체 실패로 처리하지 않음
+        naverOk = naverRes.status === 200 || naverRes.status === 202;
+        report.sitemap_pings.push({ provider: 'naver_indexnow', ok: naverOk });
+        if (!naverOk) {
+          // naver 실패는 별도 로그만 (Bing/Yandex 경로는 이미 성공했을 수 있음)
+          report.indexnow_error = report.indexnow_error
+            ? `${report.indexnow_error}; naver HTTP ${naverRes.status}`
+            : `naver HTTP ${naverRes.status}`;
+          if (report.indexnow === 'success') {
+            // 글로벌은 성공했으니 naver 실패는 부차 정보로만 남김
+          }
+        }
+      } catch (err) {
+        const naverErr = err instanceof Error ? err.message : String(err);
+        report.sitemap_pings.push({ provider: 'naver_indexnow', ok: false });
+        report.indexnow_error = report.indexnow_error
+          ? `${report.indexnow_error}; naver ${naverErr}`
+          : `naver ${naverErr}`;
+      }
+      if (report.indexnow === 'success' || naverOk) {
+        rememberIndexNowSubmissions(submitUrls, type);
+      }
     }
   }
 
@@ -242,61 +361,85 @@ export async function notifyIndexingBatch(
   let indexnowOk = false;
   let indexnowError: string | undefined;
   const indexnowPings: { provider: string; ok: boolean }[] = [];
+  let submittedIndexNowUrls = new Set<string>();
+  let cachedIndexNowUrls = new Set<string>();
   if (indexNowKey) {
-    const indexNowPayload = {
-      host,
-      key: indexNowKey,
-      keyLocation: `${baseUrl}/${indexNowKey}.txt`,
-      urlList: urls,
-    };
-    // 글로벌 IndexNow (Bing, Yandex, Seznam)
-    try {
-      const globalRes = await fetch('https://api.indexnow.org/indexnow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(indexNowPayload),
-      });
-      indexnowOk = globalRes.status === 200 || globalRes.status === 202;
-      indexnowPings.push({ provider: 'global_indexnow', ok: indexnowOk });
-      if (!indexnowOk) indexnowError = `global HTTP ${globalRes.status}`;
-    } catch (err) {
-      indexnowError = err instanceof Error ? err.message : String(err);
-      indexnowPings.push({ provider: 'global_indexnow', ok: false });
-    }
-    // 네이버 전용 IndexNow
-    try {
-      const naverRes = await fetch('https://searchadvisor.naver.com/indexnow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(indexNowPayload),
-      });
-      const naverOk = naverRes.status === 200 || naverRes.status === 202;
-      indexnowPings.push({ provider: 'naver_indexnow', ok: naverOk });
-      if (!naverOk) {
-        indexnowError = indexnowError
-          ? `${indexnowError}; naver HTTP ${naverRes.status}`
-          : `naver HTTP ${naverRes.status}`;
+    const { submitUrls, cachedUrls } = splitIndexNowUrlsByCache(urls, type);
+    submittedIndexNowUrls = new Set(submitUrls);
+    cachedIndexNowUrls = new Set(cachedUrls);
+
+    if (submitUrls.length === 0) {
+      indexnowPings.push({ provider: 'recent_indexnow_cache', ok: cachedUrls.length > 0 });
+      indexnowError = 'recent_indexnow_submission_cached';
+    } else {
+      let naverAnyOk = false;
+      for (const urlList of chunkUrls(submitUrls, getIndexNowMaxUrlsPerRequest())) {
+        const indexNowPayload = {
+          host,
+          key: indexNowKey,
+          keyLocation: `${baseUrl}/${indexNowKey}.txt`,
+          urlList,
+        };
+        // 글로벌 IndexNow (Bing, Yandex, Seznam)
+        try {
+          const globalRes = await postIndexNowPayload('global_indexnow', 'https://api.indexnow.org/indexnow', indexNowPayload);
+          const globalOk = globalRes.status === 200 || globalRes.status === 202;
+          indexnowOk = indexnowOk || globalOk;
+          indexnowPings.push({ provider: 'global_indexnow', ok: globalOk });
+          if (!globalOk) {
+            indexnowError = indexnowError
+              ? `${indexnowError}; global HTTP ${globalRes.status}`
+              : `global HTTP ${globalRes.status}`;
+          }
+        } catch (err) {
+          const globalErr = err instanceof Error ? err.message : String(err);
+          indexnowPings.push({ provider: 'global_indexnow', ok: false });
+          indexnowError = indexnowError ? `${indexnowError}; ${globalErr}` : globalErr;
+        }
+        // 네이버 전용 IndexNow
+        try {
+          const naverRes = await postIndexNowPayload('naver_indexnow', 'https://searchadvisor.naver.com/indexnow', indexNowPayload);
+          const naverOk = naverRes.status === 200 || naverRes.status === 202;
+          naverAnyOk = naverAnyOk || naverOk;
+          indexnowPings.push({ provider: 'naver_indexnow', ok: naverOk });
+          if (!naverOk) {
+            indexnowError = indexnowError
+              ? `${indexnowError}; naver HTTP ${naverRes.status}`
+              : `naver HTTP ${naverRes.status}`;
+          }
+        } catch (err) {
+          const naverErr = err instanceof Error ? err.message : String(err);
+          indexnowPings.push({ provider: 'naver_indexnow', ok: false });
+          indexnowError = indexnowError
+            ? `${indexnowError}; naver ${naverErr}`
+            : `naver ${naverErr}`;
+        }
       }
-    } catch (err) {
-      const naverErr = err instanceof Error ? err.message : String(err);
-      indexnowPings.push({ provider: 'naver_indexnow', ok: false });
-      indexnowError = indexnowError
-        ? `${indexnowError}; naver ${naverErr}`
-        : `naver ${naverErr}`;
+
+      if (indexnowOk || naverAnyOk) {
+        rememberIndexNowSubmissions(submitUrls, type);
+      }
     }
   } else {
     indexnowError = 'INDEXNOW_KEY 미설정';
   }
 
   const durationMs = Date.now() - startedAt;
-  const indexnowStatus = !indexNowKey ? 'skipped' : indexnowOk ? 'success' : 'failed';
 
   return urls.map((url, idx) => ({
     url,
     google: googleResults[idx].ok ? 'success' : 'failed',
     google_error: googleResults[idx].error,
-    indexnow: indexnowStatus,
-    indexnow_error: indexnowError,
+    indexnow: !indexNowKey
+      ? 'skipped'
+      : cachedIndexNowUrls.has(url) && !submittedIndexNowUrls.has(url)
+        ? 'skipped'
+        : indexnowOk
+          ? 'success'
+          : 'failed',
+    indexnow_error: cachedIndexNowUrls.has(url) && !submittedIndexNowUrls.has(url)
+      ? 'recent_indexnow_submission_cached'
+      : indexnowError,
     sitemap_pings: [{ provider: 'google_search_console_sitemap', ok: googleSitemap.ok }, ...indexnowPings],
     duration_ms: durationMs,
   }));

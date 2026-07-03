@@ -110,6 +110,9 @@
 | 키 | 용도 |
 |---|---|
 | `INDEXNOW_KEY` | Bing/Yandex/Seznam IndexNow 키 (색인 요청). `indexing.ts` 참조 |
+| `INDEXNOW_RECENT_TTL_MS` | 같은 런타임에서 최근 제출한 URL을 다시 IndexNow로 보내지 않는 캐시 시간. 기본 10분 |
+| `INDEXNOW_PROVIDER_MIN_INTERVAL_MS` | IndexNow 제공자별 요청 사이 최소 간격. 기본 250ms |
+| `INDEXNOW_MAX_URLS_PER_REQUEST` | IndexNow 한 요청에 담을 최대 URL 수. 기본 10,000 |
 | `GSC_SERVICE_ACCOUNT_JSON` | Google Search Console 서비스 계정 JSON. 블로그 일반 글은 이 키로 Sitemap API 제출·URL Inspection·GSC 지표 수집을 수행 |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | 레거시 Google 서비스 계정 JSON. `GSC_SERVICE_ACCOUNT_JSON` 없을 때 fallback |
 | `GSC_SITE_URL` | Search Console에 등록된 정확한 속성 URL (`https://yeosonam.com/` 등). www 유무 불일치 방지 |
