@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-03
+Last updated: 2026-07-04
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -164,6 +164,13 @@ The durable blog outbox worker must not depend on legacy unauthenticated sitemap
 
 Google sitemap submission is a hint, not a guarantee of indexing. Google no longer supports the old unauthenticated sitemap ping as the core path. URL Inspection is for status visibility and troubleshooting, not bulk indexing guarantees.
 
+URL Inspection sampling must be quota-aware:
+
+- The sampling cron must cap per-run inspection volume and also look at recent `indexing_reports` evidence before calling Google.
+- Default internal caps stay below Google's public Search Console URL Inspection quotas: 25 per run, 100 per 10 minutes, and 1,500 per 24 hours.
+- If the rolling budget is exhausted, the cron must skip URL Inspection and return `inspection_skipped_quota=true` with `inspection_quota` details instead of treating the skipped sample as publish/indexing failure.
+- If Google returns a quota or rate-limit response during a run, the cron must stop additional URL Inspection calls for that run and surface `inspection_stopped_by_quota=true`.
+
 Publishing routes must not call external indexing providers directly. They may only enqueue `blog_indexing_jobs`; retries and evidence persistence belong to the worker.
 
 Every published slug must be observable in the indexing outbox. Treat these as separate failure classes:
@@ -254,6 +261,9 @@ Priority 2:
 
 Priority 3:
 
-- Add URL Inspection sampling with quota-aware backoff.
+- URL Inspection sampling with quota-aware backoff was added on 2026-07-04:
+  - Helper: `src/lib/gsc-url-inspection-quota.ts`.
+  - Cron integration: `src/app/api/cron/gsc-index-rank/route.ts`.
+  - Test: `src/lib/gsc-url-inspection-quota.test.ts`.
 - Add IndexNow retry/cache/rate-limit behavior based on the external implementation pattern.
 - Add a dashboard card for “publish health” versus “indexing health.”
