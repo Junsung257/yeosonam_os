@@ -140,6 +140,7 @@
     "audit:blog-editorial:db": "npx tsx scripts/audit-blog-editorial-quality.ts --source=db --strict",
     "audit:blog-visual": "node scripts/audit-blog-visual-system.mjs",
     "audit:blog-gsc-domain": "node scripts/audit-blog-gsc-domain.mjs",
+    "audit:blog-public-surfaces": "npx tsx scripts/audit-blog-public-surfaces.ts",
     "audit:blog-revenue-funnel": "node scripts/audit-blog-revenue-funnel.mjs",
     "audit:site-indexability": "node scripts/audit-site-indexability.mjs",
     "audit:blog-search-daily": "node scripts/blog-search-quality-daily.mjs",

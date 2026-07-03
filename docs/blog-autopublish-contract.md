@@ -196,6 +196,7 @@ npm run audit:blog-search-daily:strict
 npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict
 npm run audit:blog-images -- --base=https://www.yeosonam.com --json
 npm run audit:blog-seo -- --base=https://www.yeosonam.com --json
+npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
 npm run diagnose:blog-autopublish -- --json
 ```
 
@@ -203,6 +204,7 @@ Failure policy:
 
 - Any non-slug quality failure blocks the “healthy” status.
 - Any recent published post missing a durable indexing outbox job blocks healthy status as `indexing_outbox_missing`.
+- Any public blog section with a missing/mismatched canonical URL, duplicate brand title, noindex, DB-unavailable fallback, or missing blog collection sitemap entry blocks healthy status.
 - Indexing provider success below 80% creates an admin alert.
 - `generating` rows older than 30 minutes must be recovered or quarantined.
 
