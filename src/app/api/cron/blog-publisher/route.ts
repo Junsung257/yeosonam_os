@@ -104,6 +104,8 @@ const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTI
 const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 6, MAX_BATCH, 20);
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 1, 0, 4);
 const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
+const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 120_000, 30_000, 180_000);
+const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
@@ -138,6 +140,27 @@ function buildPublisherFailureBreakdown(results: Array<{ status: string; reason?
       acc[bucket] = (acc[bucket] ?? 0) + 1;
       return acc;
     }, {});
+}
+
+function withPublisherTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label}_timeout:${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function generatePublisherBlogText(
+  prompt: string,
+  options: Parameters<typeof generateBlogText>[1] = {},
+): Promise<string> {
+  return withPublisherTimeout(
+    generateBlogText(prompt, options),
+    BLOG_PUBLISHER_AI_TIMEOUT_MS,
+    'blog_ai_generation',
+  );
 }
 
 function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string; dayKey: string } {
@@ -1780,15 +1803,19 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cronSecret) headers.Authorization = `Bearer ${cronSecret}`;
 
-  const res = await fetch(`${baseUrl}/api/blog/from-card-news`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      card_news_id: item.card_news_id,
-      slide_image_urls: slideUrls,
-      publisher_bridge: true,
+  const res = await withPublisherTimeout(
+    fetch(`${baseUrl}/api/blog/from-card-news`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        card_news_id: item.card_news_id,
+        slide_image_urls: slideUrls,
+        publisher_bridge: true,
+      }),
     }),
-  });
+    BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS,
+    'card_news_bridge',
+  );
 
   if (!res.ok) {
     const errBody = await res.text();
@@ -1882,7 +1909,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 - 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
 - 마크다운 코드블록으로 감싸지 말 것`;
 
-  const raw = await generateBlogText(prompt, { temperature: 0.65 });
+  const raw = await generatePublisherBlogText(prompt, { temperature: 0.65 });
   const blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -2203,7 +2230,7 @@ ${serpGapBlock}
 - CTA는 본문 마지막에만 1회 사용. 도입부와 본문 중간에는 상품 보기, 카카오, 상담 신청, 예약하기 링크를 넣지 말 것
 - 마지막 CTA 문장 예시: [내 일정 기준으로 가능 여부 확인](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_soft_cta)`;
 
-  const raw = await generateBlogText(prompt, { temperature: 0.7 });
+  const raw = await generatePublisherBlogText(prompt, { temperature: 0.7 });
   let blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')

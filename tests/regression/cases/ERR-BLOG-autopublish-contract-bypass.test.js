@@ -106,7 +106,7 @@ test('ERR-BLOG-autopublish-contract-bypass: indexing happens only after publishe
 
   const publishedSlugs = indexOfOrFail(source, 'const publishedSlugs = results', 'published slugs');
   const enqueueIndexing = indexOfOrFail(source, 'enqueueBlogIndexingJob({', 'indexing enqueue');
-  const notifyIndexing = indexOfOrFail(worker, 'notifyIndexing(job.url, baseUrl', 'worker indexing call');
+  const notifyIndexing = indexOfOrFail(worker, 'notifyIndexing(canonicalUrl, baseUrl', 'worker indexing call');
   const indexingReports = indexOfOrFail(worker, 'persistBlogIndexingReport(job, report)', 'indexing report persistence');
   const inlineWorkerDrain = indexOfOrFail(source, 'processDueBlogIndexingJobs({', 'inline worker drain');
 
@@ -114,6 +114,16 @@ test('ERR-BLOG-autopublish-contract-bypass: indexing happens only after publishe
   assert.ok(publishedSlugs < enqueueIndexing, 'indexing enqueue must use only successfully published slugs');
   assert.ok(enqueueIndexing < inlineWorkerDrain, 'publisher must drain due indexing jobs after enqueueing');
   assert.ok(notifyIndexing < indexingReports, 'worker must persist reports after provider requests');
+});
+
+test('ERR-BLOG-autopublish-contract-bypass: publisher AI calls have a local timeout guard', () => {
+  const source = read('src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts');
+  const helper = indexOfOrFail(source, 'function generatePublisherBlogText', 'publisher AI timeout helper');
+  const firstUse = indexOfOrFail(source, 'await generatePublisherBlogText(prompt', 'publisher AI timeout usage');
+
+  assert.ok(helper < firstUse, 'publisher must route AI generation through the timeout helper');
+  assert.equal(source.includes('await generateBlogText(prompt'), false, 'publisher must not await raw AI generation directly');
+  assert.match(source, /BLOG_PUBLISHER_AI_TIMEOUT_MS/);
 });
 
 test('ERR-BLOG-autopublish-contract-bypass: direct publish paths enqueue durable indexing jobs', () => {
