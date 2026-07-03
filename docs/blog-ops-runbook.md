@@ -68,6 +68,14 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Which cron broke the contract?
 - Which document defines the contract and which checks currently fail?
 
+## 2026-07-03 Ops Summary Breakdown Evidence
+
+- `/api/admin/blog/ops-summary` now separates publish, queue, quality, indexing, and cron health under `health_sections`.
+- Recent published-post quality is not treated as healthy just because `quality_gate.passed` is absent or not false. The summary checks durable evidence for content brief, SEO score, readability score, metadata, body, image evidence, quality gate failures, and the published info-destination contract.
+- Slug-only cleanup is reported separately from non-slug quality failures. Non-slug quality failures block healthy status; slug-only cleanup is a watch item so operators do not confuse URL cleanup with broken article content.
+- Queue failures are grouped into `slug_failures`, `non_slug_failures`, `indexing_failures`, and `stuck_queue_rows`.
+- Indexing health exposes `outbox_missing`, `provider_failures`, `active_jobs`, and `google_unknown_urls` as separate buckets.
+
 ## 2026-06-16 Live Ops Evidence
 
 - Supabase project: `Yeosonam_OS` (`ixaxnvbmhzjvupissmly`) is active.

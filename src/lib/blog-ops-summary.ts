@@ -5,6 +5,7 @@ import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
 import { countPublishableQueueCandidates } from '@/lib/blog-scheduler';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateCurrentDayPublisherHealth } from '@/lib/blog-current-day-publisher-health';
+import { classifyDestinationlessInfoCandidate } from '@/lib/blog-destinationless-info';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -32,6 +33,9 @@ type PostRow = {
   id: string;
   slug: string | null;
   seo_title: string | null;
+  seo_description?: string | null;
+  og_image_url?: string | null;
+  blog_html?: string | null;
   status: string | null;
   published_at: string | null;
   readability_score: number | string | null;
@@ -41,6 +45,9 @@ type PostRow = {
   destination: string | null;
   product_id?: string | null;
   angle_type?: string | null;
+  category?: string | null;
+  content_type?: string | null;
+  primary_keyword?: string | null;
 };
 
 type CronHealthRow = {
@@ -164,6 +171,156 @@ function classifyQueueError(message: string | null | undefined, failureCode?: un
   return 'other';
 }
 
+function hasObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function seoScoreValue(value: unknown): number {
+  if (hasObject(value) && 'score' in value) return asNumber(value.score);
+  return asNumber(value);
+}
+
+function hasContentBrief(meta: Record<string, unknown> | null | undefined): boolean {
+  return hasObject(meta?.content_brief);
+}
+
+function hasInlineImageEvidence(row: PostRow): boolean {
+  if (typeof row.og_image_url === 'string' && row.og_image_url.trim()) return true;
+  const body = typeof row.blog_html === 'string' ? row.blog_html : '';
+  return /!\[[^\]]*]\([^)]+\)|<img\b[^>]*\bsrc=/i.test(body);
+}
+
+function extractQualityGateFailureCodes(qualityGate: Record<string, unknown> | null | undefined): string[] {
+  if (!hasObject(qualityGate)) return ['quality_gate_missing'];
+
+  const codes: string[] = [];
+  if (Array.isArray(qualityGate.gates)) {
+    for (const gate of qualityGate.gates) {
+      if (!hasObject(gate) || gate.passed !== false) continue;
+      const code = typeof gate.gate === 'string' ? gate.gate : 'quality_gate_failed';
+      codes.push(`quality_gate_${code}`);
+    }
+  }
+
+  if (Array.isArray(qualityGate.issues)) {
+    for (const issue of qualityGate.issues) {
+      if (!hasObject(issue)) continue;
+      const code = typeof issue.code === 'string'
+        ? issue.code
+        : typeof issue.gate === 'string'
+          ? issue.gate
+          : null;
+      if (code) codes.push(`quality_gate_${code}`);
+    }
+  }
+
+  if (qualityGate.passed === false && codes.length === 0) {
+    codes.push('quality_gate_failed');
+  }
+
+  return [...new Set(codes)];
+}
+
+function isSlugQualityIssue(code: string): boolean {
+  return /(?:^|_)slug(?:_|$)|duplicate_content|canonical_mismatch/i.test(code);
+}
+
+export function classifyPublishedBlogQualityIssues(row: PostRow): string[] {
+  const issues: string[] = [];
+  const body = typeof row.blog_html === 'string' ? row.blog_html.trim() : '';
+  const seoScore = seoScoreValue(row.seo_score);
+  const readabilityScore = asNumber(row.readability_score);
+
+  if (!row.slug?.trim()) issues.push('slug_missing');
+  if (!row.seo_title?.trim() || !row.seo_description?.trim()) issues.push('metadata_missing');
+  if (body.replace(/\s+/g, '').length < 80) issues.push('body_missing');
+  if (!hasInlineImageEvidence(row)) issues.push('image_missing');
+  if (!hasContentBrief(row.generation_meta)) issues.push('content_brief_missing');
+
+  if (!hasObject(row.quality_gate)) {
+    issues.push('quality_gate_missing');
+  } else {
+    issues.push(...extractQualityGateFailureCodes(row.quality_gate));
+  }
+
+  if (row.seo_score == null) {
+    issues.push('seo_score_missing');
+  } else if (seoScore > 0 && seoScore < 85) {
+    issues.push('seo_score_low');
+  }
+
+  if (row.readability_score == null || row.readability_score === '') {
+    issues.push('readability_score_missing');
+  } else if (readabilityScore > 0 && readabilityScore < 70) {
+    issues.push('readability_score_low');
+  }
+
+  const destinationIssue = classifyDestinationlessInfoCandidate({
+    id: row.id,
+    slug: row.slug,
+    seo_title: row.seo_title,
+    destination: row.destination,
+    primary_keyword: row.primary_keyword,
+    category: row.category,
+    status: row.status,
+    product_id: row.product_id,
+    source: 'content_creatives',
+    generation_meta: row.generation_meta,
+  });
+  if (destinationIssue && destinationIssue !== 'intentionally_generic') {
+    issues.push(`info_destination_${destinationIssue}`);
+  }
+
+  return [...new Set(issues)];
+}
+
+export function summarizePublishedBlogQuality(rows: PostRow[], limit = 30) {
+  const checkedRows = rows.slice(0, Math.max(1, limit));
+  const buckets: Record<string, number> = {};
+  const failedSamples: Array<{
+    id: string;
+    slug: string | null;
+    title: string | null;
+    published_at: string | null;
+    issues: string[];
+    slug_only: boolean;
+  }> = [];
+
+  for (const row of checkedRows) {
+    const issues = classifyPublishedBlogQualityIssues(row);
+    if (issues.length === 0) continue;
+
+    for (const issue of issues) {
+      buckets[issue] = (buckets[issue] ?? 0) + 1;
+    }
+
+    failedSamples.push({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      published_at: row.published_at,
+      issues,
+      slug_only: issues.every(isSlugQualityIssue),
+    });
+  }
+
+  const slugOnlyFailureCount = failedSamples.filter((sample) => sample.slug_only).length;
+  const nonSlugFailureCount = failedSamples.length - slugOnlyFailureCount;
+
+  return {
+    checked_count: checkedRows.length,
+    blocking_count: failedSamples.length,
+    non_slug_failure_count: nonSlugFailureCount,
+    slug_only_failure_count: slugOnlyFailureCount,
+    buckets,
+    samples: failedSamples.slice(0, 12),
+  };
+}
+
+function sumBuckets(buckets: Record<string, number>, matcher: (bucket: string) => boolean): number {
+  return Object.entries(buckets).reduce((sum, [bucket, count]) => sum + (matcher(bucket) ? count : 0), 0);
+}
+
 function levelRank(level: BlogOpsLevel): number {
   return { healthy: 0, watch: 1, risk: 2, blocked: 3 }[level];
 }
@@ -231,7 +388,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       'content_creatives',
       supabase
         .from('content_creatives')
-        .select('id, slug, seo_title, status, published_at, readability_score, seo_score, quality_gate, generation_meta, destination, product_id, angle_type')
+        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, status, published_at, readability_score, seo_score, quality_gate, generation_meta, destination, product_id, angle_type, category, content_type, primary_keyword')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(500),
       warnings,
@@ -282,6 +439,12 @@ export async function buildBlogOpsSummary(supabase: any) {
   const manualReviewQueue = queueRows.filter(isManualReviewQueue);
   const retryableFailedQueue = queueRows.filter((row) => row.status === 'failed' && !isManualReviewQueue(row));
   const failureBuckets = countBy(queueRows.filter((row) => row.status === 'failed'), (row) => classifyQueueError(row.last_error, row.meta?.failure_code));
+  const queueFailureGroups = {
+    slug_failures: sumBuckets(failureBuckets, (bucket) => /slug|duplicate_content/i.test(bucket)),
+    non_slug_failures: sumBuckets(failureBuckets, (bucket) => !/slug|duplicate_content|indexing|indexnow|google|sitemap/i.test(bucket)),
+    indexing_failures: sumBuckets(failureBuckets, (bucket) => /indexing|indexnow|google|sitemap/i.test(bucket)),
+    stuck_queue_rows: overdueQueued + staleGenerating,
+  };
   const editorialBacklogWork = buildBlogEditorialBacklogWorkReport({
     rows: queueRows,
     limit: 12,
@@ -293,11 +456,8 @@ export async function buildBlogOpsSummary(supabase: any) {
   const publishedYesterday = publishedRows.filter((row) => row.published_at && new Date(row.published_at) >= yesterdayStart && new Date(row.published_at) < todayStart).length;
   const policy = policyRows[0] || {};
   const dailyTarget = Math.max(1, Math.round(asNumber(policy.posts_per_day) || 3));
-  const lowQualityRecent = publishedRows.slice(0, 30).filter((row) => {
-    const seoScore = asNumber(row.seo_score?.score);
-    const qualityPassed = row.quality_gate?.passed !== false;
-    return (seoScore > 0 && seoScore < 85) || !qualityPassed;
-  }).length;
+  const qualitySummary = summarizePublishedBlogQuality(publishedRows, 30);
+  const lowQualityRecent = qualitySummary.non_slug_failure_count;
 
   const indexingCounts = countBy(indexingJobs, (row) => row.status);
   const indexingActive = indexingJobs.filter((row) => !['succeeded', 'done', 'completed'].includes(String(row.status || ''))).length;
@@ -315,6 +475,12 @@ export async function buildBlogOpsSummary(supabase: any) {
     isCanonicalGoogleInspectionUrl(row.url)
     && String(row.google_coverage_state || '').includes('알려지지 않은 URL')
   ).length;
+  const indexingFailureBuckets = {
+    outbox_missing: indexingCoverage.missing_count,
+    provider_failures: recentIndexingFailures,
+    active_jobs: indexingActive,
+    google_unknown_urls: googleUnknownUrls,
+  };
   const googleIndexedReports = indexingReports.filter((row) => String(row.google_index_verdict || '').toUpperCase() === 'PASS').length;
   const indexNowOk = indexingReports.filter((row) =>
     ['ok', 'success', 'succeeded'].includes(String(row.indexnow_status || '').toLowerCase()),
@@ -372,7 +538,9 @@ export async function buildBlogOpsSummary(supabase: any) {
     ? 'risk'
     : indexingActive > 0 ? 'watch' : 'healthy';
   const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => row.cron_name === 'blog-publisher') ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
-  const qualityLevel: BlogOpsLevel = lowQualityRecent > 0 ? 'risk' : 'healthy';
+  const qualityLevel: BlogOpsLevel = qualitySummary.non_slug_failure_count > 0
+    ? 'risk'
+    : qualitySummary.slug_only_failure_count > 0 ? 'watch' : 'healthy';
   const currentDayPublisherLevel: BlogOpsLevel = currentDayPublisherHealth.status === 'risk' ? 'blocked' : 'healthy';
   const publishabilityStats = countPublishableQueueCandidates({
     activeQueue: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
@@ -453,6 +621,21 @@ export async function buildBlogOpsSummary(supabase: any) {
       action: 'run_publisher',
     });
   }
+  if (qualitySummary.non_slug_failure_count > 0) {
+    nextActions.push({
+      severity: 'risk',
+      title: '최근 발행 글 품질 증거 점검',
+      detail: `최근 ${qualitySummary.checked_count}개 중 비slug 품질 문제 ${qualitySummary.non_slug_failure_count}건. 주요 버킷: ${Object.keys(qualitySummary.buckets).slice(0, 4).join(', ') || 'unknown'}`,
+      href: '/admin/blog/system',
+    });
+  } else if (qualitySummary.slug_only_failure_count > 0) {
+    nextActions.push({
+      severity: 'watch',
+      title: '최근 발행 글 slug 정리',
+      detail: `최근 ${qualitySummary.checked_count}개 중 slug-only 정리 대상 ${qualitySummary.slug_only_failure_count}건. 본문 품질 실패와 분리해 처리하세요.`,
+      href: '/admin/blog/system',
+    });
+  }
   if (googleUnknownUrls > 0) {
     nextActions.push({
       severity: indexingLevel,
@@ -524,6 +707,41 @@ export async function buildBlogOpsSummary(supabase: any) {
         ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
       ],
     },
+    health_sections: {
+      publish: {
+        level: dailyLevel,
+        failed: dailyLevel === 'risk',
+        checks: publishedToday >= dailyTarget ? [] : ['daily_publish_sla'],
+      },
+      queue: {
+        level: queueLevel,
+        failed: queueLevel === 'risk',
+        checks: [
+          ...(retryableFailedQueue.length > 0 ? ['retryable_failed_queue'] : []),
+          ...(staleGenerating > 0 ? ['stale_generating'] : []),
+          ...(publishedStateMismatches.length > 0 ? ['published_state_mismatch'] : []),
+        ],
+      },
+      quality: {
+        level: qualityLevel,
+        failed: qualitySummary.non_slug_failure_count > 0,
+        checks: Object.keys(qualitySummary.buckets),
+      },
+      indexing: {
+        level: indexingLevel,
+        failed: indexingLevel === 'risk',
+        checks: [
+          ...(indexingCoverage.missing_count > 0 ? ['indexing_outbox_missing'] : []),
+          ...(recentIndexingFailures > 0 ? ['indexing_provider_failure'] : []),
+          ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
+        ],
+      },
+      cron: {
+        level: cronLevel,
+        failed: cronLevel === 'risk' || cronLevel === 'blocked',
+        checks: unhealthyCrons.map((row) => row.cron_name).filter(Boolean),
+      },
+    },
     publish: {
       daily_target: dailyTarget,
       published_today: publishedToday,
@@ -558,6 +776,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       overdue_queued: overdueQueued,
       stale_generating: staleGenerating,
       failure_buckets: failureBuckets,
+      failure_groups: queueFailureGroups,
       editorial_backlog_work: editorialBacklogWork,
       recent_attention: activeQueue.slice(0, 12),
       level: queueLevel,
@@ -565,17 +784,25 @@ export async function buildBlogOpsSummary(supabase: any) {
     quality: {
       recent_checked: Math.min(30, publishedRows.length),
       low_quality_recent: lowQualityRecent,
-      latest_posts: publishedRows.slice(0, 8).map((row) => ({
-        id: row.id,
-        slug: row.slug,
-        title: row.seo_title,
-        destination: row.destination,
-        published_at: row.published_at,
-        seo_score: asNumber(row.seo_score?.score) || null,
-        readability_score: asNumber(row.readability_score) || null,
-        quality_passed: row.quality_gate?.passed !== false,
-        failure_code: row.generation_meta?.failure_code || null,
-      })),
+      summary: qualitySummary,
+      failure_buckets: qualitySummary.buckets,
+      non_slug_failures: qualitySummary.non_slug_failure_count,
+      slug_only_failures: qualitySummary.slug_only_failure_count,
+      latest_posts: publishedRows.slice(0, 8).map((row) => {
+        const issues = classifyPublishedBlogQualityIssues(row);
+        return {
+          issues,
+          id: row.id,
+          slug: row.slug,
+          title: row.seo_title,
+          destination: row.destination,
+          published_at: row.published_at,
+          seo_score: seoScoreValue(row.seo_score) || null,
+          readability_score: asNumber(row.readability_score) || null,
+          quality_passed: issues.length === 0,
+          failure_code: row.generation_meta?.failure_code || null,
+        };
+      }),
       level: qualityLevel,
     },
     preflight,
@@ -585,6 +812,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       active_jobs: indexingActive,
       outbox_coverage: indexingCoverage,
       recent_failures: recentIndexingFailures,
+      failure_buckets: indexingFailureBuckets,
       google_unknown_urls: googleUnknownUrls,
       google_indexed_reports: googleIndexedReports,
       inspected_reports: indexingReports.length,
