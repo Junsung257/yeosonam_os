@@ -1060,6 +1060,49 @@ function ensurePublishChecklist(markdown: string, input: BlogEditorialRepairInpu
   return { text: `${markdown.trimEnd()}\n${block}`, changed: true };
 }
 
+function ensureComparisonDecisionBlock(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const haystack = [
+    input.title,
+    input.slug,
+    input.primaryKeyword,
+    input.category,
+    markdown.slice(0, 2500),
+  ].filter(Boolean).join(' ');
+  const hasRecommendationIntent = /(compare|recommend|best|\uBE44\uAD50|\uCD94\uCC9C|\uC120\uD0DD|\uC0C1\uD669\uBCC4|\uC544\uC774|\uAC00\uC871|\uC548\uC804|\uD734\uC591\uC9C0)/i.test(haystack);
+  if (!hasRecommendationIntent) return { text: markdown, changed: false };
+  if (/^#{2,3}\s+.*(?:\uC0C1\uD669\uBCC4|\uC120\uD0DD\s*\uAE30\uC900|\uB9DE\uB294\s*\uC0AC\uB78C|\uC548\s*\uB9DE\uB294\s*\uC0AC\uB78C|decision|fit\s*for)/im.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const keyword = input.primaryKeyword || input.title || '\uAC00\uC871 \uC5EC\uD589';
+  const block = [
+    '',
+    '## \uC0C1\uD669\uBCC4 \uC120\uD0DD \uAE30\uC900',
+    '',
+    `| \uC0C1\uD669 | ${keyword}\uC5D0\uC11C \uBA3C\uC800 \uBCFC \uAC83 | \uBB38\uC758 \uC804 \uD655\uC778\uD560 \uC810 |`,
+    '| --- | --- | --- |',
+    '| \uC544\uC774 \uB3D9\uBC18 | \uBE44\uD589 \uC2DC\uAC04, \uC219\uC18C \uC774\uB3D9 \uB3D9\uC120, \uBCD1\uC6D0 \uC811\uADFC\uC131 | \uC5F0\uB839\uBCC4 \uC218\uC601\uC7A5\u00B7\uC2DD\uC0AC\u00B7\uCE68\uB300 \uC870\uAC74 |',
+    '| \uCCAB \uD574\uC678\uC5EC\uD589 | \uC785\uAD6D \uC11C\uB958, \uD604\uC9C0 \uC774\uB3D9 \uB09C\uC774\uB3C4, \uD55C\uAD6D\uC5B4 \uC9C0\uC6D0 | \uD56D\uACF5\u00B7\uC219\uC18C\u00B7\uC774\uB3D9\uC774 \uD55C \uBC88\uC5D0 \uC815\uB9AC\uB418\uB294\uC9C0 |',
+    '| \uC608\uC0B0 \uC911\uC2EC | \uCD1D\uC561, \uD604\uC9C0 \uCD94\uAC00\uBE44, \uC120\uD0DD \uAD00\uAD11 \uC720\uBB34 | \uAC00\uACA9\uC774 \uBC14\uB010 \uC218 \uC788\uB294 \uB0A0\uC9DC\u00B7\uC778\uC6D0 \uC870\uAC74 |',
+    '',
+    '## \uB9DE\uB294 \uC0AC\uB78C\uACFC \uC548 \uB9DE\uB294 \uC0AC\uB78C',
+    '',
+    '- \uB9DE\uB294 \uC0AC\uB78C: \uAC00\uC871 \uC774\uB3D9 \uB3D9\uC120\uACFC \uC548\uC804 \uBCC0\uC218\uB97C \uBA3C\uC800 \uC904\uC774\uACE0 \uC2F6\uC740 \uBD84.',
+    '- \uC548 \uB9DE\uB294 \uC0AC\uB78C: \uC219\uC18C\u00B7\uC774\uB3D9\u00B7\uD604\uC9C0 \uC77C\uC815\uC744 \uBAA8\uB450 \uC9C1\uC811 \uC870\uD569\uD558\uACE0 \uC2F6\uC740 \uBD84.',
+    '- \uBCF4\uB958\uD560 \uAC83: \uCD9C\uBC1C\uC77C, \uC544\uC774 \uC5F0\uB839, \uD56D\uACF5 \uC2DC\uAC04\uB300\uAC00 \uD655\uC815\uB418\uAE30 \uC804\uC5D0\uB294 \uCD1D\uC561\uC744 \uC815\uD574 \uB193\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.',
+    '',
+  ].join('\n');
+
+  const firstFaq = markdown.search(/^##\s*(FAQ|Q\s*&\s*A)/im);
+  if (firstFaq > 0) {
+    return {
+      text: `${markdown.slice(0, firstFaq).trimEnd()}\n${block}${markdown.slice(firstFaq).trimStart()}`,
+      changed: true,
+    };
+  }
+  return { text: `${markdown.trimEnd()}\n${block}`, changed: true };
+}
+
 function splitOverlongHeadings(markdown: string): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   let changed = false;
@@ -1920,6 +1963,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('added_publish_checklist');
   }
 
+  const comparisonDecisionRepair = ensureComparisonDecisionBlock(blogHtml, input);
+  if (comparisonDecisionRepair.changed) {
+    blogHtml = comparisonDecisionRepair.text;
+    changes.push('added_comparison_decision_block');
+  }
+
   const tableBoundaryRepair = ensureMarkdownTableBoundaries(blogHtml);
   if (tableBoundaryRepair.changed) {
     blogHtml = tableBoundaryRepair.text;
@@ -2300,6 +2349,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (itineraryRepair.changed) {
       blogHtml = itineraryRepair.text;
       changes.push('added_itinerary_structure');
+    }
+  }
+
+  if (intent.infoSubtype === 'comparison' || intent.readerIntent === 'decide') {
+    const comparisonDecisionRepair = ensureComparisonDecisionBlock(blogHtml, input);
+    if (comparisonDecisionRepair.changed) {
+      blogHtml = comparisonDecisionRepair.text;
+      changes.push('added_comparison_decision_block');
     }
   }
 

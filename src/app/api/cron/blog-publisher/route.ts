@@ -24,6 +24,7 @@ import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
@@ -307,6 +308,8 @@ function normalizeAngleType(value: unknown): AngleType {
 }
 
 function strengthenIntroHook(markdown: string, item: any, primaryKeyword?: string | null): string {
+  return strengthenPublisherIntroHook(markdown, item, primaryKeyword);
+
   const lines = markdown.split('\n');
   let h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
   if (h1Index < 0) {
@@ -1469,6 +1472,22 @@ async function processQueueItem(
         breadcrumbList: true,
       },
     });
+
+    const slugRepair = repairPublisherSeoSlug({
+      currentSlug: generated.slug,
+      item,
+      primaryKeyword,
+    });
+    if (slugRepair.changed) {
+      generated.slug = slugRepair.slug;
+      generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+        destination: item.destination,
+        slug: generated.slug,
+        utmSource: 'naver_blog',
+      });
+      console.log(`[blog-publisher] SEO slug repair: ${slugRepair.reason || 'slug_quality'} -> ${generated.slug}`);
+    }
+
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
     if (seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')) {
