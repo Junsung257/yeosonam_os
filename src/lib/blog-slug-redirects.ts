@@ -42,6 +42,12 @@ export const BLOG_SLUG_REDIRECTS: Record<string, string> = {
   '태국-입국-시-필요한-서류와-면세-한도-총정리-2026년-기준-재작성-v2': 'thailand-entry-documents-duty-free-2026',
 };
 
+export const BLOG_SLUG_REDIRECT_TOMBSTONES = new Set([
+  'july-family-travel-weather-clothes-checklist-2026',
+]);
+
 export function resolveBlogSlugRedirect(slug: string): string | null {
-  return BLOG_SLUG_REDIRECTS[slug] ?? null;
+  const target = BLOG_SLUG_REDIRECTS[slug] ?? null;
+  if (!target || BLOG_SLUG_REDIRECT_TOMBSTONES.has(target)) return null;
+  return target;
 }

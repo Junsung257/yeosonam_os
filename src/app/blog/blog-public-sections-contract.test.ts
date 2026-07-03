@@ -11,6 +11,7 @@ import {
   FALLBACK_BLOG_POSTS,
   getFallbackBlogPost,
 } from '@/lib/blog-public-fallback';
+import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 
 const PUBLIC_PUBLISH_ANGLES = ['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food'];
 
@@ -94,5 +95,9 @@ describe('blog public sections contract', () => {
     expect(blogSource).toContain('getBlogPostHref(post)');
     expect(blogSource).toContain('jsonLdPosts.map');
     expect(sitemapSource).toContain('getFallbackBlogPosts().filter((post) => post.detail_available)');
+  });
+
+  it('does not redirect legacy slugs to archived blog posts', () => {
+    expect(resolveBlogSlugRedirect('travel-guide-q35bf6ed0')).toBeNull();
   });
 });
