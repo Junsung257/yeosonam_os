@@ -112,6 +112,7 @@ Before widening automatic publishing after engine changes, `diagnose:blog-autopu
 - `info_writer` canaries require a concrete destination unless the candidate is explicitly marked `intentionally_generic`.
 - Product canaries require a durable product dedup key using product, departure date, duration, and supplier evidence.
 - Broad pillar rows, evidence-insufficient rows, duplicate rows, and topic-fit failures must be rejected before they consume publisher claim slots.
+- Candidate topics that already violate the pre-publish title/slug contract must also be rejected before they consume publisher claim slots. Current blockers include banned editorial cliches such as `총정리` and `완벽 가이드`, machine separators such as `|`, month/year-leading topics that generate numeric slugs, weak expected slugs, and destinationless broad recommendation topics without a concrete comparison brief.
 
 ## Blocking Rules
 
@@ -275,3 +276,8 @@ Priority 3:
 - A dashboard card for publish health versus indexing health was added on 2026-07-04:
   - UI: `src/app/admin/blog/system/page.tsx`.
   - Contract test: `src/app/admin/blog/blog-admin-ops-ui-contract.test.ts`.
+- Candidate pre-publish readiness was hardened on 2026-07-04:
+  - Shared contract: `src/lib/blog-candidate-prepublish-contract.ts`.
+  - Publishable inventory and canary preflight now exclude candidates with banned editorial cliches, machine separators, numeric-leading slug risk, weak expected slugs, or destinationless broad recommendation topics.
+  - Publisher preflight can quarantine these rows with `failure_code='candidate_pre_publish_contract'` before claim.
+  - Production-data dry run showed publishable candidates `67 -> 49`, `candidate_contract_blocked_count=18`, canary still mixed with one info writer and two product consultant writers, and indexing outbox coverage remained 100%.

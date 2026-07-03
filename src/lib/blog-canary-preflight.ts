@@ -1,5 +1,6 @@
 import { evaluateBlogTopicFit } from './blog-topic-fit-gate';
 import { classifyDestinationlessInfoCandidate } from './blog-destinationless-info';
+import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 
 export type BlogCanaryCandidateRow = {
   id?: string | null;
@@ -175,6 +176,14 @@ export function buildBlogCanaryPreflight(input: {
     });
     if (!topicFit.passed) {
       addRejected(rejectedCounts, 'topic_fit_failed');
+      continue;
+    }
+
+    const candidateContract = inspectBlogCandidatePrepublishContract(row);
+    if (!candidateContract.passed) {
+      for (const issue of candidateContract.issues) {
+        addRejected(rejectedCounts, `candidate_contract_${issue.code}`);
+      }
       continue;
     }
 

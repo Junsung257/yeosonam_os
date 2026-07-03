@@ -71,6 +71,27 @@ describe('buildBlogCanaryPreflight', () => {
     expect(result.rejected_counts.topic_fit_failed).toBe(1);
   });
 
+  it('rejects canary candidates with known pre-publish title or slug risks', () => {
+    const result = buildBlogCanaryPreflight({
+      requested: 1,
+      recentPublished: [],
+      activeQueue: [
+        {
+          id: 'bad-slug',
+          topic: '7\uC6D4 \uD638\uC8FC \uC2DC\uB4DC\uB2C8 \uC5EC\uD589, \uD55C\uAD6D\uACFC \uBC18\uB300! \uACA8\uC6B8 \uB0A0\uC528\uC640 \uC990\uAE38 \uAC70\uB9AC \u2014 \uCD1D\uC815\uB9AC',
+          destination: '\uC2DC\uB4DC\uB2C8',
+          meta: { writer_type: 'info_writer' },
+        },
+      ],
+    });
+
+    expect(result.status).toBe('block');
+    expect(result.ready_count).toBe(0);
+    expect(result.rejected_counts.candidate_contract_editorial_cliche_topic).toBe(1);
+    expect(result.rejected_counts.candidate_contract_risky_numeric_slug_topic).toBe(1);
+    expect(result.rejected_counts.candidate_contract_weak_expected_slug).toBe(1);
+  });
+
   it('rejects destinationless info candidates until generic intent is durable', () => {
     const result = buildBlogCanaryPreflight({
       requested: 1,

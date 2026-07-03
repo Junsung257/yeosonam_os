@@ -6,6 +6,7 @@ import {
   isCustomerOpenContractBlogPublishable,
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
+import { inspectBlogCandidatePrepublishContract } from '@/lib/blog-candidate-prepublish-contract';
 
 /**
  * 판매 불가·아카이브 등으로 블로그 자동발행 큐를 중단한다.
@@ -134,7 +135,7 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id, attempts, last_error, meta, product_id, source')
+    .select('id, attempts, last_error, meta, product_id, source, topic, destination, primary_keyword')
     .eq('status', 'queued')
     .or(`target_publish_at.is.null,target_publish_at.lte.${now}`)
     .order('priority', { ascending: false })
@@ -157,9 +158,24 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
     meta?: unknown;
     product_id?: string | null;
     source?: string | null;
+    topic?: string | null;
+    destination?: string | null;
+    primary_keyword?: string | null;
   }>) {
     let lastError = row.last_error ?? null;
     let forcedReason: string | null = null;
+    const candidateContract = inspectBlogCandidatePrepublishContract({
+      topic: row.topic,
+      destination: row.destination,
+      primary_keyword: row.primary_keyword,
+      meta: row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+        ? row.meta as Record<string, unknown>
+        : null,
+    });
+    if (!candidateContract.passed) {
+      lastError = `candidate_pre_publish_contract:${candidateContract.issues.map((issue) => issue.code).join('|')}`;
+      forcedReason = 'candidate_pre_publish_contract';
+    }
     if (row.product_id) {
       if (!productContractCache.has(row.product_id)) {
         try {

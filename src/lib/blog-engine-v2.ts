@@ -66,8 +66,15 @@ export interface BlogPublishabilitySnapshot {
   duplicate_count: number;
   evidence_insufficient_count: number;
   destinationless_info_count?: number;
+  candidate_contract_blocked_count?: number;
   candidate_shortage: boolean;
-  next_action: 'publish_ready' | 'refill_candidates' | 'quarantine_duplicates' | 'collect_evidence' | 'repair_destinationless_info';
+  next_action:
+    | 'publish_ready'
+    | 'refill_candidates'
+    | 'quarantine_duplicates'
+    | 'collect_evidence'
+    | 'repair_destinationless_info'
+    | 'repair_candidate_contract';
 }
 
 type BuildBriefInput = {
