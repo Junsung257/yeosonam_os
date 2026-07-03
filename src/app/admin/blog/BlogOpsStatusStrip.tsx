@@ -11,7 +11,14 @@ interface OpsSummary {
   level: OpsLevel;
   publish: { published_today: number; daily_target: number; remaining_today: number };
   queue: { active_count: number; counts: Record<string, number> };
-  indexing: { active_jobs: number; recent_failures: number; google_unknown_urls?: number };
+  indexing: {
+    active_jobs: number;
+    recent_failures: number;
+    google_unknown_urls?: number;
+    outbox_coverage?: { missing_count?: number };
+  };
+  preflight?: { status?: 'pass' | 'warn' | 'block'; score?: number };
+  canary_preflight?: { status?: 'pass' | 'warn' | 'block'; ready_count?: number; requested?: number };
   cron: { unhealthy_count: number };
   contract: { passed: boolean; failed_checks: string[] };
 }
@@ -55,7 +62,13 @@ export default function BlogOpsStatusStrip() {
   if (!ops || pathname === '/admin/blog') return null;
 
   const hasIssue = ops.level === 'risk' || ops.level === 'blocked';
-  const indexingLabel = ops.indexing.google_unknown_urls
+  const indexingLabel = ops.canary_preflight?.status === 'block'
+    ? `Canary ${ops.canary_preflight.ready_count ?? 0}/${ops.canary_preflight.requested ?? 3}`
+    : ops.preflight?.status === 'block'
+    ? `Preflight ${ops.preflight.score ?? '-'}`
+    : ops.indexing.outbox_coverage?.missing_count
+    ? `색인누락 ${ops.indexing.outbox_coverage.missing_count}`
+    : ops.indexing.google_unknown_urls
     ? `Google 미인지 ${ops.indexing.google_unknown_urls}`
     : `색인작업 ${ops.indexing.active_jobs}`;
 

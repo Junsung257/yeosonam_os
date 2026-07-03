@@ -5,6 +5,9 @@ import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-win
 import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
 import { buildBlogProductEvidenceWorkReport } from '../src/lib/blog-product-evidence-work';
 import { buildBlogEditorialBacklogWorkReport } from '../src/lib/blog-editorial-backlog-work';
+import { summarizeBlogIndexingCoverage } from '../src/lib/blog-indexing-coverage';
+import { evaluateBlogPublishPreflight } from '../src/lib/blog-publish-preflight';
+import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -19,7 +22,10 @@ type BucketCode =
   | 'table_integrity_fail'
   | 'candidate_shortage'
   | 'audit_contract_mismatch'
-  | 'indexing_queue_error';
+  | 'indexing_queue_error'
+  | 'indexing_outbox_missing'
+  | 'publish_preflight_blocked'
+  | 'canary_candidates_unavailable';
 
 type Bucket = {
   code: BucketCode;
@@ -125,6 +131,7 @@ async function main() {
     queueCounts,
     indexingCounts,
     indexingProblemRes,
+    indexingCoverageJobsRes,
     activeQueueRes,
     queueOperationalRes,
     cronHealthRes,
@@ -147,7 +154,7 @@ async function main() {
       .lt('published_at', yesterday.end.toISOString()),
     supabase
       .from('content_creatives')
-      .select('id, slug, content_type, product_id, destination, published_at, generation_meta, quality_gate')
+      .select('id, slug, content_type, product_id, destination, published_at, generation_meta, quality_gate, seo_score, readability_score')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
@@ -161,8 +168,13 @@ async function main() {
       .order('updated_at', { ascending: false })
       .limit(limit),
     supabase
+      .from('blog_indexing_jobs')
+      .select('content_creative_id, slug, url, status')
+      .order('updated_at', { ascending: false })
+      .limit(1000),
+    supabase
       .from('blog_topic_queue')
-      .select('id, product_id, destination, angle_type, topic, source, meta')
+      .select('id, product_id, destination, angle_type, topic, source, priority, target_publish_at, primary_keyword, category, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
     supabase
@@ -194,6 +206,7 @@ async function main() {
     publishedYesterdayRes,
     recentPublishedRes,
     indexingProblemRes,
+    indexingCoverageJobsRes,
     activeQueueRes,
     queueOperationalRes,
     cronHealthRes,
@@ -211,6 +224,11 @@ async function main() {
   const publishabilityStats = countPublishableQueueCandidates({
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
+  });
+  const indexingOutboxCoverage = summarizeBlogIndexingCoverage({
+    posts: recentPublishedRes.data ?? [],
+    jobs: indexingCoverageJobsRes.data ?? [],
+    limit,
   });
   const queueOperationalHealth = summarizeBlogQueueOperationalHealth(queueOperationalRes.data ?? []);
   const productEvidenceProductIds = Array.from(new Set(
@@ -252,6 +270,26 @@ async function main() {
           ? 'refill_candidates'
           : 'publish_ready',
   };
+  const publishPreflight = evaluateBlogPublishPreflight({
+    dailyTarget,
+    publishedToday: publishedTodayRes.count ?? 0,
+    publishableCandidateCount: publishabilityStats.publishableCount,
+    duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    candidateShortage: publishabilitySnapshot.candidate_shortage,
+    actionableFailedCount: queueOperationalHealth.actionable_failed_count,
+    staleGeneratingCount: queueOperationalHealth.stale_generating_count,
+    manualReviewCount: queueOperationalHealth.manual_review_count,
+    overdueQueuedCount: queueOperationalHealth.overdue_queued_count,
+    indexingOutboxMissingCount: indexingOutboxCoverage.missing_count,
+    indexingOutboxCoverageRate: indexingOutboxCoverage.coverage_rate,
+    recentPosts: recentPublishedRes.data ?? [],
+  });
+  const canaryPreflight = buildBlogCanaryPreflight({
+    activeQueue: activeQueueRes.data ?? [],
+    recentPublished: recentPublishedRes.data ?? [],
+    requested: 3,
+  });
   const latestPublisherLog = publisherLogs[0] ?? null;
   const latestPublisherSummary = summaryObject(latestPublisherLog);
   const healthPublisherSummary = lastSummaryObject(publisherHealth);
@@ -398,6 +436,30 @@ async function main() {
       evidence: indexingProblems.slice(0, 10),
     });
   }
+  if (indexingOutboxCoverage.missing_count > 0) {
+    buckets.push({
+      code: 'indexing_outbox_missing',
+      severity: 'high',
+      detail: `${indexingOutboxCoverage.missing_count} recent published post(s) are not connected to a blog_indexing_jobs row.`,
+      evidence: indexingOutboxCoverage,
+    });
+  }
+  if (publishPreflight.status === 'block') {
+    buckets.push({
+      code: 'publish_preflight_blocked',
+      severity: 'high',
+      detail: publishPreflight.blockers[0]?.detail ?? 'Blog publish preflight has blocking issues.',
+      evidence: publishPreflight,
+    });
+  }
+  if (canaryPreflight.status === 'block') {
+    buckets.push({
+      code: 'canary_candidates_unavailable',
+      severity: 'high',
+      detail: `Only ${canaryPreflight.ready_count}/${canaryPreflight.requested} canary candidate(s) are ready.`,
+      evidence: canaryPreflight,
+    });
+  }
 
   const report = {
     date: day.dayKey,
@@ -419,6 +481,9 @@ async function main() {
     product_evidence_work: productEvidenceWork,
     editorial_backlog_work: editorialBacklogWork,
     publishability: publishabilitySnapshot,
+    publish_preflight: publishPreflight,
+    canary_preflight: canaryPreflight,
+    indexing_outbox_coverage: indexingOutboxCoverage,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
     latest_publisher_runs: publisherLogs,
@@ -433,7 +498,10 @@ async function main() {
   console.log(`Blog autopublish diagnosis (${report.date} KST)`);
   console.log(`Published: ${report.published.today}/${dailyTarget} selected day, ${report.published.yesterday} previous day`);
   console.log(`Queue: ${JSON.stringify(queueCounts)}`);
+  console.log(`Publish preflight: ${publishPreflight.status} (${publishPreflight.score}/100)`);
+  console.log(`Canary preflight: ${canaryPreflight.status} (${canaryPreflight.ready_count}/${canaryPreflight.requested})`);
   console.log(`Indexing jobs: ${JSON.stringify(indexingCounts)}`);
+  console.log(`Indexing outbox coverage: ${indexingOutboxCoverage.coverage_rate ?? '-'}% (${indexingOutboxCoverage.missing_count} missing)`);
   console.log('Buckets:');
   for (const bucket of buckets) {
     console.log(`- [${bucket.severity}] ${bucket.code}: ${bucket.detail}`);

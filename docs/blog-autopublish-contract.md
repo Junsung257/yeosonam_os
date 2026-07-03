@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-06-22
+Last updated: 2026-07-03
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -31,6 +31,8 @@ Local code references:
 - Blog canonical URL helper: `src/lib/blog-canonical-url.ts`
 - Backfill/audit tool: `scripts/backfill-blog-quality.ts`
 - Manual indexing worker runner: `scripts/run-blog-indexing-worker.ts`
+- Publish preflight evaluator: `src/lib/blog-publish-preflight.ts`
+- Canary candidate preflight evaluator: `src/lib/blog-canary-preflight.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
 - Slug migration dry-run/write tool: `scripts/migrate-blog-slugs.ts`
 
@@ -81,6 +83,27 @@ Before the first publish gate:
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
+## Publish Preflight Contract
+
+Before expanding or manually forcing automatic publishing, the operator-facing preflight must pass:
+
+- enough actually publishable candidates for the remaining daily slots;
+- no evidence-insufficient or product-open-contract candidates blocking the ready pool;
+- no actionable failed queue rows or stale `generating` rows;
+- recent indexing outbox coverage at 100%;
+- at least three recent published samples passing quality gate, content brief, SEO, and readability evidence.
+
+The preflight may pass when overdue queued rows exist if the publishable candidate buffer is sufficient and publisher preflight can reschedule them. It must block when the issue changes publish safety, not when the row is harmless queue history.
+
+## Canary Candidate Contract
+
+Before widening automatic publishing after engine changes, `diagnose:blog-autopublish` and admin health must be able to identify at least three low-risk queued candidates without claiming or publishing them.
+
+- The preferred canary set includes both `info_writer` and `product_consultant_writer`.
+- `info_writer` canaries require a concrete destination unless the candidate is explicitly marked `intentionally_generic`.
+- Product canaries require a durable product dedup key using product, departure date, duration, and supplier evidence.
+- Broad pillar rows, evidence-insufficient rows, duplicate rows, and topic-fit failures must be rejected before they consume publisher claim slots.
+
 ## Blocking Rules
 
 The post must not be published when any of these are true:
@@ -126,6 +149,13 @@ Google sitemap submission is a hint, not a guarantee of indexing. Google no long
 
 Publishing routes must not call external indexing providers directly. They may only enqueue `blog_indexing_jobs`; retries and evidence persistence belong to the worker.
 
+Every published slug must be observable in the indexing outbox. Treat these as separate failure classes:
+
+- `indexing_outbox_missing`: a published slug never reached `blog_indexing_jobs`.
+- `indexing_queue_error`: a durable job exists, but the worker/provider submission is pending, retrying, or failed.
+
+Outbox coverage checks must compare recent published `content_creatives` rows with recent `blog_indexing_jobs` rows by `content_creative_id`, `slug`, or canonical `/blog/{slug}` URL. Queries over `blog_indexing_jobs` must be ordered by newest `updated_at` before applying a limit, otherwise large historical success tables can hide fresh jobs and create false alarms.
+
 ## Public Section Contract
 
 The public blog is a topical cluster, not just a chronological list.
@@ -163,6 +193,7 @@ npm run diagnose:blog-autopublish -- --json
 Failure policy:
 
 - Any non-slug quality failure blocks the “healthy” status.
+- Any recent published post missing a durable indexing outbox job blocks healthy status as `indexing_outbox_missing`.
 - Indexing provider success below 80% creates an admin alert.
 - `generating` rows older than 30 minutes must be recovered or quarantined.
 

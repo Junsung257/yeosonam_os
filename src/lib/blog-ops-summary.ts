@@ -1,5 +1,9 @@
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
+import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
+import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
+import { countPublishableQueueCandidates } from '@/lib/blog-scheduler';
+import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -16,6 +20,7 @@ type QueueRow = {
   attempts: number | null;
   last_error: string | null;
   content_creative_id?: string | null;
+  product_id?: string | null;
   primary_keyword?: string | null;
   keyword_tier?: string | null;
   created_at: string | null;
@@ -33,6 +38,8 @@ type PostRow = {
   quality_gate: Record<string, unknown> | null;
   generation_meta: Record<string, unknown> | null;
   destination: string | null;
+  product_id?: string | null;
+  angle_type?: string | null;
 };
 
 type CronHealthRow = {
@@ -42,6 +49,13 @@ type CronHealthRow = {
   last_elapsed_ms: number | null;
   last_error_count: number | null;
   last_summary: Record<string, unknown> | null;
+};
+
+type IndexingJobRow = {
+  status: string | null;
+  content_creative_id?: string | null;
+  slug?: string | null;
+  url?: string | null;
 };
 
 type IndexingReportRow = {
@@ -216,12 +230,20 @@ export async function buildBlogOpsSummary(supabase: any) {
       'content_creatives',
       supabase
         .from('content_creatives')
-        .select('id, slug, seo_title, status, published_at, readability_score, seo_score, quality_gate, generation_meta, destination')
+        .select('id, slug, seo_title, status, published_at, readability_score, seo_score, quality_gate, generation_meta, destination, product_id, angle_type')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(500),
       warnings,
     ),
-    settle<{ status: string | null }>('blog_indexing_jobs', supabase.from('blog_indexing_jobs').select('status').limit(500), warnings),
+    settle<IndexingJobRow>(
+      'blog_indexing_jobs',
+      supabase
+        .from('blog_indexing_jobs')
+        .select('status, content_creative_id, slug, url')
+        .order('updated_at', { ascending: false })
+        .limit(1000),
+      warnings,
+    ),
     settle<IndexingReportRow>(
       'indexing_reports',
       supabase
@@ -278,6 +300,15 @@ export async function buildBlogOpsSummary(supabase: any) {
 
   const indexingCounts = countBy(indexingJobs, (row) => row.status);
   const indexingActive = indexingJobs.filter((row) => !['succeeded', 'done', 'completed'].includes(String(row.status || ''))).length;
+  const indexingCoverage = summarizeBlogIndexingCoverage({
+    posts: publishedRows.slice(0, 30).map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      published_at: row.published_at,
+    })),
+    jobs: indexingJobs,
+    limit: 30,
+  });
   const recentIndexingFailures = indexingReports.filter((row) => row.google_error || row.indexnow_error || row.google_status === 'error' || row.indexnow_status === 'error').length;
   const googleUnknownUrls = indexingReports.filter((row) =>
     isCanonicalGoogleInspectionUrl(row.url)
@@ -329,10 +360,38 @@ export async function buildBlogOpsSummary(supabase: any) {
   const queueLevel: BlogOpsLevel = retryableFailedQueue.length > 0 || staleGenerating > 0 || publishedStateMismatches.length > 0
     ? 'risk'
     : overdueQueued > 0 || manualReviewQueue.length > 0 ? 'watch' : 'healthy';
-  const indexingLevel: BlogOpsLevel = googleUnknownUrls > 0 || recentIndexingFailures > 0 ? 'risk' : indexingActive > 0 ? 'watch' : 'healthy';
+  const indexingLevel: BlogOpsLevel = googleUnknownUrls > 0 || recentIndexingFailures > 0 || indexingCoverage.missing_count > 0
+    ? 'risk'
+    : indexingActive > 0 ? 'watch' : 'healthy';
   const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => row.cron_name === 'blog-publisher') ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
   const qualityLevel: BlogOpsLevel = lowQualityRecent > 0 ? 'risk' : 'healthy';
-  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel);
+  const publishabilityStats = countPublishableQueueCandidates({
+    activeQueue: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
+    recentPublished: publishedRows.slice(0, 100),
+  });
+  const preflight = evaluateBlogPublishPreflight({
+    dailyTarget,
+    publishedToday,
+    publishableCandidateCount: publishabilityStats.publishableCount,
+    duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    candidateShortage: publishabilityStats.publishableCount < dailyTarget * 2,
+    actionableFailedCount: retryableFailedQueue.length,
+    staleGeneratingCount: staleGenerating,
+    manualReviewCount: manualReviewQueue.length,
+    overdueQueuedCount: overdueQueued,
+    indexingOutboxMissingCount: indexingCoverage.missing_count,
+    indexingOutboxCoverageRate: indexingCoverage.coverage_rate,
+    recentPosts: publishedRows.slice(0, 8),
+  });
+  const preflightLevel: BlogOpsLevel = preflight.status === 'block' ? 'risk' : preflight.status === 'warn' ? 'watch' : 'healthy';
+  const canaryPreflight = buildBlogCanaryPreflight({
+    activeQueue: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
+    recentPublished: publishedRows.slice(0, 100),
+    requested: 3,
+  });
+  const canaryLevel: BlogOpsLevel = canaryPreflight.status === 'block' ? 'risk' : canaryPreflight.status === 'warn' ? 'watch' : 'healthy';
+  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel);
 
   const nextActions: Array<{ severity: BlogOpsLevel; title: string; detail: string; href: string; action?: string }> = [];
   if (publishedToday < dailyTarget) {
@@ -384,6 +443,22 @@ export async function buildBlogOpsSummary(supabase: any) {
       href: '/admin/blog/rankings',
     });
   }
+  if (indexingCoverage.missing_count > 0) {
+    nextActions.push({
+      severity: 'risk',
+      title: '색인 작업 누락 확인',
+      detail: `최근 공개 글 ${indexingCoverage.checked_count}개 중 ${indexingCoverage.missing_count}개가 색인 작업 기록과 연결되지 않았습니다.`,
+      href: '/admin/blog/rankings',
+    });
+  }
+  if (canaryPreflight.status !== 'pass') {
+    nextActions.push({
+      severity: canaryLevel,
+      title: 'Canary 후보 보강',
+      detail: `발행 전 canary 후보 ${canaryPreflight.ready_count}/${canaryPreflight.requested}개 준비됨. ${canaryPreflight.next_action}`,
+      href: '/admin/blog/queue',
+    });
+  }
   if (googleUnknownUrls === 0 && (recentIndexingFailures > 0 || indexingActive > 0)) {
     nextActions.push({
       severity: indexingLevel,
@@ -424,6 +499,9 @@ export async function buildBlogOpsSummary(supabase: any) {
         ...(publishedStateMismatches.length > 0 ? ['published_state_mismatch'] : []),
         ...(cronLevel === 'risk' || cronLevel === 'blocked' ? ['cron_health'] : []),
         ...(qualityLevel === 'risk' ? ['recent_quality_gate'] : []),
+        ...(indexingCoverage.missing_count > 0 ? ['indexing_outbox_missing'] : []),
+        ...(preflight.status === 'block' ? ['publish_preflight_blocked'] : []),
+        ...(canaryPreflight.status === 'block' ? ['canary_candidates_unavailable'] : []),
         ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
       ],
     },
@@ -481,9 +559,12 @@ export async function buildBlogOpsSummary(supabase: any) {
       })),
       level: qualityLevel,
     },
+    preflight,
+    canary_preflight: canaryPreflight,
     indexing: {
       job_counts: indexingCounts,
       active_jobs: indexingActive,
+      outbox_coverage: indexingCoverage,
       recent_failures: recentIndexingFailures,
       google_unknown_urls: googleUnknownUrls,
       google_indexed_reports: googleIndexedReports,
