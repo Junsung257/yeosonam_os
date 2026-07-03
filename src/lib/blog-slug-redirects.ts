@@ -46,6 +46,10 @@ export const BLOG_SLUG_REDIRECT_TOMBSTONES = new Set([
   'july-family-travel-weather-clothes-checklist-2026',
 ]);
 
+export function isBlogSlugRedirectTombstone(slug: string): boolean {
+  return BLOG_SLUG_REDIRECT_TOMBSTONES.has(slug);
+}
+
 export function resolveBlogSlugRedirect(slug: string): string | null {
   const target = BLOG_SLUG_REDIRECTS[slug] ?? null;
   if (!target || BLOG_SLUG_REDIRECT_TOMBSTONES.has(target)) return null;
