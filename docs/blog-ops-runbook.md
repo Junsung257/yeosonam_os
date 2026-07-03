@@ -267,6 +267,7 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - `src/lib/blog-current-day-publisher-health.ts` evaluates the latest `blog-publisher` `cron_health` row separately from the closed-day SLA window.
 - If the latest current-day publisher run had remaining quota and published `0`, `diagnose:blog-autopublish` reports `current_day_publisher_failure` and `/admin/blog` marks the contract as failed.
 - A quota-reached no-op with `remaining=0` remains healthy.
+- A single slow AI writer or card-news bridge call must not consume the full Vercel function window. The publisher wraps those calls with local timeout guards (`BLOG_PUBLISHER_AI_TIMEOUT_MS`, `BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS`) so a bad candidate is recorded through queue failure handling and the cron can still write a useful summary before the 285s completion guard.
 - Verification on 2026-07-03:
   - `npx vitest run src/lib/blog-current-day-publisher-health.test.ts src/lib/blog-publish-preflight.test.ts src/lib/blog-canary-preflight.test.ts src/app/api/cron/blog-daily-summary/route.test.ts` passed;
   - `npm run diagnose:blog-autopublish -- --json` reported `current_day_publisher_health.status="risk"` and bucket `current_day_publisher_failure` for the current-day zero-published run.
