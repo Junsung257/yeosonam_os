@@ -1,4 +1,5 @@
 import { evaluateBlogTopicFit } from './blog-topic-fit-gate';
+import { classifyDestinationlessInfoCandidate } from './blog-destinationless-info';
 
 export type BlogCanaryCandidateRow = {
   id?: string | null;
@@ -136,9 +137,16 @@ export function buildBlogCanaryPreflight(input: {
       continue;
     }
     const writerType = readWriterType(row);
-    if (writerType === 'info_writer' && !row.destination?.trim() && row.meta?.intentionally_generic !== true) {
-      addRejected(rejectedCounts, 'info_missing_destination');
-      continue;
+    if (writerType === 'info_writer' && !row.destination?.trim()) {
+      const destinationlessIssue = classifyDestinationlessInfoCandidate(row);
+      if (destinationlessIssue === 'generic_unmarked') {
+        addRejected(rejectedCounts, 'info_generic_unmarked');
+        continue;
+      }
+      if (destinationlessIssue !== 'intentionally_generic') {
+        addRejected(rejectedCounts, 'info_missing_destination');
+        continue;
+      }
     }
     const key = canaryDedupKey(row);
     if (!key) {
