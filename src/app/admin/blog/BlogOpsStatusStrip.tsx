@@ -11,11 +11,15 @@ interface OpsSummary {
   level: OpsLevel;
   publish: { published_today: number; daily_target: number; remaining_today: number };
   queue: { active_count: number; counts: Record<string, number> };
+  quality?: { non_slug_failures?: number; slug_only_failures?: number };
   indexing: {
     active_jobs: number;
     recent_failures: number;
     google_unknown_urls?: number;
     outbox_coverage?: { missing_count?: number };
+  };
+  health_sections?: {
+    quality?: { level: OpsLevel; failed: boolean; checks: string[] };
   };
   preflight?: { status?: 'pass' | 'warn' | 'block'; score?: number };
   canary_preflight?: { status?: 'pass' | 'warn' | 'block'; ready_count?: number; requested?: number };
@@ -54,6 +58,12 @@ function checkLabels(checks: string[]) {
   return checks.map((check) => CHECK_LABELS[check] || check).join(', ');
 }
 
+function sectionTone(level?: OpsLevel) {
+  if (level === 'risk' || level === 'blocked') return 'text-danger';
+  if (level === 'watch') return 'text-warning';
+  return 'text-success';
+}
+
 export default function BlogOpsStatusStrip() {
   const pathname = usePathname();
   const [ops, setOps] = useState<OpsSummary | null>(null);
@@ -89,6 +99,12 @@ export default function BlogOpsStatusStrip() {
     ? `Google 미인지 ${ops.indexing.google_unknown_urls}`
     : `색인작업 ${ops.indexing.active_jobs}`;
 
+  const qualityLabel = ops.quality?.non_slug_failures
+    ? `품질 ${ops.quality.non_slug_failures}`
+    : ops.quality?.slug_only_failures
+      ? `Slug ${ops.quality.slug_only_failures}`
+      : '품질 정상';
+
   return (
     <div className={`rounded-admin-md border px-3 py-2 text-admin-xs ${LEVEL_STYLE[ops.level]}`}>
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -111,6 +127,10 @@ export default function BlogOpsStatusStrip() {
           <Link href="/admin/blog/rankings" className="inline-flex items-center gap-1 rounded-admin-xs bg-admin-surface/60 px-2 py-1 font-semibold text-admin-text-2 hover:bg-admin-surface">
             <Search size={12} />
             {indexingLabel}
+          </Link>
+          <Link href="/admin/blog/system" className={`inline-flex items-center gap-1 rounded-admin-xs bg-admin-surface/60 px-2 py-1 font-semibold hover:bg-admin-surface ${sectionTone(ops.health_sections?.quality?.level)}`}>
+            <CheckCircle2 size={12} />
+            {qualityLabel}
           </Link>
           <Link href="/admin/blog/system" className="inline-flex items-center gap-1 rounded-admin-xs bg-admin-surface/60 px-2 py-1 font-semibold text-admin-text-2 hover:bg-admin-surface">
             <AlertTriangle size={12} />

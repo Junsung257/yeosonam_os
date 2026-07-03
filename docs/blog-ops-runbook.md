@@ -75,6 +75,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Slug-only cleanup is reported separately from non-slug quality failures. Non-slug quality failures block healthy status; slug-only cleanup is a watch item so operators do not confuse URL cleanup with broken article content.
 - Queue failures are grouped into `slug_failures`, `non_slug_failures`, `indexing_failures`, and `stuck_queue_rows`.
 - Indexing health exposes `outbox_missing`, `provider_failures`, `active_jobs`, and `google_unknown_urls` as separate buckets.
+- `/admin/blog/system` and the sticky blog ops strip now surface this breakdown so operators can distinguish publish, queue, quality, indexing, and cron failures without reading raw DB rows.
 
 ## 2026-06-16 Live Ops Evidence
 
