@@ -68,6 +68,15 @@ test('ERR-BLOG-strict-ops-gates: recovered publisher timeouts do not stay as act
   assert.match(source, /if \(timeoutRuns\.length > 0 && !timeoutRecovered\)/);
 });
 
+test('ERR-BLOG-strict-ops-gates: blog detail cache handles DB unavailable before Next logs revalidation errors', () => {
+  const source = read('src', 'app', 'blog', '[slug]', 'page.tsx');
+
+  assert.match(source, /const getCachedPostFast = unstable_cache/);
+  assert.match(source, /try \{\s*return await getPostFastUncached\(slug\);/);
+  assert.match(source, /if \(isBlogDatabaseUnavailableError\(error\)\)/);
+  assert.match(source, /return getFallbackBlogPost\(safeDecodeSlug\(slug\)\) as unknown as BlogPost \| null/);
+});
+
 test('ERR-BLOG-strict-ops-gates: backfill makes duplicate SEO descriptions unique per article intent', () => {
   const source = read('scripts', 'backfill-blog-quality.ts');
 
