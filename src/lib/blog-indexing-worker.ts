@@ -172,7 +172,10 @@ export async function processDueBlogIndexingJobs(options: {
         baseUrl: options.baseUrl,
       });
       const baseUrl = resolveBlogIndexingBaseUrl(canonicalUrl, options.baseUrl);
-      const report = await notifyIndexing(canonicalUrl, baseUrl, { type: job.type });
+      const report = await notifyIndexing(canonicalUrl, baseUrl, {
+        type: job.type,
+        pingSitemap: false,
+      });
       await persistBlogIndexingReport(job, report);
 
       if (!isIndexingReportSuccessful(report)) {

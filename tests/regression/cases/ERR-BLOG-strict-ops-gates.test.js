@@ -57,6 +57,17 @@ test('ERR-BLOG-strict-ops-gates: autopublish diagnosis exposes SLA miss as a buc
   assert.match(source, /under_target: selectedDayUnderTarget/);
 });
 
+test('ERR-BLOG-strict-ops-gates: recovered publisher timeouts do not stay as active high buckets', () => {
+  const source = read('scripts', 'diagnose-blog-autopublish.ts');
+
+  assert.match(source, /function isRecoveredPublisherRun/);
+  assert.match(source, /const timeoutRecovered = timeoutRuns\.length > 0/);
+  assert.match(source, /publishPreflight\.status === 'pass'/);
+  assert.match(source, /currentDayPublisherHealth\.status === 'healthy'/);
+  assert.match(source, /startedAtMs\(row\) > latestTimeoutStartedAt && isRecoveredPublisherRun\(row\)/);
+  assert.match(source, /if \(timeoutRuns\.length > 0 && !timeoutRecovered\)/);
+});
+
 test('ERR-BLOG-strict-ops-gates: backfill makes duplicate SEO descriptions unique per article intent', () => {
   const source = read('scripts', 'backfill-blog-quality.ts');
 
