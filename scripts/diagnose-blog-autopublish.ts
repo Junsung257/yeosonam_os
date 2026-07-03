@@ -311,16 +311,19 @@ async function main() {
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
     destinationless_info_count: publishabilityStats.destinationlessInfoBlocked,
+    candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
     next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
       : publishabilityStats.destinationlessInfoBlocked > 0
         ? 'repair_destinationless_info'
-      : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
-        ? 'quarantine_duplicates'
-        : publishabilityStats.publishableCount < dailyTarget * 2
-          ? 'refill_candidates'
-          : 'publish_ready',
+      : publishabilityStats.candidateContractBlocked > 0
+        ? 'repair_candidate_contract'
+        : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
+          ? 'quarantine_duplicates'
+          : publishabilityStats.publishableCount < dailyTarget * 2
+            ? 'refill_candidates'
+            : 'publish_ready',
   };
   const publishPreflight = evaluateBlogPublishPreflight({
     dailyTarget,

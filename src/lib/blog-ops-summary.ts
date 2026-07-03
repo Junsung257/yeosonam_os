@@ -546,6 +546,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     activeQueue: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
     recentPublished: publishedRows.slice(0, 100),
   });
+  const candidateContractBlocked = publishabilityStats.candidateContractBlocked;
   const preflight = evaluateBlogPublishPreflight({
     dailyTarget,
     publishedToday,
@@ -568,7 +569,8 @@ export async function buildBlogOpsSummary(supabase: any) {
     requested: 3,
   });
   const canaryLevel: BlogOpsLevel = canaryPreflight.status === 'block' ? 'risk' : canaryPreflight.status === 'warn' ? 'watch' : 'healthy';
-  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, currentDayPublisherLevel);
+  const candidateContractLevel: BlogOpsLevel = candidateContractBlocked > 0 ? 'watch' : 'healthy';
+  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, currentDayPublisherLevel, candidateContractLevel);
 
   const nextActions: Array<{ severity: BlogOpsLevel; title: string; detail: string; href: string; action?: string }> = [];
   if (publishedToday < dailyTarget) {
@@ -660,6 +662,14 @@ export async function buildBlogOpsSummary(supabase: any) {
       href: '/admin/blog/queue',
     });
   }
+  if (candidateContractBlocked > 0) {
+    nextActions.push({
+      severity: 'watch',
+      title: '발행 후보 문구 정리',
+      detail: `현재 큐에서 ${candidateContractBlocked}개 후보가 금지 표현, 숫자형 slug 위험, broad 추천형 계약에 걸립니다. 발행 전 자동 격리되지만 생산 템플릿도 같이 정리해야 합니다.`,
+      href: '/admin/blog/queue',
+    });
+  }
   if (googleUnknownUrls === 0 && (recentIndexingFailures > 0 || indexingActive > 0)) {
     nextActions.push({
       severity: indexingLevel,
@@ -714,12 +724,13 @@ export async function buildBlogOpsSummary(supabase: any) {
         checks: publishedToday >= dailyTarget ? [] : ['daily_publish_sla'],
       },
       queue: {
-        level: queueLevel,
+        level: maxLevel(queueLevel, candidateContractLevel),
         failed: queueLevel === 'risk',
         checks: [
           ...(retryableFailedQueue.length > 0 ? ['retryable_failed_queue'] : []),
           ...(staleGenerating > 0 ? ['stale_generating'] : []),
           ...(publishedStateMismatches.length > 0 ? ['published_state_mismatch'] : []),
+          ...(candidateContractBlocked > 0 ? ['candidate_pre_publish_contract'] : []),
         ],
       },
       quality: {
@@ -777,6 +788,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       stale_generating: staleGenerating,
       failure_buckets: failureBuckets,
       failure_groups: queueFailureGroups,
+      candidate_contract_blocked_count: candidateContractBlocked,
       editorial_backlog_work: editorialBacklogWork,
       recent_attention: activeQueue.slice(0, 12),
       level: queueLevel,

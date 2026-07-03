@@ -375,14 +375,17 @@ async function runDailySummary(request: NextRequest) {
     publishable_candidate_count: publishabilityStats.publishableCount,
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
     next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
-      : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
-        ? 'quarantine_duplicates'
-        : publishabilityStats.publishableCount < dailyTarget * 2
-          ? 'refill_candidates'
-          : 'publish_ready',
+      : publishabilityStats.candidateContractBlocked > 0
+        ? 'repair_candidate_contract'
+        : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
+          ? 'quarantine_duplicates'
+          : publishabilityStats.publishableCount < dailyTarget * 2
+            ? 'refill_candidates'
+            : 'publish_ready',
   };
   const publishPreflight = evaluateBlogPublishPreflight({
     dailyTarget,
