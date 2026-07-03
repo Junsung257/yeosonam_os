@@ -213,7 +213,11 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
       ? row.meta as Record<string, unknown>
       : {};
     const reason = forcedReason ?? decision.reason ?? 'publisher_preflight';
-    const status = forcedReason ? 'failed' : decision.status;
+    const status = forcedReason === 'candidate_pre_publish_contract'
+      ? 'skipped'
+      : forcedReason
+        ? 'failed'
+        : decision.status;
     const { error: updateError } = await supabaseAdmin
       .from('blog_topic_queue')
       .update({
