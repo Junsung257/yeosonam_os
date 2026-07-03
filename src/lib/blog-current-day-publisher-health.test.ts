@@ -75,4 +75,32 @@ describe('evaluateCurrentDayPublisherHealth', () => {
     expect(health.status).toBe('healthy');
     expect(health.code).toBeNull();
   });
+
+  it('treats an earlier zero-publish run as recovered when the current-day target is already met', () => {
+    const health = evaluateCurrentDayPublisherHealth({
+      now: new Date('2026-07-03T05:30:00.000Z'),
+      currentDayPublishedCount: 4,
+      dailyTarget: 4,
+      cronHealth: {
+        last_status: 'error',
+        last_run_at: '2026-07-03T03:05:46.325+00:00',
+        last_error_count: 5,
+        last_summary: {
+          errors: ['publisher_zero_published_with_remaining_quota'],
+          published: 0,
+          dailyQuota: {
+            day: '2026-07-03',
+            target: 4,
+            remainingBeforeRun: 4,
+            remainingAfterRun: 4,
+          },
+        },
+      },
+    });
+
+    expect(health.status).toBe('healthy');
+    expect(health.code).toBeNull();
+    expect(health.evidence.current_day_published_count).toBe(4);
+    expect(health.detail).toContain('target has been met');
+  });
 });

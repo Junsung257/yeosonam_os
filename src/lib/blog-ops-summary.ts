@@ -343,6 +343,8 @@ export async function buildBlogOpsSummary(supabase: any) {
   const currentDayPublisherHealth = evaluateCurrentDayPublisherHealth({
     cronHealth: publisherCron,
     now,
+    currentDayPublishedCount: publishedToday,
+    dailyTarget,
   });
 
   const programmaticCounts = countBy(programmaticRows, (row) => row.status);

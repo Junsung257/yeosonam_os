@@ -8,6 +8,8 @@ export type BlogCurrentDayPublisherHealth = {
   detail: string;
   evidence: {
     current_day: string;
+    current_day_published_count: number | null;
+    daily_target: number | null;
     last_run_at: string | null;
     last_status: string | null;
     last_error_count: number;
@@ -57,6 +59,8 @@ function includesZeroPublishedSignal(summary: Record<string, unknown>, errors: s
 export function evaluateCurrentDayPublisherHealth(params: {
   cronHealth?: CronHealthLike | null;
   now?: Date;
+  currentDayPublishedCount?: number | null;
+  dailyTarget?: number | null;
 }): BlogCurrentDayPublisherHealth {
   const now = params.now ?? new Date();
   const currentDay = kstDayKey(now);
@@ -79,9 +83,13 @@ export function evaluateCurrentDayPublisherHealth(params: {
   const lastStatus = health?.last_status ?? null;
   const lastErrorCount = typeof health?.last_error_count === 'number' ? health.last_error_count : 0;
   const failureBreakdown = objectOrNull(summary.failure_breakdown);
+  const currentDayPublishedCount = numberOrNull(params.currentDayPublishedCount);
+  const dailyTarget = numberOrNull(params.dailyTarget);
 
   const evidence = {
     current_day: currentDay,
+    current_day_published_count: currentDayPublishedCount,
+    daily_target: dailyTarget,
     last_run_at: lastRunAt,
     last_status: lastStatus,
     last_error_count: lastErrorCount,
@@ -97,6 +105,20 @@ export function evaluateCurrentDayPublisherHealth(params: {
       status: 'healthy',
       code: null,
       detail: 'No current-day publisher failure has been observed.',
+      evidence,
+    };
+  }
+
+  if (
+    currentDayPublishedCount !== null
+    && dailyTarget !== null
+    && dailyTarget > 0
+    && currentDayPublishedCount >= dailyTarget
+  ) {
+    return {
+      status: 'healthy',
+      code: null,
+      detail: 'Current KST day publish target has been met after the observed publisher run.',
       evidence,
     };
   }
