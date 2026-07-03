@@ -159,6 +159,8 @@ IndexNow submissions must be duplicate-aware and provider-safe:
 - The runtime caches recently submitted update URLs for 10 minutes by default (`INDEXNOW_RECENT_TTL_MS`) so repeated publisher/worker runs do not burn provider quota on the same canonical URL.
 - `URL_DELETED` notifications bypass the recent-submit cache and must still be sent.
 - Batch submissions are split by `INDEXNOW_MAX_URLS_PER_REQUEST` and provider calls are spaced by `INDEXNOW_PROVIDER_MIN_INTERVAL_MS`.
+- If IndexNow responds with `Retry-After`, the worker must persist that evidence in `indexnow_retry_after_ms` and schedule the next durable outbox attempt no earlier than the provider's requested backoff.
+- When `INDEXNOW_KEY` is configured, a failed IndexNow provider submission must not be hidden behind a successful Google sitemap hint. The outbox job remains retryable until IndexNow succeeds, is cached from a recent successful attempt, or exhausts `max_attempts`.
 
 The durable blog outbox worker must not depend on legacy unauthenticated sitemap ping or WebSub calls for success. Those calls may exist only as explicit manual/backfill compatibility behavior, not as the normal `/blog` indexing success path.
 
@@ -265,7 +267,11 @@ Priority 3:
   - Helper: `src/lib/gsc-url-inspection-quota.ts`.
   - Cron integration: `src/app/api/cron/gsc-index-rank/route.ts`.
   - Test: `src/lib/gsc-url-inspection-quota.test.ts`.
-- Add IndexNow retry/cache/rate-limit behavior based on the external implementation pattern.
+- IndexNow retry/cache/rate-limit behavior was hardened on 2026-07-04:
+  - Runtime cache and provider spacing: `src/lib/indexing.ts`.
+  - Provider `Retry-After` propagation: `src/lib/indexing.ts`.
+  - Durable retry scheduling: `src/lib/blog-indexing-worker.ts`.
+  - Tests: `src/lib/indexing.test.ts`, `src/lib/blog-indexing-worker.test.ts`.
 - A dashboard card for publish health versus indexing health was added on 2026-07-04:
   - UI: `src/app/admin/blog/system/page.tsx`.
   - Contract test: `src/app/admin/blog/blog-admin-ops-ui-contract.test.ts`.

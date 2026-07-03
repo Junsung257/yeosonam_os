@@ -30,6 +30,7 @@ export interface IndexingReport {
   google_error?: string;
   indexnow: 'success' | 'failed' | 'skipped';
   indexnow_error?: string;
+  indexnow_retry_after_ms?: number;
   sitemap_pings: { provider: string; ok: boolean }[];
   duration_ms: number;
 }
@@ -140,6 +141,32 @@ async function postIndexNowPayload(provider: string, endpoint: string, payload: 
   });
 }
 
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds * 1000);
+  }
+
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, retryAt - Date.now());
+}
+
+function maxRetryAfterMs(current: number | undefined, response: Response): number | undefined {
+  const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+  if (retryAfterMs === undefined) return current;
+  return Math.max(current ?? 0, retryAfterMs);
+}
+
+function indexNowHttpError(provider: string, response: Response): string {
+  const retryAfterMs = parseRetryAfterMs(response.headers.get('retry-after'));
+  return retryAfterMs === undefined
+    ? `${provider} HTTP ${response.status}`
+    : `${provider} HTTP ${response.status} retry_after_ms=${retryAfterMs}`;
+}
+
 export function clearIndexNowRuntimeStateForTests(): void {
   recentIndexNowSubmissions.clear();
   indexNowProviderNextAllowedAt.clear();
@@ -245,7 +272,8 @@ export async function notifyIndexing(
         report.indexnow = globalRes.status === 200 || globalRes.status === 202 ? 'success' : 'failed';
         report.sitemap_pings.push({ provider: 'global_indexnow', ok: report.indexnow === 'success' });
         if (report.indexnow !== 'success') {
-          report.indexnow_error = `global HTTP ${globalRes.status}`;
+          report.indexnow_retry_after_ms = maxRetryAfterMs(report.indexnow_retry_after_ms, globalRes);
+          report.indexnow_error = indexNowHttpError('global', globalRes);
         }
       } catch (err) {
         report.indexnow_error = err instanceof Error ? err.message : String(err);
@@ -264,9 +292,11 @@ export async function notifyIndexing(
         report.sitemap_pings.push({ provider: 'naver_indexnow', ok: naverOk });
         if (!naverOk) {
           // naver 실패는 별도 로그만 (Bing/Yandex 경로는 이미 성공했을 수 있음)
+          report.indexnow_retry_after_ms = maxRetryAfterMs(report.indexnow_retry_after_ms, naverRes);
+          const naverError = indexNowHttpError('naver', naverRes);
           report.indexnow_error = report.indexnow_error
-            ? `${report.indexnow_error}; naver HTTP ${naverRes.status}`
-            : `naver HTTP ${naverRes.status}`;
+            ? `${report.indexnow_error}; ${naverError}`
+            : naverError;
           if (report.indexnow === 'success') {
             // 글로벌은 성공했으니 naver 실패는 부차 정보로만 남김
           }
@@ -363,6 +393,7 @@ export async function notifyIndexingBatch(
   const indexnowPings: { provider: string; ok: boolean }[] = [];
   let submittedIndexNowUrls = new Set<string>();
   let cachedIndexNowUrls = new Set<string>();
+  let indexnowRetryAfterMs: number | undefined;
   if (indexNowKey) {
     const { submitUrls, cachedUrls } = splitIndexNowUrlsByCache(urls, type);
     submittedIndexNowUrls = new Set(submitUrls);
@@ -387,9 +418,11 @@ export async function notifyIndexingBatch(
           indexnowOk = indexnowOk || globalOk;
           indexnowPings.push({ provider: 'global_indexnow', ok: globalOk });
           if (!globalOk) {
+            indexnowRetryAfterMs = maxRetryAfterMs(indexnowRetryAfterMs, globalRes);
+            const globalError = indexNowHttpError('global', globalRes);
             indexnowError = indexnowError
-              ? `${indexnowError}; global HTTP ${globalRes.status}`
-              : `global HTTP ${globalRes.status}`;
+              ? `${indexnowError}; ${globalError}`
+              : globalError;
           }
         } catch (err) {
           const globalErr = err instanceof Error ? err.message : String(err);
@@ -403,9 +436,11 @@ export async function notifyIndexingBatch(
           naverAnyOk = naverAnyOk || naverOk;
           indexnowPings.push({ provider: 'naver_indexnow', ok: naverOk });
           if (!naverOk) {
+            indexnowRetryAfterMs = maxRetryAfterMs(indexnowRetryAfterMs, naverRes);
+            const naverError = indexNowHttpError('naver', naverRes);
             indexnowError = indexnowError
-              ? `${indexnowError}; naver HTTP ${naverRes.status}`
-              : `naver HTTP ${naverRes.status}`;
+              ? `${indexnowError}; ${naverError}`
+              : naverError;
           }
         } catch (err) {
           const naverErr = err instanceof Error ? err.message : String(err);
@@ -440,6 +475,9 @@ export async function notifyIndexingBatch(
     indexnow_error: cachedIndexNowUrls.has(url) && !submittedIndexNowUrls.has(url)
       ? 'recent_indexnow_submission_cached'
       : indexnowError,
+    indexnow_retry_after_ms: cachedIndexNowUrls.has(url) && !submittedIndexNowUrls.has(url)
+      ? undefined
+      : indexnowRetryAfterMs,
     sitemap_pings: [{ provider: 'google_search_console_sitemap', ok: googleSitemap.ok }, ...indexnowPings],
     duration_ms: durationMs,
   }));
