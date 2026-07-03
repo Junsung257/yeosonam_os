@@ -42,7 +42,7 @@ export type BlogDestinationlessInfoWorkReport = {
 
 const GENERIC_INFO_CATEGORY_RE = /^(?:travel_tips|visa_info|preparation|local_info)$/i;
 const GENERIC_INFO_TOPIC_RE =
-  /(?:로밍|유심|eSIM|USIM|보험|비자|입국|항공권|비행시간|공항\s*혼잡|비상약|상비약|환전|트래블월렛|travelwallet|비용\s*절약|경비\s*절약|배낭여행|여행\s*준비|여행지\s*추천|휴양지\s*추천|가족\s*(?:여행지|해외여행)|아이와\s*가기|해외여행\s*(?:전화|데이터|보험|준비|체크|비자|항공권|비행시간|환전|상비약|비상약)|광복절\s*연휴|황금연휴|여름\s*(?:휴가철|방학|항공권|공항))/i;
+  /(?:roaming|insurance|coverage|로밍|유심|eSIM|USIM|보험|비자|입국|항공권|비행시간|공항\s*혼잡|비상약|상비약|환전|트래블월렛|travelwallet|비용\s*절약|경비\s*절약|배낭여행|여행\s*준비|여행지\s*추천|휴양지\s*추천|가족\s*(?:여행지|해외여행)|아이와\s*가기|해외여행\s*(?:전화|데이터|보험|준비|체크|비자|항공권|비행시간|환전|상비약|비상약)|광복절\s*연휴|황금연휴|여름\s*(?:휴가철|방학|항공권|공항))/i;
 const MULTI_DESTINATION_COMPARISON_RE =
   /(?:\bvs\b|비교).*(?:도쿄|홍콩|오사카|방콕|싱가포르|오키나와|몽골|발리|괌|사이판|유럽|동남아)|(?:도쿄|홍콩|오사카|방콕|싱가포르|오키나와|몽골|발리|괌|사이판|유럽|동남아).*(?:\bvs\b|비교)/i;
 const INVALID_INFO_DESTINATIONS = new Set([
@@ -115,6 +115,7 @@ export function hasIntentionallyGenericInfoFlag(row: BlogDestinationlessInfoRow)
 export function looksLikeGenericInfoTopic(row: BlogDestinationlessInfoRow): boolean {
   const contentBrief = readContentBrief(row);
   const text = [
+    row.slug,
     row.topic,
     row.title,
     row.seo_title,
