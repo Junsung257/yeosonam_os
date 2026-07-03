@@ -59,6 +59,12 @@ interface BlogOpsSummary {
     active_jobs: number;
     recent_failures: number;
     failure_buckets?: Record<string, number>;
+    outbox_coverage?: {
+      checked_count?: number;
+      covered_count?: number;
+      missing_count?: number;
+      coverage_rate?: number;
+    };
     google_unknown_urls?: number;
     google_indexed_reports?: number;
     inspected_reports?: number;
@@ -189,6 +195,35 @@ function topBuckets(buckets: Record<string, number> | undefined | null, limit = 
 
 function cronCopy(name: string) {
   return CORE_CRON_COPY[name] || { label: name, description: '블로그 자동화 작업입니다.' };
+}
+
+function indexingBridgeLevel(ops: BlogOpsSummary): OpsLevel {
+  const publishBlocked = ops.publish.remaining_today > 0 && ops.health_sections?.publish?.level === 'risk';
+  const missingOutbox = Number(ops.indexing.outbox_coverage?.missing_count || 0) > 0;
+  const providerIssue = ops.indexing.recent_failures > 0 || Number(ops.indexing.google_unknown_urls || 0) > 0;
+  if (publishBlocked || missingOutbox || providerIssue) return 'risk';
+  if (ops.indexing.active_jobs > 0 || ops.publish.remaining_today > 0) return 'watch';
+  return 'healthy';
+}
+
+function indexingBridgeMessage(ops: BlogOpsSummary): string {
+  const missing = Number(ops.indexing.outbox_coverage?.missing_count || 0);
+  if (ops.publish.remaining_today > 0 && ops.health_sections?.publish?.level === 'risk') {
+    return '발행 목표가 먼저 막혀 있어 색인 단계로 넘어갈 새 글이 부족합니다.';
+  }
+  if (missing > 0) {
+    return `최근 공개 글 ${missing}개가 색인 작업과 연결되지 않았습니다.`;
+  }
+  if (ops.indexing.recent_failures > 0) {
+    return `색인 제공자 응답 실패 ${ops.indexing.recent_failures}건을 확인해야 합니다.`;
+  }
+  if (Number(ops.indexing.google_unknown_urls || 0) > 0) {
+    return `Google 미인지 URL ${ops.indexing.google_unknown_urls}건은 노출 문제로 분리해서 봐야 합니다.`;
+  }
+  if (ops.indexing.active_jobs > 0) {
+    return `발행 후 색인 대기 작업 ${ops.indexing.active_jobs}건이 처리 중입니다.`;
+  }
+  return '발행된 글이 색인 outbox와 정상 연결되어 있습니다.';
 }
 
 function humanizeCronError(error: string) {
@@ -388,6 +423,53 @@ export default function BlogSystemPage() {
               );
             })}
           </div>
+        </section>
+      ) : null}
+
+      {ops ? (
+        <section className="admin-card p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-admin-h3 text-admin-text">발행·색인 연결</h2>
+              <p className="mt-1 text-admin-xs text-admin-muted">글 발행 성공과 검색 반영 준비 상태를 한 번에 비교합니다.</p>
+            </div>
+            <span className={`w-fit rounded-admin-xs px-2 py-1 text-admin-2xs font-semibold ${sectionBadgeClass(indexingBridgeLevel(ops))}`}>
+              {indexingBridgeLevel(ops)}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Published</p>
+              <p className="mt-1 text-admin-h2 font-bold text-admin-text admin-num">{ops.publish.published_today}/{ops.publish.daily_target}</p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">오늘 목표 기준</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Outbox</p>
+              <p className={`mt-1 text-admin-h2 font-bold admin-num ${(ops.indexing.outbox_coverage?.missing_count || 0) > 0 ? 'text-danger' : 'text-success'}`}>
+                {ops.indexing.outbox_coverage?.coverage_rate ?? 0}%
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">
+                누락 {ops.indexing.outbox_coverage?.missing_count || 0} / 확인 {ops.indexing.outbox_coverage?.checked_count || 0}
+              </p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Provider</p>
+              <p className={`mt-1 text-admin-h2 font-bold admin-num ${ops.indexing.recent_failures > 0 ? 'text-danger' : 'text-success'}`}>
+                {ops.indexing.recent_failures}
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">최근 색인 요청 실패</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Google</p>
+              <p className={`mt-1 text-admin-h2 font-bold admin-num ${(ops.indexing.google_unknown_urls || 0) > 0 ? 'text-warning' : 'text-success'}`}>
+                {ops.indexing.google_unknown_urls || 0}
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">미인지 URL 표본</p>
+            </div>
+          </div>
+          <p className={`mt-3 text-admin-xs font-semibold ${sectionTone(indexingBridgeLevel(ops))}`}>
+            {indexingBridgeMessage(ops)}
+          </p>
         </section>
       ) : null}
 
