@@ -125,6 +125,22 @@ describe('notifyIndexingBatch', () => {
     ]);
   });
 
+  it('keeps IndexNow Retry-After evidence when providers rate-limit a batch', async () => {
+    global.fetch = vi.fn(async () => new Response(null, {
+      status: 429,
+      headers: { 'Retry-After': '120' },
+    }));
+
+    const reports = await notifyIndexingBatch(
+      ['https://www.yeosonam.com/blog/rate-limited'],
+      'https://www.yeosonam.com',
+    );
+
+    expect(reports[0]?.indexnow).toBe('failed');
+    expect(reports[0]?.indexnow_error).toContain('retry_after_ms=120000');
+    expect(reports[0]?.indexnow_retry_after_ms).toBe(120000);
+  });
+
   it('does not call external services for an empty batch', async () => {
     const reports = await notifyIndexingBatch([], 'https://www.yeosonam.com');
 

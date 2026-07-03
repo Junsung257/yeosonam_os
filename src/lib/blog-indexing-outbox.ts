@@ -124,8 +124,17 @@ export async function enqueueBlogIndexingJob(
 }
 
 export function isIndexingReportSuccessful(report: IndexingReport): boolean {
-  if (report.google === 'success' || report.indexnow === 'success') return true;
-  return report.sitemap_pings.some((ping) => ping.ok);
+  const hasAnySuccessfulPath =
+    report.google === 'success' ||
+    report.indexnow === 'success' ||
+    report.sitemap_pings.some((ping) => ping.ok);
+
+  if (!hasAnySuccessfulPath) return false;
+
+  // If IndexNow is configured and was attempted, do not hide that provider failure
+  // behind a successful sitemap hint. The worker should retry so Naver/Bing-style
+  // channels get another chance with the provider's backoff signal.
+  return report.indexnow !== 'failed';
 }
 
 export async function persistBlogIndexingReport(

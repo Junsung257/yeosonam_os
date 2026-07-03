@@ -47,6 +47,13 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+class BlogIndexingProviderError extends Error {
+  constructor(message: string, readonly retryAfterMs?: number) {
+    super(message);
+    this.name = 'BlogIndexingProviderError';
+  }
+}
+
 function isPublicIndexingOrigin(value: string | undefined): value is string {
   if (!value) return false;
   try {
@@ -179,7 +186,12 @@ export async function processDueBlogIndexingJobs(options: {
       await persistBlogIndexingReport(job, report);
 
       if (!isIndexingReportSuccessful(report)) {
-        throw new Error(`indexing providers failed: google=${report.google}; indexnow=${report.indexnow}`);
+        const retryAfter = report.indexnow_retry_after_ms;
+        const retrySuffix = retryAfter ? `; retry_after_ms=${retryAfter}` : '';
+        throw new BlogIndexingProviderError(
+          `indexing providers failed: google=${report.google}; indexnow=${report.indexnow}${retrySuffix}`,
+          retryAfter,
+        );
       }
 
       await supabaseAdmin
@@ -199,7 +211,9 @@ export async function processDueBlogIndexingJobs(options: {
     } catch (err) {
       const message = errorMessage(err).slice(0, 1000);
       const exhausted = attempt >= (job.max_attempts ?? 6);
-      const nextAttemptAt = new Date(Date.now() + retryDelayMs(attempt)).toISOString();
+      const providerRetryAfterMs = err instanceof BlogIndexingProviderError ? err.retryAfterMs : undefined;
+      const nextDelayMs = Math.max(retryDelayMs(attempt), providerRetryAfterMs ?? 0);
+      const nextAttemptAt = new Date(Date.now() + nextDelayMs).toISOString();
 
       const { error: updateError } = await supabaseAdmin
         .from(TABLE)
