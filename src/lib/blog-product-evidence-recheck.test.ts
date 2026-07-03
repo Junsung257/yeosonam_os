@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildBlogProductEvidenceArchivedProductDecision,
   buildBlogProductEvidenceDuplicateMeta,
   buildBlogProductEvidenceRecheckDecision,
   buildBlogProductEvidenceRecheckGuidance,
@@ -90,14 +91,42 @@ describe('blog product evidence recheck', () => {
     expect(meta).not.toHaveProperty('requeued_at');
   });
 
+  it('skips archived product rows without restoring product blockers', () => {
+    const decision = buildBlogProductEvidenceArchivedProductDecision({
+      checkedAt: '2026-07-01T00:00:00.000Z',
+      productStatus: 'archived',
+      meta: {
+        failure_code: 'product_open_contract',
+        quarantine_reason: 'product_open_contract',
+        product_open_contract_blockers: ['mobile_proof:stale'],
+      },
+    });
+
+    expect(decision).toMatchObject({
+      action: 'skip_archived_product',
+      last_error: 'product_open_contract_recheck_archived_product',
+      meta: {
+        archived_product_recheck: true,
+        quarantine_reason: 'archived_product',
+        self_heal_blocked: true,
+        product_open_contract_recheck_result: 'archived_product',
+        product_status: 'archived',
+      },
+    });
+    expect(decision.meta).not.toHaveProperty('failure_code');
+    expect(decision.meta).not.toHaveProperty('product_open_contract_blockers');
+    expect(decision.meta).not.toHaveProperty('requeued_by');
+  });
+
   it('recommends writes only for recovered or duplicate product rows', () => {
     expect(buildBlogProductEvidenceRecheckGuidance({
       requeue: 1,
       duplicateSkipped: 2,
+      archivedSkipped: 1,
       keepBlocked: 3,
     })).toEqual({
       write_recommended: true,
-      write_reasons: ['requeue_recovered_product_rows', 'skip_duplicate_product_rows'],
+      write_reasons: ['requeue_recovered_product_rows', 'skip_duplicate_product_rows', 'skip_archived_product_rows'],
       metadata_refresh_available: true,
     });
 

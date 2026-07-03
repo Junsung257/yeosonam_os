@@ -4,7 +4,9 @@ import './load-script-env';
 
 import { supabaseAdmin } from '../src/lib/supabase';
 import { loadCustomerOpenContractForPackage } from '../src/lib/product-registration/customer-open-contract';
+import { isRetiredBlogProductStatus } from '../src/lib/blog-product-status';
 import {
+  buildBlogProductEvidenceArchivedProductDecision,
   buildBlogProductEvidenceDuplicateMeta,
   buildBlogProductEvidenceRecheckDecision,
   buildBlogProductEvidenceRecheckGuidance,
@@ -29,6 +31,11 @@ type ActiveProductQueueRow = {
   id: string;
   product_id: string | null;
   meta: unknown;
+};
+
+type ProductStatusRow = {
+  id: string;
+  status: string | null;
 };
 
 function argValue(name: string): string | null {
@@ -96,6 +103,28 @@ async function loadActiveProductDedupKeys(): Promise<Map<string, string>> {
   return keys;
 }
 
+async function loadProductStatuses(rows: QueueRow[]): Promise<Map<string, string | null>> {
+  const ids = Array.from(new Set(
+    rows
+      .map(row => row.product_id)
+      .filter((id): id is string => Boolean(id)),
+  ));
+  const statuses = new Map<string, string | null>();
+  for (let from = 0; from < ids.length; from += 200) {
+    const chunk = ids.slice(from, from + 200);
+    if (chunk.length === 0) break;
+    const { data, error } = await supabaseAdmin
+      .from('travel_packages')
+      .select('id,status')
+      .in('id', chunk);
+    if (error) throw new Error(error.message);
+    for (const product of (data ?? []) as ProductStatusRow[]) {
+      statuses.set(product.id, product.status ?? null);
+    }
+  }
+  return statuses;
+}
+
 async function main() {
   const write = hasFlag('--write');
   const json = hasFlag('--json');
@@ -103,21 +132,33 @@ async function main() {
   const now = new Date().toISOString();
   const rows = await loadRows(limit);
   const activeProductDedupKeys = await loadActiveProductDedupKeys();
+  const productStatuses = await loadProductStatuses(rows);
   const results: Array<Record<string, unknown>> = [];
   let requeue = 0;
   let duplicateSkipped = 0;
+  let archivedSkipped = 0;
   let keepBlocked = 0;
   let updated = 0;
   const requeuedProductKeys = new Map<string, string>();
 
   for (const row of rows) {
-    const contract = await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id as string);
-    const decision = buildBlogProductEvidenceRecheckDecision({
-      meta: row.meta,
-      contractOk: contract.ok,
-      blockers: contract.blockers,
-      checkedAt: now,
-    });
+    const productStatus = row.product_id ? productStatuses.get(row.product_id) ?? null : null;
+    const retiredProduct = isRetiredBlogProductStatus(productStatus);
+    const contract = retiredProduct
+      ? { ok: false, blockers: ['archived_product'] }
+      : await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id as string);
+    const decision = retiredProduct
+      ? buildBlogProductEvidenceArchivedProductDecision({
+          meta: row.meta,
+          checkedAt: now,
+          productStatus,
+        })
+      : buildBlogProductEvidenceRecheckDecision({
+          meta: row.meta,
+          contractOk: contract.ok,
+          blockers: contract.blockers,
+          checkedAt: now,
+        });
 
     const result: Record<string, unknown> = {
       queue_id: row.id,
@@ -125,6 +166,7 @@ async function main() {
       topic: row.topic,
       destination: row.destination,
       before_status: row.status,
+      product_status: productStatus,
       action: decision.action,
       blockers: contract.blockers,
     };
@@ -189,6 +231,27 @@ async function main() {
           result.after_status = 'queued';
         }
       }
+    } else if (decision.action === 'skip_archived_product') {
+      archivedSkipped += 1;
+      if (write) {
+        const { error } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'skipped',
+            attempts: Math.max(Number(row.attempts ?? 0), 2),
+            last_error: decision.last_error,
+            updated_at: now,
+            meta: decision.meta,
+          } as never)
+          .eq('id', row.id)
+          .eq('status', 'failed');
+        if (error) {
+          result.update_error = error.message;
+        } else {
+          updated += 1;
+          result.after_status = 'skipped';
+        }
+      }
     } else {
       keepBlocked += 1;
       if (write) {
@@ -211,6 +274,7 @@ async function main() {
   const guidance = buildBlogProductEvidenceRecheckGuidance({
     requeue,
     duplicateSkipped,
+    archivedSkipped,
     keepBlocked,
   });
   const report = {
@@ -219,6 +283,7 @@ async function main() {
     scanned: rows.length,
     requeue,
     duplicate_skipped: duplicateSkipped,
+    archived_skipped: archivedSkipped,
     keep_blocked: keepBlocked,
     updated,
     ...guidance,
@@ -227,7 +292,7 @@ async function main() {
 
   if (json) console.log(JSON.stringify(report, null, 2));
   else {
-    console.log(`[blog-product-evidence-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} keep_blocked=${keepBlocked} updated=${updated} write_recommended=${guidance.write_recommended}`);
+    console.log(`[blog-product-evidence-recheck] mode=${report.mode} scanned=${report.scanned} requeue=${requeue} duplicate_skipped=${duplicateSkipped} archived_skipped=${archivedSkipped} keep_blocked=${keepBlocked} updated=${updated} write_recommended=${guidance.write_recommended}`);
     if (guidance.write_reasons.length > 0) {
       console.log(`write_reasons=${guidance.write_reasons.join(',')}`);
     }

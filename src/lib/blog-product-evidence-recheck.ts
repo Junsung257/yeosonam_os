@@ -5,6 +5,11 @@ export type BlogProductEvidenceRecheckDecision =
       meta: Record<string, unknown>;
     }
   | {
+      action: 'skip_archived_product';
+      last_error: string;
+      meta: Record<string, unknown>;
+    }
+  | {
       action: 'keep_blocked';
       last_error: string;
       meta: Record<string, unknown>;
@@ -78,15 +83,38 @@ export function buildBlogProductEvidenceDuplicateMeta(input: {
 export function buildBlogProductEvidenceRecheckGuidance(input: {
   requeue: number;
   duplicateSkipped: number;
+  archivedSkipped?: number;
   keepBlocked: number;
 }): BlogProductEvidenceRecheckGuidance {
   const writeReasons: string[] = [];
   if (input.requeue > 0) writeReasons.push('requeue_recovered_product_rows');
   if (input.duplicateSkipped > 0) writeReasons.push('skip_duplicate_product_rows');
+  if (Number(input.archivedSkipped ?? 0) > 0) writeReasons.push('skip_archived_product_rows');
   return {
     write_recommended: writeReasons.length > 0,
     write_reasons: writeReasons,
     metadata_refresh_available: input.keepBlocked > 0,
+  };
+}
+
+export function buildBlogProductEvidenceArchivedProductDecision(input: {
+  meta?: unknown;
+  checkedAt?: string;
+  productStatus?: string | null;
+}): BlogProductEvidenceRecheckDecision {
+  const checkedAt = input.checkedAt ?? new Date().toISOString();
+  return {
+    action: 'skip_archived_product',
+    last_error: 'product_open_contract_recheck_archived_product',
+    meta: {
+      ...clearProductOpenContractBlock(asRecord(input.meta), checkedAt),
+      archived_product_recheck: true,
+      archived_product_recheck_at: checkedAt,
+      quarantine_reason: 'archived_product',
+      self_heal_blocked: true,
+      product_open_contract_recheck_result: 'archived_product',
+      ...(input.productStatus ? { product_status: input.productStatus } : {}),
+    },
   };
 }
 

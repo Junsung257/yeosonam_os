@@ -1,3 +1,5 @@
+import { isRetiredBlogProductStatus } from './blog-product-status';
+
 export interface BlogProductEvidenceQueueRow {
   id?: string | null;
   status?: string | null;
@@ -78,6 +80,7 @@ export function extractProductOpenContractBlockers(row: BlogProductEvidenceQueue
 
 export function categorizeProductEvidenceBlocker(blocker: string): string {
   const lower = blocker.toLowerCase();
+  if (lower.includes('archived_product') || lower.includes('retired_product')) return 'archived_product';
   if (lower.includes('mobile_proof')) return 'mobile_proof';
   if (lower.includes('quality_scorecard')) return 'quality_scorecard';
   if (lower.includes('registration_evidence_pack') || lower.includes('blog_publish')) return 'evidence_pack';
@@ -88,6 +91,7 @@ export function categorizeProductEvidenceBlocker(blocker: string): string {
 }
 
 function actionForCategories(categories: string[]): string {
+  if (categories.includes('archived_product')) return 'skip_archived_product_candidate';
   if (categories.includes('package_lookup')) return '상품 ID 연결 또는 상품 상태를 먼저 복구';
   if (categories.includes('mobile_proof')) return '모바일 공개 화면 증빙을 새로 생성하고 customer_open_contract 재평가';
   if (categories.includes('v3_customer_payload')) return 'V3 고객 안내문/원문 누수 차단 사유를 수정';
@@ -114,16 +118,18 @@ export function buildBlogProductEvidenceWorkReport(input: {
       /product_customer_open_contract_failed|customer_open_contract|mobile_proof|registration_evidence_pack|blog_publish/i.test(row.last_error ?? '');
     if (!isProductOpenContract) continue;
 
-    const categories = unique(
-      (blockers.length > 0 ? blockers : ['product_open_contract'])
-        .map(categorizeProductEvidenceBlocker),
-    );
+    const productId = row.product_id ?? null;
+    const product = productId ? input.productsById?.get(productId) : undefined;
+    const categories = isRetiredBlogProductStatus(product?.status)
+      ? ['archived_product']
+      : unique(
+          (blockers.length > 0 ? blockers : ['product_open_contract'])
+            .map(categorizeProductEvidenceBlocker),
+        );
     for (const category of categories) {
       categoryCounts[category] = (categoryCounts[category] ?? 0) + 1;
     }
 
-    const productId = row.product_id ?? null;
-    const product = productId ? input.productsById?.get(productId) : undefined;
     items.push({
       queue_id: row.id ?? null,
       product_id: productId,
