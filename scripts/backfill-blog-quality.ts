@@ -809,6 +809,7 @@ function inferredDestinationForCustomer(row: BlogRow): string | null {
   const explicit = usableDestinationKeyword(row.destination)
     || usableDestinationKeyword(extractDestination(row.seo_title || row.slug || ''));
   if (explicit) return explicit;
+  if (looksLikeGenericInfoRow(row)) return null;
 
   for (const [pattern, destination] of ROMANIZED_DESTINATION_HINTS) {
     if (pattern.test(titleAndSlug)) return destination;
@@ -1262,12 +1263,59 @@ function cleanTravelKeyword(value: string | null | undefined): string | null {
   return cleaned;
 }
 
+const INVALID_BACKFILL_DESTINATION_KEYWORDS = new Set([
+  '가족',
+  '대학생',
+  '아이',
+  '여행',
+  '여행 준비',
+  '해외여행',
+  '여름',
+  '여름방학',
+  '황금연휴',
+  '봄',
+  '가을',
+  '겨울',
+  '1월',
+  '2월',
+  '3월',
+  '4월',
+  '5월',
+  '6월',
+  '7월',
+  '8월',
+  '9월',
+  '10월',
+  '11월',
+  '12월',
+]);
+
+function hasInvalidBackfillDestinationKeyword(value: string | null | undefined): boolean {
+  const cleaned = cleanTravelKeyword(value);
+  return Boolean(cleaned && INVALID_BACKFILL_DESTINATION_KEYWORDS.has(cleaned));
+}
+
 function usableDestinationKeyword(value: string | null | undefined): string | null {
   const cleaned = cleanTravelKeyword(value);
   if (!cleaned) return null;
+  if (INVALID_BACKFILL_DESTINATION_KEYWORDS.has(cleaned)) return null;
   if (/^(?:여행|여행 준비|여행지|현지|국내|해외|travel)$/i.test(cleaned)) return null;
   if (/^(?:[1-9]|1[0-2])월(?:\s|$)/.test(cleaned)) return null;
   return cleaned;
+}
+
+function looksLikeGenericInfoRow(row: BlogRow, primaryKeyword?: string | null): boolean {
+  if (row.product_id) return false;
+  const text = [
+    row.slug,
+    row.seo_title,
+    row.destination,
+    primaryKeyword,
+    keywordFromStoredMeta(row),
+    row.generation_meta?.content_brief,
+    row.target_ad_keywords?.join(' '),
+  ].filter(Boolean).map(String).join(' ');
+  return /(?:\bvs\b|비교|roaming|insurance|coverage|로밍|유심|eSIM|USIM|보험|비자|입국|항공권|비행시간|공항\s*혼잡|비상약|상비약|환전|트래블월렛|travelwallet|비용\s*절약|경비\s*절약|배낭여행|여행\s*준비|여행지\s*추천|휴양지\s*추천|가족\s*(?:여행지|해외여행)|아이와\s*가기|해외여행\s*(?:전화|데이터|보험|준비|체크|비자|항공권|비행시간|환전|상비약|비상약)|광복절\s*연휴|황금연휴|여름\s*(?:휴가철|방학|항공권|공항))/i.test(text);
 }
 
 function primaryKeywordForCustomer(row: BlogRow): string {
@@ -1945,9 +1993,21 @@ function hardSplitLongParagraphs(markdown: string): string {
     .replace(/\n{3,}/g, '\n\n');
 }
 
+function splitStableTailSections(markdown: string): { body: string; tail: string } | null {
+  const marker = markdown.search(/\n#{2,3}\s*함께\s*확인할\s*세부\s*키워드\b/m);
+  if (marker < 0) return null;
+  return {
+    body: markdown.slice(0, marker).trimEnd(),
+    tail: markdown.slice(marker),
+  };
+}
+
 function finalKeywordDensityRepair(markdown: string, primaryKeyword: string, blogType: 'product' | 'info'): string {
-  const first = repairKeywordDensityToTarget(markdown, primaryKeyword, blogType);
-  return first.changed ? first.blogHtml : softenKeywordDensityCustomer(markdown, primaryKeyword, blogType);
+  const stable = splitStableTailSections(markdown);
+  const target = stable?.body ?? markdown;
+  const first = repairKeywordDensityToTarget(target, primaryKeyword, blogType);
+  const repaired = first.changed ? first.blogHtml : softenKeywordDensityCustomer(target, primaryKeyword, blogType);
+  return stable ? `${repaired.trimEnd()}${stable.tail}` : repaired;
 }
 
 function ensurePrimaryKeywordEvidence(markdown: string, primaryKeyword: string): string {
@@ -2577,6 +2637,7 @@ async function main() {
   const auditRows: AuditRow[] = [];
   const changedSlugs: string[] = [];
   const seenSeoDescriptions = new Map<string, number>();
+  const checkedAt = new Date().toISOString();
   let indexingQueued = 0;
 
   for (const row of rows) {
@@ -2591,6 +2652,8 @@ async function main() {
       || inferredDestination
       || usableDestinationKeyword(extractDestination(row.seo_title || row.slug || ''));
     const normalizedDestinationForWrite = usableDestinationKeyword(destination) || inferredDestination;
+    const genericInfoWithoutDestination = !row.product_id && !normalizedDestinationForWrite && looksLikeGenericInfoRow(row, primaryKeyword);
+    const shouldClearInvalidDestination = genericInfoWithoutDestination && hasInvalidBackfillDestinationKeyword(row.destination);
     const productId = typeof row.product_id === 'string' && row.product_id.trim() ? row.product_id : null;
     const contentType = row.content_type || (productId ? 'package_intro' : 'guide');
     const blogType = productId ? 'product' : 'info';
@@ -2786,6 +2849,32 @@ async function main() {
         contentType,
         secondaryKeywords,
       });
+      if (genericInfoWithoutDestination) {
+        nextGenerationMeta = {
+          ...nextGenerationMeta,
+          intentionally_generic: true,
+          generic_info_candidate: true,
+          generic_info_marked_at: typeof nextGenerationMeta.generic_info_marked_at === 'string'
+            ? nextGenerationMeta.generic_info_marked_at
+            : checkedAt,
+          generic_info_marked_by: typeof nextGenerationMeta.generic_info_marked_by === 'string'
+            ? nextGenerationMeta.generic_info_marked_by
+            : 'blog-quality-backfill',
+          ...(shouldClearInvalidDestination
+            ? {
+                destination_cleared_at: typeof nextGenerationMeta.destination_cleared_at === 'string'
+                  ? nextGenerationMeta.destination_cleared_at
+                  : checkedAt,
+                destination_cleared_by: typeof nextGenerationMeta.destination_cleared_by === 'string'
+                  ? nextGenerationMeta.destination_cleared_by
+                  : 'blog-quality-backfill',
+                previous_destination: typeof nextGenerationMeta.previous_destination === 'string'
+                  ? nextGenerationMeta.previous_destination
+                  : row.destination,
+              }
+            : {}),
+        };
+      }
     }
     let nextHtml = repairMarkdownTables(removeLoneHashHeadings(ensureMinimumInlineImagesFromOg(structureRepair.blogHtml, destination, slug, nextOg)));
     if (productId) {
@@ -2813,10 +2902,7 @@ async function main() {
         };
       }
     }
-    const densityRepair = repairKeywordDensityToTarget(nextHtml, primaryKeyword, blogType);
-    if (densityRepair.changed) {
-      nextHtml = densityRepair.blogHtml;
-    }
+    nextHtml = finalKeywordDensityRepair(nextHtml, primaryKeyword, blogType);
     nextHtml = ensureSingleMarkdownH1(ensureStandaloneH1(nextHtml, normalizedTitle));
     const customerBlocksHtml = ensureCustomerFaq(ensureCustomerSummary(splitLongParagraphs(nextHtml), primaryKeyword), primaryKeyword);
     nextHtml = finalCustomerVisibleRepair(
@@ -2847,7 +2933,7 @@ async function main() {
       title: normalizedTitle,
       slug,
       primaryKeyword,
-      destination: normalizedDestinationForWrite || primaryKeyword,
+      destination: normalizedDestinationForWrite,
       category: normalizedTitle,
       contentType,
       productId,
@@ -2861,7 +2947,7 @@ async function main() {
       title: normalizedTitle,
       slug,
       primaryKeyword,
-      destination: normalizedDestinationForWrite || primaryKeyword,
+      destination: normalizedDestinationForWrite,
       category: normalizedTitle,
       contentType,
       productId,
@@ -2881,7 +2967,7 @@ async function main() {
       slug,
       seo_title: normalizedTitle,
       seo_description: normalizedDescription,
-      destination: normalizedDestinationForWrite || destination,
+      destination: normalizedDestinationForWrite,
       angle_type: null,
       primary_keyword: primaryKeyword,
       secondary_keywords: secondaryKeywords,
@@ -2896,7 +2982,8 @@ async function main() {
     const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
     const metaChanged = stableJson(nextGenerationMeta) !== stableJson(row.generation_meta ?? {});
     const targetKeywordsChanged = stableJson(nextTargetAdKeywords ?? []) !== stableJson(row.target_ad_keywords ?? []);
-    const destinationChanged = Boolean(normalizedDestinationForWrite && normalizedDestinationForWrite !== row.destination);
+    const destinationChanged = shouldClearInvalidDestination ||
+      Boolean(normalizedDestinationForWrite && normalizedDestinationForWrite !== row.destination);
     const changed =
       htmlChanged ||
       nextOg !== originalOg ||
@@ -2975,7 +3062,7 @@ async function main() {
         readability_issues: qaReport.readability.issues,
         generation_meta: nextGenerationMeta,
         target_ad_keywords: nextTargetAdKeywords,
-        ...(destinationChanged ? { destination: normalizedDestinationForWrite } : {}),
+        ...(destinationChanged ? { destination: normalizedDestinationForWrite ?? null } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);

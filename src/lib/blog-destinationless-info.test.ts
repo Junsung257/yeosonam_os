@@ -33,6 +33,16 @@ describe('blog destinationless info candidates', () => {
     expect(destinationlessInfoBlocksPublishability(row)).toBe(false);
   });
 
+  it('uses slug intent when a public API title is too generic', () => {
+    expect(classifyDestinationlessInfoCandidate({
+      slug: 'summer-travel-insurance-coverage-guide-2026',
+      seo_title: '여름 여행 가이드 2026 | 일정, 비용, 준비물 체크',
+      destination: null,
+      category: 'travel_tips',
+      meta: { writer_type: 'info_writer' },
+    })).toBe('generic_unmarked');
+  });
+
   it('blocks fake destinations that are reader segments or months, not places', () => {
     const row = {
       topic: '가족 7월 날씨 여행 가이드 2026',
@@ -43,6 +53,17 @@ describe('blog destinationless info candidates', () => {
 
     expect(classifyDestinationlessInfoCandidate(row)).toBe('invalid_destination');
     expect(destinationlessInfoBlocksPublishability(row)).toBe(true);
+  });
+
+  it('blocks generic audience, season, and broad travel labels as destinations', () => {
+    for (const destination of ['대학생', '여름', '해외여행']) {
+      expect(classifyDestinationlessInfoCandidate({
+        topic: `${destination} 여행 준비 가이드`,
+        destination,
+        category: 'travel_tips',
+        meta: { writer_type: 'info_writer' },
+      })).toBe('invalid_destination');
+    }
   });
 
   it('builds durable metadata for approved generic info rows', () => {

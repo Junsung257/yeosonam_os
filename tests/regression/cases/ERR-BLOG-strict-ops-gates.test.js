@@ -67,3 +67,17 @@ test('ERR-BLOG-strict-ops-gates: backfill makes duplicate SEO descriptions uniqu
   assert.match(source, /쇼핑과 기념품 예산/);
   assert.match(source, /ensureBatchUniqueSeoDescription\(ensureStrictSeoDescription/);
 });
+
+test('ERR-BLOG-strict-ops-gates: backfill cannot re-save generic info labels as destinations', () => {
+  const source = read('scripts', 'backfill-blog-quality.ts');
+
+  assert.match(source, /INVALID_BACKFILL_DESTINATION_KEYWORDS/);
+  assert.match(source, /'대학생'/);
+  assert.match(source, /'여름'/);
+  assert.match(source, /'해외여행'/);
+  assert.match(source, /hasInvalidBackfillDestinationKeyword/);
+  assert.match(source, /genericInfoWithoutDestination/);
+  assert.match(source, /destination: normalizedDestinationForWrite \?\? null/);
+  assert.match(source, /function splitStableTailSections/);
+  assert.match(source, /함께\\s\*확인할\\s\*세부\\s\*키워드/);
+});
