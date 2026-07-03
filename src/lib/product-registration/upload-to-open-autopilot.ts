@@ -1633,13 +1633,14 @@ function priceDatesFromProductPrices(rows: ProductPriceDbRow[], currentPriceDate
 export function missingPriceDatesFromScorecard(scorecard: RegistrationQualityScorecard): PriceDate[] {
   const rows: PriceDate[] = [];
   const seen = new Set<string>();
+  const today = scorecard.generatedAt ? formatKstDate(new Date(scorecard.generatedAt)) : undefined;
   for (const blocker of scorecard.blockers) {
     if (!/C12|price_dates/.test(blocker)) continue;
     const matches = blocker.matchAll(/(\d{4}-\d{2}-\d{2}):\s*(?:\uC5C6\uC74C|없음)\s*!=\s*(\d[\d,]*)/g);
     for (const match of matches) {
       const date = match[1];
       const price = Number(match[2].replace(/,/g, ''));
-      if (!isValidIsoDateKst(date) || !isUpcomingKstDate(date) || !Number.isFinite(price) || price <= 0) continue;
+      if (!isValidIsoDateKst(date) || !isUpcomingKstDate(date, today) || !Number.isFinite(price) || price <= 0) continue;
       if (seen.has(date)) continue;
       seen.add(date);
       rows.push({ date, price, confirmed: false });
