@@ -124,11 +124,13 @@ async function countByStatus(table: string, statuses: string[]) {
 
 async function main() {
   const day = resolveReportDay();
+  const currentDay = kstDayRange(kstDayKey());
   const yesterday = kstDayRange(kstDayKey(new Date(day.start.getTime() - 1)));
 
   const [
     publishedTodayRes,
     publishedYesterdayRes,
+    publishedCurrentDayRes,
     recentPublishedRes,
     queueCounts,
     indexingCounts,
@@ -154,6 +156,13 @@ async function main() {
       .eq('status', 'published')
       .gte('published_at', yesterday.start.toISOString())
       .lt('published_at', yesterday.end.toISOString()),
+    supabase
+      .from('content_creatives')
+      .select('id', { count: 'exact', head: true })
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .gte('published_at', currentDay.start.toISOString())
+      .lt('published_at', currentDay.end.toISOString()),
     supabase
       .from('content_creatives')
       .select('id, slug, content_type, product_id, destination, published_at, generation_meta, quality_gate, seo_score, readability_score')
@@ -206,6 +215,7 @@ async function main() {
   for (const result of [
     publishedTodayRes,
     publishedYesterdayRes,
+    publishedCurrentDayRes,
     recentPublishedRes,
     indexingProblemRes,
     indexingCoverageJobsRes,
@@ -274,7 +284,7 @@ async function main() {
   };
   const publishPreflight = evaluateBlogPublishPreflight({
     dailyTarget,
-    publishedToday: publishedTodayRes.count ?? 0,
+    publishedToday: publishedCurrentDayRes.count ?? 0,
     publishableCandidateCount: publishabilityStats.publishableCount,
     duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
@@ -300,6 +310,8 @@ async function main() {
     : healthPublisherSummary;
   const currentDayPublisherHealth = evaluateCurrentDayPublisherHealth({
     cronHealth: publisherHealth,
+    currentDayPublishedCount: publishedCurrentDayRes.count ?? 0,
+    dailyTarget,
   });
 
   const buckets: Bucket[] = [];
@@ -484,7 +496,9 @@ async function main() {
     published: {
       selected_day: publishedTodayRes.count ?? 0,
       previous_day: publishedYesterdayRes.count ?? 0,
-      today: publishedTodayRes.count ?? 0,
+      current_day: publishedCurrentDayRes.count ?? 0,
+      current_day_key: currentDay.dayKey,
+      today: publishedCurrentDayRes.count ?? 0,
       yesterday: publishedYesterdayRes.count ?? 0,
       daily_target: dailyTarget,
       under_target: selectedDayUnderTarget,
