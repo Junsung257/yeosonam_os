@@ -150,6 +150,7 @@ function matchBestWeighted<T extends string>(
   const titleKeywordText = compactText([input.title, input.primaryKeyword]);
   const taxonomyText = compactText([input.angleType, input.category, input.contentType, input.slug]);
   const body = bodyText(input);
+  const allIntentText = compactText([titleKeywordText, taxonomyText, body]);
   let best: { value: T | null; evidence: string[]; score: number } = {
     value: null,
     evidence: [],
@@ -168,11 +169,15 @@ function matchBestWeighted<T extends string>(
       evidence.push(`${reason} in category/type`);
     }
     if (pattern.test(body)) {
-      score += 1;
+      score += 2;
       evidence.push(`${reason} in body`);
     }
     const shouldBreakWeatherTie = score === best.score && best.value === 'weather' && value !== 'weather';
-    if (score > best.score || shouldBreakWeatherTie) {
+    const shouldBreakCostTie = score === best.score
+      && value === 'cost'
+      && best.value !== 'cost'
+      && /(\uBE44\uC6A9|\uAC00\uACA9|\uC608\uC0B0|\uACBD\uBE44|\uC5BC\uB9C8|\uC6D0|\uB9CC\uC6D0|\uC694\uAE08|\uC774\uB3D9\uBE44|\uAD50\uD1B5\uBE44|cost|budget|price)/i.test(allIntentText);
+    if (score > best.score || shouldBreakWeatherTie || shouldBreakCostTie) {
       best = { value, evidence, score };
     }
   }

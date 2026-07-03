@@ -586,12 +586,20 @@ function compactAnswerFirstLabel(value?: string | null): string {
     .slice(0, 60);
 }
 
+function currentKstYearMonth(): { year: number; month: number } {
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return { year: kstNow.getUTCFullYear(), month: kstNow.getUTCMonth() + 1 };
+}
+
 function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
   const topic = compactAnswerFirstLabel(input.primaryKeyword || input.title || input.category)
     || '\uC5EC\uD589 \uC900\uBE44';
   const destination = compactAnswerFirstLabel(input.destination);
-  const destinationPrefix = destination ? `${destination} ` : '';
-  return `${topic}\uC740 \uBA3C\uC800 ${destinationPrefix}\uD604\uC9C0 \uC0C1\uD669, \uBE44\uC6A9, \uC774\uB3D9 \uB3D9\uC120, \uACC4\uC808 \uBCC0\uC218\uB97C \uD568\uAED8 \uD655\uC778\uD558\uBA74 \uD310\uB2E8\uC774 \uC26C\uC6CC\uC9D1\uB2C8\uB2E4. \uC774 \uAE00\uC740 \uBC14\uB85C \uACB0\uC815\uD560 \uAE30\uC900\uACFC \uCD9C\uBC1C \uC804 \uD655\uC778 \uC21C\uC11C\uB97C \uC815\uB9AC\uD569\uB2C8\uB2E4.`;
+  const decisionAxis = destination
+    ? `${destination} \uBE44\uC6A9, \uC774\uB3D9 \uC2DC\uAC04, \uB0A0\uC528\u00B7\uD604\uC9C0 \uBCC0\uC218`
+    : '\uBE44\uC6A9, \uC774\uB3D9 \uC2DC\uAC04, \uB0A0\uC528\u00B7\uD604\uC9C0 \uBCC0\uC218';
+  const now = currentKstYearMonth();
+  return `${now.year}\uB144 ${now.month}\uC6D4 \uAE30\uC900, ${topic}\uC740 ${decisionAxis}\uBD80\uD130 \uBE44\uAD50\uD558\uB294 \uD3B8\uC774 \uC548\uC804\uD569\uB2C8\uB2E4. \uC65C \uBA3C\uC800 \uBD10\uC57C \uD560\uAE4C\uC694? \uC774 \uC21C\uC11C\uB85C \uBD10\uC57C \uD604\uC9C0\uC5D0\uC11C 1~2\uC2DC\uAC04\uC744 \uC544\uB07C\uACE0 \uC608\uC0B0 \uC624\uCC28\uB97C \uC904\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.`;
 }
 
 function insertIntroAfterTitle(markdown: string, intro: string): string {

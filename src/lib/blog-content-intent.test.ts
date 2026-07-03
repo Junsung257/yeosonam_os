@@ -39,6 +39,28 @@ describe('blog content intent quality', () => {
     expect(itinerary.infoSubtype).toBe('itinerary');
   });
 
+  it('uses clear body evidence as a minimum intent contract when metadata is thin', () => {
+    const report = inspectBlogIntentQuality({
+      title: '여행 준비 가이드',
+      contentType: 'guide',
+      blogHtml: [
+        '# 여행 준비 가이드',
+        '',
+        '답부터 말하면 공항 이동비, 택시 요금, 하루 교통비를 따로 비교해야 예산 오차를 줄일 수 있습니다.',
+        '',
+        '## 비용 판단표',
+        '| 항목 | 확인 기준 | 예상 범위 |',
+        '| --- | --- | ---: |',
+        '| 공항 이동 | 픽업 또는 택시 | 30,000원 |',
+        '| 시내 이동 | 대중교통 또는 차량 | 20,000원 |',
+        '| 예비비 | 대기와 우회 동선 | 10,000원 |',
+      ].join('\n'),
+    });
+
+    expect(report.intent.infoSubtype).toBe('cost');
+    expect(report.issues.some((issue) => issue.code === 'missing_intent_contract')).toBe(false);
+  });
+
   it('classifies transport cost topics as cost even when stale category says weather', () => {
     const intent = classifyBlogIntent({
       title: '몽골 렌터카 택시 픽업 이동비 비교 2026',

@@ -4,7 +4,7 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from './blog-editorial-repair';
-import { checkMarkdownTableIntegrity } from './blog-quality-gate';
+import { checkHook, checkMarkdownTableIntegrity } from './blog-quality-gate';
 import { computeReadability } from './blog-readability';
 
 describe('blog editorial repair', () => {
@@ -274,6 +274,7 @@ describe('blog editorial repair', () => {
     expect(result.changes).toEqual(expect.arrayContaining(['sanitized_info_sales_tone']));
     expect(result.after.issues.some((issue) => issue.code === 'missing_answer_first')).toBe(false);
     expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
+    expect(checkHook(result.blogHtml).passed).toBe(true);
     expect(result.blogHtml.slice(0, Math.ceil(result.blogHtml.length * 0.3))).not.toMatch(/지금\s*예약|상담\s*신청|잔여\s*좌석|상품\s*보기/);
   });
 
