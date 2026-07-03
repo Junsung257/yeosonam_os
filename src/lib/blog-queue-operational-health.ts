@@ -1,7 +1,10 @@
 import { classifyBlogQueueFailure } from './blog-queue-failure-policy';
+import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
 
 export type BlogQueueOperationalAction =
   | 'publish_ready'
+  | 'defer_pillar_candidate'
+  | 'quarantine_candidate_contract'
   | 'recover_stale_generating'
   | 'retry_failed'
   | 'collect_product_evidence'
@@ -13,6 +16,10 @@ export interface BlogQueueOperationalRow {
   status?: string | null;
   attempts?: number | null;
   last_error?: string | null;
+  topic?: string | null;
+  destination?: string | null;
+  primary_keyword?: string | null;
+  source?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   target_publish_at?: string | null;
@@ -60,6 +67,17 @@ export function classifyBlogQueueOperationalIssue(row: BlogQueueOperationalRow):
   const decision = classifyBlogQueueFailure(text);
   if (decision.code !== 'unknown') return decision.code;
 
+  if (['queued', 'generating'].includes(String(row.status || ''))) {
+    if (String(row.source || '') === 'pillar') return 'pillar_deferred';
+    const candidateContract = inspectBlogCandidatePrepublishContract({
+      topic: row.topic,
+      destination: row.destination,
+      primary_keyword: row.primary_keyword,
+      meta,
+    });
+    if (!candidateContract.passed) return 'candidate_pre_publish_contract';
+  }
+
   const lower = String(row.last_error || '').toLowerCase();
   if (!lower) return row.status === 'failed' ? 'unknown_failure' : 'none';
   if (lower.includes('self-heal') || lower.includes('self_heal')) return 'self_heal_blocked';
@@ -105,28 +123,42 @@ export function getBlogQueueOperationalState(
     const oldQueued = createdAt
       ? now.getTime() - createdAt.getTime() > HISTORY_FAILED_MS && !overdue
       : false;
+    const pillarDeferred = issue === 'pillar_deferred';
+    const candidateContractBlocked = issue === 'candidate_pre_publish_contract';
     return {
       issue,
-      attention: overdue,
+      attention: !pillarDeferred && (overdue || candidateContractBlocked),
       manualReview: false,
       history: oldQueued,
       retryable: false,
       terminal: false,
-      action: 'publish_ready',
+      action: pillarDeferred
+        ? 'defer_pillar_candidate'
+        : candidateContractBlocked
+          ? 'quarantine_candidate_contract'
+          : 'publish_ready',
     };
   }
 
   if (status === 'generating') {
     const basis = updatedAt ?? createdAt;
     const stale = !basis || now.getTime() - basis.getTime() > STALE_GENERATING_MS;
+    const pillarDeferred = issue === 'pillar_deferred';
+    const candidateContractBlocked = issue === 'candidate_pre_publish_contract';
     return {
       issue,
-      attention: stale,
+      attention: !pillarDeferred && (stale || candidateContractBlocked),
       manualReview: false,
       history: false,
-      retryable: stale,
+      retryable: stale && !candidateContractBlocked && !pillarDeferred,
       terminal: false,
-      action: stale ? 'recover_stale_generating' : 'publish_ready',
+      action: pillarDeferred
+        ? 'defer_pillar_candidate'
+        : candidateContractBlocked
+        ? 'quarantine_candidate_contract'
+        : stale
+          ? 'recover_stale_generating'
+          : 'publish_ready',
     };
   }
 
@@ -176,6 +208,8 @@ export function summarizeBlogQueueOperationalHealth(rows: BlogQueueOperationalRo
   let staleGenerating = 0;
   let overdueQueued = 0;
   let hiddenHistory = 0;
+  let candidateContractBlocked = 0;
+  let pillarDeferred = 0;
 
   for (const row of rows) {
     const state = getBlogQueueOperationalState(row, now);
@@ -184,7 +218,9 @@ export function summarizeBlogQueueOperationalHealth(rows: BlogQueueOperationalRo
     if (row.status === 'failed' && state.retryable) actionableFailed += 1;
     if (state.manualReview) manualReview += 1;
     if (state.action === 'recover_stale_generating') staleGenerating += 1;
-    if (row.status === 'queued' && state.attention) overdueQueued += 1;
+    if (state.action === 'defer_pillar_candidate') pillarDeferred += 1;
+    if (state.action === 'quarantine_candidate_contract') candidateContractBlocked += 1;
+    if (row.status === 'queued' && state.attention && state.action !== 'quarantine_candidate_contract') overdueQueued += 1;
     if (state.history) hiddenHistory += 1;
   }
 
@@ -193,6 +229,8 @@ export function summarizeBlogQueueOperationalHealth(rows: BlogQueueOperationalRo
     manual_review_count: manualReview,
     stale_generating_count: staleGenerating,
     overdue_queued_count: overdueQueued,
+    candidate_contract_blocked_count: candidateContractBlocked,
+    pillar_deferred_count: pillarDeferred,
     hidden_history_count: hiddenHistory,
     issue_counts: issueCounts,
     action_counts: actionCounts,

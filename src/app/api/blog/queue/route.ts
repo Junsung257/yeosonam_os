@@ -42,6 +42,8 @@ const EMPTY_QUEUE_RESPONSE = {
     history_hidden: 0,
     overdue_queued: 0,
     stale_generating: 0,
+    candidate_contract_blocked: 0,
+    pillar_deferred: 0,
     issue_counts: {},
   },
 };
@@ -59,9 +61,13 @@ function enrichQueueItem(row: any, now = new Date()) {
   const manualReview = state.manualReview;
   const attention = state.attention;
   const history = state.history;
+  const candidateContractBlocked = state.action === 'quarantine_candidate_contract';
+  const pillarDeferred = state.action === 'defer_pillar_candidate';
   const target = row.target_publish_at ? new Date(row.target_publish_at) : null;
   const urgency =
     manualReview ? 'manual_review'
+    : candidateContractBlocked ? 'candidate_contract'
+    : pillarDeferred ? 'pillar_deferred'
     : row.status === 'failed' ? 'blocked'
     : row.status === 'generating' && attention ? 'stale'
     : target && target < now ? 'overdue'
@@ -161,6 +167,8 @@ export async function GET(request: NextRequest) {
       history_hidden: enriched.filter((row: any) => row.ops.history).length,
       overdue_queued: enriched.filter((row: any) => row.ops.urgency === 'overdue').length,
       stale_generating: enriched.filter((row: any) => row.ops.urgency === 'stale').length,
+      candidate_contract_blocked: enriched.filter((row: any) => row.ops.urgency === 'candidate_contract').length,
+      pillar_deferred: enriched.filter((row: any) => row.ops.urgency === 'pillar_deferred').length,
       issue_counts: issueCounts,
     };
 
