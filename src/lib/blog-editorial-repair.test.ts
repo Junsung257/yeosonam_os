@@ -516,6 +516,70 @@ describe('blog editorial repair', () => {
     expect(readability.duplicate_phrases.some((item) => item.phrase.includes(repeated))).toBe(false);
   });
 
+  it('softens repeated two-to-four-week comparison phrases from generated appendices', () => {
+    const repeated = '함께 보려면 최소 2~4주 전에';
+    const source = [
+      '# 호화호특 월별 날씨',
+      '',
+      '호화호특은 계절별 체감 온도와 이동 동선을 같이 봐야 합니다.',
+      '',
+      '## 준비 기준',
+      '',
+      `- 항공권과 숙소는 ${repeated} 호화호특 관련 조건을 비교하는 편이 안전합니다.`,
+      `- 환율과 결제 수단은 ${repeated} 호화호특 관련 조건을 비교하는 편이 안전합니다.`,
+      `- 현지 운영시간은 ${repeated} 호화호특 관련 조건을 비교하는 편이 안전합니다.`,
+      `- 이동 동선은 ${repeated} 호화호특 관련 조건을 비교하는 편이 안전합니다.`,
+      `- 동행자 체력은 ${repeated} 호화호특 관련 조건을 비교하는 편이 안전합니다.`,
+      '',
+      '## 출발 전 확인',
+      '',
+      '출발 직전에는 날씨와 항공 시간을 다시 확인하세요.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '호화호특 월별 날씨',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: '호화호특 날씨',
+      destination: '호화호특',
+      blogHtml: source,
+    });
+
+    const exactRepeats = result.blogHtml.match(new RegExp(repeated, 'g')) || [];
+    const readability = computeReadability(result.blogHtml);
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('softened_repeated_readability_phrases');
+    expect(exactRepeats.length).toBeLessThanOrEqual(3);
+    expect(readability.duplicate_phrases.some((item) => item.phrase.includes(repeated))).toBe(false);
+  });
+
+  it('demotes duplicate H1 headings so articles keep a single page title', () => {
+    const source = [
+      '# 장마철 해외여행 여행 가이드',
+      '',
+      '장마철 해외여행은 비 예보와 실내 대체 동선을 함께 봐야 합니다.',
+      '',
+      '# 장마철 해외여행 여행 가이드',
+      '',
+      '두 번째 제목은 본문 섹션으로 읽혀야 합니다.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '장마철 해외여행 여행 가이드',
+      category: 'guide',
+      contentType: 'guide',
+      primaryKeyword: '장마철 해외여행',
+      destination: null,
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('demoted_duplicate_h1_headings');
+    expect(result.blogHtml.match(/^#\s+/gm)).toHaveLength(1);
+    expect(result.blogHtml).toContain('## 장마철 해외여행 여행 가이드');
+  });
+
   it('removes editor persona and Yeosonam data variants that make posts sound generated', () => {
     const source = [
       '# 몽골 식비 예산',

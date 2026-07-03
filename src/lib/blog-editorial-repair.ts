@@ -1478,6 +1478,22 @@ function repairBlankHeadingLines(markdown: string): { text: string; changed: boo
   return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
 }
 
+function demoteDuplicateH1Headings(markdown: string): { text: string; changed: boolean } {
+  let h1Count = 0;
+  let changed = false;
+  const text = markdown
+    .split('\n')
+    .map((line) => {
+      if (!/^#\s+\S/.test(line.trim())) return line;
+      h1Count += 1;
+      if (h1Count === 1) return line;
+      changed = true;
+      return line.replace(/^#\s+/, '## ');
+    })
+    .join('\n');
+  return { text, changed };
+}
+
 function dedupeRepeatedSupportBlocks(markdown: string): { text: string; changed: boolean } {
   const blocks = markdown.split(/\n{2,}/);
   const seen = new Set<string>();
@@ -1548,7 +1564,7 @@ function flattenMalformedInlineTables(markdown: string): { text: string; changed
 }
 
 const REPEATED_PLANNING_PHRASE_SIGNAL_RE =
-  /(?:\uC608\uC57D|\uBE44\uC6A9|\uC77C\uC815|\uD604\uC9C0|\uD655\uC778|\uC900\uBE44|\uCCB4\uD06C|\uC0C1\uB2F4)/;
+  /(?:\uC608\uC57D|\uBE44\uC6A9|\uC77C\uC815|\uD604\uC9C0|\uD655\uC778|\uC900\uBE44|\uCCB4\uD06C|\uC0C1\uB2F4|\uD568\uAED8\s*\uBCF4\uB824\uBA74|\uCD5C\uC18C\s*2\s*~\s*4\uC8FC)/;
 
 const READABILITY_PHRASE_ALTERNATIVES = [
   '\uCD9C\uBC1C \uC804 \uD575\uC2EC \uC870\uAC74',
@@ -1564,6 +1580,20 @@ function escapeRegexLiteral(value: string): string {
 function softenRepeatedReadabilityPhrases(markdown: string, maxExactRepeats = 3): { text: string; changed: boolean } {
   let text = markdown;
   let changed = false;
+  const directPatterns = [
+    /\uD568\uAED8\s*\uBCF4\uB824\uBA74\s*\uCD5C\uC18C\s*2\s*~\s*4\uC8FC\s*\uC804\uC5D0/g,
+    /\uAD00\uB828\s*\uC870\uAC74\uC744\s*\uBE44\uAD50\uD558\uB294\s*\uD3B8\uC774\s*\uC548\uC804\uD569\uB2C8\uB2E4/g,
+    /\uD56D\uACF5\s*\uC2A4\uCF00\uC904,\s*\uC785\uC7A5\s*\uADDC\uC815\uCC98\uB7FC\s*\uB2F9\uC77C/g,
+  ];
+  for (const directPattern of directPatterns) {
+    let seen = 0;
+    text = text.replace(directPattern, (match) => {
+      seen += 1;
+      if (seen <= maxExactRepeats) return match;
+      changed = true;
+      return READABILITY_PHRASE_ALTERNATIVES[(seen - maxExactRepeats - 1) % READABILITY_PHRASE_ALTERNATIVES.length] || match;
+    });
+  }
   for (let pass = 0; pass < 4; pass += 1) {
     const duplicates = computeReadability(text).duplicate_phrases
       .filter((item) =>
@@ -1876,6 +1906,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (blankHeadingRepair.changed) {
     blogHtml = blankHeadingRepair.text;
     changes.push('repaired_blank_headings');
+  }
+
+  const duplicateH1Repair = demoteDuplicateH1Headings(blogHtml);
+  if (duplicateH1Repair.changed) {
+    blogHtml = duplicateH1Repair.text;
+    changes.push('demoted_duplicate_h1_headings');
   }
 
   const publishChecklistRepair = ensurePublishChecklist(blogHtml, input);

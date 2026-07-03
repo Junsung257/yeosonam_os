@@ -28,6 +28,8 @@ export const BLOG_SLUG_REDIRECTS: Record<string, string> = {
   '7-mongolia-preparation': 'mongolia-july-peak-season-preparation-checklist-2026',
   '5-post-1k2q': 'overseas-travel-preparation-budget-checklist-2026',
   '3-post-yb6e': 'travel-preparation-budget-cost-checklist-2026',
+  'top-3': 'rainy-season-overseas-travel-top-3-2026',
+  'xian-6': 'xian-weather-clothes-checklist-2026',
   '6-vs-danang-boracay-kotakinabalu': 'southeast-asia-danang-boracay-kotakinabalu-comparison-2026',
   '6-okinawa': 'okinawa-travel-cost-preparation-tips-2026',
   '6-fukuoka': 'fukuoka-june-weather-rainy-day-itinerary-2026',
