@@ -116,6 +116,10 @@
 | `GSC_SERVICE_ACCOUNT_JSON` | Google Search Console 서비스 계정 JSON. 블로그 일반 글은 이 키로 Sitemap API 제출·URL Inspection·GSC 지표 수집을 수행 |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | 레거시 Google 서비스 계정 JSON. `GSC_SERVICE_ACCOUNT_JSON` 없을 때 fallback |
 | `GSC_SITE_URL` | Search Console에 등록된 정확한 속성 URL (`https://yeosonam.com/` 등). www 유무 불일치 방지 |
+| `GSC_URL_INSPECTION_MAX_PER_RUN` | URL Inspection 크론 1회 최대 검사 수. 기본 `25` |
+| `GSC_URL_INSPECTION_MAX_PER_10M` | URL Inspection 최근 10분 최대 검사 수. 기본 `100` |
+| `GSC_URL_INSPECTION_MAX_PER_DAY` | URL Inspection 최근 24시간 최대 검사 수. 기본 `1500` |
+| `GSC_URL_INSPECTION_RETRY_AFTER_MINUTES` | Google 쿼터·속도 제한 감지 시 재시도 안내 분. 기본 `15` |
 | `GOOGLE_INDEXING_API_FOR_BLOGS` | `true`일 때만 일반 블로그에도 Google Indexing API 직접 호출을 허용. 기본은 미사용(공식 지원 범위가 JobPosting/BroadcastEvent 중심) |
 | `SLACK_WEBHOOK_URL` | Slack 범용 웹훅 (폴백·운영 알림 등) |
 | `SLACK_ALERT_WEBHOOK_URL` | 운영 경고 (`slack-alert`, payment-heartbeat 등) |
