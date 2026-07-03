@@ -126,6 +126,8 @@ type QueueCandidateLike = {
   id?: string | null;
   product_id?: string | null;
   destination?: string | null;
+  primary_keyword?: string | null;
+  category?: string | null;
   angle_type?: string | null;
   topic?: string | null;
   slug?: string | null;
@@ -189,6 +191,7 @@ export function countPublishableQueueCandidates(input: {
   duplicateQueued: number;
   evidenceInsufficient: number;
   productOpenContractBlocked: number;
+  destinationlessInfoBlocked: number;
 } {
   const recentKeys = new Set<string>();
   for (const row of input.recentPublished) {
@@ -201,6 +204,7 @@ export function countPublishableQueueCandidates(input: {
   let duplicateQueued = 0;
   let evidenceInsufficient = 0;
   let productOpenContractBlocked = 0;
+  let destinationlessInfoBlocked = 0;
 
   for (const row of input.activeQueue) {
     if (row.source === 'pillar') continue;
@@ -210,6 +214,10 @@ export function countPublishableQueueCandidates(input: {
     }
     if (hasEvidenceInsufficientFlag(row)) {
       evidenceInsufficient += 1;
+      continue;
+    }
+    if (destinationlessInfoBlocksPublishability(row)) {
+      destinationlessInfoBlocked += 1;
       continue;
     }
     const key = publishableQueueKey(row);
@@ -231,6 +239,7 @@ export function countPublishableQueueCandidates(input: {
     duplicateQueued,
     evidenceInsufficient,
     productOpenContractBlocked,
+    destinationlessInfoBlocked,
   };
 }
 
@@ -247,7 +256,7 @@ async function quarantineDuplicatePublishableCandidates(input: {
   const seen = new Set<string>();
   const duplicateRows: Array<{ id: string; key: string; meta: Record<string, unknown> }> = [];
   for (const row of input.activeQueue) {
-    if (!row.id || row.source === 'pillar' || hasEvidenceInsufficientFlag(row) || hasProductOpenContractBlock(row)) continue;
+    if (!row.id || row.source === 'pillar' || hasEvidenceInsufficientFlag(row) || hasProductOpenContractBlock(row) || destinationlessInfoBlocksPublishability(row)) continue;
     const key = publishableQueueKey(row);
     if (!key) continue;
     const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
@@ -334,14 +343,17 @@ export async function ensureDailyPublishableQueue(opts?: {
     publishable_count: queueCandidateStats.publishableCount,
     duplicate_count: duplicateCount,
     evidence_insufficient_count: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
+    destinationless_info_count: queueCandidateStats.destinationlessInfoBlocked,
     candidate_shortage: queueCandidateStats.publishableCount < targetCandidates,
     next_action: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
-      : duplicateCount > 0
-        ? 'quarantine_duplicates'
-        : queueCandidateStats.publishableCount < targetCandidates
-          ? 'refill_candidates'
-          : 'publish_ready',
+      : queueCandidateStats.destinationlessInfoBlocked > 0
+        ? 'repair_destinationless_info'
+        : duplicateCount > 0
+          ? 'quarantine_duplicates'
+          : queueCandidateStats.publishableCount < targetCandidates
+            ? 'refill_candidates'
+            : 'publish_ready',
   };
   const quarantinedDuplicateCandidates = await quarantineDuplicatePublishableCandidates({
     activeQueue: activeQueueRes.data ?? [],
@@ -513,6 +525,7 @@ import { filterTopicFitPassed } from './blog-topic-fit-gate';
 import { romanize } from './slug-utils';
 import { buildProductDedupKey, resolveProductDepartureDate, resolveProductSupplierCode } from './blog-product-brief';
 import type { BlogPublishabilitySnapshot } from './blog-engine-v2';
+import { destinationlessInfoBlocksPublishability } from './blog-destinationless-info';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];

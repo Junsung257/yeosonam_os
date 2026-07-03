@@ -31,6 +31,7 @@ describe('blog scheduler queue refill helpers', () => {
       duplicateQueued: 1,
       evidenceInsufficient: 0,
       productOpenContractBlocked: 0,
+      destinationlessInfoBlocked: 0,
     });
   });
 
@@ -51,6 +52,7 @@ describe('blog scheduler queue refill helpers', () => {
       duplicateQueued: 1,
       evidenceInsufficient: 1,
       productOpenContractBlocked: 0,
+      destinationlessInfoBlocked: 0,
     });
   });
 
@@ -70,6 +72,34 @@ describe('blog scheduler queue refill helpers', () => {
       duplicateQueued: 0,
       evidenceInsufficient: 0,
       productOpenContractBlocked: 2,
+      destinationlessInfoBlocked: 0,
+    });
+  });
+
+  it('excludes destinationless info candidates unless they are explicitly generic', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeQueue: [
+        {
+          topic: '여름 휴가철 해외여행 보험 꼭 필요한가요?',
+          category: 'travel_tips',
+          meta: { writer_type: 'info_writer' },
+        },
+        {
+          topic: '여름 휴가철 해외여행 전화/데이터 로밍 vs 유심 비교',
+          category: 'travel_tips',
+          meta: { writer_type: 'info_writer', intentionally_generic: true },
+        },
+      ],
+    });
+
+    expect(stats).toEqual({
+      publishableCount: 1,
+      blockedRecentDuplicate: 0,
+      duplicateQueued: 0,
+      evidenceInsufficient: 0,
+      productOpenContractBlocked: 0,
+      destinationlessInfoBlocked: 1,
     });
   });
 });

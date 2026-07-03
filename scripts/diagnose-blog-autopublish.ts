@@ -5,6 +5,7 @@ import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-win
 import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
 import { buildBlogProductEvidenceWorkReport } from '../src/lib/blog-product-evidence-work';
 import { buildBlogEditorialBacklogWorkReport } from '../src/lib/blog-editorial-backlog-work';
+import { buildBlogDestinationlessInfoWorkReport } from '../src/lib/blog-destinationless-info';
 import { summarizeBlogIndexingCoverage } from '../src/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '../src/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
@@ -20,6 +21,7 @@ type BucketCode =
   | 'duplicate_candidate_burn'
   | 'product_open_contract_blocked'
   | 'editorial_backlog_work'
+  | 'destinationless_info_work'
   | 'table_integrity_fail'
   | 'candidate_shortage'
   | 'audit_contract_mismatch'
@@ -268,14 +270,21 @@ async function main() {
     rows: queueOperationalRes.data ?? [],
     limit,
   });
+  const destinationlessInfoWork = buildBlogDestinationlessInfoWorkReport({
+    rows: activeQueueRes.data ?? [],
+    limit,
+  });
   const publishabilitySnapshot = {
     queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
     evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    destinationless_info_count: publishabilityStats.destinationlessInfoBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
     next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
+      : publishabilityStats.destinationlessInfoBlocked > 0
+        ? 'repair_destinationless_info'
       : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
         ? 'quarantine_duplicates'
         : publishabilityStats.publishableCount < dailyTarget * 2
@@ -400,6 +409,15 @@ async function main() {
     });
   }
 
+  if (destinationlessInfoWork.total > 0) {
+    buckets.push({
+      code: 'destinationless_info_work',
+      severity: 'warning',
+      detail: `${destinationlessInfoWork.total} destinationless info candidate(s) need explicit generic intent or a concrete destination before publishing.`,
+      evidence: destinationlessInfoWork,
+    });
+  }
+
   const tableFailures = failureCount(combinedPublisherSummary, 'table_integrity');
   if (
     queueOperationalHealth.actionable_failed_count > 0 &&
@@ -507,6 +525,7 @@ async function main() {
     queue_operational_health: queueOperationalHealth,
     product_evidence_work: productEvidenceWork,
     editorial_backlog_work: editorialBacklogWork,
+    destinationless_info_work: destinationlessInfoWork,
     publishability: publishabilitySnapshot,
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
