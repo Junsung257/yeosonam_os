@@ -44,6 +44,25 @@ describe('blog publisher repair helpers', () => {
     }).passed).toBe(true);
   });
 
+  it('repairs numeric family weather slugs into a publishable intent slug', () => {
+    const result = repairPublisherSeoSlug({
+      currentSlug: '7-family-weather-guide',
+      item: {
+        topic: '\uAC00\uC871 7\uC6D4 \uB0A0\uC528 \uC5EC\uD589 \uAC00\uC774\uB4DC 2026|\uC6D4\uBCC4 \uB0A0\uC528\u00B7\uC637\uCC28\uB9BC \uCCB4\uD06C\uB9AC\uC2A4\uD2B8',
+        category: 'weather',
+      },
+      primaryKeyword: '\uAC00\uC871 7\uC6D4 \uB0A0\uC528 \uC5EC\uD589',
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.slug).toBe('weather-family-checklist-july-2026');
+    expect(result.slug).not.toMatch(/^\d|travel-guide|q[0-9a-f]{6,10}/);
+    expect(inspectBlogSlugQuality({
+      slug: result.slug,
+      primaryKeyword: '\uAC00\uC871 7\uC6D4 \uB0A0\uC528 \uC5EC\uD589',
+    }).passed).toBe(true);
+  });
+
   it('replaces a weak first paragraph with a concrete hook', () => {
     const source = [
       '# \uB098\uD2B8\uB791/\uB2EC\uB78F 6\uC6D4 \uB0A0\uC528\uC640 \uC637\uCC28\uB9BC',
