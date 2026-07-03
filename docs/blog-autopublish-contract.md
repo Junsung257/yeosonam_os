@@ -154,6 +154,12 @@ Correct sequence:
 8. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
 9. Observe Google status through URL Inspection within quota.
 
+IndexNow submissions must be duplicate-aware and provider-safe:
+
+- The runtime caches recently submitted update URLs for 10 minutes by default (`INDEXNOW_RECENT_TTL_MS`) so repeated publisher/worker runs do not burn provider quota on the same canonical URL.
+- `URL_DELETED` notifications bypass the recent-submit cache and must still be sent.
+- Batch submissions are split by `INDEXNOW_MAX_URLS_PER_REQUEST` and provider calls are spaced by `INDEXNOW_PROVIDER_MIN_INTERVAL_MS`.
+
 The durable blog outbox worker must not depend on legacy unauthenticated sitemap ping or WebSub calls for success. Those calls may exist only as explicit manual/backfill compatibility behavior, not as the normal `/blog` indexing success path.
 
 Google sitemap submission is a hint, not a guarantee of indexing. Google no longer supports the old unauthenticated sitemap ping as the core path. URL Inspection is for status visibility and troubleshooting, not bulk indexing guarantees.
