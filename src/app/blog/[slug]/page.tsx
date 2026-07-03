@@ -431,7 +431,16 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
 }
 
 const getCachedPostFast = unstable_cache(
-  async (slug: string) => getPostFastUncached(slug),
+  async (slug: string) => {
+    try {
+      return await getPostFastUncached(slug);
+    } catch (error) {
+      if (isBlogDatabaseUnavailableError(error)) {
+        return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
+      }
+      throw error;
+    }
+  },
   ['blog-detail-v2'],
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
