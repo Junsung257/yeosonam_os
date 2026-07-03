@@ -284,6 +284,19 @@ function inspectInfoContract(
   if ((subtype === 'cost' || subtype === 'currency') && !hasAny(plain, /(\d[\d,]*\s*(원|만원|달러|엔|위안|페소|바트)|예산|환율)/)) {
     addIssue(issues, 'missing_required_block', 'critical', 'Cost/currency posts need concrete amounts or budget ranges.', { subtype });
   }
+  if (subtype === 'comparison') {
+    const hasDecisionCue = hasAny(
+      plain,
+      /(compare|recommend|best|pros|cons|\uBE44\uAD50|\uCD94\uCC9C|\uC120\uD0DD|\uC0C1\uD669\uBCC4|\uB9DE\uB294\s*\uC0AC\uB78C|\uC548\s*\uB9DE\uB294\s*\uC0AC\uB78C|\uC544\uC774|\uAC00\uC871|\uC548\uC804)/i,
+    );
+    if (!hasDecisionCue || (tableRows < 4 && listItems < 5)) {
+      addIssue(issues, 'missing_required_block', 'critical', 'Comparison/recommendation posts need situation-based decision criteria.', {
+        hasDecisionCue,
+        tableRows,
+        listItems,
+      });
+    }
+  }
 }
 
 function inspectProductContract(
