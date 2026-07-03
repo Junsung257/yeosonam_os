@@ -88,4 +88,41 @@ describe('blog queue operational health', () => {
       action: 'publish_ready',
     });
   });
+
+  it('does not report candidate-contract blockers as publish-ready queue inventory', () => {
+    const summary = summarizeBlogQueueOperationalHealth([
+      {
+        status: 'queued',
+        topic: '7월 호주 시드니 여행, 한국과 반대! 겨울 날씨와 즐길 거리 — 총정리',
+        destination: '시드니',
+        meta: { expected_slug: '7' },
+      },
+      {
+        status: 'queued',
+        topic: '클락 월별 날씨와 옷차림 가이드',
+        destination: '클락',
+        meta: { expected_slug: 'clark-monthly-weather-clothing' },
+      },
+      {
+        status: 'queued',
+        source: 'pillar',
+        topic: '여름방학 가족 해외여행, 아이와 가기 좋은 안전한 휴양지 추천',
+        meta: {},
+      },
+    ]);
+
+    expect(summary.candidate_contract_blocked_count).toBe(1);
+    expect(summary.pillar_deferred_count).toBe(1);
+    expect(summary.overdue_queued_count).toBe(0);
+    expect(summary.issue_counts).toMatchObject({
+      candidate_pre_publish_contract: 1,
+      pillar_deferred: 1,
+      none: 1,
+    });
+    expect(summary.action_counts).toMatchObject({
+      quarantine_candidate_contract: 1,
+      defer_pillar_candidate: 1,
+      publish_ready: 1,
+    });
+  });
 });

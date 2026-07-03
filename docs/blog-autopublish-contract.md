@@ -113,6 +113,7 @@ Before widening automatic publishing after engine changes, `diagnose:blog-autopu
 - Product canaries require a durable product dedup key using product, departure date, duration, and supplier evidence.
 - Broad pillar rows, evidence-insufficient rows, duplicate rows, and topic-fit failures must be rejected before they consume publisher claim slots.
 - Candidate topics that already violate the pre-publish title/slug contract must also be rejected before they consume publisher claim slots. Current blockers include banned editorial cliches such as `총정리` and `완벽 가이드`, machine separators such as `|`, month/year-leading topics that generate numeric slugs, weak expected slugs, and destinationless broad recommendation topics without a concrete comparison brief.
+- Queue/admin operational health must use the same candidate pre-publish contract. A blocked queued row must be counted as `candidate_pre_publish_contract` / `quarantine_candidate_contract`, not as `publish_ready` or merely overdue inventory. Broad `pillar` rows are separate planning inventory and must be counted as `pillar_deferred`, not as candidate-contract failures.
 
 ## Blocking Rules
 
