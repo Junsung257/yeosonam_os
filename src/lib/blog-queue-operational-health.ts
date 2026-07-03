@@ -163,6 +163,18 @@ export function getBlogQueueOperationalState(
   }
 
   if (status === 'failed') {
+    if (issue === 'candidate_pre_publish_contract') {
+      return {
+        issue,
+        attention: false,
+        manualReview: false,
+        history: true,
+        retryable: false,
+        terminal: true,
+        action: 'hidden_terminal',
+      };
+    }
+
     const retryable = !nonRetryableIssue && decision.retryable && !hasQuarantine && attempts < maxAttempts;
     const productEvidence =
       issue === 'product_open_contract' ||

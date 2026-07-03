@@ -125,4 +125,26 @@ describe('blog queue operational health', () => {
       publish_ready: 1,
     });
   });
+
+  it('hides already quarantined candidate-contract failures from manual rewrite backlog', () => {
+    const summary = summarizeBlogQueueOperationalHealth([
+      {
+        status: 'failed',
+        topic: '괌 여행 가이드 2026 | 예산·경비·비용 체크',
+        destination: '괌',
+        last_error: 'candidate_pre_publish_contract:machine_topic_separator|weak_expected_slug',
+        meta: {
+          failure_code: 'candidate_pre_publish_contract',
+          quarantine_reason: 'candidate_pre_publish_contract',
+          self_heal_blocked: true,
+        },
+      },
+    ]);
+
+    expect(summary.manual_review_count).toBe(0);
+    expect(summary.hidden_history_count).toBe(1);
+    expect(summary.action_counts).toMatchObject({
+      hidden_terminal: 1,
+    });
+  });
 });

@@ -71,7 +71,7 @@ async function main() {
   const cutoff = new Date(now.getTime() - staleMinutes * 60 * 1000);
   const { data, error } = await supabase
     .from('blog_topic_queue')
-    .select('id, status, source, product_id, attempts, last_error, created_at, updated_at, target_publish_at, meta')
+    .select('id, status, source, product_id, topic, destination, primary_keyword, attempts, last_error, created_at, updated_at, target_publish_at, meta')
     .in('status', ['queued', 'generating', 'failed'])
     .order('updated_at', { ascending: false })
     .limit(limit);
@@ -84,6 +84,7 @@ async function main() {
   let staleRecovered = 0;
   let staleClosed = 0;
   let overdueQueuedRescheduled = 0;
+  let candidateContractQuarantined = 0;
   let metaRepaired = 0;
 
   for (const row of rows) {
@@ -140,6 +141,35 @@ async function main() {
       continue;
     }
 
+    if (state.action === 'quarantine_candidate_contract' || issue === 'candidate_pre_publish_contract') {
+      const payload = {
+        status: 'skipped',
+        updated_at: now.toISOString(),
+        last_error: `candidate_pre_publish_contract: ops cleanup quarantined unsafe queued candidate ${now.toISOString()}`.slice(0, 500),
+        meta: {
+          ...meta,
+          failure_code: 'candidate_pre_publish_contract',
+          self_heal_blocked: true,
+          quarantine_reason: 'candidate_pre_publish_contract',
+          candidate_contract_quarantined_at: now.toISOString(),
+          candidate_contract_quarantined_by: 'cleanup-blog-queue-health',
+          operational_health_repaired_at: now.toISOString(),
+          operational_health_repaired_by: 'cleanup-blog-queue-health',
+        },
+      };
+      const result = await updateRow(row.id, payload);
+      if (!result.error) candidateContractQuarantined += 1;
+      actions.push({
+        id: row.id,
+        status_before: row.status,
+        action: 'skip_candidate_contract',
+        issue,
+        write,
+        error: result.error ? result.error.message : null,
+      });
+      continue;
+    }
+
     if (needsFailureMetaRepair(row, issue)) {
       const payload = {
         updated_at: now.toISOString(),
@@ -187,7 +217,7 @@ async function main() {
 
   const { data: afterRows } = await supabase
     .from('blog_topic_queue')
-    .select('id, status, attempts, last_error, created_at, updated_at, target_publish_at, meta')
+    .select('id, status, source, topic, destination, primary_keyword, attempts, last_error, created_at, updated_at, target_publish_at, meta')
     .in('status', ['queued', 'generating', 'failed'])
     .limit(1000);
 
@@ -201,8 +231,9 @@ async function main() {
       stale_generating_recovered: staleRecovered,
       stale_generating_closed: staleClosed,
       overdue_queued_rescheduled: overdueQueuedRescheduled,
+      candidate_contract_quarantined: candidateContractQuarantined,
       failure_meta_repaired: metaRepaired,
-      total: staleRecovered + staleClosed + overdueQueuedRescheduled + metaRepaired,
+      total: staleRecovered + staleClosed + overdueQueuedRescheduled + candidateContractQuarantined + metaRepaired,
     },
     actions,
   };
@@ -213,7 +244,7 @@ async function main() {
   }
 
   console.log(`[cleanup-blog-queue-health] mode=${report.mode} scanned=${report.scanned} changed=${report.changed.total}`);
-  console.log(`stale recovered=${staleRecovered} closed=${staleClosed} overdue_rescheduled=${overdueQueuedRescheduled} meta_repaired=${metaRepaired}`);
+  console.log(`stale recovered=${staleRecovered} closed=${staleClosed} overdue_rescheduled=${overdueQueuedRescheduled} candidate_contract_quarantined=${candidateContractQuarantined} meta_repaired=${metaRepaired}`);
   console.log(`actionable_failed before=${before.actionable_failed_count} after=${report.after.actionable_failed_count}`);
   if (!write && actions.length > 0) {
     console.log('Dry-run only. Re-run with --write to apply safe queue health repairs.');
