@@ -589,6 +589,18 @@ function ensureStandaloneH1(markdown: string, title: string): string {
   return nextLines.join('\n').replace(/\n{4,}/g, '\n\n\n').trim();
 }
 
+function ensureSingleMarkdownH1(markdown: string): string {
+  let h1Count = 0;
+  return markdown
+    .split('\n')
+    .map((line) => {
+      if (!/^#\s+\S/.test(line.trim())) return line;
+      h1Count += 1;
+      return h1Count === 1 ? line : line.replace(/^#\s+/, '## ');
+    })
+    .join('\n');
+}
+
 function ensureChecklistSection(markdown: string): string {
   const hasChecklistIntent = /체크리스트|필수\s*아이템|준비물|챙길\s*것/.test(markdown);
   const hasStandardChecklist = /^##\s+준비물 체크리스트\s*$/m.test(markdown);
@@ -771,6 +783,39 @@ function isWeakGeneratedSlug(slug: string | null | undefined): boolean {
   return /-[a-z0-9]{4}$/i.test(value) && !/-\d{4}$/.test(value);
 }
 
+const ROMANIZED_DESTINATION_HINTS: Array<[RegExp, string]> = [
+  [/\bdanang\b|\bda-nang\b|다낭/i, '다낭'],
+  [/\bxian\b|서안/i, '서안'],
+  [/\bshijiazhuang\b|석가장/i, '석가장'],
+  [/\bhohhot\b|호화호특|후허하오터/i, '호화호특'],
+  [/\byanji\b|연길/i, '연길'],
+  [/\bbeppu\b|벳부/i, '벳부'],
+  [/\bfukuoka\b|후쿠오카/i, '후쿠오카'],
+  [/\bnagasaki\b|나가사키/i, '나가사키'],
+  [/\bokinawa\b|오키나와/i, '오키나와'],
+  [/\bbangkok\b|방콕/i, '방콕'],
+  [/\bcebu\b|세부/i, '세부'],
+  [/\bbohol\b|보홀/i, '보홀'],
+  [/\bbali\b|발리/i, '발리'],
+  [/\bosaka\b|오사카/i, '오사카'],
+  [/\btokyo\b|도쿄/i, '도쿄'],
+  [/\bguam\b|괌/i, '괌'],
+  [/\bmongolia\b|몽골/i, '몽골'],
+  [/\beurope\b|유럽/i, '유럽'],
+];
+
+function inferredDestinationForCustomer(row: BlogRow): string | null {
+  const titleAndSlug = [row.slug, row.seo_title].filter(Boolean).map(String).join(' ');
+  const explicit = usableDestinationKeyword(row.destination)
+    || usableDestinationKeyword(extractDestination(row.seo_title || row.slug || ''));
+  if (explicit) return explicit;
+
+  for (const [pattern, destination] of ROMANIZED_DESTINATION_HINTS) {
+    if (pattern.test(titleAndSlug)) return destination;
+  }
+  return null;
+}
+
 function buildSeoKeyword(row: BlogRow, primaryKeyword: string): string {
   return normalizePrimaryKeyword(primaryKeyword)
     || normalizePrimaryKeyword(row.destination)
@@ -873,8 +918,7 @@ function microAngleKoreanLabel(row: BlogRow): string | null {
 function localizedMicroAngleKeyword(row: BlogRow): string | null {
   const label = microAngleKoreanLabel(row);
   if (!label) return null;
-  const destination = cleanTravelKeyword(row.destination)
-    || cleanTravelKeyword(extractDestination(row.seo_title || row.slug || ''));
+  const destination = inferredDestinationForCustomer(row);
   return destination ? `${destination} ${label}` : label;
 }
 
@@ -1218,9 +1262,17 @@ function cleanTravelKeyword(value: string | null | undefined): string | null {
   return cleaned;
 }
 
+function usableDestinationKeyword(value: string | null | undefined): string | null {
+  const cleaned = cleanTravelKeyword(value);
+  if (!cleaned) return null;
+  if (/^(?:여행|여행 준비|여행지|현지|국내|해외|travel)$/i.test(cleaned)) return null;
+  if (/^(?:[1-9]|1[0-2])월(?:\s|$)/.test(cleaned)) return null;
+  return cleaned;
+}
+
 function primaryKeywordForCustomer(row: BlogRow): string {
   const base = (!row.product_id ? localizedMicroAngleKeyword(row) : null)
-    || cleanTravelKeyword(row.destination)
+    || inferredDestinationForCustomer(row)
     || cleanTravelKeyword(keywordFromStoredMeta(row))
     || cleanTravelKeyword(row.seo_title)
     || cleanTravelKeyword(extractDestination(row.slug || ''))
@@ -1297,7 +1349,7 @@ function improveBackfillSeoTitleCustomer(title: string, row: BlogRow, primaryKey
   const hasKeyword = keyword.length > 1 && cleaned.includes(keyword);
   const hasUsefulModifier = /20\d{2}|최신|날씨|비용|일정|준비|체크|입국|환전|유심|eSIM|로밍|항공권/.test(cleaned);
   const conflictsWithPrimaryIntent = hasConflictingCustomerTitleIntent(cleaned, kind, keyword);
-  const weak = isWeakGeneratedSlug(row.slug) || cleaned.length < 18 || cleaned.length > 60 || !hasKeyword || !hasUsefulModifier || containsEnglishMicroAngle(cleaned) || conflictsWithPrimaryIntent;
+  const weak = isWeakGeneratedSlug(row.slug) || cleaned.length < 28 || cleaned.length > 60 || !hasKeyword || !hasUsefulModifier || containsEnglishMicroAngle(cleaned) || conflictsWithPrimaryIntent;
   if (!weak) return cleaned;
 
   const modifier = customerTopicLabel(kind);
@@ -1337,6 +1389,9 @@ function normalizeDescriptionKey(value: string): string {
 }
 
 function seoDescriptionUniqueHint(row: BlogRow, destination: string, primaryKeyword: string): string {
+  const productishHint = productishSlugDescriptionHint(row);
+  if (productishHint) return productishHint;
+
   const escapedDestination = destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const raw = [row.seo_title, primaryKeyword, row.slug].filter(Boolean).join(' ');
   const cleaned = raw
@@ -1351,6 +1406,16 @@ function seoDescriptionUniqueHint(row: BlogRow, destination: string, primaryKeyw
     .slice(0, 4)
     .join(' ');
   return hint || cleanTravelKeyword(row.seo_title) || cleanTravelKeyword(primaryKeyword) || row.slug || '핵심 기준';
+}
+
+function productishSlugDescriptionHint(row: BlogRow): string | null {
+  const text = `${row.slug || ''} ${row.seo_title || ''}`.toLowerCase();
+  const parts: string[] = [];
+  if (/busan|부산/.test(text)) parts.push('부산 출발');
+  if (/shilla|monogram|신라\s*모노그램|신라모노그램/.test(text)) parts.push('신라모노그램');
+  if (/package|pkg|패키지/.test(text)) parts.push('패키지 조건');
+  if (/cn|china|중국/.test(text)) parts.push('중국 단체 기준');
+  return parts.length >= 2 ? parts.slice(0, 4).join(' ') : null;
 }
 
 function ensureBatchUniqueSeoDescription(
@@ -1621,9 +1686,59 @@ function dedupeItineraryFlowBlocksFinal(markdown: string): string {
 
 function normalizeFinalMarkdownSurface(markdown: string): string {
   const normalizedLinks = canonicalizeBlogPublicLinks ? canonicalizeBlogPublicLinks(markdown, baseUrl) : markdown;
-  return capHeadingDensityFinal(
-    repairMarkdownTables(removeTinyBrokenTablesFinal(dedupeItineraryFlowBlocksFinal(dedupeRepeatedCalloutsFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(normalizeMarkdownImageUrlsFinal(normalizedLinks))))))),
+  const normalizedWords = removeAwkwardDuplicateWordsFinal(
+    stripAwkwardGeneratedTailArtifactsFinal(trimAfterClosingCtaFinal(normalizedLinks)),
   );
+  return capHeadingDensityFinal(
+    repairMarkdownTables(removeTinyBrokenTablesFinal(dedupeItineraryFlowBlocksFinal(dedupeRepeatedCalloutsFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(normalizeMarkdownImageUrlsFinal(normalizedWords))))))),
+  );
+}
+
+function trimAfterClosingCtaFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const ctaIndex = lines.findIndex((line) => /^(?:#{2,4}\s+|\*\*)여행\s*상품과\s*함께\s*확인하기/.test(line.trim()));
+  if (ctaIndex < 0) return markdown;
+
+  const kept = lines.slice(0, ctaIndex + 1);
+  let sawCtaLink = false;
+  for (let index = ctaIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const trimmed = line.trim();
+    const isCtaLink = /^[-*]\s+/.test(trimmed) && /\/(?:packages|group-inquiry|blog)\b/.test(trimmed);
+    if (!trimmed || isCtaLink) {
+      kept.push(line);
+      sawCtaLink = sawCtaLink || isCtaLink;
+      continue;
+    }
+    if (sawCtaLink) break;
+    kept.push(line);
+  }
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function stripAwkwardGeneratedTailArtifactsFinal(markdown: string): string {
+  const artifactLine = /(?:출발\s*전\s*핵심\s*조건|일정별\s*확인\s*항목)/;
+  return markdown
+    .split('\n')
+    .filter((line) => !artifactLine.test(line.replace(/\*\*/g, '').trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function removeAwkwardDuplicateWordsFinal(markdown: string): string {
+  return markdown
+    .replace(/여행\s+여행/g, '여행')
+    .replace(/준비\s+준비/g, '준비')
+    .replace(/정보\s+정보/g, '정보')
+    .replace(/현지\s+현지/g, '현지');
+}
+
+function normalizePackageDestinationLinksFinal(markdown: string, destination?: string | null): string {
+  const keyword = usableDestinationKeyword(destination);
+  if (!keyword) return markdown;
+  const encoded = encodeURIComponent(keyword);
+  return markdown.replace(/(\/packages\?destination=)[^)\s&]+/g, `$1${encoded}`);
 }
 
 function strengthenIntroHookCustomer(markdown: string, destination?: string | null, primaryKeyword?: string | null): string {
@@ -2470,8 +2585,12 @@ async function main() {
     const originalOg = row.og_image_url?.trim() || null;
     const originalTitle = row.seo_title?.trim() || null;
     const originalDescription = row.seo_description?.trim() || null;
-    const destination = row.destination || extractDestination(row.seo_title || row.slug || '');
     const primaryKeyword = primaryKeywordForCustomer(row);
+    const inferredDestination = inferredDestinationForCustomer(row);
+    const destination = usableDestinationKeyword(row.destination)
+      || inferredDestination
+      || usableDestinationKeyword(extractDestination(row.seo_title || row.slug || ''));
+    const normalizedDestinationForWrite = usableDestinationKeyword(destination) || inferredDestination;
     const productId = typeof row.product_id === 'string' && row.product_id.trim() ? row.product_id : null;
     const contentType = row.content_type || (productId ? 'package_intro' : 'guide');
     const blogType = productId ? 'product' : 'info';
@@ -2698,7 +2817,7 @@ async function main() {
     if (densityRepair.changed) {
       nextHtml = densityRepair.blogHtml;
     }
-    nextHtml = ensureStandaloneH1(nextHtml, normalizedTitle);
+    nextHtml = ensureSingleMarkdownH1(ensureStandaloneH1(nextHtml, normalizedTitle));
     const customerBlocksHtml = ensureCustomerFaq(ensureCustomerSummary(splitLongParagraphs(nextHtml), primaryKeyword), primaryKeyword);
     nextHtml = finalCustomerVisibleRepair(
       strengthenIntroHookCustomer(
@@ -2728,7 +2847,7 @@ async function main() {
       title: normalizedTitle,
       slug,
       primaryKeyword,
-      destination,
+      destination: normalizedDestinationForWrite || primaryKeyword,
       category: normalizedTitle,
       contentType,
       productId,
@@ -2742,7 +2861,7 @@ async function main() {
       title: normalizedTitle,
       slug,
       primaryKeyword,
-      destination,
+      destination: normalizedDestinationForWrite || primaryKeyword,
       category: normalizedTitle,
       contentType,
       productId,
@@ -2751,17 +2870,20 @@ async function main() {
     if (postDensitySemanticRepair.changed) {
       nextHtml = postDensitySemanticRepair.blogHtml;
     }
-    nextHtml = ensureDestinationImageAltsFinal(nextHtml, destination);
-    nextHtml = normalizeFinalMarkdownSurface(normalizeMarkdownLinkLabels(nextHtml));
+    nextHtml = ensureDestinationImageAltsFinal(nextHtml, normalizedDestinationForWrite || primaryKeyword);
+    nextHtml = normalizePackageDestinationLinksFinal(
+      normalizeFinalMarkdownSurface(normalizeMarkdownLinkLabels(nextHtml)),
+      normalizedDestinationForWrite || destination || primaryKeyword,
+    );
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
       slug,
       seo_title: normalizedTitle,
       seo_description: normalizedDescription,
-      destination,
+      destination: normalizedDestinationForWrite || destination,
       angle_type: null,
-      primary_keyword: productId && destination ? `${destination} 패키지` : productId ? (normalizedTitle || primaryKeyword || destination) : primaryKeyword,
+      primary_keyword: primaryKeyword,
       secondary_keywords: secondaryKeywords,
       category: normalizedTitle,
       content_type: contentType,
@@ -2774,13 +2896,15 @@ async function main() {
     const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
     const metaChanged = stableJson(nextGenerationMeta) !== stableJson(row.generation_meta ?? {});
     const targetKeywordsChanged = stableJson(nextTargetAdKeywords ?? []) !== stableJson(row.target_ad_keywords ?? []);
+    const destinationChanged = Boolean(normalizedDestinationForWrite && normalizedDestinationForWrite !== row.destination);
     const changed =
       htmlChanged ||
       nextOg !== originalOg ||
       normalizedTitle !== originalTitle ||
       normalizedDescription !== originalDescription ||
       metaChanged ||
-      targetKeywordsChanged;
+      targetKeywordsChanged ||
+      destinationChanged;
     const changeReasons = [
       htmlChanged ? 'blog_html' : null,
       nextOg !== originalOg ? 'og_image_url' : null,
@@ -2788,6 +2912,7 @@ async function main() {
       normalizedDescription !== originalDescription ? 'seo_description' : null,
       metaChanged ? 'generation_meta' : null,
       targetKeywordsChanged ? 'target_ad_keywords' : null,
+      destinationChanged ? 'destination' : null,
     ].filter((value): value is string => Boolean(value));
 
     auditRows.push({
@@ -2850,6 +2975,7 @@ async function main() {
         readability_issues: qaReport.readability.issues,
         generation_meta: nextGenerationMeta,
         target_ad_keywords: nextTargetAdKeywords,
+        ...(destinationChanged ? { destination: normalizedDestinationForWrite } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
