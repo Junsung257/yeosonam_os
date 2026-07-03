@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-06-17
+Last updated: 2026-07-03
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -224,4 +224,39 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - As of 2026-07-02, repaired editorial backlog rows can be checked with `npm run recheck:blog-editorial-backlog -- --json`. If the dry-run reports `write_recommended=true`, run `npm run recheck:blog-editorial-backlog -- --json --write` to requeue only rows whose failure signatures are covered by the current repair contract and skip active duplicates before they can consume publisher claims.
 - As of 2026-07-02, the same backlog recheck also includes product-backed rows when the blocker is a generator contract issue such as `keyword_density` or `engine_v2`. It still keeps product proof failures such as `product_open_contract`, customer-open contract failures, and registration evidence failures blocked until the linked package proof is repaired.
 - As of 2026-07-02, editorial backlog recheck parses named runtime failures instead of collapsing them into `other`. `blog_content_brief_failed:missing_primary_keyword` and stale generation quarantines are recoverable after the current generator contract is deployed. Legacy broad `source='pillar'` rows blocked by `context_missing` are retired to `skipped` instead of being requeued into daily commercial/info publish slots.
+
+## 2026-07-03 Indexing Outbox Coverage Evidence
+
+- Root cause class: `blog-publisher` previously swallowed indexing enqueue failures, so `operational_checks.indexing_queued` could look healthy even if a published slug never entered the durable worker queue.
+- Fix:
+  - publisher enqueue results now preserve per-slug failures and append `indexing_enqueue_failed:{slug}:{error}` to the run errors;
+  - `/api/admin/blog/ops-summary`, `blog-daily-summary`, and `diagnose:blog-autopublish` expose `indexing_outbox_coverage`;
+  - admin health reports `indexing_outbox_missing` separately from provider/worker failures.
+- Coverage queries over `blog_indexing_jobs` must order by newest `updated_at` and inspect the latest 1,000 rows. Do not use an unordered capped read; it can miss fresh jobs in a large historical success table.
+- Verification on 2026-07-03:
+  - `npm run type-check` passed;
+  - `npx vitest run src/lib/blog-indexing-coverage.test.ts src/lib/blog-indexing-worker.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-seo-scorer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-topic-fit-gate.test.ts` passed;
+  - `npm run diagnose:blog-autopublish -- --json` reported selected-day publish `4/4`, `indexing_outbox_coverage.coverage_rate=100`, and `buckets=[]`.
 - If `diagnose:blog-autopublish` reports `publishability.next_action="quarantine_duplicates"` or `duplicate_candidate_count > 0`, run `npm run cleanup:blog-publishable-duplicates -- --json`, then apply with `--write` when `write_recommended=true`. This only skips duplicate active candidates; it does not delete queue history.
+
+## 2026-07-03 Publish Preflight Evidence
+
+- `src/lib/blog-publish-preflight.ts` is the shared operator preflight evaluator for `/api/admin/blog/ops-summary`, `blog-daily-summary`, and `diagnose:blog-autopublish`.
+- The preflight separates:
+  - hard blockers: insufficient publishable candidates for remaining slots, evidence blockers, actionable failed/stale generating rows, missing indexing outbox jobs, or failed recent canary quality samples;
+  - warnings: low candidate buffer, duplicate pressure, or manual-review backlog;
+  - harmless queue history: overdue queued rows are not a warning when publishable inventory is already sufficient and publisher preflight can reschedule them.
+- The recent canary baseline is three recent published posts with quality gate, content brief, SEO, and readability evidence.
+- Verification on 2026-07-03:
+  - `npx vitest run src/lib/blog-publish-preflight.test.ts` passed;
+  - `npm run diagnose:blog-autopublish -- --json` reported `publish_preflight.status="pass"`, score `100`, `canary_ready=true`, and `buckets=[]`.
+
+## 2026-07-03 Canary Candidate Readiness Evidence
+
+- `src/lib/blog-canary-preflight.ts` selects safe queued canaries without mutating queue state or publishing.
+- The canary set prefers a mixed writer sample so engine changes prove both info-guide and product-consult paths before expanding automation.
+- Info canaries must have a concrete destination unless the candidate is intentionally generic. Product canaries must carry product-backed dedup evidence.
+- Rejected canary reasons, including `info_missing_destination` and `pillar_deferred`, are reported as queue repair signals instead of hidden publisher failures.
+- Verification on 2026-07-03:
+  - `npx vitest run src/lib/blog-canary-preflight.test.ts` passed;
+  - `npm run diagnose:blog-autopublish -- --json` reported `canary_preflight.status="pass"`, ready `3/3`, and mixed writer coverage.

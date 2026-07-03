@@ -978,30 +978,43 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     // Indexing outbox + revalidatePath. External provider requests run in blog-indexing-worker.
-    const indexingPromises: Promise<void>[] = [];
+    const indexingPromises: Promise<{ slug: string; ok: boolean; error?: string }>[] = [];
     for (const r of results) {
       if (r.status === 'published' && r.reason) {
         const slug = r.reason;
         const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
-        indexingPromises.push(
-          Promise.resolve(
-            enqueueBlogIndexingJob({
-              slug,
-              baseUrl,
-              contentCreativeId,
-              source: 'blog_publisher',
-            })
-              .then(async (result) => {
-                if (!result.ok) throw new Error(result.error || `indexing enqueue failed: ${slug}`);
-              })
-              .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
-          ),
-        );
+        indexingPromises.push((async () => {
+          const result = await enqueueBlogIndexingJob({
+            slug,
+            baseUrl,
+            contentCreativeId,
+            source: 'blog_publisher',
+          });
+          if (!result.ok) {
+            return { slug, ok: false, error: result.error || `indexing enqueue failed: ${slug}` };
+          }
+          return { slug, ok: true };
+        })());
         revalidatePublicBlogCache(slug);
       }
     }
     const indexingResults = await Promise.allSettled(indexingPromises);
-    const indexingFailed = indexingResults.filter(r => r.status === 'rejected').length;
+    const indexingFailures = indexingResults.flatMap((result) => {
+      if (result.status === 'rejected') {
+        return [{
+          slug: 'unknown',
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        }];
+      }
+      return result.value.ok ? [] : [{
+        slug: result.value.slug,
+        error: result.value.error ?? 'indexing enqueue failed',
+      }];
+    });
+    const indexingFailed = indexingFailures.length;
+    if (indexingFailed > 0) {
+      errors.push(...indexingFailures.map((failure) => `indexing_enqueue_failed:${failure.slug}:${failure.error}`));
+    }
 
     if (publishedSlugs.length > 0) {
       try {
