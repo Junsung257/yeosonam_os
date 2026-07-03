@@ -154,6 +154,8 @@ Correct sequence:
 8. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
 9. Observe Google status through URL Inspection within quota.
 
+The durable blog outbox worker must not depend on legacy unauthenticated sitemap ping or WebSub calls for success. Those calls may exist only as explicit manual/backfill compatibility behavior, not as the normal `/blog` indexing success path.
+
 Google sitemap submission is a hint, not a guarantee of indexing. Google no longer supports the old unauthenticated sitemap ping as the core path. URL Inspection is for status visibility and troubleshooting, not bulk indexing guarantees.
 
 Publishing routes must not call external indexing providers directly. They may only enqueue `blog_indexing_jobs`; retries and evidence persistence belong to the worker.

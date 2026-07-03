@@ -112,6 +112,28 @@ function containsText(value: unknown, pattern: RegExp): boolean {
   return JSON.stringify(value ?? '').match(pattern) !== null;
 }
 
+function startedAtMs(row: any): number {
+  const parsed = new Date(row?.started_at ?? '').getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isRecoveredPublisherRun(row: any): boolean {
+  const summary = summaryObject(row);
+  const published = numberFrom(summary.published) + numberFrom(summary.published_count);
+  const remaining = summary.dailyQuota && typeof summary.dailyQuota === 'object'
+    ? numberFrom(summary.dailyQuota.remaining)
+    : null;
+
+  return (
+    row?.status === 'success' &&
+    (
+      published > 0 ||
+      remaining === 0 ||
+      summary.reason === 'daily_publish_quota_reached'
+    )
+  );
+}
+
 async function countByStatus(table: string, statuses: string[]) {
   const { data, error } = await supabase
     .from(table)
@@ -371,7 +393,13 @@ async function main() {
     containsText(row.error_messages, /timeout|timed out|285000|285초/i) ||
     containsText(row.summary, /timeout|timed out|285000|285초/i)
   );
-  if (timeoutRuns.length > 0) {
+  const latestTimeoutStartedAt = timeoutRuns.reduce((max: number, row: any) => Math.max(max, startedAtMs(row)), 0);
+  const timeoutRecovered = timeoutRuns.length > 0 &&
+    !selectedDayUnderTarget &&
+    publishPreflight.status === 'pass' &&
+    currentDayPublisherHealth.status === 'healthy' &&
+    publisherLogs.some((row: any) => startedAtMs(row) > latestTimeoutStartedAt && isRecoveredPublisherRun(row));
+  if (timeoutRuns.length > 0 && !timeoutRecovered) {
     buckets.push({
       code: 'publisher_timeout',
       severity: 'high',

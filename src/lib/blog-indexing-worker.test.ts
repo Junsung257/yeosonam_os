@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { resolveBlogIndexingBaseUrl } from './blog-indexing-worker';
 
@@ -14,5 +16,12 @@ describe('blog indexing worker', () => {
       'https://preview.example.com/blog/6-fukuoka',
       'https://www.yeosonam.com',
     )).toBe('https://www.yeosonam.com');
+  });
+
+  it('keeps durable blog outbox submissions on GSC sitemap and IndexNow without legacy pings', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/blog-indexing-worker.ts'), 'utf8');
+
+    expect(source).toContain('notifyIndexing(canonicalUrl, baseUrl, {');
+    expect(source).toContain('pingSitemap: false');
   });
 });
