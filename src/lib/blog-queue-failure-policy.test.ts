@@ -32,6 +32,27 @@ describe('blog queue failure policy', () => {
     })).toBe(false);
   });
 
+  it('classifies thin content and link gate failures without hiding them as unknown', () => {
+    expect(classifyBlogQueueFailure(
+      '2/19 실패: [length] 본문 2467자 — info 최소 2500자 미달 (thin content)',
+    )).toMatchObject({
+      code: 'length',
+      retryable: true,
+      selfHealAllowed: false,
+    });
+
+    expect(classifyBlogQueueFailure(
+      '2/19 실패: [links] 내부링크 0개 — 최소 1개 필요',
+    )).toMatchObject({
+      code: 'links',
+      retryable: true,
+      selfHealAllowed: false,
+    });
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: '2/19 실패: [links] 내부링크 0개 — 최소 1개 필요',
+    })).toBe(false);
+  });
+
   it('honors stored quarantine metadata even if the text is ambiguous', () => {
     expect(shouldSelfHealBlogQueueItem({
       lastError: 'self-heal blocked',

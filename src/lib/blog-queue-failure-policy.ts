@@ -2,6 +2,8 @@ type BlogQueueFailureCode =
   | 'duplicate_content'
   | 'context_missing'
   | 'product_open_contract'
+  | 'length'
+  | 'links'
   | 'keyword_density'
   | 'structure_integrity'
   | 'intent_quality'
@@ -25,6 +27,8 @@ const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'duplicate_content',
   'context_missing',
   'product_open_contract',
+  'length',
+  'links',
   'keyword_density',
   'structure_integrity',
   'intent_quality',
@@ -72,6 +76,14 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (hasFailedGate(qa, 'keyword_density') || /\[keyword_density\]|keyword_density|키워드.*밀도/i.test(text)) {
     return { code: 'keyword_density', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'length') || /\[length\]|thin content|최소\s*\d+\s*자\s*미달|minimum length|min length/i.test(text)) {
+    return { code: 'length', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'links') || /\[links\]|내부링크|internal link|external authority|authority link/i.test(text)) {
+    return { code: 'links', retryable: true, selfHealAllowed: false, skipped: false };
   }
 
   if (hasFailedGate(qa, 'structure_integrity') || /\[structure_integrity\]|structure_integrity|raw_directive|checklist_shape/i.test(text)) {
