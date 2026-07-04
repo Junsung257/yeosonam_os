@@ -54,6 +54,7 @@ const requiredAnchors = [
       'docs/settlement-current-ssot.md',
       'docs/marketing-current-ssot.md',
       'docs/ai-ops-current-ssot.md',
+      'docs/agency-agents-adoption.md',
     ],
   },
   {
@@ -91,6 +92,10 @@ const requiredAnchors = [
   {
     file: 'docs/ai-ops-current-ssot.md',
     includes: ['Required Invariants', 'Provider And Prompt Boundary', 'Durable Artifact Rule'],
+  },
+  {
+    file: 'docs/agency-agents-adoption.md',
+    includes: ['Highest-Value Imports', 'Pilot Protocol', 'Yeosonam Agent Pack V1', 'Hard Boundaries'],
   },
   {
     file: 'docs/audits/README.md',

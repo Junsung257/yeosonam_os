@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-27
 
-This is the current operating contract for AI-agent development workflow in Yeosonam OS. It absorbs the useful patterns from Superpowers, Spec Kit, LazyCodex, Cline, OpenHands, Aider, ast-grep, and Probe without installing their autonomous runtimes or letting them override Yeosonam domain rules.
+This is the current operating contract for AI-agent development workflow in Yeosonam OS. It absorbs the useful patterns from Superpowers, Spec Kit, LazyCodex, Cline, OpenHands, Aider, ast-grep, Probe, and Agency Agents without installing their autonomous runtimes or letting them override Yeosonam domain rules.
 
 ## Source Of Truth
 
@@ -13,8 +13,9 @@ Yeosonam SSOT wins over generic agent workflow advice:
 - `.cursor/rules/*.mdc` defines editor-agent rules.
 - Domain SSOT files under `docs/` define current business behavior.
 - `docs/ai-agent-doc-automation.md` decides whether work needs a durable artifact.
+- `docs/agency-agents-adoption.md` defines how external role catalogs are tested and selectively imported.
 
-Do not install LazyCodex, Spec Kit, Superpowers, OpenHands, Cline, Aider, or Probe as part of normal Yeosonam work. Their patterns are references only unless the user explicitly asks for a separate tool pilot.
+Do not install LazyCodex, Spec Kit, Superpowers, OpenHands, Cline, Aider, Probe, or Agency Agents as part of normal Yeosonam work. Their patterns are references only unless the user explicitly asks for a separate tool pilot.
 
 ## Standard Workflow
 
@@ -47,6 +48,7 @@ For Tier 2 and Tier 3, the feature packet must contain `spec.md`, `plan.md`, `ta
 - **OpenHands**: prefer isolated worktrees or sandboxed backends for parallel/long-running agent work.
 - **Aider**: favor git-diff-sized changes, repo maps, and lint/test feedback loops.
 - **ast-grep / Probe**: use structural and token-aware reading before large refactors; deterministic search beats guessing.
+- **Agency Agents**: use selected role patterns only after real-task comparison. First-approved imports are multi-agent architecture, evidence QA, prompt contracts, AI FinOps, AppSec/privacy review, SEO, and paid-media auditing. Do not bulk-install the roster.
 
 ## Hard Stops
 
