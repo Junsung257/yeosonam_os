@@ -231,6 +231,19 @@ function mobileSurfaceBlocker(input: unknown, surface: 'packages' | 'lp'): strin
   return null;
 }
 
+function isNonAirTransportPackage(pkg: Record<string, unknown>): boolean {
+  const haystack = [
+    pkg.title,
+    pkg.display_title,
+    pkg.product_summary,
+    pkg.destination,
+    pkg.departure_airport,
+    pkg.raw_text,
+    pkg.itinerary_data ? JSON.stringify(pkg.itinerary_data) : '',
+  ].map(value => asString(value)).join(' ');
+  return /(?:\uC4F0\uC2DC\uB9C8\uB9C1\uD06C|\uD6FC\uB9AC|\uD398\uB9AC|\uC120\uBC15|\uC5EC\uAC1D\uD130\uBBF8\uB110|\uBD80\uC0B0\uD56D|\uD788\uD0C0\uCE74\uCE20|\uC2B9\uC120|ferry|ship|terminal)/i.test(haystack);
+}
+
 export function evaluateRegistrationQualityScorecard(input: {
   pkg: Record<string, unknown>;
   verifyChecks?: RegistrationQualityVerifyCheck[];
@@ -243,6 +256,7 @@ export function evaluateRegistrationQualityScorecard(input: {
   const days = itineraryDays(pkg);
   const priceDates = packagePriceDates(pkg);
   const priceIssue = priceAlignment(priceDates, input.productPrices ?? null);
+  const nonAirTransportPackage = isNonAirTransportPackage(pkg);
   const customerCopyFailures = [
     ...hasFailed(checks, ['C18']),
   ];
@@ -280,11 +294,15 @@ export function evaluateRegistrationQualityScorecard(input: {
       label: '일정/항공/호텔 파싱',
       blockers: [
         ...(days.length === 0 ? ['itinerary days missing'] : []),
-        ...(!asString(pkg.airline) ? ['airline missing'] : []),
+        ...(!asString(pkg.airline) && !nonAirTransportPackage ? ['airline missing'] : []),
         ...hasFailed(checks, ['C7', 'C9', 'C16', 'C17']),
       ],
       warnings: hasWarned(checks, ['C7', 'C9', 'C16', 'C17']),
-      evidence: [`airline ${asString(pkg.airline) || 'missing'}`],
+      evidence: [
+        nonAirTransportPackage
+          ? 'transport non-air source-backed'
+          : `airline ${asString(pkg.airline) || 'missing'}`,
+      ],
     }),
     domain({
       id: 'entity_matching',

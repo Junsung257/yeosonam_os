@@ -75,6 +75,7 @@
     "extract:hwp-inbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/extract-hwp-inbox.ps1",
     "audit:hwp-inbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-hwp-product-registration-batch.ps1",
     "register:hwp-inbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-hwp-product-registration-batch.ps1 -Register",
+    "register:schedule-hwp-open": "npx tsx scripts/run-schedule-hwp-customer-open-batch.ts --open-active --base=https://www.yeosonam.com",
     "prove:hwp-mobile": "npx tsx scripts/prove-hwp-mobile-render.ts",
     "refresh:customer-mobile-proofs": "npx tsx scripts/refresh-customer-mobile-proofs.ts",
     "refresh:customer-mobile-proofs:apply": "npx tsx scripts/refresh-customer-mobile-proofs.ts --apply",

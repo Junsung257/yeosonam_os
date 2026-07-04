@@ -36,8 +36,12 @@ const UPLOAD_PIPELINE_SOFT_TIMEOUT_MS = Math.max(
   Math.min(270_000, Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 240_000)),
 );
 const UPLOAD_QUEUE_FIRST_TEXT_LENGTH = Math.max(
-  5_000,
-  Math.min(100_000, Number(process.env.UPLOAD_QUEUE_FIRST_TEXT_LENGTH ?? 18_000)),
+  20_000,
+  Math.min(150_000, Number(process.env.UPLOAD_QUEUE_FIRST_TEXT_LENGTH ?? 60_000)),
+);
+const UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH = Math.max(
+  UPLOAD_QUEUE_FIRST_TEXT_LENGTH,
+  Math.min(250_000, Number(process.env.UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH ?? 120_000)),
 );
 
 function delay(ms: number): Promise<void> {
@@ -52,8 +56,10 @@ function countLikelyPackageSections(rawText: string | null): number {
 
 function shouldQueueFirst(rawText: string | null): boolean {
   if (!rawText) return false;
-  if (rawText.length >= UPLOAD_QUEUE_FIRST_TEXT_LENGTH) return true;
-  return countLikelyPackageSections(rawText) >= 4;
+  const likelyPackageSections = countLikelyPackageSections(rawText);
+  if (likelyPackageSections >= 4) return true;
+  if (rawText.length >= UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH) return true;
+  return rawText.length >= UPLOAD_QUEUE_FIRST_TEXT_LENGTH && likelyPackageSections >= 2;
 }
 
 async function deferUploadForReplay(input: {

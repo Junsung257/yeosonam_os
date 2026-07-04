@@ -58,7 +58,11 @@ function extractRemainderAfterPattern(raw: string, pattern: RegExp): string | nu
 /** "숙박료"→"료" 같은 접두 패턴 매칭 찌꺼기 제거 */
 export function sanitizeCatalogRemainder(remainder: string | null | undefined): string | null {
   if (!remainder?.trim()) return null;
-  const r = remainder.trim();
+  const r = remainder
+    .trim()
+    .replace(/^[,·ㆍ•/|\s-]+|[,·ㆍ•/|\s-]+$/g, '')
+    .trim();
+  if (!r) return null;
   if (/^(료|비|요금?)$/.test(r)) return null;
   if (/^[-–—:,·\s]+$/.test(r)) return null;
   return r;

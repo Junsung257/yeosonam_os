@@ -405,6 +405,37 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+async function resolveSavedPackageIdsFromPayload(payload: Record<string, unknown>): Promise<string[]> {
+  const directIds = [
+    ...(
+      Array.isArray(payload.dbIds)
+        ? payload.dbIds
+        : Array.isArray(payload.packageIds)
+          ? payload.packageIds
+          : []
+    ),
+    typeof payload.packageId === 'string' ? payload.packageId : null,
+    typeof payload.id === 'string' ? payload.id : null,
+  ].map(value => String(value ?? '').trim()).filter(Boolean);
+  if (directIds.length > 0) return [...new Set(directIds)];
+
+  const internalCode = typeof payload.internal_code === 'string'
+    ? payload.internal_code.trim()
+    : typeof payload.internalCode === 'string'
+      ? payload.internalCode.trim()
+      : null;
+  if (!internalCode || !isSupabaseAdminConfigured) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from('travel_packages')
+    .select('id')
+    .eq('internal_code', internalCode)
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (error || !data?.length) return [];
+  return [String(data[0].id)];
+}
+
 async function readTextFile(path: string): Promise<string> {
   const value = await readFile(path, { encoding: 'utf8' });
   return String(value);
@@ -497,6 +528,8 @@ async function main(): Promise<void> {
   const outputDir = join(process.cwd(), 'scratch', 'upload-inbox-batch-reports', timestampSlug());
   const extractedDir = join(outputDir, 'extracted-text');
   await mkdir(extractedDir, { recursive: true });
+  const reportPath = join(outputDir, 'report.json');
+  const summaryPath = join(outputDir, 'summary.json');
 
   const files = await listInputFiles(inputDir, options.limit);
   const report: BatchReport = {
@@ -610,7 +643,7 @@ async function main(): Promise<void> {
           await runDeferredTasks(deferredTasks);
         }
         row.uploadPayload = result.payload;
-        row.savedIds = Array.isArray(result.payload.dbIds) ? result.payload.dbIds.map(String) : [];
+        row.savedIds = await resolveSavedPackageIdsFromPayload(result.payload);
         if (result.status >= 200 && result.status < 300 && row.savedIds.length > 0) {
           row.status = 'registered';
           report.summary.registered++;
@@ -624,6 +657,9 @@ async function main(): Promise<void> {
         row.error = error instanceof Error ? error.message : String(error);
         report.summary.registrationFailed++;
       }
+      report.summary.savedPackageIds = [...new Set(report.rows.flatMap(candidate => candidate.savedIds))].length;
+      await writeJson(reportPath, report);
+      await writeJson(summaryPath, report.summary);
     }
   }
 
@@ -668,10 +704,10 @@ async function main(): Promise<void> {
       : 'mobile audit was not requested; this report is not customer-ready proof';
 
   report.finishedAt = new Date().toISOString();
-  await writeJson(join(outputDir, 'report.json'), report);
-  await writeJson(join(outputDir, 'summary.json'), report.summary);
+  await writeJson(reportPath, report);
+  await writeJson(summaryPath, report.summary);
 
-  console.log(`[upload-inbox] report: ${join(outputDir, 'report.json')}`);
+  console.log(`[upload-inbox] report: ${reportPath}`);
   console.log(`[upload-inbox] extracted=${report.summary.extracted}/${report.summary.totalFiles} duplicateSkipped=${report.summary.duplicateSkipped} registered=${report.summary.registered} savedIds=${packageIds.length}`);
   console.log(`[upload-inbox] mobileLandingVerified=${report.summary.mobileLandingVerified} (${report.summary.mobileLandingVerificationReason})`);
 
