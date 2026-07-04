@@ -187,7 +187,7 @@ function addCrossFieldContextIssues(rows: TextRow[], issues: CustomerVisibleText
       row,
       optionalInclusionDuplicate ? 'optional_inclusion_duplicate' : 'duplicate_customer_visible_phrase',
       optionalInclusionDuplicate
-        ? '선택관광/특식 후보가 포함사항 또는 하이라이트에도 중복 노출됩니다.'
+        ? '선택관광/특식 정보가 포함사항 또는 하이라이트에도 중복 노출됩니다.'
         : `동일 고객 문구가 다른 위치에도 반복됩니다. first=${first.fieldPath}`,
     ));
   }
