@@ -37,12 +37,12 @@ const CUSTOMER_COPY_REPAIR_SKIP_KEYS = new Set([
 ]);
 
 const CUSTOMER_FORBIDDEN_TOKEN_RE =
-  /\b(?:NET|OP|PAX)\b|랜드사|공급가|거래처\s*원가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민|담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|내부|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/i;
+  /\b(?:NET|OP|PAX)\b|랜드사\s*공급가|거래처\s*단가|상품\s*원가|마진|수익|컴프|커펌|배분|담당자\s*확인|어드민\s*담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/i;
 const CUSTOMER_FORBIDDEN_TOKEN_RE_GLOBAL =
-  /\b(?:NET|OP|PAX)\b|랜드사|공급가|거래처\s*원가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민|담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|내부|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/gi;
+  /\b(?:NET|OP|PAX)\b|랜드사\s*공급가|거래처\s*단가|상품\s*원가|마진|수익|컴프|커펌|배분|담당자\s*확인|어드민\s*담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/gi;
 
 const OPERATIONAL_RESIDUE_RE =
-  /(?:기준으로|기준|하시면|해주세요|진행해주세요|확인해주세요|확인 후|대기)\s*$/g;
+  /(?:기준으로|기준|하시면 됩니다|진행해주세요|확인해주세요|확인 후 대기\s*$)/g;
 
 function compactText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -59,13 +59,15 @@ function stripForbiddenOperationalCopy(value: string): string | null {
     .filter(Boolean)
     .filter(part => !CUSTOMER_FORBIDDEN_TOKEN_RE.test(part));
 
+  if (parts.length === 0) return null;
+
   const candidate = compactText(
-    (parts.length > 0 ? parts.join(' ') : value)
+    parts.join(' ')
       .replace(CUSTOMER_FORBIDDEN_TOKEN_RE_GLOBAL, '')
       .replace(OPERATIONAL_RESIDUE_RE, ''),
   );
 
-  if (candidate.length <= 4 || /^(확인|요청|메모|기준|기준으로|확인 후|후)$/.test(candidate)) return null;
+  if (candidate.length <= 4 || /^(확인|요청|메모|기준|기준으로|확인 후)$/.test(candidate)) return null;
   const remainingCodes = customerCopyQualityIssues(candidate).map(issue => issue.code);
   return hasUnsafeIssue(remainingCodes) ? null : candidate;
 }

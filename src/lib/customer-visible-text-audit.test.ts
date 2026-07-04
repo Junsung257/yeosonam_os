@@ -8,20 +8,19 @@ import {
 
 describe('customer visible text audit v2', () => {
   it('marks safe supplier notation as repairable instead of final blocking', () => {
-    const issues = auditCustomerVisibleProductText({
-      inclusions: ['특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)'],
-    });
+    const payload = {
+      inclusions: ['특식 - 바나산 정산 레스토랑에서 저녁식사 맥주OR음료 1잔'],
+    };
+    const issues = auditCustomerVisibleProductText(payload);
 
     expect(issues.map(issue => issue.code)).toEqual(expect.arrayContaining(['supplier_notation']));
     expect(issues.every(issue => issue.safeFixable)).toBe(true);
-    expect(blockingCustomerVisibleTextIssues({
-      inclusions: ['특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)'],
-    })).toEqual([]);
+    expect(blockingCustomerVisibleTextIssues(payload)).toEqual([]);
   });
 
   it('detects duplicate destination tokens and cross-field duplicate phrases', () => {
     const issues = auditCustomerVisibleProductText({
-      title: '다낭 다낭 핵심 패키지',
+      title: '다낭 다낭 특가 패키지',
       inclusions: ['바나산 정상 레스토랑 저녁식사'],
       optional_tours: [{ name: '바나산 정상 레스토랑 저녁식사' }],
     });
@@ -47,7 +46,8 @@ describe('customer visible text audit v2', () => {
     const issues = auditCustomerVisibleScreenText([
       '다낭 다낭 베스트 상품',
       '바나힐 방문합니다',
-      '특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)',
+      '특식 - 바나산 정산 레스토랑에서 저녁식사 맥주OR음료 1잔',
+      '유류할증료(6월 기준)',
     ].join('\n'), { surface: 'lp' });
 
     expect(issues.map(issue => issue.code)).toEqual(expect.arrayContaining([

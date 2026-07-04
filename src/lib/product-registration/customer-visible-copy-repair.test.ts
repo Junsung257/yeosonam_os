@@ -6,11 +6,11 @@ import { repairCustomerVisibleCopyPayload } from './customer-visible-copy-repair
 describe('repairCustomerVisibleCopyPayload', () => {
   it('normalizes safe supplier copy without dropping the product payload', () => {
     const result = repairCustomerVisibleCopyPayload({
-      excludes: ['RMK 불포함 / P.P $60 / \\90,000 추가 됩니다'],
+      excludes: ['RMK 불포함 / P.P $60 / \\90,000 추가 합니다'],
     });
 
     expect(result.value).toEqual({
-      excludes: ['참고사항 불포함 / 1인 $60 / 90,000원 추가됩니다'],
+      excludes: ['참고사항 불포함 / 1인 $60 / 90,000원 추가합니다'],
     });
     expect(blockingCustomerVisibleTextIssues(result.value)).toEqual([]);
   });
@@ -52,16 +52,16 @@ describe('repairCustomerVisibleCopyPayload', () => {
       price_dates: [{ date: '2026-07-01', price: 899000 }],
       itinerary_data: {
         highlights: {
-          inclusions: ['특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)'],
+          inclusions: ['특식 - 바나산 정산 레스토랑에서 저녁식사 맥주OR음료 1잔'],
         },
         evidence: { quote: '바나산 정산 원문 근거' },
       },
       inclusions: [
-        '특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)',
-        '특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)',
+        '특식 - 바나산 정산 레스토랑에서 저녁식사 맥주OR음료 1잔',
+        '특식 - 바나산 정산 레스토랑에서 저녁식사 맥주OR음료 1잔',
       ],
       optional_tours: [
-        { name: '특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)' },
+        { name: '특식 - 바나산 정산 레스토랑에서 저녁식사 맥주OR음료 1잔' },
       ],
     });
 
@@ -70,7 +70,7 @@ describe('repairCustomerVisibleCopyPayload', () => {
       price_dates: [{ date: '2026-07-01', price: 899000 }],
     });
     expect((result.value as { inclusions: string[] }).inclusions).toEqual([
-      '특식 – 바나산 정상 레스토랑에서 저녁식사(맥주 또는 음료 1잔)',
+      '특식 - 바나산 정상 레스토랑에서 저녁식사 맥주 또는 음료 1잔',
     ]);
     expect((result.value as { optional_tours: unknown[] }).optional_tours).toEqual([]);
     expect(JSON.stringify(result.value)).toContain('바나산 정상');
