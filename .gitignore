@@ -78,8 +78,12 @@ scratch/
 # Local product-registration mobile/text audit outputs. These can contain
 # supplier/customer-facing proof screenshots and are regenerated during QA.
 /data/product-registration/customer-text-audit-*/
+/data/product-registration/customer-text-audit/
+/data/product-registration/mobile-copy-audit/
+/data/product-registration/schedule-hwp-batch/
 /data/product-registration/manual-ticketing-mobile-*/
 /data/product-registration/sjw-*/
+/data/exports/
 
 # Playwright 실패 덤프 (재현용)
 test-results/
