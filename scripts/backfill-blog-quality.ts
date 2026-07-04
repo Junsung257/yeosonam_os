@@ -1735,7 +1735,7 @@ function dedupeItineraryFlowBlocksFinal(markdown: string): string {
 function normalizeFinalMarkdownSurface(markdown: string): string {
   const normalizedLinks = canonicalizeBlogPublicLinks ? canonicalizeBlogPublicLinks(markdown, baseUrl) : markdown;
   const normalizedWords = removeAwkwardDuplicateWordsFinal(
-    stripAwkwardGeneratedTailArtifactsFinal(trimAfterClosingCtaFinal(normalizedLinks)),
+    normalizeRepeatedTailSectionsFinal(stripAwkwardGeneratedTailArtifactsFinal(trimAfterClosingCtaFinal(normalizedLinks))),
   );
   return capHeadingDensityFinal(
     repairMarkdownTables(removeTinyBrokenTablesFinal(dedupeItineraryFlowBlocksFinal(dedupeRepeatedCalloutsFinal(splitParagraphWallFinal(normalizeInlineHeadingsFinal(normalizeMarkdownImageUrlsFinal(normalizedWords))))))),
@@ -1908,9 +1908,9 @@ function isFaqHeadingLineCustomer(line: string): boolean {
 function isFaqBlockBoundaryCustomer(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
-  if (/^#{1,3}\s+\S/.test(trimmed) && !isFaqHeadingLineCustomer(trimmed)) return true;
+  if (/^#{1,4}\s+\S/.test(trimmed) && !isFaqHeadingLineCustomer(trimmed)) return true;
   if (/^---+$/.test(trimmed)) return true;
-  return /^\*\*(?:\uACF5\uC2DD\s*\uD655\uC778\s*\uB9C1\uD06C|\uC5EC\uD589\s*\uC0C1\uD488\uACFC\s*\uD568\uAED8\s*\uD655\uC778\uD558\uAE30|\uC0C1\uD488\uACFC\s*\uD568\uAED8\s*\uD655\uC778\uD558\uAE30)\*\*/.test(trimmed);
+  return /^\*\*(?:공식\s*확인\s*링크|함께\s*확인할\s*(?:세부|현지)\s*키워드|여행\s*상품과\s*함께\s*확인하기|상품과\s*함께\s*확인하기)\*\*/.test(trimmed);
 }
 
 function dedupeRepeatedFaqBlocksCustomer(markdown: string): string {
@@ -1993,9 +1993,12 @@ function hardSplitLongParagraphs(markdown: string): string {
     .replace(/\n{3,}/g, '\n\n');
 }
 
+const STABLE_TAIL_SECTION_RE = /(^|\n|\s)(?:#{2,4}\s*|\*\*)\s*(?:함께\s*확인할\s*(?:세부|현지)\s*키워드|공식\s*확인\s*링크|여행\s*상품과\s*함께\s*확인하기|DAY별\s*확인\s*포인트)(?:\*\*)?\b/m;
+
 function splitStableTailSections(markdown: string): { body: string; tail: string } | null {
-  const marker = markdown.search(/\n#{2,3}\s*함께\s*확인할\s*세부\s*키워드\b/m);
-  if (marker < 0) return null;
+  const match = STABLE_TAIL_SECTION_RE.exec(markdown);
+  if (!match) return null;
+  const marker = match.index;
   return {
     body: markdown.slice(0, marker).trimEnd(),
     tail: markdown.slice(marker),
@@ -2212,9 +2215,19 @@ function stripGeneratedTailArtifactsFinal(markdown: string): string {
     '**여행 상품과 함께 확인하기**',
     '**DAY별 확인 포인트**',
     '**함께 확인할 세부 키워드**',
+    '**함께 확인할 현지 키워드**',
     '## 여행 상품과 함께 확인하기',
+    '### 여행 상품과 함께 확인하기',
+    '#### 여행 상품과 함께 확인하기',
     '## DAY별 확인 포인트',
+    '### DAY별 확인 포인트',
+    '#### DAY별 확인 포인트',
     '## 함께 확인할 세부 키워드',
+    '### 함께 확인할 세부 키워드',
+    '#### 함께 확인할 세부 키워드',
+    '## 함께 확인할 현지 키워드',
+    '### 함께 확인할 현지 키워드',
+    '#### 함께 확인할 현지 키워드',
   ];
 
   for (const marker of tailMarkers) {
@@ -2225,6 +2238,77 @@ function stripGeneratedTailArtifactsFinal(markdown: string): string {
   }
 
   return next.replace(/\n{3,}/g, '\n\n');
+}
+
+function markdownHeadingTitle(line: string): string | null {
+  const trimmed = line.trim().replace(/\*\*/g, '').trim();
+  const heading = trimmed.match(/^#{1,4}\s+(.+?)\s*$/);
+  return (heading?.[1] || trimmed).replace(/\s+/g, ' ').trim() || null;
+}
+
+function isMarkdownHeadingLine(line: string): boolean {
+  return /^#{1,4}\s+\S/.test(line.trim()) || /^\*\*[^*]{2,80}\*\*$/.test(line.trim());
+}
+
+function normalizeRepeatedTailSectionsFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  const seenQuestionHeadings = new Set<string>();
+  let seenKeywordSection = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const trimmed = line.trim();
+    if (trimmed === '#') continue;
+
+    const title = markdownHeadingTitle(line);
+    const titleKey = title?.replace(/[?？.。!！]/g, '').replace(/\s+/g, ' ').trim() || '';
+    const isKeywordHeading = /^함께\s*확인할\s*(?:세부|현지)\s*키워드$/.test(titleKey);
+    if (isKeywordHeading) {
+      let cursor = index + 1;
+      const blockLines: string[] = [];
+      while (cursor < lines.length && !isMarkdownHeadingLine(lines[cursor] ?? '') && !/^---+$/.test((lines[cursor] ?? '').trim())) {
+        blockLines.push(lines[cursor] ?? '');
+        cursor += 1;
+      }
+      const hasBullet = blockLines.some((blockLine) => /^\s*[-*]\s+\S/.test(blockLine));
+      if (seenKeywordSection || !hasBullet) {
+        index = cursor - 1;
+        continue;
+      }
+      seenKeywordSection = true;
+      next.push(line, ...blockLines);
+      index = cursor - 1;
+      continue;
+    }
+
+    const looksLikeQuestionHeading = Boolean(titleKey)
+      && (/[?？]$/.test(title || '') || /^Q\s*\d/i.test(titleKey) || /언제\s*준비|가장\s*먼저|출발\s*직전|무엇을\s*확인/.test(titleKey));
+    if (looksLikeQuestionHeading) {
+      if (seenKeywordSection) {
+        let cursor = index + 1;
+        while (cursor < lines.length && !isMarkdownHeadingLine(lines[cursor] ?? '') && !/^---+$/.test((lines[cursor] ?? '').trim())) {
+          cursor += 1;
+        }
+        index = cursor - 1;
+        continue;
+      }
+      const key = titleKey.toLowerCase();
+      if (seenQuestionHeadings.has(key)) {
+        let cursor = index + 1;
+        while (cursor < lines.length && !isMarkdownHeadingLine(lines[cursor] ?? '') && !/^---+$/.test((lines[cursor] ?? '').trim())) {
+          cursor += 1;
+        }
+        index = cursor - 1;
+        continue;
+      }
+      seenQuestionHeadings.add(key);
+    }
+
+    next.push(line);
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function ensureContextualImageTextFinal(markdown: string, primaryKeyword: string, row: BlogRow, normalizedTitle: string): string {
@@ -2497,7 +2581,7 @@ function ensureCustomerFaq(markdown: string, primaryKeyword: string): string {
 
 function ensureLongtailCoverageSectionCustomer(markdown: string, secondaryKeywords: string[]): string {
   const missing = secondaryKeywords.filter((keyword) => keyword.length > 2 && !markdown.includes(keyword)).slice(0, 4);
-  if (missing.length === 0 || /^##\s*함께\s*확인할\s*세부\s*키워드/m.test(markdown)) return markdown;
+  if (missing.length === 0 || /^(?:#{2,4}\s*|\*\*)\s*함께\s*확인할\s*(?:세부|현지)\s*키워드(?:\*\*)?/m.test(markdown)) return markdown;
   const bullets = missing.map((keyword) => `- ${keyword}: 예약 전 비용, 일정, 현지 조건과 함께 확인하면 판단이 쉬워집니다.`);
   return `${markdown.trim()}\n\n## 함께 확인할 세부 키워드\n\n${bullets.join('\n')}\n`;
 }
@@ -2560,6 +2644,11 @@ function replacePlaceholderContextCustomer(markdown: string, primaryKeyword: str
 }
 
 function softenKeywordDensityCustomer(markdown: string, primaryKeyword?: string | null, blogType: 'product' | 'info' = 'info'): string {
+  const stable = splitStableTailSections(markdown);
+  if (stable) {
+    const repairedBody = softenKeywordDensityCustomer(stable.body, primaryKeyword, blogType);
+    return `${repairedBody.trimEnd()}${stable.tail}`;
+  }
   const keyword = cleanTravelKeyword(primaryKeyword);
   if (!keyword || keyword.length < 2) return markdown;
   const plainLength = markdown
