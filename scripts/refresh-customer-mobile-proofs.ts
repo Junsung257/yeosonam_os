@@ -70,12 +70,13 @@ function options(): Options {
 }
 
 async function loadPublicRows(limit: number): Promise<MobileProofRefreshCandidateRow[]> {
+  const scanLimit = Math.max(500, limit * 10, limit);
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select('id,internal_code,title,status,updated_at,audit_report')
     .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .order('updated_at', { ascending: false })
-    .limit(Math.max(limit * 3, limit));
+    .limit(scanLimit);
   if (error) throw new Error(error.message);
   return (data ?? []) as MobileProofRefreshCandidateRow[];
 }
