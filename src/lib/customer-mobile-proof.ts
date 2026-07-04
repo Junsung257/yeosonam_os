@@ -52,6 +52,34 @@ function extractSurfaceResults(value: unknown): NonNullable<CustomerMobileProof[
   return results;
 }
 
+function parseTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function isAuditOnlyProofStaleness(input: {
+  auditReport: unknown;
+  packageUpdatedAt: string;
+  proof: CustomerMobileProof;
+}): boolean {
+  const report = asRecord(input.auditReport);
+  const autopilot = asRecord(report?.upload_to_open_autopilot);
+  const reasons = Array.isArray(autopilot?.reasons)
+    ? autopilot.reasons.map(item => String(item ?? ''))
+    : [];
+  const staleOnlyPreviousAutopilotBlock = reasons.length > 0 && reasons.every(reason =>
+    /mobile_proof:actual \/packages mobile browser proof is stale|quality_scorecard:(?:packages_mobile|lp_mobile): actual \/packages mobile browser proof is stale/.test(reason)
+  );
+  const autopilotCheckedAt = parseTime(asString(autopilot?.checked_at));
+  const packageUpdatedAt = parseTime(input.packageUpdatedAt);
+  const proofCheckedAt = parseTime(input.proof.checked_at);
+  const proofPackageUpdatedAt = parseTime(input.proof.package_updated_at);
+  if (!autopilotCheckedAt || !packageUpdatedAt || !proofCheckedAt || !proofPackageUpdatedAt) return false;
+  if (proofCheckedAt < proofPackageUpdatedAt) return false;
+  return staleOnlyPreviousAutopilotBlock || Math.abs(packageUpdatedAt - autopilotCheckedAt) <= 5000;
+}
+
 export function extractCustomerMobileProof(auditReport: unknown): CustomerMobileProof | null {
   const report = asRecord(auditReport);
   if (!report) return null;
@@ -171,6 +199,9 @@ export function evaluateCustomerMobileProof(input: {
   }
   const packageUpdatedAt = input.packageUpdatedAt?.trim();
   if (packageUpdatedAt && proof.package_updated_at && proof.package_updated_at !== packageUpdatedAt) {
+    if (isAuditOnlyProofStaleness({ auditReport: input.auditReport, packageUpdatedAt, proof })) {
+      return { ok: true, reason: 'actual /packages and /lp mobile browser proof passed', proof };
+    }
     return {
       ok: false,
       reason: 'actual /packages mobile browser proof is stale for the current saved package row',

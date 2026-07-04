@@ -43,6 +43,9 @@ interface QueueItem {
     elapsed_ms?: number;
   };
   gate?: string;
+  uploadRequestId?: string;
+  replayQueueId?: string;
+  replayState?: 'pending' | 'resolved' | 'failed' | 'skipped' | 'unknown';
   /** C3 박제 (2026-05-15): 등록 직후 관광지 매칭/시드 통계 UX 노출 */
   attractionStats?: {
     matched: number;
@@ -301,6 +304,9 @@ function deferredUploadResult(data: any): Partial<QueueItem> {
     status: 'deferred',
     title: data?.title || '자동 재처리 대기',
     errorMsg: uploadFailureMessage(data),
+    uploadRequestId: typeof data?.uploadRequestId === 'string' ? data.uploadRequestId : undefined,
+    replayQueueId: typeof data?.replayQueueId === 'string' ? data.replayQueueId : undefined,
+    replayState: data?.replayQueued ? 'pending' : 'unknown',
   };
 }
 
@@ -421,6 +427,12 @@ export default function UploadPage() {
       try {
         const result = await uploadSingle(items[i].file);
         setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: result.status ?? 'done', ...result } : it));
+        if (result.status === 'deferred') {
+          pollDeferredReplay(items[i].id, {
+            replayQueueId: result.replayQueueId,
+            uploadRequestId: result.uploadRequestId,
+          });
+        }
         const packageIds = packageIdsForItem(result);
         if (packageIds.length > 0) runVerify(items[i].id, packageIds);
       } catch (err) {
@@ -488,6 +500,75 @@ export default function UploadPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const pollDeferredReplay = useCallback((
+    id: string,
+    input: { replayQueueId?: string; uploadRequestId?: string },
+    attempt = 0,
+  ) => {
+    if (!input.replayQueueId && !input.uploadRequestId) return;
+    const params = new URLSearchParams();
+    if (input.replayQueueId) params.set('queueId', input.replayQueueId);
+    if (input.uploadRequestId) params.set('uploadRequestId', input.uploadRequestId);
+    window.setTimeout(async () => {
+      try {
+        const res = await fetchWithSessionRefresh(`/api/admin/upload/replay-status?${params.toString()}`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+        const data = await safeResJson(res);
+        if (!res.ok || data?.success === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        const savedIds = Array.isArray(data.savedIds)
+          ? data.savedIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+          : [];
+        const registerReport = Array.isArray(data.registerReport) ? data.registerReport : null;
+        const packageIds = packageIdsForItem({ dbIds: savedIds, registerReport });
+        if (data.state === 'resolved' && packageIds.length > 0) {
+          setQueue(prev => prev.map(it => it.id === id ? {
+            ...it,
+            status: 'done',
+            replayState: 'resolved',
+            dbId: packageIds[0],
+            dbIds: packageIds,
+            title: reportLabel(registerReport) ?? it.title ?? data.title ?? '재처리 완료 상품',
+            registerReport,
+            errorMsg: undefined,
+          } : it));
+          runVerify(id, packageIds);
+          return;
+        }
+
+        if (data.state === 'failed' || data.state === 'skipped') {
+          setQueue(prev => prev.map(it => it.id === id ? {
+            ...it,
+            status: 'error',
+            replayState: data.state,
+            errorMsg: data.message || '자동 재처리가 완료되지 않았습니다. 검토가 필요합니다.',
+          } : it));
+          return;
+        }
+
+        setQueue(prev => prev.map(it => it.id === id ? {
+          ...it,
+          status: 'deferred',
+          replayState: data.state ?? 'pending',
+          errorMsg: data.message ? `자동 재처리 중입니다. ${data.message}` : it.errorMsg,
+        } : it));
+        if (attempt < 60) pollDeferredReplay(id, input, attempt + 1);
+      } catch (err) {
+        if (attempt < 12) {
+          pollDeferredReplay(id, input, attempt + 1);
+          return;
+        }
+        setQueue(prev => prev.map(it => it.id === id ? {
+          ...it,
+          replayState: 'unknown',
+          errorMsg: err instanceof Error ? err.message : '자동 재처리 상태 확인 실패',
+        } : it));
+      }
+    }, attempt < 6 ? 5_000 : 10_000);
+  }, [runVerify]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 텍스트 아이템 병렬 처리 — refs만 사용하므로 deps 불필요
   const processTextItem = useCallback(async (item: PendingTextItem) => {
     const { id, rawText } = item;
@@ -508,10 +589,15 @@ export default function UploadPage() {
       const data = await safeResJson(res);
       if (!res.ok) throw new Error(uploadFailureMessage(data));
       if (isUploadDeferredForReplay(data)) {
+        const deferred = deferredUploadResult(data);
         setQueue(prev => prev.map(it => it.id === id ? {
           ...it,
-          ...deferredUploadResult(data),
+          ...deferred,
         } : it));
+        pollDeferredReplay(id, {
+          replayQueueId: deferred.replayQueueId,
+          uploadRequestId: deferred.uploadRequestId,
+        });
         return;
       }
       if (data?.success === false) throw new Error(uploadFailureMessage(data));

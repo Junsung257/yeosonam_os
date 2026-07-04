@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildRepairFirstOpenabilitySummary } from './repair-first-openability';
 import {
+  buildSourceBackedDepartureDaysRepair,
   buildPackageDerivedV3Result,
   classifyUploadToOpenReviewReason,
   detectSourceTicketingDeadline,
@@ -11,6 +12,7 @@ import {
   patchV3WithPackageBackedEvidence,
   reconcileV3DraftWithLiveEntityQueueClear,
   repairMojibakeAttractionNamesInItinerary,
+  repairMissingSourceBackedHotelsInItinerary,
   repairNonLodgingHotelNamesInItinerary,
   repairOvernightArrivalDaySplit,
   repairDurationToSavedItineraryDays,
@@ -20,11 +22,75 @@ import {
   repairOptionalToursForCustomerDisplay,
   repairPolicyLeakInItinerarySchedule,
   repairProductTitleScheduleNoise,
+  repairSourceBackedFlightSegmentsFromRaw,
   repairSupplierNoticeTerms,
   sanitizeCustomerOptionalTours,
   sanitizeCustomerVisibleTitle,
   shouldAutoApplySourceBackedPriceRepair,
 } from './upload-to-open-autopilot';
+
+describe('buildSourceBackedDepartureDaysRepair', () => {
+  it('fills missing departure_days from source-backed supplier weekdays', () => {
+    const result = buildSourceBackedDepartureDaysRepair({
+      departure_days: null,
+      raw_text: '상품명 푸꾸옥 패키지\n출발일\n금,일\n요금 799,000원',
+    });
+
+    expect(result).toEqual({
+      status: 'repaired',
+      departureDays: '금,일',
+      reason: 'source_text_departure_weekdays',
+    });
+  });
+
+  it('does not invent departure_days when the source has no weekday evidence', () => {
+    const result = buildSourceBackedDepartureDaysRepair({
+      departure_days: null,
+      raw_text: '상품명 푸꾸옥 패키지\n요금 799,000원',
+    });
+
+    expect(result.status).toBe('unavailable');
+  });
+});
+
+describe('repairMissingSourceBackedHotelsInItinerary', () => {
+  it('fills empty itinerary hotel nights from source-backed hotel lines', () => {
+    const result = repairMissingSourceBackedHotelsInItinerary({
+      nights: 3,
+      accommodations: [],
+      rawText: [
+        '호텔 이동 및 체크인',
+        ': 4성) 무엉탄 럭셔리 호텔 동급',
+        '5성) 래디슨 블루 리조트 또는 소나가비치 리조트 동급',
+      ].join('\n'),
+      itineraryData: {
+        days: [
+          { day: 1, hotel: null, schedule: [] },
+          { day: 2, hotel: null, schedule: [] },
+          { day: 3, hotel: null, schedule: [] },
+          { day: 4, schedule: [] },
+          { day: 5, schedule: [] },
+        ],
+      },
+    });
+
+    expect(result.repaired).toBe(true);
+    expect(result.filledDays).toEqual([1, 2, 3]);
+    expect(result.accommodations?.[0]).toContain('무엉탄 럭셔리 호텔');
+    expect(JSON.stringify(result.itineraryData)).toContain('래디슨 블루 리조트');
+  });
+
+  it('does not fill hotels from surcharge or hotel movement lines only', () => {
+    const result = repairMissingSourceBackedHotelsInItinerary({
+      nights: 1,
+      accommodations: [],
+      rawText: '개인경비, 싱글차지, 호텔써차지\n호텔 이동 및 체크인',
+      itineraryData: { days: [{ day: 1, hotel: null }, { day: 2 }] },
+    });
+
+    expect(result.repaired).toBe(false);
+  });
+});
 
 describe('classifyUploadToOpenReviewReason', () => {
   it('treats mobile proof gaps as retryable proof work, not unusable products', () => {
@@ -88,6 +154,26 @@ describe('filterResolvedUploadToOpenReasons', () => {
 
     expect(reasons).toEqual(['price_dates_repair_requires_review:filled 1 missing source-backed departure dates']);
   });
+
+  it('removes stale flight code coverage blockers after package-derived V3 is ready', () => {
+    const reasons = filterResolvedUploadToOpenReasons({
+      reasons: [
+        'publish_gate:원문 근거 coverage 71% (5/7) — 누락: flights.outbound[0].code, flights.inbound[0].code',
+        'publish_gate:critical 품질 실패: 고객 노출 문구 원문 근거 없음: 호텔명',
+      ],
+      repairs: ['v3_rebuilt_package_derived:ready_to_publish:queued=0:entity_queue_pending'],
+      customerOpenContractOk: false,
+      mobileProofOk: false,
+      sourceVerifyStatus: 'blocked',
+      finalQualityScorecard: {
+        customerOpenCandidate: false,
+        blockers: [],
+        domains: [],
+      } as never,
+    });
+
+    expect(reasons).toEqual(['publish_gate:critical 품질 실패: 고객 노출 문구 원문 근거 없음: 호텔명']);
+  });
 });
 
 describe('source-backed price and package evidence policies', () => {
@@ -116,6 +202,21 @@ describe('source-backed price and package evidence policies', () => {
       addedCount: 0,
       priceDates: [{ date: '2026-08-14', price: 1749000, confirmed: false }],
     }, true)).toBe(false);
+  });
+
+  it('auto-applies source-backed replacement repairs that fix stale DB price/date rows', () => {
+    expect(shouldAutoApplySourceBackedPriceRepair({
+      status: 'repaired',
+      reason: 'replaced price_dates with source-backed table because existing date 2026-09-21 is not present in source',
+      source: 'product_price_vertical_date_table',
+      expectedCount: 12,
+      existingCount: 15,
+      addedCount: 0,
+      priceDates: [
+        { date: '2026-07-24', price: 939000, confirmed: false },
+        { date: '2026-08-19', price: 649000, confirmed: false },
+      ],
+    }, true)).toBe(true);
   });
 
   it('removes non-customer option noise from optional tours', () => {
@@ -249,11 +350,52 @@ describe('filterCustomerOpenPriceDates', () => {
   });
 });
 
+describe('repairSourceBackedFlightSegmentsFromRaw', () => {
+  it('repairs swapped saved flight segment codes and times from source flight table order', () => {
+    const rawText = [
+      'LJ 115',
+      '20:05 &#8211; 22:55',
+      'LJ 116',
+      '23:55 &#8211; 06:40(+1)',
+    ].join('\n');
+
+    const result = repairSourceBackedFlightSegmentsFromRaw({
+      flight_segments: [
+        { leg: 'outbound', flight_no: 'LJ116', dep_time: '20:05', arr_time: '23:55', arr_day_offset: 0 },
+        { leg: 'inbound', flight_no: 'LJ115', dep_time: '20:05', arr_time: '22:55', arr_day_offset: 0 },
+      ],
+      days: [],
+    }, rawText);
+
+    expect(result.repaired).toBe(true);
+    expect((result.itineraryData as { flight_segments: Array<Record<string, unknown>> }).flight_segments).toEqual([
+      expect.objectContaining({ leg: 'outbound', flight_no: 'LJ115', dep_time: '20:05', arr_time: '22:55', arr_day_offset: 0 }),
+      expect.objectContaining({ leg: 'inbound', flight_no: 'LJ116', dep_time: '23:55', arr_time: '06:40', arr_day_offset: 1 }),
+    ]);
+  });
+
+  it('repairs flight times from table rows where the code is followed by vehicle and two times', () => {
+    const rawText = '\uC81C1\uC77C \uBD80\uC0B0 \uD478\uAFB8\uC625 ZE981 \uCC28\uB7C9 18:55 22:25 \uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uCD9C\uBC1C';
+
+    const result = repairSourceBackedFlightSegmentsFromRaw({
+      flight_segments: [
+        { leg: 'outbound', flight_no: 'ZE981', dep_time: '18:55', arr_time: '22:30', arr_day_offset: 0 },
+      ],
+      days: [],
+    }, rawText);
+
+    expect(result.repaired).toBe(true);
+    expect((result.itineraryData as { flight_segments: Array<Record<string, unknown>> }).flight_segments[0]).toEqual(
+      expect.objectContaining({ leg: 'outbound', flight_no: 'ZE981', dep_time: '18:55', arr_time: '22:25', arr_day_offset: 0 }),
+    );
+  });
+});
+
 describe('missingPriceDatesFromScorecard', () => {
   it('extracts source-backed missing C12 price dates for repair', () => {
     const rows = missingPriceDatesFromScorecard({
       blockers: [
-        'price_dates: C12: \uB0A0\uC9DC\uBCC4 \uAC00\uACA9 \uBD88\uC77C\uCE58 2026-07-03:\uC5C6\uC74C!=979000 / 2026-09-02:\uC5C6\uC74C!=949000',
+        'price_dates: C12: \uB0A0\uC9DC\uBCC4 \uAC00\uACA9 \uBD88\uC77C\uCE58 2026-07-04:\uC5C6\uC74C!=979000 / 2026-09-02:\uC5C6\uC74C!=949000',
       ],
       domains: [],
       averageScore: 0,
@@ -264,7 +406,7 @@ describe('missingPriceDatesFromScorecard', () => {
     });
 
     expect(rows).toEqual([
-      { date: '2026-07-03', price: 979000, confirmed: false },
+      { date: '2026-07-04', price: 979000, confirmed: false },
       { date: '2026-09-02', price: 949000, confirmed: false },
     ]);
   });

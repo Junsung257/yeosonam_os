@@ -46,7 +46,9 @@ export function extractRenderClaims(pkg: RenderPackageInput): RenderClaim[] {
     ['inbound', view.flightHeader.inbound],
   ] as const) {
     if (!flight) continue;
-    addClaim(claims, { id: `flight.${leg}.code`, value: flight.code ?? '', surface: 'flight', severity: 'critical' });
+    if (/^(?=.*[A-Z])[A-Z0-9]{2}\d{3,4}$/i.test(flight.code ?? '')) {
+      addClaim(claims, { id: `flight.${leg}.code`, value: flight.code ?? '', surface: 'flight', severity: 'critical' });
+    }
     addClaim(claims, { id: `flight.${leg}.depTime`, value: flight.depTime ?? '', surface: 'flight', severity: 'critical' });
     addClaim(claims, { id: `flight.${leg}.arrTime`, value: flight.arrTime ?? '', surface: 'flight', severity: 'critical' });
   }
@@ -133,7 +135,12 @@ function rawSupports(rawText: string, value: string): boolean {
 }
 
 function looseCustomerTermComparable(value: string): string {
-  return value
+  return decodeCommonHtmlEntities(value)
+    .normalize('NFKC')
+    .replace(/\bOR\b/gi, '\uB610\uB294')
+    .replace(/\uAC1C\uB7F0\uD2F0/g, '\uBCF4\uC7A5')
+    .replace(/\\\s*(?=\d)/g, '')
+    .replace(/(?<=\d)\s*\uC6D0/g, '')
     .replace(/[\s()[\]{}<>.,/\\|:;'"!?~\-*+]+/g, '')
     .replace(/[•·▪◦★☆◆◇■□●○♦※]/g, '')
     .trim();
@@ -146,7 +153,10 @@ function rawSupportsLooseTermLabel(rawText: string, value: string): boolean {
 }
 
 function compactComparable(value: string): string {
-  return value
+  return decodeCommonHtmlEntities(value)
+    .normalize('NFKC')
+    .replace(/\bOR\b/gi, '\uB610\uB294')
+    .replace(/\uAC1C\uB7F0\uD2F0/g, '\uBCF4\uC7A5')
     .replace(/\s+/g, '')
     .replace(/[()[\]{}<>「」『』·ㆍ,./\\|:;'"!?~\-–—_*★▶△※&+]/g, '')
     .replace(/으로|로|에서|에게|부터|까지|및|와|과|을|를|은|는|이|가|의/g, '')
@@ -280,6 +290,7 @@ function normalizeHotelClaim(value: string): string[] {
 }
 
 function rawSupportsHotelLabel(rawText: string, value: string): boolean {
+  if (rawSupportsLooseTermLabel(rawText, value)) return true;
   const variants = normalizeHotelClaim(value);
   if (variants.some(variant => rawSupports(rawText, variant))) return true;
   const normalizedRaw = stripHotelGradeParentheticals(rawText);

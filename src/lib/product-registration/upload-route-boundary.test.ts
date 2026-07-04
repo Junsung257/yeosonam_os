@@ -98,6 +98,10 @@ function readAdminUploadReplayReviewQueueRoute(): string {
   return readFileSync(join(process.cwd(), 'src/app/api/admin/upload/replay-review-queue/route.ts'), 'utf8');
 }
 
+function readAdminUploadReplayStatusRoute(): string {
+  return readFileSync(join(process.cwd(), 'src/app/api/admin/upload/replay-status/route.ts'), 'utf8');
+}
+
 function readUploadToOpenAutopilotCron(): string {
   return readFileSync(join(process.cwd(), 'src/app/api/cron/upload-to-open-autopilot/route.ts'), 'utf8');
 }
@@ -154,6 +158,10 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).toContain('UPLOAD_PIPELINE_SOFT_TIMEOUT_MS');
     expect(route).toContain('Number(process.env.UPLOAD_PIPELINE_SOFT_TIMEOUT_MS ?? 240_000)');
     expect(route).toContain('Math.min(270_000');
+    expect(route).toContain('Number(process.env.UPLOAD_QUEUE_FIRST_TEXT_LENGTH ?? 60_000)');
+    expect(route).toContain('Number(process.env.UPLOAD_QUEUE_ALWAYS_TEXT_LENGTH ?? 120_000)');
+    expect(route).toContain('if (likelyPackageSections >= 4) return true;');
+    expect(route).toContain('rawText.length >= UPLOAD_QUEUE_FIRST_TEXT_LENGTH && likelyPackageSections >= 2');
     expect(route).toContain('enqueueUploadTimeoutReplay({');
     expect(route).toContain("code: 'UPLOAD_DEFERRED_FOR_REPLAY'");
     expect(route).toContain('x-upload-request-id');
@@ -170,6 +178,11 @@ describe('upload route registration pipeline boundary', () => {
     expect(page).toContain('function isUploadDeferredForReplay');
     expect(page).toContain('function deferredUploadResult');
     expect(page).toContain("status: 'deferred'");
+    expect(page).toContain('pollDeferredReplay');
+    expect(page).toContain('/api/admin/upload/replay-status?');
+    expect(page).toContain("replayState: 'resolved'");
+    expect(page).toContain("status: 'done'");
+    expect(page).toContain('runVerify(id, packageIds)');
     expect(page).toContain('자동 재처리 대기');
     expect(page).toContain('SESSION_EXPIRED_NEEDS_LOGIN');
     expect(page).toContain('로그인 시간이 만료');
@@ -897,6 +910,25 @@ describe('upload route registration pipeline boundary', () => {
     expect(route).toContain('savedIds.length > 0 || duplicateInternalCode');
     expect(route).toContain('replayResolved');
     expect(route).toContain('duplicateInternalCode');
+  });
+
+  it('exposes deferred replay status so admin upload can finish successful background registrations', () => {
+    const replayStatus = readAdminUploadReplayStatusRoute();
+    const replayCron = readUploadReviewAutoReplayCron();
+    const manualReplay = readAdminUploadReplayReviewQueueRoute();
+
+    expect(replayStatus).toContain("from('upload_review_queue')");
+    expect(replayStatus).toContain('queueId or uploadRequestId is required');
+    expect(replayStatus).toContain("status === 'resolved' || status === 'replayed'");
+    expect(replayStatus).toContain('const replayState = normalizeState(replayResult.status)');
+    expect(replayStatus).toContain('const state = replayState ===');
+    expect(replayStatus).toContain("from('travel_packages')");
+    expect(replayStatus).toContain('registerReport');
+    expect(replayCron).toContain('replayResult');
+    expect(replayCron).toContain("status: 'replayed'");
+    expect(replayCron).toContain("status: 'failed'");
+    expect(manualReplay).toContain('replayResult');
+    expect(manualReplay).toContain("status: 'replayed'");
   });
 
   it('wires saved uploads into the upload-to-open autopilot instead of stopping at blocked review', () => {

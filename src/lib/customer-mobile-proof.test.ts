@@ -77,6 +77,65 @@ describe('evaluateCustomerMobileProof', () => {
     expect(result.reason).toContain('stale');
   });
 
+  it('does not stale a passing proof when only the autopilot audit log updated the row', () => {
+    const result = evaluateCustomerMobileProof({
+      auditReport: {
+        upload_to_open_autopilot: {
+          stage: 'blocked_after_mobile_proof',
+          checked_at: '2026-06-22T09:10:02.000Z',
+        },
+        mobile_browser_proof: {
+          status: 'pass',
+          checked_at: '2026-06-22T09:00:00.000Z',
+          package_updated_at: '2026-06-22T08:59:00.000Z',
+          source: 'hwp-mobile-browser-proof',
+          screen_hash: 'screen-hash',
+          customer_visible_hash: 'visible-hash',
+          surfaces: ['packages', 'lp'],
+          surface_results: [
+            { surface: 'packages', status: 'pass', screen_hash: 'packages-screen', customer_visible_hash: 'packages-visible' },
+            { surface: 'lp', status: 'pass', screen_hash: 'lp-screen', customer_visible_hash: 'lp-visible' },
+          ],
+        },
+      },
+      packageUpdatedAt: '2026-06-22T09:10:00.000Z',
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts a passing proof after a previous stale-only autopilot audit block', () => {
+    const result = evaluateCustomerMobileProof({
+      auditReport: {
+        upload_to_open_autopilot: {
+          stage: 'blocked_after_mobile_proof',
+          checked_at: '2026-06-22T10:30:00.000Z',
+          reasons: [
+            'mobile_proof:actual /packages mobile browser proof is stale for the current saved package row',
+            'quality_scorecard:packages_mobile: actual /packages mobile browser proof is stale for the current saved package row',
+            'quality_scorecard:lp_mobile: actual /packages mobile browser proof is stale for the current saved package row',
+          ],
+        },
+        mobile_browser_proof: {
+          status: 'pass',
+          checked_at: '2026-06-22T09:00:00.000Z',
+          package_updated_at: '2026-06-22T08:59:00.000Z',
+          source: 'hwp-mobile-browser-proof',
+          screen_hash: 'screen-hash',
+          customer_visible_hash: 'visible-hash',
+          surfaces: ['packages', 'lp'],
+          surface_results: [
+            { surface: 'packages', status: 'pass', screen_hash: 'packages-screen', customer_visible_hash: 'packages-visible' },
+            { surface: 'lp', status: 'pass', screen_hash: 'lp-screen', customer_visible_hash: 'lp-visible' },
+          ],
+        },
+      },
+      packageUpdatedAt: '2026-06-22T10:30:00.000Z',
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('blocks pass-looking proof when source and hashes are missing', () => {
     const result = evaluateCustomerMobileProof({
       auditReport: {

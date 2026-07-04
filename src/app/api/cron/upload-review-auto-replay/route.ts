@@ -157,10 +157,24 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
   const savedIds = extractSavedIds(payload);
   const duplicateInternalCode = extractDuplicateInternalCode(payload);
   if (result.status >= 200 && result.status < 300 && (savedIds.length > 0 || duplicateInternalCode)) {
+    const parsedDraftJson = row.parsed_draft_json && typeof row.parsed_draft_json === 'object' && !Array.isArray(row.parsed_draft_json)
+      ? row.parsed_draft_json as Record<string, unknown>
+      : {};
     await supabaseAdmin
       .from('upload_review_queue')
       .update({
         status: 'resolved',
+        parsed_draft_json: {
+          ...parsedDraftJson,
+          replayResult: {
+            status: 'replayed',
+            reason: duplicateInternalCode ? `duplicate already processed: ${duplicateInternalCode}` : check.reason,
+            httpStatus: result.status,
+            savedIds,
+            duplicateInternalCode,
+            replayedAt: new Date().toISOString(),
+          },
+        },
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
@@ -174,6 +188,26 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
       savedIds,
     };
   }
+
+  const parsedDraftJson = row.parsed_draft_json && typeof row.parsed_draft_json === 'object' && !Array.isArray(row.parsed_draft_json)
+    ? row.parsed_draft_json as Record<string, unknown>
+    : {};
+  await supabaseAdmin
+    .from('upload_review_queue')
+    .update({
+      parsed_draft_json: {
+        ...parsedDraftJson,
+        replayResult: {
+          status: 'failed',
+          reason: typeof payload.error === 'string' ? payload.error : 'replay did not save a product',
+          httpStatus: result.status,
+          savedIds,
+          replayedAt: new Date().toISOString(),
+        },
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id);
 
   return {
     id: row.id,

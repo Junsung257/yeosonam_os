@@ -109,11 +109,20 @@ node scripts/refresh-baselines.js --dry-run
 
 Golden paste E2E currently starts at 15 source shapes, not 10. The additional stress cases cover monthly weekday price grids, mixed multi-product catalogs, NET/selling-price lines, ticketing-deadline offers, and multi-currency local/optional expenses. New supplier formats that fail review must be promoted into this corpus or the upload review fixture-candidate report before being called resolved.
 
+Schedule HWP batch learning from 2026-07-04 is now part of the same engine contract:
+
+- If raw text contains source-backed departure weekdays but `travel_packages.departure_days` is empty, `upload_to_open_autopilot` may fill only that weekday label. It must not invent new departure dates.
+- If raw text or saved accommodations contain hotel/resort/equivalent hotel lines but itinerary day `hotel.name` is empty, the autopilot may fill overnight days with the source-backed hotel candidate and record the repair. Surcharge, movement, check-in/out, breakfast, room-assignment, and hotel-policy lines are not hotel evidence.
+- Ferry/ship products such as Tsushima Link departures are non-air transport packages. A missing `airline` must not block the quality scorecard when the source text proves ferry/ship transport; normal air packages still require airline evidence.
+- Expired source products whose every departure date is before the current KST date are not customer-openable. They should be archived/saved with an audit reason instead of forced open.
+
 ### Text Paste Upload Contract
 
 `admin/upload` treats supplier pasted text as the primary input path. File, HWP, OCR, and PDF parsing are helper paths that must produce text for the same central engine; they must not become a separate registration engine.
 
 Normal pasted-text uploads must be allowed to complete inside the long-running upload route envelope. Do not send ordinary short supplier text to `upload_review_queue` only because it exceeds a short UI comfort timer. The replay queue is for heavy or likely multi-product inputs, unrecoverable validation failures, or true background recovery. When replaying a timeout row, a duplicate response that proves the package was already saved must resolve the queue row instead of leaving it as a failed or pending registration.
+
+If an upload is deferred for replay, the admin upload UI must treat it as an active background registration, not a terminal failure. The UI should poll the replay-status endpoint by `queueId` or `uploadRequestId`, recover saved package IDs or duplicate internal codes, and immediately run the normal upload verification once replay resolves. Replay failures must surface the specific remaining blocker instead of a generic timeout message.
 
 The original supplier text must never be overwritten during preprocessing. The intake layer may create a normalized analysis snapshot for broken line breaks, tabs, bullets, currency tokens, date tokens, and itinerary/table-like lines, but the snapshot is QA evidence only. Persist or return hashes, metrics, and change counts, not a second mutable source of truth.
 

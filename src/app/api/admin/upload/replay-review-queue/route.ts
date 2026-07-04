@@ -181,10 +181,24 @@ const postHandler = async (request: NextRequest) => {
   const duplicateInternalCode = extractDuplicateInternalCode(payload);
 
   if (savedIds.length > 0 || duplicateInternalCode) {
+    const currentDraft = parsedDraftJson && typeof parsedDraftJson === 'object' && !Array.isArray(parsedDraftJson)
+      ? parsedDraftJson as Record<string, unknown>
+      : {};
     await supabaseAdmin
       .from('upload_review_queue')
       .update({
         status: 'resolved',
+        parsed_draft_json: {
+          ...currentDraft,
+          replayResult: {
+            status: 'replayed',
+            reason: duplicateInternalCode ? `duplicate already processed: ${duplicateInternalCode}` : 'manual replay saved product',
+            httpStatus: result.status,
+            savedIds,
+            duplicateInternalCode,
+            replayedAt: new Date().toISOString(),
+          },
+        },
         updated_at: new Date().toISOString(),
       })
       .eq('id', queueId);

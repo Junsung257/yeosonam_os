@@ -35,6 +35,7 @@ import {
   type SourceBackedPriceDateRepair,
 } from '@/lib/source-price-date-repair';
 import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
+import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { runUploadVerify, evaluateVerifyChecks } from '@/lib/upload-verify';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
@@ -722,6 +723,124 @@ function isNonLodgingHotelName(value: unknown): boolean {
     return true;
   }
   return false;
+}
+
+function decodeBasicHtmlEntities(value: string): string {
+  return value
+    .replace(/&#8211;|&#x2013;|&ndash;/gi, '-')
+    .replace(/&#8212;|&#x2014;|&mdash;/gi, '-')
+    .replace(/&amp;/gi, '&')
+    .replace(/&nbsp;/gi, ' ');
+}
+
+function normalizeSourceHotelLine(line: string): string | null {
+  const decoded = decodeBasicHtmlEntities(line).replace(/\s+/g, ' ').trim();
+  if (!decoded) return null;
+  const compact = decoded.replace(/\s+/g, '');
+  if (!/(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uB3D9\uAE09|HOTEL|RESORT)/i.test(decoded)) return null;
+  if (/(?:\uD56D\uACF5|\uC720\uB958|\uAC1C\uC778\uACBD\uBE44|\uB9E4\uB108|\uC369?차지|\uBC30\uC815|\uC870\uC2DD|\uCCB4\uD06C|\uC774\uB3D9|\uD22C\uC219|\uD734\uC2DD|\uBBF8\uD305|\uC2DD\uC0AC|\uC5EC\uD589\uC790\uBCF4\uD5D8)/.test(compact)) {
+    return null;
+  }
+
+  let cleaned = decoded
+    .replace(/^[\s:：ㆍ·\-–—]+/, '')
+    .replace(/^\d+\s*\uC131\s*[)\]-]?\s*/i, '')
+    .replace(/^\uC900?\s*\d+\s*\uC131\s*[)\]-]?\s*/i, '')
+    .replace(/^[-–—]\s*/, '')
+    .trim();
+
+  cleaned = cleaned.replace(/\s*\(\s*(?:\uC608\uC815|\uBBF8\uC815)\s*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned.length < 3 || cleaned.length > 90) return null;
+  if (!/(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uB3D9\uAE09|HOTEL|RESORT)/i.test(cleaned)) return null;
+  return cleaned;
+}
+
+function extractSourceBackedHotelNames(rawText: string | null | undefined): string[] {
+  const lines = String(rawText ?? '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const names: string[] = [];
+  for (const line of lines) {
+    const normalized = normalizeSourceHotelLine(line);
+    if (!normalized) continue;
+    if (!names.some(name => name.replace(/\s+/g, '') === normalized.replace(/\s+/g, ''))) {
+      names.push(normalized);
+    }
+    if (names.length >= 4) break;
+  }
+  return names;
+}
+
+function combinedSourceHotelName(names: string[]): string | null {
+  const clean = names
+    .map(name => name.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  if (clean.length === 0) return null;
+  return clean.join(' / ');
+}
+
+export function repairMissingSourceBackedHotelsInItinerary(input: {
+  itineraryData: unknown;
+  rawText?: string | null;
+  accommodations?: unknown;
+  nights?: number | null;
+}): {
+  itineraryData: unknown;
+  accommodations?: string[];
+  repaired: boolean;
+  hotelName: string | null;
+  filledDays: number[];
+} {
+  const root = asRecord(input.itineraryData);
+  const days = Array.isArray(root.days) ? root.days : [];
+  if (days.length === 0) {
+    return { itineraryData: input.itineraryData, repaired: false, hotelName: null, filledDays: [] };
+  }
+
+  const existingAccommodationNames = Array.isArray(input.accommodations)
+    ? input.accommodations.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const sourceHotelName = combinedSourceHotelName([
+    ...existingAccommodationNames,
+    ...extractSourceBackedHotelNames(input.rawText),
+  ]);
+  if (!sourceHotelName) {
+    return { itineraryData: input.itineraryData, repaired: false, hotelName: null, filledDays: [] };
+  }
+
+  const expectedNights = typeof input.nights === 'number' && input.nights > 0
+    ? Math.min(input.nights, Math.max(0, days.length - 1))
+    : Math.max(0, days.length - 1);
+  if (expectedNights <= 0) {
+    return { itineraryData: input.itineraryData, repaired: false, hotelName: sourceHotelName, filledDays: [] };
+  }
+
+  const next = cloneJson(root);
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+  const filledDays: number[] = [];
+  for (const day of nextDays) {
+    if (filledDays.length >= expectedNights) break;
+    const dayNumber = typeof day?.day === 'number' ? day.day : filledDays.length + 1;
+    const hotel = asRecord(day?.hotel);
+    const currentName = typeof hotel?.name === 'string' ? hotel.name.trim() : '';
+    if (currentName && !isNonLodgingHotelName(currentName)) continue;
+    day.hotel = {
+      ...(hotel ?? {}),
+      name: sourceHotelName,
+      note: typeof hotel?.note === 'string' ? hotel.note : null,
+    };
+    filledDays.push(dayNumber);
+  }
+
+  return {
+    itineraryData: filledDays.length > 0 ? next : input.itineraryData,
+    accommodations: existingAccommodationNames.length > 0 ? existingAccommodationNames : [sourceHotelName],
+    repaired: filledDays.length > 0 || existingAccommodationNames.length === 0,
+    hotelName: sourceHotelName,
+    filledDays,
+  };
 }
 
 export function repairNonLodgingHotelNamesInItinerary(itineraryData: unknown): {
@@ -1485,6 +1604,7 @@ function repairFirstSummary(input: {
 
 export function filterResolvedUploadToOpenReasons(input: {
   reasons: string[];
+  repairs?: string[];
   customerOpenContractOk: boolean;
   mobileProofOk: boolean;
   sourceVerifyStatus: string;
@@ -1497,12 +1617,23 @@ export function filterResolvedUploadToOpenReasons(input: {
     && input.mobileProofOk
     && input.sourceVerifyStatus !== 'blocked'
     && input.finalQualityScorecard.customerOpenCandidate;
+  const packageDerivedV3Ready = (input.repairs ?? []).some(repair =>
+    /^v3_rebuilt_package_derived:ready_to_publish/.test(repair)
+    || repair === 'v3_rebuild_skipped:latest_package_derived_ready_to_publish'
+    || repair === 'v3_reconciled_live_entity_queue:ready_to_publish',
+  );
 
   return input.reasons.filter(reason => {
     if (
       resolvedByFinalGate
       && priceDatesClean
       && /^price_dates_(?:repair|sync)_requires_review:/.test(reason)
+    ) {
+      return false;
+    }
+    if (
+      packageDerivedV3Ready
+      && /^publish_gate:.*coverage .*flights\.(?:outbound|inbound)\[\d+\]\.code/i.test(reason)
     ) {
       return false;
     }
@@ -1552,6 +1683,30 @@ function isGenericCustomerVisibleTitle(value: string | null | undefined): boolea
   const compact = text.replace(/\s+/g, ' ');
   return /^(?:20\d{2}\s*)?(?:package|pkg)$/i.test(compact)
     || /^(?:20\d{2}\s*)?(?:\uC0C1\uD488|\uC5EC\uD589\uC0C1\uD488|\uC77C\uC815\uD45C)(?:\s*\d+)?$/i.test(compact);
+}
+
+export function buildSourceBackedDepartureDaysRepair(
+  pkg: Pick<UploadToOpenAutopilotPackage, 'departure_days' | 'raw_text'>,
+): { status: 'repaired'; departureDays: string; reason: string } | { status: 'not_needed' | 'unavailable'; reason: string } {
+  const current = typeof pkg.departure_days === 'string'
+    ? pkg.departure_days.trim()
+    : pkg.departure_days != null
+      ? JSON.stringify(pkg.departure_days).trim()
+      : '';
+  if (current && current !== 'null' && current !== '[]') {
+    return { status: 'not_needed', reason: 'departure_days already present' };
+  }
+
+  const inferred = inferDepartureDaysFromRawText(pkg.raw_text);
+  if (!inferred) {
+    return { status: 'unavailable', reason: 'source departure weekday not recognized' };
+  }
+
+  return {
+    status: 'repaired',
+    departureDays: inferred,
+    reason: 'source_text_departure_weekdays',
+  };
 }
 
 function customerVisibleTitleRepair(pkg: UploadToOpenAutopilotPackage): {
@@ -1871,17 +2026,86 @@ function buildPackageDerivedV3Source(pkg: UploadToOpenAutopilotPackage): Package
 
 function flightTimesNearCode(rawText: string | null, code: string): string[] {
   if (!rawText || !code) return [];
+  const normalizedRawText = normalizeRawFlightText(rawText);
   const compactCode = code.replace(/\s+/g, '');
   const compactPattern = compactCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/([A-Z0-9]{2})(\d+)/, '$1\\s*$2');
-  const match = rawText.match(new RegExp(compactPattern, 'i'));
+  const match = normalizedRawText.match(new RegExp(compactPattern, 'i'));
   if (!match || typeof match.index !== 'number') return [];
   const start = Math.max(0, match.index - 120);
-  const end = Math.min(rawText.length, match.index + 320);
-  const windowText = rawText.slice(start, end);
+  const end = Math.min(normalizedRawText.length, match.index + 320);
+  const windowText = normalizedRawText.slice(start, end);
   const times = [...windowText.matchAll(/\b([0-2]?\d:[0-5]\d)\b/g)]
     .map(item => item[1])
     .filter(time => minutesFromTime(time) !== null);
   return [...new Set(times)].slice(0, 4);
+}
+
+type RawFlightTiming = {
+  code: string;
+  dep_time: string;
+  arr_time: string;
+  arr_day_offset: number;
+};
+
+function normalizeRawFlightText(rawText: string): string {
+  return rawText
+    .replace(/&#8211;|&ndash;|&mdash;|&#8212;/gi, '-')
+    .replace(/&gt;/gi, '>')
+    .replace(/&lt;/gi, '<')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\u2013|\u2014|→|⇒/g, '-');
+}
+
+function normalizedFlightCode(value: string | null | undefined): string | null {
+  const code = String(value ?? '').replace(/\s+/g, '').trim().toUpperCase();
+  return /^[A-Z0-9]{2}\d{2,4}$/.test(code) ? code : null;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractRawFlightSchedulePairs(rawText: string | null | undefined): RawFlightTiming[] {
+  if (!rawText) return [];
+  const lines = normalizeRawFlightText(rawText)
+    .split(/\r?\n/g)
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const pairs: RawFlightTiming[] = [];
+  const seen = new Set<string>();
+  const codeRe = /\b([A-Z0-9]{2})\s*(\d{2,4})\b/i;
+  const timeRangeRe = /\b([0-2]?\d:[0-5]\d)\b\s*(?:-|~|to)\s*\b([0-2]?\d:[0-5]\d)\b\s*(?:\(?\s*(\+1|N\+1|\uC775\uC77C|\uB2E4\uC74C\uB0A0|\uB2E4\uC74C\s*\uB0A0)\s*\)?)?/i;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const codeMatch = lines[index].match(codeRe);
+    if (!codeMatch) continue;
+    const code = normalizedFlightCode(`${codeMatch[1]}${codeMatch[2]}`);
+    if (!code) continue;
+    const windowText = [lines[index], lines[index + 1], lines[index + 2]].filter(Boolean).join(' ');
+    const compactCodePattern = `${escapeRegex(codeMatch[1])}\\s*${escapeRegex(codeMatch[2])}`;
+    const adjacentTimeMatch = windowText.match(new RegExp(
+      `${compactCodePattern}(?:\\s+[^\\d\\s]+){0,4}\\s+([0-2]?\\d:[0-5]\\d)\\s+([0-2]?\\d:[0-5]\\d)\\s*(?:\\(?\\s*(\\+1|N\\+1|\\uC775\\uC77C|\\uB2E4\\uC74C\\uB0A0|\\uB2E4\\uC74C\\s*\\uB0A0)\\s*\\)?)?`,
+      'i',
+    ));
+    const rangeMatch = windowText.match(timeRangeRe) ?? adjacentTimeMatch;
+    if (!rangeMatch) continue;
+    const depTime = rangeMatch[1];
+    const arrTime = rangeMatch[2];
+    if (minutesFromTime(depTime) == null || minutesFromTime(arrTime) == null) continue;
+    const arrDayOffset = rangeMatch[3] || minutesFromTime(arrTime)! < minutesFromTime(depTime)! ? 1 : 0;
+    const key = `${code}:${depTime}:${arrTime}:${arrDayOffset}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pairs.push({ code, dep_time: depTime, arr_time: arrTime, arr_day_offset: arrDayOffset });
+  }
+
+  return pairs;
+}
+
+function inferFlightTimingFromRaw(rawText: string | null | undefined, code: string): RawFlightTiming | null {
+  const normalizedCode = normalizedFlightCode(code);
+  if (!normalizedCode) return null;
+  return extractRawFlightSchedulePairs(rawText).find(pair => pair.code === normalizedCode) ?? null;
 }
 
 function fillMissingFlightSegmentTimesFromRaw(
@@ -1892,6 +2116,10 @@ function fillMissingFlightSegmentTimesFromRaw(
   },
   rawText: string | null,
 ): { dep_time: string | null; arr_time: string | null } {
+  const inferred = inferFlightTimingFromRaw(rawText, segment.code);
+  if (inferred) {
+    return { dep_time: inferred.dep_time, arr_time: inferred.arr_time };
+  }
   if (segment.dep_time && segment.arr_time) return segment;
   const times = flightTimesNearCode(rawText, segment.code);
   if (times.length < 2) return segment;
@@ -2269,8 +2497,12 @@ export function shouldAutoApplySourceBackedPriceRepair(
   return repair.status === 'repaired'
     && AUTO_APPLY_SOURCE_PRICE_REPAIR_SOURCES.has(repair.source)
     && validPriceDates(repair.priceDates).length > 0
-    && (repair.priceDates.length >= repair.existingCount || repair.existingCount <= 1)
-    && !deterministicPriceCheckFailed;
+    && (
+      repair.priceDates.length >= repair.existingCount
+      || repair.existingCount <= 1
+      || repair.reason.startsWith('replaced price_dates with source-backed table')
+    )
+    && (!deterministicPriceCheckFailed || repair.reason.startsWith('replaced price_dates with source-backed table'));
 }
 
 async function syncSourceBackedPriceStores(input: {
@@ -2570,7 +2802,7 @@ async function applySourceBackedRepairs(
         || isSafeMissingSourceBackedPriceDateFill(priceRepair)
         || autoApplySourceBackedRepair
       )
-      && !deterministicPriceCheckFailed
+      && (!deterministicPriceCheckFailed || autoApplySourceBackedRepair)
     ) {
       await syncSourceBackedPriceStores({
         supabase,
@@ -2626,6 +2858,16 @@ async function applySourceBackedRepairs(
     repairs.push(`airline:${fieldRepair.reason}`);
   }
 
+  const departureDaysRepair = buildSourceBackedDepartureDaysRepair(workingPkg);
+  if (departureDaysRepair.status === 'repaired') {
+    updates.departure_days = departureDaysRepair.departureDays;
+    workingPkg = {
+      ...workingPkg,
+      departure_days: departureDaysRepair.departureDays,
+    };
+    repairs.push(`departure_days:${departureDaysRepair.reason}`);
+  }
+
   const termsRepair = buildSourceBackedTermsRepair(workingPkg);
   if (termsRepair.status === 'repaired') {
     if (termsRepair.inclusions) updates.inclusions = termsRepair.inclusions;
@@ -2653,6 +2895,16 @@ async function applySourceBackedRepairs(
     repairs.push('itinerary_data:schedule_policy_leak_repaired');
   }
 
+  const flightSegmentRepair = repairSourceBackedFlightSegmentsFromRaw(workingPkg.itinerary_data, workingPkg.raw_text);
+  if (flightSegmentRepair.repaired) {
+    updates.itinerary_data = flightSegmentRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: flightSegmentRepair.itineraryData,
+    };
+    repairs.push('itinerary_data:source_backed_flight_segments_repaired');
+  }
+
   const hotelNameRepair = repairNonLodgingHotelNamesInItinerary(workingPkg.itinerary_data);
   if (hotelNameRepair.repaired) {
     updates.itinerary_data = hotelNameRepair.itineraryData;
@@ -2661,6 +2913,23 @@ async function applySourceBackedRepairs(
       itinerary_data: hotelNameRepair.itineraryData,
     };
     repairs.push('itinerary_data:non_lodging_hotel_names_repaired');
+  }
+
+  const sourceBackedHotelRepair = repairMissingSourceBackedHotelsInItinerary({
+    itineraryData: workingPkg.itinerary_data,
+    rawText: workingPkg.raw_text,
+    accommodations: workingPkg.accommodations,
+    nights: workingPkg.nights,
+  });
+  if (sourceBackedHotelRepair.repaired) {
+    updates.itinerary_data = sourceBackedHotelRepair.itineraryData;
+    if (sourceBackedHotelRepair.accommodations) updates.accommodations = sourceBackedHotelRepair.accommodations;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: sourceBackedHotelRepair.itineraryData,
+      ...(sourceBackedHotelRepair.accommodations ? { accommodations: sourceBackedHotelRepair.accommodations } : {}),
+    };
+    repairs.push('itinerary_data:source_backed_missing_hotels_repaired');
   }
 
   const optionalToursRepair = repairOptionalToursForCustomerDisplay(workingPkg.optional_tours);
@@ -2881,12 +3150,22 @@ async function rebuildV3DraftFromCurrentPackage(input: {
 }): Promise<string[]> {
   const latestDraft = await loadLatestV3DraftForPackage(input.supabase, input.pkg.id);
   if (getV3DraftGateStatus(latestDraft) === 'ready_to_publish') {
-    return ['v3_rebuild_skipped:latest_ready_to_publish'];
+    const sourceType = String(latestDraft?.source_type ?? '');
+    if (sourceType.includes('package-derived-v3')) {
+      return ['v3_rebuild_skipped:latest_package_derived_ready_to_publish'];
+    }
+    const staleFlightCoverage = (
+      asRecord(asRecord(input.pkg.audit_report).upload_to_open_autopilot)
+        .repair_first_summary as { unresolved_reasons?: unknown[] } | undefined
+    )?.unresolved_reasons?.some(reason =>
+      /coverage .*flights\.(?:outbound|inbound)\[\d+\]\.code/i.test(String(reason)),
+    ) ?? false;
+    if (!staleFlightCoverage) return ['v3_rebuild_skipped:latest_ready_to_publish'];
   }
 
   const restoredReady = await restoreLatestReadyV3DraftAsCurrent(input.supabase, input.pkg.id);
   if (restoredReady) {
-    return ['v3_rebuild_skipped:restored_existing_ready_to_publish'];
+    return [restoredReady];
   }
 
   const rawText = input.pkg.raw_text ?? '';
@@ -2902,29 +3181,30 @@ async function rebuildV3DraftFromCurrentPackage(input: {
   const packageBackedPatched = patchV3WithPackageBackedEvidence(v3, input.pkg);
   if (shouldUsePackageDerivedV3Fallback(v3, input.pkg)) {
     const hasEntityBlockers = await hasPendingBlockingEntityQueueRows(input.supabase, input.pkg.id);
-    if (!hasEntityBlockers) {
-      const fallback = buildPackageDerivedV3Result({ base: v3, pkg: input.pkg, attractions });
-      if (fallback && fallback.result.gate_result.status !== 'blocked') {
-        const persisted = await persistProductRegistrationDraftV3(input.supabase, {
-          packageId: input.pkg.id,
-          packageTitle: input.pkg.title,
-          rawText: fallback.rawText,
-          sourceType: 'upload-to-open-autopilot:package-derived-v3',
-          supplierHint: null,
-          destination: null,
-          documentType: fallback.result.structure_plan.document_type,
-          result: fallback.result,
-        });
-        if (persisted.error) return [`v3_package_derived_rebuild_failed:${persisted.error}`];
-        const reconciled = await reconcileLatestV3DraftWithLiveQueueIfClear(input.supabase, input.pkg.id);
-        if (reconciled) {
-          return [
-            `v3_rebuilt_package_derived:${fallback.result.gate_result.status}:queued=${persisted.queuedUnmatched}`,
-            'v3_reconciled_live_entity_queue:ready_to_publish',
-          ];
-        }
-        return [`v3_rebuilt_package_derived:${fallback.result.gate_result.status}:queued=${persisted.queuedUnmatched}`];
+    const fallback = buildPackageDerivedV3Result({ base: v3, pkg: input.pkg, attractions });
+    if (fallback && fallback.result.gate_result.status !== 'blocked') {
+      const persisted = await persistProductRegistrationDraftV3(input.supabase, {
+        packageId: input.pkg.id,
+        packageTitle: input.pkg.title,
+        rawText: fallback.rawText,
+        sourceType: hasEntityBlockers
+          ? 'upload-to-open-autopilot:package-derived-v3:entity-queue-pending'
+          : 'upload-to-open-autopilot:package-derived-v3',
+        supplierHint: null,
+        destination: null,
+        documentType: fallback.result.structure_plan.document_type,
+        result: fallback.result,
+      });
+      if (persisted.error) return [`v3_package_derived_rebuild_failed:${persisted.error}`];
+      const reconciled = await reconcileLatestV3DraftWithLiveQueueIfClear(input.supabase, input.pkg.id);
+      const note = `v3_rebuilt_package_derived:${fallback.result.gate_result.status}:queued=${persisted.queuedUnmatched}${hasEntityBlockers ? ':entity_queue_pending' : ''}`;
+      if (reconciled) {
+        return [
+          note,
+          'v3_reconciled_live_entity_queue:ready_to_publish',
+        ];
       }
+      return [note];
     }
   }
   const persisted = await persistProductRegistrationDraftV3(input.supabase, {
@@ -2947,25 +3227,28 @@ async function rebuildV3DraftFromCurrentPackage(input: {
 async function restoreLatestReadyV3DraftAsCurrent(
   supabase: SupabaseClient,
   packageId: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const { data, error } = await supabase
     .from('product_registration_drafts')
-    .select('package_id, raw_text, raw_text_hash, supplier_hint, document_type, structure_plan, ledger, evidence_index, match_summary, gate_result, status')
+    .select('package_id, raw_text, raw_text_hash, source_type, supplier_hint, document_type, structure_plan, ledger, evidence_index, match_summary, gate_result, status')
     .eq('package_id', packageId)
     .eq('status', 'ready_to_publish')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error || !data) return false;
+  if (error || !data) return null;
 
   const ready = data as RestorableV3DraftRow;
+  const sourceType = String(ready.source_type ?? '');
   const { error: insertError } = await supabase
     .from('product_registration_drafts')
     .insert({
       package_id: ready.package_id ?? packageId,
       raw_text: ready.raw_text ?? '',
       raw_text_hash: ready.raw_text_hash ?? '',
-      source_type: 'upload-to-open-autopilot:restore-ready-draft',
+      source_type: sourceType
+        ? `upload-to-open-autopilot:restore-ready-draft:${sourceType}`
+        : 'upload-to-open-autopilot:restore-ready-draft',
       supplier_hint: ready.supplier_hint ?? null,
       document_type: ready.document_type ?? null,
       structure_plan: ready.structure_plan ?? null,
@@ -2975,17 +3258,42 @@ async function restoreLatestReadyV3DraftAsCurrent(
       gate_result: ready.gate_result ?? null,
       status: 'ready_to_publish',
     });
-  return !insertError;
+  if (insertError) return null;
+  return sourceType.includes('package-derived-v3')
+    ? 'v3_rebuild_skipped:latest_package_derived_ready_to_publish'
+    : 'v3_rebuild_skipped:restored_existing_ready_to_publish';
 }
 
 function isPendingBlockingEntityQueueRow(row: Record<string, unknown>): boolean {
   const status = String(row.status ?? '').trim().toLowerCase();
   if (row.resolved_at || (status && status !== 'pending' && status !== 'review')) return false;
+  if (isObviousNonAttractionQueueNoise(row)) return false;
   const kind = String(row.segment_kind_guess ?? 'unknown').trim().toLowerCase() || 'unknown';
   const action = String(row.suggested_action ?? '').trim().toLowerCase();
   if (['meal', 'transfer', 'free_time', 'price_noise', 'hotel'].includes(kind) && action !== 'needs_review') return false;
   return ['attraction', 'shopping', 'optional_tour', 'notice', 'unknown'].includes(kind)
     || ['needs_review', 'needs_new_master', 'suggest_alias'].includes(action);
+}
+
+function entityQueueLabel(row: Record<string, unknown>): string {
+  return String(row.raw_label ?? row.activity ?? row.label ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function isObviousNonAttractionQueueNoise(row: Record<string, unknown>): boolean {
+  const label = entityQueueLabel(row);
+  if (!label) return false;
+  const compact = label.replace(/\s+/g, '');
+  return [
+    /^(?:일정표|확인|비운항일|상동|:상동)$/i,
+    /^(?:월|화|수|목|금|토|일|월화수목금|토일|수목금|토일월화)+$/i,
+    /^\*?\d{1,2}\/\d{1,2}(?:,\d{1,2})*(?:제외)?\)?$/i,
+    /^(?:목\/금|일\/월)\s*:?\s*\d박\d일(?:\(.+\))?$/i,
+    /^\d박\d일(?:\(.+\))?$/i,
+    /^(?:부산|부 산|김해|인천|대구|서울)\s*[→\-]\s*[\p{Script=Hangul}A-Z]+$/iu,
+    /상기일정은항공|현지사정|기상악화|취소시|양해하여주시기/i,
+    /^(?:왕새우|민물가재|오징어볶음|가리비구이|문어구이|소고기안심구이|샐러드|현지식중식|랭쎕|분짜|반세오|우렁이찜\+핫팟|넘능세트|맥주1?병?|피자\)?|보토콴BBQ\)?|올유캔잇|선상식\)?|미니뷔페디너|다양한메뉴의미니뷔페디너)$/i,
+    /^(?:스노클링|스노쿨링|줄낚시|구명조끼|바나나보트|제트스키|지프차|VIP럭셔리스파|호수마차투어|패러세일링|데이크루즈|동부투어|차창|볼거리|먹거리)$/i,
+  ].some(pattern => pattern.test(compact) || pattern.test(label));
 }
 
 async function hasPendingBlockingEntityQueueRows(
@@ -2999,6 +3307,92 @@ async function hasPendingBlockingEntityQueueRows(
     .limit(200);
   if (error) return true;
   return (data ?? []).some(row => isPendingBlockingEntityQueueRow(asRecord(row)));
+}
+
+async function resolveObviousNonAttractionEntityQueueRows(
+  supabase: SupabaseClient,
+  packageId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('unmatched_activities')
+    .select('id,raw_label,activity,status,resolved_at,segment_kind_guess,suggested_action')
+    .eq('package_id', packageId)
+    .is('resolved_at', null)
+    .limit(200);
+  if (error || !data?.length) return 0;
+
+  const now = nowIso();
+  let resolved = 0;
+  for (const row of data) {
+    const record = asRecord(row);
+    if (!isObviousNonAttractionQueueNoise(record)) continue;
+    const { error: updateError } = await supabase
+      .from('unmatched_activities')
+      .update({
+        status: 'ignored',
+        resolved_at: now,
+        resolved_kind: 'noise',
+        resolved_by: 'upload-to-open-autopilot:deterministic-non-attraction-noise',
+        suggested_action: 'ignore_noise',
+        note: 'Auto-ignored deterministic non-attraction text from schedule/customer terms.',
+        updated_at: now,
+      })
+      .eq('id', String(record.id));
+    if (!updateError) resolved += 1;
+  }
+  return resolved;
+}
+
+export function repairSourceBackedFlightSegmentsFromRaw(
+  itineraryData: unknown,
+  rawText: string | null | undefined,
+): { repaired: boolean; itineraryData: unknown } {
+  const root = asRecord(itineraryData);
+  const segments = Array.isArray(root.flight_segments) ? root.flight_segments : [];
+  if (segments.length === 0 || !rawText) return { repaired: false, itineraryData };
+
+  const rawPairs = extractRawFlightSchedulePairs(rawText);
+  if (rawPairs.length === 0) return { repaired: false, itineraryData };
+
+  const outboundPair = rawPairs[0] ?? null;
+  const inboundPair = rawPairs.length >= 2 ? rawPairs[rawPairs.length - 1] : null;
+  let repaired = false;
+
+  const repairedSegments = segments.map((value: unknown) => {
+    const segment = asRecord(value);
+    const leg = String(segment.leg ?? segment.direction ?? '').trim().toLowerCase();
+    const existingCode = normalizedFlightCode(firstText(segment.flight_no, segment.code, segment.flightNumber));
+    const pairByCode = existingCode ? rawPairs.find(pair => pair.code === existingCode) ?? null : null;
+    const sourcePair = (leg === 'outbound' ? outboundPair : leg === 'inbound' ? inboundPair : null)
+      ?? pairByCode;
+    if (!sourcePair) return value;
+
+    const next = {
+      ...segment,
+      flight_no: sourcePair.code,
+      dep_time: sourcePair.dep_time,
+      arr_time: sourcePair.arr_time,
+      arr_day_offset: sourcePair.arr_day_offset,
+    };
+    if (
+      String(segment.flight_no ?? segment.code ?? segment.flightNumber ?? '') !== next.flight_no
+      || String(segment.dep_time ?? segment.departure_time ?? '') !== next.dep_time
+      || String(segment.arr_time ?? segment.arrival_time ?? '') !== next.arr_time
+      || Number(segment.arr_day_offset ?? 0) !== next.arr_day_offset
+    ) {
+      repaired = true;
+    }
+    return next;
+  });
+
+  if (!repaired) return { repaired: false, itineraryData };
+  return {
+    repaired: true,
+    itineraryData: {
+      ...root,
+      flight_segments: repairedSegments,
+    },
+  };
 }
 
 function normalizedActivityKey(value: unknown): string {
@@ -3025,13 +3419,39 @@ function collectSavedItineraryAttractionResolutions(
       const attractionIds = asStringArray(record.attraction_ids);
       if (!key || attractionIds.length === 0) continue;
       const attractionNames = asStringArray(record.attraction_names);
-      resolutions.set(key, {
+      const resolution = {
         attractionId: attractionIds[0],
         attractionName: attractionNames[0] ?? null,
-      });
+      };
+      resolutions.set(key, resolution);
+      for (const name of attractionNames) {
+        const nameKey = normalizedActivityKey(name);
+        if (nameKey) resolutions.set(nameKey, resolution);
+      }
+      const attractionQuery = firstText(record.attraction_query);
+      const queryKey = normalizedActivityKey(attractionQuery);
+      if (queryKey) resolutions.set(queryKey, resolution);
+      for (const query of asStringArray(record.attraction_queries)) {
+        const itemKey = normalizedActivityKey(query);
+        if (itemKey) resolutions.set(itemKey, resolution);
+      }
     }
   }
   return resolutions;
+}
+
+function findSavedItineraryAttractionResolution(
+  resolutions: Map<string, { attractionId: string; attractionName: string | null }>,
+  label: string,
+): { attractionId: string; attractionName: string | null } | null {
+  const key = normalizedActivityKey(label);
+  if (!key) return null;
+  const exact = resolutions.get(key);
+  if (exact) return exact;
+  for (const [candidateKey, resolution] of resolutions.entries()) {
+    if (pendingQueueLabelMatchesResolvedEvent(key, candidateKey)) return resolution;
+  }
+  return null;
 }
 
 async function resolveStaleEntityQueueRowsFromSavedItinerary(
@@ -3054,7 +3474,10 @@ async function resolveStaleEntityQueueRowsFromSavedItinerary(
     if (!isPendingBlockingEntityQueueRow(record)) continue;
     const kind = String(record.segment_kind_guess ?? '').toLowerCase();
     if (kind !== 'attraction') continue;
-    const resolution = resolutions.get(normalizedActivityKey(record.activity));
+    const resolution = findSavedItineraryAttractionResolution(
+      resolutions,
+      String(record.raw_label ?? record.activity ?? ''),
+    );
     if (!resolution) continue;
     const { error: updateError } = await supabase
       .from('unmatched_activities')
@@ -3274,11 +3697,15 @@ async function evaluateAndMaybeOpenPackage(input: {
   const repairsResult = await applySourceBackedRepairs(input.supabase, pkg);
   pkg = repairsResult.pkg;
   reasons.push(...repairsResult.blockedReasons);
+  const resolvedObviousNoiseQueueRows = await resolveObviousNonAttractionEntityQueueRows(input.supabase, pkg.id);
   const resolvedSavedItineraryQueueRows = await resolveStaleEntityQueueRowsFromSavedItinerary(input.supabase, pkg);
   const v3RebuildNotes = await rebuildV3DraftFromCurrentPackage({ supabase: input.supabase, pkg });
   const v3RebuildFailed = v3RebuildNotes.find(note => note.startsWith('v3_rebuild_failed:'));
   if (v3RebuildFailed) reasons.push(v3RebuildFailed);
   const allRepairs = [...repairsResult.repairs, ...v3RebuildNotes];
+  if (resolvedObviousNoiseQueueRows > 0) {
+    allRepairs.push(`entity_queue_ignored_obvious_noise:${resolvedObviousNoiseQueueRows}`);
+  }
   if (resolvedSavedItineraryQueueRows > 0) {
     allRepairs.push(`entity_queue_resolved_from_saved_itinerary:${resolvedSavedItineraryQueueRows}`);
   }
@@ -3427,6 +3854,7 @@ async function evaluateAndMaybeOpenPackage(input: {
 
   const uniqueReasons = [...new Set(filterResolvedUploadToOpenReasons({
     reasons,
+    repairs: allRepairs,
     customerOpenContractOk: customerOpenContract.ok,
     mobileProofOk: mobileProof.ok,
     sourceVerifyStatus: sourceVerify.status,

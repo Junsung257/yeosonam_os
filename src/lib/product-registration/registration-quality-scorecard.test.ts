@@ -98,4 +98,27 @@ describe('evaluateRegistrationQualityScorecard', () => {
     expect(scorecard.customerOpenCandidate).toBe(false);
     expect(scorecard.domains.find(domain => domain.id === 'customer_copy')?.score).toBe(0);
   });
+
+  it('does not require airline for source-backed ferry packages', () => {
+    const scorecard = evaluateRegistrationQualityScorecard({
+      pkg: {
+        ...validPackage,
+        title: '쓰시마링크호 대마도 1박2일',
+        destination: '대마도',
+        airline: null,
+        departure_airport: '부산 국제 여객터미널',
+        raw_text: '왕복훼리비 포함\n쓰시마링크호\n선박 승선 후 부산항 출항\n'.repeat(10),
+      },
+      verifyChecks: [
+        { id: 'C15', status: 'pass', detail: 'no pending entities' },
+        { id: 'C18', status: 'pass', detail: 'customer visible text clean' },
+      ],
+      productPrices,
+      mobileProof,
+      learning: { micro: 100, macro: 100, combined: 100, productionReady: true, blockers: [] },
+    });
+
+    expect(scorecard.domains.find(domain => domain.id === 'itinerary_transport_hotel')?.blockers).not.toContain('airline missing');
+    expect(scorecard.customerOpenCandidate).toBe(true);
+  });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { sanitizeCatalogRemainder } from './terms-catalog';
 import { classifyInclusions, resolveShopping, resolveTermsMisc, renderPackage } from './render-contract';
 
 describe('classifyInclusions + terms-catalog', () => {
@@ -45,5 +46,13 @@ describe('renderPackage excludes.display', () => {
     });
     expect(view.excludes.display[0].text).toBe('개인경비');
     expect(view.excludes.basic[0]).toBe('개인경비');
+  });
+});
+
+describe('sanitizeCatalogRemainder', () => {
+  it('removes dangling customer-visible separators from catalog remainder text', () => {
+    expect(sanitizeCatalogRemainder('기사/')).toBe('기사');
+    expect(sanitizeCatalogRemainder('/ 기사 /')).toBe('기사');
+    expect(sanitizeCatalogRemainder('/')).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ export type V3DraftGateStatus = 'ready_to_publish' | 'needs_review' | 'blocked';
 export type LatestV3DraftForPackage = {
   id: string;
   package_id: string | null;
+  source_type?: string | null;
   ledger: V3DraftLedger | null;
   gate_result: V3GateResult | null;
   status: V3DraftGateStatus | string | null;
@@ -165,7 +166,7 @@ export async function loadLatestV3DraftForPackage(
 ): Promise<LatestV3DraftForPackage | null> {
   const { data, error } = await sb
     .from('product_registration_drafts')
-    .select('id, package_id, ledger, gate_result, status, created_at')
+    .select('id, package_id, source_type, ledger, gate_result, status, created_at')
     .eq('package_id', packageId)
     .order('created_at', { ascending: false })
     .limit(1)
