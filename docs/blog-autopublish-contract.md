@@ -155,6 +155,7 @@ Correct sequence:
 5. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
 6. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.
 7. The worker submits changed URLs through IndexNow batch endpoints when `INDEXNOW_KEY` is configured.
+   The same key must be publicly verifiable at `https://www.yeosonam.com/{INDEXNOW_KEY}.txt`; the app serves this only when the requested root `.txt` path exactly matches the configured key.
 8. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
 9. Observe Google status through URL Inspection within quota.
 
