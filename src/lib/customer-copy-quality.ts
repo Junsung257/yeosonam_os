@@ -8,7 +8,7 @@ const HANGUL_WORD = '[가-힣A-Za-z0-9·.,&()/\\-\\s]';
 const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   {
     code: 'html_entity_visible',
-    pattern: /&#(?:x[0-9a-f]+|\d+);|&(amp|lt|gt|quot|apos);/i,
+    pattern: /&#(?:x[0-9a-f]+|\d+);?|&(amp|lt|gt|quot|apos);/i,
     label: 'HTML 문자 코드가 고객 문구에 그대로 보입니다.',
   },
   {
@@ -38,8 +38,13 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'supplier_notation',
-    pattern: /\bTAX\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|유류할증료\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|\d{1,2}\s*월기준|기사가이드경비|기사\s*가이드\s*경비|[가-힣]+\s*OR\s*[가-힣]+|바나산\s*정산|맥주\s*OR\s*음료/i,
+    pattern: /\bTAX\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|유류할증료\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|\d{1,2}\s*월기준|\d{1,2}\s*월\s*(?:선발|발권|선발권\s*기준\s*요금)|기사가이드경비|기사\s*가이드\s*경비|\[\s*[A-Z0-9]{2,3}\s+[^\]]*?PKG\s*\]|(^|[\s📍])\[?[A-Z0-9]{2,3}\]\s*(?=[가-힣])|[☑✓✔ώ]|[가-힣]+\s*OR\s*[가-힣]+|[가-힣]+\s*or\s*[가-힣]+|바나산\s*정산|맥주\s*OR\s*음료/i,
     label: '랜드사식 표기 또는 고객에게 어색한 원문 표기가 보입니다.',
+  },
+  {
+    code: 'raw_filename_or_hash_title',
+    pattern: /^[0-9a-f]{8,}-|투어비[_\s]|_[가-힣]|[가-힣]_|선발가|\(\s*\d{3,4}\s*발권\s*\)|\b\d{4}_\d{4}\b/i,
+    label: '파일명, 해시, 발권 코드처럼 보이는 원문 제목이 고객 문구에 보입니다.',
   },
   {
     code: 'awkward_spacing_or_customer_copy',
@@ -69,7 +74,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
 ];
 
 export function decodeCustomerHtmlEntities(value: string | null | undefined): string {
-  let text = String(value ?? '');
+  let text = String(value ?? '').replace(/&#974(?!\d|;)/g, '');
   for (let pass = 0; pass < 3; pass += 1) {
     const before = text;
     text = text
@@ -78,11 +83,11 @@ export function decodeCustomerHtmlEntities(value: string | null | undefined): st
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#039;|&apos;/g, "'")
-      .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => {
+      .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => {
         const code = Number.parseInt(hex, 16);
         return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
       })
-      .replace(/&#(\d+);/g, (_, decimal: string) => {
+      .replace(/&#(\d+);?/g, (_, decimal: string) => {
         const code = Number.parseInt(decimal, 10);
         return code >= 0xd800 && code <= 0xdfff ? String.fromCharCode(code) : String.fromCodePoint(code);
       });
@@ -98,8 +103,30 @@ function normalizeLowInformationSentence(text: string): string {
     .replace(/^([가-힣A-Za-z0-9·.,&()/\-\s]{1,24}?)\s*갑니다\.?$/iu, '$1 이동');
 }
 
+function normalizeKoreanAlternatives(text: string): string {
+  let normalized = text;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const before = normalized;
+    normalized = normalized.replace(/([가-힣]+)\s*or\s*([가-힣]+)/gi, '$1 또는 $2');
+    if (normalized === before) break;
+  }
+  return normalized;
+}
+
 export function normalizeCustomerVisibleCopy(value: string | null | undefined): string {
   const decoded = decodeCustomerHtmlEntities(value)
+    .replace(/^[0-9a-f]{8,}-/i, '')
+    .replace(/^\s*\d{1,2}\s*월\s*(?:선발|발권)\s*/g, '')
+    .replace(/[“"]?\s*\d{1,2}\s*월\s*선발권\s*기준\s*요금입니다\.?\s*[”"]?/g, '')
+    .replace(/\[\s*[A-Z0-9]{2,3}\s+([^\]]*?)\s*PKG\s*\]/gi, '$1')
+    .replace(/(^|[\s📍])\[?[A-Z0-9]{2,3}\]\s*(?=[가-힣])/gu, '$1')
+    .replace(/^\s*\[?[A-Z0-9]{2,3}\]\s*(?=[가-힣])/u, '')
+    .replace(/_/g, ' ')
+    .replace(/투어비\s*/g, '')
+    .replace(/선발가/g, '')
+    .replace(/\(\s*\d{3,4}\s*발권\s*\)/g, '')
+    .replace(/\b\d{4}\s+\d{4}\b/g, '')
+    .replace(/\s*[☑✓✔ώ]\s*/gu, ' ')
     .replace(/\bR\s*M\s*K\b/gi, '참고사항')
     .replace(/\bRMK\b/gi, '참고사항')
     .replace(/(^|[^A-Za-z])P\.?\s*P\.?(?=$|[^A-Za-z])/gi, '$11인')
@@ -109,7 +136,6 @@ export function normalizeCustomerVisibleCopy(value: string | null | undefined): 
     .replace(/(\d{1,2})\s*월기준/g, '$1월 기준')
     .replace(/기사가이드경비|기사\s*가이드\s*경비/g, '가이드/기사 경비')
     .replace(/바나산\s*정산/g, '바나산 정상')
-    .replace(/([가-힣]+)\s*OR\s*([가-힣]+)/gi, '$1 또는 $2')
     .replace(/맥주\s*OR\s*음료/gi, '맥주 또는 음료')
     .replace(/^경우가\s*종종\s*발생합니다\.?$/g, '')
     .replace(/추가\s+합니다/g, '추가합니다')
@@ -119,7 +145,7 @@ export function normalizeCustomerVisibleCopy(value: string | null | undefined): 
     ))
     .replace(/여행의\s*피로를\s*풀어(?:봅니다|주는|줄 수 있습니다)\.?/g, '휴식');
 
-  return normalizeLowInformationSentence(decoded)
+  return normalizeLowInformationSentence(normalizeKoreanAlternatives(decoded))
     .replace(/([가-힣A-Za-z0-9·]{2,20})\s+\1(?=\s|[.!?,)]|$)/g, '$1')
     .replace(/^\s*\/+\s*/g, '')
     .replace(/\.{2,}/g, '.')

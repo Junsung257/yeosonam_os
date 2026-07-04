@@ -26,6 +26,35 @@ describe('customer visible copy quality', () => {
     expect(issueCodes(normalized)).toEqual([]);
   });
 
+  it('normalizes supplier carrier tags and checkbox markers from customer titles', () => {
+    const normalized = normalizeCustomerVisibleCopy('[VN] 베트남 하노이/하롱/옌뜨or메가or닌빈 3박5일 ☑실속');
+
+    expect(normalized).toBe('베트남 하노이/하롱/옌뜨 또는 메가 또는 닌빈 3박5일 실속');
+    expect(issueCodes(normalized)).toEqual([]);
+    expect(issueCodes('[VN] 베트남 하노이/하롱/옌뜨or메가or닌빈 3박5일 ☑실속')).toContain('supplier_notation');
+    expect(normalizeCustomerVisibleCopy('📍 [BX] 나트랑 3박5일 &#9745일정표')).toBe('📍 나트랑 3박5일 일정표');
+    expect(normalizeCustomerVisibleCopy('나트랑 3박5일 &#974')).toBe('나트랑 3박5일');
+  });
+
+  it('detects and normalizes hash-like supplier file titles', () => {
+    const raw = 'b4b8b8b7538b-[ZE]푸꾸옥_3박_♥특가♥맛집노노팩_0826_0910_(0717발권)_0701';
+
+    expect(issueCodes(raw)).toContain('raw_filename_or_hash_title');
+    expect(normalizeCustomerVisibleCopy(raw)).toBe('푸꾸옥 3박 ♥특가♥맛집노노팩 0701');
+  });
+
+  it('normalizes ticketing batch package title markers', () => {
+    const raw = '7월 발권 [BX 품격 4일 PKG] 비에이 오타루 도야 노보리베츠 #온천 2박 #게뷔페';
+
+    expect(issueCodes(raw)).toContain('supplier_notation');
+    expect(normalizeCustomerVisibleCopy(raw)).toBe('품격 4일 비에이 오타루 도야 노보리베츠 #온천 2박 #게뷔페');
+  });
+
+  it('drops supplier ticketing basis fragments misclassified as options', () => {
+    expect(issueCodes('“6월 선발권 기준 요금입니다.”')).toContain('supplier_notation');
+    expect(normalizeCustomerVisibleCopy('“6월 선발권 기준 요금입니다.”')).toBe('');
+  });
+
   it('detects low-information action sentences and normalizes them safely', () => {
     expect(issueCodes('바나힐 방문합니다')).toContain('low_information_action_sentence');
     expect(normalizeCustomerVisibleCopy('바나힐 방문합니다')).toBe('바나힐 방문');

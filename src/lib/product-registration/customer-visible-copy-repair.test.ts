@@ -80,10 +80,11 @@ describe('repairCustomerVisibleCopyPayload', () => {
 
   it('removes highlight duplicates when the same customer copy exists in top-level sections', () => {
     const result = repairCustomerVisibleCopyPayload({
+      product_highlights: ['[나트랑+달랏] 품격PKG 3박5일'],
       itinerary_data: {
         highlights: {
           inclusions: ['왕복 항공료 및 유류할증료', '전 일정 식사'],
-          remarks: ['전 일정 식사'],
+          remarks: ['전 일정 식사', '[나트랑+달랏] 품격PKG 3박5일'],
         },
       },
       inclusions: ['왕복 항공료 및 유류할증료', '전 일정 식사'],
@@ -92,6 +93,22 @@ describe('repairCustomerVisibleCopyPayload', () => {
     expect((result.value as { itinerary_data: { highlights: { inclusions: unknown[]; remarks: unknown[] } } }).itinerary_data.highlights.inclusions).toEqual([]);
     expect((result.value as { itinerary_data: { highlights: { inclusions: unknown[]; remarks: unknown[] } } }).itinerary_data.highlights.remarks).toEqual([]);
     expect((result.value as { inclusions: string[] }).inclusions).toEqual(['왕복 항공료 및 유류할증료', '전 일정 식사']);
+  });
+
+  it('removes top-level product highlights duplicated from customer title copy', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      title: '나트랑/달랏 전일정 5성 실속 3박5일 일정표',
+      display_title: '나트랑/달랏 전일정 5성 실속 3박5일',
+      product_highlights: [
+        '[BX] 나트랑/달랏 전일정 5성 실속 3박5일 &#9745;일정표',
+        '달랏과 나트랑을 한 번에 둘러보는 일정',
+      ],
+    });
+
+    expect((result.value as { product_highlights: string[] }).product_highlights).toEqual([
+      '달랏과 나트랑을 한 번에 둘러보는 일정',
+    ]);
+    expect(auditCustomerVisibleProductText(result.value as Record<string, unknown>)).toEqual([]);
   });
 
   it('removes repeated optional tour notes while preserving each tour name', () => {
