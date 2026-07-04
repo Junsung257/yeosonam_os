@@ -364,7 +364,10 @@ function sanitizeServerBlogHtml(html: string): string {
     .replace(/\s(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\s(href|src)\s*=\s*(["']?)\s*(javascript:|data:text\/html|vbscript:)[\s\S]*?\2/gi, '')
-    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '');
+    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '')
+    .replace(/<h1\b[^>]*>\s*(?:&nbsp;|\u00a0|<br\s*\/?>|\s)*<\/h1>/gi, '')
+    .replace(/<h1\b([^>]*)>/gi, '<h2$1>')
+    .replace(/<\/h1>/gi, '</h2>');
 }
 
 // ── 데이터 페칭 ──────────────────────────────────────────────
