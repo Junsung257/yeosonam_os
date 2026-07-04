@@ -34,6 +34,7 @@ A day is healthy only when all of these are true:
 - Do not add new Vercel cron entries for blog work without removing or consolidating another cron; the project is already near the cron limit.
 - Do not treat SEO score alone as quality. Topic fit, editorial quality, render integrity, image quality, readability, and indexing evidence must also pass.
 - Do not requeue `self_heal_blocked` rows until the underlying generator or schema mismatch is fixed.
+- Do not treat provider-specific search submission drift as a publish cron failure when publishing, queue health, and indexing outbox coverage are healthy. Keep it as a `watch` alert under search visibility so operators do not confuse indexing/ranking work with broken autopublishing.
 
 ## Escalation Rules
 
