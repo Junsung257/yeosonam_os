@@ -30,6 +30,7 @@ type TravelPackageRow = {
   title: string | null;
   display_title: string | null;
   hero_tagline: string | null;
+  product_highlights: unknown;
   product_summary: string | null;
   destination: string | null;
   trip_style: string | null;
@@ -78,6 +79,7 @@ const CUSTOMER_TEXT_FIELDS = [
   'title',
   'display_title',
   'hero_tagline',
+  'product_highlights',
   'product_summary',
   'destination',
   'trip_style',
@@ -175,7 +177,7 @@ async function loadPackages(options: Options): Promise<TravelPackageRow[]> {
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(`
-      id,title,display_title,hero_tagline,product_summary,destination,trip_style,airline,departure_airport,departure_days,
+      id,title,display_title,hero_tagline,product_highlights,product_summary,destination,trip_style,airline,departure_airport,departure_days,
       status,audit_status,audit_report,internal_code,short_code,price_dates,price_tiers,itinerary_data,inclusions,excludes,surcharges,
       optional_tours,accommodations,notices_parsed,customer_notes,
       products(internal_code,display_name,departure_region)
@@ -341,7 +343,12 @@ async function applySafeFixes(packageRows: TravelPackageRow[], issuesByPackage: 
       const productRows = Array.isArray(row.products) ? row.products : row.products ? [row.products] : [];
       for (const product of productRows) {
         if (product.internal_code !== row.internal_code || typeof product.display_name !== 'string') continue;
-        const normalized = normalizeCustomerVisibleCopy(product.display_name);
+        const productCodes = customerCopyQualityIssues(product.display_name).map(issue => issue.code);
+        const rowTitle = typeof row.title === 'string' ? normalizeCustomerVisibleCopy(row.title) : '';
+        const rowTitleClean = rowTitle && customerCopyQualityIssues(rowTitle).length === 0;
+        const normalized = productCodes.includes('raw_filename_or_hash_title') && rowTitleClean
+          ? rowTitle
+          : normalizeCustomerVisibleCopy(product.display_name);
         if (normalized && normalized !== product.display_name) {
           productUpdates.push({ internalCode: row.internal_code, displayName: normalized });
         }

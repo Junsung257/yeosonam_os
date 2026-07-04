@@ -18,6 +18,7 @@ const CUSTOMER_TEXT_FIELDS = [
   'title',
   'display_title',
   'hero_tagline',
+  'product_highlights',
   'product_summary',
   'destination',
   'trip_style',

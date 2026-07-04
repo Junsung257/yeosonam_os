@@ -221,6 +221,7 @@ function pruneDuplicateHighlights(value: unknown, changes: CustomerVisibleCopyRe
   collectReferenceSignatures(obj.title, protectedSignatures);
   collectReferenceSignatures(obj.display_title, protectedSignatures);
   collectReferenceSignatures(obj.product_summary, protectedSignatures);
+  collectReferenceSignatures(obj.product_highlights, protectedSignatures);
   collectReferenceSignatures(obj.inclusions, protectedSignatures);
   collectReferenceSignatures(obj.excludes, protectedSignatures);
   collectReferenceSignatures(obj.surcharges, protectedSignatures);
@@ -310,6 +311,40 @@ function pruneDuplicateOptionalTourNotes(value: unknown, changes: CustomerVisibl
   return { ...obj, optional_tours: nextTours };
 }
 
+function pruneDuplicateProductHighlights(value: unknown, changes: CustomerVisibleCopyRepairChange[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.product_highlights)) return value;
+
+  const protectedSignatures = new Set<string>();
+  collectReferenceSignatures(obj.title, protectedSignatures);
+  collectReferenceSignatures(obj.display_title, protectedSignatures);
+  collectReferenceSignatures(obj.product_summary, protectedSignatures);
+
+  let changed = false;
+  const seen = new Set<string>();
+  const nextHighlights = obj.product_highlights.filter((item, index) => {
+    const signature = dedupeCandidateSignature(item);
+    if (!signature) return true;
+    if (protectedSignatures.has(signature) || seen.has(signature)) {
+      changed = true;
+      changes.push({
+        fieldPath: `product_highlights.${index}`,
+        action: 'removed',
+        codes: ['duplicate_customer_visible_phrase'],
+        before: typeof item === 'string' ? item : JSON.stringify(item),
+        after: null,
+      });
+      return false;
+    }
+    seen.add(signature);
+    return true;
+  });
+
+  if (!changed) return value;
+  return { ...obj, product_highlights: nextHighlights };
+}
+
 function repairValue(value: unknown, pathParts: string[]): { value: unknown; changes: CustomerVisibleCopyRepairChange[] } {
   const key = pathParts[pathParts.length - 1] ?? '';
   if (CUSTOMER_COPY_REPAIR_SKIP_KEYS.has(key)) return { value, changes: [] };
@@ -372,7 +407,8 @@ export function repairCustomerVisibleCopyPayload<T>(value: T): CustomerVisibleCo
   const changes = [...repaired.changes];
   const valueWithOptionalTours = pruneDuplicateOptionalTours(repaired.value, changes);
   const valueWithPrunedTourNotes = pruneDuplicateOptionalTourNotes(valueWithOptionalTours, changes);
-  const valueWithPrunedHighlights = pruneDuplicateHighlights(valueWithPrunedTourNotes, changes);
+  const valueWithPrunedProductHighlights = pruneDuplicateProductHighlights(valueWithPrunedTourNotes, changes);
+  const valueWithPrunedHighlights = pruneDuplicateHighlights(valueWithPrunedProductHighlights, changes);
   return {
     value: valueWithPrunedHighlights as T,
     changes,
