@@ -31,6 +31,7 @@ function requireIncludes(file, expected) {
 requireIncludes('AGENTS.md', [
   'docs/agent-workflow-current-ssot.md',
   'docs/ai-agent-doc-automation.md',
+  'docs/agency-agents-adoption.md',
 ]);
 
 requireIncludes('.claude/CLAUDE.md', [
@@ -43,6 +44,15 @@ requireIncludes('docs/ai-agent-doc-automation.md', [
   'docs/specs/YYYYMMDD-short-slug/',
 ]);
 
+requireIncludes('docs/agency-agents-adoption.md', [
+  'challenger pattern library',
+  'Do not bulk-install',
+  'Highest-Value Imports',
+  'Pilot Protocol',
+  'Yeosonam Agent Pack V1',
+  'Hard Boundaries',
+]);
+
 requireIncludes('docs/agent-workflow-current-ssot.md', [
   'Explore',
   'Spec/Plan',
@@ -52,6 +62,8 @@ requireIncludes('docs/agent-workflow-current-ssot.md', [
   'Tier 2',
   'Tier 3',
   'Hard Stops',
+  'docs/agency-agents-adoption.md',
+  'Agency Agents',
 ]);
 
 for (const file of ['spec.md', 'plan.md', 'tasks.md', 'verification.md']) {
