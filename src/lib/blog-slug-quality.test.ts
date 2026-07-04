@@ -26,6 +26,17 @@ describe('blog slug quality', () => {
     expect(report.issues.map((issue) => issue.code)).toContain('numeric_leading_slug');
   });
 
+  it('blocks generic product intro slugs', () => {
+    const report = inspectBlogSlugQuality({
+      slug: 'product-intro',
+      primaryKeyword: '\uAD11\uC800\uC6B0 4\uBC156\uC77C \uD328\uD0A4\uC9C0',
+      destination: '\uAD11\uC800\uC6B0',
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('generic_product_intro_slug');
+  });
+
   it('passes reader-facing longtail slugs', () => {
     const report = inspectBlogSlugQuality({
       slug: 'bali-transport-cost',

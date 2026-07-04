@@ -57,6 +57,7 @@ const ROMAN_MAP_EXTRA: Record<string, string> = {
   '\uC720\uB7FD': 'europe',
   '\uC2DC\uB4DC\uB2C8': 'sydney',
   '\uD638\uC8FC': 'australia',
+  '\uAD11\uC800\uC6B0': 'guangzhou',
   '\uC5F0\uAE38': 'yanji',
   '\uBC31\uB450\uC0B0': 'baekdusan',
   '\uC5F0\uAE38/\uBC31\uB450\uC0B0': 'yanji-baekdusan',

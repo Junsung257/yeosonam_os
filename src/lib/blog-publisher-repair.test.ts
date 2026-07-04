@@ -63,6 +63,26 @@ describe('blog publisher repair helpers', () => {
     }).passed).toBe(true);
   });
 
+  it('repairs generic product slugs into destination package slugs', () => {
+    const result = repairPublisherSeoSlug({
+      currentSlug: 'product-intro',
+      item: {
+        topic: '\uAD11\uC800\uC6B0 4\uBC156\uC77C \uD488\uACA9\uD328\uD0A4\uC9C0 [\uB178\uD301/\uB178\uC635\uC158] \uAC00\uC131\uBE44 \uB9AC\uBDF0',
+        destination: '\uAD11\uC800\uC6B0',
+        category: 'package_intro',
+      },
+      primaryKeyword: '\uAD11\uC800\uC6B0 4\uBC156\uC77C \uAC00\uC131\uBE44 \uD328\uD0A4\uC9C0',
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.slug).toBe('guangzhou-package');
+    expect(inspectBlogSlugQuality({
+      slug: result.slug,
+      primaryKeyword: '\uAD11\uC800\uC6B0 4\uBC156\uC77C \uAC00\uC131\uBE44 \uD328\uD0A4\uC9C0',
+      destination: '\uAD11\uC800\uC6B0',
+    }).passed).toBe(true);
+  });
+
   it('replaces a weak first paragraph with a concrete hook', () => {
     const source = [
       '# \uB098\uD2B8\uB791/\uB2EC\uB78F 6\uC6D4 \uB0A0\uC528\uC640 \uC637\uCC28\uB9BC',
