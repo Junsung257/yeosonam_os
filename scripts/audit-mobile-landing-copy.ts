@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { config as loadEnv } from 'dotenv';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 
 import {
@@ -151,17 +151,8 @@ async function loadPackages(ids: string[], limit: number, scope: AuditScope): Pr
   return (data ?? []) as PackageRow[];
 }
 
-async function scrapeSurface(browser: Browser, input: ScrapeInput): Promise<SurfaceResult> {
+async function scrapeSurface(context: BrowserContext, input: ScrapeInput): Promise<SurfaceResult> {
   const url = `${input.baseUrl}${surfacePath(input.surface, input.pkg.id)}`;
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    userAgent: 'YeosonamMobileCopyAudit/2.0 Mobile Safari',
-    extraHTTPHeaders: {
-      ...(input.proofSecret ? { 'x-yeosonam-render-proof': input.proofSecret } : {}),
-      'x-proof-request': 'true',
-      'Cache-Control': 'no-store',
-    },
-  });
   const page = await context.newPage();
   try {
     await withTimeout(
@@ -213,14 +204,14 @@ async function scrapeSurface(browser: Browser, input: ScrapeInput): Promise<Surf
       transient_error: isTransientScrapeError(error instanceof Error ? error.message : String(error)),
     };
   } finally {
-    await withTimeout(context.close(), 3_000, `${input.surface} context close`).catch(() => undefined);
+    await withTimeout(page.close(), 3_000, `${input.surface} page close`).catch(() => undefined);
   }
 }
 
-async function scrapeSurfaceWithRetry(browser: Browser, input: ScrapeInput & { maxRetries: number }): Promise<SurfaceResult> {
+async function scrapeSurfaceWithRetry(context: BrowserContext, input: ScrapeInput & { maxRetries: number }): Promise<SurfaceResult> {
   let last: SurfaceResult | null = null;
   for (let attempt = 0; attempt <= input.maxRetries; attempt += 1) {
-    const result = await scrapeSurface(browser, input);
+    const result = await scrapeSurface(context, input);
     result.attempts = attempt + 1;
     if (result.result === 'pass' || !isTransientScrapeError(result.error) || attempt === input.maxRetries) {
       return result;
@@ -228,7 +219,7 @@ async function scrapeSurfaceWithRetry(browser: Browser, input: ScrapeInput & { m
     last = result;
     await new Promise(resolve => setTimeout(resolve, Math.min(2_000, 500 * (attempt + 1))));
   }
-  return last ?? await scrapeSurface(browser, input);
+  return last ?? await scrapeSurface(context, input);
 }
 
 function auditDbFields(pkg: PackageRow): SurfaceResult {
@@ -273,7 +264,8 @@ async function main() {
   const limit = Math.max(1, Math.min(Number(argValue('limit') ?? '200') || 200, 2_000));
   const pageTimeoutMs = Math.max(5_000, Math.min(Number(argValue('page-timeout-ms') ?? '15_000') || 15_000, 60_000));
   const textTimeoutMs = Math.max(2_000, Math.min(Number(argValue('text-timeout-ms') ?? '5_000') || 5_000, 30_000));
-  const retryCount = Math.max(0, Math.min(Number(argValue('retry') ?? '1') || 1, 3));
+  const retryArg = argValue('retry');
+  const retryCount = Math.max(0, Math.min(retryArg === null ? 1 : Number(retryArg) || 0, 3));
   const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/mobile-copy-audit');
   const textDir = path.join(outputDir, 'texts');
   const jsonOnly = hasFlag('json');
@@ -288,8 +280,26 @@ async function main() {
   const dbTargets = packages.filter(pkg => !isCustomerVisibleStatus(pkg.status));
 
   const browser = screenTargets.length > 0 ? await chromium.launch({ headless: true }) : null;
-  const screenResults = browser
-    ? await runConcurrently(screenTargets, concurrency, target => scrapeSurfaceWithRetry(browser, {
+  const context = browser ? await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent: 'YeosonamMobileCopyAudit/2.0 Mobile Safari',
+    extraHTTPHeaders: {
+      ...(proofSecret ? { 'x-yeosonam-render-proof': proofSecret } : {}),
+      'x-proof-request': 'true',
+      'Cache-Control': 'no-store',
+    },
+  }) : null;
+  if (context) {
+    await context.route('**/*', route => {
+      const resourceType = route.request().resourceType();
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+        return route.abort().catch(() => undefined);
+      }
+      return route.continue().catch(() => undefined);
+    });
+  }
+  const screenResults = context
+    ? await runConcurrently(screenTargets, concurrency, target => scrapeSurfaceWithRetry(context, {
       baseUrl,
       pkg: target.pkg,
       surface: target.surface,
@@ -300,6 +310,7 @@ async function main() {
       maxRetries: retryCount,
     }))
     : [];
+  if (context) await withTimeout(context.close(), 5_000, 'browser context close').catch(() => undefined);
   if (browser) await withTimeout(browser.close(), 5_000, 'browser close').catch(() => undefined);
 
   const dbResults = dbTargets.map(auditDbFields);
