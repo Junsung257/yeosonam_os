@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 
 interface SuggestedCard {
@@ -776,7 +777,7 @@ export default function UnmatchedPage() {
               일괄 무시 ({selectedIds.size}건)
             </button>
           )}
-          <a href="/admin/attractions" className="px-3 py-1.5 bg-admin-surface-2 text-admin-text-2 text-sm rounded-lg hover:bg-slate-200">← 관광지 관리</a>
+          <Link href="/admin/attractions" className="px-3 py-1.5 bg-admin-surface-2 text-admin-text-2 text-sm rounded-lg hover:bg-slate-200">← 관광지 관리</Link>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import useSWR from 'swr';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
@@ -506,12 +507,12 @@ export default function AttractionsPage() {
             >
               🌐 {autoDescProgress ? `${autoDescProgress.current}/${autoDescProgress.total}` : 'Wiki만 (보조)'}
             </button>
-            <a href="/admin/attractions/unmatched">
+            <Link href="/admin/attractions/unmatched">
               <Button variant="secondary" size="sm">
                 <AlertCircle size={14} />
                 미매칭
               </Button>
-            </a>
+            </Link>
             <button
               onClick={() => setShowPasteImport(true)}
               className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 transition-opacity"

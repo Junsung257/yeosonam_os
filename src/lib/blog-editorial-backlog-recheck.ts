@@ -72,6 +72,25 @@ const RECOVERABLE_PATTERNS = [
   /engine_task_incomplete/i,
   /ai_naturalness/i,
   /seo_score/i,
+  /image_count_below_minimum/i,
+];
+
+const RECOVERABLE_IMAGE_PATTERNS = [
+  /image_count_below_minimum/i,
+];
+
+const IMAGE_CATEGORY_MARKER_PATTERNS = [
+  /^image_quality$/i,
+];
+
+const HARD_IMAGE_PATTERNS = [
+  /missing_alt/i,
+  /generic_alt/i,
+  /malformed_image_url/i,
+  /duplicate_image_url/i,
+  /no_contextual_alt_or_caption/i,
+  /broken_image/i,
+  /image_url/i,
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -148,8 +167,25 @@ function unique(values: string[]): string[] {
 function recoverableReasons(blockers: string[], categories: string[]): string[] {
   const joined = blockers.join(' ');
   if (HARD_BLOCKER_PATTERNS.some(pattern => pattern.test(joined))) return [];
-  if (categories.some(category => HARD_BLOCKER_CATEGORIES.has(category))) return [];
+  if (hasHardBlockerCategory(blockers, categories)) return [];
   return unique(blockers.filter(blocker => hasPattern(blocker, RECOVERABLE_PATTERNS)));
+}
+
+function hasHardBlockerCategory(blockers: string[], categories: string[]): boolean {
+  for (const category of categories) {
+    if (!HARD_BLOCKER_CATEGORIES.has(category)) continue;
+    if (category !== 'image_evidence') return true;
+
+    const imageBlockers = blockers.filter(blocker => categorizeEditorialBacklogBlocker(blocker) === 'image_evidence');
+    const hasRecoverableImageShortage = imageBlockers.some(blocker => hasPattern(blocker, RECOVERABLE_IMAGE_PATTERNS));
+    const recoverableImageShortage = imageBlockers.length > 0
+      && hasRecoverableImageShortage
+      && imageBlockers.every(blocker => hasPattern(blocker, RECOVERABLE_IMAGE_PATTERNS)
+        || hasPattern(blocker, IMAGE_CATEGORY_MARKER_PATTERNS))
+      && !imageBlockers.some(blocker => hasPattern(blocker, HARD_IMAGE_PATTERNS));
+    if (!recoverableImageShortage) return true;
+  }
+  return false;
 }
 
 function isRetirableLegacySeed(row: RecheckRow, blockers: string[], categories: string[]): boolean {
