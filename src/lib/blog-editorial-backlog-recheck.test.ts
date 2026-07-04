@@ -103,6 +103,54 @@ describe('blog editorial backlog recheck', () => {
     expect(decision.action).toBe('keep_blocked');
   });
 
+  it('requeues image shortage rows because the current publisher can insert inline images', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-04T00:00:00.000Z',
+      row: {
+        id: 'queue-image-shortage',
+        status: 'failed',
+        attempts: 2,
+        topic: '세부 공항 도착 후 입국 심사 환전 픽업 순서',
+        destination: '세부',
+        last_error: '1/19 failed: [image_quality] image_count_below_minimum',
+        meta: {
+          failure_code: 'image_quality',
+          quarantine_reason: 'image_quality',
+          quality_gate_failures: ['image_count_below_minimum'],
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.reasons).toContain('image_count_below_minimum');
+    expect(decision.last_error).toBeNull();
+  });
+
+  it('keeps unsafe image evidence blocked when the issue is not just image count', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      row: {
+        id: 'queue-bad-image',
+        status: 'failed',
+        attempts: 2,
+        topic: 'Bali airport transfer',
+        destination: 'Bali',
+        last_error: '2/19 failed: [image_quality] malformed_image_url, [image_quality] no_contextual_alt_or_caption',
+        meta: {
+          failure_code: 'image_quality',
+          quarantine_reason: 'image_quality',
+          quality_gate_failures: ['malformed_image_url', 'no_contextual_alt_or_caption'],
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('keep_blocked');
+    expect(decision.meta).toMatchObject({
+      editorial_backlog_recheck_result: 'blocked',
+    });
+  });
+
   it('requeues content brief failures after the current brief contract can rebuild the keyword', () => {
     const decision = buildBlogEditorialBacklogRecheckDecision({
       checkedAt: '2026-07-02T00:00:00.000Z',

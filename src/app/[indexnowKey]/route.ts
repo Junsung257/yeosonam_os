@@ -5,15 +5,17 @@ import { getSecret } from '@/lib/secret-registry';
 export const dynamic = 'force-dynamic';
 
 const INDEXNOW_KEY_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const INDEXNOW_TXT_RE = /^([A-Za-z0-9_-]{8,128})\.txt$/;
 
 export async function GET(
   _request: Request,
   props: { params: Promise<{ indexnowKey?: string | string[] }> },
 ) {
   const params = await props.params;
-  const requested = Array.isArray(params.indexnowKey)
+  const requestedPath = Array.isArray(params.indexnowKey)
     ? params.indexnowKey.join('')
     : params.indexnowKey ?? '';
+  const requested = requestedPath.match(INDEXNOW_TXT_RE)?.[1] ?? '';
   const configured = getSecret('INDEXNOW_KEY')?.trim() ?? '';
 
   if (!configured || !INDEXNOW_KEY_PATTERN.test(configured) || requested !== configured) {
