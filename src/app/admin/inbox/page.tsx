@@ -15,6 +15,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import BookingDrawer from '@/components/BookingDrawer';
 import { BookingTaskActionCard } from '@/components/admin/booking-ops/BookingTaskActionCard';
@@ -302,13 +303,13 @@ export default function InboxPage() {
           </>
         )}
         {bank_health && bank_health.unmatched_count + bank_health.review_count > 0 && (
-          <a
+          <Link
             href="/admin/payments"
             className="px-2 py-1 rounded-admin-xs bg-status-warningBg text-status-warningFg hover:opacity-80 transition-opacity"
             title="미매칭 입금 건수 (booking_tasks 와 별도)"
           >
             🏦 입금 매칭 대기 {bank_health.unmatched_count + bank_health.review_count}
-          </a>
+          </Link>
         )}
       </div>
 

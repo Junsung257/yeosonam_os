@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
@@ -254,12 +255,12 @@ export default function CorrectionsPage() {
         title="Reflexion 정정 메모리"
         subtitle="사장님이 정정한 케이스가 다음 등록의 prompt 에 자동 주입되어 같은 실수를 차단합니다 (Shinn et al. NeurIPS 2023)."
         actions={
-          <a href="/admin/packages">
+          <Link href="/admin/packages">
             <Button variant="secondary" size="sm">
               <ArrowLeft size={14} />
               패키지 목록
             </Button>
-          </a>
+          </Link>
         }
       />
 

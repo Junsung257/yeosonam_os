@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { fmtDateTime } from '@/lib/admin-utils';
 
 interface FeedItem {
@@ -108,9 +109,9 @@ export default function PublishedFeedPage() {
             최근 {days}일의 자동 콘텐츠 발행, 예약, 실패, 재시도 상태를 확인합니다.
           </p>
         </div>
-        <a href="/admin/marketing/auto-publish" className="rounded bg-orange-600 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-700">
+        <Link href="/admin/marketing/auto-publish" className="rounded bg-orange-600 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-700">
           새 자동 발행
-        </a>
+        </Link>
       </header>
 
       <section className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">

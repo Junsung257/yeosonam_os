@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Suspense } from 'react';
 import PackagesClient from './PackagesClient';
 import Loading from './loading';
@@ -29,7 +30,7 @@ export default function PackagesPage() {
   return (
     <>
       <h1 className="sr-only">여소남 패키지 여행 상품</h1>
-      <a href="/group-inquiry" className="sr-only">여행 상품 문의</a>
+      <Link href="/group-inquiry" className="sr-only">여행 상품 문의</Link>
       <Suspense fallback={<Loading />}>
         <PackagesClient />
       </Suspense>

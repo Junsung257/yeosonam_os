@@ -1343,7 +1343,7 @@ function RecentFailuresWidget() {
           })}
           {items.length > 5 && (
             <li className="text-center text-[11px] text-admin-muted">
-              +{items.length - 5}건 더 — <a href="/admin/jarvis" className="text-red-600 hover:underline">전체 보기</a>
+              +{items.length - 5}건 더 — <Link href="/admin/jarvis" className="text-red-600 hover:underline">전체 보기</Link>
             </li>
           )}
         </ul>

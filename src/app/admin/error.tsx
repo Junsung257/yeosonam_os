@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { getErrorByCode } from '@/lib/error-codes';
 
 interface Props {
@@ -46,12 +47,12 @@ export default function AdminError({ error, reset }: Props) {
           >
             다시 시도
           </button>
-          <a
+          <Link
             href="/admin"
             className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
           >
             대시보드로
-          </a>
+          </Link>
         </div>
       </div>
     </div>
