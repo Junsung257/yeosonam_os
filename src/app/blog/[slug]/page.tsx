@@ -217,6 +217,34 @@ function stripMarkdownBold(s: string): string {
   return s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*/g, '').trim();
 }
 
+function charLength(value: string): number {
+  return [...value].length;
+}
+
+function trimTitleToSearchLimit(value: string): string {
+  if (charLength(value) <= 60) return value;
+  const chars = [...value].slice(0, 60).join('');
+  return chars.replace(/\s+\S*$/, '').trim() || chars.trim();
+}
+
+function expandShortBlogSeoTitle(title: string, post: BlogPost): string {
+  const cleanTitle = title.trim();
+  if (charLength(cleanTitle) >= 20) return cleanTitle;
+
+  const isProduct = Boolean(post.product_id || post.travel_packages);
+  const appendix = isProduct
+    ? '예약 전 체크'
+    : /첫날|공항|이동/.test(cleanTitle)
+      ? '공항 이동 체크리스트'
+      : /식비|예산|비용|경비/.test(cleanTitle)
+        ? '비용 체크 2026'
+        : /날씨|옷차림|준비물/.test(cleanTitle)
+          ? '날씨 옷차림 체크리스트'
+          : '여행 가이드 2026';
+
+  return trimTitleToSearchLimit(`${cleanTitle} ${appendix}`.replace(/\s+/g, ' ').trim());
+}
+
 function buildSeoTitleWithSuffix(title: string, suffix: string): string {
   if (!suffix) return title;
   const maxBaseLength = Math.max(20, 60 - suffix.length);
@@ -795,7 +823,7 @@ export async function generateMetadata({
     .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
     .trim();
   const duplicateTitleSuffix = await getDuplicateTitleSuffix(post);
-  const metadataTitle = buildSeoTitleWithSuffix(cleanedTitle, duplicateTitleSuffix);
+  const metadataTitle = buildSeoTitleWithSuffix(expandShortBlogSeoTitle(cleanedTitle, post), duplicateTitleSuffix);
 
   const description = buildSeoDescription(post);
   const dbOgImage = toBlogImageDisplaySrc(post.og_image_url, BASE_URL);

@@ -119,6 +119,16 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('getPostFastUncached(slug).catch(() => null)');
   });
 
+  it('expands short public SEO titles before metadata is emitted', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('function expandShortBlogSeoTitle');
+    expect(source).toContain('charLength(cleanTitle) >= 20');
+    expect(source).toContain('공항 이동 체크리스트');
+    expect(source).toContain('비용 체크 2026');
+    expect(source).toContain('expandShortBlogSeoTitle(cleanedTitle, post)');
+  });
+
   it('keeps decorative author avatars out of extracted article text', () => {
     const detailSource = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
     const authorSource = readFileSync(join(process.cwd(), 'src/components/blog/AuthorBox.tsx'), 'utf8');
