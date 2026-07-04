@@ -532,7 +532,6 @@ async function runDailySummary(request: NextRequest) {
 
   if (searchHealthIssues.length > 0) {
     const message = `블로그 검색 제출 상태 점검 필요: ${searchHealthIssues.join(', ')}`;
-    errors.push(message);
     await insertDedupedBlogAlert({
       severity: 'medium',
       title: '블로그 검색 제출 상태 점검 필요',
