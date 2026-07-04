@@ -142,6 +142,14 @@ describe('/blog/[slug] page smoke', () => {
     expect(seoAuditSource).toContain('surface_text_noise');
   });
 
+  it('guards public blog articles against duplicate body h1 headings', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('<h2$1>');
+    expect(source).toContain('</h2>');
+    expect(source).toContain('<h1\\b[^>]*>\\s*(?:&nbsp;|\\u00a0|<br\\s*\\/?>|\\s)*<\\/h1>');
+  });
+
   it('renders a published blog detail without falling through to the global 404', async () => {
     const mod = await import('./page');
     const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;
