@@ -34,12 +34,165 @@ const hardTimeoutMs = requestedHardTimeoutMs > 0
   : Math.min(120000, timeoutMs * 8 + 15000);
 
 const hardTimer = setTimeout(() => {
-  console.error(`[public-critical-pages] hard timeout after ${hardTimeoutMs}ms`);
+  const message = `[public-critical-pages] hard timeout after ${hardTimeoutMs}ms`;
+  if (outputJson) {
+    console.log(JSON.stringify({
+      summary: {
+        baseUrl,
+        failed: 1,
+        failureTypes: { 'audit-hard-timeout': 1 },
+        serverReachability: {
+          ok: false,
+          type: 'audit-hard-timeout',
+          action: 'Check whether the target server is reachable and consider increasing --hard-timeout-ms for slow local builds.',
+        },
+      },
+      warnings: [],
+      results: [],
+      error: message,
+    }, null, 2));
+  } else {
+    console.error(message);
+  }
   process.exit(124);
 }, hardTimeoutMs);
 hardTimer.unref?.();
 const explicitPackageId = argValue('--package-id', process.env.PUBLIC_AUDIT_PACKAGE_ID || process.env.OPEN_CHECK_PACKAGE_ID || '').trim();
 const retries = Math.max(0, Number(argValue('--retries', process.env.PUBLIC_AUDIT_RETRIES || '1')) || 0);
+
+function errorCodeFrom(err) {
+  let current = err;
+  while (current && typeof current === 'object') {
+    if (typeof current.code === 'string') return current.code;
+    current = current.cause;
+  }
+  return '';
+}
+
+function classifyRequestFailure(result) {
+  if (result.ok) return null;
+  const code = result.errorCode || '';
+  const message = result.error || '';
+
+  if (result.timedOut || code === 'ABORT_TIMEOUT' || /timeout/i.test(message)) {
+    return {
+      type: 'request-timeout',
+      category: 'request',
+      action: `The request timed out after ${timeoutMs}ms. Confirm the local server finished booting or rerun with --timeout-ms=<larger value>.`,
+    };
+  }
+
+  if (code === 'ECONNREFUSED') {
+    return {
+      type: 'connection-refused',
+      category: 'request',
+      action: `No server accepted connections at ${baseUrl}. Start the local app for that port, or pass the correct --base URL.`,
+    };
+  }
+
+  if (['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(code)) {
+    return {
+      type: 'connection-timeout',
+      category: 'request',
+      action: `The network connection to ${baseUrl} timed out. Check the host, port, firewall/VPN, and whether the server is still starting.`,
+    };
+  }
+
+  if (['ENOTFOUND', 'EAI_AGAIN'].includes(code)) {
+    return {
+      type: 'dns-failure',
+      category: 'request',
+      action: `The host in ${baseUrl} could not be resolved. Check the --base URL.`,
+    };
+  }
+
+  return {
+    type: 'request-error',
+    category: 'request',
+    action: `The page request failed before content checks ran. Check that ${baseUrl} is reachable and retry.`,
+  };
+}
+
+function classifyPageFailure(result, analysis) {
+  const requestFailure = classifyRequestFailure(result);
+  if (requestFailure) return requestFailure;
+
+  if (result.status !== 200) {
+    return {
+      type: 'http-status',
+      category: 'status',
+      action: `The server responded with HTTP ${result.status ?? 'ERR'}. Check the route, redirect/auth behavior, or server logs for this path.`,
+    };
+  }
+
+  const analysisMissing = analysis.missing || [];
+  const hasOnlyLatencyFailure = analysisMissing.length > 0
+    && analysisMissing.every((item) => item === 'over-budget');
+
+  if (hasOnlyLatencyFailure) {
+    return {
+      type: 'latency-budget',
+      category: 'performance',
+      action: 'The page loaded, but exceeded its latency budget. Check local build/server load before treating this as a content regression.',
+    };
+  }
+
+  if (analysisMissing.length > 0) {
+    return {
+      type: 'page-content',
+      category: 'content',
+      action: `The page loaded, but failed content checks: ${analysisMissing.join(', ')}.`,
+    };
+  }
+
+  return {
+    type: 'none',
+    category: 'none',
+    action: '',
+  };
+}
+
+function countByFailureType(rows) {
+  return rows.reduce((acc, row) => {
+    if (row.failureType && row.failureType !== 'none') {
+      acc[row.failureType] = (acc[row.failureType] || 0) + 1;
+    }
+    return acc;
+  }, {});
+}
+
+function summarizeReachability(rows) {
+  if (rows.length === 0) {
+    return { ok: false, type: 'not-checked', action: 'No pages were checked.' };
+  }
+
+  const requestFailures = rows.filter((row) => row.failureCategory === 'request');
+  if (requestFailures.length === rows.length) {
+    const type = requestFailures[0]?.failureType || 'request-error';
+    const sameType = requestFailures.every((row) => row.failureType === type);
+    return {
+      ok: false,
+      type: sameType ? type : 'request-error',
+      action: sameType
+        ? requestFailures[0].action
+        : `Every page request failed before content checks ran. Check that ${baseUrl} is reachable and retry.`,
+    };
+  }
+
+  if (requestFailures.length > 0) {
+    return {
+      ok: false,
+      type: 'partial-request-failure',
+      action: `${requestFailures.length} page request(s) failed before content checks ran. Check those paths and the local server logs.`,
+    };
+  }
+
+  return {
+    ok: true,
+    type: 'reachable',
+    action: '',
+  };
+}
 
 const corePages = [
   {
@@ -106,6 +259,8 @@ async function fetchTextOnce(path) {
         location: '',
         text: '',
         error: `timeout after ${timeoutMs}ms`,
+        errorCode: 'ABORT_TIMEOUT',
+        timedOut: true,
       });
     }, timeoutMs);
   });
@@ -140,6 +295,7 @@ async function fetchTextOnce(path) {
       location: '',
       text: '',
       error: err instanceof Error ? err.message : String(err),
+      errorCode: errorCodeFrom(err),
     };
   } finally {
     clearTimeout(timer);
@@ -239,6 +395,7 @@ const results = [];
 for (const page of pages) {
   const result = await fetchText(page.path, page.budgetMs);
   const analysis = result.status === 200 && result.text ? analyzeHtml(page, result) : { missing: [] };
+  const failure = classifyPageFailure(result, analysis);
   const missing = [
     ...(result.ok ? [] : ['request']),
     ...(result.status === 200 ? [] : [`status:${result.status ?? 'ERR'}`]),
@@ -256,10 +413,15 @@ for (const page of pages) {
     attempts: result.attempts || 1,
     missing,
     error: result.error || '',
+    errorCode: result.errorCode || '',
+    failureType: missing.length > 0 ? failure.type : 'none',
+    failureCategory: missing.length > 0 ? failure.category : 'none',
+    action: missing.length > 0 ? failure.action : '',
   });
 }
 
 const failed = results.filter((row) => row.missing.length > 0);
+const failureTypes = countByFailureType(results);
 const payload = {
   summary: {
     baseUrl,
@@ -270,6 +432,8 @@ const payload = {
     score: results.length === 0 ? 0 : Math.round(((results.length - failed.length) / results.length) * 100),
     timeoutMs,
     retries,
+    failureTypes,
+    serverReachability: summarizeReachability(results),
   },
   warnings: packageDetailPath ? [] : [{ name: 'package-detail', reason: 'no active package URL resolved' }],
   results,
@@ -280,7 +444,8 @@ if (outputJson) {
 } else {
   for (const row of results) {
     const label = row.missing.length === 0 ? 'PASS' : 'FAIL';
-    console.log(`${label}  ${row.name}  ${row.status ?? 'ERR'}  ${row.ms}ms  ${row.path}${row.missing.length ? `  missing=${row.missing.join(',')}` : ''}`);
+    const failureDetail = row.failureType && row.failureType !== 'none' ? `  type=${row.failureType}` : '';
+    console.log(`${label}  ${row.name}  ${row.status ?? 'ERR'}  ${row.ms}ms  ${row.path}${row.missing.length ? `  missing=${row.missing.join(',')}` : ''}${failureDetail}`);
   }
 
   for (const warning of payload.warnings) {
