@@ -16,6 +16,8 @@
 import { NextRequest } from 'next/server'
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase'
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages'
+import { scopeQaPackagesToExplicitProduct } from '@/lib/qa-product-scope'
+import { buildProductAnswerIdentity } from '@/lib/product-answer-identity'
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint'
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor'
 import { critiqueReply, applyCritique } from '@/lib/jarvis/response-critic'
@@ -210,7 +212,11 @@ export async function POST(req: NextRequest) {
           message,
           (history as { role: string; content: string }[]) ?? [],
         )
-        const packages = await getQaChatPackageContext(qaHintSource)
+        let packages = await getQaChatPackageContext(qaHintSource)
+        const explicitProductScope = scopeQaPackagesToExplicitProduct(packages, qaHintSource)
+        if (explicitProductScope.mode === 'explicit_product' || explicitProductScope.mode === 'ambiguous_product') {
+          packages = explicitProductScope.packages
+        }
 
         // ── 3. 대화 맥락 로드 ──
         let conversationCustomerId: string | null = null
@@ -318,13 +324,33 @@ export async function POST(req: NextRequest) {
           _qaMemoryContext: memoryContext,
           _qaPackageContext: packages.map((p: any) => ({
             id: p.id,
+            answer_identity: buildProductAnswerIdentity(p),
             title: p.title,
+            display_title: p.display_title,
             destination: p.destination,
+            internal_code: p.internal_code,
+            short_code: p.short_code,
             duration: p.duration,
             price: p.price,
+            product_summary: p.product_summary,
+            product_highlights: p.product_highlights,
             inclusions: p.inclusions,
             itinerary: p.itinerary,
           })),
+          _qaExplicitProductScope: explicitProductScope.mode === 'explicit_product'
+            ? {
+              selectedPackageIds: explicitProductScope.selectedIds,
+              reason: explicitProductScope.reason,
+              instruction: 'Answer only from selectedPackageIds. Do not mix facts from other products unless the customer explicitly asks for a comparison.',
+            }
+            : null,
+          _qaAmbiguousProductScope: explicitProductScope.mode === 'ambiguous_product'
+            ? {
+              selectedPackageIds: explicitProductScope.selectedIds,
+              reason: explicitProductScope.reason,
+              instruction: 'The product reference is ambiguous. Do not merge facts across selectedPackageIds. Ask for a product code/link or separate facts by product.',
+            }
+            : null,
         }
 
         // ── 7. V2 실행 ──

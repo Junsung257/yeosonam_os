@@ -5,7 +5,9 @@ import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
-  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text';
+  'id,title,display_title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,status,internal_code,short_code,product_summary,product_highlights,price_dates,product_type,trip_style,airline';
+
+const QA_VISIBLE_PACKAGE_STATUSES = ['active', 'approved', 'published'];
 
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
@@ -26,10 +28,11 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
-    .eq('status', 'approved')
+    .in('status', QA_VISIBLE_PACKAGE_STATUSES)
     .or('audit_status.is.null,audit_status.neq.blocked')
     .ilike('destination', `%${destinationHint}%`)
-    .order('created_at', { ascending: false })
+    .order('status', { ascending: true })
+    .order('updated_at', { ascending: false })
     .limit(120);
 
   if (error) throw error;
@@ -40,9 +43,10 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
-    .eq('status', 'approved')
+    .in('status', QA_VISIBLE_PACKAGE_STATUSES)
     .or('audit_status.is.null,audit_status.neq.blocked')
-    .order('created_at', { ascending: false })
+    .order('status', { ascending: true })
+    .order('updated_at', { ascending: false })
     .limit(150);
 
   if (error) throw error;

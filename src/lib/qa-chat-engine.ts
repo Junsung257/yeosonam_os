@@ -14,6 +14,8 @@ import type { NextRequest } from 'next/server'
 import { supabaseAdmin, isSupabaseConfigured, saveInquiry } from '@/lib/supabase'
 import { getPrompt } from '@/lib/prompt-loader'
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages'
+import { scopeQaPackagesToExplicitProduct } from '@/lib/qa-product-scope'
+import { buildProductAnswerIdentity } from '@/lib/product-answer-identity'
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint'
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor'
 import { critiqueReply } from '@/lib/jarvis/response-critic'
@@ -349,14 +351,28 @@ export async function createV1QaChatStream(params: {
         const destinationHint = extractQaDestinationHint(qaHintSource) ?? inferQaDestinationHint(qaHintSource)
 
         let packages: any[] = []
+        let explicitProductScope: ReturnType<typeof scopeQaPackagesToExplicitProduct<any>> | null = null
         if (isSupabaseConfigured) {
           packages = await getQaChatPackageContext(qaHintSource)
           packages = scopePackagesToDestination(packages, destinationHint)
+          explicitProductScope = scopeQaPackagesToExplicitProduct(packages, qaHintSource)
+          if (explicitProductScope.mode === 'explicit_product' || explicitProductScope.mode === 'ambiguous_product') {
+            packages = explicitProductScope.packages
+          }
         }
 
         const packageContext = packages.length > 0
-          ? packages.map((p, i) =>
-              `[상품${i + 1}] ID:${p.id}
+          ? packages.map((p, i) => {
+            const identity = buildProductAnswerIdentity(p)
+            return `[상품${i + 1}] ID:${p.id}
+Answer identity: ${identity.label}
+Answer identity key: ${identity.key}
+Internal code: ${p.internal_code ?? 'none'}
+Short code: ${p.short_code ?? 'none'}
+Display title: ${p.display_title ?? p.title ?? 'none'}
+Summary: ${p.product_summary ?? 'none'}
+Highlights: ${Array.isArray(p.product_highlights) ? p.product_highlights.join(', ') : 'none'}
+Price dates: ${JSON.stringify(p.price_dates ?? null).slice(0, 500)}
 상품명: ${p.title}
 목적지: ${p.destination ?? '미지정'}
 기간: ${p.duration ? p.duration + '일' : '미지정'}
@@ -365,8 +381,14 @@ export async function createV1QaChatStream(params: {
 불포함: ${(p.excludes ?? []).join(', ') || '없음'}
 일정: ${(p.itinerary ?? []).join(' | ') || '없음'}
 상세내용: ${safeRawTextExcerpt(p.raw_text, 800) ?? ''}`
-            ).join('\n\n---\n\n')
+          }).join('\n\n---\n\n')
           : '현재 등록된 상품이 없습니다.'
+
+        const productScopeGuard = explicitProductScope?.mode === 'explicit_product'
+          ? `\n## Explicit Product Scope\nThe customer is asking about a specific product. Answer only from selectedPackageIds and do not mix price, dates, itinerary, inclusions, exclusions, airline, hotel, or option facts from other products.\nselectedPackageIds: ${explicitProductScope.selectedIds.join(', ')}\nselectionReason: ${explicitProductScope.reason ?? 'explicit_product'}\n`
+          : explicitProductScope?.mode === 'ambiguous_product'
+            ? `\n## Ambiguous Product Scope\nThe customer mentioned a product-like title or code, but it matches multiple selectedPackageIds. Do not combine price, dates, itinerary, inclusions, exclusions, airline, hotel, or option facts across these products. Ask the customer to choose a product code/link, or answer only with clearly separated per-product facts.\nselectedPackageIds: ${explicitProductScope.selectedIds.join(', ')}\nselectionReason: ${explicitProductScope.reason ?? 'ambiguous_product'}\n`
+          : ''
 
         const historyText = (history as { role: string; content: string }[])
           .slice(-6)
@@ -436,6 +458,7 @@ export async function createV1QaChatStream(params: {
         const userPrompt = `${memoryContext}${affiliateContextText}${learningFragment}
 ## 상품 목록
 ${packageContext}
+${productScopeGuard}
 
 ## 이전 대화
 ${historyText || '(첫 메시지)'}
