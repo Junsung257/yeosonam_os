@@ -1807,7 +1807,7 @@ function ensureMinimumReadingStructure(markdown: string, input: BlogEditorialRep
   return { text, changed: text !== before };
 }
 
-export function repairKeywordDensityToTarget(
+function repairKeywordDensityToTargetLegacy(
   markdown: string,
   primaryKeyword?: string | null,
   blogType: 'product' | 'info' = 'info',
@@ -1831,7 +1831,7 @@ export function repairKeywordDensityToTarget(
 
   const pattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
   const beforeCount = (markdown.match(pattern) || []).length;
-  const targetDensity = blogType === 'info' ? 1.65 : 2.35;
+  const targetDensity = blogType === 'info' ? 1.45 : 2.05;
   const allowedCount = Math.max(2, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
   if (beforeCount <= allowedCount) {
     return { blogHtml: markdown, changed: false, keyword, beforeCount, afterCount: beforeCount, allowedCount };
@@ -1853,6 +1853,70 @@ export function repairKeywordDensityToTarget(
     beforeCount,
     afterCount,
     allowedCount,
+  };
+}
+
+export function repairKeywordDensityToTarget(
+  markdown: string,
+  primaryKeyword?: string | null,
+  blogType: 'product' | 'info' = 'info',
+): BlogKeywordDensityRepairResult {
+  const keyword = primaryKeyword?.trim() || null;
+  if (!keyword || keyword.length < 2) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount: 0, afterCount: 0, allowedCount: 0 };
+  }
+
+  const plainTextLength = (value: string) => value
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[[^\]]+]\([^)]+\)/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_`>|=-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length;
+  const plainLength = plainTextLength(markdown);
+  if (plainLength === 0) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount: 0, afterCount: 0, allowedCount: 0 };
+  }
+
+  const pattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+  const beforeCount = (markdown.match(pattern) || []).length;
+  const targetDensity = blogType === 'info' ? 1.45 : 2.05;
+  const allowedCount = Math.max(2, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
+  if (beforeCount <= allowedCount) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount, afterCount: beforeCount, allowedCount };
+  }
+
+  const words = keyword.split(/\s+/).filter(Boolean);
+  const replacement = words.length > 1 ? words[words.length - 1] : '현지';
+  const gateMaxDensity = blogType === 'info' ? 1.8 : 2.5;
+  const renderWithKeepCount = (keepCount: number) => {
+    let seen = 0;
+    return markdown.replace(pattern, () => {
+      seen += 1;
+      return seen <= keepCount ? keyword : replacement;
+    });
+  };
+
+  let finalAllowedCount = allowedCount;
+  let blogHtml = renderWithKeepCount(finalAllowedCount);
+  while (finalAllowedCount > 1) {
+    const nextCount = (blogHtml.match(pattern) || []).length;
+    const nextLength = plainTextLength(blogHtml);
+    const nextDensity = nextLength > 0 ? (nextCount * keyword.length / nextLength) * 100 : 0;
+    if (nextDensity <= gateMaxDensity - 0.05) break;
+    finalAllowedCount -= 1;
+    blogHtml = renderWithKeepCount(finalAllowedCount);
+  }
+
+  const afterCount = (blogHtml.match(pattern) || []).length;
+  return {
+    blogHtml,
+    changed: blogHtml !== markdown,
+    keyword,
+    beforeCount,
+    afterCount,
+    allowedCount: finalAllowedCount,
   };
 }
 
