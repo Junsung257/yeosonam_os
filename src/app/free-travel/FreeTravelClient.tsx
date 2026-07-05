@@ -195,7 +195,7 @@ function FlightCard({ f }: { f: FlightResult }) {
             rel="noopener noreferrer"
             className="text-[12px] font-semibold text-white bg-brand px-3 py-1.5 rounded-full hover:bg-[#1b6cf2] transition-colors"
           >
-            예약
+            MRT에서 보기
           </a>
         )}
       </div>
@@ -426,7 +426,7 @@ function ActivityCard({ a, defaultDate }: { a: ActivityResult; defaultDate?: str
               )}
               {link && (
                 <a href={link} target="_blank" rel="noopener noreferrer"
-                  className="text-[11px] text-text-secondary underline hover:text-brand">예약</a>
+                  className="text-[11px] text-text-secondary underline hover:text-brand">MRT에서 보기</a>
               )}
             </div>
           </div>
@@ -715,8 +715,8 @@ const HOW_IT_WORKS = [
 
 const FAQ = [
   { q: '검색 결과는 얼마나 정확한가요?', a: '마이리얼트립 실시간 API에서 가져온 실제 가격입니다. 예약 시점에 변동될 수 있어 링크를 클릭해 최종 확인을 권장합니다.' },
-  { q: '자유여행 예약은 어디서 하나요?', a: '각 항공·호텔·액티비티 카드의 "예약" 버튼을 클릭하면 마이리얼트립 예약 페이지로 연결됩니다.' },
-  { q: '최종 확정·결제는 어떻게 하나요?', a: '이 화면은 견적·일정표 참고용이며, 여소남이 대신 결제를 받지 않습니다. 마음에 드는 항목마다 「예약」「보기」로 이동한 뒤, 해당 사이트(주로 마이리얼트립)에서 날짜·인원을 맞추고 결제하면 됩니다. 아래 「패키지 비교」에서 여소남 상품을 고르면 패키지 상세 페이지의 예약·문의 흐름으로 이어집니다.' },
+  { q: '자유여행 예약은 어디서 하나요?', a: '여소남 자유여행 직접 예약은 아직 열려 있지 않습니다. 항공·호텔·액티비티 카드의 "MRT에서 보기" 또는 "보기" 링크로 이동해 마이리얼트립/항공사에서 최종 날짜·인원을 확인하고 예약해 주세요.' },
+  { q: '최종 확정·결제는 어떻게 하나요?', a: '이 화면은 견적·일정표 참고용이며, 여소남이 대신 결제를 받지 않습니다. 마음에 드는 항목마다 외부 예약처로 이동한 뒤 날짜·인원·취소 규정을 확인하고 결제하면 됩니다. 아래 「패키지 비교」에서 여소남 상품을 고르면 패키지 상세 페이지의 예약·상담 흐름으로 이어집니다.' },
   { q: '여소남 패키지와의 차이는 무엇인가요?', a: '패키지는 항공·호텔·일정이 모두 포함된 상품입니다. 자유여행보다 저렴한 경우가 많고, 현지 가이드와 이동이 포함됩니다.' },
 ];
 
@@ -1360,7 +1360,7 @@ export default function FreeTravelClient() {
           <section className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl p-4 shadow-sm">
             <h3 className="text-[15px] font-bold text-[#0F172A] mb-1.5">예약·결제는 어떻게 하나요?</h3>
             <p className="text-[13px] text-[#475569] leading-relaxed">
-              이 화면은 <strong className="font-semibold text-[#334155]">AI 견적·일정 참고</strong>용입니다. 여소남에서 일괄 결제로 끝나지 않고, 마음에 드는 항공·숙소·액티비티마다 「예약」「보기」를 눌러 마이리얼트립(또는 항공사)에서 날짜·인원을 맞춘 뒤 <strong className="font-semibold text-[#334155]">최종 확정·결제</strong>를 하시면 됩니다. 할인 패키지를 고르시면 여소남 상품 페이지 예약·문의 흐름으로 이어집니다.
+              이 화면은 <strong className="font-semibold text-[#334155]">AI 견적·일정 참고</strong>용입니다. 여소남 자유여행 직접 예약·취소는 아직 열려 있지 않으니, 마음에 드는 항공·숙소·액티비티는 마이리얼트립(또는 항공사)에서 날짜·인원·취소 규정을 확인한 뒤 <strong className="font-semibold text-[#334155]">최종 확정·결제</strong>를 하시면 됩니다. 할인 패키지를 고르시면 여소남 상품 페이지 예약·상담 흐름으로 이어집니다.
             </p>
           </section>
 
@@ -1453,7 +1453,7 @@ export default function FreeTravelClient() {
                             <span className="shrink-0 text-[10px] font-semibold text-[#64748B] w-10">{s.timeHint}</span>
                             <span className="flex-1 min-w-0">{s.label}</span>
                             {s.kind === 'bookable' && (
-                              <span className="text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8] bg-blue-50 px-1.5 py-0.5 rounded">예약 연계</span>
+                              <span className="text-[9px] font-bold uppercase tracking-wide text-[#1D4ED8] bg-blue-50 px-1.5 py-0.5 rounded">외부 예약 후보</span>
                             )}
                           </li>
                         ))}
@@ -1560,7 +1560,7 @@ export default function FreeTravelClient() {
             <section>
               <h3 className="text-[15px] font-bold text-text-primary mb-2.5">🎡 액티비티</h3>
               {state.activitiesEstimated && (
-                <p className="text-[12px] text-amber-800 bg-amber-50/80 border border-amber-100 rounded-xl px-3 py-2 mb-2 leading-relaxed">실시간 조회가 되지 않아 추정 데이터를 표시 중입니다. 예약 가능 여부는 링크가 있을 때만 해당 페이지에서 확인할 수 있습니다.</p>
+                <p className="text-[12px] text-amber-800 bg-amber-50/80 border border-amber-100 rounded-xl px-3 py-2 mb-2 leading-relaxed">실시간 조회가 되지 않아 추정 데이터를 표시 중입니다. 예약 가능 여부는 링크가 있을 때만 외부 예약처에서 확인할 수 있습니다.</p>
               )}
               <div className="grid gap-2">
                 {state.activities.slice(0, 5).map((a, i) => (
@@ -1596,7 +1596,7 @@ export default function FreeTravelClient() {
                   ? '패키지 비교 접기'
                   : crosssellVariant === 'A'
                     ? '이 일정과 유사한 할인 패키지 확인하기'
-                    : '잠깐! 개별 예약보다 저렴한 패키지가 있는지 확인해보기'}
+                    : '잠깐! 외부 개별 예약보다 저렴한 패키지가 있는지 확인해보기'}
               </button>
               {!showPackages && crosssellVariant === 'B' && (
                 <p className="text-[11px] text-[#64748B]">
