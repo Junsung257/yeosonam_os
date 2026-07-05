@@ -39,6 +39,56 @@ describe('blog content intent quality', () => {
     expect(itinerary.infoSubtype).toBe('itinerary');
   });
 
+  it('uses clear body evidence as a minimum intent contract when metadata is thin', () => {
+    const report = inspectBlogIntentQuality({
+      title: '여행 준비 가이드',
+      contentType: 'guide',
+      blogHtml: [
+        '# 여행 준비 가이드',
+        '',
+        '답부터 말하면 공항 이동비, 택시 요금, 하루 교통비를 따로 비교해야 예산 오차를 줄일 수 있습니다.',
+        '',
+        '## 비용 판단표',
+        '| 항목 | 확인 기준 | 예상 범위 |',
+        '| --- | --- | ---: |',
+        '| 공항 이동 | 픽업 또는 택시 | 30,000원 |',
+        '| 시내 이동 | 대중교통 또는 차량 | 20,000원 |',
+        '| 예비비 | 대기와 우회 동선 | 10,000원 |',
+      ].join('\n'),
+    });
+
+    expect(report.intent.infoSubtype).toBe('cost');
+    expect(report.issues.some((issue) => issue.code === 'missing_intent_contract')).toBe(false);
+  });
+
+  it('classifies transport cost topics as cost even when stale category says weather', () => {
+    const intent = classifyBlogIntent({
+      title: '몽골 렌터카 택시 픽업 이동비 비교 2026',
+      slug: 'mongolia-transport-cost',
+      primaryKeyword: '몽골 렌터카 택시 픽업 이동비',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: '비 예보가 있어도 이 글의 핵심은 공항 픽업, 렌터카, 택시 이동비와 하루 교통비 비교입니다.',
+    });
+
+    expect(intent.mode).toBe('info');
+    expect(intent.infoSubtype).toBe('cost');
+  });
+
+  it('uses a specific cost slug over stale weather category when scores tie', () => {
+    const intent = classifyBlogIntent({
+      title: '몽골 여행',
+      slug: 'mongolia-transport-cost',
+      primaryKeyword: '몽골 여행',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: '날씨와 옷차림도 확인하지만, 핵심은 공항 픽업과 택시 이동비 비교입니다.',
+    });
+
+    expect(intent.infoSubtype).toBe('cost');
+    expect(intent.evidence).toContain('cost terms in category/type');
+  });
+
   it('blocks sales tone in informational weather posts', () => {
     const report = inspectBlogIntentQuality({
       title: '장가계 날씨 월별 옷차림',
@@ -177,6 +227,50 @@ A. 4월, 5월, 9월, 10월이 걷기 좋습니다.
     expect(report.issues.some((issue) => issue.code === 'repeated_ai_opening_pattern')).toBe(true);
   });
 
+  it('flags machine-looking title separators, broken persona copy, and English micro-angle image alts', () => {
+    const report = inspectBlogIntentQuality({
+      title: '오사카 7월 날씨 여행 가이드 2026|월별 날씨·옷차림 체크리스트',
+      primaryKeyword: '오사카 7월 날씨',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: `# 오사카 7월 날씨 여행 가이드 2026|월별 날씨·옷차림 체크리스트
+
+오사카 7월 날씨는 고온다습하고 소나기가 잦아 통풍 좋은 옷, 접이식 우산, 실내 대체 일정을 먼저 확인해야 합니다.
+
+안녕하세요! 친구에게 좋은 여행을 추천해 드리는 입니다.
+
+![오사카 참고 이미지 1 osaka july weather clothes](https://example.com/osaka.jpg)
+
+## 예약 전 무엇을 먼저 확인해야 할까요?
+답부터 말하면 항공 시간, 실내 대체 일정, 더위 대응 준비물을 함께 확인해야 합니다.
+
+## 날씨 기준
+- 평균 기온 28도 이상
+- 강수 가능성 확인
+- 냉방 대비 겉옷 준비
+
+## 준비물 체크
+| 항목 | 이유 |
+| --- | --- |
+| 우산 | 소나기 대비 |
+| 얇은 겉옷 | 실내 냉방 대비 |
+| 보조배터리 | 이동 중 지도 확인 |
+
+## 공식 확인
+- [외교부 해외안전여행](https://www.0404.go.kr/)
+
+## 자주 묻는 질문
+Q. 비가 와도 여행할 수 있나요?
+A. 짧은 소나기라면 실내 동선을 섞어 조정하는 편이 안전합니다.
+`,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'machine_title_format')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'broken_editorial_voice')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'generic_image_alt')).toBe(true);
+  });
+
   it('blocks unsupported Yeosonam data claims', () => {
     const report = inspectBlogIntentQuality({
       title: '다낭 여행 준비물',
@@ -201,6 +295,109 @@ A. 4월, 5월, 9월, 10월이 걷기 좋습니다.
 
     expect(report.passed).toBe(false);
     expect(report.issues.some((issue) => issue.code === 'unsupported_yeosonam_data')).toBe(true);
+  });
+
+  it('blocks semantic surface defects that make posts read like generated copy', () => {
+    const report = inspectBlogIntentQuality({
+      title: '보라카이 7월 날씨 여행 가이드 2026 | 월별 날씨 · 옷차림 체크리스트',
+      primaryKeyword: '보라카이 7월 날씨',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: [
+        '# 보라카이 7월 날씨 여행 가이드',
+        '',
+        '보라카이는 푸른 자연을 즐기기할 수 있어 가족 여행객에게 좋습니다.',
+        '',
+        '![현지 참고 이미지 3 현지 가이드 옷차림](/images/boracay.jpg)',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'placeholder_destination_context')).toBe(true);
+  });
+
+  it('blocks SEO titles whose visible intent conflicts with the topic', () => {
+    const report = inspectBlogIntentQuality({
+      title: '여름 휴가 해외여행자 보험 여행 가이드 2026 | 월별 날씨 · 옷차림 체크리스트',
+      primaryKeyword: '여름 휴가 해외여행자 보험',
+      category: 'insurance',
+      contentType: 'guide',
+      blogHtml: [
+        '# 여름 휴가 해외여행자 보험',
+        '',
+        '해외여행자 보험은 보장 범위와 자기부담금을 먼저 확인해야 합니다.',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'title_intent_mismatch')).toBe(true);
+  });
+
+  it('blocks generated image context and repeated answer-first scaffolds', () => {
+    const report = inspectBlogIntentQuality({
+      title: '몽골 숙소 지역별 예산 여행 가이드 2026',
+      primaryKeyword: '몽골 숙소 지역별 예산',
+      destination: '몽골',
+      category: 'cost',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 숙소 지역별 예산 여행 가이드',
+        '',
+        '답부터 말하면, 몽골 숙소는 울란바토르 시내와 테를지 게르 캠프를 나눠 예산을 봐야 합니다.',
+        '',
+        '![몽골 숙소 지역별 예산 참고 이미지 3 지역별 가이드 예산과](/images/mongolia.jpg)',
+        '<figcaption>몽골 숙소 지역별 예산 참고 이미지 3 지역별 가이드 예산과</figcaption>',
+        '',
+        '## 예약 전 무엇을 먼저 확인해야 할까요?',
+        '',
+        '답부터 말하면, 2026년 기준 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다.',
+        '',
+        '## 숙소 예산 표',
+        '',
+        '| 지역 | 기준 | 비용 |',
+        '| --- | --- | --- |',
+        '| 울란바토르 | 시내 접근 | 7만 원대 |',
+        '| 테를지 | 자연 체험 | 5만 원대 |',
+        '| 공항 근처 | 늦은 도착 | 8만 원대 |',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'generated_image_context')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'repetitive_answer_scaffold')).toBe(true);
+  });
+
+  it('blocks placeholder links, local placeholder entities, and duplicated title tokens', () => {
+    const report = inspectBlogIntentQuality({
+      title: '여행 준비 여행 여행 가이드 2026',
+      primaryKeyword: '나가사키 여행 준비',
+      destination: '나가사키',
+      category: 'preparation',
+      contentType: 'guide',
+      blogHtml: [
+        '# 나가사키 여행 준비',
+        '',
+        '나가사키 여행은 항공권, 숙소 위치, 교통패스 조건을 먼저 확인하면 준비 시간을 줄일 수 있습니다.',
+        '',
+        '여소남이 이 이 정보를 정리한 이유는 현지역과 현지항 이동이 헷갈리기 때문입니다.',
+        '',
+        '## 준비 체크리스트',
+        '- 항공권',
+        '- 숙소 위치',
+        '- 교통패스',
+        '- 환전',
+        '',
+        '## 공식 확인',
+        '- [예시링크](https://blog.naver.com/yeosonam/%EC%98%88%EC%8B%9C%EB%A7%81%ED%81%AC)',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'duplicate_title_token')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'placeholder_destination_context')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'placeholder_reference_link')).toBe(true);
+    expect(report.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(true);
   });
 
   it('requires product posts to use consultant decision blocks', () => {

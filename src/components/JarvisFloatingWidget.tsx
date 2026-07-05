@@ -157,7 +157,7 @@ export default function JarvisFloatingWidget() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-purple-700 hover:bg-purple-800 text-white rounded-full shadow-lg flex items-center justify-center transition-all z-50 active:scale-95"
+          className="fixed bottom-6 right-6 hidden w-14 h-14 bg-purple-700 hover:bg-purple-800 text-white rounded-full shadow-lg items-center justify-center transition-all z-50 active:scale-95 md:flex"
           aria-label="자비스 AI 열기"
         >
           <span className="text-lg font-bold">J</span>

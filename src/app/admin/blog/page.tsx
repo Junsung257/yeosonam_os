@@ -58,6 +58,10 @@ const CHECK_LABELS: Record<string, string> = {
   published_state_mismatch: '발행 완료/실제 글 상태 불일치',
   cron_health: '자동 실행 작업 이상',
   recent_quality_gate: '최근 글 품질 점검 필요',
+  indexing_outbox_missing: '색인 작업 누락',
+  publish_preflight_blocked: '발행 전 점검 차단',
+  canary_candidates_unavailable: 'Canary 후보 부족',
+  current_day_publisher_failure: '오늘 발행자 실패',
   google_url_unknown: '구글 미인지 URL 존재',
 };
 

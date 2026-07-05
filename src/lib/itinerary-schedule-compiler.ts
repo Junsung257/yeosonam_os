@@ -155,6 +155,17 @@ function hasIncludedValueSignal(text: string): boolean {
   return /(?:상당|포함|제공|특전|무료|서비스|체험)/.test(text);
 }
 
+function isIncludedExperienceOrShow(text: string): boolean {
+  if (hasExplicitLocalPrice(text) && !hasIncludedValueSignal(text)) return false;
+  return (
+    /(?:\uC81C\uACF5|\uD2B9\uC804|\uD3EC\uD568|\uBB34\uB8CC|\uD61C\uD0DD)/.test(text)
+    && /(?:\uC544\uC624\uC790\uC774|\uCEE4\uD53C|\uC74C\uB8CC|\uCC28|\uB514\uC800\uD2B8|\uC2DC\uC74C|\uCCB4\uD5D8\uAD00|\uCCB4\uD5D8)/.test(text)
+  ) || (
+    /(?:\uCC28\uBC0D\s*\uC1FC|\uC544\uC624\uC790\uC774\s*\uC1FC|\uC804\uD1B5\s*\uACF5\uC5F0|\uC1FC)(?:\s*\([^)]*\))?/.test(text)
+    && !/(?:\uC120\uD0DD\s*\uAD00\uAD11|\uC635\uC158|\uBCC4\uB3C4\s*\uC694\uAE08)/.test(text)
+  );
+}
+
 function transferDestination(text: string): string {
   const match = text.match(/([\uAC00-\uD7A3A-Za-z0-9/]+?)(?:\uB85C|\uC73C\uB85C)?\s*\uC774\uB3D9(?:\s*\([^)]*\))?$/);
   return match?.[1]?.trim() || text.replace(/\s*(?:\uB85C|\uC73C\uB85C)?\s*\uC774\uB3D9(?:\s*\([^)]*\))?$/, '').trim();
@@ -240,6 +251,7 @@ function classifySafe(activity: string, type?: string | null): ScheduleEntityKin
     /(\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0|\uC628\uCC9C\uC695)/.test(text)
     && !/(?:\uD638\uD154.*(?:\uC774\uB3D9|\uD734\uC2DD|\uD22C\uC219|\uCCB4\uD06C|\uC11D\uC2DD)|\uD22C\uC219)/.test(text)
   ) return 'perk';
+  if (isIncludedExperienceOrShow(text)) return 'perk';
   if (
     type === 'hotel'
     || (/\uD638\uD154/.test(text) && /(\uCCB4\uD06C|\uD734\uC2DD|\uD22C\uC219|\uC774\uB3D9|\uC628\uCC9C\uC695|\uC11D\uC2DD)/.test(text))

@@ -83,8 +83,10 @@ export function useMarketingGap(dataEnabled: boolean): {
     }
 
     setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 8000);
     try {
-      const res = await fetch('/api/admin/marketing/dashboard');
+      const res = await fetch('/api/admin/marketing/dashboard', { signal: controller.signal });
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -105,11 +107,14 @@ export function useMarketingGap(dataEnabled: boolean): {
       setDashboardData(EMPTY_MARKETING_DASHBOARD_DATA);
       setStatus(json.degraded || json.mock ? 'degraded' : 'empty');
       setMessage(json.message ?? 'No marketing performance rows are available yet.');
-    } catch {
+    } catch (err) {
       setDashboardData(EMPTY_MARKETING_DASHBOARD_DATA);
       setStatus('degraded');
-      setMessage('Marketing dashboard API is unavailable.');
+      setMessage(err instanceof DOMException && err.name === 'AbortError'
+        ? 'Marketing dashboard API timed out.'
+        : 'Marketing dashboard API is unavailable.');
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [dataEnabled]);

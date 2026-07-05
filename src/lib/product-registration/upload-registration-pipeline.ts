@@ -34,6 +34,10 @@ export async function runUploadRegistrationPipeline(input: {
     fileHash,
     fileName,
     directRawText,
+    originalRawText,
+    parserRawText,
+    documentRawText,
+    analysisNormalizedText,
     uploadSourceMetadata,
     inputAnalysisForTrust,
     archiveMode,
@@ -109,6 +113,9 @@ export async function runUploadRegistrationPipeline(input: {
     buffer,
     fileName,
     directRawText,
+    originalRawText,
+    parserRawText,
+    analysisNormalizedText,
     tempDestination: tempDest,
     prelimLandOperatorId,
     supabase: input.supabase,
@@ -196,6 +203,10 @@ export async function runUploadRegistrationPipeline(input: {
     irCanaryPrimary,
     forceReprocess,
     inputAnalysisForTrust,
+    originalRawText,
+    parserRawText,
+    documentRawText,
+    analysisNormalizedText,
   });
 
   const responsePayload = await completeUploadRegistration({

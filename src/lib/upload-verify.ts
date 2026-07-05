@@ -22,7 +22,9 @@ import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year'
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { selectSourceBackedPriceRows } from '@/lib/source-price-date-repair';
-import { blockingCustomerVisibleTextIssues } from '@/lib/customer-visible-text-audit';
+import {
+  auditCustomerVisibleProductText,
+} from '@/lib/customer-visible-text-audit';
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import {
   evaluateRegistrationQualityScorecard,
@@ -182,6 +184,27 @@ function mergeAuditStatus(a: VerifyResult['status'], b: VerifyResult['status'] |
   if (a === 'warnings' || b === 'warnings') return 'warnings';
   if (a === 'skipped') return b ?? a;
   return a;
+}
+
+function positiveInteger(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(/,/g, '').trim());
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function expectedHotelNights(pkg: PackageRow, rawText: string): { nights: number; source: string } | null {
+  const storedNights = positiveInteger(pkg.nights);
+  if (storedNights !== null) return { nights: storedNights, source: 'stored nights' };
+
+  const metaNights = positiveInteger(pkg.itinerary_data?.meta?.nights);
+  if (metaNights !== null) return { nights: metaNights, source: 'itinerary meta.nights' };
+
+  const tripStyleMatch = String(pkg.trip_style ?? '').match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (tripStyleMatch) return { nights: Number(tripStyleMatch[1]), source: 'trip_style' };
+
+  const rawMatch = rawText.match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (rawMatch) return { nights: Number(rawMatch[1]), source: 'raw_text' };
+
+  return null;
 }
 
 const ENTITY_BLOCKING_KINDS = new Set(['attraction', 'shopping', 'optional_tour', 'notice', 'unknown']);
@@ -464,19 +487,26 @@ function sourceMonthDayDatesForYear(rawText: string, year: number): Date[] {
   const dates: Date[] = [];
   const seen = new Set<string>();
   const monthDayRe = /(^|[^\d])(\d{1,2})\s*\/\s*(\d{1,2})(?!\s*\/?\d)/g;
+  const addDate = (month: number, day: number) => {
+    if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) return;
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return;
+    const key = date.toISOString().slice(0, 10);
+    if (seen.has(key)) return;
+    seen.add(key);
+    dates.push(date);
+  };
   for (const line of rawText.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!/^\d{1,2}\s*\/\s*\d{1,2}/.test(trimmed)) continue;
     for (const match of trimmed.matchAll(monthDayRe)) {
       const month = Number(match[2]);
       const day = Number(match[3]);
-      if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) continue;
-      const date = new Date(Date.UTC(year, month - 1, day));
-      if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) continue;
-      const key = date.toISOString().slice(0, 10);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      dates.push(date);
+      addDate(month, day);
+      const tail = trimmed.slice((match.index ?? 0) + match[0].length);
+      for (const tailMatch of tail.matchAll(/[,，]\s*(\d{1,2})(?!\s*\/)/g)) {
+        addDate(month, Number(tailMatch[1]));
+      }
     }
   }
   return dates;
@@ -682,8 +712,12 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       departureDays: depDays,
       accommodations: pkg.accommodations ?? [],
     });
-    const expectedRows = selectSourceBackedPriceRows(pkg, expected.rows);
-    const dbPriceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
+    const today = todayKstDateKey();
+    const expectedRows = selectSourceBackedPriceRows(pkg, expected.rows)
+      .filter(row => row.date >= today);
+    const dbPriceDates = Array.isArray(pkg.price_dates)
+      ? pkg.price_dates.filter(row => typeof row.date === 'string' && row.date >= today)
+      : [];
     if (expectedRows.length === 0) {
       checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: 'deterministic 가격표 미인식' });
     } else if (dbPriceDates.length === 0) {
@@ -747,27 +781,25 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   // C7: 호텔 수 대조 (원문 "박" 수 ≤ days-1 vs hotel.name 채워진 day 수)
   // 박수 = duration - 1. 마지막 day 는 귀국일이라 hotel null 정상.
   // 호텔 없는 중간 day = 환각 또는 정규화 누락 신호.
-  if (hasRaw) {
-    const nightsMatch = rawText.match(/(\d+)\s*박\s*(\d+)\s*일/);
-    const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data!.days! : [];
-    if (nightsMatch && days.length > 0) {
-      const expectedHotelDays = parseInt(nightsMatch[1]);
-      const filledHotels = days.filter(d => (d?.hotel?.name ?? '').trim().length >= 2).length;
-      if (filledHotels < expectedHotelDays) {
-        checks.push({
-          id: 'C7',
-          label: '호텔 채움',
-          status: 'warn',
-          detail: `${expectedHotelDays}박 기대, hotel.name 채워진 일정 ${filledHotels}일 — 추출 누락 가능`,
-        });
-      } else {
-        checks.push({ id: 'C7', label: '호텔 채움', status: 'pass', detail: `${filledHotels}/${expectedHotelDays}박 충족` });
-      }
+  const c7Days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data!.days! : [];
+  const expectedNights = expectedHotelNights(pkg, rawText);
+  if (expectedNights && c7Days.length > 0) {
+    const expectedHotelDays = expectedNights.nights;
+    const filledHotels = c7Days.filter(d => (d?.hotel?.name ?? '').trim().length >= 2).length;
+    if (filledHotels < expectedHotelDays) {
+      checks.push({
+        id: 'C7',
+        label: '호텔 채움',
+        status: 'warn',
+        detail: `${expectedHotelDays}박 기대(${expectedNights.source}), hotel.name 채워진 일정 ${filledHotels}일 — 추출 누락 가능`,
+      });
     } else {
-      checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '원문에 박수 표기 없음' });
+      checks.push({ id: 'C7', label: '호텔 채움', status: 'pass', detail: `${filledHotels}/${expectedHotelDays}박 충족(${expectedNights.source})` });
     }
-  } else {
+  } else if (!hasRaw) {
     checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '원문 없음' });
+  } else {
+    checks.push({ id: 'C7', label: '호텔 채움', status: 'skip', detail: '박수 표기 없음' });
   }
 
   // C8: 통화 일관성 — price_dates / surcharges / optional_tours 모두 동일 currency 또는 NULL.
@@ -872,7 +904,9 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   const renderContractChecks = evaluateCustomerRenderContractChecks(pkg);
   checks.push(...renderContractChecks);
 
-  const textIssues = blockingCustomerVisibleTextIssues(pkg as Record<string, unknown>);
+  const allTextIssues = auditCustomerVisibleProductText(pkg as Record<string, unknown>);
+  const textIssues = allTextIssues.filter(issue => !issue.safeFixable);
+  const safeFixIssues = allTextIssues.filter(issue => issue.safeFixable);
   if (textIssues.length > 0) {
     checks.push({
       id: 'C18',
@@ -881,6 +915,16 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       detail: textIssues
         .slice(0, 6)
         .map(issue => `${issue.fieldPath}: ${issue.value}`)
+        .join(' / '),
+    });
+  } else if (safeFixIssues.length > 0) {
+    checks.push({
+      id: 'C18',
+      label: 'customer visible text quality',
+      status: 'warn',
+      detail: safeFixIssues
+        .slice(0, 6)
+        .map(issue => `${issue.fieldPath}: ${issue.code} -> ${issue.normalizedValue}`)
         .join(' / '),
     });
   } else {

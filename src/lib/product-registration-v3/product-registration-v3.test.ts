@@ -1340,6 +1340,101 @@ ZE982
     expect(gate.status).toBe('ready_to_publish');
   });
 
+  it('accepts explicit meal and hotel notices as V3 gate evidence', () => {
+    const mealNotice = buildStandardNoticeDraft({
+      source_text: 'meal summary',
+      category: 'meal_plan',
+      template_key: 'meal.summary',
+      values: { summary: 'source meal plan' },
+      evidence: [testEvidence],
+    });
+    const hotelNotice = buildStandardNoticeDraft({
+      source_text: 'hotel grade',
+      category: 'hotel_notice',
+      template_key: 'hotel.grade',
+      values: { grade: '4성급' },
+      evidence: [testEvidence],
+    });
+    expect(mealNotice).not.toBeNull();
+    expect(hotelNotice).not.toBeNull();
+
+    const gate = evaluateProductRegistrationV3Gate(
+      {
+        document_type: 'single_package',
+        planner_source: 'deterministic',
+        expected_products: 1,
+        shared_sections: [],
+        product_boundaries: [{ index: 0, line_start: 1, line_end: 1, title_hint: 'notice fixture' }],
+        variant_axes: [],
+        price_table_location: null,
+        price_mapping_strategy: 'none',
+        flight_pattern: { outbound_codes: [], inbound_codes: [], meeting_times: [] },
+        itinerary_boundary_pattern: null,
+        option_section_locations: [],
+        shopping_section_locations: [],
+        confidence: 1,
+        unresolved_parts: [],
+      },
+      {
+        document: { type: 'single_package', expected_products: 1, variant_axes: [] },
+        variants: [{
+          variant_key: 'v1',
+          grade: null,
+          course: 'notice fixture',
+          duration_days: 1,
+          nights: 0,
+          title_parts: ['notice fixture'],
+          price_calendar: [],
+          flight_segments: [{ leg: 'outbound', code: 'BX0000', dep_time: '10:00', arr_time: '11:00', evidence: testEvidence }],
+          days: [{ day: 1, route: [], events: [], meals: { breakfast: {}, lunch: {}, dinner: {} }, hotel: {} }],
+          inclusions: [{ value: 'flight', evidence: testEvidence }],
+          exclusions: [{ value: 'personal expense', evidence: testEvidence }],
+          options: [],
+          shopping: [],
+          structured_facts: [],
+          standard_notices: [mealNotice!, hotelNotice!],
+          minimum_departure: { value: 4, evidence: testEvidence },
+          evidence_coverage: {},
+        }],
+      },
+      {
+        attraction_matched_count: 0,
+        attraction_unmatched_count: 0,
+        option_review_count: 0,
+        shopping_count: 0,
+        unmatched: [],
+        entity_summary: {
+          counts: {
+            attraction: 0,
+            hotel: 0,
+            meal: 0,
+            transfer: 0,
+            shopping: 0,
+            optional_tour: 0,
+            free_time: 0,
+            notice: 0,
+            price_noise: 0,
+            unknown: 0,
+          },
+          review_required_count: 0,
+          attraction_unresolved_count: 0,
+          shopping_review_needed_count: 0,
+          option_review_needed_count: 0,
+          unknown_customer_visible_count: 0,
+          auto_ignored_noise_count: 0,
+          meal_structured_count: 0,
+          transfer_structured_count: 0,
+          hotel_structured_count: 0,
+          free_time_structured_count: 0,
+          review_items: [],
+        },
+      },
+    );
+
+    expect(gate.checks.find(check => check.id === 'v1.meals_or_notice')?.status).toBe('pass');
+    expect(gate.checks.find(check => check.id === 'v1.hotel_or_notice')?.status).toBe('pass');
+  });
+
   it('keeps regional meal terms scoped by destination without attraction queue pollution', async () => {
     const raw = [
       'Product: Regional Meal Scope',
@@ -1569,6 +1664,23 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(notice?.source_text).toBe('전자담배 반입금지입니다.');
     expect(result.gate_result.status).toBe('blocked');
     expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
+  });
+
+  it('fills prohibited e-cigarette notice country from known Thai city context', async () => {
+    const raw = `
+상품: 파타야 전자담배 고지 검증
+가격 499,000원 / 최소출발 4명
+DAY 1 KE123 출발 10:00 도착 12:00
+REMARK
+파타야 해변 절대금연(전자담배불가)
+DAY 3 KE124 출발 13:00 도착 15:00
+`.trim();
+    const result = await runProductRegistrationV3(raw);
+    const notice = result.ledger.variants[0].standard_notices.find(n => n.category === 'local_law_restriction');
+    expect(notice?.values.item).toBe('전자담배');
+    expect(notice?.values.country).toBe('태국');
+    expect(notice?.review_status).toBe('auto_clean');
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(false);
   });
 
   it('matches descriptive HWP attraction lines and ignores price/meal noise in V3 entity review', async () => {

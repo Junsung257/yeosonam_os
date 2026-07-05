@@ -51,6 +51,7 @@ import {
 } from '@/lib/terms-catalog';
 import type { CustomerSafeNotice } from '@/lib/product-registration-v3/customer-payload';
 import { normalizeStructuredDayEntities } from '@/lib/itinerary-structured-entities';
+import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Input / Output 타입
@@ -769,7 +770,9 @@ export function getInclusionIcon(text: string): string {
  *    - 둘 다 안 매치 → basic 으로 안전 fallback (포함사항으로 표시되지 특전으로 잘못 분류 X)
  */
 export function classifyInclusions(items: string[]): CanonicalInclusions {
-  const flat = flattenItems(items);
+  const flat = flattenItems(items)
+    .map(item => normalizeCustomerVisibleCopy(item))
+    .filter(Boolean);
   const basicRaw: string[] = [];
   const program: string[] = [];
   for (const item of flat) {

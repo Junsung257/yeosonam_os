@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { CanonicalView } from '@/lib/render-contract';
 import { formatTermLine } from '@/lib/terms-catalog';
+import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 
 type PackageTermsSectionProps = {
   view: Pick<
@@ -15,6 +16,14 @@ type PackageTermsSectionProps = {
 function renderLine(text: string, remainder?: string | null) {
   if (remainder?.trim()) return `${text} · ${remainder.trim()}`;
   return text;
+}
+
+function renderCustomerLine(text: string, remainder?: string | null) {
+  return normalizeCustomerVisibleCopy(renderLine(text, remainder));
+}
+
+function renderCustomerTermLine(item: Parameters<typeof formatTermLine>[0]): string {
+  return normalizeCustomerVisibleCopy(formatTermLine(item));
 }
 
 /**
@@ -103,7 +112,7 @@ export default function PackageTermsSection({
                   >
                     {item.icon}
                   </span>
-                  {renderLine(item.text, item.remainder)}
+                  {renderCustomerLine(item.text, item.remainder)}
                 </li>
               ))}
             </ul>
@@ -176,7 +185,7 @@ export default function PackageTermsSection({
                   className={`${bodyCls} text-red-700 flex gap-2`}
                 >
                   <span className="shrink-0 text-red-300">•</span>
-                  <span>{formatTermLine(item)}</span>
+                  <span>{renderCustomerTermLine(item)}</span>
                 </li>
               ))}
             </ul>
@@ -187,7 +196,7 @@ export default function PackageTermsSection({
                   {idx > 0 && (
                     <span className="mx-1 text-admin-muted-2">|</span>
                   )}
-                  {formatTermLine(item)}
+                  {renderCustomerTermLine(item)}
                 </span>
               ))}
             </p>
@@ -226,7 +235,7 @@ export default function PackageTermsSection({
                       )}
                     </span>
                   ) : (
-                    <span>{formatTermLine(line)}</span>
+                    <span>{renderCustomerTermLine(line)}</span>
                   )}
                 </li>
               );

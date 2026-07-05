@@ -1,8 +1,10 @@
 #!/usr/bin/env tsx
 import dotenv from 'dotenv';
 import * as cheerio from 'cheerio';
+import type { Element } from 'domhandler';
 import { inspectBlogIntentQuality } from '../src/lib/blog-content-intent';
 import { repairBlogEditorialQuality } from '../src/lib/blog-editorial-repair';
+import { classifyDestinationlessInfoCandidate } from '../src/lib/blog-destinationless-info';
 
 dotenv.config({ path: '.env.local', quiet: true });
 dotenv.config({ quiet: true });
@@ -16,6 +18,7 @@ type BlogListPost = {
   product_id?: string | null;
   status?: string | null;
   destination?: string | null;
+  generation_meta?: Record<string, unknown> | null;
   travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
 };
 
@@ -39,10 +42,15 @@ const source = argValue('--source', 'web') || 'web';
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const repairPreview = hasFlag('--repair-preview');
+const allowDbFallback = hasFlag('--allow-db-fallback');
 const concurrency = Math.max(1, Math.min(8, Number(argValue('--concurrency', '4')) || 4));
 const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
 const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
 const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
+const hasSupabaseAdminEnv = Boolean(
+  (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL) &&
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 let hardTimer: NodeJS.Timeout | null = null;
 if (hardTimeoutMs > 0) {
@@ -83,17 +91,49 @@ async function getText(path: string): Promise<string> {
   return res.text();
 }
 
+function textWithMarkdownLinks($: cheerio.CheerioAPI, element: Element): string {
+  const clone = $(element).clone();
+  clone.find('a[href]').each((_index, anchor) => {
+    const label = $(anchor).text().replace(/\s+/g, ' ').trim();
+    const href = ($(anchor).attr('href') || '').trim();
+    if (!label || !href) return;
+    $(anchor).replaceWith(`[${label}](${href})`);
+  });
+  return clone.text().replace(/\s+/g, ' ').trim();
+}
+
+function textLength($: cheerio.CheerioAPI, element: Element): number {
+  return $(element).text().replace(/\s+/g, '').trim().length;
+}
+
+function selectRenderedContentRoot($: cheerio.CheerioAPI): cheerio.Cheerio<Element> {
+  const article = $('article').first();
+  const articleElement = article.get(0);
+  if (articleElement && textLength($, articleElement) >= 200) return article;
+
+  let best = article.length ? article : $('main').first();
+  const bestElement = best.get(0);
+  let bestLength = bestElement ? textLength($, bestElement) : 0;
+  $('article, .prose-blog, .prose, [data-blog-body], main').each((_index, element) => {
+    const length = textLength($, element);
+    if (length > bestLength) {
+      best = $(element);
+      bestLength = length;
+    }
+  });
+  return best;
+}
+
 async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPost> {
   if (!post.slug) throw new Error('missing slug');
   const html = await getText(`/blog/${post.slug}`);
   const $ = cheerio.load(html);
-  const article = $('article').first();
-  const root = article.length ? article : $('main').first();
+  const root = selectRenderedContentRoot($);
   const sourceParts: string[] = [];
 
   root.find('h1,h2,h3,p,li,table,blockquote,mark,aside').each((_index, element) => {
     const tag = element.tagName.toLowerCase();
-    const text = $(element).text().replace(/\s+/g, ' ').trim();
+    const text = textWithMarkdownLinks($, element);
     if (!text) return;
     if (tag === 'h1') sourceParts.push(`# ${text}`);
     else if (tag === 'h2') sourceParts.push(`## ${text}`);
@@ -119,6 +159,21 @@ async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPo
   };
 }
 
+async function fetchDbPostById(post: BlogListPost): Promise<BlogDetailPost | null> {
+  if (!hasSupabaseAdminEnv) return null;
+  if (!post.id) return null;
+  const { supabaseAdmin } = await import('../src/lib/supabase');
+  const { data, error } = await supabaseAdmin
+    .from('content_creatives')
+    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html, generation_meta')
+    .eq('id', post.id)
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as BlogDetailPost;
+}
+
 async function collectPosts(): Promise<BlogListPost[]> {
   if (source === 'db') return collectDbPosts();
 
@@ -137,7 +192,7 @@ async function collectDbPosts(): Promise<BlogDetailPost[]> {
   const { supabaseAdmin } = await import('../src/lib/supabase');
   const query = supabaseAdmin
     .from('content_creatives')
-    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html, published_at')
+    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html, published_at, generation_meta')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .order('published_at', { ascending: false });
@@ -180,6 +235,10 @@ async function inspectPost(post: BlogListPost) {
     if (!row?.blog_html && post.slug) {
       row = await fetchRenderedPostSource(post);
     }
+    if ((!row?.blog_html || row.blog_html.replace(/\s+/g, '').length < 80) && source !== 'db' && allowDbFallback && hasSupabaseAdminEnv) {
+      const dbRow = await fetchDbPostById(post);
+      if (dbRow?.blog_html) row = dbRow;
+    }
 
     if (row?.status && row.status !== 'published') {
       return {
@@ -219,7 +278,38 @@ async function inspectPost(post: BlogListPost) {
     };
     const repair = repairPreview ? repairBlogEditorialQuality(input) : null;
     const report = repair?.after ?? inspectBlogIntentQuality(input);
-    const passed = report.passed && report.issues.length === 0 && report.score === 100;
+    const destinationIssue = classifyDestinationlessInfoCandidate({
+      id: row.id ?? post.id,
+      slug: row.slug ?? post.slug,
+      topic: row.seo_title ?? post.seo_title,
+      seo_title: row.seo_title ?? post.seo_title,
+      destination: destinationFrom(row) ?? destinationFrom(post),
+      category: row.category ?? post.category,
+      product_id: row.product_id ?? post.product_id ?? null,
+      generation_meta: row.generation_meta ?? post.generation_meta ?? null,
+      source: 'content_creatives',
+    });
+    const issues = [...report.issues];
+    if (destinationIssue === 'invalid_destination') {
+      issues.push({
+        code: 'missing_intent_contract',
+        severity: 'critical',
+        message: 'Info guide destination is a reader segment or month, not a real destination.',
+      });
+    } else if (destinationIssue === 'missing_destination') {
+      issues.push({
+        code: 'missing_intent_contract',
+        severity: 'critical',
+        message: 'Info guide requires a concrete destination or an intentionally generic marker.',
+      });
+    } else if (source === 'db' && destinationIssue === 'generic_unmarked') {
+      issues.push({
+        code: 'missing_intent_contract',
+        severity: 'critical',
+        message: 'Generic info guide must be durably marked intentionally_generic before it is treated as healthy.',
+      });
+    }
+    const passed = report.passed && issues.length === 0 && report.score === 100;
 
     return {
       id: row.id ?? post.id,
@@ -229,7 +319,7 @@ async function inspectPost(post: BlogListPost) {
       passed,
       score: report.score,
       intent: report.intent,
-      issues: report.issues,
+      issues,
       repairPreview: repair ? {
         changed: repair.changed,
         changes: repair.changes,

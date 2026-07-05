@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateCustomerDeliveryReadiness } from './customer-delivery-check';
+import { evaluateRenderClaimCoverage } from './render-claim-coverage';
 import { TOURCOCONUT_NHA_TRANG_DALAT_RAW } from './product-registration-golden-fixtures';
 import { buildSupplierRawDeterministicItinerary } from './supplier-raw-deterministic-facts';
 import type { SourceEvidenceMap } from './source-evidence';
@@ -83,6 +84,24 @@ describe('evaluateCustomerDeliveryReadiness', () => {
     expect(result.renderClaimCoverage.unsupported.map(c => c.value)).not.toContain('죽림선원 관광');
   });
 
+  it('accepts derived trip style evidence when raw text proves the day count', () => {
+    const evidenceWithoutTripStyle = { ...FULL_EVIDENCE };
+    delete evidenceWithoutTripStyle['meta.tripStyle'];
+    const result = evaluateCustomerDeliveryReadiness({
+      pkg: basePkg({
+        raw_text: '\uBD80\uAD00\uD6FC\uB9AC \uD6C4\uCFE0\uC624\uCE74 3\uC77C\nLJ115 21:35',
+        trip_style: '2\uBC153\uC77C',
+        duration: 3,
+        nights: 2,
+      }) as Parameters<typeof evaluateCustomerDeliveryReadiness>[0]['pkg'],
+      sourceEvidence: evidenceWithoutTripStyle,
+      failedChecks: [],
+      requireCompletedAudit: true,
+    });
+
+    expect(result.sourceEvidenceCoverage.missing).not.toContain('meta.tripStyle');
+  });
+
   it('blocks customer delivery for unsupported final render claims', () => {
     const result = evaluateCustomerDeliveryReadiness({
       pkg: basePkg({
@@ -99,6 +118,18 @@ describe('evaluateCustomerDeliveryReadiness', () => {
     expect(result.customerDeliverable).toBe(false);
     expect(result.publishGate.decision).toBe('block');
     expect(result.finalRenderFailedChecks.some(c => c.id?.startsWith('final_render_unsupported'))).toBe(true);
+  });
+
+  it('does not treat Korean particle movement fragments as standalone customer claims', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '공항으로 이동',
+      itinerary_data: {
+        days: [{ day: 1, schedule: [{ activity: '으 이동', type: 'normal' }] }],
+      },
+    });
+
+    expect(result.claims.map(claim => claim.value)).not.toContain('으 이동');
+    expect(result.unsupported.map(claim => claim.value)).not.toContain('으 이동');
   });
 
   it('ignores stale persisted render failures and recomputes them from the current render', () => {
@@ -139,6 +170,83 @@ describe('evaluateCustomerDeliveryReadiness', () => {
     expect(result.publishGate.decision).toBe('force_required');
     expect(result.publishGate.reasons).toHaveLength(0);
     expect(result.publishGate.warnings.some(w => w.includes('calibration candidate'))).toBe(true);
+  });
+
+  it('accepts source-backed optional tour names and per-person USD prices without promoting them to package prices', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '선택관광 화산(서봉)$180/인, 한양능박물관$35/인 등',
+      optional_tours: [
+        { name: '화산(서봉)', price: '$180/인' },
+        { name: '한양능박물관 등', price: '$35/인' },
+      ],
+    });
+
+    expect(result.unsupported.map(claim => claim.value)).not.toContain('$180/인');
+    expect(result.unsupported.map(claim => claim.value)).not.toContain('한양능박물관 등');
+  });
+
+  it('accepts source-backed single-charge wording when raw uses backslash currency notation', () => {
+    const claim = '\uC2F1\uAE00\uCC28\uC9C0(270,000\uC6D0/3\uBC15/\uC778)';
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '\uBD88\uD3EC\uD568 \uC0AC\uD56D \uC2F1\uAE00\uCC28\uC9C0(\\270,000/3\uBC15/\uC778)',
+      excludes: [claim],
+    });
+
+    expect(result.unsupported.map(item => item.value)).not.toContain(claim);
+  });
+
+  it('accepts hotel names when supplier raw uses OR and rendered copy uses Korean connector', () => {
+    const hotel = '5\uC131 \u2013 \uC6E8\uC774 \uB610\uB294 \uADF8\uB79C\uB4DC\uD314\uB77C\uC870 \uD638\uD154 \uB610\uB294 \uC13C\uD130\uD3EC\uC778\uD2B8 \uD504\uB77C\uC784 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09';
+    const result = evaluateRenderClaimCoverage({
+      raw_text: 'HOTEL : 5\uC131 &#8211; \uC6E8\uC774 OR \uADF8\uB79C\uB4DC\uD314\uB77C\uC870 \uD638\uD154 OR \uC13C\uD130\uD3EC\uC778\uD2B8 \uD504\uB77C\uC784 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09',
+      itinerary_data: {
+        days: [{
+          day: 1,
+          hotel: { name: hotel },
+          schedule: [],
+        }],
+      },
+    });
+
+    expect(result.unsupported.map(item => item.value)).not.toContain(hotel);
+  });
+
+  it('accepts source-backed itinerary copy when raw uses lowercase or and rendered copy uses Korean connector', () => {
+    const activity = '\uD30C\uD0C0\uC57C \uD574\uBCC0 \uC808\uB300\uAE08\uC5F0(\uC804\uC790\uB2F4\uBC30\uBD88\uAC00) + \uC816\uC744 \uC218 \uC788\uB294 \uC637 \uB610\uB294 \uC218\uC601\uBCF5 \uC900\uBE44';
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '\u203B \uD30C\uD0C0\uC57C \uD574\uBCC0 \uC808\uB300\uAE08\uC5F0(\uC804\uC790\uB2F4\uBC30\uBD88\uAC00) + \uC816\uC744 \uC218 \uC788\uB294 \uC637 or \uC218\uC601\uBCF5 \uC900\uBE44',
+      itinerary_data: {
+        days: [{
+          day: 1,
+          schedule: [{ activity, type: 'notice' }],
+        }],
+      },
+    });
+
+    expect(result.unsupported.map(item => item.value)).not.toContain(activity);
+  });
+
+  it('accepts customer-friendly guarantee wording when raw uses guarantee loanword', () => {
+    const claim = '\uD638\uD154 \uBCA0\uB4DC\uD0C0\uC785\uC740 \uD2B8\uC708/\uB354\uBE14 \uB79C\uB364\uC73C\uB85C \uBCF4\uC7A5 \uBD88\uAC00 \uD569\uB2C8\uB2E4.';
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '\uD638\uD154 \uBCA0\uB4DC\uD0C0\uC785\uC740 \uD2B8\uC708/\uB354\uBE14 \uB79C\uB364\uC73C\uB85C \uAC1C\uB7F0\uD2F0 \uBD88\uAC00\uD569\uB2C8\uB2E4.',
+      excludes: [claim],
+    });
+
+    expect(result.unsupported.map(item => item.value)).not.toContain(claim);
+  });
+
+  it('does not require source proof for numeric-only bogus flight codes', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '\uD56D\uACF5 ZE \uCD9C\uBC1C 09:00 \uB3C4\uCC29 13:00',
+      itinerary_data: {
+        meta: { flight_out: '61694' },
+        days: [{ day: 1, schedule: [{ activity: '\uCD9C\uBC1C', type: 'flight', transport: '61694' }] }],
+      },
+    });
+
+    expect(result.claims.map(item => item.value)).not.toContain('61694');
+    expect(result.unsupported.map(item => item.value)).not.toContain('61694');
   });
 
   it('allows a supplier raw golden sample when deterministic fields and render claims are source-backed', () => {

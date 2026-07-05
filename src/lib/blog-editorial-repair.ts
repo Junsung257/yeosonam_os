@@ -5,6 +5,9 @@ import {
   type BlogIntentInput,
   type BlogIntentQualityReport,
 } from './blog-content-intent';
+import { canonicalizeBlogPublicLinks } from './blog-link-surface';
+import { repairBlogPromptInstructionResidue } from './blog-prompt-residue';
+import { computeReadability } from './blog-readability';
 import { stripMarkup } from './blog-text-utils';
 
 export interface BlogEditorialRepairInput extends BlogIntentInput {
@@ -26,6 +29,368 @@ export interface BlogKeywordDensityRepairResult {
   beforeCount: number;
   afterCount: number;
   allowedCount: number;
+}
+
+const GENERIC_DESTINATION_STOPWORDS = new Set([
+  '가족',
+  '여름',
+  '휴가',
+  '해외여행자',
+  '보험',
+  '여행',
+  '가이드',
+  '준비물',
+  '체크리스트',
+]);
+
+function inferDestinationLabelForSurfaceRepair(input: BlogEditorialRepairInput): string | null {
+  const candidates = [input.destination, input.primaryKeyword, input.title, input.category].filter((value): value is string =>
+    Boolean(value && value.trim()),
+  );
+  for (const candidate of candidates) {
+    const first = candidate
+      .replace(/[|·:()[\]{}]/g, ' ')
+      .trim()
+      .split(/\s+/)[0]
+      ?.trim();
+    if (!first) continue;
+    if (!/^[가-힣]{2,10}$/.test(first)) continue;
+    if (GENERIC_DESTINATION_STOPWORDS.has(first)) continue;
+    return first;
+  }
+  return null;
+}
+
+function naturalImageContextLabel(input: BlogEditorialRepairInput): string {
+  const destination = inferDestinationLabelForSurfaceRepair(input);
+  if (destination) return destination;
+
+  const topic = `${input.primaryKeyword || ''} ${input.title || ''} ${input.category || ''}`;
+  const parts: string[] = [];
+  const month = topic.match(/\b(?:[1-9]|1[0-2])월\b/)?.[0];
+  if (month) parts.push(`${month} 출발`);
+
+  const region = topic.match(/황금연휴|동남아|유럽|일본|중국|베트남|태국|필리핀|해외여행|해외/)?.[0];
+  if (region) parts.push(region);
+
+  const theme = topic.match(/가족|항공권|공항|보험|보장|입국|비자|서류|유심|로밍|통신|환전|결제|카드|예산|경비|비용/)?.[0];
+  if (theme) parts.push(theme);
+
+  const label = [...new Set(parts)].join(' ').trim();
+  if (label) return label;
+  if (/insurance/i.test(topic)) return '해외여행 보험';
+  if (/flight|airport/i.test(topic)) return '공항 출발 준비';
+  if (/visa|esta|etias/i.test(topic)) return '입국 서류 준비';
+  if (/esim|usim|wifi/i.test(topic)) return '현지 통신 준비';
+  if (/currency/i.test(topic)) return '현지 결제 준비';
+  if (/budget|cost/i.test(topic)) return '여행 예산 준비';
+  return '여행 준비';
+}
+
+function repairGeneratedImageContext(
+  markdown: string,
+  input: BlogEditorialRepairInput,
+): { text: string; changed: boolean } {
+  const before = markdown;
+  const label = naturalImageContextLabel(input);
+  const naturalAlt = `${label} 여행 준비 장면`;
+  const generatedContextRe =
+    /(?:참고\s*이미지|여행\s*준비\s*이미지|travel\s*image|image|photo)\s*\d+|준비\s*기준을\s*함께\s*확인합니다|[a-f0-9]{6,}|[가-힣].*\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b/i;
+
+  const text = markdown
+    .replace(/!\[([^\]\n]*)]\(([^)\n]+)\)/g, (match, alt: string, src: string) => {
+      const cleanAlt = String(alt || '').replace(/\s+/g, ' ').trim();
+      if (!generatedContextRe.test(cleanAlt)) return match;
+      return `![${naturalAlt}](${src})`;
+    })
+    .replace(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/gi, (_match, caption: string) => {
+      const cleanCaption = stripMarkup(String(caption || '')).replace(/\s+/g, ' ').trim();
+      if (!generatedContextRe.test(cleanCaption)) return _match;
+      return '';
+    })
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (/^!\[/.test(trimmed) || /^<figcaption\b/i.test(trimmed)) return true;
+      return !/(?:참고\s*이미지|여행\s*준비\s*이미지)\s*\d+/i.test(trimmed);
+    })
+    .join('\n')
+    .replace(/\n{4,}/g, '\n\n\n');
+
+  return { text, changed: text !== before };
+}
+
+function removeRepetitiveAnswerScaffold(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const plainHead = stripMarkup(markdown.slice(0, 900)).replace(/\s+/g, ' ').trim();
+  const hasAnswerFirstIntro = /답부터\s+말하면|먼저\s+확인|핵심은|결론부터/.test(plainHead);
+  if (!hasAnswerFirstIntro) return { text: markdown, changed: false };
+
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let removed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!/^##\s+예약\s*전\s+무엇을\s+먼저\s+확인해야\s*할까요\??\s*$/.test(line.trim())) {
+      next.push(line);
+      continue;
+    }
+
+    const block: string[] = [line];
+    let cursor = index + 1;
+    while (cursor < lines.length && !/^##\s+\S/.test((lines[cursor] ?? '').trim())) {
+      block.push(lines[cursor] ?? '');
+      cursor += 1;
+    }
+
+    const blockPlain = stripMarkup(block.join('\n')).replace(/\s+/g, ' ').trim();
+    const isGeneric =
+      /답부터\s+말하면/.test(blockPlain)
+      && /(?:비용[·,\s]+일정|일정[·,\s]+준비|준비\s*조건|현지에서\s+생기는\s+추가\s+부담|1\s*[~–-]\s*2시간)/.test(blockPlain);
+    if (isGeneric) {
+      removed = true;
+      index = cursor - 1;
+      continue;
+    }
+
+    next.push(...block);
+    index = cursor - 1;
+  }
+
+  const text = next.join('\n').replace(/\n{3,}/g, '\n\n');
+  return { text, changed: removed && text !== before };
+}
+
+function removeRepeatedGenericAnswerHeadings(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let keptQuestion = false;
+  let changed = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const questionMatch = trimmed.match(
+      /^##\s+(예약\s*전\s*무엇을\s*먼저\s*확인해야\s*할까요\?|출발\s*전\s*핵심\s*조건\s*할까요\?|일정별\s*확인\s*항목\s*할까요\?)(.*)$/i,
+    );
+    if (!questionMatch) {
+      next.push(line);
+      continue;
+    }
+
+    const heading = questionMatch[1] ?? '';
+    const tail = questionMatch[2] ?? '';
+    const isGenericTail = /답부터\s+말하면|추가\s+부담을\s+줄일\s+수\s+있습니다|불필요한\s+이동/.test(tail);
+    if (/출발\s*전\s*핵심\s*조건|일정별\s*확인\s*항목/.test(heading) || keptQuestion) {
+      changed = true;
+      continue;
+    }
+
+    keptQuestion = true;
+    if (isGenericTail) {
+      next.push(`## ${heading}`);
+      next.push('');
+      next.push('답부터 말하면, 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다.');
+      changed = true;
+      continue;
+    }
+
+    next.push(line);
+  }
+
+  const text = next.join('\n').replace(/\n{3,}/g, '\n\n');
+  return { text, changed: changed && text !== before };
+}
+
+function isFaqHeadingLine(line: string): boolean {
+  const trimmed = line.trim();
+  return /^(?:#{2,3}\s*)?(?:\*\*)?(?:자주\s*묻는\s*질문|FAQ|Q\s*&\s*A)(?:\*\*)?\s*$/i.test(trimmed);
+}
+
+function isFaqBlockBoundary(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (/^#{1,3}\s+\S/.test(trimmed) && !isFaqHeadingLine(trimmed)) return true;
+  if (/^---+$/.test(trimmed)) return true;
+  return /^\*\*(?:공식\s*확인\s*링크|여행\s*상품과\s*함께\s*확인하기|상품과\s*함께\s*확인하기)\*\*/.test(trimmed);
+}
+
+function dedupeRepeatedFaqBlocks(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let seenFaq = false;
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!isFaqHeadingLine(line)) {
+      next.push(line);
+      continue;
+    }
+
+    if (!seenFaq) {
+      seenFaq = true;
+      next.push(line);
+      continue;
+    }
+
+    changed = true;
+    let cursor = index + 1;
+    while (cursor < lines.length && !isFaqBlockBoundary(lines[cursor] ?? '')) {
+      cursor += 1;
+    }
+    index = cursor - 1;
+  }
+
+  const text = next.join('\n').replace(/\n{3,}/g, '\n\n');
+  return { text, changed: changed && text !== markdown };
+}
+
+function isQuickDecisionHeadingLine(line: string): boolean {
+  return /^#{2,3}\s+(?:.+\s+)?빠른 판단표\s*$/i.test(line.trim());
+}
+
+function dedupeRepeatedQuickDecisionBlocks(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let seen = false;
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!isQuickDecisionHeadingLine(line)) {
+      next.push(line);
+      continue;
+    }
+
+    if (!seen) {
+      seen = true;
+      next.push(line);
+      continue;
+    }
+
+    changed = true;
+    let cursor = index + 1;
+    while (cursor < lines.length && !/^#{1,3}\s+\S/.test((lines[cursor] ?? '').trim())) {
+      cursor += 1;
+    }
+    index = cursor - 1;
+  }
+
+  const text = next.join('\n').replace(/\n{3,}/g, '\n\n');
+  return { text, changed: changed && text !== markdown };
+}
+
+function dedupeRepeatedShortParagraphs(markdown: string): { text: string; changed: boolean } {
+  const blocks = markdown.split(/\n{2,}/);
+  const seen = new Set<string>();
+  let changed = false;
+
+  const next = blocks.filter((block) => {
+    const trimmed = block.trim();
+    if (!trimmed) return true;
+    if (/^#{1,6}\s|^\s*[-*]\s|^\s*\||^!\[|^<\w+/i.test(trimmed)) return true;
+    const plain = stripMarkup(trimmed).replace(/\s+/g, ' ').trim();
+    if (plain.length < 35 || plain.length > 220) return true;
+    const key = plain.toLowerCase();
+    if (seen.has(key)) {
+      changed = true;
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+
+  return { text: next.join('\n\n'), changed };
+}
+
+function removePlaceholderReferenceLinks(markdown: string): { text: string; changed: boolean } {
+  const before = markdown.trim();
+  const placeholderLinkRe = /(?:예시링크|%EC%98%88%EC%8B%9C%EB%A7%81%ED%81%AC|placeholder\s*link|example\s*link)/i;
+  const text = markdown
+    .split('\n')
+    .filter((line) => !placeholderLinkRe.test(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { text, changed: text !== before };
+}
+
+function repairAwkwardSemanticSurface(
+  markdown: string,
+  input: BlogEditorialRepairInput,
+): { text: string; changed: boolean } {
+  const before = markdown;
+  let text = markdown
+    .replace(/즐기기할\s+수/g, '즐길 수')
+    .replace(/즐기기할/g, '즐길')
+    .replace(/즐기기하세요/g, '즐기세요')
+    .replace(/즐기기합니다/g, '즐깁니다')
+    .replace(/즐기기했습니다/g, '즐겼습니다')
+    .replace(/즐기기하는/g, '즐기는')
+    .replace(/즐기기하고/g, '즐기고')
+    .replace(/즐기기하며/g, '즐기며')
+    .replace(/즐기기하기/g, '즐기기')
+    .replace(/즐기기하/g, '즐기')
+    .replace(/확인하시는 것이 좋습니다/g, '확인하는 편이 안전합니다')
+    .replace(/현지\s+현지/g, '현지')
+    .replace(/정보를(?:를)+/g, '정보를')
+    .replace(/여소남이\s+이\s+이\s+정보/g, '여소남이 이 정보')
+    .replace(/(^|\s)(이|그|저|여행|준비|정보)\s+\2(?=\s|$|[.,!?])/g, '$1$2')
+    .replace(/여소남이\s+이\s+정보(?!를)/g, '여소남이 이 정보를');
+
+  const destination = inferDestinationLabelForSurfaceRepair(input);
+  if (destination) {
+    text = text
+      .replace(/현지\s+참고\s*이미지/g, `${destination} 참고 이미지`)
+      .replace(/현지\s+([1-9]\d?월\s+날씨)/g, `${destination} $1`)
+      .replace(/현지\s+월별\s+날씨/g, `${destination} 월별 날씨`)
+      .replace(/현지\s+날씨와\s+옷차림/g, `${destination} 날씨와 옷차림`)
+      .replace(/현지\s+가이드\s+옷차림/g, `${destination} 날씨 옷차림`)
+      .replace(/현지역/g, `${destination} 지역`)
+      .replace(/현지\s+지역/g, `${destination} 지역`)
+      .replace(/현지현/g, destination)
+      .replace(/현지항/g, `${destination} 공항`)
+      .replace(/부산→현지/g, `부산→${destination}`)
+      .replace(/현지\s+마츠리/g, `${destination} 축제`)
+      .replace(/현지\s+명물\s*['"‘’“”]?현지['"‘’“”]?/g, `${destination} 명물`)
+      .replace(/현지\s+명물/g, `${destination} 명물`)
+      .replace(/현지\s+명물관/g, `${destination} 명소`)
+      .replace(/현지\s+자체예요/g, `${destination} 현지 분위기입니다`);
+  }
+
+  return { text, changed: text !== before };
+}
+
+export function repairBlogSemanticSurface(input: BlogEditorialRepairInput): BlogEditorialRepairResult {
+  const before = inspectBlogIntentQuality(input);
+  const semanticRepair = repairAwkwardSemanticSurface(input.blogHtml, input);
+  const imageRepair = repairGeneratedImageContext(semanticRepair.text, input);
+  const placeholderLinkRepair = removePlaceholderReferenceLinks(imageRepair.text);
+  const directiveRepair = removeRawDirectiveLeaks(placeholderLinkRepair.text);
+  const answerRepair = removeRepetitiveAnswerScaffold(directiveRepair.text);
+  const faqRepair = dedupeRepeatedFaqBlocks(answerRepair.text);
+  const decisionRepair = dedupeRepeatedQuickDecisionBlocks(faqRepair.text);
+  const paragraphRepair = dedupeRepeatedShortParagraphs(decisionRepair.text);
+  const blogHtml = paragraphRepair.text;
+  const changes = [
+    semanticRepair.changed ? 'repaired_semantic_surface' : null,
+    imageRepair.changed ? 'repaired_generated_image_context' : null,
+    placeholderLinkRepair.changed ? 'removed_placeholder_reference_links' : null,
+    directiveRepair.changed ? 'removed_raw_directive_leaks' : null,
+    answerRepair.changed ? 'removed_repetitive_answer_scaffold' : null,
+    faqRepair.changed ? 'deduped_repeated_faq_blocks' : null,
+    decisionRepair.changed ? 'deduped_repeated_quick_decision_blocks' : null,
+    paragraphRepair.changed ? 'deduped_repeated_short_paragraphs' : null,
+  ].filter((value): value is string => Boolean(value));
+  return {
+    blogHtml,
+    changed: changes.length > 0,
+    changes,
+    before,
+    after: inspectBlogIntentQuality({ ...input, blogHtml }),
+  };
 }
 
 const OFFICIAL_REFERENCE_LINKS: Partial<Record<BlogInfoSubtype, string[]>> = {
@@ -51,10 +416,20 @@ function hasExternalLink(markdown: string): boolean {
   return /\]\(https?:\/\/(?!www\.yeosonam\.com|yeosonam\.com)[^)]+\)/i.test(markdown);
 }
 
+const READABLE_HARD_CTA_RE =
+  /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i;
+
 function sanitizeInfoSalesTone(markdown: string): { text: string; changed: boolean } {
   let text = markdown;
   const before = text;
   const replacements: Array<[RegExp, string]> = [
+    [/(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4)?/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*\uB9C8\uAC10|\uB9C8\uAC10\s*\uC784\uBC15|\uC794\uC5EC\s*\uC88C\uC11D/gi, '\uD655\uC778\uC774 \uD544\uC694\uD55C \uC870\uAC74'],
+    [/\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30/gi, '\uAD00\uB828 \uC870\uAC74 \uD655\uC778'],
+    [/\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)/gi, '\uC77C\uC815 \uC870\uAC74 \uD655\uC778'],
+    [/\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)/gi, '\uD544\uC694\uD55C \uC870\uAC74 \uD655\uC778'],
+    [/\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uC870\uAC74 \uD655\uC778'],
     [/상품을\s*고른\s*이유/g, '이 정보를 정리한 이유'],
     [/이\s*상품/g, '이 여행 정보'],
     [/상품\s*상세/g, '상세 정보'],
@@ -73,6 +448,271 @@ function sanitizeInfoSalesTone(markdown: string): { text: string; changed: boole
   }
 
   return { text, changed: text !== before };
+}
+
+const YEOSONAM_DATA_EVIDENCE_RE = /(예약|상담|검색)\s*(로그|건수|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i;
+const READABLE_YEOSONAM_DATA_EVIDENCE_RE = /(?:\uC608\uC57D|\uC0C1\uB2F4|\uAC80\uC0C9)\s*(?:\uB85C\uADF8|\uAC74\uC218|\uC9D1\uACC4)|GSC|\uC11C\uCE58\uCF58\uC194|SERP|\uCD9C\uCC98|\uC9D1\uACC4\s*\uAE30\uAC04|\uD45C\uBCF8|\uB85C\uADF8/i;
+const UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
+  /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i;
+const YEOSONAM_EDITOR_VOICE_RE = /여소남\s*에디터(?:가|는|의)?/i;
+
+const READABLE_UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
+  /\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?(?:\uB370\uC774\uD130|\uC608\uC57D\s*\uB370\uC774\uD130|\uC0C1\uB2F4\s*\uB370\uC774\uD130)(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/i;
+
+function removeAiEditorialCliches(markdown: string): { text: string; changed: boolean } {
+  let text = markdown;
+  const before = text;
+  const replacements: Array<[RegExp, string]> = [
+    [/이게\s*말이\s*되나\s*싶으시죠\??\s*/g, ''],
+    [/안녕하세요[!.\s]*\s*친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다\.?\s*/g, ''],
+    [/친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다\.?\s*/g, ''],
+    [/가치\s+있는\s+여행을\s+소개하는\s*입니다\.?\s*/g, ''],
+    [/완벽\s*가이드/g, '실전 가이드'],
+    [/총정리/g, '정리'],
+    [/놓치면\s*후회(?:하는|할)?/g, '미리 확인할'],
+    [/최고의\s*선택/g, '선택 기준'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return { text, changed: text !== before };
+}
+
+function softenUnsupportedYeosonamDataClaims(markdown: string): { text: string; changed: boolean } {
+  const plain = stripMarkup(markdown);
+  const hasUnsupportedClaim =
+    UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain) || READABLE_UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain);
+  const hasEvidence = YEOSONAM_DATA_EVIDENCE_RE.test(plain) || READABLE_YEOSONAM_DATA_EVIDENCE_RE.test(plain);
+  if (!hasUnsupportedClaim || hasEvidence) {
+    return { text: markdown, changed: false };
+  }
+
+  let text = markdown;
+  const before = text;
+  const replacements: Array<[RegExp, string]> = [
+    [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uCD9C\uBC1C \uC804 \uD655\uC778 \uAE30\uC900'],
+    [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uC608\uC57D|\uC0C1\uB2F4)\s*\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uCD9C\uBC1C \uC804 \uD655\uC778 \uAE30\uC900'],
+    [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*본/g, '출발 전 확인 기준으로 본'],
+    [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
+    [/여소남\s*데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
+    [/여소남\s*데이터\s*기준(?:으로)?/g, '현재 확인 가능한 기준으로'],
+    [/여소남\s*데이터(?:에\s*따르면|상으로는|상)?/g, '일반적인 여행 준비 기준으로'],
+    [/여소남(?:의)?\s*(?:예약|상담)\s*데이터(?:에\s*따르면|상으로는|상)?/g, '현재 확인 가능한 여행 준비 기준으로'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return { text, changed: text !== before };
+}
+
+function removeYeosonamEditorVoice(markdown: string): { text: string; changed: boolean } {
+  if (!YEOSONAM_EDITOR_VOICE_RE.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const before = markdown;
+  const text = markdown
+    .split('\n')
+    .map((line) => {
+      if (!YEOSONAM_EDITOR_VOICE_RE.test(line)) return line;
+      return line
+        .replace(/여소남\s*에디터가\s*여러\s*정보를\s*비교\s*분석하여,?\s*/g, '')
+        .replace(/여소남\s*에디터가\s*꼼꼼(?:하|히)게\s*정리(?:해\s*드립니다|했습니다|합니다)\.?/g, '핵심 기준을 정리했습니다.')
+        .replace(/여소남\s*에디터가\s*추천(?:하는|한)?/g, '여행 전 확인할')
+        .replace(/여소남\s*에디터(?:가|는|의)?\s*/g, '');
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+
+  return { text, changed: text !== before };
+}
+
+function hasHardCtaSignal(text: string): boolean {
+  return (
+    READABLE_HARD_CTA_RE.test(text) ||
+    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(text) ||
+    /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(text) ||
+    /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(text)
+  );
+}
+
+function hasReadableHardAction(text: string): boolean {
+  if (READABLE_HARD_CTA_RE.test(text)) return true;
+  return /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(text);
+}
+
+function hasMarkdownLink(text: string): boolean {
+  return /\[[^\]\n]{2,80}]\([^)]+(?:\s+"[^"]*")?\)/.test(text);
+}
+
+function softenHardCtaText(markdown: string): { text: string; changed: boolean } {
+  let text = markdown;
+  const before = text;
+  const replacements: Array<[RegExp, string]> = [
+    [/(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4)?/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uCD9C\uBC1C \uC870\uAC74 \uD655\uC778'],
+    [/\uC608\uC57D\s*\uB9C8\uAC10|\uB9C8\uAC10\s*\uC784\uBC15|\uC794\uC5EC\s*\uC88C\uC11D/gi, '\uD655\uC778\uC774 \uD544\uC694\uD55C \uC870\uAC74'],
+    [/\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30/gi, '\uAD00\uB828 \uC870\uAC74 \uD655\uC778'],
+    [/\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)/gi, '\uC77C\uC815 \uC870\uAC74 \uD655\uC778'],
+    [/\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)/gi, '\uD544\uC694\uD55C \uC870\uAC74 \uD655\uC778'],
+    [/\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)/gi, '\uC870\uAC74 \uD655\uC778'],
+    [/지금\s*예약(?:하기|문의|상담|신청|바로)?/gi, '출발 조건 확인'],
+    [/바로\s*예약(?:하기|문의|상담|신청)?/gi, '출발 조건 확인'],
+    [/예약\s*(?:하기|문의|상담|신청|바로)/gi, '출발 조건 확인'],
+    [/예약\s*마감/gi, '확인 필요'],
+    [/잔여\s*좌석/gi, '가능 여부'],
+    [/상품\s*보기|패키지\s*보기/gi, '관련 조건 확인'],
+    [/카카오톡?\s*(?:무료\s*)?상담/gi, '일정 조건 확인'],
+    [/상담\s*(?:하기|신청|문의|남기기|바로)/gi, '필요한 조건 확인'],
+    [/문의\s*(?:하기|신청|바로)/gi, '조건 확인'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+
+  return { text, changed: text !== before };
+}
+
+function compactAnswerFirstLabel(value?: string | null): string {
+  return stripMarkup(value ?? '')
+    .replace(/[#*_`[\]()>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+}
+
+function currentKstYearMonth(): { year: number; month: number } {
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return { year: kstNow.getUTCFullYear(), month: kstNow.getUTCMonth() + 1 };
+}
+
+function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
+  const topic = compactAnswerFirstLabel(input.primaryKeyword || input.title || input.category)
+    || '\uC5EC\uD589 \uC900\uBE44';
+  const destination = compactAnswerFirstLabel(input.destination);
+  const decisionAxis = destination
+    ? `${destination} \uBE44\uC6A9, \uC774\uB3D9 \uC2DC\uAC04, \uB0A0\uC528\u00B7\uD604\uC9C0 \uBCC0\uC218`
+    : '\uBE44\uC6A9, \uC774\uB3D9 \uC2DC\uAC04, \uB0A0\uC528\u00B7\uD604\uC9C0 \uBCC0\uC218';
+  const now = currentKstYearMonth();
+  return `${now.year}\uB144 ${now.month}\uC6D4 \uAE30\uC900, ${topic}\uC740 ${decisionAxis}\uBD80\uD130 \uBE44\uAD50\uD558\uB294 \uD3B8\uC774 \uC548\uC804\uD569\uB2C8\uB2E4. \uC65C \uBA3C\uC800 \uBD10\uC57C \uD560\uAE4C\uC694? \uC774 \uC21C\uC11C\uB85C \uBD10\uC57C \uD604\uC9C0\uC5D0\uC11C 1~2\uC2DC\uAC04\uC744 \uC544\uB07C\uACE0 \uC608\uC0B0 \uC624\uCC28\uB97C \uC904\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.`;
+}
+
+function insertIntroAfterTitle(markdown: string, intro: string): string {
+  const lines = markdown.split('\n');
+  const headingIndex = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (headingIndex < 0) {
+    return `${intro}\n\n${markdown.trim()}`;
+  }
+
+  let restStart = headingIndex + 1;
+  while (restStart < lines.length && lines[restStart].trim() === '') restStart += 1;
+  return [
+    ...lines.slice(0, headingIndex + 1),
+    '',
+    intro,
+    '',
+    ...lines.slice(restStart),
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function ensureInfoAnswerFirst(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const report = inspectBlogIntentQuality({ ...input, blogHtml: markdown });
+  if (!report.issues.some((issue) => issue.code === 'missing_answer_first')) {
+    return { text: markdown, changed: false };
+  }
+
+  const intro = buildAnswerFirstIntro(input);
+  if (markdown.includes(intro)) return { text: markdown, changed: false };
+  const text = insertIntroAfterTitle(markdown, intro);
+  return { text, changed: text !== markdown };
+}
+
+function safeDecodeUriComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function moveEarlyStrongInfoCtaToBottom(markdown: string): { text: string; changed: boolean } {
+  const blocks = markdown.split(/\n{2,}/);
+  const earlyLimit = Math.ceil(markdown.length * 0.3);
+  let cursor = 0;
+  let changed = false;
+  const kept: string[] = [];
+  const moved: string[] = [];
+
+  for (const block of blocks) {
+    const start = cursor;
+    cursor += block.length + 2;
+    if (start <= earlyLimit && hasHardCtaSignal(block) && hasReadableHardAction(block)) {
+      if (!hasMarkdownLink(block)) {
+        const softened = softenHardCtaText(block.trim());
+        if (
+          softened.changed
+          && !(hasHardCtaSignal(softened.text) && hasReadableHardAction(softened.text))
+        ) {
+          kept.push(softened.text);
+          changed = true;
+          continue;
+        }
+      }
+      moved.push(block.trim());
+      changed = true;
+      continue;
+    }
+    kept.push(block);
+  }
+
+  if (!changed) return { text: markdown, changed: false };
+
+  let text = kept.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (/^##\s*여행\s*상품과\s*함께\s*확인하기\b/im.test(text)) {
+    return { text, changed: text !== markdown };
+  }
+
+  const seen = new Set<string>();
+  const linkLines = [...moved.join('\n').matchAll(/\[([^\]\n]{2,80})]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)]
+    .map((match) => {
+      const rawLabel = match[1].trim();
+      const href = match[2].trim();
+      if (!/\/packages|group-inquiry|kakao|pf\.kakao|utm_|consult|yeosonam\.com/i.test(safeDecodeUriComponent(href))) {
+        return null;
+      }
+      const key = `${rawLabel}|${href}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      const label = /상품|패키지/i.test(rawLabel)
+        ? '관련 패키지 보기'
+        : /카카오/i.test(rawLabel)
+          ? '카카오톡으로 일정 확인'
+          : /상담|문의|예약/i.test(rawLabel)
+            ? '내 일정 기준으로 가능 여부 확인'
+            : rawLabel;
+      return `- [${label}](${href})`;
+    })
+    .filter((line): line is string => Boolean(line))
+    .slice(0, 3);
+
+  if (linkLines.length > 0) {
+    text = [
+      text,
+      '',
+      '## 여행 상품과 함께 확인하기',
+      '',
+      '위 내용을 먼저 확인한 뒤, 실제 출발일과 인원 기준으로 가능한 상품만 따로 확인하면 됩니다.',
+      '',
+      ...linkLines,
+    ].join('\n');
+  }
+
+  return { text, changed: text !== markdown };
 }
 
 function appendOfficialReferences(markdown: string, subtype: BlogInfoSubtype | null): { text: string; changed: boolean } {
@@ -190,13 +830,17 @@ function ensureCostAnchorBlock(markdown: string, subtype: BlogInfoSubtype | null
   return { text: `${markdown.trim()}\n${block}`, changed: true };
 }
 
+function hasItineraryFlowTable(markdown: string): boolean {
+  return (
+    /^#{2,4}\s*\uC77C\uC815\s*\uD750\uB984\s*\uBE60\uB978\s*\uBCF4\uAE30/m.test(markdown) ||
+    /\|\s*\uAD6C\uAC04\s*\|\s*\uCD94\uCC9C\s*\uD750\uB984\s*\|\s*\uD655\uC778\s*\uD3EC\uC778\uD2B8\s*\|/.test(markdown)
+  );
+}
+
 function ensureItineraryStructure(markdown: string): { text: string; changed: boolean } {
-  if (/^##\s*\uC77C\uC815\s*\uD750\uB984\s*\uBE60\uB978\s*\uBCF4\uAE30/m.test(markdown)) {
+  if (hasItineraryFlowTable(markdown)) {
     return { text: markdown, changed: false };
   }
-  const dayMarkers = countMatches(markdown, /(^|\n)\s*(?:#{2,4}\s*)?(?:DAY\s*\d+|Day\s*\d+|\d+\s*일차|\d+\s*일\s*차|\d+일차)/gi);
-  const timeMarkers = countMatches(markdown, /\b(?:오전|오후|아침|점심|저녁|\d{1,2}:\d{2})\b/g);
-  if (dayMarkers >= 2 || timeMarkers >= 3) return { text: markdown, changed: false };
 
   const block = [
     '',
@@ -234,7 +878,8 @@ function addReadingDesignAid(markdown: string): { text: string; changed: boolean
 
 function removeRawDirectiveLeaks(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
-  const text = markdown
+  const promptResidueRepair = repairBlogPromptInstructionResidue(markdown);
+  const text = promptResidueRepair.text
     .replace(/^\s*:::\s*(?:[A-Za-z][\w-]*)?\s*$/gm, '')
     .replace(/:::\s*(?:[A-Za-z][\w-]*)?/g, '')
     .replace(/\n{3,}/g, '\n\n');
@@ -255,6 +900,64 @@ function removeRenderArtifacts(markdown: string): { text: string; changed: boole
   return { text, changed: text !== before };
 }
 
+function cleanMachineHyphenKeyword(value: string): string {
+  return value
+    .replace(
+      /(^|[\s([{"'`])((?=[가-힣A-Za-z0-9-]*[가-힣])(?:[0-9]{1,2}월|[가-힣A-Za-z0-9]+)(?:-[가-힣A-Za-z0-9]+){2,})(?=(?:에서|은|는|을|를|이|가|로|과|와|도|까지|부터|처럼|이라면|\s|[.,!?)]|$))/g,
+      (_match, prefix: string, phrase: string) => `${prefix}${phrase.replace(/-/g, ' ')}`,
+    )
+    .replace(/\s+(?=(?:에서|은|는|을|를|이|가|로|과|와|도|까지|부터|처럼|이라면)(?:\s|[.,!?)]|$))/g, '');
+}
+
+function removeLegacySurfaceArtifacts(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .split('\n')
+    .map((line) => {
+      let next = line
+        .replace(/^\s*:{2,3}\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '**핵심 요약**')
+        .replace(/^\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '**핵심 요약**')
+        .replace(/^\s*tip\s*$/i, '')
+        .replace(/\btip\s+\*{0,2}\s*TL;?\s*DR\b\s*\*{0,2}\s*(?:[—-]\s*)?/gi, '핵심 요약: ')
+        .replace(/\btip\s+(?=[가-힣])/gi, '')
+        .replace(/\btip\s+TL;?\s*DR\b\s*:?\s*/gi, '핵심 요약: ')
+        .replace(/\bTL;?\s*DR\s*:/gi, '핵심 요약:')
+        .replace(/\bTL;?\s*DR\s*[—-]\s*/gi, '핵심 요약: ')
+        .replace(/!\[[^\]\n]*]\([^)]+\)/g, (match) => (/^#{1,6}\s/.test(line.trim()) ? '' : match))
+        .replace(/\s+![가-힣A-Za-z0-9][^\n]{0,120}$/g, '')
+        .replace(/\s+tip\s*$/i, '')
+        .replace(/[ \t]+---(?=\s*$)/g, '')
+        .replace(/여여소남/g, '여소남')
+        .replace(/여소남이이/g, '여소남이 이')
+        .replace(/여소남\s+여소남/g, '여소남')
+        .replace(/상품\s*상세\s*보기\s*→\s*여소남/g, '여소남에서 상품 상세 보기');
+      if (!/https?:\/\//i.test(next) && /[가-힣A-Za-z0-9]+-[가-힣A-Za-z0-9]+-[가-힣A-Za-z0-9-]+/.test(next)) {
+        next = cleanMachineHyphenKeyword(next);
+      }
+      return next;
+    })
+    .filter((line) => !/^\s*-\s*$/.test(line))
+    .join('\n')
+    .replace(/\btip\s*\n\s*\*{0,2}\s*TL;?\s*DR\*{0,2}\s*:?\s*/gi, '핵심 요약: ')
+    .replace(/포인트를\s+먼저\s+확인하세요[.。]?\s*/g, '')
+    .replace(
+      /(?:예약|문의)?하시면\s+(?:현재\s*)?(?:\n\s*)+([0-9]{1,2}월\s+좌석\s+현황도\s+바로\s+확인\s+가능합니다[.。]?)/g,
+      '문의하시면 현재 $1',
+    )
+    .replace(/\s*하시면\s+현지\s+여행\s+Q&A를\s+더\s+상세히\s+알려드려요\.?/g, '')
+    .replace(/(^|\s)에서\s+실시간\s+좌석과\s+요금을\s+바로\s+확인하실\s+수\s+있습니다[.。]?/g, '$1여소남에서 실시간 좌석과 요금을 바로 확인하실 수 있습니다.')
+    .replace(/[ \t]+---[ \t]+(?=(?:#{1,6}\s|\*\*|해시태그|#))/g, '\n\n')
+    .replace(/\n?---\s*>\s*여소남\s+여행\s+준비[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s*준비|#{2,4}\s*빠른|#{2,4}\s*공식|#{2,4}\s*여행\s*상품|$))/g, '\n')
+    .replace(/\s*(?:---\s*(?:>|&gt;|\\u0026gt;)\s*)?여소남\s+여행\s+준비\*{0,2}[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
+    .replace(/\n+여소남\s+여행\s+준비\s*\n[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
+    .replace(/\n+여소남\s+여행\s+준비\s+[^\n]{0,500}(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
+    .replace(/\n?---\s*\*\*함께\s*보면\s*좋은\s*글\*\*[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return { text, changed: text !== before };
+}
+
 export function normalizeBlogVisualAccents(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
   const text = markdown
@@ -265,6 +968,19 @@ export function normalizeBlogVisualAccents(markdown: string): { text: string; ch
       '$1',
     )
     .replace(/\n{3,}/g, '\n\n');
+
+  return { text, changed: text !== before };
+}
+
+function removeResidualHtmlMarkdownBold(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const stripBold = (value: string) => value
+    .replace(/\*\*([^*\n]{1,180}?)\*\*/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim())
+    .replace(/__([^_\n]{1,180}?)__/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim());
+  const text = markdown
+    .split('\n')
+    .map((line) => (/<[a-z][^>]*>/i.test(line) ? stripBold(line) : line))
+    .join('\n');
 
   return { text, changed: text !== before };
 }
@@ -362,6 +1078,49 @@ function ensurePublishChecklist(markdown: string, input: BlogEditorialRepairInpu
     };
   }
 
+  return { text: `${markdown.trimEnd()}\n${block}`, changed: true };
+}
+
+function ensureComparisonDecisionBlock(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const haystack = [
+    input.title,
+    input.slug,
+    input.primaryKeyword,
+    input.category,
+    markdown.slice(0, 2500),
+  ].filter(Boolean).join(' ');
+  const hasRecommendationIntent = /(compare|recommend|best|\uBE44\uAD50|\uCD94\uCC9C|\uC120\uD0DD|\uC0C1\uD669\uBCC4|\uC544\uC774|\uAC00\uC871|\uC548\uC804|\uD734\uC591\uC9C0)/i.test(haystack);
+  if (!hasRecommendationIntent) return { text: markdown, changed: false };
+  if (/^#{2,3}\s+.*(?:\uC0C1\uD669\uBCC4|\uC120\uD0DD\s*\uAE30\uC900|\uB9DE\uB294\s*\uC0AC\uB78C|\uC548\s*\uB9DE\uB294\s*\uC0AC\uB78C|decision|fit\s*for)/im.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const keyword = input.primaryKeyword || input.title || '\uAC00\uC871 \uC5EC\uD589';
+  const block = [
+    '',
+    '## \uC0C1\uD669\uBCC4 \uC120\uD0DD \uAE30\uC900',
+    '',
+    `| \uC0C1\uD669 | ${keyword}\uC5D0\uC11C \uBA3C\uC800 \uBCFC \uAC83 | \uBB38\uC758 \uC804 \uD655\uC778\uD560 \uC810 |`,
+    '| --- | --- | --- |',
+    '| \uC544\uC774 \uB3D9\uBC18 | \uBE44\uD589 \uC2DC\uAC04, \uC219\uC18C \uC774\uB3D9 \uB3D9\uC120, \uBCD1\uC6D0 \uC811\uADFC\uC131 | \uC5F0\uB839\uBCC4 \uC218\uC601\uC7A5\u00B7\uC2DD\uC0AC\u00B7\uCE68\uB300 \uC870\uAC74 |',
+    '| \uCCAB \uD574\uC678\uC5EC\uD589 | \uC785\uAD6D \uC11C\uB958, \uD604\uC9C0 \uC774\uB3D9 \uB09C\uC774\uB3C4, \uD55C\uAD6D\uC5B4 \uC9C0\uC6D0 | \uD56D\uACF5\u00B7\uC219\uC18C\u00B7\uC774\uB3D9\uC774 \uD55C \uBC88\uC5D0 \uC815\uB9AC\uB418\uB294\uC9C0 |',
+    '| \uC608\uC0B0 \uC911\uC2EC | \uCD1D\uC561, \uD604\uC9C0 \uCD94\uAC00\uBE44, \uC120\uD0DD \uAD00\uAD11 \uC720\uBB34 | \uAC00\uACA9\uC774 \uBC14\uB010 \uC218 \uC788\uB294 \uB0A0\uC9DC\u00B7\uC778\uC6D0 \uC870\uAC74 |',
+    '',
+    '## \uB9DE\uB294 \uC0AC\uB78C\uACFC \uC548 \uB9DE\uB294 \uC0AC\uB78C',
+    '',
+    '- \uB9DE\uB294 \uC0AC\uB78C: \uAC00\uC871 \uC774\uB3D9 \uB3D9\uC120\uACFC \uC548\uC804 \uBCC0\uC218\uB97C \uBA3C\uC800 \uC904\uC774\uACE0 \uC2F6\uC740 \uBD84.',
+    '- \uC548 \uB9DE\uB294 \uC0AC\uB78C: \uC219\uC18C\u00B7\uC774\uB3D9\u00B7\uD604\uC9C0 \uC77C\uC815\uC744 \uBAA8\uB450 \uC9C1\uC811 \uC870\uD569\uD558\uACE0 \uC2F6\uC740 \uBD84.',
+    '- \uBCF4\uB958\uD560 \uAC83: \uCD9C\uBC1C\uC77C, \uC544\uC774 \uC5F0\uB839, \uD56D\uACF5 \uC2DC\uAC04\uB300\uAC00 \uD655\uC815\uB418\uAE30 \uC804\uC5D0\uB294 \uCD1D\uC561\uC744 \uC815\uD574 \uB193\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.',
+    '',
+  ].join('\n');
+
+  const firstFaq = markdown.search(/^##\s*(FAQ|Q\s*&\s*A)/im);
+  if (firstFaq > 0) {
+    return {
+      text: `${markdown.slice(0, firstFaq).trimEnd()}\n${block}${markdown.slice(firstFaq).trimStart()}`,
+      changed: true,
+    };
+  }
   return { text: `${markdown.trimEnd()}\n${block}`, changed: true };
 }
 
@@ -629,6 +1388,101 @@ function repairLooseMarkdownTables(markdown: string): { text: string; changed: b
   return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
 }
 
+function hasQualityGateTableSeparator(line: string): boolean {
+  return /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line.trim());
+}
+
+function forceRepairRemainingBrokenMarkdownTables(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+    if (!line.startsWith('|') || !line.endsWith('|')) {
+      next.push(lines[index] ?? '');
+      continue;
+    }
+
+    const block: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length) {
+      const current = lines[cursor]?.trim() ?? '';
+      if (!current.startsWith('|') || !current.endsWith('|')) break;
+      block.push(current);
+      cursor += 1;
+    }
+
+    const headerCells = parseMarkdownTableCells(block[0] ?? '');
+    if (headerCells.length < 2) {
+      next.push(stripMarkup(block.join(' ')).replace(/\s*\|\s*/g, ' / ').trim());
+      changed = true;
+      index = cursor - 1;
+      continue;
+    }
+
+    const hasSeparator = block.length >= 2 && hasQualityGateTableSeparator(block[1] ?? '');
+    const withSeparator = hasSeparator
+      ? [block[0], block[1], ...block.slice(2)]
+      : [block[0], markdownTableSeparatorFor(block[0] ?? ''), ...block.slice(1)];
+    const bodyRows = withSeparator.slice(2);
+    const hasMismatchedCells = bodyRows.some((row) => parseMarkdownTableCells(row).length !== headerCells.length);
+
+    if (!hasSeparator) changed = true;
+
+    if (withSeparator.length < 5 || hasMismatchedCells) {
+      next.push(...markdownTableBlockToBullets(withSeparator));
+      changed = true;
+    } else {
+      next.push(...withSeparator);
+    }
+
+    index = cursor - 1;
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
+function repairTooShortMarkdownTables(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+    if (!line.startsWith('|') || !line.endsWith('|')) {
+      next.push(lines[index] ?? '');
+      continue;
+    }
+
+    const block: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length) {
+      const current = lines[cursor]?.trim() ?? '';
+      if (!current.startsWith('|') || !current.endsWith('|')) break;
+      block.push(current);
+      cursor += 1;
+    }
+
+    const hasSeparator = block.length >= 2 && hasQualityGateTableSeparator(block[1] ?? '');
+    const bodyRows = block.slice(hasSeparator ? 2 : 1).filter((row) => parseMarkdownTableCells(row).length >= 2);
+
+    if (bodyRows.length < 2) {
+      const normalizedBlock = hasSeparator
+        ? block
+        : [block[0] ?? '', markdownTableSeparatorFor(block[0] ?? ''), ...block.slice(1)];
+      next.push(...markdownTableBlockToBullets(normalizedBlock));
+      changed = true;
+    } else {
+      next.push(...block);
+    }
+
+    index = cursor - 1;
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
 function capH2Headings(markdown: string, maxH2 = 9): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   let h2Count = 0;
@@ -686,6 +1540,22 @@ function repairBlankHeadingLines(markdown: string): { text: string; changed: boo
   }
 
   return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
+function demoteDuplicateH1Headings(markdown: string): { text: string; changed: boolean } {
+  let h1Count = 0;
+  let changed = false;
+  const text = markdown
+    .split('\n')
+    .map((line) => {
+      if (!/^#\s+\S/.test(line.trim())) return line;
+      h1Count += 1;
+      if (h1Count === 1) return line;
+      changed = true;
+      return line.replace(/^#\s+/, '## ');
+    })
+    .join('\n');
+  return { text, changed };
 }
 
 function dedupeRepeatedSupportBlocks(markdown: string): { text: string; changed: boolean } {
@@ -755,6 +1625,71 @@ function flattenMalformedInlineTables(markdown: string): { text: string; changed
   });
 
   return { text: next.join('\n\n'), changed };
+}
+
+const REPEATED_PLANNING_PHRASE_SIGNAL_RE =
+  /(?:\uC608\uC57D|\uBE44\uC6A9|\uC77C\uC815|\uD604\uC9C0|\uD655\uC778|\uC900\uBE44|\uCCB4\uD06C|\uC0C1\uB2F4|\uD568\uAED8\s*\uBCF4\uB824\uBA74|\uCD5C\uC18C\s*2\s*~\s*4\uC8FC)/;
+
+const READABILITY_PHRASE_ALTERNATIVES = [
+  '\uCD9C\uBC1C \uC804 \uD575\uC2EC \uC870\uAC74',
+  '\uC77C\uC815\uBCC4 \uD655\uC778 \uD56D\uBAA9',
+  '\uD604\uC9C0\uC5D0\uC11C \uB2EC\uB77C\uC9C0\uB294 \uBCC0\uC218',
+  '\uC0C1\uB2F4 \uC804 \uC810\uAC80 \uD3EC\uC778\uD2B8',
+];
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function softenRepeatedReadabilityPhrases(markdown: string, maxExactRepeats = 3): { text: string; changed: boolean } {
+  let text = markdown;
+  let changed = false;
+  const directPatterns = [
+    /\uD568\uAED8\s*\uBCF4\uB824\uBA74\s*\uCD5C\uC18C\s*2\s*~\s*4\uC8FC\s*\uC804\uC5D0/g,
+    /\uAD00\uB828\s*\uC870\uAC74\uC744\s*\uBE44\uAD50\uD558\uB294\s*\uD3B8\uC774\s*\uC548\uC804\uD569\uB2C8\uB2E4/g,
+    /\uD56D\uACF5\s*\uC2A4\uCF00\uC904,\s*\uC785\uC7A5\s*\uADDC\uC815\uCC98\uB7FC\s*\uB2F9\uC77C/g,
+  ];
+  for (const directPattern of directPatterns) {
+    let seen = 0;
+    text = text.replace(directPattern, (match) => {
+      seen += 1;
+      if (seen <= maxExactRepeats) return match;
+      changed = true;
+      return READABILITY_PHRASE_ALTERNATIVES[(seen - maxExactRepeats - 1) % READABILITY_PHRASE_ALTERNATIVES.length] || match;
+    });
+  }
+  for (let pass = 0; pass < 4; pass += 1) {
+    const duplicates = computeReadability(text).duplicate_phrases
+      .filter((item) =>
+        item.count > maxExactRepeats &&
+        REPEATED_PLANNING_PHRASE_SIGNAL_RE.test(item.phrase) &&
+        !READABILITY_PHRASE_ALTERNATIVES.some((alternative) => item.phrase.includes(alternative)));
+    if (duplicates.length === 0) break;
+
+    let passChanged = false;
+    for (const duplicate of duplicates) {
+      let seen = 0;
+      const pattern = new RegExp(escapeRegexLiteral(duplicate.phrase), 'g');
+      text = text.replace(pattern, (match) => {
+        seen += 1;
+        if (seen <= maxExactRepeats) return match;
+        passChanged = true;
+        changed = true;
+        return READABILITY_PHRASE_ALTERNATIVES[(seen - maxExactRepeats - 1) % READABILITY_PHRASE_ALTERNATIVES.length] || match;
+      });
+    }
+    if (!passChanged) break;
+  }
+
+  for (const alternative of READABILITY_PHRASE_ALTERNATIVES) {
+    const pattern = new RegExp(`${escapeRegexLiteral(alternative)}(?:\\s+${escapeRegexLiteral(alternative)})+`, 'g');
+    text = text.replace(pattern, () => {
+      changed = true;
+      return alternative;
+    });
+  }
+
+  return { text, changed: changed && text !== markdown };
 }
 
 function limitRepeatedPlanningHooks(markdown: string): { text: string; changed: boolean } {
@@ -872,7 +1807,7 @@ function ensureMinimumReadingStructure(markdown: string, input: BlogEditorialRep
   return { text, changed: text !== before };
 }
 
-export function repairKeywordDensityToTarget(
+function repairKeywordDensityToTargetLegacy(
   markdown: string,
   primaryKeyword?: string | null,
   blogType: 'product' | 'info' = 'info',
@@ -896,14 +1831,14 @@ export function repairKeywordDensityToTarget(
 
   const pattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
   const beforeCount = (markdown.match(pattern) || []).length;
-  const targetDensity = blogType === 'info' ? 1.65 : 2.35;
+  const targetDensity = blogType === 'info' ? 1.45 : 2.05;
   const allowedCount = Math.max(2, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
   if (beforeCount <= allowedCount) {
     return { blogHtml: markdown, changed: false, keyword, beforeCount, afterCount: beforeCount, allowedCount };
   }
 
   const words = keyword.split(/\s+/).filter(Boolean);
-  const replacement = words.length > 1 ? words[words.length - 1] : '현지';
+  const replacement = words.length > 1 ? words[words.length - 1] : '여행지';
   let seen = 0;
   const blogHtml = markdown.replace(pattern, () => {
     seen += 1;
@@ -921,10 +1856,129 @@ export function repairKeywordDensityToTarget(
   };
 }
 
+export function repairKeywordDensityToTarget(
+  markdown: string,
+  primaryKeyword?: string | null,
+  blogType: 'product' | 'info' = 'info',
+): BlogKeywordDensityRepairResult {
+  const keyword = primaryKeyword?.trim() || null;
+  if (!keyword || keyword.length < 2) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount: 0, afterCount: 0, allowedCount: 0 };
+  }
+
+  const plainTextLength = (value: string) => value
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[[^\]]+]\([^)]+\)/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_`>|=-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length;
+  const plainLength = plainTextLength(markdown);
+  if (plainLength === 0) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount: 0, afterCount: 0, allowedCount: 0 };
+  }
+
+  const pattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+  const beforeCount = (markdown.match(pattern) || []).length;
+  const targetDensity = blogType === 'info' ? 1.45 : 2.05;
+  const allowedCount = Math.max(2, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
+  if (beforeCount <= allowedCount) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount, afterCount: beforeCount, allowedCount };
+  }
+
+  const words = keyword.split(/\s+/).filter(Boolean);
+  const replacement = words.length > 1 ? words[words.length - 1] : '현지';
+  const gateMaxDensity = blogType === 'info' ? 1.8 : 2.5;
+  const renderWithKeepCount = (keepCount: number) => {
+    let seen = 0;
+    return markdown.replace(pattern, () => {
+      seen += 1;
+      return seen <= keepCount ? keyword : replacement;
+    });
+  };
+
+  let finalAllowedCount = allowedCount;
+  let blogHtml = renderWithKeepCount(finalAllowedCount);
+  while (finalAllowedCount > 1) {
+    const nextCount = (blogHtml.match(pattern) || []).length;
+    const nextLength = plainTextLength(blogHtml);
+    const nextDensity = nextLength > 0 ? (nextCount * keyword.length / nextLength) * 100 : 0;
+    if (nextDensity <= gateMaxDensity - 0.05) break;
+    finalAllowedCount -= 1;
+    blogHtml = renderWithKeepCount(finalAllowedCount);
+  }
+
+  const afterCount = (blogHtml.match(pattern) || []).length;
+  return {
+    blogHtml,
+    changed: blogHtml !== markdown,
+    keyword,
+    beforeCount,
+    afterCount,
+    allowedCount: finalAllowedCount,
+  };
+}
+
 export function repairBlogStructureQuality(input: BlogEditorialRepairInput): BlogEditorialRepairResult {
   const before = inspectBlogIntentQuality(input);
+  const intent = classifyBlogIntent(input);
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
+
+  const clicheRepair = removeAiEditorialCliches(blogHtml);
+  if (clicheRepair.changed) {
+    blogHtml = clicheRepair.text;
+    changes.push('removed_ai_editorial_cliches');
+  }
+
+  const semanticSurfaceRepair = repairAwkwardSemanticSurface(blogHtml, input);
+  if (semanticSurfaceRepair.changed) {
+    blogHtml = semanticSurfaceRepair.text;
+    changes.push('repaired_semantic_surface');
+  }
+
+  const generatedImageContextRepair = repairGeneratedImageContext(blogHtml, input);
+  if (generatedImageContextRepair.changed) {
+    blogHtml = generatedImageContextRepair.text;
+    changes.push('repaired_generated_image_context');
+  }
+
+  const placeholderReferenceRepair = removePlaceholderReferenceLinks(blogHtml);
+  if (placeholderReferenceRepair.changed) {
+    blogHtml = placeholderReferenceRepair.text;
+    changes.push('removed_placeholder_reference_links');
+  }
+
+  const answerScaffoldRepair = removeRepetitiveAnswerScaffold(blogHtml);
+  if (answerScaffoldRepair.changed) {
+    blogHtml = answerScaffoldRepair.text;
+    changes.push('removed_repetitive_answer_scaffold');
+  }
+
+  const repeatedAnswerHeadingRepair = removeRepeatedGenericAnswerHeadings(blogHtml);
+  if (repeatedAnswerHeadingRepair.changed) {
+    blogHtml = repeatedAnswerHeadingRepair.text;
+    changes.push('removed_repeated_generic_answer_headings');
+  }
+
+  const faqRepair = dedupeRepeatedFaqBlocks(blogHtml);
+  if (faqRepair.changed) {
+    blogHtml = faqRepair.text;
+    changes.push('deduped_repeated_faq_blocks');
+  }
+
+  const quickDecisionRepair = dedupeRepeatedQuickDecisionBlocks(blogHtml);
+  if (quickDecisionRepair.changed) {
+    blogHtml = quickDecisionRepair.text;
+    changes.push('deduped_repeated_quick_decision_blocks');
+  }
+
+  const shortParagraphRepair = dedupeRepeatedShortParagraphs(blogHtml);
+  if (shortParagraphRepair.changed) {
+    blogHtml = shortParagraphRepair.text;
+    changes.push('deduped_repeated_short_paragraphs');
+  }
 
   const accentRepair = normalizeBlogVisualAccents(blogHtml);
   if (accentRepair.changed) {
@@ -938,10 +1992,38 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('removed_render_artifacts');
   }
 
+  const residualBoldRepair = removeResidualHtmlMarkdownBold(blogHtml);
+  if (residualBoldRepair.changed) {
+    blogHtml = residualBoldRepair.text;
+    changes.push('removed_residual_html_markdown_bold');
+  }
+
+  const legacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (legacySurfaceRepair.changed) {
+    blogHtml = legacySurfaceRepair.text;
+    changes.push('removed_legacy_surface_artifacts');
+  }
+
   const toneRepair = softenPromotionalInfoTone(blogHtml);
   if (toneRepair.changed) {
     blogHtml = toneRepair.text;
     changes.push('softened_promotional_info_tone');
+  }
+
+  if (intent.mode === 'info') {
+    const ctaRepair = moveEarlyStrongInfoCtaToBottom(blogHtml);
+    if (ctaRepair.changed) {
+      blogHtml = ctaRepair.text;
+      changes.push('moved_early_info_cta_to_bottom');
+    }
+  }
+
+  if (intent.mode === 'product' || intent.productSubtype) {
+    const productConsultRepair = ensureProductConsultDecisionBlocks(blogHtml, input);
+    if (productConsultRepair.changed) {
+      blogHtml = productConsultRepair.text;
+      changes.push('added_product_consult_decision_blocks');
+    }
   }
 
   const directiveRepair = removeRawDirectiveLeaks(blogHtml);
@@ -968,10 +2050,22 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('repaired_blank_headings');
   }
 
+  const duplicateH1Repair = demoteDuplicateH1Headings(blogHtml);
+  if (duplicateH1Repair.changed) {
+    blogHtml = duplicateH1Repair.text;
+    changes.push('demoted_duplicate_h1_headings');
+  }
+
   const publishChecklistRepair = ensurePublishChecklist(blogHtml, input);
   if (publishChecklistRepair.changed) {
     blogHtml = publishChecklistRepair.text;
     changes.push('added_publish_checklist');
+  }
+
+  const comparisonDecisionRepair = ensureComparisonDecisionBlock(blogHtml, input);
+  if (comparisonDecisionRepair.changed) {
+    blogHtml = comparisonDecisionRepair.text;
+    changes.push('added_comparison_decision_block');
   }
 
   const tableBoundaryRepair = ensureMarkdownTableBoundaries(blogHtml);
@@ -1058,6 +2152,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('limited_repeated_planning_hooks');
   }
 
+  const repeatedReadabilityPhraseRepair = softenRepeatedReadabilityPhrases(blogHtml);
+  if (repeatedReadabilityPhraseRepair.changed) {
+    blogHtml = repeatedReadabilityPhraseRepair.text;
+    changes.push('softened_repeated_readability_phrases');
+  }
+
   const finalLooseTableRepair = repairLooseMarkdownTables(blogHtml);
   if (finalLooseTableRepair.changed) {
     blogHtml = finalLooseTableRepair.text;
@@ -1066,10 +2166,36 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     }
   }
 
+  const finalBrokenTableRepair = forceRepairRemainingBrokenMarkdownTables(blogHtml);
+  if (finalBrokenTableRepair.changed) {
+    blogHtml = finalBrokenTableRepair.text;
+    changes.push('force_repaired_broken_markdown_tables');
+  }
+
+  const shortTableRepair = repairTooShortMarkdownTables(blogHtml);
+  if (shortTableRepair.changed) {
+    blogHtml = shortTableRepair.text;
+    changes.push('repaired_too_short_markdown_tables');
+  }
+
   const finalAccentRepair = normalizeBlogVisualAccents(blogHtml);
   if (finalAccentRepair.changed) {
     blogHtml = finalAccentRepair.text;
     changes.push('normalized_visual_accents_final');
+  }
+
+  const finalLegacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (finalLegacySurfaceRepair.changed) {
+    blogHtml = finalLegacySurfaceRepair.text;
+    if (!changes.includes('removed_legacy_surface_artifacts')) {
+      changes.push('removed_legacy_surface_artifacts');
+    }
+  }
+
+  const publicLinksRepaired = canonicalizeBlogPublicLinks(blogHtml);
+  if (publicLinksRepaired !== blogHtml) {
+    blogHtml = publicLinksRepaired;
+    changes.push('repaired_public_link_surface');
   }
 
   const after = inspectBlogIntentQuality({ ...input, blogHtml });
@@ -1185,11 +2311,153 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
   return { text: next.join('\n\n'), changed };
 }
 
+function hasProductConsultDecisionContract(markdown: string): boolean {
+  const source = markdown;
+  const plain = stripMarkup(markdown).replace(/\s+/g, ' ').trim();
+  return (
+    /10초\s*판단/.test(source)
+    && /포함\/불포함|포함\s*사항.*불포함\s*사항/s.test(source)
+    && /(일정|기간|항공|출발)/.test(plain)
+    && /(가격|요금|출발)/.test(plain)
+    && /이런\s*분께\s*맞|fit_for/i.test(source)
+    && /맞지\s*않을\s*수|not_fit_for/i.test(source)
+    && /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i.test(source)
+    && /문의\s*전\s*질문|consult_questions/i.test(source)
+  );
+}
+
+function ensureProductConsultDecisionBlocks(
+  markdown: string,
+  input: BlogEditorialRepairInput,
+): { text: string; changed: boolean } {
+  if (hasProductConsultDecisionContract(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const destination = compactAnswerFirstLabel(input.destination || input.category || input.primaryKeyword || '여행지') || '여행지';
+  const keyword = compactAnswerFirstLabel(input.primaryKeyword || input.title || `${destination} 패키지`) || `${destination} 패키지`;
+  const cta = /group-inquiry|\b\/packages\//i.test(markdown)
+    ? ''
+    : [
+      '',
+      '### 내 일정 기준으로 확인',
+      '',
+      '- 출발일, 인원, 객실 조건을 알려주시면 현재 가능한 조건만 다시 확인합니다.',
+    ].join('\n');
+
+  const block = [
+    '',
+    '## 문의 전 10초 판단표',
+    '',
+    '| 확인 항목 | 먼저 볼 내용 | 문의 전 체크 |',
+    '| --- | --- | --- |',
+    `| 가격/요금 | ${keyword}의 최종 금액은 출발일과 좌석, 객실 조건에 따라 달라질 수 있습니다. | 현재 가능한 날짜와 인원을 확인해야 합니다. |`,
+    '| 출발/기간 | 항공 시간, 이동 동선, 숙박 수를 함께 봐야 일정 부담을 판단할 수 있습니다. | 아동/부모님 동반이면 이동 시간을 먼저 확인합니다. |',
+    '| 포함/불포함 | 포함 사항과 불포함 사항을 나눠 봐야 현지 추가비를 줄일 수 있습니다. | 선택관광, 개인경비, 팁 조건을 확인합니다. |',
+    '',
+    '### 포함/불포함 확인',
+    '',
+    '- 포함 사항: 상품 DB에 명시된 항공, 숙박, 일정, 식사, 차량 조건을 기준으로 확인합니다.',
+    '- 불포함 사항: 개인경비, 선택관광, 현지 결제 조건은 예약 전 다시 확인합니다.',
+    '',
+    '### 이런 분께 맞습니다',
+    '',
+    `- ${destination} 일정을 직접 비교하기보다 가격, 포함사항, 이동 부담을 먼저 정리하고 싶은 분`,
+    '- 출발 가능일과 인원 기준으로 실제 예약 가능 여부를 확인하고 싶은 분',
+    '',
+    '### 맞지 않을 수 있습니다',
+    '',
+    '- 자유일정 비중이 큰 개별여행을 원하는 분',
+    '- 호텔명, 항공 시간, 객실 조건이 확정되기 전에는 문의를 원하지 않는 분',
+    '',
+    '### 가격 변동 조건',
+    '',
+    '- 가격이 달라질 수 있는 항목: 출발일, 좌석 상황, 객실 타입, 환율, 선택관광, 인원 구성',
+    '- 상품 DB에 없는 확정 혜택이나 호텔명은 임의로 판단하지 않고 상담에서 확인해야 합니다.',
+    '',
+    '### 문의 전 질문',
+    '',
+    '- 출발 가능한 날짜와 인원은 어떻게 되나요?',
+    '- 아동, 부모님, 단체 동반 여부가 있나요?',
+    '- 꼭 포함되어야 하는 일정이나 피하고 싶은 일정이 있나요?',
+    cta,
+  ].filter(Boolean).join('\n');
+
+  const text = `${markdown.trim()}\n\n${block}`.replace(/\n{4,}/g, '\n\n\n').trim();
+  return { text, changed: text !== markdown };
+}
+
 export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): BlogEditorialRepairResult {
   const before = inspectBlogIntentQuality(input);
   const intent = classifyBlogIntent(input);
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
+
+  const clicheRepair = removeAiEditorialCliches(blogHtml);
+  if (clicheRepair.changed) {
+    blogHtml = clicheRepair.text;
+    changes.push('removed_ai_editorial_cliches');
+  }
+
+  const semanticSurfaceRepair = repairAwkwardSemanticSurface(blogHtml, input);
+  if (semanticSurfaceRepair.changed) {
+    blogHtml = semanticSurfaceRepair.text;
+    changes.push('repaired_semantic_surface');
+  }
+
+  const generatedImageContextRepair = repairGeneratedImageContext(blogHtml, input);
+  if (generatedImageContextRepair.changed) {
+    blogHtml = generatedImageContextRepair.text;
+    changes.push('repaired_generated_image_context');
+  }
+
+  const placeholderReferenceRepair = removePlaceholderReferenceLinks(blogHtml);
+  if (placeholderReferenceRepair.changed) {
+    blogHtml = placeholderReferenceRepair.text;
+    changes.push('removed_placeholder_reference_links');
+  }
+
+  const directiveRepair = removeRawDirectiveLeaks(blogHtml);
+  if (directiveRepair.changed) {
+    blogHtml = directiveRepair.text;
+    changes.push('removed_raw_directive_leaks');
+  }
+
+  const answerScaffoldRepair = removeRepetitiveAnswerScaffold(blogHtml);
+  if (answerScaffoldRepair.changed) {
+    blogHtml = answerScaffoldRepair.text;
+    changes.push('removed_repetitive_answer_scaffold');
+  }
+
+  const repeatedAnswerHeadingRepair = removeRepeatedGenericAnswerHeadings(blogHtml);
+  if (repeatedAnswerHeadingRepair.changed) {
+    blogHtml = repeatedAnswerHeadingRepair.text;
+    changes.push('removed_repeated_generic_answer_headings');
+  }
+
+  const faqRepair = dedupeRepeatedFaqBlocks(blogHtml);
+  if (faqRepair.changed) {
+    blogHtml = faqRepair.text;
+    changes.push('deduped_repeated_faq_blocks');
+  }
+
+  const quickDecisionRepair = dedupeRepeatedQuickDecisionBlocks(blogHtml);
+  if (quickDecisionRepair.changed) {
+    blogHtml = quickDecisionRepair.text;
+    changes.push('deduped_repeated_quick_decision_blocks');
+  }
+
+  const shortParagraphRepair = dedupeRepeatedShortParagraphs(blogHtml);
+  if (shortParagraphRepair.changed) {
+    blogHtml = shortParagraphRepair.text;
+    changes.push('deduped_repeated_short_paragraphs');
+  }
+
+  const repeatedReadabilityPhraseRepair = softenRepeatedReadabilityPhrases(blogHtml);
+  if (repeatedReadabilityPhraseRepair.changed) {
+    blogHtml = repeatedReadabilityPhraseRepair.text;
+    changes.push('softened_repeated_readability_phrases');
+  }
 
   const accentRepair = normalizeBlogVisualAccents(blogHtml);
   if (accentRepair.changed) {
@@ -1197,7 +2465,37 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     changes.push('normalized_visual_accents');
   }
 
+  const legacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (legacySurfaceRepair.changed) {
+    blogHtml = legacySurfaceRepair.text;
+    changes.push('removed_legacy_surface_artifacts');
+  }
+
+  const yeosonamDataRepair = softenUnsupportedYeosonamDataClaims(blogHtml);
+  if (yeosonamDataRepair.changed) {
+    blogHtml = yeosonamDataRepair.text;
+    changes.push('softened_unsupported_yeosonam_data_claims');
+  }
+
+  const editorVoiceRepair = removeYeosonamEditorVoice(blogHtml);
+  if (editorVoiceRepair.changed) {
+    blogHtml = editorVoiceRepair.text;
+    changes.push('removed_yeosonam_editor_voice');
+  }
+
   if (intent.mode === 'info') {
+    const answerFirstRepair = ensureInfoAnswerFirst(blogHtml, { ...input, blogHtml });
+    if (answerFirstRepair.changed) {
+      blogHtml = answerFirstRepair.text;
+      changes.push('added_answer_first_intro');
+    }
+
+    const ctaRepair = moveEarlyStrongInfoCtaToBottom(blogHtml);
+    if (ctaRepair.changed) {
+      blogHtml = ctaRepair.text;
+      changes.push('moved_early_info_cta_to_bottom');
+    }
+
     const salesRepair = sanitizeInfoSalesTone(blogHtml);
     if (salesRepair.changed) {
       blogHtml = salesRepair.text;
@@ -1229,6 +2527,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     }
   }
 
+  if (intent.infoSubtype === 'comparison' || intent.readerIntent === 'decide') {
+    const comparisonDecisionRepair = ensureComparisonDecisionBlock(blogHtml, input);
+    if (comparisonDecisionRepair.changed) {
+      blogHtml = comparisonDecisionRepair.text;
+      changes.push('added_comparison_decision_block');
+    }
+  }
+
   if (intent.infoSubtype) {
     const sourceRepair = appendOfficialReferences(blogHtml, intent.infoSubtype);
     if (sourceRepair.changed) {
@@ -1246,6 +2552,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (scanRepair.changed) {
       blogHtml = scanRepair.text;
       changes.push('added_scannable_info_table');
+    }
+  }
+
+  if (intent.mode === 'product' || intent.productSubtype) {
+    const productConsultRepair = ensureProductConsultDecisionBlocks(blogHtml, input);
+    if (productConsultRepair.changed) {
+      blogHtml = productConsultRepair.text;
+      changes.push('added_product_consult_decision_blocks');
     }
   }
 
@@ -1271,6 +2585,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (finalAccentRepair.changed) {
     blogHtml = finalAccentRepair.text;
     changes.push('normalized_visual_accents_final');
+  }
+
+  const finalLegacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
+  if (finalLegacySurfaceRepair.changed) {
+    blogHtml = finalLegacySurfaceRepair.text;
+    if (!changes.includes('removed_legacy_surface_artifacts')) {
+      changes.push('removed_legacy_surface_artifacts');
+    }
   }
 
   const after = inspectBlogIntentQuality({ ...input, blogHtml });

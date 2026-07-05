@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 type GradeKey = 'save' | 'standard' | 'premium' | 'crown';
 

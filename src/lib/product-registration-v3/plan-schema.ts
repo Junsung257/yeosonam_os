@@ -30,6 +30,11 @@ export const V3StructurePlanSchema = z.object({
     inbound_codes: z.array(z.string()),
     meeting_times: z.array(z.string()),
   }),
+  transport_profile: z.object({
+    requires_air: z.boolean(),
+    detected_modes: z.array(z.enum(['air', 'ferry', 'cruise', 'rail', 'bus', 'unknown'])),
+    air_requirement_reason: z.string().nullable(),
+  }).optional(),
   itinerary_boundary_pattern: z.string().nullable(),
   option_section_locations: z.array(z.object({
     line_start: z.number().int().min(1),

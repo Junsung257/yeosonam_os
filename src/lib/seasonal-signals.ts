@@ -149,17 +149,17 @@ function autoLabel(
 function badgeFor(month: number, climate: number, type: 'snow_or_special' | 'peak'): string | null {
   if (type === 'snow_or_special') {
     // 추운데 인기 = 눈/온천 시즌 가능성 (12-2월)
-    if (month >= 12 || month <= 2) return '❄️ 눈여행·온천 시즌';
+    if (month >= 12 || month <= 2) return '눈여행·온천 시즌';
     // 우기인데 인기 = 한국 휴가 시즌 (5-9월)
-    if (month >= 5 && month <= 9) return '☔ 우기지만 한국 휴가 시즌';
-    return '🎯 시즌 이벤트 추정';
+    if (month >= 5 && month <= 9) return '우기지만 한국 휴가 시즌';
+    return '시즌 이벤트 추정';
   }
   // peak: 평범한 인기 시즌
-  if (month === 1 || month === 2) return '🇰🇷 설·겨울 휴가 시즌';
-  if (month >= 3 && month <= 5) return '🌸 봄 여행 시즌';
-  if (month >= 6 && month <= 8) return '☀️ 여름 휴가 시즌';
-  if (month >= 9 && month <= 11) return '🍁 가을 여행 시즌';
-  return '⭐ 한국인 선호 시즌';
+  if (month === 1 || month === 2) return '설·겨울 휴가 시즌';
+  if (month >= 3 && month <= 5) return '봄 여행 시즌';
+  if (month >= 6 && month <= 8) return '여름 휴가 시즌';
+  if (month >= 9 && month <= 11) return '가을 여행 시즌';
+  return '한국인 선호 시즌';
 }
 
 /**

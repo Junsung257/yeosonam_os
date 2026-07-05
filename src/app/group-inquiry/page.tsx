@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
@@ -591,9 +592,9 @@ export default function GroupInquiryPage() {
                   />
                   <span>
                     견적 상담과 연락을 위해 입력한 정보를 여소남이 확인하는 데 동의합니다.
-                    <a href="/privacy" className="ml-1 font-bold text-brand underline underline-offset-2">
+                    <Link href="/privacy" className="ml-1 font-bold text-brand underline underline-offset-2">
                       개인정보 안내
-                    </a>
+                    </Link>
                   </span>
                 </label>
                 {contactErrors.privacyConsent && (

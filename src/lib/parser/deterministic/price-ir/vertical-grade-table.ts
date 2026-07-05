@@ -1,6 +1,6 @@
-import { extractVerticalGradePriceTable, inferVerticalGradeFromText } from '../vertical-grade-price-table';
-import type { PriceIROptions, PriceIRResult } from './types';
-import { normalizeDepartureDays, tiersToRows } from './utils';
+import { extractVerticalGradePriceTable, inferVerticalGradeFromText } from '../vertical-grade-price-table.ts';
+import type { PriceIROptions, PriceIRResult } from './types.ts';
+import { normalizeDepartureDays, tiersToRows } from './utils.ts';
 
 export function extractVerticalGradePriceIR(rawText: string, options: PriceIROptions = {}): PriceIRResult {
   const tiers = extractVerticalGradePriceTable(rawText, {

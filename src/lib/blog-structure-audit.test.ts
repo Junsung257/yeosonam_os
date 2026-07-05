@@ -105,6 +105,26 @@ describe('blog-structure-audit', () => {
     expect(report.issues.map((issue) => issue.code)).toContain('checklist_shape_invalid');
   });
 
+  it('accepts readable Korean checklist headings and separate items', () => {
+    const html = `
+      <article>
+        <h2>여행 체크리스트</h2>
+        <ul>
+          <li>출발일과 항공 시간을 확인합니다.</li>
+          <li>숙소 위치와 이동 시간을 함께 봅니다.</li>
+          <li>취소 규정과 결제 기한을 저장합니다.</li>
+        </ul>
+      </article>
+    `;
+
+    const report = inspectBlogStructure({
+      rawMarkdown: '## 여행 체크리스트\n\n- 출발일 확인\n- 숙소 위치 확인\n- 취소 규정 확인',
+      renderedHtml: html,
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('checklist_shape_invalid');
+  });
+
   it('blocks sales-product wording in weather guide articles', () => {
     const html = `
       <article>

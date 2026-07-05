@@ -123,11 +123,25 @@ async function fetchText(path) {
   }
 }
 
+function normalizeBlogHref(href) {
+  if (!href) return null;
+  try {
+    const url = /^https?:\/\//i.test(href)
+      ? new URL(href)
+      : new URL(href, baseUrl);
+    if (url.origin !== baseUrl) return null;
+    return url.pathname;
+  } catch {
+    return null;
+  }
+}
+
 function addBlogLink(links, href) {
-  if (!href || !/^\/blog\//.test(href)) return;
-  if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) return;
-  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
-  links.add(href.split('#')[0]);
+  const pathname = normalizeBlogHref(href);
+  if (!pathname || !/^\/blog\/[^/]+/.test(pathname)) return;
+  if (pathname.startsWith('/blog/angle/') || pathname.startsWith('/blog/destination/')) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(pathname)) return;
+  links.add(pathname);
 }
 
 async function collectBlogLinksFromSitemap(links, errors) {
@@ -192,22 +206,17 @@ async function collectBlogLinks() {
       });
       break;
     }
-    const matches = html.matchAll(/href="(\/blog\/[^"#?]+)"/g);
+    const matches = html.matchAll(/href=["']([^"']*\/blog\/[^"']+)["']/g);
     let before = links.size;
     for (const match of matches) {
       addBlogLink(links, match[1]);
-    }
-    if (limit > 0 && links.size >= limit) {
-      const limited = [...links].slice(0, limit);
-      limited.collectionErrors = errors;
-      return limited;
     }
     if (links.size === before && page > 1) break;
     if (!html.includes(`page=${page + 1}`) && !html.includes(`>${page + 1}<`)) break;
     page += 1;
   }
 
-  if (links.size === 0) {
+  if (links.size === 0 || (limit > 0 && links.size < limit)) {
     await collectBlogLinksFromSitemap(links, errors);
   }
 

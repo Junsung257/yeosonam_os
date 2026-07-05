@@ -44,6 +44,7 @@ const TimezoneCard = nextDynamic(() => import('@/components/customer/TimezoneCar
 const PackingTipsCard = nextDynamic(() => import('@/components/customer/PackingTipsCard'), { loading: () => null });
 const PackageFAQ = nextDynamic(() => import('@/components/customer/PackageFAQ'), { loading: () => null });
 const ReviewDigestStrip = nextDynamic(() => import('@/components/customer/ReviewDigestStrip'), { ssr: false, loading: () => null });
+const UNKNOWN_FLIGHT_TIME_LABEL = '시간 미정';
 
 interface PriceTier {
   period_label: string;
@@ -1471,7 +1472,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 </div>
                 <div className="text-center min-w-[60px]">
                   <p className="text-xl font-black text-gray-900 tabular-nums">
-                    {depArrTime || '—'}
+                    {depArrTime || UNKNOWN_FLIGHT_TIME_LABEL}
                     {view.flightHeader.outbound?.arrDayOffset === 1 && (
                       <span className="text-[10px] text-orange-500 align-top ml-0.5">+1</span>
                     )}
@@ -1488,7 +1489,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <p className="text-xs font-bold text-orange-500 mb-2.5">오는편</p>
               <div className="flex items-center justify-between">
                 <div className="text-center min-w-[60px]">
-                  <p className="text-xl font-black text-gray-900 tabular-nums">{flightReturn.time || '—'}</p>
+                  <p className="text-xl font-black text-gray-900 tabular-nums">{flightReturn.time || UNKNOWN_FLIGHT_TIME_LABEL}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{flightReturn.depCity || (pkg.destination || '').split('/')[0]}</p>
                 </div>
                 <div className="flex flex-col items-center flex-1 px-2">
@@ -1507,7 +1508,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 </div>
                 <div className="text-center min-w-[60px]">
                   <p className="text-xl font-black text-gray-900 tabular-nums">
-                    {retArrTime || '—'}
+                    {retArrTime || UNKNOWN_FLIGHT_TIME_LABEL}
                     {view.flightHeader.inbound?.arrDayOffset === 1 && (
                       <span className="text-[10px] text-orange-500 align-top ml-0.5">+1</span>
                     )}
@@ -1833,7 +1834,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             <div className="flex flex-col items-center shrink-0 w-12">
                               <p className="text-sm font-black text-gray-900">{item.time}</p>
                               <div className="w-[2px] flex-1 bg-brand-light my-1 min-h-[28px]" />
-                              <p className="text-sm font-black text-gray-900">{arrTimeFinal || '—'}</p>
+                              <p className="text-sm font-black text-gray-900">{arrTimeFinal || UNKNOWN_FLIGHT_TIME_LABEL}</p>
                             </div>
                             <div className="flex flex-col items-center shrink-0 pt-1">
                               <div className={`w-2.5 h-2.5 rounded-full border-2 ${isOutbound ? 'border-brand' : 'border-orange-400'} bg-white`} />

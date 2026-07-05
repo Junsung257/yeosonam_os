@@ -1,13 +1,20 @@
 import Link from 'next/link';
 import { unstable_cache } from 'next/cache';
+import type { ReactNode } from 'react';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
-import { getDestinationUrl } from '@/lib/regions';
+import { encodeDestinationPathSegment } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import {
+  BLOG_PUBLIC_ANGLES,
+  BLOG_PUBLIC_ANGLE_CHIP_CLASSES,
+  BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON,
+} from '@/lib/blog-public-taxonomy';
 import {
   BLOG_LIST_CACHE_TAG,
   createBlogDatabaseUnavailableError,
@@ -16,34 +23,9 @@ import {
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = resolveBlogCanonicalOrigin();
 const PER_PAGE = 12;
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count';
-
-const ANGLE_LABELS: Record<string, string> = {
-  value: '💰 가성비', emotional: '🌸 감성', filial: '🎁 효도', luxury: '✨ 럭셔리',
-  urgency: '⚡ 긴급특가', activity: '🏄 액티비티', food: '🍜 미식',
-};
-
-const ANGLE_CHIPS = [
-  { v: 'value',    label: '💰 가성비' },
-  { v: 'luxury',   label: '✨ 럭셔리' },
-  { v: 'filial',   label: '🎁 효도' },
-  { v: 'emotional',label: '🌸 감성' },
-  { v: 'activity', label: '🏄 액티비티' },
-  { v: 'food',     label: '🍜 미식' },
-];
-
-// 카테고리별 칩 색상 (Tailwind 클래스)
-const ANGLE_CHIP_STYLE: Record<string, string> = {
-  value:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  luxury:   'bg-amber-50 text-amber-700 border border-amber-200',
-  filial:   'bg-pink-50 text-pink-700 border border-pink-200',
-  emotional:'bg-purple-50 text-purple-700 border border-purple-200',
-  activity: 'bg-blue-50 text-blue-700 border border-blue-200',
-  food:     'bg-orange-50 text-orange-700 border border-orange-200',
-  urgency:  'bg-red-50 text-red-700 border border-red-200',
-};
 
 // 콘텐츠 타입별 읽기 시간 추정 (분)
 const READING_TIME: Record<string, number> = {
@@ -61,6 +43,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
 interface BlogPost {
   id: string;
   slug: string;
+  detail_available?: boolean | null;
   seo_title: string | null;
   seo_description: string | null;
   og_image_url: string | null;
@@ -85,6 +68,16 @@ interface DestinationStat {
   min_price: number | null;
 }
 
+type ActiveDestinationRow = {
+  destination: string | null;
+  package_count: number | string | null;
+  min_price: number | string | null;
+};
+
+type BlogDestinationEvidenceRow = {
+  destination: string | null;
+};
+
 function isGenericBlogImageUrl(url: string | null | undefined): boolean {
   if (!url) return true;
   try {
@@ -97,6 +90,35 @@ function isGenericBlogImageUrl(url: string | null | undefined): boolean {
 function getDisplayImageUrl(post: BlogPost): string | null {
   if (!isGenericBlogImageUrl(post.og_image_url)) return toBlogImageDisplaySrc(post.og_image_url);
   return null;
+}
+
+function getBlogPostHref(post: BlogPost): string | null {
+  if (!post.slug || post.detail_available === false) return null;
+  return `/blog/${post.slug}`;
+}
+
+function BlogPostCardFrame({
+  post,
+  className,
+  children,
+}: {
+  post: BlogPost;
+  className: string;
+  children: ReactNode;
+}) {
+  const href = getBlogPostHref(post);
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <article className={className} aria-label={post.seo_title || 'Blog fallback guide'}>
+      {children}
+    </article>
+  );
 }
 
 type AbortableQuery<T> = {
@@ -117,9 +139,14 @@ function isBlogQueryUnavailable(result: unknown): boolean {
   return /abort|timeout|timed out|connection timeout/i.test(message);
 }
 
+function logBlogListDegraded(label: string, message: unknown): void {
+  console.info(`[blog/list][degraded] ${label} query unavailable`, message instanceof Error ? message.message : message);
+}
+
 async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: unknown, timeoutMs = 3500): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
   const unavailableFallback = () => {
     if (fallback && typeof fallback === 'object') {
       return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogQueryResult<T>;
@@ -127,13 +154,14 @@ async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback
     return fallback as T;
   };
   const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
-    console.warn(`[blog/list] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    if (!timedOut) logBlogListDegraded(label, err);
     return unavailableFallback();
   });
   const timeoutPromise = new Promise<T>((resolve) => {
     timer = setTimeout(() => {
+      timedOut = true;
       controller.abort();
-      console.warn(`[blog/list] ${label} query timed out after ${timeoutMs}ms`);
+      logBlogListDegraded(label, `timed out after ${timeoutMs}ms`);
       resolve(unavailableFallback());
     }, timeoutMs);
   });
@@ -184,6 +212,75 @@ function unavailableBlogData(filter: { destination?: string; angle?: string } = 
 
 const lastGoodBlogData = new Map<string, BlogListData>();
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function destinationsFromPosts(posts: BlogPost[]): DestinationStat[] {
+  return [...new Set(posts.map((post) => post.destination).filter(Boolean))]
+    .map((destination) => ({
+      destination: String(destination),
+      package_count: posts.filter((post) => post.destination === destination).length,
+      min_price: null,
+    }));
+}
+
+function destinationsFromEvidenceRows(rows: BlogDestinationEvidenceRow[]): DestinationStat[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const destination = row.destination?.trim();
+    if (!destination) continue;
+    counts.set(destination, (counts.get(destination) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([destination, count]) => ({
+      destination,
+      package_count: count,
+      min_price: null,
+    }))
+    .sort((a, b) => b.package_count - a.package_count);
+}
+
+function countAnglesFromPosts(posts: Array<Pick<BlogPost, 'angle_type'>>): Record<string, number> {
+  return posts.reduce<Record<string, number>>((acc, post) => {
+    const angle = post.angle_type?.trim();
+    if (angle) acc[angle] = (acc[angle] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function normalizeActiveDestinations(rows: ActiveDestinationRow[], postFallback: DestinationStat[]): DestinationStat[] {
+  const publishedDestinations = new Map(postFallback.map((row) => [row.destination, row]));
+  const normalized = rows
+    .map((row) => {
+      const destination = row.destination?.trim();
+      if (!destination) return null;
+      if (!publishedDestinations.has(destination)) return null;
+      const packageCount = Math.max(0, Math.trunc(toFiniteNumber(row.package_count) ?? 0));
+      if (packageCount <= 0) return null;
+      return {
+        destination,
+        package_count: packageCount,
+        min_price: toFiniteNumber(row.min_price),
+      };
+    })
+    .filter((row): row is DestinationStat => row !== null);
+
+  if (normalized.length === 0) return postFallback;
+
+  const seen = new Set(normalized.map((row) => row.destination));
+  for (const fallback of postFallback) {
+    if (!seen.has(fallback.destination)) normalized.push(fallback);
+  }
+
+  return normalized;
+}
+
 function blogDataCacheKey(page: number, filter: { destination?: string; angle?: string }): string {
   return JSON.stringify({
     page,
@@ -218,25 +315,65 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
 
   const listUnavailable = isBlogQueryUnavailable(listRes);
   if (listUnavailable) {
-    throw createBlogDatabaseUnavailableError();
+    return unavailableBlogData(filter);
   }
 
   const fetchedPosts = (listRes.data as unknown as BlogPost[]) || [];
   const hasNextPage = fetchedPosts.length > PER_PAGE;
   const posts = fetchedPosts.slice(0, PER_PAGE);
 
-  const angleCounts = posts.reduce<Record<string, number>>((acc, post) => {
-    const angle = post.angle_type?.trim();
-    if (angle) acc[angle] = (acc[angle] ?? 0) + 1;
-    return acc;
-  }, {});
+  const pageAngleCounts = countAnglesFromPosts(posts);
 
-  const destinations = [...new Set(posts.map((post) => post.destination).filter(Boolean))]
-    .map((destination) => ({
-      destination: String(destination),
-      package_count: posts.filter((post) => post.destination === destination).length,
-      min_price: null,
-    }));
+  const angleRes = await runBlogQuery(
+    'angles',
+    supabaseAdmin
+      .from('content_creatives')
+      .select('angle_type')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
+      .limit(500),
+    { data: [] as Array<Pick<BlogPost, 'angle_type'>>, error: null },
+    publicReadSaverActive ? 2000 : 3000,
+  );
+  const angleRows = isBlogQueryUnavailable(angleRes) || angleRes.error
+    ? []
+    : ((angleRes.data || []) as unknown as Array<Pick<BlogPost, 'angle_type'>>);
+  const angleCounts = angleRows.length > 0 ? countAnglesFromPosts(angleRows) : pageAngleCounts;
+
+  const publishedDestinationRes = await runBlogQuery(
+    'publishedDestinations',
+    supabaseAdmin
+      .from('content_creatives')
+      .select('destination')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('destination', 'is', null)
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .limit(500),
+    { data: [] as BlogDestinationEvidenceRow[], error: null },
+    publicReadSaverActive ? 2000 : 3000,
+  );
+  const publishedDestinationRows = isBlogQueryUnavailable(publishedDestinationRes) || publishedDestinationRes.error
+    ? []
+    : ((publishedDestinationRes.data || []) as unknown as BlogDestinationEvidenceRow[]);
+  const postDestinations = publishedDestinationRows.length > 0
+    ? destinationsFromEvidenceRows(publishedDestinationRows)
+    : destinationsFromPosts(posts);
+  const destinationRes = await runBlogQuery(
+    'activeDestinations',
+    supabaseAdmin
+      .from('active_destinations')
+      .select('destination, package_count, min_price')
+      .order('package_count', { ascending: false })
+      .limit(24),
+    { data: [] as ActiveDestinationRow[], error: null },
+    publicReadSaverActive ? 2000 : 3000,
+  );
+  const destinationRows = isBlogQueryUnavailable(destinationRes) || destinationRes.error
+    ? []
+    : ((destinationRes.data || []) as unknown as ActiveDestinationRow[]);
+  const destinations = normalizeActiveDestinations(destinationRows, postDestinations);
 
   const featured = posts
     .filter((post) => Boolean(getDisplayImageUrl(post)))
@@ -293,12 +430,12 @@ function HeroCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 7;
-  const angleLabel = post.angle_type ? ANGLE_LABELS[post.angle_type] : null;
+  const angleLabel = post.angle_type ? BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] : null;
   const imageUrl = getDisplayImageUrl(post);
 
   return (
-    <Link
-      href={`/blog/${post.slug}`}
+    <BlogPostCardFrame
+      post={post}
       className="group relative block overflow-hidden rounded-2xl"
     >
       <div className="aspect-[16/9] overflow-hidden relative">
@@ -341,7 +478,7 @@ function HeroCard({ post }: { post: BlogPost }) {
           <span className="text-[12px] text-white/60">📖 {readMin}분 읽기</span>
         </div>
       </div>
-    </Link>
+    </BlogPostCardFrame>
   );
 }
 
@@ -350,12 +487,12 @@ function SideCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 5;
-  const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
+  const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 
   return (
-    <Link
-      href={`/blog/${post.slug}`}
+    <BlogPostCardFrame
+      post={post}
       className="group flex gap-4 overflow-hidden rounded-xl border border-admin-border bg-white p-4 transition-all hover:shadow-[0_2px_16px_rgba(0,0,0,0.08)] hover:border-brand/20"
     >
       {/* 섬네일 — 112×112 */}
@@ -381,9 +518,9 @@ function SideCard({ post }: { post: BlogPost }) {
           <span className="bg-bg-section text-text-body text-[11px] font-medium px-2 py-0.5 rounded">
             {CONTENT_TYPE_LABELS[ct]}
           </span>
-          {post.angle_type && ANGLE_LABELS[post.angle_type] && angleChipStyle && (
+          {post.angle_type && BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] && angleChipStyle && (
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${angleChipStyle}`}>
-              {ANGLE_LABELS[post.angle_type]}
+              {BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type]}
             </span>
           )}
         </div>
@@ -402,7 +539,7 @@ function SideCard({ post }: { post: BlogPost }) {
           )}
         </div>
       </div>
-    </Link>
+    </BlogPostCardFrame>
   );
 }
 
@@ -412,12 +549,12 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const price = post.travel_packages?.price;
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 5;
-  const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
+  const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 
   return (
-    <Link
-      href={`/blog/${post.slug}`}
+    <BlogPostCardFrame
+      post={post}
       className="group overflow-hidden rounded-2xl border border-admin-border bg-white transition-all hover:shadow-[0_4px_24px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:border-brand/25"
     >
       <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-bg-section relative`}>
@@ -447,9 +584,9 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
               {dest}
             </span>
           )}
-          {post.angle_type && ANGLE_LABELS[post.angle_type] && angleChipStyle && (
+          {post.angle_type && BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] && angleChipStyle && (
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${angleChipStyle}`}>
-              {ANGLE_LABELS[post.angle_type]}
+              {BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type]}
             </span>
           )}
         </div>
@@ -483,7 +620,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
           )}
         </div>
       </div>
-    </Link>
+    </BlogPostCardFrame>
   );
 }
 
@@ -501,7 +638,15 @@ export default async function BlogData({ searchParams }: Props) {
   const { featured, posts, total, destinations, angleCounts, unavailable, fallback, fallbackReason } = await getBlogData(page, { destination, angle });
   const totalPages = unavailable ? 0 : Math.ceil(total / PER_PAGE);
   const totalLabel = unavailable ? '확인 중' : total.toLocaleString();
-  const visibleAngleChips = ANGLE_CHIPS.filter(c => (angleCounts[c.v] ?? 0) > 0 || c.v === angle);
+  const visibleAngleChips = BLOG_PUBLIC_ANGLES.filter((candidate) => {
+    if (candidate.key === angle) return true;
+    return (angleCounts[candidate.key] ?? 0) > 0;
+  });
+  const jsonLdPosts = posts
+    .map((post) => ({ post, href: getBlogPostHref(post) }))
+    .filter((item): item is { post: BlogPost; href: string } => Boolean(item.href))
+    .slice(0, 10);
+  const jsonLdItemCount = fallback ? jsonLdPosts.length : total;
 
   const buildHref = (override: Partial<{ page: number; destination: string | null; angle: string }>) => {
     const next = new URLSearchParams();
@@ -546,11 +691,11 @@ export default async function BlogData({ searchParams }: Props) {
                 inLanguage: 'ko-KR',
                 mainEntity: {
                   '@type': 'ItemList',
-                  numberOfItems: unavailable ? undefined : total,
-                  itemListElement: unavailable ? [] : posts.slice(0, 10).map((p, i) => ({
+                  numberOfItems: unavailable ? undefined : jsonLdItemCount,
+                  itemListElement: unavailable ? [] : jsonLdPosts.map(({ post: p, href }, i) => ({
                     '@type': 'ListItem',
                     position: i + 1,
-                    url: `${BASE_URL}/blog/${p.slug}`,
+                    url: `${BASE_URL}${href}`,
                     name: p.seo_title || p.travel_packages?.title || '여행 가이드',
                   })),
                 },
@@ -602,11 +747,11 @@ export default async function BlogData({ searchParams }: Props) {
               </Link>
               {visibleAngleChips.map(c => (
                 <Link
-                  key={c.v}
-                  href={buildHref({ angle: c.v, page: 1 })}
-                  className={`${chipBase} ${angle === c.v ? chipActive : chipIdle}`}
+                  key={c.key}
+                  href={buildHref({ angle: c.key, page: 1 })}
+                  className={`${chipBase} ${angle === c.key ? chipActive : chipIdle}`}
                 >
-                  {c.label}
+                  {c.icon} {c.label}
                 </Link>
               ))}
             </div>
@@ -678,7 +823,7 @@ export default async function BlogData({ searchParams }: Props) {
                 {destinations.slice(0, 8).map(d => (
                   <Link
                     key={d.destination}
-                    href={getDestinationUrl(d.destination)}
+                    href={`/blog/destination/${encodeDestinationPathSegment(d.destination)}`}
                     className="flex items-center justify-between py-5 group"
                   >
                     <span className="text-[15px] font-semibold text-text-primary group-hover:text-brand transition-colors">
@@ -699,7 +844,7 @@ export default async function BlogData({ searchParams }: Props) {
           {(destination || angle) && (
             <div className="mb-6 flex items-center gap-2 text-[13px]">
               <span className="text-text-primary font-semibold">
-                {destination || ''}{destination && angle ? ' · ' : ''}{angle ? ANGLE_LABELS[angle] : ''}
+                {destination || ''}{destination && angle ? ' · ' : ''}{angle ? BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[angle] : ''}
               </span>
               <span className="text-text-secondary">{unavailable ? 'DB 확인 중' : `관련 글 ${total}편`}</span>
               <Link href="/blog" className="ml-1 text-brand hover:underline">필터 해제</Link>

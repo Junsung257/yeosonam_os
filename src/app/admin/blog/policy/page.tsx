@@ -42,6 +42,18 @@ interface OpsSummary {
   contract: { passed: boolean; failed_checks: string[] };
 }
 
+const CHECK_LABELS: Record<string, string> = {
+  current_day_publisher_failure: '오늘 발행자 실패',
+  publish_preflight_blocked: '발행 전 점검 차단',
+  canary_candidates_unavailable: 'Canary 후보 부족',
+  indexing_outbox_missing: '색인 작업 누락',
+  google_url_unknown: '구글 미인지 URL',
+};
+
+function checkLabels(checks: string[]) {
+  return checks.map((check) => CHECK_LABELS[check] || check).join(', ');
+}
+
 export default function PolicyPage() {
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [ops, setOps] = useState<OpsSummary | null>(null);
@@ -147,7 +159,7 @@ export default function PolicyPage() {
             ['오늘 발행', `${ops.publish.published_today}/${ops.publish.daily_target}`, ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성', Activity, ops.publish.remaining_today ? 'text-danger' : 'text-success'],
             ['큐 압력', queuePressure.toLocaleString('ko-KR'), queuePressure ? '현재 정책보다 큐가 많음' : '정책 범위 안', ListChecks, queuePressure ? 'text-warning' : 'text-success'],
             ['실패 큐', `${ops.queue.counts.failed || 0}`, `지연 ${ops.queue.overdue_queued}`, AlertTriangle, (ops.queue.counts.failed || 0) ? 'text-danger' : 'text-success'],
-            ['계약 상태', ops.contract.passed ? '통과' : '점검', ops.contract.failed_checks.join(', ') || '정상', CheckCircle2, ops.contract.passed ? 'text-success' : 'text-danger'],
+            ['계약 상태', ops.contract.passed ? '통과' : '점검', checkLabels(ops.contract.failed_checks) || '정상', CheckCircle2, ops.contract.passed ? 'text-success' : 'text-danger'],
           ].map(([label, value, hint, Icon, tone]) => (
             <div key={String(label)} className="admin-card p-4">
               <div className="flex items-start justify-between gap-3">

@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseDocument, type ExtractedData } from '../parser';
 import { tiersToDatePrices } from '../price-dates';
 import { parseDayTable } from './deterministic/day-table';
@@ -53,6 +53,15 @@ function flatActivities(view: ReturnType<typeof renderPackage>): string {
 }
 
 describe('Baekdu supplier catalog E2E', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-01T09:00:00+09:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('parses one supplier raw text into 8 customer-ready package variants', async () => {
     const parsed = await parseDocument(Buffer.from(raw, 'utf8'), 'baekdu.txt');
     expect(parsed.multiProducts).toHaveLength(8);

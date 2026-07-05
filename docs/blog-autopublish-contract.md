@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-06-22
+Last updated: 2026-07-04
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -28,7 +28,12 @@ Local code references:
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`
+- Blog canonical URL helper: `src/lib/blog-canonical-url.ts`
 - Backfill/audit tool: `scripts/backfill-blog-quality.ts`
+- Manual indexing worker runner: `scripts/run-blog-indexing-worker.ts`
+- Publish preflight evaluator: `src/lib/blog-publish-preflight.ts`
+- Canary candidate preflight evaluator: `src/lib/blog-canary-preflight.ts`
+- Current-day publisher health evaluator: `src/lib/blog-current-day-publisher-health.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
 - Slug migration dry-run/write tool: `scripts/migrate-blog-slugs.ts`
 
@@ -79,6 +84,39 @@ Before the first publish gate:
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
+## Publish Preflight Contract
+
+Before expanding or manually forcing automatic publishing, the operator-facing preflight must pass:
+
+- enough actually publishable candidates for the remaining daily slots;
+- no evidence-insufficient or product-open-contract candidates blocking the ready pool;
+- no actionable failed queue rows or stale `generating` rows;
+- recent indexing outbox coverage at 100%;
+- at least three recent published samples passing quality gate, content brief, SEO, and readability evidence.
+
+The preflight may pass when overdue queued rows exist if the publishable candidate buffer is sufficient and publisher preflight can reschedule them. It must block when the issue changes publish safety, not when the row is harmless queue history.
+
+## Current-Day Publisher Health Contract
+
+Before the daily close window, reports may intentionally evaluate the previous KST day. That must not hide a current-day publisher failure.
+
+- If the latest `blog-publisher` run is inside the current KST day and ran with remaining quota but published `0`, diagnostics must expose `current_day_publisher_failure`.
+- The admin health summary must mark this as an active operating issue even when the closed-day SLA was already met.
+- A quota-reached no-op with `remaining=0` remains healthy.
+
+## Canary Candidate Contract
+
+Before widening automatic publishing after engine changes, `diagnose:blog-autopublish` and admin health must be able to identify at least three low-risk queued candidates without claiming or publishing them.
+
+- The preferred canary set includes both `info_writer` and `product_consultant_writer`.
+- `info_writer` canaries require a concrete destination unless the candidate is explicitly marked `intentionally_generic`.
+- Product canaries require a durable product dedup key using product, departure date, duration, and supplier evidence.
+- Broad pillar rows, evidence-insufficient rows, duplicate rows, and topic-fit failures must be rejected before they consume publisher claim slots.
+- Candidate topics that already violate the pre-publish title/slug contract must also be rejected before they consume publisher claim slots. Current blockers include banned editorial cliches such as `총정리` and `완벽 가이드`, machine separators such as `|`, month/year-leading topics that generate numeric slugs, weak expected slugs, and destinationless broad recommendation topics without a concrete comparison brief.
+- Queue/admin operational health must use the same candidate pre-publish contract. A blocked queued row must be counted as `candidate_pre_publish_contract` / `quarantine_candidate_contract`, not as `publish_ready` or merely overdue inventory. Broad `pillar` rows are separate planning inventory and must be counted as `pillar_deferred`, not as candidate-contract failures.
+- Editorial cliche blockers are `총정리`, `완벽 가이드`, `완벽 정리`, and similar title templates. If older mojibake text appears in historical evidence, interpret it as one of these Korean cliche blockers and do not use it as a literal prompt phrase.
+- Candidate pre-publish contract failures are unsafe seeds, not manual rewrite backlog. Cleanup and publisher preflight should move them to `skipped` with durable `candidate_pre_publish_contract` metadata so they stop inflating failed/manual-review queue counts.
+
 ## Blocking Rules
 
 The post must not be published when any of these are true:
@@ -87,7 +125,7 @@ The post must not be published when any of these are true:
 - `generation_meta.content_brief` is missing, failed, or contradicts the raw topic/search intent.
 - SERP/free-intent evidence is presented as ranking proof when it came from autocomplete fallback.
 - `topic_fit` fails because the topic is a machine slug, placeholder, weak travel intent, or bad destination/intent combination.
-- `editorial_quality` fails because the article contains placeholder text, broken Korean particles, excessive highlights, generic image context, or machine-looking slug/title.
+- `editorial_quality` fails because the article contains placeholder text, visible prompt/writing-rule residue such as `규칙 A (감각 디테일)`, broken Korean particles, excessive highlights, generic image context, or machine-looking slug/title.
 - SEO score fails after metadata repair.
 - The slug is weak, generated-looking, numeric-leading, or hash-suffixed.
 - Render integrity fails.
@@ -100,6 +138,7 @@ The post must not be published when any of these are true:
 - The article has no usable image path or missing image alt evidence.
 - The article has no internal CTA and no official external reference.
 - Canonical URL, sitemap URL, and stored slug disagree.
+- Public article links contain localhost, 127.0.0.1, 0.0.0.0, or any non-public HTTP origin. Product CTA links must use the blog canonical public origin.
 
 SEO score alone is not a publish success signal. A post is complete only when topic fit, editorial quality, render integrity, image quality, SEO, readability, indexing enqueue, and later visibility observation all have durable evidence.
 
@@ -112,15 +151,62 @@ Correct sequence:
 1. Publish only after all gates pass.
 2. Revalidate `/blog`, `/blog/[slug]`, and the blog list tag.
 3. Enqueue a durable `blog_indexing_jobs` row with `content_creative_id`, `slug`, `url`, and source.
-4. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`. `/api/cron/blog-indexing-worker` remains available for manual runs.
-5. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.
-6. The worker submits changed URLs through IndexNow batch endpoints when `INDEXNOW_KEY` is configured.
-7. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
-8. Observe Google status through URL Inspection within quota.
+4. Blog indexing URLs must be canonical `https://www.yeosonam.com/blog/{slug}` URLs. `BLOG_CANONICAL_ORIGIN` is the first-choice origin, and queued job URLs are canonicalized again before provider submission.
+5. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
+6. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.
+7. The worker submits changed URLs through IndexNow batch endpoints when `INDEXNOW_KEY` is configured.
+   The same key must be publicly verifiable at `https://www.yeosonam.com/{INDEXNOW_KEY}.txt`; the app serves this only when the requested root `.txt` path exactly matches the configured key.
+8. The worker records provider-specific results in `indexing_reports` and visibility snapshots.
+9. Observe Google status through URL Inspection within quota.
+
+IndexNow submissions must be duplicate-aware and provider-safe:
+
+- The runtime caches recently submitted update URLs for 10 minutes by default (`INDEXNOW_RECENT_TTL_MS`) so repeated publisher/worker runs do not burn provider quota on the same canonical URL.
+- `URL_DELETED` notifications bypass the recent-submit cache and must still be sent.
+- Batch submissions are split by `INDEXNOW_MAX_URLS_PER_REQUEST` and provider calls are spaced by `INDEXNOW_PROVIDER_MIN_INTERVAL_MS`.
+- If IndexNow responds with `Retry-After`, the worker must persist that evidence in `indexnow_retry_after_ms` and schedule the next durable outbox attempt no earlier than the provider's requested backoff.
+- When `INDEXNOW_KEY` is configured, a failed IndexNow provider submission must not be hidden behind a successful Google sitemap hint. The outbox job remains retryable until IndexNow succeeds, is cached from a recent successful attempt, or exhausts `max_attempts`.
+
+The durable blog outbox worker must not depend on legacy unauthenticated sitemap ping or WebSub calls for success. Those calls may exist only as explicit manual/backfill compatibility behavior, not as the normal `/blog` indexing success path.
 
 Google sitemap submission is a hint, not a guarantee of indexing. Google no longer supports the old unauthenticated sitemap ping as the core path. URL Inspection is for status visibility and troubleshooting, not bulk indexing guarantees.
 
+URL Inspection sampling must be quota-aware:
+
+- The sampling cron must cap per-run inspection volume and also look at recent `indexing_reports` evidence before calling Google.
+- Default internal caps stay below Google's public Search Console URL Inspection quotas: 25 per run, 100 per 10 minutes, and 1,500 per 24 hours.
+- If the rolling budget is exhausted, the cron must skip URL Inspection and return `inspection_skipped_quota=true` with `inspection_quota` details instead of treating the skipped sample as publish/indexing failure.
+- If Google returns a quota or rate-limit response during a run, the cron must stop additional URL Inspection calls for that run and surface `inspection_stopped_by_quota=true`.
+
 Publishing routes must not call external indexing providers directly. They may only enqueue `blog_indexing_jobs`; retries and evidence persistence belong to the worker.
+
+Every published slug must be observable in the indexing outbox. Treat these as separate failure classes:
+
+- `indexing_outbox_missing`: a published slug never reached `blog_indexing_jobs`.
+- `indexing_queue_error`: a durable job exists, but the worker/provider submission is pending, retrying, or failed.
+
+Outbox coverage checks must compare recent published `content_creatives` rows with recent `blog_indexing_jobs` rows by `content_creative_id`, `slug`, or canonical `/blog/{slug}` URL. Queries over `blog_indexing_jobs` must be ordered by newest `updated_at` before applying a limit, otherwise large historical success tables can hide fresh jobs and create false alarms.
+
+## Public Section Contract
+
+The public blog is a topical cluster, not just a chronological list.
+
+Required public surfaces:
+
+- `/blog`
+- `/blog/[slug]`
+- `/blog/destination/[dest]`
+- `/blog/angle/[angle]`
+- `/sitemap.xml`
+
+Rules:
+
+- All public blog surfaces must use the shared canonical origin helper, `resolveBlogCanonicalOrigin()`.
+- `/blog` destination guide cards must link to `/blog/destination/{dest}`, not the general `/destinations/{dest}` page. General destination pages can still exist, but blog destination pages carry the blog topical cluster.
+- `/blog` destination sections should use site-wide active destination evidence (`active_destinations`) and only fall back to current-page posts when DB reads are unavailable.
+- Destination and angle pages must use the same image display helper as the main blog list, so Supabase/remote images are normalized consistently.
+- Sitemap must include blog destination and blog angle collection URLs when corresponding published posts exist.
+- `/blog` list cache revalidation must not turn a transient DB timeout into a production error log or a silent empty list. If the primary list query times out, the page should serve last-good or Korean fallback content and record the event as degraded telemetry, not as a published-post count of zero.
 
 ## Daily Verification
 
@@ -132,11 +218,15 @@ npm run audit:blog-search-daily:strict
 npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict
 npm run audit:blog-images -- --base=https://www.yeosonam.com --json
 npm run audit:blog-seo -- --base=https://www.yeosonam.com --json
+npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
+npm run diagnose:blog-autopublish -- --json
 ```
 
 Failure policy:
 
 - Any non-slug quality failure blocks the “healthy” status.
+- Any recent published post missing a durable indexing outbox job blocks healthy status as `indexing_outbox_missing`.
+- Any public blog section with a missing/mismatched canonical URL, duplicate brand title, noindex, DB-unavailable fallback, or missing blog collection sitemap entry blocks healthy status.
 - Indexing provider success below 80% creates an admin alert.
 - `generating` rows older than 30 minutes must be recovered or quarantined.
 
@@ -155,8 +245,8 @@ Priority 1:
   - Migration: `supabase/migrations/20260615150000_blog_indexing_jobs.sql`.
   - Enqueue helper: `src/lib/blog-indexing-outbox.ts`.
   - Worker core: `src/lib/blog-indexing-worker.ts`.
-  - Manual endpoint: `src/app/api/cron/blog-indexing-worker/route.ts`.
-  - Scheduler: existing `/api/cron/blog-publisher` drains due indexing jobs to avoid Vercel's 100-cron limit.
+  - Independent endpoint: `src/app/api/cron/blog-indexing-worker/route.ts`.
+  - Scheduler: existing `/api/cron/blog-publisher` drains due indexing jobs, and `.github/workflows/blog-external-cron.yml` runs `blog-indexing-worker` through the custom domain after publisher slots to avoid coupling indexing to publisher health.
 - Slug migration and recent-post quality backfill completed on 2026-06-15 after redirects and indexing worker were live:
   - `npx tsx scripts/migrate-blog-slugs.ts --write`
   - `npm run audit:blog-quality -- --limit=50 --write`
@@ -178,6 +268,20 @@ Priority 2:
 
 Priority 3:
 
-- Add URL Inspection sampling with quota-aware backoff.
-- Add IndexNow retry/cache/rate-limit behavior based on the external implementation pattern.
-- Add a dashboard card for “publish health” versus “indexing health.”
+- URL Inspection sampling with quota-aware backoff was added on 2026-07-04:
+  - Helper: `src/lib/gsc-url-inspection-quota.ts`.
+  - Cron integration: `src/app/api/cron/gsc-index-rank/route.ts`.
+  - Test: `src/lib/gsc-url-inspection-quota.test.ts`.
+- IndexNow retry/cache/rate-limit behavior was hardened on 2026-07-04:
+  - Runtime cache and provider spacing: `src/lib/indexing.ts`.
+  - Provider `Retry-After` propagation: `src/lib/indexing.ts`.
+  - Durable retry scheduling: `src/lib/blog-indexing-worker.ts`.
+  - Tests: `src/lib/indexing.test.ts`, `src/lib/blog-indexing-worker.test.ts`.
+- A dashboard card for publish health versus indexing health was added on 2026-07-04:
+  - UI: `src/app/admin/blog/system/page.tsx`.
+  - Contract test: `src/app/admin/blog/blog-admin-ops-ui-contract.test.ts`.
+- Candidate pre-publish readiness was hardened on 2026-07-04:
+  - Shared contract: `src/lib/blog-candidate-prepublish-contract.ts`.
+  - Publishable inventory and canary preflight now exclude candidates with banned editorial cliches, machine separators, numeric-leading slug risk, weak expected slugs, or destinationless broad recommendation topics.
+  - Publisher preflight can quarantine these rows with `failure_code='candidate_pre_publish_contract'` before claim.
+  - Production-data dry run showed publishable candidates `67 -> 49`, `candidate_contract_blocked_count=18`, canary still mixed with one info writer and two product consultant writers, and indexing outbox coverage remained 100%.

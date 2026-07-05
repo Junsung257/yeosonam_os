@@ -152,6 +152,44 @@ function PriceSection({ priceFrom, compareAtPrice, deadlineDays }: {
 }
 
 /** 하이라이트 태그 */
+function formatShortDate(date: string): string {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return date;
+  return `${Number(match[2])}/${Number(match[3])}`;
+}
+
+function DepartureDatesSummary({ priceDates }: { priceDates?: LandingProductData['price_dates'] }) {
+  const rows = (priceDates ?? [])
+    .filter(row => row.date && row.price > 0)
+    .slice(0, 5);
+  if (rows.length === 0) return null;
+  const hiddenCount = Math.max(0, (priceDates?.length ?? 0) - rows.length);
+
+  return (
+    <section className="border-t border-gray-100 bg-white px-5 py-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-base font-bold text-gray-900">출발 가능일</h3>
+        {hiddenCount > 0 && (
+          <span className="text-xs font-semibold text-[var(--brand)]">외 {hiddenCount}개 일정</span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {rows.map(row => (
+          <div key={`${row.date}-${row.price}`} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+            <p className="text-sm font-bold text-gray-900">{formatShortDate(row.date)}</p>
+            <p className="mt-0.5 text-xs font-semibold text-gray-500">
+              {fmt(row.price)}원부터 {row.confirmed ? '출발 확정' : '상담 가능'}
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-gray-500">
+        실제 좌석과 항공 조건은 상담 시점 기준으로 다시 확인합니다.
+      </p>
+    </section>
+  );
+}
+
 function Highlights({ items }: { items: string[] }) {
   return (
     <section className="px-5 py-5 bg-white border-t border-gray-100">
@@ -193,6 +231,9 @@ function FlightSummary({ flight }: { flight: LandingProductData['flightSummary']
               </div>
               <div className="text-right">
                 {data?.code && <p className="text-xs font-semibold text-gray-500">{data.code}</p>}
+                {data?.arrDayOffset === 1 && (
+                  <p className="text-xs font-bold text-orange-600">+1 익일 도착</p>
+                )}
                 <p className="mt-1 text-sm font-black text-gray-900 tabular-nums">
                   {[data?.depTime, data?.arrTime].filter(Boolean).join(' - ') || '시간 미정'}
                 </p>
@@ -328,7 +369,7 @@ export function LandingClient({
         </Link>
       </div>
 
-      {data.scarcityRemaining != null && (
+      {data.departureFullDate && data.scarcityRemaining != null && (
         <ScarcityTicker seats={data.scarcityRemaining} dateLabel={data.departureDateLabel} />
       )}
 
@@ -430,6 +471,8 @@ export function LandingClient({
         deadlineDays={data.deadlineDays}
       />
 
+      <DepartureDatesSummary priceDates={data.price_dates} />
+
       <FlightSummary flight={data.flightSummary} />
 
       {/* ── 상세 요금표 (날짜/조건별 카드 UI) ──────────────────────── */}
@@ -454,6 +497,7 @@ export function LandingClient({
         onItineraryViewed={handleItineraryViewed}
         includes={data.itinerary.includes}
         excludes={data.itinerary.excludes}
+        optionalTours={data.itinerary.optionalTours}
         legalNotices={data.itinerary.legalNotices}
         packageId={data.id}
         reviewScore={data.reviewScore}
@@ -503,7 +547,7 @@ export function LandingClient({
       <LeadBottomSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        defaultDate={data.departureFullDate}
+        defaultDate={data.departureFullDate ?? undefined}
         priceDates={data.price_dates}
         hasSpecialTerms={hasSpecialTerms}
         termsSummary={termsSummary}

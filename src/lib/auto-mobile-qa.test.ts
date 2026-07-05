@@ -9,6 +9,7 @@ const expectedRender: ExpectedRender = {
   tripStyle: '2박 3일',
   duration: 3,
   nights: 2,
+  requiresFlightCard: true,
   hotelNames: [],
   hasOptionalTours: false,
   status: 'active',
@@ -74,6 +75,55 @@ describe('auto mobile QA learning ledger bridge', () => {
     }));
   });
 
+  it('does not treat hidden UUID fragments as customer-visible phone leaks', () => {
+    const incidents = analyzeMobileHtml(
+      '<html><head><script>{"attraction_id":"8c01-4561-9921-abcdef"}</script></head><body><h1>고객 화면</h1></body></html>',
+      { ...expectedRender, title: null, destination: null, hotelNames: [] },
+      'lp',
+    );
+
+    expect(incidents).not.toContainEqual(expect.objectContaining({
+      id: 'lp_leak_internal_phone',
+    }));
+  });
+
+  it('does not require flight cards for ferry or other non-air packages', () => {
+    const incidents = analyzeMobileHtml(
+      '<html><body><h1>Ferry package</h1><p>판매가</p><p>여행 일정</p><p>예약 문의</p></body></html>',
+      { ...expectedRender, requiresFlightCard: false },
+      'packages',
+    );
+
+    expect(incidents).not.toContainEqual(expect.objectContaining({
+      id: 'mobile_flight_card_missing',
+    }));
+  });
+
+  it('accepts rendered hotel alternatives when the full combined source string is split on screen', () => {
+    const incidents = analyzeMobileHtml(
+      [
+        '<html><body>',
+        '\uD310\uB9E4\uAC00 \uC5EC\uD589 \uC77C\uC815 \uC608\uC57D \uBB38\uC758',
+        '\uD638\uD154 \uD22C\uC219 \uBC0F \uD734\uC2DD',
+        '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131) / \uBCA0\uC2A4\uD2B8 \uC6E8\uC2A4\uD134 / \uBAA8\uBCA4\uD53D\uB9AC\uC870\uD2B8',
+        '<img src="https://images.pexels.com/photo.jpg" />',
+        '</body></html>',
+      ].join(' '),
+      {
+        ...expectedRender,
+        hotelNames: ['\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131) / \uBCA0\uC2A4\uD2B8 \uC6E8\uC2A4\uD134 \uB610\uB294 \uBAA8\uBCA4\uD53D \uBE4C\uB77C&\uB808\uC9C0\uB358\uC2A4 (5\uC131)'],
+      },
+      'packages',
+    );
+
+    expect(incidents).not.toContainEqual(expect.objectContaining({
+      id: 'mobile_hotel_all_missing',
+    }));
+    expect(incidents).not.toContainEqual(expect.objectContaining({
+      id: 'mobile_hotel_partial_missing',
+    }));
+  });
+
   it('turns customer mobile landing incidents into macro-learning ledger evidence without raw text', () => {
     const event = buildMobileQaImprovementEvent({
       packageId: '550e8400-e29b-41d4-a716-446655440000',
@@ -83,6 +133,7 @@ describe('auto mobile QA learning ledger bridge', () => {
         tripStyle: '3박4일',
         duration: 4,
         nights: 3,
+        requiresFlightCard: true,
         hotelNames: ['테스트 호텔'],
         hasOptionalTours: true,
         status: 'active',

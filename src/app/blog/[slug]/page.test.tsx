@@ -111,6 +111,45 @@ describe('/blog/[slug] page smoke', () => {
     expect(source).toContain('if (/<table\\b/i.test(html)) return null;');
   });
 
+  it('bypasses stale cached blog detail rows when the article body is empty or editorially failed', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('function shouldRefreshCachedBlogPost');
+    expect(source).toContain('inspectBlogIntentQuality');
+    expect(source).toContain('getPostFastUncached(slug).catch(() => null)');
+  });
+
+  it('expands short public SEO titles before metadata is emitted', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('function expandShortBlogSeoTitle');
+    expect(source).toContain('charLength(cleanTitle) >= 20');
+    expect(source).toContain('공항 이동 체크리스트');
+    expect(source).toContain('비용 체크 2026');
+    expect(source).toContain('expandShortBlogSeoTitle(cleanedTitle, post)');
+  });
+
+  it('keeps decorative author avatars out of extracted article text', () => {
+    const detailSource = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+    const authorSource = readFileSync(join(process.cwd(), 'src/components/blog/AuthorBox.tsx'), 'utf8');
+    const seoAuditSource = readFileSync(join(process.cwd(), 'scripts/audit-blog-seo-quality.mjs'), 'utf8');
+
+    expect(detailSource).not.toContain('>\n                여\n              </span>');
+    expect(authorSource).not.toContain('>\n          여\n        </div>');
+    expect(detailSource).toContain('data-blog-supporting="share"');
+    expect(authorSource).toContain('data-blog-supporting="author"');
+    expect(seoAuditSource).toContain("querySelectorAll('[data-blog-supporting]')");
+    expect(seoAuditSource).toContain('surface_text_noise');
+  });
+
+  it('guards public blog articles against duplicate body h1 headings', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+
+    expect(source).toContain('<h2$1>');
+    expect(source).toContain('</h2>');
+    expect(source).toContain('<h1\\b[^>]*>\\s*(?:&nbsp;|\\u00a0|<br\\s*\\/?>|\\s)*<\\/h1>');
+  });
+
   it('renders a published blog detail without falling through to the global 404', async () => {
     const mod = await import('./page');
     const Page = (mod.default as unknown as { default?: typeof mod.default }).default ?? mod.default;

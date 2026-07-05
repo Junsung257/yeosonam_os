@@ -73,6 +73,7 @@ describe('mapTravelPackageToLandingData', () => {
     expect(mapped.internalCode).toBe('PUS-TEST-0001');
     expect(mapped.itinerary.includes).toEqual(view.inclusions.flat);
     expect(mapped.itinerary.excludes).toEqual(view.excludes.basic);
+    expect(mapped.itinerary.optionalTours).toEqual(view.optionalTours.flat);
     expect(mapped.itinerary.legalNotices).toEqual(['출발 7일 전 취소 시 수수료 발생', '현지 사정으로 일정 변경 가능']);
     expect(mapped.itinerary.days).toHaveLength(view.days.length);
 
@@ -185,5 +186,27 @@ describe('mapTravelPackageToLandingData', () => {
     } as unknown as Record<string, unknown>, null);
 
     expect(mapped.duration).toBe('3박 5일');
+  });
+
+  it('keeps LP departure date unknown instead of falling back to today', () => {
+    const mapped = mapTravelPackageToLandingData({
+      id: 'pkg-no-date',
+      title: '출발일 미정 테스트',
+      destination: '다낭',
+      duration: 5,
+      price: 699000,
+      price_dates: [],
+      price_tiers: [],
+      inclusions: [],
+      excludes: [],
+      itinerary_data: {
+        days: [
+          { day: 1, regions: ['다낭'], meals: {}, schedule: [{ activity: '부산 출발', type: 'flight' }] },
+        ],
+      },
+    } as unknown as Record<string, unknown>, null);
+
+    expect(mapped.departureFullDate).toBeNull();
+    expect(mapped.departureDateLabel).toBe('미정');
   });
 });

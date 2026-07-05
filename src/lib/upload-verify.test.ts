@@ -95,6 +95,28 @@ describe('evaluateVerifyChecks — clean baseline (3박 5일 정상 케이스)',
     });
     expect(findCheck(r, 'C7')?.status).toBe('pass');
   });
+  it('C7 저장된 대표 박수를 원문 혼합 박수보다 우선한다', () => {
+    const r = evaluateVerifyChecks({
+      id: 'pkg-mixed-night-catalog',
+      raw_text: '보홀 요금표 4박 6일 토요일 / 대표 일정 3박 5일 수요일',
+      nights: 3,
+      trip_style: '3박5일',
+      itinerary_data: {
+        meta: { nights: 3, days: 5 },
+        days: [
+          { hotel: { name: '헤난 리조트' } },
+          { hotel: { name: '헤난 리조트' } },
+          { hotel: { name: '헤난 리조트' } },
+          { hotel: null },
+          { hotel: null },
+        ],
+      },
+    });
+    expect(findCheck(r, 'C7')).toEqual(expect.objectContaining({
+      status: 'pass',
+      detail: expect.stringContaining('stored nights'),
+    }));
+  });
   it('C8 통화 단일 (USD opts + KRW prices = 2종 → warn)', () => {
     // 기본 fixture 는 USD/KRW 혼재 → warn 정상
     expect(findCheck(result, 'C8')?.status).toBe('warn');
@@ -198,6 +220,29 @@ describe('evaluateVerifyChecks customer visibility gate', () => {
     expect(result.status).toBe('blocked');
     expect(findCheck(result, 'C18')).toEqual(expect.objectContaining({
       status: 'fail',
+    }));
+  });
+
+  it('warns on safe-fixable customer copy so autopilot can repair and re-verify', () => {
+    const result = evaluateVerifyChecks({
+      id: 'pkg-safe-copy-repair',
+      title: 'Da Nang package',
+      status: 'active',
+      audit_status: 'clean',
+      raw_text: 'PKG da nang package\n2099.1.1\n3/1\n1,000,-\nDAY 1 arrival\nDAY 2 return',
+      itinerary_data: {
+        days: [
+          { schedule: [{ activity: 'arrival' }] },
+          { schedule: [{ activity: 'return' }] },
+        ],
+      },
+      price_dates: [{ date: '2099-03-01', price: 1000000 }],
+      display_title: 'Da Nang package sample',
+      inclusions: ['특식 – 바나산 정산 레스토랑에서 저녁식사(맥주OR음료 1잔)'],
+    } as never);
+
+    expect(findCheck(result, 'C18')).toEqual(expect.objectContaining({
+      status: 'warn',
     }));
   });
 
@@ -428,7 +473,7 @@ PKG
       price_dates: [
         { date: '2026-07-02', price: 1259000 },
         { date: '2026-07-09', price: 1259000 },
-        { date: '2026-06-20', price: 1259000 },
+        { date: '2026-07-16', price: 1259000 },
       ],
     });
 

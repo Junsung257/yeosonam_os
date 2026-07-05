@@ -1,3 +1,5 @@
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+
 type BlogCtaOptions = {
   destination: string | null | undefined;
   slug: string;
@@ -7,7 +9,7 @@ type BlogCtaOptions = {
 };
 
 function normalizeBaseUrl(baseUrl?: string): string {
-  return (baseUrl || process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+  return resolveBlogCanonicalOrigin(baseUrl);
 }
 
 export function normalizeBlogCtaDestination(destination: string | null | undefined): string | null {

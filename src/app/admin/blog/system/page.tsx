@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import { Activity, AlertTriangle, ArrowLeft, Calendar, CheckCircle2, Clock as ClockIcon, Flame, PenLine, RefreshCw, Search } from 'lucide-react';
 
 type CronHealthRow = Record<string, unknown>;
+type OpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
 interface BlogSystemPayload {
   blog_cron_health: CronHealthRow[];
@@ -34,10 +35,11 @@ interface BlogSystemPayload {
 }
 
 interface BlogOpsSummary {
-  level: 'healthy' | 'watch' | 'risk' | 'blocked';
+  level: OpsLevel;
   publish: { published_today: number; daily_target: number; remaining_today: number; level: string };
   queue: {
     counts: Record<string, number>;
+    failure_groups?: Record<string, number>;
     active_count: number;
     overdue_queued: number;
     stale_generating: number;
@@ -56,12 +58,30 @@ interface BlogOpsSummary {
   indexing: {
     active_jobs: number;
     recent_failures: number;
+    failure_buckets?: Record<string, number>;
+    outbox_coverage?: {
+      checked_count?: number;
+      covered_count?: number;
+      missing_count?: number;
+      coverage_rate?: number;
+    };
     google_unknown_urls?: number;
     google_indexed_reports?: number;
     inspected_reports?: number;
     indexnow_success_rate: number | null;
     level: string;
   };
+  quality?: {
+    recent_checked?: number;
+    non_slug_failures?: number;
+    slug_only_failures?: number;
+    failure_buckets?: Record<string, number>;
+  };
+  health_sections?: Record<string, {
+    level: OpsLevel;
+    failed: boolean;
+    checks: string[];
+  }>;
   cron: {
     unhealthy_count: number;
     core: Array<{
@@ -94,7 +114,38 @@ const CHECK_LABELS: Record<string, string> = {
   published_state_mismatch: '발행 완료/실제 글 상태 불일치',
   cron_health: '자동 실행 작업 이상',
   recent_quality_gate: '최근 글 품질 점검 필요',
+  indexing_outbox_missing: '색인 작업 누락',
+  publish_preflight_blocked: '발행 전 점검 차단',
+  canary_candidates_unavailable: 'Canary 후보 부족',
+  current_day_publisher_failure: '오늘 발행자 실패',
   google_url_unknown: '구글 미인지 URL 존재',
+};
+
+const HEALTH_SECTION_LABELS: Record<string, { label: string; description: string }> = {
+  publish: { label: '발행', description: '오늘 목표와 실제 발행 수' },
+  queue: { label: '큐', description: '재시도·대기·중단 후보' },
+  quality: { label: '글 품질', description: '브리프·본문·SEO·이미지 증거' },
+  indexing: { label: '색인', description: 'outbox·검색 제출·Google 인지' },
+  cron: { label: '자동 실행', description: '스케줄러와 워커 상태' },
+};
+
+const OPS_BUCKET_LABELS: Record<string, string> = {
+  active_jobs: '대기 작업',
+  body_missing: '본문 누락',
+  content_brief_missing: '브리프 누락',
+  google_unknown_urls: 'Google 미인지',
+  image_missing: '이미지 증거 누락',
+  indexing_failures: '색인 계열 실패',
+  metadata_missing: 'SEO 메타 누락',
+  non_slug_failures: '비slug 실패',
+  outbox_missing: '색인 작업 누락',
+  provider_failures: '검색 제출 실패',
+  quality_gate_missing: '품질 게이트 누락',
+  readability_score_missing: '읽기 점수 누락',
+  seo_score_missing: 'SEO 점수 누락',
+  slug_failures: 'slug 실패',
+  slug_only_failures: 'slug-only 정리',
+  stuck_queue_rows: '멈춘 큐',
 };
 
 const CORE_CRON_COPY: Record<string, { label: string; description: string }> = {
@@ -119,8 +170,60 @@ function labelCheck(check: string) {
   return CHECK_LABELS[check] || check;
 }
 
+function labelBucket(bucket: string) {
+  return OPS_BUCKET_LABELS[bucket] || bucket;
+}
+
+function sectionTone(level: OpsLevel | string | undefined) {
+  if (level === 'blocked' || level === 'risk') return 'text-danger';
+  if (level === 'watch') return 'text-warning';
+  return 'text-success';
+}
+
+function sectionBadgeClass(level: OpsLevel | string | undefined) {
+  if (level === 'blocked' || level === 'risk') return 'bg-danger-light text-danger';
+  if (level === 'watch') return 'bg-status-warningBg text-status-warningFg';
+  return 'bg-status-successBg text-status-successFg';
+}
+
+function topBuckets(buckets: Record<string, number> | undefined | null, limit = 4) {
+  return Object.entries(buckets || {})
+    .filter(([, value]) => Number(value) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, limit);
+}
+
 function cronCopy(name: string) {
   return CORE_CRON_COPY[name] || { label: name, description: '블로그 자동화 작업입니다.' };
+}
+
+function indexingBridgeLevel(ops: BlogOpsSummary): OpsLevel {
+  const publishBlocked = ops.publish.remaining_today > 0 && ops.health_sections?.publish?.level === 'risk';
+  const missingOutbox = Number(ops.indexing.outbox_coverage?.missing_count || 0) > 0;
+  const providerIssue = ops.indexing.recent_failures > 0 || Number(ops.indexing.google_unknown_urls || 0) > 0;
+  if (publishBlocked || missingOutbox || providerIssue) return 'risk';
+  if (ops.indexing.active_jobs > 0 || ops.publish.remaining_today > 0) return 'watch';
+  return 'healthy';
+}
+
+function indexingBridgeMessage(ops: BlogOpsSummary): string {
+  const missing = Number(ops.indexing.outbox_coverage?.missing_count || 0);
+  if (ops.publish.remaining_today > 0 && ops.health_sections?.publish?.level === 'risk') {
+    return '발행 목표가 먼저 막혀 있어 색인 단계로 넘어갈 새 글이 부족합니다.';
+  }
+  if (missing > 0) {
+    return `최근 공개 글 ${missing}개가 색인 작업과 연결되지 않았습니다.`;
+  }
+  if (ops.indexing.recent_failures > 0) {
+    return `색인 제공자 응답 실패 ${ops.indexing.recent_failures}건을 확인해야 합니다.`;
+  }
+  if (Number(ops.indexing.google_unknown_urls || 0) > 0) {
+    return `Google 미인지 URL ${ops.indexing.google_unknown_urls}건은 노출 문제로 분리해서 봐야 합니다.`;
+  }
+  if (ops.indexing.active_jobs > 0) {
+    return `발행 후 색인 대기 작업 ${ops.indexing.active_jobs}건이 처리 중입니다.`;
+  }
+  return '발행된 글이 색인 outbox와 정상 연결되어 있습니다.';
 }
 
 function humanizeCronError(error: string) {
@@ -280,6 +383,156 @@ export default function BlogSystemPage() {
           ))}
         </section>
       )}
+
+      {ops?.health_sections ? (
+        <section className="admin-card p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-admin-h3 text-admin-text">운영 건강도 분해</h2>
+              <p className="mt-1 text-admin-xs text-admin-muted">발행, 큐, 글 품질, 색인, 자동 실행을 따로 보고 전체 상태를 판단합니다.</p>
+            </div>
+            <span className={`rounded-admin-xs px-2 py-1 text-admin-2xs font-semibold ${sectionBadgeClass(ops.level)}`}>
+              {ops.level}
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-5">
+            {Object.entries(ops.health_sections).map(([key, section]) => {
+              const copy = HEALTH_SECTION_LABELS[key] || { label: key, description: '' };
+              return (
+                <div key={key} className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-admin-xs font-semibold text-admin-text">{copy.label}</p>
+                    <span className={`rounded-admin-xs px-2 py-0.5 text-admin-2xs font-semibold ${sectionBadgeClass(section.level)}`}>
+                      {section.level}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-admin-2xs leading-4 text-admin-muted">{copy.description}</p>
+                  <p className={`mt-2 text-admin-xs font-semibold ${sectionTone(section.level)}`}>
+                    {section.failed ? `${section.checks.length || 1}개 확인 필요` : '정상'}
+                  </p>
+                  {section.checks.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {section.checks.slice(0, 3).map((check) => (
+                        <span key={check} className="rounded-admin-xs bg-admin-surface-2 px-2 py-0.5 text-admin-2xs text-admin-muted">
+                          {labelCheck(check)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {ops ? (
+        <section className="admin-card p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-admin-h3 text-admin-text">발행·색인 연결</h2>
+              <p className="mt-1 text-admin-xs text-admin-muted">글 발행 성공과 검색 반영 준비 상태를 한 번에 비교합니다.</p>
+            </div>
+            <span className={`w-fit rounded-admin-xs px-2 py-1 text-admin-2xs font-semibold ${sectionBadgeClass(indexingBridgeLevel(ops))}`}>
+              {indexingBridgeLevel(ops)}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Published</p>
+              <p className="mt-1 text-admin-h2 font-bold text-admin-text admin-num">{ops.publish.published_today}/{ops.publish.daily_target}</p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">오늘 목표 기준</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Outbox</p>
+              <p className={`mt-1 text-admin-h2 font-bold admin-num ${(ops.indexing.outbox_coverage?.missing_count || 0) > 0 ? 'text-danger' : 'text-success'}`}>
+                {ops.indexing.outbox_coverage?.coverage_rate ?? 0}%
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">
+                누락 {ops.indexing.outbox_coverage?.missing_count || 0} / 확인 {ops.indexing.outbox_coverage?.checked_count || 0}
+              </p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Provider</p>
+              <p className={`mt-1 text-admin-h2 font-bold admin-num ${ops.indexing.recent_failures > 0 ? 'text-danger' : 'text-success'}`}>
+                {ops.indexing.recent_failures}
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">최근 색인 요청 실패</p>
+            </div>
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface px-3 py-3">
+              <p className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted">Google</p>
+              <p className={`mt-1 text-admin-h2 font-bold admin-num ${(ops.indexing.google_unknown_urls || 0) > 0 ? 'text-warning' : 'text-success'}`}>
+                {ops.indexing.google_unknown_urls || 0}
+              </p>
+              <p className="mt-1 text-admin-2xs text-admin-muted">미인지 URL 표본</p>
+            </div>
+          </div>
+          <p className={`mt-3 text-admin-xs font-semibold ${sectionTone(indexingBridgeLevel(ops))}`}>
+            {indexingBridgeMessage(ops)}
+          </p>
+        </section>
+      ) : null}
+
+      {ops ? (
+        <section className="grid gap-3 lg:grid-cols-3">
+          <div className="admin-card p-4">
+            <h2 className="text-admin-sm font-semibold text-admin-text">큐 실패 분류</h2>
+            <p className="mt-1 text-admin-xs text-admin-muted">slug, 비slug, 색인, 멈춘 큐를 분리해서 봅니다.</p>
+            <div className="mt-3 space-y-2">
+              {topBuckets(ops.queue.failure_groups).length === 0 ? (
+                <p className="text-admin-xs text-success">확인 필요한 큐 실패가 없습니다.</p>
+              ) : topBuckets(ops.queue.failure_groups).map(([bucket, count]) => (
+                <div key={bucket} className="flex items-center justify-between gap-3 text-admin-xs">
+                  <span className="text-admin-muted">{labelBucket(bucket)}</span>
+                  <span className="font-semibold admin-num text-admin-text">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="admin-card p-4">
+            <h2 className="text-admin-sm font-semibold text-admin-text">최근 글 품질</h2>
+            <p className="mt-1 text-admin-xs text-admin-muted">본문 품질 실패와 URL 정리 대상을 분리합니다.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-admin-sm bg-admin-surface-2 p-3">
+                <p className="text-admin-2xs text-admin-muted">비slug 실패</p>
+                <p className={`mt-1 text-admin-h3 font-bold admin-num ${(ops.quality?.non_slug_failures || 0) > 0 ? 'text-danger' : 'text-success'}`}>
+                  {ops.quality?.non_slug_failures || 0}
+                </p>
+              </div>
+              <div className="rounded-admin-sm bg-admin-surface-2 p-3">
+                <p className="text-admin-2xs text-admin-muted">slug-only</p>
+                <p className={`mt-1 text-admin-h3 font-bold admin-num ${(ops.quality?.slug_only_failures || 0) > 0 ? 'text-warning' : 'text-success'}`}>
+                  {ops.quality?.slug_only_failures || 0}
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 space-y-2">
+              {topBuckets(ops.quality?.failure_buckets, 3).map(([bucket, count]) => (
+                <div key={bucket} className="flex items-center justify-between gap-3 text-admin-xs">
+                  <span className="text-admin-muted">{labelBucket(bucket)}</span>
+                  <span className="font-semibold admin-num text-admin-text">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="admin-card p-4">
+            <h2 className="text-admin-sm font-semibold text-admin-text">색인 실패 분류</h2>
+            <p className="mt-1 text-admin-xs text-admin-muted">발행 성공과 검색 반영 문제를 분리합니다.</p>
+            <div className="mt-3 space-y-2">
+              {topBuckets(ops.indexing.failure_buckets).length === 0 ? (
+                <p className="text-admin-xs text-success">색인 작업 이상이 없습니다.</p>
+              ) : topBuckets(ops.indexing.failure_buckets).map(([bucket, count]) => (
+                <div key={bucket} className="flex items-center justify-between gap-3 text-admin-xs">
+                  <span className="text-admin-muted">{labelBucket(bucket)}</span>
+                  <span className="font-semibold admin-num text-admin-text">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {ops?.cron.core?.length ? (
         <div className="admin-card overflow-hidden">

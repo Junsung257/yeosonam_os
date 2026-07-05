@@ -43,6 +43,45 @@ describe('recoverUploadPriceData', () => {
     expect(tiers[0]?.adult_price).toBe(859000);
   });
 
+  it('keeps weekday and nullable child price fields after customer copy repair', async () => {
+    const rawText = [
+      '출발일 / 요일 / [세이브]',
+      '7/23 목 529,000',
+    ].join('\n');
+    const ed: ExtractedData = {
+      title: '[세이브] 다낭 / 호이안 / 바나산 실속 3박5일',
+      destination: '다낭',
+      duration: 5,
+      rawText,
+      price_tiers: [{
+        period_label: '7/23 목',
+        departure_dates: ['2026-07-23'],
+        departure_day_of_week: '목',
+        adult_price: 529000,
+        status: 'available',
+        note: 'source_catalog_grade_price_table',
+      }],
+    };
+
+    const result = await recoverUploadPriceData(ed, {
+      rawText,
+      title: ed.title,
+      durationDays: 5,
+      year: 2026,
+      enableGeminiFallback: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.priceRows).toEqual([
+      expect.objectContaining({
+        target_date: '2026-07-23',
+        day_of_week: 'THU',
+        net_price: 529000,
+        child_price: null,
+      }),
+    ]);
+  });
+
   it('prefers complete deterministic IR over complete LLM tiers', async () => {
     const { testCase, rawText, expected } = phuQuocCase();
     const ed: ExtractedData = {

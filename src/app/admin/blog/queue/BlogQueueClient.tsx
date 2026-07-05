@@ -47,7 +47,7 @@ interface QueueItem {
     attention: boolean;
     history: boolean;
     manual_review?: boolean;
-    urgency: 'blocked' | 'manual_review' | 'stale' | 'overdue' | 'history' | 'normal';
+    urgency: 'blocked' | 'manual_review' | 'candidate_contract' | 'pillar_deferred' | 'stale' | 'overdue' | 'history' | 'normal';
     issue: string;
   };
 }
@@ -63,6 +63,8 @@ interface QueueSummary {
   history_hidden: number;
   overdue_queued: number;
   stale_generating: number;
+  candidate_contract_blocked: number;
+  pillar_deferred: number;
   issue_counts: Record<string, number>;
 }
 
@@ -121,6 +123,8 @@ const VIEW_TABS = [
 function urgencyClass(item: QueueItem): string {
   const urgency = item.ops?.urgency;
   if (urgency === 'manual_review') return 'bg-violet-50 text-violet-700 border-violet-200';
+  if (urgency === 'candidate_contract') return 'bg-amber-50 text-amber-800 border-amber-200';
+  if (urgency === 'pillar_deferred') return 'bg-admin-surface-2 text-admin-muted border-admin-border';
   if (urgency === 'blocked') return 'bg-danger-light text-danger border-danger/30';
   if (urgency === 'stale' || urgency === 'overdue') return 'bg-status-warningBg text-status-warningFg border-warning/30';
   if (urgency === 'history') return 'bg-admin-surface-2 text-admin-muted border-admin-border';
@@ -129,6 +133,8 @@ function urgencyClass(item: QueueItem): string {
 
 function urgencyLabel(item: QueueItem): string {
   const urgency = item.ops?.urgency;
+  if (urgency === 'candidate_contract') return '\uD6C4\uBCF4 \uACA9\uB9AC';
+  if (urgency === 'pillar_deferred') return '\uD544\uB7EC \uBCF4\uB958';
   if (urgency === 'manual_review') return '수동 재작성';
   if (urgency === 'blocked') return '차단';
   if (urgency === 'stale') return '생성 정체';
@@ -139,6 +145,8 @@ function urgencyLabel(item: QueueItem): string {
 
 function issueLabel(issue: string): string {
   const preciseLabels: Record<string, string> = {
+    candidate_pre_publish_contract: '\uBC1C\uD589 \uC804 \uACC4\uC57D',
+    pillar_deferred: '\uD544\uB7EC \uBCF4\uB958',
     context_missing: '문맥 부족',
     duplicate_content: '중복 콘텐츠',
     keyword_density: '키워드 밀도',
@@ -240,6 +248,7 @@ export default function BlogQueueClient() {
   }, [summary]);
 
   const summaryCards: Array<{ label: string; value: number; hint: string; icon: LucideIcon }> = [
+    { label: '\uD6C4\uBCF4 \uACA9\uB9AC', value: summary?.candidate_contract_blocked ?? 0, hint: '\uBC1C\uD589 \uC804 \uC81C\uC678', icon: AlertTriangle },
     { label: '운영 필요', value: summary?.active_count ?? 0, hint: '오늘 볼 큐', icon: ListChecks },
     { label: '문제', value: summary?.attention_count ?? 0, hint: '자동화 조치 대상', icon: AlertTriangle },
     { label: '수동 재작성', value: summary?.manual_review_count ?? 0, hint: '자동복구 제외', icon: PenLine },

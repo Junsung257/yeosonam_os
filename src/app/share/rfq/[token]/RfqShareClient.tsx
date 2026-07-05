@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import type { SharedRfqData } from '@/lib/db/rfq-share';
@@ -417,18 +418,18 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
           <p className="text-blue-100 text-sm mb-4">
             나만을 위한 프라이빗 여행, 지금 바로 견적 요청하세요
           </p>
-          <a
+          <Link
             href="/private-tour"
             className="inline-block bg-white text-blue-700 font-bold px-8 py-3 rounded-xl shadow-sm hover:bg-blue-50 transition"
           >
             ✈️ 무료 견적 요청하기
-          </a>
+          </Link>
         </div>
 
         <div className="text-center pb-8">
-          <a href="/private-tour" className="text-sm text-gray-400 hover:text-brand transition">
+          <Link href="/private-tour" className="text-sm text-gray-400 hover:text-brand transition">
             여소남 단독맞춤여행
-          </a>
+          </Link>
         </div>
 
       </div>

@@ -1,6 +1,7 @@
 import { notifyIndexing } from '@/lib/indexing';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
+  canonicalizeBlogIndexingJobUrl,
   isIndexingReportSuccessful,
   persistBlogIndexingReport,
   type BlogIndexingJobRow,
@@ -44,6 +45,42 @@ function errorMessage(error: unknown): string {
     return String((error as { message?: unknown }).message);
   }
   return String(error);
+}
+
+class BlogIndexingProviderError extends Error {
+  constructor(message: string, readonly retryAfterMs?: number) {
+    super(message);
+    this.name = 'BlogIndexingProviderError';
+  }
+}
+
+function isPublicIndexingOrigin(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return !['localhost', '127.0.0.1', '0.0.0.0'].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function resolveBlogIndexingBaseUrl(jobUrl: string, optionBaseUrl?: string): string {
+  const candidates = [
+    optionBaseUrl,
+    jobUrl,
+    process.env.BLOG_CANONICAL_ORIGIN,
+    process.env.NEXT_PUBLIC_BASE_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    'https://www.yeosonam.com',
+  ];
+
+  for (const candidate of candidates) {
+    if (!isPublicIndexingOrigin(candidate)) continue;
+    const parsed = new URL(candidate);
+    return parsed.origin;
+  }
+
+  return 'https://www.yeosonam.com';
 }
 
 async function resetStaleProcessingJobs(now: Date): Promise<number> {
@@ -108,8 +145,6 @@ export async function processDueBlogIndexingJobs(options: {
     return { processed: 0, stale_reset: staleReset, errors, results };
   }
 
-  const baseUrl = (options.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/+$/, '');
-
   for (const job of (jobs ?? []) as BlogIndexingJobRow[]) {
     const attempt = (job.attempts ?? 0) + 1;
     const claimedAt = new Date().toISOString();
@@ -138,11 +173,25 @@ export async function processDueBlogIndexingJobs(options: {
     }
 
     try {
-      const report = await notifyIndexing(job.url, baseUrl, { type: job.type });
+      const canonicalUrl = canonicalizeBlogIndexingJobUrl({
+        url: job.url,
+        slug: job.slug,
+        baseUrl: options.baseUrl,
+      });
+      const baseUrl = resolveBlogIndexingBaseUrl(canonicalUrl, options.baseUrl);
+      const report = await notifyIndexing(canonicalUrl, baseUrl, {
+        type: job.type,
+        pingSitemap: false,
+      });
       await persistBlogIndexingReport(job, report);
 
       if (!isIndexingReportSuccessful(report)) {
-        throw new Error(`indexing providers failed: google=${report.google}; indexnow=${report.indexnow}`);
+        const retryAfter = report.indexnow_retry_after_ms;
+        const retrySuffix = retryAfter ? `; retry_after_ms=${retryAfter}` : '';
+        throw new BlogIndexingProviderError(
+          `indexing providers failed: google=${report.google}; indexnow=${report.indexnow}${retrySuffix}`,
+          retryAfter,
+        );
       }
 
       await supabaseAdmin
@@ -162,7 +211,9 @@ export async function processDueBlogIndexingJobs(options: {
     } catch (err) {
       const message = errorMessage(err).slice(0, 1000);
       const exhausted = attempt >= (job.max_attempts ?? 6);
-      const nextAttemptAt = new Date(Date.now() + retryDelayMs(attempt)).toISOString();
+      const providerRetryAfterMs = err instanceof BlogIndexingProviderError ? err.retryAfterMs : undefined;
+      const nextDelayMs = Math.max(retryDelayMs(attempt), providerRetryAfterMs ?? 0);
+      const nextAttemptAt = new Date(Date.now() + nextDelayMs).toISOString();
 
       const { error: updateError } = await supabaseAdmin
         .from(TABLE)

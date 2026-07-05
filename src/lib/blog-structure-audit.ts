@@ -207,22 +207,27 @@ function closestListItemText($: ReturnType<typeof load>, checklistHeading: Eleme
   return sectionTexts;
 }
 
+const CANONICAL_CHECKLIST_HEADING_RE =
+  /(?:checklist|packing\s+list|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC900\uBE44\uBB3C|\uD544\uC218\s*\uC544\uC774\uD15C|\uD655\uC778\s*\uBAA9\uB85D)/i;
+
 function isReadableChecklistHeading(text: string): boolean {
-  if (/체크리스트|준비물|필수 아이템/.test(text)) return true;
-  return /체크리스트|준비물|필수 아이템/.test(text);
+  return CANONICAL_CHECKLIST_HEADING_RE.test(text);
 }
 
 function inspectChecklist(input: BlogStructureAuditInput, issues: BlogStructureIssue[]): void {
   const $ = load(input.renderedHtml);
   const readableChecklistHeadings = $('h2, h3')
     .toArray()
-    .filter((heading) => isReadableChecklistHeading(normalizeText($(heading).text())));
+    .filter((heading) => {
+      const text = normalizeText($(heading).text());
+      return isReadableChecklistHeading(text);
+    });
   if (readableChecklistHeadings.some((heading) => closestListItemText($, heading).length >= 3)) return;
   const checklistHeadings = $('h2, h3')
     .toArray()
-    .filter((heading) => /체크리스트|준비물|필수 아이템/.test(normalizeText($(heading).text())));
+    .filter((heading) => isReadableChecklistHeading(normalizeText($(heading).text())));
 
-  if (checklistHeadings.length === 0 && /체크리스트|준비물|필수 아이템/.test(input.rawMarkdown)) {
+  if (checklistHeadings.length === 0 && CANONICAL_CHECKLIST_HEADING_RE.test(input.rawMarkdown)) {
     addIssue(
       issues,
       'checklist_shape_invalid',

@@ -16,6 +16,7 @@ import {
 } from '@/lib/blog-editorial-voice';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
@@ -23,6 +24,7 @@ import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
@@ -30,6 +32,11 @@ import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
+import {
+  appendPublishReadinessSupport,
+  ensurePublisherInternalLinks,
+  repairPublishReadiness,
+} from '@/lib/blog-publish-readiness-repair';
 import {
   fetchApprovedReviewSnippets,
   formatReviewQuotesAppendMarkdown,
@@ -43,7 +50,11 @@ import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
 import { slugifyTopic, romanize, extractDestination } from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
-import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
+import {
+  customerOpenContractBlogBlockReason,
+  isCustomerOpenContractBlogPublishable,
+  loadCustomerOpenContractForPackage,
+} from '@/lib/product-registration/customer-open-contract';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
@@ -59,8 +70,17 @@ import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPos
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
-import { quarantineNonRetryableBlogQueueItems } from '@/lib/blog-queue-lifecycle';
+import {
+  quarantineNonRetryableBlogQueueItems,
+  rescheduleOverdueQueuedBlogQueueItems,
+} from '@/lib/blog-queue-lifecycle';
 import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
+import {
+  canRunOptionalPublisherWork,
+  canStartPublisherItem,
+  getPublisherGenerationTimeoutMs,
+  getPublisherRemainingMs,
+} from '@/lib/blog-publisher-time-budget';
 import { readBoundedIntEnv } from '@/lib/env-utils';
 
 /**
@@ -91,10 +111,16 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
-const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 2, 1, 5);
-const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 6, MAX_BATCH, 20);
-const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 1, 0, 4);
+const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
+const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 12, MAX_BATCH, 20);
+const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 0, 4);
 const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
+const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
+const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
+const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
+const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
+const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
+const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
@@ -107,6 +133,9 @@ function getQueueMicroAngle(item: any): string | null {
 function classifyPublisherFailure(reason?: string): string {
   const text = (reason ?? '').toLowerCase();
   if (!text) return 'other';
+  if (text.includes('timeout') || text.includes('time_budget')) return 'timeout';
+  if (text.includes('[length]') || text.includes('thin content') || text.includes('min length')) return 'length';
+  if (text.includes('[links]') || text.includes('internal link') || text.includes('external authority') || text.includes('link')) return 'links';
   if (text.includes('duplicate') || text.includes('slug') || text.includes('중복')) return 'duplicate';
   if (text.includes('topic_fit') || text.includes('destination_prefix')) return 'topic_fit';
   if (text.includes('structure_integrity') || text.includes('structure')) return 'structure_integrity';
@@ -129,6 +158,47 @@ function buildPublisherFailureBreakdown(results: Array<{ status: string; reason?
       acc[bucket] = (acc[bucket] ?? 0) + 1;
       return acc;
     }, {});
+}
+
+function withPublisherTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label}_timeout:${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function generatePublisherBlogText(
+  prompt: string,
+  options: Parameters<typeof generateBlogText>[1] = {},
+): Promise<string> {
+  return withPublisherTimeout(
+    generateBlogText(prompt, options),
+    BLOG_PUBLISHER_AI_TIMEOUT_MS,
+    'blog_ai_generation',
+  );
+}
+
+function publisherRemainingMs(startedAtMs: number): number {
+  return getPublisherRemainingMs(startedAtMs, MAX_EXEC_MS);
+}
+
+async function withGenerationBudget<T>(
+  startedAtMs: number,
+  label: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const timeoutMs = getPublisherGenerationTimeoutMs(
+    publisherRemainingMs(startedAtMs),
+    BLOG_PUBLISHER_GENERATION_TIMEOUT_MS,
+    BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS,
+  );
+  if (timeoutMs <= 0) {
+    throw new Error(`publisher_time_budget_exhausted_before_${label}`);
+  }
+  return withPublisherTimeout(work(), timeoutMs, label);
 }
 
 function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string; dayKey: string } {
@@ -181,7 +251,7 @@ const NEUTRAL_CLICHE_REPLACEMENTS: Record<string, string> = {
   '낭만적인': '분위기 있는',
   '제대로': '꼼꼼히',
   '알찬': '실용적인',
-  '만끽': '즐기기',
+  '만끽': '즐길 수 있는',
   '힐링': '휴식',
   '한 번쯤은 경험해 볼 만한': '일정에 넣어볼 만한',
   '추억에 남는': '기억에 남는',
@@ -299,6 +369,8 @@ function normalizeAngleType(value: unknown): AngleType {
 }
 
 function strengthenIntroHook(markdown: string, item: any, primaryKeyword?: string | null): string {
+  return strengthenPublisherIntroHook(markdown, item, primaryKeyword);
+
   const lines = markdown.split('\n');
   let h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
   if (h1Index < 0) {
@@ -426,11 +498,31 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
+    if (failed.has('intent_quality') || failed.has('engine_v2')) {
+      const editorialRepair = repairBlogEditorialQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        destination: item.destination ?? null,
+        angleType: normalizeAngleType(item.angle_type),
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (editorialRepair.changed) {
+        generated.blog_html = editorialRepair.blogHtml;
+        changes.push(...editorialRepair.changes);
+        changed = true;
+      }
+    }
+
     if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity')) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
         slug: generated.slug,
         primaryKeyword,
+        destination: item.destination ?? null,
         angleType: normalizeAngleType(item.angle_type),
         category: item.category,
         contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
@@ -458,6 +550,36 @@ async function repairFailedQualityGates(
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
       if (generated.blog_html !== before) {
         changes.push('forced_official_reference_links');
+        changed = true;
+      }
+
+      const internalLinks = ensurePublisherInternalLinks({
+        markdown: generated.blog_html,
+        blogType,
+        slug: generated.slug,
+        destination: item.destination,
+        topic: item.topic,
+        primaryKeyword,
+      });
+      if (internalLinks.changed) {
+        generated.blog_html = internalLinks.markdown;
+        changes.push(...internalLinks.changes);
+        changed = true;
+      }
+    }
+
+    if (failed.has('length')) {
+      const support = appendPublishReadinessSupport({
+        markdown: generated.blog_html,
+        blogType,
+        slug: generated.slug,
+        destination: item.destination,
+        topic: item.topic,
+        primaryKeyword,
+      });
+      if (support.changed) {
+        generated.blog_html = support.markdown;
+        changes.push(...support.changes);
         changed = true;
       }
     }
@@ -503,6 +625,7 @@ async function repairFailedQualityGates(
         title: generated.seo_title,
         slug: generated.slug,
         primaryKeyword,
+        destination: item.destination ?? null,
         angleType: normalizeAngleType(item.angle_type),
         category: item.category,
         contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
@@ -708,12 +831,21 @@ async function runBlogPublisher(request: NextRequest) {
 
   const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
   const errors: string[] = [];
+  const candidateFailures: string[] = [];
   const startTime = Date.now();
   const attemptedQueueIds = new Set<string>();
 
   try {
     blogStyleGuideCache = null;
     const staleRecovery = await recoverStaleGeneratingQueueItems();
+    const queueHealthCleanup = await rescheduleOverdueQueuedBlogQueueItems({
+      limit: MAX_CANDIDATE_POOL * 3,
+      rescheduledBy: 'blog-publisher-preflight',
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`queue_health_cleanup_failed: ${message}`);
+      return { scanned: 0, rescheduled: 0, actions: [] };
+    });
     const preflightQuarantine = await quarantineNonRetryableBlogQueueItems({
       limit: MAX_CANDIDATE_POOL * 3,
       maxAttempts: MAX_ATTEMPTS,
@@ -736,6 +868,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
         errors,
@@ -785,6 +918,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
         queueRefill,
@@ -802,6 +936,7 @@ async function runBlogPublisher(request: NextRequest) {
     let extraClaimRounds = 0;
     let pullForwarded = 0;
     let emergencyRefillRounds = 0;
+    let stoppedForTimeBudget = false;
     const emergencyRefills: Array<Awaited<ReturnType<typeof ensureDailyPublishableQueue>> | null> = [];
     for (const item of queue) {
       if (attemptedQueueIds.has(item.id)) {
@@ -813,30 +948,30 @@ async function runBlogPublisher(request: NextRequest) {
         break;
       }
       // 남은 시간 체크 — 30초 미만이면 중단
-      const elapsed = Date.now() - startTime;
-      const remaining = MAX_EXEC_MS - elapsed;
-      if (remaining < 30000) {
-        console.log(`[blog-publisher] 남은 시간 ${Math.round(remaining / 1000)}초 미만 — 중단`);
+      const remaining = publisherRemainingMs(startTime);
+      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+        stoppedForTimeBudget = true;
+        console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next item`);
         break;
       }
       try {
-        const r = await processQueueItem(item, eligibleByCardNewsId);
+        const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime });
         results.push(r);
         if (r.status === 'published') {
           publishedThisRun += 1;
         }
         if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
-          errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
+          candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
-        errors.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
+        candidateFailures.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
     while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
-      const elapsed = Date.now() - startTime;
-      const remaining = MAX_EXEC_MS - elapsed;
-      if (remaining < 30000) {
+      const remaining = publisherRemainingMs(startTime);
+      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+        stoppedForTimeBudget = true;
         console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next claim`);
         break;
       }
@@ -900,28 +1035,29 @@ async function runBlogPublisher(request: NextRequest) {
         attemptedQueueIds.add(item.id);
         if (publishedThisRun >= remainingToday) break;
 
-        const itemRemaining = MAX_EXEC_MS - (Date.now() - startTime);
-        if (itemRemaining < 30000) {
+        const itemRemaining = publisherRemainingMs(startTime);
+        if (!canStartPublisherItem(itemRemaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+          stoppedForTimeBudget = true;
           console.log(`[blog-publisher] remaining ${Math.round(itemRemaining / 1000)}s - stopping before next item`);
           break;
         }
 
         try {
-          const r = await processQueueItem(item, nextEligibleByCardNewsId);
+          const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime });
           results.push(r);
           if (r.status === 'published') {
             publishedThisRun += 1;
           }
           if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
-            errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
+            candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
           }
         } catch (err) {
-          errors.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
+          candidateFailures.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+    const baseUrl = resolveBlogCanonicalOrigin();
     const publishedSlugs = results
       .filter((r): r is typeof r & { reason: string } => r.status === 'published' && !!r.reason)
       .map(r => r.reason);
@@ -939,32 +1075,48 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     // Indexing outbox + revalidatePath. External provider requests run in blog-indexing-worker.
-    const indexingPromises: Promise<void>[] = [];
+    const indexingPromises: Promise<{ slug: string; ok: boolean; error?: string }>[] = [];
     for (const r of results) {
       if (r.status === 'published' && r.reason) {
         const slug = r.reason;
         const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
-        indexingPromises.push(
-          Promise.resolve(
-            enqueueBlogIndexingJob({
-              slug,
-              baseUrl,
-              contentCreativeId,
-              source: 'blog_publisher',
-            })
-              .then(async (result) => {
-                if (!result.ok) throw new Error(result.error || `indexing enqueue failed: ${slug}`);
-              })
-              .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
-          ),
-        );
+        indexingPromises.push((async () => {
+          const result = await enqueueBlogIndexingJob({
+            slug,
+            baseUrl,
+            contentCreativeId,
+            source: 'blog_publisher',
+          });
+          if (!result.ok) {
+            return { slug, ok: false, error: result.error || `indexing enqueue failed: ${slug}` };
+          }
+          return { slug, ok: true };
+        })());
         revalidatePublicBlogCache(slug);
       }
     }
     const indexingResults = await Promise.allSettled(indexingPromises);
-    const indexingFailed = indexingResults.filter(r => r.status === 'rejected').length;
+    const indexingFailures = indexingResults.flatMap((result) => {
+      if (result.status === 'rejected') {
+        return [{
+          slug: 'unknown',
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        }];
+      }
+      return result.value.ok ? [] : [{
+        slug: result.value.slug,
+        error: result.value.error ?? 'indexing enqueue failed',
+      }];
+    });
+    const indexingFailed = indexingFailures.length;
+    if (indexingFailed > 0) {
+      errors.push(...indexingFailures.map((failure) => `indexing_enqueue_failed:${failure.slug}:${failure.error}`));
+    }
 
-    if (publishedSlugs.length > 0) {
+    if (
+      publishedSlugs.length > 0
+      && canRunOptionalPublisherWork(publisherRemainingMs(startTime), BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS)
+    ) {
       try {
         const { data: ccRows } = await supabaseAdmin
           .from('content_creatives')
@@ -996,11 +1148,24 @@ async function runBlogPublisher(request: NextRequest) {
     }
     revalidatePublicBlogCache();
 
-    const indexingWorker = await processDueBlogIndexingJobs({
-      workerName: 'blog-publisher-inline-indexing',
-      limit: 10,
-      baseUrl,
-    });
+    const canDrainInlineIndexing = canRunOptionalPublisherWork(
+      publisherRemainingMs(startTime),
+      BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS,
+    );
+    const indexingWorker = canDrainInlineIndexing
+      ? await processDueBlogIndexingJobs({
+          workerName: 'blog-publisher-inline-indexing',
+          limit: 10,
+          baseUrl,
+        })
+      : {
+          skipped: true,
+          reason: 'publisher_time_budget_reserved_for_summary',
+          processed: 0,
+          stale_reset: 0,
+          results: [],
+          errors: [],
+        };
     if (indexingWorker.errors.length > 0) {
       errors.push(...indexingWorker.errors.map((error) => `indexing: ${error}`));
     }
@@ -1008,13 +1173,20 @@ async function runBlogPublisher(request: NextRequest) {
     const publishedCount = results.filter(r => r.status === 'published').length;
     const failureBreakdown = buildPublisherFailureBreakdown(results);
     const canonicalMatched = publishedSlugs.every(slug => typeof slug === 'string' && slug.trim().length > 0 && !slug.startsWith('/'));
-    if (publishedCount === 0 && remainingToday > 0) {
-      errors.push('publisher_zero_published_with_remaining_quota');
+    const underfilledQuota = publishedCount < remainingToday;
+    if (underfilledQuota) {
+      errors.push(
+        publishedCount === 0
+          ? 'publisher_zero_published_with_remaining_quota'
+          : 'publisher_under_published_with_remaining_quota',
+      );
+      errors.push(...candidateFailures.slice(0, 5).map((failure) => `candidate_failure:${failure}`));
     }
 
     return {
       processed: results.length,
       published: publishedCount,
+      candidate_failures: candidateFailures,
       indexingWorker,
       dailyQuota: {
         day: todayQuota.dayKey,
@@ -1023,7 +1195,15 @@ async function runBlogPublisher(request: NextRequest) {
         remainingBeforeRun: remainingToday,
         remainingAfterRun: Math.max(0, remainingToday - publishedCount),
       },
+      quota_fulfillment: {
+        required: remainingToday,
+        published: publishedCount,
+        met: !underfilledQuota,
+        candidate_failures: candidateFailures.length,
+        attempted_candidates: attemptedQueueIds.size,
+      },
       staleRecovery,
+      queueHealthCleanup,
       preflightQuarantine,
       pillarDeferral,
       queueRefill,
@@ -1038,6 +1218,15 @@ async function runBlogPublisher(request: NextRequest) {
       emergencyRefillRounds,
       emergencyRefills,
       pullForwarded,
+      time_budget: {
+        max_exec_ms: MAX_EXEC_MS,
+        min_item_start_ms: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        item_finish_reserve_ms: BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS,
+        optional_work_min_ms: BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS,
+        remaining_ms: publisherRemainingMs(startTime),
+        stopped_for_time_budget: stoppedForTimeBudget,
+        inline_indexing_drained: canDrainInlineIndexing,
+      },
       results,
       errors,
       ranAt: new Date().toISOString(),
@@ -1056,6 +1245,7 @@ export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
 async function processQueueItem(
   item: any,
   eligibleByCardNewsId: Map<string, number>,
+  options: { startedAtMs?: number } = {},
 ): Promise<{ id: string; topic: string; status: string; reason?: string }> {
   // 동시성 방지 — generating 락
   const { error: lockErr } = await supabaseAdmin
@@ -1069,6 +1259,7 @@ async function processQueueItem(
   }
 
   try {
+    const startedAtMs = options.startedAtMs ?? Date.now();
     if (item.card_news_id) {
       const cnid = item.card_news_id as string;
       const eligibleMs =
@@ -1130,7 +1321,7 @@ async function processQueueItem(
         await handleFailure(item, reason, null, true);
         return { id: item.id, topic: item.topic, status: 'error', reason };
       }
-      generated = await generatePillar(item, pillarContext);
+      generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item, pillarContext));
     } else if (item.card_news_id) {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
@@ -1183,12 +1374,12 @@ async function processQueueItem(
           return { id: item.id, topic: item.topic, status: 'error', reason: 'invalid_linked_draft' };
         }
       } else {
-        generated = await generateFromCardNews(item, eligibleByCardNewsId);
+        generated = await withGenerationBudget(startedAtMs, 'card_news_generation', () => generateFromCardNews(item, eligibleByCardNewsId));
       }
     } else if (item.source === 'product' && item.product_id) {
-      generated = await generateFromProduct(item);
+      generated = await withGenerationBudget(startedAtMs, 'product_generation', () => generateFromProduct(item));
     } else {
-      generated = await generateFromTopic(item);
+      generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
     }
 
     const slugNormalized = normalizeGeneratedSlug(generated, item);
@@ -1238,10 +1429,19 @@ async function processQueueItem(
     const blogType: 'product' | 'info' = item.product_id ? 'product' : 'info';
     // Pillar posts: skip keyword density (destination name dominates by design)
     // Compound destinations (X/Y/Z) stay broad enough to avoid single-city keyword stuffing.
-    const generatedPrimaryKeyword =
-      (generated.generation_meta?.content_brief as { primary_keyword?: string } | undefined)?.primary_keyword
-      || (generated.generation_meta?.seo as { primary_keyword?: string } | undefined)?.primary_keyword
-      || null;
+    const generatedContentBrief =
+      generated.generation_meta?.content_brief as { primary_keyword?: string; seo_keyword?: string } | undefined;
+    const generatedSeoMeta =
+      generated.generation_meta?.seo as { primary_keyword?: string; seo_keyword?: string } | undefined;
+    const generatedPrimaryKeyword = item.product_id
+      ? generatedSeoMeta?.seo_keyword
+        || generatedSeoMeta?.primary_keyword
+        || generatedContentBrief?.seo_keyword
+        || generatedContentBrief?.primary_keyword
+        || null
+      : generatedContentBrief?.primary_keyword
+        || generatedSeoMeta?.primary_keyword
+        || null;
     const primaryKeyword = choosePublisherPrimaryKeyword({
       source: item.source,
       productId: item.product_id ?? null,
@@ -1286,6 +1486,7 @@ async function processQueueItem(
       title: generated.seo_title,
       slug: generated.slug,
       primaryKeyword,
+      destination: item.destination ?? null,
       angleType: normalizeAngleType(item.angle_type),
       category: item.category,
       contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
@@ -1302,6 +1503,7 @@ async function processQueueItem(
       title: generated.seo_title,
       slug: generated.slug,
       primaryKeyword,
+      destination: item.destination ?? null,
       angleType: normalizeAngleType(item.angle_type),
       category: item.category,
       contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
@@ -1324,6 +1526,19 @@ async function processQueueItem(
       slug: generated.slug,
       utmSource: 'naver_blog',
     });
+
+    const readinessRepair = repairPublishReadiness({
+      markdown: generated.blog_html,
+      blogType,
+      slug: generated.slug,
+      destination: item.destination,
+      topic: item.topic,
+      primaryKeyword,
+    });
+    if (readinessRepair.changed) {
+      generated.blog_html = readinessRepair.markdown;
+      console.log(`[blog-publisher] publish readiness repair: ${readinessRepair.changes.join(', ')}`);
+    }
 
     let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
 
@@ -1358,7 +1573,10 @@ async function processQueueItem(
     }
 
     // 🆕 GSC 키워드 연구 데이터 보강 (환경이 설정된 경우 Google Search Console 사용)
-    if (primaryKeyword) {
+    if (
+      primaryKeyword
+      && canRunOptionalPublisherWork(publisherRemainingMs(startedAtMs), BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS)
+    ) {
       try {
         const kwResearch = await researchKeyword(primaryKeyword);
         // GSC 데이터가 있으면 보강 (googleapis 의존성)
@@ -1405,6 +1623,22 @@ async function processQueueItem(
         breadcrumbList: true,
       },
     });
+
+    const slugRepair = repairPublisherSeoSlug({
+      currentSlug: generated.slug,
+      item,
+      primaryKeyword,
+    });
+    if (slugRepair.changed) {
+      generated.slug = slugRepair.slug;
+      generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+        destination: item.destination,
+        slug: generated.slug,
+        utmSource: 'naver_blog',
+      });
+      console.log(`[blog-publisher] SEO slug repair: ${slugRepair.reason || 'slug_quality'} -> ${generated.slug}`);
+    }
+
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
     if (seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')) {
@@ -1563,7 +1797,7 @@ async function processQueueItem(
       })
       .eq('id', item.id);
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+    const baseUrl = resolveBlogCanonicalOrigin();
     try {
       await recordAutoPublishLog({
         platform: 'blog',
@@ -1692,20 +1926,24 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const baseUrl = resolveBlogCanonicalOrigin();
   const cronSecret = getSecret('CRON_SECRET');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cronSecret) headers.Authorization = `Bearer ${cronSecret}`;
 
-  const res = await fetch(`${baseUrl}/api/blog/from-card-news`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      card_news_id: item.card_news_id,
-      slide_image_urls: slideUrls,
-      publisher_bridge: true,
+  const res = await withPublisherTimeout(
+    fetch(`${baseUrl}/api/blog/from-card-news`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        card_news_id: item.card_news_id,
+        slide_image_urls: slideUrls,
+        publisher_bridge: true,
+      }),
     }),
-  });
+    BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS,
+    'card_news_bridge',
+  );
 
   if (!res.ok) {
     const errBody = await res.text();
@@ -1799,7 +2037,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 - 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
 - 마크다운 코드블록으로 감싸지 말 것`;
 
-  const raw = await generateBlogText(prompt, { temperature: 0.65 });
+  const raw = await generatePublisherBlogText(prompt, { temperature: 0.65 });
   const blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -1848,8 +2086,8 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
 
   const product = pkg[0];
   const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, item.product_id);
-  if (!openContract.ok) {
-    throw new Error(`product_customer_open_contract_failed:${openContract.blockers.slice(0, 5).join('|')}`);
+  if (!isCustomerOpenContractBlogPublishable(openContract)) {
+    throw new Error(`product_customer_open_contract_failed:${customerOpenContractBlogBlockReason(openContract)}`);
   }
   const angle = normalizeAngleType(item.angle_type);
 
@@ -1882,7 +2120,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   // 3. 첫 매칭된 관광지의 첫 사진
   // 4. 어떤 관광지든 첫 가용 사진
   // 5. 브랜드 기본 OG (절대 null 반환 X)
-  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+  const baseUrl = resolveBlogCanonicalOrigin();
   const firstAttrPhoto =
     attractions[0]?.photos?.[0]?.src_medium ||
     attractions
@@ -1912,6 +2150,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
       content_brief: {
         title: productBrief.product_title,
         primary_keyword: productBrief.primary_keyword,
+        seo_keyword: productBrief.seo_keyword,
         secondary_keywords: [productBrief.destination, productBrief.supplier_code, productBrief.departure_date]
           .filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
         search_intent: 'commercial_package_comparison',
@@ -1935,6 +2174,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
       product_dedup_key: productBrief.dedup_key,
       seo: {
         primary_keyword: seo.primaryKeyword,
+        seo_keyword: productBrief.seo_keyword,
         secondary_keywords: seo.secondaryKeywords,
       },
     },
@@ -1947,17 +2187,10 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   }
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
-  const baseForUtm = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+  const baseForUtm = resolveBlogCanonicalOrigin();
   const queueSlug = buildQueueSlug(item);
   const utmCamp = encodeURIComponent(queueSlug);
   const utmSrc = 'naver_blog';
-  const introPackageCtaUrl = buildBlogPackageCtaUrl({
-    destination: item.destination,
-    slug: queueSlug,
-    baseUrl: baseForUtm,
-    utmSource: utmSrc,
-    content: 'intro_cta',
-  });
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
     destination: item.destination ?? null,
@@ -2027,7 +2260,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 - 본문 1,500자 이상
 - H2 5개
 - 매우 구체적 사용자 시나리오에 1:1 답변 (예: "${primaryKw} 검색하는 사람의 1순위 궁금증 = 가격/일정/포함")
-- 상품 랜딩(/packages?destination=...)으로 강한 CTA
+- 상품 랜딩은 본문 하단 1회만 약하게 연결. 검색 의도 해결이 우선이며, 도입부·중간 강CTA 금지
 - 내부링크 ≥1 (head pillar로)
 `,
   };
@@ -2122,12 +2355,10 @@ ${serpGapBlock}
 - 표는 반드시 GitHub Flavored Markdown 형식으로 작성: 헤더 행 바로 다음 줄에 | --- | --- | 구분선을 넣고, 표 행 사이에 빈 줄을 넣지 말 것
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
-- 3-Tier CTA 분산:
-  - 도입부: [관련 패키지 보기](${introPackageCtaUrl})
-  - 중간: [여소남 큐레이터에게 문의](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=mid_cta)
-  - 마지막: [여소남에서 안심 여행 준비하세요](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_cta)`;
+- CTA는 본문 마지막에만 1회 사용. 도입부와 본문 중간에는 상품 보기, 카카오, 상담 신청, 예약하기 링크를 넣지 말 것
+- 마지막 CTA 문장 예시: [내 일정 기준으로 가능 여부 확인](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_soft_cta)`;
 
-  const raw = await generateBlogText(prompt, { temperature: 0.7 });
+  const raw = await generatePublisherBlogText(prompt, { temperature: 0.7 });
   let blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -2154,7 +2385,7 @@ ${serpGapBlock}
   } else if (cat.includes('local') || cat.includes('현지')) {
     descTemplate = `${effectiveTopic} | 현지인 추천 맛집·교통 꿀팁·쇼핑 명소·숨은 여행지 정보를 여소남이 전해드립니다.`;
   } else {
-    descTemplate = `${effectiveTopic} | 실용적인 여행 정보와 팁을 여소남이 정리한 완벽 가이드. 준비부터 현지까지 한 번에 해결.`;
+    descTemplate = `${effectiveTopic} | 2026년 기준 비용, 일정, 준비물, 예약 전 확인할 현지 체크 포인트를 차분하게 정리했습니다.`;
   }
   const seo_description = descTemplate.substring(0, 160);
 

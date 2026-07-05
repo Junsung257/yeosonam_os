@@ -135,4 +135,55 @@ describe('extractVerticalGradePriceTable', () => {
     expect(inferVerticalGradeFromText('부산출발 푸꾸옥 실속 PKG 3박5일')).toBe('economy');
     expect(inferVerticalGradeFromText('부산출발 푸꾸옥 고품격 노옵션 PKG 4박6일')).toBe('premium');
   });
+  it('selects the matching column from three-grade shared catalog tables', () => {
+    const rawText = `
+다낭 / 호이안 / 바나힐
+[세이브] 실속
+[스탠다드] 노팁 노옵션
+[프리미엄] 노팁 노옵션
+7/23
+목
+529,000
+649,000
+729,000
+7/24
+금
+629,000
+749,000
+829,000
+7/27(BX773 정규편)
+월
+529,000
+649,000
+729,000
+7/30
+목
+649,000
+769,000
+849,000
+`;
+
+    const save = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '[세이브] 다낭 / 호이안 / 바나산 실속 3박5일',
+      durationDays: 5,
+    });
+    const standard = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '[스탠다드] 무엉탄 송한 다낭 / 호이안 노팁 노옵션 3박5일',
+      durationDays: 5,
+    });
+    const premium = extractVerticalGradePriceTable(rawText, {
+      year: 2026,
+      title: '[프리미엄] 센터포인트 다낭 / 호이안 노팁 노옵션 3박5일',
+      durationDays: 5,
+    });
+
+    expect(priceForDate(save, '2026-07-23')).toBe(529000);
+    expect(priceForDate(standard, '2026-07-23')).toBe(649000);
+    expect(priceForDate(premium, '2026-07-23')).toBe(729000);
+    expect(priceForDate(premium, '2026-07-24')).toBe(829000);
+    expect(priceForDate(premium, '2026-07-27')).toBe(729000);
+    expect(priceForDate(premium, '2026-07-30')).toBe(849000);
+  });
 });

@@ -31,7 +31,7 @@ function isTabActive(href: string, pathname: string | null): boolean {
 }
 
 // /packages/[id] 는 DetailClient 자체 CTA바가 있어 탭바 제외
-const EXCLUDED_PATHS = ['/admin', '/login', '/tenant', '/packages/'];
+const EXCLUDED_PATHS = ['/admin', '/m/admin', '/login', '/tenant', '/packages/'];
 
 export default function BottomTabBar() {
   const pathname = usePathname();

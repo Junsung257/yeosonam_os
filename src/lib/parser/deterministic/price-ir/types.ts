@@ -1,5 +1,5 @@
-import type { PriceTier } from '../price-table';
-import type { MatrixPriceExtractOptions, MatrixPriceRow } from '../price-matrix';
+import type { PriceTier } from '../price-table.ts';
+import type { MatrixPriceExtractOptions, MatrixPriceRow } from '../price-matrix.ts';
 
 export type PriceIRSource =
   | 'compact_grade_period_table'

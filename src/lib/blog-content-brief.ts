@@ -35,10 +35,10 @@ export interface BlogContentBrief {
 }
 
 const LODGING_TANGENT_RE = /에어컨|에어콘|숙소|호텔|리조트|숙박|air\s*con|aircon|a\/c|accommodation|hotel|resort/i;
-const WEATHER_RE = /날씨|옷차림|우기|건기|기온|강수|비|스콜|태풍|weather|clothing|rain|season/i;
+const WEATHER_RE = /날씨|옷차림|우기|건기|기온|강수|비\s*(?:예보|소식|가|는|와|올|내릴|많|적)|스콜|태풍|weather|clothing|rain|season/i;
 const PREPARATION_RE = /준비물|체크리스트|짐싸기|필수품|packing|checklist|preparation/i;
-const COST_RE = /비용|예산|경비|가격|환전|가성비|cost|budget|expense|price/i;
-const TRANSPORT_RE = /항공권|공항|교통|이동|비행|flight|airport|transport|transfer/i;
+const COST_RE = /비용|예산|경비|가격|환전|가성비|이동비|교통비|차량비|렌터카|택시|픽업|cost|budget|expense|price/i;
+const TRANSPORT_RE = /항공권|공항|교통|이동|비행|렌터카|택시|픽업|차량|flight|airport|transport|transfer/i;
 const ITINERARY_RE = /일정|코스|루트|day\s*\d+|itinerary|course|route/i;
 const COMPARISON_RE = /비교|추천|순위|best|top|vs|comparison|ranking/i;
 const MONTH_RE = /(?:^|\s)(1[0-2]|[1-9])\s*월(?:\s|$)|(?:^|\s)(1[0-2]|[1-9])\s*month(?:\s|$)/i;
@@ -186,18 +186,22 @@ function genericBrief(
 
 export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContentBrief {
   const keywords = unique(input.keywords || []);
-  const text = clean([
+  const coreText = clean([
     input.topic,
     input.destination,
     input.primaryKeyword,
+    ...keywords,
+  ].filter(Boolean).join(' '));
+  const text = clean([
+    coreText,
     input.category,
     input.source,
-    ...keywords,
   ].filter(Boolean).join(' '));
   const month = inferMonth(text);
   const destination = inferDestination(input, text);
   const rawPrimary = clean(input.primaryKeyword) || clean(input.topic);
-  const rawIntent = inferIntent(text);
+  const coreIntent = inferIntent(coreText);
+  const rawIntent = coreIntent === 'general' ? inferIntent(text) : coreIntent;
   const isDestinationMonth = Boolean(destination && month);
   const shouldForceWeather = Boolean(
     isDestinationMonth &&

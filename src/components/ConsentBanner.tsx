@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   hasAnalyticsConsent,
   hasMarketingConsent,
@@ -26,6 +27,7 @@ import {
 const DECIDED_KEY = 'ys_consent_decided';
 
 export default function ConsentBanner() {
+  const pathname = usePathname();
   const [show, setShow] = useState(false);
   const [open, setOpen] = useState(false);
   const [analyticsOn, setAnalyticsOn] = useState(true);
@@ -54,6 +56,8 @@ export default function ConsentBanner() {
   const acceptAll = () => finalize(true, true);
   const rejectAll = () => finalize(false, false);
   const saveCustom = () => finalize(analyticsOn, marketingOn);
+
+  if (pathname?.startsWith('/admin') || pathname?.startsWith('/m/admin')) return null;
 
   // 우측 하단 재설정 버튼 (배너 닫힌 후에도 항상 노출)
   if (!show && !open) {

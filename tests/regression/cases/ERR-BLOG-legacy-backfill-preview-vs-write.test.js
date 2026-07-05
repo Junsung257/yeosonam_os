@@ -22,17 +22,18 @@ test('ERR-BLOG-legacy-backfill-preview-vs-write: dry-run is default and write mo
 
 test('ERR-BLOG-legacy-backfill-preview-vs-write: every candidate is evaluated before update', () => {
   assert.match(source, /evaluateBlogPublishQuality/);
-  assert.match(source, /qualityGatePassed: qaReport\.passed/);
+  assert.match(source, /const publishReady = !hasBlockingBlogIssue\(qaReport\)/);
+  assert.match(source, /qualityGatePassed: publishReady/);
   assert.match(source, /failedGates: qaReport\.qualityGate\.gates/);
   assert.match(source, /qualityGateFailed: auditRows\.filter\(\(row\) => !row\.qualityGatePassed\)\.length/);
 });
 
 test('ERR-BLOG-legacy-backfill-preview-vs-write: failed quality gates block DB writes', () => {
-  const failedGateCheck = source.indexOf('if (!qaReport.passed)');
+  const failedGateCheck = source.indexOf('if (!publishReady)');
   const updatePayload = source.indexOf('quality_gate: qaReport.qualityGate');
   const updateCall = source.lastIndexOf(".from('content_creatives')", updatePayload);
 
-  assert.ok(failedGateCheck > 0, 'write loop must check qaReport.passed');
+  assert.ok(failedGateCheck > 0, 'write loop must check publishReady');
   assert.ok(updateCall > failedGateCheck, 'content_creatives update must happen after failed-gate check');
   assert.ok(updatePayload > updateCall, 'update must persist quality gate evidence');
 });

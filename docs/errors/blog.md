@@ -1,6 +1,22 @@
 # Blog Errors
 
-Last updated: 2026-06-22
+Last updated: 2026-07-03
+
+## ERR-BLOG-legacy-surface-artifacts@2026-07-03
+
+- [x] **ERR-BLOG-legacy-surface-artifacts@2026-07-03**: Public SEO/render audits found legacy generated surface text on live blog posts, including raw `::tip TL;DR`, lone list markers, paragraph-ending `---`, machine hyphen keywords, and markdown image residue inside headings.
+- **Root cause**: The publish/backfill repair path handled core render artifacts, tables, and prompt residue, but did not normalize older article-level presentation traces that only become obvious in the rendered public article text.
+- **Fix**: `repairBlogEditorialQuality()` and `repairBlogStructureQuality()` now remove legacy surface artifacts, normalize machine hyphen keywords into Korean reading text, clean image residue from headings, and repair broken split CTA wording before publish gates/backfill writes.
+- **Prevention**: Public SEO/render audit failures for `surface_text_noise`, visible `TL;DR`, lone bullets, heading image residue, or machine keyword strings must become deterministic repair tests before live backfill.
+- **Verification**: `npx vitest run src/lib/blog-editorial-repair.test.ts`; then focused `npm run audit:blog-quality -- --slug=<affected-slug> --write`, indexing drain, and public `npm run audit:blog-seo` / `npm run audit:blog-render:browser`.
+
+## ERR-BLOG-audit-sample-partial-coverage@2026-07-03
+
+- [x] **ERR-BLOG-audit-sample-partial-coverage@2026-07-03**: Render and SEO audits could report a perfect score while auditing fewer detail articles than the requested sample when `/blog` listing/API collection returned a partial set.
+- **Root cause**: Audit collectors treated any non-empty source as enough. `audit-blog-render-integrity` only used sitemap fallback when listing pages returned zero links, and `audit-blog-seo-quality` returned API links immediately even if the API sample did not meet `--limit`.
+- **Fix**: Render and SEO audits now normalize absolute and relative blog hrefs, ignore non-article collection pages consistently, and fill from sitemap whenever the collected article count is below the requested limit.
+- **Prevention**: A 100 score for render, image, or SEO audits is only meaningful when `summary.totalLinks`/audited count matches the requested sample size, unless the sitemap itself has fewer public article URLs. Do not accept partial collection as a healthy fleet signal.
+- **Verification**: `npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict --limit=30 --timeout-ms=20000 --hard-timeout-ms=180000`; `npm run audit:blog-seo -- --base=https://www.yeosonam.com --json --strict --limit=30 --timeout-ms=20000 --hard-timeout-ms=180000`; `npm run audit:blog-search-daily:strict`; `npm run type-check`.
 
 ## ERR-BLOG-prompt-contract-drift@2026-06-22
 
@@ -141,6 +157,45 @@ Last updated: 2026-06-22
 > Original source before 2026-06-07 split: `db/error-registry.md:1031`
 
 - [x] **ERR-BLOG-image-quality-gate@2026-06-07** (블로그 이미지 품질/주제 적합성 하한선): 렌더 복구만으로는 Pexels/OG 이미지가 실제 글 주제에 맞는지, alt/caption이 비었는지, 같은 글 안에서 중복되는지 보장할 수 없었다. 해결: `src/lib/blog-image-quality.ts` 추가, `runQualityGates()`에 `image_quality` 게이트 연결, `scripts/audit-blog-image-quality.mjs` 전수 감사 스크립트와 `npm run audit:blog-images` 명령 등록. 게이트는 최소 이미지 수, 빈 alt, generic alt, 중복 URL, 깨진 Pexels URL, 목적지/키워드 토큰 없는 alt/caption을 발행 전에 차단한다. 한계: 실제 사진의 시각적 의미 적합성은 자동으로 완전 판정할 수 없으므로 감사 스크립트의 제목 토큰/alt/caption 검사를 하한선으로 두고, 신규 목적지 대량 발행 전에는 실패 예시와 샘플을 사람이 확인한다.
+
+---
+
+## ERR-BLOG-image-audit-sample-collapse@2026-07-03
+
+- [x] **ERR-BLOG-image-audit-sample-collapse@2026-07-03**: `npm run audit:blog-images -- --base=https://www.yeosonam.com --json --limit=30` could report 100/100 while auditing only one article. If the `/blog` listing temporarily exposed only a fallback/detail link, the script did not use the sitemap unless it found zero links.
+- **Root cause**: The image audit treated "some links found" as enough coverage and returned early before filling the requested sample. Link extraction also only matched relative `/blog/...` hrefs, so it was brittle against absolute links and query-heavy listing markup.
+- **Fix**: `scripts/audit-blog-image-quality.mjs` now normalizes absolute and relative blog hrefs, excludes blog collection/query/image links by parsed pathname, and supplements listing links from `/sitemap.xml` whenever the requested `--limit` is not reached.
+- **Prevention**: Image audit success is only meaningful when `summary.totalLinks` matches the requested sample or the sitemap has fewer valid blog detail URLs. Do not accept a 100 score from a collapsed one-row sample as proof of public image health.
+- **Verification**: `npm run audit:blog-images -- --base=https://www.yeosonam.com --json --limit=30 --timeout-ms=20000 --hard-timeout-ms=180000` now audits 30 posts and 90 images with score 100. `npm run audit:blog-search-daily:strict`, `npm run type-check`, and `git diff --check` passed.
+
+---
+
+## ERR-BLOG-quality-audit-minor-blindspot@2026-07-03
+
+- [x] **ERR-BLOG-quality-audit-minor-blindspot@2026-07-03**: `npm run audit:blog-quality -- --limit=50` exposed `minorOnlyIssues=7` but did not show which posts or issue types caused the warnings, so operators could not distinguish harmless SEO length warnings from recurring naturalness or CTA problems.
+- **Root cause**: The backfill/audit summary only emitted detailed samples for blocking quality failures. Publish-ready rows with non-blocking quality issues were reduced to a single count.
+- **Fix**: `scripts/backfill-blog-quality.ts` now emits `minorIssueCounts` and `minorIssueSamples` with slug, SEO/readability scores, issue code, source, severity, message, and evidence for publish-ready warning rows.
+- **Prevention**: Daily blog quality evidence must be diagnosable without raw DB reads. A nonzero `minorOnlyIssues` count is acceptable only when the JSON also shows the recurring issue classes and sample slugs.
+- **Verification**: `npm run audit:blog-quality -- --limit=50` now identifies the current warning mix (`seo.title`, `seo.meta_description`, `seo.heading_structure`, `seo.image_seo`, `seo.url_slug`, `seo.internal_links_cta`, and one readability repetition warning). `npm run type-check` passed.
+
+---
+
+## ERR-BLOG-repeated-planning-phrase@2026-07-03
+
+- [x] **ERR-BLOG-repeated-planning-phrase@2026-07-03**: Recent info posts could pass publish gates while repeating planning boilerplate such as "예약 전 비용, 일정, 현지..." enough times to trigger readability warnings and make the article sound templated.
+- **Root cause**: Existing repairs deduped repeated FAQ/support blocks, but did not use the readability duplicate-phrase evidence to soften overlapping 5-word planning phrases scattered across keyword/checklist sections.
+- **Fix**: `repairBlogEditorialQuality()` and `repairBlogStructureQuality()` now use `computeReadability().duplicate_phrases` to soften repeated travel-planning phrases after three exact uses, collapse duplicated replacement phrases, and leave already softened replacements stable.
+- **Live repair**: `npm run audit:blog-quality -- --limit=50 --write` repaired five published posts, followed by a focused second write for `phuquoc-preparation` after idempotency tightening. The indexing worker processed the resulting jobs successfully.
+- **Verification**: `npx vitest run src/lib/blog-editorial-repair.test.ts`, `npm run type-check`, `npm run audit:blog-quality -- --limit=50`, `npm run run:blog-indexing-worker -- --json --limit=15`, and `npm run diagnose:blog-autopublish -- --json` passed. Final quality dry-run reported `changed=0`, `qualityGateFailed=0`, and no readability minor issue.
+
+---
+
+## ERR-BLOG-product-seo-minor-false-positive@2026-07-03
+
+- [x] **ERR-BLOG-product-seo-minor-false-positive@2026-07-03**: Recent product-consult posts passed publish gates but still showed minor SEO warnings for title, meta description, heading count, and image alt because the scorer treated them like generic info guides.
+- **Root cause**: `computeSeoScore()` did not fully recognize product-consult decision signals such as package, departure, price-from, duration, fit/consult language, partial destination tokens in image alt text, or the bottom-soft CTA policy for info guides.
+- **Fix**: The SEO scorer now gives product-consult credit for commercial decision metadata, accepts up to 8 H2 sections for product decision articles, matches split destination tokens in image alt text, treats one soft bottom CTA as valid for info guides, and accepts concise readable two-word English slugs after slug-quality validation.
+- **Verification**: `npx vitest run src/lib/blog-seo-scorer.test.ts` passed, and `npm run audit:blog-quality -- --limit=50` reported `minorOnlyIssues=0`, `qualityGateFailed=0`, and `publishBlocked=0` without rewriting published rows.
 
 ---
 

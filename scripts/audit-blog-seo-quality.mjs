@@ -19,7 +19,8 @@ const timeoutMs = Math.max(1000, Number(getArg('--timeout-ms', process.env.BLOG_
 const requestedHardTimeoutMs = Number(getArg('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
 const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const outputJson = hasFlag('--json');
-const strictWarnings = hasFlag('--strict-warnings');
+const strictMode = hasFlag('--strict');
+const strictWarnings = strictMode || hasFlag('--strict-warnings');
 
 let hardTimer = null;
 if (hardTimeoutMs > 0) {
@@ -31,6 +32,8 @@ if (hardTimeoutMs > 0) {
 
 const LONGTAIL_MODIFIERS = /20\d{2}|비용|가격|일정|코스|날씨|월별|준비물|체크|체크리스트|환전|입국|서류|항공권|숙소|맛집|추천|가이드|후기|예약|포함|주의/i;
 const RAW_MARKDOWN_ARTIFACTS = /!\[[^\]]*]\(|\[[^\]]+]\((?:https?:\/\/|\/)|(^|\n)#{1,6}\s|\*\*[^*]+\*\*/m;
+const LEGACY_HIGHLIGHT_ARTIFACTS = /==[^=\n]{1,180}==|<mark\b/i;
+const SURFACE_TEXT_NOISE = /여여소남|여소남\s+여소남|여소남\s+여행\s+준비|\btip\s+TL;?\s*DR\b|상품\s*상세\s*보기\s*→\s*여소남|상품\s*상세\s*보기\s*→\s*여여소남/i;
 const AUTHORITY_HOST_HINTS = [
   '.go.kr',
   '.gov',
@@ -51,6 +54,40 @@ const AUTHORITY_HOST_HINTS = [
   'travel.state.gov',
   'cbp.dhs.gov',
 ];
+const TITLE_INTENT_GROUPS = {
+  cost: /비용|예산|경비|가격|요금|교통비|이동비|항공권|가성비|cost|budget|price/i,
+  weather: /날씨|기온|우기|건기|옷차림|월별|weather|clothes|packing/i,
+  transport: /교통|이동|픽업|공항|transfer|transport|mobility/i,
+  document: /비자|여권|입국|서류|검역|visa|passport|immigration|document/i,
+  communication: /유심|eSIM|로밍|와이파이|통신|wifi|roaming|sim/i,
+  accommodation: /숙소|호텔|리조트|객실|hotel|resort|stay/i,
+  food: /식비|맛집|음식|식사|레스토랑|food|restaurant|meal/i,
+};
+const TITLE_INTENT_COMPANIONS = {
+  cost: ['transport', 'food', 'accommodation'],
+  weather: [],
+  transport: ['cost'],
+  document: [],
+  communication: [],
+  accommodation: ['cost'],
+  food: ['cost'],
+};
+const PRODUCT_BLOG_TITLE_SIGNALS = /패키지|상품 리뷰|가성비 리뷰|특가|노팁|노옵션|노쇼핑|출발가|package review|product review/i;
+const PRODUCT_BLOG_BODY_SIGNALS = [
+  /포함|included/i,
+  /불포함|excluded/i,
+  /맞는 사람|추천 대상|fit for/i,
+  /안 맞는 사람|비추천|not fit/i,
+  /가격 변동|출발일|상담|문의|가능 여부|availability/i,
+];
+const PRODUCT_DECISION_HELP_SIGNALS = [
+  /포함|included/i,
+  /불포함|excluded/i,
+  /맞는 사람|추천 대상|fit for/i,
+  /안 맞는 사람|비추천|not fit/i,
+  /상담|문의|확인/i,
+];
+const NON_PUBLIC_LINK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
 
 async function fetchText(path) {
   const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
@@ -65,11 +102,25 @@ async function fetchText(path) {
   return res.text();
 }
 
+function normalizeBlogHref(href) {
+  if (!href) return null;
+  try {
+    const url = /^https?:\/\//i.test(href)
+      ? new URL(href)
+      : new URL(href, baseUrl);
+    if (url.origin !== new URL(baseUrl).origin) return null;
+    return url.pathname;
+  } catch {
+    return null;
+  }
+}
+
 function addBlogLink(links, href) {
-  if (!href || !/^\/blog\//.test(href)) return;
-  if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) return;
-  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
-  links.add(href.split('#')[0]);
+  const pathname = normalizeBlogHref(href);
+  if (!pathname || !/^\/blog\/[^/]+/.test(pathname)) return;
+  if (pathname.startsWith('/blog/angle/') || pathname.startsWith('/blog/destination/')) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(pathname)) return;
+  links.add(pathname);
 }
 
 async function collectBlogLinksFromSitemap(links) {
@@ -87,15 +138,16 @@ async function collectBlogLinksFromSitemap(links) {
 
 async function collectBlogLinks() {
   const apiLinks = await collectBlogLinksFromApi().catch(() => []);
-  if (apiLinks.length > 0) return limit > 0 ? apiLinks.slice(0, limit) : apiLinks;
-
   const links = new Set();
+  for (const link of apiLinks) addBlogLink(links, link);
+  if (limit > 0 && links.size >= limit) return [...links].slice(0, limit);
+
   let page = 1;
 
   while (page <= 20) {
     const path = page === 1 ? '/blog' : `/blog?page=${page}`;
     const html = await fetchText(path);
-    const matches = html.matchAll(/href="(\/blog\/[^"#?]+)"/g);
+    const matches = html.matchAll(/href=["']([^"']*\/blog\/[^"']+)["']/g);
     const before = links.size;
     for (const match of matches) {
       addBlogLink(links, match[1]);
@@ -106,7 +158,7 @@ async function collectBlogLinks() {
     page += 1;
   }
 
-  if (links.size === 0) {
+  if (links.size === 0 || (limit > 0 && links.size < limit)) {
     await collectBlogLinksFromSitemap(links);
   }
 
@@ -170,9 +222,53 @@ function hostMatchesAuthority(url) {
   }
 }
 
+function inferTitleIntents(value) {
+  return Object.entries(TITLE_INTENT_GROUPS)
+    .filter(([, pattern]) => pattern.test(value || ''))
+    .map(([group]) => group);
+}
+
+function inferPrimaryTitleIntent(row) {
+  const pathHint = safeDecodePath(row.path || '').replace(/[-_]+/g, ' ');
+  const text = `${pathHint} ${row.h1Text || ''}`;
+  return inferTitleIntents(text)[0] || null;
+}
+
+function hasConflictingTitleIntent(row) {
+  const primary = inferPrimaryTitleIntent(row);
+  if (!primary) return false;
+  const allowed = new Set([primary, ...(TITLE_INTENT_COMPANIONS[primary] || [])]);
+  return inferTitleIntents(`${row.title || ''} ${row.h1Text || ''}`)
+    .some((intent) => !allowed.has(intent));
+}
+
+function isProductConsultBlog(row) {
+  if (row.hasProductJsonLd) return true;
+  const header = `${row.path || ''} ${row.title || ''} ${row.h1Text || ''}`;
+  if (PRODUCT_BLOG_TITLE_SIGNALS.test(header)) return true;
+  const body = row.articleTextSample || '';
+  return PRODUCT_BLOG_BODY_SIGNALS.filter((pattern) => pattern.test(body)).length >= 4;
+}
+
+function hasProductDecisionHelp(row) {
+  const text = `${row.title || ''} ${row.h1Text || ''} ${row.articleTextSample || ''}`;
+  return PRODUCT_DECISION_HELP_SIGNALS.filter((pattern) => pattern.test(text)).length >= 3;
+}
+
+function isNonPublicHttpLink(href) {
+  if (!/^https?:\/\//i.test(href || '')) return false;
+  try {
+    const parsed = new URL(href);
+    return NON_PUBLIC_LINK_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function judge(row) {
   const issues = [];
   const warnings = [];
+  const productConsultBlog = isProductConsultBlog(row);
   const expectedCanonicalPath = safeDecodePath(row.path).replace(/\/$/, '');
   const expectedCanonicalOrigin = new URL(expectedCanonicalOriginInput).origin;
   let canonicalPath = '';
@@ -190,6 +286,7 @@ function judge(row) {
 
   if (!title || title.length < 20 || title.length > 70) issues.push('bad_title_length');
   else if (title.length < 25) warnings.push('short_title');
+  if (hasConflictingTitleIntent(row)) issues.push('mixed_title_intent');
   if (!description || description.length < 50 || description.length > 180) issues.push('bad_meta_description_length');
   if (!canonicalPath || canonicalPath !== expectedCanonicalPath) issues.push('bad_canonical');
   if (!canonicalOrigin || !isAllowedCanonicalOrigin(canonicalOrigin, expectedCanonicalOrigin)) issues.push('bad_canonical_origin');
@@ -197,7 +294,13 @@ function judge(row) {
   if (row.h1Count !== 1) issues.push('bad_h1_count');
   if (row.h2Count < 3) issues.push('not_enough_h2');
   if (row.articleTextLength < 1200) issues.push('thin_content');
-  if (row.articleTextLength < 2500) warnings.push('below_info_blog_ideal_length');
+  if ((row.links || []).some(isNonPublicHttpLink)) issues.push('non_public_link');
+  if (productConsultBlog) {
+    if (row.articleTextLength < 1800) warnings.push('below_product_blog_ideal_length');
+    if (!hasProductDecisionHelp(row)) warnings.push('weak_product_decision_help');
+  } else if (row.articleTextLength < 2500) {
+    warnings.push('below_info_blog_ideal_length');
+  }
   if (row.imageCount < 2) issues.push('not_enough_article_images');
   if (row.imagesMissingAlt > 0) issues.push('image_alt_missing');
   if (row.ogImageMissing) issues.push('missing_og_image');
@@ -207,6 +310,8 @@ function judge(row) {
   if (row.externalAuthorityLinkCount < 1) warnings.push('missing_external_authority_link');
   if (!LONGTAIL_MODIFIERS.test(visibleTitle)) warnings.push('weak_longtail_modifier');
   if (RAW_MARKDOWN_ARTIFACTS.test(row.articleTextSample)) issues.push('raw_markdown_visible');
+  if (LEGACY_HIGHLIGHT_ARTIFACTS.test(row.articleTextSample)) issues.push('legacy_highlight_visible');
+  if (SURFACE_TEXT_NOISE.test(row.articleTextSample)) issues.push('surface_text_noise');
   if (row.strikethroughCount > 0) issues.push('visible_strikethrough_or_deletion');
   if (!row.viewportMeta) issues.push('missing_viewport_meta');
   if (!row.ogTitle || !row.ogDescription) issues.push('missing_og_title_description');
@@ -247,9 +352,11 @@ async function auditPage(page, path) {
       document.querySelector(`meta[property="${name}"]`)?.getAttribute('content') ||
       '';
     const article = document.querySelector('article') || document.body;
-    const articleText = article.textContent || '';
-    const links = [...article.querySelectorAll('a[href]')].map((a) => a.getAttribute('href') || '');
-    const images = [...article.querySelectorAll('img')].map((img) => ({
+    const auditArticle = article.cloneNode(true);
+    auditArticle.querySelectorAll('[data-blog-supporting]').forEach((node) => node.remove());
+    const articleText = auditArticle.textContent || '';
+    const links = [...auditArticle.querySelectorAll('a[href]')].map((a) => a.getAttribute('href') || '');
+    const images = [...auditArticle.querySelectorAll('img')].map((img) => ({
       src: img.currentSrc || img.src || '',
       alt: img.getAttribute('alt') || '',
     }));
@@ -287,10 +394,10 @@ async function auditPage(page, path) {
       twitterCard: meta('twitter:card'),
       h1Count: document.querySelectorAll('h1').length,
       h1Text: document.querySelector('h1')?.textContent?.trim() || '',
-      h2Count: article.querySelectorAll('h2').length,
+      h2Count: auditArticle.querySelectorAll('h2').length,
       articleTextLength: articleText.replace(/\s+/g, ' ').trim().length,
       articleTextSample: articleText.slice(0, 4000),
-      strikethroughCount: article.querySelectorAll('del, s, strike, [style*="line-through"], .line-through').length,
+      strikethroughCount: auditArticle.querySelectorAll('del, s, strike, [style*="line-through"], .line-through').length,
       imageCount: images.length,
       imagesMissingAlt: images.filter((image) => image.alt.trim().length < 3).length,
       ogImageMissing: !meta('og:image'),
@@ -299,6 +406,7 @@ async function auditPage(page, path) {
       jsonLdTypes,
       hasBlogPostingJsonLd: jsonLdTypes.includes('BlogPosting') || jsonLdTypes.includes('Article'),
       hasBreadcrumbJsonLd: jsonLdTypes.includes('BreadcrumbList'),
+      hasProductJsonLd: jsonLdTypes.includes('Product'),
     };
   }, path);
 }
@@ -358,6 +466,7 @@ function summarize(rows) {
     failed: failed.length,
     passed: fetched.length - failed.length,
     score: fetched.length === 0 ? 0 : Math.round(((fetched.length - failed.length) / fetched.length) * 100),
+    strictMode,
     strictWarnings,
     warningCount,
     avgTitleLength: Number((fetched.reduce((sum, row) => sum + (row.title?.length || 0), 0) / Math.max(1, fetched.length)).toFixed(1)),

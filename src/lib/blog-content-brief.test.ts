@@ -41,4 +41,24 @@ describe('blog content brief', () => {
     );
     expect(buildBlogContentBriefPromptBlock(brief)).toContain('Required H2 sections');
   });
+
+  it('prioritizes transport cost intent over stale weather metadata', () => {
+    const brief = buildBlogContentBrief({
+      topic: '몽골 공항 픽업 이동비 비교',
+      destination: '몽골',
+      primaryKeyword: '몽골 공항 픽업 이동비',
+      category: 'weather',
+      source: 'coverage_gap',
+      keywords: ['몽골 렌터카 비용', '몽골 택시 요금', '몽골 공항 픽업'],
+    });
+
+    expect(brief.searchIntent).toBe('cost');
+    expect(brief.title).toBe('몽골 공항 픽업 이동비');
+    expect(brief.requiredSections).toEqual(
+      expect.arrayContaining(['비용 핵심 요약', '항목별 예산 표', '추가 비용']),
+    );
+    expect(brief.requiredSections).not.toEqual(
+      expect.arrayContaining(['월별/시즌별 표', '옷차림']),
+    );
+  });
 });

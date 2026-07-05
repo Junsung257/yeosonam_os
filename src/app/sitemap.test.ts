@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
 const queriedTables: string[] = [];
 
@@ -54,8 +55,7 @@ describe('sitemap', () => {
 
     const routes = await sitemap();
     const urls = routes.map((route) => route.url);
-    const expectedBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
-      .replace(/\/+$/, '');
+    const expectedBaseUrl = resolveBlogCanonicalOrigin();
 
     expect(urls).toContain(`${expectedBaseUrl}/packages`);
     expect(urls).toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('오사카')}`);

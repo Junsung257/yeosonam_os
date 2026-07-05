@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 const PRICE_LINE_RE = /^([\d,]{3,10})\s*(?:원|[,，\-])?\s*$/;
 const PRICE_RANGE_RE = /^(\d{1,2})[./](\d{1,2})\s*[~\-–—]\s*(\d{1,2})[./](\d{1,2})$/;

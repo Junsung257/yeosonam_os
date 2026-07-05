@@ -104,6 +104,32 @@ describe('computeSeoScore', () => {
     expect(mobile?.message).toContain('long raw urls 0');
   });
 
+  it('blocks public posts that contain localhost CTA links', () => {
+    const result = computeSeoScore({
+      blogHtml: strongMarkdown.replace(
+        '/packages?destination=%EB%B0%A9%EC%BD%95&utm_source=organic&utm_medium=blog',
+        'http://localhost:3000/packages/pkg-1?utm=blog_bottom',
+      ),
+      slug: 'bangkok-weather-monthly-clothes-checklist',
+      seoTitle: '諛⑹퐬 ?좎뵪 ?붾퀎 ?룹감由쇨낵 ?ы뻾 以鍮꾨Ъ 泥댄겕由ъ뒪??2026',
+      seoDescription: '諛⑹퐬 ?좎뵪瑜??붾퀎 湲곗삩, ?곌린쨌嫄닿린, ?룹감由? ?ы뻾 鍮꾩슜, ?낃뎅 ?쒕쪟 湲곗??쇰줈 ?뺣━??2026??以鍮?泥댄겕由ъ뒪?몄엯?덈떎.',
+      primaryKeyword: '諛⑹퐬 ?좎뵪',
+      secondaryKeywords: ['諛⑹퐬 ?룹감由?', '諛⑹퐬 ?ы뻾 鍮꾩슜', '諛⑹퐬 ?낃뎅 ?쒕쪟'],
+      destination: '諛⑹퐬',
+      blogType: 'info',
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: true,
+      },
+    });
+
+    const linkIntegrity = result.details.find((detail) => detail.name === 'public_link_integrity');
+    expect(linkIntegrity?.status).toBe('fail');
+    expect(linkIntegrity?.message).toContain('localhost');
+    expect(result.passed).toBe(false);
+  });
+
   it('matches hyphenated slug keywords against readable spaced article text', () => {
     const result = computeSeoScore({
       blogHtml: [
@@ -122,5 +148,146 @@ describe('computeSeoScore', () => {
     const primary = result.details.find((detail) => detail.name === 'primary_keyword');
     expect(primary?.score).toBeGreaterThan(0);
     expect(primary?.message).not.toContain('0회');
+  });
+
+  it('blocks mixed-intent titles that attach weather modifiers to a cost article', () => {
+    const result = computeSeoScore({
+      blogHtml: strongMarkdown.replaceAll('방콕 날씨', '발리 교통비'),
+      slug: 'bali-transport-cost',
+      seoTitle: '발리 교통비 여행 가이드 2026 | 날씨와 옷차림 체크',
+      seoDescription: '발리 교통비를 공항 픽업, 택시, 이동 시간, 예약 전 확인 비용 기준으로 정리했습니다.',
+      primaryKeyword: '발리 교통비',
+      secondaryKeywords: ['발리 공항 픽업', '발리 택시 비용'],
+      destination: '발리',
+      blogType: 'info',
+      imageCount: 3,
+      imagesWithAlt: 3,
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: true,
+      },
+    });
+
+    const title = result.details.find((detail) => detail.name === 'title');
+    expect(title?.status).toBe('fail');
+    expect(title?.message).toContain('mixed intent');
+    expect(result.passed).toBe(false);
+  });
+
+  it('blocks generated hash suffix slugs even when the article body is otherwise strong', () => {
+    const result = computeSeoScore({
+      blogHtml: strongMarkdown,
+      slug: 'travel-guide-q35bf6ed0',
+      seoTitle: '오사카 7월 날씨 여행 가이드 2026 | 월별 날씨와 옷차림 체크',
+      seoDescription: '오사카 7월 날씨를 2026년 기준으로 정리했습니다. 월별 기온, 옷차림, 준비물, 비 오는 날 동선까지 확인하세요.',
+      primaryKeyword: '오사카 7월 날씨',
+      secondaryKeywords: ['오사카 옷차림', '오사카 준비물'],
+      destination: '오사카',
+      blogType: 'info',
+      imageCount: 3,
+      imagesWithAlt: 3,
+      hasJsonLd: {
+        blogPosting: true,
+        breadcrumbList: true,
+        faqPage: true,
+      },
+    });
+
+    const slug = result.details.find((detail) => detail.name === 'url_slug');
+    expect(slug?.status).toBe('fail');
+    expect(slug?.message).toContain('hash_suffix_slug');
+    expect(result.passed).toBe(false);
+  });
+
+  it('treats product-consult commercial decision signals as valid SEO metadata', () => {
+    const body = [
+      '# 서안 4박6일 가성비 패키지',
+      '',
+      '서안 4박6일 패키지는 부산/김해 출발, 44만원대 시작가, 포함 조건, 일정 강도, 현지 추가 비용을 문의 전에 비교해야 합니다.',
+      '',
+      '## 10초 판단',
+      '## 포함 조건',
+      '## 불포함 조건',
+      '## 일정 체감',
+      '## 맞는 사람',
+      '## 안 맞는 사람',
+      '## 가격 변동 조건',
+      '## 문의 전 질문',
+      '',
+      '![서안 여행 예산 체크 장면](https://images.pexels.com/photos/123/pexels-photo-123.jpeg)',
+      '![서안 일정 준비 장면](https://images.pexels.com/photos/124/pexels-photo-124.jpeg)',
+      '![서안 현지 비용 확인 장면](https://images.pexels.com/photos/125/pexels-photo-125.jpeg)',
+      '',
+      '[상품 조건 확인](https://www.yeosonam.com/packages/pkg-1?utm=blog_bottom)',
+      '[상담 문의](https://www.yeosonam.com/group-inquiry?utm_source=blog)',
+      '[서안 글 더 보기](/blog)',
+    ].join('\n\n');
+
+    const result = computeSeoScore({
+      blogHtml: body,
+      slug: 'xian-bx-xian-4-6',
+      seoTitle: '부산/김해출발 서안 4박6일 가성비 패키지 44만원~ (2026)',
+      seoDescription: '서안 일정과 이동 동선을 2026년 기준으로 정리했습니다. 예약 전 확인할 비용, 일정, 준비물, 현지 체크 포인트를 한 번에 확인하세요.',
+      primaryKeyword: '서안 4박6일',
+      destination: '서안',
+      blogType: 'product',
+    });
+
+    expect(result.details.find((detail) => detail.name === 'title')?.status).toBe('pass');
+    expect(result.details.find((detail) => detail.name === 'meta_description')?.status).toBe('pass');
+    expect(result.details.find((detail) => detail.name === 'heading_structure')?.status).toBe('pass');
+    expect(result.details.find((detail) => detail.name === 'image_seo')?.status).toBe('pass');
+  });
+
+  it('accepts one soft bottom CTA for informational guides', () => {
+    const result = computeSeoScore({
+      blogHtml: [
+        '# 유럽 자유여행 팁',
+        '',
+        '유럽 자유여행 팁은 예산과 실제 비용을 먼저 보고, 일정과 준비물을 출발 전 다시 확인하면 실수가 줄어듭니다.',
+        '',
+        '## 예산 체크',
+        '## 일정 체크',
+        '## 준비물 체크',
+        '## 이동 동선',
+        '## 공식 확인',
+        '',
+        '[내 일정 기준 상품 확인](/packages?destination=%EC%9C%A0%EB%9F%BD)',
+        '[다른 여행 글 보기](/blog)',
+      ].join('\n\n'),
+      slug: 'europe-independent-travel-tips-july-2026',
+      seoTitle: '유럽 자유여행 팁 여행 가이드 2026 | 예산 · 경비 · 비용 절약 체크',
+      seoDescription: '유럽 자유여행 팁 예산과 실제 비용을 2026년 기준으로 정리했습니다. 예약 전 확인할 비용, 일정, 준비물, 현지 체크 포인트를 한 번에 확인하세요.',
+      primaryKeyword: '유럽 자유여행 팁',
+      destination: '유럽',
+      blogType: 'info',
+    });
+
+    expect(result.details.find((detail) => detail.name === 'internal_links_cta')?.status).toBe('pass');
+  });
+
+  it('accepts concise readable two-word English slugs after slug quality passes', () => {
+    const result = computeSeoScore({
+      blogHtml: [
+        '# 클락 맛집과 식비',
+        '',
+        '클락 예산과 실제 비용을 2026년 기준으로 정리했습니다. 식비, 일정, 준비물, 예약 전 체크 포인트를 확인하세요.',
+        '',
+        '## 식비 예산',
+        '## 맛집 동선',
+        '## 현지 결제',
+        '## 준비물',
+        '## 상담 전 체크',
+      ].join('\n\n'),
+      slug: 'clark-food',
+      seoTitle: '클락 여행 가이드 2026 | 예산과 실제 비용 체크',
+      seoDescription: '클락 예산과 실제 비용을 2026년 기준으로 정리했습니다. 예약 전 확인할 비용, 일정, 준비물, 현지 체크 포인트를 한 번에 확인하세요.',
+      primaryKeyword: '클락',
+      destination: '클락',
+      blogType: 'info',
+    });
+
+    expect(result.details.find((detail) => detail.name === 'url_slug')?.status).toBe('pass');
   });
 });

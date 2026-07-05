@@ -1,7 +1,20 @@
 import { describe, it, expect } from 'vitest';
+import { sanitizeCatalogRemainder } from './terms-catalog';
 import { classifyInclusions, resolveShopping, resolveTermsMisc, renderPackage } from './render-contract';
 
 describe('classifyInclusions + terms-catalog', () => {
+  it('normalizes supplier-style Korean inclusion labels before mobile rendering', () => {
+    const { basic, flat } = classifyInclusions([
+      '왕복 항공료',
+      '유류할증료(5월 기준)',
+      '기사가이드경비',
+    ]);
+
+    expect(flat).toContain('유류할증료 5월 기준');
+    expect(flat).toContain('가이드/기사 경비');
+    expect(basic.map(item => item.text).join(' ')).not.toContain('유류할증료(5월 기준)');
+  });
+
   it('기본 포함을 카탈로그 순서로 정형화', () => {
     const { basic } = classifyInclusions([
       '여행자보험',
@@ -45,5 +58,13 @@ describe('renderPackage excludes.display', () => {
     });
     expect(view.excludes.display[0].text).toBe('개인경비');
     expect(view.excludes.basic[0]).toBe('개인경비');
+  });
+});
+
+describe('sanitizeCatalogRemainder', () => {
+  it('removes dangling customer-visible separators from catalog remainder text', () => {
+    expect(sanitizeCatalogRemainder('기사/')).toBe('기사');
+    expect(sanitizeCatalogRemainder('/ 기사 /')).toBe('기사');
+    expect(sanitizeCatalogRemainder('/')).toBeNull();
   });
 });

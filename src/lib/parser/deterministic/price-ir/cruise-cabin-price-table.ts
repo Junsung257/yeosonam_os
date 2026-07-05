@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 const CABIN_LABEL_RE = /^(인사이드|오션뷰|발코니|스위트|내측|해측|창측|발코니\s*스위트)\s+/u;
 

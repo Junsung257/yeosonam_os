@@ -303,6 +303,10 @@ function parseUsd(textValue: string): number | null {
 }
 
 function detectCountry(source: string): string | null {
+  if (/방콕|파타야|푸켓|치앙마이|치앙라이|코사무이/i.test(source)) return '태국';
+  if (/다낭|나트랑|냐짱|달랏|하노이|호치민|푸꾸옥/i.test(source)) return '베트남';
+  if (/장가계|상하이|북경|베이징|서안|시안|연길/i.test(source)) return '중국';
+  if (/오사카|도쿄|후쿠오카|삿포로|홋카이도|오키나와/i.test(source)) return '일본';
   return source.match(/베트남|중국|일본|대만|태국|라오스|캄보디아|싱가포르|필리핀|말레이시아/)?.[0] ?? null;
 }
 

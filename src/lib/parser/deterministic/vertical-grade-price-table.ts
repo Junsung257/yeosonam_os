@@ -1,6 +1,6 @@
 import type { PriceTier } from './price-table';
 
-export type VerticalGradePriceGrade = 'economy' | 'premium';
+export type VerticalGradePriceGrade = 'economy' | 'standard' | 'premium';
 
 interface VerticalGradePriceOptions {
   year?: number;
@@ -13,7 +13,9 @@ interface VerticalGradePriceOptions {
 interface ParsedVerticalGradeRow {
   date: string;
   economyPrice: number;
+  standardPrice: number | null;
   premiumPrice: number;
+  prices: number[];
   note: string | null;
 }
 
@@ -47,7 +49,7 @@ function inferYear(rawText: string, explicitYear?: number): number {
 }
 
 function parseDateList(line: string, year: number): string[] {
-  const parts = line.split(',').map(p => p.trim()).filter(Boolean);
+  const parts = line.replace(/\([^)]*\)/g, '').split(',').map(p => p.trim()).filter(Boolean);
   const dates: string[] = [];
   let currentMonth: number | null = null;
 
@@ -76,7 +78,7 @@ function parsePriceLine(line: string): number {
 }
 
 function looksLikeDateList(line: string): boolean {
-  return DATE_LIST_RE.test(line.trim());
+  return DATE_LIST_RE.test(line.replace(/\([^)]*\)/g, '').trim());
 }
 
 function findFirstVerticalPriceRow(lines: string[]): number {
@@ -87,23 +89,48 @@ function findFirstVerticalPriceRow(lines: string[]): number {
   return -1;
 }
 
-function readPricePair(lines: string[], startIndex: number): { note: string | null; economyPrice: number; premiumPrice: number; nextIndex: number } | null {
+function readConsecutivePrices(lines: string[], startIndex: number): { prices: number[]; nextIndex: number } {
+  const prices: number[] = [];
   let i = startIndex;
-  let note: string | null = null;
+  for (; i < Math.min(lines.length, startIndex + 5); i++) {
+    const price = parsePriceLine(lines[i] ?? '');
+    if (price <= 0) break;
+    prices.push(price);
+  }
+  return { prices, nextIndex: i };
+}
 
-  const first = parsePriceLine(lines[i] ?? '');
-  const second = parsePriceLine(lines[i + 1] ?? '');
-  if (first > 0 && second > 0) {
-    return { note, economyPrice: first, premiumPrice: second, nextIndex: i + 2 };
+function readPricePair(lines: string[], startIndex: number): {
+  note: string | null;
+  economyPrice: number;
+  standardPrice: number | null;
+  premiumPrice: number;
+  prices: number[];
+  nextIndex: number;
+} | null {
+  const direct = readConsecutivePrices(lines, startIndex);
+  if (direct.prices.length >= 2) {
+    return {
+      note: null,
+      economyPrice: direct.prices[0],
+      standardPrice: direct.prices.length >= 3 ? direct.prices[1] : null,
+      premiumPrice: direct.prices.length >= 3 ? direct.prices[2] : direct.prices[1],
+      prices: direct.prices,
+      nextIndex: direct.nextIndex,
+    };
   }
 
-  const maybeNote = lines[i];
-  const afterNoteFirst = parsePriceLine(lines[i + 1] ?? '');
-  const afterNoteSecond = parsePriceLine(lines[i + 2] ?? '');
-  if (maybeNote && !looksLikeDateList(maybeNote) && afterNoteFirst > 0 && afterNoteSecond > 0) {
-    note = maybeNote;
-    i += 1;
-    return { note, economyPrice: afterNoteFirst, premiumPrice: afterNoteSecond, nextIndex: i + 2 };
+  const maybeNote = lines[startIndex];
+  const afterNote = readConsecutivePrices(lines, startIndex + 1);
+  if (maybeNote && !looksLikeDateList(maybeNote) && afterNote.prices.length >= 2) {
+    return {
+      note: maybeNote,
+      economyPrice: afterNote.prices[0],
+      standardPrice: afterNote.prices.length >= 3 ? afterNote.prices[1] : null,
+      premiumPrice: afterNote.prices.length >= 3 ? afterNote.prices[2] : afterNote.prices[1],
+      prices: afterNote.prices,
+      nextIndex: afterNote.nextIndex,
+    };
   }
 
   return null;
@@ -139,7 +166,9 @@ function extractRows(rawText: string, options: VerticalGradePriceOptions = {}): 
       rows.push({
         date,
         economyPrice: pair.economyPrice,
+        standardPrice: pair.standardPrice,
         premiumPrice: pair.premiumPrice,
+        prices: pair.prices,
         note: pair.note,
       });
     }
@@ -199,6 +228,7 @@ function targetWeekdays(options: VerticalGradePriceOptions): Set<string> | null 
 }
 
 function filterRowsByDuration(rows: ParsedVerticalGradeRow[], options: VerticalGradePriceOptions): ParsedVerticalGradeRow[] {
+  if (rows.some(row => row.prices.length >= 3)) return rows;
   const durationDays = options.durationDays ?? inferDurationDaysFromText(options.title);
   const weekdays = targetWeekdays(options);
   if (!durationDays && !weekdays) return rows;
@@ -226,6 +256,39 @@ function normalizeGrade(grade?: VerticalGradePriceOptions['grade']): VerticalGra
   return 'economy';
 }
 
+function resolveVerticalGrade(options: VerticalGradePriceOptions): VerticalGradePriceGrade {
+  const title = options.title ?? '';
+  if (/프리미엄|premium/i.test(title)) return 'premium';
+  if (/스탠다드|standard/i.test(title)) return 'standard';
+  if (/세이브|실속|economy|save/i.test(title)) return 'economy';
+  const grade = options.grade;
+  if (grade === 'premium' || (typeof grade === 'string' && /프리미엄|premium/i.test(grade))) return 'premium';
+  if (grade === 'standard' || (typeof grade === 'string' && /스탠다드|standard/i.test(grade))) return 'standard';
+  return normalizeGrade(grade);
+}
+
+function priceForGrade(row: ParsedVerticalGradeRow, grade: VerticalGradePriceGrade): number {
+  if (row.prices.length >= 3) {
+    if (grade === 'premium') return row.prices[2] ?? 0;
+    if (grade === 'standard') return row.prices[1] ?? 0;
+    return row.prices[0] ?? 0;
+  }
+  if (grade === 'premium') return row.premiumPrice;
+  if (grade === 'standard') return row.standardPrice ?? row.premiumPrice;
+  return row.economyPrice;
+}
+
+function resolveVerticalGradeStable(options: VerticalGradePriceOptions): VerticalGradePriceGrade {
+  const title = options.title ?? '';
+  if (/\uD504\uB9AC\uBBF8\uC5C4|premium/i.test(title)) return 'premium';
+  if (/\uC2A4\uD0E0\uB2E4\uB4DC|standard/i.test(title)) return 'standard';
+  if (/\uC138\uC774\uBE0C|\uC2E4\uC18D|economy|save/i.test(title)) return 'economy';
+  const grade = options.grade;
+  if (grade === 'premium' || (typeof grade === 'string' && /\uD504\uB9AC\uBBF8\uC5C4|premium/i.test(grade))) return 'premium';
+  if (grade === 'standard' || (typeof grade === 'string' && /\uC2A4\uD0E0\uB2E4\uB4DC|standard/i.test(grade))) return 'standard';
+  return resolveVerticalGrade(options);
+}
+
 /**
  * Extracts vertical spot price tables where each departure date is followed by
  * two grade prices, usually "economy/basic" then "premium/no-option".
@@ -234,12 +297,12 @@ export function extractVerticalGradePriceTable(rawText: string, options: Vertica
   const rows = filterRowsByDuration(extractRows(rawText, options), options);
   if (rows.length === 0) return [];
 
-  const grade = normalizeGrade(options.grade);
-  const gradeLabel = grade === 'premium' ? '고품격' : '실속';
+  const grade = resolveVerticalGradeStable(options);
+  const gradeLabel = grade === 'premium' ? '고품격' : grade === 'standard' ? '스탠다드' : '실속';
   const byKey = new Map<string, { price: number; note: string | null; dates: string[] }>();
 
   for (const row of rows) {
-    const price = grade === 'premium' ? row.premiumPrice : row.economyPrice;
+    const price = priceForGrade(row, grade);
     if (price <= 0) continue;
     const key = `${price}|${row.note ?? ''}`;
     const group = byKey.get(key) ?? { price, note: row.note, dates: [] };

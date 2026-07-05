@@ -12,6 +12,7 @@ export type V3DraftGateStatus = 'ready_to_publish' | 'needs_review' | 'blocked';
 export type LatestV3DraftForPackage = {
   id: string;
   package_id: string | null;
+  source_type?: string | null;
   ledger: V3DraftLedger | null;
   gate_result: V3GateResult | null;
   status: V3DraftGateStatus | string | null;
@@ -120,9 +121,26 @@ export function summarizeV3GateBlockReasons(draft: LatestV3DraftForPackage | nul
   const checks = Array.isArray(draft?.gate_result?.checks) ? draft!.gate_result!.checks : [];
   return checks
     .filter(check => check.status === 'fail' || check.status === 'warn')
-    .map(check => check.message || check.id)
+    .map(check => failedV3GateReason(check.id, check.message))
     .filter((message): message is string => Boolean(message))
     .slice(0, 20);
+}
+
+function failedV3GateReason(id: unknown, message: unknown): string {
+  const checkId = String(id ?? '');
+  const fallback = String(message || id || 'V3 customer notice gate requires review');
+  if (checkId.endsWith('.price')) return 'price evidence missing or not ready for V3 customer notice proof';
+  if (checkId.endsWith('.flight')) return 'flight evidence missing';
+  if (checkId.endsWith('.days')) return 'itinerary days missing';
+  if (checkId.endsWith('.minimum_departure')) return 'minimum departure evidence missing';
+  if (checkId.endsWith('.inclusions')) return 'inclusion evidence missing';
+  if (checkId.endsWith('.exclusions')) return 'exclusion evidence missing';
+  if (checkId.endsWith('.meals_or_notice')) return 'meal evidence missing or explicit meal notice required';
+  if (checkId.endsWith('.hotel_or_notice')) return 'hotel evidence missing or explicit hotel notice required';
+  if (checkId.endsWith('.meeting_not_flight')) return 'meeting time is reused as flight departure time';
+  if (checkId.endsWith('.options_reflected')) return 'source option section requires structured option or explicit none notice';
+  if (checkId.endsWith('.shopping_reflected')) return 'source shopping section requires structured shopping visit or explicit none notice';
+  return fallback;
 }
 
 export function evaluateV3CustomerNoticeGate(
@@ -148,7 +166,7 @@ export async function loadLatestV3DraftForPackage(
 ): Promise<LatestV3DraftForPackage | null> {
   const { data, error } = await sb
     .from('product_registration_drafts')
-    .select('id, package_id, ledger, gate_result, status, created_at')
+    .select('id, package_id, source_type, ledger, gate_result, status, created_at')
     .eq('package_id', packageId)
     .order('created_at', { ascending: false })
     .limit(1)

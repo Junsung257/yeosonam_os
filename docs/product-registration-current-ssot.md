@@ -74,15 +74,65 @@ upload route
 
 `src/app/api/upload/route.ts` is an HTTP adapter only. It must not contain supplier-specific regexes, price table rescue logic, destination rescue logic, itinerary normalization, or persistence decisions.
 
+### Customer Open Operational Gate
+
+New supplier uploads are not "auto published." They become automatic customer-open candidates only after the same repeatable gate passes: registration schema, customer copy V2 safe repair, source-backed price/date/flight/hotel/entity checks, `/packages/{id}` proof, `/lp/{id}` proof, and `customer_open_contract`.
+
+The operational gate is scripted so release readiness does not depend on memory or one-off audits:
+
+```bash
+npx tsx scripts/run-customer-open-operational-gate.ts --base=https://www.yeosonam.com
+```
+
+For a newly saved pending package rehearsal, run:
+
+```bash
+npx tsx scripts/rehearse-customer-open-candidate.ts --code=<INTERNAL_CODE> --base=https://www.yeosonam.com --json
+```
+
+The rehearsal must run with `autoOpen:false`. A pass means `customer_open_candidate`; a fail must end as `needs_human_source_review` with attempted repairs, remaining blockers, and next action. Do not expose the product to customers from a rehearsal result alone.
+
+Stored mobile proof freshness is part of the same operational contract. A public screen audit can prove the current customer page is clean, but approval, blog, and marketing gates still require non-stale stored `/packages` and `/lp` proof hashes. Use the refresh selector before release work:
+
+```bash
+npm run refresh:customer-mobile-proofs -- --summary-only --json
+npm run refresh:customer-mobile-proofs:apply -- --base=https://www.yeosonam.com --limit=50 --batch-size=10
+```
+
+The dry run must list only packages whose stored proof is missing, stale, hashless, surface-incomplete, or source-invalid. The apply run reuses the internal mobile proof renderer and must not publish or unpublish products by itself; it only refreshes `audit_report.mobile_browser_proof` and clears proof-required audit markers when the proof passes.
+
+Baseline refresh is also part of this gate. `scripts/refresh-baselines.js` must use environment variables first, load `.env.local` only as a local fallback, accept `SUPABASE_SERVICE_KEY` when `SUPABASE_SERVICE_ROLE_KEY` is absent, and fail during preflight before Playwright when Supabase URL/key values are missing or invalid:
+
+```bash
+node scripts/refresh-baselines.js --dry-run
+```
+
+Golden paste E2E currently starts at 15 source shapes, not 10. The additional stress cases cover monthly weekday price grids, mixed multi-product catalogs, NET/selling-price lines, ticketing-deadline offers, and multi-currency local/optional expenses. New supplier formats that fail review must be promoted into this corpus or the upload review fixture-candidate report before being called resolved.
+
+Schedule HWP batch learning from 2026-07-04 is now part of the same engine contract:
+
+- If raw text contains source-backed departure weekdays but `travel_packages.departure_days` is empty, `upload_to_open_autopilot` may fill only that weekday label. It must not invent new departure dates.
+- If raw text or saved accommodations contain hotel/resort/equivalent hotel lines but itinerary day `hotel.name` is empty, the autopilot may fill overnight days with the source-backed hotel candidate and record the repair. Surcharge, movement, check-in/out, breakfast, room-assignment, and hotel-policy lines are not hotel evidence.
+- Ferry/ship products such as Tsushima Link departures are non-air transport packages. A missing `airline` must not block the quality scorecard when the source text proves ferry/ship transport; normal air packages still require airline evidence.
+- Expired source products whose every departure date is before the current KST date are not customer-openable. They should be archived/saved with an audit reason instead of forced open.
+
 ### Text Paste Upload Contract
 
 `admin/upload` treats supplier pasted text as the primary input path. File, HWP, OCR, and PDF parsing are helper paths that must produce text for the same central engine; they must not become a separate registration engine.
 
+Normal pasted-text uploads must be allowed to complete inside the long-running upload route envelope. Do not send ordinary short supplier text to `upload_review_queue` only because it exceeds a short UI comfort timer. The replay queue is for heavy or likely multi-product inputs, unrecoverable validation failures, or true background recovery. When replaying a timeout row, a duplicate response that proves the package was already saved must resolve the queue row instead of leaving it as a failed or pending registration.
+
+If an upload is deferred for replay, the admin upload UI must treat it as an active background registration, not a terminal failure. The UI should poll the replay-status endpoint by `queueId` or `uploadRequestId`, recover saved package IDs or duplicate internal codes, and immediately run the normal upload verification once replay resolves. Replay failures must surface the specific remaining blocker instead of a generic timeout message.
+
 The original supplier text must never be overwritten during preprocessing. The intake layer may create a normalized analysis snapshot for broken line breaks, tabs, bullets, currency tokens, date tokens, and itinerary/table-like lines, but the snapshot is QA evidence only. Persist or return hashes, metrics, and change counts, not a second mutable source of truth.
+
+Evidence is multi-source. `evidence.rawTextHash` remains the legacy representative hash, but `evidence.sourceDocuments[]` must carry the distinct source records used by registration: `original_raw`, `parser_raw`, `document_raw`, `section_raw`, and `analysis_normalized` when available. Evidence spans with `sourceId` must match the same source document's hash; sourceId/hash cross-wiring is invalid. Legacy spans without `sourceId` may still use the legacy representative hash or any registered source document hash for backward compatibility.
 
 Before any product reaches DB persistence, the result of `registerProductFromRaw()` and bounded micro QA must satisfy `src/lib/product-registration/standard-registration-schema.ts`. The gate is both a Zod runtime validator and a JSON Schema contract for structured-output/eval tooling. A customer-deliverable registration requires source hash evidence, non-empty `product_prices`, non-empty `price_dates`, and itinerary days. Schema failures are not partial successes; they must go to `upload_review_queue` with the preprocessing snapshot and structured diagnostics.
 
 LLM or structured-output repairs may propose fields, but deterministic validation owns the final decision. Price/date/itinerary evidence that is weak, contradictory, or missing must stay `needs_review`; it must not be saved as a customer-openable package.
+
+`product_prices.note` by itself is not price provenance. Price/date source evidence may be accepted only when the row carries an allowed provenance cue such as `source_`, `pdf_date_price_table`, `human_reader`, `document_raw`, `evidenceSpanId`, `evidenceHash`, or `sourcePriceIrId`, or when the original source text itself contains matching date/amount evidence. Option-sized, local-expense, golf-option, and optional-tour prices must not be promoted into `product_prices`; they should be preserved as excluded price candidates for later structured option handling.
 
 ### YSN Standard Markdown Contract
 
@@ -104,7 +154,7 @@ Option/optional-tour prices in supplier shorthand such as `USD30`, `USD 30`, `$3
 Customer-ready upload requires source-backed round-trip flight evidence to survive all the way to `itinerary_data.flight_segments`.
 
 - If the supplier source contains two flight codes and at least four time tokens, saved segments must include complete outbound and inbound `flight_no`, `dep_time`, and `arr_time`.
-- Korean catalog tables where return departure is on day N and arrival is on day N+1 must be paired as one inbound segment with `arr_day_offset=1`.
+- Korean catalog tables where return departure is on day N and arrival is on day N+1 must be paired as one inbound segment with `arr_day_offset=1`. Keep `day_pair` inside the itinerary day range, e.g. `[lastDayIndex, lastDayIndex]`, and let renderers show `익일 도착` from `arr_day_offset`.
 - Meeting, hotel pickup, or airport-transfer times must not be reused as flight departure times when a later source time is tied to an actual `... 공항 출발` activity.
 - A row must not be called recovered only because `extractSupplierRawDeterministicFacts()` found partial flight facts. Replay verification must also accept complete `buildSupplierRawDeterministicItinerary(...).flight_segments`.
 - Before marking an upload ready, the flow must validate the final customer mobile/A4 payload, not just parser output.
@@ -113,16 +163,21 @@ Customer-ready upload requires source-backed round-trip flight evidence to survi
 
 Upload verification must fail before customer opening when the saved data would produce a broken mobile landing or A4 render.
 
+LP date fallback must not invent a departure date. If no valid departure date exists, landing data must use `departureFullDate=null` and `departureDateLabel='미정'`; proof, lead forms, and cancellation-date formatting must handle the unknown date explicitly.
+
+The customer LP must expose enough server-rendered product context to be audited without relying only on deferred lead UI. When source-backed `price_dates` exist, `/lp/{id}` must render a visible departure-date summary near the price block. Public HTML readiness must fetch and validate both `/packages/{id}` and `/lp/{id}`; if local env points `NEXT_PUBLIC_BASE_URL` to localhost, production public audits must use `NEXT_PUBLIC_SITE_URL` or an explicit `--base` value instead of treating localhost fetch failures as product failures.
+
 The upload verify layer owns these customer-render gates:
 
 - `C15 entity review gate`: unresolved customer-visible unmatched entities block clean verification. This includes pending attraction, optional_tour, notice, unknown rows, and shopping rows that are not confidently structured. Meal, transfer, confidently structured shopping, free_time, price_noise, and resolved hotel rows may pass only when they are non-blocking and not marked `needs_review`.
 - Shopping review blockers must use the live pending unmatched queue, not stale V3 draft summary counts, because resolved shopping rows are structured schedule facts and must not require attraction master creation.
 - `C16 customer render duration contract`: saved itinerary day count, duplicate day numbers, `itinerary_data.meta.days`, `itinerary_data.meta.nights`, `duration`, `nights`, and `trip_style` must agree. A product such as `2박 3일` must not carry `itinerary_data.meta.nights=1`.
 - `C17 customer render entity contract`: schedule rows that are meals, shopping, options, notices, hotels, transfers, free time, or price noise must not carry attraction cards/photos. Meal-only tokens such as `꿔바로우`, shopping rows such as `면세점 1곳`, and hotel/service rows must not render as normal attraction timeline cards.
+- `C18 customer visible copy V2`: customer-visible DB fields and actual `/packages/{id}` plus `/lp/{id}` body text must be checked with the same deterministic copy-quality rules. Safe repairs include HTML entity decode, RMK/P.P/backslash price cleanup, `OR` -> `또는`, `월기준` spacing, `기사가이드경비` wording, `바나산 정산` -> `바나산 정상`, and low-information action sentences such as `OO로 이동합니다` -> `OO 이동`. Unsafe issues such as mojibake, internal/operator terms, and unresolved attraction placeholders remain blocking. Duplicate checks must target real customer-section duplication such as optional tour vs inclusion/highlight, not internal render helper fields such as `entity_kind`, `attraction_query`, `a4_sentence`, or `landing_sentence`.
 
 These gates are not optional advisory checks. If any fail, the product can be saved for review, but it is not customer-openable and must not be described as mobile-landing-ready.
 
-Approval requires a separate actual mobile browser proof. A clean source/render-contract audit is not final completion. Before any package can move to `active` or another customer-visible status, `audit_report.mobile_browser_proof.status` must be `pass`, the proof must include both `/packages/{id}` and `/lp/{id}` surfaces, and the proof must have been produced by the internal render-proof path. The proof must also exercise the customer CTA path enough to confirm the reservation/lead sheet opens with customer-safe context. If this proof is missing or stale, approval must return `MOBILE_BROWSER_PROOF_REQUIRED` and leave the product non-public/blocked for review.
+Approval requires a separate actual mobile browser proof. A clean source/render-contract audit is not final completion. Before any package can move to `active` or another customer-visible status, `audit_report.mobile_browser_proof.status` must be `pass`, the proof must include both `/packages/{id}` and `/lp/{id}` surfaces, and the proof must have been produced by the internal render-proof path. The proof payload must include `source='hwp-mobile-browser-proof'`, top-level `screen_hash` and `customer_visible_hash`, and the same hashes for each required surface result. The proof must also exercise the customer CTA path enough to confirm the reservation/lead sheet opens with customer-safe context. If this proof is missing, hashless, non-internal, or stale, approval must return `MOBILE_BROWSER_PROOF_REQUIRED` and leave the product non-public/blocked for review.
 
 The internal render-proof path may use the `x-yeosonam-render-proof` header with a server-side secret to render a non-public `/packages/{id}` page for QA only. This does not make the product public to customers. It exists so AutoQA can inspect the exact customer page before approval instead of activating first and demoting after damage.
 
@@ -338,7 +393,9 @@ Required behavior:
 
 ## Customer Page Audit Contract
 
-상품 등록 완료 검수의 고객 화면 기준은 `/packages/{packageId}`다. `/lp/{packageId}`는 랜딩/디자인 실험면일 수 있으므로 상품 원문 대조, 모바일 상세, A4 readiness의 최종 기준으로 쓰지 않는다.
+The current customer page audit contract covers both `/packages/{packageId}` and `/lp/{packageId}`. `/packages` remains the full product detail/A4 semantic reference, but `/lp` is also a customer-visible surface and must pass public HTML and mobile proof checks before a product is treated as open-ready.
+
+상품 등록 완료 검수의 고객 화면 기준은 `/packages/{packageId}`와 `/lp/{packageId}` 양쪽이다. `/packages`는 상품 원문 대조, 모바일 상세, A4 readiness의 상세 기준이고, `/lp`는 고객 유입 랜딩 surface이므로 가격, 출발 가능일, 일정, CTA, 고객 금지문구, broken text를 별도로 통과해야 한다.
 
 For pasted catalog itinerary tables (`일 자 / 지 역 / 교통편 / 시 간 / 주요 행사 일정 / 식 사`):
 

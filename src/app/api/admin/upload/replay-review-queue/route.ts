@@ -38,6 +38,18 @@ function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function extractSavedIds(payload: Record<string, unknown>): string[] {
+  if (Array.isArray(payload.dbIds)) {
+    return payload.dbIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+  }
+  return typeof payload.dbId === 'string' && payload.dbId.trim() ? [payload.dbId] : [];
+}
+
+function extractDuplicateInternalCode(payload: Record<string, unknown>): string | null {
+  if (payload.duplicate !== true) return null;
+  return stringValue(payload.internal_code);
+}
+
 const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ success: false, error: 'Supabase is not configured.' }, { status: 503 });
@@ -64,7 +76,7 @@ const postHandler = async (request: NextRequest) => {
 
   const { data: queueRow, error: queueError } = await supabaseAdmin
     .from('upload_review_queue')
-    .select('id, raw_text_chunk, source_filename, product_title, file_hash, normalized_content_hash')
+    .select('id, raw_text_chunk, source_filename, product_title, file_hash, normalized_content_hash, parsed_draft_json')
     .eq('id', queueId)
     .maybeSingle();
 
@@ -94,16 +106,39 @@ const postHandler = async (request: NextRequest) => {
     ?? stringValue((queueRow as { source_filename?: unknown }).source_filename)
     ?? stringValue((queueRow as { product_title?: unknown }).product_title)
     ?? 'review-queue-replay.txt';
+  const parsedDraftJson = (queueRow as { parsed_draft_json?: unknown }).parsed_draft_json;
+  const sourceTextEvidence = parsedDraftJson && typeof parsedDraftJson === 'object' && !Array.isArray(parsedDraftJson)
+    ? (parsedDraftJson as { _source_text_evidence_v2?: unknown })._source_text_evidence_v2
+    : null;
+  const evidenceDocuments = sourceTextEvidence && typeof sourceTextEvidence === 'object' && !Array.isArray(sourceTextEvidence)
+    ? (sourceTextEvidence as { documents?: unknown }).documents
+    : null;
+  const evidenceExcerptBySourceId = new Map<string, string>();
+  if (Array.isArray(evidenceDocuments)) {
+    for (const document of evidenceDocuments) {
+      if (!document || typeof document !== 'object' || Array.isArray(document)) continue;
+      const record = document as { sourceId?: unknown; excerpt?: unknown };
+      const sourceId = stringValue(record.sourceId);
+      const excerpt = stringValue(record.excerpt);
+      if (sourceId && excerpt) evidenceExcerptBySourceId.set(sourceId, excerpt);
+    }
+  }
+  const replayOriginalRawText = evidenceExcerptBySourceId.get('original_raw') ?? rawText;
+  const replayParserRawText = evidenceExcerptBySourceId.get('parser_raw') ?? rawText;
+  const replayDocumentRawText =
+    evidenceExcerptBySourceId.get('document_raw')
+    ?? evidenceExcerptBySourceId.get('parser_raw')
+    ?? rawText;
   const commissionRate = Number(body.commissionRate);
   const metadata = parseUploadSourceMetadata({
-    rawText,
+    rawText: replayOriginalRawText,
     sourceLabel,
     explicitCommissionRate: Number.isFinite(commissionRate) ? commissionRate : undefined,
     defaultCommissionRate: 10,
   });
 
   const fileHash = stringValue((queueRow as { file_hash?: unknown }).file_hash) ?? randomUUID();
-  const inputAnalysisForTrust = analyzeUploadInputText(rawText);
+  const inputAnalysisForTrust = analyzeUploadInputText(replayOriginalRawText);
   if (inputAnalysisForTrust.blocked) {
     return NextResponse.json(
       {
@@ -123,11 +158,15 @@ const postHandler = async (request: NextRequest) => {
       fileHash,
       fileName: sourceLabel,
       directRawText: rawText,
+      originalRawText: replayOriginalRawText,
+      parserRawText: metadata.parserRawText ?? replayParserRawText,
+      documentRawText: replayDocumentRawText,
+      analysisNormalizedText: inputAnalysisForTrust.normalizedText,
       uploadSourceMetadata: metadata,
       inputAnalysisForTrust,
       archiveMode: false,
       bulkMode: false,
-      forceReprocess: body.forceReprocess !== false,
+      forceReprocess: body.forceReprocess === true,
     },
     supabase: supabaseAdmin,
     isSupabaseConfigured,
@@ -138,17 +177,28 @@ const postHandler = async (request: NextRequest) => {
   });
 
   const payload = result.payload as Record<string, unknown>;
-  const savedIds = Array.isArray(payload.dbIds)
-    ? payload.dbIds.filter((id): id is string => typeof id === 'string')
-    : typeof payload.dbId === 'string'
-      ? [payload.dbId]
-      : [];
+  const savedIds = extractSavedIds(payload);
+  const duplicateInternalCode = extractDuplicateInternalCode(payload);
 
-  if (savedIds.length > 0) {
+  if (savedIds.length > 0 || duplicateInternalCode) {
+    const currentDraft = parsedDraftJson && typeof parsedDraftJson === 'object' && !Array.isArray(parsedDraftJson)
+      ? parsedDraftJson as Record<string, unknown>
+      : {};
     await supabaseAdmin
       .from('upload_review_queue')
       .update({
         status: 'resolved',
+        parsed_draft_json: {
+          ...currentDraft,
+          replayResult: {
+            status: 'replayed',
+            reason: duplicateInternalCode ? `duplicate already processed: ${duplicateInternalCode}` : 'manual replay saved product',
+            httpStatus: result.status,
+            savedIds,
+            duplicateInternalCode,
+            replayedAt: new Date().toISOString(),
+          },
+        },
         updated_at: new Date().toISOString(),
       })
       .eq('id', queueId);
@@ -159,6 +209,8 @@ const postHandler = async (request: NextRequest) => {
       ...payload,
       replayed: true,
       queueId,
+      replayResolved: savedIds.length > 0 || Boolean(duplicateInternalCode),
+      duplicateInternalCode,
       uploadRequestId: requestId,
     },
     { status: result.status },

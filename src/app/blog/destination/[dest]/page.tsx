@@ -14,6 +14,9 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -22,12 +25,7 @@ const BLOG_DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
   Number(process.env.BLOG_DESTINATION_STATIC_PRERENDER_LIMIT ?? '0') || 0,
 );
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-
-const ANGLE_LABELS: Record<string, string> = {
-  value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리',
-  urgency: '긴급특가', activity: '액티비티', food: '미식',
-};
+const BASE_URL = resolveBlogCanonicalOrigin();
 
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
@@ -102,6 +100,10 @@ function safeDecodePathSegment(value: string): string {
   } catch {
     return value;
   }
+}
+
+function getDisplayImageUrl(post: BlogPost): string | null {
+  return toBlogImageDisplaySrc(post.og_image_url);
 }
 
 async function resolveDestinationRouteParamUncached(value: string): Promise<string> {
@@ -375,7 +377,7 @@ function DestinationContent({
                     className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
                     <div className="aspect-[16/9] overflow-hidden bg-slate-100 relative">
                       <SafeCoverImg
-                        src={post.og_image_url}
+                        src={getDisplayImageUrl(post)}
                         alt={post.seo_title || ''}
                         className="absolute inset-0 h-full w-full object-cover transition group-hover:scale-105"
                         loading="lazy"
@@ -388,7 +390,7 @@ function DestinationContent({
                     </div>
                     <div className="p-5">
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 mb-3 inline-block">
-                        {ANGLE_LABELS[post.angle_type] || post.angle_type}
+                        {BLOG_PUBLIC_ANGLE_LABELS[post.angle_type] || post.angle_type}
                       </span>
                       <h2 className="line-clamp-2 text-base md:text-[19px] font-bold text-slate-900 group-hover:text-brand tracking-tight leading-snug">
                         {post.seo_title || '여행 가이드'}

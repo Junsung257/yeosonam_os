@@ -103,7 +103,11 @@ function cleanConcern(keyConcern: string | null): string | null {
 }
 
 function cleanBadge(badge: string | null | undefined): string | null {
-  const text = badge?.replace(/ ?[☔☀️🥶💧🌤️🌧️🌦️❄️🔥]/g, '').trim();
+  const text = String(badge ?? '')
+    .replace(/[\uFE0F\uFFFD]/g, '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return text || null;
 }
 

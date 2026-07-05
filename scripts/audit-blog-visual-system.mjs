@@ -226,7 +226,7 @@ async function auditOne(page, targetPath, viewport) {
       image.naturalWidth > 0 && image.naturalHeight > 0 && !image.visible
     );
 
-    const isPost = /^\/blog\/(?!angle\/|destination\/?$)[^/?#]+/.test(auditPath);
+    const isPost = /^\/blog\/(?!angle(?:\/|$)|destination(?:\/|$)|page$)[^/?#]+/.test(auditPath);
     const isBlogSurface = auditPath === '/blog' || auditPath.startsWith('/blog?') || auditPath.startsWith('/blog/angle/') || auditPath.startsWith('/blog/destination/');
     const postCards = isBlogSurface ? [...root.querySelectorAll('a[href^="/blog/"]')]
       .filter((anchor) => !/\/blog\/(angle|destination)\//.test(anchor.getAttribute('href') || ''))

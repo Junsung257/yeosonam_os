@@ -12,6 +12,12 @@ import {
   buildGoogleVisibilitySnapshot,
   recordBlogVisibilitySnapshot,
 } from '@/lib/blog-visibility-snapshots';
+import {
+  buildUrlInspectionQuotaState,
+  isUrlInspectionQuotaError,
+  readUrlInspectionQuotaConfig,
+  type UrlInspectionQuotaState,
+} from '@/lib/gsc-url-inspection-quota';
 
 /**
  * GSC 색인/순위 추적 — 발행된 블로그 글의 page-level aggregate + URL Inspection
@@ -36,7 +42,6 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const PAGE_LOOKBACK_DAYS = 7;       // 최근 7일 평균
-const MAX_INSPECT_PER_RUN = 25;     // URL Inspection 일일 한도 보호
 const PAGE_AGGREGATE_QUERY_KEY = '__page__';
 
 type RankHistoryRow = {
@@ -104,6 +109,7 @@ async function inspectCanonicalUrl(siteUrlCandidates: string[], url: string) {
     const result = await inspectUrlIndexState(candidateSiteUrl, url);
     if (!result.error) return { result, siteUrl: candidateSiteUrl, errors };
     errors.push(`${candidateSiteUrl}: ${result.error}`);
+    if (isUrlInspectionQuotaError(result.error)) break;
   }
   return {
     result: {
@@ -119,6 +125,47 @@ async function inspectCanonicalUrl(siteUrlCandidates: string[], url: string) {
       error: errors.join(' | '),
     },
     siteUrl: siteUrlCandidates[0] ?? null,
+    errors,
+  };
+}
+
+async function countUrlInspectionReportsSince(sinceIso: string): Promise<{
+  count: number;
+  error?: string;
+}> {
+  const { count, error } = await supabaseAdmin
+    .from('indexing_reports')
+    .select('id', { count: 'exact', head: true })
+    .in('google_status', ['indexed', 'not_indexed'])
+    .gte('reported_at', sinceIso);
+
+  if (error) return { count: 0, error: error.message };
+  return { count: count ?? 0 };
+}
+
+async function buildUrlInspectionQuotaForRun(requestedLimit: number): Promise<{
+  quota: UrlInspectionQuotaState;
+  errors: string[];
+}> {
+  const now = new Date();
+  const last10m = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const [recent10m, recent24h] = await Promise.all([
+    countUrlInspectionReportsSince(last10m),
+    countUrlInspectionReportsSince(last24h),
+  ]);
+  const errors = [
+    recent10m.error ? `URL Inspection 10분 사용량 조회 실패: ${recent10m.error}` : null,
+    recent24h.error ? `URL Inspection 24시간 사용량 조회 실패: ${recent24h.error}` : null,
+  ].filter((v): v is string => Boolean(v));
+
+  return {
+    quota: buildUrlInspectionQuotaState({
+      requestedLimit,
+      last10mCount: recent10m.count,
+      last24hCount: recent24h.count,
+      ...readUrlInspectionQuotaConfig(),
+    }),
     errors,
   };
 }
@@ -273,14 +320,20 @@ async function runGscIndexRank(request: NextRequest) {
     errors.push(`content_creatives 조회 실패: ${pErr.message}`);
   }
 
-  const candidates = ((published || []) as Array<{ id: string; slug: string | null }>)
+  const rawCandidates = ((published || []) as Array<{ id: string; slug: string | null }>)
     .filter((r): r is { id: string; slug: string } => Boolean(r.slug))
-    .filter((r) => !seenSlugs.has(r.slug))
-    .slice(0, MAX_INSPECT_PER_RUN);
+    .filter((r) => !seenSlugs.has(r.slug));
+
+  const { quota: inspectionQuota, errors: quotaErrors } = await buildUrlInspectionQuotaForRun(
+    rawCandidates.length,
+  );
+  errors.push(...quotaErrors);
+  const candidates = rawCandidates.slice(0, inspectionQuota.effectiveLimit);
 
   const siteUrlCandidates = getGscSiteUrlCandidates(siteUrl, baseUrl);
   let inspected = 0;
   let notIndexed = 0;
+  let inspectionStoppedByQuota = false;
   const inspectionResults: Array<Record<string, unknown>> = [];
 
   const inspectionReportRows: Array<Record<string, unknown>> = [];
@@ -293,6 +346,11 @@ async function runGscIndexRank(request: NextRequest) {
     inspected += 1;
     if (r.error) {
       errors.push(`URL Inspection 실패 (${slug}): ${r.error}`);
+      if (isUrlInspectionQuotaError(r.error)) {
+        inspectionStoppedByQuota = true;
+        errors.push(`URL Inspection 쿼터/속도 제한 감지: ${inspectionQuota.retryAfterMinutes}분 후 재시도`);
+        break;
+      }
       continue;
     }
     const isIndexed = isGoogleIndexed(r.verdict, r.coverageState);
@@ -361,6 +419,10 @@ async function runGscIndexRank(request: NextRequest) {
     inserted,
     inspected,
     not_indexed: notIndexed,
+    inspection_candidate_count: rawCandidates.length,
+    inspection_skipped_quota: rawCandidates.length > 0 && !inspectionQuota.allowed,
+    inspection_stopped_by_quota: inspectionStoppedByQuota,
+    inspection_quota: inspectionQuota,
     inspections: inspectionResults,
     errors,
     ranAt: new Date().toISOString(),

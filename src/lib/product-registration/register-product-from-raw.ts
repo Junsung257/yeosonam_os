@@ -11,6 +11,7 @@ import { detectFerry } from '@/lib/parser/deterministic/ferry-classifier';
 import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repair';
 import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
 import { runProductRegistrationV3, type V3PipelineResult } from '@/lib/product-registration-v3';
+import { extractExcludedPriceCandidatesFromRawText } from '@/lib/source-price-date-repair';
 import {
   buildSupplierRawDeterministicItinerary,
   extractSupplierRawDeterministicFacts,
@@ -31,7 +32,7 @@ import { resolvePriceRecoveryYear } from './price-year';
 import { recoverUploadPriceData } from './price-recovery';
 import { normalizeUploadTitle } from './title-normalization';
 import { repairCustomerVisibleCopyPayload } from './customer-visible-copy-repair';
-import type { SourceEvidenceSpan, StandardProductRegistrationObject } from './types';
+import type { SourceEvidenceDocument, SourceEvidenceSpan, StandardProductRegistrationObject } from './types';
 
 const NOTICE_TYPES = new Set<NoticeItem['type']>(['CRITICAL', 'PAYMENT', 'POLICY', 'INFO']);
 type SupplierFlightFacts = ReturnType<typeof extractSupplierRawDeterministicFacts>;
@@ -71,6 +72,7 @@ function addEvidenceSpan(input: {
   field: string;
   rawText: string;
   rawTextHash: string;
+  sourceId?: SourceEvidenceSpan['sourceId'];
   value: unknown;
   productIndex?: number | null;
   sourceKind?: SourceEvidenceSpan['sourceKind'];
@@ -85,6 +87,7 @@ function addEvidenceSpan(input: {
   input.spans.push({
     field: input.field,
     rawTextHash: input.rawTextHash,
+    sourceId: input.sourceId ?? null,
     start,
     end: start + value.length,
     quote: value.slice(0, 240),
@@ -101,23 +104,88 @@ function addEvidenceSpan(input: {
 function buildEvidenceSpans(input: {
   rawText: string;
   rawTextHash: string;
+  sourceId?: SourceEvidenceSpan['sourceId'];
   ed: ExtractedData;
   priceRecovery: { minPrice: number | null; source: string };
 }): SourceEvidenceSpan[] {
   const spans: SourceEvidenceSpan[] = [];
-  addEvidenceSpan({ spans, field: 'title', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.title, confidence: 0.95 });
-  addEvidenceSpan({ spans, field: 'destination', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.destination, confidence: 0.85 });
-  addEvidenceSpan({ spans, field: 'airline', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.airline, confidence: 0.8 });
-  addEvidenceSpan({ spans, field: 'departure_airport', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.departure_airport, confidence: 0.8 });
-  addEvidenceSpan({ spans, field: 'flight_no', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.flight_info?.flight_no, confidence: 0.9 });
+  addEvidenceSpan({ spans, field: 'title', rawText: input.rawText, rawTextHash: input.rawTextHash, sourceId: input.sourceId, value: input.ed.title, confidence: 0.95 });
+  addEvidenceSpan({ spans, field: 'destination', rawText: input.rawText, rawTextHash: input.rawTextHash, sourceId: input.sourceId, value: input.ed.destination, confidence: 0.85 });
+  addEvidenceSpan({ spans, field: 'airline', rawText: input.rawText, rawTextHash: input.rawTextHash, sourceId: input.sourceId, value: input.ed.airline, confidence: 0.8 });
+  addEvidenceSpan({ spans, field: 'departure_airport', rawText: input.rawText, rawTextHash: input.rawTextHash, sourceId: input.sourceId, value: input.ed.departure_airport, confidence: 0.8 });
+  addEvidenceSpan({ spans, field: 'flight_no', rawText: input.rawText, rawTextHash: input.rawTextHash, sourceId: input.sourceId, value: input.ed.flight_info?.flight_no, confidence: 0.9 });
 
   const minPrice = input.priceRecovery.minPrice;
   if (minPrice != null) {
     const formatted = minPrice.toLocaleString('en-US');
-    addEvidenceSpan({ spans, field: 'min_price', rawText: input.rawText, rawTextHash: input.rawTextHash, value: formatted, confidence: 0.8 });
+    addEvidenceSpan({ spans, field: 'min_price', rawText: input.rawText, rawTextHash: input.rawTextHash, sourceId: input.sourceId, value: formatted, confidence: 0.8 });
   }
 
   return spans;
+}
+
+function pushEvidenceDocument(
+  documents: SourceEvidenceDocument[],
+  seen: Set<string>,
+  document: SourceEvidenceDocument | null,
+): void {
+  if (!document || !document.rawTextHash) return;
+  const key = `${document.sourceId}:${document.rawTextHash}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  documents.push(document);
+}
+
+function buildEvidenceSourceDocuments(input: {
+  originalRawText: string;
+  parserRawText: string;
+  sectionRawText: string;
+  documentRawText?: string | null;
+  analysisNormalizedText?: string | null;
+}): SourceEvidenceDocument[] {
+  const documents: SourceEvidenceDocument[] = [];
+  const seen = new Set<string>();
+  const originalRawText = input.originalRawText ?? '';
+  const parserRawText = input.parserRawText ?? originalRawText;
+  const sectionRawText = input.sectionRawText ?? parserRawText;
+  const documentRawText = input.documentRawText?.trim() ? input.documentRawText : null;
+  const analysisNormalizedText = input.analysisNormalizedText?.trim() ? input.analysisNormalizedText : null;
+
+  pushEvidenceDocument(documents, seen, {
+    sourceId: 'original_raw',
+    rawTextHash: hashRawText(originalRawText),
+    rawTextLength: originalRawText.length,
+    role: 'original',
+  });
+  pushEvidenceDocument(documents, seen, {
+    sourceId: 'parser_raw',
+    rawTextHash: hashRawText(parserRawText),
+    rawTextLength: parserRawText.length,
+    role: 'parser',
+  });
+  pushEvidenceDocument(documents, seen, {
+    sourceId: 'section_raw',
+    rawTextHash: hashRawText(sectionRawText),
+    rawTextLength: sectionRawText.length,
+    role: 'section',
+  });
+  if (documentRawText) {
+    pushEvidenceDocument(documents, seen, {
+      sourceId: 'document_raw',
+      rawTextHash: hashRawText(documentRawText),
+      rawTextLength: documentRawText.length,
+      role: 'document',
+    });
+  }
+  if (analysisNormalizedText) {
+    pushEvidenceDocument(documents, seen, {
+      sourceId: 'analysis_normalized',
+      rawTextHash: hashRawText(analysisNormalizedText),
+      rawTextLength: analysisNormalizedText.length,
+      role: 'analysis',
+    });
+  }
+  return documents;
 }
 
 function normalizeParserOptionalTours(raw: unknown): OptionalTour[] {
@@ -162,6 +230,9 @@ function normalizeParserNoticeItems(raw: unknown): Array<string | NoticeItem> {
 
 export type RegisterProductFromRawInput = {
   rawText: string;
+  originalRawText?: string | null;
+  parserRawText?: string | null;
+  analysisNormalizedText?: string | null;
   documentRawText?: string | null;
   extractedData: ExtractedData;
   itineraryData?: ItineraryDataLike | null;
@@ -355,6 +426,7 @@ function attachRawFactFlightSegments(
   rawText: string,
 ): void {
   const existing = Array.isArray(itinerary.flight_segments) ? itinerary.flight_segments : [];
+  normalizeInboundNextDayArrivalSegments(existing, rawText);
   const existingComplete = existing.length >= 2 && existing.every(segment => {
     const row = segment as { dep_time?: unknown; arr_time?: unknown };
     return Boolean(row.dep_time && row.arr_time);
@@ -371,6 +443,7 @@ function attachRawFactFlightSegments(
   const inboundArr = rawFacts.inbound?.arrival.time ?? itinerary.meta?.flight_in_arrive_time ?? ed.flight_info?.return_arrive ?? rawFlightTimes.at(-1) ?? null;
   const days = Array.isArray((itinerary as { days?: unknown }).days) ? (itinerary as { days: unknown[] }).days : [];
   const lastDayIndex = Math.max(0, days.length - 1);
+  const inboundArrDayOffset = hasNextDayArrivalCue(rawText, inboundArr) ? 1 : 0;
 
   const segments = [];
   if (outboundCode && (outboundDep || outboundArr)) {
@@ -393,11 +466,42 @@ function attachRawFactFlightSegments(
       dep_time: inboundDep,
       arr_airport: rawFacts.inbound?.arrival.airport ?? ed.departure_airport ?? rawFacts.departureAirport ?? null,
       arr_time: inboundArr,
-      arr_day_offset: 0,
+      arr_day_offset: inboundArrDayOffset,
       day_pair: [lastDayIndex, lastDayIndex],
     });
   }
   if (segments.length > 0) itinerary.flight_segments = segments;
+}
+
+function hasNextDayArrivalCue(rawText: string, arrivalTime?: string | null): boolean {
+  const text = rawText.replace(/\s+/g, ' ');
+  if (/(?:\+1|\(\s*\+1\s*\)|익일\s*도착|익일도착|다음\s*날|다음날|N\s*\+\s*1|도착\s*\+\s*1)/i.test(text)) {
+    if (!arrivalTime) return true;
+    const escapedArrival = arrivalTime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`${escapedArrival}\\s*(?:\\+\\s*1|\\(\\s*\\+\\s*1\\s*\\))`).test(text)
+      || /(?:익일\s*도착|익일도착|다음\s*날|다음날|N\s*\+\s*1|도착\s*\+\s*1)/i.test(text);
+  }
+  return false;
+}
+
+function normalizeInboundNextDayArrivalSegments(segments: unknown[], rawText: string): void {
+  for (const segment of segments) {
+    if (!segment || typeof segment !== 'object') continue;
+    const row = segment as {
+      leg?: unknown;
+      arr_time?: unknown;
+      arr_day_offset?: unknown;
+      day_pair?: unknown;
+    };
+    if (row.leg !== 'inbound') continue;
+    const arrivalTime = typeof row.arr_time === 'string' ? row.arr_time : null;
+    const offset = row.arr_day_offset === 1 || hasNextDayArrivalCue(rawText, arrivalTime) ? 1 : 0;
+    if (offset !== 1) continue;
+    const pair = Array.isArray(row.day_pair) ? row.day_pair : null;
+    const depDay = typeof pair?.[0] === 'number' ? pair[0] : typeof pair?.[1] === 'number' ? pair[1] : 0;
+    row.arr_day_offset = 1;
+    row.day_pair = [depDay, depDay];
+  }
 }
 
 function applyDeterministicProductFieldRecovery(ed: ExtractedData, rawText: string): void {
@@ -594,6 +698,7 @@ async function normalizeExtractedDataForRegistration(input: RegisterProductFromR
     return warnings;
   }
 
+  Object.assign(ed, repaired);
   applyDeterministicExtractedDataFixes(ed);
   validation = validateExtractedProduct(ed);
   if (validation.isValid) {
@@ -607,6 +712,9 @@ async function normalizeExtractedDataForRegistration(input: RegisterProductFromR
 export async function registerProductFromRaw(input: RegisterProductFromRawInput): Promise<StandardProductRegistrationObject> {
   const ed = cloneExtractedData(input.extractedData);
   const rawText = input.rawText || ed.rawText || '';
+  const originalRawText = input.originalRawText ?? rawText;
+  const parserRawText = input.parserRawText ?? rawText;
+  const analysisNormalizedText = input.analysisNormalizedText ?? null;
   const rawTextHash = hashRawText(rawText);
   ed.rawText = rawText;
   const normalizationWarnings = await normalizeExtractedDataForRegistration(input, ed);
@@ -688,6 +796,14 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     && documentRawText
     ? documentRawText
     : rawText;
+  const priceEvidenceSourceId = priceRecovery.source.startsWith('document_raw:')
+    && documentRawText
+    ? 'document_raw'
+    : 'section_raw';
+  const excludedPriceCandidates = extractExcludedPriceCandidatesFromRawText([
+    rawText,
+    documentRawText,
+  ].filter(Boolean).join('\n'));
   const humanReader = readSupplierDocumentLikeHuman({
     rawText: priceEvidenceRawText,
     title: registrationTitle ?? ed.title,
@@ -862,6 +978,17 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     ...(v3.result?.gate_result.status === 'needs_review' ? ['v3:needs_review'] : []),
   ];
 
+  const evidenceSpans = buildEvidenceSpans({
+    rawText: priceEvidenceRawText,
+    rawTextHash: humanReader.rawTextHash,
+    sourceId: priceEvidenceSourceId,
+    ed,
+    priceRecovery,
+  }).concat(humanReader.evidenceSpans.map(span => ({
+    ...span,
+    sourceId: span.sourceId ?? priceEvidenceSourceId,
+  })));
+
   return {
     identity: {
       title: registrationTitle,
@@ -882,6 +1009,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
       minPrice: priceRecovery.minPrice,
       selectedPriceBasis: priceRecovery.source,
       optionalPriceCandidatesExcluded: !priceRecovery.failures.some(failure => failure.includes('optional-tour')),
+      excludedPriceCandidates,
       failures: priceRecovery.failures,
     },
     itinerary,
@@ -897,15 +1025,17 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     evidence: {
       rawTextLength: rawText.length,
       rawTextHash,
+      sourceDocuments: buildEvidenceSourceDocuments({
+        originalRawText,
+        parserRawText,
+        sectionRawText: rawText,
+        documentRawText: input.documentRawText,
+        analysisNormalizedText,
+      }),
       priceSource: priceRecovery.source,
       v3DraftStatus: v3.result?.gate_result.status ?? null,
       v3RawTextHash: v3.result?.raw_text_hash ?? null,
-      spans: buildEvidenceSpans({
-        rawText: priceEvidenceRawText,
-        rawTextHash: humanReader.rawTextHash,
-        ed,
-        priceRecovery,
-      }).concat(humanReader.evidenceSpans),
+      spans: evidenceSpans,
       humanReader: {
         source: humanReader.source,
         priceSource: humanReader.priceSource,

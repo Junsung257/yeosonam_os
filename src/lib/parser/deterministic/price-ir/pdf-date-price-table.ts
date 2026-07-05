@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 const WON = '\uC6D0';
 const MONTH_KO = '\uC6D4';

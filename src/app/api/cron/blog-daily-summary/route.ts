@@ -4,6 +4,12 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 import { countPublishableQueueCandidates, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { getClosedKstDailySummaryRange } from '@/lib/blog-daily-summary-window';
+import { summarizeBlogQueueOperationalHealth } from '@/lib/blog-queue-operational-health';
+import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlog-work';
+import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
+import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
+import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -21,22 +27,6 @@ export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
 const MIN_DAILY_SUMMARY_ALERT_POSTS = 3;
-
-function getKstDayRange(offsetDays = 0): { start: Date; end: Date; dayKey: string } {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  kst.setUTCDate(kst.getUTCDate() + offsetDays);
-  const year = kst.getUTCFullYear();
-  const month = kst.getUTCMonth();
-  const date = kst.getUTCDate();
-  const start = new Date(Date.UTC(year, month, date, -9, 0, 0, 0));
-  const end = new Date(Date.UTC(year, month, date + 1, -9, 0, 0, 0));
-  return {
-    start,
-    end,
-    dayKey: `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
-  };
-}
 
 async function insertDedupedBlogAlert(input: {
   severity: string;
@@ -94,6 +84,15 @@ function isGoogleIndexedReport(report: any): boolean {
     || coverage.includes('색인 생성');
 }
 
+function isLocalhostIndexingReport(report: any): boolean {
+  const text = [
+    report?.url,
+    report?.google_error,
+    report?.indexnow_error,
+  ].filter(Boolean).join(' ');
+  return /localhost|127\.0\.0\.1|0\.0\.0\.0|sc-domain:localhost/i.test(text);
+}
+
 type BlogOpsWatcherIssue = {
   code: string;
   severity: 'info' | 'warning' | 'high' | 'critical';
@@ -141,12 +140,12 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
-  if (summary.queue_failed > 0) {
+  if ((summary.queue_actionable_failed ?? summary.queue_failed ?? 0) > 0) {
     issues.push({
       code: 'queue_failures_present',
       severity: 'high',
       title: 'Blog queue has failed rows',
-      detail: `${summary.queue_failed} failed queue rows are present.`,
+      detail: `${summary.queue_actionable_failed ?? summary.queue_failed} retryable failed queue row(s) need action; ${summary.queue_failed_total ?? summary.queue_failed ?? 0} total failed rows exist.`,
       recommendation: 'Group failures by failure_code, fix repeat classes, then requeue only retryable rows.',
     });
   }
@@ -179,6 +178,26 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
       title: 'Blog publish queue appears empty',
       detail: 'The daily target was missed and no queued rows were counted.',
       recommendation: 'Run topic generation/scheduler after confirming the DB source is healthy.',
+    });
+  }
+
+  if (summary.publish_preflight?.status === 'block') {
+    issues.push({
+      code: 'publish_preflight_blocked',
+      severity: 'high',
+      title: 'Blog publish preflight is blocked',
+      detail: summary.publish_preflight.blockers?.[0]?.detail ?? 'The preflight found a blocking publish safety issue.',
+      recommendation: summary.publish_preflight.next_action ?? 'Resolve preflight blockers before expanding automatic publishing.',
+    });
+  }
+
+  if (summary.canary_preflight?.status === 'block') {
+    issues.push({
+      code: 'canary_candidates_unavailable',
+      severity: 'high',
+      title: 'Blog canary candidates are unavailable',
+      detail: `Canary-ready candidates ${summary.canary_preflight.ready_count}/${summary.canary_preflight.requested}.`,
+      recommendation: summary.canary_preflight.next_action ?? 'Refill safe canary candidates before expanding automatic publishing.',
     });
   }
 
@@ -224,8 +243,10 @@ async function runDailySummary(request: NextRequest) {
   const policy = policyRow?.[0];
   const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
 
-  // Today in KST. The cron runs after the final daily publisher slot.
-  const reportDay = getKstDayRange();
+  // Report the latest closed KST publishing day. If the route is delayed past
+  // midnight or called manually before 22:12 KST, it must not evaluate the new
+  // in-progress day as an SLA failure.
+  const reportDay = getClosedKstDailySummaryRange();
   const recentSearchStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const thirtyDaysAgo = new Date();
@@ -239,12 +260,13 @@ async function runDailySummary(request: NextRequest) {
     { data: null, count: 0 },
     { data: [], count: 0 },
     { data: [], count: 0 },
+    { data: [], count: 0 },
   ] as any;
   const summaryResults = await withTimeout(Promise.all([
-    supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score', { count: 'exact' })
+    supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
-    supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, destination, angle_type, topic, source, meta', { count: 'exact' })
+    supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, destination, angle_type, topic, source, priority, primary_keyword, category, attempts, last_error, created_at, updated_at, target_publish_at, meta', { count: 'exact' })
       .in('status', ['queued', 'generating', 'failed']),
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
       .is('resolved_at', null),
@@ -264,14 +286,24 @@ async function runDailySummary(request: NextRequest) {
       .eq('status', 'published')
       .gte('published_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
       .limit(300),
+    supabaseAdmin.from('blog_indexing_jobs').select('content_creative_id, slug, url, status')
+      .order('updated_at', { ascending: false })
+      .limit(1000),
   ]), 18_000, summaryFallback);
   if (summaryResults === summaryFallback) {
     errors.push('daily_summary_source_queries_timed_out');
   }
-  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes, publisherCronRes, recentPublishedRes] = summaryResults;
+  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes, publisherCronRes, recentPublishedRes, indexingJobsRes] = summaryResults;
 
   const published = pubRes.data || [];
-  const indexReports = indexRes.data || [];
+  const indexingOutboxCoverage = summarizeBlogIndexingCoverage({
+    posts: published.map((post: any) => ({
+      id: post.id,
+      slug: post.slug,
+    })),
+    jobs: indexingJobsRes.data || [],
+  });
+  const indexReports = (indexRes.data || []).filter((report: any) => !isLocalhostIndexingReport(report));
   const indexSuccess = indexReports.filter((r: any) => r.google_status === 'success' || r.indexnow_status === 'success').length;
   const indexRate = indexReports.length > 0 ? (indexSuccess / indexReports.length) * 100 : 0;
   const googleInspectionReports = indexReports.filter((r: any) =>
@@ -321,11 +353,19 @@ async function runDailySummary(request: NextRequest) {
   if (googleInspectionReports.length > 0 && googleIndexedRate !== null && googleIndexedRate < 20) {
     searchHealthIssues.push(`google_actual_index_low:${googleIndexedRate}%`);
   }
+  if (indexingOutboxCoverage.missing_count > 0) {
+    searchHealthIssues.push(`indexing_outbox_missing:${indexingOutboxCoverage.missing_count}`);
+  }
 
   const queueCounts = (queueRes.data || []).reduce((acc: any, r: any) => {
     acc[r.status] = (acc[r.status] || 0) + 1;
     return acc;
   }, {});
+  const queueOperationalHealth = summarizeBlogQueueOperationalHealth(queueRes.data || []);
+  const editorialBacklogWork = buildBlogEditorialBacklogWorkReport({
+    rows: queueRes.data || [],
+    limit: 12,
+  });
   const publishabilityStats = countPublishableQueueCandidates({
     activeQueue: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
     recentPublished: recentPublishedRes.data || [],
@@ -334,16 +374,39 @@ async function runDailySummary(request: NextRequest) {
     queued_total: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidence_insufficient_count: publishabilityStats.evidenceInsufficient,
+    evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
-    next_action: publishabilityStats.evidenceInsufficient > 0
+    next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
-      : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
-        ? 'quarantine_duplicates'
-        : publishabilityStats.publishableCount < dailyTarget * 2
-          ? 'refill_candidates'
-          : 'publish_ready',
+      : publishabilityStats.candidateContractBlocked > 0
+        ? 'repair_candidate_contract'
+        : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
+          ? 'quarantine_duplicates'
+          : publishabilityStats.publishableCount < dailyTarget * 2
+            ? 'refill_candidates'
+            : 'publish_ready',
   };
+  const publishPreflight = evaluateBlogPublishPreflight({
+    dailyTarget,
+    publishedToday: pubRes.count || 0,
+    publishableCandidateCount: publishabilityStats.publishableCount,
+    duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    candidateShortage: publishability.candidate_shortage,
+    actionableFailedCount: queueOperationalHealth.actionable_failed_count,
+    staleGeneratingCount: queueOperationalHealth.stale_generating_count,
+    manualReviewCount: queueOperationalHealth.manual_review_count,
+    overdueQueuedCount: queueOperationalHealth.overdue_queued_count,
+    indexingOutboxMissingCount: indexingOutboxCoverage.missing_count,
+    indexingOutboxCoverageRate: indexingOutboxCoverage.coverage_rate,
+    recentPosts: published,
+  });
+  const canaryPreflight = buildBlogCanaryPreflight({
+    activeQueue: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
+    recentPublished: recentPublishedRes.data || [],
+    requested: 3,
+  });
 
   // destination별 발행 분포
   const destDist: Record<string, number> = {};
@@ -377,12 +440,23 @@ async function runDailySummary(request: NextRequest) {
     date: reportDay.dayKey,
     timezone: 'Asia/Seoul',
     generated_at: new Date().toISOString(),
+    report_period_closed: reportDay.closed,
+    used_previous_day_for_pre_close_run: reportDay.usedPreviousDay,
+    close_minute_kst: reportDay.closeMinuteKst,
     published: pubRes.count || 0,
     min_daily_target: dailyTarget,
     under_daily_target: (pubRes.count || 0) < dailyTarget,
     queue_pending: queueCounts.queued || 0,
-    queue_failed: queueCounts.failed || 0,
+    queue_failed: queueOperationalHealth.actionable_failed_count,
+    queue_failed_total: queueCounts.failed || 0,
+    queue_actionable_failed: queueOperationalHealth.actionable_failed_count,
+    queue_manual_review: queueOperationalHealth.manual_review_count,
+    queue_stale_generating: queueOperationalHealth.stale_generating_count,
+    queue_operational_health: queueOperationalHealth,
+    editorial_backlog_work: editorialBacklogWork,
     publishability,
+    publish_preflight: publishPreflight,
+    canary_preflight: canaryPreflight,
     rank_alerts_open: alertRes.count || 0,
     indexing_success_rate: +indexRate.toFixed(1),
     search_standard: {
@@ -402,6 +476,7 @@ async function runDailySummary(request: NextRequest) {
         direct_indexing_api_policy: 'skipped for normal blog posts; use sitemap/GSC unless explicitly enabled',
       },
       global_indexnow_success_rate: globalIndexNowSuccessRate,
+      indexing_outbox_coverage: indexingOutboxCoverage,
       visibility_snapshots_24h: visibilityRes.count || 0,
       rank_history_rows_30d: rankRes.count || 0,
       health_issues: searchHealthIssues,
@@ -427,6 +502,8 @@ async function runDailySummary(request: NextRequest) {
       ? `Resolve publishability issue: ${publishability.next_action}.`
       : Object.keys(failureBreakdown).length > 0
       ? 'Fix the largest publisher failure bucket before requeueing duplicate topics.'
+      : editorialBacklogWork.total > 0
+      ? 'Review editorial backlog samples before regenerating more failed topics.'
       : 'Keep scheduler and publisher running; refill queue if pending candidates drop below target.',
   };
   const opsWatcher = buildBlogOpsWatcherReport(summary, errors);
@@ -446,6 +523,8 @@ async function runDailySummary(request: NextRequest) {
         min_daily_target: dailyTarget,
         queue_pending: summary.queue_pending,
         queue_failed: summary.queue_failed,
+        queue_failed_total: summary.queue_failed_total,
+        queue_operational_health: summary.queue_operational_health,
         recommendation: '품질 게이트 실패 또는 큐 부족 원인을 확인하고 대체 토픽을 큐잉하세요.',
       },
     });
@@ -453,7 +532,6 @@ async function runDailySummary(request: NextRequest) {
 
   if (searchHealthIssues.length > 0) {
     const message = `블로그 검색 제출 상태 점검 필요: ${searchHealthIssues.join(', ')}`;
-    errors.push(message);
     await insertDedupedBlogAlert({
       severity: 'medium',
       title: '블로그 검색 제출 상태 점검 필요',
@@ -482,6 +560,8 @@ async function runDailySummary(request: NextRequest) {
         min_daily_target: summary.min_daily_target,
         queue_pending: summary.queue_pending,
         queue_failed: summary.queue_failed,
+        queue_failed_total: summary.queue_failed_total,
+        queue_operational_health: summary.queue_operational_health,
         publisher_cron: summary.publisher_cron,
         search_health_issues: summary.search_standard.health_issues,
       },
@@ -504,7 +584,7 @@ async function runDailySummary(request: NextRequest) {
   if (policy?.daily_summary_webhook) {
     try {
       const text = `📊 *여소남 블로그 발행 요약 ${summary.date}*\n` +
-        `• 발행: ${summary.published}편 (대기 ${summary.queue_pending} / 실패 ${summary.queue_failed})\n` +
+        `• 발행: ${summary.published}편 (대기 ${summary.queue_pending} / 조치필요 실패 ${summary.queue_failed} / 총 실패 ${summary.queue_failed_total})\n` +
         `• 색인 성공률: ${summary.indexing_success_rate}%\n` +
         `• 평균 가독성: ${summary.avg_readability ?? '-'}/100\n` +
         `• 순위 경보: ${summary.rank_alerts_open}건` +

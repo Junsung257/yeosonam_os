@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildProductBlogBrief,
   buildProductDedupKey,
+  buildProductSeoKeyword,
   buildProductSlugSuffix,
   resolveProductDepartureDate,
   resolveProductPriceFrom,
@@ -37,7 +38,8 @@ describe('blog product brief', () => {
       content_type: 'package_intro',
       prompt_version: 'product-template-v2',
       product_id: 'pkg_123456789',
-      primary_keyword: '다낭 다낭 가족 패키지',
+      primary_keyword: '다낭 5일 패키지',
+      seo_keyword: '다낭 5일 패키지',
       departure_date: '2026-07-11',
       departure_city: null,
       duration: '4박 5일',
@@ -67,5 +69,14 @@ describe('blog product brief', () => {
 
     expect(resolveProductPriceFrom(priceTableProduct)).toBe(899000);
     expect(brief.price_from).toBe(899000);
+  });
+
+  it('builds a short product SEO keyword instead of using the full package title', () => {
+    expect(buildProductSeoKeyword({
+      id: 'pkg_long',
+      destination: '푸꾸옥',
+      duration: 6,
+      title: 'PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 4박6일 가성비 리뷰',
+    })).toBe('푸꾸옥 6일 패키지');
   });
 });

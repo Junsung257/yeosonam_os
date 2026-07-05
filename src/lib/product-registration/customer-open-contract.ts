@@ -199,6 +199,22 @@ export async function loadCustomerOpenContractForPackage(
   });
 }
 
+export function isCustomerOpenContractBlogPublishable(contract: CustomerOpenContractResult): boolean {
+  return contract.ok && contract.evidencePack.downstream_eligibility.blog_publish !== false;
+}
+
+export function customerOpenContractBlogBlockReason(contract: CustomerOpenContractResult): string {
+  const blockers = contract.blockers.slice(0, 5);
+  if (blockers.length > 0) return blockers.join('|');
+  if (contract.evidencePack.downstream_eligibility.blog_publish === false) {
+    return 'downstream_blog_publish_false';
+  }
+  if (contract.evidencePack.status === 'blocked') {
+    return 'evidence_pack_blocked';
+  }
+  return 'unknown_product_open_contract_blocker';
+}
+
 export function customerOpenContractAuditPayload(contract: CustomerOpenContractResult): Record<string, unknown> {
   return {
     status: contract.status,

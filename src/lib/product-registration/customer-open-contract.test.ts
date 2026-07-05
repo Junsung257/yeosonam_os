@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { evaluateCustomerOpenContract } from './customer-open-contract';
+import {
+  customerOpenContractBlogBlockReason,
+  evaluateCustomerOpenContract,
+  isCustomerOpenContractBlogPublishable,
+  type CustomerOpenContractResult,
+} from './customer-open-contract';
 
 const basePkg = {
   id: 'pkg-1',
@@ -114,5 +119,31 @@ describe('customer-open contract', () => {
 
     expect(result.ok).toBe(false);
     expect(result.blockers).toContain('v3:customer notice requires review');
+  });
+
+  it('does not allow blog publishing when downstream blog eligibility is false', () => {
+    const result = evaluateCustomerOpenContract({
+      pkg: basePkg,
+      verifyChecks: [{ id: 'C15', status: 'pass' }, { id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      v3Gate: { blocksApproval: false, payloadError: null, blockReasons: [], draftStatus: 'ready_to_publish' },
+      sourceVerifyStatus: 'clean',
+    });
+    const staleEvidence = {
+      ...result,
+      evidencePack: {
+        ...result.evidencePack,
+        downstream_eligibility: {
+          ...result.evidencePack.downstream_eligibility,
+          blog_publish: false,
+          blockers: [],
+        },
+      },
+    } satisfies CustomerOpenContractResult;
+
+    expect(staleEvidence.ok).toBe(true);
+    expect(isCustomerOpenContractBlogPublishable(staleEvidence)).toBe(false);
+    expect(customerOpenContractBlogBlockReason(staleEvidence)).toBe('downstream_blog_publish_false');
   });
 });

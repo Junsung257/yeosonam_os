@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 const DOW_MAP: Record<string, number> = {
   일: 0,

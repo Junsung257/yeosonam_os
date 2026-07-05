@@ -14,6 +14,7 @@ const PriceDateSchema = z.object({
 const EvidenceSpanSchema = z.object({
   field: z.string().min(1),
   rawTextHash: Hash64Schema,
+  sourceId: z.string().min(1).optional().nullable(),
   start: z.number().int().min(0),
   end: z.number().int().min(0),
   quote: z.string(),
@@ -21,6 +22,14 @@ const EvidenceSpanSchema = z.object({
 }).passthrough().refine(span => span.end >= span.start, {
   message: 'span end must be greater than or equal to start',
 });
+
+const EvidenceSourceDocumentSchema = z.object({
+  sourceId: z.string().min(1),
+  rawTextHash: Hash64Schema,
+  rawTextLength: z.number().int().min(0),
+  role: z.enum(['original', 'parser', 'document', 'section', 'analysis', 'legacy']),
+  label: z.string().optional().nullable(),
+}).passthrough();
 
 export const StandardProductRegistrationObjectSchema = z.object({
   extractedData: z.object({
@@ -46,6 +55,7 @@ export const StandardProductRegistrationObjectSchema = z.object({
   evidence: z.object({
     rawTextLength: z.number().int().min(0),
     rawTextHash: Hash64Schema,
+    sourceDocuments: z.array(EvidenceSourceDocumentSchema).default([]),
     priceSource: z.string().min(1).optional(),
     spans: z.array(EvidenceSpanSchema).default([]),
   }).passthrough(),
@@ -77,8 +87,36 @@ export const StandardProductRegistrationObjectSchema = z.object({
     }
   }
 
+  const evidenceDocumentsBySourceId = new Map(
+    registration.evidence.sourceDocuments.map(document => [document.sourceId, document]),
+  );
+  const allowedLegacyEvidenceHashes = new Set([
+    registration.evidence.rawTextHash,
+    ...registration.evidence.sourceDocuments.map(document => document.rawTextHash),
+  ]);
+
   for (const span of registration.evidence.spans) {
-    if (span.rawTextHash !== registration.evidence.rawTextHash) {
+    if (span.sourceId) {
+      const sourceDocument = evidenceDocumentsBySourceId.get(span.sourceId);
+      if (!sourceDocument) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['evidence', 'spans'],
+          message: `evidence span source document missing for ${span.field}`,
+        });
+        break;
+      }
+      if (sourceDocument.rawTextHash !== span.rawTextHash) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['evidence', 'spans'],
+          message: `evidence span sourceId/hash mismatch for ${span.field}`,
+        });
+        break;
+      }
+      continue;
+    }
+    if (!allowedLegacyEvidenceHashes.has(span.rawTextHash)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['evidence', 'spans'],

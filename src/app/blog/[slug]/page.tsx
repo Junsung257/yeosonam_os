@@ -30,7 +30,7 @@ import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
-import { classifyBlogIntent } from '@/lib/blog-content-intent';
+import { classifyBlogIntent, inspectBlogIntentQuality } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import {
   BLOG_DETAIL_CACHE_TAG,
@@ -39,6 +39,7 @@ import {
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
+import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -85,7 +86,7 @@ export const revalidate = 0;
 // 자동 발행 글은 계속 늘어나므로 정적 slug 목록을 빌드/개발 서버에 고정하지 않는다.
 // 각 상세 페이지는 첫 요청 시 on-demand ISR로 생성하고, 미존재 slug는 noindex 404로 방어한다.
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = resolveBlogCanonicalOrigin();
 
 // ── 타입 ────────────────────────────────────────────────────
 interface BlogPost {
@@ -216,6 +217,34 @@ function stripMarkdownBold(s: string): string {
   return s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*/g, '').trim();
 }
 
+function charLength(value: string): number {
+  return [...value].length;
+}
+
+function trimTitleToSearchLimit(value: string): string {
+  if (charLength(value) <= 60) return value;
+  const chars = [...value].slice(0, 60).join('');
+  return chars.replace(/\s+\S*$/, '').trim() || chars.trim();
+}
+
+function expandShortBlogSeoTitle(title: string, post: BlogPost): string {
+  const cleanTitle = title.trim();
+  if (charLength(cleanTitle) >= 20) return cleanTitle;
+
+  const isProduct = Boolean(post.product_id || post.travel_packages);
+  const appendix = isProduct
+    ? '예약 전 체크'
+    : /첫날|공항|이동/.test(cleanTitle)
+      ? '공항 이동 체크리스트'
+      : /식비|예산|비용|경비/.test(cleanTitle)
+        ? '비용 체크 2026'
+        : /날씨|옷차림|준비물/.test(cleanTitle)
+          ? '날씨 옷차림 체크리스트'
+          : '여행 가이드 2026';
+
+  return trimTitleToSearchLimit(`${cleanTitle} ${appendix}`.replace(/\s+/g, ' ').trim());
+}
+
 function buildSeoTitleWithSuffix(title: string, suffix: string): string {
   if (!suffix) return title;
   const maxBaseLength = Math.max(20, 60 - suffix.length);
@@ -335,7 +364,10 @@ function sanitizeServerBlogHtml(html: string): string {
     .replace(/\s(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\s(href|src)\s*=\s*(["']?)\s*(javascript:|data:text\/html|vbscript:)[\s\S]*?\2/gi, '')
-    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '');
+    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '')
+    .replace(/<h1\b[^>]*>\s*(?:&nbsp;|\u00a0|<br\s*\/?>|\s)*<\/h1>/gi, '')
+    .replace(/<h1\b([^>]*)>/gi, '<h2$1>')
+    .replace(/<\/h1>/gi, '</h2>');
 }
 
 // ── 데이터 페칭 ──────────────────────────────────────────────
@@ -430,7 +462,16 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
 }
 
 const getCachedPostFast = unstable_cache(
-  async (slug: string) => getPostFastUncached(slug),
+  async (slug: string) => {
+    try {
+      return await getPostFastUncached(slug);
+    } catch (error) {
+      if (isBlogDatabaseUnavailableError(error)) {
+        return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
+      }
+      throw error;
+    }
+  },
   ['blog-detail-v2'],
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
@@ -439,12 +480,42 @@ function isNextCacheContextUnavailable(error: unknown): boolean {
   return error instanceof Error && /incrementalCache missing in unstable_cache/i.test(error.message);
 }
 
+function hasUsableBlogBody(post: BlogPost | null | undefined): boolean {
+  const text = (post?.blog_html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_`>\-\[\]\(\)!|:]/g, ' ')
+    .replace(/\s+/g, '')
+    .trim();
+  return text.length >= 200;
+}
+
+function shouldRefreshCachedBlogPost(post: BlogPost | null | undefined, slug: string): boolean {
+  if (!post) return false;
+  if (!hasUsableBlogBody(post)) return true;
+  const editorial = inspectBlogIntentQuality({
+    title: post.seo_title || slug,
+    slug: post.slug || slug,
+    primaryKeyword: post.seo_title || post.destination || slug,
+    angleType: post.angle_type,
+    category: post.seo_title || undefined,
+    contentType: post.product_id ? 'package_intro' : 'guide',
+    productId: post.product_id,
+    blogHtml: post.blog_html || '',
+  });
+  return !editorial.passed || editorial.issues.some((issue) => issue.severity === 'critical');
+}
+
 async function getPostFast(slug: string): Promise<BlogPost | null> {
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
     return getPostFastUncached(slug);
   }
   try {
-    return await getCachedPostFast(slug);
+    const cached = await getCachedPostFast(slug);
+    if (shouldRefreshCachedBlogPost(cached, slug)) {
+      const fresh = await getPostFastUncached(slug).catch(() => null);
+      if (hasUsableBlogBody(fresh)) return fresh;
+    }
+    return cached;
   } catch (error) {
     if (isNextCacheContextUnavailable(error)) {
       return getPostFastUncached(slug);
@@ -755,7 +826,7 @@ export async function generateMetadata({
     .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
     .trim();
   const duplicateTitleSuffix = await getDuplicateTitleSuffix(post);
-  const metadataTitle = buildSeoTitleWithSuffix(cleanedTitle, duplicateTitleSuffix);
+  const metadataTitle = buildSeoTitleWithSuffix(expandShortBlogSeoTitle(cleanedTitle, post), duplicateTitleSuffix);
 
   const description = buildSeoDescription(post);
   const dbOgImage = toBlogImageDisplaySrc(post.og_image_url, BASE_URL);
@@ -1204,11 +1275,9 @@ async function renderBlogDetail({
           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4 text-sm text-slate-500">
             <div className="flex items-center gap-2">
               <span
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-xs font-bold text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-dark text-xs font-bold text-white before:content-['Y']"
                 aria-hidden="true"
-              >
-                여
-              </span>
+              />
               <span className="font-medium text-slate-700">여소남 에디터</span>
             </div>
             <span aria-hidden="true" className="text-slate-300">·</span>
@@ -1368,7 +1437,9 @@ async function renderBlogDetail({
             />
 
             {/* 공유 버튼 */}
-            <ShareButtons url={pageUrl} title={abTestTitle} utmCampaign={slug} />
+            <div data-blog-supporting="share">
+              <ShareButtons url={pageUrl} title={abTestTitle} utmCampaign={slug} />
+            </div>
 
             {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (PPR Suspense) */}
             {curationSection}
@@ -1427,9 +1498,9 @@ async function RelatedPostsSection({
     <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
       <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
         <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
-          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+          <div className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
             함께 보면 좋은 여행 가이드
-          </h2>
+          </div>
           <Link
             href="/blog"
             className="text-[13px] md:text-sm text-slate-700 hover:text-slate-900 font-semibold whitespace-nowrap"

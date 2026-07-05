@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import Link from 'next/link';
 import type { StayResult, ActivityResult, FlightResult } from '@/lib/travel-providers/types';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
@@ -389,9 +390,9 @@ export default function AssembleFreeTravelPage() {
           <p className="text-sm text-green-700 mb-1">코드: <span className="font-mono font-bold">{registered.internal_code}</span></p>
           <p className="text-sm text-admin-muted mb-4">{registered.title}</p>
           <div className="flex gap-3 justify-center">
-            <a href="/admin/products" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
+            <Link href="/admin/products" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
               상품 관리
-            </a>
+            </Link>
             <button
               onClick={() => { setStep(1); setRegistered(null); setCity(''); setDateFrom(''); setDateTo(''); setSelectedHotel(null); setSelectedActs(new Set()); }}
               className="px-4 py-2 border border-admin-border-strong text-admin-text-2 rounded-lg text-sm font-semibold hover:bg-admin-bg"

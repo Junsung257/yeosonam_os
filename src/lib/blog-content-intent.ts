@@ -33,6 +33,7 @@ export interface BlogIntentInput {
   title?: string | null;
   slug?: string | null;
   primaryKeyword?: string | null;
+  destination?: string | null;
   angleType?: string | null;
   category?: string | null;
   contentType?: string | null;
@@ -61,6 +62,16 @@ export interface BlogIntentIssue {
     | 'weak_list_or_table_shape'
     | 'weak_source_backing'
     | 'repeated_ai_opening_pattern'
+    | 'machine_title_format'
+    | 'generic_image_alt'
+    | 'generated_image_context'
+    | 'broken_editorial_voice'
+    | 'awkward_korean_surface'
+    | 'placeholder_destination_context'
+    | 'placeholder_reference_link'
+    | 'duplicate_title_token'
+    | 'title_intent_mismatch'
+    | 'repetitive_answer_scaffold'
     | 'missing_answer_first'
     | 'early_strong_cta'
     | 'unsupported_yeosonam_data'
@@ -83,10 +94,10 @@ const INFO_SUBTYPE_PATTERNS: Array<[BlogInfoSubtype, RegExp, string]> = [
   ['weather', /(weather|날씨|옷차림|월별|우기|건기|기온|강수량|장마|계절)/i, 'weather terms'],
   ['preparation', /(preparation|checklist|준비물|체크리스트|챙겨|필수\s*아이템|짐\s*싸기|출국\s*준비)/i, 'preparation terms'],
   ['itinerary', /(itinerary|route|course|일정|코스|동선|몇\s*박|당일치기|1일차|2일차|DAY\s*\d+)/i, 'itinerary terms'],
-  ['cost', /(cost|budget|expense|비용|가격|예산|경비|얼마|가성비|요금)/i, 'cost terms'],
+  ['cost', /(cost|budget|expense|비용|가격|예산|경비|얼마|가성비|요금|이동비|교통비|차량비|렌터카|택시|픽업)/i, 'cost terms'],
   ['visa', /(visa|immigration|passport|비자|입국|여권|서류|면세|체류|출입국)/i, 'visa terms'],
   ['currency', /(currency|exchange|money|tip|환전|환율|화폐|달러|카드|현금|결제|팁\s*문화|트래블월렛|트래블로그)/i, 'currency terms'],
-  ['transport', /(transport|flight|airport|transfer|공항|항공권|비행|교통|이동|버스|기차|택시|픽업)/i, 'transport terms'],
+  ['transport', /(transport|flight|airport|transfer|공항|항공권|비행|교통|이동|버스|기차|택시|픽업|렌터카|차량)/i, 'transport terms'],
   ['food', /(food|restaurant|cafe|맛집|음식|먹거리|식당|카페|메뉴|현지식)/i, 'food terms'],
   ['attraction', /(attraction|activity|tour|spot|관광지|명소|가볼만한|입장권|투어|액티비티|스팟)/i, 'attraction terms'],
   ['comparison', /(comparison|compare|pros|cons|analysis|best|ranking|recommend|비교|차이|장단점|분석|추천|BEST|베스트|순위|랭킹|vs|대비|어디가\s*좋|선택)/i, 'comparison terms'],
@@ -139,6 +150,7 @@ function matchBestWeighted<T extends string>(
   const titleKeywordText = compactText([input.title, input.primaryKeyword]);
   const taxonomyText = compactText([input.angleType, input.category, input.contentType, input.slug]);
   const body = bodyText(input);
+  const allIntentText = compactText([titleKeywordText, taxonomyText, body]);
   let best: { value: T | null; evidence: string[]; score: number } = {
     value: null,
     evidence: [],
@@ -157,10 +169,15 @@ function matchBestWeighted<T extends string>(
       evidence.push(`${reason} in category/type`);
     }
     if (pattern.test(body)) {
-      score += 1;
+      score += 2;
       evidence.push(`${reason} in body`);
     }
-    if (score > best.score) {
+    const shouldBreakWeatherTie = score === best.score && best.value === 'weather' && value !== 'weather';
+    const shouldBreakCostTie = score === best.score
+      && value === 'cost'
+      && best.value !== 'cost'
+      && /(\uBE44\uC6A9|\uAC00\uACA9|\uC608\uC0B0|\uACBD\uBE44|\uC5BC\uB9C8|\uC6D0|\uB9CC\uC6D0|\uC694\uAE08|\uC774\uB3D9\uBE44|\uAD50\uD1B5\uBE44|cost|budget|price)/i.test(allIntentText);
+    if (score > best.score || shouldBreakWeatherTie || shouldBreakCostTie) {
       best = { value, evidence, score };
     }
   }
@@ -272,6 +289,19 @@ function inspectInfoContract(
   if ((subtype === 'cost' || subtype === 'currency') && !hasAny(plain, /(\d[\d,]*\s*(원|만원|달러|엔|위안|페소|바트)|예산|환율)/)) {
     addIssue(issues, 'missing_required_block', 'critical', 'Cost/currency posts need concrete amounts or budget ranges.', { subtype });
   }
+  if (subtype === 'comparison') {
+    const hasDecisionCue = hasAny(
+      plain,
+      /(compare|recommend|best|pros|cons|\uBE44\uAD50|\uCD94\uCC9C|\uC120\uD0DD|\uC0C1\uD669\uBCC4|\uB9DE\uB294\s*\uC0AC\uB78C|\uC548\s*\uB9DE\uB294\s*\uC0AC\uB78C|\uC544\uC774|\uAC00\uC871|\uC548\uC804)/i,
+    );
+    if (!hasDecisionCue || (tableRows < 4 && listItems < 5)) {
+      addIssue(issues, 'missing_required_block', 'critical', 'Comparison/recommendation posts need situation-based decision criteria.', {
+        hasDecisionCue,
+        tableRows,
+        listItems,
+      });
+    }
+  }
 }
 
 function inspectProductContract(
@@ -378,17 +408,221 @@ function firstBodyParagraph(source: string): string {
   return '';
 }
 
-function inspectCommonEditorialContract(source: string, plain: string, issues: BlogIntentIssue[]) {
+const BROKEN_EDITORIAL_VOICE_RE =
+  /(안녕하세요[!.\s]*친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다|친구에게\s+좋은\s+여행을\s+추천해\s+드리는\s*입니다|가치\s+있는\s+여행을\s+소개하는\s*입니다|추천해\s+드리는\s*입니다)/;
+
+const ENGLISH_MICRO_ANGLE_ALT_RE =
+  /\b(?:family budget|budget family|transport cost|hotel area(?: budget)?|weather clothes|weather packing|weather preparation|local mobility|best food|july weather clothes)\b/i;
+const GENERATED_IMAGE_CONTEXT_RE =
+  /(?:참고\s*이미지|여행\s*준비\s*이미지|travel\s*image|image|photo)\s*\d+|[a-f0-9]{6,}|(?:\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b)/i;
+const GENERIC_ANSWER_SCAFFOLD_HEADING_RE = /^##\s+예약\s*전\s+무엇을\s+먼저\s+확인해야\s*할까요\??\s*$/m;
+const GENERIC_ANSWER_SCAFFOLD_BODY_RE =
+  /답부터\s+말하면[^.\n]*(?:비용[·,\s]+일정|일정[·,\s]+준비|준비\s*조건|현지에서\s+생기는\s+추가\s+부담|1\s*[~–-]\s*2시간)[^.\n]*\./;
+
+function extractImageAlts(source: string): string[] {
+  const alts: string[] = [];
+  source.replace(/!\[([^\]\n]*)]\((?:https?:\/\/|\/)[^)]+\)/g, (_match, alt: string) => {
+    alts.push(String(alt || '').trim());
+    return _match;
+  });
+  source.replace(/\balt=["']([^"']*)["']/gi, (_match, alt: string) => {
+    alts.push(String(alt || '').trim());
+    return _match;
+  });
+  return alts.filter(Boolean);
+}
+
+function extractImageCaptions(source: string): string[] {
+  const captions: string[] = [];
+  source.replace(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/gi, (_match, caption: string) => {
+    captions.push(stripMarkup(String(caption || '')).replace(/\s+/g, ' ').trim());
+    return _match;
+  });
+  return captions.filter(Boolean);
+}
+
+const WEATHER_INTENT_RE = /weather|날씨|옷차림|월별|기온|우기|건기|강수|rainy|season/i;
+const NON_WEATHER_INTENT_RE =
+  /insurance|보험|visa|비자|입국|여권|currency|환전|결제|카드|esim|e-sim|usim|유심|로밍|transport|교통|이동|airport|공항|hotel|숙소|식비|맛집|food|budget|경비|비용/i;
+const AWKWARD_KOREAN_SURFACE_RE =
+  /즐기기(?:하|할|합니다|하세요|했습니다|할지|하기)|확인하시는 것이 좋습니다|현지\s+현지|같이 보면 판단하기 쉽습니다\.?\s*출발 전에는/i;
+const PLACEHOLDER_DESTINATION_CONTEXT_RE =
+  /현지\s+(?:참고\s*이미지|[1-9]\d?월\s+날씨|월별\s+날씨|날씨와\s+옷차림|가이드\s+옷차림)/;
+const PLACEHOLDER_REFERENCE_LINK_RE =
+  /(?:\uC608\uC2DC\uB9C1\uD06C|%EC%98%88%EC%8B%9C%EB%A7%81%ED%81%AC|placeholder\s*link|example\s*link)/i;
+const LOCAL_PLACEHOLDER_ENTITY_RE =
+  /(?:\uD604\uC9C0(?:\uC5ED|\uD604|\uD56D|\s*\uC9C0\uC5ED|\s*\uB9C8\uCE20\uB9AC|\s*\uBA85\uBB3C\uAD00|\s*\uBA85\uBB3C\s*['"‘’“”]?\uD604\uC9C0['"‘’“”]?|\s*\uC790\uCCB4)|\uBD80\uC0B0\u2192\uD604\uC9C0|\uC5EC\uC18C\uB0A8\uC774\s+\uC774\s+\uC774\s+\uC815\uBCF4)/u;
+const DUPLICATED_SHORT_SURFACE_RE =
+  /(?:^|[\s"'“‘(])(\uC774|\uADF8|\uC800|\uC5EC\uD589|\uC900\uBE44|\uC815\uBCF4)\s+\1(?=$|[\s"'”’).,!?])/u;
+const DUPLICATED_PARTICLE_SURFACE_RE = /\uC815\uBCF4\uB97C(?:\uB97C)+/u;
+
+function duplicateTitleToken(title: string): string | null {
+  const tokens = title
+    .replace(/[|·ㆍ•,()[\]{}:!?]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.toLowerCase())
+    .filter((token) => token.length >= 2 && !/^20\d{2}$/.test(token));
+
+  for (let index = 1; index < tokens.length; index += 1) {
+    if (tokens[index] === tokens[index - 1]) return tokens[index];
+  }
+  return null;
+}
+
+function hasWeatherIntent(text: string): boolean {
+  return WEATHER_INTENT_RE.test(text);
+}
+
+function inspectSemanticSurfaceContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
+  const title = (input.title || '').trim();
+  const categorySignal = input.category && input.category.trim().length <= 32 ? input.category : '';
+  const topicText = [
+    input.slug || '',
+    input.primaryKeyword || '',
+    categorySignal,
+    input.contentType || '',
+    input.angleType || '',
+  ].join(' ');
+
+  const awkwardSurface = plain.match(AWKWARD_KOREAN_SURFACE_RE)?.[0];
+  if (awkwardSurface) {
+    addIssue(
+      issues,
+      'awkward_korean_surface',
+      'critical',
+      'Article contains unnatural Korean surface wording that makes the post read like machine output.',
+      { sample: awkwardSurface },
+    );
+  }
+
+  const placeholderContext = plain.match(PLACEHOLDER_DESTINATION_CONTEXT_RE)?.[0];
+  const localPlaceholderContext = plain.match(LOCAL_PLACEHOLDER_ENTITY_RE)?.[0];
+  if (placeholderContext || localPlaceholderContext) {
+    addIssue(
+      issues,
+      'placeholder_destination_context',
+      'critical',
+      'Destination-specific copy must not expose generic placeholder wording such as "현지" where the real destination should appear.',
+      { sample: placeholderContext || localPlaceholderContext },
+    );
+  }
+
+  const duplicatedSurface = plain.match(DUPLICATED_SHORT_SURFACE_RE)?.[0] || plain.match(DUPLICATED_PARTICLE_SURFACE_RE)?.[0];
+  if (duplicatedSurface) {
+    addIssue(
+      issues,
+      'awkward_korean_surface',
+      'critical',
+      'Article contains duplicated short words that make the Korean copy read like generated output.',
+      { sample: duplicatedSurface.trim() },
+    );
+  }
+
+  const titleLooksWeather = hasWeatherIntent(title);
+  const topicLooksWeather = hasWeatherIntent(topicText);
+  const topicLooksNonWeather = NON_WEATHER_INTENT_RE.test(topicText);
+  if (titleLooksWeather && !topicLooksWeather && topicLooksNonWeather) {
+    addIssue(
+      issues,
+      'title_intent_mismatch',
+      'critical',
+      'SEO title intent conflicts with the actual topic intent.',
+      { title, topicText },
+    );
+  }
+
+  const answerFirstCount = (plain.match(/답부터\s+말하면/g) || []).length;
+  if (answerFirstCount >= 2 && GENERIC_ANSWER_SCAFFOLD_HEADING_RE.test(source) && GENERIC_ANSWER_SCAFFOLD_BODY_RE.test(plain)) {
+    addIssue(
+      issues,
+      'repetitive_answer_scaffold',
+      'critical',
+      'Article repeats a generic answer-first scaffold after already answering the reader question.',
+      { answerFirstCount },
+    );
+  }
+}
+
+function inspectHumanSurfaceContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
+  const title = (input.title || '').trim();
+  if (/[^\s]\||\|[^\s]/.test(title)) {
+    addIssue(
+      issues,
+      'machine_title_format',
+      'warning',
+      'Title separator must be spaced naturally, for example "2026 | 체크리스트" instead of "2026|체크리스트".',
+      { title },
+    );
+  }
+
+  const duplicatedTitleToken = duplicateTitleToken(title);
+  if (duplicatedTitleToken) {
+    addIssue(
+      issues,
+      'duplicate_title_token',
+      'critical',
+      'Title repeats the same token back-to-back, which looks generated and should be normalized before publishing.',
+      { title, token: duplicatedTitleToken },
+    );
+  }
+
+  const brokenVoice = plain.match(BROKEN_EDITORIAL_VOICE_RE)?.[0];
+  if (brokenVoice) {
+    addIssue(
+      issues,
+      'broken_editorial_voice',
+      'critical',
+      'Article contains a broken greeting or empty editorial persona sentence.',
+      { sample: brokenVoice },
+    );
+  }
+
+  const badAlts = extractImageAlts(source)
+    .filter((alt) =>
+      ENGLISH_MICRO_ANGLE_ALT_RE.test(alt)
+      || /참고\s*이미지\s*\d+\s+[a-z][a-z\s_-]{6,}$/i.test(alt)
+      || /[가-힣].*\b[a-z]{3,}(?:[\s_-]+[a-z]{3,}){1,}\b/i.test(alt),
+    )
+    .slice(0, 5);
+  const generatedImageContext = [...extractImageAlts(source), ...extractImageCaptions(source)]
+    .filter((text) => GENERATED_IMAGE_CONTEXT_RE.test(text) && /(?:참고\s*이미지|이미지|image|photo|\b[a-z]{3,})/i.test(text))
+    .slice(0, 5);
+  if (generatedImageContext.length > 0) {
+    addIssue(
+      issues,
+      'generated_image_context',
+      'critical',
+      'Image alt/caption text must describe the travel context naturally and must not expose generated image slots or filename-like fragments.',
+      { generatedImageContext },
+    );
+  }
+  if (badAlts.length > 0) {
+    addIssue(
+      issues,
+      'generic_image_alt',
+      'warning',
+      'Image alt text should be natural Korean reader-facing copy, not English micro-angle or generated filename fragments.',
+      { badAlts },
+    );
+  }
+}
+
+function inspectCommonEditorialContract(input: BlogIntentInput, source: string, plain: string, issues: BlogIntentIssue[]) {
   const bannedPatterns = [
     '이게 말이 되나 싶으시죠',
     '완벽 가이드',
     '총정리',
     '여소남 에디터가 추천',
+    '여소남 에디터',
     '놓치면 후회',
     '최고의 선택',
+    '친구에게 좋은 여행을 추천해 드리는 입니다',
   ];
   const matched = bannedPatterns.filter((pattern) => plain.includes(pattern) || source.includes(pattern));
   const highlightCount = countMatches(source, /==[^=\n]{3,120}==|<mark\b/gi);
+  const placeholderReference = source.match(PLACEHOLDER_REFERENCE_LINK_RE)?.[0] || plain.match(PLACEHOLDER_REFERENCE_LINK_RE)?.[0];
 
   if (matched.length > 0 || highlightCount > 0) {
     addIssue(
@@ -400,8 +634,22 @@ function inspectCommonEditorialContract(source: string, plain: string, issues: B
     );
   }
 
-  const hasYeosonamEvidence = /(예약|상담|검색)\s*(로그|건수|데이터|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain);
-  if (plain.includes('여소남 데이터') && !hasYeosonamEvidence) {
+  if (placeholderReference) {
+    addIssue(
+      issues,
+      'placeholder_reference_link',
+      'critical',
+      'Published posts must not contain placeholder/example reference links.',
+      { sample: placeholderReference },
+    );
+  }
+
+  const hasYeosonamEvidence = /(예약|상담|검색)\s*(로그|건수|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain);
+  const hasUnsupportedYeosonamData =
+    /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i.test(plain);
+  const hasReadableYeosonamEvidence = /(?:\uC608\uC57D|\uC0C1\uB2F4|\uAC80\uC0C9)\s*(?:\uB85C\uADF8|\uAC74\uC218|\uC9D1\uACC4)|GSC|\uC11C\uCE58\uCF58\uC194|SERP|\uCD9C\uCC98|\uC9D1\uACC4\s*\uAE30\uAC04|\uD45C\uBCF8|\uB85C\uADF8/i.test(plain);
+  const hasReadableUnsupportedYeosonamData = /\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?(?:\uB370\uC774\uD130|\uC608\uC57D\s*\uB370\uC774\uD130|\uC0C1\uB2F4\s*\uB370\uC774\uD130)(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/i.test(plain);
+  if ((hasUnsupportedYeosonamData || hasReadableUnsupportedYeosonamData) && !(hasYeosonamEvidence || hasReadableYeosonamEvidence)) {
     addIssue(
       issues,
       'unsupported_yeosonam_data',
@@ -409,16 +657,21 @@ function inspectCommonEditorialContract(source: string, plain: string, issues: B
       'Do not mention Yeosonam data unless the evidence source or aggregation basis is stated.',
     );
   }
+
+  inspectHumanSurfaceContract(input, source, plain, issues);
+  inspectSemanticSurfaceContract(input, source, plain, issues);
 }
 
 function inspectInfoWriterContract(source: string, plain: string, issues: BlogIntentIssue[]) {
   const first = firstBodyParagraph(source);
+  const startsLikeReadableGreeting = /^(?:\uC548\uB155\uD558\uC138\uC694|\uC624\uB298\uC740|\uC774\uBC88\s*\uAE00(?:\uC5D0\uC11C\uB294|\uC740)|\uC5EC\uC18C\uB0A8\s*\uC5D0\uB514\uD130)/.test(first);
   const startsLikeGreeting = /^(안녕하세요|소중한\s*여행|여소남\s*에디터|오늘은|이번\s*글에서는)/.test(first);
   const hasAnswerSignal = /(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|줄일 수|해야|핵심|결론)/.test(first);
   const hasReadableAnswerSignal = /답부터|먼저|기준|확인|비용|가격|준비|주의|환전|입국|날씨|일정|현지|선택|쉽습니다|안전합니다/.test(first);
-  const hasAnyAnswerSignal = hasAnswerSignal || hasReadableAnswerSignal;
+  const hasReadableKoreanAnswerSignal = /(?:\uB2F5\uBD80\uD130|\uBA3C\uC800|\uAE30\uC900|\uD655\uC778|\uBE44\uC6A9|\uAC00\uACA9|\uC900\uBE44|\uC8FC\uC758|\uC0AC\uC804|\uC785\uAD6D|\uC120\uD0DD|\uC77C\uC815|\uB3D9\uC120|\uD310\uB2E8|\uC815\uB9AC\uD569\uB2C8\uB2E4|\uC548\uC804\uD569\uB2C8\uB2E4)/.test(first);
+  const hasAnyAnswerSignal = hasAnswerSignal || hasReadableAnswerSignal || hasReadableKoreanAnswerSignal;
 
-  if ((first.length < 60 && !hasAnyAnswerSignal) || startsLikeGreeting || !hasAnyAnswerSignal) {
+  if ((first.length < 60 && !hasAnyAnswerSignal) || startsLikeGreeting || startsLikeReadableGreeting || !hasAnyAnswerSignal) {
     addIssue(
       issues,
       'missing_answer_first',
@@ -437,12 +690,14 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
     .replace(/\n##\s*여행\s*상품과\s*함께\s*확인하기[\s\S]*$/i, '')
     .replace(/\n---[\s\S]*$/i, '');
   const earlySource = contentBeforeBottomCta.slice(0, Math.ceil(contentBeforeBottomCta.length * 0.3));
+  const hasReadableKoreanHardCta = /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i.test(earlySource);
   const hasEarlyHardCta =
+    hasReadableKoreanHardCta ||
     /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|private-tour|\/group(?:[/?#]|$)|\/packages\?)/i.test(earlySource)
     || /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(earlySource)
     || /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(earlySource);
   const hasReadableHardAction = /\/packages\?|group-inquiry|private-tour|\/group(?:[/?#]|$)|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(earlySource);
-  if (hasEarlyHardCta && hasReadableHardAction) {
+  if (hasEarlyHardCta && (hasReadableHardAction || hasReadableKoreanHardCta)) {
     addIssue(
       issues,
       'early_strong_cta',
@@ -499,7 +754,7 @@ export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQual
 
   if (intent.infoSubtype) inspectInfoContract(intent.infoSubtype, source, plain, issues);
   if (intent.productSubtype) inspectProductContract(intent.productSubtype, plain, issues);
-  inspectCommonEditorialContract(sourceWithoutUrls, plain, issues);
+  inspectCommonEditorialContract(input, source, plain, issues);
   if (intent.mode === 'info') inspectInfoWriterContract(source, plain, issues);
   if (intent.mode === 'product' || intent.productSubtype) inspectProductConsultContract(source, issues);
   inspectReadingDesign(source, plain, issues);

@@ -1,12 +1,16 @@
 type BlogQueueFailureCode =
   | 'duplicate_content'
   | 'context_missing'
+  | 'product_open_contract'
+  | 'length'
+  | 'links'
   | 'keyword_density'
   | 'structure_integrity'
   | 'intent_quality'
   | 'engine_v2'
   | 'evidence_insufficient'
   | 'topic_fit'
+  | 'candidate_pre_publish_contract'
   | 'seo_score'
   | 'db_write'
   | 'linked_draft_invalid'
@@ -23,12 +27,16 @@ export interface BlogQueueFailureDecision {
 const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'duplicate_content',
   'context_missing',
+  'product_open_contract',
+  'length',
+  'links',
   'keyword_density',
   'structure_integrity',
   'intent_quality',
   'engine_v2',
   'evidence_insufficient',
   'topic_fit',
+  'candidate_pre_publish_contract',
   'seo_score',
   'linked_draft_invalid',
 ]);
@@ -60,12 +68,24 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
     return { code: 'linked_draft_invalid', retryable: false, selfHealAllowed: false, skipped: false };
   }
 
+  if (/product_customer_open_contract_failed|customer_open_contract|mobile_proof|registration_evidence_pack|blog_publish/i.test(text)) {
+    return { code: 'product_open_contract', retryable: false, selfHealAllowed: false, skipped: false };
+  }
+
   if (/render_buffer|png .*대기|render pending|card_news.*pending/i.test(text)) {
     return { code: 'card_news_render_pending', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'keyword_density') || /\[keyword_density\]|keyword_density|키워드.*밀도/i.test(text)) {
     return { code: 'keyword_density', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'length') || /\[length\]|thin content|최소\s*\d+\s*자\s*미달|minimum length|min length/i.test(text)) {
+    return { code: 'length', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'links') || /\[links\]|내부링크|internal link|external authority|authority link/i.test(text)) {
+    return { code: 'links', retryable: true, selfHealAllowed: false, skipped: false };
   }
 
   if (hasFailedGate(qa, 'structure_integrity') || /\[structure_integrity\]|structure_integrity|raw_directive|checklist_shape/i.test(text)) {
@@ -88,6 +108,10 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
     return { code: 'topic_fit', retryable: false, selfHealAllowed: false, skipped: true };
   }
 
+  if (/candidate_pre_publish_contract|candidate contract|editorial_cliche_topic|risky_numeric_slug_topic|weak_expected_slug|machine_topic_separator/i.test(text)) {
+    return { code: 'candidate_pre_publish_contract', retryable: false, selfHealAllowed: false, skipped: true };
+  }
+
   if (/seo score|seo_score/i.test(text)) {
     return { code: 'seo_score', retryable: true, selfHealAllowed: false, skipped: false };
   }
@@ -106,10 +130,11 @@ export function shouldSelfHealBlogQueueItem(input: {
   const meta = input.meta && typeof input.meta === 'object' && !Array.isArray(input.meta)
     ? input.meta as Record<string, unknown>
     : {};
-  const code = typeof meta.failure_code === 'string'
+  const storedCode = typeof meta.failure_code === 'string' && meta.failure_code !== 'unknown'
     ? meta.failure_code as BlogQueueFailureCode
-    : classifyBlogQueueFailure(input.lastError ?? '').code;
-  const blockedByMeta = meta.self_heal_blocked === true || meta.quarantine_reason === 'non_retryable_failure';
+    : null;
+  const code = storedCode ?? classifyBlogQueueFailure(input.lastError ?? '').code;
+  const blockedByMeta = meta.self_heal_blocked === true || typeof meta.quarantine_reason === 'string';
 
   return !blockedByMeta && !SELF_HEAL_BLOCKED_CODES.has(code);
 }

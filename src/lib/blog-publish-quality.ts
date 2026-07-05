@@ -2,7 +2,8 @@ import { runQualityGates, type QualityGateReport } from './blog-quality-gate';
 import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-quality-score';
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
-import { repairBlogEditorialQuality, repairBlogStructureQuality } from './blog-editorial-repair';
+import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
+import { repairPublishReadiness } from './blog-publish-readiness-repair';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -190,6 +191,25 @@ export async function prepareBlogForPublish(
   if (structureRepair.changed) {
     blogHtml = structureRepair.blogHtml;
     changes.push(...structureRepair.changes);
+  }
+
+  const densityRepair = repairKeywordDensityToTarget(blogHtml, primaryKeyword, input.product_id ? 'product' : 'info');
+  if (densityRepair.changed) {
+    blogHtml = densityRepair.blogHtml;
+    changes.push('repaired_keyword_density_after_surface_repair');
+  }
+
+  const readinessRepair = repairPublishReadiness({
+    markdown: blogHtml,
+    blogType: input.product_id ? 'product' : 'info',
+    slug: input.slug,
+    destination: input.destination ?? null,
+    topic: input.seo_title ?? input.slug,
+    primaryKeyword,
+  });
+  if (readinessRepair.changed) {
+    blogHtml = readinessRepair.markdown;
+    changes.push(...readinessRepair.changes);
   }
 
   const report = await evaluateBlogPublishQuality({

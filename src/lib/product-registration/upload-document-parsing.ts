@@ -54,6 +54,9 @@ export async function parseUploadDocumentForRegistration(input: {
   buffer: Buffer;
   fileName: string;
   directRawText: string | null;
+  originalRawText?: string | null;
+  parserRawText?: string | null;
+  analysisNormalizedText?: string | null;
   tempDestination: string | null;
   prelimLandOperatorId: string | null;
   supabase: SupabaseClient;
@@ -67,25 +70,26 @@ export async function parseUploadDocumentForRegistration(input: {
     prelimLandOperatorId: input.prelimLandOperatorId,
   });
 
+  const rawTextForParser = input.parserRawText ?? input.directRawText;
   const shouldBypassLegacyParserForRawText =
-    Boolean(input.directRawText)
-    && !isStandardProductMarkdown(input.directRawText ?? '')
+    Boolean(rawTextForParser)
+    && !isStandardProductMarkdown(rawTextForParser ?? '')
     && process.env.RAW_UPLOAD_NORMALIZER_ENABLED !== '0';
 
-  let parsedDocument = input.directRawText && isStandardProductMarkdown(input.directRawText)
-    ? parseStandardProductMarkdown(input.directRawText, input.fileName)
+  let parsedDocument = rawTextForParser && isStandardProductMarkdown(rawTextForParser)
+    ? parseStandardProductMarkdown(rawTextForParser, input.fileName)
     : shouldBypassLegacyParserForRawText
       ? {
           filename: input.fileName,
           fileType: 'hwp' as const,
-          rawText: input.directRawText ?? '',
-          extractedData: { rawText: input.directRawText ?? '' },
+          rawText: rawTextForParser ?? '',
+          extractedData: { rawText: rawTextForParser ?? '' },
           parsedAt: new Date(),
           confidence: 0,
         }
       : await parseDocument(input.buffer, input.fileName, parseOptions);
 
-  if (!input.directRawText && isStandardProductMarkdown(parsedDocument.rawText ?? '')) {
+  if (!rawTextForParser && isStandardProductMarkdown(parsedDocument.rawText ?? '')) {
     parsedDocument = parseStandardProductMarkdown(parsedDocument.rawText, input.fileName);
   }
 
@@ -101,7 +105,7 @@ export async function parseUploadDocumentForRegistration(input: {
   const duplicate = await checkParsedDocumentNormalizedDuplicate({
     supabase: input.supabase,
     isSupabaseConfigured: input.isSupabaseConfigured,
-    directRawText: input.directRawText,
+    directRawText: input.originalRawText ?? input.directRawText,
     parsedRawText: parsedDocument.rawText ?? '',
     normalizedCatalogHash,
     fileHash: input.fileHash,

@@ -3,13 +3,14 @@ import './load-script-env';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { createHash } from 'node:crypto';
 import { chromium, type Browser, type Page } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 
 import { supabaseAdmin } from '../src/lib/supabase';
 import { getSecret } from '../src/lib/secret-registry';
 import { renderPackage } from '../src/lib/render-contract';
-import { customerCopyQualityIssues } from '../src/lib/customer-copy-quality';
+import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
 
 type PackageRow = {
   id: string;
@@ -48,6 +49,8 @@ type SurfaceProofResult = {
   http_status: number | null;
   status: 'pass' | 'fail';
   checks: CheckResult[];
+  screen_hash?: string;
+  customer_visible_hash?: string;
   screenshot_path?: string;
   error?: string;
 };
@@ -70,6 +73,10 @@ type PackageProofResult = {
 
 const args = process.argv.slice(2);
 
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`Usage:
   npx tsx scripts/prove-hwp-mobile-render.ts --package-ids=id1,id2 --base=http://127.0.0.1:3000 --apply
@@ -82,6 +89,8 @@ Options:
   --base=...          Customer site base URL, default NEXT_PUBLIC_BASE_URL or http://127.0.0.1:3000.
   --output-dir=...    Report and screenshot directory.
   --apply             Persist mobile_browser_proof into travel_packages.audit_report.
+  --apply-pass-only   Persist only passing mobile_browser_proof results; failed proofs stay report-only.
+  --continue-on-fail  Keep exit code 0 when some packages fail; useful for pass-only refresh batches.
   --skip-lp           Check /packages only. Default checks /packages and /lp.
   --skip-axe          Skip automated WCAG accessibility scan.
   --json              Print the full JSON report.
@@ -106,7 +115,9 @@ function parseList(value: string | null): string[] {
     .filter(Boolean);
 }
 
-const apply = hasFlag('apply');
+const apply = hasFlag('apply') || hasFlag('apply-pass-only');
+const applyPassOnly = hasFlag('apply-pass-only');
+const continueOnFail = hasFlag('continue-on-fail');
 const jsonOnly = hasFlag('json');
 const checkLp = !hasFlag('skip-lp');
 const runAxe = !hasFlag('skip-axe');
@@ -198,9 +209,12 @@ function visibleTextQualityIssues(text: string): string[] {
   if (unsafeHits.length > 0) {
     issues.push(`generic_internal_copy_visible: ${unsafeHits.join(', ')}`);
   }
-  const copyIssues = customerCopyQualityIssues(text);
+  const copyIssues = auditCustomerVisibleScreenText(text, { surface: 'mobile-proof' });
   if (copyIssues.length > 0) {
-    issues.push(`customer_copy_quality: ${copyIssues.map(issue => issue.code).join(', ')}`);
+    issues.push(`customer_copy_quality: ${copyIssues
+      .slice(0, 12)
+      .map(issue => `${issue.code}@${issue.line ?? issue.fieldPath}:${issue.value}`)
+      .join(' | ')}`);
   }
   return issues;
 }
@@ -327,6 +341,8 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
     const rawBodyText = await page.locator('body').innerText({ timeout: 15_000 }).catch(() => '');
     const bodyText = normalizeText(rawBodyText);
     const html = await page.content().catch(() => '');
+    result.screen_hash = sha256(html);
+    result.customer_visible_hash = sha256(bodyText);
     const days = getItineraryDays(pkg.itinerary_data);
     const expectedTerms = representativeScheduleTerms(pkg);
     const missingTerms = expectedTerms.filter(term => !bodyText.includes(term));
@@ -469,6 +485,35 @@ async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: strin
   return result;
 }
 
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackageProofResult {
+  const checkedAt = new Date().toISOString();
+  const detail = errorDetail(error);
+  return {
+    id: pkg.id,
+    title: pkg.display_title || pkg.title,
+    internal_code: pkg.internal_code,
+    url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
+    http_status: null,
+    status: 'fail',
+    checked_at: checkedAt,
+    package_updated_at: pkg.updated_at,
+    mobile_checks: [
+      {
+        name: 'mobile_proof_unhandled_error',
+        ok: false,
+        detail,
+      },
+    ],
+    a4_checks: auditA4PayloadForPackage(pkg),
+    surface_results: [],
+    error: detail,
+  };
+}
+
 async function loadPackages(): Promise<PackageRow[]> {
   let query = supabaseAdmin
     .from('travel_packages')
@@ -489,10 +534,14 @@ async function loadPackages(): Promise<PackageRow[]> {
 
 function buildProofPayload(result: PackageProofResult, status: 'pass' | 'fail', failedChecks: CheckResult[] = []) {
   const surfaces = result.surface_results.map(surface => surface.surface);
+  const screenHashSource = result.surface_results.map(surface => `${surface.surface}:${surface.screen_hash ?? ''}`).join('|');
+  const visibleHashSource = result.surface_results.map(surface => `${surface.surface}:${surface.customer_visible_hash ?? ''}`).join('|');
   return {
     status,
     checked_at: result.checked_at,
     package_updated_at: result.package_updated_at,
+    screen_hash: sha256(screenHashSource),
+    customer_visible_hash: sha256(visibleHashSource),
     surfaces,
     url: result.url,
     http_status: result.http_status,
@@ -598,18 +647,32 @@ async function main() {
     const page = await context.newPage();
 
     for (const pkg of packages) {
-      const result = await inspectMobilePage(page, pkg, proofSecret);
+      let result: PackageProofResult;
+      try {
+        result = await inspectMobilePage(page, pkg, proofSecret);
+        if (apply) {
+          try {
+            if (result.status === 'pass') {
+              await persistPassProof(result);
+            } else if (!applyPassOnly) {
+              await persistFailProof(result);
+            }
+          } catch (error) {
+            result.status = 'fail';
+            result.mobile_checks.push({
+              name: 'mobile_proof_persist',
+              ok: false,
+              detail: errorDetail(error),
+            });
+          }
+        }
+      } catch (error) {
+        result = buildUnhandledProofFailure(pkg, error);
+      }
       results.push(result);
       if (!jsonOnly) {
         const failed = [...result.mobile_checks, ...result.a4_checks].filter(check => !check.ok);
         console.log(`${result.status.toUpperCase()} ${pkg.internal_code || pkg.id} ${failed.length ? failed.map(item => item.name).join(', ') : ''}`);
-      }
-      if (apply) {
-        if (result.status === 'pass') {
-          await persistPassProof(result);
-        } else {
-          await persistFailProof(result);
-        }
       }
     }
   } finally {
@@ -621,6 +684,7 @@ async function main() {
     pass: results.filter(result => result.status === 'pass').length,
     fail: results.filter(result => result.status === 'fail').length,
     applied: apply,
+    applyMode: applyPassOnly ? 'pass-only' : apply ? 'pass-and-fail' : 'none',
     checkedSurfaces: checkLp ? ['packages', 'lp'] : ['packages'],
     accessibility: runAxe ? 'axe_wcag2a_2aa_21a_21aa' : 'skipped',
     baseUrl,
@@ -634,7 +698,7 @@ async function main() {
   } else {
     console.log(JSON.stringify({ summary, reportPath }, null, 2));
   }
-  if (summary.fail > 0) process.exitCode = 1;
+  if (summary.fail > 0 && !continueOnFail) process.exitCode = 1;
 }
 
 main().catch(error => {

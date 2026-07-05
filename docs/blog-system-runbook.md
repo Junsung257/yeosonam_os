@@ -61,6 +61,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
    - 발행 품질 게이트의 `render_integrity` 가 `passed=true`인지 확인한다. 실패 시 원문은 저장하지 말고 렌더러/마크다운 구조를 먼저 수정한다.
    - `indexing_reports` 최신 행에서 `sitemap_pings` 안의 `google_search_console_sitemap` 이 `ok=true`인지 확인
    - `INDEXNOW_KEY` 미설정이면 Bing/IndexNow는 `skipped`가 정상이며, 운영 전에는 루트 key 파일 배포가 필요
+   - 같은 URL을 짧은 시간 안에 다시 재색인하면 IndexNow는 `recent_indexnow_submission_cached`로 건너뛰는 것이 정상이다. 삭제 알림(`URL_DELETED`)은 이 캐시를 우회한다.
    - 대량 재색인은 `/api/blog/bulk-reindex`를 사용한다. 이 경로는 Google sitemap 제출과 IndexNow 요청을 batch로 묶어 호출한다.
 
 ---

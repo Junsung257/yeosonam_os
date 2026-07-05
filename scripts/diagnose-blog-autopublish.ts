@@ -1,18 +1,36 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { countPublishableQueueCandidates } from '../src/lib/blog-scheduler';
+import { getClosedKstDailySummaryRange } from '../src/lib/blog-daily-summary-window';
+import { summarizeBlogQueueOperationalHealth } from '../src/lib/blog-queue-operational-health';
+import { buildBlogProductEvidenceWorkReport } from '../src/lib/blog-product-evidence-work';
+import { buildBlogEditorialBacklogWorkReport } from '../src/lib/blog-editorial-backlog-work';
+import { buildBlogDestinationlessInfoWorkReport } from '../src/lib/blog-destinationless-info';
+import { summarizeBlogIndexingCoverage } from '../src/lib/blog-indexing-coverage';
+import { evaluateBlogPublishPreflight } from '../src/lib/blog-publish-preflight';
+import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
+import { evaluateCurrentDayPublisherHealth } from '../src/lib/blog-current-day-publisher-health';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 type BucketCode =
+  | 'daily_publish_sla_miss'
   | 'publisher_cron_not_observed'
   | 'publisher_timeout'
   | 'duplicate_candidate_burn'
+  | 'product_open_contract_blocked'
+  | 'editorial_backlog_work'
+  | 'destinationless_info_work'
+  | 'published_info_destination_work'
   | 'table_integrity_fail'
   | 'candidate_shortage'
   | 'audit_contract_mismatch'
-  | 'indexing_queue_error';
+  | 'indexing_queue_error'
+  | 'indexing_outbox_missing'
+  | 'publish_preflight_blocked'
+  | 'canary_candidates_unavailable'
+  | 'current_day_publisher_failure';
 
 type Bucket = {
   code: BucketCode;
@@ -48,6 +66,30 @@ function kstDayRange(dayKey: string): { dayKey: string; start: Date; end: Date }
   return { dayKey, start, end };
 }
 
+function resolveReportDay(): {
+  dayKey: string;
+  start: Date;
+  end: Date;
+  closed: boolean;
+  usedPreviousDayForPreCloseRun: boolean;
+  closeMinuteKst: number | null;
+} {
+  if (dateArg) {
+    return {
+      ...kstDayRange(dateArg),
+      closed: true,
+      usedPreviousDayForPreCloseRun: false,
+      closeMinuteKst: null,
+    };
+  }
+
+  const closedDay = getClosedKstDailySummaryRange();
+  return {
+    ...closedDay,
+    usedPreviousDayForPreCloseRun: closedDay.usedPreviousDay,
+  };
+}
+
 function numberFrom(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
@@ -70,6 +112,28 @@ function containsText(value: unknown, pattern: RegExp): boolean {
   return JSON.stringify(value ?? '').match(pattern) !== null;
 }
 
+function startedAtMs(row: any): number {
+  const parsed = new Date(row?.started_at ?? '').getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isRecoveredPublisherRun(row: any): boolean {
+  const summary = summaryObject(row);
+  const published = numberFrom(summary.published) + numberFrom(summary.published_count);
+  const remaining = summary.dailyQuota && typeof summary.dailyQuota === 'object'
+    ? numberFrom(summary.dailyQuota.remaining)
+    : null;
+
+  return (
+    row?.status === 'success' &&
+    (
+      published > 0 ||
+      remaining === 0 ||
+      summary.reason === 'daily_publish_quota_reached'
+    )
+  );
+}
+
 async function countByStatus(table: string, statuses: string[]) {
   const { data, error } = await supabase
     .from(table)
@@ -84,17 +148,21 @@ async function countByStatus(table: string, statuses: string[]) {
 }
 
 async function main() {
-  const day = kstDayRange(dateArg || kstDayKey());
+  const day = resolveReportDay();
+  const currentDay = kstDayRange(kstDayKey());
   const yesterday = kstDayRange(kstDayKey(new Date(day.start.getTime() - 1)));
 
   const [
     publishedTodayRes,
     publishedYesterdayRes,
+    publishedCurrentDayRes,
     recentPublishedRes,
     queueCounts,
     indexingCounts,
     indexingProblemRes,
+    indexingCoverageJobsRes,
     activeQueueRes,
+    queueOperationalRes,
     cronHealthRes,
     publisherLogsRes,
     policyRes,
@@ -115,7 +183,14 @@ async function main() {
       .lt('published_at', yesterday.end.toISOString()),
     supabase
       .from('content_creatives')
-      .select('id, slug, content_type, product_id, destination, published_at, generation_meta, quality_gate')
+      .select('id', { count: 'exact', head: true })
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .gte('published_at', currentDay.start.toISOString())
+      .lt('published_at', currentDay.end.toISOString()),
+    supabase
+      .from('content_creatives')
+      .select('id, slug, seo_title, category, content_type, product_id, destination, published_at, generation_meta, quality_gate, seo_score, readability_score')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
@@ -129,10 +204,20 @@ async function main() {
       .order('updated_at', { ascending: false })
       .limit(limit),
     supabase
+      .from('blog_indexing_jobs')
+      .select('content_creative_id, slug, url, status')
+      .order('updated_at', { ascending: false })
+      .limit(1000),
+    supabase
       .from('blog_topic_queue')
-      .select('id, product_id, destination, angle_type, topic, source, meta')
+      .select('id, product_id, destination, angle_type, topic, source, priority, target_publish_at, primary_keyword, category, meta')
       .in('status', ['queued', 'generating'])
       .limit(500),
+    supabase
+      .from('blog_topic_queue')
+      .select('id, status, product_id, destination, topic, source, attempts, last_error, created_at, updated_at, target_publish_at, meta')
+      .in('status', ['queued', 'generating', 'failed'])
+      .limit(1000),
     supabase
       .from('cron_health')
       .select('cron_name, last_status, last_run_at, last_error_count, last_elapsed_ms, last_summary')
@@ -155,9 +240,12 @@ async function main() {
   for (const result of [
     publishedTodayRes,
     publishedYesterdayRes,
+    publishedCurrentDayRes,
     recentPublishedRes,
     indexingProblemRes,
+    indexingCoverageJobsRes,
     activeQueueRes,
+    queueOperationalRes,
     cronHealthRes,
     publisherLogsRes,
     policyRes,
@@ -174,33 +262,125 @@ async function main() {
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
   });
+  const indexingOutboxCoverage = summarizeBlogIndexingCoverage({
+    posts: recentPublishedRes.data ?? [],
+    jobs: indexingCoverageJobsRes.data ?? [],
+    limit,
+  });
+  const queueOperationalHealth = summarizeBlogQueueOperationalHealth(queueOperationalRes.data ?? []);
+  const productEvidenceProductIds = Array.from(new Set(
+    (queueOperationalRes.data ?? [])
+      .map((row: any) => typeof row.product_id === 'string' ? row.product_id : null)
+      .filter((id: string | null): id is string => Boolean(id)),
+  ));
+  const productsById = new Map<string, any>();
+  if (productEvidenceProductIds.length > 0) {
+    const { data: products, error: productsError } = await supabase
+      .from('travel_packages')
+      .select('id, title, status, destination, updated_at')
+      .in('id', productEvidenceProductIds.slice(0, 200));
+    if (productsError) throw productsError;
+    for (const product of products ?? []) {
+      productsById.set(String(product.id), product);
+    }
+  }
+  const productEvidenceWork = buildBlogProductEvidenceWorkReport({
+    rows: queueOperationalRes.data ?? [],
+    productsById,
+    limit,
+  });
+  const editorialBacklogWork = buildBlogEditorialBacklogWorkReport({
+    rows: queueOperationalRes.data ?? [],
+    limit,
+  });
+  const destinationlessInfoWork = buildBlogDestinationlessInfoWorkReport({
+    rows: activeQueueRes.data ?? [],
+    limit,
+  });
+  const publishedInfoDestinationWork = buildBlogDestinationlessInfoWorkReport({
+    rows: (recentPublishedRes.data ?? []).map((row: any) => ({
+      ...row,
+      topic: row.seo_title ?? row.slug,
+      source: 'content_creatives',
+    })),
+    limit,
+  });
   const publishabilitySnapshot = {
     queued_total: (activeQueueRes.data ?? []).filter((row: any) => row.source !== 'pillar').length,
     publishable_candidate_count: publishabilityStats.publishableCount,
     duplicate_candidate_count: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
-    evidence_insufficient_count: publishabilityStats.evidenceInsufficient,
+    evidence_insufficient_count: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    destinationless_info_count: publishabilityStats.destinationlessInfoBlocked,
+    candidate_contract_blocked_count: publishabilityStats.candidateContractBlocked,
     candidate_shortage: publishabilityStats.publishableCount < dailyTarget * 2,
-    next_action: publishabilityStats.evidenceInsufficient > 0
+    next_action: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked > 0
       ? 'collect_evidence'
-      : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
-        ? 'quarantine_duplicates'
-        : publishabilityStats.publishableCount < dailyTarget * 2
-          ? 'refill_candidates'
-          : 'publish_ready',
+      : publishabilityStats.destinationlessInfoBlocked > 0
+        ? 'repair_destinationless_info'
+      : publishabilityStats.candidateContractBlocked > 0
+        ? 'repair_candidate_contract'
+        : publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued > 0
+          ? 'quarantine_duplicates'
+          : publishabilityStats.publishableCount < dailyTarget * 2
+            ? 'refill_candidates'
+            : 'publish_ready',
   };
+  const publishPreflight = evaluateBlogPublishPreflight({
+    dailyTarget,
+    publishedToday: publishedCurrentDayRes.count ?? 0,
+    publishableCandidateCount: publishabilityStats.publishableCount,
+    duplicateCandidateCount: publishabilityStats.blockedRecentDuplicate + publishabilityStats.duplicateQueued,
+    evidenceInsufficientCount: publishabilityStats.evidenceInsufficient + publishabilityStats.productOpenContractBlocked,
+    candidateShortage: publishabilitySnapshot.candidate_shortage,
+    actionableFailedCount: queueOperationalHealth.actionable_failed_count,
+    staleGeneratingCount: queueOperationalHealth.stale_generating_count,
+    manualReviewCount: queueOperationalHealth.manual_review_count,
+    overdueQueuedCount: queueOperationalHealth.overdue_queued_count,
+    indexingOutboxMissingCount: indexingOutboxCoverage.missing_count,
+    indexingOutboxCoverageRate: indexingOutboxCoverage.coverage_rate,
+    recentPosts: recentPublishedRes.data ?? [],
+  });
+  const canaryPreflight = buildBlogCanaryPreflight({
+    activeQueue: activeQueueRes.data ?? [],
+    recentPublished: recentPublishedRes.data ?? [],
+    requested: 3,
+  });
   const latestPublisherLog = publisherLogs[0] ?? null;
   const latestPublisherSummary = summaryObject(latestPublisherLog);
   const healthPublisherSummary = lastSummaryObject(publisherHealth);
   const combinedPublisherSummary = Object.keys(latestPublisherSummary).length > 0
     ? latestPublisherSummary
     : healthPublisherSummary;
+  const currentDayPublisherHealth = evaluateCurrentDayPublisherHealth({
+    cronHealth: publisherHealth,
+    currentDayPublishedCount: publishedCurrentDayRes.count ?? 0,
+    dailyTarget,
+  });
 
   const buckets: Bucket[] = [];
+  const selectedDayPublished = publishedTodayRes.count ?? 0;
+  const selectedDayUnderTarget = selectedDayPublished < dailyTarget;
   const publisherRanToday = publisherLogs.length > 0 || (
     publisherHealth?.last_run_at &&
     new Date(publisherHealth.last_run_at) >= day.start &&
     new Date(publisherHealth.last_run_at) < day.end
   );
+
+  if (selectedDayUnderTarget) {
+    buckets.push({
+      code: 'daily_publish_sla_miss',
+      severity: selectedDayPublished === 0 ? 'critical' : 'high',
+      detail: `Selected KST day published ${selectedDayPublished}/${dailyTarget} posts.`,
+      evidence: {
+        report_day: day.dayKey,
+        published: selectedDayPublished,
+        daily_target: dailyTarget,
+        report_period_closed: day.closed,
+        used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
+        latest_publisher_failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
+      },
+    });
+  }
 
   if (!publisherRanToday) {
     buckets.push({
@@ -216,7 +396,13 @@ async function main() {
     containsText(row.error_messages, /timeout|timed out|285000|285초/i) ||
     containsText(row.summary, /timeout|timed out|285000|285초/i)
   );
-  if (timeoutRuns.length > 0) {
+  const latestTimeoutStartedAt = timeoutRuns.reduce((max: number, row: any) => Math.max(max, startedAtMs(row)), 0);
+  const timeoutRecovered = timeoutRuns.length > 0 &&
+    !selectedDayUnderTarget &&
+    publishPreflight.status === 'pass' &&
+    currentDayPublisherHealth.status === 'healthy' &&
+    publisherLogs.some((row: any) => startedAtMs(row) > latestTimeoutStartedAt && isRecoveredPublisherRun(row));
+  if (timeoutRuns.length > 0 && !timeoutRecovered) {
     buckets.push({
       code: 'publisher_timeout',
       severity: 'high',
@@ -235,12 +421,60 @@ async function main() {
     });
   }
 
+  const productOpenContractFailures = publishabilityStats.productOpenContractBlocked;
+  if (productOpenContractFailures > 0) {
+    buckets.push({
+      code: 'product_open_contract_blocked',
+      severity: 'high',
+      detail: 'Active product-backed candidate(s) are blocked by stale or missing customer-open contract evidence.',
+      evidence: {
+        failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
+        product_evidence_work: productEvidenceWork.samples.slice(0, 5),
+        hint: 'Repair package customer mobile proof/evidence pack before requeueing product-backed blog rows.',
+      },
+    });
+  }
+
+  if (editorialBacklogWork.total > 0) {
+    buckets.push({
+      code: 'editorial_backlog_work',
+      severity: 'warning',
+      detail: `${editorialBacklogWork.total} quarantined editorial backlog row(s) need generator, prompt, or quality-contract repair before requeueing.`,
+      evidence: {
+        issue_counts: editorialBacklogWork.issue_counts,
+        category_counts: editorialBacklogWork.category_counts,
+        next_actions: editorialBacklogWork.next_actions,
+        samples: editorialBacklogWork.samples.slice(0, 5),
+      },
+    });
+  }
+
+  if (destinationlessInfoWork.total > 0) {
+    buckets.push({
+      code: 'destinationless_info_work',
+      severity: 'warning',
+      detail: `${destinationlessInfoWork.total} destinationless info candidate(s) need explicit generic intent or a concrete destination before publishing.`,
+      evidence: destinationlessInfoWork,
+    });
+  }
+  if (publishedInfoDestinationWork.total > 0) {
+    buckets.push({
+      code: 'published_info_destination_work',
+      severity: 'warning',
+      detail: `${publishedInfoDestinationWork.total} recent published info post(s) need explicit generic intent, a real destination, or archival.`,
+      evidence: publishedInfoDestinationWork,
+    });
+  }
+
   const tableFailures = failureCount(combinedPublisherSummary, 'table_integrity');
-  if (tableFailures > 0 || containsText(publisherLogs, /table_integrity|too_few_table_rows/i)) {
+  if (
+    queueOperationalHealth.actionable_failed_count > 0 &&
+    (tableFailures > 0 || containsText(publisherLogs, /table_integrity|too_few_table_rows/i))
+  ) {
     buckets.push({
       code: 'table_integrity_fail',
       severity: 'high',
-      detail: `${tableFailures || 'Some'} candidate(s) failed table integrity checks.`,
+      detail: `${tableFailures || 'Some'} retryable candidate(s) failed table integrity checks.`,
       evidence: combinedPublisherSummary.failure_breakdown ?? null,
     });
   }
@@ -285,19 +519,67 @@ async function main() {
       evidence: indexingProblems.slice(0, 10),
     });
   }
+  if (indexingOutboxCoverage.missing_count > 0) {
+    buckets.push({
+      code: 'indexing_outbox_missing',
+      severity: 'high',
+      detail: `${indexingOutboxCoverage.missing_count} recent published post(s) are not connected to a blog_indexing_jobs row.`,
+      evidence: indexingOutboxCoverage,
+    });
+  }
+  if (publishPreflight.status === 'block') {
+    buckets.push({
+      code: 'publish_preflight_blocked',
+      severity: 'high',
+      detail: publishPreflight.blockers[0]?.detail ?? 'Blog publish preflight has blocking issues.',
+      evidence: publishPreflight,
+    });
+  }
+  if (canaryPreflight.status === 'block') {
+    buckets.push({
+      code: 'canary_candidates_unavailable',
+      severity: 'high',
+      detail: `Only ${canaryPreflight.ready_count}/${canaryPreflight.requested} canary candidate(s) are ready.`,
+      evidence: canaryPreflight,
+    });
+  }
+  if (currentDayPublisherHealth.status === 'risk') {
+    buckets.push({
+      code: 'current_day_publisher_failure',
+      severity: 'critical',
+      detail: currentDayPublisherHealth.detail,
+      evidence: currentDayPublisherHealth.evidence,
+    });
+  }
 
   const report = {
     date: day.dayKey,
     timezone: 'Asia/Seoul',
     generated_at: new Date().toISOString(),
+    report_period_closed: day.closed,
+    used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
+    close_minute_kst: day.closeMinuteKst,
     published: {
-      today: publishedTodayRes.count ?? 0,
+      selected_day: publishedTodayRes.count ?? 0,
+      previous_day: publishedYesterdayRes.count ?? 0,
+      current_day: publishedCurrentDayRes.count ?? 0,
+      current_day_key: currentDay.dayKey,
+      today: publishedCurrentDayRes.count ?? 0,
       yesterday: publishedYesterdayRes.count ?? 0,
       daily_target: dailyTarget,
-      under_target: (publishedTodayRes.count ?? 0) < dailyTarget,
+      under_target: selectedDayUnderTarget,
     },
     queue: queueCounts,
+    queue_operational_health: queueOperationalHealth,
+    product_evidence_work: productEvidenceWork,
+    editorial_backlog_work: editorialBacklogWork,
+    destinationless_info_work: destinationlessInfoWork,
+    published_info_destination_work: publishedInfoDestinationWork,
     publishability: publishabilitySnapshot,
+    publish_preflight: publishPreflight,
+    canary_preflight: canaryPreflight,
+    current_day_publisher_health: currentDayPublisherHealth,
+    indexing_outbox_coverage: indexingOutboxCoverage,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
     latest_publisher_runs: publisherLogs,
@@ -310,9 +592,13 @@ async function main() {
   }
 
   console.log(`Blog autopublish diagnosis (${report.date} KST)`);
-  console.log(`Published: ${report.published.today}/${dailyTarget} today, ${report.published.yesterday} yesterday`);
+  console.log(`Published: ${report.published.today}/${dailyTarget} selected day, ${report.published.yesterday} previous day`);
   console.log(`Queue: ${JSON.stringify(queueCounts)}`);
+  console.log(`Publish preflight: ${publishPreflight.status} (${publishPreflight.score}/100)`);
+  console.log(`Canary preflight: ${canaryPreflight.status} (${canaryPreflight.ready_count}/${canaryPreflight.requested})`);
+  console.log(`Current-day publisher: ${currentDayPublisherHealth.status}`);
   console.log(`Indexing jobs: ${JSON.stringify(indexingCounts)}`);
+  console.log(`Indexing outbox coverage: ${indexingOutboxCoverage.coverage_rate ?? '-'}% (${indexingOutboxCoverage.missing_count} missing)`);
   console.log('Buckets:');
   for (const bucket of buckets) {
     console.log(`- [${bucket.severity}] ${bucket.code}: ${bucket.detail}`);

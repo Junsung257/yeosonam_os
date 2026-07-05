@@ -142,4 +142,101 @@ describe('validateStandardProductRegistrationObject', () => {
     expect(result.ok).toBe(false);
     expect(result.issues.join('\n')).toContain('evidence span hash mismatch');
   });
+
+  it('accepts EvidenceV2 spans that point at a registered source document hash', () => {
+    const documentHash = '1'.repeat(64);
+    const result = validateStandardProductRegistrationObject(registration({
+      evidence: {
+        ...registration().evidence,
+        sourceDocuments: [
+          {
+            sourceId: 'original_raw',
+            rawTextHash: '0'.repeat(64),
+            rawTextLength: 21,
+            role: 'original',
+          },
+          {
+            sourceId: 'document_raw',
+            rawTextHash: documentHash,
+            rawTextLength: 100,
+            role: 'document',
+          },
+        ],
+        spans: [{
+          field: 'pricing.productPrices[0].adult_selling_price',
+          rawTextHash: documentHash,
+          sourceId: 'document_raw',
+          start: 10,
+          end: 17,
+          quote: '859,000',
+          confidence: 0.9,
+        }],
+      },
+    }));
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('blocks EvidenceV2 spans whose sourceId and rawTextHash point at different documents', () => {
+    const parserHash = '1'.repeat(64);
+    const sectionHash = '2'.repeat(64);
+    const result = validateStandardProductRegistrationObject(registration({
+      evidence: {
+        ...registration().evidence,
+        sourceDocuments: [
+          {
+            sourceId: 'parser_raw',
+            rawTextHash: parserHash,
+            rawTextLength: 100,
+            role: 'parser',
+          },
+          {
+            sourceId: 'section_raw',
+            rawTextHash: sectionHash,
+            rawTextLength: 40,
+            role: 'section',
+          },
+        ],
+        spans: [{
+          field: 'title',
+          rawTextHash: sectionHash,
+          sourceId: 'parser_raw',
+          start: 0,
+          end: 4,
+          quote: 'Cebu',
+          confidence: 0.9,
+        }],
+      },
+    }));
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.join('\n')).toContain('sourceId/hash mismatch');
+  });
+
+  it('keeps legacy sourceId-less span hash compatibility', () => {
+    const sectionHash = '2'.repeat(64);
+    const result = validateStandardProductRegistrationObject(registration({
+      evidence: {
+        ...registration().evidence,
+        sourceDocuments: [
+          {
+            sourceId: 'section_raw',
+            rawTextHash: sectionHash,
+            rawTextLength: 40,
+            role: 'section',
+          },
+        ],
+        spans: [{
+          field: 'title',
+          rawTextHash: sectionHash,
+          start: 0,
+          end: 4,
+          quote: 'Cebu',
+          confidence: 0.9,
+        }],
+      },
+    }));
+
+    expect(result.ok).toBe(true);
+  });
 });

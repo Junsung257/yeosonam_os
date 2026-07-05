@@ -5,6 +5,17 @@ import {
   buildNaverVisibilitySnapshot,
   recordBlogVisibilitySnapshot,
 } from '@/lib/blog-visibility-snapshots';
+import {
+  blogIndexingUrlForSlug,
+  canonicalizeBlogIndexingJobUrl,
+  resolveBlogCanonicalOrigin,
+} from '@/lib/blog-canonical-url';
+
+export {
+  blogIndexingUrlForSlug,
+  canonicalizeBlogIndexingJobUrl,
+  resolveBlogCanonicalOrigin,
+} from '@/lib/blog-canonical-url';
 
 type BlogIndexingJobType = 'URL_UPDATED' | 'URL_DELETED';
 
@@ -40,18 +51,6 @@ export interface EnqueueBlogIndexingJobResult {
 const TABLE = 'blog_indexing_jobs';
 const ACTIVE_STATUSES = ['pending', 'retry', 'processing'];
 
-function cleanBaseUrl(baseUrl?: string | null): string {
-  const configured = (baseUrl || process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
-  if (!configured || /localhost|127\.0\.0\.1/i.test(configured)) {
-    return 'https://www.yeosonam.com';
-  }
-  return configured;
-}
-
-function blogIndexingUrlForSlug(slug: string, baseUrl?: string | null): string {
-  return `${cleanBaseUrl(baseUrl)}/blog/${slug.replace(/^\/+|\/+$/g, '')}`;
-}
-
 function dbErrorMessage(error: unknown): string {
   if (!error || typeof error !== 'object') return String(error);
   const record = error as { message?: string; code?: string };
@@ -70,7 +69,7 @@ export async function enqueueBlogIndexingJob(
   if (!isSupabaseConfigured) return { ok: false, skipped: true, error: 'Supabase not configured' };
 
   const type = input.type ?? 'URL_UPDATED';
-  const url = input.url || blogIndexingUrlForSlug(slug, input.baseUrl);
+  const url = canonicalizeBlogIndexingJobUrl({ url: input.url, slug, baseUrl: input.baseUrl });
   const now = new Date().toISOString();
   const payload = {
     content_creative_id: input.contentCreativeId ?? null,
@@ -125,8 +124,17 @@ export async function enqueueBlogIndexingJob(
 }
 
 export function isIndexingReportSuccessful(report: IndexingReport): boolean {
-  if (report.google === 'success' || report.indexnow === 'success') return true;
-  return report.sitemap_pings.some((ping) => ping.ok);
+  const hasAnySuccessfulPath =
+    report.google === 'success' ||
+    report.indexnow === 'success' ||
+    report.sitemap_pings.some((ping) => ping.ok);
+
+  if (!hasAnySuccessfulPath) return false;
+
+  // If IndexNow is configured and was attempted, do not hide that provider failure
+  // behind a successful sitemap hint. The worker should retry so Naver/Bing-style
+  // channels get another chance with the provider's backoff signal.
+  return report.indexnow !== 'failed';
 }
 
 export async function persistBlogIndexingReport(

@@ -36,4 +36,13 @@ describe('middleware cron resource saver', () => {
       reason: 'db_resource_saver_mode',
     });
   });
+
+  it('returns a hard noindex tombstone for archived blog slugs', async () => {
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/blog/july-family-travel-weather-clothes-checklist-2026',
+    ));
+
+    expect(response.status).toBe(410);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
 });

@@ -72,6 +72,61 @@ async function enqueueIndexingJob(row: { id: string; slug: string }) {
   return { jobId: (data as { id?: string } | null)?.id, deduped: false };
 }
 
+type BlogSlugMigrationRow = {
+  id: string;
+  slug: string | null;
+  seo_title: string | null;
+  blog_html?: string | null;
+  og_image_url?: string | null;
+  generation_meta?: unknown;
+};
+
+function replaceSlugReferences(value: string | null | undefined, oldSlug: string, newSlug: string): string | null | undefined {
+  if (typeof value !== 'string' || !value) return value;
+  const encodedOld = encodeURIComponent(oldSlug);
+  const encodedNew = encodeURIComponent(newSlug);
+  const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const replaceBounded = (text: string, from: string, to: string) => {
+    const pattern = new RegExp(`(?<![a-z0-9-])${escapeRegExp(from)}(?![a-z0-9-])`, 'gi');
+    return text.replace(pattern, to);
+  };
+  let next = value
+    .replace(new RegExp(`/blog/${escapeRegExp(oldSlug)}(?=\\b|[/?#"'&])`, 'g'), `/blog/${newSlug}`)
+    .replace(new RegExp(`/blog/${escapeRegExp(encodedOld)}(?=\\b|[/?#"'&])`, 'g'), `/blog/${encodedNew}`)
+    .replace(new RegExp(`([?&](?:blog|utm_campaign|utm_content)=)${escapeRegExp(oldSlug)}(?=\\b|[&#"'])`, 'g'), `$1${newSlug}`)
+    .replace(new RegExp(`([?&](?:blog|utm_campaign|utm_content)=)${escapeRegExp(encodedOld)}(?=\\b|[&#"'])`, 'g'), `$1${encodedNew}`)
+    .replace(new RegExp(`("slug"\\s*:\\s*")${escapeRegExp(oldSlug)}(")`, 'g'), `$1${newSlug}$2`)
+    .replace(new RegExp(`("utm_campaign"\\s*:\\s*")${escapeRegExp(oldSlug)}(")`, 'g'), `$1${newSlug}$2`)
+    .replace(new RegExp(`("utm_content"\\s*:\\s*")${escapeRegExp(oldSlug)}(")`, 'g'), `$1${newSlug}$2`)
+    .replace(new RegExp(`("blog"\\s*:\\s*")${escapeRegExp(oldSlug)}(")`, 'g'), `$1${newSlug}$2`)
+    .replace(new RegExp(`(blog=)${escapeRegExp(oldSlug)}(?=\\b|[&#"'])`, 'g'), `$1${newSlug}`)
+    .replace(new RegExp(`(blog=)${escapeRegExp(encodedOld)}(?=\\b|[&#"'])`, 'g'), `$1${encodedNew}`);
+  next = replaceBounded(next, oldSlug, newSlug);
+  next = replaceBounded(next, encodedOld, encodedNew);
+  return next;
+}
+
+function replaceSlugReferencesInJson(value: unknown, oldSlug: string, newSlug: string): unknown {
+  if (value == null) return value;
+  const serialized = JSON.stringify(value);
+  if (!serialized.includes(oldSlug) && !serialized.includes(encodeURIComponent(oldSlug))) return value;
+  return JSON.parse(replaceSlugReferences(serialized, oldSlug, newSlug) || serialized);
+}
+
+function buildReferencePatch(row: BlogSlugMigrationRow, oldSlug: string, newSlug: string): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  const nextHtml = replaceSlugReferences(row.blog_html, oldSlug, newSlug);
+  if (typeof nextHtml === 'string' && nextHtml !== row.blog_html) patch.blog_html = nextHtml;
+
+  const nextOg = replaceSlugReferences(row.og_image_url, oldSlug, newSlug);
+  if (typeof nextOg === 'string' && nextOg !== row.og_image_url) patch.og_image_url = nextOg;
+
+  const nextMeta = replaceSlugReferencesInJson(row.generation_meta, oldSlug, newSlug);
+  if (nextMeta !== row.generation_meta) patch.generation_meta = nextMeta;
+
+  return patch;
+}
+
 async function main() {
   const entries = Object.entries(BLOG_SLUG_REDIRECTS);
   const oldSlugs = entries.map(([oldSlug]) => oldSlug);
@@ -80,11 +135,11 @@ async function main() {
 
   const { data: existingRows, error: existingError } = await supabase
     .from('content_creatives')
-    .select('id, slug')
+    .select('id, slug, seo_title, blog_html, og_image_url, generation_meta')
     .in('slug', allSlugs);
   if (existingError) throw existingError;
 
-  const existingBySlug = new Map((existingRows || []).map((row) => [row.slug, row]));
+  const existingBySlug = new Map(((existingRows || []) as BlogSlugMigrationRow[]).map((row) => [row.slug, row]));
   const collisions = entries
     .map(([oldSlug, newSlug]) => {
       const oldRow = existingBySlug.get(oldSlug);
@@ -99,33 +154,51 @@ async function main() {
     process.exit(1);
   }
 
-  const { data: rows, error } = await supabase
-    .from('content_creatives')
-    .select('id, slug, seo_title')
-    .in('slug', oldSlugs);
-  if (error) throw error;
-
-  const bySlug = new Map((rows || []).map((row) => [row.slug, row]));
   const results: Array<{
     oldSlug: string;
     newSlug: string;
     status: string;
     indexingJobId?: string;
     indexingDeduped?: boolean;
+    internalReferencesRewritten?: boolean;
     title?: string | null;
   }> = [];
 
   for (const [oldSlug, newSlug] of entries) {
-    const row = bySlug.get(oldSlug);
+    const row = existingBySlug.get(oldSlug);
     if (!row) {
+      const alreadyMigrated = existingBySlug.get(newSlug);
+      const referencePatch = alreadyMigrated ? buildReferencePatch(alreadyMigrated, oldSlug, newSlug) : {};
+      if (alreadyMigrated && Object.keys(referencePatch).length > 0) {
+        let indexing: Awaited<ReturnType<typeof enqueueIndexingJob>> | null = null;
+        if (!dryRun) {
+          const { error: rewriteError } = await supabase
+            .from('content_creatives')
+            .update({ ...referencePatch, updated_at: new Date().toISOString() })
+            .eq('id', alreadyMigrated.id);
+          if (rewriteError) throw rewriteError;
+          indexing = await enqueueIndexingJob({ id: alreadyMigrated.id, slug: newSlug });
+        }
+        results.push({
+          oldSlug,
+          newSlug,
+          status: dryRun ? 'would_rewrite_internal_references' : 'rewrote_internal_references',
+          indexingJobId: indexing?.jobId,
+          indexingDeduped: indexing?.deduped,
+          internalReferencesRewritten: true,
+          title: alreadyMigrated.seo_title,
+        });
+        continue;
+      }
       results.push({ oldSlug, newSlug, status: 'missing_or_already_migrated' });
       continue;
     }
 
+    const referencePatch = buildReferencePatch(row, oldSlug, newSlug);
     if (!dryRun) {
       const { error: updateError } = await supabase
         .from('content_creatives')
-        .update({ slug: newSlug, updated_at: new Date().toISOString() })
+        .update({ ...referencePatch, slug: newSlug, updated_at: new Date().toISOString() })
         .eq('id', row.id);
       if (updateError) throw updateError;
 
@@ -136,12 +209,19 @@ async function main() {
         status: 'updated',
         indexingJobId: indexing.jobId,
         indexingDeduped: indexing.deduped,
+        internalReferencesRewritten: Object.keys(referencePatch).length > 0,
         title: row.seo_title,
       });
       continue;
     }
 
-    results.push({ oldSlug, newSlug, status: dryRun ? 'would_update' : 'updated', title: row.seo_title });
+    results.push({
+      oldSlug,
+      newSlug,
+      status: dryRun ? 'would_update' : 'updated',
+      internalReferencesRewritten: Object.keys(referencePatch).length > 0,
+      title: row.seo_title,
+    });
   }
 
   console.log(JSON.stringify({ mode: dryRun ? 'dry-run' : 'write', results }, null, 2));

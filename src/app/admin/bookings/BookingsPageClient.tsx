@@ -1705,20 +1705,20 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     <div className="flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 80px)' }}>
 
       {/* 헤더 */}
-      <div className="flex items-center justify-between mb-3 flex-nowrap gap-4 shrink-0">
-        <div className="shrink-0">
+      <div className="flex flex-col gap-3 mb-3 shrink-0 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-admin-lg font-bold text-admin-text-2 whitespace-nowrap">{isTrash ? '휴지통' : '예약 관리'}</h1>
           <p className="text-admin-sm text-admin-muted mt-0.5 whitespace-nowrap">전체 {bookings.length}건 / 조회 {filtered.length}건</p>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <Link href="/admin/customers" className="text-admin-sm text-admin-text-2 border border-admin-border-strong px-3 py-2 rounded-lg bg-white hover:bg-admin-bg whitespace-nowrap">고객 관리</Link>
-          <Link href="/admin/bookings/new" className="bg-brand text-white text-admin-sm px-4 py-2 rounded-lg hover:bg-[#1B64DA] transition whitespace-nowrap font-semibold">+ 예약 등록</Link>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0">
+          <Link href="/admin/customers" className="inline-flex h-9 items-center justify-center rounded-lg border border-admin-border-strong bg-white px-3 text-admin-sm text-admin-text-2 hover:bg-admin-bg whitespace-nowrap">고객 관리</Link>
+          <Link href="/admin/bookings/new" className="inline-flex h-9 items-center justify-center rounded-lg bg-brand px-4 text-admin-sm font-semibold text-white hover:bg-[#1B64DA] transition whitespace-nowrap">+ 예약 등록</Link>
         </div>
       </div>
 
       {/* 요약 카드 */}
       {!isTrash && (
-        <div className="grid grid-cols-4 gap-3 mb-3 shrink-0">
+        <div className="grid grid-cols-2 gap-3 mb-3 shrink-0 lg:grid-cols-4">
           {([
             {
               label: '진행 중 예약', value: cardStats.activeCnt + '건', color: 'text-blue-600', bg: 'bg-blue-50',
@@ -1737,13 +1737,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>,
             },
           ] as { label: string; value: string; color: string; bg: string; icon: React.ReactNode }[]).map(c => (
-            <div key={c.label} className="bg-white rounded-admin-md border border-admin-border px-4 py-3 flex items-center gap-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <div className={`shrink-0 w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center ${c.color}`}>
+            <div key={c.label} className="min-w-0 bg-white rounded-admin-md border border-admin-border px-3 py-3 flex items-center gap-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:px-4 sm:gap-3">
+              <div className={`shrink-0 w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center ${c.color} sm:w-9 sm:h-9`}>
                 {c.icon}
               </div>
               <div className="min-w-0">
-                <p className={`text-[18px] font-bold leading-tight tabular-nums ${c.color}`}>{c.value}</p>
-                <p className="text-admin-xs text-admin-muted-2 mt-0.5 leading-none">{c.label}</p>
+                <p className={`text-[16px] font-bold leading-tight tabular-nums whitespace-nowrap sm:text-[18px] ${c.color}`}>{c.value}</p>
+                <p className="text-admin-xs text-admin-muted-2 mt-0.5 leading-tight truncate">{c.label}</p>
               </div>
             </div>
           ))}
@@ -2522,14 +2522,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <td className="sticky left-0 bg-brand px-3 py-2" colSpan={2}>{filtered.length}건 합계</td>
                 <td colSpan={9} aria-hidden="true" />
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap tabular-nums font-bold">{footerStats.totalSales.toLocaleString()}원</td>
-                {/* 예상마진 합계 (입금 − 출금) */}
                 <td className="px-3 py-2 text-right text-admin-sm whitespace-nowrap tabular-nums font-bold"
-                    title="실현 현금 마진 합계 (입금액 − 출금액)">
+                    title="실현 현금 마진 합계 (입금액 - 출금액)">
                   <span className={footerStats.totalNetMargin >= 0 ? 'text-emerald-300' : 'text-red-300'}>
                     {footerStats.totalNetMargin >= 0 ? '+' : ''}{Math.round(footerStats.totalNetMargin / 10000)}만원
                   </span>
                 </td>
-                <td aria-hidden="true" /> {/* 마진율 */}
+                <td aria-hidden="true" />
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-blue-200 tabular-nums font-bold">{footerStats.totalPaid.toLocaleString()}원</td>
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-orange-200 tabular-nums font-bold">{footerStats.totalPaidOut > 0 ? footerStats.totalPaidOut.toLocaleString() + '원' : '—'}</td>
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-red-200 tabular-nums font-bold">{footerStats.totalBalance > 0 ? footerStats.totalBalance.toLocaleString() + '원' : '—'}</td>

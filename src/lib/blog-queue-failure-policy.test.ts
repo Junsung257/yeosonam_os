@@ -32,6 +32,27 @@ describe('blog queue failure policy', () => {
     })).toBe(false);
   });
 
+  it('classifies thin content and link gate failures without hiding them as unknown', () => {
+    expect(classifyBlogQueueFailure(
+      '2/19 실패: [length] 본문 2467자 — info 최소 2500자 미달 (thin content)',
+    )).toMatchObject({
+      code: 'length',
+      retryable: true,
+      selfHealAllowed: false,
+    });
+
+    expect(classifyBlogQueueFailure(
+      '2/19 실패: [links] 내부링크 0개 — 최소 1개 필요',
+    )).toMatchObject({
+      code: 'links',
+      retryable: true,
+      selfHealAllowed: false,
+    });
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: '2/19 실패: [links] 내부링크 0개 — 최소 1개 필요',
+    })).toBe(false);
+  });
+
   it('honors stored quarantine metadata even if the text is ambiguous', () => {
     expect(shouldSelfHealBlogQueueItem({
       lastError: 'self-heal blocked',
@@ -87,6 +108,45 @@ describe('blog queue failure policy', () => {
       quarantine: true,
       status: 'failed',
       reason: 'evidence_insufficient',
+    });
+  });
+
+  it('treats product open-contract failures as non-retryable publisher blockers', () => {
+    expect(classifyBlogQueueFailure(
+      'product_customer_open_contract_failed:mobile_proof:actual /packages mobile browser proof is stale',
+    )).toMatchObject({
+      code: 'product_open_contract',
+      retryable: false,
+      selfHealAllowed: false,
+      skipped: false,
+    });
+
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 0,
+      lastError: 'product_customer_open_contract_failed:mobile_proof:actual customer mobile browser proof hashes are missing',
+      meta: {},
+    })).toMatchObject({
+      quarantine: true,
+      status: 'failed',
+      reason: 'product_open_contract',
+    });
+  });
+
+  it('does not let stored unknown failure_code hide a product open-contract blocker', () => {
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: 'product_customer_open_contract_failed:mobile_proof stale',
+      meta: { failure_code: 'unknown' },
+    })).toBe(false);
+
+    expect(shouldQuarantineQueuedBlogItem({
+      attempts: 1,
+      lastError: 'product_customer_open_contract_failed:mobile_proof stale',
+      meta: { failure_code: 'unknown' },
+      maxAttempts: 2,
+    })).toMatchObject({
+      quarantine: true,
+      status: 'failed',
+      reason: 'product_open_contract',
     });
   });
 });

@@ -4,7 +4,7 @@ import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-polic
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { getSecret } from '@/lib/secret-registry';
 import { isUuid } from '@/lib/uuid';
-import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+import { isBlogSlugRedirectTombstone, resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
 
@@ -59,6 +59,26 @@ function getLegacyBlogRedirectPath(request: NextRequest): string | null {
   const slug = safeDecodeRouteValue(rest).trim();
   const redirectedSlug = resolveBlogSlugRedirect(slug);
   return redirectedSlug ? `/blog/${encodeURIComponent(redirectedSlug)}` : null;
+}
+
+function getBlogTombstoneSlug(request: NextRequest): string | null {
+  const { pathname } = request.nextUrl;
+  if (!pathname.startsWith('/blog/')) return null;
+  const rest = pathname.slice('/blog/'.length);
+  if (!rest || rest.includes('/')) return null;
+  const slug = safeDecodeRouteValue(rest).trim();
+  return isBlogSlugRedirectTombstone(slug) ? slug : null;
+}
+
+function goneBlogPostResponse(slug: string): NextResponse {
+  return new NextResponse(`Gone: ${slug}`, {
+    status: 410,
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'x-robots-tag': 'noindex, nofollow',
+      'cache-control': 'private, no-cache, no-store, max-age=0, must-revalidate',
+    },
+  });
 }
 
 function setAffiliateRefCookie(res: NextResponse, request: NextRequest, value: string, isSecure: boolean) {
@@ -640,6 +660,9 @@ export async function middleware(request: NextRequest) {
     redirectUrl.pathname = legacyBlogRedirectPath;
     return NextResponse.redirect(redirectUrl, 308);
   }
+
+  const blogTombstoneSlug = getBlogTombstoneSlug(request);
+  if (blogTombstoneSlug) return goneBlogPostResponse(blogTombstoneSlug);
 
   // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────
   // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급

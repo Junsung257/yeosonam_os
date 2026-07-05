@@ -5,6 +5,8 @@
  * New auto-published posts should clear a high bar before they can be indexed.
  */
 
+import { inspectBlogSlugQuality } from './blog-slug-quality';
+
 const SEMANTIC_DICTIONARY: Record<string, string[]> = {
   destination: ['여행', '목적지', '방문', '현지', '출발', '일정'],
   transport: ['항공권', '비행기', '공항', '기차', '버스', '픽업', '교통', '이동'],
@@ -38,6 +40,32 @@ const AUTHORITATIVE_HOST_HINTS = [
   'travel.state.gov',
   'cbp.dhs.gov',
 ];
+const NON_PUBLIC_LINK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
+
+const TITLE_INTENT_GROUPS = {
+  cost: /비용|예산|경비|가격|요금|교통비|이동비|항공권|가성비|cost|budget|price/i,
+  weather: /날씨|기온|우기|건기|옷차림|월별|weather|clothes|packing/i,
+  transport: /교통|이동|픽업|공항|transfer|transport|mobility/i,
+  document: /비자|여권|입국|서류|검역|visa|passport|immigration|document/i,
+  communication: /유심|eSIM|로밍|와이파이|통신|wifi|roaming|sim/i,
+  accommodation: /숙소|호텔|리조트|객실|hotel|resort|stay/i,
+  food: /식비|맛집|음식|식사|레스토랑|food|restaurant|meal/i,
+} as const;
+
+type TitleIntentGroup = keyof typeof TITLE_INTENT_GROUPS;
+
+const TITLE_INTENT_COMPANIONS: Record<TitleIntentGroup, TitleIntentGroup[]> = {
+  cost: ['transport', 'food', 'accommodation'],
+  weather: [],
+  transport: ['cost'],
+  document: [],
+  communication: [],
+  accommodation: ['cost'],
+  food: ['cost'],
+};
+
+const PRODUCT_DECISION_SIGNAL_RE = /가성비|패키지|특가|출발|포함|불포함|노팁|노옵션|리뷰|만원|박\d일|\d박|상담|예약|출발일|인원|일정/i;
+const INFO_SOFT_CTA_RE = /\/packages|\/blog|\/group-inquiry|utm_|consult|문의|상담|확인/i;
 
 export const BLOG_SEO_MAX_SCORE = 100;
 export const BLOG_SEO_MIN_SCORE = {
@@ -190,9 +218,33 @@ function scoreTitle(input: ScorerInput, keyword: string, dest: string): SeoScore
   if (keyword && title.includes(keyword)) score += 3;
   if (dest && dest !== keyword && title.includes(dest)) score += 1;
   if (/\b20\d{2}\b|최신|월별|비용|일정|준비물|가격|코스|날씨|체크리스트/.test(title)) score += 3;
+  else if (input.blogType === 'product' && PRODUCT_DECISION_SIGNAL_RE.test(title)) score += 3;
+  if (input.blogType === 'product' && PRODUCT_DECISION_SIGNAL_RE.test(title)) score += 1;
   if (!/(완벽|끝판왕|무조건|충격|대박|실화)/.test(title)) score += 1;
 
+  const primaryIntent = inferTitleIntent(keyword || dest || input.slug);
+  const titleIntents = inferTitleIntents(title);
+  const conflictingIntents = primaryIntent
+    ? titleIntents.filter((intent) =>
+      intent !== primaryIntent && !TITLE_INTENT_COMPANIONS[primaryIntent].includes(intent),
+    )
+    : [];
+  if (conflictingIntents.length > 0) {
+    score -= 7;
+    messages.push(`mixed intent ${primaryIntent}->${conflictingIntents.join('/')}`);
+  }
+
   return detail('title', score, 12, 10, 6, messages.join(', '));
+}
+
+function inferTitleIntents(value: string): TitleIntentGroup[] {
+  return (Object.entries(TITLE_INTENT_GROUPS) as Array<[TitleIntentGroup, RegExp]>)
+    .filter(([, pattern]) => pattern.test(value))
+    .map(([group]) => group);
+}
+
+function inferTitleIntent(value: string): TitleIntentGroup | null {
+  return inferTitleIntents(value)[0] ?? null;
 }
 
 function scoreMeta(input: ScorerInput, keyword: string): SeoScoreDetail {
@@ -203,7 +255,13 @@ function scoreMeta(input: ScorerInput, keyword: string): SeoScoreDetail {
   if (desc.length >= 70 && desc.length <= 160) score += 4;
   else if (desc.length >= 50 && desc.length <= 180) score += 2;
   if (keyword && desc.includes(keyword)) score += 3;
+  else if (
+    input.blogType === 'product' &&
+    input.destination &&
+    input.destination.split(/[\/,\s·|]+/).filter((token) => token.length >= 2).some((token) => desc.includes(token))
+  ) score += 1;
   if (/\d|비용|일정|준비|예약|포함|날씨|월별|체크/.test(desc)) score += 2;
+  else if (input.blogType === 'product' && PRODUCT_DECISION_SIGNAL_RE.test(desc)) score += 2;
   if (desc && desc !== input.seoTitle) score += 1;
 
   return detail('meta_description', score, 10, 8, 5, messages.join(', '));
@@ -214,7 +272,7 @@ function scoreHeadings(input: ScorerInput, keyword: string, dest: string): SeoSc
   const h1 = text.match(/^#[ \t]+.+$/gm) || [];
   const h2 = text.match(/^##[ \t]+.+$/gm) || [];
   let score = 0;
-  const expected = input.blogType === 'info' ? { min: 5, max: 9 } : { min: 3, max: 7 };
+  const expected = input.blogType === 'info' ? { min: 5, max: 9 } : { min: 3, max: 8 };
 
   if (h1.length === 1) score += 3;
   if (h2.length >= expected.min && h2.length <= expected.max) score += 3;
@@ -285,16 +343,23 @@ function scoreImages(input: ScorerInput, keyword: string, dest: string): SeoScor
   if (imageCount > 0 && altCount / imageCount >= 0.9) score += 3;
   else if (altCount > 0) score += 1;
 
-  if ((keyword && altText.includes(keyword)) || (dest && altText.includes(dest))) score += 1;
+  const destinationTokens = dest.split(/[\/,\s·|]+/).filter((token) => token.length >= 2);
+  const keywordTokens = keyword.split(/[\/,\s·|]+/).filter((token) => token.length >= 2);
+  if (
+    (keyword && altText.includes(keyword)) ||
+    (dest && altText.includes(dest)) ||
+    destinationTokens.some((token) => altText.includes(token)) ||
+    keywordTokens.some((token) => altText.includes(token))
+  ) score += 1;
   if (images.some((image) => /pexels|supabase|images\.unsplash|cdn/i.test(image.src))) score += 1;
 
   return detail('image_seo', score, 8, 7, 4, `images ${imageCount}, alt ${altCount}`);
 }
 
-function scoreInternalLinks(blogHtml: string): SeoScoreDetail {
+function scoreInternalLinks(blogHtml: string, blogType: 'product' | 'info'): SeoScoreDetail {
   const links = extractLinks(blogHtml);
   const internal = links.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href));
-  const cta = internal.filter((href) => /\/packages|utm_|kakao|consult|문의|예약/i.test(href));
+  const cta = internal.filter((href) => /\/packages|utm_|kakao|consult|문의|예약|상담|확인/i.test(href));
   let score = 0;
 
   if (internal.length >= 3) score += 4;
@@ -302,8 +367,31 @@ function scoreInternalLinks(blogHtml: string): SeoScoreDetail {
   else if (internal.length >= 1) score += 1;
   if (cta.length >= 2) score += 3;
   else if (cta.length >= 1) score += 1;
+  if (blogType === 'info' && internal.length >= 2 && cta.length >= 1 && internal.some((href) => INFO_SOFT_CTA_RE.test(href))) score += 2;
 
   return detail('internal_links_cta', score, 7, 6, 3, `internal ${internal.length}, cta ${cta.length}`);
+}
+
+function isNonPublicHttpLink(href: string): boolean {
+  if (!/^https?:\/\//i.test(href)) return false;
+  try {
+    const parsed = new URL(href);
+    return NON_PUBLIC_LINK_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function scorePublicLinkIntegrity(blogHtml: string): SeoScoreDetail {
+  const links = extractLinks(blogHtml);
+  const nonPublic = links.filter(isNonPublicHttpLink);
+  return {
+    name: 'public_link_integrity',
+    score: 0,
+    maxScore: 0,
+    status: nonPublic.length === 0 ? 'pass' : 'fail',
+    message: nonPublic.length === 0 ? 'all links public' : `non-public links ${nonPublic.slice(0, 3).join(', ')}`,
+  };
 }
 
 function scoreExternalLinks(blogHtml: string): SeoScoreDetail {
@@ -379,10 +467,27 @@ function scoreMobile(blogHtml: string): SeoScoreDetail {
 
 function scoreSlug(input: ScorerInput, keyword: string): SeoScoreDetail {
   const slug = input.slug || '';
+  const slugQuality = inspectBlogSlugQuality({
+    slug,
+    primaryKeyword: keyword,
+    destination: input.destination,
+  });
+  if (!slugQuality.passed) {
+    return detail(
+      'url_slug',
+      0,
+      4,
+      3,
+      2,
+      slugQuality.issues.map((issue) => issue.code).join(', '),
+    );
+  }
+
   let score = 0;
   if (slug.length >= 12 && slug.length <= 90) score += 1;
   if (!/untitled|draft|test|v\d+$/i.test(slug)) score += 1;
   if (/^[a-z0-9가-힣-]+$/i.test(slug)) score += 1;
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(slug) && slug.length >= 8) score += 1;
   if (keyword && keyword.split(/\s+/).some((part) => part.length >= 2 && slug.toLowerCase().includes(part.toLowerCase()))) score += 1;
   else if (!keyword) score += 1;
 
@@ -401,8 +506,9 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
     scorePrimaryKeyword(plainText, keyword, input.blogType),
     scoreSemanticCoverage(plainText, input.secondaryKeywords),
     scoreImages(input, keyword, dest),
-    scoreInternalLinks(input.blogHtml),
+    scoreInternalLinks(input.blogHtml, input.blogType),
     scoreExternalLinks(input.blogHtml),
+    scorePublicLinkIntegrity(input.blogHtml),
     scoreReadability(input.blogHtml, plainText),
     scoreSchema(input),
     scoreHelpfulContent(input, plainText),
@@ -414,7 +520,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
   const minScore = BLOG_SEO_MIN_SCORE[input.blogType];
   const criticalFailures = details.filter((item) =>
     item.status === 'fail' &&
-    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'structured_data', 'helpful_content_eeat'].includes(item.name),
+    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'public_link_integrity', 'structured_data', 'helpful_content_eeat', 'url_slug'].includes(item.name),
   );
   const passed = score >= minScore && criticalFailures.length === 0;
   const summary = passed

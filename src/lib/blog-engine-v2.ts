@@ -65,8 +65,16 @@ export interface BlogPublishabilitySnapshot {
   publishable_count: number;
   duplicate_count: number;
   evidence_insufficient_count: number;
+  destinationless_info_count?: number;
+  candidate_contract_blocked_count?: number;
   candidate_shortage: boolean;
-  next_action: 'publish_ready' | 'refill_candidates' | 'quarantine_duplicates' | 'collect_evidence';
+  next_action:
+    | 'publish_ready'
+    | 'refill_candidates'
+    | 'quarantine_duplicates'
+    | 'collect_evidence'
+    | 'repair_destinationless_info'
+    | 'repair_candidate_contract';
 }
 
 type BuildBriefInput = {
@@ -258,6 +266,7 @@ function scoreNaturalness(markdown: string): number {
     '완벽 가이드',
     '총정리',
     '여소남 에디터가 추천',
+    '여소남 에디터',
     '놓치면 후회',
     '최고의 선택',
   ];
@@ -273,8 +282,10 @@ function scoreSalesPressure(markdown: string, writer: BlogWriterType): number {
     .replace(/\n---[\s\S]*$/i, '');
   const plain = stripMarkup(bodyWithoutBottomCta).replace(/https?:\/\/\S+/gi, ' ');
   const firstThird = plain.slice(0, Math.ceil(plain.length * 0.3));
+  const koreanHardCta = /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i;
   const hardCta = /(지금\s*예약|바로\s*예약|예약\s*마감|잔여\s*좌석|상품\s*보기|패키지\s*보기|카카오|(?:상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)|예약\s*(?:하기|문의|상담|신청|바로|마감|가능))/i;
-  if (writer === 'info_writer' && hardCta.test(firstThird)) return 35;
+  if (writer === 'info_writer' && (hardCta.test(firstThird) || koreanHardCta.test(firstThird))) return 35;
+  if (koreanHardCta.test(plain) && /\uC9C0\uAE08|\uBC14\uB85C|\uB9C8\uAC10|\uC794\uC5EC/.test(plain)) return 45;
   if (/허리띠|마감임박|마지막\s*기회|놓치면\s*후회/i.test(plain)) return 45;
   return 100;
 }
@@ -282,7 +293,9 @@ function scoreSalesPressure(markdown: string, writer: BlogWriterType): number {
 function scoreFaithfulness(markdown: string, brief: BlogEngineV2Brief): number {
   const plain = stripMarkup(markdown);
   let score = 100;
-  if (plain.includes('여소남 데이터') && !/(예약|상담|검색)\s*(로그|건수|데이터|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain)) {
+  const hasUnsupportedYeosonamData =
+    /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|로\s*본|를\s*보면|를\s*기준으로|에\s*따르면|상으로는|상)?/i.test(plain);
+  if (hasUnsupportedYeosonamData && !/(예약|상담|검색)\s*(로그|건수|집계)|GSC|서치콘솔|SERP|출처|집계\s*기간|표본|로그/i.test(plain)) {
     score -= 45;
   }
   if (brief.writer_type === 'product_consultant_writer') {

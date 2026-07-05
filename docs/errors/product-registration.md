@@ -1,5 +1,30 @@
 # Product Registration Errors
 
+## ERR-upload-soft-timeout-false-deferred@2026-07-02
+
+- **Discovered**: 2026-07-02
+- **Domain**: product registration | admin upload | replay queue | customer-open candidate
+- **User-visible error**: Normal pasted-text uploads repeatedly showed `UPLOAD_DEFERRED_FOR_REPLAY` / "automatic replay queued" after about 45 seconds even when the pipeline later saved the product.
+- **Source vs result**: Supplier texts such as `장가계 · 4박 5일 · BX371` and `세이브 · 다낭 · 3박5일 · BX773` were short enough for the primary text path, but the route raced the central pipeline against a 45s soft timeout. The browser received a queued response while the same pipeline could continue and save the package, causing later replays to hit duplicate detection.
+- **Root cause**:
+  - `/api/upload` treated 45s as the default soft timeout despite the route's 300s execution envelope and the SSOT saying text paste is the primary path.
+  - Auto/manual replay marked rows resolved only when a fresh `dbId/dbIds` was returned. A duplicate response that proved the product had already been saved could remain operationally confusing.
+  - Manual review replay defaulted to force reprocess, weakening the duplicate guard for timeout rows.
+- **Fix**:
+  - Raised the default normal-upload wait window to 240s, clamped to 60s-270s. Queue-first remains reserved for very large text or likely multi-product catalogs.
+  - Auto replay now resolves queue rows when duplicate detection returns an existing `internal_code`.
+  - Manual replay now defaults to duplicate-guarded processing and resolves rows on saved IDs or duplicate proof; force reprocess requires an explicit true flag.
+  - Added upload boundary regression checks so the 45s false-deferred path and duplicate-as-failure handling do not return.
+- **Verification**:
+  - `npx vitest run src/lib/product-registration/upload-route-boundary.test.ts src/lib/product-registration-v3/entity-normalizer-meal-label.test.ts src/lib/product-registration/upload-to-open-autopilot.test.ts`
+  - `npx eslint src/app/api/upload/route.ts src/app/api/cron/upload-review-auto-replay/route.ts src/app/api/admin/upload/replay-review-queue/route.ts src/lib/product-registration/upload-route-boundary.test.ts src/lib/product-registration-v3/entity-normalizer.ts src/lib/product-registration-v3/entity-normalizer-meal-label.test.ts`
+  - `npm run type-check`
+  - `npx tsx scripts/rehearse-customer-open-candidate.ts --code=PUS-ETC-DYG-05-0020 --base=https://www.yeosonam.com --json`
+- **Status**: FIXED IN CODE
+- **Prevention**: Do not classify ordinary text-paste uploads as background work only because they exceed a short browser comfort threshold. Use the central pipeline synchronously inside the route envelope, reserve replay queueing for heavy/multi-product inputs, and treat duplicate proof as successful replay resolution.
+
+---
+
 ## ERR-duplicate-itinerary-day-range-phu-quoc@2026-06-16
 
 - **Discovered**: 2026-06-16

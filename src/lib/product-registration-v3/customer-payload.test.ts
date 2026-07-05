@@ -76,6 +76,30 @@ describe('V3 customer payload gate', () => {
     expect(evaluateV3CustomerNoticeGate('pkg-1', makeDraft('needs_review')).blocksApproval).toBe(true);
   });
 
+  it('reports failed V3 evidence checks as missing evidence, not positive pass wording', () => {
+    const draft = makeDraft('blocked');
+    draft.gate_result = {
+      status: 'blocked',
+      customer_publishable: false,
+      checks: [
+        { id: 'default.days', status: 'fail', severity: 'critical', message: 'variant has itinerary days' },
+        { id: 'default.minimum_departure', status: 'fail', severity: 'high', message: 'minimum departure evidence exists' },
+        { id: 'default.hotel_or_notice', status: 'fail', severity: 'medium', message: 'hotel evidence exists' },
+      ],
+    };
+
+    const gate = evaluateV3CustomerNoticeGate('pkg-1', draft);
+
+    expect(gate.blocksApproval).toBe(true);
+    expect(gate.blockReasons).toEqual([
+      'itinerary days missing',
+      'minimum departure evidence missing',
+      'hotel evidence missing or explicit hotel notice required',
+    ]);
+    expect(gate.blockReasons.join('\n')).not.toContain('evidence exists');
+    expect(gate.blockReasons.join('\n')).not.toContain('variant has');
+  });
+
   it('saves only publishable Yeosonam standard notices to customer fields', () => {
     const gate = evaluateV3CustomerNoticeGate('pkg-1', makeDraft('ready_to_publish'));
 

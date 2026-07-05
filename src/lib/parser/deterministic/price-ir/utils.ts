@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceTier } from './types';
+import type { MatrixPriceRow, PriceTier } from './types.ts';
 
 export function normalizeDepartureDays(value?: string | string[] | null): string[] | null {
   if (!value) return null;

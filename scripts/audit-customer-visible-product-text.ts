@@ -12,6 +12,7 @@ import {
   normalizeCustomerVisibleCopy,
 } from '@/lib/customer-copy-quality';
 import { auditCustomerVisibleProductText } from '@/lib/customer-visible-text-audit';
+import { repairCustomerVisibleCopyPayload } from '@/lib/product-registration/customer-visible-copy-repair';
 
 type StatusScope = 'all' | 'openable' | 'active' | 'non-archived';
 
@@ -29,6 +30,7 @@ type TravelPackageRow = {
   title: string | null;
   display_title: string | null;
   hero_tagline: string | null;
+  product_highlights: unknown;
   product_summary: string | null;
   destination: string | null;
   trip_style: string | null;
@@ -77,6 +79,7 @@ const CUSTOMER_TEXT_FIELDS = [
   'title',
   'display_title',
   'hero_tagline',
+  'product_highlights',
   'product_summary',
   'destination',
   'trip_style',
@@ -174,7 +177,7 @@ async function loadPackages(options: Options): Promise<TravelPackageRow[]> {
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(`
-      id,title,display_title,hero_tagline,product_summary,destination,trip_style,airline,departure_airport,departure_days,
+      id,title,display_title,hero_tagline,product_highlights,product_summary,destination,trip_style,airline,departure_airport,departure_days,
       status,audit_status,audit_report,internal_code,short_code,price_dates,price_tiers,itinerary_data,inclusions,excludes,surcharges,
       optional_tours,accommodations,notices_parsed,customer_notes,
       products(internal_code,display_name,departure_region)
@@ -264,7 +267,7 @@ function safelyRepairCustomerValue(value: unknown, pathParts: string[]): { value
   return { value, changed: false };
 }
 
-function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<string, unknown> {
+function buildSafePatchLegacy(row: TravelPackageRow, issues: TextIssue[]): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   const issuePaths = new Set(issues.map(issue => issue.field_path));
   for (const field of SAFE_TOP_LEVEL_FIELDS) {
@@ -292,6 +295,43 @@ function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<stri
   return patch;
 }
 
+function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  const issuePaths = new Set(issues.map(issue => issue.field_path));
+  const repairInput: Record<string, unknown> = {};
+
+  for (const field of CUSTOMER_TEXT_FIELDS) {
+    if (field === 'products') continue;
+    repairInput[field] = row[field as keyof TravelPackageRow];
+  }
+  const repairResult = repairCustomerVisibleCopyPayload(repairInput);
+  const repaired = repairResult.value as Record<string, unknown>;
+  const repairChangePaths = new Set(repairResult.changes.map(change => change.fieldPath));
+
+  for (const field of CUSTOMER_TEXT_FIELDS) {
+    if (field === 'products') continue;
+    const hasIssue = issues.some(issue => issue.field_path === field || issue.field_path.startsWith(`${field}.`));
+    const hasRepairChange = [...repairChangePaths].some(path => path === field || path.startsWith(`${field}.`));
+    if (!hasIssue && !hasRepairChange) continue;
+    const before = row[field as keyof TravelPackageRow];
+    const after = repaired[field];
+    if (JSON.stringify(after) !== JSON.stringify(before)) patch[field] = after;
+  }
+
+  if (
+    issuePaths.has('display_title')
+    && typeof row.display_title === 'string'
+    && /\s[-–—/]\s*$/.test(row.display_title)
+    && typeof row.title === 'string'
+    && !/\s[-–—/]\s*$/.test(row.title)
+  ) {
+    const normalized = normalizeCustomerVisibleCopy(row.title);
+    if (normalized && normalized !== row.display_title) patch.display_title = normalized;
+  }
+
+  return patch;
+}
+
 async function applySafeFixes(packageRows: TravelPackageRow[], issuesByPackage: Map<string, TextIssue[]>) {
   const updates: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const productUpdates: Array<{ internalCode: string; displayName: string }> = [];
@@ -303,7 +343,12 @@ async function applySafeFixes(packageRows: TravelPackageRow[], issuesByPackage: 
       const productRows = Array.isArray(row.products) ? row.products : row.products ? [row.products] : [];
       for (const product of productRows) {
         if (product.internal_code !== row.internal_code || typeof product.display_name !== 'string') continue;
-        const normalized = normalizeCustomerVisibleCopy(product.display_name);
+        const productCodes = customerCopyQualityIssues(product.display_name).map(issue => issue.code);
+        const rowTitle = typeof row.title === 'string' ? normalizeCustomerVisibleCopy(row.title) : '';
+        const rowTitleClean = rowTitle && customerCopyQualityIssues(rowTitle).length === 0;
+        const normalized = productCodes.includes('raw_filename_or_hash_title') && rowTitleClean
+          ? rowTitle
+          : normalizeCustomerVisibleCopy(product.display_name);
         if (normalized && normalized !== product.display_name) {
           productUpdates.push({ internalCode: row.internal_code, displayName: normalized });
         }

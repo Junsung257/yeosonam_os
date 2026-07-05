@@ -1,4 +1,4 @@
-import type { MatrixPriceRow, PriceIROptions } from './types';
+import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 
 function parseKoreanWonPrice(line: string): number {
   const prices = [...line.matchAll(/(\d{1,3}(?:,\d{3})+|\d{5,8})\s*(?:원|KRW)?/gi)]
@@ -14,7 +14,7 @@ function isKoreanStopSection(line: string): boolean {
 }
 
 function parseKoreanDepartureDates(line: string, yearHint?: number): string[] {
-  if (!/출발/.test(line) || !/월/.test(line) || !/일/.test(line)) return [];
+  if (!/출발/.test(line) || !/월/.test(line)) return [];
   const monthMatch = line.match(/(\d{1,2})\s*월/);
   const month = Number(monthMatch?.[1]);
   if (!Number.isInteger(month) || month < 1 || month > 12) return [];
@@ -48,8 +48,11 @@ function extractKoreanDepartureLinePriceRows(rawText: string, options: PriceIROp
     const dates = parseKoreanDepartureDates(lines[i], options.year);
     if (dates.length === 0 || dates.length > 20) continue;
 
-    let price = 0;
+    let price = /(?:판매가|상품가|요금|행사가)/.test(lines[i])
+      ? parseKoreanWonPrice(lines[i])
+      : 0;
     for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
+      if (price > 0) break;
       if (isKoreanStopSection(lines[j])) break;
       price = parseKoreanWonPrice(lines[j]);
       if (price > 0) break;

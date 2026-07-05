@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 
 interface CartItem {
@@ -318,12 +319,12 @@ export default function SharePage() {
           <p className="text-4xl mb-4">🔗</p>
           <h1 className="text-lg font-bold text-gray-900 mb-2">만료되거나 존재하지 않는 링크입니다</h1>
           <p className="text-sm text-gray-500 mb-6">{error}</p>
-          <a
+          <Link
             href="/concierge"
             className="inline-block bg-brand text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#1B64DA] transition"
           >
             AI 컨시어지로 이동 →
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -510,9 +511,9 @@ export default function SharePage() {
 
         {/* 푸터 */}
         <div className="text-center">
-          <a href="/concierge" className="text-sm text-brand hover:underline">
+          <Link href="/concierge" className="text-sm text-brand hover:underline">
             여소남 AI 컨시어지로 돌아가기
-          </a>
+          </Link>
         </div>
 
       </div>

@@ -94,8 +94,17 @@ export default function WebVitalsDashboard() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchStats(period, controller.signal);
-    return () => controller.abort();
+    const timeoutId = window.setTimeout(() => {
+      setStats({});
+      setError('Web Vitals 응답 시간이 길어져 중단했습니다. 잠시 후 다시 시도해 주세요.');
+      setLoading(false);
+      controller.abort();
+    }, 8000);
+    fetchStats(period, controller.signal).finally(() => window.clearTimeout(timeoutId));
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [period]);
 
   const getBarColor = (goodPct: number) => {
@@ -146,8 +155,15 @@ export default function WebVitalsDashboard() {
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">
-          {error}
+        <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => fetchStats(period)}
+            className="inline-flex h-8 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            다시 시도
+          </button>
         </div>
       )}
 
