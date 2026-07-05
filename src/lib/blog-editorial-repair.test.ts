@@ -1085,6 +1085,40 @@ describe('blog editorial repair', () => {
     expect(density).toBeLessThanOrEqual(2.5);
   });
 
+  it('adds product consult decision blocks before publish when the product article misses them', () => {
+    const source = [
+      '# 시즈오카 2박3일 패키지',
+      '',
+      '시즈오카 여행은 카와구치와 하코네까지 함께 보는 일정인지 먼저 확인해야 합니다.',
+      '',
+      '## 일정 핵심',
+      '',
+      '- 항공 시간과 이동 동선은 출발일에 따라 달라질 수 있습니다.',
+      '- 객실과 좌석은 예약 시점에 다시 확인해야 합니다.',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '시즈오카 2박3일 패키지 가성비 리뷰',
+      slug: 'shizuoka-package',
+      category: '시즈오카 패키지',
+      contentType: 'product',
+      primaryKeyword: '시즈오카 패키지',
+      destination: '시즈오카',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('added_product_consult_decision_blocks');
+    expect(result.blogHtml).toContain('## 문의 전 10초 판단표');
+    expect(result.blogHtml).toContain('### 포함/불포함 확인');
+    expect(result.blogHtml).toContain('### 이런 분께 맞습니다');
+    expect(result.blogHtml).toContain('### 맞지 않을 수 있습니다');
+    expect(result.blogHtml).toContain('### 가격 변동 조건');
+    expect(result.blogHtml).toContain('### 문의 전 질문');
+    expect(result.after.issues.map((issue) => issue.code)).not.toContain('missing_required_block');
+    expect(result.after.issues.map((issue) => issue.code)).not.toContain('missing_product_consult_block');
+  });
+
   it('adds a dedicated itinerary flow block even when loose meal-time words exist', () => {
     const source = [
       '# 후쿠오카 실내 코스',
