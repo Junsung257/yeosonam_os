@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-06-29
+Last updated: 2026-07-05
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -105,6 +105,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-05 | `2026-07-05-secret-surface-audit.md` | Secret/env surface audit covering local env files, tracked `.env.prod`, command-output risk, rotation priorities, and existing prevention checks. |
 | 2026-06-26 | `2026-06-26-project-readiness-audit.md` | Pre-development local, Vercel, Supabase, MCP, docs, and build readiness audit after workspace consolidation. |
 | 2026-05-28 | `2026-05-28-runtime-risk-audit.md` | Runtime risk audit evidence. |
 | 2026-05-30 | `2026-05-30-env-secrets-inventory.md` | Environment/secrets inventory evidence. |

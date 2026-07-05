@@ -38,13 +38,7 @@ if (fs.existsSync(envPath)) {
 const STRICT = process.argv.includes('--strict');
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !serviceRoleKey) {
-  console.error('[audit-select] NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY is not configured');
-  process.exit(STRICT ? 1 : 0);
-}
-
-const sb = createClient(supabaseUrl, serviceRoleKey);
+let sb = null;
 
 // 대상: (파일경로, 상수명, DB 테이블) 튜플
 const TARGETS = [
@@ -104,7 +98,21 @@ function extractSelectFields(file, constant) {
     .filter(s => s && !s.includes('(')); // JOIN/관계 expr 제외
 }
 
-(async () => {
+async function main() {
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error('[audit-select] NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY is not configured');
+    process.exitCode = STRICT ? 1 : 0;
+    return;
+  }
+
+  sb = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+    },
+  });
+
   console.log('🔍 SELECT 문자열에 미존재 컬럼 검증\n');
   let totalUnknown = 0;
 
@@ -128,14 +136,21 @@ function extractSelectFields(file, constant) {
 
   if (totalUnknown === 0) {
     console.log('\n✅ 모든 SELECT 문자열 정합');
-    process.exit(0);
+    process.exitCode = 0;
+    return;
   }
 
   console.error(`\n❌ DB 미존재 컬럼 총 ${totalUnknown}개 — PostgREST silent skip 사고 위험.`);
   console.error('   사고 이력: ERR-shizuoka-detail-fields-postgrest @ 2026-05-16');
   console.error('   해결: SELECT 문자열에서 컬럼 제거 또는 마이그레이션으로 컬럼 추가.');
-  process.exit(STRICT ? 1 : 0);
-})().catch(e => {
-  console.error('[audit-select] 실행 실패:', e);
-  process.exit(STRICT ? 1 : 0);
-});
+  process.exitCode = STRICT ? 1 : 0;
+}
+
+main()
+  .catch(e => {
+    console.error('[audit-select] 실행 실패:', e);
+    process.exitCode = STRICT ? 1 : 0;
+  })
+  .finally(() => {
+    sb?.realtime?.disconnect?.();
+  });
