@@ -2,6 +2,7 @@ export type BlogSlugQualityIssueCode =
   | 'missing_slug'
   | 'hash_suffix_slug'
   | 'generic_travel_guide_slug'
+  | 'generic_product_intro_slug'
   | 'numeric_leading_slug'
   | 'draft_or_test_slug'
   | 'invalid_slug_chars'
@@ -69,6 +70,10 @@ export function inspectBlogSlugQuality(input: {
 
   if (/(?:^|-)travel-guide(?:-|$)|^(?:guide|post)-[a-z0-9-]+$/i.test(slug)) {
     addIssue(issues, 'generic_travel_guide_slug', 'critical', 'Blog slug is generic instead of reader-facing.');
+  }
+
+  if (/^(?:product|package|offer|tour)(?:-(?:intro|detail|overview|post|guide))?$|^(?:intro|overview)$/i.test(slug)) {
+    addIssue(issues, 'generic_product_intro_slug', 'critical', 'Product blog slug is generic instead of product- or destination-facing.');
   }
 
   if (/^\d+(?:-|$)/.test(slug)) {

@@ -48,6 +48,7 @@ const DESTINATION_TERM_SLUGS: Array<[RegExp, string]> = [
 ];
 
 const INTENT_TERM_SLUGS: Array<[RegExp, string[]]> = [
+  [/(package|product|tour|\uD328\uD0A4\uC9C0|\uC0C1\uD488|\uAC00\uC131\uBE44|\uD488\uACA9)/i, ['package']],
   [/(weather|\uB0A0\uC528|\uC637\uCC28\uB9BC|\uAE30\uC628|\uC6B0\uAE30|\uAC74\uAE30)/i, ['weather']],
   [/(family|\uAC00\uC871|\uC544\uC774|\uC790\uB140|\uC5EC\uB984\uBC29\uD559)/i, ['family']],
   [/(summer|\uC5EC\uB984\uBC29\uD559)/i, ['summer', 'vacation']],
