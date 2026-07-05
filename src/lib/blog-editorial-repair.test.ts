@@ -1057,6 +1057,34 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('비상약');
   });
 
+  it('keeps product keyword density below the publish gate with buffer', () => {
+    const keyword = '청도 2색골프';
+    const source = [
+      '# 청도 2색골프 패키지',
+      '',
+      ...Array.from(
+        { length: 9 },
+        (_, index) => `${keyword} 일정 ${index + 1}번 확인입니다. 출발일과 포함 조건을 보고 결정하면 됩니다.`,
+      ),
+      '',
+      '현지 이동, 항공, 숙소, 라운딩 조건은 인원과 출발일에 따라 달라질 수 있습니다. 상담 전에는 포함과 불포함을 나눠 확인하는 편이 좋습니다.',
+    ].join('\n\n');
+
+    const result = repairKeywordDensityToTarget(source, keyword, 'product');
+    const plainLength = result.blogHtml
+      .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+      .replace(/\[[^\]]+]\([^)]+\)/g, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[#*_`>|=-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .length;
+    const density = (result.afterCount * keyword.length / plainLength) * 100;
+
+    expect(result.changed).toBe(true);
+    expect(density).toBeLessThanOrEqual(2.5);
+  });
+
   it('adds a dedicated itinerary flow block even when loose meal-time words exist', () => {
     const source = [
       '# 후쿠오카 실내 코스',

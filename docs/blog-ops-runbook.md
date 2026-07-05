@@ -284,3 +284,14 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - Verification on 2026-07-03:
   - `npx vitest run src/lib/blog-current-day-publisher-health.test.ts src/lib/blog-publish-preflight.test.ts src/lib/blog-canary-preflight.test.ts src/app/api/cron/blog-daily-summary/route.test.ts` passed;
   - `npm run diagnose:blog-autopublish -- --json` reported `current_day_publisher_health.status="risk"` and bucket `current_day_publisher_failure` for the current-day zero-published run.
+
+## 2026-07-05 Publisher Time Budget Evidence
+
+- Root cause class: a single slow candidate could start while there was still nominal time left, then consume the whole 285s cron completion guard before the publisher wrote a useful summary.
+- The publisher now uses a shared time-budget helper:
+  - `src/lib/blog-publisher-time-budget.ts`
+  - `src/lib/blog-publisher-time-budget.test.ts`
+- `blog-publisher` only starts another queue item when the remaining runtime is above `BLOG_PUBLISHER_MIN_ITEM_START_MS`.
+- Generation is wrapped by a dynamic timeout that preserves `BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS` for gates, DB writes, and the final cron summary.
+- Optional post-publish work such as keyword enrichment, RAG indexing, and inline indexing-worker draining runs only when `BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS` remains. Durable `blog_indexing_jobs` enqueue still happens before this optional split, so independent indexing workers can finish provider submission later.
+- Publisher summaries include a `time_budget` object so operators can distinguish a graceful time-budget stop from a hard wrapper timeout.

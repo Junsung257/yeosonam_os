@@ -75,6 +75,12 @@ import {
   rescheduleOverdueQueuedBlogQueueItems,
 } from '@/lib/blog-queue-lifecycle';
 import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
+import {
+  canRunOptionalPublisherWork,
+  canStartPublisherItem,
+  getPublisherGenerationTimeoutMs,
+  getPublisherRemainingMs,
+} from '@/lib/blog-publisher-time-budget';
 import { readBoundedIntEnv } from '@/lib/env-utils';
 
 /**
@@ -109,8 +115,12 @@ const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTI
 const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 6, MAX_BATCH, 20);
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 1, 0, 4);
 const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
-const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 120_000, 30_000, 180_000);
+const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
+const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
+const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
+const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
+const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 210_000; // 210s — cron wrapper 285s/Vercel 300s 제한보다 여유 있게
 const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
@@ -123,6 +133,7 @@ function getQueueMicroAngle(item: any): string | null {
 function classifyPublisherFailure(reason?: string): string {
   const text = (reason ?? '').toLowerCase();
   if (!text) return 'other';
+  if (text.includes('timeout') || text.includes('time_budget')) return 'timeout';
   if (text.includes('[length]') || text.includes('thin content') || text.includes('min length')) return 'length';
   if (text.includes('[links]') || text.includes('internal link') || text.includes('external authority') || text.includes('link')) return 'links';
   if (text.includes('duplicate') || text.includes('slug') || text.includes('중복')) return 'duplicate';
@@ -168,6 +179,26 @@ function generatePublisherBlogText(
     BLOG_PUBLISHER_AI_TIMEOUT_MS,
     'blog_ai_generation',
   );
+}
+
+function publisherRemainingMs(startedAtMs: number): number {
+  return getPublisherRemainingMs(startedAtMs, MAX_EXEC_MS);
+}
+
+async function withGenerationBudget<T>(
+  startedAtMs: number,
+  label: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const timeoutMs = getPublisherGenerationTimeoutMs(
+    publisherRemainingMs(startedAtMs),
+    BLOG_PUBLISHER_GENERATION_TIMEOUT_MS,
+    BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS,
+  );
+  if (timeoutMs <= 0) {
+    throw new Error(`publisher_time_budget_exhausted_before_${label}`);
+  }
+  return withPublisherTimeout(work(), timeoutMs, label);
 }
 
 function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string; dayKey: string } {
@@ -904,6 +935,7 @@ async function runBlogPublisher(request: NextRequest) {
     let extraClaimRounds = 0;
     let pullForwarded = 0;
     let emergencyRefillRounds = 0;
+    let stoppedForTimeBudget = false;
     const emergencyRefills: Array<Awaited<ReturnType<typeof ensureDailyPublishableQueue>> | null> = [];
     for (const item of queue) {
       if (attemptedQueueIds.has(item.id)) {
@@ -915,14 +947,14 @@ async function runBlogPublisher(request: NextRequest) {
         break;
       }
       // 남은 시간 체크 — 30초 미만이면 중단
-      const elapsed = Date.now() - startTime;
-      const remaining = MAX_EXEC_MS - elapsed;
-      if (remaining < 30000) {
-        console.log(`[blog-publisher] 남은 시간 ${Math.round(remaining / 1000)}초 미만 — 중단`);
+      const remaining = publisherRemainingMs(startTime);
+      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+        stoppedForTimeBudget = true;
+        console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next item`);
         break;
       }
       try {
-        const r = await processQueueItem(item, eligibleByCardNewsId);
+        const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime });
         results.push(r);
         if (r.status === 'published') {
           publishedThisRun += 1;
@@ -936,9 +968,9 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
-      const elapsed = Date.now() - startTime;
-      const remaining = MAX_EXEC_MS - elapsed;
-      if (remaining < 30000) {
+      const remaining = publisherRemainingMs(startTime);
+      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+        stoppedForTimeBudget = true;
         console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next claim`);
         break;
       }
@@ -1002,14 +1034,15 @@ async function runBlogPublisher(request: NextRequest) {
         attemptedQueueIds.add(item.id);
         if (publishedThisRun >= remainingToday) break;
 
-        const itemRemaining = MAX_EXEC_MS - (Date.now() - startTime);
-        if (itemRemaining < 30000) {
+        const itemRemaining = publisherRemainingMs(startTime);
+        if (!canStartPublisherItem(itemRemaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+          stoppedForTimeBudget = true;
           console.log(`[blog-publisher] remaining ${Math.round(itemRemaining / 1000)}s - stopping before next item`);
           break;
         }
 
         try {
-          const r = await processQueueItem(item, nextEligibleByCardNewsId);
+          const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime });
           results.push(r);
           if (r.status === 'published') {
             publishedThisRun += 1;
@@ -1079,7 +1112,10 @@ async function runBlogPublisher(request: NextRequest) {
       errors.push(...indexingFailures.map((failure) => `indexing_enqueue_failed:${failure.slug}:${failure.error}`));
     }
 
-    if (publishedSlugs.length > 0) {
+    if (
+      publishedSlugs.length > 0
+      && canRunOptionalPublisherWork(publisherRemainingMs(startTime), BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS)
+    ) {
       try {
         const { data: ccRows } = await supabaseAdmin
           .from('content_creatives')
@@ -1111,11 +1147,24 @@ async function runBlogPublisher(request: NextRequest) {
     }
     revalidatePublicBlogCache();
 
-    const indexingWorker = await processDueBlogIndexingJobs({
-      workerName: 'blog-publisher-inline-indexing',
-      limit: 10,
-      baseUrl,
-    });
+    const canDrainInlineIndexing = canRunOptionalPublisherWork(
+      publisherRemainingMs(startTime),
+      BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS,
+    );
+    const indexingWorker = canDrainInlineIndexing
+      ? await processDueBlogIndexingJobs({
+          workerName: 'blog-publisher-inline-indexing',
+          limit: 10,
+          baseUrl,
+        })
+      : {
+          skipped: true,
+          reason: 'publisher_time_budget_reserved_for_summary',
+          processed: 0,
+          stale_reset: 0,
+          results: [],
+          errors: [],
+        };
     if (indexingWorker.errors.length > 0) {
       errors.push(...indexingWorker.errors.map((error) => `indexing: ${error}`));
     }
@@ -1154,6 +1203,15 @@ async function runBlogPublisher(request: NextRequest) {
       emergencyRefillRounds,
       emergencyRefills,
       pullForwarded,
+      time_budget: {
+        max_exec_ms: MAX_EXEC_MS,
+        min_item_start_ms: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        item_finish_reserve_ms: BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS,
+        optional_work_min_ms: BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS,
+        remaining_ms: publisherRemainingMs(startTime),
+        stopped_for_time_budget: stoppedForTimeBudget,
+        inline_indexing_drained: canDrainInlineIndexing,
+      },
       results,
       errors,
       ranAt: new Date().toISOString(),
@@ -1172,6 +1230,7 @@ export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
 async function processQueueItem(
   item: any,
   eligibleByCardNewsId: Map<string, number>,
+  options: { startedAtMs?: number } = {},
 ): Promise<{ id: string; topic: string; status: string; reason?: string }> {
   // 동시성 방지 — generating 락
   const { error: lockErr } = await supabaseAdmin
@@ -1185,6 +1244,7 @@ async function processQueueItem(
   }
 
   try {
+    const startedAtMs = options.startedAtMs ?? Date.now();
     if (item.card_news_id) {
       const cnid = item.card_news_id as string;
       const eligibleMs =
@@ -1246,7 +1306,7 @@ async function processQueueItem(
         await handleFailure(item, reason, null, true);
         return { id: item.id, topic: item.topic, status: 'error', reason };
       }
-      generated = await generatePillar(item, pillarContext);
+      generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item, pillarContext));
     } else if (item.card_news_id) {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
@@ -1299,12 +1359,12 @@ async function processQueueItem(
           return { id: item.id, topic: item.topic, status: 'error', reason: 'invalid_linked_draft' };
         }
       } else {
-        generated = await generateFromCardNews(item, eligibleByCardNewsId);
+        generated = await withGenerationBudget(startedAtMs, 'card_news_generation', () => generateFromCardNews(item, eligibleByCardNewsId));
       }
     } else if (item.source === 'product' && item.product_id) {
-      generated = await generateFromProduct(item);
+      generated = await withGenerationBudget(startedAtMs, 'product_generation', () => generateFromProduct(item));
     } else {
-      generated = await generateFromTopic(item);
+      generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
     }
 
     const slugNormalized = normalizeGeneratedSlug(generated, item);
@@ -1498,7 +1558,10 @@ async function processQueueItem(
     }
 
     // 🆕 GSC 키워드 연구 데이터 보강 (환경이 설정된 경우 Google Search Console 사용)
-    if (primaryKeyword) {
+    if (
+      primaryKeyword
+      && canRunOptionalPublisherWork(publisherRemainingMs(startedAtMs), BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS)
+    ) {
       try {
         const kwResearch = await researchKeyword(primaryKeyword);
         // GSC 데이터가 있으면 보강 (googleapis 의존성)
