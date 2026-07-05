@@ -2018,6 +2018,14 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     }
   }
 
+  if (intent.mode === 'product' || intent.productSubtype) {
+    const productConsultRepair = ensureProductConsultDecisionBlocks(blogHtml, input);
+    if (productConsultRepair.changed) {
+      blogHtml = productConsultRepair.text;
+      changes.push('added_product_consult_decision_blocks');
+    }
+  }
+
   const directiveRepair = removeRawDirectiveLeaks(blogHtml);
   if (directiveRepair.changed) {
     blogHtml = directiveRepair.text;
@@ -2303,6 +2311,82 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
   return { text: next.join('\n\n'), changed };
 }
 
+function hasProductConsultDecisionContract(markdown: string): boolean {
+  const source = markdown;
+  const plain = stripMarkup(markdown).replace(/\s+/g, ' ').trim();
+  return (
+    /10초\s*판단/.test(source)
+    && /포함\/불포함|포함\s*사항.*불포함\s*사항/s.test(source)
+    && /(일정|기간|항공|출발)/.test(plain)
+    && /(가격|요금|출발)/.test(plain)
+    && /이런\s*분께\s*맞|fit_for/i.test(source)
+    && /맞지\s*않을\s*수|not_fit_for/i.test(source)
+    && /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i.test(source)
+    && /문의\s*전\s*질문|consult_questions/i.test(source)
+  );
+}
+
+function ensureProductConsultDecisionBlocks(
+  markdown: string,
+  input: BlogEditorialRepairInput,
+): { text: string; changed: boolean } {
+  if (hasProductConsultDecisionContract(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const destination = compactAnswerFirstLabel(input.destination || input.category || input.primaryKeyword || '여행지') || '여행지';
+  const keyword = compactAnswerFirstLabel(input.primaryKeyword || input.title || `${destination} 패키지`) || `${destination} 패키지`;
+  const cta = /group-inquiry|\b\/packages\//i.test(markdown)
+    ? ''
+    : [
+      '',
+      '### 내 일정 기준으로 확인',
+      '',
+      '- 출발일, 인원, 객실 조건을 알려주시면 현재 가능한 조건만 다시 확인합니다.',
+    ].join('\n');
+
+  const block = [
+    '',
+    '## 문의 전 10초 판단표',
+    '',
+    '| 확인 항목 | 먼저 볼 내용 | 문의 전 체크 |',
+    '| --- | --- | --- |',
+    `| 가격/요금 | ${keyword}의 최종 금액은 출발일과 좌석, 객실 조건에 따라 달라질 수 있습니다. | 현재 가능한 날짜와 인원을 확인해야 합니다. |`,
+    '| 출발/기간 | 항공 시간, 이동 동선, 숙박 수를 함께 봐야 일정 부담을 판단할 수 있습니다. | 아동/부모님 동반이면 이동 시간을 먼저 확인합니다. |',
+    '| 포함/불포함 | 포함 사항과 불포함 사항을 나눠 봐야 현지 추가비를 줄일 수 있습니다. | 선택관광, 개인경비, 팁 조건을 확인합니다. |',
+    '',
+    '### 포함/불포함 확인',
+    '',
+    '- 포함 사항: 상품 DB에 명시된 항공, 숙박, 일정, 식사, 차량 조건을 기준으로 확인합니다.',
+    '- 불포함 사항: 개인경비, 선택관광, 현지 결제 조건은 예약 전 다시 확인합니다.',
+    '',
+    '### 이런 분께 맞습니다',
+    '',
+    `- ${destination} 일정을 직접 비교하기보다 가격, 포함사항, 이동 부담을 먼저 정리하고 싶은 분`,
+    '- 출발 가능일과 인원 기준으로 실제 예약 가능 여부를 확인하고 싶은 분',
+    '',
+    '### 맞지 않을 수 있습니다',
+    '',
+    '- 자유일정 비중이 큰 개별여행을 원하는 분',
+    '- 호텔명, 항공 시간, 객실 조건이 확정되기 전에는 문의를 원하지 않는 분',
+    '',
+    '### 가격 변동 조건',
+    '',
+    '- 가격이 달라질 수 있는 항목: 출발일, 좌석 상황, 객실 타입, 환율, 선택관광, 인원 구성',
+    '- 상품 DB에 없는 확정 혜택이나 호텔명은 임의로 판단하지 않고 상담에서 확인해야 합니다.',
+    '',
+    '### 문의 전 질문',
+    '',
+    '- 출발 가능한 날짜와 인원은 어떻게 되나요?',
+    '- 아동, 부모님, 단체 동반 여부가 있나요?',
+    '- 꼭 포함되어야 하는 일정이나 피하고 싶은 일정이 있나요?',
+    cta,
+  ].filter(Boolean).join('\n');
+
+  const text = `${markdown.trim()}\n\n${block}`.replace(/\n{4,}/g, '\n\n\n').trim();
+  return { text, changed: text !== markdown };
+}
+
 export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): BlogEditorialRepairResult {
   const before = inspectBlogIntentQuality(input);
   const intent = classifyBlogIntent(input);
@@ -2468,6 +2552,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (scanRepair.changed) {
       blogHtml = scanRepair.text;
       changes.push('added_scannable_info_table');
+    }
+  }
+
+  if (intent.mode === 'product' || intent.productSubtype) {
+    const productConsultRepair = ensureProductConsultDecisionBlocks(blogHtml, input);
+    if (productConsultRepair.changed) {
+      blogHtml = productConsultRepair.text;
+      changes.push('added_product_consult_decision_blocks');
     }
   }
 
