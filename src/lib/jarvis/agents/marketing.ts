@@ -272,6 +272,69 @@ const MARKETING_TOOLS_RAW = [
     },
   },
   {
+    name: 'get_customer_mileage',
+    description: '고객 마일리지 잔액, 누적 적립, 사용 내역 요약을 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['customer_id'],
+      properties: {
+        customer_id: { type: 'string', description: '고객 ID' },
+      },
+    },
+  },
+  {
+    name: 'adjust_mileage',
+    description: '고객 마일리지를 수동 조정합니다. 실제 잔액이 바뀌므로 HITL 승인이 필요합니다.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['customer_id', 'delta', 'reason'],
+      properties: {
+        customer_id: { type: 'string', description: '고객 ID' },
+        delta: { type: 'number', description: '증감할 마일리지. 차감은 음수.' },
+        reason: { type: 'string', description: '조정 사유' },
+      },
+    },
+  },
+  {
+    name: 'create_mileage_event',
+    description: '마일리지 이벤트/정책을 생성합니다. 정책성 변경이므로 HITL 승인이 필요합니다.',
+    input_schema: {
+      type: 'object' as const,
+      required: ['title', 'action_type', 'action_config'],
+      properties: {
+        title: { type: 'string', description: '이벤트/정책명' },
+        action_type: { type: 'string', description: 'mileage_fixed/mileage_multiply 등 정책 액션' },
+        action_config: { type: 'object', description: '정책 상세 설정' },
+        scope_type: { type: 'string', description: 'all/segment/customer 등 적용 범위' },
+        starts_at: { type: 'string', description: '시작 시각 ISO 문자열' },
+        ends_at: { type: 'string', description: '종료 시각 ISO 문자열' },
+        category: { type: 'string', description: '기본 mileage' },
+      },
+    },
+  },
+  {
+    name: 'get_mileage_stats',
+    description: '마일리지 적립, 사용, 소멸 통계를 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        period: { type: 'string', description: 'this_month/last_month/this_year/all' },
+        customer_id: { type: 'string', description: '특정 고객만 조회할 때 사용' },
+      },
+    },
+  },
+  {
+    name: 'get_mileage_policies',
+    description: '마일리지 정책 목록을 조회합니다.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: { type: 'string', description: 'active/expired/upcoming' },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
     name: 'list_admin_alerts_marketing',
     description: '마케팅 관련 관리자 알림/경고 조회',
     input_schema: {

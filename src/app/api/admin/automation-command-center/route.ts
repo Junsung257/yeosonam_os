@@ -12,6 +12,7 @@ import { evaluateJarvisReadiness } from '@/lib/jarvis/eval/readiness-gate';
 import { TRACE_GOLDEN_CASES } from '@/lib/jarvis/eval/trace-golden-cases';
 import { gradeJarvisTraceSet } from '@/lib/jarvis/eval/trace-grader';
 import { evaluateAllScenarioReadiness } from '@/lib/jarvis/eval/all-scenarios-readiness';
+import { evaluateJarvisFeatureCoverage } from '@/lib/jarvis/eval/feature-coverage';
 import { evaluateFreeTravel100Scenarios } from '@/lib/free-travel/eval/scenario-evaluator';
 import {
   buildMarketingDeepScorecard,
@@ -81,6 +82,7 @@ async function buildJarvisScenarioSummary() {
     componentTestsPassed: 'skipped',
   });
   const customerInquiry = evaluateCustomerInquiryReadiness();
+  const featureCoverage = evaluateJarvisFeatureCoverage();
   const freeTravel = evaluateFreeTravel100Scenarios();
 
   return evaluateAllScenarioReadiness({
@@ -89,6 +91,8 @@ async function buildJarvisScenarioSummary() {
     jarvisReadinessStatus: jarvisReadiness.status,
     customerInquiryScore: customerInquiry.score,
     customerInquiryStatus: customerInquiry.status,
+    featureCoverageScore: featureCoverage.score,
+    featureCoverageStatus: featureCoverage.status,
     autopilotHitlPassed: 'skipped',
     freeTravelScore: freeTravel.score,
     freeTravelStatus: freeTravel.status,

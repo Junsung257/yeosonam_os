@@ -83,7 +83,15 @@ export const JARVIS_GOLDEN_CASES: JarvisGoldenCase[] = [
     description: '고객면 게스트는 mutating tool 노출 금지',
     expected: {
       guestContext: { userRole: 'customer', surface: 'customer', tenantId: 'tenant_demo' },
-      guestBlockedTools: ['create_booking', 'match_payment', 'process_gdpr_request'],
+      guestBlockedTools: [
+        'create_booking',
+        'match_payment',
+        'process_gdpr_request',
+        'get_booking_detail',
+        'search_customers',
+        'list_guest_names',
+        'get_customer_mileage',
+      ],
       guestAllowedTools: ['search_packages', 'get_bookings'],
     },
   },
