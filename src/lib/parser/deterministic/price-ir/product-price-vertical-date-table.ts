@@ -217,6 +217,90 @@ function extractKoreanHotelMonthDayRows(rawText: string, options: PriceIROptions
   return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
 }
 
+function parseDurationDays(line: string): number | null {
+  const match = line.match(/(\d{1,2})\s*박\s*(\d{1,2})\s*일/);
+  const days = Number(match?.[2]);
+  return Number.isInteger(days) && days > 0 ? days : null;
+}
+
+function parseStandaloneKoreanMonth(line: string): number | null {
+  const match = line.replace(/\s+/g, '').match(/^(\d{1,2})월$/);
+  const month = Number(match?.[1]);
+  return Number.isInteger(month) && month >= 1 && month <= 12 ? month : null;
+}
+
+function parseStandaloneKoreanDayList(line: string, month: number | null, yearHint?: number): string[] {
+  if (month == null || parseKoreanWonPrice(line) > 0) return [];
+  const compact = line.replace(/\s+/g, '').replace(/일/g, '');
+  if (!/^\d{1,2}(?:,\d{1,2})*$/.test(compact)) return [];
+  return compact
+    .split(',')
+    .map(day => isoDate(inferYearForMonth(month, yearHint), month, Number(day)))
+    .filter((date): date is string => Boolean(date));
+}
+
+function extractKoreanDurationSectionPriceRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const wantedDuration = typeof options.durationDays === 'number' && options.durationDays > 0
+    ? options.durationDays
+    : null;
+  if (wantedDuration == null) return [];
+
+  const hasDatePriceHeader = lines
+    .slice(0, 16)
+    .some((line, index) => /출발일/.test(line) && lines.slice(index, index + 4).some(next => /판매가|상품가|요금/.test(next)));
+  if (!hasDatePriceHeader) return [];
+
+  const rows: MatrixPriceRow[] = [];
+  const seen = new Set<string>();
+  let currentDuration: number | null = null;
+  let currentMonth: number | null = null;
+
+  for (let i = 0; i < Math.min(lines.length, 120); i++) {
+    const duration = parseDurationDays(lines[i]);
+    if (duration != null) {
+      currentDuration = duration;
+      currentMonth = null;
+      continue;
+    }
+
+    const month = parseStandaloneKoreanMonth(lines[i]);
+    if (month != null) {
+      currentMonth = month;
+      continue;
+    }
+
+    if (currentDuration !== wantedDuration) continue;
+    const dates = parseStandaloneKoreanDayList(lines[i], currentMonth, options.year);
+    if (dates.length === 0 || dates.length > 31) continue;
+
+    let price = 0;
+    for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
+      if (parseDurationDays(lines[j]) != null || parseStandaloneKoreanMonth(lines[j]) != null) break;
+      if (parseStandaloneKoreanDayList(lines[j], currentMonth, options.year).length > 0) break;
+      price = parseKoreanWonPrice(lines[j]);
+      if (price > 0) break;
+      if (isKoreanStopSection(lines[j])) break;
+    }
+    if (price <= 0) continue;
+
+    for (const date of dates) {
+      const key = `${date}|${price}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({
+        date,
+        adult_price: price,
+        child_price: null,
+        note: 'source_korean_duration_section_price',
+        status: 'available',
+      });
+    }
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+}
+
 function inferYearForMonth(month: number, explicitYear?: number): number {
   if (explicitYear && explicitYear >= 2000) return explicitYear;
   const now = new Date();
@@ -446,6 +530,7 @@ export function extractProductPriceVerticalDateRows(
 ): MatrixPriceRow[] {
   const sourceKoreanRows = [
     ...extractKoreanDepartureLinePriceRows(rawText, options),
+    ...extractKoreanDurationSectionPriceRows(rawText, options),
     ...extractKoreanGradeDatePriceRows(rawText, options),
     ...extractKoreanHotelMonthDayRows(rawText, options),
   ];

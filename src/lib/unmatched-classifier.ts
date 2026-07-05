@@ -94,13 +94,15 @@ const NORMAL_PLACE_TRANSFER_RE =
 const NORMAL_DESTINATION_ONLY_RE =
   /^(?:타이베이|대만|다낭|호이안|푸꾸옥|나트랑|달랏|하노이|하롱베이|방콕|파타야|세부|보홀|시즈오카|삿포로|후쿠오카|몽골|장가계)$/i;
 const NORMAL_SHORT_LABEL_NOISE_RE =
-  /^(?:상동|동일|전일\s*동일|또는|&\s*마감일|출\s*발\s*일\s*자|출발\s*제외일|계림의\s*상징,?|정규\)?|증편\)?|기본\)?|특가\)?|행사\)?)$/i;
+  /^(?:상동|동일|전일\s*동일|또는|&\s*마감일|출\s*발\s*일\s*자|출발\s*제외일|제외\s*일자|계림의\s*상징,?|정규\)?|증편\)?|기본\)?|특가\)?|행사\)?)$/i;
 const NORMAL_PACKAGE_TIER_NOISE_RE =
   /^(?:크라운|품격|실속|프리미엄|스마트|세이브|라이트|LIGHT)$/i;
 const NORMAL_DURATION_NOISE_RE =
   /^\s*\d+\s*박\s*\d+\s*일\s*$/i;
 const NORMAL_TIME_LABEL_NOISE_RE =
   /^\s*\d{1,2}:\d{2}(?:\+\d)?\s*$/i;
+const NORMAL_OPTION_COUNT_FRAGMENT_RE =
+  /^\s*\d+\s*\+\s*\d+\s*$/i;
 const NORMAL_EXTRA_PRICE_NOISE_RE =
   /^\s*\d{1,4}(?:,\d{3})*(?:\.\d+)?\s*(?:엔|円|동|VND|JPY|USD|\$)\)?\s*$/i;
 const NORMAL_MEAL_SHORT_RE =
@@ -125,6 +127,8 @@ const NORMAL_GOLF_TAG_RE =
   /^\s*#\s*다색골프\s*$/i;
 const NORMAL_FREE_TIME_RE =
   /(?:자유\s*시간|자유\s*일정|휴식|리조트\s*내\s*자유|오전\s*자유|오후\s*자유|free\s*time|rest)/i;
+const NORMAL_MEASUREMENT_FRAGMENT_RE =
+  /(?:^총?길이\s*\d{2,5}\s*M|넓이\s*\d{1,4}\s*M|높이\s*\d{1,4}\s*M|세계\s*최고의\s*$)/i;
 const NORMAL_NOISE_RE =
   /(?:^=+>$|^전용$|대기시간\s*최소화|중복\s*없는\s*관광\s*동선|탑승하여|차창|울창한\s*밀림과\s*자연경관|사막\s*진입시\s*케이블카\s*또는\s*버스\s*이용|^\s*\d{3,5}\s*M\s*$)/i;
 const NORMAL_ATTRACTION_HINT_RE =
@@ -166,7 +170,7 @@ export function classifyUnmatchedActivity(
   } else if (NORMAL_OPTION_HEADING_NOISE_RE.test(text)) {
     category = 'free_time';
     confidence = 0.9;
-  } else if (NORMAL_SHORT_LABEL_NOISE_RE.test(text) || NORMAL_PACKAGE_TIER_NOISE_RE.test(text) || NORMAL_DURATION_NOISE_RE.test(text) || NORMAL_TIME_LABEL_NOISE_RE.test(text)) {
+  } else if (NORMAL_SHORT_LABEL_NOISE_RE.test(text) || NORMAL_PACKAGE_TIER_NOISE_RE.test(text) || NORMAL_DURATION_NOISE_RE.test(text) || NORMAL_TIME_LABEL_NOISE_RE.test(text) || NORMAL_OPTION_COUNT_FRAGMENT_RE.test(text)) {
     category = 'free_time';
     confidence = 0.92;
   } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text) || NORMAL_MEAL_RE.test(text) || NORMAL_MEAL_SHORT_RE.test(text) || NORMAL_BEVERAGE_SERVICE_RE.test(text) || NORMAL_DESSERT_OR_FOOD_SERVICE_RE.test(text)) {
@@ -175,7 +179,7 @@ export function classifyUnmatchedActivity(
   } else if (KO_NOTICE_RE.test(text) || NORMAL_NOTICE_RE.test(text) || NORMAL_PREP_NOTICE_RE.test(text)) {
     category = 'notice';
     confidence = 0.84;
-  } else if (NORMAL_NOISE_RE.test(text)) {
+  } else if (NORMAL_MEASUREMENT_FRAGMENT_RE.test(text) || NORMAL_NOISE_RE.test(text)) {
     category = 'free_time';
     confidence = 0.9;
   } else if (KO_TRANSFER_RE.test(text) || NORMAL_TRANSFER_RE.test(text) || NORMAL_PLACE_TRANSFER_RE.test(text) || NORMAL_DESTINATION_ONLY_RE.test(text)) {

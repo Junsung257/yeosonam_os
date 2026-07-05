@@ -307,4 +307,55 @@ describe('buildSourceBackedPriceDateRepair', () => {
       expect.objectContaining({ amount: 50, currency: 'USD', reason: 'optional_tour_candidate' }),
     ]));
   });
+
+  it('repairs shared duration-section price tables to the matching product duration only', () => {
+    const rawText = [
+      '신선이 된 것 같은 곳,',
+      '구름 위의 절경',
+      '张家界장가계',
+      '월토일 3박4일 / 화수목 4박5일',
+      '출발일',
+      '판매가',
+      '3박4일',
+      '8월',
+      '30일',
+      '829,000',
+      '31일',
+      '799,000',
+      '9월',
+      '19, 20, 21',
+      '899,000',
+      '4박5일',
+      '9월',
+      '1일',
+      '799,000',
+      '월드체인 풀만 호텔 장가계 특가',
+      '장가계 4박 5일',
+    ].join('\n');
+
+    const result = buildSourceBackedPriceDateRepair({
+      title: '장가계 4박 5일',
+      duration: 5,
+      raw_text: rawText,
+      price_dates: [
+        { date: '2026-08-30', price: 829000, confirmed: false },
+        { date: '2026-08-31', price: 799000, confirmed: false },
+        { date: '2026-09-01', price: 799000, confirmed: false },
+        { date: '2026-09-19', price: 899000, confirmed: false },
+        { date: '2026-09-20', price: 899000, confirmed: false },
+        { date: '2026-09-21', price: 899000, confirmed: false },
+      ],
+    });
+
+    expect(result.status).toBe('repaired');
+    expect(result).toMatchObject({
+      source: 'product_price_vertical_date_table',
+      expectedCount: 1,
+      existingCount: 6,
+    });
+    if (result.status !== 'repaired') throw new Error('expected repair');
+    expect(result.priceDates).toEqual([
+      expect.objectContaining({ date: '2026-09-01', price: 799000 }),
+    ]);
+  });
 });

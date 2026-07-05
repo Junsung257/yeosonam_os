@@ -219,6 +219,20 @@ describe('source-backed price and package evidence policies', () => {
     }, true)).toBe(true);
   });
 
+  it('auto-applies source-backed duration-section replacements when mixed-duration dates are removed', () => {
+    expect(shouldAutoApplySourceBackedPriceRepair({
+      status: 'repaired',
+      reason: 'replaced price_dates with source-backed table because existing date 2026-08-30 is not present in source',
+      source: 'product_price_vertical_date_table',
+      expectedCount: 1,
+      existingCount: 6,
+      addedCount: 0,
+      priceDates: [
+        { date: '2026-09-01', price: 799000, confirmed: false },
+      ],
+    }, false)).toBe(true);
+  });
+
   it('removes non-customer option noise from optional tours', () => {
     expect(sanitizeCustomerOptionalTours([
       { name: '선택관광 아일랜드 호핑투어', price: '$80/인' },

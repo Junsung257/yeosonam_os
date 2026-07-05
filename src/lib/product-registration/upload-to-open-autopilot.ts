@@ -2494,15 +2494,24 @@ export function shouldAutoApplySourceBackedPriceRepair(
   repair: SourceBackedPriceDateRepair,
   deterministicPriceCheckFailed: boolean,
 ): boolean {
-  return repair.status === 'repaired'
-    && AUTO_APPLY_SOURCE_PRICE_REPAIR_SOURCES.has(repair.source)
+  if (repair.status !== 'repaired') return false;
+
+  const sourceBackedTableReplacement = repair.reason.startsWith('replaced price_dates with source-backed table');
+  const sourceBackedDurationSectionReplacement =
+    repair.source === 'product_price_vertical_date_table'
+    && /existing date \d{4}-\d{2}-\d{2} is not present in source/.test(repair.reason)
+    && validPriceDates(repair.priceDates).length === repair.expectedCount
+    && repair.expectedCount > 0;
+
+  return AUTO_APPLY_SOURCE_PRICE_REPAIR_SOURCES.has(repair.source)
     && validPriceDates(repair.priceDates).length > 0
     && (
       repair.priceDates.length >= repair.existingCount
       || repair.existingCount <= 1
-      || repair.reason.startsWith('replaced price_dates with source-backed table')
+      || sourceBackedTableReplacement
+      || sourceBackedDurationSectionReplacement
     )
-    && (!deterministicPriceCheckFailed || repair.reason.startsWith('replaced price_dates with source-backed table'));
+    && (!deterministicPriceCheckFailed || sourceBackedTableReplacement);
 }
 
 async function syncSourceBackedPriceStores(input: {
