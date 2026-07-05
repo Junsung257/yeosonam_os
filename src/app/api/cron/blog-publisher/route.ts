@@ -111,9 +111,9 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
-const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 2, 1, 5);
-const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 6, MAX_BATCH, 20);
-const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 1, 0, 4);
+const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
+const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 12, MAX_BATCH, 20);
+const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 0, 4);
 const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
@@ -831,6 +831,7 @@ async function runBlogPublisher(request: NextRequest) {
 
   const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
   const errors: string[] = [];
+  const candidateFailures: string[] = [];
   const startTime = Date.now();
   const attemptedQueueIds = new Set<string>();
 
@@ -960,10 +961,10 @@ async function runBlogPublisher(request: NextRequest) {
           publishedThisRun += 1;
         }
         if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
-          errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
+          candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
-        errors.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
+        candidateFailures.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
@@ -1048,10 +1049,10 @@ async function runBlogPublisher(request: NextRequest) {
             publishedThisRun += 1;
           }
           if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
-            errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
+            candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
           }
         } catch (err) {
-          errors.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
+          candidateFailures.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     }
@@ -1172,13 +1173,20 @@ async function runBlogPublisher(request: NextRequest) {
     const publishedCount = results.filter(r => r.status === 'published').length;
     const failureBreakdown = buildPublisherFailureBreakdown(results);
     const canonicalMatched = publishedSlugs.every(slug => typeof slug === 'string' && slug.trim().length > 0 && !slug.startsWith('/'));
-    if (publishedCount === 0 && remainingToday > 0) {
-      errors.push('publisher_zero_published_with_remaining_quota');
+    const underfilledQuota = publishedCount < remainingToday;
+    if (underfilledQuota) {
+      errors.push(
+        publishedCount === 0
+          ? 'publisher_zero_published_with_remaining_quota'
+          : 'publisher_under_published_with_remaining_quota',
+      );
+      errors.push(...candidateFailures.slice(0, 5).map((failure) => `candidate_failure:${failure}`));
     }
 
     return {
       processed: results.length,
       published: publishedCount,
+      candidate_failures: candidateFailures,
       indexingWorker,
       dailyQuota: {
         day: todayQuota.dayKey,
@@ -1186,6 +1194,13 @@ async function runBlogPublisher(request: NextRequest) {
         alreadyPublishedBeforeRun: todayQuota.count,
         remainingBeforeRun: remainingToday,
         remainingAfterRun: Math.max(0, remainingToday - publishedCount),
+      },
+      quota_fulfillment: {
+        required: remainingToday,
+        published: publishedCount,
+        met: !underfilledQuota,
+        candidate_failures: candidateFailures.length,
+        attempted_candidates: attemptedQueueIds.size,
       },
       staleRecovery,
       queueHealthCleanup,
