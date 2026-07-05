@@ -1,5 +1,6 @@
 const PROXYABLE_BLOG_IMAGE_HOSTS = new Set([
   'images.pexels.com',
+  'commons.wikimedia.org',
 ]);
 
 export const BLOG_IMAGE_PROXY_PATH = '/api/blog/image';
@@ -52,7 +53,10 @@ export function toBlogImageDisplaySrc(value: unknown, baseUrl = '', options: Blo
 
 export function proxyBlogImageUrlsInHtml(html: string): string {
   return html.replace(
-    /(<img\b[^>]*\bsrc=["'])(https:\/\/images\.pexels\.com\/[^"']+)(["'][^>]*>)/gi,
-    (_match, prefix: string, src: string, suffix: string) => `${prefix}${toBlogImageProxySrc(src)}${suffix}`,
+    /(<img\b[^>]*\bsrc=["'])(https:\/\/[^"']+)(["'][^>]*>)/gi,
+    (match, prefix: string, src: string, suffix: string) => {
+      if (!isProxyableBlogImageUrl(src)) return match;
+      return `${prefix}${toBlogImageProxySrc(src)}${suffix}`;
+    },
   );
 }

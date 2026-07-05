@@ -4,7 +4,7 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from './blog-editorial-repair';
-import { checkHook, checkMarkdownTableIntegrity } from './blog-quality-gate';
+import { checkHook, checkMarkdownTableIntegrity, checkRenderIntegrity } from './blog-quality-gate';
 import { computeReadability } from './blog-readability';
 
 describe('blog editorial repair', () => {
@@ -208,6 +208,31 @@ describe('blog editorial repair', () => {
     expect(result.changes).toContain('repaired_public_link_surface');
     expect(result.blogHtml).toContain('[Bohol restaurants & cafe checklist](https://www.yeosonam.com/?utm_source=naver_blog&utm_content=internal_link2)');
     expect(result.blogHtml).not.toContain('[Bohol restaurants\n\n& cafe checklist]');
+  });
+
+  it('removes residual decorative markdown bold before render integrity checks', async () => {
+    const result = repairBlogStructureQuality({
+      title: 'Clark monthly weather guide',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: 'Clark monthly weather',
+      blogHtml: [
+        '<h1>Clark monthly weather guide</h1>',
+        '<p>**Quick answer** Clark is easiest to plan when you check rain, heat, and moving time together.</p>',
+        '<p>Before asking about a package, compare **departure date**, hotel location, and airport transfer time.</p>',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('removed_residual_html_markdown_bold');
+    expect(result.blogHtml).not.toContain('**');
+
+    const renderGate = await checkRenderIntegrity(result.blogHtml);
+    expect(renderGate.passed).toBe(true);
+    expect(renderGate.evidence).toMatchObject({
+      artifactCount: 0,
+      artifacts: [],
+    });
   });
 
   it('softens early hard CTA sentences without dropping informational context', () => {
@@ -473,7 +498,7 @@ describe('blog editorial repair', () => {
     expect(result.changes).toContain('deduped_repeated_short_paragraphs');
     expect(faqHeadings).toHaveLength(1);
     expect(repeatedPlanning).toHaveLength(1);
-    expect(result.blogHtml).toContain('**여행 상품과 함께 확인하기**');
+    expect(result.blogHtml).toContain('여행 상품과 함께 확인하기');
   });
 
   it('softens repeated planning phrases that make generated posts sound templated', () => {
@@ -746,7 +771,7 @@ describe('blog editorial repair', () => {
 
     expect(result.changed).toBe(true);
     expect(result.changes).toContain('removed_legacy_surface_artifacts');
-    expect(result.blogHtml).toContain('**핵심 요약**');
+    expect(result.blogHtml).toContain('핵심 요약');
     expect(result.blogHtml).toContain('핵심 요약:');
     expect(result.blogHtml).toContain('5월 황금연휴 해외여행 비행시간에서');
     expect(result.blogHtml).toContain('문의하시면 현재 5월 좌석 현황도 바로 확인 가능합니다.');

@@ -972,6 +972,19 @@ export function normalizeBlogVisualAccents(markdown: string): { text: string; ch
   return { text, changed: text !== before };
 }
 
+function removeResidualHtmlMarkdownBold(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const stripBold = (value: string) => value
+    .replace(/\*\*([^*\n]{1,180}?)\*\*/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim())
+    .replace(/__([^_\n]{1,180}?)__/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim());
+  const text = markdown
+    .split('\n')
+    .map((line) => (/<[a-z][^>]*>/i.test(line) ? stripBold(line) : line))
+    .join('\n');
+
+  return { text, changed: text !== before };
+}
+
 function softenPromotionalInfoTone(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
   const text = markdown
@@ -1913,6 +1926,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (artifactRepair.changed) {
     blogHtml = artifactRepair.text;
     changes.push('removed_render_artifacts');
+  }
+
+  const residualBoldRepair = removeResidualHtmlMarkdownBold(blogHtml);
+  if (residualBoldRepair.changed) {
+    blogHtml = residualBoldRepair.text;
+    changes.push('removed_residual_html_markdown_bold');
   }
 
   const legacySurfaceRepair = removeLegacySurfaceArtifacts(blogHtml);
