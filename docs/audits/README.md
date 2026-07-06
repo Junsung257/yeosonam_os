@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-07-05
+Last updated: 2026-07-06
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -38,6 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-06 | `2026-07-06-mobile-landing-copy-audit-smoke/` | Mobile landing copy audit smoke output for shared customer-facing package title/summary logic. |
 | 2026-06-24 | `2026-06-24-upload-function-timeout-queue-first.md` | Queue-first upload timeout prevention and replay-source preservation evidence. |
 | 2026-06-08 | `2026-06-08-product-registration-learning-engine-audit.md` | Self-improving registration engine verification and live readiness evidence. |
 | 2026-06-20 | `2026-06-20-upload-inbox-engine-hardening.md` | Offline upload-inbox hardening evidence for price/date, flight, and remaining itinerary blockers. |
@@ -54,6 +55,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-06 | `2026-07-06-destinations-full-audit/` | Public destinations full audit output: desktop/mobile screenshots, route matrix, image/placeholder/climate/attraction checks. |
 | 2026-05-30 | `2026-05-30-full-stack-admin-final-audit.md` | Full-stack admin final audit evidence. |
 | 2026-05-30 | `2026-05-30-admin-full-system-audit.md` | Admin full-system evidence. |
 | 2026-05-30 | `2026-05-30-launch-readiness-audit.md` | Launch readiness evidence. |

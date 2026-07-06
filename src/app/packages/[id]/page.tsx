@@ -24,6 +24,7 @@ import { formatProductTypeLabel } from '@/lib/product-type-label';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 import { getSecret } from '@/lib/secret-registry';
+import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -242,7 +243,32 @@ export async function generateMetadata({
   if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) {
     notFound();
   }
-  const title = decodeCustomerHtmlEntities(String(data.title || data.destination || '?ъ냼???⑦궎吏 ?ы뻾'));
+  const metadataPackage = data as {
+    title?: string | null;
+    display_title?: string | null;
+    hero_tagline?: string | null;
+    product_summary?: string | null;
+    destination?: string | null;
+    duration?: number | null;
+    nights?: number | null;
+    trip_style?: string | null;
+    product_type?: string | null;
+    airline?: string | null;
+    price?: number | null;
+  };
+  const displayCopy = buildCustomerPackageDisplayCopy({
+    title: metadataPackage.title,
+    display_title: metadataPackage.display_title,
+    hero_tagline: metadataPackage.hero_tagline,
+    product_summary: metadataPackage.product_summary,
+    destination: metadataPackage.destination,
+    duration: metadataPackage.duration,
+    nights: metadataPackage.nights,
+    trip_style: metadataPackage.trip_style,
+    product_type: metadataPackage.product_type,
+    airline: metadataPackage.airline,
+  });
+  const title = displayCopy.seoTitle || decodeCustomerHtmlEntities(String(data.title || data.destination || '?ъ냼???⑦궎吏 ?ы뻾'));
   const seoTitle = buildPackageSeoTitle({
     title,
     productType: data.product_type,
@@ -250,7 +276,7 @@ export async function generateMetadata({
     id,
   });
   const destination = decodeCustomerHtmlEntities(String(data.destination || '패키지'));
-  const description = decodeCustomerHtmlEntities(data.product_summary || `${destination} ${title} - 여소남 패키지 여행`);
+  const description = decodeCustomerHtmlEntities(displayCopy.summaryBody || data.product_summary || `${destination} ${title} - 여소남 패키지 여행`);
 
   return {
     title: { absolute: `${seoTitle} | 여소남` },
@@ -813,13 +839,27 @@ export default async function PackageDetailPage({
         lp_hero_image_url: lpHeroImageUrl,
       } as React.ComponentProps<typeof DetailClient>['initialPackage'])
     : null;
+  const srDisplayCopy = normalizedPkg ? buildCustomerPackageDisplayCopy({
+    title: normalizedPkg.title,
+    display_title: normalizedPkg.display_title,
+    hero_tagline: normalizedPkg.hero_tagline,
+    product_summary: normalizedPkg.product_summary,
+    destination: normalizedPkg.destination,
+    duration: normalizedPkg.duration,
+    nights: normalizedPkg.nights,
+    trip_style: normalizedPkg.trip_style,
+    product_type: normalizedPkg.product_type,
+    airline: normalizedPkg.airline,
+    product_highlights: normalizedPkg.product_highlights,
+    inclusions: normalizedPkg.inclusions,
+  }) : null;
 
   return (
     <>
       <UnmatchedActivitiesBeacon items={unmatchedItems} />
       {normalizedPkg && (
         <div className="sr-only">
-          <h1>{decodeCustomerHtmlEntities(normalizedPkg.display_title || normalizedPkg.title || '여소남 패키지 여행 상품 상세')}</h1>
+          <h1>{srDisplayCopy?.heroHeadline || '여소남 패키지 여행 상품 상세'}</h1>
           <p>
             {normalizedPkg.destination ? decodeCustomerHtmlEntities(normalizedPkg.destination) + ' 여행 ' : ''}
             일정, 가격, 포함 사항, 취소 규정, 예약 문의 정보를 확인할 수 있는 여소남 패키지 상품 상세 페이지입니다.

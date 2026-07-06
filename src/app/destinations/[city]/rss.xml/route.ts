@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { encodeDestinationPathSegment, destinationSlugMatches } from '@/lib/regions';
+import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { canonicalizePublicDestination, getPublicDestinationQueryNames, slugMatchesPublicDestination } from '@/lib/public-destinations';
 
 /**
  * 목적지별 RSS 피드 — /destinations/[city]/rss.xml
@@ -46,8 +47,9 @@ function getRouteParam(value: string | string[] | undefined): string {
 async function resolveDestinationRouteParam(value: string): Promise<string | null> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded) return null;
-  if (!isSupabaseConfigured) return decoded;
-  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
+  const decodedCanonical = canonicalizePublicDestination(decoded) ?? decoded;
+  if (!isSupabaseConfigured) return decodedCanonical;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return decodedCanonical;
 
   try {
     const { data, error } = await supabaseAdmin
@@ -58,11 +60,11 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
 
     const match = ((data ?? []) as Array<{ destination: string | null }>)
       .map(row => row.destination?.trim() ?? '')
-      .find(destination => destination && destinationSlugMatches(destination, decoded));
+      .find(destination => destination && slugMatchesPublicDestination(destination, decoded));
 
-    return match || decoded;
+    return canonicalizePublicDestination(match) || decodedCanonical;
   } catch {
-    return decoded;
+    return decodedCanonical;
   }
 }
 
@@ -84,9 +86,11 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
   let posts: unknown[] = [];
   if (!skipDbReads) {
     try {
+      const queryNames = getPublicDestinationQueryNames(decoded);
       const result = await supabaseAdmin
         .from('content_creatives')
         .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, travel_packages(destination)')
+        .in('destination', queryNames)
         .eq('channel', 'naver_blog')
         .eq('status', 'published')
         .not('slug', 'is', null)
@@ -98,10 +102,11 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
     }
   }
 
+  const feedDestinationNames = getPublicDestinationQueryNames(decoded);
   const filtered = ((posts || []) as Array<any>).filter(p =>
     typeof p?.slug === 'string' &&
     p.slug.trim() &&
-    (p.destination === decoded || p.travel_packages?.destination === decoded)
+    (feedDestinationNames.includes(p.destination) || feedDestinationNames.includes(p.travel_packages?.destination))
   ).slice(0, 20);
 
   const channelUrl = `${BASE_URL}/destinations/${encodeDestinationPathSegment(decoded)}`;
