@@ -999,6 +999,128 @@ function softenPromotionalInfoTone(markdown: string): { text: string; changed: b
   return { text, changed: text !== before };
 }
 
+function buildWeatherAnswerFirstIntro(input: BlogEditorialRepairInput): string {
+  const keyword = input.primaryKeyword || input.title || '여행 날씨';
+  const destination = input.destination || keyword.split(/\s+/)[0] || '여행지';
+  return `${keyword}에서 핵심은 낮 기온만 보는 것이 아닙니다. ${destination} 여행은 아침·저녁 기온 차이, 비 예보, 이동 동선을 함께 보고 얇은 긴팔과 바람막이, 비 대비 용품을 준비하는 편이 안전합니다.`;
+}
+
+function repairArticleQualityV2Surface(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const before = markdown;
+  const isWeatherInfo = /날씨|옷차림|준비물|체크리스트|weather|packing/i.test(
+    `${input.primaryKeyword || ''} ${input.title || ''} ${input.category || ''} ${input.slug || ''}`,
+  );
+  let replacedWeatherIntro = false;
+  const answerFirstIntro = buildWeatherAnswerFirstIntro(input);
+
+  const lines = markdown
+    .replace(/날씨은/g, '날씨는')
+    .replace(/비용은은/g, '비용은')
+    .replace(/일정은은/g, '일정은')
+    .replace(/여행을 즐길 수 있는하기/g, '여행하기')
+    .replace(/이 정보는\s*20\d{2}년\s*\d{1,2}월\s*\d{1,2}일\s*확인\s*기준으로\s*작성되었습니다\.?/g, '출발 전에는 공식 예보와 예약 조건을 다시 확인하세요.')
+    .replace(/여소남\s*내부\s*(?:상품|예약|상품\s*\/\s*예약)\s*데이터\s*기준[,，]?\s*/g, '')
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (
+        isWeatherInfo &&
+        !replacedWeatherIntro &&
+        trimmed.length > 20 &&
+        /날씨는/.test(trimmed) &&
+        /(비용|가격|예약|결제|이동\s*시간)/.test(trimmed)
+      ) {
+        replacedWeatherIntro = true;
+        return answerFirstIntro;
+      }
+      return line;
+    });
+
+  const text = lines.join('\n').replace(/\n{4,}/g, '\n\n\n');
+  return { text, changed: text !== before };
+}
+
+function isTableRowLine(line: string): boolean {
+  const trimmed = line.trim();
+  return (trimmed.match(/\|/g) || []).length >= 2 && !isTableSeparatorLine(trimmed);
+}
+
+function isTableSeparatorLine(line: string): boolean {
+  return /^\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?$/.test(line.trim());
+}
+
+function tableCells(line: string): string[] {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+}
+
+function genericTableHeader(cellCount: number): string {
+  if (cellCount >= 4) return '| 항목 | 내용 | 비용 | 비고 |';
+  if (cellCount === 3) return '| 항목 | 확인 기준 | 비고 |';
+  return '| 항목 | 내용 |';
+}
+
+function looseTableRowToBullet(row: string, labels: string[]): string {
+  const cells = tableCells(row).filter((cell) => cell.length > 0);
+  const parts = cells.map((cell, index) => `${labels[index] || `col${index + 1}`}: ${cell}`);
+  return `- ${parts.join(' / ')}`;
+}
+
+function firstRowLooksLikeTableData(row: string): boolean {
+  const firstCell = tableCells(row)[0]?.replace(/[*_`~]/g, '').trim() || '';
+  if (/^(구분|항목|상황|지역|일정|날짜|대상|비교|체크|확인)/.test(firstCell)) return false;
+  return /[0-9]|원|달러|USD|EUR|JPY|THB|일차|차|식료품|기념품|관광|액티비티|보험|비상금|총 예상/.test(row);
+}
+
+function repairMisplacedMarkdownTableSeparators(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const following = lines[index + 1] ?? '';
+    const previous = next[next.length - 1] ?? '';
+
+    if (isTableRowLine(line) && isTableSeparatorLine(following) && firstRowLooksLikeTableData(line)) {
+      const cells = tableCells(line);
+      const labels = tableCells(genericTableHeader(cells.length));
+      if (/\|\s*$/.test(previous.trim()) && !isTableRowLine(previous)) {
+        next.pop();
+      }
+      next.push(looseTableRowToBullet(line, labels));
+      index += 1;
+      while (index + 1 < lines.length) {
+        const candidate = lines[index + 1] ?? '';
+        if (isTableSeparatorLine(candidate)) {
+          index += 1;
+          continue;
+        }
+        if (!isTableRowLine(candidate)) break;
+        next.push(looseTableRowToBullet(candidate, labels));
+        index += 1;
+      }
+      changed = true;
+      continue;
+    }
+
+    next.push(line);
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
+function flattenListPipes(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .split('\n')
+    .map((line) => {
+      if (!/^\s*[-*]\s+/.test(line) || !line.includes('|')) return line;
+      return line.replace(/\s*\|\s*/g, ' - ');
+    })
+    .join('\n');
+  return { text, changed: text !== before };
+}
+
 function splitCollapsedChecklistItems(markdown: string): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   let changed = false;
@@ -1399,7 +1521,7 @@ function forceRepairRemainingBrokenMarkdownTables(markdown: string): { text: str
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]?.trim() ?? '';
-    if (!line.startsWith('|') || !line.endsWith('|')) {
+    if (!isTableRowLine(line)) {
       next.push(lines[index] ?? '');
       continue;
     }
@@ -1408,7 +1530,7 @@ function forceRepairRemainingBrokenMarkdownTables(markdown: string): { text: str
     let cursor = index;
     while (cursor < lines.length) {
       const current = lines[cursor]?.trim() ?? '';
-      if (!current.startsWith('|') || !current.endsWith('|')) break;
+      if (!isTableRowLine(current) && !isTableSeparatorLine(current)) break;
       block.push(current);
       cursor += 1;
     }
@@ -1938,6 +2060,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('repaired_semantic_surface');
   }
 
+  const articleQualityV2Repair = repairArticleQualityV2Surface(blogHtml, input);
+  if (articleQualityV2Repair.changed) {
+    blogHtml = articleQualityV2Repair.text;
+    changes.push('repaired_article_quality_v2_surface');
+  }
+
   const generatedImageContextRepair = repairGeneratedImageContext(blogHtml, input);
   if (generatedImageContextRepair.changed) {
     blogHtml = generatedImageContextRepair.text;
@@ -2074,6 +2202,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('added_markdown_table_boundaries');
   }
 
+  const earlyMisplacedTableSeparatorRepair = repairMisplacedMarkdownTableSeparators(blogHtml);
+  if (earlyMisplacedTableSeparatorRepair.changed) {
+    blogHtml = earlyMisplacedTableSeparatorRepair.text;
+    changes.push('repaired_misplaced_table_separators');
+  }
+
   const looseTableRepair = repairLooseMarkdownTables(blogHtml);
   if (looseTableRepair.changed) {
     blogHtml = looseTableRepair.text;
@@ -2122,7 +2256,7 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('capped_h2_headings');
   }
 
-  const repeatedHeadingRepair = dedupeRepeatedHeadings(blogHtml);
+  const repeatedHeadingRepair = dedupeRepeatedHeadings(blogHtml, 1);
   if (repeatedHeadingRepair.changed) {
     blogHtml = repeatedHeadingRepair.text;
     changes.push('deduped_repeated_headings');
@@ -2132,6 +2266,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (repeatedSupportRepair.changed) {
     blogHtml = repeatedSupportRepair.text;
     changes.push('deduped_repeated_support_blocks');
+  }
+
+  const listPipeRepair = flattenListPipes(blogHtml);
+  if (listPipeRepair.changed) {
+    blogHtml = listPipeRepair.text;
+    changes.push('flattened_list_pipes');
   }
 
   const longtailPrefixRepair = softenRepeatedLongtailBulletPrefixes(blogHtml);
@@ -2403,6 +2543,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (semanticSurfaceRepair.changed) {
     blogHtml = semanticSurfaceRepair.text;
     changes.push('repaired_semantic_surface');
+  }
+
+  const articleQualityV2Repair = repairArticleQualityV2Surface(blogHtml, input);
+  if (articleQualityV2Repair.changed) {
+    blogHtml = articleQualityV2Repair.text;
+    changes.push('repaired_article_quality_v2_surface');
   }
 
   const generatedImageContextRepair = repairGeneratedImageContext(blogHtml, input);

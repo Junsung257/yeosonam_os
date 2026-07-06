@@ -827,6 +827,119 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).not.toContain('일정별 확인 항목 할까요');
   });
 
+  it('repairs article quality v2 surface issues before quality gates', () => {
+    const source = [
+      '# 몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      '',
+      '몽골 7월 날씨은 여행 전 비용, 이동 시간, 현지 결제 조건을 먼저 확인해야 시행착오를 줄일 수 있는 핵심 준비 항목입니다.',
+      '',
+      '이 정보는 2024년 6월 10일 확인 기준으로 작성되었습니다.',
+      '',
+      '여소남 내부 상품/예약 데이터 기준, 몽골 여행 상품은 여러 가격대로 구성되어 있더라고요.',
+      '',
+      '## 공식 확인 링크',
+      '',
+      '외교부 해외안전여행',
+      '',
+      '## 공식 확인 링크',
+      '',
+      '몽골 기상청',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: '몽골 7월 날씨 옷차림 여행 준비물',
+      destination: '몽골',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(expect.arrayContaining(['repaired_article_quality_v2_surface', 'deduped_repeated_headings']));
+    expect(result.blogHtml).toContain('몽골 7월 날씨 옷차림 여행 준비물에서 핵심은 낮 기온만 보는 것이 아닙니다.');
+    expect(result.blogHtml).not.toContain('날씨은');
+    expect(result.blogHtml).not.toContain('2024년 6월 10일 확인 기준');
+    expect(result.blogHtml).not.toContain('여소남 내부 상품/예약 데이터 기준');
+    expect((result.blogHtml.match(/^## 공식 확인 링크$/gm) || []).length).toBe(1);
+  });
+
+  it('repairs data rows that were accidentally promoted to markdown table headers', () => {
+    const source = [
+      '# 세부 쇼핑 예산',
+      '',
+      '비고 |',
+      '',
+      '| **식료품** | 건망고 | 20,000원 ~ 50,000원 | 현지 마트가 저렴 |',
+      '| --- | --- | --- | --- |',
+      '| **기념품** | 라탄 가방 | 30,000원 ~ 80,000원 | 흥정 필요 |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '세부 쇼핑 예산',
+      category: 'budget',
+      contentType: 'guide',
+      primaryKeyword: '세부 쇼핑 예산',
+      destination: '세부',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('- 항목: **식료품** / 내용: 건망고 / 비용: 20,000원 ~ 50,000원 / 비고: 현지 마트가 저렴');
+    expect(result.blogHtml).not.toContain('비고 |\n\n| **식료품**');
+    expect(result.blogHtml).not.toContain('| --- | --- | --- | --- |');
+  });
+
+  it('flattens pipe separators inside list items', () => {
+    const source = [
+      '# 세부 아이와 가족여행 일정',
+      '',
+      '- 1일 차|세부 도착 및 리조트 휴식',
+      '- 2일 차|호핑투어와 해양 액티비티',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '세부 아이와 가족여행 일정',
+      category: 'itinerary',
+      contentType: 'guide',
+      primaryKeyword: '세부 아이와 가족여행 일정',
+      destination: '세부',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('flattened_list_pipes');
+    expect(result.blogHtml).toContain('- 1일 차 - 세부 도착 및 리조트 휴식');
+    expect(result.blogHtml).not.toContain('1일 차|');
+  });
+
+  it('repairs loose data rows before markdown table separators', () => {
+    const source = [
+      '# Cebu shopping budget',
+      '',
+      'Note |',
+      '',
+      'Food | dried mango | 20,000won ~ 50,000won | local mart is cheaper |',
+      '| --- | --- | --- | --- |',
+      'Gift | coconut oil | 30,000won ~ 80,000won | confirm baggage limit |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Cebu shopping budget',
+      category: 'budget',
+      contentType: 'guide',
+      primaryKeyword: 'Cebu shopping budget',
+      destination: 'Cebu',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_misplaced_table_separators');
+    expect(result.blogHtml).toContain('-');
+    expect(result.blogHtml).not.toContain('Food | dried mango');
+    expect(result.blogHtml).not.toContain('| --- | --- | --- | --- |');
+  });
+
   it('adds a publish checklist and splits overlong headings before publish gates', () => {
     const source = [
       '# Cebu budget checklist',
