@@ -8,6 +8,7 @@ import { buildRecommendationDisplay, type PackageScoreDisplayRow, type Recommend
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 import type { NormalizedOptionalTour } from '@/lib/itinerary-render';
+import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -183,15 +184,37 @@ function readInternalCode(pkg: Record<string, unknown>): string | undefined {
   return Array.isArray(products) ? products[0]?.internal_code : products?.internal_code;
 }
 
+function readProductDisplayName(pkg: Record<string, unknown>): string | undefined {
+  const products = pkg.products as
+    | { display_name?: string | null }
+    | Array<{ display_name?: string | null }>
+    | null
+    | undefined;
+  return Array.isArray(products) ? products[0]?.display_name ?? undefined : products?.display_name ?? undefined;
+}
+
 export function mapTravelPackageToLandingData(
   pkg: Record<string, unknown>,
   lpHeroImageUrl: string | null,
 ): LandingProductData {
   const view = renderPackage(pkg);
   const internalCode = readInternalCode(pkg);
-  const cleanTitle = normalizeCustomerVisibleCopy(String(pkg.display_title || pkg.title || ''));
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
-  const cleanSummary = normalizeCustomerVisibleCopy(String(pkg.product_summary || ''));
+  const displayCopy = buildCustomerPackageDisplayCopy({
+    title: String(pkg.title || ''),
+    display_title: typeof pkg.display_title === 'string' ? pkg.display_title : null,
+    product_display_name: readProductDisplayName(pkg),
+    hero_tagline: typeof pkg.hero_tagline === 'string' ? pkg.hero_tagline : null,
+    product_summary: typeof pkg.product_summary === 'string' ? pkg.product_summary : null,
+    destination: cleanDestination,
+    duration: typeof pkg.duration === 'number' ? pkg.duration : null,
+    nights: typeof pkg.nights === 'number' ? pkg.nights : null,
+    trip_style: typeof pkg.trip_style === 'string' ? pkg.trip_style : null,
+    product_type: typeof pkg.product_type === 'string' ? pkg.product_type : null,
+    airline: typeof pkg.airline === 'string' ? pkg.airline : null,
+    product_highlights: asStringArray(pkg.product_highlights),
+    inclusions: asStringArray(pkg.inclusions),
+  });
 
   const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
   const sortedDates = [...effectiveDates].filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date));
@@ -250,16 +273,16 @@ export function mapTravelPackageToLandingData(
     deadlineDays,
     customMessage: {
       insta: {
-        headline: `${cleanDestination}의\n아름다운 순간`,
-        subline: cleanTitle,
+        headline: `${cleanDestination}의\n추천 일정`,
+        subline: displayCopy.cardTitle,
       },
       kakao: {
-        headline: `${cleanTitle}\n상담 문의가 많습니다`,
+        headline: `${displayCopy.cardTitle}\n상담 문의가 많습니다`,
         subline: '전 일정 확인 · 항공/호텔 조건 상담 · 직판가 안내',
       },
       default: {
-        headline: cleanTitle,
-        subline: cleanSummary,
+        headline: displayCopy.heroHeadline,
+        subline: displayCopy.heroSubline || displayCopy.summaryLead,
       },
     },
     priceFrom: minPrice,

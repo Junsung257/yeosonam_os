@@ -144,6 +144,8 @@
     "audit:blog-public-surfaces": "npx tsx scripts/audit-blog-public-surfaces.ts",
     "check:blog-indexnow": "npx tsx scripts/check-blog-indexnow-config.ts",
     "audit:blog-revenue-funnel": "node scripts/audit-blog-revenue-funnel.mjs",
+    "audit:destinations": "node scripts/audit-destinations-full.mjs",
+    "audit:mobile-landing-copy": "tsx scripts/audit-mobile-landing-copy.ts",
     "audit:site-indexability": "node scripts/audit-site-indexability.mjs",
     "audit:blog-search-daily": "node scripts/blog-search-quality-daily.mjs",
     "audit:blog-search-daily:strict": "node scripts/blog-search-quality-daily.mjs --strict",

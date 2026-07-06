@@ -12,6 +12,7 @@ import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions'
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
+import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -146,6 +147,21 @@ function packageMinPrice(pkg: Package): number {
   const valid = dates.filter(d => d?.price && d.price > 0);
   if (valid.length > 0) return Math.min(...valid.map(d => d.price));
   return pkg.price && pkg.price > 0 ? pkg.price : Number.POSITIVE_INFINITY;
+}
+
+function getCustomerPackageTitle(pkg: Package): string {
+  return buildCustomerPackageDisplayCopy({
+    title: pkg.title,
+    display_title: pkg.display_title,
+    product_display_name: pkg.products?.display_name,
+    hero_tagline: pkg.hero_tagline,
+    destination: pkg.destination,
+    duration: pkg.duration,
+    nights: pkg.nights,
+    product_type: pkg.product_type,
+    airline: pkg.airline,
+    product_highlights: pkg.product_highlights ?? null,
+  }).cardTitle;
 }
 
 function formatMonthSummary(month: string): string {
@@ -771,7 +787,7 @@ export default function PackagesClient() {
                     : 'bg-white/90 border-gray-300 text-gray-400 hover:border-brand/60 hover:text-brand'
                 }`}
                 aria-pressed={compareIds.includes(pkg.id)}
-                aria-label={compareIds.includes(pkg.id) ? `비교 해제: ${pkg.display_title || pkg.title}` : `비교 추가: ${pkg.display_title || pkg.title}`}
+                aria-label={compareIds.includes(pkg.id) ? `비교 해제: ${getCustomerPackageTitle(pkg)}` : `비교 추가: ${getCustomerPackageTitle(pkg)}`}
               >
                 {compareIds.includes(pkg.id) ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -916,6 +932,8 @@ function SimpleCompareModal({
     if (valid.length > 0) return Math.min(...valid.map(d => d.price));
     return p.price ?? 0;
   };
+  const titleA = getCustomerPackageTitle(a);
+  const titleB = getCustomerPackageTitle(b);
 
   const rows: { label: string; va: string | number; vb: string | number }[] = [
     { label: '가격', va: getPrice(a).toLocaleString() + '원~', vb: getPrice(b).toLocaleString() + '원~' },
@@ -939,10 +957,10 @@ function SimpleCompareModal({
         <div className="overflow-y-auto px-4 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-3 mb-2">
             <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
-              {a.display_title || a.title}
+              {titleA}
             </Link>
             <Link href={`/packages/${encodeURIComponent(b.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
-              {b.display_title || b.title}
+              {titleB}
             </Link>
           </div>
           {rows.map(row => {

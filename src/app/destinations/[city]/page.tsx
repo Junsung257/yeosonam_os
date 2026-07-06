@@ -9,9 +9,18 @@ import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
 import DestinationPackagesSection from '@/components/customer/DestinationPackagesSection';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
-import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment, destinationToSlug, destinationSlugMatches } from '@/lib/regions';
+import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment, destinationToSlug } from '@/lib/regions';
 import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import {
+  canonicalizePublicDestination,
+  getPublicDestinationQueryNames,
+  mergePublicDestinationStats,
+  slugMatchesPublicDestination,
+  type ActiveDestinationLike,
+} from '@/lib/public-destinations';
+import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
+import type { SeasonalSignal } from '@/lib/seasonal-signals';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -96,14 +105,16 @@ async function getDestinationSocialImage(city: string): Promise<string> {
   if (shouldSkipPublicDbReadsForResourceSaver()) return SOCIAL_IMAGE_URL;
 
   try {
+    const queryNames = getPublicDestinationQueryNames(city);
     const { data, error } = await supabaseAdmin
       .from('destination_metadata')
       .select('hero_image_url, photo_approved')
-      .eq('destination', city)
-      .maybeSingle();
+      .in('destination', queryNames)
+      .eq('photo_approved', true)
+      .limit(1);
     if (error) return SOCIAL_IMAGE_URL;
 
-    const row = data as Pick<DestinationMeta, 'hero_image_url' | 'photo_approved'> | null;
+    const row = (data as Pick<DestinationMeta, 'hero_image_url' | 'photo_approved'>[] | null)?.[0] ?? null;
     const candidate = row?.photo_approved ? row.hero_image_url?.trim() : null;
     return candidate && isSafeImageSrc(candidate) ? candidate : SOCIAL_IMAGE_URL;
   } catch {
@@ -116,10 +127,11 @@ async function destinationExistsForMetadata(city: string): Promise<boolean | nul
   if (shouldSkipPublicDbReadsForResourceSaver()) return null;
 
   try {
+    const queryNames = getPublicDestinationQueryNames(city);
     const { data, error } = await supabaseAdmin
       .from('active_destinations')
       .select('destination')
-      .eq('destination', city)
+      .in('destination', queryNames)
       .limit(1);
     if (error) return null;
 
@@ -137,10 +149,11 @@ async function destinationHasPublicInventory(city: string): Promise<boolean | nu
   if (shouldSkipPublicDbReadsForResourceSaver()) return active;
 
   try {
+    const queryNames = getPublicDestinationQueryNames(city);
     const { data, error } = await supabaseAdmin
       .from('travel_packages')
       .select('id')
-      .eq('destination', city)
+      .in('destination', queryNames)
       .in('status', ['approved', 'active'])
       .limit(1);
     if (error) return active;
@@ -154,11 +167,12 @@ async function destinationHasPublicInventory(city: string): Promise<boolean | nu
 async function resolveDestinationRouteParam(value: string): Promise<string | null> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded) return null;
-  if (!isSupabaseConfigured) return decoded;
-  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
+  const decodedCanonical = canonicalizePublicDestination(decoded) ?? decoded;
+  if (!isSupabaseConfigured) return decodedCanonical;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return decodedCanonical;
 
-  const exact = await destinationExistsForMetadata(decoded);
-  if (exact === true) return decoded;
+  const exact = await destinationExistsForMetadata(decodedCanonical);
+  if (exact === true) return decodedCanonical;
 
   try {
     const { data, error } = await supabaseAdmin
@@ -168,9 +182,10 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
     if (!error) {
       const match = ((data ?? []) as Array<{ destination: string | null }>)
         .map(row => row.destination?.trim() ?? '')
-        .find(destination => destination && destinationSlugMatches(destination, decoded));
+        .find(destination => destination && slugMatchesPublicDestination(destination, decoded));
 
-      if (match) return match;
+      const canonicalMatch = canonicalizePublicDestination(match);
+      if (canonicalMatch) return canonicalMatch;
     }
   } catch {
     // Continue to package-backed resolution below.
@@ -186,11 +201,11 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
 
     const packageMatch = ((packageRows ?? []) as Array<{ destination: string | null }>)
       .map(row => row.destination?.trim() ?? '')
-      .find(destination => destination && destinationSlugMatches(destination, decoded));
+      .find(destination => destination && slugMatchesPublicDestination(destination, decoded));
 
-    return packageMatch || decoded;
+    return canonicalizePublicDestination(packageMatch) || decodedCanonical;
   } catch {
-    return decoded;
+    return decodedCanonical;
   }
 }
 
@@ -210,6 +225,52 @@ interface ClimateData {
   monthly_normals: unknown;
   fitness_scores: unknown;
   seasonal_signals: unknown;
+}
+
+function buildFallbackClimateData(destination: string): ClimateData {
+  const monthlyNormals: MonthlyNormal[] = Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    return {
+      month,
+      temp_max: 28,
+      temp_min: 20,
+      temp_mean: 24,
+      rain_days: month >= 6 && month <= 9 ? 9 : 5,
+      rain_mm: month >= 6 && month <= 9 ? 140 : 70,
+      humidity: 68,
+      sunshine_hours: 6,
+    };
+  });
+  const fitnessScores: FitnessScore[] = monthlyNormals.map((normal) => ({
+    month: normal.month,
+    score: normal.rain_days >= 9 ? 58 : 66,
+    label: '\uc900\ube44 \uad8c\uc7a5',
+    key_concern: normal.rain_days >= 9 ? '\uc6b0\uae30 \ub300\ube44' : null,
+    metrics: { temp: 80, rain: normal.rain_days >= 9 ? 55 : 70, humidity: 76, crowd: 62 },
+  }));
+  const seasonalSignals: SeasonalSignal[] = monthlyNormals.map((normal) => ({
+    month: normal.month,
+    naver_idx: 1,
+    naver_ratio: 50,
+    wiki_idx: 1,
+    wiki_views: 0,
+    seasonality_index: 1,
+    agreement: 0,
+    popularity_score: normal.month === 7 || normal.month === 8 ? 70 : 50,
+    label: '\uae30\ubcf8 \uc9c4\ub2e8',
+    badge: null,
+  }));
+
+  return {
+    destination,
+    primary_city: destination,
+    country: null,
+    timezone: 'Asia/Seoul',
+    utc_offset_minutes: 540,
+    monthly_normals: monthlyNormals,
+    fitness_scores: fitnessScores,
+    seasonal_signals: seasonalSignals,
+  };
 }
 
 type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
@@ -241,6 +302,7 @@ interface PillarData {
     avg_rating: number | null;
     review_count: number;
     price_dates: PackagePriceDate[] | null;
+    products?: { display_name?: string | null; internal_code?: string | null; thumbnail_urls?: string[] | null } | null;
   }>;
   relatedPosts: Array<{
     id: string;
@@ -302,6 +364,22 @@ function getPriceDateList(value: unknown): PackagePriceDate[] | null {
   return priceDates.length > 0 ? priceDates : null;
 }
 
+function normalizeProductImageSource(value: unknown): PillarData['packages'][number]['products'] {
+  if (!value || typeof value !== 'object') return null;
+  const record = Array.isArray(value) ? value[0] : value;
+  if (!record || typeof record !== 'object') return null;
+  const product = record as Record<string, unknown>;
+  const thumbnailUrls = Array.isArray(product.thumbnail_urls)
+    ? product.thumbnail_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+    : null;
+
+  return {
+    display_name: getNullableTrimmedString(product.display_name),
+    internal_code: getNullableTrimmedString(product.internal_code),
+    thumbnail_urls: thumbnailUrls && thumbnailUrls.length > 0 ? thumbnailUrls : null,
+  };
+}
+
 function normalizeAttractionRow(row: unknown): PillarData['attractions'][number] | null {
   if (!row || typeof row !== 'object') return null;
 
@@ -341,6 +419,7 @@ function normalizePackageRow(row: unknown): PillarData['packages'][number] | nul
     avg_rating: getFiniteNumber(record.avg_rating),
     review_count: Math.max(0, Math.trunc(getFiniteNumber(record.review_count) ?? 0)),
     price_dates: getPriceDateList(record.price_dates),
+    products: normalizeProductImageSource(record.products),
   };
 }
 
@@ -366,6 +445,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 
   const today = new Date().toISOString().split('T')[0];
   const region = getRegionForCity(city);
+  const queryNames = getPublicDestinationQueryNames(city);
 
   const siblingQuery = region
     ? supabaseAdmin
@@ -379,19 +459,20 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   const metadataQuery = supabaseAdmin
     .from('destination_metadata')
     .select('tagline, hero_tagline, hero_image_url, photo_approved')
-    .eq('destination', city)
-    .maybeSingle();
+    .in('destination', queryNames)
+    .order('photo_approved', { ascending: false })
+    .limit(1);
 
   const climateQuery = supabaseAdmin
     .from('destination_climate')
     .select('destination, primary_city, country, timezone, utc_offset_minutes, monthly_normals, fitness_scores, seasonal_signals')
-    .eq('destination', city)
-    .maybeSingle();
+    .in('destination', queryNames)
+    .limit(1);
 
   const departureQuery = supabaseAdmin
     .from('travel_packages')
     .select('departure_airport')
-    .eq('destination', city)
+    .in('destination', queryNames)
     .in('status', ['approved', 'active'])
     .not('departure_airport', 'is', null);
 
@@ -406,24 +487,24 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     climateResult,
     { data: departurePkgs },
   ] = await Promise.all([
-    supabaseAdmin.from('active_destinations').select('*').eq('destination', city).limit(1),
+    supabaseAdmin.from('active_destinations').select('*').in('destination', queryNames),
     supabaseAdmin
       .from('attractions')
       .select('id, name, short_desc, photos, badge_type')
-      .eq('region', city)
+      .in('region', queryNames)
       .order('mention_count', { ascending: false })
       .limit(8),
     supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates')
-      .eq('destination', city)
+      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, products(display_name, internal_code, thumbnail_urls)')
+      .in('destination', queryNames)
       .in('status', ['approved', 'active'])
       .order('price', { ascending: true })
       .limit(12),
     supabaseAdmin
       .from('content_creatives')
       .select('id, slug, seo_title, og_image_url, content_type, angle_type, published_at')
-      .eq('destination', city)
+      .in('destination', queryNames)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .not('slug', 'is', null)
@@ -435,7 +516,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .eq('content_type', 'pillar')
-      .eq('pillar_for', city)
+      .in('pillar_for', queryNames)
       .limit(1),
     siblingQuery,
     metadataQuery,
@@ -452,16 +533,17 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       return pd.some((d) => d.date && d.date >= today);
     });
 
-  const stat = Array.isArray(stats) && stats.length > 0 ? stats[0] : null;
+  const mergedStats = mergePublicDestinationStats((stats as ActiveDestinationLike[] | null) ?? []);
+  const stat = mergedStats.find((row) => row.destination === city) ?? mergedStats[0] ?? null;
   if (!stat && alivePkgs.length === 0) return null;
 
   const packageCount = Math.max(
     0,
-    Math.trunc(getFiniteNumber((stat as Record<string, unknown> | null)?.package_count) ?? alivePkgs.length),
+    Math.trunc(stat?.package_count ?? alivePkgs.length),
   );
   const reviewCount = Math.max(
     0,
-    Math.trunc(getFiniteNumber((stat as Record<string, unknown> | null)?.total_reviews) ?? 0),
+    Math.trunc(stat?.total_reviews ?? 0),
   );
   const prices = alivePkgs
     .map((pkg) => pkg.price)
@@ -470,7 +552,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 
   let siblingCities: string[] = [];
   if (region && allDests) {
-    siblingCities = ((allDests as Array<{ destination: string }> | null) ?? [])
+    siblingCities = mergePublicDestinationStats((allDests as ActiveDestinationLike[] | null) ?? [])
       .filter(d => d.destination !== city)
       .filter(d => cityInRegion(d.destination, region.slug))
       .map(d => d.destination)
@@ -487,17 +569,17 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 
   // destination_metadata: 테이블 없으면 null로 처리
   const metadata: DestinationMeta | null =
-    metadataResult.error ? null : (metadataResult.data as DestinationMeta | null);
+    metadataResult.error ? null : ((metadataResult.data as DestinationMeta[] | null)?.[0] ?? null);
 
   const climateData: ClimateData | null =
-    climateResult.error ? null : (climateResult.data as unknown as ClimateData | null);
+    climateResult.error ? null : ((climateResult.data as unknown as ClimateData[] | null)?.[0] ?? null);
 
   return {
     destination: city,
     packageCount,
-    avgRating: getFiniteNumber((stat as Record<string, unknown> | null)?.avg_rating),
+    avgRating: stat?.avg_rating ?? null,
     reviewCount,
-    minPrice: getFiniteNumber((stat as Record<string, unknown> | null)?.min_price) ?? fallbackMinPrice,
+    minPrice: stat?.min_price ?? fallbackMinPrice,
     attractions: ((attractions as unknown[] | null) ?? [])
       .map(normalizeAttractionRow)
       .filter((row): row is PillarData['attractions'][number] => row !== null),
@@ -616,13 +698,21 @@ export default async function DestinationPillarPage({ params }: { params: Promis
     (data.attractions ?? [])
       .map(a => pickAttractionPhotoUrl(a.photos))
       .find(Boolean) ?? null;
-  const heroImage = fromMeta || fromAttr;
+  const fromPackage =
+    (data.packages ?? [])
+      .flatMap((p) => p.products?.thumbnail_urls ?? [])
+      .find((url) => isSafeImageSrc(url)) ?? null;
+  const fromPost =
+    (data.relatedPosts ?? [])
+      .map((post) => post.og_image_url)
+      .find((url): url is string => isSafeImageSrc(url)) ?? null;
+  const heroImage = fromMeta || fromAttr || fromPackage || fromPost;
 
   const pillarHtml = data.pillarPost?.blog_html ? await renderPillarBody(data.pillarPost.blog_html) : null;
   const region = getRegionForCity(decoded);
 
   // 히어로 타이틀/설명 (destination_metadata 우선)
-  const heroTitle = data.metadata?.tagline || `가보면 이해하는 곳, ${decoded}`;
+  const heroTitle = data.metadata?.tagline || `${decoded} 여행 가이드`;
   const heroDesc =
     data.metadata?.hero_tagline ||
     (pillarHtml && data.pillarPost?.seo_description
@@ -634,6 +724,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
   const destinationReviewCount = getPositiveNumber(data.reviewCount);
 
   const showDepartureTabs = data.departureCities.length >= 2;
+  const climateCardData = data.climateData ?? buildFallbackClimateData(decoded);
 
   // 출발월 분포 (climate 카드용)
   const departureDist: Record<number, number> = {};
@@ -864,18 +955,16 @@ export default async function DestinationPillarPage({ params }: { params: Promis
 
         <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16 space-y-16 md:space-y-20">
           {/* ── 1. 기후 적합도 (실데이터) ──────────────────────────────────── */}
-          {data.climateData && (
-            <TravelFitnessCard
-              destination={data.climateData.destination}
-              primaryCity={data.climateData.primary_city}
-              country={data.climateData.country}
-              monthlyNormals={data.climateData.monthly_normals as unknown as import('@/lib/travel-fitness-score').MonthlyNormal[]}
-              fitnessScores={data.climateData.fitness_scores as unknown as import('@/lib/travel-fitness-score').FitnessScore[]}
-              seasonalSignals={data.climateData.seasonal_signals as unknown as import('@/lib/seasonal-signals').SeasonalSignal[]}
-              representativeMonth={new Date().getMonth() + 1}
-              departureDistribution={Object.keys(departureDist).length > 0 ? departureDist : undefined}
-            />
-          )}
+          <TravelFitnessCard
+            destination={climateCardData.destination}
+            primaryCity={climateCardData.primary_city}
+            country={climateCardData.country}
+            monthlyNormals={climateCardData.monthly_normals as MonthlyNormal[]}
+            fitnessScores={climateCardData.fitness_scores as FitnessScore[]}
+            seasonalSignals={climateCardData.seasonal_signals as SeasonalSignal[]}
+            representativeMonth={new Date().getMonth() + 1}
+            departureDistribution={Object.keys(departureDist).length > 0 ? departureDist : undefined}
+          />
 
           {/* ── 2. Pillar 본문 ────────────────────────────────────────────── */}
           {pillarHtml && (
@@ -916,7 +1005,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                           <span className="text-5xl font-bold text-brand/40 drop-shadow-sm select-none">
                             {a.name.charAt(0)}
                           </span>
-                          <span className="text-[11px] text-brand/40 font-medium">사진 준비중</span>
+                          <span className="text-[11px] text-brand/40 font-medium">여행 포인트</span>
                         </div>
                       )}
                       <div className="p-4">
@@ -935,6 +1024,48 @@ export default async function DestinationPillarPage({ params }: { params: Promis
           )}
 
           {/* ── 4. 엄선 패키지 (출발지 필터 탭 포함) ─────────────────────── */}
+          {data.attractions.length === 0 && (
+            <section>
+              <SectionHeader
+                title={`${decoded}에서 꼭 봐야 할 필수 코스`}
+                subtitle="상품 일정과 상담 기록을 기준으로 동선을 확인해드려요"
+              />
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                  <div className="aspect-[16/9] overflow-hidden bg-slate-100">
+                    {heroImage ? (
+                      <SafeCoverImg
+                        src={heroImage}
+                        alt={`${decoded} 여행 코스`}
+                        className="h-full w-full object-cover"
+                        fallback={<div className="h-full w-full bg-gradient-to-br from-brand/20 to-slate-100" aria-hidden />}
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-br from-brand/20 to-slate-100" aria-hidden />
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="text-base font-bold text-slate-950">대표 코스 상담</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                      일정과 동행 형태에 맞춰 핵심 코스를 먼저 골라드립니다.
+                    </p>
+                  </div>
+                </div>
+                {['이동 동선 체크', '예산별 일정 추천'].map((title) => (
+                  <div key={title} className="rounded-2xl border border-slate-100 bg-slate-50 p-5 shadow-sm">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-black text-brand shadow-sm">
+                      {title.charAt(0)}
+                    </div>
+                    <h3 className="mt-4 text-base font-bold text-slate-950">{title}</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                      출발일, 예산, 숙소 선호도에 맞춰 무리 없는 여행 흐름을 맞춥니다.
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {data.packages.length > 0 && (
             <DestinationPackagesSection
               destination={decoded}

@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { config as loadEnv } from 'dotenv';
@@ -14,6 +14,7 @@ import {
   CUSTOMER_VISIBLE_STATUSES,
   isCustomerVisibleStatus,
 } from '../src/lib/visibility-status';
+import { buildCustomerPackageDisplayCopy } from '../src/lib/customer-package-display-copy';
 
 loadEnv({ path: '.env.local' });
 loadEnv({ path: '.env' });
@@ -71,6 +72,10 @@ type SurfaceResult = {
   error?: string;
   transient_error?: boolean;
   attempts?: number;
+  customer_title?: string;
+  customer_summary_lead?: string;
+  customer_copy_source?: string;
+  customer_copy_issues?: string[];
 };
 
 const args = process.argv.slice(2);
@@ -126,6 +131,29 @@ function compactIssues(issues: CustomerVisibleTextIssue[]): CustomerVisibleTextI
   return issues.slice(0, 50);
 }
 
+function customerCopySnapshot(pkg: PackageRow) {
+  const copy = buildCustomerPackageDisplayCopy({
+    title: typeof pkg.title === 'string' ? pkg.title : null,
+    display_title: typeof pkg.display_title === 'string' ? pkg.display_title : null,
+    hero_tagline: typeof pkg.hero_tagline === 'string' ? pkg.hero_tagline : null,
+    product_summary: typeof pkg.product_summary === 'string' ? pkg.product_summary : null,
+    destination: typeof pkg.destination === 'string' ? pkg.destination : null,
+    duration: typeof pkg.duration === 'number' ? pkg.duration : null,
+    nights: typeof pkg.nights === 'number' ? pkg.nights : null,
+    trip_style: typeof pkg.trip_style === 'string' ? pkg.trip_style : null,
+    product_type: typeof pkg.product_type === 'string' ? pkg.product_type : null,
+    airline: typeof pkg.airline === 'string' ? pkg.airline : null,
+    product_highlights: Array.isArray(pkg.product_highlights) ? pkg.product_highlights.filter((item): item is string => typeof item === 'string') : null,
+    inclusions: Array.isArray(pkg.inclusions) ? pkg.inclusions.filter((item): item is string => typeof item === 'string') : null,
+  });
+  return {
+    customer_title: copy.cardTitle,
+    customer_summary_lead: copy.summaryLead,
+    customer_copy_source: copy.source,
+    customer_copy_issues: copy.issues,
+  };
+}
+
 async function loadPackages(ids: string[], limit: number, scope: AuditScope): Promise<PackageRow[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -178,6 +206,7 @@ async function scrapeSurface(context: BrowserContext, input: ScrapeInput): Promi
       internal_code: input.pkg.internal_code,
       title: input.pkg.title,
       status: input.pkg.status,
+      ...customerCopySnapshot(input.pkg),
       surface: input.surface,
       url,
       mode: 'actual-screen',
@@ -193,6 +222,7 @@ async function scrapeSurface(context: BrowserContext, input: ScrapeInput): Promi
       internal_code: input.pkg.internal_code,
       title: input.pkg.title,
       status: input.pkg.status,
+      ...customerCopySnapshot(input.pkg),
       surface: input.surface,
       url,
       mode: 'actual-screen',
@@ -230,6 +260,7 @@ function auditDbFields(pkg: PackageRow): SurfaceResult {
     internal_code: pkg.internal_code,
     title: pkg.title,
     status: pkg.status,
+    ...customerCopySnapshot(pkg),
     surface: 'db',
     url: null,
     mode: 'db-fields',
@@ -360,6 +391,9 @@ async function main() {
       .slice(0, 80)
       .flatMap(result => [
         `## ${result.internal_code || result.id} (${result.surface})`,
+        `- Customer title: ${result.customer_title ?? ''}`,
+        `- Copy source: ${result.customer_copy_source ?? ''}`,
+        ...(result.customer_copy_issues?.length ? [`- Copy issues: ${result.customer_copy_issues.join(', ')}`] : []),
         `- Mode: ${result.mode}`,
         `- URL: ${result.url ?? 'DB fields'}`,
         ...(result.text_path ? [`- Text: ${result.text_path}`] : []),
