@@ -159,6 +159,32 @@ function count(text, pattern) {
   return (text.match(pattern) || []).length;
 }
 
+function countDuplicateHeadings(root, $) {
+  const seen = new Set();
+  let duplicates = 0;
+  root.find('h2, h3').each((_index, element) => {
+    const text = $(element).text().replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!text) return;
+    if (seen.has(text)) duplicates += 1;
+    seen.add(text);
+  });
+  return duplicates;
+}
+
+function countTablesWithRuleSeparators(root, $) {
+  let broken = 0;
+  root.find('table').each((_index, table) => {
+    let hrCount = 0;
+    let prev = $(table).prev();
+    while (prev.length && String(prev.prop('tagName') || '').toLowerCase() === 'hr') {
+      hrCount += 1;
+      prev = prev.prev();
+    }
+    if (hrCount >= 2) broken += 1;
+  });
+  return broken;
+}
+
 function inspectArticle(html, path) {
   const $ = cheerio.load(html);
   $('script, style, template, noscript').remove();
@@ -177,8 +203,15 @@ function inspectArticle(html, path) {
     markdownHeadings: count(text, /(^|\n)#{1,6}\s/gm),
     markdownLinks: count(text, /\[[^\]]+]\((?:https?:\/\/|\/)/g),
     markdownTables: count(text, /\|---|---\|/g),
-    markdownBold: count(text, /\*\*[^*]+?\*\*/g),
+    markdownTableRows: root
+      .find('p')
+      .toArray()
+      .filter((element) => /^\s*\|[^|\n]+\|[^<\n]*\|\s*$/.test($(element).text()))
+      .length,
+    markdownTableSeparatorsAsRules: countTablesWithRuleSeparators(root, $),
+    markdownBold: count(text, /\*\*[^*]+?\*\*/g) + count(text, /(?:^|\s)\*\*(?:\s|$)/g),
     legacyHighlights: count(text, /==[^=\n]{1,180}==|<mark\b/gi),
+    duplicateHeadings: countDuplicateHeadings(root, $),
   };
   const artifactTotal = Object.values(artifacts).reduce((sum, value) => sum + value, 0);
   const imgCount = root.find('img').length;
@@ -251,8 +284,33 @@ async function inspectArticleInBrowser(browser, path) {
         markdownHeadings: count(text, /(^|\n)#{1,6}\s/gm),
         markdownLinks: count(text, /\[[^\]]+]\((?:https?:\/\/|\/)/g),
         markdownTables: count(text, /\|---|---\|/g),
-        markdownBold: count(text, /\*\*[^*]+?\*\*/g),
+        markdownTableRows: [...root.querySelectorAll('p')]
+          .filter((element) => /^\s*\|[^|\n]+\|[^<\n]*\|\s*$/.test(element.textContent || ''))
+          .length,
+        markdownTableSeparatorsAsRules: [...root.querySelectorAll('table')]
+          .filter((table) => {
+            let hrCount = 0;
+            let prev = table.previousElementSibling;
+            while (prev && prev.tagName.toLowerCase() === 'hr') {
+              hrCount += 1;
+              prev = prev.previousElementSibling;
+            }
+            return hrCount >= 2;
+          })
+          .length,
+        markdownBold: count(text, /\*\*[^*]+?\*\*/g) + count(text, /(?:^|\s)\*\*(?:\s|$)/g),
         legacyHighlights: count(text, /==[^=\n]{1,180}==|<mark\b/gi),
+        duplicateHeadings: (() => {
+          const seen = new Set();
+          let duplicates = 0;
+          for (const element of root.querySelectorAll('h2, h3')) {
+            const heading = (element.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!heading) continue;
+            if (seen.has(heading)) duplicates += 1;
+            seen.add(heading);
+          }
+          return duplicates;
+        })(),
       };
       const artifactTotal = Object.values(artifacts).reduce((sum, value) => sum + value, 0);
       const imgCount = root.querySelectorAll('img').length;

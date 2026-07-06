@@ -58,7 +58,7 @@ const GENERIC_SLUG_PREFIXES = new Set([
 ]);
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'engine_v2' | 'editorial_quality' | 'image_quality' | 'accent_density';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'engine_v2' | 'editorial_quality' | 'image_quality' | 'accent_density' | 'article_quality_v2';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -370,6 +370,86 @@ export function checkMarkdownTableIntegrity(blog_html: string): GateResult {
     passed: issues.length === 0,
     reason: issues.length > 0 ? `markdown table integrity failed: ${issues.map((issue) => issue.reason).join(', ')}` : undefined,
     evidence: { issues: issues.slice(0, 10) },
+  };
+}
+
+function extractMarkdownHeadings(markdown: string): string[] {
+  return markdown
+    .split(/\r?\n/)
+    .map((line) => line.trim().match(/^#{2,3}\s+(.+)$/)?.[1]?.replace(/\s+/g, ' ').trim())
+    .filter((value): value is string => Boolean(value));
+}
+
+function hasRecentInternalEvidence(meta: Record<string, unknown> | null | undefined): boolean {
+  const serialized = JSON.stringify(meta || {});
+  return /internal_(?:insight|data|evidence)|reservation_stats|booking_stats/i.test(serialized);
+}
+
+function staleConfirmationDateIssue(markdown: string, now = new Date()): string | null {
+  const match = markdown.match(/(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일\s*확인\s*기준/);
+  if (!match) return null;
+
+  const checkedAt = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(checkedAt.getTime())) return null;
+  const ageDays = Math.floor((now.getTime() - checkedAt.getTime()) / 86_400_000);
+  return ageDays > 90 ? `stale_confirmation_date:${match[0]}` : null;
+}
+
+export function checkArticleQualityV2(input: CheckInput): GateResult {
+  const markdown = input.blog_html || '';
+  const plain = stripMarkup(markdown).replace(/\s+/g, ' ').trim();
+  const blogType = input.blog_type ?? (input.product_id ? 'product' : 'info');
+  const issues: string[] = [];
+
+  const headings = extractMarkdownHeadings(markdown);
+  const seen = new Set<string>();
+  for (const heading of headings) {
+    const key = heading.toLowerCase();
+    if (seen.has(key)) {
+      issues.push(`duplicate_heading:${heading}`);
+      break;
+    }
+    seen.add(key);
+  }
+
+  if (/(^|\n)\s*>?\s*\*\*\s*(?=\n|$)/.test(markdown)) issues.push('standalone_markdown_bold');
+  if (/==[^=\n]{1,180}==/.test(markdown)) issues.push('legacy_highlight_markup');
+  if (/(날씨은|비용은은|일정은은|여행을 즐길 수 있는하기)/.test(plain)) issues.push('broken_korean_surface');
+  if (/여소남\s*내부\s*(?:상품|예약|데이터)/.test(plain) && !hasRecentInternalEvidence(input.generation_meta)) {
+    issues.push('unsupported_internal_data_claim');
+  }
+  const staleDate = staleConfirmationDateIssue(markdown);
+  if (staleDate) issues.push(staleDate);
+
+  if (blogType === 'info') {
+    const upper = plain.slice(0, Math.max(240, Math.floor(plain.length * 0.3)));
+    if (/(카톡|무료\s*상담|관련\s*패키지|상품\s*보기|예약하세요|문의하세요)/.test(upper)) {
+      issues.push('info_top_sales_cta');
+    }
+    const first = plain.slice(0, 220);
+    if (/(비용|가격|예약|결제|상담)/.test(first) && /(날씨|옷차림|준비물|체크리스트)/.test(input.primary_keyword || plain.slice(0, 120))) {
+      issues.push('info_intro_intent_mismatch');
+    }
+  } else {
+    const requiredProductSignals = [
+      /포함/,
+      /불포함|미포함|별도/,
+      /맞는\s*사람|추천\s*대상|fit_for/i,
+      /안\s*맞는\s*사람|비추천|not_fit_for/i,
+      /주의|변동|확인\s*변수|risk/i,
+    ];
+    const missing = requiredProductSignals.filter((pattern) => !pattern.test(plain)).length;
+    if (missing >= 3) issues.push('product_decision_structure_missing');
+  }
+
+  return {
+    gate: 'article_quality_v2',
+    passed: issues.length === 0,
+    reason: issues.length > 0 ? `article quality v2 failed: ${issues.join(', ')}` : undefined,
+    evidence: {
+      blogType,
+      issues: issues.slice(0, 10),
+    },
   };
 }
 
@@ -927,6 +1007,7 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단
   gates.push(await checkStructureIntegrity(input));
   gates.push(checkMarkdownTableIntegrity(input.blog_html));
+  gates.push(checkArticleQualityV2(input));
   gates.push(await checkAccentDensity(input.blog_html));
   gates.push(checkTopicFit(input));
   // 글 의도 계약 검증 — 정보/상품/날씨/준비물/일정별 필수 블록과 읽기 디자인 차단
