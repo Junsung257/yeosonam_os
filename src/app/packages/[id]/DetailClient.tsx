@@ -736,7 +736,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       if (scrollSettle) clearTimeout(scrollSettle);
       clearDwell();
     };
-  }, [pkg, isLoading, packageId]);
+  }, [pkg, isLoading, packageId, proactiveDisplayCopy?.cardTitle]);
 
   // Day 스크롤 추적: 스크롤하면 현재 보이는 day에 맞춰 탭 자동 활성화
   useEffect(() => {
