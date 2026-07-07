@@ -25,6 +25,8 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -155,7 +157,7 @@ const DETAIL_FIELDS = `
   price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
   product_highlights, customer_notes, notices_parsed, itinerary_data,
   display_title, hero_tagline, product_summary, is_airtel,
-  land_operator_id, audit_status, status,
+  land_operator_id, audit_status, status, publication_state, package_revision,
   catalog_id,
   products(internal_code, display_name, departure_region)
 `;
@@ -195,22 +197,29 @@ export async function generateMetadata({
     product_summary?: string | null;
     status?: string | null;
     audit_status?: string | null;
+    publication_state?: string | null;
   } | null = null;
   try {
-    let result = await runSupabaseQueryWithTimeout(
-      sb
-        .from('travel_packages')
-        .select('title, destination, price, product_type, product_summary, status, audit_status')
-        .eq('id', id)
-        .maybeSingle(),
-      { label: 'package.metadata.primary', timeoutMs: 1800 },
-    ).catch(() => ({ data: null, error: null }));
+    const allowInternalProof = await isInternalRenderProofRequest();
+    const publicSnapshot = allowInternalProof
+      ? null
+      : await fetchLatestPublicPackageSnapshot(sb, id).catch(() => null);
+    let result = publicSnapshot
+      ? { data: publicSnapshot.package, error: null }
+      : await runSupabaseQueryWithTimeout(
+          sb
+            .from('travel_packages')
+            .select('title, destination, price, product_type, product_summary, status, audit_status, publication_state')
+            .eq('id', id)
+            .maybeSingle(),
+          { label: 'package.metadata.primary', timeoutMs: 1800 },
+        ).catch(() => ({ data: null, error: null }));
     if (!result.data) {
       await waitForPackageDetailRetry(300);
       result = await runSupabaseQueryWithTimeout(
-        sb
-          .from('travel_packages')
-          .select('title, destination, price, product_type, product_summary, status, audit_status')
+          sb
+            .from('travel_packages')
+          .select('title, destination, price, product_type, product_summary, status, audit_status, publication_state')
           .eq('id', id)
           .maybeSingle(),
         { label: 'package.metadata.primary.retry1', timeoutMs: 3500 },
@@ -219,9 +228,9 @@ export async function generateMetadata({
     if (!result.data) {
       await waitForPackageDetailRetry(700);
       result = await runSupabaseQueryWithTimeout(
-        sb
-          .from('travel_packages')
-          .select('title, destination, price, product_type, product_summary, status, audit_status')
+          sb
+            .from('travel_packages')
+          .select('title, destination, price, product_type, product_summary, status, audit_status, publication_state')
           .eq('id', id)
           .maybeSingle(),
         { label: 'package.metadata.primary.retry2', timeoutMs: 6000 },
@@ -240,6 +249,10 @@ export async function generateMetadata({
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
   const allowInternalProof = await isInternalRenderProofRequest();
+  const publicationState = (data as { publication_state?: string | null }).publication_state;
+  if (!allowInternalProof && publicationState && !isPublicPublicationState(publicationState)) {
+    notFound();
+  }
   if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) {
     notFound();
   }
@@ -303,18 +316,23 @@ export default async function PackageDetailPage({
   const sb = sbOrNull;
   const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
   const allowInternalProof = await isInternalRenderProofRequest();
+  const publicSnapshot = allowInternalProof
+    ? null
+    : await fetchLatestPublicPackageSnapshot(sb, id).catch(() => null);
 
   // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
   // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
-  let pkgResult = await runSupabaseQueryWithTimeout(
-    sb.from('travel_packages')
-      .select(DETAIL_FIELDS)
-      .eq('id', id)
-      .maybeSingle(),
-    { label: 'package.detail.primary', timeoutMs: 6000 },
-  ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
+  let pkgResult = publicSnapshot
+    ? { data: publicSnapshot.package, error: null }
+    : await runSupabaseQueryWithTimeout(
+        sb.from('travel_packages')
+          .select(DETAIL_FIELDS)
+          .eq('id', id)
+          .maybeSingle(),
+        { label: 'package.detail.primary', timeoutMs: 6000 },
+      ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
 
-  if (!pkgResult.data) {
+  if (!pkgResult.data && !publicSnapshot) {
     await waitForPackageDetailRetry(500);
     pkgResult = await runSupabaseQueryWithTimeout(
       sb.from('travel_packages')
@@ -325,7 +343,7 @@ export default async function PackageDetailPage({
     ).catch(() => ({ data: null, error: new Error('package detail retry1 timed out') }));
   }
 
-  if (!pkgResult.data) {
+  if (!pkgResult.data && !publicSnapshot) {
     await waitForPackageDetailRetry(1_000);
     pkgResult = await runSupabaseQueryWithTimeout(
       sb.from('travel_packages')
@@ -348,6 +366,14 @@ export default async function PackageDetailPage({
   }
 
   if (!pkg) {
+    notFound();
+  }
+
+  const publicationState = (pkg as { publication_state?: string | null }).publication_state;
+  if (!allowInternalProof && publicationState && !isPublicPublicationState(publicationState)) {
+    notFound();
+  }
+  if (!allowInternalProof && publicationState && isPublicPublicationState(publicationState) && !publicSnapshot) {
     notFound();
   }
 
@@ -462,10 +488,12 @@ export default async function PackageDetailPage({
   const parserVersion = String((pkg as { parser_version?: string } | null)?.parser_version ?? '');
   const writeTimeProcessed = parserVersion.includes(POSTPROCESS_VERSION);
   const pkgBase = pkg
-    ? {
-        ...pkg,
-        products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
-      }
+    ? ({
+        ...(pkg as Record<string, unknown>),
+        products: Array.isArray((pkg as { products?: unknown }).products)
+          ? (pkg as { products?: unknown[] }).products?.[0] ?? null
+          : (pkg as { products?: unknown }).products,
+      } as Record<string, any>)
     : null;
   let productPriceRows: Array<{ target_date: string | null; adult_selling_price: number | null; note: string | null }> = [];
   const priceProductCode = pkgBase?.products?.internal_code ?? (pkgBase as { internal_code?: string | null } | null)?.internal_code ?? null;
@@ -483,9 +511,9 @@ export default async function PackageDetailPage({
     );
     productPriceRows = (priceRows ?? []) as typeof productPriceRows;
   }
-  const normalizedPkg = pkgBase
+  const normalizedPkg: Record<string, any> | null = pkgBase
     ? (() => {
-        const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow(pkgBase);
+        const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow(pkgBase as Parameters<typeof postProcessPackageRow>[0]);
         return { ...processed, product_prices: productPriceRows };
       })()
     : null;
@@ -774,20 +802,38 @@ export default async function PackageDetailPage({
     const { data: siblings } = await runOptionalSupabaseQuery(
       sb
         .from('travel_packages')
-        .select('id, title, display_title, destination, product_highlights, status, audit_status')
+        .select('id, title, display_title, destination, product_highlights, status, audit_status, publication_state')
         .eq('catalog_id', currentCatalogId)
         .neq('id', id)
         .order('created_at', { ascending: true }),
       { data: [] },
       { label: 'package.catalog.siblings', timeoutMs: 1200 },
     );
-    catalogSiblings = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; audit_status?: string }>)
-      .filter(s => s.audit_status !== 'blocked' && isCustomerVisibleStatus(s.status))
+    const siblingRows = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; audit_status?: string; publication_state?: string | null }>)
+      .filter(s => s.audit_status !== 'blocked' && isCustomerVisibleStatus(s.status) && isPublicPublicationState(s.publication_state));
+    const siblingSnapshots = siblingRows.length > 0
+      ? await runOptionalSupabaseQuery(
+          sb
+            .from('public_package_snapshots')
+            .select('package_id, card_projection, status, created_at')
+            .in('package_id', siblingRows.map(row => row.id))
+            .in('status', ['approved', 'published'])
+            .order('created_at', { ascending: false }),
+          { data: [] },
+          { label: 'package.catalog.sibling-snapshots', timeoutMs: 1200 },
+        )
+      : { data: [] };
+    const siblingSnapshotByPackage = new Map<string, { card_projection?: Record<string, unknown> | null }>();
+    for (const row of ((siblingSnapshots.data ?? []) as Array<{ package_id: string; card_projection?: Record<string, unknown> | null }>)) {
+      if (!siblingSnapshotByPackage.has(row.package_id)) siblingSnapshotByPackage.set(row.package_id, row);
+    }
+    catalogSiblings = siblingRows
+      .filter(s => siblingSnapshotByPackage.has(s.id))
       .map(({ id: sid, title, display_title, destination, product_highlights }) => ({
         id: sid,
-        title: decodeCustomerHtmlEntities(title),
-        display_title: display_title ? decodeCustomerHtmlEntities(display_title) : null,
-        destination: destination ? decodeCustomerHtmlEntities(destination) : null,
+        title: decodeCustomerHtmlEntities(String(siblingSnapshotByPackage.get(sid)?.card_projection?.title ?? title)),
+        display_title: decodeCustomerHtmlEntities(String(siblingSnapshotByPackage.get(sid)?.card_projection?.title ?? display_title ?? title)),
+        destination: decodeCustomerHtmlEntities(String(siblingSnapshotByPackage.get(sid)?.card_projection?.destination ?? destination ?? '')),
         product_highlights: product_highlights?.map(item => decodeCustomerHtmlEntities(item)) ?? null,
       }));
   }

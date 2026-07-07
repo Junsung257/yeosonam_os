@@ -78,6 +78,8 @@ upload route
 
 New supplier uploads are not "auto published." They become automatic customer-open candidates only after the same repeatable gate passes: registration schema, customer copy V2 safe repair, source-backed price/date/flight/hotel/entity checks, `/packages/{id}` proof, `/lp/{id}` proof, and `customer_open_contract`.
 
+Customer exposure is decided by publication state and public snapshots, not by `status` or `audit_status` alone. `status` remains the sales/operations state, while `publication_state` is the customer-public state. Customer routes must prefer `public_package_snapshots` and must fail closed when a row has `publication_state in ('approved','published')` but no approved/published snapshot exists. The publish gate writes `package_publish_decisions`; hidden DB pollution, stale proof, broken attraction IDs, risky CTA copy, and unsupported title claims remain blockers even when the renderer can hide the affected section.
+
 The operational gate is scripted so release readiness does not depend on memory or one-off audits:
 
 ```bash

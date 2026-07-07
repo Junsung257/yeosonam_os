@@ -21,6 +21,7 @@ const PACKAGE_FIELDS = `
   id, title, destination, country, category, product_type, trip_style,
   departure_days, departure_airport, airline, min_participants, ticketing_deadline,
   price, price_tiers, price_list, price_dates, status, created_at,
+  publication_state, package_revision,
   product_tags, product_highlights, product_summary,
   internal_code, is_airtel, display_title, hero_tagline, duration, nights,
   avg_rating, review_count,
@@ -69,6 +70,7 @@ export async function GET(request: NextRequest) {
       .from('travel_packages')
       .select(PACKAGE_FIELDS)
       .in('status', ['active', 'approved'])
+      .in('publication_state', ['approved', 'published'])
       .or('audit_status.is.null,audit_status.neq.blocked')
       .order('created_at', { ascending: false })
       .limit(fetchLimit);
@@ -112,6 +114,37 @@ export async function GET(request: NextRequest) {
     }
 
     aliveRaw = aliveRaw.slice(0, 50);
+
+    if (aliveRaw.length > 0) {
+      const ids = aliveRaw.map((p: any) => p.id).filter(Boolean);
+      const { data: snapshotRows, error: snapshotErr } = await sb
+        .from('public_package_snapshots')
+        .select('package_id, snapshot_json, card_projection, status, created_at')
+        .in('package_id', ids)
+        .in('status', ['approved', 'published'])
+        .order('created_at', { ascending: false });
+      if (snapshotErr) throw snapshotErr;
+      const snapshotByPackage = new Map<string, any>();
+      for (const row of snapshotRows ?? []) {
+        if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
+      }
+      aliveRaw = aliveRaw
+        .filter((p: any) => snapshotByPackage.has(p.id))
+        .map((p: any) => {
+          const snapshot = snapshotByPackage.get(p.id);
+          const packagePayload = snapshot?.snapshot_json?.package ?? {};
+          return {
+            ...p,
+            ...packagePayload,
+            ...(snapshot?.card_projection ?? {}),
+            id: p.id,
+            _public_snapshot: {
+              status: snapshot?.status,
+              created_at: snapshot?.created_at,
+            },
+          };
+        });
+    }
 
     const packages = aliveRaw.map((pkg: any) => ({
       ...pkg,

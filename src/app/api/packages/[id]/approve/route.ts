@@ -31,6 +31,7 @@ import {
   loadLatestV3DraftForPackage,
 } from '@/lib/product-registration-v3/customer-payload';
 import { calculateProductRegistrationTrustScore } from '@/lib/product-registration-trust-score';
+import { createPublicPackageSnapshotAndDecision } from '@/lib/package-publication/repository';
 
 interface ApproveBody {
   action: 'approve' | 'reject';
@@ -144,6 +145,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         .update({
           ...sourceRepairUpdates,
           audit_status: 'blocked',
+          publication_state: 'blocked',
           audit_report: {
             ...sourceAuditReport,
             mobile_browser_proof_required: {
@@ -176,6 +178,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         .from('travel_packages')
         .update({
           audit_status: 'blocked',
+          publication_state: 'blocked',
           audit_report: sourceAuditReport,
           audit_checked_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -306,6 +309,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       );
     }
     const publishGate = delivery.publishGate;
+    const nextPackageRevision = Number((pkg as { package_revision?: unknown }).package_revision ?? 1) + 1;
     const mobileProof = evaluateCustomerMobileProof({
       auditReport: (pkg as { audit_report?: unknown }).audit_report ?? sourceAuditReport,
       packageUpdatedAt: (pkg as { updated_at?: string | null }).updated_at ?? null,
@@ -315,6 +319,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         .from('travel_packages')
         .update({
           audit_status: 'blocked',
+          publication_state: 'blocked',
           audit_report: {
             ...sourceAuditReport,
             mobile_browser_proof: mobileProof.proof,
@@ -372,6 +377,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         .from('travel_packages')
         .update({
           audit_status: 'blocked',
+          publication_state: 'blocked',
           audit_report: qualityAuditReport,
           audit_checked_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -435,6 +441,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       .from('travel_packages')
       .update({
         status:           'active',
+        package_revision: nextPackageRevision,
         title:            title?.trim() || pkg.title,
         product_summary:  summary?.trim() ?? null,
         ...(v3NoticeGate.payload ? {
@@ -463,6 +470,45 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       return NextResponse.json(
         { error: `travel_packages ?낅뜲?댄듃 ?ㅽ뙣: ${pkgError.message}` },
         { status: 500 },
+      );
+    }
+
+    const snapshotPkg = {
+      ...(verifiedPkgForDelivery as Record<string, unknown>),
+      id,
+      package_revision: nextPackageRevision,
+      status: 'active',
+      title: title?.trim() || pkg.title,
+      product_summary: summary?.trim() ?? null,
+      ...(v3NoticeGate.payload ? {
+        notices_parsed: v3NoticeGate.payload.notices_parsed,
+        customer_notes: v3NoticeGate.payload.customer_notes,
+      } : {}),
+      audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
+      audit_report: {
+        ...sourceAuditReport,
+        mobile_browser_proof: mobileProof.proof,
+        approved_from_mobile_browser_proof_at: mobileProof.proof?.checked_at ?? null,
+        quality_scorecard: qualityScorecard,
+        customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      },
+    };
+    const publicSnapshot = await createPublicPackageSnapshotAndDecision(supabaseAdmin, snapshotPkg, {
+      legacyPublishGate: publishGate,
+      mobileProof,
+      customerOpenContractOk: customerOpenContract.ok,
+      customerOpenContractBlockers: customerOpenContract.blockers,
+    });
+    if (!publicSnapshot.publishable) {
+      return NextResponse.json(
+        {
+          error: 'Customer publishing is blocked by the final public snapshot gate.',
+          code: 'PUBLIC_SNAPSHOT_GATE_BLOCKED',
+          publication_state: publicSnapshot.publicationState,
+          public_snapshot_hash: publicSnapshot.snapshotHash,
+          blockers: publicSnapshot.blockers,
+        },
+        { status: 409 },
       );
     }
 
@@ -669,6 +715,8 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({
       ok: true,
       status: 'active',
+      publication_state: publicSnapshot.publicationState,
+      public_snapshot_hash: publicSnapshot.snapshotHash,
       internal_code: pkg.internal_code,
       score: scoreInfo,
       rag: ragInfo,
@@ -688,6 +736,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
     .from('travel_packages')
     .update({
       status:     'draft',
+      publication_state: 'blocked',
       updated_at: new Date().toISOString(),
     })
     .eq('id', id);

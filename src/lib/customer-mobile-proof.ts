@@ -2,6 +2,9 @@ export type CustomerMobileProof = {
   status?: string | null;
   checked_at?: string | null;
   package_updated_at?: string | null;
+  package_revision?: string | number | null;
+  public_snapshot_hash?: string | null;
+  app_build_id?: string | null;
   source?: string | null;
   screen_hash?: string | null;
   customer_visible_hash?: string | null;
@@ -11,6 +14,7 @@ export type CustomerMobileProof = {
     status?: string | null;
     screen_hash?: string | null;
     customer_visible_hash?: string | null;
+    public_snapshot_hash?: string | null;
   }> | null;
 };
 
@@ -47,6 +51,7 @@ function extractSurfaceResults(value: unknown): NonNullable<CustomerMobileProof[
       status: asString(record.status),
       screen_hash: asString(record.screen_hash),
       customer_visible_hash: asString(record.customer_visible_hash),
+      public_snapshot_hash: asString(record.public_snapshot_hash),
     });
   }
   return results;
@@ -91,6 +96,9 @@ export function extractCustomerMobileProof(auditReport: unknown): CustomerMobile
     status: asString(rawProof.status),
     checked_at: asString(rawProof.checked_at),
     package_updated_at: asString(rawProof.package_updated_at),
+    package_revision: asString(rawProof.package_revision) ?? (typeof rawProof.package_revision === 'number' ? rawProof.package_revision : null),
+    public_snapshot_hash: asString(rawProof.public_snapshot_hash),
+    app_build_id: asString(rawProof.app_build_id),
     source: asString(rawProof.source),
     screen_hash: asString(rawProof.screen_hash),
     customer_visible_hash: asString(rawProof.customer_visible_hash),
@@ -102,6 +110,9 @@ export function extractCustomerMobileProof(auditReport: unknown): CustomerMobile
 export function evaluateCustomerMobileProof(input: {
   auditReport: unknown;
   packageUpdatedAt?: string | null;
+  packageRevision?: string | number | null;
+  publicSnapshotHash?: string | null;
+  appBuildId?: string | null;
 }): CustomerMobileProofResult {
   const proof = extractCustomerMobileProof(input.auditReport);
   if (!proof) {
@@ -205,6 +216,41 @@ export function evaluateCustomerMobileProof(input: {
     return {
       ok: false,
       reason: 'actual /packages mobile browser proof is stale for the current saved package row',
+      proof,
+    };
+  }
+  const expectedRevision = input.packageRevision == null ? null : String(input.packageRevision);
+  if (expectedRevision && proof.package_revision != null && String(proof.package_revision) !== expectedRevision) {
+    return {
+      ok: false,
+      reason: 'actual customer mobile browser proof is stale for the current package revision',
+      proof,
+    };
+  }
+  const expectedSnapshotHash = input.publicSnapshotHash?.trim();
+  if (expectedSnapshotHash && proof.public_snapshot_hash && proof.public_snapshot_hash !== expectedSnapshotHash) {
+    return {
+      ok: false,
+      reason: 'actual customer mobile browser proof public snapshot hash does not match',
+      proof,
+    };
+  }
+  if (expectedSnapshotHash) {
+    for (const surfaceResult of proof.surface_results ?? []) {
+      if (surfaceResult.public_snapshot_hash && surfaceResult.public_snapshot_hash !== expectedSnapshotHash) {
+        return {
+          ok: false,
+          reason: `actual customer mobile browser proof ${surfaceResult.surface ?? 'surface'} public snapshot hash does not match`,
+          proof,
+        };
+      }
+    }
+  }
+  const expectedAppBuildId = input.appBuildId?.trim();
+  if (expectedAppBuildId && proof.app_build_id && proof.app_build_id !== expectedAppBuildId) {
+    return {
+      ok: false,
+      reason: 'actual customer mobile browser proof app build id does not match',
       proof,
     };
   }

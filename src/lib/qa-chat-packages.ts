@@ -5,7 +5,7 @@ import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
-  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text';
+  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,publication_state';
 
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
@@ -27,6 +27,7 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
+    .in('publication_state', ['approved', 'published'])
     .or('audit_status.is.null,audit_status.neq.blocked')
     .ilike('destination', `%${destinationHint}%`)
     .order('created_at', { ascending: false })
@@ -41,6 +42,7 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
+    .in('publication_state', ['approved', 'published'])
     .or('audit_status.is.null,audit_status.neq.blocked')
     .order('created_at', { ascending: false })
     .limit(150);

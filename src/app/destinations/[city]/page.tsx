@@ -43,6 +43,7 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
       .from('travel_packages')
       .select('destination')
       .in('status', ['active', 'approved'])
+      .in('publication_state', ['approved', 'published'])
       .not('destination', 'is', null)
       .limit(DESTINATION_STATIC_PRERENDER_LIMIT);
     const unique: string[] = [...new Set(((data ?? []) as Array<{ destination: string | null }>).map((r) => r.destination ?? '').filter((d): d is string => d.length > 0))];
@@ -155,6 +156,7 @@ async function destinationHasPublicInventory(city: string): Promise<boolean | nu
       .select('id')
       .in('destination', queryNames)
       .in('status', ['approved', 'active'])
+      .in('publication_state', ['approved', 'published'])
       .limit(1);
     if (error) return active;
     if (Array.isArray(data) && data.length > 0) return true;
@@ -196,6 +198,7 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
       .from('travel_packages')
       .select('destination')
       .in('status', ['approved', 'active'])
+      .in('publication_state', ['approved', 'published'])
       .limit(2000);
     if (error) return decoded;
 
@@ -474,6 +477,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     .select('departure_airport')
     .in('destination', queryNames)
     .in('status', ['approved', 'active'])
+    .in('publication_state', ['approved', 'published'])
     .not('departure_airport', 'is', null);
 
   const [
@@ -499,6 +503,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, products(display_name, internal_code, thumbnail_urls)')
       .in('destination', queryNames)
       .in('status', ['approved', 'active'])
+      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(12),
     supabaseAdmin

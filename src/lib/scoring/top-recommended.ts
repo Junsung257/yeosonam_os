@@ -56,7 +56,7 @@ export async function getTopRecommendedPackages(opts: TopOptions = {}): Promise<
   const today = new Date().toISOString().slice(0, 10);
   let q = supabaseAdmin
     .from('package_scores')
-    .select('package_id, group_key, departure_date, rank_in_group, group_size, effective_price, list_price, topsis_score, travel_packages!inner(destination, status)')
+    .select('package_id, group_key, departure_date, rank_in_group, group_size, effective_price, list_price, topsis_score, travel_packages!inner(destination, status, publication_state)')
     .gte('group_size', minGroupSize)
     .lte('rank_in_group', maxRank)
     .gte('departure_date', departureFrom ?? today)
@@ -72,13 +72,15 @@ export async function getTopRecommendedPackages(opts: TopOptions = {}): Promise<
   if (error) throw new Error(`getTopRecommendedPackages 실패: ${error.message}`);
 
   const rows = (data ?? []) as unknown as Array<TopPackage & {
-    travel_packages: { destination: string; status: string } | { destination: string; status: string }[];
+    travel_packages: { destination: string; status: string; publication_state?: string | null } | { destination: string; status: string; publication_state?: string | null }[];
   }>;
 
   // active/approved만
   const active = rows.filter(r => {
     const tp = Array.isArray(r.travel_packages) ? r.travel_packages[0] : r.travel_packages;
-    return tp && (tp.status === 'active' || tp.status === 'approved');
+    return tp
+      && (tp.status === 'active' || tp.status === 'approved')
+      && (tp.publication_state === 'approved' || tp.publication_state === 'published');
   });
 
   const seen = new Set<string>();

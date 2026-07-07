@@ -164,6 +164,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
           .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, products(display_name, internal_code, thumbnail_urls)')
           .in('destination', queryNames)
           .in('status', ['active', 'approved'])
+          .in('publication_state', ['approved', 'published'])
           .order('price', { ascending: true })
           .limit(24)
       : Promise.resolve(emptyResult),
