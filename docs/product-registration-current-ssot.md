@@ -101,6 +101,8 @@ npm run refresh:customer-mobile-proofs:apply -- --base=https://www.yeosonam.com 
 
 The dry run must list only packages whose stored proof is missing, stale, hashless, surface-incomplete, or source-invalid. The apply run reuses the internal mobile proof renderer and must not publish or unpublish products by itself; it only refreshes `audit_report.mobile_browser_proof` and clears proof-required audit markers when the proof passes.
 
+The blog engine depends on the same proof. The `Blog Product Proof Refresh` GitHub Actions workflow runs daily before blog scheduling, refreshes active product proof, and requeues recovered product-backed blog candidates. This is the preferred recovery path for blog product posts blocked only by stale mobile proof; archiving the blog post is the fallback after proof refresh fails or the linked product is no longer customer-openable.
+
 Baseline refresh is also part of this gate. `scripts/refresh-baselines.js` must use environment variables first, load `.env.local` only as a local fallback, accept `SUPABASE_SERVICE_KEY` when `SUPABASE_SERVICE_ROLE_KEY` is absent, and fail during preflight before Playwright when Supabase URL/key values are missing or invalid:
 
 ```bash
