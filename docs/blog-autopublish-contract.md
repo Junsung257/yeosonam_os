@@ -118,6 +118,7 @@ Before the daily close window, reports may intentionally evaluate the previous K
 - If the latest `blog-publisher` run is inside the current KST day and ran with remaining quota but published `0`, diagnostics must expose `current_day_publisher_failure`.
 - The admin health summary must mark this as an active operating issue even when the closed-day SLA was already met.
 - A quota-reached no-op with `remaining=0` remains healthy.
+- The publisher endpoint must accept Vercel's scheduled cron header as well as a matching `CRON_SECRET`, otherwise missing or rotated secrets can turn a healthy queue into a silent zero-publish day.
 
 ## Canary Candidate Contract
 

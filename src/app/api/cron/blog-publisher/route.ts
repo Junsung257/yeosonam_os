@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { cronUnauthorizedResponse, isCronOrVercelAuthorized } from '@/lib/cron-auth';
 import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
@@ -846,7 +846,7 @@ async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
 }
 
 async function runBlogPublisher(request: NextRequest) {
-  if (!isCronAuthorized(request)) {
+  if (!isCronOrVercelAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
 
