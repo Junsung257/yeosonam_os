@@ -15,6 +15,8 @@ import {
   repairMissingSourceBackedHotelsInItinerary,
   repairNonLodgingHotelNamesInItinerary,
   repairOvernightArrivalDaySplit,
+  repairPollutedSourceBackedHotelNamesInItinerary,
+  repairSavedItineraryAttractionIdsFromExistingAttractions,
   repairDurationToSavedItineraryDays,
   repairEmptyItineraryDaySchedules,
   repairCustomerVisibleCopyPayload,
@@ -521,6 +523,128 @@ describe('repairNonLodgingHotelNamesInItinerary', () => {
       '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131)',
       '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131)',
     ]);
+  });
+});
+
+describe('repairPollutedSourceBackedHotelNamesInItinerary', () => {
+  it('replaces HOTEL marker pollution with the existing source-backed accommodation name', () => {
+    const cleanHotel = '\uBCA0\uC2A4\uD2B8\uC6E8\uC2A4\uD134 / \uC18C\uB098\uAC00 / \uC194\uBC14\uC774 \uB610\uB294 \uB3D9\uAE09';
+    const pollutedHotel = `${cleanHotel} / \uAE09 \uD638\uD154 / HOTEL : ${cleanHotel}`;
+    const result = repairPollutedSourceBackedHotelNamesInItinerary({
+      accommodations: [cleanHotel],
+      rawText: `\uD638\uD154 : ${cleanHotel}`,
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: cleanHotel }, schedule: [] },
+          { day: 2, hotel: { name: pollutedHotel }, schedule: [] },
+          { day: 3, hotel: { name: pollutedHotel }, schedule: [] },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.replacements).toHaveLength(2);
+    expect(days.map(day => day.hotel.name)).toEqual([cleanHotel, cleanHotel, cleanHotel]);
+    expect(result.accommodations).toBeUndefined();
+  });
+
+  it('normalizes polluted accommodation values without inventing unsupported hotel names', () => {
+    const cleanHotel = '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC \uD638\uD154 \uB3D9\uAE09';
+    const result = repairPollutedSourceBackedHotelNamesInItinerary({
+      accommodations: [`${cleanHotel} / \uAE09 \uD638\uD154 / HOTEL : ${cleanHotel}`],
+      rawText: '',
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: `${cleanHotel} / \uAE09 \uD638\uD154 / HOTEL : ${cleanHotel}` }, schedule: [] },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.accommodations).toEqual([cleanHotel]);
+    expect(days[0].hotel.name).toBe(cleanHotel);
+  });
+});
+
+describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
+  it('matches only existing customer-publishable attractions and removes product/hotel fragments', () => {
+    const result = repairSavedItineraryAttractionIdsFromExistingAttractions({
+      destination: '\uD478\uAFB8\uC625',
+      accommodations: ['\uC708\uB364 \uADF8\uB79C\uB4DC \uD478\uAFB8\uC625'],
+      attractions: [
+        {
+          id: 'attr-sunset',
+          name: '\uC120\uC14B\uD0C0\uC6B4',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
+        {
+          id: 'attr-temple',
+          name: '\uD638\uAD6D\uC0AC',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
+        {
+          id: 'attr-waterpark-private',
+          name: '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: false,
+          aliases: [],
+        },
+      ],
+      itineraryData: {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '\uD478\uAFB8\uC625 \uB0A8\uBD80 \uC120\uC14B\uD0C0\uC6B4 \uAD00\uAD11',
+                attraction_names: ['\uC120\uC14B\uD0C0\uC6B4'],
+                attraction_ids: [],
+              },
+              {
+                activity: '\uD478\uAFB8\uC625 \uBE48\uD384 \uC0AC\uD30C\uB9AC \uC785\uC7A5',
+                attraction_names: ['\uD478\uAFB8\uC625 \uBE48\uD384 \uC0AC\uD30C\uB9AC QR\uD2F0\uCF13 \uC785\uC7A5\uAD8C \uD328\uC2A4\uD2B8\uD328\uC2A4'],
+                attraction_ids: [],
+              },
+              {
+                activity: '\uADF8\uB79C\uB4DC\uC6D4\uB4DC \uC57C\uACBD \uAC10\uC0C1',
+                attraction_names: ['\uC708\uB364 \uADF8\uB79C\uB4DC \uD478\uAFB8\uC625'],
+                attraction_ids: [],
+              },
+              {
+                activity: '\uD638\uAD6D\uC0AC \uAD00\uAD11',
+                attraction_names: ['\uD638\uAD6D\uC0AC'],
+                attraction_ids: [],
+              },
+              {
+                activity: '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544 \uC6CC\uD130\uD30C\uD06C',
+                attraction_names: ['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C'],
+                attraction_ids: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const schedule = (result.itineraryData as { days: Array<{ schedule: Array<{ attraction_names: string[]; attraction_ids: string[] }> }> }).days[0].schedule;
+    expect(result.repaired).toBe(true);
+    expect(result.matched).toBe(2);
+    expect(result.removedNoise).toBe(2);
+    expect(result.remainingUnmatched).toBe(1);
+    expect(schedule[0].attraction_ids).toEqual(['attr-sunset']);
+    expect(schedule[1].attraction_names).toEqual([]);
+    expect(schedule[2].attraction_names).toEqual([]);
+    expect(schedule[3].attraction_ids).toEqual(['attr-temple']);
+    expect(schedule[4].attraction_names).toEqual(['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C']);
   });
 });
 

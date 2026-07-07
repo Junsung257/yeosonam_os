@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { AttractionData } from '@/lib/attraction-matcher';
+import { matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
@@ -189,8 +189,9 @@ async function loadActiveAttractionsForV3(supabase: SupabaseClient): Promise<Att
   for (let offset = 0; offset < 20_000; offset += pageSize) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id,name,short_desc,long_desc,badge_type,emoji,country,region,category,aliases,photos,mrt_gid')
+      .select('id,name,short_desc,long_desc,badge_type,emoji,country,region,category,aliases,photos,mrt_gid,is_active,customer_publishable')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .order('updated_at', { ascending: false, nullsFirst: false })
       .range(offset, offset + pageSize - 1);
     if (error) return rows;
@@ -779,6 +780,249 @@ function combinedSourceHotelName(names: string[]): string | null {
     .slice(0, 3);
   if (clean.length === 0) return null;
   return clean.join(' / ');
+}
+
+function hotelNameKey(value: string): string {
+  return decodeBasicHtmlEntities(value)
+    .replace(/\s+/g, '')
+    .replace(/[()[\]{}"'`.,:;|]/g, '')
+    .toLowerCase();
+}
+
+function uniqueHotelEvidenceNames(values: string[]): string[] {
+  const names: string[] = [];
+  for (const value of values) {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (!normalized) continue;
+    const key = hotelNameKey(normalized);
+    if (!key || names.some(name => hotelNameKey(name) === key)) continue;
+    names.push(normalized);
+  }
+  return names;
+}
+
+function hasPollutedHotelDisplayMarker(value: string): boolean {
+  const decoded = decodeBasicHtmlEntities(value).replace(/\s+/g, ' ').trim();
+  return /\bHOTEL\s*:/i.test(decoded)
+    || /\/\s*(?:\d+\s*)?\uAE09\s*\uD638\uD154\s*\//.test(decoded)
+    || /\uD638\uD154\s*\/\s*HOTEL\s*:/i.test(decoded);
+}
+
+function sanitizePollutedHotelDisplayName(value: string, evidenceNames: string[]): string | null {
+  const decoded = decodeBasicHtmlEntities(value).replace(/\s+/g, ' ').trim();
+  if (!decoded || !hasPollutedHotelDisplayMarker(decoded)) return null;
+
+  const decodedKey = hotelNameKey(decoded);
+  const evidenceMatch = evidenceNames.find(name => {
+    if (hasPollutedHotelDisplayMarker(name)) return false;
+    const key = hotelNameKey(name);
+    return key.length >= 3 && decodedKey.includes(key);
+  });
+  if (evidenceMatch) return evidenceMatch;
+
+  const afterHotelMarker = decoded.split(/\bHOTEL\s*:\s*/i).pop()?.trim();
+  if (afterHotelMarker) {
+    const normalized = normalizeSourceHotelLine(afterHotelMarker);
+    if (normalized) return normalized;
+  }
+
+  const beforeGradeMarker = decoded
+    .split(/\/\s*(?:\d+\s*)?\uAE09\s*\uD638\uD154\s*\//)[0]
+    ?.trim();
+  if (beforeGradeMarker) {
+    const normalized = normalizeSourceHotelLine(beforeGradeMarker);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+export function repairPollutedSourceBackedHotelNamesInItinerary(input: {
+  itineraryData: unknown;
+  rawText?: string | null;
+  accommodations?: unknown;
+}): {
+  itineraryData: unknown;
+  accommodations?: string[];
+  repaired: boolean;
+  replacements: Array<{ day: number | null; before: string; after: string }>;
+} {
+  const root = asRecord(input.itineraryData);
+  const days = Array.isArray(root.days) ? root.days : [];
+  const existingAccommodationNames = Array.isArray(input.accommodations)
+    ? input.accommodations.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const sourceNames = extractSourceBackedHotelNames(input.rawText);
+  const evidenceNames = uniqueHotelEvidenceNames([...existingAccommodationNames, ...sourceNames]);
+
+  if (days.length === 0 && existingAccommodationNames.length === 0) {
+    return { itineraryData: input.itineraryData, repaired: false, replacements: [] };
+  }
+
+  let accommodations: string[] | undefined;
+  if (existingAccommodationNames.length > 0) {
+    const nextAccommodations = uniqueHotelEvidenceNames(
+      existingAccommodationNames.map(name => sanitizePollutedHotelDisplayName(name, evidenceNames) ?? name),
+    );
+    if (
+      nextAccommodations.length !== existingAccommodationNames.length
+      || nextAccommodations.some((name, index) => name !== existingAccommodationNames[index])
+    ) {
+      accommodations = nextAccommodations;
+    }
+  }
+
+  if (days.length === 0) {
+    return {
+      itineraryData: input.itineraryData,
+      accommodations,
+      repaired: Boolean(accommodations),
+      replacements: [],
+    };
+  }
+
+  const next = cloneJson(root);
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+  const replacements: Array<{ day: number | null; before: string; after: string }> = [];
+
+  for (const day of nextDays) {
+    const dayNumber = typeof day?.day === 'number' ? day.day : null;
+    const hotel = asRecord(day?.hotel);
+    const hotelName = typeof hotel?.name === 'string' ? hotel.name.trim() : '';
+    if (!hotelName) continue;
+    const cleaned = sanitizePollutedHotelDisplayName(hotelName, evidenceNames);
+    if (!cleaned || cleaned === hotelName) continue;
+    day.hotel = { ...hotel, name: cleaned };
+    replacements.push({ day: dayNumber, before: hotelName, after: cleaned });
+  }
+
+  const repaired = replacements.length > 0 || Boolean(accommodations);
+  return {
+    itineraryData: replacements.length > 0 ? next : input.itineraryData,
+    accommodations,
+    repaired,
+    replacements,
+  };
+}
+
+function isCustomerPublishableAttraction(attraction: AttractionData | null | undefined): attraction is AttractionData {
+  return Boolean(attraction?.id && attraction.is_active !== false && attraction.customer_publishable !== false);
+}
+
+function isNonCustomerAttractionName(value: string, activity: string, accommodations: string[]): boolean {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  const compact = normalized.replace(/\s+/g, '');
+  if (!normalized) return true;
+  if (normalized.length > 48) return true;
+  if (/[.!?。]\s/.test(normalized) || /[.!?。]$/.test(normalized)) return true;
+  if (/(?:QR|ticket|fast\s*pass|package|hotel|resort)/i.test(normalized)) return true;
+  if (/(?:\uC785\uC7A5\uAD8C|\uD2F0\uCF13|\uD328\uC2A4\uD2B8\uD328\uC2A4|\uD328\uD0A4\uC9C0|\uCF64\uBCF4|\uD638\uD154|\uB9AC\uC870\uD2B8|\uB3D9\uAE09)/.test(compact)) {
+    return true;
+  }
+  if (/(?:\uAC10\uC0C1|\uC774\uC6A9|\uBB34\uC81C\uD55C|\uC0AC\uC6A9|\uD3EC\uD568)/.test(compact) && compact.length > 16) {
+    return true;
+  }
+  const valueKey = hotelNameKey(normalized);
+  if (accommodations.some(name => {
+    const accommodationKey = hotelNameKey(name);
+    return accommodationKey && (valueKey.includes(accommodationKey) || accommodationKey.includes(valueKey));
+  })) {
+    return true;
+  }
+  const activityCompact = activity.replace(/\s+/g, '');
+  if (/(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uC219\uBC15|\uAC1D\uC2E4)/.test(activityCompact)) return true;
+  return false;
+}
+
+export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: {
+  itineraryData: unknown;
+  attractions: AttractionData[];
+  destination?: string | null;
+  accommodations?: unknown;
+}): {
+  itineraryData: unknown;
+  repaired: boolean;
+  matched: number;
+  removedNoise: number;
+  remainingUnmatched: number;
+} {
+  const root = asRecord(input.itineraryData);
+  const days = Array.isArray(root.days) ? root.days : [];
+  if (days.length === 0 || input.attractions.length === 0) {
+    return { itineraryData: input.itineraryData, repaired: false, matched: 0, removedNoise: 0, remainingUnmatched: 0 };
+  }
+
+  const publicAttractions = input.attractions.filter(isCustomerPublishableAttraction);
+  if (publicAttractions.length === 0) {
+    return { itineraryData: input.itineraryData, repaired: false, matched: 0, removedNoise: 0, remainingUnmatched: 0 };
+  }
+
+  const accommodations = Array.isArray(input.accommodations)
+    ? input.accommodations.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const next = cloneJson(root);
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+  let matched = 0;
+  let removedNoise = 0;
+  let remainingUnmatched = 0;
+  let changed = false;
+
+  for (const day of nextDays) {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    for (const item of schedule) {
+      const record = asRecord(item);
+      const attractionNames = asStringArray(record.attraction_names);
+      if (attractionNames.length === 0) continue;
+      const existingIds = asStringArray(record.attraction_ids);
+      const activity = firstText(record.activity, record.title, record.description) ?? '';
+      const nextNames: string[] = [];
+      const nextIds: string[] = [];
+
+      for (const name of attractionNames) {
+        if (isNonCustomerAttractionName(name, activity, accommodations)) {
+          removedNoise++;
+          changed = true;
+          continue;
+        }
+        const match = matchAttraction(name, publicAttractions, input.destination ?? undefined);
+        if (isCustomerPublishableAttraction(match)) {
+          if (!nextNames.includes(match.name)) nextNames.push(match.name);
+          if (match.id && !nextIds.includes(match.id)) nextIds.push(match.id);
+          matched++;
+          changed = true;
+          continue;
+        }
+        if (!nextNames.includes(name)) nextNames.push(name);
+        remainingUnmatched++;
+      }
+
+      for (const id of existingIds) {
+        if (!nextIds.includes(id)) nextIds.push(id);
+      }
+
+      if (
+        nextNames.length !== attractionNames.length
+        || nextIds.length !== existingIds.length
+        || nextNames.some((name, index) => name !== attractionNames[index])
+        || nextIds.some((id, index) => id !== existingIds[index])
+      ) {
+        record.attraction_names = nextNames;
+        record.attraction_ids = nextIds;
+        if (nextNames.length === 0) {
+          record.entity_kind = record.entity_kind === 'attraction visit' ? 'unknown' : record.entity_kind;
+        }
+        changed = true;
+      }
+    }
+  }
+
+  return {
+    itineraryData: changed ? next : input.itineraryData,
+    repaired: changed,
+    matched,
+    removedNoise,
+    remainingUnmatched,
+  };
 }
 
 export function repairMissingSourceBackedHotelsInItinerary(input: {
@@ -2915,6 +3159,22 @@ async function applySourceBackedRepairs(
     repairs.push('itinerary_data:non_lodging_hotel_names_repaired');
   }
 
+  const pollutedHotelNameRepair = repairPollutedSourceBackedHotelNamesInItinerary({
+    itineraryData: workingPkg.itinerary_data,
+    rawText: workingPkg.raw_text,
+    accommodations: workingPkg.accommodations,
+  });
+  if (pollutedHotelNameRepair.repaired) {
+    updates.itinerary_data = pollutedHotelNameRepair.itineraryData;
+    if (pollutedHotelNameRepair.accommodations) updates.accommodations = pollutedHotelNameRepair.accommodations;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: pollutedHotelNameRepair.itineraryData,
+      ...(pollutedHotelNameRepair.accommodations ? { accommodations: pollutedHotelNameRepair.accommodations } : {}),
+    };
+    repairs.push('itinerary_data:polluted_hotel_names_repaired');
+  }
+
   const sourceBackedHotelRepair = repairMissingSourceBackedHotelsInItinerary({
     itineraryData: workingPkg.itinerary_data,
     rawText: workingPkg.raw_text,
@@ -2930,6 +3190,22 @@ async function applySourceBackedRepairs(
       ...(sourceBackedHotelRepair.accommodations ? { accommodations: sourceBackedHotelRepair.accommodations } : {}),
     };
     repairs.push('itinerary_data:source_backed_missing_hotels_repaired');
+  }
+
+  const publicAttractions = await loadActiveAttractionsForV3(supabase);
+  const attractionRepair = repairSavedItineraryAttractionIdsFromExistingAttractions({
+    itineraryData: workingPkg.itinerary_data,
+    attractions: publicAttractions,
+    destination: workingPkg.destination,
+    accommodations: workingPkg.accommodations,
+  });
+  if (attractionRepair.repaired) {
+    updates.itinerary_data = attractionRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: attractionRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:existing_public_attractions_repaired:${attractionRepair.matched}/${attractionRepair.remainingUnmatched}`);
   }
 
   const optionalToursRepair = repairOptionalToursForCustomerDisplay(workingPkg.optional_tours);

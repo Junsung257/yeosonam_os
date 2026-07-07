@@ -22,6 +22,8 @@ export interface AttractionData {
   photos?: { src_medium: string; src_large: string; photographer: string; pexels_id: number }[];
   /** MRT canonical 여부 — 동일 fuzzy 후보 중 우선 선택 (2026-05-14) */
   mrt_gid?: string | null;
+  is_active?: boolean | null;
+  customer_publishable?: boolean | null;
 }
 
 // 매칭 제외 키워드 (일반 이동/휴식 활동)

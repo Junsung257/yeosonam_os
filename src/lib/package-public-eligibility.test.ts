@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyOptionalTourForPublicEligibility,
   collectBrokenAttractionIds,
   getPackagePublicEligibilityBlockers,
   hasOptionalTourDisplayPollution,
   isCustomerPubliclyOpenable,
+  sanitizeBrokenAttractionIdsForPublicEligibility,
+  sanitizeOptionalToursForPublicEligibility,
 } from './package-public-eligibility';
 
 const passingContract = {
@@ -70,6 +73,75 @@ describe('package public eligibility', () => {
         itinerary_data: { attraction_ids: ['fcf2-4df5-bad-id'] },
       }).map((b) => b.code),
     ).toContain('broken_attraction_id');
+  });
+
+  it('classifies optional-tour fragments so repair jobs can quarantine them with reasons', () => {
+    expect(classifyOptionalTourForPublicEligibility({ name: '\ub178\uc635\uc158' }).classification)
+      .toBe('no_option_evidence');
+    expect(classifyOptionalTourForPublicEligibility({ name: '\uc0c1\ud488\uac00', price: '599' }).classification)
+      .toBe('price_table_fragment');
+    expect(classifyOptionalTourForPublicEligibility({ name: '\ucc28\ub7c9' }).classification)
+      .toBe('inclusion_fragment');
+    expect(classifyOptionalTourForPublicEligibility({ name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' }).classification)
+      .toBe('valid_paid_option');
+  });
+
+  it('sanitizes optional tours by keeping paid options and quarantining no-option/table noise', () => {
+    const repair = sanitizeOptionalToursForPublicEligibility([
+      { name: '\ub178\uc635\uc158' },
+      { name: '\ud3ec \ud568 \ub0b4 \uc5ed' },
+      { name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' },
+    ]);
+
+    expect(repair.repaired).toBe(true);
+    expect(repair.status).toBe('paid_options');
+    expect(repair.optionalTours).toEqual([
+      { name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' },
+    ]);
+    expect(repair.removed.map((finding) => finding.classification)).toEqual([
+      'no_option_evidence',
+      'inclusion_fragment',
+    ]);
+  });
+
+  it('marks no-option evidence as a product condition rather than a renderable optional tour', () => {
+    const repair = sanitizeOptionalToursForPublicEligibility([{ name: '\uc120\ud0dd\uad00\uad11: \ub178\uc635\uc158' }]);
+
+    expect(repair.status).toBe('none_explicit');
+    expect(repair.optionalTours).toEqual([]);
+    expect(repair.removed[0]?.classification).toBe('no_option_evidence');
+  });
+
+  it('removes malformed or orphan attraction ids while preserving valid ids', () => {
+    const valid = '123e4567-e89b-12d3-a456-426614174000';
+    const orphan = '123e4567-e89b-12d3-a456-426614174999';
+    const repair = sanitizeBrokenAttractionIdsForPublicEligibility(
+      {
+        days: [
+          {
+            schedule: [
+              { attraction_ids: ['fcf2-4df5-bad-id', valid, orphan] },
+            ],
+          },
+        ],
+      },
+      new Set([valid]),
+    );
+
+    expect(repair.repaired).toBe(true);
+    expect(repair.itineraryData).toEqual({
+      days: [
+        {
+          schedule: [
+            { attraction_ids: [valid] },
+          ],
+        },
+      ],
+    });
+    expect(repair.removed.map((item) => item.reason)).toEqual([
+      'malformed_uuid',
+      'unknown_attraction_id',
+    ]);
   });
 
   it('blocks stale or failed mobile proof in the stored contract', () => {
