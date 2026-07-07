@@ -49,6 +49,7 @@ export interface BlogEngineEvaluation {
   score: number;
   passed: boolean;
   failure_bucket: BlogEngineFailureBucket;
+  category_scores: BlogEngineCategoryScore[];
   metrics: {
     task_completion: number;
     customer_language: number;
@@ -60,6 +61,21 @@ export interface BlogEngineEvaluation {
   };
   repair_recommendation: string | null;
   brief: BlogEngineV2Brief;
+}
+
+export type BlogEngineCategoryId =
+  | 'reader_task_completion'
+  | 'customer_language'
+  | 'naturalness'
+  | 'evidence_faithfulness'
+  | 'sales_pressure_control'
+  | 'product_decision_helpfulness';
+
+export interface BlogEngineCategoryScore {
+  id: BlogEngineCategoryId;
+  label: string;
+  score: number;
+  passed: boolean;
 }
 
 export interface BlogPublishabilitySnapshot {
@@ -368,13 +384,68 @@ function chooseFailureBucket(metrics: BlogEngineEvaluation['metrics']): BlogEngi
   return 'faithfulness';
 }
 
+function buildCategoryScores(
+  metrics: BlogEngineEvaluation['metrics'],
+  brief: BlogEngineV2Brief,
+): BlogEngineCategoryScore[] {
+  const categories: BlogEngineCategoryScore[] = [
+    {
+      id: 'reader_task_completion',
+      label: brief.writer_type === 'product_consultant_writer'
+        ? '문의 전 판단 완성도'
+        : '검색 의도 답변 완성도',
+      score: metrics.task_completion,
+      passed: metrics.task_completion >= 80,
+    },
+    {
+      id: 'customer_language',
+      label: '고객 언어와 한국어 자연스러움',
+      score: metrics.customer_language,
+      passed: metrics.customer_language >= 80,
+    },
+    {
+      id: 'naturalness',
+      label: 'AI 티/반복 템플릿 억제',
+      score: metrics.naturalness,
+      passed: metrics.naturalness >= 80,
+    },
+    {
+      id: 'evidence_faithfulness',
+      label: '근거 충실도와 출처 지원',
+      score: Math.min(metrics.faithfulness, metrics.source_support),
+      passed: metrics.faithfulness >= 80 && metrics.source_support >= 80,
+    },
+    {
+      id: 'sales_pressure_control',
+      label: brief.writer_type === 'product_consultant_writer'
+        ? '과장/희소성 억제'
+        : '정보성 상단 강CTA 억제',
+      score: metrics.sales_pressure,
+      passed: metrics.sales_pressure >= 80,
+    },
+  ];
+
+  if (brief.writer_type === 'product_consultant_writer') {
+    categories.push({
+      id: 'product_decision_helpfulness',
+      label: '상품 문의 전 판단 도움성',
+      score: metrics.product_decision_helpfulness,
+      passed: metrics.product_decision_helpfulness >= 80,
+    });
+  }
+
+  return categories;
+}
+
 export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluation {
   const blogHtml = input.blogHtml ?? '';
   const brief = buildBlogEngineV2Brief(input);
   const evidenceKinds = new Set(brief.evidence_items.map((item) => item.kind));
   const hasMinimumEvidence = brief.writer_type === 'product_consultant_writer'
     ? evidenceKinds.has('product_db')
-    : evidenceKinds.has('official_source') || evidenceKinds.has('serp_intent') || evidenceKinds.has('internal_insight');
+    : brief.official_sources_required
+      ? evidenceKinds.has('official_source')
+      : evidenceKinds.has('official_source') || evidenceKinds.has('serp_intent') || evidenceKinds.has('internal_insight');
 
   const metrics = {
     task_completion: brief.writer_type === 'product_consultant_writer'
@@ -389,13 +460,15 @@ export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluati
       ? scoreProductDecision(blogHtml, brief)
       : 100,
   };
-  const score = Math.round(Object.values(metrics).reduce((sum, value) => sum + value, 0) / Object.values(metrics).length);
+  const category_scores = buildCategoryScores(metrics, brief);
+  const score = Math.round(category_scores.reduce((sum, value) => sum + value.score, 0) / category_scores.length);
   const failure_bucket = chooseFailureBucket(metrics);
 
   return {
     score,
-    passed: score >= 80 && failure_bucket === 'passed',
+    passed: score >= 80 && failure_bucket === 'passed' && category_scores.every((category) => category.passed),
     failure_bucket,
+    category_scores,
     metrics,
     repair_recommendation: failure_bucket === 'passed'
       ? null

@@ -1847,6 +1847,9 @@ async function processQueueItem(
     const engineMetrics = engineEvaluation?.metrics && typeof engineEvaluation.metrics === 'object'
       ? engineEvaluation.metrics as Record<string, unknown>
       : {};
+    const engineCategoryScores = Array.isArray(engineEvaluation?.category_scores)
+      ? engineEvaluation.category_scores
+      : [];
     const engineBrief = engineEvaluation?.brief && typeof engineEvaluation.brief === 'object'
       ? engineEvaluation.brief as Record<string, unknown>
       : {};
@@ -1862,6 +1865,7 @@ async function processQueueItem(
       brief_score: typeof engineMetrics.task_completion === 'number' ? engineMetrics.task_completion : null,
       evidence_score: typeof engineMetrics.source_support === 'number' ? engineMetrics.source_support : null,
       engine_score: typeof engineEvaluation?.score === 'number' ? engineEvaluation.score : null,
+      engine_category_scores: engineCategoryScores,
       failure_bucket: engineEvaluation?.failure_bucket ?? null,
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],

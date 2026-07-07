@@ -87,6 +87,8 @@ Before the first publish gate:
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
+`engine_v2` must expose category scores, not just a single average. Required categories are search/reader task completion, customer language, AI-template naturalness, evidence/faithfulness, sales-pressure control, and for product-backed posts product decision helpfulness. A post is not a true 100-point candidate unless every category passes. If `official_sources_required=true`, information posts need an external source link; SERP intent or internal notes alone are not enough.
+
 The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. Both the live publisher and the backfill/audit tool must call the same `repairBlogFinalCustomerSurface()` implementation so a defect fixed in recent published rows cannot recur in new automatic posts. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.
 
 ## Publish Preflight Contract

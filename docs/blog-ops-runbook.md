@@ -93,6 +93,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Customer quality now blocks product DB evidence omissions, internal supplier/settlement term leaks, unsupported source-sensitive info guides, generated placeholder residue, duplicate hashtags, broken Markdown URL fragments, repeated answer-first hooks, and mobile paragraph walls.
 - Final repair must normalize the H1 lead to one answer-first paragraph, preserve short answer leads, split only true long paragraphs, and run destination placeholder repair after CTA/FAQ/readability repairs.
 - `src/lib/blog-final-customer-surface.ts` is the shared final customer-surface repair used by both `blog-publisher` and `backfill-blog-quality`; do not add a one-off published-row repair unless the live publisher also calls the same rule.
+- `engine_v2.category_scores` is the operator-facing 100-point scorecard: reader task completion, customer language, naturalness, evidence/faithfulness, sales pressure, and product decision helpfulness for product posts. `engine_score` without per-category pass evidence is not enough to call a post 100점.
 - Verification on 2026-07-08:
   - `npm run audit:blog-quality -- --limit=16 --json --write` updated affected recent posts and queued indexing jobs.
   - `npm run run:blog-indexing-worker -- --json --limit=15` processed the queued jobs with `failed=0`.

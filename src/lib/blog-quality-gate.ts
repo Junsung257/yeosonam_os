@@ -777,6 +777,7 @@ export function checkBlogEngineV2(input: CheckInput): GateResult {
       failure_bucket: evaluation.failure_bucket,
       score: evaluation.score,
       metrics: evaluation.metrics,
+      category_scores: evaluation.category_scores,
       evidence_count: evaluation.brief.evidence_items.length,
       writer: evaluation.brief.writer_type,
     },
