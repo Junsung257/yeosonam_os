@@ -243,7 +243,13 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
     const next = lines[index + 1] ?? '';
     return !/^\s*\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|\s*$/.test(next);
   });
-  if (hasBrokenTableStart) {
+  const pseudoTableRowPattern = /^\s*[-*]\s*[^:：]{2,42}[:：]\s*.{4,}(?:\s+[\/／|]\s+.{2,}){1,}/;
+  const pseudoTableListRows = lines.filter((line) => pseudoTableRowPattern.test(line)).length;
+  const orphanNumericRows = lines.filter((line, index) =>
+    /^\s*[\d,.]+(?:\s*(?:원|만원|달러|엔|위안|페소|바트))?(?:\s*[~–-]\s*[\d,.]+(?:\s*(?:원|만원|달러|엔|위안|페소|바트))?)?\s*$/.test(line.trim()) &&
+    pseudoTableRowPattern.test(lines[index - 2] ?? '')
+  ).length;
+  if (hasBrokenTableStart || pseudoTableListRows >= 3 || orphanNumericRows > 0) {
     addIssue(
       issues,
       'table_render_risk',

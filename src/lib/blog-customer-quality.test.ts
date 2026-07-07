@@ -93,4 +93,29 @@ describe('inspectBlogCustomerQuality', () => {
     expect(report.passed).toBe(true);
     expect(report.score).toBe(100);
   });
+
+  it('flags pseudo-table lists that can render as broken comparison content', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '세부 첫날 이동',
+      destination: '세부',
+      blogHtml: [
+        '# 세부 첫날 이동',
+        '',
+        '세부 첫날은 공항에서 숙소까지 이동 시간을 먼저 잡아두면 피로와 추가 비용을 줄일 수 있습니다.',
+        '',
+        '## 공항 이동 비교',
+        '',
+        '- 교통편: 특징 / 예상 소요 시간 / 예상 비용',
+        '- 공항 택시: 미터기 사용 / 40분~1시간 / 400~700페소',
+        '- 그랩: 앱 호출 / 40분~1시간 30분',
+        '',
+        '800',
+        '- 픽업 서비스: 사전 예약 / 30분~1시간 / 700~1,500페소',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('table_render_risk');
+  });
 });
