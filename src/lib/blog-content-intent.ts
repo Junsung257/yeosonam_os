@@ -325,6 +325,15 @@ function inspectProductContract(
 }
 
 function hasConcreteCostEvidence(plain: string): boolean {
+  const normalized = plain.replace(/\s+/g, ' ');
+  const amountWithCurrency =
+    /\d[\d,]*(?:\.\d+)?\s*(?:\uC6D0|\uB9CC\s*\uC6D0|\uB9CC\uC6D0|\uB2EC\uB7EC|\uC5D4|\uC704\uC548|\uD398\uC18C|\uBC14\uD2B8)(?:\uB300|\uBD80\uD130|\uC774\uC0C1|\uC774\uD558)?/;
+  const koreanBudgetRange =
+    /\d+(?:\.\d+)?\s*(?:\uB9CC\s*)?[~\u2013\u2014-]\s*\d+(?:\.\d+)?\s*(?:\uB9CC\s*)?\uC6D0(?:\uB300|\uBD80\uD130|\uC774\uC0C1|\uC774\uD558)?/;
+  const budgetContext = /(\uC608\uC0B0|\uD658\uC728|\uACBD\uBE44|\uBE44\uC6A9|\uAC00\uACA9|\uCD1D\uC561)/;
+  if (amountWithCurrency.test(normalized) || koreanBudgetRange.test(normalized) || budgetContext.test(normalized)) {
+    return true;
+  }
   return /(\d[\d,]*\s*(?:\uC6D0|\uB9CC\s*\uC6D0|\uB9CC\uC6D0|\uB2EC\uB7EC|\uC5D4|\uC704\uC548|\uD398\uC18C|\uBC14\uD2B8)|\d+\s*\uB9CC?\s*[~–-]\s*\d+\s*\uB9CC?\s*\uC6D0?|\uC608\uC0B0|\uD658\uC728)/.test(plain);
 }
 
