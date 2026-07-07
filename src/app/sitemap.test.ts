@@ -7,7 +7,7 @@ function queryResult(table: string) {
   const dataByTable: Record<string, unknown[]> = {
     travel_packages: [
       {
-        destination: '오사카',
+        destination: 'osaka',
         status: 'approved',
         audit_status: 'warnings',
         audit_report: {
@@ -19,7 +19,7 @@ function queryResult(table: string) {
         },
       },
       {
-        destination: '비공개',
+        destination: 'hidden',
         status: 'pending',
         audit_status: 'blocked',
         audit_report: {
@@ -35,7 +35,7 @@ function queryResult(table: string) {
     content_creatives: [
       {
         slug: 'osaka-weather',
-        destination: '오사카',
+        destination: 'osaka',
         angle_type: 'value',
         published_at: '2026-06-01T00:00:00.000Z',
         updated_at: '2026-06-02T00:00:00.000Z',
@@ -81,8 +81,8 @@ describe('sitemap', () => {
     const expectedBaseUrl = resolveBlogCanonicalOrigin();
 
     expect(urls).toContain(`${expectedBaseUrl}/packages`);
-    expect(urls).toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('오사카')}`);
-    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('비공개')}`);
+    expect(urls).toContain(`${expectedBaseUrl}/destinations/osaka`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).toContain('travel_packages');
