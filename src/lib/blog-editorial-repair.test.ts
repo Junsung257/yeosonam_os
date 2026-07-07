@@ -58,6 +58,65 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('세부 쇼핑 예산');
   });
 
+  it('rewrites weather openings with weather language instead of generic cost language', () => {
+    const result = repairBlogEditorialQuality({
+      title: '몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      slug: 'mongolia-july-weather-packing',
+      primaryKeyword: '몽골 7월 날씨 옷차림',
+      destination: '몽골',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 7월 날씨 옷차림',
+        '',
+        '답부터 말하면, 2026년 7월 기준 몽골 7월 날씨 옷차림에서 먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다. 포함/불포함, 이동 시간, 현지 추가비용을 함께 비교하면 불필요한 이동과 추가 부담을 줄일 수 있습니다.',
+        '',
+        '## 기온과 옷차림',
+        '',
+        '| 구분 | 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 낮 | 25도 안팎 | 얇은 긴팔 |',
+        '| 밤 | 10도 안팎 | 겉옷 |',
+        '| 비 | 소나기 가능 | 우비 |',
+      ].join('\n'),
+    });
+
+    expect(result.changes).toContain('repaired_generic_answer_opening');
+    expect(result.blogHtml).toContain('낮과 밤 기온');
+    expect(result.blogHtml).toContain('비 예보');
+    expect(result.blogHtml).not.toContain('예산 범위, 이동 순서, 현지 확인 사항');
+  });
+
+  it('removes visual highlight residue without breaking URL query strings', () => {
+    const result = repairBlogStructureQuality({
+      title: '발리 준비물',
+      slug: 'bali-packing',
+      primaryKeyword: '발리 준비물',
+      destination: '발리',
+      contentType: 'guide',
+      blogHtml: [
+        '# 발리 준비물',
+        '',
+        '=출발 전 샤워기 필터와 모기 기피제를 먼저 챙기면 좋습니다=',
+        '',
+        '[상담 링크](https://www.yeosonam.com/group-inquiry?utm_source=naver_blog&utm_campaign=blog)',
+        '',
+        '**',
+        '',
+        '## 체크리스트',
+        '',
+        '- 여권',
+        '- 선크림',
+        '- 상비약',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('출발 전 샤워기 필터와 모기 기피제를 먼저 챙기면 좋습니다');
+    expect(result.blogHtml).toContain('utm_source=naver_blog');
+    expect(result.blogHtml).not.toMatch(/(^|\n)\s*>?\s*\*\*\s*(?=\n|$)/);
+    expect(result.blogHtml).not.toContain('=출발 전');
+  });
+
   it('softens readable unsupported internal product and booking data claims', () => {
     const result = repairBlogEditorialQuality({
       title: '석가장 여행 비용',

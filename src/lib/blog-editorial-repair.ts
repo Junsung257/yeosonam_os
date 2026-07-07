@@ -624,15 +624,76 @@ function particle(value: string, withBatchim: string, withoutBatchim: string): s
   return hasBatchim === false ? withoutBatchim : withBatchim;
 }
 
+type CustomerInfoTopicKind =
+  | 'weather'
+  | 'communication'
+  | 'visa'
+  | 'currency'
+  | 'cost'
+  | 'transport'
+  | 'itinerary'
+  | 'general';
+
+function inferCustomerInfoTopicKind(input: BlogEditorialRepairInput): CustomerInfoTopicKind {
+  const strongText = [
+    input.slug,
+    input.destination,
+    input.primaryKeyword,
+    input.category,
+  ].filter(Boolean).join(' ').toLowerCase();
+  const titleText = String(input.title || '').toLowerCase();
+  const text = `${strongText} ${titleText}`;
+
+  if (/insurance|보험|보장|coverage/.test(strongText)) return 'general';
+
+  if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(strongText)) return 'transport';
+  if (/cost|비용|예산|경비|가격|항공권|가성비/.test(strongText)) return 'cost';
+  if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(strongText)) return 'weather';
+  if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(strongText)) return 'communication';
+  if (/visa|비자|입국|여권|서류|esta|etias/.test(strongText)) return 'visa';
+  if (/currency|환전|환율|동전|카드|현금/.test(strongText)) return 'currency';
+  if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(strongText)) return 'itinerary';
+
+  if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(text)) return 'weather';
+  if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(text)) return 'communication';
+  if (/visa|비자|입국|여권|서류|esta|etias/.test(text)) return 'visa';
+  if (/currency|환전|환율|동전|카드|현금/.test(text)) return 'currency';
+  if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(text)) return 'transport';
+  if (/cost|비용|예산|경비|가격|항공권/.test(text)) return 'cost';
+  if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(text)) return 'itinerary';
+  return 'general';
+}
+
 function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
   const topic = compactAnswerFirstLabel(input.primaryKeyword || input.title || input.category)
     || '\uC5EC\uD589 \uC900\uBE44';
   const destination = compactAnswerFirstLabel(input.destination);
-  const decisionAxis = destination
-    ? `${destination} \uC608\uC0B0 \uBC94\uC704, \uC774\uB3D9 \uC21C\uC11C, \uD604\uC9C0 \uD655\uC778 \uC0AC\uD56D`
-    : '\uC608\uC0B0 \uBC94\uC704, \uC774\uB3D9 \uC21C\uC11C, \uD604\uC9C0 \uD655\uC778 \uC0AC\uD56D';
-  const now = currentKstYearMonth();
-  return `${now.year}\uB144 ${now.month}\uC6D4 \uAE30\uC900, ${topic}${particle(topic, '\uC740', '\uB294')} ${decisionAxis}\uBD80\uD130 \uC815\uB9AC\uD558\uBA74 \uCD9C\uBC1C \uC804 \uD310\uB2E8\uC774 \uC26C\uC6CC\uC9D1\uB2C8\uB2E4. \uAE08\uC561\uC774\uB098 \uC870\uAC74\uC740 \uC2DC\uC810\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC9C8 \uC218 \uC788\uC73C\uB2C8, \uD45C\uC640 \uCCB4\uD06C\uB9AC\uC2A4\uD2B8\uB85C \uAE30\uC900\uC744 \uC7A1\uACE0 \uB9C8\uC9C0\uB9C9\uC5D0 \uACF5\uC2DD \uC548\uB0B4\uB97C \uB2E4\uC2DC \uD655\uC778\uD558\uC138\uC694.`;
+  const destinationLabel = destination || topic.split(/\s+/)[0] || '여행지';
+  const kind = inferCustomerInfoTopicKind(input);
+
+  if (kind === 'transport') {
+    return `${topic}, 먼저 무엇을 비교해야 할까요? 공항 이동과 시내 교통을 따로 보고, 도착 후 대기 시간과 짐 개수까지 함께 확인하면 실제 이동 부담이 줄어듭니다.`;
+  }
+  if (kind === 'cost') {
+    return `${topic}, 먼저 총액에서 무엇이 빠지는지 봐야 합니다. 1인 하루 식사, 교통, 선택 관광 비용을 상품가와 나눠 보면 예약 전 비교가 훨씬 쉬워집니다.`;
+  }
+  if (kind === 'weather') {
+    return `${topic}, 출발 전에는 낮과 밤 기온, 비 예보, 필요한 옷차림을 먼저 확인해야 합니다. ${destinationLabel} 현지 날씨에 맞춰 짐을 줄이면 동선 실수를 줄일 수 있습니다.`;
+  }
+  if (kind === 'communication') {
+    return `${topic}, 도착 직후 바로 연결하려면 사용 지역, 데이터 용량, 통화 필요 여부를 먼저 봐야 합니다. 개통 방식과 고객 지원 시간까지 확인하면 현지에서 헤매는 시간을 줄일 수 있습니다.`;
+  }
+  if (kind === 'visa') {
+    return `${topic}, 출발 전에는 여권 유효기간과 체류 기간, 항공권 조건을 먼저 확인해야 합니다. 입국 규정은 바뀔 수 있으니 공식 안내를 마지막에 다시 보는 편이 안전합니다.`;
+  }
+  if (kind === 'currency') {
+    return `${topic}, 현금과 카드 중 무엇을 더 준비해야 할까요? 환율, 수수료, 현지 결제 가능 여부를 비교하고 최소 2가지 결제 수단을 나눠 챙기면 안전합니다.`;
+  }
+  if (kind === 'itinerary') {
+    return `${topic}, 하루에 몇 곳까지 넣어도 무리가 없을까요? 이동 시간과 숙소 위치를 먼저 비교하면 ${destinationLabel} 여행에서 1~2시간씩 새는 동선을 줄일 수 있습니다.`;
+  }
+
+  return `${topic}, 예약 전 무엇부터 확인해야 할까요? 일정, 비용, 이동 조건을 2가지 이상 비교하면 ${destinationLabel} 여행에서 바뀔 수 있는 조건을 미리 줄일 수 있습니다.`;
 }
 
 function insertIntroAfterTitle(markdown: string, intro: string): string {
@@ -1024,12 +1085,21 @@ function repairCustomerVisiblePlaceholderCopy(markdown: string): { text: string;
 export function normalizeBlogVisualAccents(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
   const text = markdown
-    .replace(/==([^=\n]{1,500}?)==/g, '$1')
-    .replace(/<\/?mark\b[^>]*>/gi, '')
-    .replace(
-      /<strong\b[^>]*\bclass=["'][^"']*\bnum\b[^"']*["'][^>]*>([\s\S]*?)<\/strong>/gi,
-      '$1',
-    )
+    .split('\n')
+    .map((line) => {
+      let next = line
+        .replace(/==([^=\n]{1,500}?)==/g, '$1')
+        .replace(/<\/?mark\b[^>]*>/gi, '')
+        .replace(
+          /<strong\b[^>]*\bclass=["'][^"']*\bnum\b[^"']*["'][^>]*>([\s\S]*?)<\/strong>/gi,
+          '$1',
+        );
+      if (!/(?:https?:\/\/|!\[[^\]]*]\(|\[[^\]]+]\(|[?&][A-Za-z0-9_-]+=)/.test(next)) {
+        next = next.replace(/=([^=\n]{8,220})=/g, '$1');
+      }
+      return next;
+    })
+    .join('\n')
     .replace(/\n{3,}/g, '\n\n');
 
   return { text, changed: text !== before };
@@ -1038,6 +1108,7 @@ export function normalizeBlogVisualAccents(markdown: string): { text: string; ch
 function removeResidualHtmlMarkdownBold(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
   const stripBold = (value: string) => value
+    .replace(/^\s*>?\s*\*\*\s*$/g, '')
     .replace(/\*\*([^*\n]{1,180}?)\*\*/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim())
     .replace(/__([^_\n]{1,180}?)__/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim());
   const text = markdown
