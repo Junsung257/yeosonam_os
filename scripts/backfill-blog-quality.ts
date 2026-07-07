@@ -17,6 +17,7 @@ let repairBlogSemanticSurface: typeof import('../src/lib/blog-editorial-repair')
 let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogStructureQuality;
 let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
 let repairBlogFinalCustomerSurface: typeof import('../src/lib/blog-final-customer-surface').repairBlogFinalCustomerSurface;
+let repairBlogEngineCategoryGaps: typeof import('../src/lib/blog-engine-category-repair').repairBlogEngineCategoryGaps;
 let canonicalizeBlogPublicLinks: typeof import('../src/lib/blog-link-surface').canonicalizeBlogPublicLinks;
 let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildBlogContentBrief;
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
@@ -31,6 +32,7 @@ async function loadLocalModules() {
   ({ extractDestination } = await import('../src/lib/slug-utils'));
   ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
   ({ repairBlogFinalCustomerSurface } = await import('../src/lib/blog-final-customer-surface'));
+  ({ repairBlogEngineCategoryGaps } = await import('../src/lib/blog-engine-category-repair'));
   ({ canonicalizeBlogPublicLinks } = await import('../src/lib/blog-link-surface'));
   ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
@@ -5284,6 +5286,33 @@ async function main() {
       });
       if (finalSurfaceRepair.changed) {
         nextHtml = finalSurfaceRepair.markdown;
+      }
+    }
+    {
+      const categoryRepair = repairBlogEngineCategoryGaps({
+        markdown: nextHtml,
+        blogType,
+        title: normalizedTitle,
+        slug,
+        destination: normalizedDestinationForWrite || destination,
+        primaryKeyword,
+        angleType: null,
+        category: normalizedTitle,
+        contentType,
+        productId,
+        generationMeta: nextGenerationMeta,
+      });
+      if (categoryRepair.changed) {
+        nextHtml = categoryRepair.markdown;
+        nextGenerationMeta = {
+          ...nextGenerationMeta,
+          engine_category_repair: {
+            before_score: categoryRepair.beforeScore,
+            after_score: categoryRepair.afterScore,
+            repaired_categories: categoryRepair.repairedCategories,
+            changes: categoryRepair.changes,
+          },
+        };
       }
     }
     const qaReport = await evaluateBlogPublishQuality({

@@ -3,6 +3,7 @@ import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-q
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
 import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
+import { repairBlogEngineCategoryGaps } from './blog-engine-category-repair';
 import { repairPublishReadiness } from './blog-publish-readiness-repair';
 import { inspectBlogCustomerQuality, type BlogCustomerQualityReport } from './blog-customer-quality';
 
@@ -221,6 +222,24 @@ export async function prepareBlogForPublish(
   if (readinessRepair.changed) {
     blogHtml = readinessRepair.markdown;
     changes.push(...readinessRepair.changes);
+  }
+
+  const categoryRepair = repairBlogEngineCategoryGaps({
+    markdown: blogHtml,
+    blogType: input.product_id ? 'product' : 'info',
+    title: input.seo_title ?? input.slug,
+    slug: input.slug,
+    destination: input.destination ?? null,
+    primaryKeyword,
+    angleType: input.angle_type ?? null,
+    category: input.category ?? null,
+    contentType,
+    productId: input.product_id ?? null,
+    generationMeta: input.generation_meta ?? null,
+  });
+  if (categoryRepair.changed) {
+    blogHtml = categoryRepair.markdown;
+    changes.push(...categoryRepair.changes);
   }
 
   const report = await evaluateBlogPublishQuality({
