@@ -644,23 +644,22 @@ function inferCustomerInfoTopicKind(input: BlogEditorialRepairInput): CustomerIn
   const titleText = String(input.title || '').toLowerCase();
   const text = `${strongText} ${titleText}`;
 
-  if (/insurance|보험|보장|coverage/.test(strongText)) return 'general';
+  if (/insurance|coverage|\uBCF4\uD5D8|\uBCF4\uC7A5/i.test(strongText)) return 'general';
+  if (/weather|packing|\uB0A0\uC528|\uC637\uCC28\uB9BC|\uC900\uBE44\uBB3C|\uAE30\uC628|\uAC15\uC218|\uC6B0\uAE30|\uAC74\uAE30/i.test(strongText)) return 'weather';
+  if (/wifi|wi-fi|usim|e-?sim|roaming|\uC720\uC2EC|\uB85C\uBC0D|\uC640\uC774\uD30C\uC774|\uD1B5\uC2E0/i.test(strongText)) return 'communication';
+  if (/visa|immigration|esta|etias|\uBE44\uC790|\uC785\uAD6D|\uC5EC\uAD8C|\uC11C\uB958/i.test(strongText)) return 'visa';
+  if (/currency|money|payment|\uD658\uC804|\uD658\uC728|\uD604\uAE08|\uCE74\uB4DC|\uD654\uD3D0/i.test(strongText)) return 'currency';
+  if (/cost|budget|price|\uBE44\uC6A9|\uC608\uC0B0|\uACBD\uBE44|\uBB3C\uAC00|\uAC00\uACA9/i.test(strongText)) return 'cost';
+  if (/transport|transfer|mobility|\uAD50\uD1B5|\uC774\uB3D9|\uACF5\uD56D|\uD53D\uC5C5/i.test(strongText)) return 'transport';
+  if (/itinerary|route|course|\uC77C\uC815|\uCF54\uC2A4|\uB3D9\uC120|\uB8E8\uD2B8/i.test(strongText)) return 'itinerary';
 
-  if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(strongText)) return 'transport';
-  if (/cost|비용|예산|경비|가격|항공권|가성비/.test(strongText)) return 'cost';
-  if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(strongText)) return 'weather';
-  if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(strongText)) return 'communication';
-  if (/visa|비자|입국|여권|서류|esta|etias/.test(strongText)) return 'visa';
-  if (/currency|환전|환율|동전|카드|현금/.test(strongText)) return 'currency';
-  if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(strongText)) return 'itinerary';
-
-  if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(text)) return 'weather';
-  if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(text)) return 'communication';
-  if (/visa|비자|입국|여권|서류|esta|etias/.test(text)) return 'visa';
-  if (/currency|환전|환율|동전|카드|현금/.test(text)) return 'currency';
-  if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(text)) return 'transport';
-  if (/cost|비용|예산|경비|가격|항공권/.test(text)) return 'cost';
-  if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(text)) return 'itinerary';
+  if (/weather|packing|\uB0A0\uC528|\uC637\uCC28\uB9BC|\uC900\uBE44\uBB3C|\uAE30\uC628|\uAC15\uC218|\uC6B0\uAE30|\uAC74\uAE30/i.test(text)) return 'weather';
+  if (/wifi|wi-fi|usim|e-?sim|roaming|\uC720\uC2EC|\uB85C\uBC0D|\uC640\uC774\uD30C\uC774|\uD1B5\uC2E0/i.test(text)) return 'communication';
+  if (/visa|immigration|esta|etias|\uBE44\uC790|\uC785\uAD6D|\uC5EC\uAD8C|\uC11C\uB958/i.test(text)) return 'visa';
+  if (/currency|money|payment|\uD658\uC804|\uD658\uC728|\uD604\uAE08|\uCE74\uB4DC|\uD654\uD3D0/i.test(text)) return 'currency';
+  if (/cost|budget|price|\uBE44\uC6A9|\uC608\uC0B0|\uACBD\uBE44|\uBB3C\uAC00|\uAC00\uACA9/i.test(text)) return 'cost';
+  if (/transport|transfer|mobility|\uAD50\uD1B5|\uC774\uB3D9|\uACF5\uD56D|\uD53D\uC5C5/i.test(text)) return 'transport';
+  if (/itinerary|route|course|\uC77C\uC815|\uCF54\uC2A4|\uB3D9\uC120|\uB8E8\uD2B8/i.test(text)) return 'itinerary';
   return 'general';
 }
 
@@ -668,32 +667,32 @@ function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
   const topic = compactAnswerFirstLabel(input.primaryKeyword || input.title || input.category)
     || '\uC5EC\uD589 \uC900\uBE44';
   const destination = compactAnswerFirstLabel(input.destination);
-  const destinationLabel = destination || topic.split(/\s+/)[0] || '여행지';
+  const destinationLabel = destination || topic.split(/\s+/)[0] || '\uC5EC\uD589\uC9C0';
   const kind = inferCustomerInfoTopicKind(input);
 
   if (kind === 'transport') {
-    return `${topic}, 먼저 무엇을 비교해야 할까요? 공항 이동과 시내 교통을 따로 보고, 도착 후 대기 시간과 짐 개수까지 함께 확인하면 실제 이동 부담이 줄어듭니다.`;
+    return topic + ', \uACF5\uD56D\uC774\uB098 \uC2DC\uB0B4\uB85C \uC774\uB3D9\uD560 \uB54C\uB294 \uC2DC\uAC04\u00B7\uBE44\uC6A9\u00B7\uD53D\uC5C5 \uC704\uCE58\uB97C \uBA3C\uC800 \uBE44\uAD50\uD574\uC57C \uD569\uB2C8\uB2E4. ' + destinationLabel + ' \uD604\uC9C0\uC5D0\uC11C\uB294 \uCC28\uB7C9 \uB300\uAE30\uC2DC\uAC04\uACFC \uC218\uD558\uBB3C \uC218\uB97C \uD568\uAED8 \uBCF4\uBA74 \uC774\uB3D9 \uC2E4\uC218\uAC00 \uC904\uC5B4\uB4ED\uB2C8\uB2E4.';
   }
   if (kind === 'cost') {
-    return `${topic}, 먼저 총액에서 무엇이 빠지는지 봐야 합니다. 1인 하루 식사, 교통, 선택 관광 비용을 상품가와 나눠 보면 예약 전 비교가 훨씬 쉬워집니다.`;
+    return topic + ', \uCD1D\uC561\uC740 \uC0C1\uD488\uAC00\u00B7\uD604\uC9C0 \uAC1C\uC778\uACBD\uBE44\u00B7\uC120\uD0DD \uAD00\uAD11\uBE44\uB97C \uB530\uB85C \uBD10\uC57C \uD569\uB2C8\uB2E4. \uC608\uC57D \uC804\uC5D0 \uD3EC\uD568/\uBD88\uD3EC\uD568\uACFC \uD658\uC728\uC744 \uAC19\uC774 \uD655\uC778\uD558\uBA74 \uC608\uC0B0 \uC624\uCC28\uB97C \uC904\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.';
   }
   if (kind === 'weather') {
-    return `${topic}, 출발 전에는 낮과 밤 기온, 비 예보, 필요한 옷차림을 먼저 확인해야 합니다. ${destinationLabel} 현지 날씨에 맞춰 짐을 줄이면 동선 실수를 줄일 수 있습니다.`;
+    return topic + ', \uB0AE\uACFC \uBC24 \uAE30\uC628, \uBE44 \uC608\uBCF4, \uC637\uCC28\uB9BC\uC744 \uBA3C\uC800 \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4. \uCCB4\uAC10 \uC628\uB3C4\uB294 \uC544\uCE68\u00B7\uC800\uB141 \uAE30\uC628\uCC28\uC640 \uAC15\uC218 \uAC00\uB2A5\uC131\uC5D0 \uB354 \uD06C\uAC8C \uC88C\uC6B0\uB429\uB2C8\uB2E4. ' + destinationLabel + ' \uCD9C\uBC1C \uC804\uC5D0\uB294 \uACB9\uCCD0 \uC785\uC744 \uC637, \uBC29\uC218\uC6A9\uD488, \uC790\uC678\uC120 \uCC28\uB2E8\uC744 \uBA3C\uC800 \uCC59\uAE30\uBA74 \uC637\uCC28\uB9BC \uC2E4\uC218\uAC00 \uC904\uC5B4\uB4ED\uB2C8\uB2E4.';
   }
   if (kind === 'communication') {
-    return `${topic}, 도착 직후 바로 연결하려면 사용 지역, 데이터 용량, 통화 필요 여부를 먼저 봐야 합니다. 개통 방식과 고객 지원 시간까지 확인하면 현지에서 헤매는 시간을 줄일 수 있습니다.`;
+    return topic + ', \uAC1C\uD1B5 \uC804\uC5D0 \uC0AC\uC6A9 \uC9C0\uC5ED, \uB370\uC774\uD130 \uC6A9\uB7C9, \uD1B5\uD654 \uD544\uC694 \uC5EC\uBD80\uB97C \uBA3C\uC800 \uBCF4\uC138\uC694. \uC774 \uC138 \uAC00\uC9C0\uB97C \uD655\uC778\uD558\uBA74 \uD604\uC9C0\uC5D0\uC11C \uC720\uC2EC\u00B7eSIM\u00B7\uB85C\uBC0D \uC120\uD0DD\uC774 \uD6E8\uC52C \uBE68\uB77C\uC9D1\uB2C8\uB2E4.';
   }
   if (kind === 'visa') {
-    return `${topic}, 출발 전에는 여권 유효기간과 체류 기간, 항공권 조건을 먼저 확인해야 합니다. 입국 규정은 바뀔 수 있으니 공식 안내를 마지막에 다시 보는 편이 안전합니다.`;
+    return topic + ', \uC5EC\uAD8C \uC720\uD6A8\uAE30\uAC04\uACFC \uCCB4\uB958 \uAE30\uAC04, \uC785\uAD6D \uC11C\uB958\uB97C \uBA3C\uC800 \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4. \uC785\uAD6D \uC815\uCC45\uC740 \uBC14\uB014 \uC218 \uC788\uC73C\uB2C8 \uC608\uC57D \uC804\uACFC \uCD9C\uBC1C \uC9C1\uC804\uC5D0 \uACF5\uC2DD \uC548\uB0B4\uB97C \uB2E4\uC2DC \uBCF4\uB294 \uD3B8\uC774 \uC548\uC804\uD569\uB2C8\uB2E4.';
   }
   if (kind === 'currency') {
-    return `${topic}, 현금과 카드 중 무엇을 더 준비해야 할까요? 환율, 수수료, 현지 결제 가능 여부를 비교하고 최소 2가지 결제 수단을 나눠 챙기면 안전합니다.`;
+    return topic + ', \uD604\uAE08\uACFC \uCE74\uB4DC \uC911 \uBB34\uC5C7\uC744 \uBA3C\uC800 \uC900\uBE44\uD560\uC9C0\uB294 \uD658\uC728, \uC218\uC218\uB8CC, \uD604\uC9C0 \uACB0\uC81C \uAC00\uB2A5 \uC5EC\uBD80\uB85C \uACB0\uC815\uD558\uBA74 \uB429\uB2C8\uB2E4. \uCD5C\uC18C 2\uAC00\uC9C0 \uACB0\uC81C \uC218\uB2E8\uC744 \uB098\uB204\uC5B4 \uCC59\uAE30\uB294 \uAC83\uC774 \uC548\uC804\uD569\uB2C8\uB2E4.';
   }
   if (kind === 'itinerary') {
-    return `${topic}, 하루에 몇 곳까지 넣어도 무리가 없을까요? 이동 시간과 숙소 위치를 먼저 비교하면 ${destinationLabel} 여행에서 1~2시간씩 새는 동선을 줄일 수 있습니다.`;
+    return topic + ', \uD558\uB8E8\uC5D0 \uBA87 \uACF3\uC744 \uB123\uB294\uC9C0\uBCF4\uB2E4 \uC774\uB3D9 \uC2DC\uAC04\uACFC \uB3D9\uC120 \uC21C\uC11C\uB97C \uBA3C\uC800 \uBCF4\uB294 \uD3B8\uC774 \uC88B\uC2B5\uB2C8\uB2E4. ' + destinationLabel + ' \uC5EC\uD589\uC740 \uB3D9\uC120\uC744 \uC904\uC774\uBA74 \uC2E4\uC81C \uC5EC\uC720 \uC2DC\uAC04\uC774 1~2\uC2DC\uAC04 \uB298\uC5B4\uB0A0 \uC218 \uC788\uC2B5\uB2C8\uB2E4.';
   }
 
-  return `${topic}, 예약 전 무엇부터 확인해야 할까요? 일정, 비용, 이동 조건을 2가지 이상 비교하면 ${destinationLabel} 여행에서 바뀔 수 있는 조건을 미리 줄일 수 있습니다.`;
+  return topic + ', \uC608\uC57D \uC804\uC5D0\uB294 \uC77C\uC815, \uBE44\uC6A9, \uC774\uB3D9 \uC870\uAC74\uC744 2\uAC00\uC9C0 \uC774\uC0C1 \uAE30\uC900\uC73C\uB85C \uBE44\uAD50\uD574\uC57C \uD569\uB2C8\uB2E4. ' + destinationLabel + ' \uC5EC\uD589\uC5D0\uC11C \uBC14\uB014 \uC218 \uC788\uB294 \uC870\uAC74\uC744 \uBA3C\uC800 \uC904\uC774\uBA74 \uD604\uC9C0 \uC2E4\uC218\uAC00 \uC904\uC5B4\uB4ED\uB2C8\uB2E4.';
 }
 
 function insertIntroAfterTitle(markdown: string, intro: string): string {
@@ -2595,14 +2594,14 @@ function hasProductConsultDecisionContract(markdown: string): boolean {
   const source = markdown;
   const plain = stripMarkup(markdown).replace(/\s+/g, ' ').trim();
   return (
-    /10초\s*판단/.test(source)
-    && /포함\/불포함|포함\s*사항.*불포함\s*사항/s.test(source)
-    && /(일정|기간|항공|출발)/.test(plain)
-    && /(가격|요금|출발)/.test(plain)
-    && /이런\s*분께\s*맞|fit_for/i.test(source)
-    && /맞지\s*않을\s*수|not_fit_for/i.test(source)
-    && /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i.test(source)
-    && /문의\s*전\s*질문|consult_questions/i.test(source)
+    /10\s*\uCD08\s*\uD310\uB2E8|\uBB38\uC758\s*\uC804\s*(?:\uD310\uB2E8|\uC694\uC57D)/i.test(source)
+    && /\uD3EC\uD568\/\uBD88\uD3EC\uD568|\uD3EC\uD568\s*\uC0AC\uD56D[\s\S]{0,300}\uBD88\uD3EC\uD568\s*\uC0AC\uD56D/i.test(source)
+    && /(\uC77C\uC815|\uAE30\uAC04|\uD56D\uACF5|\uCD9C\uBC1C|duration|airline)/i.test(plain)
+    && /(\uAC00\uACA9|\uC694\uAE08|\uCD9C\uBC1C|price)/i.test(plain)
+    && /\uB9DE\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|fit_for/i.test(source)
+    && /\uC548\s*\uB9DE\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|\uB9DE\uC9C0\s*\uC54A\uB294|not_fit_for/i.test(source)
+    && /\uAC00\uACA9\s*\uBCC0\uB3D9|\uAC00\uACA9(?:\uC774|\uC740)?\s*(?:\uB2EC\uB77C\uC9C8|\uBC14\uB00C|\uBCC0\uB3D9\uB420)\s*\uC218|risk_notes/i.test(source)
+    && /\uBB38\uC758\s*\uC804\s*\uC9C8\uBB38|consult_questions/i.test(source)
   );
 }
 
@@ -2614,52 +2613,47 @@ function ensureProductConsultDecisionBlocks(
     return { text: markdown, changed: false };
   }
 
-  const destination = compactAnswerFirstLabel(input.destination || input.category || input.primaryKeyword || '여행지') || '여행지';
-  const keyword = compactAnswerFirstLabel(input.primaryKeyword || input.title || `${destination} 패키지`) || `${destination} 패키지`;
+  const destination = compactAnswerFirstLabel(input.destination || input.category || input.primaryKeyword || '\uC5EC\uD589\uC9C0') || '\uC5EC\uD589\uC9C0';
+  const keyword = compactAnswerFirstLabel(input.primaryKeyword || input.title || (destination + ' \uD328\uD0A4\uC9C0')) || (destination + ' \uD328\uD0A4\uC9C0');
   const cta = /group-inquiry|\b\/packages\//i.test(markdown)
     ? ''
-    : [
-      '',
-      '### 내 일정 기준으로 확인',
-      '',
-      '- 출발일, 인원, 객실 조건을 알려주시면 현재 가능한 조건만 다시 확인합니다.',
-    ].join('\n');
+    : ['', '### \uB0B4 \uC77C\uC815 \uAE30\uC900\uC73C\uB85C \uD655\uC778', '', '- \uCD9C\uBC1C\uC77C, \uC778\uC6D0, \uAC1D\uC2E4 \uC870\uAC74\uC744 \uC54C\uB824\uC8FC\uC2DC\uBA74 \uD604\uC7AC \uAC00\uB2A5\uD55C \uC870\uAC74\uB9CC \uB2E4\uC2DC \uD655\uC778\uD569\uB2C8\uB2E4.'].join('\n');
 
   const block = [
     '',
-    '## 문의 전 10초 판단표',
+    '## \uBB38\uC758 \uC804 10\uCD08 \uD310\uB2E8\uD45C',
     '',
-    '| 확인 항목 | 먼저 볼 내용 | 문의 전 체크 |',
+    '| \uD655\uC778 \uD56D\uBAA9 | \uBA3C\uC800 \uBCFC \uB0B4\uC6A9 | \uBB38\uC758 \uC804 \uCCB4\uD06C |',
     '| --- | --- | --- |',
-    `| 가격/요금 | ${keyword}의 최종 금액은 출발일과 좌석, 객실 조건에 따라 달라질 수 있습니다. | 현재 가능한 날짜와 인원을 확인해야 합니다. |`,
-    '| 출발/기간 | 항공 시간, 이동 동선, 숙박 수를 함께 봐야 일정 부담을 판단할 수 있습니다. | 아동/부모님 동반이면 이동 시간을 먼저 확인합니다. |',
-    '| 포함/불포함 | 포함 사항과 불포함 사항을 나눠 봐야 현지 추가비를 줄일 수 있습니다. | 선택관광, 개인경비, 팁 조건을 확인합니다. |',
+    '| \uAC00\uACA9/\uC694\uAE08 | ' + keyword + '\uC758 \uCD5C\uC885 \uAE08\uC561\uC740 \uCD9C\uBC1C\uC77C, \uC88C\uC11D, \uAC1D\uC2E4 \uC870\uAC74\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC9C8 \uC218 \uC788\uC2B5\uB2C8\uB2E4. | \uD604\uC7AC \uAC00\uB2A5\uD55C \uB0A0\uC9DC\uC640 \uC778\uC6D0\uC744 \uD655\uC778\uD569\uB2C8\uB2E4. |',
+    '| \uCD9C\uBC1C/\uAE30\uAC04 | \uD56D\uACF5 \uC2DC\uAC04, \uC774\uB3D9 \uB3D9\uC120, \uC219\uBC15 \uC218\uB97C \uD568\uAED8 \uBD10\uC57C \uC77C\uC815 \uBD80\uB2F4\uC744 \uD310\uB2E8\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4. | \uC544\uC774/\uBD80\uBAA8\uB2D8 \uB3D9\uBC18\uC774\uBA74 \uC774\uB3D9 \uC2DC\uAC04\uC744 \uBA3C\uC800 \uD655\uC778\uD569\uB2C8\uB2E4. |',
+    '| \uD3EC\uD568/\uBD88\uD3EC\uD568 | \uD3EC\uD568 \uC0AC\uD56D\uACFC \uBD88\uD3EC\uD568 \uC0AC\uD56D\uC744 \uB098\uB204\uC5B4 \uBD10\uC57C \uD604\uC9C0 \uCD94\uAC00\uBE44\uB97C \uC904\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4. | \uC120\uD0DD\uAD00\uAD11, \uAC1C\uC778\uACBD\uBE44, \uD301 \uC870\uAC74\uC744 \uD655\uC778\uD569\uB2C8\uB2E4. |',
     '',
-    '### 포함/불포함 확인',
+    '### \uD3EC\uD568/\uBD88\uD3EC\uD568 \uD655\uC778',
     '',
-    '- 포함 사항: 상품 DB에 명시된 항공, 숙박, 일정, 식사, 차량 조건을 기준으로 확인합니다.',
-    '- 불포함 사항: 개인경비, 선택관광, 현지 결제 조건은 예약 전 다시 확인합니다.',
+    '- \uD3EC\uD568 \uC0AC\uD56D: \uC0C1\uD488 DB\uC5D0 \uBA85\uC2DC\uB41C \uD56D\uACF5, \uC219\uBC15, \uC77C\uC815, \uC2DD\uC0AC, \uCC28\uB7C9 \uC870\uAC74\uC744 \uAE30\uC900\uC73C\uB85C \uD655\uC778\uD569\uB2C8\uB2E4.',
+    '- \uBD88\uD3EC\uD568 \uC0AC\uD56D: \uAC1C\uC778\uACBD\uBE44, \uC120\uD0DD\uAD00\uAD11, \uD604\uC9C0 \uACB0\uC81C \uC870\uAC74\uC740 \uC608\uC57D \uC804 \uB2E4\uC2DC \uD655\uC778\uD569\uB2C8\uB2E4.',
     '',
-    '### 이런 분께 맞습니다',
+    '### \uC774\uB7F0 \uBD84\uAED8 \uB9DE\uC2B5\uB2C8\uB2E4',
     '',
-    `- ${destination} 일정을 직접 비교하기보다 가격, 포함사항, 이동 부담을 먼저 정리하고 싶은 분`,
-    '- 출발 가능일과 인원 기준으로 실제 예약 가능 여부를 확인하고 싶은 분',
+    '- ' + destination + ' \uC77C\uC815\uC744 \uC9C1\uC811 \uBE44\uAD50\uD558\uAE30\uBCF4\uB2E4 \uAC00\uACA9, \uD3EC\uD568\uC0AC\uD56D, \uC774\uB3D9 \uBD80\uB2F4\uC744 \uBA3C\uC800 \uC815\uB9AC\uD558\uACE0 \uC2F6\uC740 \uBD84',
+    '- \uCD9C\uBC1C \uAC00\uB2A5\uC77C\uACFC \uC778\uC6D0 \uAE30\uC900\uC73C\uB85C \uC2E4\uC81C \uC608\uC57D \uAC00\uB2A5 \uC5EC\uBD80\uB97C \uD655\uC778\uD558\uACE0 \uC2F6\uC740 \uBD84',
     '',
-    '### 맞지 않을 수 있습니다',
+    '### \uB9DE\uC9C0 \uC54A\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4',
     '',
-    '- 자유일정 비중이 큰 개별여행을 원하는 분',
-    '- 호텔명, 항공 시간, 객실 조건이 확정되기 전에는 문의를 원하지 않는 분',
+    '- \uC790\uC720\uC77C\uC815 \uBE44\uC911\uC774 \uD070 \uAC1C\uBCC4\uC5EC\uD589\uC744 \uC6D0\uD558\uB294 \uBD84',
+    '- \uD638\uD154\uBA85, \uD56D\uACF5 \uC2DC\uAC04, \uAC1D\uC2E4 \uC870\uAC74\uC774 \uD655\uC815\uB418\uAE30 \uC804\uC5D0 \uBB38\uC758\uB97C \uC6D0\uD558\uC9C0 \uC54A\uB294 \uBD84',
     '',
-    '### 가격 변동 조건',
+    '### \uAC00\uACA9 \uBCC0\uB3D9 \uC870\uAC74',
     '',
-    '- 가격이 달라질 수 있는 항목: 출발일, 좌석 상황, 객실 타입, 환율, 선택관광, 인원 구성',
-    '- 상품 DB에 없는 확정 혜택이나 호텔명은 임의로 판단하지 않고 상담에서 확인해야 합니다.',
+    '- \uAC00\uACA9\uC774 \uB2EC\uB77C\uC9C8 \uC218 \uC788\uB294 \uD56D\uBAA9: \uCD9C\uBC1C\uC77C, \uC88C\uC11D \uC0C1\uD669, \uAC1D\uC2E4 \uB4F1\uAE09, \uD658\uC728, \uC120\uD0DD\uAD00\uAD11, \uC778\uC6D0 \uAD6C\uC131',
+    '- \uC0C1\uD488 DB\uC5D0 \uC5C6\uB294 \uD655\uC815 \uD61C\uD0DD\uC774\uB098 \uD638\uD154\uBA85\uC740 \uC784\uC758\uB85C \uD310\uB2E8\uD558\uC9C0 \uC54A\uACE0 \uC0C1\uB2F4\uC5D0\uC11C \uD655\uC778\uD574\uC57C \uD569\uB2C8\uB2E4.',
     '',
-    '### 문의 전 질문',
+    '### \uBB38\uC758 \uC804 \uC9C8\uBB38',
     '',
-    '- 출발 가능한 날짜와 인원은 어떻게 되나요?',
-    '- 아동, 부모님, 단체 동반 여부가 있나요?',
-    '- 꼭 포함되어야 하는 일정이나 피하고 싶은 일정이 있나요?',
+    '- \uCD9C\uBC1C \uAC00\uB2A5\uD55C \uB0A0\uC9DC\uC640 \uC778\uC6D0\uC740 \uC5B4\uB5BB\uAC8C \uB418\uB098\uC694?',
+    '- \uC544\uC774, \uBD80\uBAA8\uB2D8, \uB2E8\uCCB4 \uB3D9\uBC18 \uC5EC\uBD80\uAC00 \uC788\uB098\uC694?',
+    '- \uAF2D \uD3EC\uD568\uB418\uC5B4\uC57C \uD558\uB294 \uC77C\uC815\uC774\uB098 \uD53C\uD558\uACE0 \uC2F6\uC740 \uC77C\uC815\uC774 \uC788\uB098\uC694?',
     cta,
   ].filter(Boolean).join('\n');
 

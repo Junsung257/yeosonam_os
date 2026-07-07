@@ -273,9 +273,9 @@ function inspectInfoContract(
     addIssue(issues, 'weak_list_or_table_shape', 'critical', 'Preparation posts need at least five checklist items.', { listItems });
   }
 
-  if (subtype === 'itinerary' && countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째)/gi) < 2) {
+  if (subtype === 'itinerary' && countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째|일정\s*체감|출발|도착|귀국|이동\s*동선|숙박\s*수)/gi) < 2) {
     addIssue(issues, 'missing_required_block', 'critical', 'Itinerary posts need day-by-day or time-by-time structure.', {
-      dayMarkers: countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째)/gi),
+      dayMarkers: countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째|일정\s*체감|출발|도착|귀국|이동\s*동선|숙박\s*수)/gi),
     });
   }
 
@@ -772,12 +772,30 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
 
 function inspectProductConsultContract(source: string, issues: BlogIntentIssue[]) {
   const requiredBlocks = [
-    { key: '10초 판단', pattern: /10초\s*판단/ },
-    { key: '포함/불포함', pattern: /포함\/불포함|포함\s*사항.*불포함\s*사항/s },
-    { key: '맞는 사람', pattern: /이런\s*분께\s*맞|fit_for/i },
-    { key: '안 맞는 사람', pattern: /맞지\s*않을\s*수|not_fit_for/i },
-    { key: '가격 변동 조건', pattern: /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i },
-    { key: '문의 전 질문', pattern: /문의\s*전\s*질문|consult_questions/i },
+    {
+      key: '\u0031\u0030\uCD08 \uD310\uB2E8',
+      pattern: /10\s*\uCD08\s*\uD310\uB2E8|\uD55C\uB208\uC5D0\s*(?:\uBCF4\uB294\s*)?(?:\uD310\uB2E8|\uC694\uC57D)|\uBB38\uC758\s*\uC804\s*(?:\uD310\uB2E8|\uC694\uC57D)/i,
+    },
+    {
+      key: '\uD3EC\uD568/\uBD88\uD3EC\uD568',
+      pattern: /\uD3EC\uD568\/\uBD88\uD3EC\uD568|\uD3EC\uD568\s*\uC0AC\uD56D[\s\S]{0,300}\uBD88\uD3EC\uD568\s*\uC0AC\uD56D|\uD3EC\uD568[\s\S]{0,300}\uBD88\uD3EC\uD568/i,
+    },
+    {
+      key: '\uB9DE\uB294 \uC0AC\uB78C',
+      pattern: /\uB9DE\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|\uC774\uB7F0\s*(?:\uBD84|\uACE0\uAC1D)(?:\uAED8|\uC5D0\uAC8C)?\s*\uB9DE|\uCD94\uCC9C\s*\uB300\uC0C1|fit_for/i,
+    },
+    {
+      key: '\uC548 \uB9DE\uB294 \uC0AC\uB78C',
+      pattern: /\uC548\s*\uB9DE\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|\uB9DE\uC9C0\s*\uC54A\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|\uB9DE\uC9C0\s*\uC54A\uC744\s*\uC218|not_fit_for/i,
+    },
+    {
+      key: '\uAC00\uACA9 \uBCC0\uB3D9 \uC870\uAC74',
+      pattern: /\uAC00\uACA9\s*\uBCC0\uB3D9\s*\uC870\uAC74|\uAC00\uACA9(?:\uC774|\uC740)?\s*(?:\uB2EC\uB77C\uC9C8|\uBC14\uB00C|\uBCC0\uB3D9\uB420)\s*\uC218|\uCD9C\uBC1C\uC77C[\s\S]{0,120}\uAC00\uACA9|risk_notes/i,
+    },
+    {
+      key: '\uBB38\uC758 \uC804 \uC9C8\uBB38',
+      pattern: /\uBB38\uC758\s*\uC804\s*\uC9C8\uBB38|\uC0C1\uB2F4\s*\uC804\s*\uC9C8\uBB38|\uD655\uC778\s*\uC9C8\uBB38|consult_questions/i,
+    },
   ];
   const missing = requiredBlocks
     .filter((block) => !block.pattern.test(source))

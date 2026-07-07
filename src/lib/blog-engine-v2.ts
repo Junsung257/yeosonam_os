@@ -248,7 +248,17 @@ function scoreProductDecision(markdown: string, brief: BlogEngineV2Brief): numbe
     /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i,
     /문의\s*전\s*질문|consult_questions/i,
   ];
-  const blockScore = required.filter((pattern) => pattern.test(markdown)).length / required.length * 70;
+  const readableRequired = [
+    /10초\s*판단/,
+    /포함\s*\/\s*불포함|포함\s*항목.*불포함\s*항목/s,
+    /맞는\s*사람|맞는\s*분|맞는\s*고객/,
+    /안\s*맞는\s*사람|맞지\s*않는\s*분|맞지\s*않는\s*고객/,
+    /가격\s*변동\s*조건|가격(?:이|은)?\s*(?:바뀌|달라지|변동)/,
+    /문의\s*전\s*질문/,
+  ];
+  const legacyScore = required.filter((pattern) => pattern.test(markdown)).length / required.length * 70;
+  const readableScore = readableRequired.filter((pattern) => pattern.test(markdown)).length / readableRequired.length * 70;
+  const blockScore = Math.max(legacyScore, readableScore);
   const briefFields = [
     brief.included?.length,
     brief.excluded?.length,

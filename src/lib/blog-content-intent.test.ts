@@ -530,4 +530,43 @@ A. 짧은 소나기라면 실내 동선을 섞어 조정하는 편이 안전합�
     expect(report.passed).toBe(false);
     expect(report.issues.some((issue) => issue.code === 'missing_product_consult_block')).toBe(true);
   });
+
+  it('accepts readable Korean product consultant decision blocks', () => {
+    const html = [
+      '# \uBD80\uC0B0\uCD9C\uBC1C \uB098\uD2B8\uB791 3\uBC155\uC77C \uD328\uD0A4\uC9C0',
+      '',
+      '\uBD80\uC0B0\uCD9C\uBC1C, 3\uBC155\uC77C, 599,000\uC6D0\uBD80\uD130 \uD655\uC778\uD558\uB294 \uC0C1\uD488\uC785\uB2C8\uB2E4. \uC774\uB3D9\uC744 \uC904\uC774\uACE0 \uD3EC\uD568 \uC870\uAC74\uC744 \uBA3C\uC800 \uBCF4\uB824\uB294 \uBD84\uC5D0\uAC8C \uB9DE\uC2B5\uB2C8\uB2E4.',
+      '',
+      '## 10\uCD08 \uD310\uB2E8',
+      '| \uD655\uC778 \uD56D\uBAA9 | \uD604\uC7AC \uAE30\uC900 | \uBB38\uC758 \uC804 \uBCFC \uAC83 |',
+      '| --- | --- | --- |',
+      '| \uAC00\uACA9 | 599,000\uC6D0~ | \uCD9C\uBC1C\uC77C\uBCC4 \uBCC0\uB3D9 |',
+      '| \uAE30\uAC04 | 3\uBC155\uC77C | \uD56D\uACF5 \uC2DC\uAC04 |',
+      '| \uD3EC\uD568 | \uD56D\uACF5/\uD638\uD154 | \uBD88\uD3EC\uD568 \uD655\uC778 |',
+      '',
+      '## \uD3EC\uD568/\uBD88\uD3EC\uD568',
+      '- \uD3EC\uD568 \uC0AC\uD56D: \uD56D\uACF5, \uD638\uD154, \uCC28\uB7C9',
+      '- \uBD88\uD3EC\uD568 \uC0AC\uD56D: \uAC1C\uC778\uACBD\uBE44, \uC120\uD0DD\uAD00\uAD11',
+      '',
+      '## \uB9DE\uB294 \uC0AC\uB78C\uACFC \uC548 \uB9DE\uB294 \uC0AC\uB78C',
+      '- \uB9DE\uB294 \uC0AC\uB78C: \uCD9C\uBC1C\uC9C0\uC640 \uAC00\uACA9\uC744 \uBA3C\uC800 \uBCF4\uB294 \uACE0\uAC1D',
+      '- \uC548 \uB9DE\uB294 \uC0AC\uB78C: \uD638\uD154\uACFC \uC77C\uC815\uC744 \uBAA8\uB450 \uC9C1\uC811 \uC9DC\uACE0 \uC2F6\uC740 \uACE0\uAC1D',
+      '',
+      '## \uAC00\uACA9 \uBCC0\uB3D9 \uC870\uAC74',
+      '- \uCD9C\uBC1C\uC77C, \uC88C\uC11D, \uD658\uC728\uC5D0 \uB530\uB77C \uAC00\uACA9\uC774 \uB2EC\uB77C\uC9C8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
+      '',
+      '## \uBB38\uC758 \uC804 \uC9C8\uBB38',
+      '- \uCD9C\uBC1C \uAC00\uB2A5\uC77C\uC740 \uC5B8\uC81C\uC778\uAC00\uC694?',
+    ].join('\\n');
+    const report = inspectBlogIntentQuality({
+      title: '\uBD80\uC0B0\uCD9C\uBC1C \uB098\uD2B8\uB791 \uD328\uD0A4\uC9C0',
+      primaryKeyword: '\uB098\uD2B8\uB791 \uD328\uD0A4\uC9C0',
+      category: 'product',
+      contentType: 'package_intro',
+      productId: 'pkg_789',
+      blogHtml: html,
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('missing_product_consult_block');
+  });
 });

@@ -1365,9 +1365,9 @@ function topicKindForCustomer(row: BlogRow, primaryKeyword: string): 'weather' |
 
   if (/insurance|보험|보장|coverage/.test(strongText)) return 'general';
 
+  if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(strongText)) return 'weather';
   if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(strongText)) return 'transport';
   if (/cost|비용|예산|경비|가격|항공권|가성비/.test(strongText)) return 'cost';
-  if (/weather|날씨|옷차림|기온|강수|우기|건기/.test(strongText)) return 'weather';
   if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(strongText)) return 'communication';
   if (/visa|비자|입국|여권|서류|esta|etias/.test(strongText)) return 'visa';
   if (/currency|환전|환율|동전|카드|현금/.test(strongText)) return 'currency';
@@ -1377,9 +1377,9 @@ function topicKindForCustomer(row: BlogRow, primaryKeyword: string): 'weather' |
   if (/wifi|wi-fi|와이파이|유심|usim|esim|e-sim|로밍|통신/.test(text)) return 'communication';
   if (/visa|비자|입국|여권|서류|esta|etias/.test(text)) return 'visa';
   if (/currency|환전|환율|동전|카드|현금/.test(text)) return 'currency';
+  if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(text)) return 'itinerary';
   if (/transport|mobility|transfer|교통|교통비|이동비|픽업|공항/.test(text)) return 'transport';
   if (/cost|비용|예산|경비|가격|항공권/.test(text)) return 'cost';
-  if (/itinerary|일정|코스|동선|route|3박|4박|5박/.test(text)) return 'itinerary';
   return 'general';
 }
 
@@ -2331,14 +2331,19 @@ function strengthenIntroHookCustomer(
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 220);
+  const topicText = `${primaryKeyword || ''} ${destination || ''} ${markdown.slice(0, 500)}`;
+  const isWeatherPackingTopic = /날씨|옷차림|준비물|체크리스트|우기|건기|기온|강수|스콜|태풍|weather|packing/i.test(topicText);
+  const hasWeatherAnswer = /낮|밤|기온|비\s*예보|강수|우산|우비|옷차림|겉옷|방수|자외선|준비물|일교차/i.test(intro);
+  const startsWithReservationFrame = /비용|예약|상품가|포함\/불포함|포함\s*항목|불포함|현지\s*추가비|이동\s*시간/i.test(intro.slice(0, 140));
+  const needsWeatherAnswerFirst = blogType === 'info' && isWeatherPackingTopic && (!hasWeatherAnswer || startsWithReservationFrame);
   const hasNumber = /\d/.test(intro);
   const hasTrigger = /[?？]|만원|비용|시간|비교|체크|예약|입국|날씨|준비/.test(intro);
   const hasAnswerFirst = /답부터|먼저\s*확인|기준으로|핵심은|결론부터|비용·일정|비용,\s*일정/.test(intro);
   const hasGenericOpening = /답부터\s*말하면|예산\s*범위,\s*이동\s*순서,\s*현지\s*확인\s*사항|비용[·,\s]*일정[·,\s]*준비\s*조건/.test(intro);
-  if (hasNumber && hasTrigger && hasAnswerFirst && !hasGenericOpening) return markdown;
+  if (hasNumber && hasTrigger && hasAnswerFirst && !hasGenericOpening && !needsWeatherAnswerFirst) return markdown;
 
   const hook = buildCustomerFirstAnswer(primaryKeyword, destination, blogType);
-  if (hasGenericOpening) {
+  if (hasGenericOpening || needsWeatherAnswerFirst) {
     const repaired = repairGenericCustomerOpeningFinal(markdown, primaryKeyword, destination, blogType);
     if (repaired !== markdown) return repaired;
   }
@@ -2575,9 +2580,20 @@ function ensureAnswerFirstFinal(markdown: string, primaryKeyword: string, blogTy
   const lines = markdown.split('\n');
   const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
   const insertAt = h1Index >= 0 ? h1Index + 1 : 0;
-  const firstBody = lines
-    .slice(insertAt)
-    .find((line) => line.trim() && !/^#{1,6}\s+/.test(line.trim()))?.trim() ?? '';
+  const firstBodyIndex = lines.findIndex((line, index) => index >= insertAt && line.trim() && !/^#{1,6}\s+/.test(line.trim()));
+  const firstBody = firstBodyIndex >= 0 ? lines[firstBodyIndex]?.trim() ?? '' : '';
+  const looksWeatherTopic = blogType === 'info' && /날씨|옷차림|우기|건기|기온|강수|스콜|태풍|weather/i.test(`${primaryKeyword} ${markdown.slice(0, 700)}`);
+  const weatherAnswer = /낮|밤|기온|비\s*예보|강수|우산|우비|옷차림|겉옷|방수|자외선|일교차/i.test(firstBody);
+  const genericReservationAnswer = /비용|가격|예약|상품가|포함\/불포함|현지\s*추가비|이동\s*시간/i.test(firstBody.slice(0, 160));
+  if (looksWeatherTopic && (!weatherAnswer || genericReservationAnswer)) {
+    const answer = buildCustomerFirstAnswer(keyword, null, blogType);
+    if (firstBodyIndex >= 0) {
+      lines[firstBodyIndex] = answer;
+    } else {
+      lines.splice(insertAt, 0, '', answer);
+    }
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+  }
   if (/답부터|먼저|기준|확인|비용|가격|준비|일정|주의|환전|입국|날씨/.test(firstBody)) return markdown;
   lines.splice(insertAt, 0, '', buildCustomerFirstAnswer(keyword, null, blogType));
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
@@ -4335,6 +4351,65 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
   )))), row, primaryKeyword);
 }
 
+function ensureWeatherAnswerFirstBeforeQa(markdown: string, row: BlogRow, primaryKeyword: string, blogType: 'product' | 'info'): string {
+  const topic = `${row.slug || ''} ${row.seo_title || ''} ${primaryKeyword}`.toLowerCase();
+  if (!/weather|날씨|옷차림|우기|건기|기온|강수|스콜|태풍/i.test(topic)) return markdown;
+
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  const firstBodyIndex = lines.findIndex((line, index) => {
+    if (index <= h1Index) return false;
+    const trimmed = line.trim();
+    return Boolean(trimmed && !/^#{1,6}\s+/.test(trimmed) && !/^!\[/.test(trimmed) && !/^\|.*\|$/.test(trimmed));
+  });
+  const firstBody = firstBodyIndex >= 0 ? lines[firstBodyIndex]?.trim() ?? '' : '';
+  const hasWeatherAnswer = /낮|밤|기온|비\s*예보|강수|우산|우비|옷차림|겉옷|방수|자외선|일교차/i.test(firstBody);
+  const hasReservationFrame = /비용|가격|예약|상품가|포함\/불포함|현지\s*추가비|이동\s*시간/i.test(firstBody.slice(0, 160));
+  if (hasWeatherAnswer && !hasReservationFrame) return markdown;
+
+  const destinationLabel = cleanTravelKeyword(row.destination) || customerAnswerKeyword(row, primaryKeyword);
+  const answer = `${destinationLabel} 날씨는 낮과 밤 기온, 비 예보, 옷차림을 먼저 확인해야 합니다. 출발 전에는 일교차, 강수 가능성, 실내 냉방까지 함께 보고 겹쳐 입을 옷과 방수용품을 준비하면 현지에서 짐과 동선 실수를 줄일 수 있습니다.`;
+  if (firstBodyIndex >= 0) {
+    lines[firstBodyIndex] = answer;
+  } else {
+    lines.splice(h1Index >= 0 ? h1Index + 1 : 0, 0, '', answer);
+  }
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function ensureInfoAnswerFirstBeforeQa(markdown: string, row: BlogRow, primaryKeyword: string, blogType: 'product' | 'info'): string {
+  if (blogType !== 'info') return markdown;
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  const firstBodyIndex = lines.findIndex((line, index) => {
+    if (index <= h1Index) return false;
+    const trimmed = line.trim();
+    return Boolean(trimmed && !/^#{1,6}\s+/.test(trimmed) && !/^!\[/.test(trimmed) && !/^\|.*\|$/.test(trimmed));
+  });
+  const firstBody = firstBodyIndex >= 0 ? lines[firstBodyIndex]?.trim() ?? '' : '';
+  const weak = firstBody.length < 70 || /^같은 가격처럼 보여도|^차량 이동|^현지 결제 조건/.test(firstBody);
+  if (!weak) return markdown;
+  const answer = customerIntentOpeningFinal(row, primaryKeyword);
+  if (firstBodyIndex >= 0) {
+    lines[firstBodyIndex] = answer;
+  } else {
+    lines.splice(h1Index >= 0 ? h1Index + 1 : 0, 0, '', answer);
+  }
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function softenReadableAiToneBeforeQa(markdown: string): string {
+  return markdown
+    .replace(/더라고요/g, '편입니다')
+    .replace(/추천드려요/g, '챙기세요')
+    .replace(/추천합니다/g, '확인하세요')
+    .replace(/좋으실\s*거예요/g, '좋습니다')
+    .replace(/좋겠죠/g, '좋습니다')
+    .replace(/여러분의?\s*/g, '')
+    .replace(/꼭\s*챙기셔야\s*해요/g, '챙기는 편이 안전합니다')
+    .replace(/중요합니다/g, '확인해야 합니다');
+}
+
 function ensureCustomerSummary(markdown: string, primaryKeyword: string): string {
   if (hasSummary(markdown)) return markdown;
   const keyword = cleanTravelKeyword(primaryKeyword) || '여행';
@@ -4786,24 +4861,28 @@ async function main() {
     }
     nextHtml = finalKeywordDensityRepair(nextHtml, primaryKeyword, blogType);
     nextHtml = ensureSingleMarkdownH1(ensureStandaloneH1(nextHtml, normalizedTitle));
-    const customerBlocksHtml = ensureCustomerFaq(ensureCustomerSummary(splitLongParagraphs(nextHtml), primaryKeyword), primaryKeyword);
-    nextHtml = finalCustomerVisibleRepair(
-      strengthenIntroHookCustomer(
-        ensureSafeDayByDayBlock(
-          customerBlocksHtml,
-          contentType,
-          productId,
+    if (productId) {
+      nextHtml = normalizeFinalMarkdownSurface(splitLongParagraphs(nextHtml));
+    } else {
+      const customerBlocksHtml = ensureCustomerFaq(ensureCustomerSummary(splitLongParagraphs(nextHtml), primaryKeyword), primaryKeyword);
+      nextHtml = finalCustomerVisibleRepair(
+        strengthenIntroHookCustomer(
+          ensureSafeDayByDayBlock(
+            customerBlocksHtml,
+            contentType,
+            productId,
+            primaryKeyword,
+          ),
+          destination,
           primaryKeyword,
+          blogType,
         ),
-        destination,
+        row,
         primaryKeyword,
+        normalizedTitle,
         blogType,
-      ),
-      row,
-      primaryKeyword,
-      normalizedTitle,
-      blogType,
-    );
+      );
+    }
     nextHtml = replaceEnglishMicroAngleSurface(
       ensureMinimumInlineImagesFromOg(nextHtml, destination, slug, nextOg),
       row,
@@ -4923,6 +5002,31 @@ async function main() {
       slug,
     )));
     nextHtml = softenOverbuiltMechanicalStructureFinal(dedupeRepeatedMarkdownHeadingsFinal(ensureReadableFaqFinal(nextHtml, primaryKeyword)));
+    nextHtml = ensureWeatherAnswerFirstBeforeQa(nextHtml, {
+      ...row,
+      slug,
+      destination: normalizedDestinationForWrite || destination,
+      seo_title: normalizedTitle,
+    }, primaryKeyword, blogType);
+    nextHtml = ensureInfoAnswerFirstBeforeQa(nextHtml, {
+      ...row,
+      slug,
+      destination: normalizedDestinationForWrite || destination,
+      seo_title: normalizedTitle,
+    }, primaryKeyword, blogType);
+    nextHtml = softenReadableAiToneBeforeQa(nextHtml);
+    const qaBlogHtml = ensureWeatherAnswerFirstBeforeQa(nextHtml, {
+      ...row,
+      slug,
+      destination: normalizedDestinationForWrite || destination,
+      seo_title: normalizedTitle,
+    }, primaryKeyword, blogType);
+    nextHtml = softenReadableAiToneBeforeQa(ensureInfoAnswerFirstBeforeQa(qaBlogHtml, {
+      ...row,
+      slug,
+      destination: normalizedDestinationForWrite || destination,
+      seo_title: normalizedTitle,
+    }, primaryKeyword, blogType));
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
