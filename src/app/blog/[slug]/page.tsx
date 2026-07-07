@@ -40,6 +40,7 @@ import {
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -120,6 +121,11 @@ interface BlogPost {
     product_highlights: string[] | null;
     inclusions: string[] | null;
     status?: string | null;
+    audit_status?: string | null;
+    audit_report?: unknown;
+    updated_at?: string | null;
+    optional_tours?: unknown;
+    itinerary_data?: unknown;
     hero_image_url?: string | null;
   } | null;
 }
@@ -383,7 +389,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status)',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data)',
     )
     .eq('slug', dbSlug)
     .eq('status', 'published')
@@ -449,13 +455,14 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
       'postFastPackage',
       supabaseAdmin
         .from('travel_packages')
-        .select('id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status')
+        .select('id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .eq('id', post.product_id)
         .limit(1),
       { data: null, error: null },
       4000,
     );
-    post.travel_packages = ((packageRows || [])[0] as BlogPost['travel_packages']) ?? null;
+    const packageRow = ((packageRows || [])[0] as BlogPost['travel_packages']) ?? null;
+    post.travel_packages = packageRow && isCustomerPubliclyOpenable(packageRow) ? packageRow : null;
   }
 
   return post;
@@ -539,7 +546,7 @@ async function getRelatedProducts(
     'relatedProductScores',
     supabaseAdmin
       .from('package_scores')
-      .select('package_id, rank_in_group, effective_price, list_price, travel_packages!inner(id, title, destination, price, duration, nights, airline, departure_airport, status)')
+      .select('package_id, rank_in_group, effective_price, list_price, travel_packages!inner(id, title, destination, price, duration, nights, airline, departure_airport, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data)')
       .ilike('travel_packages.destination', `%${destination}%`)
       .gte('departure_date', today)
       .order('rank_in_group', { ascending: true })
@@ -551,7 +558,7 @@ async function getRelatedProducts(
         rank_in_group: number | null;
         effective_price: number | null;
         list_price: number | null;
-        travel_packages: RelatedProductLite & { status?: string | null };
+        travel_packages: RelatedProductLite & { status?: string | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown };
       }>,
       error: null,
     },
@@ -565,10 +572,13 @@ async function getRelatedProducts(
       rank_in_group: number | null;
       effective_price: number | null;
       list_price: number | null;
-      travel_packages: (RelatedProductLite & { status?: string | null }) | Array<RelatedProductLite & { status?: string | null }> | null;
+      travel_packages:
+        | (RelatedProductLite & { status?: string | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown })
+        | Array<RelatedProductLite & { status?: string | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown }>
+        | null;
     }>).entries()) {
       const pkg = Array.isArray(row.travel_packages) ? row.travel_packages[0] : row.travel_packages;
-      if (!pkg || pkg.status && !['active', 'approved'].includes(pkg.status)) continue;
+      if (!pkg || !isCustomerPubliclyOpenable(pkg)) continue;
       if (pkg.id === currentProductId || seen.has(pkg.id)) continue;
       seen.add(pkg.id);
       scored.push({
@@ -591,7 +601,7 @@ async function getRelatedProducts(
 
   let query = supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, price, duration, nights, airline, departure_airport')
+    .select('id, title, destination, price, duration, nights, airline, departure_airport, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
     .eq('destination', destination)
     .in('status', ['active', 'approved'])
     .order('price', { ascending: true })
@@ -605,11 +615,13 @@ async function getRelatedProducts(
   );
   if (isBlogDetailQueryUnavailable(result) || result.error) return [];
   const { data } = result;
-  return ((data as unknown as RelatedProductLite[]) || []).map((item, index) => ({
-    ...item,
-    recommended_rank: index + 1,
-    recommendation_intent: `${intent}:fallback_price`,
-  }));
+  return ((data as unknown as RelatedProductLite[]) || [])
+    .filter(isCustomerPubliclyOpenable)
+    .map((item, index) => ({
+      ...item,
+      recommended_rank: index + 1,
+      recommendation_intent: `${intent}:fallback_price`,
+    }));
 }
 
 /**
@@ -702,13 +714,19 @@ async function getCurationProductsForInfo(destination: string) {
     airline: string | null;
     departure_airport: string | null;
     price_dates: Array<{ date?: string; price?: number }> | null;
+    status?: string | null;
+    audit_status?: string | null;
+    audit_report?: unknown;
+    updated_at?: string | null;
+    optional_tours?: unknown;
+    itinerary_data?: unknown;
   }
 
   const result = await runBlogDetailQuery(
     'curationProducts',
     supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates')
+      .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('destination', destination)
       .in('status', ['approved', 'active'])
       .order('price', { ascending: true })
@@ -720,11 +738,13 @@ async function getCurationProductsForInfo(destination: string) {
   const { data } = result;
 
   // 미래 출발일 있는 상품만 필터
-  const alive = (data as unknown as CurationPackage[]).filter((p) => {
-    const pd = (p.price_dates || []) as Array<{ date?: string }>;
-    if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
-    return pd.some((d) => d.date && d.date >= today);
-  });
+  const alive = (data as unknown as CurationPackage[])
+    .filter(isCustomerPubliclyOpenable)
+    .filter((p) => {
+      const pd = (p.price_dates || []) as Array<{ date?: string }>;
+      if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
+      return pd.some((d) => d.date && d.date >= today);
+    });
 
   if (alive.length <= 3) return alive;
 

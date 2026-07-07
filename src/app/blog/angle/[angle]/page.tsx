@@ -17,6 +17,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -26,7 +27,18 @@ const BASE_URL = resolveBlogCanonicalOrigin();
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
   og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
-  travel_packages: { id: string; title: string; destination: string; price: number | null } | null;
+  travel_packages: {
+    id: string;
+    title: string;
+    destination: string;
+    price: number | null;
+    status?: string | null;
+    audit_status?: string | null;
+    audit_report?: unknown;
+    updated_at?: string | null;
+    optional_tours?: unknown;
+    itinerary_data?: unknown;
+  } | null;
 }
 
 type AnglePageData = {
@@ -104,7 +116,7 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
       'posts',
       supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price)')
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('angle_type', angle)
@@ -122,7 +134,12 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
     const recommendedPackages = await getPackagesByAngle(angle, 6);
 
     return {
-      posts: (postsResult.data || []) as unknown as BlogPost[],
+      posts: ((postsResult.data || []) as unknown as BlogPost[]).map((post) => ({
+        ...post,
+        travel_packages: post.travel_packages && isCustomerPubliclyOpenable(post.travel_packages)
+          ? post.travel_packages
+          : null,
+      })),
       recommendedPackages,
       unavailable: false,
     };

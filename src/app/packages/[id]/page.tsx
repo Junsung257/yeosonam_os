@@ -25,6 +25,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -155,7 +156,7 @@ const DETAIL_FIELDS = `
   price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
   product_highlights, customer_notes, notices_parsed, itinerary_data,
   display_title, hero_tagline, product_summary, is_airtel,
-  land_operator_id, audit_status, status,
+  land_operator_id, audit_status, audit_report, status, updated_at,
   catalog_id,
   products(internal_code, display_name, departure_region)
 `;
@@ -195,12 +196,16 @@ export async function generateMetadata({
     product_summary?: string | null;
     status?: string | null;
     audit_status?: string | null;
+    audit_report?: unknown;
+    updated_at?: string | null;
+    optional_tours?: unknown;
+    itinerary_data?: unknown;
   } | null = null;
   try {
     let result = await runSupabaseQueryWithTimeout(
       sb
         .from('travel_packages')
-        .select('title, destination, price, product_type, product_summary, status, audit_status')
+        .select('title, destination, price, product_type, product_summary, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .eq('id', id)
         .maybeSingle(),
       { label: 'package.metadata.primary', timeoutMs: 1800 },
@@ -210,7 +215,7 @@ export async function generateMetadata({
       result = await runSupabaseQueryWithTimeout(
         sb
           .from('travel_packages')
-          .select('title, destination, price, product_type, product_summary, status, audit_status')
+          .select('title, destination, price, product_type, product_summary, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
           .eq('id', id)
           .maybeSingle(),
         { label: 'package.metadata.primary.retry1', timeoutMs: 3500 },
@@ -221,7 +226,7 @@ export async function generateMetadata({
       result = await runSupabaseQueryWithTimeout(
         sb
           .from('travel_packages')
-          .select('title, destination, price, product_type, product_summary, status, audit_status')
+          .select('title, destination, price, product_type, product_summary, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
           .eq('id', id)
           .maybeSingle(),
         { label: 'package.metadata.primary.retry2', timeoutMs: 6000 },
@@ -240,7 +245,7 @@ export async function generateMetadata({
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
   const allowInternalProof = await isInternalRenderProofRequest();
-  if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) {
+  if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status) || !isCustomerPubliclyOpenable(data))) {
     notFound();
   }
   const metadataPackage = data as {
@@ -358,7 +363,7 @@ export default async function PackageDetailPage({
 
   // status 寃뚯씠????REVIEW_NEEDED/draft/expired/archived ?깆? 怨좉컼 ?몄텧 李⑤떒
   const pkgStatus = 'status' in pkg ? pkg.status : undefined;
-  if (!allowInternalProof && !isCustomerVisibleStatus(pkgStatus)) {
+  if (!allowInternalProof && (!isCustomerVisibleStatus(pkgStatus) || !isCustomerPubliclyOpenable(pkg))) {
     notFound();
   }
 
@@ -774,15 +779,15 @@ export default async function PackageDetailPage({
     const { data: siblings } = await runOptionalSupabaseQuery(
       sb
         .from('travel_packages')
-        .select('id, title, display_title, destination, product_highlights, status, audit_status')
+        .select('id, title, display_title, destination, product_highlights, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .eq('catalog_id', currentCatalogId)
         .neq('id', id)
         .order('created_at', { ascending: true }),
       { data: [] },
       { label: 'package.catalog.siblings', timeoutMs: 1200 },
     );
-    catalogSiblings = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; audit_status?: string }>)
-      .filter(s => s.audit_status !== 'blocked' && isCustomerVisibleStatus(s.status))
+    catalogSiblings = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; audit_status?: string; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown }>)
+      .filter(s => isCustomerPubliclyOpenable(s))
       .map(({ id: sid, title, display_title, destination, product_highlights }) => ({
         id: sid,
         title: decodeCustomerHtmlEntities(title),

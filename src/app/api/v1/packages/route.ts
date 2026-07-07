@@ -23,6 +23,7 @@ import { withApiKey } from '@/lib/api-key-middleware'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { apiResponse, ApiErrors } from '@/lib/api-response'
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility'
 
 export const maxDuration = 30
 
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
   try {
     let query = supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, price, days, summary, images, is_active', { count: 'exact' })
+      .select('id, title, destination, price, days, summary, images, is_active, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('is_active', true)
 
     if (destination) query = query.ilike('destination', `%${destination}%`)
@@ -61,16 +62,18 @@ export async function GET(request: NextRequest) {
     if (dateFrom) query = query.gte('start_date', dateFrom)
     if (dateTo) query = query.lte('end_date', dateTo)
 
-    const { data, error, count } = await query
+    const { data, error } = await query
       .order('price', { ascending: true })
       .range(offset, offset + limit - 1)
 
     if (error) throw error
 
+    const visibleData = (data ?? []).filter(isCustomerPubliclyOpenable)
+
     return apiResponse({
       ok: true,
-      data: data ?? [],
-      pagination: { total: count ?? 0, limit, offset },
+      data: visibleData,
+      pagination: { total: visibleData.length, limit, offset },
     })
   } catch (err) {
     console.warn('[api/v1/packages] 검색 실패:', err)
@@ -104,7 +107,7 @@ export async function POST(request: NextRequest) {
   try {
     let query = supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, price, days, summary, images, is_active, highlights, included', { count: 'exact' })
+      .select('id, title, destination, price, days, summary, images, is_active, highlights, included, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('is_active', true)
 
     if (body.destination) query = query.ilike('destination', `%${body.destination}%`)
@@ -114,16 +117,18 @@ export async function POST(request: NextRequest) {
     const pax = body.pax ?? 2
     query = query.gte('max_pax', pax)
 
-    const { data, error, count } = await query
+    const { data, error } = await query
       .order('price', { ascending: true })
       .limit(10)
 
     if (error) throw error
 
+    const visibleData = (data ?? []).filter(isCustomerPubliclyOpenable)
+
     return apiResponse({
       ok: true,
-      data: data ?? [],
-      pagination: { total: count ?? 0, limit: 10, offset: 0 },
+      data: visibleData,
+      pagination: { total: visibleData.length, limit: 10, offset: 0 },
     })
   } catch (err) {
     console.warn('[api/v1/packages] 추천 실패:', err)

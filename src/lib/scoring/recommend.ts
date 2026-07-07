@@ -13,6 +13,7 @@ import { computeEffectivePrice, type EffectivePriceResult } from './effective-pr
 import { topsis, type CriterionType } from './topsis';
 import { loadBrandEntries, type HotelBrandEntry } from './hotel-brands';
 import { SCORING_ELIGIBLE_STATUSES } from '@/lib/visibility-status';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 export interface RecommendBestInput {
   destination: string;
@@ -46,7 +47,7 @@ export interface RecommendBestResult {
 
 // 실 스키마 (2026-04-29 schema drift fix): price · duration · price_dates
 const PACKAGE_SELECT_COLS =
-  'id, title, destination, price, price_dates, duration, status, itinerary_data, land_operator_id, created_at';
+  'id, title, destination, price, price_dates, duration, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, land_operator_id, created_at';
 
 // v3.2 (2026-04-30): TOPSIS 10 criteria (기존 6 + P1 4개)
 const TOPSIS_CRITERIA: CriterionType[] = [
@@ -182,7 +183,8 @@ export async function recommendBestPackages(
 
   const { data, error } = await q;
   if (error) throw new Error(`패키지 조회 실패: ${error.message}`);
-  const candidates = (data ?? []) as RawPackageRow[] & { title: string }[];
+  const candidates = ((data ?? []) as Array<RawPackageRow & { title: string }>)
+    .filter((row) => isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>));
 
   // 그룹 키: destination + duration (출발일 컬럼 없음 — price_dates 의 dates는 제각각)
   const groupKey = `${input.destination}|d${input.duration_days ?? '*'}`;
@@ -273,7 +275,8 @@ export async function recomputeAllScores(): Promise<{
     .select(PACKAGE_SELECT_COLS)
     .in('status', SCORING_ELIGIBLE_STATUSES as unknown as string[]);
   if (error) throw new Error(`전체 조회 실패: ${error.message}`);
-  const all = ((data ?? []) as unknown as Array<RawPackageRow & { title: string }>);
+  const all = ((data ?? []) as unknown as Array<RawPackageRow & { title: string }>)
+    .filter((row) => isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>));
 
   // ── v3 (2026-04-29): 출발일 펼치기 → 정확 같은 날 그룹 (옵션 A) ───
   // 한 패키지의 N개 price_dates 각각이 별도 점수 단위.
