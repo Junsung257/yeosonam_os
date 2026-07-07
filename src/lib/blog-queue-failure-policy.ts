@@ -6,6 +6,9 @@ type BlogQueueFailureCode =
   | 'links'
   | 'keyword_density'
   | 'structure_integrity'
+  | 'table_integrity'
+  | 'render_integrity'
+  | 'article_quality_v2'
   | 'intent_quality'
   | 'engine_v2'
   | 'evidence_insufficient'
@@ -90,6 +93,18 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (hasFailedGate(qa, 'structure_integrity') || /\[structure_integrity\]|structure_integrity|raw_directive|checklist_shape/i.test(text)) {
     return { code: 'structure_integrity', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'table_integrity') || /\[table_integrity\]|table_integrity|table_shape|markdown_table/i.test(text)) {
+    return { code: 'table_integrity', retryable: true, selfHealAllowed: true, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'render_integrity') || /\[render_integrity\]|render_integrity|literal_markdown|rendered_table/i.test(text)) {
+    return { code: 'render_integrity', retryable: true, selfHealAllowed: true, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'article_quality_v2') || /\[article_quality_v2\]|article quality v2|standalone_markdown|legacy_highlight_markup/i.test(text)) {
+    return { code: 'article_quality_v2', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'intent_quality') || /\[intent_quality\]|intent_quality|weak_reading_design|weak_list_or_table/i.test(text)) {

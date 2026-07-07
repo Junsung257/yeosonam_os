@@ -32,6 +32,31 @@ describe('blog queue failure policy', () => {
     })).toBe(false);
   });
 
+  it('keeps rendered markdown residue failures recoverable for a repaired rerun', () => {
+    const decision = classifyBlogQueueFailure(
+      '2/20 실패: [render_integrity] literal_markdown_bold · [article_quality_v2] standalone_markdown_bold',
+    );
+
+    expect(decision).toMatchObject({
+      code: 'render_integrity',
+      retryable: true,
+      selfHealAllowed: true,
+    });
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: '2/20 실패: [render_integrity] literal_markdown_bold',
+    })).toBe(true);
+  });
+
+  it('classifies article quality v2 residue when render gate is not present', () => {
+    expect(classifyBlogQueueFailure(
+      'quality failed: [article_quality_v2] article quality v2 failed: standalone_markdown_bold',
+    )).toMatchObject({
+      code: 'article_quality_v2',
+      retryable: true,
+      selfHealAllowed: true,
+    });
+  });
+
   it('classifies thin content and link gate failures without hiding them as unknown', () => {
     expect(classifyBlogQueueFailure(
       '2/19 실패: [length] 본문 2467자 — info 최소 2500자 미달 (thin content)',
