@@ -762,16 +762,19 @@ export function checkBlogEngineV2(input: CheckInput): GateResult {
     generationMeta: input.generation_meta,
   });
 
-  const passed = evaluation.passed
-    || (evaluation.score >= 90 && evaluation.failure_bucket === 'ai_naturalness')
-    || (evaluation.score >= 85 && evaluation.failure_bucket === 'sales_pressure');
+  const belowPerfectCategories = evaluation.category_scores
+    .filter((category) => category.score < 100 || !category.passed)
+    .map((category) => `${category.id}:${category.score}`);
+  const passed = evaluation.passed && belowPerfectCategories.length === 0 && evaluation.score === 100;
 
   return {
     gate: 'engine_v2',
     passed,
     reason: passed
       ? undefined
-      : `engine v2 ${evaluation.score}/100: ${evaluation.failure_bucket}`,
+      : `engine v2 ${evaluation.score}/100: ${evaluation.failure_bucket}${
+          belowPerfectCategories.length > 0 ? ` (${belowPerfectCategories.join(', ')})` : ''
+        }`,
     evidence: {
       evaluation,
       failure_bucket: evaluation.failure_bucket,
