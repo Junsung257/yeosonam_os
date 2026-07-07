@@ -29,4 +29,12 @@ describe('blog daily summary report day', () => {
     expect(searchIssueBlock).toContain("refType: 'blog_search_indexing'");
     expect(searchIssueBlock).not.toContain('errors.push(message)');
   });
+
+  it('does not flag publisher cron observation when the selected report day already met quota', () => {
+    const routeSource = readFileSync(join(process.cwd(), 'src/app/api/cron/blog-daily-summary/route.ts'), 'utf8');
+    const diagnoseSource = readFileSync(join(process.cwd(), 'scripts/diagnose-blog-autopublish.ts'), 'utf8');
+
+    expect(routeSource).toContain('summary.publisher_cron.ran_today === false && summary.under_daily_target');
+    expect(diagnoseSource).toContain('!publisherRanToday && selectedDayUnderTarget');
+  });
 });
