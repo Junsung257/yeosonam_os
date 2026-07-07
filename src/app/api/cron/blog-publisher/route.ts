@@ -67,6 +67,7 @@ import {
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
 import { repairBlogFinalCustomerSurface } from '@/lib/blog-final-customer-surface';
+import { repairBlogEngineCategoryGaps } from '@/lib/blog-engine-category-repair';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
@@ -517,6 +518,39 @@ function applyFinalCustomerSurfaceRepair(
   return surfaceRepair.changes;
 }
 
+function applyEngineCategoryRepair(
+  generated: GeneratedBlog,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): string[] {
+  const categoryRepair = repairBlogEngineCategoryGaps({
+    markdown: generated.blog_html,
+    blogType,
+    title: generated.seo_title || item.topic || primaryKeyword || generated.slug,
+    slug: generated.slug,
+    destination: item.destination ?? null,
+    primaryKeyword,
+    angleType: normalizeAngleType(item.angle_type),
+    category: item.category ?? null,
+    contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+    productId: item.product_id ?? null,
+    generationMeta: generated.generation_meta ?? null,
+  });
+  if (!categoryRepair.changed) return [];
+  generated.blog_html = categoryRepair.markdown;
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    engine_category_repair: {
+      before_score: categoryRepair.beforeScore,
+      after_score: categoryRepair.afterScore,
+      repaired_categories: categoryRepair.repairedCategories,
+      changes: categoryRepair.changes,
+    },
+  };
+  return categoryRepair.changes;
+}
+
 function failedGateSet(qa: QualityGateReport): Set<string> {
   return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
 }
@@ -628,6 +662,11 @@ async function repairFailedQualityGates(
     }
 
     if (failed.has('engine_v2')) {
+      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
+      if (categoryChanges.length > 0) {
+        changes.push(...categoryChanges);
+        changed = true;
+      }
       const before = generated.blog_html;
       generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
       if (generated.blog_html !== before) {
@@ -1598,6 +1637,13 @@ async function processQueueItem(
     if (readinessRepair.changed) {
       generated.blog_html = readinessRepair.markdown;
       console.log(`[blog-publisher] publish readiness repair: ${readinessRepair.changes.join(', ')}`);
+    }
+
+    {
+      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
+      if (categoryChanges.length > 0) {
+        console.log(`[blog-publisher] engine category repair: ${categoryChanges.join(', ')}`);
+      }
     }
 
     {
