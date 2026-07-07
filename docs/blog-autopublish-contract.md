@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -86,6 +86,8 @@ Before the first publish gate:
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
+The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.
+
 ## Publish Preflight Contract
 
 Before expanding or manually forcing automatic publishing, the operator-facing preflight must pass:
@@ -161,8 +163,11 @@ Forbidden customer-visible patterns:
 - Duplicate price suffixes such as `1,369,000원부터부터`.
 - Weather or packing guides that open with cost/reservation copy instead of temperature, rain, clothing, and packing decisions.
 - Product posts that invent hotel names, fixed benefits, scarcity, or confirmed schedules not present in product evidence.
+- Repeated answer-first hooks, duplicated CTA/FAQ blocks, duplicate hashtags, generic customer labels such as `여행 정보를 볼 때` when a destination is known, and placeholder surfaces such as `현지 관련 상품` or `상품 가격 변동_PKG`.
 
 Backfill and live publishing must use the same customer contract. `scripts/backfill-blog-quality.ts` should repair customer-visible copy and then run the full publish evaluator; a dry run with `qualityGateFailed=0`, `publishBlocked=0`, and `minorOnlyIssues=0` is the target for "100점" recent-post evidence.
+
+For recent-post stabilization, the stronger target is `changed=0`, `qualityGateFailed=0`, `publishBlocked=0`, indexing worker success for every changed row in write mode, and diagnostics that still report publish preflight pass, publishable candidate inventory, and indexing outbox coverage.
 
 ## Indexing Contract
 

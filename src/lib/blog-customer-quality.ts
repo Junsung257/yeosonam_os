@@ -9,11 +9,15 @@ export type BlogCustomerQualityIssueCode =
   | 'product_consult_repetition'
   | 'product_specificity_weak'
   | 'product_source_contract_weak'
+  | 'product_evidence_omission'
+  | 'product_internal_terms_leak'
   | 'placeholder_destination_copy'
   | 'unsupported_internal_data'
+  | 'info_source_support_weak'
   | 'unnatural_korean_tone'
   | 'overbuilt_mechanical_structure'
   | 'early_sales_pressure'
+  | 'mobile_readability_wall'
   | 'table_render_risk';
 
 export interface BlogCustomerQualityIssue {
@@ -58,6 +62,11 @@ const CUSTOMER_PLACEHOLDERS = [
   /솔리아_스팟가격/,
   /이미지\s*준비\s*중/i,
   /상세\s*일차별\s*일정은\s*상담에서\s*확정본\s*기준으로\s*확인해야\s*합니다/,
+  /현지\s*관련\s*상품/,
+  /상품\s*가격\s*변동_PKG/i,
+  /여행지\s*추천\s*상품\s*미리보기/,
+  /#여행정보(?:\s*#\S+){0,5}\s*#여행정보(?:\s*#\S+){0,5}\s*#여행정보/,
+  /[,.\s]에서\s+가치\s*있는\s*여행/,
 ];
 
 const UNSUPPORTED_INTERNAL_DATA_RE =
@@ -82,6 +91,10 @@ const READABLE_AI_TONE_PATTERNS = [
 const READABLE_WEATHER_OR_PACKING_RE = /날씨|옷차림|우기|건기|기온|강수|스콜|태풍/i;
 const READABLE_WEATHER_ANSWER_RE = /(?:\d{1,2}\s*도|\d{1,2}\s*℃|기온|강수|비|우산|우비|겉옷|긴팔|반팔|방수|일교차|우기|건기|스콜|태풍)/i;
 const READABLE_COST_OR_RESERVATION_RE = /비용|예산|예약|상품|패키지|상담|결제|가격/i;
+const CHANGEABLE_INFO_RE = /날씨|옷차림|우기|건기|기온|강수|스콜|태풍|비자|입국|세관|면세|항공|수하물|환불|취소|보험|환전|교통|공항/i;
+const OFFICIAL_OR_SOURCE_RE = /0404\.go\.kr|mofa\.go\.kr|gov\.kr|airport\.kr|customs\.go\.kr|iata\.org|iatatravelcentre\.com|공식|외교부|기상청|관광청|항공사|공항|출처|확인\s*링크/i;
+const PRODUCT_INTERNAL_TERMS_RE =
+  /(?:커미션|수수료율|마진|원가|공급가|정산가|랜드사\s*정산|B2B|담당자명|직원명|내부\s*메모|계좌번호|입금처|도매가|대리점용|판매자용|카드\s*수수료|현금\s*유도)/i;
 
 function addIssue(
   issues: BlogCustomerQualityIssue[],
@@ -129,6 +142,43 @@ function productDecisionSignalsReadable(plain: string): number {
     /문의\s*전\s*(?:질문|확인|체크)/,
   ];
   return patterns.filter((pattern) => pattern.test(plain)).length;
+}
+
+function normalizeEvidenceText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[()[\]{}"'`~!@#$%^&*_+=|\\/<>.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function meaningfulEvidenceItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeEvidenceText)
+    .filter((item) => item.length >= 2)
+    .slice(0, 12);
+}
+
+function evidenceItemCovered(plain: string, item: string): boolean {
+  if (plain.includes(item)) return true;
+  const tokens = item
+    .split(/\s+/)
+    .map((token) => token.replace(/[^\p{L}\p{N}]/gu, '').trim())
+    .filter((token) => token.length >= 2);
+  if (tokens.length === 0) return false;
+  const required = Math.min(tokens.length, tokens.length >= 4 ? 2 : 1);
+  return tokens.filter((token) => plain.includes(token)).length >= required;
+}
+
+function evidenceCoverage(plain: string, items: string[]): { total: number; covered: number; missing: string[] } {
+  const unique = [...new Set(items)];
+  const missing = unique.filter((item) => !evidenceItemCovered(plain, item));
+  return {
+    total: unique.length,
+    covered: unique.length - missing.length,
+    missing: missing.slice(0, 6),
+  };
 }
 
 function firstParagraph(markdown: string): string {
@@ -207,6 +257,16 @@ function inspectInfo(input: BlogCustomerQualityInput, plain: string, issues: Blo
       'early_sales_pressure',
       'critical',
       '정보성 글 상단에는 강한 상품/상담 CTA가 들어가면 안 됩니다.',
+    );
+  }
+
+  if (CHANGEABLE_INFO_RE.test(strongTopicText) && !OFFICIAL_OR_SOURCE_RE.test(input.blogHtml)) {
+    addIssue(
+      issues,
+      'info_source_support_weak',
+      'major',
+      '변동 가능성이 큰 정보성 글은 공식/주요 확인 근거를 본문에 드러내야 합니다.',
+      { topic: strongTopicText.slice(0, 160) },
     );
   }
 }
@@ -294,6 +354,14 @@ function inspectProduct(input: BlogCustomerQualityInput, plain: string, issues: 
   }
 
   const productBrief = input.generationMeta?.product_consult_brief as Record<string, unknown> | undefined;
+  if (PRODUCT_INTERNAL_TERMS_RE.test(plain)) {
+    addIssue(
+      issues,
+      'product_internal_terms_leak',
+      'critical',
+      '상품글에 고객 비공개 운영/정산 용어가 노출되면 안 됩니다.',
+    );
+  }
   if (input.blogType === 'product' && input.productId && productBrief) {
     const evidenceFieldCount = ['included', 'excluded', 'fit_for', 'not_fit_for', 'risk_notes', 'consult_questions']
       .filter((key) => Array.isArray(productBrief[key]) && (productBrief[key] as unknown[]).length > 0)
@@ -305,6 +373,24 @@ function inspectProduct(input: BlogCustomerQualityInput, plain: string, issues: 
         'major',
         '상품 DB 기반 브리프가 상담 판단 필드를 충분히 채우지 못했습니다.',
         { evidenceFieldCount },
+      );
+    }
+
+    const requiredCoverage = [
+      ['included', meaningfulEvidenceItems(productBrief.included)],
+      ['excluded', meaningfulEvidenceItems(productBrief.excluded)],
+      ['risk_notes', meaningfulEvidenceItems(productBrief.risk_notes)],
+    ] as const;
+    const weakCoverage = requiredCoverage
+      .map(([field, items]) => ({ field, ...evidenceCoverage(plain, items) }))
+      .filter((coverage) => coverage.total > 0 && coverage.covered === 0);
+    if (weakCoverage.length > 0) {
+      addIssue(
+        issues,
+        'product_evidence_omission',
+        'critical',
+        '상품 DB 브리프의 포함/불포함/주의 근거가 실제 본문에 충분히 반영되지 않았습니다.',
+        { weakCoverage },
       );
     }
   }
@@ -373,6 +459,20 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
     );
   }
 
+  const longParagraph = input.blogHtml
+    .split(/\n{2,}/)
+    .map((chunk) => stripMarkup(chunk).replace(/\s+/g, ' ').trim())
+    .find((chunk) => chunk.length >= 360);
+  if (longParagraph) {
+    addIssue(
+      issues,
+      'mobile_readability_wall',
+      'major',
+      '모바일에서 한 덩어리로 보이는 긴 문단이 있어 고객이 핵심 정보를 스캔하기 어렵습니다.',
+      { preview: longParagraph.slice(0, 180), length: longParagraph.length },
+    );
+  }
+
   const lines = input.blogHtml.split('\n');
   const hasBrokenTableStart = lines.some((line, index) => {
     const currentIsTable = /^\s*\|.+\|\s*$/.test(line);
@@ -413,13 +513,13 @@ export function inspectBlogCustomerQuality(input: BlogCustomerQualityInput): Blo
   inspectCommon(input, plain, issues);
 
   const metrics = {
-    customer_language: metricFromIssues(issues, ['placeholder_destination_copy', 'product_price_suffix_duplicate', 'unnatural_korean_tone']),
-    answer_usefulness: metricFromIssues(issues, ['weak_answer_first', 'generic_answer_opening']),
+    customer_language: metricFromIssues(issues, ['placeholder_destination_copy', 'product_price_suffix_duplicate', 'unnatural_korean_tone', 'product_internal_terms_leak']),
+    answer_usefulness: metricFromIssues(issues, ['weak_answer_first', 'generic_answer_opening', 'mobile_readability_wall']),
     product_decision_helpfulness: input.blogType === 'product'
-      ? metricFromIssues(issues, ['product_specificity_weak', 'product_source_contract_weak', 'product_consult_repetition'])
+      ? metricFromIssues(issues, ['product_specificity_weak', 'product_source_contract_weak', 'product_consult_repetition', 'product_evidence_omission'])
       : 100,
     naturalness: metricFromIssues(issues, ['generic_answer_opening', 'overbuilt_mechanical_structure', 'product_consult_repetition', 'unnatural_korean_tone']),
-    trust_and_evidence: metricFromIssues(issues, ['unsupported_internal_data', 'early_sales_pressure', 'table_render_risk']),
+    trust_and_evidence: metricFromIssues(issues, ['unsupported_internal_data', 'early_sales_pressure', 'table_render_risk', 'info_source_support_weak', 'product_evidence_omission', 'product_internal_terms_leak']),
   };
   const score = Math.round(Object.values(metrics).reduce((sum, value) => sum + value, 0) / Object.values(metrics).length);
   const passed = issues.length === 0 && score >= 90;

@@ -2532,9 +2532,27 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
   const next = paragraphs.map((paragraph) => {
     const trimmed = paragraph.trim();
     const plain = stripMarkup(trimmed).replace(/\s+/g, ' ').trim();
+    if (/^#{1,6}\s/.test(trimmed)) {
+      const lines = paragraph.split('\n');
+      const heading = lines[0] ?? '';
+      const rest = lines.slice(1).join('\n').trim();
+      if (!rest || stripMarkup(rest).replace(/\s+/g, ' ').trim().length < 360) {
+        return paragraph;
+      }
+      if (/\[[^\]\n]+]\([^)]+/.test(rest)) {
+        return `${heading.trim()}\n\n${rest}`;
+      }
+
+      const repairedRest = splitLongParagraphs(rest);
+      changed = true;
+      return `${heading.trim()}\n\n${repairedRest.text}`;
+    }
+
     if (
-      plain.length < 420 ||
-      /^#{1,6}\s/.test(trimmed) ||
+      plain.length < 360 ||
+      /\[[^\]\n]+]\([^)]+/.test(trimmed) ||
+      /^\[[^\]\n]+]\([^)]+\)$/.test(trimmed) ||
+      /^[-*]\s+\[[^\]\n]+]\([^)]+\)$/.test(trimmed) ||
       /^\|/.test(trimmed) ||
       /^:::/m.test(trimmed) ||
       /^!\[/.test(trimmed)

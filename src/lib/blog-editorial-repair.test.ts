@@ -86,6 +86,36 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).not.toContain('예산 범위, 이동 순서, 현지 확인 사항');
   });
 
+  it('splits mobile paragraph walls before customer quality gates', () => {
+    const longParagraph = [
+      '몽골 7월 여행은 낮과 밤의 기온 차이가 커서 옷을 한 벌로 정하기보다 얇은 긴팔, 바람막이, 밤용 겉옷을 나눠 준비하는 편이 안전합니다.',
+      '낮에는 햇빛과 자외선이 강하고 이동 중 먼지가 많을 수 있어 피부를 가리는 옷이 편하며, 밤에는 게르 캠프나 별보기 일정에서 체감온도가 빠르게 내려갈 수 있습니다.',
+      '비가 오더라도 하루 종일 이어지는 장마라기보다 짧게 지나가는 소나기 형태가 많아 우산보다 방수 바람막이가 실용적인 경우가 많습니다.',
+      '아이와 함께라면 감기약, 지사제, 밴드, 보습제처럼 현지에서 바로 구하기 어려운 물품을 작은 파우치에 따로 챙기는 것이 좋고, 이동 시간이 길어질 수 있으니 보조배터리와 간식도 같이 준비하면 좋습니다.',
+      '현지에서 바로 사면 되는 물건과 한국에서 챙겨야 하는 물건을 나눠두면 짐은 줄이면서도 꼭 필요한 준비물은 놓치지 않을 수 있습니다.',
+    ].join(' ');
+    const result = repairBlogStructureQuality({
+      title: '몽골 7월 날씨 옷차림',
+      slug: 'mongolia-july-weather',
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 7월 날씨 옷차림',
+        '',
+        longParagraph,
+        '',
+        '## 공식 확인 링크',
+        '',
+        '- 외교부 해외안전여행',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('split_long_paragraphs');
+    expect(result.blogHtml.split(/\n{2,}/).some((paragraph) => paragraph.length >= 360)).toBe(false);
+  });
+
   it('removes visual highlight residue without breaking URL query strings', () => {
     const result = repairBlogStructureQuality({
       title: '발리 준비물',

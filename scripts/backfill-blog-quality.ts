@@ -775,6 +775,8 @@ function isSameStoredBlogHtml(before: string, after: string): boolean {
   const normalize = (value: string) =>
     value
       .replace(/\r\n?/g, '\n')
+      .replace(/^(#\s+[^\n]+)\n{2,}(?=[^\n#])/gm, '$1\n')
+      .replace(/(\d)\s*[~–—-]\s*(\d)(?=\s*(?:시간|분|일|박|개|곳|만원|원))/g, '$1-$2')
       .replace(/(^|\n)(#\s+[^\n#]{2,80}?20\d{2})\s+(?=[가-힣A-Za-z0-9][^\n]{0,80}(?:비용은|여행은|월별|에서))/g, '$1$2\n')
       .replace(/(^|\n)(#\s+[^\n#]{2,80}?\b20\d{2})\s+(?=[가-힣A-Za-z0-9,][^\n]{20,})/g, '$1$2\n')
       .replace(/(^|\n)(#{1,6}\s+[^\n]+)\n{1,}/g, '$1$2\n')
@@ -792,7 +794,12 @@ function isSameStoredBlogHtml(before: string, after: string): boolean {
   const normalizedBefore = normalize(before);
   const normalizedAfter = normalize(after);
   if (normalizedBefore === normalizedAfter) return true;
-  return normalizedBefore.replace(/\s+/g, '') === normalizedAfter.replace(/\s+/g, '');
+  if (normalizedBefore.replace(/\s+/g, '') === normalizedAfter.replace(/\s+/g, '')) return true;
+  const compact = (value: string) => value
+    .replace(/\r\n?/g, '\n')
+    .replace(/(\d)\s*[~–—-]\s*(\d)(?=\s*(?:시간|분|일|박|개|곳|만원|원))/g, '$1-$2')
+    .replace(/[\s\u00a0\u200b]+/g, '');
+  return compact(before) === compact(after);
 }
 
 function primaryKeywordFor(row: BlogRow): string {
@@ -2248,6 +2255,26 @@ function replaceDestinationPlaceholderContextFinal(
     .replace(/\[현지\s+([^\]]{2,40})]/g, `[${dest} $1]`);
 }
 
+function dedupeHashtagsFinal(markdown: string): string {
+  return markdown
+    .split('\n')
+    .map((line) => {
+      const tags = line.match(/#[가-힣A-Za-z0-9_]+/g);
+      if (!tags || tags.length < 3) return line;
+      const seen = new Set<string>();
+      const unique = tags.filter((tag) => {
+        const key = tag.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 12);
+      if (unique.length === tags.length) return line;
+      return unique.join(' ');
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
 function subjectParticleForFinal(value: string): '은' | '는' {
   const chars = Array.from(value.trim()).reverse();
   const lastHangul = chars.find((char) => {
@@ -2604,6 +2631,17 @@ function repairFinalDestinationPlaceholderSurface(markdown: string, row: BlogRow
   const topicParticle = hasKoreanBatchim(destination) ? '은' : '는';
 
   return markdown
+    .replace(/\n+여소남의\s*여행지\s*추천\s*상품\s*미리보기[\s\S]*?(?=\n\n(?:현지에서의|#|##|###|---|$))/g, '\n\n')
+    .replace(/여소남에서는\s*현재\s*\d+개의\s*현지\s*관련\s*상품[\s\S]*?\n\n/g, '')
+    .replace(/상품\s*가격\s*변동_PKG[^\s)\n]*/g, '예약 시점별 가격 변동 상품')
+    .replace(/현지\s*관련\s*상품/g, `${destination} 관련 상품`)
+    .replace(/현지\s*관련\s*예약\s*신호/g, `${destination} 예약 신호`)
+    .replace(/현지의\s*매력/g, `${destination}의 매력`)
+    .replace(/현지에서의\s*식사/g, `${destination}에서의 식사`)
+    .replace(/여행\s*정보를\s*볼\s*때/g, `${destination} 정보를 볼 때`)
+    .replace(/,\s*에서\s*가치\s*있는\s*여행을\s*위한/g, ' 등 여행에 필요한')
+    .replace(/\.\s*에서\s*/g, '. ')
+    .replace(/있편입니다/g, '있는 편입니다')
     .replace(/현지\s+현지/g, destination)
     .replace(/현지은/g, `${destination}${topicParticle}`)
     .replace(/현지는/g, `${destination}${topicParticle}`)
@@ -2700,7 +2738,7 @@ function ensureCustomerAnswerFirstParagraphFinal(
     /^[-*]\s*예산(?:과|·|\s)/.test(firstMeaningful) ||
     /^20\d{2}년\s*\d{1,2}월\s*기준[,，]?\s*[^.]{0,80}예산\s*범위/.test(firstText);
   const hasConcreteAnswer = /[?？]|먼저|확인|비교|준비|비용|가격|만원|시간|날씨|환전|카드|현금|입국|여권|\d/.test(firstText);
-  const isWeak = isHeadingFirst || firstText.length < 90 || !hasConcreteAnswer ||
+  const isWeak = isHeadingFirst || firstText.length < 70 || !hasConcreteAnswer ||
     isBulletLead || isTruncatedGenericLead ||
     /^(?:핵심\s*요약|한눈에\s*보는\s*요약|예약\s*전\s*무엇|출발\s*전\s*무엇)/.test(firstText);
   if (!isWeak) return lines.join('\n');
@@ -3762,6 +3800,9 @@ function normalizeInlineHeadingsFinal(markdown: string): string {
 
 function splitParagraphWallFinal(markdown: string): string {
   const splitText = (text: string): string => {
+    const initialPlainLength = Array.from(text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).length;
+    if (initialPlainLength <= 240) return text;
+
     let repaired = text
       .replace(/([.!?。！？])\s+/g, '$1\n\n')
       .replace(/((?:입니다|합니다|됩니다|주세요|하세요|이에요|예요|습니다|니다|세요|해요)[.!?。！？]?)\s+/g, '$1\n\n');
@@ -3793,7 +3834,18 @@ function splitParagraphWallFinal(markdown: string): string {
     .map((paragraph) => {
       const trimmed = paragraph.trim();
       if (!trimmed) return paragraph;
-      if (/^#{1,6}\s|^\s*\||^!\[[^\]]*]\(/.test(trimmed)) return paragraph;
+      if (/^#{1,6}\s/.test(trimmed)) {
+        const lines = paragraph.split('\n');
+        const heading = lines[0] ?? '';
+        const rest = lines.slice(1).join('\n').trim();
+        const restLength = Array.from(rest.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).length;
+        if (/\[[^\]\n]+]\([^)]+/.test(rest)) return `${heading.trim()}\n\n${rest}`;
+        return rest && restLength > 240 ? `${heading.trim()}\n\n${splitText(rest)}` : paragraph;
+      }
+      if (/\[[^\]\n]+]\([^)]+/.test(trimmed)) return paragraph;
+      if (/^\s*\[[^\]\n]+]\([^)]+\)\s*$/.test(trimmed)) return paragraph;
+      if (/^\s*[-*]\s+\[[^\]\n]+]\([^)]+\)\s*$/.test(trimmed)) return paragraph;
+      if (/^\s*\||^!\[[^\]]*]\(/.test(trimmed)) return paragraph;
       if (/^\s*[-*]\s/.test(trimmed)) {
         const plainBullet = trimmed.replace(/^\s*[-*]\s+/, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         return Array.from(plainBullet).length > 220 ? splitText(paragraph) : paragraph;
@@ -3803,6 +3855,103 @@ function splitParagraphWallFinal(markdown: string): string {
     })
     .join('\n\n')
     .replace(/\n{3,}/g, '\n\n');
+}
+
+function repairBrokenMarkdownUrlResidueFinal(markdown: string): string {
+  let text = markdown;
+  for (let index = 0; index < 4; index += 1) {
+    text = text.replace(/\]\(([^)\n]*)\n{1,2}([^)\n]*)\)/g, (_match, left: string, right: string) => {
+      return `](${String(left || '').trim()}${String(right || '').trim()})`;
+    });
+  }
+
+  return text
+    .split('\n')
+    .filter((line) => !/^\s*(?:utm_|medium=|campaign=|content=|source=)[A-Za-z0-9_=&%.-]+\)?\s*$/.test(line.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function dedupeLeadSentencesFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (h1Index < 0) return markdown;
+
+  const leadEnd = lines.findIndex((line, index) => {
+    if (index <= h1Index) return false;
+    const trimmed = line.trim();
+    return /^#{2,6}\s+\S/.test(trimmed) || /^!\[/.test(trimmed) || /^\|.*\|$/.test(trimmed);
+  });
+  const endIndex = leadEnd >= 0 ? leadEnd : Math.min(lines.length, h1Index + 10);
+  const seen = new Set<string>();
+
+  for (let index = h1Index + 1; index < endIndex; index += 1) {
+    const line = lines[index] ?? '';
+    const trimmed = line.trim();
+    if (!trimmed || /^[-*]\s+/.test(trimmed) || /\[[^\]\n]+]\([^)]+\)/.test(trimmed)) continue;
+
+    const sentences = trimmed
+      .split(/(?<=[.!?。！？])\s+/)
+      .map((sentence) => sentence.trim())
+      .filter(Boolean);
+    if (sentences.length === 0) continue;
+
+    const unique = sentences.filter((sentence) => {
+      const key = sentence
+        .replace(/[^\p{L}\p{N}가-힣]+/gu, '')
+        .replace(/^(?:유럽|동남아|여행지|현지)/, '')
+        .trim();
+      if (key.length < 18) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    lines[index] = unique.join(' ');
+  }
+
+  return lines
+    .filter((line, index) => {
+      if (index <= h1Index || index >= endIndex) return true;
+      return Boolean(line.trim());
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function pruneLeadProseBeforeFirstSectionFinal(markdown: string, row: BlogRow, primaryKeyword: string): string {
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (h1Index < 0) return markdown;
+
+  const firstSectionIndex = lines.findIndex((line, index) => {
+    if (index <= h1Index) return false;
+    const trimmed = line.trim();
+    return /^#{2,6}\s+\S/.test(trimmed) || /^!\[/.test(trimmed) || /^\|.*\|$/.test(trimmed);
+  });
+  const leadEnd = firstSectionIndex >= 0 ? firstSectionIndex : Math.min(lines.length, h1Index + 8);
+  const leadLines = lines
+    .slice(h1Index + 1, leadEnd)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^[-*]\s+/.test(line) && !/\[[^\]\n]+]\([^)]+\)/.test(line));
+
+  if (leadLines.length <= 1) return markdown;
+
+  const firstLead = leadLines[0] ?? '';
+  const firstLeadPlain = plainMarkdownTextFinal(firstLead);
+  const hasAnswerShape = firstLeadPlain.length >= 70 &&
+    /[?？]|먼저|확인|비교|준비|비용|가격|만원|시간|날씨|환전|카드|현금|입국|여권|\d/.test(firstLeadPlain);
+  const lead = hasAnswerShape ? firstLead : customerIntentOpeningFinal(row, primaryKeyword);
+
+  return [
+    ...lines.slice(0, h1Index + 1),
+    '',
+    lead,
+    '',
+    ...lines.slice(leadEnd),
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function capHeadingDensityFinal(markdown: string, maxH2 = 8): string {
@@ -5103,6 +5252,25 @@ async function main() {
     nextHtml = dedupeRepeatedMarkdownHeadingsFinal(repairAwkwardRepeatedKoreanFinal(finalKeywordDensityRepair(nextHtml, primaryKeyword, blogType)));
     nextHtml = removeEmptyCostAnchorHeadingFinal(
       repairAwkwardRepeatedKoreanFinal(ensureDestinationImageAltsFinal(nextHtml, normalizedDestinationForWrite || destination || primaryKeyword)),
+    );
+    nextHtml = repairFinalDestinationPlaceholderSurface(
+      repairBrokenMarkdownUrlResidueFinal(dedupeHashtagsFinal(pruneLeadProseBeforeFirstSectionFinal(
+        splitParagraphWallFinal(dedupeLeadSentencesFinal(normalizeInlineHeadingsFinal(nextHtml))),
+        {
+          ...row,
+          slug,
+          destination: normalizedDestinationForWrite || destination,
+          seo_title: normalizedTitle,
+        },
+        primaryKeyword,
+      ))),
+      {
+        ...row,
+        slug,
+        destination: normalizedDestinationForWrite || destination,
+        seo_title: normalizedTitle,
+      },
+      primaryKeyword,
     );
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
