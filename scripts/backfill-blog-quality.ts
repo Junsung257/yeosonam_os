@@ -1831,6 +1831,16 @@ function replaceDestinationPlaceholderContextFinal(
     .replace(/\[현지\s+([^\]]{2,40})]/g, `[${dest} $1]`);
 }
 
+function subjectParticleForFinal(value: string): '은' | '는' {
+  const chars = Array.from(value.trim()).reverse();
+  const lastHangul = chars.find((char) => {
+    const code = char.charCodeAt(0);
+    return code >= 0xac00 && code <= 0xd7a3;
+  });
+  if (!lastHangul) return '은';
+  return ((lastHangul.charCodeAt(0) - 0xac00) % 28) > 0 ? '은' : '는';
+}
+
 function softenUnsupportedInternalDataFinal(markdown: string): string {
   return markdown
     .replace(/여소남(?:의)?\s*(?:내부\s*)?상품\s*(?:및|\/|·|,)?\s*예약\s*데이터(?:를\s*기준으로|로\s*보면|를\s*보면|에\s*따르면)?/g, '현재 확인 가능한 상품 조건')
@@ -1844,26 +1854,27 @@ function buildCustomerFirstAnswer(
   blogType: 'product' | 'info' = 'info',
 ): string {
   const keyword = cleanTravelKeyword(primaryKeyword) || cleanTravelKeyword(destination) || '여행 준비';
+  const subject = `${keyword}${subjectParticleForFinal(keyword)}`;
   const topic = `${keyword} ${destination || ''}`.toLowerCase();
   if (blogType === 'product') {
     return `${keyword} 상품은 무엇부터 비교해야 할까요? 가격만 보지 말고 출발지, 포함 항목, 일정 강도를 먼저 나눠 보면 판단이 쉽습니다. 출발 2주 전에는 총액에 포함된 항공·숙소·식사와 현지 추가비용, 취소 조건을 같은 기준으로 확인하세요.`;
   }
   if (/날씨|옷차림|우기|건기|기온|강수|비\s*예보|weather/.test(topic)) {
-    return `${keyword}은 무엇부터 확인해야 할까요? 낮과 밤 기온 차이, 비 예보, 이동 동선을 1~2시간 단위로 비교하면 옷차림 실수가 줄어듭니다. 출발 2주 전에는 겉옷, 방수용품, 자외선 차단을 함께 확인하세요.`;
+    return `${subject} 무엇부터 확인해야 할까요? 낮과 밤 기온 차이, 비 예보, 이동 동선을 1~2시간 단위로 비교하면 옷차림 실수가 줄어듭니다. 출발 2주 전에는 겉옷, 방수용품, 자외선 차단을 함께 확인하세요.`;
   }
   if (/화폐|카드|현금|팁|currency|money|payment/.test(topic)) {
-    return `${keyword}은 무엇부터 준비해야 할까요? 카드가 되는 구역, 현금이 필요한 순간, 팁 문화와 환전 수수료를 따로 보면 현지 결제 실수가 줄어듭니다. 출발 2주 전에는 소액 현금과 해외 결제 카드 사용 조건을 함께 확인하세요.`;
+    return `${subject} 무엇부터 준비해야 할까요? 카드가 되는 구역, 현금이 필요한 순간, 팁 문화와 환전 수수료를 따로 보면 현지 결제 실수가 줄어듭니다. 출발 2주 전에는 소액 현금과 해외 결제 카드 사용 조건을 함께 확인하세요.`;
   }
   if (/쇼핑|예산|경비|물가|비용|budget|shopping/.test(topic)) {
-    return `${keyword}은 얼마를 잡아야 할까요? 1인 기준 선물·식사·교통비를 1만원 단위로 나눠 비교하면 과소비를 줄이기 쉽습니다. 출발 2주 전에는 카드 결제 가능 여부와 현금 필요 금액을 확인하세요.`;
+    return `${keyword} 비용은 상품가, 현지 개인경비, 선택 관광비를 따로 봐야 실제 총액이 맞습니다. 1인 하루 식비·교통비 기준을 먼저 잡고, 환율과 포함/불포함은 결제 직전에 다시 확인하세요.`;
   }
   if (/아이|가족|키즈|유아|부모|family|kid/.test(topic)) {
-    return `${keyword}은 무엇을 먼저 비교해야 할까요? 관광지 수보다 이동 시간, 아이 휴식 시간, 병원 접근성을 1순위로 봐야 편합니다. 출발 2주 전에는 숙소 위치와 차량 이동 시간을 확인하고 무리한 일정은 줄이는 쪽이 안전합니다.`;
+    return `${subject} 무엇을 먼저 비교해야 할까요? 관광지 수보다 이동 시간, 아이 휴식 시간, 병원 접근성을 1순위로 봐야 편합니다. 출발 2주 전에는 숙소 위치와 차량 이동 시간을 확인하고 무리한 일정은 줄이는 쪽이 안전합니다.`;
   }
   if (/비자|입국|여권|esta|세관|서류|visa|immigration/.test(topic)) {
-    return `${keyword}은 어떤 서류부터 확인해야 할까요? 조건이 바뀔 수 있어 예약 전과 출발 직전 2번 확인이 필요합니다. 출발 2주 전에는 여권 유효기간, 입국 서류, 항공권 영문명, 현지 체류 조건을 함께 점검하세요.`;
+    return `${subject} 어떤 서류부터 확인해야 할까요? 조건이 바뀔 수 있어 예약 전과 출발 직전 2번 확인이 필요합니다. 출발 2주 전에는 여권 유효기간, 입국 서류, 항공권 영문명, 현지 체류 조건을 함께 점검하세요.`;
   }
-  return `${keyword}은 무엇부터 비교해야 할까요? 출발 2주 전에는 비용, 이동 시간, 입국·예약 조건을 따로 나눠 보면 선택이 쉬워집니다. 같은 일정처럼 보여도 1~2시간 이동 차이와 현지 추가비용이 만족도를 크게 바꿉니다.`;
+  return `${subject} 일정표보다 총 이동 시간, 포함/불포함, 현지 추가비를 먼저 나눠 보면 판단이 빨라집니다. 같은 가격처럼 보여도 차량 이동 1~2시간과 현지 결제 조건에 따라 체감 만족도가 달라질 수 있습니다.`;
 }
 
 function repairGenericCustomerOpeningFinal(
@@ -2193,8 +2204,13 @@ function ensureCustomerAnswerFirstParagraphFinal(
   const firstMeaningful = firstMeaningfulIndex >= 0 ? lines[firstMeaningfulIndex]?.trim() ?? '' : '';
   const firstText = plainMarkdownTextFinal(firstMeaningful);
   const isHeadingFirst = /^#{2,6}\s+\S/.test(firstMeaningful);
+  const isBulletLead = /^[-*]\s+/.test(firstMeaningful);
+  const isTruncatedGenericLead = /^같은\s*일정처럼\s*보여도/.test(firstText) ||
+    /^[-*]\s*예산(?:과|·|\s)/.test(firstMeaningful) ||
+    /^20\d{2}년\s*\d{1,2}월\s*기준[,，]?\s*[^.]{0,80}예산\s*범위/.test(firstText);
   const hasConcreteAnswer = /[?？]|먼저|확인|비교|준비|비용|가격|만원|시간|날씨|환전|카드|현금|입국|여권|\d/.test(firstText);
   const isWeak = isHeadingFirst || firstText.length < 90 || !hasConcreteAnswer ||
+    isBulletLead || isTruncatedGenericLead ||
     /^(?:핵심\s*요약|한눈에\s*보는\s*요약|예약\s*전\s*무엇|출발\s*전\s*무엇)/.test(firstText);
   if (!isWeak) return lines.join('\n');
 
@@ -2209,6 +2225,12 @@ function ensureCustomerAnswerFirstParagraphFinal(
 
 function repairReadableSurfaceTextFinal(markdown: string): string {
   return markdown
+    .replace(/마닐라은/g, '마닐라는')
+    .replace(/싱가포르은/g, '싱가포르는')
+    .replace(/오사카은/g, '오사카는')
+    .replace(/보라카이은/g, '보라카이는')
+    .replace(/발리은/g, '발리는')
+    .replace(/세부은/g, '세부는')
     .replace(/이미지은/g, '이미지는')
     .replace(/이미지\s+은/g, '이미지는')
     .replace(/이미지을/g, '이미지를')
@@ -2709,6 +2731,125 @@ function bulletizeInvalidMarkdownTablesFinal(markdown: string): string {
   return next.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
+function looksLikeCostPostFinal(row: BlogRow, primaryKeyword: string, markdown: string): boolean {
+  const topicText = `${row.slug || ''} ${row.seo_title || ''} ${primaryKeyword}`.toLowerCase();
+  const leadText = markdown.split('\n').slice(0, 8).join(' ');
+  return /(cost|budget|expense|currency|money|shopping|비용|가격|예산|경비|얼마|요금|물가|이동비|교통비|환전|환율|쇼핑)/i.test(topicText) ||
+    /(비용|예산|경비|환전|환율|물가)\s*(?:가이드|체크|정리|표|범위)/i.test(leadText);
+}
+
+function ensureConcreteCostProseFinal(markdown: string, row: BlogRow, primaryKeyword: string): string {
+  if (!looksLikeCostPostFinal(row, primaryKeyword, markdown)) return markdown;
+  if (/^#{2,4}\s*현실\s*예산\s*범위/im.test(markdown)) return markdown;
+
+  const plainWithoutTables = markdown
+    .replace(/^\s*\|.*\|\s*$/gm, ' ')
+    .replace(/!\[[^\]\n]*]\([^)]+\)/g, ' ')
+    .replace(/\[[^\]\n]+]\([^)]+\)/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const hasConcreteCostProse = /(\d[\d,]*\s*(?:원|만원|달러|엔|위안|페소|바트)|\d+\s*[~–-]\s*\d+\s*만원)/.test(plainWithoutTables);
+  if (hasConcreteCostProse) return markdown;
+
+  const destination = cleanDescriptionPart(row.destination) || cleanTravelKeyword(primaryKeyword) || '여행지';
+  const block = [
+    '## 현실 예산 범위',
+    '',
+    `${destination} 비용은 상품가와 현지 개인경비를 나눠 보는 편이 안전합니다. 패키지 기준으로는 항공, 숙소, 차량, 주요 일정 포함 여부를 먼저 확인하고, 자유 시간이 있는 날은 별도 지출을 잡아야 합니다.`,
+    '',
+    '- 식사와 간식은 1인 하루 3만~7만원 정도를 별도 예산으로 잡으면 계산이 쉽습니다.',
+    '- 현지 교통과 소액 결제는 1인 하루 1만~3만원 정도 여유분을 두는 편이 안전합니다.',
+    '- 선택 관광이나 공연이 있으면 1인 5만~15만원 이상 추가될 수 있어 상품가와 분리해서 봐야 합니다.',
+    '- 환율, 성수기, 출발 요일에 따라 총액이 달라지므로 결제 전 최종 포함/불포함을 다시 확인하세요.',
+  ].join('\n');
+
+  const insertBefore = markdown.search(/\n#{2,4}\s*(?:공식\s*확인\s*링크|여행\s*상품과\s*함께\s*확인하기)/i);
+  if (insertBefore > 0) {
+    return `${markdown.slice(0, insertBefore).trimEnd()}\n\n${block}\n\n${markdown.slice(insertBefore).trimStart()}`;
+  }
+  return `${markdown.trim()}\n\n${block}\n`;
+}
+
+function repairGenericCostOpeningFinal(markdown: string, row: BlogRow, primaryKeyword: string): string {
+  if (!looksLikeCostPostFinal(row, primaryKeyword, markdown)) return markdown;
+  const destination = cleanDescriptionPart(row.destination) || cleanTravelKeyword(primaryKeyword)?.split(/\s+/)[0] || '여행지';
+  const specific = `${destination} 비용은 상품가만 보면 부족합니다. 항공·숙소 포함 금액과 현지 개인경비를 분리하고, 식사·교통·선택 관광 예산을 1인 하루 단위로 잡아야 실제 총액 오차를 줄일 수 있습니다.`;
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  let changed = false;
+  let firstBodySeen = false;
+  for (let index = Math.max(0, h1Index + 1); index < lines.length; index += 1) {
+    const trimmed = lines[index]?.trim() ?? '';
+    if (!trimmed) continue;
+    if (/^#{1,6}\s/.test(trimmed)) {
+      if (!firstBodySeen && h1Index >= 0) {
+        lines.splice(h1Index + 1, 0, '', specific, '');
+        firstBodySeen = true;
+        changed = true;
+      }
+      continue;
+    }
+    if (/^!\[|^<figcaption\b|^\|.*\|$/.test(trimmed)) continue;
+    const isGenericCostLine =
+      /무엇부터\s*(?:비교|확인|준비)해야\s*할까요\?/.test(trimmed) ||
+      /출발\s*2주\s*전에는\s*비용,\s*이동\s*시간/.test(trimmed) ||
+      /비용,\s*이동\s*시간,\s*입국[·ㆍ]\s*예약\s*조건/.test(trimmed) ||
+      /일정표보다\s*총\s*이동\s*시간,\s*포함\/불포함,\s*현지\s*추가비/.test(trimmed);
+    if (!firstBodySeen) {
+      firstBodySeen = true;
+      if (isGenericCostLine || !/(상품가|개인경비|예산|만원|원|추가비)/.test(trimmed.slice(0, 220))) {
+        lines[index] = specific;
+        changed = true;
+      }
+      continue;
+    }
+    if (isGenericCostLine) {
+      lines.splice(index, 1);
+      index -= 1;
+      changed = true;
+    }
+  }
+  return changed ? lines.join('\n').replace(/\n{3,}/g, '\n\n') : markdown;
+}
+
+function dedupeFinalIntroFragmentsFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  let seenDecisionIntro = false;
+  let seenCostIntro = false;
+  const next: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (
+      /^[-*]\s*(?:월별\s*날씨|예산(?:과|·|\s)|준비물|비용\s*체크|옷차림\s*체크)/.test(trimmed)
+    ) {
+      continue;
+    }
+    if (/무엇부터\s*(?:비교|확인|준비)해야\s*할까요\?/.test(trimmed)) {
+      continue;
+    }
+    if (/출발\s*2주\s*전에는\s*비용,\s*이동\s*시간/.test(trimmed)) {
+      continue;
+    }
+    if (/^같은\s*일정처럼\s*보여도\s*1~2시간\s*이동\s*차이/.test(trimmed)) {
+      continue;
+    }
+    if (/일정표보다\s*총\s*이동\s*시간,\s*포함\/불포함,\s*현지\s*추가비/.test(trimmed)) {
+      if (seenDecisionIntro) continue;
+      seenDecisionIntro = true;
+    }
+    if (/^같은\s*가격처럼\s*보여도\s*차량\s*이동\s*1~2시간/.test(trimmed)) continue;
+    if (/비용은\s*상품가만\s*보면\s*부족합니다/.test(trimmed)) {
+      if (seenCostIntro) continue;
+      seenCostIntro = true;
+    }
+    next.push(line);
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function softenInfoTopSalesCtaFinal(markdown: string, blogType: 'product' | 'info'): string {
   if (blogType !== 'info') return markdown;
   const cutoff = Math.max(400, Math.floor(markdown.length * 0.35));
@@ -2765,8 +2906,13 @@ function finalBlogSurfacePreQaRepair(
       repairSlashJoinedTableArtifactsFinal(splitRemainingParagraphWallsFinal(next)),
     ),
   );
-  next = normalizeIntroLeadBlockFinal(dedupeRepeatedShortParagraphsCustomer(next));
+  next = ensureConcreteCostProseFinal(repairGenericCostOpeningFinal(next, row, primaryKeyword), row, primaryKeyword);
+  next = repairGenericCostOpeningFinal(normalizeIntroLeadBlockFinal(dedupeRepeatedShortParagraphsCustomer(next)), row, primaryKeyword);
   next = ensureMinimumThreeInlineImagesFinal(next, row, primaryKeyword);
+  next = ensureCustomerAnswerFirstParagraphFinal(next, row, primaryKeyword, blogType);
+  next = repairGenericCostOpeningFinal(next, row, primaryKeyword);
+  next = dedupeFinalIntroFragmentsFinal(next);
+  next = repairReadableSurfaceTextFinal(next);
   return next.replace(/\n{3,}/g, '\n\n').trim();
 }
 

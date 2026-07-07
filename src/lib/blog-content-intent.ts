@@ -286,7 +286,7 @@ function inspectInfoContract(
     });
   }
 
-  if ((subtype === 'cost' || subtype === 'currency') && !hasAny(plain, /(\d[\d,]*\s*(원|만원|달러|엔|위안|페소|바트)|예산|환율)/)) {
+  if ((subtype === 'cost' || subtype === 'currency') && !hasConcreteCostEvidence(plain)) {
     addIssue(issues, 'missing_required_block', 'critical', 'Cost/currency posts need concrete amounts or budget ranges.', { subtype });
   }
   if (subtype === 'comparison') {
@@ -322,6 +322,23 @@ function inspectProductContract(
       addIssue(issues, 'missing_required_block', 'critical', 'Product posts need itinerary, inclusion, price, departure, or booking facts.');
     }
   }
+}
+
+function hasConcreteCostEvidence(plain: string): boolean {
+  return /(\d[\d,]*\s*(?:\uC6D0|\uB9CC\s*\uC6D0|\uB9CC\uC6D0|\uB2EC\uB7EC|\uC5D4|\uC704\uC548|\uD398\uC18C|\uBC14\uD2B8)|\d+\s*\uB9CC?\s*[~–-]\s*\d+\s*\uB9CC?\s*\uC6D0?|\uC608\uC0B0|\uD658\uC728)/.test(plain);
+}
+
+function removeSatisfiedCostEvidenceIssues(
+  intent: BlogIntentProfile,
+  plain: string,
+  issues: BlogIntentIssue[],
+): BlogIntentIssue[] {
+  if (intent.mode !== 'info') return issues;
+  if (intent.infoSubtype !== 'cost' && intent.infoSubtype !== 'currency') return issues;
+  if (!hasConcreteCostEvidence(plain)) return issues;
+  return issues.filter((issue) =>
+    !(issue.code === 'missing_required_block' && /Cost\/currency posts need concrete amounts/i.test(issue.message)),
+  );
 }
 
 function inspectReadingDesign(source: string, plain: string, issues: BlogIntentIssue[]) {
@@ -796,15 +813,16 @@ export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQual
   if (intent.mode === 'product' || intent.productSubtype) inspectProductConsultContract(source, issues);
   inspectReadingDesign(source, plain, issues);
 
-  const criticalCount = issues.filter((issue) => issue.severity === 'critical').length;
-  const warningCount = issues.filter((issue) => issue.severity === 'warning').length;
+  const finalIssues = removeSatisfiedCostEvidenceIssues(intent, plain, issues);
+  const criticalCount = finalIssues.filter((issue) => issue.severity === 'critical').length;
+  const warningCount = finalIssues.filter((issue) => issue.severity === 'warning').length;
   const score = Math.max(0, 100 - criticalCount * 18 - warningCount * 6);
 
   return {
-    passed: issues.length === 0 && score === 100,
+    passed: finalIssues.length === 0 && score === 100,
     score,
     intent,
-    issues,
+    issues: finalIssues,
   };
 }
 
