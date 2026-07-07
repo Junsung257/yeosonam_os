@@ -33,10 +33,29 @@ function list(items: string[], fallback: string): string {
   return usable.map((item) => `- ${item}`).join('\n');
 }
 
+function confirmationPoint(label: string, index: number): string {
+  const includedPoints = [
+    '상품 상세 포함 기준 확인',
+    '요금표 포함 여부 확인',
+    '동행자 조건별 적용 확인',
+    '예약 시점 조건 확인',
+    '최종 안내문 기준 확인',
+  ];
+  const excludedPoints = [
+    '현지 추가 비용 여부 확인',
+    '1인 기준 금액 확인',
+    '필수/선택 여부 확인',
+    '출발일별 차이 확인',
+    '결제 전 조건 확인',
+  ];
+  const points = label === '포함' ? includedPoints : excludedPoints;
+  return points[index % points.length];
+}
+
 function tableRows(label: string, items: string[], fallback: string): string[] {
   const usable = items.map((item) => text(item)).filter(Boolean).slice(0, 5);
-  if (usable.length === 0) return [`| ${label} | ${fallback} | 상담에서 최종 확인 |`];
-  return usable.map((item) => `| ${label} | ${item} | 상담에서 최종 확인 |`);
+  if (usable.length === 0) return [`| ${label} | ${fallback} | ${confirmationPoint(label, 0)} |`];
+  return usable.map((item, index) => `| ${label} | ${item} | ${confirmationPoint(label, index)} |`);
 }
 
 function packageUrl(productId: string): string {
@@ -81,7 +100,7 @@ function buildOpeningParagraph(input: {
   const fitForConditional = `${input.fitFor}${particle(input.fitFor, '이라면', '라면')}`;
   const variants = [
     `${input.departure} 출발 ${input.destination} ${input.duration} 패키지를 보고 있다면, 먼저 ${input.priceText} 기준에 무엇이 포함되고 빠지는지 확인해야 합니다. ${fitForConditional} 항공 시간, 객실 조건, 선택관광을 문의 전에 함께 보는 편이 안전합니다.`,
-    `${input.priceText}부터 보이는 ${input.destination} ${input.duration} 상품은 출발지와 일정 강도에 따라 체감 가치가 달라집니다. ${input.departure} 출발 기준으로 포함/불포함, 이동량, 추가 비용을 먼저 나누면 상담 전에 판단이 쉬워집니다.`,
+    `시작가가 ${input.priceText}인 ${input.destination} ${input.duration} 상품은 출발지와 일정 강도에 따라 체감 가치가 달라집니다. ${input.departure} 출발 기준으로 포함/불포함, 이동량, 추가 비용을 먼저 나누면 상담 전에 판단이 쉬워집니다.`,
     `${input.destination} ${input.duration}은 가격보다 확인 순서가 중요합니다. ${input.departure} 출발, ${input.priceText} 기준으로 볼 때 이 상품은 ${input.fitFor}에게 맞는지부터 살펴보는 편이 좋습니다.`,
   ];
   return variants[variantIndex(input.productId, variants.length)];
@@ -145,7 +164,7 @@ export function generateProductConsultantBlogPost(
     '',
     itinerary.length > 0
       ? itinerary.map((item, index) => `- ${index + 1}일차: ${item}`).join('\n')
-      : '- 상세 일차별 일정은 상담에서 확정본 기준으로 확인해야 합니다.',
+      : '- 일차별 상세 코스가 비어 있다면 항공 도착/귀국 시간, 장거리 이동일, 자유시간 비중을 먼저 확인해야 합니다.',
     '',
     highlights.length > 0 ? '### 먼저 볼 포인트' : '',
     highlights.length > 0 ? list(highlights, '상품 핵심 포인트는 상담에서 확인합니다.') : '',

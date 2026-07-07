@@ -82,6 +82,11 @@ describe('blog publish quality', () => {
     expect(report.passed).toBe(false);
     expect(blogPublishQualityWarnings(report)).toEqual([
       { type: 'seo', gate: 'image_seo', reason: 'images 0, alt 0' },
+      {
+        type: 'customer_quality',
+        gate: 'customer.weak_answer_first',
+        reason: '정보성 글은 첫 문단에서 고객 질문에 바로 답해야 합니다.',
+      },
     ]);
   });
 

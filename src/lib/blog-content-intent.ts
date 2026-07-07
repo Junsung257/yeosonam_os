@@ -469,6 +469,7 @@ function findParticleMisuse(plain: string): string | null {
   const matches = plain.matchAll(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/gu);
   for (const match of matches) {
     const word = match[1] ?? '';
+    if (word === '이유' || word === '이미지') continue;
     const particle = match[2] ?? '';
     const last = word[word.length - 1] ?? '';
     const hasBatchim = hasFinalConsonant(last);

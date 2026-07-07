@@ -9,6 +9,83 @@ import { checkHook, checkMarkdownTableIntegrity, checkRenderIntegrity } from './
 import { computeReadability } from './blog-readability';
 
 describe('blog editorial repair', () => {
+  it('repairs customer-visible placeholder product copy', () => {
+    const result = repairBlogEditorialQuality({
+      title: '광저우 패키지',
+      slug: 'guangzhou-package',
+      contentType: 'package_intro',
+      productId: 'pkg-1',
+      blogHtml: [
+        '# 광저우 패키지',
+        '',
+        '1,369,000원부터부터 보이는 상품입니다.',
+        '',
+        '## 일정 체감',
+        '',
+        '- 상세 일차별 일정은 상담에서 확정본 기준으로 확인해야 합니다.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).not.toContain('원부터부터');
+    expect(result.blogHtml).not.toContain('상세 일차별 일정은 상담에서 확정본 기준으로 확인해야 합니다');
+  });
+
+  it('rewrites generic answer-first openings into topic-specific intros', () => {
+    const result = repairBlogEditorialQuality({
+      title: '세부 쇼핑 예산',
+      slug: 'cebu-shopping-budget',
+      primaryKeyword: '세부 쇼핑 예산',
+      destination: '세부',
+      contentType: 'guide',
+      blogHtml: [
+        '# 세부 쇼핑 예산',
+        '',
+        '답부터 말하면, 2026년 7월 기준 세부에서 먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다. 포함/불포함, 이동 시간, 현지 추가비용을 함께 비교하면 불필요한 이동과 추가 부담을 줄일 수 있습니다.',
+        '',
+        '## 항목별 예산',
+        '',
+        '| 항목 | 금액 | 체크 |',
+        '| --- | --- | --- |',
+        '| 건망고 | 10,000원 | 수량 확인 |',
+        '| 선물 | 30,000원 | 무게 확인 |',
+        '| 쇼핑몰 이동 | 15분 | 동선 확인 |',
+      ].join('\n'),
+    });
+
+    expect(result.changes).toContain('repaired_generic_answer_opening');
+    expect(result.blogHtml).not.toContain('답부터 말하면, 2026년 7월 기준');
+    expect(result.blogHtml).toContain('세부 쇼핑 예산');
+  });
+
+  it('softens readable unsupported internal product and booking data claims', () => {
+    const result = repairBlogEditorialQuality({
+      title: '석가장 여행 비용',
+      slug: 'shijiazhuang-3-4-budget',
+      primaryKeyword: '석가장 여행 비용',
+      destination: '석가장',
+      contentType: 'guide',
+      blogHtml: [
+        '# 석가장 여행 비용',
+        '',
+        '여소남 내부 상품 및 예약 데이터를 기준으로, 석가장 여행 비용 트렌드를 정리했습니다.',
+        '',
+        '## 비용 표',
+        '',
+        '| 항목 | 금액 | 확인 |',
+        '| --- | --- | --- |',
+        '| 항공 | 30만 원 | 발권 시점 확인 |',
+        '| 숙소 | 18만 원 | 위치 확인 |',
+        '| 식사 | 18만 원 | 포함 여부 확인 |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('softened_unsupported_yeosonam_data_claims');
+    expect(result.blogHtml).not.toContain('여소남 내부 상품 및 예약 데이터');
+    expect(result.blogHtml).toContain('현재 확인 가능한 상품 조건');
+  });
+
   it('repairs loose markdown tables with blank lines and missing separators', () => {
     const result = repairBlogStructureQuality({
       title: 'Nha Trang weather',

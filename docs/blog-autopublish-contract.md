@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-04
+Last updated: 2026-07-07
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -25,6 +25,7 @@ Local code references:
 - Content brief gate: `src/lib/blog-content-brief.ts`
 - SERP/free intent analyzer: `src/lib/serp-analyzer.ts`
 - Shared publish evaluator: `src/lib/blog-publish-quality.ts`
+- Customer-facing quality evaluator: `src/lib/blog-customer-quality.ts`
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`
@@ -79,8 +80,9 @@ Before the first publish gate:
 10. Run `repairBlogEditorialQuality()`.
 11. Run `repairBlogStructureQuality()`.
 12. Run `runQualityGates()`, including `topic_fit`, `editorial_quality`, `accent_density`, `table_integrity`, and `cta_destination_integrity`.
-13. Run `computeSeoScore()`.
-14. Run `computeReadability()` on the final post-gate body.
+13. Run `inspectBlogCustomerQuality()` through `evaluateBlogPublishQuality()` so customer-visible writing defects are scored with the same publish decision as render/SEO gates.
+14. Run `computeSeoScore()`.
+15. Run `computeReadability()` on the final post-gate body.
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
@@ -122,6 +124,7 @@ Before widening automatic publishing after engine changes, `diagnose:blog-autopu
 The post must not be published when any of these are true:
 
 - The quality gate fails after repair rounds.
+- `customer_quality` fails because the post still has AI-like generic openings, weak answer-first paragraphs, duplicated product price suffixes such as `원부터부터`, repeated consultation placeholders, placeholder destination copy, unsupported internal data claims, early hard CTA in information posts, or table render risk.
 - `generation_meta.content_brief` is missing, failed, or contradicts the raw topic/search intent.
 - SERP/free-intent evidence is presented as ranking proof when it came from autocomplete fallback.
 - `topic_fit` fails because the topic is a machine slug, placeholder, weak travel intent, or bad destination/intent combination.
@@ -141,6 +144,25 @@ The post must not be published when any of these are true:
 - Public article links contain localhost, 127.0.0.1, 0.0.0.0, or any non-public HTTP origin. Product CTA links must use the blog canonical public origin.
 
 SEO score alone is not a publish success signal. A post is complete only when topic fit, editorial quality, render integrity, image quality, SEO, readability, indexing enqueue, and later visibility observation all have durable evidence.
+
+## Customer Writing Contract
+
+Automatic publishing must optimize for a reader who is deciding what to do next, not for a template that only looks SEO-complete.
+
+Required writer split:
+
+- `info_writer`: answer the reader's search intent first. The first 120-200 characters must contain a concrete answer, question, comparison, price/time/weather/document trigger, or checklist direction. Product or consultation CTA appears only near the bottom and must be soft.
+- `product_consultant_writer`: help the customer make a pre-inquiry decision. The post must show price/from-city/duration, included/excluded items, fit/not-fit, risk notes, price-change conditions, and questions to ask before consultation.
+
+Forbidden customer-visible patterns:
+
+- Generic openings such as "답부터 말하면, 20XX년 X월 기준..." or "먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다."
+- Product copy that says only "상담에서 최종 확인" repeatedly instead of giving a useful condition to check.
+- Duplicate price suffixes such as `1,369,000원부터부터`.
+- Weather or packing guides that open with cost/reservation copy instead of temperature, rain, clothing, and packing decisions.
+- Product posts that invent hotel names, fixed benefits, scarcity, or confirmed schedules not present in product evidence.
+
+Backfill and live publishing must use the same customer contract. `scripts/backfill-blog-quality.ts` should repair customer-visible copy and then run the full publish evaluator; a dry run with `qualityGateFailed=0`, `publishBlocked=0`, and `minorOnlyIssues=0` is the target for "100점" recent-post evidence.
 
 ## Indexing Contract
 

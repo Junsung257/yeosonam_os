@@ -4,6 +4,7 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -19,6 +20,16 @@ type SitemapQueryResponse<T> = {
 type ActiveDestinationSitemapRow = {
   destination: string | null;
   package_count?: number | string | null;
+};
+
+type PublicPackageDestinationSitemapRow = {
+  destination: string | null;
+  status?: string | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
 };
 
 export const revalidate = 3600;
@@ -93,12 +104,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
   ];
 
-  const [activeDests, queriedPosts] = await Promise.all([
-    runSitemapQuery<ActiveDestinationSitemapRow>('destinations', (signal) =>
+  const [packageDestinations, queriedPosts] = await Promise.all([
+    runSitemapQuery<PublicPackageDestinationSitemapRow>('destinations', (signal) =>
       supabaseAdmin
-        .from('active_destinations')
-        .select('destination, package_count')
-        .limit(DESTINATION_LIMIT)
+        .from('travel_packages')
+        .select('destination, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .in('status', ['active', 'approved'])
+        .not('destination', 'is', null)
+        .limit(PACKAGE_LIMIT)
         .abortSignal(signal),
     ),
     runSitemapQuery<{
@@ -123,7 +136,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ? queriedPosts
     : getFallbackBlogPosts().filter((post) => post.detail_available);
 
-  for (const d of activeDests) {
+  const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
+  for (const pkg of packageDestinations.filter(isCustomerPubliclyOpenable)) {
+    const destination = pkg.destination?.trim();
+    if (!destination) continue;
+    const current = publicDestinations.get(destination) ?? { destination, package_count: 0 };
+    current.package_count = Number(current.package_count ?? 0) + 1;
+    publicDestinations.set(destination, current);
+    if (publicDestinations.size >= DESTINATION_LIMIT) break;
+  }
+
+  for (const d of publicDestinations.values()) {
     const destination = getSafeSitemapDestination(d);
     if (destination) {
       routes.push({

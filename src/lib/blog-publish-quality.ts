@@ -4,6 +4,7 @@ import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
 import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
 import { repairPublishReadiness } from './blog-publish-readiness-repair';
+import { inspectBlogCustomerQuality, type BlogCustomerQualityReport } from './blog-customer-quality';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -34,6 +35,7 @@ export interface BlogPublishQualityReport {
   qualityGate: QualityGateReport;
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
+  customerQuality: BlogCustomerQualityReport;
   blogQualityScore: BlogQualityScoreReport;
   summary: string;
 }
@@ -145,8 +147,17 @@ export async function evaluateBlogPublishQuality(
     },
   });
   const readability = computeReadability(input.blog_html);
-  const blogQualityScore = calculateBlogQualityScore({ qualityGate, seoScore, readability });
-  const report = { qualityGate, seoScore, readability, blogQualityScore };
+  const customerQuality = inspectBlogCustomerQuality({
+    blogHtml: input.blog_html,
+    blogType,
+    title: input.seo_title,
+    primaryKeyword,
+    destination,
+    productId: input.product_id ?? null,
+    generationMeta: input.generation_meta ?? null,
+  });
+  const blogQualityScore = calculateBlogQualityScore({ qualityGate, seoScore, readability, customerQuality });
+  const report = { qualityGate, seoScore, readability, customerQuality, blogQualityScore };
 
   return {
     ...report,

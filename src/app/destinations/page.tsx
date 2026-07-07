@@ -7,11 +7,8 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import {
-  getPublicDestinationQueryNames,
-  mergePublicDestinationStats,
-  type ActiveDestinationLike,
-} from '@/lib/public-destinations';
+import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -71,11 +68,40 @@ async function getDestinations() {
 
   try {
     const { data: stats } = await supabaseAdmin
-      .from('active_destinations')
-      .select('*')
-      .order('package_count', { ascending: false });
+      .from('travel_packages')
+      .select('destination, price, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+      .in('status', ['active', 'approved'])
+      .not('destination', 'is', null)
+      .limit(2000);
 
-    const normalizedStats = mergePublicDestinationStats((stats as ActiveDestinationLike[] | null) ?? []);
+    const statsByDestination = new Map<string, {
+      destination: string;
+      package_count: number;
+      min_price: number | null;
+      avg_rating: number | null;
+      total_reviews: number | null;
+    }>();
+    ((stats ?? []) as Array<{ destination: string | null; price?: number | null }>)
+      .filter(isCustomerPubliclyOpenable)
+      .forEach((pkg) => {
+        const destination = pkg.destination?.trim();
+        if (!destination) return;
+        const current = statsByDestination.get(destination) ?? {
+          destination,
+          package_count: 0,
+          min_price: null,
+          avg_rating: null,
+          total_reviews: null,
+        };
+        current.package_count += 1;
+        if (typeof pkg.price === 'number' && pkg.price > 0 && (current.min_price == null || pkg.price < current.min_price)) {
+          current.min_price = pkg.price;
+        }
+        statsByDestination.set(destination, current);
+      });
+
+    const normalizedStats = [...statsByDestination.values()]
+      .sort((a, b) => b.package_count - a.package_count);
     const destinations = normalizedStats.map(s => s.destination);
     const queryNames = [...new Set(destinations.flatMap(getPublicDestinationQueryNames))];
     const [{ data: metadata }, { data: attractions }, { data: posts }] = queryNames.length > 0 ? await Promise.all([

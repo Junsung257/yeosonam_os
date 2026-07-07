@@ -8,6 +8,7 @@ import AffiliateTouchpointBeacon from '@/components/affiliate/AffiliateTouchpoin
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 function extractYoutubeEmbedUrl(input?: string | null): string | null {
   if (!input) return null;
@@ -21,7 +22,7 @@ function extractYoutubeEmbedUrl(input?: string | null): string | null {
 export const dynamic = 'force-dynamic';
 
 const PKG_CARD_FIELDS =
-  'id, title, destination, country, price, display_title, product_summary, product_highlights, status';
+  'id, title, destination, country, price, display_title, product_summary, product_highlights, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
 
 interface PageProps {
   params: Promise<{ slug?: string | string[] }>;
@@ -173,12 +174,13 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
         .in('id', pickIds)
-        .in('status', ['active', 'approved'])
-        .or('audit_status.is.null,audit_status.neq.blocked');
+        .in('status', ['active', 'approved']);
       const order = new Map(pickIds.map((id, i) => [id, i]));
-      picks = (picked || []).sort(
-        (a: { id: string }, b: { id: string }) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
-      );
+      picks = (picked || [])
+        .filter(isCustomerPubliclyOpenable)
+        .sort(
+          (a: { id: string }, b: { id: string }) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
+        );
     } catch {
       picks = [];
     }
@@ -190,10 +192,9 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
         .in('status', ['active', 'approved'])
-        .or('audit_status.is.null,audit_status.neq.blocked')
         .order('created_at', { ascending: false })
-        .limit(6);
-      picks = fallback || [];
+        .limit(100);
+      picks = (fallback || []).filter(isCustomerPubliclyOpenable).slice(0, 6);
     } catch {
       picks = [];
     }

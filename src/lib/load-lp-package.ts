@@ -4,6 +4,7 @@ import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/map-travel-package-to-lp';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 export async function fetchLpPackageUncached(
   id: string,
@@ -24,6 +25,7 @@ export async function fetchLpPackageUncached(
   const status = (pkg as { status?: string | null }).status;
   const auditStatus = (pkg as { audit_status?: string | null }).audit_status;
   if (!options.allowNonPublicProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) return null;
+  if (!options.allowNonPublicProof && !isCustomerPubliclyOpenable(pkg)) return null;
 
   const liveVerify = evaluateVerifyChecks(pkg as Parameters<typeof evaluateVerifyChecks>[0]);
   if (!options.allowNonPublicProof && liveVerify.status === 'blocked') return null;
