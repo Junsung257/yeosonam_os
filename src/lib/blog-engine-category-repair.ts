@@ -58,9 +58,17 @@ function insertAnswerFirstIntro(input: BlogEngineCategoryRepairInput, markdown: 
   const topic = input.primaryKeyword || input.destination || input.title || '이번 여행';
   const destination = input.destination || topic;
   const topicParticle = hasBatchim(topic) ? '은' : '는';
+  const context = `${input.title || ''} ${input.primaryKeyword || ''} ${input.category || ''}`;
+  const infoIntro = /아이|가족|일정|코스/.test(context)
+    ? `${destination} 아이와 가족여행은 하루 코스를 많이 넣는 것보다 이동 시간, 숙소 위치, 낮잠·식사 시간을 먼저 맞추는 편이 좋습니다. 첫날은 이동과 휴식, 둘째 날 이후는 호핑투어·리조트·시내 일정을 나눠 잡으면 아이 컨디션을 지키기 쉽습니다.`
+    : /예산|비용|식비|경비|쇼핑/.test(context)
+      ? `${destination} 여행 예산은 항공·숙소 결제액과 현지 식비, 교통비, 선택 관광, 팁을 따로 봐야 실제 총액이 잡힙니다. 먼저 하루 비용 범위와 추가비 가능 항목을 나누면 과소예산을 줄일 수 있습니다.`
+      : /날씨|옷차림|준비물|체크리스트|우기|건기/.test(context)
+        ? `${topic}에서 핵심은 낮 기온만 보는 것이 아닙니다. ${destination} 여행은 아침·저녁 기온 차이, 비 예보, 이동 동선을 함께 보고 옷차림과 준비물을 나누는 편이 안전합니다.`
+        : `${topic}${topicParticle} 먼저 핵심 조건을 나눠 보면 판단이 쉽습니다. 날씨·비용·이동·준비물처럼 바뀔 수 있는 항목은 출발일 기준으로 다시 확인하고, 표와 체크리스트로 필요한 부분만 빠르게 비교하세요.`;
   const intro = input.blogType === 'product'
     ? `${destination} 상품은 가격만 보지 말고 출발지, 기간, 포함/불포함, 맞는 고객을 함께 보면 문의 전에 판단이 쉬워집니다. 표시 금액과 조건은 출발일, 인원, 항공 좌석, 객실 가능 여부에 따라 달라질 수 있습니다.`
-    : `${topic}${topicParticle} 먼저 핵심 조건을 나눠 보면 판단이 쉽습니다. 날씨·비용·이동·준비물처럼 바뀔 수 있는 항목은 출발일 기준으로 다시 확인하고, 표와 체크리스트로 필요한 부분만 빠르게 비교하세요.`;
+    : infoIntro;
 
   lines.splice(h1Index + 1, 0, '', intro, '');
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
@@ -186,6 +194,30 @@ function repairEvidenceSupport(markdown: string): string {
   return forceAppendOfficialReferenceLinks(withConditionalLinks);
 }
 
+function softenInfoSalesPressureSurface(input: BlogEngineCategoryRepairInput, markdown: string): string {
+  if (input.blogType !== 'info') return markdown;
+  const context = `${input.title || ''} ${input.primaryKeyword || ''} ${input.category || ''}`;
+  const decisionParagraph = /아이|가족|일정|코스/.test(context)
+    ? '출발 전에는 아이 컨디션, 숙소 위치, 차량 이동 시간, 쉬는 시간을 먼저 나누는 편이 안전합니다. 같은 4박 5일이라도 하루 이동량과 식사 시간이 맞지 않으면 체감 피로가 크게 달라질 수 있습니다.'
+    : /예산|비용|식비|경비|쇼핑/.test(context)
+      ? '출발 전에는 항공·숙소에 포함된 항목과 현지 식비, 교통비, 선택 관광 비용을 따로 보는 편이 안전합니다. 같은 예산처럼 보여도 여행 방식과 환율, 동선에 따라 실제 총액이 달라질 수 있습니다.'
+      : '출발 전에는 일정, 이동 시간, 준비물, 현지 추가 비용을 따로 보는 편이 안전합니다. 같은 목적지라도 여행 시기와 동선에 따라 실제 준비 기준이 달라질 수 있습니다.';
+
+  return markdown
+    .replace(/예약 전 무엇을 먼저 확인해야 할까요\?/g, '출발 전 무엇을 먼저 확인해야 할까요?')
+    .replace(/예약 전에는 총액, 이동 시간, 포함\/불포함을 따로 보는 편이 안전합니다\. 같은 가격처럼 보여도 출발일, 인원, 현지 추가비용에 따라 실제 부담이 달라질 수 있습니다\./g, decisionParagraph)
+    .replace(/상품가와/g, '결제액과')
+    .replace(/상품가/g, '결제액')
+    .replace(/예상 비용은 1인당 [^.\n]+?상품이 활발하게 조회됩니다\./g, '예상 비용은 여행 방식과 포함 항목에 따라 달라지므로 항공·숙소 포함 여부와 현지 추가비를 나눠 확인하세요.')
+    .replace(/이번 글에서는\s*/g, '')
+    .replace(/오늘은\s*/g, '')
+    .replace(/안녕하세요[.!?\s]*/g, '')
+    .replace(/예약 전 비교/g, '출발 전 비교')
+    .replace(/예약 전 추가 비용 여부/g, '현지 추가 비용 여부')
+    .replace(/예약 전에는/g, '출발 전에는')
+    .replace(/예약 전/g, '출발 전');
+}
+
 export function repairBlogEngineCategoryGaps(input: BlogEngineCategoryRepairInput): BlogEngineCategoryRepairResult {
   const beforeEvaluation = evaluateBlogEngineV2({
     blogHtml: input.markdown,
@@ -214,6 +246,18 @@ export function repairBlogEngineCategoryGaps(input: BlogEngineCategoryRepairInpu
     if (next !== markdown) {
       markdown = next;
       changes.push('engine_category_evidence_links');
+    }
+  }
+
+  if (
+    weakCategories.includes('sales_pressure_control')
+    || weakCategories.includes('naturalness')
+    || weakCategories.includes('reader_task_completion')
+  ) {
+    const next = softenInfoSalesPressureSurface(input, markdown);
+    if (next !== markdown) {
+      markdown = next;
+      changes.push('engine_category_softened_info_sales_pressure');
     }
   }
 

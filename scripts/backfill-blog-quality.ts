@@ -8,6 +8,7 @@ let finalizeBlogPost: typeof import('../src/lib/blog-post-finalizer').finalizeBl
 let normalizeBlogDescription: typeof import('../src/lib/blog-quality-normalizer').normalizeBlogDescription;
 let normalizeBlogTitle: typeof import('../src/lib/blog-quality-normalizer').normalizeBlogTitle;
 let evaluateBlogPublishQuality: typeof import('../src/lib/blog-publish-quality').evaluateBlogPublishQuality;
+let evaluateBlogEngineV2: typeof import('../src/lib/blog-engine-v2').evaluateBlogEngineV2;
 let destToEnKeyword: typeof import('../src/lib/pexels').destToEnKeyword;
 let getRandomPexelsPhoto: typeof import('../src/lib/pexels').getRandomPexelsPhoto;
 let isPexelsConfigured: typeof import('../src/lib/pexels').isPexelsConfigured;
@@ -28,6 +29,7 @@ async function loadLocalModules() {
   ({ finalizeBlogPost } = await import('../src/lib/blog-post-finalizer'));
   ({ normalizeBlogDescription, normalizeBlogTitle } = await import('../src/lib/blog-quality-normalizer'));
   ({ evaluateBlogPublishQuality } = await import('../src/lib/blog-publish-quality'));
+  ({ evaluateBlogEngineV2 } = await import('../src/lib/blog-engine-v2'));
   ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
   ({ extractDestination } = await import('../src/lib/slug-utils'));
   ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
@@ -90,6 +92,10 @@ type AuditRow = {
   }>;
   seoScore: number | null;
   readabilityScore: number | null;
+  engineCategoryScore: number | null;
+  engineCategoryPerfect: boolean;
+  engineCategoryFailedCategories: string[];
+  engineCategoryWriter: string | null;
   titleChanged: boolean;
   descriptionChanged: boolean;
   changeReasons: string[];
@@ -4864,6 +4870,10 @@ async function main() {
           }],
           seoScore: null,
           readabilityScore: null,
+          engineCategoryScore: null,
+          engineCategoryPerfect: false,
+          engineCategoryFailedCategories: ['product_customer_open_contract'],
+          engineCategoryWriter: null,
           titleChanged: false,
           descriptionChanged: false,
           changeReasons: ['product_contract_archived'],
@@ -5332,6 +5342,21 @@ async function main() {
       excludeContentCreativeId: row.id,
       skipFuzzyDuplicate: true,
     });
+    const engineCategoryEvaluation = evaluateBlogEngineV2({
+      blogHtml: nextHtml,
+      primaryKeyword,
+      destination: normalizedDestinationForWrite,
+      contentType,
+      productId,
+      generationMeta: nextGenerationMeta,
+    });
+    const engineCategoryFailedCategories = engineCategoryEvaluation.category_scores
+      .filter((category) => !category.passed || category.score < 100)
+      .map((category) => category.id);
+    const engineCategoryPerfect =
+      engineCategoryEvaluation.passed &&
+      engineCategoryEvaluation.score === 100 &&
+      engineCategoryFailedCategories.length === 0;
     const publishReady = !hasBlockingBlogIssue(qaReport);
     const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
     const metaChanged = stableJson(nextGenerationMeta) !== stableJson(row.generation_meta ?? {});
@@ -5389,6 +5414,10 @@ async function main() {
       })),
       seoScore: qaReport.seoScore.score,
       readabilityScore: qaReport.readability.score,
+      engineCategoryScore: engineCategoryEvaluation.score,
+      engineCategoryPerfect,
+      engineCategoryFailedCategories,
+      engineCategoryWriter: engineCategoryEvaluation.brief.writer_type,
       titleChanged: normalizedTitle !== originalTitle,
       descriptionChanged: normalizedDescription !== originalDescription,
       changeReasons,
@@ -5460,6 +5489,15 @@ async function main() {
     }
     return acc;
   }, {});
+  const engineCategoryRows = auditRows.filter((row) => typeof row.engineCategoryScore === 'number');
+  const engineCategoryFailedBuckets = engineCategoryRows.reduce<Record<string, number>>((acc, row) => {
+    for (const category of row.engineCategoryFailedCategories) {
+      acc[category] = (acc[category] || 0) + 1;
+    }
+    return acc;
+  }, {});
+  const engineCategoryScoreTotal = engineCategoryRows.reduce((sum, row) => sum + (row.engineCategoryScore ?? 0), 0);
+  const engineCategoryWeakRows = engineCategoryRows.filter((row) => !row.engineCategoryPerfect);
   const summary = {
     mode: dryRun ? 'dry-run' : 'write',
     scanned: auditRows.length,
@@ -5498,6 +5536,23 @@ async function main() {
             evidence: issue.evidence,
           })),
       })),
+    engineCategoryScorecard: {
+      checkedCount: engineCategoryRows.length,
+      perfectCount: engineCategoryRows.filter((row) => row.engineCategoryPerfect).length,
+      below100Count: engineCategoryWeakRows.length,
+      averageScore: engineCategoryRows.length > 0
+        ? Math.round(engineCategoryScoreTotal / engineCategoryRows.length)
+        : 0,
+      failedCategoryBuckets: engineCategoryFailedBuckets,
+      samples: engineCategoryWeakRows
+        .slice(0, 10)
+        .map((row) => ({
+          slug: row.slug,
+          writer: row.engineCategoryWriter,
+          score: row.engineCategoryScore,
+          failedCategories: row.engineCategoryFailedCategories,
+        })),
+    },
     highlightAverageBefore: highlightCountsBefore.length > 0
       ? Number((highlightCountsBefore.reduce((sum, value) => sum + value, 0) / highlightCountsBefore.length).toFixed(2))
       : 0,
