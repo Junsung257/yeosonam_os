@@ -16,6 +16,7 @@ export interface CustomerPackageDisplayCopyInput {
   airline?: string | null;
   product_highlights?: string[] | null;
   inclusions?: string[] | null;
+  optional_tours?: Array<{ name?: string | null; displayName?: string | null; note?: string | null }> | null;
 }
 
 export interface CustomerPackageDisplayCopy {
@@ -91,6 +92,19 @@ function collectSourceText(input: CustomerPackageDisplayCopyInput): string {
     input.product_summary,
     ...(input.product_highlights ?? []),
     ...(input.inclusions ?? []),
+    ...(input.optional_tours ?? []).flatMap((tour) => [tour.name, tour.displayName, tour.note]),
+  ]
+    .map(normalizeForCustomer)
+    .filter(Boolean)
+    .join(' ');
+}
+
+function collectTitleThemeText(input: CustomerPackageDisplayCopyInput): string {
+  return [
+    input.display_title,
+    input.product_display_name,
+    input.title,
+    ...(input.product_highlights ?? []),
   ]
     .map(normalizeForCustomer)
     .filter(Boolean)
@@ -120,6 +134,7 @@ function normalizeDestination(input: CustomerPackageDisplayCopyInput, text: stri
   if (/나트랑/.test(destination) && has(/달랏/)) destination = '나트랑·달랏';
   if (/다낭/.test(destination) && has(/호이안/)) destination = '다낭·호이안';
   if (/하노이/.test(destination) && has(/하롱|하롱베이/)) destination = '하노이·하롱베이';
+  if (/연길/.test(destination) && has(/백두산/)) destination = '연길·백두산';
   if (/대만|타이베이/.test(destination) && has(/예스지|야류|지우펀|스펀/)) destination = '타이베이·예스지';
   if (/북해도|홋카이도/.test(destination)) destination = '북해도';
   if (/대마도|쓰시마/.test(destination)) destination = '대마도';
@@ -215,10 +230,11 @@ function compactTitle(parts: string[], duration: string | null): string {
 
 function buildTitle(input: CustomerPackageDisplayCopyInput): { title: string; badges: string[]; issues: string[] } {
   const text = collectSourceText(input);
+  const titleThemeText = collectTitleThemeText(input);
   const duration = formatDuration(input, text);
   const destination = normalizeDestination(input, text);
   const condition = detectBestCondition(text);
-  const theme = detectTheme(text, destination);
+  const theme = detectTheme(titleThemeText, destination);
   const themeForTitle = destination.includes(theme) || (condition ? theme.includes(condition) : false) ? '' : theme;
   const badges = buildBadges(text, input);
   const title = compactTitle([destination, condition ?? '', themeForTitle, duration ?? ''], duration);

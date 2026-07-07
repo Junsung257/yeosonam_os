@@ -50,6 +50,13 @@ const packageIdFilter = (process.argv.find(arg => arg.startsWith('--package-ids=
   .split(',')
   .map(id => id.trim())
   .filter(Boolean);
+const packageIdAliasFilter = (process.argv.find(arg => arg.startsWith('--ids='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(id => id.trim())
+  .filter(Boolean);
+for (const id of packageIdAliasFilter) {
+  if (!packageIdFilter.includes(id)) packageIdFilter.push(id);
+}
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 function isLocalBaseUrl(value) {
   return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(String(value || '').trim());
@@ -306,6 +313,7 @@ function trustScore(row) {
   add(row.hotel_field_semantic_mismatch, 'itinerary.hotel_field_semantic_mismatch', 'critical', 80);
   add(row.exclude_fragment_corruption, 'catalog.exclude_fragment_corruption', 'critical', 70);
   add(row.optional_tour_surcharge_pollution, 'catalog.optional_tour_surcharge_pollution', 'critical', 70);
+  add(row.optional_tour_display_pollution, 'catalog.optional_tour_display_pollution', 'critical', 80);
   add(row.render_failure, 'render.blocked', 'critical', 80);
   add(row.public_html_failure, 'render.public_html_failure', 'critical', 100);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
@@ -477,6 +485,28 @@ function optionalTourSurchargePollution(pkg) {
     const text = [tour?.name, tour?.note].filter(Boolean).join(' ');
     if (/(\uCE74\uD2B8\uBE44|\uC2F1\uAE00\s*\uCE74\uD2B8|\uCD94\uAC00\s*(?:\uB429\uB2C8\uB2E4|\uC694\uAE08|\uBE44\uC6A9|\uAE08)|\uB77C\uC6B4\uB529\uC2DC|2B|3B|single\s*cart|cart\s*fee)/i.test(text)) {
       return `optional_tours contains surcharge/fee text: ${text}`;
+    }
+  }
+  return null;
+}
+
+function optionalTourDisplayPollution(pkg) {
+  const tours = Array.isArray(pkg.optional_tours) ? pkg.optional_tours : [];
+  for (const tour of tours) {
+    const text = [tour?.name, tour?.price, tour?.note].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    const compact = text.replace(/\s+/g, '');
+    if (!text) continue;
+    if (/^(?:포\s*함\s*내\s*역|불\s*포\s*함\s*내\s*역|차량|가이드|식사|관광지\s*입장료|여행자\s*보험|특식\s*\d+\s*회|선택\s*관광|노\s*옵션)$/i.test(text)) {
+      return `optional_tours contains supplier table fragment: ${text}`;
+    }
+    if (/^(?:(?:\d{1,2}\s*월\s*)?\d{1,2}(?:\s*,\s*\d{1,2})?\s*일?(?:\s*\[[^\]]+\])?\s*출발|\d{1,2}\s*월\s*\d{1,2})$/i.test(text)) {
+      return `optional_tours contains departure-date fragment: ${text}`;
+    }
+    if (/^\d{1,3}$/.test(compact) || /^\d[\d,]*원?(?:\/?인)?$/.test(compact)) {
+      return `optional_tours contains price fragment: ${text}`;
+    }
+    if (/^(?:왕복\s*)?항공료|유류\s*할증료|현지\s*공항세/i.test(text)) {
+      return `optional_tours contains inclusion fragment: ${text}`;
     }
   }
   return null;
@@ -1532,6 +1562,7 @@ function readinessFor(row) {
   if (row.hotel_field_semantic_mismatch) failures.push('hotel_field_semantic_mismatch');
   if (row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
   if (row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
+  if (row.optional_tour_display_pollution) failures.push('optional_tour_display_pollution');
   if (row.render_failure) failures.push('render_blocked');
   if (row.public_html_failure) failures.push('public_html_failure');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
@@ -2323,6 +2354,7 @@ let rows = allPackageRows
       hotel_field_semantic_mismatch: hotelFieldSemanticMismatch(pkg),
       exclude_fragment_corruption: excludeFragmentCorruption(pkg),
       optional_tour_surcharge_pollution: optionalTourSurchargePollution(pkg),
+      optional_tour_display_pollution: optionalTourDisplayPollution(pkg),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
     };
@@ -2506,6 +2538,9 @@ const summary = {
   attraction_unlinked_registered: rows.filter(row => row.attraction_unlinked_registered).length,
   attraction_description_missing: rows.filter(row => row.attraction_description_missing).length,
   itinerary_semantic_mismatch: rows.filter(row => row.itinerary_semantic_mismatch).length,
+  exclude_fragment_corruption: rows.filter(row => row.exclude_fragment_corruption).length,
+  optional_tour_surcharge_pollution: rows.filter(row => row.optional_tour_surcharge_pollution).length,
+  optional_tour_display_pollution: rows.filter(row => row.optional_tour_display_pollution).length,
   render_blocked: rows.filter(row => row.render_failure).length,
   public_html_failure: rows.filter(row => row.public_html_failure).length,
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
