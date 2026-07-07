@@ -455,6 +455,29 @@ const LOCAL_PLACEHOLDER_ENTITY_RE =
 const DUPLICATED_SHORT_SURFACE_RE =
   /(?:^|[\s"'“‘(])(\uC774|\uADF8|\uC800|\uC5EC\uD589|\uC900\uBE44|\uC815\uBCF4)\s+\1(?=$|[\s"'”’).,!?])/u;
 const DUPLICATED_PARTICLE_SURFACE_RE = /\uC815\uBCF4\uB97C(?:\uB97C)+/u;
+const CUSTOMER_TARGET_LOCATION_RE = /(대학생|가족|부모님|아이|고객|여행자)에서\s+먼저\s+볼\s+것은/u;
+const STOCK_PRODUCT_INTRO_RE =
+  /패키지는\s+가격만\s+보지\s+말고\s+출발지,\s*포함사항,\s*일정\s*강도를\s+(?:같이|함께)\s+봐야\s+판단이\s+쉽습니다/u;
+
+function hasFinalConsonant(char: string): boolean | null {
+  const code = char.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return null;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function findParticleMisuse(plain: string): string | null {
+  const matches = plain.matchAll(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/gu);
+  for (const match of matches) {
+    const word = match[1] ?? '';
+    const particle = match[2] ?? '';
+    const last = word[word.length - 1] ?? '';
+    const hasBatchim = hasFinalConsonant(last);
+    if (hasBatchim === false && (particle === '은' || particle === '을')) {
+      return `${word}${particle}`;
+    }
+  }
+  return null;
+}
 
 function duplicateTitleToken(title: string): string | null {
   const tokens = title
@@ -517,6 +540,19 @@ function inspectSemanticSurfaceContract(input: BlogIntentInput, source: string, 
       'critical',
       'Article contains duplicated short words that make the Korean copy read like generated output.',
       { sample: duplicatedSurface.trim() },
+    );
+  }
+
+  const particleMisuse = findParticleMisuse(plain);
+  const targetLocation = plain.match(CUSTOMER_TARGET_LOCATION_RE)?.[0];
+  const stockProductIntro = plain.match(STOCK_PRODUCT_INTRO_RE)?.[0];
+  if (particleMisuse || targetLocation || stockProductIntro) {
+    addIssue(
+      issues,
+      'awkward_korean_surface',
+      particleMisuse || targetLocation ? 'critical' : 'warning',
+      'Article uses customer-facing Korean that feels mechanical or grammatically unnatural.',
+      { sample: particleMisuse || targetLocation || stockProductIntro },
     );
   }
 

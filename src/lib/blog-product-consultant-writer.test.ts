@@ -24,7 +24,8 @@ describe('blog product consultant writer', () => {
     expect(markdown).toContain('## 포함/불포함');
     expect(markdown).toContain('## 이런 분께 맞고, 맞지 않을 수 있는 사람');
     expect(markdown).toContain('### 문의 전 질문');
-    expect(markdown).toContain('## 자주 묻는 질문?');
+    expect(markdown).toContain('## 자주 묻는 질문');
+    expect(markdown).not.toContain('고객라면');
     expect(markdown).toContain('599,000원부터');
     expect((markdown.match(/^##\s+/gm) || []).length).toBeLessThanOrEqual(6);
     expect(markdown).not.toMatch(/[�]|諛|愿|怨좉|媛/);

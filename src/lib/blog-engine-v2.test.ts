@@ -104,6 +104,61 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.metrics.sales_pressure).toBe(35);
   });
 
+  it('blocks customer-language defects that make otherwise structured posts feel machine-written', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 광저우 4박6일 패키지',
+        '',
+        '광저우은 가격만 보지 말고 출발지, 포함사항, 일정 강도를 같이 봐야 판단이 쉽습니다. 대학생에서 먼저 볼 것은 비용·일정·현지 준비 조건입니다.',
+        '',
+        '## 10초 판단',
+        '| 확인 항목 | 현재 기준 | 문의 전 볼 점 |',
+        '| --- | --- | --- |',
+        '| 가격 | 749,000원부터 | 출발일별 확인 |',
+        '| 기간 | 4박6일 | 이동 부담 확인 |',
+        '| 포함 | 항공/호텔 | 불포함 확인 |',
+        '',
+        '## 포함/불포함',
+        '| 구분 | 항목 | 확인 포인트 |',
+        '| --- | --- | --- |',
+        '| 포함 | 항공 | 상담 확인 |',
+        '| 포함 | 호텔 | 상담 확인 |',
+        '| 불포함 | 개인경비 | 상담 확인 |',
+        '',
+        '## 이런 분께 맞습니다',
+        '- 가격과 일정을 비교하려는 고객',
+        '',
+        '## 이런 분께는 맞지 않을 수 있습니다',
+        '- 자유일정 비중이 큰 여행을 원하는 고객',
+        '',
+        '## 가격이 달라질 수 있는 조건',
+        '- 가격과 좌석은 발권 시점에 달라질 수 있음',
+        '',
+        '## 문의 전 질문',
+        '- 인원과 출발 가능일이 어떻게 되나요?',
+      ].join('\n'),
+      primaryKeyword: '광저우 패키지',
+      destination: '광저우',
+      contentType: 'package_intro',
+      productId: 'pkg_456',
+      generationMeta: {
+        writer: 'product_consultant_writer',
+        product_consult_brief: {
+          included: ['항공', '호텔'],
+          excluded: ['개인경비'],
+          fit_for: ['가격과 일정 비교 고객'],
+          not_fit_for: ['자유일정 선호 고객'],
+          risk_notes: ['가격과 좌석은 달라질 수 있음'],
+          consult_questions: ['인원과 출발 가능일이 어떻게 되나요?'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('customer_language');
+    expect(evaluation.metrics.customer_language).toBeLessThan(80);
+  });
+
   it('passes product consultant posts only when DB-backed decision blocks exist', () => {
     const blogHtml = `# 발리 4박5일 패키지: 899,000원부터, 이런 분께 맞습니다
 

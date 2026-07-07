@@ -400,6 +400,51 @@ A. 짧은 소나기라면 실내 동선을 섞어 조정하는 편이 안전합�
     expect(report.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(true);
   });
 
+  it('blocks unnatural customer-language particles and target wording', () => {
+    const report = inspectBlogIntentQuality({
+      title: '광저우 4박6일 패키지 가격 조건',
+      primaryKeyword: '광저우 패키지',
+      destination: '광저우',
+      category: 'product',
+      contentType: 'package_intro',
+      productId: 'pkg_456',
+      blogHtml: [
+        '# 광저우 4박6일 패키지 가격 조건',
+        '',
+        '광저우은 가격만 보지 말고 출발지, 포함사항, 일정 강도를 같이 봐야 판단이 쉽습니다. 대학생에서 먼저 볼 것은 비용과 일정입니다.',
+        '',
+        '## 10초 판단',
+        '| 확인 항목 | 현재 기준 | 문의 전 볼 점 |',
+        '| --- | --- | --- |',
+        '| 가격 | 749,000원부터 | 출발일별 확인 |',
+        '| 기간 | 4박6일 | 이동 부담 확인 |',
+        '| 포함 | 항공/호텔 | 불포함 확인 |',
+        '',
+        '## 포함/불포함',
+        '| 구분 | 항목 | 확인 포인트 |',
+        '| --- | --- | --- |',
+        '| 포함 | 항공 | 상담 확인 |',
+        '| 불포함 | 개인경비 | 상담 확인 |',
+        '| 불포함 | 선택관광 | 상담 확인 |',
+        '',
+        '## 이런 분께 맞습니다',
+        '- 가격과 일정을 비교하려는 고객',
+        '',
+        '## 이런 분께는 맞지 않을 수 있습니다',
+        '- 자유일정 비중이 큰 여행을 원하는 고객',
+        '',
+        '## 가격이 달라질 수 있는 조건',
+        '- 가격과 좌석은 발권 시점에 달라질 수 있음',
+        '',
+        '## 문의 전 질문',
+        '- 인원과 출발 가능일이 어떻게 되나요?',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(true);
+  });
+
   it('requires product posts to use consultant decision blocks', () => {
     const report = inspectBlogIntentQuality({
       title: '발리 패키지 상품',

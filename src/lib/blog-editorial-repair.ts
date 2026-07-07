@@ -338,7 +338,17 @@ function repairAwkwardSemanticSurface(
     .replace(/정보를(?:를)+/g, '정보를')
     .replace(/여소남이\s+이\s+이\s+정보/g, '여소남이 이 정보')
     .replace(/(^|\s)(이|그|저|여행|준비|정보)\s+\2(?=\s|$|[.,!?])/g, '$1$2')
-    .replace(/여소남이\s+이\s+정보(?!를)/g, '여소남이 이 정보를');
+    .replace(/여소남이\s+이\s+정보(?!를)/g, '여소남이 이 정보를')
+    .replace(/이\s+순서로\s+봐야\s+현지에서\s+1\s*[~–-]\s*2시간을\s+아끼고\s+예산\s+오차를\s+줄일\s+수\s+있습니다\./g, '표와 체크리스트로 기준을 잡아두면 출발 전 비교가 훨씬 쉬워집니다.')
+    .replace(/먼저\s+볼\s+것은\s+비용[·,\s]+일정[·,\s]+현지\s+준비\s+조건입니다\./g, '먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다.')
+    .replace(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/g, (match, word: string, token: string) => {
+      const hasBatchim = hasFinalConsonant(word);
+      if (hasBatchim !== false) return match;
+      if (token === '은') return `${word}는`;
+      if (token === '을') return `${word}를`;
+      return match;
+    })
+    .replace(/(대학생|가족|부모님|아이|고객|여행자)에서\s+먼저\s+볼\s+것은/g, '$1 여행에서 먼저 볼 것은');
 
   const destination = inferDestinationLabelForSurfaceRepair(input);
   if (destination) {
@@ -359,6 +369,14 @@ function repairAwkwardSemanticSurface(
       .replace(/현지\s+명물관/g, `${destination} 명소`)
       .replace(/현지\s+자체예요/g, `${destination} 현지 분위기입니다`);
   }
+
+  text = text.replace(
+    /([가-힣/·\s]{2,40})\s*패키지는\s+가격만\s+보지\s+말고\s+출발지,\s*포함사항,\s*일정\s*강도를\s+(?:같이|함께)\s+봐야\s+판단이\s+쉽습니다\./g,
+    (_match, productLabel: string) => {
+      const label = String(productLabel || destination || '이 상품').replace(/\s+/g, ' ').trim();
+      return `${label} 패키지는 시작가, 출발지, 포함/불포함, 이동량을 나눠 보면 문의 전에 판단하기 쉽습니다.`;
+    },
+  );
 
   return { text, changed: text !== before };
 }
@@ -591,15 +609,28 @@ function currentKstYearMonth(): { year: number; month: number } {
   return { year: kstNow.getUTCFullYear(), month: kstNow.getUTCMonth() + 1 };
 }
 
+function hasFinalConsonant(value: string): boolean | null {
+  const last = value.trim().replace(/[^\uAC00-\uD7A3]/g, '').slice(-1);
+  if (!last) return null;
+  const code = last.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return null;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function particle(value: string, withBatchim: string, withoutBatchim: string): string {
+  const hasBatchim = hasFinalConsonant(value);
+  return hasBatchim === false ? withoutBatchim : withBatchim;
+}
+
 function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
   const topic = compactAnswerFirstLabel(input.primaryKeyword || input.title || input.category)
     || '\uC5EC\uD589 \uC900\uBE44';
   const destination = compactAnswerFirstLabel(input.destination);
   const decisionAxis = destination
-    ? `${destination} \uBE44\uC6A9, \uC774\uB3D9 \uC2DC\uAC04, \uB0A0\uC528\u00B7\uD604\uC9C0 \uBCC0\uC218`
-    : '\uBE44\uC6A9, \uC774\uB3D9 \uC2DC\uAC04, \uB0A0\uC528\u00B7\uD604\uC9C0 \uBCC0\uC218';
+    ? `${destination} \uC608\uC0B0 \uBC94\uC704, \uC774\uB3D9 \uC21C\uC11C, \uD604\uC9C0 \uD655\uC778 \uC0AC\uD56D`
+    : '\uC608\uC0B0 \uBC94\uC704, \uC774\uB3D9 \uC21C\uC11C, \uD604\uC9C0 \uD655\uC778 \uC0AC\uD56D';
   const now = currentKstYearMonth();
-  return `${now.year}\uB144 ${now.month}\uC6D4 \uAE30\uC900, ${topic}\uC740 ${decisionAxis}\uBD80\uD130 \uBE44\uAD50\uD558\uB294 \uD3B8\uC774 \uC548\uC804\uD569\uB2C8\uB2E4. \uC65C \uBA3C\uC800 \uBD10\uC57C \uD560\uAE4C\uC694? \uC774 \uC21C\uC11C\uB85C \uBD10\uC57C \uD604\uC9C0\uC5D0\uC11C 1~2\uC2DC\uAC04\uC744 \uC544\uB07C\uACE0 \uC608\uC0B0 \uC624\uCC28\uB97C \uC904\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.`;
+  return `${now.year}\uB144 ${now.month}\uC6D4 \uAE30\uC900, ${topic}${particle(topic, '\uC740', '\uB294')} ${decisionAxis}\uBD80\uD130 \uC815\uB9AC\uD558\uBA74 \uCD9C\uBC1C \uC804 \uD310\uB2E8\uC774 \uC26C\uC6CC\uC9D1\uB2C8\uB2E4. \uAE08\uC561\uC774\uB098 \uC870\uAC74\uC740 \uC2DC\uC810\uC5D0 \uB530\uB77C \uB2EC\uB77C\uC9C8 \uC218 \uC788\uC73C\uB2C8, \uD45C\uC640 \uCCB4\uD06C\uB9AC\uC2A4\uD2B8\uB85C \uAE30\uC900\uC744 \uC7A1\uACE0 \uB9C8\uC9C0\uB9C9\uC5D0 \uACF5\uC2DD \uC548\uB0B4\uB97C \uB2E4\uC2DC \uD655\uC778\uD558\uC138\uC694.`;
 }
 
 function insertIntroAfterTitle(markdown: string, intro: string): string {
@@ -915,8 +946,8 @@ function removeLegacySurfaceArtifacts(markdown: string): { text: string; changed
     .split('\n')
     .map((line) => {
       let next = line
-        .replace(/^\s*:{2,3}\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '**핵심 요약**')
-        .replace(/^\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '**핵심 요약**')
+        .replace(/^\s*:{2,3}\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '## 핵심 요약')
+        .replace(/^\s*tip\s*TL;?\s*DR\s*:?\s*$/i, '## 핵심 요약')
         .replace(/^\s*tip\s*$/i, '')
         .replace(/\btip\s+\*{0,2}\s*TL;?\s*DR\b\s*\*{0,2}\s*(?:[—-]\s*)?/gi, '핵심 요약: ')
         .replace(/\btip\s+(?=[가-힣])/gi, '')
@@ -946,6 +977,8 @@ function removeLegacySurfaceArtifacts(markdown: string): { text: string; changed
     )
     .replace(/\s*하시면\s+현지\s+여행\s+Q&A를\s+더\s+상세히\s+알려드려요\.?/g, '')
     .replace(/(^|\s)에서\s+실시간\s+좌석과\s+요금을\s+바로\s+확인하실\s+수\s+있습니다[.。]?/g, '$1여소남에서 실시간 좌석과 요금을 바로 확인하실 수 있습니다.')
+    .replace(/\*\*([^*\n]{1,180}?)\*\*/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim())
+    .replace(/__([^_\n]{1,180}?)__/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim())
     .replace(/[ \t]+---[ \t]+(?=(?:#{1,6}\s|\*\*|해시태그|#))/g, '\n\n')
     .replace(/\n?---\s*>\s*여소남\s+여행\s+준비[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s*준비|#{2,4}\s*빠른|#{2,4}\s*공식|#{2,4}\s*여행\s*상품|$))/g, '\n')
     .replace(/\s*(?:---\s*(?:>|&gt;|\\u0026gt;)\s*)?여소남\s+여행\s+준비\*{0,2}[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
@@ -979,7 +1012,7 @@ function removeResidualHtmlMarkdownBold(markdown: string): { text: string; chang
     .replace(/__([^_\n]{1,180}?)__/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim());
   const text = markdown
     .split('\n')
-    .map((line) => (/<[a-z][^>]*>/i.test(line) ? stripBold(line) : line))
+    .map((line) => stripBold(line))
     .join('\n');
 
   return { text, changed: text !== before };
