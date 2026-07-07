@@ -23,6 +23,41 @@ export type PackagePublicEligibilityRow = {
   itinerary_data?: unknown;
 };
 
+export type OptionalTourPublicEligibilityClassification =
+  | 'valid_paid_option'
+  | 'no_option_evidence'
+  | 'price_table_fragment'
+  | 'inclusion_fragment'
+  | 'header_fragment'
+  | 'date_fragment'
+  | 'unknown_fragment';
+
+export type OptionalTourPublicEligibilityFinding = {
+  classification: OptionalTourPublicEligibilityClassification;
+  text: string;
+  item: unknown;
+};
+
+export type OptionalTourPublicEligibilityRepair = {
+  optionalTours: unknown[];
+  repaired: boolean;
+  removed: OptionalTourPublicEligibilityFinding[];
+  kept: OptionalTourPublicEligibilityFinding[];
+  status: 'none_explicit' | 'paid_options' | 'unknown' | 'polluted';
+};
+
+export type AttractionIdPublicEligibilityRemoval = {
+  path: string;
+  id: unknown;
+  reason: 'malformed_uuid' | 'unknown_attraction_id';
+};
+
+export type AttractionIdPublicEligibilityRepair = {
+  itineraryData: unknown;
+  repaired: boolean;
+  removed: AttractionIdPublicEligibilityRemoval[];
+};
+
 type CustomerOpenContractPayload = {
   ok?: boolean | null;
   status?: string | null;
@@ -35,6 +70,21 @@ type CustomerOpenContractPayload = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const NO_OPTION_EVIDENCE_RE =
+  /(?:\ub178\s*\uc635\uc158|no\s*option|\uc120\ud0dd\s*\uad00\uad11\s*(?:\uc5c6\uc74c|\ubb34|0))/iu;
+const INCLUSION_FRAGMENT_RE =
+  /(?:\ud3ec\s*\ud568\s*\ub0b4\s*\uc5ed|\ud3ec\ud568\ub0b4\uc5ed|\ubd88\ud3ec\ud568\ub0b4\uc5ed|\ucc28\ub7c9|\uac00\uc774\ub4dc|\uae30\uc0ac|\uc219\ubc15\ub8cc|\uc2dd\uc0ac|\uad00\uad11\uc9c0\s*\uc785\uc7a5\ub8cc|\uc5ec\ud589\uc790\s*\ubcf4\ud5d8|\uc720\ub958\ud560\uc99d\ub8cc)/iu;
+const PRICE_TABLE_FRAGMENT_RE =
+  /(?:\uc0c1\ud488\uac00|\uc608\uc57d\uae08|\ucd5c\uc800\uac00|\d[\d,]*\s*\uc6d0\s*\/?\s*\uc778|\uc6d0\/\uc778)/iu;
+const DATE_FRAGMENT_RE =
+  /(?:^\d{1,2}\s*\/\s*\d{1,2}$|^\d{1,2}\s*\uc6d4\s*\d{1,2}\s*\uc77c?$|^\d{1,2}\s*\uc77c\s*\[[^\]]+\]\s*\ucd9c\ubc1c$|\ucd9c\ubc1c\uc77c)/iu;
+const EXACT_HEADER_FRAGMENT_RE =
+  /^(?:\uc120\ud0dd\s*\uad00\uad11|\uc1fc\ud551\s*\uc13c\ud130|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ube44\s*\uace0|r\s*m\s*k|remark|\uc77c\s*\uc790)$/iu;
+const PAID_OPTION_SIGNAL_RE =
+  /(?:\uc120\ud0dd\s*\uad00\uad11|\uc635\uc158|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\ud638\ud551|\uc2a4\ub178\ucfe8\ub9c1|\uc2a4\ub178\ud074\ub9c1|\ud22c\uc5b4|\ud06c\ub8e8\uc988|\uc1fc|\uacf5\uc5f0|\uccb4\ud5d8|\uc785\uc7a5\uad8c|massage|spa|tour|cruise|show|ticket)/iu;
+const MONEY_SIGNAL_RE =
+  /(?:[$]\s*\d+(?:\.\d+)?|\bUSD\s*\d+(?:\.\d+)?|\d[\d,]*\s*(?:\uc6d0|KRW|VND|JPY)|\uc720\ub8cc|\ubcc4\ub3c4\s*(?:\ubb38\uc758|\ube44\uc6a9|\uacb0\uc81c))/iu;
 
 const OPTIONAL_TOUR_FRAGMENT_RE = new RegExp(
   [
@@ -93,11 +143,96 @@ function stringifyOptionalTour(tour: unknown): string {
     .join(' ');
 }
 
+export function classifyOptionalTourForPublicEligibility(
+  tour: unknown,
+): OptionalTourPublicEligibilityFinding {
+  const text = stringifyOptionalTour(tour).replace(/\s+/g, ' ').trim();
+  const compact = text.replace(/\s+/g, '');
+  let classification: OptionalTourPublicEligibilityClassification = 'unknown_fragment';
+  if (!text) {
+    classification = 'unknown_fragment';
+  } else if (NO_OPTION_EVIDENCE_RE.test(text) || NO_OPTION_EVIDENCE_RE.test(compact)) {
+    classification = 'no_option_evidence';
+  } else if (/^\d{1,3}$/.test(compact) || PRICE_TABLE_FRAGMENT_RE.test(text) || PRICE_TABLE_FRAGMENT_RE.test(compact)) {
+    classification = 'price_table_fragment';
+  } else if (INCLUSION_FRAGMENT_RE.test(text) || INCLUSION_FRAGMENT_RE.test(compact)) {
+    classification = 'inclusion_fragment';
+  } else if (DATE_FRAGMENT_RE.test(text) || DATE_FRAGMENT_RE.test(compact)) {
+    classification = 'date_fragment';
+  } else if (EXACT_HEADER_FRAGMENT_RE.test(text) || EXACT_HEADER_FRAGMENT_RE.test(compact)) {
+    classification = 'header_fragment';
+  } else if (PAID_OPTION_SIGNAL_RE.test(text) && MONEY_SIGNAL_RE.test(text)) {
+    classification = 'valid_paid_option';
+  }
+  return { classification, text, item: tour };
+}
+
+export function sanitizeOptionalToursForPublicEligibility(
+  optionalTours: unknown,
+): OptionalTourPublicEligibilityRepair {
+  if (!Array.isArray(optionalTours) || optionalTours.length === 0) {
+    return {
+      optionalTours: [],
+      repaired: Array.isArray(optionalTours) && optionalTours.length > 0,
+      removed: [],
+      kept: [],
+      status: 'unknown',
+    };
+  }
+
+  const removed: OptionalTourPublicEligibilityFinding[] = [];
+  const kept: OptionalTourPublicEligibilityFinding[] = [];
+  const next: unknown[] = [];
+  let hasNoOptionEvidence = false;
+  let hasPollution = false;
+  let hasUnknown = false;
+  let hasPaidOption = false;
+
+  for (const item of optionalTours) {
+    const finding = classifyOptionalTourForPublicEligibility(item);
+    if (finding.classification === 'valid_paid_option') {
+      hasPaidOption = true;
+      kept.push(finding);
+      next.push(item);
+      continue;
+    }
+    if (finding.classification === 'unknown_fragment') {
+      hasUnknown = true;
+      kept.push(finding);
+      next.push(item);
+      continue;
+    }
+    if (finding.classification === 'no_option_evidence') hasNoOptionEvidence = true;
+    hasPollution = true;
+    removed.push(finding);
+  }
+
+  const status = hasPaidOption
+    ? 'paid_options'
+    : next.length > 0 || hasUnknown
+      ? 'unknown'
+    : hasNoOptionEvidence
+      ? 'none_explicit'
+      : hasPollution
+        ? 'polluted'
+        : 'unknown';
+
+  return {
+    optionalTours: next,
+    repaired: removed.length > 0 || next.length !== optionalTours.length,
+    removed,
+    kept,
+    status,
+  };
+}
+
 export function hasOptionalTourDisplayPollution(optionalTours: unknown): boolean {
   if (!Array.isArray(optionalTours)) return false;
   return optionalTours.some((tour) => {
     const text = stringifyOptionalTour(tour).replace(/\s+/g, ' ').trim();
     if (!text) return false;
+    const finding = classifyOptionalTourForPublicEligibility(tour);
+    if (finding.classification !== 'valid_paid_option' && finding.classification !== 'unknown_fragment') return true;
     const compact = text.replace(/\s+/g, '');
     return OPTIONAL_TOUR_FRAGMENT_RE.test(compact);
   });
@@ -123,6 +258,59 @@ export function collectBrokenAttractionIds(value: unknown): string[] {
   };
   visit(value);
   return [...broken];
+}
+
+function sanitizeAttractionIdsNode(
+  value: unknown,
+  removed: AttractionIdPublicEligibilityRemoval[],
+  path: string,
+  validAttractionIds?: ReadonlySet<string>,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => sanitizeAttractionIdsNode(item, removed, `${path}[${index}]`, validAttractionIds));
+  }
+  const record = asRecord(value);
+  if (!record) return value;
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    if (key === 'attraction_ids' && Array.isArray(child)) {
+      const kept: unknown[] = [];
+      child.forEach((id, index) => {
+        const idText = typeof id === 'string' ? id.trim() : '';
+        if (!idText || !UUID_RE.test(idText)) {
+          removed.push({ path: `${path}.${key}[${index}]`, id, reason: 'malformed_uuid' });
+          changed = true;
+          return;
+        }
+        if (validAttractionIds && !validAttractionIds.has(idText)) {
+          removed.push({ path: `${path}.${key}[${index}]`, id: idText, reason: 'unknown_attraction_id' });
+          changed = true;
+          return;
+        }
+        kept.push(idText);
+      });
+      next[key] = kept;
+      continue;
+    }
+    const repairedChild = sanitizeAttractionIdsNode(child, removed, `${path}.${key}`, validAttractionIds);
+    if (repairedChild !== child) changed = true;
+    next[key] = repairedChild;
+  }
+  return changed ? next : value;
+}
+
+export function sanitizeBrokenAttractionIdsForPublicEligibility(
+  itineraryData: unknown,
+  validAttractionIds?: ReadonlySet<string>,
+): AttractionIdPublicEligibilityRepair {
+  const removed: AttractionIdPublicEligibilityRemoval[] = [];
+  const itineraryDataNext = sanitizeAttractionIdsNode(itineraryData, removed, '$', validAttractionIds);
+  return {
+    itineraryData: itineraryDataNext,
+    repaired: removed.length > 0,
+    removed,
+  };
 }
 
 export function getPackagePublicEligibilityBlockers(
