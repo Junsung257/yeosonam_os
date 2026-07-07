@@ -7,6 +7,17 @@ import {
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
 import { inspectBlogCandidatePrepublishContract } from '@/lib/blog-candidate-prepublish-contract';
+import { isRetiredBlogProductStatus } from '@/lib/blog-product-status';
+import {
+  buildBlogProductEvidenceArchivedProductDecision,
+  buildBlogProductEvidenceDuplicateMeta,
+  buildBlogProductEvidenceRecheckDecision,
+  readBlogProductEvidenceDedupKey,
+} from '@/lib/blog-product-evidence-recheck';
+import {
+  buildBlogEditorialBacklogRecheckDecision,
+  readBlogEditorialBacklogDedupKey,
+} from '@/lib/blog-editorial-backlog-recheck';
 
 /**
  * 판매 불가·아카이브 등으로 블로그 자동발행 큐를 중단한다.
@@ -244,6 +255,287 @@ export async function quarantineNonRetryableBlogQueueItems(opts?: {
   }
 
   return { scanned: data.length, quarantined, skipped, failed };
+}
+
+type RecoverableQueueRow = {
+  id: string;
+  product_id: string | null;
+  topic: string | null;
+  destination: string | null;
+  source: string | null;
+  status: string | null;
+  attempts: number | null;
+  priority: number | null;
+  angle_type: string | null;
+  slug_hint: string | null;
+  last_error: string | null;
+  target_publish_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  meta: unknown;
+};
+
+type ActiveDedupRow = {
+  id: string;
+  product_id: string | null;
+  topic?: string | null;
+  destination?: string | null;
+  status?: string | null;
+  angle_type?: string | null;
+  slug_hint?: string | null;
+  slug?: string | null;
+  meta?: unknown;
+  generation_meta?: unknown;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function isProductEvidenceRecoveryRow(row: RecoverableQueueRow): boolean {
+  const meta = asRecord(row.meta);
+  return Boolean(row.product_id) && (
+    meta.failure_code === 'product_open_contract' ||
+    meta.quarantine_reason === 'product_open_contract' ||
+    /product_customer_open_contract_failed|customer_open_contract|mobile_proof|registration_evidence_pack|blog_publish/i.test(row.last_error ?? '')
+  );
+}
+
+function asOperationalRow(row: RecoverableQueueRow): BlogQueueOperationalRow {
+  return {
+    status: row.status,
+    attempts: row.attempts,
+    last_error: row.last_error,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    target_publish_at: row.target_publish_at,
+    meta: row.meta,
+  };
+}
+
+async function loadActiveProductDedupKeys(): Promise<Map<string, string>> {
+  const keys = new Map<string, string>();
+  const { data, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id,product_id,meta')
+    .in('status', ['queued', 'generating'])
+    .not('product_id', 'is', null)
+    .limit(1000);
+  if (error) return keys;
+  for (const row of (data ?? []) as ActiveDedupRow[]) {
+    const key = readBlogProductEvidenceDedupKey({ product_id: row.product_id, meta: row.meta });
+    if (key && !keys.has(key)) keys.set(key, row.id);
+  }
+  return keys;
+}
+
+async function loadActiveEditorialDedupKeys(): Promise<Map<string, string>> {
+  const keys = new Map<string, string>();
+  const { data: activeRows } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id,product_id,topic,destination,status,angle_type,slug_hint,meta')
+    .in('status', ['queued', 'generating'])
+    .limit(1000);
+  for (const row of (activeRows ?? []) as ActiveDedupRow[]) {
+    const key = readBlogEditorialBacklogDedupKey(row);
+    if (key && !keys.has(key)) keys.set(key, row.id);
+  }
+
+  const { data: publishedRows } = await supabaseAdmin
+    .from('content_creatives')
+    .select('id,product_id,slug,destination,status,angle_type,generation_meta')
+    .eq('channel', 'naver_blog')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(1000);
+  for (const row of (publishedRows ?? []) as ActiveDedupRow[]) {
+    const key = readBlogEditorialBacklogDedupKey(row);
+    if (key && !keys.has(key)) keys.set(key, row.id);
+  }
+  return keys;
+}
+
+export async function recoverRequeueableFailedBlogQueueItems(opts?: {
+  limit?: number;
+  recoveredBy?: string;
+}): Promise<{
+  scanned: number;
+  requeued: number;
+  skipped: number;
+  kept_blocked: number;
+  errors: string[];
+}> {
+  if (!isSupabaseConfigured) return { scanned: 0, requeued: 0, skipped: 0, kept_blocked: 0, errors: [] };
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id,product_id,topic,destination,source,status,attempts,priority,angle_type,slug_hint,last_error,target_publish_at,created_at,updated_at,meta')
+    .eq('status', 'failed')
+    .order('updated_at', { ascending: false })
+    .limit(opts?.limit ?? 80);
+  if (error || !data) {
+    return { scanned: 0, requeued: 0, skipped: 0, kept_blocked: 0, errors: [error?.message ?? 'recoverable_queue_scan_failed'] };
+  }
+
+  const rows = data as RecoverableQueueRow[];
+  const productDedupKeys = await loadActiveProductDedupKeys();
+  const editorialDedupKeys = await loadActiveEditorialDedupKeys();
+  const requeuedProductKeys = new Map<string, string>();
+  const requeuedEditorialKeys = new Map<string, string>();
+  const productStatusCache = new Map<string, string | null>();
+  let requeued = 0;
+  let skipped = 0;
+  let keptBlocked = 0;
+  const errors: string[] = [];
+
+  for (const row of rows) {
+    try {
+      if (isProductEvidenceRecoveryRow(row) && row.product_id) {
+        if (!productStatusCache.has(row.product_id)) {
+          const { data: product } = await supabaseAdmin
+            .from('travel_packages')
+            .select('id,status')
+            .eq('id', row.product_id)
+            .maybeSingle();
+          productStatusCache.set(row.product_id, (product as { status?: string | null } | null)?.status ?? null);
+        }
+        const productStatus = productStatusCache.get(row.product_id) ?? null;
+        const retiredProduct = isRetiredBlogProductStatus(productStatus);
+        const contract = retiredProduct
+          ? { ok: false, blockers: ['archived_product'] }
+          : await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id);
+        const decision = retiredProduct
+          ? buildBlogProductEvidenceArchivedProductDecision({ meta: row.meta, checkedAt: now, productStatus })
+          : buildBlogProductEvidenceRecheckDecision({
+              meta: row.meta,
+              contractOk: contract.ok,
+              blockers: contract.blockers,
+              checkedAt: now,
+            });
+        const dedupKey = readBlogProductEvidenceDedupKey({ product_id: row.product_id, meta: decision.meta });
+        const duplicateKeepId = dedupKey
+          ? productDedupKeys.get(dedupKey) ?? requeuedProductKeys.get(dedupKey) ?? null
+          : null;
+
+        if (decision.action === 'requeue' && duplicateKeepId) {
+          const meta = buildBlogProductEvidenceDuplicateMeta({
+            meta: decision.meta,
+            checkedAt: now,
+            duplicateKey: dedupKey,
+            duplicateKeepId,
+          });
+          const { error: updateError } = await supabaseAdmin
+            .from('blog_topic_queue')
+            .update({
+              status: 'skipped',
+              attempts: Math.max(Number(row.attempts ?? 0), 2),
+              last_error: 'product_open_contract_recheck_duplicate_product',
+              updated_at: now,
+              meta,
+            } as never)
+            .eq('id', row.id)
+            .eq('status', 'failed');
+          if (updateError) errors.push(updateError.message);
+          else skipped += 1;
+        } else if (decision.action === 'requeue') {
+          const { error: updateError } = await supabaseAdmin
+            .from('blog_topic_queue')
+            .update({
+              status: 'queued',
+              attempts: 0,
+              last_error: null,
+              target_publish_at: now,
+              updated_at: now,
+              priority: Math.max(Number(row.priority ?? 0), 85),
+              meta: {
+                ...decision.meta,
+                recovered_by: opts?.recoveredBy ?? 'blog-publisher-recoverable-preflight',
+              },
+            } as never)
+            .eq('id', row.id)
+            .eq('status', 'failed');
+          if (updateError) errors.push(updateError.message);
+          else {
+            requeued += 1;
+            if (dedupKey) requeuedProductKeys.set(dedupKey, row.id);
+          }
+        } else if (decision.action === 'skip_archived_product') {
+          const { error: updateError } = await supabaseAdmin
+            .from('blog_topic_queue')
+            .update({
+              status: 'skipped',
+              attempts: Math.max(Number(row.attempts ?? 0), 2),
+              last_error: decision.last_error,
+              updated_at: now,
+              meta: decision.meta,
+            } as never)
+            .eq('id', row.id)
+            .eq('status', 'failed');
+          if (updateError) errors.push(updateError.message);
+          else skipped += 1;
+        } else {
+          keptBlocked += 1;
+        }
+        continue;
+      }
+
+      if (getBlogQueueOperationalState(asOperationalRow(row)).action !== 'editorial_backlog') continue;
+      const dedupKey = readBlogEditorialBacklogDedupKey(row);
+      const decision = buildBlogEditorialBacklogRecheckDecision({
+        row,
+        checkedAt: now,
+        activeDuplicateId: dedupKey ? editorialDedupKeys.get(dedupKey) : null,
+        alreadyRequeuedId: dedupKey ? requeuedEditorialKeys.get(dedupKey) : null,
+      });
+
+      if (decision.action === 'requeue') {
+        const { error: updateError } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'queued',
+            attempts: 0,
+            last_error: null,
+            target_publish_at: now,
+            updated_at: now,
+            priority: Math.max(Number(row.priority ?? 0), 80),
+            meta: {
+              ...decision.meta,
+              recovered_by: opts?.recoveredBy ?? 'blog-publisher-recoverable-preflight',
+            },
+          } as never)
+          .eq('id', row.id)
+          .eq('status', 'failed');
+        if (updateError) errors.push(updateError.message);
+        else {
+          requeued += 1;
+          if (dedupKey) requeuedEditorialKeys.set(dedupKey, row.id);
+        }
+      } else if (decision.action === 'skip_duplicate' || decision.action === 'retire_legacy_seed') {
+        const { error: updateError } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'skipped',
+            attempts: Math.max(Number(row.attempts ?? 0), decision.action === 'retire_legacy_seed' ? 3 : 2),
+            last_error: decision.last_error,
+            updated_at: now,
+            meta: decision.meta,
+          } as never)
+          .eq('id', row.id)
+          .eq('status', 'failed');
+        if (updateError) errors.push(updateError.message);
+        else skipped += 1;
+      } else {
+        keptBlocked += 1;
+      }
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return { scanned: rows.length, requeued, skipped, kept_blocked: keptBlocked, errors };
 }
 
 export async function rescheduleOverdueQueuedBlogQueueItems(opts?: {

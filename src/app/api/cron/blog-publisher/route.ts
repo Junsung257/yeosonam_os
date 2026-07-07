@@ -72,6 +72,7 @@ import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 import {
   quarantineNonRetryableBlogQueueItems,
+  recoverRequeueableFailedBlogQueueItems,
   rescheduleOverdueQueuedBlogQueueItems,
 } from '@/lib/blog-queue-lifecycle';
 import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
@@ -838,6 +839,14 @@ async function runBlogPublisher(request: NextRequest) {
   try {
     blogStyleGuideCache = null;
     const staleRecovery = await recoverStaleGeneratingQueueItems();
+    const recoverableBacklogRecovery = await recoverRequeueableFailedBlogQueueItems({
+      limit: MAX_CANDIDATE_POOL * 3,
+      recoveredBy: 'blog-publisher-preflight',
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`recoverable_backlog_recovery_failed: ${message}`);
+      return { scanned: 0, requeued: 0, skipped: 0, kept_blocked: 0, errors: [message] };
+    });
     const queueHealthCleanup = await rescheduleOverdueQueuedBlogQueueItems({
       limit: MAX_CANDIDATE_POOL * 3,
       rescheduledBy: 'blog-publisher-preflight',
@@ -868,6 +877,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        recoverableBacklogRecovery,
         queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
@@ -918,6 +928,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        recoverableBacklogRecovery,
         queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
@@ -1203,6 +1214,7 @@ async function runBlogPublisher(request: NextRequest) {
         attempted_candidates: attemptedQueueIds.size,
       },
       staleRecovery,
+      recoverableBacklogRecovery,
       queueHealthCleanup,
       preflightQuarantine,
       pillarDeferral,
