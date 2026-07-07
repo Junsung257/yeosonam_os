@@ -94,6 +94,10 @@ function numberFrom(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function summaryObject(row: any): Record<string, any> {
   return row?.summary && typeof row.summary === 'object' ? row.summary : {};
 }
@@ -132,6 +136,57 @@ function isRecoveredPublisherRun(row: any): boolean {
       summary.reason === 'daily_publish_quota_reached'
     )
   );
+}
+
+function publishedFromDailySummary(cronHealth: Record<string, any>, dayKey: string): number | null {
+  const summaryRow = lastSummaryObject(cronHealth['blog-daily-summary']);
+  const summary = summaryRow.summary && typeof summaryRow.summary === 'object'
+    ? summaryRow.summary as Record<string, unknown>
+    : null;
+  if (!summary || summary.date !== dayKey) return null;
+  return numberOrNull(summary.published);
+}
+
+function publisherQuotaPublishedFromSummary(summary: Record<string, any>, dayKey: string): number | null {
+  const dailyQuota = summary.dailyQuota && typeof summary.dailyQuota === 'object'
+    ? summary.dailyQuota as Record<string, unknown>
+    : null;
+  if (!dailyQuota || dailyQuota.day !== dayKey) return null;
+
+  const alreadyPublished = numberOrNull(dailyQuota.alreadyPublished);
+  if (alreadyPublished !== null) return alreadyPublished;
+
+  const alreadyBefore = numberOrNull(dailyQuota.alreadyPublishedBeforeRun);
+  const published = numberOrNull(summary.published);
+  if (alreadyBefore !== null && published !== null) return alreadyBefore + published;
+
+  const target = numberOrNull(dailyQuota.target);
+  const remaining = numberOrNull(dailyQuota.remaining);
+  if (target !== null && remaining === 0) return target;
+
+  return null;
+}
+
+function reconcileSelectedDayPublished(input: {
+  rawPublished: number;
+  dailySummaryPublished: number | null;
+  publisherQuotaPublished: number | null;
+}): { published: number; source: string; evidence: Record<string, number | null> } {
+  const candidates = [
+    { source: 'content_creatives_raw', value: input.rawPublished },
+    { source: 'blog_daily_summary', value: input.dailySummaryPublished },
+    { source: 'publisher_daily_quota', value: input.publisherQuotaPublished },
+  ].filter((item): item is { source: string; value: number } => typeof item.value === 'number');
+  const winner = candidates.reduce((best, item) => item.value > best.value ? item : best, candidates[0]);
+  return {
+    published: winner?.value ?? input.rawPublished,
+    source: winner?.source ?? 'content_creatives_raw',
+    evidence: {
+      raw: input.rawPublished,
+      daily_summary: input.dailySummaryPublished,
+      publisher_daily_quota: input.publisherQuotaPublished,
+    },
+  };
 }
 
 async function countByStatus(table: string, statuses: string[]) {
@@ -358,7 +413,22 @@ async function main() {
   });
 
   const buckets: Bucket[] = [];
-  const selectedDayPublished = publishedTodayRes.count ?? 0;
+  const selectedDayRawPublished = publishedTodayRes.count ?? 0;
+  const dailySummaryPublished = publishedFromDailySummary(cronHealth, day.dayKey);
+  const publisherQuotaPublished = Math.max(
+    ...[
+      publisherQuotaPublishedFromSummary(latestPublisherSummary, day.dayKey),
+      publisherQuotaPublishedFromSummary(healthPublisherSummary, day.dayKey),
+      publisherQuotaPublishedFromSummary(combinedPublisherSummary, day.dayKey),
+    ].filter((value): value is number => typeof value === 'number'),
+    0,
+  ) || null;
+  const selectedDayPublishedEvidence = reconcileSelectedDayPublished({
+    rawPublished: selectedDayRawPublished,
+    dailySummaryPublished,
+    publisherQuotaPublished,
+  });
+  const selectedDayPublished = selectedDayPublishedEvidence.published;
   const selectedDayUnderTarget = selectedDayPublished < dailyTarget;
   const publisherRanToday = publisherLogs.length > 0 || (
     publisherHealth?.last_run_at &&
@@ -375,6 +445,8 @@ async function main() {
         report_day: day.dayKey,
         published: selectedDayPublished,
         daily_target: dailyTarget,
+        reconciliation_source: selectedDayPublishedEvidence.source,
+        reconciliation_evidence: selectedDayPublishedEvidence.evidence,
         report_period_closed: day.closed,
         used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
         latest_publisher_failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
@@ -560,7 +632,10 @@ async function main() {
     used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
     close_minute_kst: day.closeMinuteKst,
     published: {
-      selected_day: publishedTodayRes.count ?? 0,
+      selected_day: selectedDayPublished,
+      selected_day_raw: selectedDayRawPublished,
+      selected_day_reconciliation_source: selectedDayPublishedEvidence.source,
+      selected_day_reconciliation_evidence: selectedDayPublishedEvidence.evidence,
       previous_day: publishedYesterdayRes.count ?? 0,
       current_day: publishedCurrentDayRes.count ?? 0,
       current_day_key: currentDay.dayKey,

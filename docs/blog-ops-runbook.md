@@ -80,6 +80,13 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Indexing health exposes `outbox_missing`, `provider_failures`, `active_jobs`, and `google_unknown_urls` as separate buckets.
 - `/admin/blog/system` and the sticky blog ops strip now surface this breakdown so operators can distinguish publish, queue, quality, indexing, and cron failures without reading raw DB rows.
 
+## 2026-07-08 Daily Publish Count Reconciliation
+
+- `diagnose:blog-autopublish` now reports both the raw `content_creatives` selected-day count and the reconciled operating count.
+- If the closed-day `blog-daily-summary` and latest `blog-publisher.dailyQuota` agree that the daily target was reached, the diagnosis uses that evidence for `published.selected_day` and exposes the raw count under `published.selected_day_raw`.
+- Do not open a `daily_publish_sla_miss` or `publisher_timeout` bucket from stale raw-count drift when the same-day daily summary and publisher quota show quota reached, preflight passes, and current-day publisher health is healthy.
+- Treat this reconciliation as an operating-report correction only. If raw `content_creatives` drift persists, inspect the source query/date boundary separately instead of marking publishing broken.
+
 ## 2026-06-16 Live Ops Evidence
 
 - Supabase project: `Yeosonam_OS` (`ixaxnvbmhzjvupissmly`) is active.
