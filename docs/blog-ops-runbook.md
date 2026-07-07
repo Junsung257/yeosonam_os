@@ -171,6 +171,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 
 - `blog-daily-summary` and `scripts/diagnose-blog-autopublish.ts` must use the same closed-day rule.
 - If the current KST time is before 22:12, both tools report the previous KST publishing day. This prevents a midnight or early manual run from flagging the new in-progress day as `publisher_cron_not_observed`.
+- `publisher_cron_not_observed` is only actionable when the selected report day is under the daily target. If the target was already met, a later KST-day cron-health row must not turn a healthy summary into a blocked one.
 - If `--date=YYYY-MM-DD` is passed to `diagnose:blog-autopublish`, the script audits that explicit KST date instead of applying the closed-day default.
 - The diagnosis JSON exposes `report_period_closed`, `used_previous_day_for_pre_close_run`, and `close_minute_kst` so admin/operator tooling can show why a previous day was selected.
 

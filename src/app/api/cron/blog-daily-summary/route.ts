@@ -130,7 +130,7 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
-  if (summary.publisher_cron && summary.publisher_cron.ran_today === false) {
+  if (summary.publisher_cron && summary.publisher_cron.ran_today === false && summary.under_daily_target) {
     issues.push({
       code: 'publisher_cron_not_observed',
       severity: 'critical',

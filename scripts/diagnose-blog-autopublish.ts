@@ -382,7 +382,7 @@ async function main() {
     });
   }
 
-  if (!publisherRanToday) {
+  if (!publisherRanToday && selectedDayUnderTarget) {
     buckets.push({
       code: 'publisher_cron_not_observed',
       severity: 'critical',
