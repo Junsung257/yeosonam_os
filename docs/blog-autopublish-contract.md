@@ -26,6 +26,7 @@ Local code references:
 - SERP/free intent analyzer: `src/lib/serp-analyzer.ts`
 - Shared publish evaluator: `src/lib/blog-publish-quality.ts`
 - Customer-facing quality evaluator: `src/lib/blog-customer-quality.ts`
+- Final customer-surface repair: `src/lib/blog-final-customer-surface.ts`
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`
@@ -86,7 +87,7 @@ Before the first publish gate:
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
-The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.
+The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. Both the live publisher and the backfill/audit tool must call the same `repairBlogFinalCustomerSurface()` implementation so a defect fixed in recent published rows cannot recur in new automatic posts. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.
 
 ## Publish Preflight Contract
 

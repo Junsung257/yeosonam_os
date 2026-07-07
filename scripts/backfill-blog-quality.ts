@@ -16,6 +16,7 @@ let repairBlogEditorialQuality: typeof import('../src/lib/blog-editorial-repair'
 let repairBlogSemanticSurface: typeof import('../src/lib/blog-editorial-repair').repairBlogSemanticSurface;
 let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogStructureQuality;
 let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
+let repairBlogFinalCustomerSurface: typeof import('../src/lib/blog-final-customer-surface').repairBlogFinalCustomerSurface;
 let canonicalizeBlogPublicLinks: typeof import('../src/lib/blog-link-surface').canonicalizeBlogPublicLinks;
 let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildBlogContentBrief;
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
@@ -29,6 +30,7 @@ async function loadLocalModules() {
   ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
   ({ extractDestination } = await import('../src/lib/slug-utils'));
   ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
+  ({ repairBlogFinalCustomerSurface } = await import('../src/lib/blog-final-customer-surface'));
   ({ canonicalizeBlogPublicLinks } = await import('../src/lib/blog-link-surface'));
   ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
@@ -5272,6 +5274,18 @@ async function main() {
       },
       primaryKeyword,
     );
+    {
+      const finalSurfaceRepair = repairBlogFinalCustomerSurface({
+        markdown: nextHtml,
+        destination: normalizedDestinationForWrite || destination,
+        primaryKeyword,
+        slug,
+        title: normalizedTitle,
+      });
+      if (finalSurfaceRepair.changed) {
+        nextHtml = finalSurfaceRepair.markdown;
+      }
+    }
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,

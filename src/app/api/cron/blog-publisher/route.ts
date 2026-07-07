@@ -66,6 +66,7 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
+import { repairBlogFinalCustomerSurface } from '@/lib/blog-final-customer-surface';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
@@ -499,6 +500,23 @@ async function runGeneratedPublishQuality(
   });
 }
 
+function applyFinalCustomerSurfaceRepair(
+  generated: GeneratedBlog,
+  item: any,
+  primaryKeyword?: string | null,
+): string[] {
+  const surfaceRepair = repairBlogFinalCustomerSurface({
+    markdown: generated.blog_html,
+    destination: item.destination ?? null,
+    primaryKeyword,
+    slug: generated.slug,
+    title: generated.seo_title || item.topic,
+  });
+  if (!surfaceRepair.changed) return [];
+  generated.blog_html = surfaceRepair.markdown;
+  return surfaceRepair.changes;
+}
+
 function failedGateSet(qa: QualityGateReport): Set<string> {
   return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
 }
@@ -676,6 +694,12 @@ async function repairFailedQualityGates(
       slug: generated.slug,
       utmSource: 'naver_blog',
     });
+    {
+      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (surfaceChanges.length > 0) {
+        changes.push(...surfaceChanges);
+      }
+    }
     qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     console.log(`[blog-publisher] quality repair round ${round}: ${changes.join(', ')} -> passed=${qa.passed}`);
   }
@@ -1576,6 +1600,13 @@ async function processQueueItem(
       console.log(`[blog-publisher] publish readiness repair: ${readinessRepair.changes.join(', ')}`);
     }
 
+    {
+      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (surfaceChanges.length > 0) {
+        console.log(`[blog-publisher] final customer surface repair: ${surfaceChanges.join(', ')}`);
+      }
+    }
+
     let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
@@ -1773,6 +1804,12 @@ async function processQueueItem(
       if (finalReadinessRepair.changed) {
         generated.blog_html = finalReadinessRepair.markdown;
         finalRepairChanges.push(...finalReadinessRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalSurfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (finalSurfaceChanges.length > 0) {
+        finalRepairChanges.push(...finalSurfaceChanges);
         finalRepairChanged = true;
       }
 
