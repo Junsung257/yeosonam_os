@@ -27,6 +27,7 @@ export interface BlogEngineCategoryRepairResult {
   beforeScore: number;
   afterScore: number;
   repairedCategories: BlogEngineCategoryId[];
+  repairRounds: number;
 }
 
 function firstParagraph(markdown: string): string {
@@ -227,86 +228,108 @@ export function repairBlogEngineCategoryGaps(input: BlogEngineCategoryRepairInpu
     productId: input.productId,
     generationMeta: input.generationMeta,
   });
-  const weakCategories = beforeEvaluation.category_scores
-    .filter((category) => category.score < 100 || !category.passed)
-    .map((category) => category.id);
+  const repairedCategorySet = new Set<BlogEngineCategoryId>();
   const changes: string[] = [];
   let markdown = input.markdown;
+  let repairRounds = 0;
 
-  if (weakCategories.includes('reader_task_completion')) {
-    const next = insertAnswerFirstIntro(input, markdown);
-    if (next !== markdown) {
-      markdown = next;
-      changes.push('engine_category_reader_task_intro');
-    }
-  }
-
-  if (weakCategories.includes('evidence_faithfulness')) {
-    const next = repairEvidenceSupport(markdown);
-    if (next !== markdown) {
-      markdown = next;
-      changes.push('engine_category_evidence_links');
-    }
-  }
-
-  if (
-    weakCategories.includes('sales_pressure_control')
-    || weakCategories.includes('naturalness')
-    || weakCategories.includes('reader_task_completion')
-  ) {
-    const next = softenInfoSalesPressureSurface(input, markdown);
-    if (next !== markdown) {
-      markdown = next;
-      changes.push('engine_category_softened_info_sales_pressure');
-    }
-  }
-
-  if (weakCategories.includes('product_decision_helpfulness')) {
-    const next = appendProductDecisionBlocks(input, markdown);
-    if (next !== markdown) {
-      markdown = next;
-      changes.push('engine_category_product_decision_blocks');
-    }
-  }
-
-  if (
-    weakCategories.includes('customer_language')
-    || weakCategories.includes('naturalness')
-    || weakCategories.includes('sales_pressure_control')
-  ) {
-    const editorialRepair = repairBlogEditorialQuality({
-      title: input.title,
-      slug: input.slug,
+  for (let round = 1; round <= 3; round += 1) {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: markdown,
       primaryKeyword: input.primaryKeyword,
       destination: input.destination,
-      angleType: input.angleType,
-      category: input.category,
       contentType: input.contentType,
       productId: input.productId,
-      blogHtml: markdown,
+      generationMeta: input.generationMeta,
     });
-    if (editorialRepair.changed) {
-      markdown = editorialRepair.blogHtml;
-      changes.push(...editorialRepair.changes.map((change) => `engine_category_${change}`));
-    }
-  }
+    const weakCategories = evaluation.category_scores
+      .filter((category) => category.score < 100 || !category.passed)
+      .map((category) => category.id);
 
-  if (changes.length > 0) {
-    const structureRepair = repairBlogStructureQuality({
-      title: input.title,
-      slug: input.slug,
-      primaryKeyword: input.primaryKeyword,
-      destination: input.destination,
-      angleType: input.angleType,
-      category: input.category,
-      contentType: input.contentType,
-      productId: input.productId,
-      blogHtml: markdown,
-    });
-    if (structureRepair.changed) {
-      markdown = structureRepair.blogHtml;
-      changes.push(...structureRepair.changes.map((change) => `engine_category_${change}`));
+    if (evaluation.score === 100 && weakCategories.length === 0) break;
+
+    const beforeRound = markdown;
+    for (const category of weakCategories) repairedCategorySet.add(category);
+
+    if (weakCategories.includes('reader_task_completion')) {
+      const next = insertAnswerFirstIntro(input, markdown);
+      if (next !== markdown) {
+        markdown = next;
+        changes.push('engine_category_reader_task_intro');
+      }
     }
+
+    if (weakCategories.includes('evidence_faithfulness')) {
+      const next = repairEvidenceSupport(markdown);
+      if (next !== markdown) {
+        markdown = next;
+        changes.push('engine_category_evidence_links');
+      }
+    }
+
+    if (
+      weakCategories.includes('sales_pressure_control')
+      || weakCategories.includes('naturalness')
+      || weakCategories.includes('reader_task_completion')
+    ) {
+      const next = softenInfoSalesPressureSurface(input, markdown);
+      if (next !== markdown) {
+        markdown = next;
+        changes.push('engine_category_softened_info_sales_pressure');
+      }
+    }
+
+    if (weakCategories.includes('product_decision_helpfulness')) {
+      const next = appendProductDecisionBlocks(input, markdown);
+      if (next !== markdown) {
+        markdown = next;
+        changes.push('engine_category_product_decision_blocks');
+      }
+    }
+
+    if (
+      weakCategories.includes('customer_language')
+      || weakCategories.includes('naturalness')
+      || weakCategories.includes('sales_pressure_control')
+    ) {
+      const editorialRepair = repairBlogEditorialQuality({
+        title: input.title,
+        slug: input.slug,
+        primaryKeyword: input.primaryKeyword,
+        destination: input.destination,
+        angleType: input.angleType,
+        category: input.category,
+        contentType: input.contentType,
+        productId: input.productId,
+        blogHtml: markdown,
+      });
+      if (editorialRepair.changed) {
+        markdown = editorialRepair.blogHtml;
+        changes.push(...editorialRepair.changes.map((change) => `engine_category_${change}`));
+      }
+    }
+
+    if (markdown !== beforeRound) {
+      const structureRepair = repairBlogStructureQuality({
+        title: input.title,
+        slug: input.slug,
+        primaryKeyword: input.primaryKeyword,
+        destination: input.destination,
+        angleType: input.angleType,
+        category: input.category,
+        contentType: input.contentType,
+        productId: input.productId,
+        blogHtml: markdown,
+      });
+      if (structureRepair.changed) {
+        markdown = structureRepair.blogHtml;
+        changes.push(...structureRepair.changes.map((change) => `engine_category_${change}`));
+      }
+      repairRounds = round;
+      continue;
+    }
+
+    break;
   }
 
   const afterEvaluation = evaluateBlogEngineV2({
@@ -324,6 +347,7 @@ export function repairBlogEngineCategoryGaps(input: BlogEngineCategoryRepairInpu
     changes,
     beforeScore: beforeEvaluation.score,
     afterScore: afterEvaluation.score,
-    repairedCategories: weakCategories,
+    repairedCategories: Array.from(repairedCategorySet),
+    repairRounds,
   };
 }

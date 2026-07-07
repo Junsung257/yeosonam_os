@@ -545,6 +545,7 @@ function applyEngineCategoryRepair(
       before_score: categoryRepair.beforeScore,
       after_score: categoryRepair.afterScore,
       repaired_categories: categoryRepair.repairedCategories,
+      repair_rounds: categoryRepair.repairRounds,
       changes: categoryRepair.changes,
     },
   };
