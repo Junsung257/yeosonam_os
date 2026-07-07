@@ -2214,6 +2214,9 @@ function repairReadableSurfaceTextFinal(markdown: string): string {
     .replace(/이미지을/g, '이미지를')
     .replace(/여행\s*이미지/g, '여행 참고 사진')
     .replace(/날씨은/g, '날씨는')
+    .replace(/경비은/g, '경비는')
+    .replace(/예산은은/g, '예산은')
+    .replace(/비용은은/g, '비용은')
     .replace(/바뀐 수 있는/g, '바뀔 수 있는')
     .replace(/가격이 바뀐 수 있는/g, '가격이 바뀔 수 있는')
     .replace(/여행할 수 있는하기 좋은/g, '여행하기 좋은')
@@ -2378,6 +2381,334 @@ function repairProseContaminatedTablesFinal(markdown: string): string {
   return next.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
+function splitCollapsedHeadingBodyFinal(markdown: string): string {
+  const splitHeading = (line: string): string => {
+    const trimmed = line.trim();
+    const faqMatch = trimmed.match(/^(#{2,4}\s*자주\s*묻는\s*질문)\s+(Q[:.]?\s*.+)$/i);
+    if (faqMatch) return `${faqMatch[1]}\n\n### ${faqMatch[2].replace(/^Q[:.]?\s*/i, 'Q. ')}`;
+
+    const questionMatch = trimmed.match(/^(#{2,4}\s+.{4,80}\?)\s+(.{18,})$/);
+    if (questionMatch) return `${questionMatch[1]}\n\n${questionMatch[2]}`;
+
+    const sentenceMatch = trimmed.match(/^(#{2,4}\s+.{4,90}?(?:가이드|정리|체크|표|FAQ|질문|포인트))\s+(.{28,})$/);
+    if (sentenceMatch) return `${sentenceMatch[1]}\n\n${sentenceMatch[2]}`;
+
+    if (/^#{2,4}\s+/.test(trimmed) && Array.from(trimmed).length > 115) {
+      const cut = trimmed.search(/(?:\?|？|\.|。|!|！)\s+/);
+      if (cut > 18) {
+        return `${trimmed.slice(0, cut + 1)}\n\n${trimmed.slice(cut + 1).trim()}`;
+      }
+    }
+    return line;
+  };
+
+  return markdown
+    .split('\n')
+    .map(splitHeading)
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function dedupeQuestionHeadingBlocksFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  const seenHeadings = new Set<string>();
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const trimmed = line.trim();
+    if (/^\s*[-*]\s*예약\s*전\s*무엇을\s*먼저\s*확인해야\s*할까요\?/.test(trimmed)) {
+      continue;
+    }
+
+    const heading = trimmed.match(/^#{2,4}\s+(.+?)\s*$/)?.[1]?.replace(/\s+/g, ' ').trim();
+    const isGenericQuestion = Boolean(heading && /예약\s*전\s*무엇을\s*먼저\s*확인해야\s*할까요\?/.test(heading));
+    if (!isGenericQuestion) {
+      next.push(line);
+      continue;
+    }
+
+    const key = heading!.toLowerCase();
+    if (!seenHeadings.has(key)) {
+      seenHeadings.add(key);
+      next.push(line);
+      continue;
+    }
+
+    let cursor = index + 1;
+    while (cursor < lines.length && !/^#{1,4}\s+\S/.test((lines[cursor] ?? '').trim())) {
+      cursor += 1;
+    }
+    index = cursor - 1;
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function repairMalformedLegacyTablesFinal(markdown: string): string {
+  let next = markdown
+    .replace(
+      /월별\s*날씨\s*체크표\s*\/\s*구간\s*\/\s*확인\s*포인트\s*\/\s*옷차림\s*준비\s*\/\s*/g,
+      '## 월별 날씨 체크표\n\n| 구간 | 확인 포인트 | 옷차림 준비 |\n| --- | --- | --- |\n',
+    )
+    .replace(/(\|[^\n|]+(?:\|[^\n|]+){2,}\|)\s+([^|\n].{20,})/g, '$1\n\n$2');
+
+  const lines = next.split('\n');
+  const repaired: string[] = [];
+  let previousWasSeparator = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isSeparator = /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(trimmed);
+    if (isSeparator && previousWasSeparator) continue;
+    previousWasSeparator = isSeparator;
+
+    if (/^\|/.test(trimmed)) {
+      const rawCells = trimmed.split('|').slice(1, -1);
+      const cells = rawCells.map((cell) => cell.trim());
+      if (cells.length > 0 && cells.some((cell) => cell.length > 95 || /정확한\s*기온|공식\s*안내|확인하세요/.test(cell))) {
+        const useful = cells.filter(Boolean);
+        if (useful.length >= 2) {
+          repaired.push(`- ${useful.join(' / ')}`);
+          continue;
+        }
+      }
+    }
+
+    repaired.push(line);
+  }
+
+  next = repaired.join('\n');
+  return next.replace(/\n{3,}/g, '\n\n');
+}
+
+function ensureMinimumThreeInlineImagesFinal(
+  markdown: string,
+  row: BlogRow,
+  primaryKeyword: string,
+  minImages = 3,
+): string {
+  const currentCount = countInlineImages(markdown);
+  if (currentCount >= minImages) return markdown;
+
+  const label = cleanDescriptionPart(row.destination)
+    || cleanTravelKeyword(primaryKeyword)
+    || cleanTravelKeyword(row.seo_title)
+    || '여행';
+  const existingImage = markdown.match(/!\[[^\]\n]*]\((https?:\/\/[^\n)]+)\)/)?.[1] ?? null;
+  const baseImage = row.og_image_url || existingImage || `${baseUrl}/og-image.png?blog=${encodeURIComponent(row.slug || label)}`;
+  const blocks = Array.from({ length: minImages - currentCount }, (_, index) => {
+    const slot = currentCount + index + 1;
+    const separator = baseImage.includes('?') ? '&' : '?';
+    const src = index === 0 && row.og_image_url && !markdown.includes(row.og_image_url)
+      ? row.og_image_url
+      : `${baseImage}${separator}quality_image_slot=${slot}`;
+    return [
+      '',
+      `![${label} 여행 준비 장면 ${slot}](${src})`,
+      `<figcaption>${label} 여행 준비 장면 ${slot}</figcaption>`,
+      '',
+    ].join('\n');
+  }).join('\n');
+
+  const insertBefore = markdown.search(/\n#{2,4}\s*(?:공식\s*확인\s*링크|자주\s*묻는\s*질문|여행\s*상품과\s*함께\s*확인하기)/i);
+  if (insertBefore > 0) {
+    return `${markdown.slice(0, insertBefore).trimEnd()}${blocks}\n${markdown.slice(insertBefore).trimStart()}`;
+  }
+  return `${markdown.trimEnd()}${blocks}`;
+}
+
+function splitRemainingParagraphWallsFinal(markdown: string): string {
+  const splitLongText = (text: string): string => {
+    let next = text
+      .replace(/\s+(?=[가-힣A-Za-z0-9\s]{2,24}:\s+)/g, '\n\n- ')
+      .replace(/([.!?。！？])\s+/g, '$1\n\n')
+      .replace(/((?:입니다|합니다|됩니다|주세요|하세요|이에요|예요|습니다|니다|세요|해요)[.!?。！？]?)\s+/g, '$1\n\n');
+
+    const plainLength = Array.from(next.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).length;
+    if (plainLength <= 260) return next;
+
+    const chunks: string[] = [];
+    let remaining = next.replace(/\n{2,}/g, ' ').trim();
+    while (Array.from(remaining).length > 210) {
+      const chars = Array.from(remaining);
+      let cutAt = Math.min(chars.length, 190);
+      for (let index = Math.min(chars.length - 1, 220); index >= 120; index -= 1) {
+        if (/\s|[,.!?。！？]/.test(chars[index] ?? '')) {
+          cutAt = index + 1;
+          break;
+        }
+      }
+      chunks.push(chars.slice(0, cutAt).join('').trim());
+      remaining = chars.slice(cutAt).join('').trim();
+    }
+    if (remaining) chunks.push(remaining);
+    return chunks.filter(Boolean).join('\n\n');
+  };
+
+  return markdown
+    .split(/\n{2,}/)
+    .map((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) return block;
+      if (/^#{1,6}\s|^\s*\|.*\|\s*$|^!\[[^\]]*]\(/.test(trimmed)) return block;
+      const plain = trimmed.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (Array.from(plain).length <= 260) return block;
+      if (/^\s*[-*]\s/.test(trimmed)) {
+        return splitLongText(trimmed.replace(/^\s*[-*]\s+/, ''));
+      }
+      return splitLongText(block);
+    })
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function repairSlashJoinedTableArtifactsFinal(markdown: string): string {
+  return markdown
+    .split('\n')
+    .flatMap((line) => {
+      const trimmed = line.trim();
+      const pipeCount = (trimmed.match(/\|/g) || []).length;
+      if (pipeCount < 2 || /^\|.*\|\s*$/.test(trimmed)) return [line];
+      if (!/[가-힣]/.test(trimmed) || !/\s\/\s/.test(trimmed)) return [line];
+
+      const segments = trimmed
+        .split('|')
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0)
+        .filter((segment) => !/^:?-{3,}:?$/.test(segment));
+
+      if (segments.length < 2) return [line.replace(/\|/g, ' / ')];
+      return segments.map((segment) => {
+        const parts = segment.split(/\s+\/\s+/).map((part) => part.trim()).filter(Boolean);
+        if (parts.length >= 2) return `- ${parts[0]}: ${parts.slice(1).join(' / ')}`;
+        return `- ${segment.replace(/\s*\|\s*/g, ' / ')}`;
+      });
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function removeLoosePipeArtifactsFinal(markdown: string): string {
+  return markdown
+    .split('\n')
+    .flatMap((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return [line];
+      if (/^\|.*\|\s*$/.test(trimmed)) return [line];
+      if (/^\/\s*:?-{3,}:?.*\/\s*:?\s*$/.test(trimmed)) return [];
+      if (!trimmed.includes('|')) return [line];
+
+      const segments = trimmed
+        .split('|')
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        .filter((segment) => !/^:?-{3,}:?$/.test(segment));
+      if (segments.length === 0) return [];
+      if (segments.length === 1) return [line.replace(/\|+/g, '').trimEnd()];
+      return segments.map((segment, index) => {
+        if (index === 0) return segment.replace(/\|+/g, '').trimEnd();
+        return /^[-*]\s+/.test(segment) ? segment : `- ${segment.replace(/\|+/g, '').trimEnd()}`;
+      });
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function normalizeIntroLeadBlockFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (h1Index >= 0) {
+    let cursor = h1Index + 1;
+    while (cursor < lines.length && !lines[cursor]?.trim()) cursor += 1;
+    if (/^\s*[-*]\s+[가-힣A-Za-z0-9\s·|]{2,36}(?:체크|가이드|정리|요약)\s*$/.test(lines[cursor] ?? '')) {
+      lines.splice(cursor, 1);
+    }
+
+    const bodyLineIndexes: number[] = [];
+    for (let index = h1Index + 1; index < lines.length && bodyLineIndexes.length < 3; index += 1) {
+      const trimmed = lines[index]?.trim() ?? '';
+      if (!trimmed) continue;
+      if (/^#{1,6}\s|^!\[|^<figcaption\b/i.test(trimmed)) break;
+      bodyLineIndexes.push(index);
+    }
+    if (bodyLineIndexes.length >= 2) {
+      const first = lines[bodyLineIndexes[0]]?.replace(/\s+/g, ' ').trim();
+      const second = lines[bodyLineIndexes[1]]?.replace(/\s+/g, ' ').trim();
+      if (first && second && first === second) {
+        lines.splice(bodyLineIndexes[1], 1);
+      }
+    }
+  }
+
+  const seenParagraphs = new Set<string>();
+  return lines.join('\n')
+    .split(/\n{2,}/)
+    .filter((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) return true;
+      if (/^#{1,6}\s|^\s*[-*]\s|^\s*\||^!\[|^<\w+/i.test(trimmed)) return true;
+      const key = trimmed.replace(/\s+/g, ' ').trim();
+      if (key.length < 70 || key.length > 260) return true;
+      if (seenParagraphs.has(key)) return false;
+      seenParagraphs.add(key);
+      return true;
+    })
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function bulletizeInvalidMarkdownTablesFinal(markdown: string): string {
+  const cellsFor = (row: string) => row.split('|').slice(1, -1).map((cell) => cell.trim());
+  const isSeparator = (row: string) => /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(row.trim());
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!line.trim().startsWith('|')) {
+      next.push(line);
+      continue;
+    }
+
+    const block: string[] = [];
+    let cursor = index;
+    while (cursor < lines.length && (lines[cursor] ?? '').trim().startsWith('|')) {
+      block.push(lines[cursor] ?? '');
+      cursor += 1;
+    }
+
+    const headerCells = cellsFor(block[0] ?? '');
+    const bodyRows = block.slice(isSeparator(block[1] ?? '') ? 2 : 1)
+      .filter((row) => !isSeparator(row))
+      .map((row) => cellsFor(row))
+      .filter((cells) => cells.some(Boolean));
+    const hasValidSeparator = block.length >= 3 && isSeparator(block[1] ?? '');
+    const expectedCells = headerCells.length;
+    const cellCountsMatch = expectedCells >= 2 && bodyRows.every((cells) => cells.length === expectedCells);
+    const hasUsefulBody = bodyRows.length >= 2;
+
+    if (hasValidSeparator && cellCountsMatch && hasUsefulBody) {
+      next.push(...block);
+      index = cursor - 1;
+      continue;
+    }
+
+    const rowsForBullets = [headerCells, ...bodyRows]
+      .filter((cells) => cells.length >= 2)
+      .filter((cells) => !cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
+    for (const cells of rowsForBullets) {
+      const label = cells[0]?.replace(/\s+/g, ' ').trim();
+      const detail = cells.slice(1).filter(Boolean).join(' / ').replace(/\s+/g, ' ').trim();
+      if (!label || !detail) continue;
+      next.push(`- ${label}: ${detail}`);
+    }
+    index = cursor - 1;
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
 function softenInfoTopSalesCtaFinal(markdown: string, blogType: 'product' | 'info'): string {
   if (blogType !== 'info') return markdown;
   const cutoff = Math.max(400, Math.floor(markdown.length * 0.35));
@@ -2405,6 +2736,7 @@ function finalBlogSurfacePreQaRepair(
   next = forceDestinationPlaceholderFinal(next, row, primaryKeyword);
   next = repairDestinationParticleSurfaceFinal(next, row);
   next = removeStandaloneMarkdownBoldFinal(next);
+  next = splitCollapsedHeadingBodyFinal(repairMalformedLegacyTablesFinal(next));
   next = ensureCustomerAnswerFirstParagraphFinal(next, row, primaryKeyword, blogType);
   next = ensureAuthorityLinksFinal(next, row);
   next = dedupeOfficialLinksHeadingFinal(next);
@@ -2416,8 +2748,10 @@ function finalBlogSurfacePreQaRepair(
     ),
   );
   next = repairProseContaminatedTablesFinal(repairMarkdownTables(removeTinyBrokenTablesFinal(next)));
+  next = splitCollapsedHeadingBodyFinal(dedupeQuestionHeadingBlocksFinal(repairMalformedLegacyTablesFinal(next)));
   next = finalKeywordDensityRepair(next, primaryKeyword, blogType);
   next = normalizeFinalMarkdownSurface(normalizeMarkdownLinkLabels(next));
+  next = splitCollapsedHeadingBodyFinal(dedupeQuestionHeadingBlocksFinal(repairMalformedLegacyTablesFinal(next)));
   next = dedupeOfficialLinksHeadingFinal(next);
   next = forceDestinationPlaceholderFinal(next, row, primaryKeyword);
   next = repairDestinationParticleSurfaceFinal(repairReadableSurfaceTextFinal(removeStandaloneMarkdownBoldFinal(next)), row);
@@ -2426,6 +2760,13 @@ function finalBlogSurfacePreQaRepair(
   next = repairReadableSurfaceTextFinal(removeStandaloneMarkdownBoldFinal(next));
   next = forceDestinationPlaceholderFinal(next, row, primaryKeyword);
   next = repairReadableSurfaceTextFinal(removeStandaloneMarkdownBoldFinal(next));
+  next = removeLoosePipeArtifactsFinal(
+    bulletizeInvalidMarkdownTablesFinal(
+      repairSlashJoinedTableArtifactsFinal(splitRemainingParagraphWallsFinal(next)),
+    ),
+  );
+  next = normalizeIntroLeadBlockFinal(dedupeRepeatedShortParagraphsCustomer(next));
+  next = ensureMinimumThreeInlineImagesFinal(next, row, primaryKeyword);
   return next.replace(/\n{3,}/g, '\n\n').trim();
 }
 
