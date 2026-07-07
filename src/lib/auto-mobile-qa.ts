@@ -61,6 +61,7 @@ export type ExpectedRender = {
   homeCity: string | null;
   currentAttractionMatchedCount?: number;
   currentAttractionUnmatchedCount?: number;
+  currentAttractionUnmatchedNames?: string[];
 };
 
 const AUTO_QA_CHECK_PREFIXES = [
@@ -102,6 +103,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     homeCity: null,
     currentAttractionMatchedCount: 0,
     currentAttractionUnmatchedCount: 0,
+    currentAttractionUnmatchedNames: [],
   };
   try {
     const { data } = await supabaseAdmin
@@ -149,6 +151,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     });
     let currentAttractionMatchedCount = 0;
     let currentAttractionUnmatchedCount = 0;
+    const currentAttractionUnmatchedNames: string[] = [];
     for (const day of days) {
       for (const item of day.schedule ?? []) {
         const names = Array.isArray(item?.attraction_names) ? item.attraction_names.filter(Boolean) : [];
@@ -156,6 +159,12 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
         const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids.filter(Boolean) : [];
         currentAttractionMatchedCount += Math.min(names.length, ids.length);
         currentAttractionUnmatchedCount += Math.max(0, names.length - ids.length);
+        if (ids.length < names.length) {
+          for (const name of names.slice(ids.length)) {
+            const text = String(name ?? '').trim();
+            if (text && !currentAttractionUnmatchedNames.includes(text)) currentAttractionUnmatchedNames.push(text);
+          }
+        }
       }
     }
 
@@ -178,10 +187,39 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       homeCity,
       currentAttractionMatchedCount,
       currentAttractionUnmatchedCount,
+      currentAttractionUnmatchedNames,
     };
   } catch {
     return empty;
   }
+}
+
+export type AttractionMasterHint = {
+  name?: string | null;
+  is_active?: boolean | null;
+  customer_publishable?: boolean | null;
+};
+
+export function buildAttractionMatchLowMessage(input: {
+  matchedCount: number;
+  denom: number;
+  unmatchedNames?: string[];
+  attractionMasters?: AttractionMasterHint[];
+}): string {
+  const rate = input.denom > 0 ? input.matchedCount / input.denom : 1;
+  const base = `관광지 매칭률 ${(rate * 100).toFixed(0)}% (${input.matchedCount}/${input.denom})`;
+  const names = [...new Set((input.unmatchedNames ?? []).map(name => name.trim()).filter(Boolean))];
+  const masters = input.attractionMasters ?? [];
+  const nonPublicNames = names.filter(name => masters.some(master =>
+    master.name === name
+    && master.is_active !== false
+    && master.customer_publishable === false
+  ));
+  if (names.length > 0 && nonPublicNames.length >= Math.ceil(names.length * 0.6)) {
+    const sample = nonPublicNames.slice(0, 5).join(', ');
+    return `${base} - 기존 관광지 마스터가 고객 공개 승인 전입니다. 공개 승인/사진/설명 검수 필요: ${sample}`;
+  }
+  return `${base} - 60% 미달, attraction 공개 마스터 / aliases 점검 필요`;
 }
 
 const AIR_TRANSPORT_RE = /\b(?:[A-Z][A-Z0-9]|[0-9][A-Z])\s*\d{3,4}\b|flight|airline|airport|\uD56D\uACF5|\uBE44\uD589|\uD3B8\uBA85|\uCD9C\uBC1C\uD3B8|\uADC0\uAD6D\uD3B8|\uACF5\uD56D|\uAD6D\uC81C\uACF5\uD56D/i;
@@ -727,10 +765,24 @@ export async function runAutoMobileQA(
         const denom = matchedCount + unmatchedCount;
         matchRate = denom > 0 ? matchedCount / denom : 1;
         if (denom >= 3 && matchRate < 0.6) {
+          let attractionMasters: AttractionMasterHint[] = [];
+          const unmatchedNames = [...new Set((expected.currentAttractionUnmatchedNames ?? []).filter(Boolean))].slice(0, 50);
+          if (unmatchedNames.length > 0) {
+            const { data: masters } = await supabaseAdmin
+              .from('attractions')
+              .select('name, is_active, customer_publishable')
+              .in('name', unmatchedNames);
+            attractionMasters = Array.isArray(masters) ? masters as AttractionMasterHint[] : [];
+          }
           incidents.push({
             id: 'mobile_attraction_match_low',
             severity: 'high',
-            message: `관광지 매칭률 ${(matchRate * 100).toFixed(0)}% (${matchedCount}/${denom}) — 60% 미달, attraction 시드 / aliases 점검 필요`,
+            message: buildAttractionMatchLowMessage({
+              matchedCount,
+              denom,
+              unmatchedNames,
+              attractionMasters,
+            }),
           });
         }
       }

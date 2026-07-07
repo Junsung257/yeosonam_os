@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { analyzeMobileHtml, buildMobileQaImprovementEvent, type ExpectedRender } from './auto-mobile-qa';
+import {
+  analyzeMobileHtml,
+  buildAttractionMatchLowMessage,
+  buildMobileQaImprovementEvent,
+  type ExpectedRender,
+} from './auto-mobile-qa';
 import { hashSourceText } from './product-registration/improvement-ledger';
 
 const expectedRender: ExpectedRender = {
@@ -121,6 +126,25 @@ describe('auto mobile QA learning ledger bridge', () => {
     expect(incidents).not.toContainEqual(expect.objectContaining({
       id: 'mobile_flight_card_missing',
     }));
+  });
+
+  it('explains attraction blockers as publish-approval work when masters already exist', () => {
+    const message = buildAttractionMatchLowMessage({
+      matchedCount: 0,
+      denom: 5,
+      unmatchedNames: ['단하산', '동천선경', '소선령', '대불사', '망산'],
+      attractionMasters: [
+        { name: '단하산', is_active: true, customer_publishable: false },
+        { name: '동천선경', is_active: true, customer_publishable: false },
+        { name: '소선령', is_active: true, customer_publishable: false },
+        { name: '대불사', is_active: true, customer_publishable: false },
+        { name: '망산', is_active: true, customer_publishable: false },
+      ],
+    });
+
+    expect(message).toContain('고객 공개 승인 전');
+    expect(message).toContain('공개 승인/사진/설명 검수 필요');
+    expect(message).not.toContain('시드');
   });
 
   it('accepts rendered hotel alternatives when the full combined source string is split on screen', () => {
