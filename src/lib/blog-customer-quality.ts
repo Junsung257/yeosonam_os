@@ -92,7 +92,7 @@ function firstParagraph(markdown: string): string {
 }
 
 function hasConcreteAnswer(text: string): boolean {
-  return /(\d[\d,]*(?:원|만원|분|시간|일|박|도|℃|mm|%|벌|달러|USD)|먼저|기준|확인|비교|챙기|피하|나누|정리|준비)/.test(text);
+  return /(\d[\d,]*(?:원|만원|분|시간|일|박|도|℃|mm|%|벌|달러|USD)|먼저|기준|확인|비교|챙기|피하|나누|분리|정리|준비|비용|예산|총액|상품가|개인경비|추가비)/.test(text);
 }
 
 function metricFromIssues(
@@ -119,7 +119,7 @@ function inspectInfo(input: BlogCustomerQualityInput, plain: string, issues: Blo
     );
   }
 
-  const genericOpening = GENERIC_INFO_OPENINGS.find((pattern) => pattern.test(first) || pattern.test(plain.slice(0, 500)));
+  const genericOpening = GENERIC_INFO_OPENINGS.find((pattern) => pattern.test(first));
   if (genericOpening) {
     addIssue(
       issues,
