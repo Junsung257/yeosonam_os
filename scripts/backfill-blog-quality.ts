@@ -756,6 +756,8 @@ function isSameStoredBlogHtml(before: string, after: string): boolean {
   const normalize = (value: string) =>
     value
       .replace(/\r\n?/g, '\n')
+      .replace(/(^|\n)(#\s+[^\n#]{2,80}?20\d{2})\s+(?=[가-힣A-Za-z0-9][^\n]{0,80}(?:비용은|여행은|월별|에서))/g, '$1$2\n')
+      .replace(/(^|\n)(#{1,6}\s+[^\n]+)\n{1,}/g, '$1$2\n')
       .replace(
         /\n###\s+\uBE44\uC6A9\s+\uAE30\uC900\s+\uB2E4\uC2DC\s+\uBCF4\uAE30[\s\S]*?(?=\n###\s+.+\uC5D0\uC11C\s+\uAC00\uC7A5\s+\uBA3C\uC800\s+\uD655\uC778\uD560\s+\uAC83\uC740\?)/g,
         '\n',
@@ -2731,11 +2733,37 @@ function bulletizeInvalidMarkdownTablesFinal(markdown: string): string {
   return next.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
-function looksLikeCostPostFinal(row: BlogRow, primaryKeyword: string, markdown: string): boolean {
+function topicLooksLikeCostPostFinal(row: BlogRow, primaryKeyword: string): boolean {
   const topicText = `${row.slug || ''} ${row.seo_title || ''} ${primaryKeyword}`.toLowerCase();
+  return /(cost|budget|expense|currency|money|shopping|비용|가격|예산|경비|얼마|요금|물가|이동비|교통비|환전|환율|쇼핑)/i.test(topicText);
+}
+
+function looksLikeCostPostFinal(row: BlogRow, primaryKeyword: string, markdown: string): boolean {
+  if (topicLooksLikeCostPostFinal(row, primaryKeyword)) return true;
   const leadText = markdown.split('\n').slice(0, 8).join(' ');
-  return /(cost|budget|expense|currency|money|shopping|비용|가격|예산|경비|얼마|요금|물가|이동비|교통비|환전|환율|쇼핑)/i.test(topicText) ||
-    /(비용|예산|경비|환전|환율|물가)\s*(?:가이드|체크|정리|표|범위)/i.test(leadText);
+  const cleanedLeadText = leadText
+    .replace(/[^.\n]{0,40}\s*비용은\s*상품가만\s*보면\s*부족합니다[.\s\S]{0,140}?실제\s*총액\s*오차를\s*줄일\s*수\s*있습니다[.]?/i, ' ')
+    .replace(/현실\s*예산\s*범위/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /(\d[\d,]*\s*(?:원|만원|달러|엔|위안|페소|바트)|\d+\s*[~–-]\s*\d+\s*만원)/.test(cleanedLeadText) ||
+    /(비용|예산|경비|환전|환율|물가)\s*(?:가이드|체크|정리|표|범위)/i.test(cleanedLeadText);
+}
+
+function stripOffIntentCostBlocksFinal(markdown: string, row: BlogRow, primaryKeyword: string): string {
+  if (topicLooksLikeCostPostFinal(row, primaryKeyword)) return markdown;
+  const destination = cleanDescriptionPart(row.destination) || cleanTravelKeyword(primaryKeyword) || '여행지';
+  return markdown
+    .replace(
+      /(^#\s+[^\n]+\n+)[^\n]{0,40}\s*비용은\s*상품가만\s*보면\s*부족합니다\.\s*항공·숙소\s*포함\s*금액과\s*현지\s*개인경비를\s*분리하고,\s*식사·교통·선택\s*관광\s*예산을\s*1인\s*하루\s*단위로\s*잡아야\s*실제\s*총액\s*오차를\s*줄일\s*수\s*있습니다\.\s*/i,
+      `$1${destination} 여행은 날씨, 이동 동선, 준비물을 함께 확인하면 현지에서 당황할 일을 줄일 수 있습니다.\n\n`,
+    )
+    .replace(
+      /\n+##\s*현실\s*예산\s*범위\s*\n+[\s\S]*?(?=\n#{2,4}\s*(?:공식\s*확인\s*링크|여행\s*상품과\s*함께\s*확인하기)|\n---\s*\n|\s*$)/i,
+      '\n\n',
+    )
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function ensureConcreteCostProseFinal(markdown: string, row: BlogRow, primaryKeyword: string): string {
@@ -2906,12 +2934,17 @@ function finalBlogSurfacePreQaRepair(
       repairSlashJoinedTableArtifactsFinal(splitRemainingParagraphWallsFinal(next)),
     ),
   );
-  next = ensureConcreteCostProseFinal(repairGenericCostOpeningFinal(next, row, primaryKeyword), row, primaryKeyword);
+  next = stripOffIntentCostBlocksFinal(
+    ensureConcreteCostProseFinal(repairGenericCostOpeningFinal(next, row, primaryKeyword), row, primaryKeyword),
+    row,
+    primaryKeyword,
+  );
   next = repairGenericCostOpeningFinal(normalizeIntroLeadBlockFinal(dedupeRepeatedShortParagraphsCustomer(next)), row, primaryKeyword);
   next = ensureMinimumThreeInlineImagesFinal(next, row, primaryKeyword);
   next = ensureCustomerAnswerFirstParagraphFinal(next, row, primaryKeyword, blogType);
   next = repairGenericCostOpeningFinal(next, row, primaryKeyword);
   next = dedupeFinalIntroFragmentsFinal(next);
+  next = repairFragmentedBulletArtifactsFinal(removeRepeatedFaqAnswerFragmentsFinal(next));
   next = repairReadableSurfaceTextFinal(next);
   return next.replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -3117,6 +3150,11 @@ function stripGeneratedTailArtifactsFinal(markdown: string): string {
     if (second >= 0) next = next.slice(0, second).trim();
   }
 
+  next = next.replace(
+    /\n(?:#{2,4}\s*|\*\*)함께\s*확인할\s*(?:세부|현지)\s*키워드(?:\*\*)?\s*\n[\s\S]*?(?=\n#{2,4}\s+출발\s+전\s+추가\s+확인|\n#{2,4}\s+공식\s+확인\s+링크|\n---|\n(?:#{2,4}\s*|\*\*)여행\s+상품과\s+함께\s+확인하기|$)/g,
+    '\n',
+  );
+
   return next.replace(/\n{3,}/g, '\n\n');
 }
 
@@ -3189,6 +3227,117 @@ function normalizeRepeatedTailSectionsFinal(markdown: string): string {
   }
 
   return next.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function removeRepeatedFaqAnswerFragmentsFinal(markdown: string): string {
+  let next = markdown;
+  next = next.replace(
+    /\n+(항공권,\s*숙소,\s*환율,\s*현지\s*운영시간을\s*함께\s*보려면\s*최소\s*2~4주\s*전에\s*[^.\n]{1,80}관련\s*조건을\s*비교하는\s*편이\s*안전합니다\.)\s*\n+(가격보다\s*먼저\s*출발\s*가능일,\s*이동\s*동선,\s*취소\s*조건,\s*현지\s*운영\s*여부를\s*확인해야\s*실제\s*일정이\s*틀어지지\s*않습니다\.)\s*(?=\n+(?:#{2,4}\s+공식\s+확인\s+링크|---|$))/g,
+    '\n\n',
+  );
+  next = next.replace(
+    /((?:^|\n)###\s+출발\s+직전에\s+다시\s+확인해야\s+할\s+것은\s+무엇인가요\?\s*\n[^\n]+)\n+\1(?=\n+(?:#{2,4}\s+공식\s+확인\s+링크|---|$))/g,
+    '$1',
+  );
+  return next.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function repairFragmentedBulletArtifactsFinal(markdown: string): string {
+  const normalized = markdown
+    .replace(/^(#{2,4}\s+[^\n]+)\n\1$/gm, '$1')
+    .replace(/^(#{2,4}\s+[^*\n]{2,80})\s+\*\s+([^:\n]{1,40}:\s*[^\n]+)$/gm, '$1\n- $2');
+  const lines = normalized.split('\n');
+  const out: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const trimmed = line.trim();
+    const inlineStart = trimmed.match(/^\*\s*-\s*(.+)$/);
+    const trailingBareStart = trimmed.match(/^(.+?)\s+\*$/);
+    const bareStart = trimmed === '*' || Boolean(trailingBareStart);
+    if (!inlineStart && !bareStart) {
+      out.push(line);
+      continue;
+    }
+
+    const fragments: string[] = [];
+    if (trailingBareStart?.[1]) out.push(line.replace(/\s+\*\s*$/, '').trimEnd());
+    if (inlineStart?.[1]) fragments.push(inlineStart[1].trim());
+    let cursor = index + 1;
+    while (cursor < lines.length) {
+      const candidate = (lines[cursor] ?? '').trim();
+      const match = candidate.match(/^-\s*(.*)$/);
+      if (!match) break;
+      const value = (match[1] || '').replace(/^(?:-\s*)+/, '').replace(/\s+\*$/, '').trim();
+      if (value && value !== '-') fragments.push(value);
+      cursor += 1;
+      if (/[：:]\s*\S/.test(value)) break;
+    }
+
+    if (fragments.length >= 2) {
+      const bullet = fragments
+        .join(' ')
+        .replace(/\s+([:：])/g, '$1')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      out.push(`- ${bullet}`);
+      index = cursor - 1;
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  const firstPass = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const repairedLines = firstPass.split('\n');
+  const compacted: string[] = [];
+  for (let index = 0; index < repairedLines.length; index += 1) {
+    const line = repairedLines[index] ?? '';
+    const first = line.trim().match(/^-\s*([^:\n]{1,12})$/);
+    if (!first) {
+      compacted.push(line);
+      continue;
+    }
+
+    const fragments = [first[1].replace(/^(?:-\s*)+/, '').trim()].filter(Boolean);
+    let cursor = index + 1;
+    let foundColon = false;
+    while (cursor < repairedLines.length && cursor <= index + 8) {
+      const candidate = (repairedLines[cursor] ?? '').trim();
+      const match = candidate.match(/^-\s*(.*)$/);
+      if (!match) break;
+      const value = (match[1] || '').replace(/^(?:-\s*)+/, '').replace(/\s+\*$/, '').trim();
+      if (value && value !== '-') fragments.push(value);
+      cursor += 1;
+      if (/[：:]\s*\S/.test(value)) {
+        foundColon = true;
+        break;
+      }
+    }
+
+    if (foundColon && fragments.length >= 2) {
+      compacted.push(`- ${fragments.join(' ').replace(/\s+([:：])/g, '$1').replace(/\s{2,}/g, ' ').trim()}`);
+      index = cursor - 1;
+      continue;
+    }
+
+    compacted.push(line);
+  }
+
+  const seenBullets = new Set<string>();
+  const deduped = compacted
+    .map((line) => line.replace(/\s+\*$/, ''))
+    .filter((line) => {
+      const bullet = line.trim().match(/^-\s+(.+)$/);
+      if (!bullet) return true;
+      const key = bullet[1].replace(/\s+/g, ' ').trim();
+      if (key.length < 20) return true;
+      if (seenBullets.has(key)) return false;
+      seenBullets.add(key);
+      return true;
+    });
+
+  return deduped.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function ensureContextualImageTextFinal(markdown: string, primaryKeyword: string, row: BlogRow, normalizedTitle: string): string {
@@ -3425,7 +3574,7 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
     )))));
   }
   next = removeAiEditorialClichesFinal(finalKeywordDensityRepair(next, primaryKeyword, blogType));
-  const finalMarkdown = dedupeRepeatedShortParagraphsCustomer(dedupeRepeatedFaqBlocksCustomer(normalizeFinalMarkdownSurface(capHeadingDensityFinal(
+  const finalMarkdownBase = dedupeRepeatedShortParagraphsCustomer(dedupeRepeatedFaqBlocksCustomer(normalizeFinalMarkdownSurface(capHeadingDensityFinal(
     ensureMinimumReadableSectionsFinal(
       ensureAuthorityLinksFinal(
         ensureRainySeasonTableFinal(
@@ -3452,12 +3601,13 @@ function finalCustomerVisibleRepair(markdown: string, row: BlogRow, primaryKeywo
       ),
     ),
   ))));
-  return normalizeMarkdownTableHeaderRenderRiskFinal(repairGenericCustomerOpeningFinal(
+  const finalMarkdown = stripOffIntentCostBlocksFinal(finalMarkdownBase, row, primaryKeyword);
+  return repairFragmentedBulletArtifactsFinal(removeRepeatedFaqAnswerFragmentsFinal(normalizeMarkdownTableHeaderRenderRiskFinal(repairGenericCustomerOpeningFinal(
     replaceDestinationPlaceholderContextFinal(softenUnsupportedInternalDataFinal(finalMarkdown), row.destination, primaryKeyword),
     primaryKeyword,
     row.destination,
     blogType,
-  ));
+  ))));
 }
 
 function ensureCustomerSummary(markdown: string, primaryKeyword: string): string {
@@ -3475,14 +3625,7 @@ function ensureCustomerFaq(markdown: string, primaryKeyword: string): string {
 function ensureLongtailCoverageSectionCustomer(markdown: string, secondaryKeywords: string[]): string {
   const missing = secondaryKeywords.filter((keyword) => keyword.length > 2 && !markdown.includes(keyword)).slice(0, 4);
   if (missing.length === 0 || /^(?:#{2,4}\s*|\*\*)\s*함께\s*확인할\s*(?:세부|현지)\s*키워드(?:\*\*)?/m.test(markdown)) return markdown;
-  const noteTemplates = [
-    (keyword: string) => `- ${keyword}: 출발일, 인원, 현지 운영 여부를 함께 봅니다.`,
-    (keyword: string) => `- ${keyword}: 총액과 추가비를 나눠 확인하면 예산 오차가 줄어듭니다.`,
-    (keyword: string) => `- ${keyword}: 이동 시간과 숙소 위치를 같이 보면 피로도를 줄일 수 있습니다.`,
-    (keyword: string) => `- ${keyword}: 공식 안내와 최종 예약 조건을 출발 전 다시 확인합니다.`,
-  ];
-  const bullets = missing.map((keyword, index) => noteTemplates[index % noteTemplates.length](keyword));
-  return `${markdown.trim()}\n\n## 함께 확인할 세부 키워드\n\n${bullets.join('\n')}\n\n### 출발 전 추가 확인\n- 날씨와 옷차림은 출발 2주 전과 24시간 전에 다시 확인합니다.\n- 환전, 카드, 현금 사용 조건을 나눠 준비하면 현지 결제 실수를 줄일 수 있습니다.\n- 유심, eSIM, 로밍 중 어떤 통신 방식이 일정에 맞는지 확인합니다.\n- 여권, 비자, 입국 서류, 항공권 영문명은 예약 정보와 같은지 확인합니다.\n- 숙소 위치, 식사 포함 여부, 공항 이동 시간을 함께 보면 실제 피로도를 줄일 수 있습니다.\n`;
+  return markdown;
 }
 
 function looksLikeWeatherArticleCustomer(markdown: string, row: BlogRow, primaryKeyword: string): boolean {

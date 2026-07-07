@@ -186,6 +186,8 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Use `--write` when `write_recommended=true`, especially when `write_reasons` includes `requeue_recovered_product_rows` or `skip_duplicate_product_rows`. Passing product rows are requeued; duplicate product candidates are moved to `skipped` so they stop inflating failed evidence work.
 - If `write_recommended=false` but `metadata_refresh_available=true`, the remaining rows are still blocked by current product evidence. Do not keep rewriting them just to refresh timestamps; fix the linked package proof, then rerun the dry-run.
 - Do not requeue these rows until the linked package has fresh customer mobile proof and its customer-open contract passes.
+- `Blog Product Proof Refresh` (`.github/workflows/blog-mobile-proof-refresh.yml`) runs daily at 11:35 KST before the scheduler and first publisher slot. It refreshes stale/missing `/packages` + `/lp` mobile proof for active products, then runs `recheck:blog-product-evidence -- --write` so recovered product-backed blog candidates can publish instead of staying blocked.
+- If published product-backed blog posts fail `product_customer_open_contract_failed:mobile_proof stale`, run the same workflow manually or run `npm run prove:hwp-mobile -- --package-ids=... --base=https://www.yeosonam.com --apply-pass-only --continue-on-fail --json`, then rerun `npm run audit:blog-quality -- --limit=300`. Do not archive the posts before attempting proof refresh when the linked product is still active.
 
 ## Vercel Cron Bypass Fallback
 
