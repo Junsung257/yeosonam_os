@@ -290,6 +290,13 @@ function includesDeparturePhrase(text: string, city: string): boolean {
   return new RegExp(`${escapedCity}\\s*\\uCD9C\\uBC1C`).test(text);
 }
 
+function includesArrivalPhrase(text: string, city: string): boolean {
+  const escapedCity = city
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\s+/g, '\\s*');
+  return new RegExp(`${escapedCity}(?:\\s*(?:\\uAD6D\\uC81C)?\\uACF5\\uD56D)?\\s*\\uB3C4\\uCC29`).test(text);
+}
+
 function clearStaleMobileQaFailures(report: Record<string, unknown> | null | undefined): Record<string, unknown> {
   const clean = report && typeof report === 'object' && !Array.isArray(report) ? { ...report } : {};
   delete clean.incidents;
@@ -510,7 +517,9 @@ export function analyzeMobileHtml(
 
   if (expected.lastDayNumber && expected.homeCity && expected.lastDayArrivalCity) {
     const dayText = finalDayTextWindow(text, expected.lastDayNumber);
-    if (includesDeparturePhrase(dayText, expected.homeCity) || includesDeparturePhrase(dayText, expected.lastDayArrivalCity)) {
+    const arrivalRendered = includesArrivalPhrase(dayText, expected.lastDayArrivalCity)
+      || includesArrivalPhrase(dayText, expected.homeCity);
+    if (!arrivalRendered && (includesDeparturePhrase(dayText, expected.homeCity) || includesDeparturePhrase(dayText, expected.lastDayArrivalCity))) {
       incidents.push({
         id: `${prefix}final_arrival_rendered_as_departure`,
         severity: 'critical',
