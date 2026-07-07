@@ -120,7 +120,8 @@ function asContract(value: unknown): CustomerOpenContractPayload | null {
 
 export function getStoredCustomerOpenContract(auditReport: unknown): CustomerOpenContractPayload | null {
   const report = asRecord(auditReport);
-  return asContract(report?.customer_open_contract);
+  return asContract(report?.customer_open_contract)
+    ?? asContract(asRecord(report?.upload_to_open_autopilot)?.customer_open_contract);
 }
 
 function uniqueBlockers(blockers: PublicEligibilityBlocker[]): PublicEligibilityBlocker[] {

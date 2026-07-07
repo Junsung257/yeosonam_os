@@ -69,6 +69,12 @@ const AUTO_QA_CHECK_PREFIXES = [
   'mobile_attraction_',
 ];
 
+function isSupplierPromoDisplayTitle(value: string | null | undefined): boolean {
+  const text = String(value ?? '').replace(/[♡♥★☆]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  return /^(?:special\s*price|sale|hot\s*deal|best|pick)$/i.test(text);
+}
+
 function isAutoQACheck(check: unknown): boolean {
   const id = typeof check === 'object' && check !== null && 'id' in check
     ? String((check as { id?: unknown }).id ?? '')
@@ -107,8 +113,10 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       return empty;
     }
 
-    const title = (data as { display_title?: string | null; title?: string | null }).display_title
-      || (data as { title?: string | null }).title
+    const rowTitle = (data as { title?: string | null }).title || null;
+    const displayTitle = (data as { display_title?: string | null }).display_title || null;
+    const title = (displayTitle && !isSupplierPromoDisplayTitle(displayTitle) ? displayTitle : null)
+      || rowTitle
       || null;
 
     const days: ItineraryDay[] = Array.isArray((data as { itinerary_data?: { days?: ItineraryDay[] } }).itinerary_data?.days)
