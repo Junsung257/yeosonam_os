@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { checkArticleQualityV2 } from './blog-quality-gate';
+import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { buildProductBlogBrief } from './blog-product-brief';
 import { generateProductConsultantBlogPost } from './blog-product-consultant-writer';
 
 describe('blog product consultant writer', () => {
-  it('generates customer-readable decision sections for product blog quality gates', () => {
+  it('generates customer-readable decision sections for product blog quality gates', async () => {
     const product = {
       id: '11111111-1111-1111-1111-111111111111',
       title: '나트랑 3박5일 패키지',
@@ -26,12 +28,33 @@ describe('blog product consultant writer', () => {
     expect(markdown).toContain('## 문의 전 질문');
     expect(markdown).toContain('## 자주 묻는 질문');
     expect(markdown).not.toContain('상담에서 최종 확인');
+    expect(markdown).not.toContain('이게 말이 되나 싶으시죠');
     expect(markdown).toContain('599,000원~');
     expect(markdown).toMatch(/부산 출발 나트랑/);
     expect((markdown.match(/^##\s+/gm) || []).length).toBeLessThanOrEqual(8);
-    for (const brokenToken of ['占?', '獄?', '揶']) {
-      expect(markdown).not.toContain(brokenToken);
-    }
+
+    const articleGate = checkArticleQualityV2({
+      slug: 'nhatrang-product-test',
+      blog_html: markdown,
+      primary_keyword: '나트랑 5일 패키지',
+      destination: '나트랑',
+      category: 'package',
+      angle_type: 'value',
+      content_type: 'package_intro',
+      blog_type: 'product',
+      product_id: product.id,
+      generation_meta: {
+        writer: 'product_consultant_writer',
+        product_consult_brief: brief,
+        content_brief: { evidence: ['product_db'] },
+      },
+    });
+
+    const rendered = await renderBlogContentToHtml(markdown);
+    const renderReport = inspectRenderedBlogIntegrity(markdown, rendered);
+
+    expect(articleGate.passed).toBe(true);
+    expect(renderReport.passed).toBe(true);
   });
 
   it('uses the public canonical origin even when local env leaks into the process', () => {

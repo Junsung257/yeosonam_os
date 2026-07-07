@@ -913,22 +913,28 @@ function ensureScannableInfoStructure(markdown: string, subtype: BlogInfoSubtype
 }
 
 function ensureCostAnchorBlock(markdown: string, subtype: BlogInfoSubtype | null): { text: string; changed: boolean } {
+  if (/^#{2,4}\s*.*(?:\uBE44\uC6A9\s*\uAE30\uC900\s*\uB2E4\uC2DC\s*\uBCF4\uAE30|\uBE44\uC6A9\s*\uBE44\uAD50\s*\uAE30\uC900|\uD56D\uBAA9\uBCC4\s*\uC608\uC0B0|\uC608\uC0B0\s*\uD45C)/m.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
+  if (/\uBE60\uB978\s*\uD310\uB2E8\uD45C[\s\S]{0,160}(?:\uB193\uCE58\uAE30\s*\uC26C\uC6B4\s*\uBE44\uC6A9|\uBE44\uC6A9)/.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
   if (subtype !== 'cost' && subtype !== 'currency') return { text: markdown, changed: false };
-  if (/##\s*비용 기준 다시 보기/.test(markdown)) {
+  if (/##\s*\uBE44\uC6A9\s*\uAE30\uC900\s*\uB2E4\uC2DC\s*\uBCF4\uAE30/.test(markdown)) {
     return { text: markdown, changed: false };
   }
 
   const block = [
     '',
-    '## 비용 기준 다시 보기',
+    '## \uBE44\uC6A9 \uAE30\uC900 \uB2E4\uC2DC \uBCF4\uAE30',
     '',
-    '| 항목 | 대략적인 확인 범위 | 왜 봐야 하나요 |',
+    '| \uD56D\uBAA9 | \uC77C\uBC18\uC801\uC778 \uD655\uC778 \uBC94\uC704 | \uC65C \uBD10\uC57C \uD558\uB098\uC694 |',
     '| --- | --- | --- |',
-    '| 현지 교통 | 1회 이동비와 1일 교통비 1만원 단위 | 일정이 길수록 총액 차이가 커집니다. |',
-    '| 식사/간식 | 1인 1끼 기준 예산 2만원 단위 | 가족 여행은 식비 변동이 큽니다. |',
-    '| 선택 관광 | 1인 추가 비용 3만원 이상 여부 | 상품가와 별도 비용을 분리해 봅니다. |',
+    '| \uD604\uC9C0 \uAD50\uD1B5 | 1\uD68C \uC774\uB3D9\uBE44\uC640 1\uC77C \uAD50\uD1B5\uBE44\uB97C \uB098\uB220 \uBD05\uB2C8\uB2E4. | \uC77C\uC815\uC774 \uAE38\uC218\uB85D \uCD1D\uC561 \uCC28\uC774\uAC00 \uCEE4\uC9D1\uB2C8\uB2E4. |',
+    '| \uC2DD\uC0AC\u00B7\uAC04\uC2DD | 1\uC778 1\uB07C \uAE30\uC900 \uC608\uC0B0\uC744 \uD655\uC778\uD569\uB2C8\uB2E4. | \uAC00\uC871 \uC5EC\uD589\uC740 \uC2DD\uBE44 \uBCC0\uB3D9\uC774 \uD07D\uB2C8\uB2E4. |',
+    '| \uC120\uD0DD \uAD00\uAD11 | \uBCC4\uB3C4 \uBE44\uC6A9 \uBC1C\uC0DD \uC5EC\uBD80\uB97C \uD655\uC778\uD569\uB2C8\uB2E4. | \uC0C1\uD488\uAC00\uC640 \uD604\uC9C0 \uCD94\uAC00\uBE44\uB97C \uBD84\uB9AC\uD574 \uBD05\uB2C8\uB2E4. |',
     '',
-  ].join('\n');
+  ].join('\\n');
 
   return { text: `${markdown.trim()}\n${block}`, changed: true };
 }

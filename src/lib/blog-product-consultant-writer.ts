@@ -33,29 +33,13 @@ function list(items: string[], fallback: string): string {
   return usable.map((item) => `- ${item}`).join('\n');
 }
 
-function confirmationPoint(label: string, index: number): string {
-  const includedPoints = [
-    '상품 상세 포함 기준 확인',
-    '요금 포함 여부 확인',
-    '동행자 조건별 적용 확인',
-    '예약 시점 조건 확인',
-    '최종 안내문 기준 확인',
-  ];
-  const excludedPoints = [
-    '현지 추가 비용 여부 확인',
-    '1인 기준 금액 확인',
-    '필수/선택 여부 확인',
-    '출발일별 차이 확인',
-    '결제 전 조건 확인',
-  ];
-  const points = label === '포함' ? includedPoints : excludedPoints;
-  return points[index % points.length];
-}
-
 function tableRows(label: string, items: string[], fallback: string): string[] {
   const usable = items.map((item) => text(item)).filter(Boolean).slice(0, 5);
-  if (usable.length === 0) return [`| ${label} | ${fallback} | ${confirmationPoint(label, 0)} |`];
-  return usable.map((item, index) => `| ${label} | ${item} | ${confirmationPoint(label, index)} |`);
+  const points = label === '포함'
+    ? ['상품 상세 포함 기준 확인', '출발일별 적용 여부 확인', '현지 제공 방식 확인', '동행자 조건 확인', '최종 일정표 기준 확인']
+    : ['현지 추가비 여부 확인', '1인 기준 금액 확인', '필수/선택 여부 확인', '결제 시점 확인', '취소 규정 함께 확인'];
+  if (usable.length === 0) return [`| ${label} | ${fallback} | 상담 시점 기준으로 다시 확인 |`];
+  return usable.map((item, index) => `| ${label} | ${item} | ${points[index % points.length]} |`);
 }
 
 function packageUrl(productId: string): string {
@@ -68,28 +52,14 @@ function inquiryUrl(productId: string): string {
   return `${baseUrl}/group-inquiry?utm_source=naver_blog&utm_medium=organic&utm_campaign=product_consultant&utm_content=${encodeURIComponent(productId)}`;
 }
 
-function variantIndex(seed: string, size: number): number {
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
-  }
-  return size > 0 ? hash % size : 0;
-}
-
-function buildOpeningParagraph(input: {
-  productId: string;
+function firstSentence(input: {
   destination: string;
   duration: string;
   departure: string;
   priceText: string;
   fitFor: string;
 }): string {
-  const variants = [
-    `${input.departure} 출발 ${input.destination} ${input.duration} 상품은 ${input.priceText} 기준으로 먼저 보는 편이 좋습니다. ${input.fitFor}라면 가격만 보지 말고 포함/불포함, 항공 시간, 객실 조건을 같이 확인해야 문의 전 판단이 쉬워집니다.`,
-    `${input.destination} ${input.duration} 패키지는 ${input.departure} 출발과 ${input.priceText} 조건을 먼저 놓고 비교하면 됩니다. 특히 ${input.fitFor}에게는 일정 강도, 자유시간, 현지 추가비가 실제 만족도를 크게 좌우합니다.`,
-    `${input.priceText}부터 보이는 ${input.destination} ${input.duration} 상품이라도 출발지와 포함 항목에 따라 체감 가격이 달라집니다. ${input.departure} 출발 기준으로 ${input.fitFor}에게 맞는지부터 확인해 보세요.`,
-  ];
-  return variants[variantIndex(input.productId, variants.length)];
+  return `${input.departure} 출발 ${input.destination} ${input.duration} 상품은 ${input.priceText} 기준으로 먼저 보되, ${input.fitFor}에게 맞는지까지 같이 봐야 합니다.`;
 }
 
 export function generateProductConsultantBlogPost(
@@ -97,9 +67,9 @@ export function generateProductConsultantBlogPost(
   brief: ProductBlogBrief,
 ): string {
   const destination = text(product.destination || brief.destination, '여행지');
-  const title = text(product.title || brief.product_title, '패키지');
+  const title = text(product.title || brief.product_title, `${destination} 패키지`);
   const duration = brief.duration || (product.duration ? `${product.duration}일` : '일정 확인 필요');
-  const price = money(brief.price_from);
+  const priceText = money(brief.price_from) ?? '가격 상담 확인';
   const departure = text(brief.departure_city || product.departure_airport, '출발지 상담 확인');
   const airline = text(product.airline, '항공 상담 확인');
   const highlights = Array.isArray(product.product_highlights)
@@ -114,19 +84,15 @@ export function generateProductConsultantBlogPost(
       .filter(Boolean)
       .slice(0, 5)
     : [];
-  const priceText = price ?? '가격 상담 확인';
-  const firstFit = brief.fit_for[0] || `${destination} 패키지를 가격, 일정, 포함 항목 기준으로 비교하려는 분`;
-  const opening = buildOpeningParagraph({
-    productId: product.id,
-    destination,
-    duration,
-    departure,
-    priceText,
-    fitFor: firstFit,
-  });
+  const fitFor = brief.fit_for[0] || `${destination} 패키지를 가격과 일정 기준으로 비교하려는 분`;
+  const opening = [
+    firstSentence({ destination, duration, departure, priceText, fitFor }),
+    `같은 ${duration}이라도 출발일, 항공, 객실, 포함 항목에 따라 실제 결제 금액은 달라질 수 있어요.`,
+    `아래 내용은 등록된 상품 정보 기준으로 정리했고, 호텔명이나 확정 혜택처럼 상품 DB에 없는 내용은 만들지 않았습니다.`,
+  ].join('\n\n');
 
   return [
-    `# ${destination} ${duration} 패키지: ${priceText}, 이런 분께 맞습니다`,
+    `# ${departure} 출발 ${destination} ${duration} 패키지 ${priceText} 조건 체크`,
     '',
     opening,
     '',
@@ -134,10 +100,10 @@ export function generateProductConsultantBlogPost(
     '',
     '| 확인 항목 | 현재 기준 | 문의 전 볼 점 |',
     '| --- | --- | --- |',
-    `| 가격 | ${priceText} | 출발일, 좌석, 유류할증료에 따라 달라질 수 있음 |`,
+    `| 가격 | ${priceText} | 출발일, 좌석, 유류할증료에 따라 변동 가능 |`,
     `| 출발 | ${departure} / ${airline} | 항공 시간과 수하물 조건 확인 |`,
-    `| 기간 | ${duration} | 이동 부담과 자유시간 비중 확인 |`,
-    `| 맞는 고객 | ${brief.fit_for[0] || '패키지 구성을 비교하는 고객'} | 동행자 연령과 이동 강도 확인 |`,
+    `| 기간 | ${duration} | 이동일과 실제 현지 체류 시간 구분 |`,
+    `| 맞는 고객 | ${fitFor} | 동행자 연령과 이동 강도 확인 |`,
     '',
     '## 포함/불포함',
     '',
@@ -153,22 +119,22 @@ export function generateProductConsultantBlogPost(
       : '- 일차별 상세 코스가 비어 있다면 항공 시간, 숙소 위치, 장거리 이동 구간부터 확인해야 합니다.',
     '',
     highlights.length > 0 ? '### 먼저 볼 포인트' : '',
-    highlights.length > 0 ? list(highlights, '상품 핵심 포인트는 문의 전 확인합니다.') : '',
+    highlights.length > 0 ? list(highlights, '상품 핵심 포인트는 상담 시점에 다시 확인합니다.') : '',
     '',
     '## 맞는 사람과 안 맞는 사람',
     '',
-    '### 맞는 분',
+    '### 맞는 사람',
     '',
     list(brief.fit_for, `${destination} 패키지를 가격, 일정, 포함 항목 기준으로 비교하려는 분`),
     '',
     '### 안 맞는 사람',
     '',
-    list(brief.not_fit_for, '자유일정 비중이 큰 개별여행을 원하는 분'),
+    list(brief.not_fit_for, '자유일정 비중이 높은 개별여행을 원하는 분'),
     '',
     '## 가격 변동 조건',
     '',
     list(brief.risk_notes, '가격과 조건은 예약 시점에 따라 달라질 수 있습니다.'),
-    optionalTours.length > 0 ? '\n### 선택관광 확인\n' + list(optionalTours, '선택관광은 문의 전 확인합니다.') : '',
+    optionalTours.length > 0 ? '\n### 선택관광 확인\n' + list(optionalTours, '선택관광은 문의 시점에 확인합니다.') : '',
     '',
     '## 문의 전 질문',
     '',
@@ -177,24 +143,24 @@ export function generateProductConsultantBlogPost(
     '## 자주 묻는 질문',
     '',
     `Q. ${destination} ${duration} 가격은 확정인가요?`,
-    'A. 표기된 금액은 시작가 기준입니다. 출발일, 좌석, 객실 조건, 유류할증료에 따라 달라질 수 있습니다.',
+    'A. 표시 금액은 시작가 기준입니다. 출발일, 좌석, 객실 조건, 유류할증료에 따라 달라질 수 있습니다.',
     '',
-    'Q. 포함/불포함은 어디를 봐야 하나요?',
-    'A. 위 표의 포함/불포함을 먼저 보고, 개인경비와 선택관광은 문의 전 다시 확인하는 편이 안전합니다.',
+    'Q. 포함/불포함은 어디를 보면 되나요?',
+    'A. 위 표의 포함/불포함을 먼저 보고, 개인경비와 선택관광은 문의 전에 다시 확인하는 편이 안전합니다.',
     '',
     'Q. 일정 강도는 어떻게 판단하나요?',
     'A. 이동 시간, 자유시간, 숙소 위치를 같이 보면 동행자에게 맞는지 판단하기 쉽습니다.',
     '',
-    '공식 출입국과 항공 조건은 아래 자료도 함께 확인하세요.',
+    '공식 출입국과 항공 조건은 아래 자료에서 함께 확인하세요.',
     '',
     '- [외교부 해외안전여행](https://www.0404.go.kr/)',
     '- [IATA Travel Centre](https://www.iatatravelcentre.com/)',
     '',
-    '### 내 일정 기준으로 확인',
+    '### 내 출발일 기준으로 확인',
     '',
     `- [상품 조건 먼저 보기](${packageUrl(product.id)})`,
     `- [출발일과 인원 기준 가능 여부 확인](${inquiryUrl(product.id)})`,
     '',
-    '<!-- writer: product_consultant_writer prompt_version: product-template-v2 -->',
+    '<!-- writer: product_consultant_writer prompt_version: product-template-v3 -->',
   ].join('\n').replace(/\n{4,}/g, '\n\n\n').trim();
 }

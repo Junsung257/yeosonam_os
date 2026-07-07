@@ -783,6 +783,8 @@ function isSameStoredBlogHtml(before: string, after: string): boolean {
         /\n###\s+\uBE44\uC6A9\s+\uAE30\uC900\s+\uB2E4\uC2DC\s+\uBCF4\uAE30[\s\S]*?(?=\n###\s+.+\uC5D0\uC11C\s+\uAC00\uC7A5\s+\uBA3C\uC800\s+\uD655\uC778\uD560\s+\uAC83\uC740\?)/g,
         '\n',
       )
+      .replace(/<p>먼저 3줄 요약을 보고, 표에서 비용과 이동 시간을 확인한 뒤, 마지막 체크리스트만 저장해도 됩니다\.<\/p>\s*/g, '')
+      .replace(/[가-힣A-Za-z·/\s]{2,40}\s+날씨,\s*공식\s*운영\s*공지,\s*항공\s*스케줄,\s*입장\s*규정처럼\s*당일\s*변동\s*가능성이\s*있는\s*항목은\s*출발\s*직전에\s*다시\s*확인하는\s*편이\s*좋습니다\.\s*/g, '')
       .replace(/\n{2,}(?=\|)/g, '\n')
       .replace(/(\|[^\n]*\|)\n{2,}(?=\|)/g, '$1\n')
       .replace(/\n{3,}/g, '\n\n')
@@ -2561,8 +2563,55 @@ function finalKeywordDensityRepair(markdown: string, primaryKeyword: string, blo
   const stable = splitStableTailSections(markdown);
   const target = stable?.body ?? markdown;
   const first = repairKeywordDensityToTarget(target, primaryKeyword, blogType);
-  const repaired = first.changed ? first.blogHtml : softenKeywordDensityCustomer(target, primaryKeyword, blogType);
+  const repaired = softenKeywordDensityCustomer(first.changed ? first.blogHtml : target, primaryKeyword, blogType);
   return stable ? `${repaired.trimEnd()}${stable.tail}` : repaired;
+}
+
+function repairAwkwardRepeatedKoreanFinal(markdown: string): string {
+  return markdown
+    .replace(/(^|[^가-힣])(여행)\s+\2(?=$|[^가-힣])/g, '$1$2')
+    .replace(/(^|[^가-힣])(준비)\s+\2(?=$|[^가-힣])/g, '$1$2')
+    .replace(/(^|[^가-힣])(가이드)\s+\2(?=$|[^가-힣])/g, '$1$2')
+    .replace(/(^|[^가-힣])(일정)\s+\2(?=$|[^가-힣])/g, '$1$2')
+    .replace(/(^|[^가-힣])(비용)\s+\2(?=$|[^가-힣])/g, '$1$2')
+    .replace(/(^|[^가-힣])(날씨)\s+\2(?=$|[^가-힣])/g, '$1$2')
+    .replace(/(^|[^가-힣])(현지)\s+\2(?=$|[^가-힣])/g, '$1$2')
+    .replace(/현지\s+지역/g, '이 지역')
+    .replace(/현지\s+월별\s+날씨/g, '월별 날씨')
+    .replace(/현지\s+날씨와\s+옷차림/g, '날씨와 옷차림')
+    .replace(/현지\s+정보/g, '여행 정보')
+    .replace(/현지\s+여행/g, '여행')
+    .replace(/현지은/g, '이 지역은')
+    .replace(/현지는/g, '이 지역은')
+    .replace(/준비은/g, '준비는')
+    .replace(/날씨은/g, '날씨는')
+    .replace(/비용은/g, '비용은')
+    .replace(/일정은/g, '일정은')
+    .replace(/(해외여행)\s+여행/g, '$1')
+    .replace(/(가족여행)\s+여행/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ');
+}
+
+function removeEmptyCostAnchorHeadingFinal(markdown: string): string {
+  return markdown
+    .replace(/\n#{2,4}\s*비용\s*기준\s*다시\s*보기\s*(?=\n#{2,4}\s+)/g, '')
+    .replace(/\n#{2,4}\s*비용\s*기준\s*다시\s*보기\s*(?=\n##\s*공식\s*확인\s*링크)/g, '');
+}
+
+function repairFinalDestinationPlaceholderSurface(markdown: string, row: BlogRow, primaryKeyword: string): string {
+  const destination = inferConcreteDestinationFinal(markdown, row, primaryKeyword);
+  if (!destination || INVALID_BACKFILL_DESTINATION_KEYWORDS.has(destination)) return markdown;
+  const topicParticle = hasKoreanBatchim(destination) ? '은' : '는';
+
+  return markdown
+    .replace(/현지\s+현지/g, destination)
+    .replace(/현지은/g, `${destination}${topicParticle}`)
+    .replace(/현지는/g, `${destination}${topicParticle}`)
+    .replace(/현지(?=\s*(?:월별\s*날씨|날씨와\s*옷차림|날씨|옷차림|우기|건기|일정|이동|비용|결제|준비|준비물|예약|체크|공항|시내|정보|여행|지역))/g, destination)
+    .replace(/여행지(?=\s*(?:월별\s*날씨|날씨와\s*옷차림|날씨|옷차림|우기|건기|일정|이동|비용|결제|준비|준비물|예약|체크|공항|시내|정보|여행|지역))/g, destination)
+    .replace(new RegExp(`${escapeRegExp(destination)}\\s+${escapeRegExp(destination)}(?=\\s|$)`, 'g'), destination)
+    .replace(new RegExp(`${escapeRegExp(destination)}\\s+월별\\s+날씨`, 'g'), `${destination} 월별 날씨`)
+    .replace(new RegExp(`${escapeRegExp(destination)}\\s+날씨와\\s+옷차림`, 'g'), `${destination} 날씨와 옷차림`);
 }
 
 function ensurePrimaryKeywordEvidence(markdown: string, primaryKeyword: string): string {
@@ -2879,7 +2928,11 @@ function dedupeRepeatedMarkdownHeadingsFinal(markdown: string): string {
     .filter((line) => {
       const match = line.trim().match(/^(#{2,4})\s+(.{2,90})$/);
       if (!match) return true;
-      const normalized = match[2].replace(/\s+/g, ' ').trim();
+      const normalized = match[2]
+        .replace(/^Q\d+[.)]\s*/i, '')
+        .replace(/^(?:Q|질문)\s*[:：]\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
       if (!normalized) return true;
       if (seen.has(normalized)) return false;
       seen.add(normalized);
@@ -4097,7 +4150,7 @@ function ensureContextualImageTextFinal(markdown: string, primaryKeyword: string
   const suffix = tokens.length > 0 ? ` ${tokens.join(' ')}` : '';
   let imageNo = 0;
   return markdown
-    .replace(/!\[([^\]\n]*)]\((https?:\/\/[^\n)]+)\)/g, (_match, alt: string, src: string) => {
+    .replace(/!\[([\s\S]*?)]\(([^)\n]+)\)/g, (_match, alt: string, src: string) => {
       imageNo += 1;
       const cleanAlt = String(alt || '').trim();
       const hasToken = tokens.length === 0 || tokens.some((token) => cleanAlt.toLowerCase().includes(token));
@@ -4129,14 +4182,15 @@ function ensureDestinationImageAltsFinal(markdown: string, destination?: string 
   const keyword = destinationImageKeyword(destination);
   if (!keyword) return markdown;
   let imageNo = 0;
-  return markdown.replace(/!\[([^\]\n]*)]\((https?:\/\/[^\n)]+)\)/g, (_match, alt: string, src: string) => {
+  return markdown.replace(/!\[([\s\S]*?)]\(([^)\n]+)\)/g, (_match, alt: string, src: string) => {
     imageNo += 1;
     const cleanAlt = String(alt || '').trim();
+    const travelSuffix = /여행$/.test(keyword) ? '' : ' 여행';
     const naturalAlt = imageNo === 1
-      ? `${keyword} 여행 예산 체크 장면`
+      ? `${keyword}${travelSuffix} 예산 체크 장면`
       : imageNo === 2
-        ? `${keyword} 일정 준비 장면`
-        : `${keyword} 현지 비용 확인 장면`;
+        ? '여행 일정 준비 장면'
+        : '현지 비용 확인 장면';
     if (cleanAlt.includes(keyword)) {
       if (/여행 예산 체크 장면|일정 준비 장면|현지 비용 확인 장면/.test(cleanAlt)) {
         return `![${naturalAlt}](${src})`;
@@ -4365,10 +4419,11 @@ function ensureWeatherAnswerFirstBeforeQa(markdown: string, row: BlogRow, primar
   const firstBody = firstBodyIndex >= 0 ? lines[firstBodyIndex]?.trim() ?? '' : '';
   const hasWeatherAnswer = /낮|밤|기온|비\s*예보|강수|우산|우비|옷차림|겉옷|방수|자외선|일교차/i.test(firstBody);
   const hasReservationFrame = /비용|가격|예약|상품가|포함\/불포함|현지\s*추가비|이동\s*시간/i.test(firstBody.slice(0, 160));
-  if (hasWeatherAnswer && !hasReservationFrame) return markdown;
+  const hasHookTrigger = /\d/.test(firstBody.slice(0, 220)) && /[?？]|비교|1~2시간|바로|출발\s*7일|체크/i.test(firstBody.slice(0, 220));
+  if (hasWeatherAnswer && !hasReservationFrame && hasHookTrigger) return markdown;
 
   const destinationLabel = cleanTravelKeyword(row.destination) || customerAnswerKeyword(row, primaryKeyword);
-  const answer = `${destinationLabel} 날씨는 낮과 밤 기온, 비 예보, 옷차림을 먼저 확인해야 합니다. 출발 전에는 일교차, 강수 가능성, 실내 냉방까지 함께 보고 겹쳐 입을 옷과 방수용품을 준비하면 현지에서 짐과 동선 실수를 줄일 수 있습니다.`;
+  const answer = `${destinationLabel} 날씨, 출발 7일 전 무엇을 다시 봐야 할까요? 낮과 밤 기온, 비 예보, 필요한 옷차림을 먼저 비교하면 현지에서 짐과 동선 실수를 줄일 수 있습니다. 겉옷, 방수용품, 자외선 차단은 출발 전날 한 번 더 확인하세요.`;
   if (firstBodyIndex >= 0) {
     lines[firstBodyIndex] = answer;
   } else {
@@ -4531,7 +4586,7 @@ function softenKeywordDensityCustomer(markdown: string, primaryKeyword?: string 
   const targetDensity = blogType === 'info' ? 1.55 : 2.2;
   const allowedCount = Math.max(4, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
   if (currentCount <= allowedCount) return markdown;
-  const replacement = keyword.includes(' ') ? keyword.split(/\s+/).slice(-1)[0] || '여행지' : '현지';
+  const replacement = keyword.includes(' ') ? keyword.split(/\s+/).slice(-1)[0] || '이 지역' : '이 지역';
   let seen = 0;
   return markdown.replace(new RegExp(escapeRegExp(keyword), 'g'), () => {
     seen += 1;
@@ -5027,6 +5082,28 @@ async function main() {
       destination: normalizedDestinationForWrite || destination,
       seo_title: normalizedTitle,
     }, primaryKeyword, blogType));
+    nextHtml = repairFinalDestinationPlaceholderSurface(
+      ensureDestinationImageAltsFinal(nextHtml, normalizedDestinationForWrite || destination || primaryKeyword),
+      {
+        ...row,
+        slug,
+        destination: normalizedDestinationForWrite || destination,
+        seo_title: normalizedTitle,
+      },
+      primaryKeyword,
+    );
+    nextHtml = ensureDestinationImageAltsFinal(nextHtml, normalizedDestinationForWrite || destination || primaryKeyword);
+    nextHtml = finalKeywordDensityRepair(repairAwkwardRepeatedKoreanFinal(nextHtml), primaryKeyword, blogType);
+    nextHtml = repairFinalDestinationPlaceholderSurface(nextHtml, {
+      ...row,
+      slug,
+      destination: normalizedDestinationForWrite || destination,
+      seo_title: normalizedTitle,
+    }, primaryKeyword);
+    nextHtml = dedupeRepeatedMarkdownHeadingsFinal(repairAwkwardRepeatedKoreanFinal(finalKeywordDensityRepair(nextHtml, primaryKeyword, blogType)));
+    nextHtml = removeEmptyCostAnchorHeadingFinal(
+      repairAwkwardRepeatedKoreanFinal(ensureDestinationImageAltsFinal(nextHtml, normalizedDestinationForWrite || destination || primaryKeyword)),
+    );
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
