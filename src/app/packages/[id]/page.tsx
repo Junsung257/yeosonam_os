@@ -852,6 +852,7 @@ export default async function PackageDetailPage({
     airline: normalizedPkg.airline,
     product_highlights: normalizedPkg.product_highlights,
     inclusions: normalizedPkg.inclusions,
+    optional_tours: normalizedPkg.optional_tours,
   }) : null;
 
   return (

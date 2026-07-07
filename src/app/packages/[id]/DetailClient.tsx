@@ -690,6 +690,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     airline: pkg.airline,
     product_highlights: pkg.product_highlights ?? null,
     inclusions: pkg.inclusions ?? null,
+    optional_tours: pkg.optional_tours ?? null,
   }) : null;
   const proactiveChatDoneRef = useRef(false);
   useEffect(() => {
@@ -894,6 +895,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     airline: airlineName,
     product_highlights: pkg.product_highlights ?? null,
     inclusions: pkg.inclusions ?? null,
+    optional_tours: pkg.optional_tours ?? null,
   });
   const todayForDeparture = new Date().toISOString().slice(0, 10);
   const nextAvailableDepartureLabel = formatCompactDepartureDate(
@@ -1545,7 +1547,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 스티키 탭 ═══ */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
         <div className="flex gap-0 px-3">
-          {NAV_SECTIONS.map(section => (
+          {NAV_SECTIONS.filter(section => section !== '선택관광' || (view?.optionalTours.count ?? 0) > 0).map(section => (
             <button key={section} onClick={() => scrollToSection(section)}
               className={`flex-1 py-3 text-[11px] font-bold text-center transition-colors border-b-2 ${
                 activeSection === section ? 'text-slate-950 border-slate-950' : 'text-gray-500 border-transparent'
@@ -1672,7 +1674,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] font-extrabold uppercase tracking-wide text-brand">Decision guide</p>
+              <p className="text-[11px] font-extrabold tracking-wide text-brand">상품 선택 가이드</p>
               <h2 className="mt-1 text-lg font-extrabold text-slate-950">이 상품, 이런 분께 잘 맞아요</h2>
             </div>
             <button
@@ -2357,7 +2359,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               {pkg.product_type && /노쇼핑|no.?shopping/i.test(pkg.product_type) && <span>✅ 쇼핑 없음</span>}
               <span className="truncate">
                 ✅ {specialTermsProduct
-                  ? '예약 즉시 항공·숙박 확보'
+                  ? '상담 후 항공·숙박 확인'
                   : (nextConfirmedDate ? `${nextConfirmedDate} 출발 확정` : '출발 확정 후 안심 예약')}
               </span>
             </div>
