@@ -6,6 +6,7 @@ import { countPublishableQueueCandidates } from '@/lib/blog-scheduler';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateCurrentDayPublisherHealth } from '@/lib/blog-current-day-publisher-health';
 import { classifyDestinationlessInfoCandidate } from '@/lib/blog-destinationless-info';
+import { evaluateBlogEngineV2 } from '@/lib/blog-engine-v2';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -317,6 +318,63 @@ export function summarizePublishedBlogQuality(rows: PostRow[], limit = 30) {
   };
 }
 
+function summarizeEngineCategoryScorecard(rows: PostRow[], limit = 30) {
+  const checkedRows = rows.slice(0, Math.max(1, limit));
+  const failedCategoryBuckets: Record<string, number> = {};
+  const samples: Array<{
+    id: string;
+    slug: string | null;
+    title: string | null;
+    writer: string;
+    score: number;
+    failed_categories: string[];
+  }> = [];
+  let perfectCount = 0;
+  let scoreTotal = 0;
+
+  for (const row of checkedRows) {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: row.blog_html ?? '',
+      primaryKeyword: row.primary_keyword ?? row.destination ?? row.seo_title ?? row.slug,
+      destination: row.destination,
+      contentType: row.content_type ?? (row.product_id ? 'package_intro' : 'guide'),
+      productId: row.product_id ?? null,
+      generationMeta: row.generation_meta ?? null,
+    });
+    scoreTotal += evaluation.score;
+    const failedCategories = evaluation.category_scores
+      .filter((category) => !category.passed || category.score < 100)
+      .map((category) => category.id);
+
+    if (evaluation.passed && failedCategories.length === 0 && evaluation.score === 100) {
+      perfectCount += 1;
+      continue;
+    }
+
+    for (const category of failedCategories) {
+      failedCategoryBuckets[category] = (failedCategoryBuckets[category] ?? 0) + 1;
+    }
+    samples.push({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      writer: evaluation.brief.writer_type,
+      score: evaluation.score,
+      failed_categories: failedCategories,
+    });
+  }
+
+  const checkedCount = checkedRows.length;
+  return {
+    checked_count: checkedCount,
+    perfect_count: perfectCount,
+    below_100_count: checkedCount - perfectCount,
+    average_score: checkedCount > 0 ? Math.round(scoreTotal / checkedCount) : 0,
+    failed_category_buckets: failedCategoryBuckets,
+    samples: samples.slice(0, 8),
+  };
+}
+
 function sumBuckets(buckets: Record<string, number>, matcher: (bucket: string) => boolean): number {
   return Object.entries(buckets).reduce((sum, [bucket, count]) => sum + (matcher(bucket) ? count : 0), 0);
 }
@@ -457,6 +515,7 @@ export async function buildBlogOpsSummary(supabase: any) {
   const policy = policyRows[0] || {};
   const dailyTarget = Math.max(1, Math.round(asNumber(policy.posts_per_day) || 3));
   const qualitySummary = summarizePublishedBlogQuality(publishedRows, 30);
+  const engineCategoryScorecard = summarizeEngineCategoryScorecard(publishedRows, 30);
   const lowQualityRecent = qualitySummary.non_slug_failure_count;
 
   const indexingCounts = countBy(indexingJobs, (row) => row.status);
@@ -797,6 +856,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       recent_checked: Math.min(30, publishedRows.length),
       low_quality_recent: lowQualityRecent,
       summary: qualitySummary,
+      engine_category_scorecard: engineCategoryScorecard,
       failure_buckets: qualitySummary.buckets,
       non_slug_failures: qualitySummary.non_slug_failure_count,
       slug_only_failures: qualitySummary.slug_only_failure_count,

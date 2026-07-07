@@ -76,6 +76,13 @@ interface BlogOpsSummary {
     non_slug_failures?: number;
     slug_only_failures?: number;
     failure_buckets?: Record<string, number>;
+    engine_category_scorecard?: {
+      checked_count?: number;
+      perfect_count?: number;
+      below_100_count?: number;
+      average_score?: number;
+      failed_category_buckets?: Record<string, number>;
+    };
   };
   health_sections?: Record<string, {
     level: OpsLevel;
@@ -142,6 +149,12 @@ const OPS_BUCKET_LABELS: Record<string, string> = {
   provider_failures: '검색 제출 실패',
   quality_gate_missing: '품질 게이트 누락',
   readability_score_missing: '읽기 점수 누락',
+  reader_task_completion: '고객 질문 해결',
+  customer_language: '고객 언어',
+  naturalness: 'AI 티 억제',
+  evidence_faithfulness: '근거 충실도',
+  sales_pressure_control: '판매 압박 제어',
+  product_decision_helpfulness: '상품 판단 도움',
   seo_score_missing: 'SEO 점수 누락',
   slug_failures: 'slug 실패',
   slug_only_failures: 'slug-only 정리',
@@ -492,7 +505,7 @@ export default function BlogSystemPage() {
 
           <div className="admin-card p-4">
             <h2 className="text-admin-sm font-semibold text-admin-text">최근 글 품질</h2>
-            <p className="mt-1 text-admin-xs text-admin-muted">본문 품질 실패와 URL 정리 대상을 분리합니다.</p>
+            <p className="mt-1 text-admin-xs text-admin-muted">본문 품질, URL 정리, 카테고리별 100점 점수표를 분리합니다.</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="rounded-admin-sm bg-admin-surface-2 p-3">
                 <p className="text-admin-2xs text-admin-muted">비slug 실패</p>
@@ -507,10 +520,36 @@ export default function BlogSystemPage() {
                 </p>
               </div>
             </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="rounded-admin-sm bg-admin-surface-2 p-3">
+                <p className="text-admin-2xs text-admin-muted">카테고리 평균</p>
+                <p className={`mt-1 text-admin-h3 font-bold admin-num ${(ops.quality?.engine_category_scorecard?.average_score || 0) >= 90 ? 'text-success' : 'text-warning'}`}>
+                  {ops.quality?.engine_category_scorecard?.average_score ?? '-'}
+                </p>
+              </div>
+              <div className="rounded-admin-sm bg-admin-surface-2 p-3">
+                <p className="text-admin-2xs text-admin-muted">100점 글</p>
+                <p className="mt-1 text-admin-h3 font-bold admin-num text-success">
+                  {ops.quality?.engine_category_scorecard?.perfect_count ?? 0}
+                </p>
+              </div>
+              <div className="rounded-admin-sm bg-admin-surface-2 p-3">
+                <p className="text-admin-2xs text-admin-muted">보강 대상</p>
+                <p className={`mt-1 text-admin-h3 font-bold admin-num ${(ops.quality?.engine_category_scorecard?.below_100_count || 0) > 0 ? 'text-warning' : 'text-success'}`}>
+                  {ops.quality?.engine_category_scorecard?.below_100_count ?? 0}
+                </p>
+              </div>
+            </div>
             <div className="mt-3 space-y-2">
               {topBuckets(ops.quality?.failure_buckets, 3).map(([bucket, count]) => (
                 <div key={bucket} className="flex items-center justify-between gap-3 text-admin-xs">
                   <span className="text-admin-muted">{labelBucket(bucket)}</span>
+                  <span className="font-semibold admin-num text-admin-text">{count}</span>
+                </div>
+              ))}
+              {topBuckets(ops.quality?.engine_category_scorecard?.failed_category_buckets, 3).map(([bucket, count]) => (
+                <div key={`engine-${bucket}`} className="flex items-center justify-between gap-3 text-admin-xs">
+                  <span className="text-admin-muted">카테고리: {labelBucket(bucket)}</span>
                   <span className="font-semibold admin-num text-admin-text">{count}</span>
                 </div>
               ))}
