@@ -2,6 +2,30 @@ import { describe, expect, it } from 'vitest';
 import { classifyBlogIntent, inspectBlogIntentQuality } from './blog-content-intent';
 
 describe('blog content intent quality', () => {
+  it('accepts Korean budget ranges in customer-facing cost posts', () => {
+    const report = inspectBlogIntentQuality({
+      title: '석가장 여행 비용 가이드',
+      primaryKeyword: '석가장 여행 비용',
+      category: 'cost',
+      contentType: 'guide',
+      blogHtml: [
+        '# 석가장 여행 비용 가이드',
+        '',
+        '석가장 비용은 상품가와 현지 개인경비를 나눠 봐야 합니다. 식사와 간식은 1인 하루 3만~7만원, 현지 교통은 1만~3만원 정도를 별도 예산으로 잡으면 총액 오차를 줄일 수 있습니다.',
+        '',
+        '## 현실 예산 범위',
+        '- 식사와 간식은 1인 하루 3만~7만원 정도를 봅니다.',
+        '- 현지 교통과 소액 결제는 1인 하루 1만~3만원 정도를 준비합니다.',
+        '- 선택 관광은 1인 5만~15만원 이상 추가될 수 있어 상품가와 분리합니다.',
+        '- 환율과 성수기 조건은 결제 전 다시 확인합니다.',
+        '- 포함/불포함과 취소 규정을 같이 확인합니다.',
+      ].join('\n'),
+    });
+
+    expect(report.intent.infoSubtype).toBe('cost');
+    expect(report.issues.some((issue) => issue.message.includes('Cost/currency posts need concrete amounts'))).toBe(false);
+  });
+
   it('does not apply product ranking contracts to information-only posts', () => {
     const intent = classifyBlogIntent({
       title: '나가사키 현지 맛집 BEST와 호텔 근처 음식 가이드',
