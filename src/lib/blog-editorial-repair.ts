@@ -475,7 +475,7 @@ const UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
 const YEOSONAM_EDITOR_VOICE_RE = /여소남\s*에디터(?:가|는|의)?/i;
 
 const READABLE_UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE =
-  /\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?(?:\uB370\uC774\uD130|\uC608\uC57D\s*\uB370\uC774\uD130|\uC0C1\uB2F4\s*\uB370\uC774\uD130)(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/i;
+  /\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?(?:\uB370\uC774\uD130|\uC0C1\uD488\s*(?:\uBC0F|\/|\u00B7|,)?\s*\uC608\uC57D\s*\uB370\uC774\uD130|\uC0C1\uD488\/\uC608\uC57D\s*\uB370\uC774\uD130|\uC608\uC57D\s*\uB370\uC774\uD130|\uC0C1\uB2F4\s*\uB370\uC774\uD130)(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/i;
 
 function removeAiEditorialCliches(markdown: string): { text: string; changed: boolean } {
   let text = markdown;
@@ -511,6 +511,8 @@ function softenUnsupportedYeosonamDataClaims(markdown: string): { text: string; 
   const before = text;
   const replacements: Array<[RegExp, string]> = [
     [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uCD9C\uBC1C \uC804 \uD655\uC778 \uAE30\uC900'],
+    [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?\uC0C1\uD488\s*(?:\uBC0F|\/|\u00B7|,)?\s*\uC608\uC57D\s*\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uD604\uC7AC \uD655\uC778 \uAC00\uB2A5\uD55C \uC0C1\uD488 \uC870\uAC74'],
+    [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uB0B4\uBD80\s*)?\uC0C1\uD488\/\uC608\uC57D\s*\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uD604\uC7AC \uD655\uC778 \uAC00\uB2A5\uD55C \uC0C1\uD488 \uC870\uAC74'],
     [/\uC5EC\uC18C\uB0A8(?:\uC758)?\s*(?:\uC608\uC57D|\uC0C1\uB2F4)\s*\uB370\uC774\uD130(?:\uB85C\s*\uBCF4\uBA74|\uB85C\s*\uBCF8|\uB97C\s*\uBCF4\uBA74|\uB97C\s*\uAE30\uC900\uC73C\uB85C|\uC5D0\s*\uB530\uB974\uBA74|\uC0C1\uC73C\uB85C\uB294)?/gi, '\uCD9C\uBC1C \uC804 \uD655\uC778 \uAE30\uC900'],
     [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*본/g, '출발 전 확인 기준으로 본'],
     [/여소남(?:의)?\s*(?:내부\s*)?데이터로\s*보면/g, '출발 전 확인 기준으로 보면'],
@@ -660,6 +662,16 @@ function ensureInfoAnswerFirst(markdown: string, input: BlogEditorialRepairInput
   const intro = buildAnswerFirstIntro(input);
   if (markdown.includes(intro)) return { text: markdown, changed: false };
   const text = insertIntroAfterTitle(markdown, intro);
+  return { text, changed: text !== markdown };
+}
+
+function repairGenericInfoAnswerOpening(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const genericOpening =
+    /답부터\s*말하면[,，]?\s*20\d{2}년\s*\d{1,2}월\s*기준[\s\S]{0,260}?(?:현지\s*확인\s*사항|준비\s*조건)[^.?!\n]*[.?!]\s*(?:포함\/불포함|포함과\s*불포함)[\s\S]{0,220}?(?:줄일\s*수\s*있습니다|줄일\s*수\s*있어요|도움이\s*됩니다)[.?!]/;
+  if (!genericOpening.test(markdown)) return { text: markdown, changed: false };
+
+  const intro = buildAnswerFirstIntro(input);
+  const text = markdown.replace(genericOpening, intro);
   return { text, changed: text !== markdown };
 }
 
@@ -987,6 +999,24 @@ function removeLegacySurfaceArtifacts(markdown: string): { text: string; changed
     .replace(/\n?---\s*\*\*함께\s*보면\s*좋은\s*글\*\*[\s\S]*?(?=\n(?:<aside\b|#{2,4}\s|$))/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  return { text, changed: text !== before };
+}
+
+function repairCustomerVisiblePlaceholderCopy(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .replace(
+      /-\s*상세\s*일차별\s*일정은\s*상담에서\s*확정본\s*기준으로\s*확인해야\s*합니다\./g,
+      '- 일차별 상세 코스가 비어 있다면 항공 도착/귀국 시간, 장거리 이동일, 자유시간 비중을 먼저 확인해야 합니다.',
+    )
+    .replace(
+      /상세\s*일차별\s*일정은\s*상담에서\s*확정본\s*기준으로\s*확인해야\s*합니다\./g,
+      '일차별 상세 코스가 비어 있다면 항공 도착/귀국 시간, 장거리 이동일, 자유시간 비중을 먼저 확인해야 합니다.',
+    )
+    .replace(/(\d[\d,]*원부터)부터/g, '$1')
+    .replace(/여행지\s*여행은/g, '해당 여행은')
+    .replace(/솔리아_스팟가격/g, '상품 가격');
 
   return { text, changed: text !== before };
 }
@@ -2165,6 +2195,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('removed_legacy_surface_artifacts');
   }
 
+  const customerPlaceholderRepair = repairCustomerVisiblePlaceholderCopy(blogHtml);
+  if (customerPlaceholderRepair.changed) {
+    blogHtml = customerPlaceholderRepair.text;
+    changes.push('repaired_customer_visible_placeholder_copy');
+  }
+
   const toneRepair = softenPromotionalInfoTone(blogHtml);
   if (toneRepair.changed) {
     blogHtml = toneRepair.text;
@@ -2650,6 +2686,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     changes.push('removed_legacy_surface_artifacts');
   }
 
+  const customerPlaceholderRepair = repairCustomerVisiblePlaceholderCopy(blogHtml);
+  if (customerPlaceholderRepair.changed) {
+    blogHtml = customerPlaceholderRepair.text;
+    changes.push('repaired_customer_visible_placeholder_copy');
+  }
+
   const yeosonamDataRepair = softenUnsupportedYeosonamDataClaims(blogHtml);
   if (yeosonamDataRepair.changed) {
     blogHtml = yeosonamDataRepair.text;
@@ -2667,6 +2709,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (answerFirstRepair.changed) {
       blogHtml = answerFirstRepair.text;
       changes.push('added_answer_first_intro');
+    }
+
+    const genericAnswerRepair = repairGenericInfoAnswerOpening(blogHtml, { ...input, blogHtml });
+    if (genericAnswerRepair.changed) {
+      blogHtml = genericAnswerRepair.text;
+      changes.push('repaired_generic_answer_opening');
     }
 
     const ctaRepair = moveEarlyStrongInfoCtaToBottom(blogHtml);
