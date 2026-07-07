@@ -49,6 +49,44 @@ function inquiryUrl(productId: string): string {
   return `${baseUrl}/group-inquiry?utm_source=naver_blog&utm_medium=organic&utm_campaign=product_consultant&utm_content=${encodeURIComponent(productId)}`;
 }
 
+function variantIndex(seed: string, size: number): number {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  return size > 0 ? hash % size : 0;
+}
+
+function hasFinalConsonant(value: string): boolean | null {
+  const last = value.trim().replace(/[^\uAC00-\uD7A3]/g, '').slice(-1);
+  if (!last) return null;
+  const code = last.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return null;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function particle(value: string, withBatchim: string, withoutBatchim: string): string {
+  const hasBatchim = hasFinalConsonant(value);
+  return hasBatchim === false ? withoutBatchim : withBatchim;
+}
+
+function buildOpeningParagraph(input: {
+  productId: string;
+  destination: string;
+  duration: string;
+  departure: string;
+  priceText: string;
+  fitFor: string;
+}): string {
+  const fitForConditional = `${input.fitFor}${particle(input.fitFor, '이라면', '라면')}`;
+  const variants = [
+    `${input.departure} 출발 ${input.destination} ${input.duration} 패키지를 보고 있다면, 먼저 ${input.priceText} 기준에 무엇이 포함되고 빠지는지 확인해야 합니다. ${fitForConditional} 항공 시간, 객실 조건, 선택관광을 문의 전에 함께 보는 편이 안전합니다.`,
+    `${input.priceText}부터 보이는 ${input.destination} ${input.duration} 상품은 출발지와 일정 강도에 따라 체감 가치가 달라집니다. ${input.departure} 출발 기준으로 포함/불포함, 이동량, 추가 비용을 먼저 나누면 상담 전에 판단이 쉬워집니다.`,
+    `${input.destination} ${input.duration}은 가격보다 확인 순서가 중요합니다. ${input.departure} 출발, ${input.priceText} 기준으로 볼 때 이 상품은 ${input.fitFor}에게 맞는지부터 살펴보는 편이 좋습니다.`,
+  ];
+  return variants[variantIndex(input.productId, variants.length)];
+}
+
 export function generateProductConsultantBlogPost(
   product: ProductForConsultant,
   brief: ProductBlogBrief,
@@ -72,11 +110,20 @@ export function generateProductConsultantBlogPost(
       .slice(0, 5)
     : [];
   const priceText = price ? `${price}부터` : '가격 상담 확인';
+  const firstFit = brief.fit_for[0] || `${destination} 패키지를 가격, 일정, 포함사항 기준으로 비교하려는 고객`;
+  const opening = buildOpeningParagraph({
+    productId: product.id,
+    destination,
+    duration,
+    departure,
+    priceText,
+    fitFor: firstFit,
+  });
 
   return [
     `# ${destination} ${duration} 패키지: ${priceText}, 이런 분께 맞습니다`,
     '',
-    `${destination} ${duration} 패키지는 가격, 포함사항, 일정 강도를 함께 봐야 판단이 쉬운 여행상품입니다. ${departure} 출발 기준으로 ${price ? `현재 확인 가능한 시작가는 ${priceText}이고, ` : ''}항공 시간, 호텔 등급, 선택관광은 문의 전에 다시 확인해야 합니다.`,
+    opening,
     '',
     '## 10초 판단',
     '',
@@ -124,7 +171,7 @@ export function generateProductConsultantBlogPost(
     '',
     list(brief.consult_questions, '출발일과 인원 기준으로 가능한지 확인합니다.'),
     '',
-    '## 자주 묻는 질문?',
+    '## 자주 묻는 질문',
     '',
     `Q. ${destination} ${duration} 가격은 확정인가요?`,
     `A. 시작가 기준이며 출발일, 좌석, 유류할증료, 객실 조건에 따라 달라질 수 있습니다.`,
@@ -142,7 +189,7 @@ export function generateProductConsultantBlogPost(
     '',
     '### 내 일정 기준으로 확인하기',
     '',
-    `- [상품 상세 먼저 보기](${packageUrl(product.id)})`,
+    `- [상품 조건 먼저 보기](${packageUrl(product.id)})`,
     `- [출발일과 인원 기준 가능 여부 확인](${inquiryUrl(product.id)})`,
     '',
     '<!-- writer: product_consultant_writer prompt_version: product-template-v2 -->',

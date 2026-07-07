@@ -197,6 +197,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 - The workflow requires a GitHub Actions repository secret named `CRON_SECRET`, with the same value as the production Vercel `CRON_SECRET`.
 - Scheduled workflow calls include `force=true`, because blog publishing, scheduling, and daily reporting are critical cron jobs and must not be silently skipped by `DB_RESOURCE_SAVER_MODE`.
 - The workflow treats `blog-publisher` as failed when `remainingBeforeRun > 0` and `published=0`. HTTP 200 is not enough; the run must either publish or surface a concrete failure bucket.
+- The workflow now retries `blog-publisher` up to two additional times when `dailyQuota.remainingAfterRun > 0`, calling `blog-scheduler?force=true` before each retry. After those retries, any remaining daily quota is a failed run, not a healthy partial success.
 - The workflow treats `blog-indexing-worker` as failed when the response reports `failed > 0` or non-empty `errors`. `processed=0` is allowed because no due jobs is a healthy no-op.
 - This bypasses the Vercel Cron delivery problem, but it still depends on the Vercel-hosted app route being reachable through `www.yeosonam.com`.
 - If Vercel hosting/functions are fully down, move the publisher worker itself to an external runtime such as a small VPS, Cloudflare Worker plus queue, or Supabase Edge Function; do not rely on HTTP calls into the Vercel app in that failure mode.

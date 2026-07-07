@@ -89,7 +89,9 @@ jobs:
             exit 1
           fi
 
-          http_code="$(
+          trigger_url() {
+            local url="$1"
+            local output="$2"
             curl \
               --silent \
               --show-error \
@@ -97,11 +99,13 @@ jobs:
               --retry 3 \
               --retry-delay 10 \
               --max-time 540 \
-              --output response.json \
+              --output "${output}" \
               --write-out "%{http_code}" \
               --header "Authorization: Bearer ${CRON_SECRET}" \
-              "${{ steps.select.outputs.url }}"
-          )"
+              "${url}"
+          }
+
+          http_code="$(trigger_url "${{ steps.select.outputs.url }}" response.json)"
 
           echo "Endpoint: ${{ steps.select.outputs.endpoint }}"
           echo "HTTP status: ${http_code}"
@@ -109,6 +113,38 @@ jobs:
 
           if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
             exit 1
+          fi
+
+          endpoint="${{ steps.select.outputs.endpoint }}"
+          if [ "$endpoint" = "blog-publisher" ]; then
+            attempt=1
+            while [ "$attempt" -lt 3 ]; do
+              remaining_after="$(
+                node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('response.json','utf8')); console.log(Number(data?.dailyQuota?.remainingAfterRun ?? 0));"
+              )"
+              if [ "${remaining_after}" -le 0 ]; then
+                break
+              fi
+
+              echo "Publisher still has ${remaining_after} post(s) remaining after attempt ${attempt}; refilling queue and retrying."
+
+              scheduler_code="$(trigger_url "${BASE_URL}/api/cron/blog-scheduler?force=true" "scheduler-response-${attempt}.json")"
+              echo "Scheduler HTTP status: ${scheduler_code}"
+              cat "scheduler-response-${attempt}.json"
+              if [ "$scheduler_code" -lt 200 ] || [ "$scheduler_code" -ge 300 ]; then
+                exit 1
+              fi
+
+              sleep 5
+              attempt=$((attempt + 1))
+              http_code="$(trigger_url "${{ steps.select.outputs.url }}" response.json)"
+              echo "Publisher retry attempt: ${attempt}"
+              echo "HTTP status: ${http_code}"
+              cat response.json
+              if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+                exit 1
+              fi
+            done
           fi
 
           node <<'NODE'
@@ -126,9 +162,15 @@ jobs:
           }
           if (endpoint === 'blog-publisher') {
             const remainingBeforeRun = Number(data?.dailyQuota?.remainingBeforeRun ?? data?.dailyQuota?.remaining ?? 0);
+            const remainingAfterRun = Number(data?.dailyQuota?.remainingAfterRun ?? 0);
             const published = Number(data?.published ?? 0);
             if (remainingBeforeRun > 0 && published === 0) {
               console.error(`Publisher produced zero posts with remaining quota (${remainingBeforeRun}).`);
+              console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
+              process.exit(1);
+            }
+            if (remainingAfterRun > 0) {
+              console.error(`Publisher underfilled the daily quota after retries. remainingAfterRun=${remainingAfterRun}`);
               console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
               process.exit(1);
             }

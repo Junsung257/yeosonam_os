@@ -9,6 +9,7 @@ export type BlogEngineFailureBucket =
   | 'candidate_shortage'
   | 'evidence_insufficient'
   | 'engine_task_incomplete'
+  | 'customer_language'
   | 'ai_naturalness'
   | 'sales_pressure'
   | 'product_decision_helpfulness'
@@ -50,6 +51,7 @@ export interface BlogEngineEvaluation {
   failure_bucket: BlogEngineFailureBucket;
   metrics: {
     task_completion: number;
+    customer_language: number;
     naturalness: number;
     faithfulness: number;
     source_support: number;
@@ -271,8 +273,46 @@ function scoreNaturalness(markdown: string): number {
     '최고의 선택',
   ];
   score -= banned.filter((word) => plain.includes(word)).length * 18;
+  score -= (plain.match(/가격만\s+보지\s+말고\s+출발지,\s*포함사항,\s*일정\s*강도를\s+(?:같이|함께)\s+봐야\s+판단이\s+쉽습니다/g) ?? []).length * 14;
+  score -= (plain.match(/답부터\s+말하면,\s*20\d{2}년\s+\d{1,2}월\s+기준/g) ?? []).length * 8;
   score -= (markdown.match(/==[^=\n]{3,120}==|<mark\b/gi) ?? []).length * 25;
   score -= (plain.match(/안녕하세요|오늘은|이번 글에서는/g) ?? []).length * 8;
+  return Math.max(0, score);
+}
+
+function hasFinalConsonant(char: string): boolean | null {
+  const code = char.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return null;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function particleMisuseCount(plain: string): number {
+  const matches = [...plain.matchAll(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/g)];
+  let count = 0;
+  for (const match of matches) {
+    const word = match[1] ?? '';
+    const particle = match[2] ?? '';
+    const last = word[word.length - 1] ?? '';
+    const hasBatchim = hasFinalConsonant(last);
+    if (hasBatchim === false && (particle === '은' || particle === '을')) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function scoreCustomerLanguage(markdown: string, writer: BlogWriterType): number {
+  const plain = stripMarkup(markdown).replace(/https?:\/\/\S+/gi, ' ').replace(/\s+/g, ' ').trim();
+  let score = 100;
+  score -= Math.min(45, particleMisuseCount(plain) * 15);
+  if (/(대학생|가족|부모님|아이|고객|여행자)에서\s+먼저\s+볼\s+것은/.test(plain)) score -= 25;
+  if (/먼저\s+볼\s+것은\s+비용[·,\s]+일정[·,\s]+현지\s+준비\s+조건/.test(plain)) score -= 12;
+  if (/현지에서\s+1\s*[~–-]\s*2시간을\s+아끼고\s+예산\s+오차를\s+줄일\s+수\s+있습니다/.test(plain)) score -= 10;
+  if (writer === 'product_consultant_writer') {
+    const repeatedIntro = (plain.match(/패키지는\s+가격만\s+보지\s+말고\s+출발지,\s*포함사항,\s*일정\s*강도를\s+(?:같이|함께)\s+봐야\s+판단이\s+쉽습니다/g) ?? []).length;
+    score -= repeatedIntro * 18;
+    if (/☑|★|\[[A-Z0-9]{1,5}\]|[a-f0-9]{8,}/i.test(plain.slice(0, 500))) score -= 18;
+  }
   return Math.max(0, score);
 }
 
@@ -311,6 +351,7 @@ function chooseFailureBucket(metrics: BlogEngineEvaluation['metrics']): BlogEngi
   if (lowestScore >= 80) return 'passed';
   if (lowestMetric === 'source_support') return 'evidence_insufficient';
   if (lowestMetric === 'task_completion') return 'engine_task_incomplete';
+  if (lowestMetric === 'customer_language') return 'customer_language';
   if (lowestMetric === 'naturalness') return 'ai_naturalness';
   if (lowestMetric === 'sales_pressure') return 'sales_pressure';
   if (lowestMetric === 'product_decision_helpfulness') return 'product_decision_helpfulness';
@@ -329,6 +370,7 @@ export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluati
     task_completion: brief.writer_type === 'product_consultant_writer'
       ? scoreProductDecision(blogHtml, brief)
       : scoreInfoTask(blogHtml),
+    customer_language: scoreCustomerLanguage(blogHtml, brief.writer_type),
     naturalness: scoreNaturalness(blogHtml),
     faithfulness: scoreFaithfulness(blogHtml, brief),
     source_support: hasMinimumEvidence ? 100 : 35,
