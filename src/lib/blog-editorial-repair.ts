@@ -592,6 +592,11 @@ function currentKstYearMonth(): { year: number; month: number } {
 }
 
 function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
+  const intentHint = `${input.primaryKeyword || ''} ${input.title || ''} ${input.category || ''} ${input.slug || ''}`;
+  if (/날씨|옷차림|준비물|체크리스트|weather|packing/i.test(intentHint)) {
+    return buildWeatherAnswerFirstIntro(input);
+  }
+
   const topic = compactAnswerFirstLabel(input.primaryKeyword || input.title || input.category)
     || '\uC5EC\uD589 \uC900\uBE44';
   const destination = compactAnswerFirstLabel(input.destination);
@@ -600,6 +605,17 @@ function buildAnswerFirstIntro(input: BlogEditorialRepairInput): string {
     : '\uBE44\uC6A9, \uC774\uB3D9 \uC2DC\uAC04, \uB0A0\uC528\u00B7\uD604\uC9C0 \uBCC0\uC218';
   const now = currentKstYearMonth();
   return `${now.year}\uB144 ${now.month}\uC6D4 \uAE30\uC900, ${topic}\uC740 ${decisionAxis}\uBD80\uD130 \uBE44\uAD50\uD558\uB294 \uD3B8\uC774 \uC548\uC804\uD569\uB2C8\uB2E4. \uC65C \uBA3C\uC800 \uBD10\uC57C \uD560\uAE4C\uC694? \uC774 \uC21C\uC11C\uB85C \uBD10\uC57C \uD604\uC9C0\uC5D0\uC11C 1~2\uC2DC\uAC04\uC744 \uC544\uB07C\uACE0 \uC608\uC0B0 \uC624\uCC28\uB97C \uC904\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4.`;
+}
+
+function hasKoreanFinalConsonant(value: string): boolean {
+  const last = value.trim().match(/[가-힣](?=[^가-힣]*$)/)?.[0];
+  if (!last) return false;
+  const code = last.charCodeAt(0) - 0xac00;
+  return code >= 0 && code <= 11171 && code % 28 !== 0;
+}
+
+function topicParticle(value: string, consonant: string, vowel: string): string {
+  return hasKoreanFinalConsonant(value) ? consonant : vowel;
 }
 
 function insertIntroAfterTitle(markdown: string, intro: string): string {
@@ -1002,7 +1018,7 @@ function softenPromotionalInfoTone(markdown: string): { text: string; changed: b
 function buildWeatherAnswerFirstIntro(input: BlogEditorialRepairInput): string {
   const keyword = input.primaryKeyword || input.title || '여행 날씨';
   const destination = input.destination || keyword.split(/\s+/)[0] || '여행지';
-  return `${keyword}에서 핵심은 낮 기온만 보는 것이 아닙니다. ${destination} 여행은 아침·저녁 기온 차이, 비 예보, 이동 동선을 함께 보고 얇은 긴팔과 바람막이, 비 대비 용품을 준비하는 편이 안전합니다.`;
+  return `${keyword}${topicParticle(keyword, '은', '는')} 낮 기온만 보면 부족합니다. ${destination} 여행은 아침·저녁 기온 차이, 비 예보, 이동 동선을 함께 보고 얇은 긴팔과 바람막이, 비 대비 용품을 준비하는 편이 안전합니다.`;
 }
 
 function repairArticleQualityV2Surface(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
@@ -1018,8 +1034,9 @@ function repairArticleQualityV2Surface(markdown: string, input: BlogEditorialRep
     .replace(/비용은은/g, '비용은')
     .replace(/일정은은/g, '일정은')
     .replace(/여행을 즐길 수 있는하기/g, '여행하기')
-    .replace(/이 정보는\s*20\d{2}년\s*\d{1,2}월\s*\d{1,2}일\s*확인\s*기준으로\s*작성되었습니다\.?/g, '출발 전에는 공식 예보와 예약 조건을 다시 확인하세요.')
+    .replace(/이 정보는\s*20\d{2}년\s*\d{1,2}월\s*\d{1,2}일\s*확인\s*기준으로\s*작성되었습니다\.?/g, '출발 전에는 공식 예보와 현지 안내를 다시 확인하세요.')
     .replace(/여소남\s*내부\s*(?:상품|예약|상품\s*\/\s*예약)\s*데이터\s*기준[,，]?\s*/g, '')
+    .replace(/^\s*>?\s*(?:\*\*|__)\s*$/gm, '')
     .split('\n')
     .map((line) => {
       const trimmed = line.trim();
@@ -1814,6 +1831,44 @@ function softenRepeatedReadabilityPhrases(markdown: string, maxExactRepeats = 3)
   return { text, changed: changed && text !== markdown };
 }
 
+function softenRepeatedSentenceOpenings(markdown: string): { text: string; changed: boolean } {
+  const seen = new Set<string>();
+  let changed = false;
+  const lines = markdown.split(/\r?\n/).map((line) => {
+    const trimmed = line.trim();
+    if (
+      !trimmed
+      || /^#{1,6}\s+/.test(trimmed)
+      || /^\s*(?:[-*]|\d+\.)\s+/.test(line)
+      || /^\s*\|.*\|\s*$/.test(line)
+      || /^\s*!\[[^\]]*]\([^)]+\)/.test(line)
+      || /\[[^\]]+]\([^)]+\)/.test(line)
+      || /<a\b[^>]*href=/i.test(line)
+    ) {
+      return line;
+    }
+
+    return line.replace(/([^.!?。！？]+[.!?。！？]?)(\s*)/g, (match, sentence: string, tail: string) => {
+      const normalized = sentence.replace(/\s+/g, ' ').trim();
+      const key = normalized.slice(0, 11);
+      if (key.length < 8) return match;
+      if (!seen.has(key)) {
+        seen.add(key);
+        return match;
+      }
+
+      const remainder = normalized.slice(key.length).replace(/^[은는이가을를도,\s]+/, '').trim();
+      if (remainder.length < 8) return match;
+      changed = true;
+      const ending = /[.!?。！？]$/.test(sentence.trim()) ? sentence.trim().slice(-1) : '';
+      return `또한 ${remainder}${ending}${tail}`;
+    });
+  });
+
+  const text = lines.join('\n');
+  return { text, changed: changed && text !== markdown };
+}
+
 function limitRepeatedPlanningHooks(markdown: string): { text: string; changed: boolean } {
   let definitionCount = 0;
   let planningCount = 0;
@@ -2292,6 +2347,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('limited_repeated_planning_hooks');
   }
 
+  const repeatedSentenceOpeningRepair = softenRepeatedSentenceOpenings(blogHtml);
+  if (repeatedSentenceOpeningRepair.changed) {
+    blogHtml = repeatedSentenceOpeningRepair.text;
+    changes.push('softened_repeated_sentence_openings');
+  }
+
   const repeatedReadabilityPhraseRepair = softenRepeatedReadabilityPhrases(blogHtml);
   if (repeatedReadabilityPhraseRepair.changed) {
     blogHtml = repeatedReadabilityPhraseRepair.text;
@@ -2597,6 +2658,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (shortParagraphRepair.changed) {
     blogHtml = shortParagraphRepair.text;
     changes.push('deduped_repeated_short_paragraphs');
+  }
+
+  const repeatedSentenceOpeningRepair = softenRepeatedSentenceOpenings(blogHtml);
+  if (repeatedSentenceOpeningRepair.changed) {
+    blogHtml = repeatedSentenceOpeningRepair.text;
+    changes.push('softened_repeated_sentence_openings');
   }
 
   const repeatedReadabilityPhraseRepair = softenRepeatedReadabilityPhrases(blogHtml);

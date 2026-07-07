@@ -1,6 +1,7 @@
 import { stripMarkup } from './blog-text-utils';
 
 export const BLOG_ENGINE_V2_VERSION = 'blog-engine-v2';
+export const BLOG_ENGINE_V2_PUBLISH_SCORE = 95;
 
 export type BlogWriterType = 'info_writer' | 'product_consultant_writer' | 'unknown';
 export type BlogEvidenceKind = 'official_source' | 'serp_intent' | 'internal_insight' | 'product_db';
@@ -10,6 +11,10 @@ export type BlogEngineFailureBucket =
   | 'evidence_insufficient'
   | 'engine_task_incomplete'
   | 'ai_naturalness'
+  | 'customer_language'
+  | 'decision_clarity'
+  | 'risk_disclosure'
+  | 'template_repetition'
   | 'sales_pressure'
   | 'product_decision_helpfulness'
   | 'faithfulness';
@@ -19,6 +24,19 @@ export interface BlogEngineEvidenceItem {
   label: string;
   url?: string;
   source?: string;
+}
+
+export interface BlogEvidencePack {
+  engine_version: typeof BLOG_ENGINE_V2_VERSION;
+  writer_type: BlogWriterType;
+  items: BlogEngineEvidenceItem[];
+  official_source_count: number;
+  internal_insight_count: number;
+  product_db_count: number;
+  serp_intent_count: number;
+  score: number;
+  sufficient: boolean;
+  missing: string[];
 }
 
 export interface BlogEngineV2Brief {
@@ -55,9 +73,15 @@ export interface BlogEngineEvaluation {
     source_support: number;
     sales_pressure: number;
     product_decision_helpfulness: number;
+    customer_language: number;
+    decision_clarity: number;
+    risk_disclosure: number;
+    template_repetition: number;
   };
   repair_recommendation: string | null;
   brief: BlogEngineV2Brief;
+  evidence_pack: BlogEvidencePack;
+  publish_threshold: typeof BLOG_ENGINE_V2_PUBLISH_SCORE;
 }
 
 export interface BlogPublishabilitySnapshot {
@@ -110,10 +134,12 @@ function asNumber(value: unknown): number | null {
 
 function firstBodyParagraph(source: string): string {
   for (const chunk of source.split(/\n{2,}/)) {
-    const text = stripMarkup(chunk)
+    const text = stripMarkup(chunk
       .replace(/^#{1,6}\s+\S.*$/gm, '')
+      .replace(/^\s*!\[[^\]]*]\([^)]+\)\s*$/gm, '')
+      .replace(/<img\b[^>]*>/gi, '')
       .replace(/^\|.*\|$/gm, '')
-      .replace(/^\s*(?:[-*]|\d+\.)\s+\S.*$/gm, '')
+      .replace(/^\s*(?:[-*]|\d+\.)\s+\S.*$/gm, ''))
       .replace(/\s+/g, ' ')
       .trim();
     if (text.length >= 30) return text;
@@ -125,8 +151,10 @@ function extractExternalLinks(markdown: string): BlogEngineEvidenceItem[] {
   const out: BlogEngineEvidenceItem[] = [];
   const seen = new Set<string>();
   for (const match of markdown.matchAll(/\[[^\]]+]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g)) {
+    if (typeof match.index === 'number' && markdown[match.index - 1] === '!') continue;
     const url = match[1];
     if (!url || /yeosonam\.com/i.test(url) || seen.has(url)) continue;
+    if (/\.(?:jpe?g|png|webp|gif|svg)(?:[?#].*)?$/i.test(url)) continue;
     seen.add(url);
     out.push({ kind: 'official_source', label: new URL(url).hostname, url, source: 'markdown_link' });
   }
@@ -225,7 +253,7 @@ function scoreInfoTask(markdown: string): number {
   const first = firstBodyParagraph(markdown);
   if (!first) return 0;
   let score = 45;
-  if (first.length >= 80) score += 20;
+  if (first.length >= 70) score += 20;
   if (/(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|핵심|결론)/.test(first)) score += 25;
   if (!/^(안녕하세요|오늘은|이번\s*글에서는|여소남\s*에디터)/.test(first)) score += 10;
   const structuredEvidence =
@@ -255,11 +283,33 @@ function scoreProductDecision(markdown: string, brief: BlogEngineV2Brief): numbe
     brief.risk_notes?.length,
     brief.consult_questions?.length,
   ].filter((count) => (count ?? 0) > 0).length;
-  return Math.round(blockScore + briefFields / 6 * 30);
+  const first = firstBodyParagraph(markdown);
+  const openingSignals = [
+    /\d[\d,]*\s*원|만원|가격|출발가/.test(first),
+    Boolean(brief.departure_city && first.includes(brief.departure_city)) || /출발/.test(first),
+    Boolean(brief.duration && first.includes(brief.duration)) || /\d+\s*박\s*\d+\s*일|\d+\s*일/.test(first),
+    /맞는|추천|고객|가족|부모님|단체|자유일정/.test(first),
+  ].filter(Boolean).length;
+  const openingScore = openingSignals >= 2 ? 10 : 0;
+  return Math.round(blockScore + briefFields / 6 * 20 + openingScore);
 }
 
 function scoreNaturalness(markdown: string): number {
+  const narrativeMarkdown = markdown
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim();
+        return trimmed
+          && !/^#{1,6}\s+/.test(trimmed)
+          && !/^\s*(?:[-*]|\d+\.)\s+/.test(trimmed)
+          && !/^\s*\|.*\|\s*$/.test(trimmed)
+          && !/^\s*!\[[^\]]*]\([^)]+\)/.test(trimmed)
+          && !/^\s*\[[^\]]+]\([^)]+\)\s*$/.test(trimmed)
+          && !/^<\/?[a-z][^>]*>/i.test(trimmed);
+    })
+    .join('\n');
   const plain = stripMarkup(markdown).replace(/https?:\/\/\S+/gi, ' ');
+  const narrativePlain = stripMarkup(narrativeMarkdown).replace(/https?:\/\/\S+/gi, ' ');
   let score = 100;
   const banned = [
     '이게 말이 되나 싶으시죠',
@@ -272,7 +322,122 @@ function scoreNaturalness(markdown: string): number {
   ];
   score -= banned.filter((word) => plain.includes(word)).length * 18;
   score -= (markdown.match(/==[^=\n]{3,120}==|<mark\b/gi) ?? []).length * 25;
-  score -= (plain.match(/안녕하세요|오늘은|이번 글에서는/g) ?? []).length * 8;
+  score -= (narrativePlain.match(/안녕하세요|오늘은|이번 글에서는/g) ?? []).length * 8;
+  const sentenceStarts = narrativePlain
+    .split(/[.!?。！？\n]+/)
+    .map((sentence) => sentence.replace(/\s+/g, ' ').trim().slice(0, 11))
+    .filter((start) => start.length >= 8);
+  const repeatedStarts = sentenceStarts.filter((start, index) => sentenceStarts.indexOf(start) !== index);
+  score -= Math.min(24, repeatedStarts.length * 8);
+  return Math.max(0, score);
+}
+
+function scoreCustomerLanguage(markdown: string): number {
+  const plain = stripMarkup(markdown).replace(/https?:\/\/\S+/gi, ' ');
+  let score = 100;
+  const bannedPhrases = [
+    /권해드립니다/g,
+    /적합합니다/g,
+    /추천(?:드립|합니|합니다|해요)/g,
+    /가성비(?:가\s*좋|좋|추천|최고|끝판|혜택)/g,
+    /합리적인\s*비용/g,
+    /실속\s*있는\s*구성/g,
+    /비용\s*부담\s*제로/g,
+    /고객\s*만족도/g,
+    /원활한\s*상담/g,
+    /현명합니다/g,
+    /특별한\s*(?:경험|추억)/g,
+    /인생\s*사진/g,
+    /풍성|알차|만끽|짜릿한|신비로운/g,
+    /확인해\s*주시기\s*바랍니다/g,
+    /상세\s*일정을\s*체크해\s*드릴게요/g,
+  ];
+  for (const pattern of bannedPhrases) {
+    score -= Math.min(24, (plain.match(pattern) ?? []).length * 12);
+  }
+  const paragraphs = markdown
+    .split(/\n{2,}/)
+    .map((chunk) => stripMarkup(chunk).replace(/\s+/g, ' ').trim())
+    .filter((chunk) => chunk.length >= 80 && !/^#{1,6}\s/.test(chunk));
+  const overlongParagraphs = paragraphs.filter((chunk) => {
+    const sentenceCount = (chunk.match(/[.!?。！？]/g) ?? []).length;
+    return sentenceCount >= 4 || chunk.length >= 420;
+  }).length;
+  score -= Math.min(8, overlongParagraphs * 4);
+  if (/상품표를\s*줄글|아래를\s*복사|자가점검|고정댓글/i.test(plain)) score -= 30;
+  return Math.max(0, score);
+}
+
+function scoreDecisionClarity(markdown: string, brief: BlogEngineV2Brief, productDecisionScore: number): number {
+  if (brief.writer_type === 'product_consultant_writer') {
+    let score = productDecisionScore;
+    const first = firstBodyParagraph(markdown);
+    const openingSignals = [
+      /\d[\d,]*\s*원|만원|가격|출발가|부터/.test(first),
+      /출발/.test(first),
+      /\d+\s*박\s*\d+\s*일|\d+\s*일|기간|일정/.test(first),
+      /맞는|안\s*맞|조건|확인|변동/.test(first),
+    ].filter(Boolean).length;
+    if (openingSignals < 3) score -= 15;
+    if (!/(선택지|차이|비교|라이트|품격|등급|4성|5성|노옵션|쇼핑|항공\s*시간)/.test(markdown)) {
+      score -= 5;
+    }
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  const first = firstBodyParagraph(markdown);
+  let score = scoreInfoTask(markdown);
+  if (first.length < 60 || !/(먼저|기준|결론|핵심|확인|나눠|보면|준비)/.test(first)) score -= 15;
+  const hasJudgement =
+    /(상황별|기준|비교|체크|주의|리스크|실수|공식\s*확인|최종\s*확인)/.test(markdown)
+    || (markdown.match(/(^|\n)\s*\|.+\|/g) ?? []).length >= 3;
+  if (!hasJudgement) score -= 15;
+  if (brief.official_sources_required && !/(공식|외교부|기상|대사관|항공사|IATA|최신)/.test(markdown)) score -= 10;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function scoreRiskDisclosure(markdown: string, brief: BlogEngineV2Brief): number {
+  const plain = stripMarkup(markdown);
+  if (brief.writer_type === 'product_consultant_writer') {
+    let score = 100;
+    if ((brief.excluded?.length ?? 0) === 0) score -= 25;
+    if ((brief.risk_notes?.length ?? 0) === 0) score -= 25;
+    const includesBriefItem = (items: string[] | undefined): boolean => {
+      const usable = (items ?? [])
+        .map((item) => item.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim())
+        .filter((item) => item.length >= 2);
+      if (usable.length === 0) return false;
+      return usable.some((item) => {
+        const tokens = item.split(/\s+/).filter((token) => token.length >= 2);
+        if (plain.includes(item)) return true;
+        return tokens.some((token) => plain.includes(token));
+      });
+    };
+    if ((brief.excluded?.length ?? 0) > 0 && !includesBriefItem(brief.excluded)) score -= 25;
+    if ((brief.risk_notes?.length ?? 0) > 0 && !includesBriefItem(brief.risk_notes)) score -= 25;
+    if (!/(불포함|추가\s*비용|선택관광|쇼핑|가이드|기사|유류|싱글|써차지|계약금|패널티|조인|객실|좌석|달라질 수|변동|최종\s*확인)/.test(plain)) {
+      score -= 30;
+    }
+    if (/(무조건|보장|확정입니다|마감\s*임박|잔여\s*좌석)/.test(plain)) score -= 20;
+    return Math.max(0, score);
+  }
+
+  if (brief.official_sources_required || (brief.risk_or_change_notes?.length ?? 0) > 0) {
+    let score = 100;
+    if (!/(공식|최신|변동|달라질 수|다시\s*확인|확인하는\s*편이\s*안전|출발\s*전)/.test(plain)) score -= 30;
+    if (brief.official_sources_required && brief.evidence_items.every((item) => item.kind !== 'official_source')) score -= 35;
+    return Math.max(0, score);
+  }
+  return 100;
+}
+
+function scoreTemplateRepetition(markdown: string): number {
+  let score = 100;
+  const genericHeadings = markdown.match(/^##\s*(?:핵심\s*요약|상황별\s*선택\s*기준|읽는\s*순서|여행\s*준비를\s*위한\s*실전\s*팁|공식\s*확인\s*링크)\s*$/gm) ?? [];
+  score -= Math.min(30, genericHeadings.length * 8);
+  const h2s = [...markdown.matchAll(/^##\s+(.+)$/gm)].map((match) => match[1]?.trim()).filter(Boolean);
+  const duplicatedH2s = h2s.filter((heading, index) => h2s.indexOf(heading) !== index);
+  score -= Math.min(30, duplicatedH2s.length * 15);
   return Math.max(0, score);
 }
 
@@ -305,44 +470,110 @@ function scoreFaithfulness(markdown: string, brief: BlogEngineV2Brief): number {
   return Math.max(0, score);
 }
 
+const METRIC_THRESHOLDS: BlogEngineEvaluation['metrics'] = {
+  task_completion: BLOG_ENGINE_V2_PUBLISH_SCORE,
+  naturalness: BLOG_ENGINE_V2_PUBLISH_SCORE,
+  faithfulness: BLOG_ENGINE_V2_PUBLISH_SCORE,
+  source_support: BLOG_ENGINE_V2_PUBLISH_SCORE,
+  sales_pressure: BLOG_ENGINE_V2_PUBLISH_SCORE,
+  product_decision_helpfulness: BLOG_ENGINE_V2_PUBLISH_SCORE,
+  customer_language: 90,
+  decision_clarity: 90,
+  risk_disclosure: BLOG_ENGINE_V2_PUBLISH_SCORE,
+  template_repetition: 90,
+};
+
 function chooseFailureBucket(metrics: BlogEngineEvaluation['metrics']): BlogEngineFailureBucket {
-  const entries = Object.entries(metrics) as Array<[keyof typeof metrics, number]>;
-  const [lowestMetric, lowestScore] = entries.sort((a, b) => a[1] - b[1])[0];
-  if (lowestScore >= 80) return 'passed';
-  if (lowestMetric === 'source_support') return 'evidence_insufficient';
+  const failingEntries = (Object.entries(metrics) as Array<[keyof typeof metrics, number]>)
+    .filter(([metric, score]) => score < METRIC_THRESHOLDS[metric])
+    .sort((a, b) => a[1] - b[1]);
+  if (failingEntries.length === 0) return 'passed';
+  const [lowestMetric] = failingEntries[0];
+  if (metrics.source_support < METRIC_THRESHOLDS.source_support) return 'evidence_insufficient';
+  if (
+    metrics.product_decision_helpfulness < METRIC_THRESHOLDS.product_decision_helpfulness
+    && metrics.product_decision_helpfulness <= metrics.task_completion
+  ) {
+    return 'product_decision_helpfulness';
+  }
   if (lowestMetric === 'task_completion') return 'engine_task_incomplete';
   if (lowestMetric === 'naturalness') return 'ai_naturalness';
+  if (lowestMetric === 'customer_language') return 'customer_language';
+  if (lowestMetric === 'decision_clarity') return 'decision_clarity';
+  if (lowestMetric === 'risk_disclosure') return 'risk_disclosure';
+  if (lowestMetric === 'template_repetition') return 'template_repetition';
   if (lowestMetric === 'sales_pressure') return 'sales_pressure';
   if (lowestMetric === 'product_decision_helpfulness') return 'product_decision_helpfulness';
   return 'faithfulness';
 }
 
+function buildEvidencePack(brief: BlogEngineV2Brief): BlogEvidencePack {
+  const officialSourceCount = brief.evidence_items.filter((item) => item.kind === 'official_source').length;
+  const internalInsightCount = brief.evidence_items.filter((item) => item.kind === 'internal_insight').length;
+  const productDbCount = brief.evidence_items.filter((item) => item.kind === 'product_db').length;
+  const serpIntentCount = brief.evidence_items.filter((item) => item.kind === 'serp_intent').length;
+  const missing: string[] = [];
+
+  if (brief.writer_type === 'product_consultant_writer') {
+    if (productDbCount === 0) missing.push('product_db');
+  } else {
+    if (officialSourceCount + internalInsightCount + serpIntentCount === 0) {
+      missing.push('official_source_or_serp_intent_or_internal_insight');
+    }
+    if (brief.official_sources_required && officialSourceCount === 0) {
+      missing.push('official_source');
+    }
+  }
+
+  const sufficient = missing.length === 0;
+  const score = sufficient
+    ? 100
+    : brief.writer_type === 'info_writer' && officialSourceCount + internalInsightCount + serpIntentCount > 0
+      ? 70
+      : 35;
+
+  return {
+    engine_version: BLOG_ENGINE_V2_VERSION,
+    writer_type: brief.writer_type,
+    items: brief.evidence_items,
+    official_source_count: officialSourceCount,
+    internal_insight_count: internalInsightCount,
+    product_db_count: productDbCount,
+    serp_intent_count: serpIntentCount,
+    score,
+    sufficient,
+    missing,
+  };
+}
+
 export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluation {
   const blogHtml = input.blogHtml ?? '';
   const brief = buildBlogEngineV2Brief(input);
-  const evidenceKinds = new Set(brief.evidence_items.map((item) => item.kind));
-  const hasMinimumEvidence = brief.writer_type === 'product_consultant_writer'
-    ? evidenceKinds.has('product_db')
-    : evidenceKinds.has('official_source') || evidenceKinds.has('serp_intent') || evidenceKinds.has('internal_insight');
+  const evidencePack = buildEvidencePack(brief);
+  const productDecisionScore = scoreProductDecision(blogHtml, brief);
 
   const metrics = {
     task_completion: brief.writer_type === 'product_consultant_writer'
-      ? scoreProductDecision(blogHtml, brief)
+      ? productDecisionScore
       : scoreInfoTask(blogHtml),
     naturalness: scoreNaturalness(blogHtml),
     faithfulness: scoreFaithfulness(blogHtml, brief),
-    source_support: hasMinimumEvidence ? 100 : 35,
+    source_support: evidencePack.score,
     sales_pressure: scoreSalesPressure(blogHtml, brief.writer_type),
     product_decision_helpfulness: brief.writer_type === 'product_consultant_writer'
-      ? scoreProductDecision(blogHtml, brief)
+      ? productDecisionScore
       : 100,
+    customer_language: scoreCustomerLanguage(blogHtml),
+    decision_clarity: scoreDecisionClarity(blogHtml, brief, productDecisionScore),
+    risk_disclosure: scoreRiskDisclosure(blogHtml, brief),
+    template_repetition: scoreTemplateRepetition(blogHtml),
   };
   const score = Math.round(Object.values(metrics).reduce((sum, value) => sum + value, 0) / Object.values(metrics).length);
   const failure_bucket = chooseFailureBucket(metrics);
 
   return {
     score,
-    passed: score >= 80 && failure_bucket === 'passed',
+    passed: score >= BLOG_ENGINE_V2_PUBLISH_SCORE && failure_bucket === 'passed',
     failure_bucket,
     metrics,
     repair_recommendation: failure_bucket === 'passed'
@@ -351,7 +582,17 @@ export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluati
         ? '공식 링크, SERP intent, 내부 상담/상품DB 근거 중 최소 1개를 브리프에 추가하세요.'
         : failure_bucket === 'product_decision_helpfulness'
           ? '상품글을 10초 판단, 포함/불포함, 맞는 사람/안 맞는 사람, 가격 변동 조건, 문의 전 질문 구조로 재작성하세요.'
+          : failure_bucket === 'customer_language'
+            ? '고객이 쓰는 말로 바꾸고 추천/가성비/권유형 문구와 긴 문단을 줄이세요.'
+            : failure_bucket === 'decision_clarity'
+              ? '첫 문단과 섹션을 독자가 바로 결정할 수 있는 가격, 조건, 비교, 체크 기준 중심으로 재정리하세요.'
+              : failure_bucket === 'risk_disclosure'
+                ? '공식 확인 조건이나 불포함/추가비용/변동 가능성을 본문에 명확히 드러내세요.'
+                : failure_bucket === 'template_repetition'
+                  ? '반복되는 범용 제목과 같은 문장 시작을 줄이고 주제별 섹션명으로 바꾸세요.'
           : '도입 답변, CTA 위치, 과장 표현, 근거 없는 claim을 수리한 뒤 재평가하세요.',
     brief,
+    evidence_pack: evidencePack,
+    publish_threshold: BLOG_ENGINE_V2_PUBLISH_SCORE,
   };
 }

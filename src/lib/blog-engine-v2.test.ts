@@ -40,8 +40,9 @@ describe('blog engine v2 evaluation', () => {
     });
 
     expect(evaluation.passed).toBe(true);
-    expect(evaluation.score).toBeGreaterThanOrEqual(80);
+    expect(evaluation.score).toBeGreaterThanOrEqual(95);
     expect(evaluation.brief.evidence_items.some((item) => item.kind === 'official_source')).toBe(true);
+    expect(evaluation.evidence_pack.sufficient).toBe(true);
   });
 
   it('blocks informational posts without evidence', () => {
@@ -64,6 +65,126 @@ describe('blog engine v2 evaluation', () => {
 
     expect(evaluation.passed).toBe(false);
     expect(evaluation.failure_bucket).toBe('evidence_insufficient');
+  });
+
+  it('requires an official source when the info brief marks official sources as required', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 몽골 7월 날씨
+
+몽골 7월 날씨는 낮과 밤의 일교차, 소나기 가능성, 방풍 준비를 먼저 보면 됩니다. 출발 전에는 최신 예보와 입국 정보를 같이 확인하세요.
+
+## 빠른 판단표
+| 항목 | 확인 기준 | 준비 |
+| --- | --- | --- |
+| 낮 기온 | 야외 체감 | 긴팔 |
+| 밤 기온 | 게르 숙박 | 겉옷 |
+| 비 | 소나기 | 방수팩 |
+`,
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '몽골 7월 날씨는 어떤가요?',
+          official_sources_required: true,
+        },
+        content_brief: {
+          search_intent: 'weather',
+          evidence: ['기상 정보 확인 필요'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('evidence_insufficient');
+    expect(evaluation.evidence_pack.missing).toContain('official_source');
+  });
+
+  it('does not count markdown image URLs as official source evidence', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 세부 준비물
+
+![세부 여행 이미지](https://images.pexels.com/photos/12345/cebu.jpeg?auto=compress)
+
+세부 준비물은 날씨, 이동 동선, 결제 수단을 먼저 보면 됩니다. 출발 전에는 여권과 현지 결제 조건을 함께 확인하세요.
+
+## 빠른 판단표
+| 항목 | 확인 기준 | 준비 |
+| --- | --- | --- |
+| 날씨 | 우기 여부 | 방수팩 |
+| 이동 | 차량 이동 | 멀미약 |
+| 결제 | 카드/현금 | 소액 현금 |
+`,
+      primaryKeyword: '세부 준비물',
+      destination: '세부',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+        content_brief: { search_intent: 'packing' },
+      },
+    });
+
+    expect(evaluation.evidence_pack.official_source_count).toBe(0);
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('evidence_insufficient');
+  });
+
+  it('ignores leading images when scoring the answer-first paragraph', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 몽골 7월 날씨
+
+![몽골 여행 이미지](https://images.pexels.com/photos/12345/mongolia.jpeg)
+
+몽골 7월 날씨는 낮과 밤의 일교차, 소나기 가능성, 방풍 준비를 먼저 보면 됩니다. 출발 전에는 최신 예보와 입국 정보를 같이 확인하세요.
+
+## 빠른 판단표
+| 항목 | 확인 기준 | 준비 |
+| --- | --- | --- |
+| 낮 | 기온 | 긴팔 |
+| 밤 | 일교차 | 겉옷 |
+| 비 | 소나기 | 방수팩 |
+
+[외교부 해외안전여행](https://www.0404.go.kr/)
+`,
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+        content_brief: { search_intent: 'weather' },
+      },
+    });
+
+    expect(evaluation.metrics.task_completion).toBeGreaterThanOrEqual(95);
+    expect(evaluation.passed).toBe(true);
+  });
+
+  it('counts non-image official links as source evidence', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 세부 준비물
+
+세부 준비물은 날씨, 이동 동선, 결제 수단을 먼저 보면 됩니다. 출발 전에는 여권과 현지 결제 조건을 함께 확인하세요.
+
+## 빠른 판단표
+| 항목 | 확인 기준 | 준비 |
+| --- | --- | --- |
+| 날씨 | 우기 여부 | 방수팩 |
+| 이동 | 차량 이동 | 멀미약 |
+| 결제 | 카드/현금 | 소액 현금 |
+
+[외교부 해외안전여행](https://www.0404.go.kr/)
+`,
+      primaryKeyword: '세부 준비물',
+      destination: '세부',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+        content_brief: { search_intent: 'packing' },
+      },
+    });
+
+    expect(evaluation.evidence_pack.official_source_count).toBe(1);
+    expect(evaluation.evidence_pack.sufficient).toBe(true);
   });
 
   it('treats readable Korean opening CTA as sales pressure for info writer posts', () => {
@@ -102,6 +223,36 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.passed).toBe(false);
     expect(evaluation.failure_bucket).toBe('sales_pressure');
     expect(evaluation.metrics.sales_pressure).toBe(35);
+  });
+
+  it('penalizes repeated AI-style sentence openings', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 발리 여행 준비물',
+        '',
+        '발리 여행 준비물은 날씨와 이동 동선을 먼저 보면 됩니다. 발리 여행 준비물은 숙소 위치와 액티비티에 따라 달라집니다. 발리 여행 준비물은 출발 전 공식 안내를 확인하면 좋습니다.',
+        '',
+        '## 체크리스트',
+        '| 항목 | 확인 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 날씨 | 우기 여부 | 방수팩 |',
+        '| 이동 | 차량 이동 | 멀미약 |',
+        '| 물놀이 | 액티비티 | 래시가드 |',
+        '',
+        '[인도네시아 입국 정보](https://kemlu.go.id)',
+      ].join('\n'),
+      primaryKeyword: '발리 여행 준비물',
+      destination: '발리',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+        content_brief: { search_intent: 'packing' },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('ai_naturalness');
+    expect(evaluation.metrics.naturalness).toBeLessThan(95);
   });
 
   it('passes product consultant posts only when DB-backed decision blocks exist', () => {
@@ -159,6 +310,194 @@ describe('blog engine v2 evaluation', () => {
 
     expect(evaluation.passed).toBe(true);
     expect(evaluation.metrics.product_decision_helpfulness).toBe(100);
+  });
+
+  it('blocks product consultant posts when the decision brief is incomplete', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 발리 4박5일 패키지
+
+인천 출발 발리 4박5일 상품은 일정과 가격을 먼저 확인하면 됩니다.
+
+## 10초 판단
+| 확인 항목 | 현재 기준 | 문의 전 볼 점 |
+| --- | --- | --- |
+| 가격 | 상담 확인 | 출발일별 확인 |
+| 기간 | 4박5일 | 이동 부담 확인 |
+| 포함 | 항공 | 불포함 확인 |
+
+## 포함/불포함
+| 구분 | 항목 | 확인 포인트 |
+| --- | --- | --- |
+| 포함 | 항공 | 상담 확인 |
+| 불포함 | 개인경비 | 상담 확인 |
+`,
+      primaryKeyword: '발리 패키지',
+      destination: '발리',
+      contentType: 'package_intro',
+      productId: 'pkg_123',
+      generationMeta: {
+        writer: 'product_consultant_writer',
+        product_consult_brief: {
+          included: ['항공'],
+          excluded: ['개인경비'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('product_decision_helpfulness');
+  });
+
+  it('blocks customer-unfriendly sales copy even when the structure exists', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 부산 출발 다낭 4박5일 패키지 가격 조건
+
+부산 출발 다낭 4박5일 패키지는 699,000원부터 준비되어 있습니다. 알찬 구성과 가성비가 좋아 강력 추천드립니다.
+
+## 10초 판단
+| 확인 항목 | 현재 기준 | 문의 전 볼 점 |
+| --- | --- | --- |
+| 가격 | 699,000원부터 | 출발일별 확인 |
+| 기간 | 4박5일 | 이동 부담 확인 |
+| 포함 | 항공/호텔 | 불포함 확인 |
+
+## 포함/불포함
+| 구분 | 항목 | 확인 포인트 |
+| --- | --- | --- |
+| 포함 | 항공 | 상담 확인 |
+| 포함 | 호텔 | 상담 확인 |
+| 불포함 | 개인경비 | 상담 확인 |
+
+## 이런 분께 맞습니다
+- 가족 패키지를 가격과 일정 기준으로 비교하려는 고객
+
+## 이런 분께는 맞지 않을 수 있습니다
+- 자유일정 비중이 큰 여행을 원하는 고객
+
+## 가격이 달라질 수 있는 조건
+- 가격과 좌석은 발권 시점에 달라질 수 있음
+
+## 문의 전 질문
+- 인원과 출발 가능일이 어떻게 되나요?
+`,
+      primaryKeyword: '다낭 패키지',
+      destination: '다낭',
+      contentType: 'package_intro',
+      productId: 'pkg_456',
+      generationMeta: {
+        writer: 'product_consultant_writer',
+        product_consult_brief: {
+          price_from: 699000,
+          departure_city: '부산',
+          duration: '4박5일',
+          included: ['항공', '호텔'],
+          excluded: ['개인경비'],
+          fit_for: ['가족 패키지 비교 고객'],
+          not_fit_for: ['자유일정 선호 고객'],
+          risk_notes: ['가격과 좌석은 달라질 수 있음'],
+          consult_questions: ['인원과 출발 가능일이 어떻게 되나요?'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('customer_language');
+    expect(evaluation.metrics.customer_language).toBeLessThan(95);
+  });
+
+  it('blocks product posts that hide excluded costs and variation risk', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 인천 출발 세부 4박5일 패키지 가격 조건
+
+세부 4박5일 패키지는 인천 출발 기준 799,000원부터입니다. 가격과 기간을 먼저 확인하면 됩니다.
+
+## 10초 판단
+| 확인 항목 | 현재 기준 | 문의 전 볼 점 |
+| --- | --- | --- |
+| 가격 | 799,000원부터 | 출발일별 확인 |
+| 기간 | 4박5일 | 이동 부담 확인 |
+| 포함 | 항공/호텔 | 상담 확인 |
+
+## 포함/불포함
+| 구분 | 항목 | 확인 포인트 |
+| --- | --- | --- |
+| 포함 | 항공 | 상담 확인 |
+| 포함 | 호텔 | 상담 확인 |
+
+## 이런 분께 맞습니다
+- 가족 패키지를 가격과 일정 기준으로 비교하려는 고객
+
+## 이런 분께는 맞지 않을 수 있습니다
+- 자유일정 비중이 큰 여행을 원하는 고객
+
+## 가격이 달라질 수 있는 조건
+- 상담에서 확인합니다.
+
+## 문의 전 질문
+- 인원과 출발 가능일이 어떻게 되나요?
+`,
+      primaryKeyword: '세부 패키지',
+      destination: '세부',
+      contentType: 'package_intro',
+      productId: 'pkg_789',
+      generationMeta: {
+        writer: 'product_consultant_writer',
+        product_consult_brief: {
+          price_from: 799000,
+          departure_city: '인천',
+          duration: '4박5일',
+          included: ['항공', '호텔'],
+          excluded: ['개인경비', '선택관광'],
+          fit_for: ['가족 패키지 비교 고객'],
+          not_fit_for: ['자유일정 선호 고객'],
+          risk_notes: ['가격과 좌석은 달라질 수 있음'],
+          consult_questions: ['인원과 출발 가능일이 어떻게 되나요?'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('risk_disclosure');
+    expect(evaluation.metrics.risk_disclosure).toBeLessThan(95);
+  });
+
+  it('blocks generic repeated info templates even when evidence exists', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: `# 몽골 7월 날씨
+
+몽골 7월 날씨는 낮과 밤의 일교차, 소나기 가능성, 방풍 준비를 먼저 보면 됩니다. 출발 전에는 최신 예보와 입국 정보를 같이 확인하세요.
+
+## 핵심 요약
+| 항목 | 확인 기준 | 준비 |
+| --- | --- | --- |
+| 낮 | 기온 | 긴팔 |
+| 밤 | 일교차 | 겉옷 |
+| 비 | 소나기 | 방수팩 |
+
+## 읽는 순서
+먼저 표를 보고 세부 설명은 필요한 부분만 확인하세요.
+
+## 상황별 선택 기준
+아이 동반은 이동 동선과 병원 접근성을 먼저 봅니다.
+
+## 공식 확인 링크
+[외교부 해외안전여행](https://www.0404.go.kr/)
+`,
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+        content_brief: {
+          search_intent: 'weather',
+          evidence: ['기상 정보 확인 필요'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('template_repetition');
+    expect(evaluation.metrics.template_repetition).toBeLessThan(95);
   });
 
   it('builds the public V2 brief shape from generation meta', () => {

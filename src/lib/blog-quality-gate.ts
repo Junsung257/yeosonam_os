@@ -749,9 +749,7 @@ export function checkBlogEngineV2(input: CheckInput): GateResult {
     generationMeta: input.generation_meta,
   });
 
-  const passed = evaluation.passed
-    || (evaluation.score >= 90 && evaluation.failure_bucket === 'ai_naturalness')
-    || (evaluation.score >= 85 && evaluation.failure_bucket === 'sales_pressure');
+  const passed = evaluation.passed;
 
   return {
     gate: 'engine_v2',
@@ -765,6 +763,8 @@ export function checkBlogEngineV2(input: CheckInput): GateResult {
       score: evaluation.score,
       metrics: evaluation.metrics,
       evidence_count: evaluation.brief.evidence_items.length,
+      evidence_pack: evaluation.evidence_pack,
+      publish_threshold: evaluation.publish_threshold,
       writer: evaluation.brief.writer_type,
     },
   };

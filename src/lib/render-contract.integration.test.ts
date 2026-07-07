@@ -79,13 +79,37 @@ describe('renderPackage — CanonicalView 계약', () => {
   it('optional_tours region 그룹화 → optionalToursByRegion 단축 동기화', () => {
     const v = renderPackage({
       optional_tours: [
-        { name: '시티투어', region: '쿠알라룸푸르' },
-        { name: '마사지', region: '쿠알라룸푸르' },
-        { name: '나이트투어', region: '말라카' },
+        { name: '시티투어', region: '쿠알라룸푸르', price_usd: 45 },
+        { name: '마사지', region: '쿠알라룸푸르', price_usd: 30 },
+        { name: '나이트투어', region: '말라카', price_usd: 40 },
       ],
     });
     expect(v.optionalToursByRegion).toBe(v.optionalTours.groups);
     expect(v.optionalToursByRegion.length).toBeGreaterThan(0);
+  });
+
+  it('선택관광 노옵션 상품의 요금표 조각은 고객 화면에서 숨긴다', () => {
+    const v = renderPackage({
+      optional_tours: [
+        { name: '7월 5' },
+        { name: '12일 [일요일] 출발' },
+        { name: '599' },
+        { name: '000원/인' },
+        { name: '포 함 내 역' },
+        { name: '차량' },
+        { name: '가이드' },
+        { name: '식사' },
+        { name: '특식4회' },
+        { name: '불포함 내역' },
+        { name: '기사/가이드경비.', price: '$50/인', price_usd: 50 },
+        { name: '선택관광' },
+        { name: '노옵션' },
+      ],
+    });
+
+    expect(v.optionalTours.count).toBe(0);
+    expect(v.optionalTours.groups).toEqual([]);
+    expect(v.optionalTours.flat).toEqual([]);
   });
 });
 
@@ -185,9 +209,9 @@ describe('resolveOptionalTours', () => {
   it('region 자동 추론 + region 그룹 생성', () => {
     const r = resolveOptionalTours({
       optional_tours: [
-        { name: '야경투어 (쿠알라룸푸르)' },
-        { name: '시티투어', region: '쿠알라룸푸르' },
-        { name: '나이트투어', region: '말라카' },
+        { name: '야경투어 (쿠알라룸푸르)', price_usd: 45 },
+        { name: '시티투어', region: '쿠알라룸푸르', price_usd: 35 },
+        { name: '나이트투어', region: '말라카', price_usd: 40 },
       ],
     });
     expect(r.groups.length).toBeGreaterThanOrEqual(1);

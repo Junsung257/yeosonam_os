@@ -30,7 +30,7 @@ describe('blog editorial backlog recheck', () => {
     expect(decision.meta).not.toHaveProperty('quarantine_reason');
     expect(decision.meta).toMatchObject({
       editorial_backlog_recheck_result: 'requeue',
-      requeued_by: 'blog-editorial-backlog-recheck-20260702',
+      requeued_by: 'blog-editorial-backlog-recheck-20260707',
     });
   });
 
@@ -171,6 +171,33 @@ describe('blog editorial backlog recheck', () => {
 
     expect(decision.action).toBe('requeue');
     expect(decision.reasons).toContain('blog_content_brief_failed:missing_primary_keyword');
+    expect(decision.last_error).toBeNull();
+  });
+
+  it('requeues render and article quality surface failures covered by current repair', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-07T00:00:00.000Z',
+      row: {
+        id: 'queue-render-bold',
+        status: 'failed',
+        attempts: 2,
+        topic: '발리 쇼핑 예산 선물 리스트와 면세점 체크',
+        destination: '발리',
+        last_error: '2/20 실패: [render_integrity] 렌더 결과에 마크다운 잔여물 감지: literal_markdown_bold · [article_quality_v2] article quality v2 failed: standalone_markdown_bold, unsupported_internal_data_claim',
+        meta: {
+          writer_type: 'info_writer',
+          failure_code: 'other',
+          quarantine_reason: 'other',
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.reasons).toEqual(expect.arrayContaining([
+      expect.stringMatching(/render_integrity/i),
+      expect.stringMatching(/article_quality_v2/i),
+    ]));
     expect(decision.last_error).toBeNull();
   });
 

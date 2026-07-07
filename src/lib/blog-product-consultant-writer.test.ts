@@ -20,14 +20,39 @@ describe('blog product consultant writer', () => {
     const brief = buildProductBlogBrief(product, 'value');
     const markdown = generateProductConsultantBlogPost(product, brief);
 
+    expect(markdown).toContain('# 부산 출발 다낭 4박 5일 패키지 가격 조건');
     expect(markdown).toContain('## 10초 판단');
-    expect(markdown).toContain('## 포함/불포함');
+    expect(markdown).toContain('## 포함/불포함은 이렇게 나눠 봅니다');
+    expect(markdown).toContain('## 가격이 달라질 수 있는 조건과 숨기지 않고 봐야 할 부분');
     expect(markdown).toContain('## 이런 분께 맞고, 맞지 않을 수 있는 사람');
     expect(markdown).toContain('### 문의 전 질문');
     expect(markdown).toContain('## 자주 묻는 질문?');
     expect(markdown).toContain('599,000원부터');
+    expect(markdown).toContain('부산 출발 / 제주항공(7C)');
     expect((markdown.match(/^##\s+/gm) || []).length).toBeLessThanOrEqual(6);
     expect(markdown).not.toMatch(/[�]|諛|愿|怨좉|媛/);
+  });
+
+  it('filters customer-hidden business data from product posts', () => {
+    const product = {
+      id: '33333333-3333-3333-3333-333333333333',
+      title: '세부 3박5일 패키지',
+      destination: '세부',
+      duration: 5,
+      price: 799000,
+      departure_airport: '인천',
+      airline: 'LJ',
+      inclusions: ['왕복항공', '호텔', '랜드사 정산 메모'],
+      excludes: ['개인경비', '커미션 10%'],
+      product_highlights: ['마진 확보 필요', '리조트 휴식'],
+      itinerary: ['인천 출발', '담당자 김OO 확인', '세부 도착'],
+    };
+    const brief = buildProductBlogBrief(product, 'value');
+    const markdown = generateProductConsultantBlogPost(product, brief);
+
+    expect(markdown).toContain('# 인천 출발 세부 4박 5일 패키지 가격 조건');
+    expect(markdown).toContain('진에어(LJ)');
+    expect(markdown).not.toMatch(/랜드사\s*정산|커미션|마진|담당자/);
   });
 
   it('uses the public canonical origin even when local env leaks into the process', () => {

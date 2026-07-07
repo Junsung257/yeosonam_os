@@ -24,8 +24,8 @@ export function stripMarkup(raw: string, opts: StripMarkupOptions = {}): string 
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/==([^=]+)==/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1');
   if (stripTablePipes) out = out.replace(/\|/g, ' ');
   if (collapseWhitespace) out = out.replace(/\s+/g, ' ');

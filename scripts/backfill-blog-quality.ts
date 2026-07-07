@@ -8,6 +8,7 @@ let finalizeBlogPost: typeof import('../src/lib/blog-post-finalizer').finalizeBl
 let normalizeBlogDescription: typeof import('../src/lib/blog-quality-normalizer').normalizeBlogDescription;
 let normalizeBlogTitle: typeof import('../src/lib/blog-quality-normalizer').normalizeBlogTitle;
 let evaluateBlogPublishQuality: typeof import('../src/lib/blog-publish-quality').evaluateBlogPublishQuality;
+let repairBlogEngineV2Readiness: typeof import('../src/lib/blog-engine-v2-repair').repairBlogEngineV2Readiness;
 let destToEnKeyword: typeof import('../src/lib/pexels').destToEnKeyword;
 let getRandomPexelsPhoto: typeof import('../src/lib/pexels').getRandomPexelsPhoto;
 let isPexelsConfigured: typeof import('../src/lib/pexels').isPexelsConfigured;
@@ -26,6 +27,7 @@ async function loadLocalModules() {
   ({ finalizeBlogPost } = await import('../src/lib/blog-post-finalizer'));
   ({ normalizeBlogDescription, normalizeBlogTitle } = await import('../src/lib/blog-quality-normalizer'));
   ({ evaluateBlogPublishQuality } = await import('../src/lib/blog-publish-quality'));
+  ({ repairBlogEngineV2Readiness } = await import('../src/lib/blog-engine-v2-repair'));
   ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
   ({ extractDestination } = await import('../src/lib/slug-utils'));
   ({ repairBlogEditorialQuality, repairBlogSemanticSurface, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
@@ -3050,7 +3052,7 @@ async function main() {
       normalizeFinalMarkdownSurface(normalizeMarkdownLinkLabels(nextHtml)),
       normalizedDestinationForWrite || destination || primaryKeyword,
     );
-    const qaReport = await evaluateBlogPublishQuality({
+    let qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
       slug,
@@ -3067,6 +3069,38 @@ async function main() {
       excludeContentCreativeId: row.id,
       skipFuzzyDuplicate: true,
     });
+    if (qaReport.criticScore && !qaReport.criticScore.passed) {
+      const engineRepair = repairBlogEngineV2Readiness({
+        markdown: nextHtml,
+        topic: normalizedTitle,
+        primaryKeyword,
+        destination: normalizedDestinationForWrite,
+        productId,
+        generationMeta: nextGenerationMeta,
+        evaluation: qaReport.criticScore,
+      });
+      if (engineRepair.changed) {
+        nextHtml = engineRepair.markdown;
+        nextGenerationMeta = engineRepair.generationMeta;
+        qaReport = await evaluateBlogPublishQuality({
+          id: row.id,
+          blog_html: nextHtml,
+          slug,
+          seo_title: normalizedTitle,
+          seo_description: normalizedDescription,
+          destination: normalizedDestinationForWrite,
+          angle_type: null,
+          primary_keyword: primaryKeyword,
+          secondary_keywords: secondaryKeywords,
+          category: normalizedTitle,
+          content_type: contentType,
+          product_id: productId,
+          generation_meta: nextGenerationMeta,
+          excludeContentCreativeId: row.id,
+          skipFuzzyDuplicate: true,
+        });
+      }
+    }
     const publishReady = !hasBlockingBlogIssue(qaReport);
     const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
     const metaChanged = stableJson(nextGenerationMeta) !== stableJson(row.generation_meta ?? {});

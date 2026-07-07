@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-04
+Last updated: 2026-07-07
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -83,6 +83,21 @@ Before the first publish gate:
 14. Run `computeReadability()` on the final post-gate body.
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
+
+## Writing Engine V2.1 Contract
+
+New automatic posts must pass the blog writing critic before publish.
+
+- `evaluateBlogEngineV2()` is the shared critic for informational and product-consult posts.
+- Publish threshold is `95/100`; lower scores may be repaired once, but they must not be published by exception.
+- The critic evaluates `task_completion`, `naturalness`, `faithfulness`, `source_support`, `sales_pressure`, `product_decision_helpfulness`, `customer_language`, `decision_clarity`, `risk_disclosure`, and `template_repetition`.
+- Hard factual gates stay at `95/100`: task completion, naturalness, faithfulness, source support, sales pressure, product decision helpfulness, and risk disclosure. Customer-language, decision-clarity, and template-repetition gates use a `90/100` floor because they are repairable editorial surface checks, not evidence integrity checks.
+- Information posts must solve the reader task first and use only a bottom soft CTA. If a brief marks official sources as required, an official external source must be present.
+- Product posts must be product-DB grounded and include 10-second judgment, included/excluded items, fit/not-fit readers, price variation notes, and pre-consult questions.
+- Product posts must disclose customer-visible downside conditions when present in the brief, including excluded costs, price or seat variation, optional tours, shopping, guide/driver fees, surcharges, deposits, penalties, room assignment limits, and document restrictions.
+- Repair must never rewrite image, caption, or HTML wrapper lines while fixing repeated sentence starts; render integrity outranks surface naturalness.
+- The saved `generation_meta` must include `engine_version`, `writer`, `brief_score`, `evidence_score`, `critic_score`, `failure_bucket`, and `evidence_pack`.
+- Repeated AI-style openings, unsupported `여소남 데이터`, top-of-article hard CTAs, highlight markup, and unsupported product claims are publish blockers.
 
 ## Publish Preflight Contract
 

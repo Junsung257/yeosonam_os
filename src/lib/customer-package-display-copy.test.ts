@@ -98,4 +98,22 @@ describe('buildCustomerPackageDisplayCopy', () => {
 
     expect(copy.heroHeadline).toBe('타이베이·예스지 노쇼핑 3박4일');
   });
+
+  it('uses route and sales condition without promoting incidental itinerary perks as the title theme', () => {
+    const copy = buildCustomerPackageDisplayCopy({
+      title: '연길/백두산(북파+서파) 4박5일',
+      display_title: '연길/백두산(북파+서파) 4박5일',
+      destination: '연길',
+      duration: 5,
+      nights: 4,
+      trip_style: '4박5일',
+      product_highlights: ['연길 중심 일정', '5일 일정'],
+      inclusions: ['준5성호텔숙박+온천욕', '특식4회'],
+      optional_tours: [{ name: '노옵션' }],
+    });
+
+    expect(copy.heroHeadline).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(copy.heroHeadline).not.toContain('온천');
+    expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '5성호텔', '온천']));
+  });
 });

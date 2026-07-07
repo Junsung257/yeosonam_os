@@ -1,5 +1,7 @@
 import { runQualityGates, type QualityGateReport } from './blog-quality-gate';
 import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-quality-score';
+import type { BlogEngineEvaluation } from './blog-engine-v2';
+import { repairBlogEngineV2Readiness } from './blog-engine-v2-repair';
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
 import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
@@ -35,6 +37,7 @@ export interface BlogPublishQualityReport {
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
   blogQualityScore: BlogQualityScoreReport;
+  criticScore: BlogEngineEvaluation | null;
   summary: string;
 }
 
@@ -92,8 +95,12 @@ function buildSummary(report: {
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
   blogQualityScore: BlogQualityScoreReport;
+  criticScore?: BlogEngineEvaluation | null;
 }): string {
   const parts: string[] = [];
+  if (report.criticScore && !report.criticScore.passed) {
+    parts.push(`[critic] engine v2 ${report.criticScore.score}/100 ${report.criticScore.failure_bucket}`);
+  }
   if (!report.blogQualityScore.passed) parts.push(`[score] ${report.blogQualityScore.summary}`);
   if (!report.qualityGate.passed) parts.push(`[quality] ${report.qualityGate.summary}`);
   if (!report.seoScore.passed) parts.push(`[seo] ${report.seoScore.summary}`);
@@ -103,6 +110,14 @@ function buildSummary(report: {
   return parts.length > 0
     ? parts.join(' | ')
     : `publish quality passed: strict score ${report.blogQualityScore.score}/100, SEO ${report.seoScore.score}/100, readability ${report.readability.score}/100`;
+}
+
+function extractBlogEngineEvaluation(report: QualityGateReport): BlogEngineEvaluation | null {
+  const engineGate = report.gates.find((gate) => gate.gate === 'engine_v2');
+  const evidence = engineGate?.evidence;
+  if (!evidence || typeof evidence !== 'object') return null;
+  const evaluation = (evidence as Record<string, unknown>).evaluation;
+  return evaluation && typeof evaluation === 'object' ? evaluation as BlogEngineEvaluation : null;
 }
 
 export async function evaluateBlogPublishQuality(
@@ -146,11 +161,12 @@ export async function evaluateBlogPublishQuality(
   });
   const readability = computeReadability(input.blog_html);
   const blogQualityScore = calculateBlogQualityScore({ qualityGate, seoScore, readability });
-  const report = { qualityGate, seoScore, readability, blogQualityScore };
+  const criticScore = extractBlogEngineEvaluation(qualityGate);
+  const report = { qualityGate, seoScore, readability, blogQualityScore, criticScore };
 
   return {
     ...report,
-    passed: blogQualityScore.isPerfect,
+    passed: blogQualityScore.isPerfect && (!criticScore || criticScore.passed),
     summary: buildSummary(report),
   };
 }
@@ -212,12 +228,35 @@ export async function prepareBlogForPublish(
     changes.push(...readinessRepair.changes);
   }
 
-  const report = await evaluateBlogPublishQuality({
+  let report = await evaluateBlogPublishQuality({
     ...input,
     blog_html: blogHtml,
     primary_keyword: primaryKeyword,
     content_type: contentType,
   });
+
+  if (report.criticScore && !report.criticScore.passed) {
+    const engineRepair = repairBlogEngineV2Readiness({
+      markdown: blogHtml,
+      topic: input.seo_title ?? input.slug,
+      primaryKeyword,
+      destination: input.destination ?? null,
+      productId: input.product_id ?? null,
+      generationMeta: input.generation_meta ?? null,
+      evaluation: report.criticScore,
+    });
+    if (engineRepair.changed) {
+      blogHtml = engineRepair.markdown;
+      changes.push(...engineRepair.changes);
+      report = await evaluateBlogPublishQuality({
+        ...input,
+        blog_html: blogHtml,
+        primary_keyword: primaryKeyword,
+        content_type: contentType,
+        generation_meta: engineRepair.generationMeta,
+      });
+    }
+  }
 
   return {
     blogHtml,
@@ -250,4 +289,19 @@ export function applyBlogPublishQualityToUpdate(
   updateData.seo_score = report.seoScore;
   updateData.readability_score = report.readability.score;
   updateData.readability_issues = report.readability.issues;
+  if (report.criticScore) {
+    updateData.generation_meta = {
+      ...((updateData.generation_meta && typeof updateData.generation_meta === 'object')
+        ? updateData.generation_meta as Record<string, unknown>
+        : {}),
+      engine_version: report.criticScore.evidence_pack.engine_version,
+      writer: report.criticScore.brief.writer_type,
+      brief_score: report.criticScore.metrics.task_completion,
+      evidence_score: report.criticScore.metrics.source_support,
+      critic_score: report.criticScore.score,
+      engine_score: report.criticScore.score,
+      failure_bucket: report.criticScore.failure_bucket,
+      evidence_pack: report.criticScore.evidence_pack,
+    };
+  }
 }

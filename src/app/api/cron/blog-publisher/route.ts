@@ -32,6 +32,7 @@ import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
+import { repairBlogEngineV2Readiness } from '@/lib/blog-engine-v2-repair';
 import {
   appendPublishReadinessSupport,
   ensurePublisherInternalLinks,
@@ -486,6 +487,14 @@ function failedGateSet(qa: QualityGateReport): Set<string> {
   return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
 }
 
+function extractEngineV2Evaluation(qa: QualityGateReport): any | null {
+  const engineGate = qa.gates.find(gate => gate.gate === 'engine_v2');
+  const evidence = engineGate?.evidence;
+  if (!evidence || typeof evidence !== 'object') return null;
+  const evaluation = (evidence as Record<string, unknown>).evaluation;
+  return evaluation && typeof evaluation === 'object' ? evaluation : null;
+}
+
 async function repairFailedQualityGates(
   generated: GeneratedBlog,
   item: any,
@@ -498,7 +507,7 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
-    if (failed.has('intent_quality') || failed.has('engine_v2')) {
+    if (failed.has('intent_quality') || failed.has('engine_v2') || failed.has('article_quality_v2')) {
       const editorialRepair = repairBlogEditorialQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -517,7 +526,7 @@ async function repairFailedQualityGates(
       }
     }
 
-    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity')) {
+    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity') || failed.has('article_quality_v2')) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -585,6 +594,22 @@ async function repairFailedQualityGates(
     }
 
     if (failed.has('engine_v2')) {
+      const engineRepair = repairBlogEngineV2Readiness({
+        markdown: generated.blog_html,
+        topic: item.topic,
+        primaryKeyword,
+        destination: item.destination ?? null,
+        productId: item.product_id ?? null,
+        generationMeta: generated.generation_meta ?? null,
+        evaluation: extractEngineV2Evaluation(qa),
+      });
+      if (engineRepair.changed) {
+        generated.blog_html = engineRepair.markdown;
+        generated.generation_meta = engineRepair.generationMeta;
+        changes.push(...engineRepair.changes);
+        changed = true;
+      }
+
       const before = generated.blog_html;
       generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
       if (generated.blog_html !== before) {
@@ -1703,10 +1728,12 @@ async function processQueueItem(
         : (item.product_id ? 'product_consultant_writer' : 'info_writer'),
       brief_score: typeof engineMetrics.task_completion === 'number' ? engineMetrics.task_completion : null,
       evidence_score: typeof engineMetrics.source_support === 'number' ? engineMetrics.source_support : null,
+      critic_score: typeof engineEvaluation?.score === 'number' ? engineEvaluation.score : null,
       engine_score: typeof engineEvaluation?.score === 'number' ? engineEvaluation.score : null,
       failure_bucket: engineEvaluation?.failure_bucket ?? null,
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
+      evidence_pack: engineEvaluation?.evidence_pack ?? null,
     };
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,

@@ -4,7 +4,7 @@ import {
   type BlogEditorialBacklogQueueRow,
 } from './blog-editorial-backlog-work';
 
-export const BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION = 'blog-editorial-backlog-recheck-20260702';
+export const BLOG_EDITORIAL_BACKLOG_RECHECK_VERSION = 'blog-editorial-backlog-recheck-20260707';
 
 export type BlogEditorialBacklogRecheckAction =
   | 'requeue'
@@ -62,6 +62,11 @@ const RECOVERABLE_PATTERNS = [
   /forbidden_sales_tone/i,
   /missing_intent_contract/i,
   /structure_integrity/i,
+  /render_integrity/i,
+  /article_quality_v2/i,
+  /literal_markdown_bold/i,
+  /standalone_markdown_bold/i,
+  /unsupported_internal_data_claim/i,
   /table_integrity/i,
   /too_few_table_rows/i,
   /missing_header_separator/i,

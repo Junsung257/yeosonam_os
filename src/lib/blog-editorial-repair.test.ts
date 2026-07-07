@@ -4,10 +4,49 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from './blog-editorial-repair';
-import { checkHook, checkMarkdownTableIntegrity, checkRenderIntegrity } from './blog-quality-gate';
+import { checkArticleQualityV2, checkHook, checkMarkdownTableIntegrity, checkRenderIntegrity } from './blog-quality-gate';
 import { computeReadability } from './blog-readability';
 
 describe('blog editorial repair', () => {
+  it('repairs article quality v2 surface blockers before publish', () => {
+    const result = repairBlogEditorialQuality({
+      title: '몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      slug: 'mongolia-july-weather-packing',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: '몽골 7월 날씨 옷차림 여행 준비물',
+      destination: '몽골',
+      blogHtml: [
+        '# 몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+        '',
+        '몽골 7월 날씨은 비용, 이동 시간, 현지 결제 조건을 먼저 확인해야 합니다.',
+        '',
+        '여소남 내부 상품/예약 데이터 기준으로 정리했습니다.',
+        '',
+        '이 정보는 2024년 6월 10일 확인 기준으로 작성되었습니다.',
+        '',
+        '> **',
+        '',
+        '## 공식 확인 링크',
+        '',
+        '- [외교부 해외안전여행](https://www.0404.go.kr/dev/main.mofa)',
+      ].join('\n'),
+    });
+
+    const articleGate = checkArticleQualityV2({
+      blog_html: result.blogHtml,
+      slug: 'mongolia-july-weather-packing',
+      blog_type: 'info',
+      primary_keyword: '몽골 7월 날씨 옷차림 여행 준비물',
+      generation_meta: null,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('몽골 7월 날씨 옷차림 여행 준비물은 낮 기온만 보면 부족합니다.');
+    expect(result.blogHtml).not.toMatch(/날씨은|여소남 내부 상품\/예약 데이터|2024년 6월 10일 확인 기준|>\s*\*\*/);
+    expect(articleGate.passed).toBe(true);
+  });
+
   it('repairs loose markdown tables with blank lines and missing separators', () => {
     const result = repairBlogStructureQuality({
       title: 'Nha Trang weather',
@@ -150,6 +189,35 @@ describe('blog editorial repair', () => {
     expect(result.changes).toContain('moved_early_info_cta_to_bottom');
     expect(result.blogHtml.indexOf('[관련 패키지 보기]')).toBeGreaterThan(result.blogHtml.indexOf('## 여행 상품과 함께 확인하기'));
     expect(result.after.issues.some((issue) => issue.code === 'early_strong_cta')).toBe(false);
+  });
+
+  it('softens repeated sentence openings before the engine naturalness gate', () => {
+    const result = repairBlogStructureQuality({
+      title: '발리 여행 준비물',
+      category: 'travel_tips',
+      contentType: 'guide',
+      primaryKeyword: '발리 여행 준비물',
+      blogHtml: [
+        '# 발리 여행 준비물',
+        '',
+        '발리 여행 준비물은 날씨와 이동 동선을 먼저 보면 됩니다. 발리 여행 준비물은 숙소 위치와 액티비티에 따라 달라집니다. 발리 여행 준비물은 출발 전 공식 안내를 확인하면 좋습니다.',
+        '',
+        '## 체크리스트',
+        '',
+        '| 항목 | 확인 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 날씨 | 우기 여부 | 방수팩 |',
+        '| 이동 | 차량 이동 | 멀미약 |',
+        '| 물놀이 | 액티비티 | 래시가드 |',
+        '',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('softened_repeated_sentence_openings');
+    expect((result.blogHtml.match(/발리 여행 준비물은/g) ?? []).length).toBe(1);
+    expect(result.blogHtml).toContain('또한 숙소 위치와 액티비티에 따라 달라집니다.');
   });
 
   it('canonicalizes non-public internal links before publish checks', () => {
@@ -857,7 +925,7 @@ describe('blog editorial repair', () => {
 
     expect(result.changed).toBe(true);
     expect(result.changes).toEqual(expect.arrayContaining(['repaired_article_quality_v2_surface', 'deduped_repeated_headings']));
-    expect(result.blogHtml).toContain('몽골 7월 날씨 옷차림 여행 준비물에서 핵심은 낮 기온만 보는 것이 아닙니다.');
+    expect(result.blogHtml).toContain('몽골 7월 날씨 옷차림 여행 준비물은 낮 기온만 보면 부족합니다.');
     expect(result.blogHtml).not.toContain('날씨은');
     expect(result.blogHtml).not.toContain('2024년 6월 10일 확인 기준');
     expect(result.blogHtml).not.toContain('여소남 내부 상품/예약 데이터 기준');
