@@ -476,6 +476,10 @@ describe('sanitizeCustomerVisibleTitle', () => {
   it('keeps normal customer titles unchanged', () => {
     expect(sanitizeCustomerVisibleTitle('방콕 파타야 3박 5일 실속 패키지')).toBe('방콕 파타야 3박 5일 실속 패키지');
   });
+
+  it('drops supplier promo-only display titles from customer-facing title policy', () => {
+    expect(sanitizeCustomerVisibleTitle('SPECIAL PRICE')).toBeNull();
+  });
 });
 
 describe('repairPolicyLeakInItinerarySchedule', () => {
@@ -674,7 +678,7 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
       accommodations: ['\uC708\uB364 \uADF8\uB79C\uB4DC \uD478\uAFB8\uC625'],
       attractions: [
         {
-          id: 'attr-sunset',
+          id: '8ccb7e3f-bbd8-41d7-9c97-ef283e399820',
           name: '\uC120\uC14B\uD0C0\uC6B4',
           region: '\uD478\uAFB8\uC625',
           is_active: true,
@@ -682,7 +686,7 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
           aliases: [],
         },
         {
-          id: 'attr-temple',
+          id: '44cf6e6a-1349-4e3b-829f-2c56ae06f10c',
           name: '\uD638\uAD6D\uC0AC',
           region: '\uD478\uAFB8\uC625',
           is_active: true,
@@ -690,7 +694,7 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
           aliases: [],
         },
         {
-          id: 'attr-waterpark-private',
+          id: '29c29ce9-2fb9-49a0-8f05-ef87fa9a28e3',
           name: '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C',
           region: '\uD478\uAFB8\uC625',
           is_active: true,
@@ -706,7 +710,7 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
               {
                 activity: '\uD478\uAFB8\uC625 \uB0A8\uBD80 \uC120\uC14B\uD0C0\uC6B4 \uAD00\uAD11',
                 attraction_names: ['\uC120\uC14B\uD0C0\uC6B4'],
-                attraction_ids: [],
+                attraction_ids: ['bbd8-41d7-9c97-ef283e399820'],
               },
               {
                 activity: '\uD478\uAFB8\uC625 \uBE48\uD384 \uC0AC\uD30C\uB9AC \uC785\uC7A5',
@@ -739,10 +743,10 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
     expect(result.matched).toBe(2);
     expect(result.removedNoise).toBe(2);
     expect(result.remainingUnmatched).toBe(1);
-    expect(schedule[0].attraction_ids).toEqual(['attr-sunset']);
+    expect(schedule[0].attraction_ids).toEqual(['8ccb7e3f-bbd8-41d7-9c97-ef283e399820']);
     expect(schedule[1].attraction_names).toEqual([]);
     expect(schedule[2].attraction_names).toEqual([]);
-    expect(schedule[3].attraction_ids).toEqual(['attr-temple']);
+    expect(schedule[3].attraction_ids).toEqual(['44cf6e6a-1349-4e3b-829f-2c56ae06f10c']);
     expect(schedule[4].attraction_names).toEqual(['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C']);
   });
 });

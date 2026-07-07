@@ -57,6 +57,8 @@ import {
 } from './repair-first-openability';
 import { hashSourceText } from './improvement-ledger';
 
+const FULL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type UploadToOpenAutopilotPackage = {
   id: string;
   title: string | null;
@@ -651,6 +653,7 @@ function isPolicyOnlyScheduleActivity(activity: string): boolean {
   const text = activity.replace(/\s+/g, ' ').trim();
   if (!text) return false;
   if (/^X$/i.test(text)) return true;
+  if (/^준비물\s*:/.test(text) || /(?:수영복|선크림|아쿠아슈즈|여벌\s*옷)/.test(text)) return true;
   if (/^\d[\d,]*\s*\uC6D0\s*\/?\s*\uC778$/.test(text)) return true;
   if (/^\d{1,2}\s*\uC6D4$/.test(text)) return true;
   if (/^\d{1,2}\s*\/\s*\d{1,2}(?:[\s,~\-\uC77C\uCD94\uC11D()]*\d{0,2})*,?$/.test(text)) return true;
@@ -912,7 +915,12 @@ export function repairPollutedSourceBackedHotelNamesInItinerary(input: {
 }
 
 function isCustomerPublishableAttraction(attraction: AttractionData | null | undefined): attraction is AttractionData {
-  return Boolean(attraction?.id && attraction.is_active !== false && attraction.customer_publishable !== false);
+  return Boolean(
+    attraction?.id
+    && FULL_UUID_RE.test(attraction.id)
+    && attraction.is_active !== false
+    && attraction.customer_publishable !== false,
+  );
 }
 
 function isNonCustomerAttractionName(value: string, activity: string, accommodations: string[]): boolean {
@@ -1004,6 +1012,10 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
       }
 
       for (const id of existingIds) {
+        if (!FULL_UUID_RE.test(id)) {
+          changed = true;
+          continue;
+        }
         if (!nextIds.includes(id)) nextIds.push(id);
       }
 
@@ -1974,6 +1986,8 @@ export function sanitizeCustomerVisibleTitle(value: string | null | undefined): 
   const original = String(value ?? '').trim();
   if (!original) return null;
   const text = original
+    .replace(/[♡♥★☆]+/g, ' ')
+    .replace(/\bSPECIAL\s*PRICE\b/gi, ' ')
     .replace(/^[\s▶▷►\[\](){}<>/_|-]+/g, '')
     .replace(/^\d{3,}[^\]]*\]\s*/g, '')
     .replace(/\[[^\]]*(?:\uBC1C\uAD8C|\uCEF4\s*\d+%|\uC218\uC218\uB8CC|commission|comm|com|^\d{3,})[^\]]*\]/gi, ' ')
@@ -1987,6 +2001,7 @@ export function sanitizeCustomerVisibleTitle(value: string | null | undefined): 
     .replace(/\s+/g, ' ')
     .trim();
   if (text.length < 4) return null;
+  if (!/[가-힣]/.test(text) && /^(?:special|price|sale|hot|pick|best|\W)+$/i.test(text)) return null;
   return text === original ? original : text;
 }
 
@@ -1995,6 +2010,7 @@ function isGenericCustomerVisibleTitle(value: string | null | undefined): boolea
   if (!text) return true;
   const compact = text.replace(/\s+/g, ' ');
   return /^(?:20\d{2}\s*)?(?:package|pkg)$/i.test(compact)
+    || /^(?:[♡♥★☆\s]*)?(?:special\s*price|sale|hot\s*deal|best|pick)(?:[♡♥★☆\s]*)?$/i.test(compact)
     || /^(?:20\d{2}\s*)?(?:\uC0C1\uD488|\uC5EC\uD589\uC0C1\uD488|\uC77C\uC815\uD45C)(?:\s*\d+)?$/i.test(compact);
 }
 
@@ -2035,6 +2051,9 @@ function customerVisibleTitleRepair(pkg: UploadToOpenAutopilotPackage): {
   }
   if (repairedDisplayTitle && repairedDisplayTitle !== pkg.display_title) {
     updates.displayTitle = repairedDisplayTitle;
+  }
+  if (!repairedDisplayTitle && pkg.display_title && repairedTitle) {
+    updates.displayTitle = repairedTitle;
   }
   if (repairedTitle && isGenericCustomerVisibleTitle(pkg.display_title)) {
     updates.displayTitle = repairedTitle;
@@ -3433,6 +3452,21 @@ async function applySourceBackedRepairs(
     repairs.push(`itinerary_data:empty_day_schedules_filled:${emptyDayScheduleRepair.filledDays.join(',')}`);
   }
 
+  const finalAttractionRepair = repairSavedItineraryAttractionIdsFromExistingAttractions({
+    itineraryData: workingPkg.itinerary_data,
+    attractions: publicAttractions,
+    destination: workingPkg.destination,
+    accommodations: workingPkg.accommodations,
+  });
+  if (finalAttractionRepair.repaired) {
+    updates.itinerary_data = finalAttractionRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: finalAttractionRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:final_public_attractions_repaired:${finalAttractionRepair.matched}/${finalAttractionRepair.remainingUnmatched}`);
+  }
+
   if (Object.keys(updates).length === 0) {
     return { pkg, repairs, blockedReasons };
   }
@@ -3643,6 +3677,7 @@ function isObviousNonAttractionQueueNoise(row: Record<string, unknown>): boolean
   const compact = label.replace(/\s+/g, '');
   if (/^\d[\d,]*\uC6D0\/?\uC778$/i.test(compact)) return true;
   if (/(?:\uAE30\uC0C1\uC5EC\uAC74|\uAE30\uC0C1\uC545\uD654|\uD604\uC9C0\uC0AC\uC815).*?(?:\uBCC0\uB3D9|\uBCC0\uACBD|\uCDE8\uC18C|\uC9C4\uD589)/i.test(compact)) return true;
+  if (/^(?:준비물:?)?(?:수영복|모자|선크림|여벌옷|아쿠아슈즈|방수팩|수건|샌들|래쉬가드)[\p{Script=Hangul},:ㆍ·/()\-+]*$/iu.test(compact)) return true;
   return [
     /^(?:일정표|확인|비운항일|상동|:상동)$/i,
     /^(?:월|화|수|목|금|토|일|월화수목금|토일|수목금|토일월화)+$/i,
