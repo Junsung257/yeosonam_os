@@ -9,6 +9,12 @@ describe('terminalNonMasterReason attraction fragment gate', () => {
     expect(terminalNonMasterReason('attraction', '이도백화', '이도백화')).toBe(
       'city or route token, not attraction master',
     );
+    expect(terminalNonMasterReason('attraction', '임주', '임주')).toBe(
+      'city or route token, not attraction master',
+    );
+    expect(terminalNonMasterReason('attraction', '카와구치', '카와구치')).toBe(
+      'city or route token, not attraction master',
+    );
   });
 
   it('rejects food, drink, and cafe fragments that should not become attraction masters', () => {

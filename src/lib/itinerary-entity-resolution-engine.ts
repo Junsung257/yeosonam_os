@@ -5,6 +5,7 @@ import {
   type MasterCandidateAutoAction,
   type MasterCandidatePromotionStatus,
 } from '@/lib/entity-master-candidates';
+import { KOREAN_DESTINATION_TO_ISO } from '@/lib/destination-iso';
 import { verifyNaverEntityName, type NaverEntityVerificationResult } from '@/lib/naver-entity-verifier';
 import {
   getGooglePlacesBudgetFromEnv,
@@ -380,6 +381,12 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   }
   if (category === 'attraction' && /^\s*\uC778\s*\uC6D0\s*$/.test(name)) {
     return 'operational or non-attraction schedule fragment';
+  }
+  if (
+    category === 'attraction' &&
+    Object.prototype.hasOwnProperty.call(KOREAN_DESTINATION_TO_ISO, name)
+  ) {
+    return 'city or route token, not attraction master';
   }
   if (category === 'attraction' && (
     READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE.test(name) ||
