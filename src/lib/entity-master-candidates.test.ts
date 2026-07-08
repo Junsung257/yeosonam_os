@@ -328,6 +328,28 @@ describe('entity master candidate automation', () => {
     }
   });
 
+  it('prefers the real place name before explanatory parentheses', () => {
+    const cases = [
+      ['\uC911\uC815\uAE30\uB150\uB2F9 (\uC7A5\uAC1C\uC11D \uAE30\uB150 \uAC74\uB9BD)', '\uC911\uC815\uAE30\uB150\uB2F9'],
+      ['\uC0AC\uB9BC\uAD00\uC800 (\uC7A5\uAC1C\uC11D \uCD1D\uD1B5\uC758 \uAD00\uC800)', '\uC0AC\uB9BC\uAD00\uC800'],
+      ['\uD64D\uB9C8\uC624\uCCAD (\uC61B \uB124\uB35C\uB780\uB4DC \uAC74\uCD95\uBB3C)', '\uD64D\uB9C8\uC624\uCCAD'],
+      ['\uB791\uBE44\uC5E5 \uC804\uB9DD\uB300 (\uC9DA\uCC28 OR 7\uC778\uC2B9)', '\uB791\uBE44\uC5E5 \uC804\uB9DD\uB300'],
+      ['\uB300\uC18C\uC0AC(\u5927\u53EC\u5BFA)', '\uB300\uC18C\uC0AC'],
+      ['\uC5D0\uB3C4\uC2DC\uB300 \uBB38\uD654\uB97C \uCCB4\uD5D8\uD558\uB294 \uD14C\uB9C8\uD30C\uD06C \uC9C0\uB2E4\uC774\uBB34\uB77C(\uC2DC\uB300\uCD0C)', '\uC2DC\uB300\uCD0C'],
+    ];
+
+    for (const [rawLabel, expected] of cases) {
+      const decision = evaluateMasterCandidate({
+        rawLabel,
+        category: 'attraction',
+        occurrenceCount: 2,
+        evidenceCount: 1,
+      });
+
+      expect(decision.normalizedLabel).toBe(expected);
+    }
+  });
+
   it('keeps readable multi-attraction supplier prose in review instead of picking one place', () => {
     const cases = [
       ['용암 분출로 인해 생긴 금강대협곡 / 고산화원 관광', '고산화원'],
@@ -359,6 +381,13 @@ describe('entity master candidate automation', () => {
       '\uD478\uAFB8\uC625\uC758 \uC791\uC740 \uC720\uB7FD',
       '\uAC01\uC885 \uB3D9\uBB3C\uC1FC\uC640 \uC0C8\uACF5\uC6D0\uB4F1 \uB2E4\uCC44\uB85C\uC6B4 \uBCFC\uAC70\uB9AC',
       '\uC18C\uC120\uC774 \uC2E0\uC120\uC744 \uB9CC\uB09C \uACF3\uC774\uB77C\uB294 \uC804\uC124\uC774 \uAE43\uB4E4\uC5B4 \uC788\uACE0',
+      '\uD638\uD551\uC2E0\uCCAD\uC2DC',
+      '\uC774\uB860 \uAD50\uC721',
+      '\uD55C\uC57D\uBC29 \uC911 2\uD68C',
+      '\uC911\uAD6D \uC120\uC885\uC744 \uB300\uD45C\uD558\uB294 \uCC9C\uB144\uACE0\uCC30',
+      '\uCE6D\uB2E4\uC624\uC5D0\uC11C \uB9CC\uB098\uB294 \uC791\uC740 \uC720\uB7FD',
+      '\uBE5B\uC73C\uB85C \uBB3C\uB4E0 \uACC4\uB9BC\uC758 \uBC24',
+      '\uC0BC\uD310\uBC30\uB97C \uD0C0\uACE0 \uAE30\uC554\uAD34\uC11D \uC0AC\uC774 \uC218\uB85C\uB97C \uC9C0\uB098\uBA70 \uC790\uC5F0\uACBD\uAD00',
     ];
 
     for (const label of labels) {

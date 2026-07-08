@@ -54,6 +54,31 @@ describe('terminalNonMasterReason attraction fragment gate', () => {
     }
   });
 
+  it('rejects readable Korean backlog fragments that are not attraction masters', () => {
+    for (const label of [
+      '\uD638\uD551\uC2E0\uCCAD\uC2DC',
+      '\uC774\uB860 \uAD50\uC721',
+      '\uD55C\uC57D\uBC29 \uC911 2\uD68C',
+      '\uCC9C\uC800\uC6B0 \uC2DC\uB0B4',
+    ]) {
+      expect(terminalNonMasterReason('attraction', label, label)).toBe(
+        'generic, itinerary, or attribute fragment, not attraction master',
+      );
+    }
+
+    for (const label of [
+      '\uC911\uAD6D \uC120\uC885\uC744 \uB300\uD45C\uD558\uB294 \uCC9C\uB144\uACE0\uCC30',
+      '\uCE6D\uB2E4\uC624\uC5D0\uC11C \uB9CC\uB098\uB294 \uC791\uC740 \uC720\uB7FD',
+      '\uBE5B\uC73C\uB85C \uBB3C\uB4E0 \uACC4\uB9BC\uC758 \uBC24',
+      '\uC0B0\uCC45\uB85C\uB97C \uB530\uB77C \uC790\uC720\uB86D\uAC8C \uB3D9\uBB3C\uC6D0',
+      '\uC0BC\uD310\uBC30\uB97C \uD0C0\uACE0 \uAE30\uC554\uAD34\uC11D \uC0AC\uC774 \uC218\uB85C\uB97C \uC9C0\uB098\uBA70 \uC790\uC5F0\uACBD\uAD00',
+    ]) {
+      expect(terminalNonMasterReason('attraction', label, label)).toBe(
+        'descriptive itinerary phrase, not an attraction master',
+      );
+    }
+  });
+
   it('keeps plausible real attractions review-gated instead of auto-rejecting them', () => {
     expect(terminalNonMasterReason('attraction', '대소사', '대소사')).toBeNull();
     expect(terminalNonMasterReason('attraction', '사오비치', '사오비치')).toBeNull();
