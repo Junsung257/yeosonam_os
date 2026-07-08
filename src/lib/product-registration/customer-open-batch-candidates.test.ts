@@ -74,6 +74,39 @@ describe('customer open batch candidate selection', () => {
       .toEqual(['expired', 'retryable']);
   });
 
+  it('skips recently retried blockers so older retryable packages can advance', () => {
+    const rows = [
+      row({
+        id: 'recent-mobile-fail',
+        updated_at: '2026-07-08T13:20:00.000',
+        audit_report: { upload_to_open_autopilot: { stage: 'blocked_after_mobile_proof' } },
+      }),
+      row({
+        id: 'older-mobile-fail',
+        updated_at: '2026-07-08T11:00:00.000',
+        audit_report: { upload_to_open_autopilot: { stage: 'blocked_after_mobile_proof' } },
+      }),
+      row({ id: 'fresh', updated_at: '2026-07-08T13:25:00.000Z', audit_report: {} }),
+    ];
+
+    expect(selectCustomerOpenBatchCandidates(rows, {
+      limit: 10,
+      retryErrors: true,
+      retryCooldownMinutes: 60,
+      now: new Date('2026-07-08T13:30:00.000Z'),
+    }).map(candidate => [candidate.id, candidate.reason])).toEqual([
+      ['older-mobile-fail', 'retry_previous_blocker'],
+      ['fresh', 'not_ready_not_opened'],
+    ]);
+    expect(selectCustomerOpenBatchCandidates(rows, {
+      limit: 10,
+      retryErrors: true,
+      retryCooldownMinutes: 60,
+      includeRecentRetries: true,
+      now: new Date('2026-07-08T13:30:00.000Z'),
+    }).map(candidate => candidate.id)).toEqual(['recent-mobile-fail', 'older-mobile-fail', 'fresh']);
+  });
+
   it('classifies expired ticketing deadline stages as terminal', () => {
     expect(isTerminalCustomerOpenBatchStage('expired_ticketing_deadline_detected')).toBe(true);
     expect(isTerminalCustomerOpenBatchStage('expired_ticketing_deadline_archived')).toBe(true);

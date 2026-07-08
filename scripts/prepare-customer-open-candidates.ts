@@ -20,6 +20,8 @@ type Options = {
   includeReady: boolean;
   retryErrors: boolean;
   includeTerminalBlocked: boolean;
+  includeRecentRetries: boolean;
+  retryCooldownMinutes: number;
   strict: boolean;
   baseUrl: string;
 };
@@ -52,6 +54,8 @@ function options(): Options {
     includeReady: hasFlag('--include-ready'),
     retryErrors: hasFlag('--retry-errors'),
     includeTerminalBlocked: hasFlag('--include-terminal-blocked'),
+    includeRecentRetries: hasFlag('--include-recent-retries'),
+    retryCooldownMinutes: numberArg('--retry-cooldown-minutes', 60, 1440),
     strict: hasFlag('--strict'),
     baseUrl: (argValue('--base', process.env.PRODUCTION_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')).replace(/\/+$/, ''),
   };
@@ -76,6 +80,8 @@ async function main() {
     includeReady: opts.includeReady,
     retryErrors: opts.retryErrors,
     includeTerminalBlocked: opts.includeTerminalBlocked,
+    includeRecentRetries: opts.includeRecentRetries,
+    retryCooldownMinutes: opts.retryErrors ? opts.retryCooldownMinutes : 0,
   });
   const autopilot = opts.apply && candidates.length > 0
     ? await runUploadToOpenAutopilot({
