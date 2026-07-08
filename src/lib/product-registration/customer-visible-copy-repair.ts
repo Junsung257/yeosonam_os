@@ -29,6 +29,19 @@ const UNSAFE_CODES = new Set([
 ]);
 
 const CUSTOMER_COPY_REPAIR_SKIP_KEYS = new Set([
+  'id',
+  'package_id',
+  'product_id',
+  'internal_code',
+  'short_code',
+  'attraction_id',
+  'attraction_ids',
+  'resolved_attraction_id',
+  'entity_id',
+  'entity_kind',
+  'source_id',
+  'source_ids',
+  'raw_text_hash',
   'raw_text',
   'sourceText',
   'source',
