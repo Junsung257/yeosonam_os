@@ -60,6 +60,7 @@ describe('package public eligibility', () => {
     expect(hasOptionalTourDisplayPollution(['\ub178\uc635\uc158'])).toBe(true);
     expect(hasOptionalTourDisplayPollution([{ name: '\ud3ec \ud568 \ub0b4 \uc5ed' }])).toBe(true);
     expect(hasOptionalTourDisplayPollution([{ name: '\uc0c1\ud488\uac00', price: '599' }])).toBe(true);
+    expect(hasOptionalTourDisplayPollution([{ name: '\uc624\uc804\uc790\uc720' }])).toBe(true);
 
     const blockers = getPackagePublicEligibilityBlockers({
       status: 'active',
@@ -98,12 +99,15 @@ describe('package public eligibility', () => {
       .toBe('inclusion_fragment');
     expect(classifyOptionalTourForPublicEligibility({ name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' }).classification)
       .toBe('valid_paid_option');
+    expect(classifyOptionalTourForPublicEligibility({ name: '\ucd94\ucc9c \uc635\uc158 : \ud06c\ub8e8\uc988 60$' }).classification)
+      .toBe('valid_paid_option');
   });
 
   it('sanitizes optional tours by keeping paid options and quarantining no-option/table noise', () => {
     const repair = sanitizeOptionalToursForPublicEligibility([
       { name: '\ub178\uc635\uc158' },
       { name: '\ud3ec \ud568 \ub0b4 \uc5ed' },
+      { name: '\uc624\uc804\uc790\uc720' },
       { name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' },
     ]);
 
@@ -115,6 +119,7 @@ describe('package public eligibility', () => {
     expect(repair.removed.map((finding) => finding.classification)).toEqual([
       'no_option_evidence',
       'inclusion_fragment',
+      'unknown_fragment',
     ]);
   });
 
@@ -173,6 +178,46 @@ describe('package public eligibility', () => {
 
     expect(blockers.map((b) => b.code)).toContain('stale_or_missing_mobile_proof');
     expect(isCustomerPubliclyOpenable({ status: 'active', audit_report: passingContract })).toBe(true);
+  });
+
+  it('does not keep a proof-only customer contract blocker after fresh proof passes', () => {
+    const auditReport = {
+      customer_open_contract: {
+        ok: false,
+        status: 'blocked',
+        blockers: ['public_eligibility_repair:requires_mobile_reproof'],
+        stale_or_missing_proof: true,
+        mobile_browser_proof: {
+          ok: false,
+          reason: 'public eligibility repair changed package data; refresh mobile proof and customer open contract',
+        },
+      },
+      mobile_browser_proof: {
+        status: 'pass',
+        checked_at: '2026-07-08T09:30:00.000Z',
+        package_updated_at: '2026-07-08T09:00:00.000Z',
+        source: 'hwp-mobile-browser-proof',
+        screen_hash: 'screen-hash',
+        customer_visible_hash: 'visible-hash',
+        surfaces: ['packages', 'lp'],
+        surface_results: [
+          { surface: 'packages', status: 'pass', screen_hash: 'packages-screen', customer_visible_hash: 'packages-visible' },
+          { surface: 'lp', status: 'pass', screen_hash: 'lp-screen', customer_visible_hash: 'lp-visible' },
+        ],
+      },
+    };
+
+    const blockers = getPackagePublicEligibilityBlockers({
+      status: 'active',
+      audit_status: 'clean',
+      audit_report: auditReport,
+      updated_at: '2026-07-08T09:00:00.000Z',
+      optional_tours: [],
+      itinerary_data: { days: [] },
+    }).map((b) => b.code);
+
+    expect(blockers).not.toContain('customer_open_contract_blocked');
+    expect(blockers).not.toContain('stale_or_missing_mobile_proof');
   });
 
   it('fails closed when stored mobile readiness contradicts a passing customer contract', () => {

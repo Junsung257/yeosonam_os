@@ -178,4 +178,50 @@ describe('repairCustomerVisibleCopyPayload', () => {
       }],
     });
   });
+
+  it('removes risky promise copy without inventing replacement claims', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      title: '연길·백두산 2명부터 출발확정 4박5일',
+      hero_tagline: '예약 즉시 항공·숙박 확보 가능',
+      itinerary_data: {
+        meta: {
+          title: '6/11(목) 까지 항공권 발권조건 2명부터 출발확정',
+        },
+      },
+      customer_notes: '확정 또는 가능 출발일에서 선택하세요.',
+    });
+
+    expect(result.value).toMatchObject({
+      title: '연길·백두산 4박5일',
+      customer_notes: '예약 가능 출발일에서 선택하세요',
+    });
+    expect(JSON.stringify(result.value)).not.toContain('출발확정');
+    expect(JSON.stringify(result.value)).not.toContain('예약 즉시');
+    expect(result.changes.map(change => change.codes)).toContainEqual(['risky_customer_promise_copy']);
+    expect(auditCustomerVisibleProductText(result.value as Record<string, unknown>)).toEqual([]);
+  });
+
+  it('keeps only priced public optional tours and removes table fragments', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      optional_tours: [
+        { name: '\ub178\uc635\uc158' },
+        { name: '\uc624\uc804\uc790\uc720' },
+        { name: '599' },
+        { name: '\ucc28\ub7c9' },
+        { name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' },
+      ],
+    });
+
+    expect(result.value).toEqual({
+      optional_tours: [
+        { name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' },
+      ],
+    });
+    expect(result.changes.map(change => change.codes[0])).toEqual(expect.arrayContaining([
+      'optional_tour_no_option_evidence',
+      'optional_tour_unknown_fragment',
+      'optional_tour_price_table_fragment',
+      'optional_tour_inclusion_fragment',
+    ]));
+  });
 });

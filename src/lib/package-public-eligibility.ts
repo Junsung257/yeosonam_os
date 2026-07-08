@@ -1,4 +1,5 @@
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 
 export type PublicEligibilityBlockerCode =
   | 'status_not_customer_visible'
@@ -87,9 +88,9 @@ const DATE_FRAGMENT_RE =
 const EXACT_HEADER_FRAGMENT_RE =
   /^(?:\uc120\ud0dd\s*\uad00\uad11|\uc1fc\ud551\s*\uc13c\ud130|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ube44\s*\uace0|r\s*m\s*k|remark|\uc77c\s*\uc790)$/iu;
 const PAID_OPTION_SIGNAL_RE =
-  /(?:\uc120\ud0dd\s*\uad00\uad11|\uc635\uc158|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\ud638\ud551|\uc2a4\ub178\ucfe8\ub9c1|\uc2a4\ub178\ud074\ub9c1|\ud22c\uc5b4|\ud06c\ub8e8\uc988|\uc1fc|\uacf5\uc5f0|\uccb4\ud5d8|\uc785\uc7a5\uad8c|massage|spa|tour|cruise|show|ticket)/iu;
+  /(?:\uc120\ud0dd\s*\uad00\uad11|\uc635\uc158|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\uc628\ucc9c|\uc628\ucc9c\uc695|\ud638\ud551|\uc2a4\ub178\ucfe8\ub9c1|\uc2a4\ub178\ud074\ub9c1|\ud22c\uc5b4|\ud06c\ub8e8\uc988|\uc1fc|\uacf5\uc5f0|\uccb4\ud5d8|\uc785\uc7a5\uad8c|\uc601\ud654\uad00|\uc2dc\ub124\ub9c8|massage|spa|tour|cruise|show|ticket|cinema)/iu;
 const MONEY_SIGNAL_RE =
-  /(?:[$]\s*\d+(?:\.\d+)?|\bUSD\s*\d+(?:\.\d+)?|\d[\d,]*\s*(?:\uc6d0|KRW|VND|JPY)|\uc720\ub8cc|\ubcc4\ub3c4\s*(?:\ubb38\uc758|\ube44\uc6a9|\uacb0\uc81c))/iu;
+  /(?:[$]\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*[$]|\bUSD\s*\d+(?:\.\d+)?|\d[\d,]*\s*(?:\uc6d0|KRW|VND|JPY)|\uc720\ub8cc|\ubcc4\ub3c4\s*(?:\ubb38\uc758|\ube44\uc6a9|\uacb0\uc81c))/iu;
 
 const OPTIONAL_TOUR_FRAGMENT_RE = new RegExp(
   [
@@ -132,6 +133,21 @@ export function getStoredCustomerOpenContract(auditReport: unknown): CustomerOpe
   const report = asRecord(auditReport);
   return asContract(report?.customer_open_contract)
     ?? asContract(asRecord(report?.upload_to_open_autopilot)?.customer_open_contract);
+}
+
+function isMobileProofOnlyContractBlocker(value: unknown): boolean {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  return /(?:mobile.*proof|proof.*mobile|mobile_browser_proof|requires_mobile_reproof|reproof|stale_or_missing_proof|MOBILE_BROWSER_PROOF_REQUIRED|quality_scorecard:(?:packages_mobile|lp_mobile))/i.test(text);
+}
+
+export function isProofOnlyCustomerOpenContractBlock(contract: CustomerOpenContractPayload): boolean {
+  const blockers = Array.isArray(contract.blockers)
+    ? contract.blockers.map(String).filter(Boolean)
+    : [];
+  const proofFlag = contract.stale_or_missing_proof === true || contract.mobile_browser_proof?.ok === false;
+  if (blockers.length === 0) return proofFlag;
+  return blockers.every(isMobileProofOnlyContractBlocker);
 }
 
 function collectStoredReadinessSignals(auditReport: unknown): {
@@ -244,12 +260,7 @@ export function sanitizeOptionalToursForPublicEligibility(
       next.push(item);
       continue;
     }
-    if (finding.classification === 'unknown_fragment') {
-      hasUnknown = true;
-      kept.push(finding);
-      next.push(item);
-      continue;
-    }
+    if (finding.classification === 'unknown_fragment') hasUnknown = true;
     if (finding.classification === 'no_option_evidence') hasNoOptionEvidence = true;
     hasPollution = true;
     removed.push(finding);
@@ -257,7 +268,7 @@ export function sanitizeOptionalToursForPublicEligibility(
 
   const status = hasPaidOption
     ? 'paid_options'
-    : next.length > 0 || hasUnknown
+    : hasUnknown
       ? 'unknown'
     : hasNoOptionEvidence
       ? 'none_explicit'
@@ -280,7 +291,7 @@ export function hasOptionalTourDisplayPollution(optionalTours: unknown): boolean
     const text = stringifyOptionalTour(tour).replace(/\s+/g, ' ').trim();
     if (!text) return false;
     const finding = classifyOptionalTourForPublicEligibility(tour);
-    if (finding.classification !== 'valid_paid_option' && finding.classification !== 'unknown_fragment') return true;
+    if (finding.classification !== 'valid_paid_option') return true;
     const compact = text.replace(/\s+/g, '');
     return OPTIONAL_TOUR_FRAGMENT_RE.test(compact);
   });
@@ -424,8 +435,13 @@ export function getPackagePublicEligibilityBlockers(
       message: 'customer_open_contract is missing',
     });
   } else {
+    const currentMobileProof = evaluateCustomerMobileProof({
+      auditReport: pkg.audit_report,
+      packageUpdatedAt: pkg.updated_at ?? null,
+    });
+    const proofOnlyBlockResolved = currentMobileProof.ok && isProofOnlyCustomerOpenContractBlock(contract);
     const contractPass = contract.ok === true || contract.status === 'pass';
-    if (!contractPass) {
+    if (!contractPass && !proofOnlyBlockResolved) {
       const reasons = Array.isArray(contract.blockers)
         ? contract.blockers.map(String).filter(Boolean).slice(0, 3).join(' | ')
         : 'customer_open_contract is not pass';
@@ -434,10 +450,10 @@ export function getPackagePublicEligibilityBlockers(
         message: reasons || 'customer_open_contract is not pass',
       });
     }
-    if (contract.stale_or_missing_proof || contract.mobile_browser_proof?.ok === false) {
+    if ((contract.stale_or_missing_proof || contract.mobile_browser_proof?.ok === false) && !currentMobileProof.ok) {
       blockers.push({
         code: 'stale_or_missing_mobile_proof',
-        message: contract.mobile_browser_proof?.reason || 'mobile proof is stale or missing',
+        message: currentMobileProof.reason || contract.mobile_browser_proof?.reason || 'mobile proof is stale or missing',
       });
     }
   }
