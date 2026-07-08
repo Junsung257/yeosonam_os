@@ -49,6 +49,7 @@ export interface BlogEngineEvaluation {
   score: number;
   passed: boolean;
   failure_bucket: BlogEngineFailureBucket;
+  category_scores: BlogEngineCategoryScore[];
   metrics: {
     task_completion: number;
     customer_language: number;
@@ -60,6 +61,21 @@ export interface BlogEngineEvaluation {
   };
   repair_recommendation: string | null;
   brief: BlogEngineV2Brief;
+}
+
+export type BlogEngineCategoryId =
+  | 'reader_task_completion'
+  | 'customer_language'
+  | 'naturalness'
+  | 'evidence_faithfulness'
+  | 'sales_pressure_control'
+  | 'product_decision_helpfulness';
+
+export interface BlogEngineCategoryScore {
+  id: BlogEngineCategoryId;
+  label: string;
+  score: number;
+  passed: boolean;
 }
 
 export interface BlogPublishabilitySnapshot {
@@ -230,11 +246,22 @@ function scoreInfoTask(markdown: string): number {
   if (first.length >= 80) score += 20;
   if (/(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|핵심|결론)/.test(first)) score += 25;
   if (!/^(안녕하세요|오늘은|이번\s*글에서는|여소남\s*에디터)/.test(first)) score += 10;
+  const answerSignals = [
+    /먼저|나눠|비교|확인|준비|챙기|봐야|체크|기준|잡아/,
+    /기온|비|소나기|옷차림|숙소|이동|식사|교통|포함|불포함|가격|비용|예산|총액|비자|여권|환율|서류|좌석|호텔|공항/,
+    /\d|원|℃|박|일|시간|성수기|우기|건기|출발|현지|공식|~|–|-/,
+  ];
+  const answerSignalCount = answerSignals.filter((pattern) => pattern.test(first)).length;
+  if (answerSignalCount < 2) score = Math.min(score, 75);
+  else if (answerSignalCount < 3) score = Math.min(score, 90);
   const structuredEvidence =
     (markdown.match(/(^|\n)\s*\|.+\|/g) ?? []).length >= 3
     || (markdown.match(/(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g) ?? []).length >= 5;
   if (score < 80 && structuredEvidence && /(비용|일정|준비|체크|지역|호텔|동선|날씨|환전|입국)/.test(markdown)) {
     score = 80;
+  }
+  if (!/\d|[0-9]|~|-|USD|KRW|JPY|VND|\$/.test(first)) {
+    score = Math.min(score, 90);
   }
   return Math.min(100, score);
 }
@@ -248,7 +275,17 @@ function scoreProductDecision(markdown: string, brief: BlogEngineV2Brief): numbe
     /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i,
     /문의\s*전\s*질문|consult_questions/i,
   ];
-  const blockScore = required.filter((pattern) => pattern.test(markdown)).length / required.length * 70;
+  const readableRequired = [
+    /10초\s*판단/,
+    /포함\s*\/\s*불포함|포함\s*항목.*불포함\s*항목/s,
+    /맞는\s*사람|맞는\s*분|맞는\s*고객/,
+    /안\s*맞는\s*사람|맞지\s*않는\s*분|맞지\s*않는\s*고객/,
+    /가격\s*변동\s*조건|가격(?:이|은)?\s*(?:바뀌|달라지|변동)/,
+    /문의\s*전\s*질문/,
+  ];
+  const legacyScore = required.filter((pattern) => pattern.test(markdown)).length / required.length * 70;
+  const readableScore = readableRequired.filter((pattern) => pattern.test(markdown)).length / readableRequired.length * 70;
+  const blockScore = Math.max(legacyScore, readableScore);
   const briefFields = [
     brief.included?.length,
     brief.excluded?.length,
@@ -322,9 +359,10 @@ function scoreSalesPressure(markdown: string, writer: BlogWriterType): number {
     .replace(/\n---[\s\S]*$/i, '');
   const plain = stripMarkup(bodyWithoutBottomCta).replace(/https?:\/\/\S+/gi, ' ');
   const firstThird = plain.slice(0, Math.ceil(plain.length * 0.3));
+  const infoTop = plain.slice(0, Math.min(900, Math.ceil(plain.length * 0.3)));
   const koreanHardCta = /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i;
-  const hardCta = /(지금\s*예약|바로\s*예약|예약\s*마감|잔여\s*좌석|상품\s*보기|패키지\s*보기|카카오|(?:상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)|예약\s*(?:하기|문의|상담|신청|바로|마감|가능))/i;
-  if (writer === 'info_writer' && (hardCta.test(firstThird) || koreanHardCta.test(firstThird))) return 35;
+  const hardCta = /(지금\s*예약|바로\s*예약|예약\s*마감|잔여\s*좌석|상품\s*보기|패키지\s*보기|카카오|(?:상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)|예약\s*(?:하기|문의|상담|신청|바로|마감))/i;
+  if (writer === 'info_writer' && (hardCta.test(infoTop) || koreanHardCta.test(infoTop))) return 35;
   if (koreanHardCta.test(plain) && /\uC9C0\uAE08|\uBC14\uB85C|\uB9C8\uAC10|\uC794\uC5EC/.test(plain)) return 45;
   if (/허리띠|마감임박|마지막\s*기회|놓치면\s*후회/i.test(plain)) return 45;
   return 100;
@@ -348,7 +386,7 @@ function scoreFaithfulness(markdown: string, brief: BlogEngineV2Brief): number {
 function chooseFailureBucket(metrics: BlogEngineEvaluation['metrics']): BlogEngineFailureBucket {
   const entries = Object.entries(metrics) as Array<[keyof typeof metrics, number]>;
   const [lowestMetric, lowestScore] = entries.sort((a, b) => a[1] - b[1])[0];
-  if (lowestScore >= 80) return 'passed';
+  if (lowestScore >= 100) return 'passed';
   if (lowestMetric === 'source_support') return 'evidence_insufficient';
   if (lowestMetric === 'task_completion') return 'engine_task_incomplete';
   if (lowestMetric === 'customer_language') return 'customer_language';
@@ -358,13 +396,68 @@ function chooseFailureBucket(metrics: BlogEngineEvaluation['metrics']): BlogEngi
   return 'faithfulness';
 }
 
+function buildCategoryScores(
+  metrics: BlogEngineEvaluation['metrics'],
+  brief: BlogEngineV2Brief,
+): BlogEngineCategoryScore[] {
+  const categories: BlogEngineCategoryScore[] = [
+    {
+      id: 'reader_task_completion',
+      label: brief.writer_type === 'product_consultant_writer'
+        ? '문의 전 판단 완성도'
+        : '검색 의도 답변 완성도',
+      score: metrics.task_completion,
+      passed: metrics.task_completion >= 100,
+    },
+    {
+      id: 'customer_language',
+      label: '고객 언어와 한국어 자연스러움',
+      score: metrics.customer_language,
+      passed: metrics.customer_language >= 100,
+    },
+    {
+      id: 'naturalness',
+      label: 'AI 티/반복 템플릿 억제',
+      score: metrics.naturalness,
+      passed: metrics.naturalness >= 100,
+    },
+    {
+      id: 'evidence_faithfulness',
+      label: '근거 충실도와 출처 지원',
+      score: Math.min(metrics.faithfulness, metrics.source_support),
+      passed: metrics.faithfulness >= 100 && metrics.source_support >= 100,
+    },
+    {
+      id: 'sales_pressure_control',
+      label: brief.writer_type === 'product_consultant_writer'
+        ? '과장/희소성 억제'
+        : '정보성 상단 강CTA 억제',
+      score: metrics.sales_pressure,
+      passed: metrics.sales_pressure >= 100,
+    },
+  ];
+
+  if (brief.writer_type === 'product_consultant_writer') {
+    categories.push({
+      id: 'product_decision_helpfulness',
+      label: '상품 문의 전 판단 도움성',
+      score: metrics.product_decision_helpfulness,
+      passed: metrics.product_decision_helpfulness >= 100,
+    });
+  }
+
+  return categories;
+}
+
 export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluation {
   const blogHtml = input.blogHtml ?? '';
   const brief = buildBlogEngineV2Brief(input);
   const evidenceKinds = new Set(brief.evidence_items.map((item) => item.kind));
   const hasMinimumEvidence = brief.writer_type === 'product_consultant_writer'
     ? evidenceKinds.has('product_db')
-    : evidenceKinds.has('official_source') || evidenceKinds.has('serp_intent') || evidenceKinds.has('internal_insight');
+    : brief.official_sources_required
+      ? evidenceKinds.has('official_source')
+      : evidenceKinds.has('official_source') || evidenceKinds.has('serp_intent') || evidenceKinds.has('internal_insight');
 
   const metrics = {
     task_completion: brief.writer_type === 'product_consultant_writer'
@@ -379,13 +472,15 @@ export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluati
       ? scoreProductDecision(blogHtml, brief)
       : 100,
   };
-  const score = Math.round(Object.values(metrics).reduce((sum, value) => sum + value, 0) / Object.values(metrics).length);
+  const category_scores = buildCategoryScores(metrics, brief);
+  const score = Math.round(category_scores.reduce((sum, value) => sum + value.score, 0) / category_scores.length);
   const failure_bucket = chooseFailureBucket(metrics);
 
   return {
     score,
-    passed: score >= 80 && failure_bucket === 'passed',
+    passed: score === 100 && failure_bucket === 'passed' && category_scores.every((category) => category.passed),
     failure_bucket,
+    category_scores,
     metrics,
     repair_recommendation: failure_bucket === 'passed'
       ? null

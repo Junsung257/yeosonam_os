@@ -146,4 +146,23 @@ describe('customer-open contract', () => {
     expect(isCustomerOpenContractBlogPublishable(staleEvidence)).toBe(false);
     expect(customerOpenContractBlogBlockReason(staleEvidence)).toBe('downstream_blog_publish_false');
   });
+
+  it('does not allow product-backed blog publishing for non-customer-visible package statuses', () => {
+    const result = evaluateCustomerOpenContract({
+      pkg: {
+        ...basePkg,
+        status: 'pending_review',
+      },
+      verifyChecks: [{ id: 'C15', status: 'pass' }, { id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      v3Gate: { blocksApproval: false, payloadError: null, blockReasons: [], draftStatus: 'ready_to_publish' },
+      sourceVerifyStatus: 'clean',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.evidencePack.downstream_eligibility.blog_publish).toBe(true);
+    expect(isCustomerOpenContractBlogPublishable(result)).toBe(false);
+    expect(customerOpenContractBlogBlockReason(result)).toBe('product_status_not_customer_visible:pending_review');
+  });
 });

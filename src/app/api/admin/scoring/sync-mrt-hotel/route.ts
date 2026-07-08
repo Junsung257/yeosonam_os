@@ -10,6 +10,7 @@ import {
 import { pickPackageRepresentativeDate, type RawPackageRow } from '@/lib/scoring/extract-features';
 import { logError } from '@/lib/sentry-logger';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -62,7 +63,7 @@ const postHandler = async (request: NextRequest) => {
     const { data: pkgs, error } = await supabaseAdmin
       .from('travel_packages')
       .select('id, destination, duration, itinerary_data, price_dates')
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .not('itinerary_data', 'is', null)
       .limit(lim);
 

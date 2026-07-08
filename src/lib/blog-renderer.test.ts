@@ -109,6 +109,19 @@ describe('blog-renderer', () => {
     expect(report.passed).toBe(true);
   });
 
+  it('compares numeric tilde ranges in table headers like rendered hyphen ranges', async () => {
+    const source = [
+      '| 항목 | 유럽 (3주, 3~4개국) | 동남아 (2주, 2~3개국) |',
+      '| --- | --- | --- |',
+      '| 예산 | 300만~500만 원 | 150만~250만 원 |',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(report.evidence.artifacts).not.toContain('rendered_table_header_mismatch');
+  });
+
   it('does not fail only because a stale source table candidate has no rendered pair', () => {
     const source = [
       'Food | dried mango | 20,000won | local mart |',

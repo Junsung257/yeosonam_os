@@ -3,6 +3,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .select('id,title,destination,ticketing_deadline,status')
     .not('ticketing_deadline', 'is', null)
     .lt('ticketing_deadline', today)
-    .in('status', ['active', 'approved'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .order('ticketing_deadline', { ascending: true })
     .limit(limit);
 

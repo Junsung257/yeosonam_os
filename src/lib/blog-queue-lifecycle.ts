@@ -405,14 +405,16 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
         const productStatus = productStatusCache.get(row.product_id) ?? null;
         const retiredProduct = isRetiredBlogProductStatus(productStatus);
         const contract = retiredProduct
-          ? { ok: false, blockers: ['archived_product'] }
+          ? null
           : await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id);
+        const blogPublishable = contract ? isCustomerOpenContractBlogPublishable(contract) : false;
+        const blogBlockers = contract ? [customerOpenContractBlogBlockReason(contract)] : ['archived_product'];
         const decision = retiredProduct
           ? buildBlogProductEvidenceArchivedProductDecision({ meta: row.meta, checkedAt: now, productStatus })
           : buildBlogProductEvidenceRecheckDecision({
               meta: row.meta,
-              contractOk: contract.ok,
-              blockers: contract.blockers,
+              contractOk: blogPublishable,
+              blockers: blogBlockers,
               checkedAt: now,
             });
         const dedupKey = readBlogProductEvidenceDedupKey({ product_id: row.product_id, meta: decision.meta });

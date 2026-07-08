@@ -4,6 +4,7 @@ import { AgentRunParams, AgentRunResult } from '../types'
 import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 import { recommendBestPackages } from '@/lib/scoring/recommend'
 import { getActivePolicy } from '@/lib/scoring/policy'
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status'
 
 const PRODUCTS_TOOLS_RAW = [
   {
@@ -360,7 +361,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       let query = supabaseAdmin
         .from('travel_packages')
         .select('id, title, destination, base_price, departure_date, duration_days, highlights, status')
-        .in('status', ['approved', 'active'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .order('created_at', { ascending: false })
         .limit(3)
       if (args.destination) query = query.ilike('destination', `%${args.destination}%`)

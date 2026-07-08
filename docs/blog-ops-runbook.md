@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-03
+Last updated: 2026-07-08
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -79,6 +79,45 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Queue failures are grouped into `slug_failures`, `non_slug_failures`, `indexing_failures`, and `stuck_queue_rows`.
 - Indexing health exposes `outbox_missing`, `provider_failures`, `active_jobs`, and `google_unknown_urls` as separate buckets.
 - `/admin/blog/system` and the sticky blog ops strip now surface this breakdown so operators can distinguish publish, queue, quality, indexing, and cron failures without reading raw DB rows.
+
+## 2026-07-08 Daily Publish Count Reconciliation
+
+- `diagnose:blog-autopublish` now reports both the raw `content_creatives` selected-day count and the reconciled operating count.
+- If the closed-day `blog-daily-summary` and latest `blog-publisher.dailyQuota` agree that the daily target was reached, the diagnosis uses that evidence for `published.selected_day` and exposes the raw count under `published.selected_day_raw`.
+- Do not open a `daily_publish_sla_miss` or `publisher_timeout` bucket from stale raw-count drift when the same-day daily summary and publisher quota show quota reached, preflight passes, and current-day publisher health is healthy.
+- Treat this reconciliation as an operating-report correction only. If raw `content_creatives` drift persists, inspect the source query/date boundary separately instead of marking publishing broken.
+
+## 2026-07-08 Customer Language Quality Hardening
+
+- Recent 16-post backfill now targets `changed=0`, not merely `qualityGateFailed=0`. This prevents fixed posts from being rewritten repeatedly because of harmless storage formatting or non-idempotent repairs.
+- Customer quality now blocks product DB evidence omissions, internal supplier/settlement term leaks, unsupported source-sensitive info guides, generated placeholder residue, duplicate hashtags, broken Markdown URL fragments, repeated answer-first hooks, and mobile paragraph walls.
+- Final repair must normalize the H1 lead to one answer-first paragraph, preserve short answer leads, split only true long paragraphs, and run destination placeholder repair after CTA/FAQ/readability repairs.
+- `src/lib/blog-final-customer-surface.ts` is the shared final customer-surface repair used by both `blog-publisher` and `backfill-blog-quality`; do not add a one-off published-row repair unless the live publisher also calls the same rule.
+- `engine_v2.category_scores` is the operator-facing 100-point scorecard: reader task completion, customer language, naturalness, evidence/faithfulness, sales pressure, and product decision helpfulness for product posts. `engine_score` without per-category pass evidence is not enough to call a post 100점.
+- Live publishing now uses the same scorecard as repair input. `repairBlogEngineCategoryGaps()` re-evaluates and repairs up to three rounds, then writes `generation_meta.engine_category_repair` with before/after score, repaired categories, `repair_rounds`, and repair actions so operators can see whether weak customer-facing categories were fixed before publish instead of only blocked.
+- The final publish gate has no near-pass exception for `ai_naturalness` or `sales_pressure`. If any engine category remains below 100 after repair rounds, the candidate must be repaired, regenerated, or replaced by another publishable candidate rather than published as a weaker article.
+- `evaluateBlogEngineV2()` now follows the same rule directly: 80-99 is not pass, it is repairable evidence. `engine_v2` failures are self-heal eligible when the cause is reader-task completion, customer language, naturalness, sales-pressure control, or product decision helpfulness. Do not self-heal evidence-insufficient, product open-contract, topic-fit, or candidate pre-publish contract blockers.
+- Shared publish preparation and `backfill-blog-quality` also call `repairBlogEngineCategoryGaps()`. If a recent-post dry run shows `changed>0`, run the write audit and indexing worker, then rerun dry-run until `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`.
+- `audit:blog-quality -- --json` exposes `engineCategoryScorecard` with checked count, perfect count, below-100 count, average score, weak category buckets, and samples. Recent-post stabilization now requires `engineCategoryScorecard.below100Count=0` in addition to the existing changed/gate/publish checks.
+- `/admin/blog/system` recomputes and displays the recent-post engine category scorecard, including average category score, 100점 post count, below-100 count, and top weak categories. This keeps the scorecard visible even for older posts whose stored `generation_meta` predates the field.
+- Verification on 2026-07-08:
+  - `npm run audit:blog-quality -- --limit=16 --json --write` updated affected recent posts and queued indexing jobs.
+  - `npm run run:blog-indexing-worker -- --json --limit=15` processed the queued jobs with `failed=0`.
+  - Final `npm run audit:blog-quality -- --limit=16 --json` returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`.
+  - `npm run type-check` passed.
+  - `npx vitest run src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 68 tests.
+  - `npm run diagnose:blog-autopublish -- --json` reported selected-day `4/4`, publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
+  - After wiring the shared final customer-surface repair into live publishing, `npx vitest run src/lib/blog-final-customer-surface.test.ts src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 72 tests; `npm run audit:blog-quality -- --limit=16 --json` returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`; `npm run diagnose:blog-autopublish -- --json` remained at publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
+
+## 2026-07-08 Quota Recovery and Generated Canary Evidence
+
+- Daily target recovery must not stop at "blocked". If a candidate fails for deterministic quality issues that the shared repair path can fix, the publisher should retry it immediately and the external cron retry loop can pick it up in the same publishing window.
+- Self-heal quality failures include `length`, `links`, `keyword_density`, `structure_integrity`, `table_integrity`, `render_integrity`, `intent_quality`, `seo_score`, and `engine_v2`. These are repair backlog when they exceed attempts, not hidden terminal noise.
+- Unsafe seeds remain blocked until their source data is fixed: duplicate content, missing context, insufficient evidence, product open-contract failure, topic-fit failure, candidate pre-publish contract failure, and invalid linked drafts.
+- `src/lib/blog-canary-preflight.ts` now labels every selected canary with `quality_contract='customer_surface_100'` and writer-specific expectations, so operators can see whether the canary proves info-guide quality or product-consult quality.
+- `src/lib/blog-canary-generated-quality.ts` checks an actual generated sample across engine score, customer quality, and rendered Markdown integrity. This is the canary to run after changing prompts, product writer structure, final repair, or renderer behavior.
+- Verification on 2026-07-08:
+  - `npx vitest run src/lib/blog-canary-generated-quality.test.ts src/lib/blog-canary-preflight.test.ts` passed 10 tests.
 
 ## 2026-06-16 Live Ops Evidence
 

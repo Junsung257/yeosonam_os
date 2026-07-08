@@ -19,17 +19,69 @@ describe('blog queue failure policy', () => {
     })).toBe(false);
   });
 
-  it('allows one publisher retry for quality failures but blocks orchestrator self-heal loops', () => {
+  it('keeps deterministic quality failures self-healable so quota can be recovered', () => {
     const decision = classifyBlogQueueFailure('1/13 failed: [structure_integrity] checklist_shape_invalid');
 
     expect(decision).toMatchObject({
       code: 'structure_integrity',
       retryable: true,
-      selfHealAllowed: false,
+      selfHealAllowed: true,
     });
     expect(shouldSelfHealBlogQueueItem({
       lastError: '1/13 failed: [structure_integrity] checklist_shape_invalid',
-    })).toBe(false);
+    })).toBe(true);
+
+    for (const reason of [
+      '2/19 failed: [links] internal link missing',
+      '2/19 failed: [keyword_density] stuffing risk',
+      'SEO score 71/100 - internal_links_cta',
+      'quality failed: [intent_quality] weak_reading_design',
+      '2/19 failed: [length] thin content minimum length',
+    ]) {
+      expect(classifyBlogQueueFailure(reason)).toMatchObject({
+        retryable: true,
+        selfHealAllowed: true,
+      });
+      expect(shouldSelfHealBlogQueueItem({ lastError: reason })).toBe(true);
+    }
+  });
+
+  it('keeps rendered markdown residue failures recoverable for a repaired rerun', () => {
+    const decision = classifyBlogQueueFailure(
+      '2/20 실패: [render_integrity] literal_markdown_bold · [article_quality_v2] standalone_markdown_bold',
+    );
+
+    expect(decision).toMatchObject({
+      code: 'render_integrity',
+      retryable: true,
+      selfHealAllowed: true,
+    });
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: '2/20 실패: [render_integrity] literal_markdown_bold',
+    })).toBe(true);
+  });
+
+  it('classifies article quality v2 residue when render gate is not present', () => {
+    expect(classifyBlogQueueFailure(
+      'quality failed: [article_quality_v2] article quality v2 failed: standalone_markdown_bold',
+    )).toMatchObject({
+      code: 'article_quality_v2',
+      retryable: true,
+      selfHealAllowed: true,
+    });
+  });
+
+  it('keeps engine v2 quality gaps recoverable by the current category repair loop', () => {
+    expect(classifyBlogQueueFailure(
+      'quality failed: [engine_v2] engine v2 90/100: engine_task_incomplete (reader_task_completion:90)',
+    )).toMatchObject({
+      code: 'engine_v2',
+      retryable: true,
+      selfHealAllowed: true,
+    });
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: 'quality failed: [engine_v2] sales_pressure_control:80',
+    })).toBe(true);
   });
 
   it('classifies thin content and link gate failures without hiding them as unknown', () => {
@@ -38,7 +90,7 @@ describe('blog queue failure policy', () => {
     )).toMatchObject({
       code: 'length',
       retryable: true,
-      selfHealAllowed: false,
+      selfHealAllowed: true,
     });
 
     expect(classifyBlogQueueFailure(
@@ -46,11 +98,11 @@ describe('blog queue failure policy', () => {
     )).toMatchObject({
       code: 'links',
       retryable: true,
-      selfHealAllowed: false,
+      selfHealAllowed: true,
     });
     expect(shouldSelfHealBlogQueueItem({
       lastError: '2/19 실패: [links] 내부링크 0개 — 최소 1개 필요',
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('honors stored quarantine metadata even if the text is ambiguous', () => {

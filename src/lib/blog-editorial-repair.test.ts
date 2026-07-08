@@ -58,6 +58,95 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('세부 쇼핑 예산');
   });
 
+  it('rewrites weather openings with weather language instead of generic cost language', () => {
+    const result = repairBlogEditorialQuality({
+      title: '몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      slug: 'mongolia-july-weather-packing',
+      primaryKeyword: '몽골 7월 날씨 옷차림',
+      destination: '몽골',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 7월 날씨 옷차림',
+        '',
+        '답부터 말하면, 2026년 7월 기준 몽골 7월 날씨 옷차림에서 먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다. 포함/불포함, 이동 시간, 현지 추가비용을 함께 비교하면 불필요한 이동과 추가 부담을 줄일 수 있습니다.',
+        '',
+        '## 기온과 옷차림',
+        '',
+        '| 구분 | 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 낮 | 25도 안팎 | 얇은 긴팔 |',
+        '| 밤 | 10도 안팎 | 겉옷 |',
+        '| 비 | 소나기 가능 | 우비 |',
+      ].join('\n'),
+    });
+
+    expect(result.changes).toContain('repaired_generic_answer_opening');
+    expect(result.blogHtml).toContain('낮과 밤 기온');
+    expect(result.blogHtml).toContain('비 예보');
+    expect(result.blogHtml).not.toContain('예산 범위, 이동 순서, 현지 확인 사항');
+  });
+
+  it('splits mobile paragraph walls before customer quality gates', () => {
+    const longParagraph = [
+      '몽골 7월 여행은 낮과 밤의 기온 차이가 커서 옷을 한 벌로 정하기보다 얇은 긴팔, 바람막이, 밤용 겉옷을 나눠 준비하는 편이 안전합니다.',
+      '낮에는 햇빛과 자외선이 강하고 이동 중 먼지가 많을 수 있어 피부를 가리는 옷이 편하며, 밤에는 게르 캠프나 별보기 일정에서 체감온도가 빠르게 내려갈 수 있습니다.',
+      '비가 오더라도 하루 종일 이어지는 장마라기보다 짧게 지나가는 소나기 형태가 많아 우산보다 방수 바람막이가 실용적인 경우가 많습니다.',
+      '아이와 함께라면 감기약, 지사제, 밴드, 보습제처럼 현지에서 바로 구하기 어려운 물품을 작은 파우치에 따로 챙기는 것이 좋고, 이동 시간이 길어질 수 있으니 보조배터리와 간식도 같이 준비하면 좋습니다.',
+      '현지에서 바로 사면 되는 물건과 한국에서 챙겨야 하는 물건을 나눠두면 짐은 줄이면서도 꼭 필요한 준비물은 놓치지 않을 수 있습니다.',
+    ].join(' ');
+    const result = repairBlogStructureQuality({
+      title: '몽골 7월 날씨 옷차림',
+      slug: 'mongolia-july-weather',
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 7월 날씨 옷차림',
+        '',
+        longParagraph,
+        '',
+        '## 공식 확인 링크',
+        '',
+        '- 외교부 해외안전여행',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('split_long_paragraphs');
+    expect(result.blogHtml.split(/\n{2,}/).some((paragraph) => paragraph.length >= 360)).toBe(false);
+  });
+
+  it('removes visual highlight residue without breaking URL query strings', () => {
+    const result = repairBlogStructureQuality({
+      title: '발리 준비물',
+      slug: 'bali-packing',
+      primaryKeyword: '발리 준비물',
+      destination: '발리',
+      contentType: 'guide',
+      blogHtml: [
+        '# 발리 준비물',
+        '',
+        '=출발 전 샤워기 필터와 모기 기피제를 먼저 챙기면 좋습니다=',
+        '',
+        '[상담 링크](https://www.yeosonam.com/group-inquiry?utm_source=naver_blog&utm_campaign=blog)',
+        '',
+        '**',
+        '',
+        '## 체크리스트',
+        '',
+        '- 여권',
+        '- 선크림',
+        '- 상비약',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('출발 전 샤워기 필터와 모기 기피제를 먼저 챙기면 좋습니다');
+    expect(result.blogHtml).toContain('utm_source=naver_blog');
+    expect(result.blogHtml).not.toMatch(/(^|\n)\s*>?\s*\*\*\s*(?=\n|$)/);
+    expect(result.blogHtml).not.toContain('=출발 전');
+  });
+
   it('softens readable unsupported internal product and booking data claims', () => {
     const result = repairBlogEditorialQuality({
       title: '석가장 여행 비용',
@@ -317,6 +406,42 @@ describe('blog editorial repair', () => {
     });
   });
 
+  it('removes standalone and escaped markdown bold residue that would block autopublish', async () => {
+    const result = repairBlogStructureQuality({
+      title: 'Cebu family travel cost',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: 'Cebu family travel cost',
+      blogHtml: [
+        '# Cebu family travel cost',
+        '',
+        '<p>**</p>',
+        '',
+        '> **',
+        '',
+        '<p>\\*\\*Quick answer\\*\\* Check airfare, hotel area, transfers, and local meals before comparing package prices.</p>',
+        '',
+        '| Item | Check | Note |',
+        '| --- | --- | --- |',
+        '| Airfare | Departure date | Recheck seat class |',
+        '| Hotel | Area | Compare transfer time |',
+        '| Local cost | Meals | Keep cash buffer |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('removed_residual_html_markdown_bold');
+    expect(result.blogHtml).not.toContain('**');
+    expect(result.blogHtml).not.toContain('\\*\\*');
+
+    const renderGate = await checkRenderIntegrity(result.blogHtml);
+    expect(renderGate.passed).toBe(true);
+    expect(renderGate.evidence).toMatchObject({
+      artifactCount: 0,
+      artifacts: [],
+    });
+  });
+
   it('softens early hard CTA sentences without dropping informational context', () => {
     const source = [
       '# 몽골 가족여행 2026 실제 경비표',
@@ -546,6 +671,34 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('광저우는');
     expect(result.blogHtml).toContain('대학생 여행에서 먼저 볼 것은');
     expect(result.after.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(false);
+  });
+
+  it('repairs budget particle defects in generated bullet summaries', () => {
+    const result = repairBlogSemanticSurface({
+      title: '세부 숙소 지역별 예산 여행 가이드 2026',
+      primaryKeyword: '세부 숙소 지역별 예산',
+      destination: '세부',
+      category: 'cost',
+      contentType: 'guide',
+      blogHtml: [
+        '# 세부 숙소 지역별 예산 여행 가이드 2026',
+        '',
+        '세부 숙소 지역별 예산, 먼저 총액에서 무엇이 빠지는지 봐야 합니다.',
+        '',
+        '## 세부 숙소 지역별 예산 확인 포인트',
+        '',
+        '- 세부 숙소 지역별 예산는 상품가와 현지 개인경비를 나눠 봐야 총액이 맞습니다.',
+        '- 예산는 식사, 교통, 선택 관광 비용을 따로 잡으면 비교가 쉬워집니다.',
+        '- 비용는 환율과 성수기 여부에 따라 달라질 수 있어 예약 전 조건을 다시 확인하세요.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('세부 숙소 지역별 예산은 상품가');
+    expect(result.blogHtml).toContain('예산은 식사');
+    expect(result.blogHtml).toContain('비용은 환율');
+    expect(result.blogHtml).not.toContain('예산는');
+    expect(result.blogHtml).not.toContain('비용는');
   });
 
   it('repairs generated image context and removes repeated answer scaffolds', () => {

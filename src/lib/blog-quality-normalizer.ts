@@ -22,6 +22,13 @@ function cleanText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function hasQuestionAnswerFaqBlock(markdown: string): boolean {
+  const qHeadingCount = (markdown.match(/(^|\n)\s*#{2,4}\s*Q(?:\d+)?[.:]/gi) || []).length;
+  const qLineCount = (markdown.match(/(^|\n)\s*Q(?:\d+)?[.:]/gi) || []).length;
+  const answerCount = (markdown.match(/(^|\n)\s*A(?:\d+)?[.:]/gi) || []).length;
+  return (qHeadingCount >= 2 || qLineCount >= 2) && answerCount >= 2;
+}
+
 function removeRewriteArtifactsTitle(value: string): string {
   let next = value;
   for (const pattern of REWRITE_ARTIFACT_REGEXES) {
@@ -137,7 +144,7 @@ function buildFaqSection(destination: string, primaryKeyword: string): string {
 }
 
 function ensureFaqSection(markdown: string, destination: string, primaryKeyword: string): string {
-  if (FAQ_HEADING_REGEX.test(markdown)) return markdown;
+  if (FAQ_HEADING_REGEX.test(markdown) || hasQuestionAnswerFaqBlock(markdown)) return markdown;
   return `${markdown.trimEnd()}\n\n${buildFaqSection(destination, primaryKeyword)}`;
 }
 

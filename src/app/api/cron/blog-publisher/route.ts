@@ -22,8 +22,8 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
-import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
@@ -66,6 +66,8 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
+import { repairBlogFinalCustomerSurface } from '@/lib/blog-final-customer-surface';
+import { repairBlogEngineCategoryGaps } from '@/lib/blog-engine-category-repair';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
@@ -142,6 +144,7 @@ function classifyPublisherFailure(reason?: string): string {
   if (text.includes('structure_integrity') || text.includes('structure')) return 'structure_integrity';
   if (text.includes('keyword_density')) return 'keyword_density';
   if (text.includes('table_integrity') || text.includes('table')) return 'table_integrity';
+  if (text.includes('article_quality_v2') || text.includes('standalone_markdown') || text.includes('literal_markdown')) return 'article_quality_v2';
   if (text.includes('render_integrity') || text.includes('render')) return 'render_integrity';
   if (text.includes('intent_quality') || text.includes('intent')) return 'intent_quality';
   if (text.includes('editorial_quality') || text.includes('editorial')) return 'editorial_quality';
@@ -483,6 +486,72 @@ async function runGeneratedQualityGates(
   return runQualityGates(buildQualityGateInput(generated, item, blogType, primaryKeyword));
 }
 
+async function runGeneratedPublishQuality(
+  generated: GeneratedBlog,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): Promise<BlogPublishQualityReport> {
+  const qualityInput = buildQualityGateInput(generated, item, blogType, primaryKeyword);
+  return evaluateBlogPublishQuality({
+    ...qualityInput,
+    seo_title: generated.seo_title,
+    seo_description: generated.seo_description,
+    secondary_keywords: Array.isArray(item.meta?.keywords) ? item.meta.keywords : [],
+  });
+}
+
+function applyFinalCustomerSurfaceRepair(
+  generated: GeneratedBlog,
+  item: any,
+  primaryKeyword?: string | null,
+): string[] {
+  const surfaceRepair = repairBlogFinalCustomerSurface({
+    markdown: generated.blog_html,
+    destination: item.destination ?? null,
+    primaryKeyword,
+    slug: generated.slug,
+    title: generated.seo_title || item.topic,
+  });
+  if (!surfaceRepair.changed) return [];
+  generated.blog_html = surfaceRepair.markdown;
+  return surfaceRepair.changes;
+}
+
+function applyEngineCategoryRepair(
+  generated: GeneratedBlog,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): string[] {
+  const categoryRepair = repairBlogEngineCategoryGaps({
+    markdown: generated.blog_html,
+    blogType,
+    title: generated.seo_title || item.topic || primaryKeyword || generated.slug,
+    slug: generated.slug,
+    destination: item.destination ?? null,
+    primaryKeyword,
+    angleType: normalizeAngleType(item.angle_type),
+    category: item.category ?? null,
+    contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+    productId: item.product_id ?? null,
+    generationMeta: generated.generation_meta ?? null,
+  });
+  if (!categoryRepair.changed) return [];
+  generated.blog_html = categoryRepair.markdown;
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    engine_category_repair: {
+      before_score: categoryRepair.beforeScore,
+      after_score: categoryRepair.afterScore,
+      repaired_categories: categoryRepair.repairedCategories,
+      repair_rounds: categoryRepair.repairRounds,
+      changes: categoryRepair.changes,
+    },
+  };
+  return categoryRepair.changes;
+}
+
 function failedGateSet(qa: QualityGateReport): Set<string> {
   return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
 }
@@ -499,7 +568,7 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
-    if (failed.has('intent_quality') || failed.has('engine_v2')) {
+    if (failed.has('intent_quality') || failed.has('engine_v2') || failed.has('article_quality_v2') || failed.has('editorial_quality')) {
       const editorialRepair = repairBlogEditorialQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -518,7 +587,15 @@ async function repairFailedQualityGates(
       }
     }
 
-    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity')) {
+    if (
+      failed.has('structure_integrity')
+      || failed.has('table_integrity')
+      || failed.has('intent_quality')
+      || failed.has('engine_v2')
+      || failed.has('render_integrity')
+      || failed.has('article_quality_v2')
+      || failed.has('editorial_quality')
+    ) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -586,6 +663,11 @@ async function repairFailedQualityGates(
     }
 
     if (failed.has('engine_v2')) {
+      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
+      if (categoryChanges.length > 0) {
+        changes.push(...categoryChanges);
+        changed = true;
+      }
       const before = generated.blog_html;
       generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
       if (generated.blog_html !== before) {
@@ -652,6 +734,12 @@ async function repairFailedQualityGates(
       slug: generated.slug,
       utmSource: 'naver_blog',
     });
+    {
+      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (surfaceChanges.length > 0) {
+        changes.push(...surfaceChanges);
+      }
+    }
     qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     console.log(`[blog-publisher] quality repair round ${round}: ${changes.join(', ')} -> passed=${qa.passed}`);
   }
@@ -1552,6 +1640,20 @@ async function processQueueItem(
       console.log(`[blog-publisher] publish readiness repair: ${readinessRepair.changes.join(', ')}`);
     }
 
+    {
+      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
+      if (categoryChanges.length > 0) {
+        console.log(`[blog-publisher] engine category repair: ${categoryChanges.join(', ')}`);
+      }
+    }
+
+    {
+      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (surfaceChanges.length > 0) {
+        console.log(`[blog-publisher] final customer surface repair: ${surfaceChanges.join(', ')}`);
+      }
+    }
+
     let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
@@ -1692,7 +1794,98 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
     }
 
-    const readability = computeReadability(generated.blog_html);
+    let publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+    if (!publishQuality.passed) {
+      const finalRepairChanges: string[] = [];
+      let finalRepairChanged = false;
+
+      const finalEditorialRepair = repairBlogEditorialQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        destination: item.destination ?? null,
+        angleType: normalizeAngleType(item.angle_type),
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (finalEditorialRepair.changed) {
+        generated.blog_html = finalEditorialRepair.blogHtml;
+        finalRepairChanges.push(...finalEditorialRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalStructureRepair = repairBlogStructureQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        destination: item.destination ?? null,
+        angleType: normalizeAngleType(item.angle_type),
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (finalStructureRepair.changed) {
+        generated.blog_html = finalStructureRepair.blogHtml;
+        finalRepairChanges.push(...finalStructureRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalDensityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, blogType);
+      if (finalDensityRepair.changed) {
+        generated.blog_html = finalDensityRepair.blogHtml;
+        finalRepairChanges.push('final_keyword_density_repair');
+        finalRepairChanged = true;
+      }
+
+      const finalReadinessRepair = repairPublishReadiness({
+        markdown: generated.blog_html,
+        blogType,
+        slug: generated.slug,
+        destination: item.destination,
+        topic: item.topic,
+        primaryKeyword,
+      });
+      if (finalReadinessRepair.changed) {
+        generated.blog_html = finalReadinessRepair.markdown;
+        finalRepairChanges.push(...finalReadinessRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalSurfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (finalSurfaceChanges.length > 0) {
+        finalRepairChanges.push(...finalSurfaceChanges);
+        finalRepairChanged = true;
+      }
+
+      if (finalRepairChanged) {
+        generated.generation_meta = {
+          ...(generated.generation_meta || {}),
+          repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0) + 1,
+        };
+        generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+          destination: item.destination,
+          slug: generated.slug,
+          utmSource: 'naver_blog',
+        });
+        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+        seoScore = computeSeoScore(buildSeoScoreInput());
+        publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+        console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ')} -> passed=${publishQuality.passed}`);
+      }
+    }
+
+    if (!publishQuality.passed) {
+      console.log(`[blog-publisher] publish quality blocked (${publishQuality.summary})`);
+      await handleFailure(item, publishQuality.summary, publishQuality.qualityGate);
+      return { id: item.id, topic: item.topic, status: 'publish_quality_failed', reason: publishQuality.summary };
+    }
+
+    qa = publishQuality.qualityGate;
+    seoScore = publishQuality.seoScore;
+    const readability = publishQuality.readability;
     const now = new Date().toISOString();
     const engineGate = qa.gates.find(gate => gate.gate === 'engine_v2');
     const engineEvaluation = engineGate?.evidence && typeof engineGate.evidence === 'object'
@@ -1701,6 +1894,9 @@ async function processQueueItem(
     const engineMetrics = engineEvaluation?.metrics && typeof engineEvaluation.metrics === 'object'
       ? engineEvaluation.metrics as Record<string, unknown>
       : {};
+    const engineCategoryScores = Array.isArray(engineEvaluation?.category_scores)
+      ? engineEvaluation.category_scores
+      : [];
     const engineBrief = engineEvaluation?.brief && typeof engineEvaluation.brief === 'object'
       ? engineEvaluation.brief as Record<string, unknown>
       : {};
@@ -1716,6 +1912,7 @@ async function processQueueItem(
       brief_score: typeof engineMetrics.task_completion === 'number' ? engineMetrics.task_completion : null,
       evidence_score: typeof engineMetrics.source_support === 'number' ? engineMetrics.source_support : null,
       engine_score: typeof engineEvaluation?.score === 'number' ? engineEvaluation.score : null,
+      engine_category_scores: engineCategoryScores,
       failure_bucket: engineEvaluation?.failure_bucket ?? null,
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
@@ -1842,6 +2039,7 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
   const decision = classifyBlogQueueFailure(reason, qa);
   const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure || decision.code === 'duplicate_content';
   const shouldForceFailure = forceFailure || !decision.retryable;
+  const retryDelayMs = decision.selfHealAllowed ? 0 : 2 * 3600 * 1000;
   const finalStatus = (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
     ? 'skipped'
     : shouldForceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
@@ -1851,9 +2049,8 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
       status: finalStatus,
       attempts,
       last_error: reason,
-      // 재시도 시 2시간 뒤로 미룸
       target_publish_at: finalStatus === 'queued'
-        ? new Date(Date.now() + 2 * 3600 * 1000).toISOString()
+        ? new Date(Date.now() + retryDelayMs).toISOString()
         : item.target_publish_at,
       meta: {
         ...(item.meta || {}),

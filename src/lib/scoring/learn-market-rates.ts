@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import type { TravelItinerary } from '@/types/itinerary';
 
 const MIN_SAMPLES = 2;
@@ -23,7 +24,7 @@ export async function learnMarketRates(): Promise<LearnMarketRatesResult> {
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select('destination, itinerary_data')
-    .in('status', ['approved', 'active']);
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
   if (error) throw new Error(`패키지 조회 실패: ${error.message}`);
   type Row = { destination: string; itinerary_data: TravelItinerary | null };
   const packages = (data ?? []) as Row[];

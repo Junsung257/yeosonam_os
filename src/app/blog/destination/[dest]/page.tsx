@@ -18,6 +18,7 @@ import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -223,7 +224,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
       .from('travel_packages')
       .select('id, title, price, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .ilike('destination', `%${destination}%`)
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('price', { ascending: true })
       .limit(6);
 

@@ -5,6 +5,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -109,7 +110,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       supabaseAdmin
         .from('travel_packages')
         .select('destination, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .in('status', ['active', 'approved'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .not('destination', 'is', null)
         .limit(PACKAGE_LIMIT)
         .abortSignal(signal),

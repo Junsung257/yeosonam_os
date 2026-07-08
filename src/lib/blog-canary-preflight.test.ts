@@ -17,6 +17,14 @@ describe('buildBlogCanaryPreflight', () => {
     expect(result.candidates).toHaveLength(3);
     expect(result.writer_mix.info_writer).toBe(3);
     expect(result.rejected_counts.single_writer_type_canary).toBe(1);
+    expect(result.candidates[0].quality_contract).toBe('customer_surface_100');
+    expect(result.candidates[0].contract_expectations).toEqual(
+      expect.arrayContaining([
+        'answer_first_120_200_chars',
+        'bottom_soft_cta_only',
+        'render_clean_tables',
+      ]),
+    );
   });
 
   it('prefers a mixed info/product writer canary set when both are available', () => {
@@ -36,6 +44,14 @@ describe('buildBlogCanaryPreflight', () => {
     expect(result.writer_mix.info_writer).toBeGreaterThanOrEqual(1);
     expect(result.writer_mix.product_consultant_writer).toBeGreaterThanOrEqual(1);
     expect(new Set(result.candidates.map((candidate) => candidate.dedup_key)).size).toBe(3);
+    expect(result.candidates.find((candidate) => candidate.writer_type === 'product_consultant_writer')?.contract_expectations).toEqual(
+      expect.arrayContaining([
+        'product_db_only',
+        'included_excluded_blocks',
+        'fit_and_not_fit_blocks',
+        'risk_notes_and_consult_questions',
+      ]),
+    );
   });
 
   it('rejects recent duplicates and evidence-blocked candidates before canary selection', () => {

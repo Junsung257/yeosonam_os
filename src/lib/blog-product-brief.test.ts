@@ -36,7 +36,7 @@ describe('blog product brief', () => {
 
     expect(brief).toMatchObject({
       content_type: 'package_intro',
-      prompt_version: 'product-template-v2',
+      prompt_version: 'product-template-v4',
       product_id: 'pkg_123456789',
       primary_keyword: '다낭 5일 패키지',
       seo_keyword: '다낭 5일 패키지',
@@ -49,10 +49,10 @@ describe('blog product brief', () => {
       included: ['항공', '호텔', '가이드'],
       excluded: ['개인경비'],
     });
-    expect(brief.fit_for).toContain('다낭 패키지를 가격과 일정 기준으로 먼저 비교하려는 고객');
-    expect(brief.not_fit_for).toContain('자유일정 비중이 큰 개별여행을 원하는 고객');
-    expect(brief.risk_notes).toContain('가격과 좌석은 발권/예약 시점에 따라 달라질 수 있음');
-    expect(brief.consult_questions).toContain('인원과 출발 가능일은 어떻게 되나요?');
+    expect(brief.fit_for).toContain('다낭 패키지를 가격, 일정, 포함 항목 기준으로 먼저 비교하고 싶은 분');
+    expect(brief.not_fit_for).toContain('자유시간을 길게 두고 현지 일정을 직접 조합하고 싶은 분');
+    expect(brief.risk_notes).toContain('가격은 출발일, 좌석, 유류할증료, 객실 조건에 따라 달라질 수 있습니다.');
+    expect(brief.consult_questions).toContain('이 출발일에 현재 가능한 좌석과 객실이 있나요?');
   });
 
   it('uses source-backed price tables when the package price field is empty', () => {
@@ -76,7 +76,7 @@ describe('blog product brief', () => {
       id: 'pkg_long',
       destination: '푸꾸옥',
       duration: 6,
-      title: 'PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 4박6일 가성비 리뷰',
+      title: 'PKG ZE 푸꾸옥 2색 골프 리조트 빈펄 4박6일 가성비 리뷰',
     })).toBe('푸꾸옥 6일 패키지');
   });
 });

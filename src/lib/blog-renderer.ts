@@ -365,6 +365,8 @@ function stripTagsForCompare(value: string): string {
 
 function normalizeTableCompareText(value: string): string {
   return value
+    .replace(/(\d)\s*[~～]\s*(\d)(?=\s*(?:개국|개월|주|일|시간|분|만|원|℃|도|mm|페소|달러|엔|위안|바트))/g, '$1-$2')
+    .replace(/\s*([(),:])\s*/g, '$1')
     .replace(/(\d[\d,]*원)\s+(\d[\d,]*원)/g, '$1-$2')
     .replace(/(\d[\d,]*만)(\d[\d,]*만\s*원)/g, '$1-$2')
     .replace(/(\d[\d,]*(?:원|만)?)(?:\s*[–—-]\s*)(\d[\d,]*(?:원|만)?)/g, '$1-$2')
@@ -381,6 +383,7 @@ function parseMarkdownTableCells(row: string): string[] {
     .map((cell) => cell
       .replace(/!\[([^\]]*)]\([^)]+\)/g, '$1')
       .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+      .replace(/(\d)\s*[~～]\s*(\d)(?=\s*(?:개국|개월|주|일|시간|분|만|원|℃|도|mm|페소|달러|엔|위안|바트))/g, '$1-$2')
       .replace(/[*_`~]/g, '')
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')

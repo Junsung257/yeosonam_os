@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
 
+import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
+
 dotenv.config({ path: '.env.local' });
 
 type PackageRow = {
@@ -28,7 +30,7 @@ function parseArgs() {
     json: args.has('--json'),
     limit: Number(argValue('limit', '5000')),
     samples: Number(argValue('samples', '10')),
-    statusList: argValue('status', 'active,approved')
+    statusList: argValue('status', CUSTOMER_VISIBLE_STATUSES.join(','))
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean),
@@ -176,7 +178,7 @@ async function main() {
     return;
   }
 
-  console.log(`Checked ${report.total_public_status_packages} active/approved packages`);
+  console.log(`Checked ${report.total_public_status_packages} customer-visible status packages`);
   console.log(`Openable: ${report.openable}`);
   console.log(`Blocked: ${report.blocked}`);
   console.log('Blockers:');

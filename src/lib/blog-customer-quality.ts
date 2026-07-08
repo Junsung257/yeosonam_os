@@ -8,10 +8,16 @@ export type BlogCustomerQualityIssueCode =
   | 'product_price_suffix_duplicate'
   | 'product_consult_repetition'
   | 'product_specificity_weak'
+  | 'product_source_contract_weak'
+  | 'product_evidence_omission'
+  | 'product_internal_terms_leak'
   | 'placeholder_destination_copy'
   | 'unsupported_internal_data'
+  | 'info_source_support_weak'
+  | 'unnatural_korean_tone'
   | 'overbuilt_mechanical_structure'
   | 'early_sales_pressure'
+  | 'mobile_readability_wall'
   | 'table_render_risk';
 
 export interface BlogCustomerQualityIssue {
@@ -56,10 +62,54 @@ const CUSTOMER_PLACEHOLDERS = [
   /솔리아_스팟가격/,
   /이미지\s*준비\s*중/i,
   /상세\s*일차별\s*일정은\s*상담에서\s*확정본\s*기준으로\s*확인해야\s*합니다/,
+  /현지\s*관련\s*상품/,
+  /상품\s*가격\s*변동_PKG/i,
+  /여행지\s*추천\s*상품\s*미리보기/,
+  /#여행정보(?:\s*#\S+){0,5}\s*#여행정보(?:\s*#\S+){0,5}\s*#여행정보/,
+  /[,.\s]에서\s+가치\s*있는\s*여행/,
 ];
 
 const UNSUPPORTED_INTERNAL_DATA_RE =
   /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|를\s*보면|에\s*따르면|상으로는)?/i;
+
+const READABLE_HARD_CTA_RE =
+  /(?:지금|바로)\s*(?:예약|상담|문의|신청)|(?:예약|상담|문의)\s*(?:하기|신청|바로|마감)|(?:상품|패키지)\s*보기|카카오?톡\s*(?:상담|문의)|잔여\s*좌석|마감\s*임박/i;
+
+const READABLE_GENERIC_INFO_OPENING_RE =
+  /^(?:안녕하세요|이번\s*글에서는|오늘은|여소남\s*에디터|여행을\s*계획\s*중이시라면)|먼저\s*볼\s*것은\s*예산\s*범위,\s*이동\s*순서/i;
+
+const READABLE_AI_TONE_PATTERNS = [
+  /완벽\s*가이드/g,
+  /총정리/g,
+  /이게\s*말이\s*되나\s*싶으시죠/g,
+  /여소남\s*에디터가\s*추천/g,
+  /꼭\s*챙기셔야\s*해요/g,
+  /확인하셔야\s*해요/g,
+  /즐거운\s*여행/g,
+];
+
+const READABLE_WEATHER_OR_PACKING_RE = /날씨|옷차림|우기|건기|기온|강수|스콜|태풍/i;
+const READABLE_WEATHER_ANSWER_RE = /(?:\d{1,2}\s*도|\d{1,2}\s*℃|기온|강수|비|우산|우비|겉옷|긴팔|반팔|방수|일교차|우기|건기|스콜|태풍)/i;
+const READABLE_COST_OR_RESERVATION_RE = /비용|예산|예약|상품|패키지|상담|결제|가격/i;
+const CHANGEABLE_INFO_RE = /날씨|옷차림|우기|건기|기온|강수|스콜|태풍|비자|입국|세관|면세|항공|수하물|환불|취소|보험|환전|교통|공항/i;
+const OFFICIAL_OR_SOURCE_RE = /0404\.go\.kr|mofa\.go\.kr|gov\.kr|airport\.kr|customs\.go\.kr|iata\.org|iatatravelcentre\.com|공식|외교부|기상청|관광청|항공사|공항|출처|확인\s*링크/i;
+const PRODUCT_INTERNAL_TERMS_RE =
+  /(?:커미션|수수료율|마진|원가|공급가|정산가|랜드사\s*정산|B2B|담당자명|직원명|내부\s*메모|계좌번호|입금처|도매가|대리점용|판매자용|카드\s*수수료|현금\s*유도)/i;
+
+const MOJIBAKE_CHAR_RE = /[�媛諛留怨寃臾援湲遺鍮吏理李泥紐硫吏利]/g;
+const MOJIBAKE_TOKEN_RE = /\?[^\s.,!?]{1,10}|[^\s.,!?]{0,8}[�][^\s.,!?]{0,8}/g;
+
+function detectMojibakeText(plain: string): { count: number; samples: string[] } {
+  const charCount = plain.match(MOJIBAKE_CHAR_RE)?.length ?? 0;
+  const samples = [...plain.matchAll(MOJIBAKE_TOKEN_RE)]
+    .map((match) => match[0])
+    .filter((sample) => sample.length >= 2)
+    .slice(0, 8);
+  return {
+    count: charCount + samples.length,
+    samples,
+  };
+}
 
 function addIssue(
   issues: BlogCustomerQualityIssue[],
@@ -73,6 +123,77 @@ function addIssue(
 
 function countMatches(text: string, pattern: RegExp): number {
   return text.match(pattern)?.length ?? 0;
+}
+
+function countRegexMatches(text: string, pattern: RegExp): number {
+  return [...text.matchAll(pattern)].length;
+}
+
+function countReadableToneHits(plain: string): number {
+  return READABLE_AI_TONE_PATTERNS.reduce((sum, pattern) => sum + countRegexMatches(plain, pattern), 0);
+}
+
+function duplicateHeadingCount(markdown: string): number {
+  const seen = new Set<string>();
+  let duplicates = 0;
+  for (const line of markdown.split('\n')) {
+    const heading = line.match(/^#{1,6}\s+(.+?)\s*$/)?.[1]?.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!heading) continue;
+    if (seen.has(heading)) duplicates += 1;
+    else seen.add(heading);
+  }
+  return duplicates;
+}
+
+function productDecisionSignalsReadable(plain: string): number {
+  const patterns = [
+    /(?:\d[\d,]*\s*원|만원|가격|최저가)/,
+    /(?:부산|김해|인천|대구|청주|무안|출발)/,
+    /(?:\d+\s*박\s*\d+\s*일|\d+\s*박|\d+\s*일)/,
+    /포함\s*\/\s*불포함|포함\s*항목|불포함\s*항목/,
+    /맞는\s*(?:분|사람|고객)/,
+    /맞지\s*않는\s*(?:분|사람|고객)|안\s*맞는\s*(?:분|사람|고객)/,
+    /가격(?:이|은)?\s*(?:바뀌|달라지|변동)|요금(?:이|은)?\s*(?:바뀌|달라지|변동)/,
+    /문의\s*전\s*(?:질문|확인|체크)/,
+  ];
+  return patterns.filter((pattern) => pattern.test(plain)).length;
+}
+
+function normalizeEvidenceText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[()[\]{}"'`~!@#$%^&*_+=|\\/<>.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function meaningfulEvidenceItems(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeEvidenceText)
+    .filter((item) => item.length >= 2)
+    .slice(0, 12);
+}
+
+function evidenceItemCovered(plain: string, item: string): boolean {
+  if (plain.includes(item)) return true;
+  const tokens = item
+    .split(/\s+/)
+    .map((token) => token.replace(/[^\p{L}\p{N}]/gu, '').trim())
+    .filter((token) => token.length >= 2);
+  if (tokens.length === 0) return false;
+  const required = Math.min(tokens.length, tokens.length >= 4 ? 2 : 1);
+  return tokens.filter((token) => plain.includes(token)).length >= required;
+}
+
+function evidenceCoverage(plain: string, items: string[]): { total: number; covered: number; missing: string[] } {
+  const unique = [...new Set(items)];
+  const missing = unique.filter((item) => !evidenceItemCovered(plain, item));
+  return {
+    total: unique.length,
+    covered: unique.length - missing.length,
+    missing: missing.slice(0, 6),
+  };
 }
 
 function firstParagraph(markdown: string): string {
@@ -109,6 +230,7 @@ function metricFromIssues(
 
 function inspectInfo(input: BlogCustomerQualityInput, plain: string, issues: BlogCustomerQualityIssue[]) {
   const first = firstParagraph(input.blogHtml);
+  const strongTopicText = `${input.title ?? ''} ${input.primaryKeyword ?? ''}`;
   if (!hasConcreteAnswer(first) || first.length < 70) {
     addIssue(
       issues,
@@ -119,8 +241,21 @@ function inspectInfo(input: BlogCustomerQualityInput, plain: string, issues: Blo
     );
   }
 
+  if (
+    READABLE_WEATHER_OR_PACKING_RE.test(strongTopicText) &&
+    (!READABLE_WEATHER_ANSWER_RE.test(first) || READABLE_COST_OR_RESERVATION_RE.test(first.slice(0, 120)))
+  ) {
+    addIssue(
+      issues,
+      'weak_answer_first',
+      'critical',
+      '날씨/옷차림/준비물 글은 첫 문단에서 기온, 비, 옷차림, 준비물 판단을 먼저 답해야 합니다.',
+      { first: first.slice(0, 180) },
+    );
+  }
+
   const genericOpening = GENERIC_INFO_OPENINGS.find((pattern) => pattern.test(first));
-  if (genericOpening) {
+  if (genericOpening || READABLE_GENERIC_INFO_OPENING_RE.test(first)) {
     addIssue(
       issues,
       'generic_answer_opening',
@@ -139,9 +274,47 @@ function inspectInfo(input: BlogCustomerQualityInput, plain: string, issues: Blo
       '정보성 글 상단에는 강한 상품/상담 CTA가 들어가면 안 됩니다.',
     );
   }
+
+  if (CHANGEABLE_INFO_RE.test(strongTopicText) && !OFFICIAL_OR_SOURCE_RE.test(input.blogHtml)) {
+    addIssue(
+      issues,
+      'info_source_support_weak',
+      'major',
+      '변동 가능성이 큰 정보성 글은 공식/주요 확인 근거를 본문에 드러내야 합니다.',
+      { topic: strongTopicText.slice(0, 160) },
+    );
+  }
+}
+
+function inspectReadableInfoSalesPressure(plain: string, issues: BlogCustomerQualityIssue[]) {
+  const early = plain.slice(0, Math.max(300, Math.floor(plain.length * 0.3)));
+  if (!READABLE_HARD_CTA_RE.test(early)) return;
+  addIssue(
+    issues,
+    'early_sales_pressure',
+    'critical',
+    '정보성 글 상단에는 예약/상담/상품 보기 같은 강한 CTA를 넣으면 안 됩니다.',
+  );
 }
 
 function inspectProduct(input: BlogCustomerQualityInput, plain: string, issues: BlogCustomerQualityIssue[]) {
+  const first = firstParagraph(input.blogHtml);
+  const firstWindow = first.slice(0, 320);
+  const firstSignalCount = [
+    /(?:\d[\d,]*\s*원|만원|가격|최저가)/,
+    /(?:부산|김해|인천|대구|청주|무안|출발)/,
+    /(?:\d+\s*박\s*\d+\s*일|\d+\s*박|\d+\s*일)/,
+    /맞는\s*(?:분|사람|고객)|가족|부모님|아이|효도|자유시간|노옵션|노팁/,
+  ].filter((pattern) => pattern.test(firstWindow)).length;
+  if (/^\s*(?:Q\.|질문|혹시|이게\s*말이\s*되나)/i.test(first) || firstSignalCount < 2) {
+    addIssue(
+      issues,
+      'product_specificity_weak',
+      'critical',
+      '상품글 첫 문단은 가격, 출발지, 기간, 맞는 고객 중 2개 이상으로 시작해야 합니다.',
+      { first: first.slice(0, 180), firstSignalCount },
+    );
+  }
   const duplicatePriceSuffix = plain.match(/\d[\d,]*원부터부터/g);
   if (duplicatePriceSuffix?.length) {
     addIssue(
@@ -164,6 +337,17 @@ function inspectProduct(input: BlogCustomerQualityInput, plain: string, issues: 
     );
   }
 
+  const readableConsultRepeat = countMatches(plain, /상담(?:에서|으로)\s*최종\s*확인|문의(?:에서|로)\s*최종\s*확인/g);
+  if (readableConsultRepeat >= 3) {
+    addIssue(
+      issues,
+      'product_consult_repetition',
+      'major',
+      '상품글이 구체 정보 대신 상담/문의 최종 확인 문장을 반복하고 있습니다.',
+      { count: readableConsultRepeat },
+    );
+  }
+
   const decisionSignals = [
     /10초\s*판단/,
     /포함\/불포함|포함\s*사항/,
@@ -173,17 +357,26 @@ function inspectProduct(input: BlogCustomerQualityInput, plain: string, issues: 
     /문의\s*전\s*질문/,
   ];
   const presentSignals = decisionSignals.filter((pattern) => pattern.test(plain)).length;
-  if (presentSignals < 5) {
+  const readableSignals = productDecisionSignalsReadable(plain);
+  if (presentSignals < 5 && readableSignals < 6) {
     addIssue(
       issues,
       'product_specificity_weak',
       'critical',
       '상품글은 문의 전 판단에 필요한 블록을 충분히 갖춰야 합니다.',
-      { presentSignals, requiredSignals: decisionSignals.length },
+      { presentSignals, readableSignals, requiredSignals: decisionSignals.length },
     );
   }
 
   const productBrief = input.generationMeta?.product_consult_brief as Record<string, unknown> | undefined;
+  if (PRODUCT_INTERNAL_TERMS_RE.test(plain)) {
+    addIssue(
+      issues,
+      'product_internal_terms_leak',
+      'critical',
+      '상품글에 고객 비공개 운영/정산 용어가 노출되면 안 됩니다.',
+    );
+  }
   if (input.blogType === 'product' && input.productId && productBrief) {
     const evidenceFieldCount = ['included', 'excluded', 'fit_for', 'not_fit_for', 'risk_notes', 'consult_questions']
       .filter((key) => Array.isArray(productBrief[key]) && (productBrief[key] as unknown[]).length > 0)
@@ -197,10 +390,47 @@ function inspectProduct(input: BlogCustomerQualityInput, plain: string, issues: 
         { evidenceFieldCount },
       );
     }
+
+    const requiredCoverage = [
+      ['included', meaningfulEvidenceItems(productBrief.included)],
+      ['excluded', meaningfulEvidenceItems(productBrief.excluded)],
+      ['risk_notes', meaningfulEvidenceItems(productBrief.risk_notes)],
+    ] as const;
+    const weakCoverage = requiredCoverage
+      .map(([field, items]) => ({ field, ...evidenceCoverage(plain, items) }))
+      .filter((coverage) => coverage.total > 0 && coverage.covered === 0);
+    if (weakCoverage.length > 0) {
+      addIssue(
+        issues,
+        'product_evidence_omission',
+        'critical',
+        '상품 DB 브리프의 포함/불포함/주의 근거가 실제 본문에 충분히 반영되지 않았습니다.',
+        { weakCoverage },
+      );
+    }
+  }
+  if (input.blogType === 'product' && input.productId && !productBrief) {
+    addIssue(
+      issues,
+      'product_source_contract_weak',
+      'critical',
+      '등록 상품 기준의 상품글은 product_consult_brief 없이 발행되면 안 됩니다.',
+    );
   }
 }
 
 function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: BlogCustomerQualityIssue[]) {
+  const mojibake = detectMojibakeText(plain);
+  if (mojibake.count >= 4) {
+    addIssue(
+      issues,
+      'unnatural_korean_tone',
+      'critical',
+      '고객에게 보이는 본문에 깨진 한글/인코딩 잔여물이 남아 있습니다.',
+      { count: mojibake.count, samples: mojibake.samples },
+    );
+  }
+
   const placeholder = CUSTOMER_PLACEHOLDERS.find((pattern) => pattern.test(plain));
   if (placeholder) {
     addIssue(
@@ -221,9 +451,30 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
     );
   }
 
+  const readableToneHits = countReadableToneHits(plain);
+  if (readableToneHits >= 3) {
+    addIssue(
+      issues,
+      'unnatural_korean_tone',
+      'major',
+      '반복적인 AI/홍보형 표현이 많아 실제 상담 문장처럼 읽히지 않습니다.',
+      { readableToneHits },
+    );
+  }
+
   const h2Count = countMatches(input.blogHtml, /^##\s+\S/gm);
   const faqCount = countMatches(plain, /Q\d?\.|Q:|자주\s*묻는\s*질문/g);
   const summaryCount = countMatches(plain, /핵심\s*요약|한눈에\s*보는\s*요약/g);
+  const duplicateHeadings = duplicateHeadingCount(input.blogHtml);
+  if (duplicateHeadings >= 2) {
+    addIssue(
+      issues,
+      'overbuilt_mechanical_structure',
+      'major',
+      '같은 제목이 반복되어 자동 생성 템플릿처럼 보입니다.',
+      { duplicateHeadings },
+    );
+  }
   if (h2Count >= 10 && faqCount >= 4 && summaryCount >= 2) {
     addIssue(
       issues,
@@ -231,6 +482,20 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
       'major',
       'H2/요약/FAQ가 과하게 반복되어 자동 생성 템플릿처럼 보입니다.',
       { h2Count, faqCount, summaryCount },
+    );
+  }
+
+  const longParagraph = input.blogHtml
+    .split(/\n{2,}/)
+    .map((chunk) => stripMarkup(chunk).replace(/\s+/g, ' ').trim())
+    .find((chunk) => chunk.length >= 360);
+  if (longParagraph) {
+    addIssue(
+      issues,
+      'mobile_readability_wall',
+      'major',
+      '모바일에서 한 덩어리로 보이는 긴 문단이 있어 고객이 핵심 정보를 스캔하기 어렵습니다.',
+      { preview: longParagraph.slice(0, 180), length: longParagraph.length },
     );
   }
 
@@ -243,7 +508,13 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
     const next = lines[index + 1] ?? '';
     return !/^\s*\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|\s*$/.test(next);
   });
-  if (hasBrokenTableStart) {
+  const pseudoTableRowPattern = /^\s*[-*]\s*[^:：]{2,42}[:：]\s*.{4,}(?:\s+[\/／|]\s+.{2,}){1,}/;
+  const pseudoTableListRows = lines.filter((line) => pseudoTableRowPattern.test(line)).length;
+  const orphanNumericRows = lines.filter((line, index) =>
+    /^\s*[\d,.]+(?:\s*(?:원|만원|달러|엔|위안|페소|바트))?(?:\s*[~–-]\s*[\d,.]+(?:\s*(?:원|만원|달러|엔|위안|페소|바트))?)?\s*$/.test(line.trim()) &&
+    pseudoTableRowPattern.test(lines[index - 2] ?? '')
+  ).length;
+  if (hasBrokenTableStart || pseudoTableListRows >= 3 || orphanNumericRows > 0) {
     addIssue(
       issues,
       'table_render_risk',
@@ -261,17 +532,20 @@ export function inspectBlogCustomerQuality(input: BlogCustomerQualityInput): Blo
   const issues: BlogCustomerQualityIssue[] = [];
 
   if (input.blogType === 'product') inspectProduct(input, plain, issues);
-  else inspectInfo(input, plain, issues);
+  else {
+    inspectInfo(input, plain, issues);
+    inspectReadableInfoSalesPressure(plain, issues);
+  }
   inspectCommon(input, plain, issues);
 
   const metrics = {
-    customer_language: metricFromIssues(issues, ['placeholder_destination_copy', 'product_price_suffix_duplicate']),
-    answer_usefulness: metricFromIssues(issues, ['weak_answer_first', 'generic_answer_opening']),
+    customer_language: metricFromIssues(issues, ['placeholder_destination_copy', 'product_price_suffix_duplicate', 'unnatural_korean_tone', 'product_internal_terms_leak']),
+    answer_usefulness: metricFromIssues(issues, ['weak_answer_first', 'generic_answer_opening', 'mobile_readability_wall']),
     product_decision_helpfulness: input.blogType === 'product'
-      ? metricFromIssues(issues, ['product_specificity_weak', 'product_consult_repetition'])
+      ? metricFromIssues(issues, ['product_specificity_weak', 'product_source_contract_weak', 'product_consult_repetition', 'product_evidence_omission'])
       : 100,
-    naturalness: metricFromIssues(issues, ['generic_answer_opening', 'overbuilt_mechanical_structure', 'product_consult_repetition']),
-    trust_and_evidence: metricFromIssues(issues, ['unsupported_internal_data', 'early_sales_pressure', 'table_render_risk']),
+    naturalness: metricFromIssues(issues, ['generic_answer_opening', 'overbuilt_mechanical_structure', 'product_consult_repetition', 'unnatural_korean_tone']),
+    trust_and_evidence: metricFromIssues(issues, ['unsupported_internal_data', 'early_sales_pressure', 'table_render_risk', 'info_source_support_weak', 'product_evidence_omission', 'product_internal_terms_leak']),
   };
   const score = Math.round(Object.values(metrics).reduce((sum, value) => sum + value, 0) / Object.values(metrics).length);
   const passed = issues.length === 0 && score >= 90;

@@ -9,6 +9,7 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 function extractYoutubeEmbedUrl(input?: string | null): string | null {
   if (!input) return null;
@@ -174,7 +175,7 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
         .in('id', pickIds)
-        .in('status', ['active', 'approved']);
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
       const order = new Map(pickIds.map((id, i) => [id, i]));
       picks = (picked || [])
         .filter(isCustomerPubliclyOpenable)
@@ -191,7 +192,7 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
       const { data: fallback } = await supabaseAdmin
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
-        .in('status', ['active', 'approved'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .order('created_at', { ascending: false })
         .limit(100);
       picks = (fallback || []).filter(isCustomerPubliclyOpenable).slice(0, 6);

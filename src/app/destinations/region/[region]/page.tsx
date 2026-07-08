@@ -17,6 +17,7 @@ import {
   type ActiveDestinationLike,
 } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -164,7 +165,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
           .from('travel_packages')
           .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
           .in('destination', queryNames)
-          .in('status', ['active', 'approved'])
+          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
           .order('price', { ascending: true })
           .limit(2000)
       : Promise.resolve(emptyResult),

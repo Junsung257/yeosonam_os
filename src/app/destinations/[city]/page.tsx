@@ -20,6 +20,7 @@ import {
   type ActiveDestinationLike,
 } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 
@@ -43,7 +44,7 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
     const { data } = await supabaseAdmin
       .from('travel_packages')
       .select('destination, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .not('destination', 'is', null)
       .limit(DESTINATION_STATIC_PRERENDER_LIMIT);
     const unique: string[] = [
@@ -159,7 +160,7 @@ async function destinationHasPublicInventory(city: string): Promise<boolean | nu
       .from('travel_packages')
       .select('id, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .in('destination', queryNames)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .limit(200);
     if (error) return null;
     return ((data ?? []) as Array<Record<string, unknown>>).some(isCustomerPubliclyOpenable);
@@ -199,7 +200,7 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
     const { data: packageRows, error } = await supabaseAdmin
       .from('travel_packages')
       .select('destination, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .limit(2000);
     if (error) return decoded;
 
@@ -478,7 +479,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     .from('travel_packages')
     .select('departure_airport, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
     .in('destination', queryNames)
-    .in('status', ['approved', 'active'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .not('departure_airport', 'is', null);
 
   const [
@@ -501,7 +502,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .from('travel_packages')
       .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
       .in('destination', queryNames)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('price', { ascending: true })
       .limit(100),
     supabaseAdmin

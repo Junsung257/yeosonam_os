@@ -26,6 +26,37 @@ describe('blog content intent quality', () => {
     expect(report.issues.some((issue) => issue.message.includes('Cost/currency posts need concrete amounts'))).toBe(false);
   });
 
+  it('accepts Korean budget ranges even when the budget block appears after the intro', () => {
+    const title = '\uC11D\uAC00\uC7A5 \uC5EC\uD589 \uBE44\uC6A9 \uAC00\uC774\uB4DC 2026';
+    const report = inspectBlogIntentQuality({
+      title,
+      primaryKeyword: '\uC11D\uAC00\uC7A5 \uC5EC\uD589 \uBE44\uC6A9',
+      category: 'travel_tips',
+      contentType: 'guide',
+      destination: '\uC11D\uAC00\uC7A5',
+      blogHtml: [
+        `# ${title}`,
+        '',
+        `${'\uCD9C\uBC1C \uC804\uC5D0 \uB3D9\uC120\uACFC \uCD94\uAC00 \uACB0\uC81C \uC870\uAC74\uC744 \uBA3C\uC800 \uD655\uC778\uD558\uBA74 \uD604\uC9C0 \uC608\uC0B0 \uC624\uCC28\uB97C \uC904\uC77C \uC218 \uC788\uC2B5\uB2C8\uB2E4. '.repeat(25)}`,
+        '',
+        '## \uBE44\uC6A9 \uAE30\uC900 \uB2E4\uC2DC \uBCF4\uAE30',
+        '| \uD56D\uBAA9 | \uBCF4\uB294 \uAE30\uC900 |',
+        '| --- | --- |',
+        '| \uD604\uC9C0 \uAD50\uD1B5 | 1\uD68C \uC774\uB3D9\uBE44\uC640 1\uC77C \uAD50\uD1B5\uBE44 1\uB9CC\uC6D0 \uB2E8\uC704 |',
+        '| \uC2DD\uC0AC/\uAC04\uC2DD | 1\uC778 1\uB07C \uAE30\uC900 \uC608\uC0B0 2\uB9CC\uC6D0 \uB2E8\uC704 |',
+        '| \uC120\uD0DD \uAD00\uAD11 | 1\uC778 \uCD94\uAC00 \uBE44\uC6A9 3\uB9CC\uC6D0 \uC774\uC0C1 \uC5EC\uBD80 |',
+        '',
+        '## \uD604\uC2E4 \uC608\uC0B0 \uBC94\uC704',
+        '- \uC2DD\uC0AC\uC640 \uAC04\uC2DD\uC740 1\uC778 \uD558\uB8E8 3\uB9CC~7\uB9CC\uC6D0 \uC815\uB3C4\uB85C \uBCF4\uB294 \uD3B8\uC774 \uC88B\uC2B5\uB2C8\uB2E4.',
+        '- \uD604\uC9C0 \uAD50\uD1B5\uACFC \uC18C\uC561 \uACB0\uC81C\uB294 1\uC778 \uD558\uB8E8 1\uB9CC~3\uB9CC\uC6D0 \uC815\uB3C4\uB97C \uB530\uB85C \uC900\uBE44\uD569\uB2C8\uB2E4.',
+        '- \uC120\uD0DD \uAD00\uAD11\uC774 \uC788\uC73C\uBA74 1\uC778 5\uB9CC~15\uB9CC\uC6D0 \uC774\uC0C1 \uB298\uC5B4\uB0A0 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
+      ].join('\n'),
+    });
+
+    expect(report.intent.infoSubtype).toBe('cost');
+    expect(report.issues.some((issue) => issue.message.includes('Cost/currency posts need concrete amounts'))).toBe(false);
+  });
+
   it('does not apply product ranking contracts to information-only posts', () => {
     const intent = classifyBlogIntent({
       title: '나가사키 현지 맛집 BEST와 호텔 근처 음식 가이드',
@@ -498,5 +529,44 @@ A. 짧은 소나기라면 실내 동선을 섞어 조정하는 편이 안전합�
 
     expect(report.passed).toBe(false);
     expect(report.issues.some((issue) => issue.code === 'missing_product_consult_block')).toBe(true);
+  });
+
+  it('accepts readable Korean product consultant decision blocks', () => {
+    const html = [
+      '# \uBD80\uC0B0\uCD9C\uBC1C \uB098\uD2B8\uB791 3\uBC155\uC77C \uD328\uD0A4\uC9C0',
+      '',
+      '\uBD80\uC0B0\uCD9C\uBC1C, 3\uBC155\uC77C, 599,000\uC6D0\uBD80\uD130 \uD655\uC778\uD558\uB294 \uC0C1\uD488\uC785\uB2C8\uB2E4. \uC774\uB3D9\uC744 \uC904\uC774\uACE0 \uD3EC\uD568 \uC870\uAC74\uC744 \uBA3C\uC800 \uBCF4\uB824\uB294 \uBD84\uC5D0\uAC8C \uB9DE\uC2B5\uB2C8\uB2E4.',
+      '',
+      '## 10\uCD08 \uD310\uB2E8',
+      '| \uD655\uC778 \uD56D\uBAA9 | \uD604\uC7AC \uAE30\uC900 | \uBB38\uC758 \uC804 \uBCFC \uAC83 |',
+      '| --- | --- | --- |',
+      '| \uAC00\uACA9 | 599,000\uC6D0~ | \uCD9C\uBC1C\uC77C\uBCC4 \uBCC0\uB3D9 |',
+      '| \uAE30\uAC04 | 3\uBC155\uC77C | \uD56D\uACF5 \uC2DC\uAC04 |',
+      '| \uD3EC\uD568 | \uD56D\uACF5/\uD638\uD154 | \uBD88\uD3EC\uD568 \uD655\uC778 |',
+      '',
+      '## \uD3EC\uD568/\uBD88\uD3EC\uD568',
+      '- \uD3EC\uD568 \uC0AC\uD56D: \uD56D\uACF5, \uD638\uD154, \uCC28\uB7C9',
+      '- \uBD88\uD3EC\uD568 \uC0AC\uD56D: \uAC1C\uC778\uACBD\uBE44, \uC120\uD0DD\uAD00\uAD11',
+      '',
+      '## \uB9DE\uB294 \uC0AC\uB78C\uACFC \uC548 \uB9DE\uB294 \uC0AC\uB78C',
+      '- \uB9DE\uB294 \uC0AC\uB78C: \uCD9C\uBC1C\uC9C0\uC640 \uAC00\uACA9\uC744 \uBA3C\uC800 \uBCF4\uB294 \uACE0\uAC1D',
+      '- \uC548 \uB9DE\uB294 \uC0AC\uB78C: \uD638\uD154\uACFC \uC77C\uC815\uC744 \uBAA8\uB450 \uC9C1\uC811 \uC9DC\uACE0 \uC2F6\uC740 \uACE0\uAC1D',
+      '',
+      '## \uAC00\uACA9 \uBCC0\uB3D9 \uC870\uAC74',
+      '- \uCD9C\uBC1C\uC77C, \uC88C\uC11D, \uD658\uC728\uC5D0 \uB530\uB77C \uAC00\uACA9\uC774 \uB2EC\uB77C\uC9C8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
+      '',
+      '## \uBB38\uC758 \uC804 \uC9C8\uBB38',
+      '- \uCD9C\uBC1C \uAC00\uB2A5\uC77C\uC740 \uC5B8\uC81C\uC778\uAC00\uC694?',
+    ].join('\\n');
+    const report = inspectBlogIntentQuality({
+      title: '\uBD80\uC0B0\uCD9C\uBC1C \uB098\uD2B8\uB791 \uD328\uD0A4\uC9C0',
+      primaryKeyword: '\uB098\uD2B8\uB791 \uD328\uD0A4\uC9C0',
+      category: 'product',
+      contentType: 'package_intro',
+      productId: 'pkg_789',
+      blogHtml: html,
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('missing_product_consult_block');
   });
 });

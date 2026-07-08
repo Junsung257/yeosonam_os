@@ -10,6 +10,7 @@ import type { RawPackageRow } from '@/lib/scoring/extract-features';
 import { pickPackageRepresentativeDate } from '@/lib/scoring/extract-features';
 import { mrtProvider, getStayDetail, type StayDetailResult } from '@/lib/travel-providers/mrt';
 import type { StayResult } from '@/lib/travel-providers/types';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 const TTL_DAYS = 21;
 const MRT_DELAY_MS = 400;
@@ -376,7 +377,7 @@ export async function syncStaleMrtHotelIntel(opts: StaleSyncOpts = {}): Promise<
   const { data: pkgs, error } = await supabaseAdmin
     .from('travel_packages')
     .select('id, destination, duration, itinerary_data, price_dates')
-    .in('status', ['approved', 'active'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .not('itinerary_data', 'is', null)
     .limit(400);
 

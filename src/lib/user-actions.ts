@@ -5,6 +5,7 @@
  * 최근 본 상품, 비슷한 상품 등을 조회합니다.
  */
 import { supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export type UserActionType =
   | 'page_view'
@@ -120,7 +121,7 @@ export async function getSimilarPackages(
   const { data: similar, error: simErr } = await supabaseAdmin
     .from('travel_packages')
     .select('id, title, destination, price')
-    .in('status', ['active', 'approved'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .neq('id', packageId)
     .eq('destination', pkg.destination)
     .limit(limit);
@@ -131,7 +132,7 @@ export async function getSimilarPackages(
       const { data: catSimilar } = await supabaseAdmin
         .from('travel_packages')
         .select('id, title, destination, price')
-        .in('status', ['active', 'approved'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .neq('id', packageId)
         .eq('category', pkg.category)
         .limit(limit);
