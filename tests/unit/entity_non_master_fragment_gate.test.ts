@@ -79,6 +79,19 @@ describe('terminalNonMasterReason attraction fragment gate', () => {
     }
   });
 
+  it('rejects booking and generic market tokens from current review backlog', () => {
+    for (const label of [
+      '\uBC1C\uAD8C',
+      '\uB098\uC774\uD2B8 \uB9C8\uCF13',
+      '\uC57C\uC2DC\uC7A5',
+      '\uC720 \uD6C4 \uC778',
+    ]) {
+      expect(terminalNonMasterReason('attraction', label, label)).toBe(
+        'generic, itinerary, or attribute fragment, not attraction master',
+      );
+    }
+  });
+
   it('keeps plausible real attractions review-gated instead of auto-rejecting them', () => {
     expect(terminalNonMasterReason('attraction', '대소사', '대소사')).toBeNull();
     expect(terminalNonMasterReason('attraction', '사오비치', '사오비치')).toBeNull();
