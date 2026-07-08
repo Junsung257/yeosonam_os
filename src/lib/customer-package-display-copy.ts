@@ -16,6 +16,8 @@ export interface CustomerPackageDisplayCopyInput {
   airline?: string | null;
   product_highlights?: string[] | null;
   inclusions?: string[] | null;
+  excludes?: string[] | null;
+  customer_notes?: string | null;
   optional_tours?: Array<{ name?: string | null; displayName?: string | null; note?: string | null }> | null;
 }
 
@@ -92,6 +94,8 @@ function collectSourceText(input: CustomerPackageDisplayCopyInput): string {
     input.product_summary,
     ...(input.product_highlights ?? []),
     ...(input.inclusions ?? []),
+    ...(input.excludes ?? []),
+    input.customer_notes,
     ...(input.optional_tours ?? []).flatMap((tour) => [tour.name, tour.displayName, tour.note]),
   ]
     .map(normalizeForCustomer)
@@ -163,7 +167,7 @@ function detectTheme(text: string, destination: string): string {
   if (/바나힐/i.test(text)) return '바나힐 관광';
   if (/호캉스/i.test(text)) return '호캉스';
   if (/리조트|휴양|풀빌라/i.test(text)) return '휴양';
-  if (/온천|료칸/i.test(text)) return '온천';
+  if (/(?:료칸|온천\s*(?:여행|관광|휴양|호텔|리조트|마을)|(?:벳부|유후인|노보리베츠|하코네|아타미|쿠로카와|기노사키).{0,12}온천)/i.test(text)) return '온천';
   if (/자유일정|자유시간|1일자유|오전자유/i.test(text)) return '자유일정';
   if (/비에이|후라노/i.test(text)) return '비에이·후라노';
   if (/예스지|야류|지우펀|스펀/i.test(text)) return '예스지';

@@ -42,6 +42,33 @@ describe('customer visible text audit v2', () => {
     ]));
   });
 
+  it('does not audit internal ids as customer-visible text', () => {
+    const issues = auditCustomerVisibleProductText({
+      title: '푸꾸옥 노옵션 핵심관광 3박5일',
+      internal_code: 'PUS-ETC-PQC-05-0001',
+      itinerary_data: {
+        days: [
+          {
+            schedule: [
+              {
+                activity: '사오비치 관광',
+                attraction_ids: ['8ccb7e3f-bbd8-41d7-9c97-ef283e399820'],
+                entity_kind: 'attraction',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(issues.map(issue => issue.fieldPath)).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('attraction_ids'),
+        expect.stringContaining('internal_code'),
+      ]),
+    );
+  });
+
   it('audits actual screen text by line and surface', () => {
     const issues = auditCustomerVisibleScreenText([
       '다낭 다낭 베스트 상품',

@@ -214,6 +214,11 @@ export function mapTravelPackageToLandingData(
     airline: typeof pkg.airline === 'string' ? pkg.airline : null,
     product_highlights: asStringArray(pkg.product_highlights),
     inclusions: asStringArray(pkg.inclusions),
+    excludes: asStringArray(pkg.excludes),
+    customer_notes: typeof pkg.customer_notes === 'string' ? pkg.customer_notes : null,
+    optional_tours: Array.isArray(pkg.optional_tours)
+      ? pkg.optional_tours as Array<{ name?: string | null; displayName?: string | null; note?: string | null }>
+      : null,
   });
 
   const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
