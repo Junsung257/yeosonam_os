@@ -100,6 +100,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Shared publish preparation and `backfill-blog-quality` also call `repairBlogEngineCategoryGaps()`. If a recent-post dry run shows `changed>0`, run the write audit and indexing worker, then rerun dry-run until `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`.
 - `audit:blog-quality -- --json` exposes `engineCategoryScorecard` with checked count, perfect count, below-100 count, average score, weak category buckets, and samples. Recent-post stabilization now requires `engineCategoryScorecard.below100Count=0` in addition to the existing changed/gate/publish checks.
 - `/admin/blog/system` recomputes and displays the recent-post engine category scorecard, including average category score, 100점 post count, below-100 count, and top weak categories. This keeps the scorecard visible even for older posts whose stored `generation_meta` predates the field.
+- Public render integrity is the final source of truth for tables. If a cost/weather/checklist-style information post only contains pseudo-table prose, the editorial repair path must add a real Markdown decision table and the structure repair path must normalize it before publish or backfill write.
 - Verification on 2026-07-08:
   - `npm run audit:blog-quality -- --limit=16 --json --write` updated affected recent posts and queued indexing jobs.
   - `npm run run:blog-indexing-worker -- --json --limit=15` processed the queued jobs with `failed=0`.
@@ -108,6 +109,9 @@ The blog system is complete only when the admin UI can answer these questions wi
   - `npx vitest run src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 68 tests.
   - `npm run diagnose:blog-autopublish -- --json` reported selected-day `4/4`, publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
   - After wiring the shared final customer-surface repair into live publishing, `npx vitest run src/lib/blog-final-customer-surface.test.ts src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 72 tests; `npm run audit:blog-quality -- --limit=16 --json` returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`; `npm run diagnose:blog-autopublish -- --json` remained at publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
+  - `npm run audit:blog-quality -- --slug=clark-food --json --write` repaired the pseudo-table public render failure and queued indexing; the follow-up dry run returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`.
+  - `npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --timeout-ms=15000 --hard-timeout-ms=90000 --limit=30` passed with `score=100`, including `/blog/clark-food` where `tableExpected=true` and `tableCount=1`.
+  - `npm run audit:blog-search-daily:strict` passed with `strict=100/100`, `fleet=100/100`, and all required checks passed.
 
 ## 2026-07-08 Quota Recovery and Generated Canary Evidence
 

@@ -944,6 +944,137 @@ function ensureCostAnchorBlock(markdown: string, subtype: BlogInfoSubtype | null
   return { text: `${markdown.trim()}\n${block}`, changed: true };
 }
 
+const REQUIRED_PUBLIC_INFO_TABLE_RE =
+  /budget|cost|weather|itinerary|checklist|visa|currency|expense|\uBE44\uC6A9|\uC608\uC0B0|\uB0A0\uC528|\uC6D4\uBCC4|\uC77C\uC815|\uC900\uBE44\uBB3C|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uBE44\uC790|\uD658\uC804|\uACBD\uBE44|\uAC00\uACA9/i;
+
+function hasRenderableMarkdownTable(markdown: string): boolean {
+  const lines = markdown.split('\n');
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const line = lines[index]?.trim() ?? '';
+    const next = lines[index + 1]?.trim() ?? '';
+    if (!/^\|.+\|\s*$/.test(line)) continue;
+    if (!/^\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|\s*$/.test(next)) continue;
+
+    let bodyRows = 0;
+    for (let rowIndex = index + 2; rowIndex < lines.length; rowIndex += 1) {
+      const row = lines[rowIndex]?.trim() ?? '';
+      if (!/^\|.+\|\s*$/.test(row)) break;
+      bodyRows += 1;
+    }
+    if (bodyRows >= 3) return true;
+  }
+  return false;
+}
+
+function readableDestinationLabel(input: BlogEditorialRepairInput): string {
+  const candidates = [input.destination, input.primaryKeyword, input.title, input.category]
+    .filter((value): value is string => Boolean(value && value.trim()));
+  for (const candidate of candidates) {
+    const first = candidate
+      .replace(/[|:()[\]{}]/g, ' ')
+      .trim()
+      .split(/\s+/)[0]
+      ?.trim();
+    if (first && /^[\uAC00-\uD7A3A-Za-z]{2,16}$/.test(first) && !GENERIC_DESTINATION_STOPWORDS.has(first)) {
+      return first;
+    }
+  }
+  return '\uC5EC\uD589\uC9C0';
+}
+
+function requiredInfoDecisionTableKind(
+  input: BlogEditorialRepairInput,
+  subtype: BlogInfoSubtype | null,
+  markdown: string,
+): 'cost' | 'weather' | 'itinerary' | 'prep' | 'visa' | 'generic' {
+  const source = `${input.slug || ''} ${input.title || ''} ${input.primaryKeyword || ''} ${input.category || ''} ${markdown.slice(0, 1400)}`;
+  if (subtype === 'weather' || /weather|\uB0A0\uC528|\uC637\uCC28\uB9BC|\uAE30\uC628|\uAC15\uC218|\uC6B0\uAE30/i.test(source)) return 'weather';
+  if (subtype === 'itinerary' || /itinerary|\uC77C\uC815|\uB3D9\uC120|\uCF54\uC2A4/i.test(source)) return 'itinerary';
+  if (subtype === 'preparation' || /checklist|\uC900\uBE44\uBB3C|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC900\uBE44/i.test(source)) return 'prep';
+  if (subtype === 'visa' || subtype === 'currency' || /visa|currency|\uBE44\uC790|\uD658\uC804|\uC5EC\uAD8C|\uC785\uAD6D|\uACB0\uC81C/i.test(source)) return 'visa';
+  if (subtype === 'cost' || subtype === 'food' || /budget|cost|expense|\uBE44\uC6A9|\uC608\uC0B0|\uACBD\uBE44|\uC2DD\uC0AC|\uB9DB\uC9D1|\uBA39\uAC70\uB9AC/i.test(source)) return 'cost';
+  return 'generic';
+}
+
+function buildRequiredInfoDecisionTable(
+  input: BlogEditorialRepairInput,
+  subtype: BlogInfoSubtype | null,
+  markdown: string,
+): string {
+  const label = readableDestinationLabel(input);
+  const kind = requiredInfoDecisionTableKind(input, subtype, markdown);
+  if (kind === 'weather') {
+    return [
+      '',
+      `## ${label} \uB0A0\uC528\u00B7\uC900\uBE44 \uD310\uB2E8\uD45C`,
+      '',
+      '| \uD655\uC778 \uD56D\uBAA9 | \uBA3C\uC800 \uBCFC \uAC83 | \uCD9C\uBC1C \uC804 \uD589\uB3D9 |',
+      '| --- | --- | --- |',
+      '| \uB0AE \uAE30\uC628 | \uAC00\uC7A5 \uB354\uC6B4 \uC2DC\uAC04\uB300\uC640 \uD587\uBE5B \uAC15\uB3C4 | \uD1B5\uD48D\uB418\uB294 \uC637\uACFC \uC790\uC678\uC120 \uCC28\uB2E8\uC81C\uB97C \uCC59\uAE41\uB2C8\uB2E4. |',
+      '| \uBC24 \uAE30\uC628 | \uC77C\uAD50\uCC28\uC640 \uC219\uC18C \uB0C9\uBC29\u00B7\uB09C\uBC29 \uC870\uAC74 | \uC587\uC740 \uAC89\uC637\uC774\uB098 \uAC00\uBCBC\uC6B4 \uBC29\uD55C\uC6A9 \uC637\uC744 \uB354\uD569\uB2C8\uB2E4. |',
+      '| \uBE44 \uC608\uBCF4 | \uC18C\uB098\uAE30\u00B7\uC6B0\uAE30\u00B7\uD0DC\uD48D \uC601\uD5A5 | \uC6B0\uC0B0, \uBC29\uC218 \uAC89\uC637, \uC5EC\uBD84 \uC591\uB9D0\uC744 \uC900\uBE44\uD569\uB2C8\uB2E4. |',
+      '',
+    ].join('\n');
+  }
+  if (kind === 'itinerary') {
+    return [
+      '',
+      `## ${label} \uC77C\uC815 \uD310\uB2E8\uD45C`,
+      '',
+      '| \uAD6C\uAC04 | \uBA3C\uC800 \uBCFC \uAC83 | \uCD9C\uBC1C \uC804 \uD655\uC778 |',
+      '| --- | --- | --- |',
+      '| \uCCAB\uB0A0 | \uD56D\uACF5 \uB3C4\uCC29 \uC2DC\uAC04\uACFC \uC219\uC18C \uC774\uB3D9 | \uB2A6\uC740 \uB3C4\uCC29\uC774\uBA74 \uC77C\uC815\uC744 \uC904\uC785\uB2C8\uB2E4. |',
+      '| \uC911\uAC04\uC77C | \uD575\uC2EC \uAD00\uAD11\uC9C0 \uAC04 \uC774\uB3D9 \uC2DC\uAC04 | \uC544\uC774\u00B7\uBD80\uBAA8\uB2D8 \uB3D9\uBC18\uC740 \uD558\uB8E8 \uC774\uB3D9\uB7C9\uC744 \uB0AE\uCD9D\uB2C8\uB2E4. |',
+      '| \uB9C8\uC9C0\uB9C9\uB0A0 | \uC1FC\uD551, \uC790\uC720\uC2DC\uAC04, \uACF5\uD56D \uC774\uB3D9 | \uC218\uD558\uBB3C\uACFC \uD0D1\uC2B9 \uC2DC\uAC04\uC744 \uD568\uAED8 \uD655\uC778\uD569\uB2C8\uB2E4. |',
+      '',
+    ].join('\n');
+  }
+  if (kind === 'prep' || kind === 'visa') {
+    return [
+      '',
+      `## ${label} \uCD9C\uBC1C \uC804 \uD655\uC778\uD45C`,
+      '',
+      '| \uD56D\uBAA9 | \uD655\uC778 \uAE30\uC900 | \uB193\uCE58\uBA74 \uC548 \uB418\uB294 \uC774\uC720 |',
+      '| --- | --- | --- |',
+      '| \uC5EC\uAD8C\u00B7\uC785\uAD6D | \uC720\uD6A8\uAE30\uAC04, \uBE44\uC790, \uC785\uAD6D \uC11C\uB958 | \uADDC\uC815\uC774 \uBC14\uB00C\uBA74 \uD56D\uACF5 \uD0D1\uC2B9\uBD80\uD130 \uB9C9\uD790 \uC218 \uC788\uC2B5\uB2C8\uB2E4. |',
+      '| \uACB0\uC81C\u00B7\uD658\uC804 | \uD604\uAE08, \uCE74\uB4DC, \uD604\uC9C0 \uC218\uC218\uB8CC | \uD604\uC9C0\uC5D0\uC11C \uC2DC\uAC04\uACFC \uC608\uC0B0\uC744 \uC544\uB07C\uB294 \uAE30\uC900\uC785\uB2C8\uB2E4. |',
+      '| \uC0C1\uBE44\uC57D\u00B7\uD1B5\uC2E0 | \uAC1C\uC778\uC57D, eSIM, \uBCF4\uC870\uBC30\uD130\uB9AC | \uC678\uACFD \uC77C\uC815\uC77C\uC218\uB85D \uD604\uC9C0 \uAD6C\uB9E4\uAC00 \uC5B4\uB824\uC6B8 \uC218 \uC788\uC2B5\uB2C8\uB2E4. |',
+      '',
+    ].join('\n');
+  }
+  return [
+    '',
+    `## ${label} \uBE44\uC6A9\u00B7\uD310\uB2E8 \uD45C`,
+    '',
+    '| \uD56D\uBAA9 | \uBA3C\uC800 \uBCFC \uAC83 | \uBB38\uC758 \uC804 \uD655\uC778 |',
+    '| --- | --- | --- |',
+    '| \uCD1D\uC561 | \uC0C1\uD488\uAC00\uC640 \uD604\uC9C0 \uCD94\uAC00\uBE44\uB97C \uB098\uB220 \uBD05\uB2C8\uB2E4. | \uD3EC\uD568\u00B7\uBD88\uD3EC\uD568\uC744 \uD56D\uBAA9\uBCC4\uB85C \uD655\uC778\uD569\uB2C8\uB2E4. |',
+    '| \uC2DD\uC0AC\u00B7\uC774\uB3D9 | 1\uC778 \uC2DD\uBE44\uC640 \uC774\uB3D9 \uC2DC\uAC04\uC744 \uD568\uAED8 \uBD05\uB2C8\uB2E4. | \uC544\uC774\u00B7\uBD80\uBAA8\uB2D8 \uB3D9\uBC18\uC740 \uB3D9\uC120 \uAC15\uB3C4\uB97C \uB0AE\uCD9C\uC9C0 \uD655\uC778\uD569\uB2C8\uB2E4. |',
+    '| \uC120\uD0DD \uC870\uAC74 | \uC120\uD0DD\uAD00\uAD11, \uC1FC\uD551, \uC790\uC720\uC2DC\uAC04 \uC720\uBB34 | \uAC19\uC740 \uAC00\uACA9\uC774\uB77C\uB3C4 \uCCB4\uAC10 \uC77C\uC815\uC774 \uB2EC\uB77C\uC9D1\uB2C8\uB2E4. |',
+    '',
+  ].join('\n');
+}
+
+function ensureRequiredInfoDecisionTable(
+  markdown: string,
+  input: BlogEditorialRepairInput,
+  subtype: BlogInfoSubtype | null,
+): { text: string; changed: boolean } {
+  const source = `${input.slug || ''} ${input.title || ''} ${input.primaryKeyword || ''} ${input.category || ''} ${markdown.slice(0, 1600)}`;
+  if (!REQUIRED_PUBLIC_INFO_TABLE_RE.test(source)) return { text: markdown, changed: false };
+  if (hasRenderableMarkdownTable(markdown)) return { text: markdown, changed: false };
+
+  const table = buildRequiredInfoDecisionTable(input, subtype, markdown);
+  const firstH2 = markdown.search(/\n##\s+/);
+  if (firstH2 >= 0) {
+    return {
+      text: `${markdown.slice(0, firstH2)}${table}${markdown.slice(firstH2)}`,
+      changed: true,
+    };
+  }
+  return { text: `${markdown.trim()}${table}`, changed: true };
+}
+
 function hasItineraryFlowTable(markdown: string): boolean {
   return (
     /^#{2,4}\s*\uC77C\uC815\s*\uD750\uB984\s*\uBE60\uB978\s*\uBCF4\uAE30/m.test(markdown) ||
@@ -2859,6 +2990,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (itineraryRepair.changed) {
       blogHtml = itineraryRepair.text;
       changes.push('added_itinerary_structure');
+    }
+  }
+
+  if (intent.mode === 'info' || intent.mode === 'hybrid') {
+    const requiredInfoTableRepair = ensureRequiredInfoDecisionTable(blogHtml, input, intent.infoSubtype);
+    if (requiredInfoTableRepair.changed) {
+      blogHtml = requiredInfoTableRepair.text;
+      changes.push('added_required_info_decision_table');
     }
   }
 
