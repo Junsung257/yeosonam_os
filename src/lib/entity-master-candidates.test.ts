@@ -222,4 +222,57 @@ describe('entity master candidate automation', () => {
     expect(normalizeCandidateLabel('▶인생샷의 성지! 연인들의 필수 방문 코스 [키스 오브 브릿지]'))
       .toBe('인생샷의 성지! 연인들의 필수 방문 코스 [키스 오브 브릿지]');
   });
+  it('rejects readable Korean operational fragments from the current unmatched backlog', () => {
+    const rejectedLabels = [
+      '20분',
+      '관광3시간소요',
+      'VIP통로',
+      '엘리베이터',
+      '도보산책',
+      '총길이 430M, 넓이 6M, 계곡에서의 높이 300M에 달하는 세계 최고의',
+      '특전4] 이탈리아의 베네치아를 본따 만든 잠들지 않는 도시',
+    ];
+
+    for (const rawLabel of rejectedLabels) {
+      const decision = evaluateMasterCandidate({
+        rawLabel,
+        category: 'attraction',
+        occurrenceCount: 20,
+        evidenceCount: 4,
+        packageCount: 2,
+      });
+
+      expect(decision.autoAction).toBe('reject_noise');
+      expect(decision.promotionStatus).toBe('rejected_noise');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
+
+  it('extracts readable Korean canonical attraction names from descriptive backlog labels', () => {
+    const cases = [
+      ['200M의 봉우리 2개가 연결되어 있는 천하제일교', '천하제일교'],
+      ['7개의 봉우리가 북두칠성을 가리키는 칠성산', '칠성산'],
+      ['장가계의 혼이라 불리는 천문산 등정', '천문산'],
+      ['천문산을 배경으로 펼쳐지는 대형오페라쇼 천문호선쇼 관람', '천문호선쇼'],
+      ['푸꾸옥의 명소 소나씨 야시장 자유시간 ★특전! 망고주스 1인 1잔 서비스★', '소나씨 야시장'],
+      ['또는 캠비치', '캠비치'],
+      ['세계 6대 해변으로 꼽히는 사오비치 관광', '사오비치'],
+      ['백두산 서파 코스 금강대협곡 방문', '금강대협곡'],
+      ['베트남 현지 분위기가 녹아있는 한시장', '한시장'],
+    ];
+
+    for (const [rawLabel, expected] of cases) {
+      const decision = evaluateMasterCandidate({
+        rawLabel,
+        category: 'attraction',
+        occurrenceCount: 20,
+        evidenceCount: 4,
+        packageCount: 2,
+      });
+
+      expect(decision.normalizedLabel).toBe(expected);
+      expect(decision.autoAction).toBe('create_internal_master');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
 });
