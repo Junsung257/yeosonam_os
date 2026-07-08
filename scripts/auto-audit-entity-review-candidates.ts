@@ -31,6 +31,9 @@ type ReviewCandidateRow = {
   raw_label: string | null;
   normalized_label: string | null;
   canonical_name: string | null;
+  destination_scope: string | null;
+  country_scope: string | null;
+  region_scope: string | null;
   promotion_status: string | null;
   auto_action: string | null;
   auto_verification_status: string | null;
@@ -45,12 +48,36 @@ type ExistingAttractionMatch = {
   name: string;
   aliases?: string[] | null;
   customer_publishable?: boolean | null;
+  country?: string | null;
+  region?: string | null;
+};
+
+type IndexedAttractionTerm = {
+  attraction: ExistingAttractionMatch;
+  term: string;
+  normalized: string;
+  primary: boolean;
 };
 
 type AttractionIndex = {
   literal: Map<string, ExistingAttractionMatch[]>;
   normalized: Map<string, ExistingAttractionMatch[]>;
+  terms: IndexedAttractionTerm[];
 };
+
+const GENERIC_CONTAINED_MATCH_TERMS = new Set([
+  '관광',
+  '관광지',
+  '기념촬영',
+  '디너크루즈',
+  '유람선',
+  '입장권',
+  '체험',
+  '크루즈',
+  '테마파크',
+  '투어',
+]);
+const PRODUCT_LIKE_ATTRACTION_NAME_RE = /(?:투어|티켓|입장권|할인|픽업|당일|즉시|출발|예약|패키지|PKG|\[[^\]]+\]|[()[\]])/i;
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 const candidateColumns = [
@@ -60,6 +87,9 @@ const candidateColumns = [
   'raw_label',
   'normalized_label',
   'canonical_name',
+  'destination_scope',
+  'country_scope',
+  'region_scope',
   'promotion_status',
   'auto_action',
   'auto_verification_status',
@@ -149,6 +179,7 @@ function addIndexedTerm(
   index: AttractionIndex,
   attraction: ExistingAttractionMatch,
   term: unknown,
+  primary = false,
 ) {
   if (typeof term !== 'string') return;
   const literal = term.replace(/\s+/g, ' ').trim();
@@ -163,24 +194,26 @@ function addIndexedTerm(
   const normalizedRows = index.normalized.get(normalized) ?? [];
   normalizedRows.push(attraction);
   index.normalized.set(normalized, normalizedRows);
+  index.terms.push({ attraction, term: literal, normalized, primary });
 }
 
 async function fetchAttractionIndex(): Promise<AttractionIndex> {
   const index: AttractionIndex = {
     literal: new Map(),
     normalized: new Map(),
+    terms: [],
   };
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id, name, aliases, customer_publishable')
+      .select('id, name, aliases, customer_publishable, country, region')
       .eq('is_active', true)
       .range(from, from + pageSize - 1);
     if (error) throw error;
     const rows = (data ?? []) as ExistingAttractionMatch[];
     for (const attraction of rows) {
-      addIndexedTerm(index, attraction, attraction.name);
+      addIndexedTerm(index, attraction, attraction.name, true);
       for (const alias of attraction.aliases ?? []) addIndexedTerm(index, attraction, alias);
     }
     if (rows.length < pageSize) break;
@@ -208,6 +241,91 @@ function sourcePackageIds(row: ReviewCandidateRow): string[] {
     : [];
 }
 
+function compactScopeText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(compactScopeText).join(' ');
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).map(compactScopeText).join(' ');
+  }
+  return '';
+}
+
+function sourceScopeText(row: ReviewCandidateRow): string {
+  const source = row.source_context ?? {};
+  return [
+    row.canonical_name,
+    row.raw_label,
+    row.normalized_label,
+    row.country_scope,
+    row.region_scope,
+    source.country,
+    source.region,
+    source.destinations,
+    source.regions,
+    source.countries,
+    source.package_titles,
+    source.examples,
+  ].map(compactScopeText).join(' ');
+}
+
+function hasScopeSupport(row: ReviewCandidateRow, attraction: ExistingAttractionMatch): boolean {
+  const normalizedScope = normalizedAttractionMatchTerm(sourceScopeText(row));
+  const region = normalizedAttractionMatchTerm(attraction.region ?? '');
+  const country = normalizedAttractionMatchTerm(attraction.country ?? '');
+  return Boolean(
+    (region.length >= 2 && normalizedScope.includes(region)) ||
+    (country.length >= 2 && normalizedScope.includes(country)),
+  );
+}
+
+function isGenericContainedMatchTerm(entry: IndexedAttractionTerm): boolean {
+  if (GENERIC_CONTAINED_MATCH_TERMS.has(entry.normalized)) return true;
+  return !entry.primary && entry.normalized.length < 4;
+}
+
+function isProductLikeAttractionName(attraction: ExistingAttractionMatch): boolean {
+  return PRODUCT_LIKE_ATTRACTION_NAME_RE.test(attraction.name);
+}
+
+function findContainedExistingAttractionMatch(
+  row: ReviewCandidateRow,
+  index: AttractionIndex,
+): ExistingAttractionMatch | null {
+  if (row.category !== 'attraction') return null;
+
+  const matches: IndexedAttractionTerm[] = [];
+  for (const term of exactCandidateTerms(row)) {
+    if (isUnsafeExactAttractionTerm(row, term)) continue;
+    const normalizedCandidate = normalizedAttractionMatchTerm(term);
+    if (normalizedCandidate.length < 4) continue;
+
+    for (const entry of index.terms) {
+      if (entry.normalized.length < 3) continue;
+      if (isGenericContainedMatchTerm(entry)) continue;
+      if (!entry.attraction.customer_publishable) continue;
+      if (isProductLikeAttractionName(entry.attraction)) continue;
+      if (!hasScopeSupport(row, entry.attraction)) continue;
+
+      const primaryName = normalizedAttractionMatchTerm(entry.attraction.name);
+      const primaryContained = primaryName.length >= 3 && (
+        normalizedCandidate.includes(primaryName) ||
+        primaryName.includes(normalizedCandidate)
+      );
+      const aliasNearExact = !entry.primary &&
+        entry.normalized.length >= 4 &&
+        Math.min(normalizedCandidate.length, entry.normalized.length) /
+          Math.max(normalizedCandidate.length, entry.normalized.length) >= 0.75;
+
+      if (!primaryContained && !aliasNearExact) continue;
+      if (!normalizedCandidate.includes(entry.normalized) && !entry.normalized.includes(normalizedCandidate)) continue;
+      matches.push(entry);
+    }
+  }
+
+  const byId = new Map(matches.map(match => [match.attraction.id, match.attraction]));
+  return byId.size === 1 ? [...byId.values()][0] ?? null : null;
+}
+
 function findExistingAttractionMatch(row: ReviewCandidateRow, index: AttractionIndex): ExistingAttractionMatch | null {
   if (row.category !== 'attraction') return null;
   for (const term of exactCandidateTerms(row)) {
@@ -221,7 +339,7 @@ function findExistingAttractionMatch(row: ReviewCandidateRow, index: AttractionI
     const normalizedMatch = uniqueAttractionMatch(index.normalized.get(normalized));
     if (normalizedMatch) return normalizedMatch;
   }
-  return null;
+  return findContainedExistingAttractionMatch(row, index);
 }
 
 async function persist(
@@ -296,7 +414,7 @@ async function persistExistingMatch(row: ReviewCandidateRow, attraction: Existin
       promoted_attraction_id: attraction.id,
       promoted_at: now,
       auto_verification_status: attraction.customer_publishable === true ? 'verified_publishable' : 'verified_internal',
-      decision_reason: `auto-linked to exact existing attraction ${attraction.name}`,
+      decision_reason: `auto-linked to existing attraction ${attraction.name}`,
     })
     .eq('id', row.id);
   if (error) throw error;
@@ -317,7 +435,7 @@ async function persistExistingMatch(row: ReviewCandidateRow, attraction: Existin
       .update({
         status: 'added',
         resolved_at: now,
-        resolved_kind: 'auto_existing_exact_attraction',
+        resolved_kind: 'auto_existing_attraction',
         resolved_attraction_id: attraction.id,
         resolved_by: 'auto-audit-entity-review-candidates',
         updated_at: now,
@@ -454,7 +572,7 @@ async function main() {
       return acc;
     }, {}),
     sampleAutoRejected: audited.slice(0, 20),
-    sampleLinkedExisting: linkedExisting.slice(0, 20),
+    sampleLinkedExisting: linkedExisting.slice(0, 50),
     sampleAutoInternalCandidates: internalCandidates.slice(0, 20),
     sampleRemaining: remaining.slice(0, 20),
   };
