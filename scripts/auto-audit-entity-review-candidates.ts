@@ -1,5 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { KOREAN_DESTINATION_TO_ISO } from '../src/lib/destination-iso';
 import { terminalNonMasterReason } from '../src/lib/itinerary-entity-resolution-engine';
 import { reEnrichAffectedPackages } from '../src/lib/package-reenrich-on-attraction-change';
 
@@ -82,11 +83,33 @@ const GENERIC_CONTAINED_MATCH_TERMS = new Set([
   '크루즈',
   '테마파크',
   '투어',
+  '야시장',
+  '시장',
 ]);
-const PRODUCT_LIKE_ATTRACTION_NAME_RE = /(?:투어|티켓|입장권|할인|픽업|당일|즉시|출발|예약|패키지|PKG|\[[^\]]+\]|[()[\]])/i;
+const PRODUCT_LIKE_ATTRACTION_NAME_RE = /(?:투어|티켓|입장권|할인|픽업|당일|즉시|출발|예약|패키지|PKG|\[[^\]]+\])/i;
+const SHORT_CONTAINED_ATTRACTION_TERMS = new Set(['예류', '야류', '스펀', '지우펀'].map(normalizedAttractionMatchTerm));
 
 const LODGING_LIKE_ATTRACTION_NAME_RE = /(?:호텔|리조트|윈덤|노보텔|멜리아|하바나|하얏트|풀만|홀리데이|아쿠아썬|스파)/i;
 const NON_ATTRACTION_BADGE_TYPES = new Set(['hotel', 'restaurant', 'meal', 'shopping', 'golf']);
+
+const COUNTRY_SCOPE_ALIASES = (() => {
+  const aliases = new Map<string, Set<string>>();
+  for (const [name, iso] of Object.entries(KOREAN_DESTINATION_TO_ISO)) {
+    if (!aliases.has(iso)) aliases.set(iso, new Set([iso]));
+    aliases.get(iso)?.add(name);
+  }
+  const extraAliases: Record<string, string[]> = {
+    CN: ['백두산', '연변', '길림', '두만강'],
+    JP: ['규슈', '유후인', '쿠로가와'],
+    TW: ['기륭', '타이완'],
+    VN: ['캠비치', '소나시'],
+  };
+  for (const [iso, names] of Object.entries(extraAliases)) {
+    if (!aliases.has(iso)) aliases.set(iso, new Set([iso]));
+    for (const name of names) aliases.get(iso)?.add(name);
+  }
+  return aliases;
+})();
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 const candidateColumns = [
@@ -306,9 +329,15 @@ function hasScopeSupport(row: ReviewCandidateRow, attraction: ExistingAttraction
   const normalizedScope = normalizedAttractionMatchTerm(sourceScopeText(row));
   const region = normalizedAttractionMatchTerm(attraction.region ?? '');
   const country = normalizedAttractionMatchTerm(attraction.country ?? '');
+  const countryAliases = COUNTRY_SCOPE_ALIASES.get(String(attraction.country ?? '').toUpperCase()) ?? new Set();
+  const countryAliasSupported = [...countryAliases].some(alias => {
+    const normalizedAlias = normalizedAttractionMatchTerm(alias);
+    return normalizedAlias.length >= 2 && normalizedScope.includes(normalizedAlias);
+  });
   return Boolean(
     (region.length >= 2 && normalizedScope.includes(region)) ||
-    (country.length >= 2 && normalizedScope.includes(country)),
+    (country.length >= 2 && normalizedScope.includes(country)) ||
+    countryAliasSupported,
   );
 }
 
@@ -333,7 +362,7 @@ function findContainedExistingAttractionMatch(
   for (const term of exactCandidateTerms(row)) {
     if (isUnsafeExactAttractionTerm(row, term)) continue;
     const normalizedCandidate = normalizedAttractionMatchTerm(term);
-    if (normalizedCandidate.length < 4) continue;
+    if (normalizedCandidate.length < 4 && !SHORT_CONTAINED_ATTRACTION_TERMS.has(normalizedCandidate)) continue;
 
     for (const entry of index.terms) {
       if (entry.normalized.length < 3) continue;
