@@ -10,6 +10,7 @@ import { summarizeBlogIndexingCoverage } from '../src/lib/blog-indexing-coverage
 import { evaluateBlogPublishPreflight } from '../src/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '../src/lib/blog-canary-generated-quality';
+import { buildProductGeneratedCanaryRows } from '../src/lib/blog-product-generated-canary';
 import { evaluateCurrentDayPublisherHealth } from '../src/lib/blog-current-day-publisher-health';
 
 dotenv.config({ path: '.env.local' });
@@ -313,6 +314,7 @@ async function main() {
 
   const policy = policyRes.data?.[0] ?? null;
   const dailyTarget = numberFrom(policy?.posts_per_day) || 4;
+  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
   const cronHealth = Object.fromEntries((cronHealthRes.data ?? []).map((row: any) => [row.cron_name, row]));
   const publisherHealth = cronHealth['blog-publisher'];
   const publisherLogs = publisherLogsRes.data ?? [];
@@ -335,7 +337,7 @@ async function main() {
   if (productEvidenceProductIds.length > 0) {
     const { data: products, error: productsError } = await supabase
       .from('travel_packages')
-      .select('id, title, status, destination, updated_at')
+      .select('*')
       .in('id', productEvidenceProductIds.slice(0, 200));
     if (productsError) throw productsError;
     for (const product of products ?? []) {
@@ -403,9 +405,14 @@ async function main() {
     recentPublished: recentPublishedRes.data ?? [],
     requested: 3,
   });
+  const productGeneratedCanaryRows = buildProductGeneratedCanaryRows({
+    queueRows: activeQueueRes.data ?? [],
+    products: [...productsById.values()],
+    limit: Math.min(3, Math.max(2, generatedCanaryRequested - 2)),
+  });
   const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
-    posts: recentPublishedRes.data ?? [],
-    requested: 3,
+    posts: [...(recentPublishedRes.data ?? []), ...productGeneratedCanaryRows],
+    requested: generatedCanaryRequested,
   });
   const latestPublisherLog = publisherLogs[0] ?? null;
   const latestPublisherSummary = summaryObject(latestPublisherLog);

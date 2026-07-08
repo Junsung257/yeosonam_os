@@ -36,6 +36,7 @@ Local code references:
 - Publish preflight evaluator: `src/lib/blog-publish-preflight.ts`
 - Canary candidate preflight evaluator: `src/lib/blog-canary-preflight.ts`
 - Generated canary quality evaluator: `src/lib/blog-canary-generated-quality.ts`
+- Product dry-run generated canary builder: `src/lib/blog-product-generated-canary.ts`
 - Current-day publisher health evaluator: `src/lib/blog-current-day-publisher-health.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
 - Slug migration dry-run/write tool: `scripts/migrate-blog-slugs.ts`
@@ -132,6 +133,9 @@ Before widening automatic publishing after engine changes, `diagnose:blog-autopu
 - Candidate pre-publish contract failures are unsafe seeds, not manual rewrite backlog. Cleanup and publisher preflight should move them to `skipped` with durable `candidate_pre_publish_contract` metadata so they stop inflating failed/manual-review queue counts.
 - Each selected canary must expose `quality_contract='customer_surface_100'` and writer-specific expectations. `info_writer` must prove answer-first Korean intent, official source support when changeable, valid table/checklist rendering, bottom-only soft CTA, and no AI-cliche opening. `product_consultant_writer` must prove product DB-only claims, price/departure/duration opening, included/excluded blocks, fit/not-fit blocks, risk notes, consult questions, no hard booking pressure, and clean rendered tables.
 - Candidate canary is not enough after writer or repair changes. At least one generated canary sample must also pass `evaluateBlogGeneratedQualityCanary()`, which combines `evaluateBlogEngineV2()`, `inspectBlogCustomerQuality()`, and `inspectRenderedBlogIntegrity()`. A generated sample is pass only when all three are clean and the combined score is exactly 100.
+- Generated canary proof must cover both writer paths. If recent published rows do not include a product-backed post, diagnostics and admin health must build a non-publishing dry-run sample from `blog_topic_queue.product_id` + the registered `travel_packages` row and run the same engine/customer/render checks. This prevents the system from claiming overall blog quality when only information posts have been proven.
+- Generated canary volume should track the daily target, capped at five samples per run. For the current 4/day policy, diagnostics and admin health must request four generated samples rather than stopping at the old three-sample minimum.
+- Product writer templates use `product-template-v4`. Customer-facing copy must be natural Korean, not prompt residue or encoded text. The product dry-run canary is expected to include price/from-city/duration opening, included/excluded, fit/not-fit, price-change risk, consult questions, official links, and bottom consultation links without inventing facts outside the product DB.
 
 ## Blocking Rules
 
@@ -173,6 +177,7 @@ Forbidden customer-visible patterns:
 - Generic openings such as "답부터 말하면, 20XX년 X월 기준..." or "먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다."
 - Product copy that says only "상담에서 최종 확인" repeatedly instead of giving a useful condition to check.
 - Duplicate price suffixes such as `1,369,000원부터부터`.
+- Broken Korean/encoding residue such as mojibake characters (`�`, `媛`, `諛`, `留`) in customer-visible body must fail customer quality. A post that customers cannot read is never a near-pass, even when SEO, headings, and links look complete.
 - Weather or packing guides that open with cost/reservation copy instead of temperature, rain, clothing, and packing decisions.
 - Product posts that invent hotel names, fixed benefits, scarcity, or confirmed schedules not present in product evidence.
 - Repeated answer-first hooks, duplicated CTA/FAQ blocks, duplicate hashtags, generic customer labels such as `여행 정보를 볼 때` when a destination is known, and placeholder surfaces such as `현지 관련 상품` or `상품 가격 변동_PKG`.

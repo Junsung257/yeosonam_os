@@ -11,6 +11,7 @@ import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
+import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -261,6 +262,7 @@ async function runDailySummary(request: NextRequest) {
   );
   const policy = policyRow?.[0];
   const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
+  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
 
   // Report the latest closed KST publishing day. If the route is delayed past
   // midnight or called manually before 22:12 KST, it must not evaluate the new
@@ -426,9 +428,26 @@ async function runDailySummary(request: NextRequest) {
     recentPublished: recentPublishedRes.data || [],
     requested: 3,
   });
+  const productCanaryIds = Array.from(new Set(
+    (queueRes.data || [])
+      .filter((row: any) => (row.status === 'queued' || row.status === 'generating') && row.product_id)
+      .map((row: any) => String(row.product_id)),
+  )).slice(0, 12);
+  const productCanaryProducts = productCanaryIds.length > 0
+    ? await withTimeout(
+      supabaseAdmin.from('travel_packages').select('*').in('id', productCanaryIds),
+      8_000,
+      { data: [], count: 0 } as any,
+    )
+    : { data: [] };
+  const productGeneratedCanaryRows = buildProductGeneratedCanaryRows({
+    queueRows: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
+    products: productCanaryProducts.data || [],
+    limit: Math.min(3, Math.max(2, generatedCanaryRequested - 2)),
+  });
   const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
-    posts: published as any[],
-    requested: 3,
+    posts: [...(published as any[]), ...productGeneratedCanaryRows],
+    requested: generatedCanaryRequested,
   });
 
   // destination별 발행 분포

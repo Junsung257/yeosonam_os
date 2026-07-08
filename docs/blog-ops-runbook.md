@@ -116,8 +116,14 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Unsafe seeds remain blocked until their source data is fixed: duplicate content, missing context, insufficient evidence, product open-contract failure, topic-fit failure, candidate pre-publish contract failure, and invalid linked drafts.
 - `src/lib/blog-canary-preflight.ts` now labels every selected canary with `quality_contract='customer_surface_100'` and writer-specific expectations, so operators can see whether the canary proves info-guide quality or product-consult quality.
 - `src/lib/blog-canary-generated-quality.ts` checks an actual generated sample across engine score, customer quality, and rendered Markdown integrity. This is the canary to run after changing prompts, product writer structure, final repair, or renderer behavior.
+- Product generated canary must not rely only on recently published rows. If recent rows are all information posts, `src/lib/blog-product-generated-canary.ts` builds a non-publishing dry-run article from the queued `product_id` and the registered `travel_packages` row, then sends it through the same engine/customer/render checks.
+- Generated canary volume follows the daily publish target, capped at five samples per run. With the current 4/day policy, the operating proof should show four generated samples, not only the old three-sample minimum.
+- Product commercial copy is now `product-template-v4`: price/from-city/duration opening, included/excluded, fit/not-fit, risk notes, consult questions, official checks, and bottom CTA. It must use product DB facts only and must not invent hotel names, benefits, scarcity, or confirmed schedules.
+- Customer quality now fails visible mojibake/encoding residue. A body containing broken Korean such as `�`, `媛`, `諛`, or `留` cannot pass as a "near 100" post.
 - Verification on 2026-07-08:
   - `npx vitest run src/lib/blog-canary-generated-quality.test.ts src/lib/blog-canary-preflight.test.ts` passed 10 tests.
+  - `npx vitest run src/lib/blog-product-generated-canary.test.ts src/lib/blog-canary-generated-quality.test.ts src/lib/blog-product-brief.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-ops-summary.test.ts src/app/api/cron/blog-daily-summary/route.test.ts src/lib/blog-publish-preflight.test.ts` passed 25 tests.
+  - `npm run diagnose:blog-autopublish -- --json` reported `generated_canary_quality.status=pass` with mixed proof: recent info sample plus product dry-run sample from the active queue and registered package data.
 
 ## 2026-06-16 Live Ops Evidence
 
