@@ -41,6 +41,43 @@ function increment(map: Record<string, number>, key: string): void {
   map[key] = (map[key] ?? 0) + 1;
 }
 
+async function loadUnresolvedEntityCandidateMap(
+  supabaseAdmin: Awaited<typeof import('../src/lib/supabase')>['supabaseAdmin'],
+  packageIds: string[],
+): Promise<Map<string, { total: number; attraction: number; needsReview: number }>> {
+  const packageIdSet = new Set(packageIds);
+  const unresolvedStatuses = new Set(['candidate', 'auto_internal', 'needs_review', 'publishable_ready']);
+  const result = new Map<string, { total: number; attraction: number; needsReview: number }>();
+
+  if (packageIdSet.size === 0) return result;
+
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabaseAdmin
+      .from('entity_master_candidates')
+      .select('category,promotion_status,source_context')
+      .range(from, from + 999);
+    if (error) throw error;
+    for (const candidate of data ?? []) {
+      const status = String(candidate.promotion_status ?? '');
+      if (!unresolvedStatuses.has(status)) continue;
+      const candidatePackageIds = Array.isArray(candidate.source_context?.package_ids)
+        ? [...new Set(candidate.source_context.package_ids.map(String))] as string[]
+        : [];
+      for (const packageId of candidatePackageIds) {
+        if (!packageIdSet.has(packageId)) continue;
+        const current = result.get(packageId) ?? { total: 0, attraction: 0, needsReview: 0 };
+        current.total++;
+        if (candidate.category === 'attraction') current.attraction++;
+        if (status === 'needs_review') current.needsReview++;
+        result.set(packageId, current);
+      }
+    }
+    if (!data || data.length < 1000) break;
+  }
+
+  return result;
+}
+
 async function main() {
   const [{ supabaseAdmin, isSupabaseConfigured }, eligibility] = await Promise.all([
     import('../src/lib/supabase'),
@@ -61,6 +98,10 @@ async function main() {
   if (error) throw error;
 
   const rows = (data ?? []) as PackageRow[];
+  const unresolvedEntityCandidateMap = await loadUnresolvedEntityCandidateMap(
+    supabaseAdmin,
+    rows.map((row) => row.id),
+  );
   const blockerCounts: Record<string, number> = {};
   const samples: Array<{
     id: string;
@@ -70,7 +111,19 @@ async function main() {
     blockers: string[];
   }> = [];
 
-  const openable = rows.filter(isCustomerPubliclyOpenable);
+  const blockersFor = (row: PackageRow) => {
+    const blockers = getPackagePublicEligibilityBlockers(row);
+    const unresolved = unresolvedEntityCandidateMap.get(row.id);
+    if (unresolved && unresolved.total > 0) {
+      blockers.push({
+        code: 'entity_master_candidate_unresolved',
+        message: `entity_master_candidates has unresolved customer-linked candidates: total=${unresolved.total}, attractions=${unresolved.attraction}, needs_review=${unresolved.needsReview}`,
+      });
+    }
+    return blockers;
+  };
+
+  const openable = rows.filter((row) => blockersFor(row).length === 0);
   const demotions: Array<{
     id: string;
     internal_code: string | null;
@@ -83,7 +136,7 @@ async function main() {
     error?: string;
   }> = [];
   for (const row of rows) {
-    const blockers = getPackagePublicEligibilityBlockers(row);
+    const blockers = blockersFor(row);
     if (blockers.length === 0) continue;
     blockers.forEach((blocker) => increment(blockerCounts, blocker.code));
     if (samples.length < options.samples) {

@@ -110,6 +110,17 @@ function buildGroups(rows: UnmatchedRow[]): CandidateGroup[] {
         activity: row.activity,
       });
     }
+    existing.decision = evaluateMasterCandidate({
+      rawLabel: existing.decision.rawLabel,
+      category: existing.decision.category,
+      country: existing.decision.countryScope,
+      region: existing.decision.regionScope,
+      destination: existing.decision.destinationScope,
+      occurrenceCount: existing.occurrenceCount,
+      evidenceCount: existing.ids.length,
+      packageCount: existing.packageIds.size,
+      externalSources: externalSourcesFrom(row),
+    });
   }
 
   return [...groups.values()];
