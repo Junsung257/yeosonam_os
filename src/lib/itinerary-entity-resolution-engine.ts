@@ -95,6 +95,10 @@ const READABLE_KOREAN_GENERIC_NON_MASTER_FRAGMENT_RE =
   /(?:^\d+\s*N\s*\d+\s*D$|^\d{1,2}\uC6D4$|^\d+(?:~\d+)?\s*cm\s*\uBBF8\uB9CC$|^\d+\uAC1C$|^\d+\uC778\s*\d+\uAC1C$|^\uD0DD\d+\)|\]\s*\uC678\uAD00$|\]\s*\uC678\uBD80$|^\uB3C4\uBCF4\s*\d+\s*\uC2DC\uAC04$|^\uBB34\uAC8C\s*\d+\s*t\)\uACFC\s*\uC885$|^\uBD80\s*\uC0B0(?:\s*\u2192\s*.+)?$|^(?:[^-]+-){2,}[^-]+$|^OR\s+\S+)/iu;
 const READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE =
   /^(?:\uCE58\uC559\uB9C8\uC774|\uD0C0\uC774\uBCA0\uC774|\uD310\uB791|\uB098\uB9AC\uD0C0|\uB178\uBCF4\uB9AC\uBCA0\uCE20|\uB2CC\uBE48|\uC624\uD0C0\uB8E8|\uCE58\uD1A0\uC138|\uB3C4\uC57C|\uB300\uB9C8\uB3C4|\uB3D9\uACBD|\uD63C\uAC00\uC774|\uC11D\uAC00\uC7A5|\uC0E4\uC624\uAD00|\uC6A9\s*\uC815|\uCE74\uC640\uCFE0\uCE58|\uC544\uD0C0\uBBF8|\uC544\uB9C8\uAC00\uC138)$/u;
+const READABLE_KOREAN_EXTRA_CITY_OR_ROUTE_TOKEN_RE =
+  /^(?:\uD30C\uD0C0\uC57C|\uD558\uB178\uC774|\uD0C0\uC774\uD398\uC774|\uD6C4\uC544\uD78C|\uCE58\uC559\uB77C\uC774|\uD788\s*\uD0C0|\uC774\uC988|\uC591\s*\uC0AD|\uC11C\s*\uD30C|\uBD81\s*\uD30C|\uB0A8\s*\uD30C)$/u;
+const READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE =
+  /^(?:\uC804\uC6A9|\uC81C\uC678|\uCD94\uC11D|\uD3EC\s*\uD568|\uC778\s*1\s*\uC2E4|\uCF5C\uB77C\uAC90|\uD1A0\uC0B0\uD488|\uC804\uC790\uB2F4\uBC30|\uC154\uD2C0\uBC84\uC2A4|\uD480\uB9CC)$/u;
 const HIGH_RISK_NOTICE_RE = /(?:취소|환불|비자|여권|입국|출국|보험|예약금|결제|추가\s*요금|가격\s*변동|유류|수수료|환율|여행자\s*보험)/i;
 const LOW_RISK_SCHEDULE_NOTICE_RE = /(?:상기\s*일정|현지\s*사정|항공사의?\s*사정|다소\s*변동|변경될\s*수|양지하시기|천재지변)/i;
 const OPTION_STRUCTURED_DETAIL_RE = /(?:골프장\s*정보|그린피|캐디피|카트피|캐디팁|티타임|코스정보|홀수\s*인원|싱글카트|클럽\s*렌탈|현장\s*결제|락카\s*사용|라커\s*사용)/i;
@@ -365,6 +369,12 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   if (category === 'attraction' && /^\s*\uC778\s*\uC6D0\s*$/.test(name)) {
     return 'operational or non-attraction schedule fragment';
   }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE.test(name) ||
+    READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE.test(raw)
+  )) {
+    return 'operational or non-attraction schedule fragment';
+  }
   if (category === 'attraction' && KOREAN_OPERATIONAL_ATTRACTION_FRAGMENT_RE.test(combined)) {
     return 'operational or non-attraction schedule fragment';
   }
@@ -378,7 +388,9 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   }
   if (category === 'attraction' && (
     READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE.test(name) ||
-    READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE.test(raw)
+    READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE.test(raw) ||
+    READABLE_KOREAN_EXTRA_CITY_OR_ROUTE_TOKEN_RE.test(name) ||
+    READABLE_KOREAN_EXTRA_CITY_OR_ROUTE_TOKEN_RE.test(raw)
   )) {
     return 'city or route token, not attraction master';
   }
