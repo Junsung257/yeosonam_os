@@ -203,8 +203,28 @@ describe('package public eligibility', () => {
         customer_visible_hash: 'visible-hash',
         surfaces: ['packages', 'lp'],
         surface_results: [
-          { surface: 'packages', status: 'pass', screen_hash: 'packages-screen', customer_visible_hash: 'packages-visible' },
-          { surface: 'lp', status: 'pass', screen_hash: 'lp-screen', customer_visible_hash: 'lp-visible' },
+          {
+            surface: 'packages',
+            status: 'pass',
+            screen_hash: 'packages-screen',
+            customer_visible_hash: 'packages-visible',
+            checks: [
+              { name: 'packages_reservation_cta_visible', ok: true },
+              { name: 'packages_reservation_sheet_opens', ok: true },
+              { name: 'packages_reservation_sheet_has_product_context', ok: true },
+            ],
+          },
+          {
+            surface: 'lp',
+            status: 'pass',
+            screen_hash: 'lp-screen',
+            customer_visible_hash: 'lp-visible',
+            checks: [
+              { name: 'lp_lead_cta_visible', ok: true },
+              { name: 'lp_lead_sheet_opens', ok: true },
+              { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+            ],
+          },
         ],
       },
     };

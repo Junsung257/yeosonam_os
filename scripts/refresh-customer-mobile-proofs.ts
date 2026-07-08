@@ -48,6 +48,7 @@ function parseReasons(value: string | null): MobileProofRefreshReason[] {
     'stale',
     'hash_missing',
     'surface_missing',
+    'cta_missing',
     'source_invalid',
     'status_not_pass',
     'unknown',

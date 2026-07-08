@@ -14,6 +14,7 @@ export type MobileProofRefreshReason =
   | 'stale'
   | 'hash_missing'
   | 'surface_missing'
+  | 'cta_missing'
   | 'source_invalid'
   | 'status_not_pass'
   | 'unknown';
@@ -45,6 +46,7 @@ function reasonFromDetail(detail: string): MobileProofRefreshReason {
   const text = detail.toLowerCase();
   if (text.includes('stale')) return 'stale';
   if (text.includes('hash')) return 'hash_missing';
+  if (text.includes('cta checks')) return 'cta_missing';
   if (text.includes('surface') || text.includes('lp')) return 'surface_missing';
   if (text.includes('source')) return 'source_invalid';
   if (text.includes('status')) return 'status_not_pass';
@@ -60,6 +62,8 @@ function priorityForReason(reason: MobileProofRefreshReason): number {
       return 20;
     case 'hash_missing':
       return 30;
+    case 'cta_missing':
+      return 35;
     case 'surface_missing':
       return 40;
     case 'source_invalid':

@@ -50,6 +50,10 @@ function readMobileCopyAudit(): string {
   return readFileSync(join(process.cwd(), 'scripts/audit-mobile-landing-copy.ts'), 'utf8');
 }
 
+function readCustomerOpenOperationalGate(): string {
+  return readFileSync(join(process.cwd(), 'scripts/run-customer-open-operational-gate.ts'), 'utf8');
+}
+
 function readLandingClient(): string {
   return readFileSync(join(process.cwd(), 'src/app/lp/[id]/LandingClient.tsx'), 'utf8');
 }
@@ -1035,5 +1039,14 @@ describe('upload route registration pipeline boundary', () => {
     expect(landingClient).not.toContain("'출발 확정\\n일정 확인'");
     expect(landingClient).not.toContain("'일정 확정\\n출발 표시'");
     expect(landingClient).not.toContain("? '출발 확정' : '상담 가능'");
+  });
+
+  it('runs the operational gate against pre-public proof screens too', () => {
+    const gate = readCustomerOpenOperationalGate();
+
+    expect(gate).toContain("const prePublicLimit = readArg('--pre-public-limit', '50')");
+    expect(gate).toContain("name: 'pre-public proof mobile text audit packages+lp'");
+    expect(gate).toContain("'--screen-non-public'");
+    expect(gate).toContain('`--limit=${prePublicLimit}`');
   });
 });
