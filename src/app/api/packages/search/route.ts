@@ -12,6 +12,7 @@ import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
     let query = sb
       .from('travel_packages')
       .select(PACKAGE_FIELDS)
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('created_at', { ascending: false })
       .limit(fetchLimit);
 

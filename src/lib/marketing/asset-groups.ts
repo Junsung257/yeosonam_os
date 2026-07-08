@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export type ActionSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ActionCategory = 'content' | 'social' | 'ads' | 'tracking' | 'ops';
@@ -317,7 +318,7 @@ export async function getMarketingAssetGroups(limit = 30): Promise<{ groups: Mar
   const { data: products, error: productError } = await supabaseAdmin
     .from('travel_packages')
     .select('id, title, destination, status, price, ticketing_deadline, updated_at')
-    .in('status', ['active', 'approved', 'available'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .order('updated_at', { ascending: false })
     .limit(limit);
 

@@ -3,6 +3,7 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { trackUserAction, type UserActionType } from '@/lib/user-actions';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 const ACTION_TYPES = new Set<UserActionType>([
   'page_view',
@@ -93,7 +94,7 @@ export async function GET(request: NextRequest) {
       let query = supabaseAdmin
         .from('travel_packages')
         .select('id, title, destination, price')
-        .in('status', ['active', 'approved'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .neq('id', packageId)
         .limit(limit);
 
@@ -142,7 +143,7 @@ export async function GET(request: NextRequest) {
         .from('travel_packages')
         .select('id, title, destination, price')
         .in('id', ids)
-        .in('status', ['active', 'approved']);
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
       const order = new Map(ids.map((id, index) => [id, index]));
       const packages = (data ?? []).sort(

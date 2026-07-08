@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export interface MatchResult {
   total: number;
@@ -24,7 +25,7 @@ export async function matchPackagesToLandOperators(): Promise<MatchResult> {
     .from('travel_packages')
     .select('id, title, internal_code')
     .is('land_operator_id', null)
-    .in('status', ['approved', 'active']);
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
   if (pkgErr) throw new Error(`패키지 조회 실패: ${pkgErr.message}`);
   const packages = pkgs ?? [];
   if (packages.length === 0) {

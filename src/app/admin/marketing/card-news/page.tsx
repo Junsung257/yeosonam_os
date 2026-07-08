@@ -1,5 +1,6 @@
 import { supabaseAdmin, isSupabaseAdminConfigured, getCardNewsList } from '@/lib/supabase';
 import type { CardNews } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import CardNewsListPageClient from './CardNewsListPageClient';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export default async function CardNewsPage() {
     supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, status')
-      .in('status', ['approved', 'active', 'pending', 'pending_review', 'draft'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'pending', 'pending_review', 'draft'])
       .order('created_at', { ascending: false })
       .limit(200),
     supabaseAdmin

@@ -16,6 +16,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { indexPackage, indexBlog, indexAttraction, indexPolicy } from '@/lib/jarvis/rag/indexer';
 import { apiResponse } from '@/lib/api-response';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,7 +44,7 @@ async function handle(req: NextRequest) {
   const { data: pkgs } = await supabaseAdmin
     .from('travel_packages')
     .select('id, updated_at')
-    .in('status', ['active', 'approved'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .gte('updated_at', since)
     .order('updated_at', { ascending: false })
     .limit(perTypeLimit);

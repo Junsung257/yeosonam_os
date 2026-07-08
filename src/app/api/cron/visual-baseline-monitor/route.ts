@@ -13,6 +13,7 @@
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getSecret } from '@/lib/secret-registry';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
       .select('id, title, short_code, status, baseline_requested_at, baseline_created_at')
       .not('baseline_requested_at', 'is', null)
       .lt('baseline_requested_at', twentyFourHoursAgo)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .or('baseline_created_at.is.null,baseline_created_at.lt.baseline_requested_at');
 
     if (error) throw error;

@@ -12,6 +12,7 @@
  */
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 // ─── 타입 ────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ export async function autoHealContentGaps(
     const { data: packages } = await supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination')
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('created_at', { ascending: false })
       .limit(200);
 

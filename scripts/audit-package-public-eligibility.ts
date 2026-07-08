@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
 
+import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
+
 dotenv.config({ path: '.env.local' });
 
 type PackageRow = {
@@ -16,9 +18,15 @@ type PackageRow = {
 
 function parseArgs() {
   const args = new Set(process.argv.slice(2));
+  const status = process.argv.find((arg) => arg.startsWith('--status='))?.split('=')[1]
+    ?? CUSTOMER_VISIBLE_STATUSES.join(',');
   return {
     json: args.has('--json'),
     samples: Number(process.argv.find((arg) => arg.startsWith('--samples='))?.split('=')[1] ?? 10),
+    statusList: status
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
   };
 }
 
@@ -40,7 +48,7 @@ async function main() {
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select('id,title,destination,status,audit_status,audit_report,updated_at,optional_tours,itinerary_data')
-    .in('status', ['active', 'approved'])
+    .in('status', options.statusList)
     .limit(5000);
 
   if (error) throw error;
@@ -85,7 +93,7 @@ async function main() {
     return;
   }
 
-  console.log(`Checked ${report.total_public_status_packages} active/approved packages`);
+  console.log(`Checked ${report.total_public_status_packages} customer-visible status packages`);
   console.log(`Openable: ${report.openable}`);
   console.log(`Blocked: ${report.blocked}`);
   console.log('Blockers:');

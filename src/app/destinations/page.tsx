@@ -9,6 +9,7 @@ import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -70,7 +71,7 @@ async function getDestinations() {
     const { data: stats } = await supabaseAdmin
       .from('travel_packages')
       .select('destination, price, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .not('destination', 'is', null)
       .limit(2000);
 

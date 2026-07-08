@@ -5,6 +5,7 @@
 
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export interface AnglePackage {
   id: string;
@@ -82,7 +83,7 @@ export async function getPackagesByAngle(angle: string, limit = 6): Promise<Angl
       supabaseAdmin
         .from('travel_packages')
         .select(SELECT_FIELDS)
-        .in('status', ['active', 'approved'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .not('price', 'is', null)
         .order('created_at', { ascending: false })
         .limit(120),

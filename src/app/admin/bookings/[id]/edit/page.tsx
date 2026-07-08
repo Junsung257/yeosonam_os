@@ -1,4 +1,5 @@
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import EditBookingClient from './EditBookingClient';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export default async function EditBookingPage(props: { params: Promise<{ id: str
     supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, price')
-      .in('status', ['active', 'approved', 'pending'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'pending'])
       .order('created_at', { ascending: false })
       .limit(200),
     supabaseAdmin

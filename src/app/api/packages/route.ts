@@ -27,7 +27,7 @@ import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
-import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import {
   evaluateV3CustomerNoticeGate,
@@ -403,7 +403,7 @@ export async function GET(request: NextRequest) {
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
         .select('destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .in('status', ['active', 'approved']);
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
       const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
       (allPkgs ?? []).filter((p: any) => isAdmin || isCustomerPubliclyOpenable(p)).forEach((p: any) => {
@@ -504,7 +504,7 @@ export async function GET(request: NextRequest) {
     if (status && status !== 'all') {
       // 관리자 탭 상태(semantic) 호환
       if (status === 'selling') {
-        query = query.in('status', ['approved', 'active']);
+        query = query.in('status', [...CUSTOMER_VISIBLE_STATUSES]);
       } else if (status === 'pending') {
         query = query.in('status', ['pending', 'pending_review', 'draft']);
       } else if (status === 'archived') {

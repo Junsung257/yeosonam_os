@@ -8,6 +8,7 @@ import {
   sanitizeBrokenAttractionIdsForPublicEligibility,
   sanitizeOptionalToursForPublicEligibility,
 } from '../src/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '../src/lib/visibility-status';
 
 for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) {
   const fullPath = path.join(process.cwd(), file);
@@ -44,6 +45,11 @@ type RepairRow = {
     removed_count: number;
     removed: Array<{ path: string; id: unknown; reason: string }>;
   };
+  demotion?: {
+    from: string | null;
+    to: string;
+    reason: string;
+  };
   applied?: boolean;
   error?: string;
 };
@@ -56,6 +62,8 @@ function argValue(name: string, fallback: string): string {
 
 const apply = process.argv.includes('--apply');
 const json = process.argv.includes('--json');
+const demoteIneligible = process.argv.includes('--demote-ineligible');
+const demoteStatus = argValue('demote-status', 'pending_review');
 const limit = Number(argValue('limit', '5000'));
 const ids = argValue('ids', '')
   .split(',')
@@ -67,7 +75,7 @@ const only = new Set(
     .map((value) => value.trim())
     .filter(Boolean),
 );
-const statusList = argValue('status', 'active,approved')
+const statusList = argValue('status', CUSTOMER_VISIBLE_STATUSES.join(','))
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
@@ -242,36 +250,55 @@ async function main() {
   for (const pkg of packages) {
     const beforeBlockers = getPackagePublicEligibilityBlockers(pkg).map((blocker) => blocker.code);
     const repair = buildRepair(pkg, validAttractionIds);
-    if (repair.actions.length === 0) continue;
 
     const simulated = {
       ...pkg,
       ...repair.updates,
-      audit_report: auditReportWithRepair(pkg, repair.details, now),
+      audit_report: pkg.audit_report,
       updated_at: now,
     };
     const afterBlockers = getPackagePublicEligibilityBlockers(simulated).map((blocker) => blocker.code);
+    const actions = [...repair.actions];
+    const updates = { ...repair.updates };
+    const details = { ...repair.details };
+    let demotion: RepairRow['demotion'];
+
+    if (demoteIneligible && afterBlockers.length > 0 && isCustomerVisibleStatus(pkg.status)) {
+      actions.push('status_demoted_to_review');
+      updates.status = demoteStatus;
+      demotion = {
+        from: pkg.status ?? null,
+        to: demoteStatus,
+        reason: afterBlockers.join(','),
+      };
+      details.status_demotion = demotion;
+    }
+
+    if (actions.length === 0) continue;
+
+    const auditReport = auditReportWithRepair(pkg, details, now);
     const row: RepairRow = {
       id: pkg.id,
       title: pkg.title,
       destination: pkg.destination,
       before_blockers: beforeBlockers,
       after_blockers: afterBlockers,
-      actions: repair.actions,
+      actions,
       optional_tours: repair.optionalSummary,
       attraction_ids: repair.attractionSummary,
+      demotion,
       applied: false,
     };
 
     if (apply) {
-      const updates = {
-        ...repair.updates,
-        audit_report: simulated.audit_report,
+      const updatesToApply = {
+        ...updates,
+        audit_report: auditReport,
         updated_at: now,
       };
       const { error } = await supabase
         .from('travel_packages')
-        .update(updates)
+        .update(updatesToApply)
         .eq('id', pkg.id);
       if (error) {
         row.error = error.message || String(error);
@@ -285,6 +312,8 @@ async function main() {
   const summary = {
     checked_at: now,
     apply,
+    demote_ineligible: demoteIneligible,
+    demote_status: demoteStatus,
     status_filter: statusList,
     id_filter_count: ids.length,
     limit,

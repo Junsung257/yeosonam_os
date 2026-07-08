@@ -1,4 +1,5 @@
 import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import AdminPageClient, { type TravelPackage } from './AdminPageClient';
 
 // Admin data depends on request-time Supabase credentials and must not prerender.
@@ -23,7 +24,7 @@ export default async function AdminPage() {
     supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, price, status, created_at, filename, file_type, confidence')
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('created_at', { ascending: false })
       .limit(50),
   ]);

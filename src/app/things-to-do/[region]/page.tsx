@@ -18,6 +18,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -200,7 +201,7 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
       .from('travel_packages')
       .select('id, title, destination, duration, nights, price, airline, photos, photo_urls, status')
       .eq('destination', region)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('price', { ascending: true })
       .limit(8),
   ]).catch(() => [{ data: null }, { data: null }]);

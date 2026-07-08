@@ -15,6 +15,7 @@
  */
 
 import { supabaseAdmin } from './supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 
 export interface PillarGenerationInput {
   destination: string;
@@ -97,7 +98,7 @@ export async function buildPillarContext(destination: string): Promise<{
 } | null> {
   const [{ data: attrs }, { data: pkgs }] = await Promise.all([
     supabaseAdmin.from('attractions').select('name, short_desc').eq('region', destination).limit(12),
-    supabaseAdmin.from('travel_packages').select('title, price, airline, duration, nights').eq('destination', destination).in('status', ['approved', 'active']).order('price', { ascending: true }).limit(10),
+    supabaseAdmin.from('travel_packages').select('title, price, airline, duration, nights').eq('destination', destination).in('status', [...CUSTOMER_VISIBLE_STATUSES]).order('price', { ascending: true }).limit(10),
   ]);
 
   if ((!attrs || attrs.length === 0) && (!pkgs || pkgs.length === 0)) return null;

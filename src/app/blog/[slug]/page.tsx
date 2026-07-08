@@ -32,6 +32,7 @@ import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { classifyBlogIntent, inspectBlogIntentQuality } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
   BLOG_DETAIL_CACHE_TAG,
   createBlogDatabaseUnavailableError,
@@ -603,7 +604,7 @@ async function getRelatedProducts(
     .from('travel_packages')
     .select('id, title, destination, price, duration, nights, airline, departure_airport, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
     .eq('destination', destination)
-    .in('status', ['active', 'approved'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .order('price', { ascending: true })
     .limit(4);
   if (currentProductId) query = query.neq('id', currentProductId);
@@ -728,7 +729,7 @@ async function getCurationProductsForInfo(destination: string) {
       .from('travel_packages')
       .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('destination', destination)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('price', { ascending: true })
       .limit(12),
     { data: [] as CurationPackage[], error: null },
