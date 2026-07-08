@@ -113,6 +113,10 @@ const CUSTOMER_COMMERCIAL_PLACE_RE =
   /^(?:비어\s*플라자|비어플라자|쇼핑센터|쇼핑\s*센터)$/iu;
 const CUSTOMER_READABLE_SECTION_FRAGMENT_RE =
   /^(?:=>|무제한|확인|월화수목금|수목금|토일월화|토일|비운항일|외관|외부|국가\s*명승|국가\s*5A급\s*풍경구|일본\s*3대\s*송림중\s*하나인|시\s*간|식\s*사|교\s*통|텍스|여행경비|싱글차지|룸\s*타\s*입|샤워실\s*보유|수영복\s*착용\s*필수|아쿠아슈즈|여벌\s*옷|반바지|무료존|생수|공예|문화|동선|비즈니스게르(?:\(2인실)?|호화호특|크라운|핫플\s*카페|불꽃축제|불꽃놀이|봅슬레이|레일바이크|루지|모래\s*썰매|낙타|실제\s*낙타|럭셔리\s*전동카|뉴카멜리아|쓰시마링크|몽골\s*로컬\s*마트|가볍게\s*떠나고|기암괴석|광활한\s*녹차밭|가파른\s*협곡|바다와\s*산의\s*만남|물과\s*빛|포\s*함\s*사\s*항|포\s*함\s*내\s*역|불\s*포\s*함(?:\s*내\s*역)?|비\s*고|일\s*자|요\s*금|상품\s*가|테마\s*파크)$/iu;
+const CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE =
+  /^(?:케이블카\s*편도|궁전\s*게르(?:\s*\(?\s*2\s*인\s*실)?|대성당|오후\s*플레이\s*욕장)$/u;
+const CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
+  /(?:세계에서\s*두\s*번째|해상\s*케이블카\s*왕복\s*티켓|동양의\s*유럽\s*마을|푸꾸옥의\s*작은\s*유럽|각종\s*동물쇼|다채로운\s*볼거리|소선이\s*신선을\s*만난|건축물들이\s*보전|공룡화석이\s*전시)/u;
 const READABLE_KNOWN_ATTRACTION_LABELS = [
   '패치워크의 길',
   '간몬대교',
@@ -403,13 +407,15 @@ function isNonMasterNoise(normalizedLabel: string): string | null {
   if (CUSTOMER_NUMERIC_LIST_FRAGMENT_RE.test(normalizedLabel)) return 'date/list fragment';
   if (CUSTOMER_PRODUCT_PROMO_FRAGMENT_RE.test(normalizedLabel)) return 'product title fragment';
   if (CUSTOMER_READABLE_SECTION_FRAGMENT_RE.test(normalizedLabel)) return 'readable section or generic fragment';
+  if (CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE.test(normalizedLabel)) return 'readable section or generic fragment';
   if (CUSTOMER_OPERATIONAL_MASTER_FRAGMENT_RE.test(normalizedLabel)) return 'operational schedule fragment';
   if (CUSTOMER_DESCRIPTIVE_ONLY_FRAGMENT_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
+  if (CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
   if (CUSTOMER_VIEW_METHOD_FRAGMENT_RE.test(normalizedLabel)) return 'viewing method fragment';
   if (CUSTOMER_COMMERCIAL_PLACE_RE.test(normalizedLabel)) return 'commercial place fragment';
   if (ROOM_OR_GOLF_DETAIL_RE.test(normalizedLabel)) return 'room/golf detail fragment';
   if (/^#/.test(normalizedLabel)) return 'hashtag or destination tag';
-  if (/^(?:놀이공원|옛거리|케이블카|온천|시장|비치|해변|공원|사원|성당)$/.test(normalizedLabel)) return 'generic attraction type token';
+  if (/^(?:놀이공원|옛거리|케이블카|온천|시장|비치|해변|공원|사원|성당|볼거리)$/.test(normalizedLabel)) return 'generic attraction type token';
   if (/^漠\s*:?\s*상\s*동$/i.test(normalizedLabel)) return 'corrupted repeat marker';
   if (PRODUCT_TITLE_FRAGMENT_RE.test(normalizedLabel)) return 'product title fragment';
   if (OPERATIONAL_FRAGMENT_RE.test(normalizedLabel)) return 'operational schedule fragment';

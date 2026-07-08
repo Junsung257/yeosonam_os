@@ -349,4 +349,29 @@ describe('entity master candidate automation', () => {
       expect(decision.suggestedMaster.customer_publishable).toBe(false);
     }
   });
+
+  it('rejects readable Korean product-condition and descriptive attraction fragments from the current backlog', () => {
+    const labels = [
+      '\uCF00\uC774\uBE14\uCE74\uD3B8\uB3C4',
+      '\uAD81\uC804\uAC8C\uB974(2\uC778\uC2E4',
+      '\uB300\uC131\uB2F9',
+      '\uC624\uD6C4 \uD50C\uB808\uC774 \uC695\uC7A5',
+      '\uD478\uAFB8\uC625\uC758 \uC791\uC740 \uC720\uB7FD',
+      '\uAC01\uC885 \uB3D9\uBB3C\uC1FC\uC640 \uC0C8\uACF5\uC6D0\uB4F1 \uB2E4\uCC44\uB85C\uC6B4 \uBCFC\uAC70\uB9AC',
+      '\uC18C\uC120\uC774 \uC2E0\uC120\uC744 \uB9CC\uB09C \uACF3\uC774\uB77C\uB294 \uC804\uC124\uC774 \uAE43\uB4E4\uC5B4 \uC788\uACE0',
+    ];
+
+    for (const label of labels) {
+      const decision = evaluateMasterCandidate({
+        rawLabel: label,
+        category: 'attraction',
+        occurrenceCount: 3,
+        evidenceCount: 2,
+      });
+
+      expect(decision.autoAction).toBe('reject_noise');
+      expect(decision.promotionStatus).toBe('rejected_noise');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
 });
