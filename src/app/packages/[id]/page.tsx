@@ -9,7 +9,7 @@ import UnmatchedActivitiesBeacon from '@/components/customer/UnmatchedActivities
 import ReviewsSection from '@/components/reviews/ReviewsSection';
 import RecentViewsDeferred from '@/components/customer/RecentViewsDeferred';
 import type { Metadata } from 'next';
-import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
+import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed, isCustomerRenderableAttraction } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { destinationToIsoSet, extractDestinationTokens } from '@/lib/destination-iso';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
@@ -376,7 +376,8 @@ export default async function PackageDetailPage({
   //   移댄뀒怨좊━瑜?留ㅼ묶 ?꾨낫?먯꽌 ?쒖쇅?섎뒗??SELECT ???꾨씫???덉뼱 ?명뀛/?ъ뼱媛 ?섎せ 留ㅼ묶?섎뜕 ?ш퀬.
   //   mrt_gid ???숈씪 fuzzy ?먯닔????MRT canonical ?곗꽑 ?좏깮??
   let matchQuery = sb.from('attractions')
-    .select('name, country, region, aliases, category, mrt_gid');
+    .select('name, country, region, aliases, category, badge_type, mrt_gid, is_active, customer_publishable')
+    .eq('is_active', true);
 
   if (pkg && pkg.destination) {
     const destTokens = pkg.destination.split(/[\/,·&]/).map((t: string) => t.trim()).filter(Boolean);
@@ -405,7 +406,7 @@ export default async function PackageDetailPage({
   // 留ㅼ묶??愿愿묒? ?대쫫 紐⑸줉留?異붿텧 (?쒕쾭?ъ씠??1??
   const matchedNames = new Set<string>();
   if (pkg?.itinerary_data && lightAttractions.length) {
-    const index = buildAttractionIndex(lightAttractions, pkg.destination);
+    const index = buildAttractionIndex(lightAttractions, pkg.destination, { customerFacing: true });
     const daysData = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
     for (const day of daysData) {
       for (const item of (day.schedule || [])) {
@@ -438,8 +439,8 @@ export default async function PackageDetailPage({
     }
   }
   if (idsFromItinerary.size > 0) {
-    type DetailRow = { id: string; name: string; short_desc: string | null; long_desc: string | null; photos: unknown; country: string | null; region: string | null; badge_type: string | null; emoji: string | null; aliases: unknown; category: string | null };
-    const SELECT = 'id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category';
+    type DetailRow = { id: string; name: string; short_desc: string | null; long_desc: string | null; photos: unknown; country: string | null; region: string | null; badge_type: string | null; emoji: string | null; aliases: unknown; category: string | null; is_active: boolean | null; customer_publishable: boolean | null };
+    const SELECT = 'id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category, is_active, customer_publishable';
     const merged = new Map<string, DetailRow>();
     // 2026-05-16 諛뺤젣: .or() ?⑹꽦?쇰줈 id + name ?숈떆 留ㅼ묶 ???쒓? name ??PostgREST OR ??    //   ?뚯떛 ?ㅽ뙣 (怨듬갚/?곗샂??escape 鍮꾪몴以) ??0嫄?諛섑솚?섏뼱 紐⑤뱺 attraction 移대뱶 誘명몴異?
     //   ??踰?fetch + ?⑹쭛?⑹쑝濡??⑥닚??
@@ -459,7 +460,8 @@ export default async function PackageDetailPage({
       );
       for (const a of ((data ?? []) as DetailRow[])) if (!merged.has(a.id)) merged.set(a.id, a);
     }
-    relevantAttractions = (Array.from(merged.values()) as unknown) as AttractionData[];
+    relevantAttractions = ((Array.from(merged.values()) as unknown) as AttractionData[])
+      .filter(isCustomerRenderableAttraction);
   }
   // 湲곗〈 fallback ?명솚 ??留ㅼ묶 0嫄????꾩껜 ???寃쎈웾 紐⑸줉 ?꾨떖 (payload 怨쇰떎 諛⑹?)
   const attrResult = { data: relevantAttractions };
@@ -547,7 +549,7 @@ export default async function PackageDetailPage({
         if (skipPattern.test(item.activity)) return;
         if (item.type === 'flight' || item.type === 'hotel' || item.type === 'shopping') return;
         if (/공항|출발|도착|이동|휴식|탑승|기내|체크인|체크아웃|식사|미팅|조식|중식|석식/.test(item.activity)) return;
-        const attr = matchAttractions(item.activity, lightAttractions, pkg.destination)[0] || null;
+        const attr = matchAttractions(item.activity, lightAttractions, pkg.destination, { customerFacing: true })[0] || null;
         if (!attr) unmatchedItems.push({ activity: item.activity, package_id: id, package_title: pkg.title, day_number: day.day, country: pkg.destination });
       });
     }

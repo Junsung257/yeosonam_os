@@ -133,6 +133,15 @@ export interface AttractionIndex {
   degraded: boolean;
 }
 
+export interface BuildAttractionIndexOptions {
+  /**
+   * Customer-facing pages must not render polluted attraction masters such as
+   * package titles, hotels, TNA products, or private/internal candidates.
+   * Internal registration matching can keep the legacy broader behavior.
+   */
+  customerFacing?: boolean;
+}
+
 /**
  * 매칭 대상에서 제외할 카테고리 (2026-05-15 박제, 나트랑/달랏 호텔 오매칭 사고).
  *   accommodation = 호텔/리조트/빌라 — 활동 매칭 대상 아님
@@ -140,6 +149,52 @@ export interface AttractionIndex {
  *   호출 측이 호텔 매칭을 원하면 별도 hotel-matcher 사용 (향후).
  */
 const NON_ATTRACTION_CATEGORIES = new Set(['accommodation', 'mrt_product']);
+const NON_CUSTOMER_ATTRACTION_CATEGORIES = new Set([...NON_ATTRACTION_CATEGORIES, 'hotel', 'meal', 'restaurant', 'service']);
+const NON_CUSTOMER_ATTRACTION_BADGE_TYPES = new Set(['hotel', 'restaurant', 'meal', 'golf', 'optional']);
+const CUSTOMER_ATTRACTION_GENERIC_NAMES = new Set([
+  '관광',
+  '시내관광',
+  '쇼핑',
+  '쇼핑센터',
+  '면세점',
+  '자유시간',
+  '호텔',
+  '리조트',
+  '조식',
+  '중식',
+  '석식',
+  '특식',
+  '마사지',
+  '전신마사지',
+  '온천욕',
+]);
+const CUSTOMER_ATTRACTION_PRODUCT_NAME_RE =
+  /(?:^\s*[\[【].+[\]】])|(?:특가|즉시확정|당일\s*사용|입장권|티켓|투어|패키지|패스트트랙|픽업|샌딩|단독차량|가이드|포켓와이파이|와이파이도시락|유심|데이터|공항|호텔|리조트|스파|마사지|뷔페|할인|예약|출발|항공|골프|뮤지컬|스냅|렌트|렌터카)/i;
+
+function hasOwn(object: AttractionData, key: keyof AttractionData): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+export function isCustomerRenderableAttraction(attraction: AttractionData | null | undefined): boolean {
+  if (!attraction?.name?.trim()) return false;
+  if (hasOwn(attraction, 'is_active') && attraction.is_active === false) return false;
+  if (hasOwn(attraction, 'customer_publishable') && attraction.customer_publishable !== true) return false;
+
+  const category = String(attraction.category ?? '').toLowerCase();
+  if (category && NON_CUSTOMER_ATTRACTION_CATEGORIES.has(category)) return false;
+
+  const badgeType = String(attraction.badge_type ?? '').toLowerCase();
+  if (badgeType && NON_CUSTOMER_ATTRACTION_BADGE_TYPES.has(badgeType)) return false;
+
+  const name = attraction.name.replace(/\s+/g, ' ').trim();
+  if (CUSTOMER_ATTRACTION_GENERIC_NAMES.has(name)) return false;
+  if (CUSTOMER_ATTRACTION_PRODUCT_NAME_RE.test(name)) return false;
+  if (name.length > 45 && /[\[\]()（）【】]|상품|일정|관광|차량|가이드|입장권|티켓|투어|호텔|리조트|패키지/.test(name)) {
+    return false;
+  }
+
+  return true;
+}
 
 function normalizeScope(value: string | null | undefined): string {
   return (value ?? '').toLowerCase().replace(/\s+/g, '').trim();
@@ -236,6 +291,7 @@ export function destinationAllowsAttractionScope(
 export function buildAttractionIndex(
   attractions: AttractionData[],
   destination?: string,
+  options: BuildAttractionIndexOptions = {},
 ): AttractionIndex {
   const destTrim = destination?.trim() || '';
   const degraded = destTrim.length === 0;
@@ -244,7 +300,9 @@ export function buildAttractionIndex(
     ? attractions.filter(a => destinationAllowsAttractionScope(a, destTrim))
     : attractions;
   // 2차: 호텔/MRT 상품 제외 (활동 매칭 대상 아님)
-  const filtered = destFiltered.filter(a => !a.category || !NON_ATTRACTION_CATEGORIES.has(a.category));
+  const filtered = destFiltered
+    .filter(a => !a.category || !NON_ATTRACTION_CATEGORIES.has(a.category))
+    .filter(a => !options.customerFacing || isCustomerRenderableAttraction(a));
 
   const byLowerName = new Map<string, AttractionData>();
   const byLowerAlias = new Map<string, AttractionData>();
@@ -396,16 +454,20 @@ function scheduleAliasRecord(canonical: string, alias: string): void {
 // destination이 다르면 다른 캐시 엔트리 사용.
 const indexCache = new WeakMap<AttractionData[], Map<string, AttractionIndex>>();
 
-function getOrBuildIndex(attractions: AttractionData[], destination?: string): AttractionIndex {
+function getOrBuildIndex(
+  attractions: AttractionData[],
+  destination?: string,
+  options: BuildAttractionIndexOptions = {},
+): AttractionIndex {
   let destMap = indexCache.get(attractions);
   if (!destMap) {
     destMap = new Map();
     indexCache.set(attractions, destMap);
   }
-  const key = destination || '__no_dest__';
+  const key = `${destination || '__no_dest__'}::${options.customerFacing ? 'customer' : 'internal'}`;
   let idx = destMap.get(key);
   if (!idx) {
-    idx = buildAttractionIndex(attractions, destination);
+    idx = buildAttractionIndex(attractions, destination, options);
     destMap.set(key, idx);
   }
   return idx;
@@ -421,10 +483,11 @@ export function matchAttraction(
   activity: string,
   attractions: AttractionData[],
   destination?: string,
+  options: BuildAttractionIndexOptions = {},
 ): AttractionData | null {
   if (!attractions?.length || !activity) return null;
   if (SKIP_PATTERN.test(activity)) return null;
-  const index = getOrBuildIndex(attractions, destination);
+  const index = getOrBuildIndex(attractions, destination, options);
   return matchAttractionIndexed(activity, index);
 }
 
@@ -437,13 +500,14 @@ export function matchAttraction(
 export function matchAttractions(
   activity: string,
   attractions: AttractionData[],
-  destination?: string
+  destination?: string,
+  options: BuildAttractionIndexOptions = {},
 ): AttractionData[] {
   if (!attractions?.length || !activity) return [];
   if (SKIP_PATTERN.test(activity)) return [];
 
   // 동일 attractions/destination에 대해 한 번만 인덱스 빌드
-  const index = getOrBuildIndex(attractions, destination);
+  const index = getOrBuildIndex(attractions, destination, options);
 
   // 1) 전체 문자열로 단일 매칭 시도
   const single = matchAttractionIndexed(activity, index);
