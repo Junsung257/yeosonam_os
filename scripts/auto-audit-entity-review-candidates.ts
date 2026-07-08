@@ -188,13 +188,33 @@ function canonicalFor(row: ReviewCandidateRow): string {
   return row.canonical_name || row.normalized_label || row.raw_label || '';
 }
 
+function embeddedCandidateTerms(value: string): string[] {
+  const terms: string[] = [];
+  const patterns = [
+    /["“”'‘’「」『』〈〉《》]\s*([^"“”'‘’「」『』〈〉《》]{2,24}?)\s*["“”'‘’「」『』〈〉《》]/g,
+    /[([]\s*([^()[\]]{2,24}?)\s*[)\]]/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of value.matchAll(pattern)) {
+      const term = match[1]?.replace(/\s+/g, ' ').trim();
+      if (term && term.length >= 2) terms.push(term);
+    }
+  }
+  return terms;
+}
+
 function exactCandidateTerms(row: ReviewCandidateRow): string[] {
-  return Array.from(new Set([
+  const baseTerms = [
     row.canonical_name,
     row.normalized_label,
     row.raw_label,
   ].map(value => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''))
-    .filter(value => value.length >= 2)));
+    .filter(value => value.length >= 2);
+
+  return Array.from(new Set([
+    ...baseTerms,
+    ...baseTerms.flatMap(embeddedCandidateTerms),
+  ]));
 }
 
 function normalizedAttractionMatchTerm(value: string): string {

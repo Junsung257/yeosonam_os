@@ -45,3 +45,11 @@ test('ERR-entity-existing-attraction-scope: generic attraction labels stay revie
   assert.match(source, /'야시장'/);
   assert.match(source, /'시장'/);
 });
+
+test('ERR-entity-existing-attraction-scope: quoted canonical names are matched against existing DB terms', () => {
+  const source = read('scripts/auto-audit-entity-review-candidates.ts');
+
+  assert.match(source, /function embeddedCandidateTerms/);
+  assert.match(source, /matchAll/);
+  assert.match(source, /baseTerms\.flatMap\(embeddedCandidateTerms\)/);
+});
