@@ -35,6 +35,7 @@ Local code references:
 - Manual indexing worker runner: `scripts/run-blog-indexing-worker.ts`
 - Publish preflight evaluator: `src/lib/blog-publish-preflight.ts`
 - Canary candidate preflight evaluator: `src/lib/blog-canary-preflight.ts`
+- Generated canary quality evaluator: `src/lib/blog-canary-generated-quality.ts`
 - Current-day publisher health evaluator: `src/lib/blog-current-day-publisher-health.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
 - Slug migration dry-run/write tool: `scripts/migrate-blog-slugs.ts`
@@ -93,6 +94,8 @@ The live publish gate must use the same 100-point category definition. Do not al
 
 `evaluateBlogEngineV2()` itself must use the same 100-point contract as the publish gate. A score in the 80-99 range is repairable evidence, not a pass. `engine_v2` failures caused by reader-task incompleteness, customer-language defects, AI-template naturalness, sales-pressure control, or product decision helpfulness are self-heal eligible because the current category repair loop can mutate and re-evaluate them. Evidence insufficiency, product open-contract failure, topic-fit failure, and candidate pre-publish contract failure remain non-self-heal blockers.
 
+Daily quota recovery must distinguish repairable post defects from unsafe seeds. Deterministic quality failures such as `length`, `links`, `keyword_density`, `structure_integrity`, `table_integrity`, `render_integrity`, `intent_quality`, `seo_score`, and `engine_v2` are self-heal candidates after the shared repair path is deployed. They should be retried without an artificial two-hour delay and, after the normal attempt limit, routed to the editorial recovery backlog instead of hidden terminal failure. Unsafe seeds still do not self-heal: duplicate content, missing context, insufficient evidence, product open-contract failure, topic-fit failure, candidate pre-publish contract failure, and invalid linked drafts must be skipped, quarantined, or repaired at the source before requeueing.
+
 The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. Both the live publisher and the backfill/audit tool must call the same `repairBlogFinalCustomerSurface()` implementation so a defect fixed in recent published rows cannot recur in new automatic posts. The same applies to `repairBlogEngineCategoryGaps()`: live publishing, shared publish preparation, and recent-post backfill/audit must use the category repair path so 100-point category weaknesses are fixed consistently before final evaluation. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.
 
 ## Publish Preflight Contract
@@ -127,6 +130,8 @@ Before widening automatic publishing after engine changes, `diagnose:blog-autopu
 - Queue/admin operational health must use the same candidate pre-publish contract. A blocked queued row must be counted as `candidate_pre_publish_contract` / `quarantine_candidate_contract`, not as `publish_ready` or merely overdue inventory. Broad `pillar` rows are separate planning inventory and must be counted as `pillar_deferred`, not as candidate-contract failures.
 - Editorial cliche blockers are `총정리`, `완벽 가이드`, `완벽 정리`, and similar title templates. If older mojibake text appears in historical evidence, interpret it as one of these Korean cliche blockers and do not use it as a literal prompt phrase.
 - Candidate pre-publish contract failures are unsafe seeds, not manual rewrite backlog. Cleanup and publisher preflight should move them to `skipped` with durable `candidate_pre_publish_contract` metadata so they stop inflating failed/manual-review queue counts.
+- Each selected canary must expose `quality_contract='customer_surface_100'` and writer-specific expectations. `info_writer` must prove answer-first Korean intent, official source support when changeable, valid table/checklist rendering, bottom-only soft CTA, and no AI-cliche opening. `product_consultant_writer` must prove product DB-only claims, price/departure/duration opening, included/excluded blocks, fit/not-fit blocks, risk notes, consult questions, no hard booking pressure, and clean rendered tables.
+- Candidate canary is not enough after writer or repair changes. At least one generated canary sample must also pass `evaluateBlogGeneratedQualityCanary()`, which combines `evaluateBlogEngineV2()`, `inspectBlogCustomerQuality()`, and `inspectRenderedBlogIntegrity()`. A generated sample is pass only when all three are clean and the combined score is exactly 100.
 
 ## Blocking Rules
 

@@ -96,6 +96,21 @@ const OFFICIAL_OR_SOURCE_RE = /0404\.go\.kr|mofa\.go\.kr|gov\.kr|airport\.kr|cus
 const PRODUCT_INTERNAL_TERMS_RE =
   /(?:커미션|수수료율|마진|원가|공급가|정산가|랜드사\s*정산|B2B|담당자명|직원명|내부\s*메모|계좌번호|입금처|도매가|대리점용|판매자용|카드\s*수수료|현금\s*유도)/i;
 
+const MOJIBAKE_CHAR_RE = /[�媛諛留怨寃臾援湲遺鍮吏理李泥紐硫吏利]/g;
+const MOJIBAKE_TOKEN_RE = /\?[^\s.,!?]{1,10}|[^\s.,!?]{0,8}[�][^\s.,!?]{0,8}/g;
+
+function detectMojibakeText(plain: string): { count: number; samples: string[] } {
+  const charCount = plain.match(MOJIBAKE_CHAR_RE)?.length ?? 0;
+  const samples = [...plain.matchAll(MOJIBAKE_TOKEN_RE)]
+    .map((match) => match[0])
+    .filter((sample) => sample.length >= 2)
+    .slice(0, 8);
+  return {
+    count: charCount + samples.length,
+    samples,
+  };
+}
+
 function addIssue(
   issues: BlogCustomerQualityIssue[],
   code: BlogCustomerQualityIssueCode,
@@ -405,6 +420,17 @@ function inspectProduct(input: BlogCustomerQualityInput, plain: string, issues: 
 }
 
 function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: BlogCustomerQualityIssue[]) {
+  const mojibake = detectMojibakeText(plain);
+  if (mojibake.count >= 4) {
+    addIssue(
+      issues,
+      'unnatural_korean_tone',
+      'critical',
+      '고객에게 보이는 본문에 깨진 한글/인코딩 잔여물이 남아 있습니다.',
+      { count: mojibake.count, samples: mojibake.samples },
+    );
+  }
+
   const placeholder = CUSTOMER_PLACEHOLDERS.find((pattern) => pattern.test(plain));
   if (placeholder) {
     addIssue(

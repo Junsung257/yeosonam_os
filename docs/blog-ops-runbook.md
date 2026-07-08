@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-03
+Last updated: 2026-07-08
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -108,6 +108,16 @@ The blog system is complete only when the admin UI can answer these questions wi
   - `npx vitest run src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 68 tests.
   - `npm run diagnose:blog-autopublish -- --json` reported selected-day `4/4`, publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
   - After wiring the shared final customer-surface repair into live publishing, `npx vitest run src/lib/blog-final-customer-surface.test.ts src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 72 tests; `npm run audit:blog-quality -- --limit=16 --json` returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`; `npm run diagnose:blog-autopublish -- --json` remained at publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
+
+## 2026-07-08 Quota Recovery and Generated Canary Evidence
+
+- Daily target recovery must not stop at "blocked". If a candidate fails for deterministic quality issues that the shared repair path can fix, the publisher should retry it immediately and the external cron retry loop can pick it up in the same publishing window.
+- Self-heal quality failures include `length`, `links`, `keyword_density`, `structure_integrity`, `table_integrity`, `render_integrity`, `intent_quality`, `seo_score`, and `engine_v2`. These are repair backlog when they exceed attempts, not hidden terminal noise.
+- Unsafe seeds remain blocked until their source data is fixed: duplicate content, missing context, insufficient evidence, product open-contract failure, topic-fit failure, candidate pre-publish contract failure, and invalid linked drafts.
+- `src/lib/blog-canary-preflight.ts` now labels every selected canary with `quality_contract='customer_surface_100'` and writer-specific expectations, so operators can see whether the canary proves info-guide quality or product-consult quality.
+- `src/lib/blog-canary-generated-quality.ts` checks an actual generated sample across engine score, customer quality, and rendered Markdown integrity. This is the canary to run after changing prompts, product writer structure, final repair, or renderer behavior.
+- Verification on 2026-07-08:
+  - `npx vitest run src/lib/blog-canary-generated-quality.test.ts src/lib/blog-canary-preflight.test.ts` passed 10 tests.
 
 ## 2026-06-16 Live Ops Evidence
 

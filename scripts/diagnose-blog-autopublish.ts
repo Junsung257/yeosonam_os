@@ -9,6 +9,7 @@ import { buildBlogDestinationlessInfoWorkReport } from '../src/lib/blog-destinat
 import { summarizeBlogIndexingCoverage } from '../src/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '../src/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
+import { evaluateBlogGeneratedQualityCanaryReport } from '../src/lib/blog-canary-generated-quality';
 import { evaluateCurrentDayPublisherHealth } from '../src/lib/blog-current-day-publisher-health';
 
 dotenv.config({ path: '.env.local' });
@@ -30,6 +31,8 @@ type BucketCode =
   | 'indexing_outbox_missing'
   | 'publish_preflight_blocked'
   | 'canary_candidates_unavailable'
+  | 'generated_canary_quality_incomplete'
+  | 'generated_canary_quality_failed'
   | 'current_day_publisher_failure';
 
 type Bucket = {
@@ -245,7 +248,7 @@ async function main() {
       .lt('published_at', currentDay.end.toISOString()),
     supabase
       .from('content_creatives')
-      .select('id, slug, seo_title, category, content_type, product_id, destination, published_at, generation_meta, quality_gate, seo_score, readability_score')
+      .select('id, slug, seo_title, category, content_type, product_id, destination, blog_html, published_at, generation_meta, quality_gate, seo_score, readability_score')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
@@ -398,6 +401,10 @@ async function main() {
   const canaryPreflight = buildBlogCanaryPreflight({
     activeQueue: activeQueueRes.data ?? [],
     recentPublished: recentPublishedRes.data ?? [],
+    requested: 3,
+  });
+  const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
+    posts: recentPublishedRes.data ?? [],
     requested: 3,
   });
   const latestPublisherLog = publisherLogs[0] ?? null;
@@ -615,6 +622,21 @@ async function main() {
       evidence: canaryPreflight,
     });
   }
+  if (generatedCanaryQuality.status === 'block') {
+    buckets.push({
+      code: 'generated_canary_quality_failed',
+      severity: 'high',
+      detail: `${generatedCanaryQuality.fail_count}/${generatedCanaryQuality.checked_count} generated canary sample(s) failed engine/customer/render checks.`,
+      evidence: generatedCanaryQuality,
+    });
+  } else if (generatedCanaryQuality.status === 'warn') {
+    buckets.push({
+      code: 'generated_canary_quality_incomplete',
+      severity: 'warning',
+      detail: generatedCanaryQuality.next_action,
+      evidence: generatedCanaryQuality,
+    });
+  }
   if (currentDayPublisherHealth.status === 'risk') {
     buckets.push({
       code: 'current_day_publisher_failure',
@@ -653,6 +675,7 @@ async function main() {
     publishability: publishabilitySnapshot,
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
+    generated_canary_quality: generatedCanaryQuality,
     current_day_publisher_health: currentDayPublisherHealth,
     indexing_outbox_coverage: indexingOutboxCoverage,
     indexing_jobs: indexingCounts,
@@ -671,6 +694,7 @@ async function main() {
   console.log(`Queue: ${JSON.stringify(queueCounts)}`);
   console.log(`Publish preflight: ${publishPreflight.status} (${publishPreflight.score}/100)`);
   console.log(`Canary preflight: ${canaryPreflight.status} (${canaryPreflight.ready_count}/${canaryPreflight.requested})`);
+  console.log(`Generated canary quality: ${generatedCanaryQuality.status} (${generatedCanaryQuality.pass_count}/${generatedCanaryQuality.checked_count})`);
   console.log(`Current-day publisher: ${currentDayPublisherHealth.status}`);
   console.log(`Indexing jobs: ${JSON.stringify(indexingCounts)}`);
   console.log(`Indexing outbox coverage: ${indexingOutboxCoverage.coverage_rate ?? '-'}% (${indexingOutboxCoverage.missing_count} missing)`);
