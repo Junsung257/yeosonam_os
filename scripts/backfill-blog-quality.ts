@@ -24,6 +24,8 @@ let buildBlogContentBrief: typeof import('../src/lib/blog-content-brief').buildB
 let buildProductBlogBrief: typeof import('../src/lib/blog-product-brief').buildProductBlogBrief;
 let generateProductConsultantBlogPost: typeof import('../src/lib/blog-product-consultant-writer').generateProductConsultantBlogPost;
 let loadCustomerOpenContractForPackage: typeof import('../src/lib/product-registration/customer-open-contract').loadCustomerOpenContractForPackage;
+let isCustomerOpenContractBlogPublishable: typeof import('../src/lib/product-registration/customer-open-contract').isCustomerOpenContractBlogPublishable;
+let customerOpenContractBlogBlockReason: typeof import('../src/lib/product-registration/customer-open-contract').customerOpenContractBlogBlockReason;
 
 async function loadLocalModules() {
   ({ finalizeBlogPost } = await import('../src/lib/blog-post-finalizer'));
@@ -39,7 +41,7 @@ async function loadLocalModules() {
   ({ buildBlogContentBrief } = await import('../src/lib/blog-content-brief'));
   ({ buildProductBlogBrief } = await import('../src/lib/blog-product-brief'));
   ({ generateProductConsultantBlogPost } = await import('../src/lib/blog-product-consultant-writer'));
-  ({ loadCustomerOpenContractForPackage } = await import('../src/lib/product-registration/customer-open-contract'));
+  ({ loadCustomerOpenContractForPackage, isCustomerOpenContractBlogPublishable, customerOpenContractBlogBlockReason } = await import('../src/lib/product-registration/customer-open-contract'));
 }
 
 type BlogRow = {
@@ -278,7 +280,11 @@ function countHighlights(html: string): number {
 
 function hasFaq(html: string): boolean {
   if (/(^|\n)#{2,3}\s*(FAQ|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38)/im.test(html)) return true;
-  return /(^|\n)\s*(?:#{2,3}\s*)?(?:\*\*)?\s*(FAQ|Q\s*&\s*A|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38|\uC790\uC8FC\s*\uD558\uB294\s*\uC9C8\uBB38)\s*(?:\*\*)?\s*$/im.test(html);
+  if (/(^|\n)\s*(?:#{2,3}\s*)?(?:\*\*)?\s*(FAQ|Q\s*&\s*A|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38|\uC790\uC8FC\s*\uD558\uB294\s*\uC9C8\uBB38)\s*(?:\*\*)?\s*$/im.test(html)) return true;
+  const qHeadingCount = (html.match(/(^|\n)\s*#{2,4}\s*Q(?:\d+)?[.:]/gi) || []).length;
+  const qLineCount = (html.match(/(^|\n)\s*Q(?:\d+)?[.:]/gi) || []).length;
+  const answerCount = (html.match(/(^|\n)\s*A(?:\d+)?[.:]/gi) || []).length;
+  return (qHeadingCount >= 2 || qLineCount >= 2) && answerCount >= 2;
 }
 
 function hasSummary(html: string): boolean {
@@ -786,6 +792,7 @@ function isSameStoredBlogHtml(before: string, after: string): boolean {
     value
       .replace(/\r\n?/g, '\n')
       .replace(/^(#\s+[^\n]+)\n{2,}(?=[^\n#])/gm, '$1\n')
+      .replace(/\n{2,}(?=#{1,6}\s+)/g, '\n')
       .replace(/(\d)\s*[~–—-]\s*(\d)(?=\s*(?:시간|분|일|박|개|곳|만원|원))/g, '$1-$2')
       .replace(/(^|\n)(#\s+[^\n#]{2,80}?20\d{2})\s+(?=[가-힣A-Za-z0-9][^\n]{0,80}(?:비용은|여행은|월별|에서))/g, '$1$2\n')
       .replace(/(^|\n)(#\s+[^\n#]{2,80}?\b20\d{2})\s+(?=[가-힣A-Za-z0-9,][^\n]{20,})/g, '$1$2\n')
@@ -2622,6 +2629,9 @@ function repairAwkwardRepeatedKoreanFinal(markdown: string): string {
     .replace(/현지는/g, '이 지역은')
     .replace(/준비은/g, '준비는')
     .replace(/날씨은/g, '날씨는')
+    .replace(/(^|\n)([-*]\s+)([가-힣A-Za-z/·\s]{2,40}\s+)?예산는\s/g, '$1$2$3예산은 ')
+    .replace(/(^|\n)([-*]\s+)([가-힣A-Za-z/·\s]{2,40}\s+)?비용는\s/g, '$1$2$3비용은 ')
+    .replace(/(^|\n)([-*]\s+)([가-힣A-Za-z/·\s]{2,40}\s+)?경비는\s/g, '$1$2$3경비는 ')
     .replace(/비용은/g, '비용은')
     .replace(/일정은/g, '일정은')
     .replace(/(해외여행)\s+여행/g, '$1')
@@ -4830,8 +4840,12 @@ async function main() {
     const slug = row.slug || row.id;
     if (productId) {
       const openContract = await loadCustomerOpenContractForPackage(supabase, productId);
-      if (!openContract.ok || openContract.evidencePack.downstream_eligibility.blog_publish === false) {
-        const reason = `product_customer_open_contract_failed:${openContract.blockers.slice(0, 5).join('|') || 'downstream_blog_publish_false'}`;
+      if (!isCustomerOpenContractBlogPublishable(openContract)) {
+        const reason = `product_customer_open_contract_failed:${customerOpenContractBlogBlockReason(openContract)}`;
+        const productStatus = openContract.packageStatus ?? null;
+        const productContractChangeReason = productStatus
+          ? `product_contract_blocked:${productStatus}`
+          : 'product_contract_blocked';
         auditRows.push({
           slug,
           missingOgBefore: !originalOg,
@@ -4876,7 +4890,7 @@ async function main() {
           engineCategoryWriter: null,
           titleChanged: false,
           descriptionChanged: false,
-          changeReasons: ['product_contract_archived'],
+          changeReasons: [productContractChangeReason],
           changed: true,
         });
 
@@ -4891,7 +4905,9 @@ async function main() {
                 product_customer_open_contract: {
                   status: 'blocked',
                   archived_at: archivedAt,
+                  package_status: productStatus,
                   blockers: openContract.blockers,
+                  block_reason: customerOpenContractBlogBlockReason(openContract),
                   downstream_eligibility: openContract.evidencePack.downstream_eligibility,
                 },
               },

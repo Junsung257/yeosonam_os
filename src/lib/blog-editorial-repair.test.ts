@@ -406,6 +406,42 @@ describe('blog editorial repair', () => {
     });
   });
 
+  it('removes standalone and escaped markdown bold residue that would block autopublish', async () => {
+    const result = repairBlogStructureQuality({
+      title: 'Cebu family travel cost',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: 'Cebu family travel cost',
+      blogHtml: [
+        '# Cebu family travel cost',
+        '',
+        '<p>**</p>',
+        '',
+        '> **',
+        '',
+        '<p>\\*\\*Quick answer\\*\\* Check airfare, hotel area, transfers, and local meals before comparing package prices.</p>',
+        '',
+        '| Item | Check | Note |',
+        '| --- | --- | --- |',
+        '| Airfare | Departure date | Recheck seat class |',
+        '| Hotel | Area | Compare transfer time |',
+        '| Local cost | Meals | Keep cash buffer |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('removed_residual_html_markdown_bold');
+    expect(result.blogHtml).not.toContain('**');
+    expect(result.blogHtml).not.toContain('\\*\\*');
+
+    const renderGate = await checkRenderIntegrity(result.blogHtml);
+    expect(renderGate.passed).toBe(true);
+    expect(renderGate.evidence).toMatchObject({
+      artifactCount: 0,
+      artifacts: [],
+    });
+  });
+
   it('softens early hard CTA sentences without dropping informational context', () => {
     const source = [
       '# 몽골 가족여행 2026 실제 경비표',
@@ -635,6 +671,34 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('광저우는');
     expect(result.blogHtml).toContain('대학생 여행에서 먼저 볼 것은');
     expect(result.after.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(false);
+  });
+
+  it('repairs budget particle defects in generated bullet summaries', () => {
+    const result = repairBlogSemanticSurface({
+      title: '세부 숙소 지역별 예산 여행 가이드 2026',
+      primaryKeyword: '세부 숙소 지역별 예산',
+      destination: '세부',
+      category: 'cost',
+      contentType: 'guide',
+      blogHtml: [
+        '# 세부 숙소 지역별 예산 여행 가이드 2026',
+        '',
+        '세부 숙소 지역별 예산, 먼저 총액에서 무엇이 빠지는지 봐야 합니다.',
+        '',
+        '## 세부 숙소 지역별 예산 확인 포인트',
+        '',
+        '- 세부 숙소 지역별 예산는 상품가와 현지 개인경비를 나눠 봐야 총액이 맞습니다.',
+        '- 예산는 식사, 교통, 선택 관광 비용을 따로 잡으면 비교가 쉬워집니다.',
+        '- 비용는 환율과 성수기 여부에 따라 달라질 수 있어 예약 전 조건을 다시 확인하세요.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('세부 숙소 지역별 예산은 상품가');
+    expect(result.blogHtml).toContain('예산은 식사');
+    expect(result.blogHtml).toContain('비용은 환율');
+    expect(result.blogHtml).not.toContain('예산는');
+    expect(result.blogHtml).not.toContain('비용는');
   });
 
   it('repairs generated image context and removes repeated answer scaffolds', () => {

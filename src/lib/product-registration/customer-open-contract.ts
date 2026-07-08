@@ -17,6 +17,10 @@ import {
   hasSupplierRemarkRawLeakRisk,
   loadLatestV3DraftForPackage,
 } from '@/lib/product-registration-v3/customer-payload';
+import {
+  blogProductStatusBlockReason,
+  isBlogProductPublishableStatus,
+} from '@/lib/blog-product-status';
 
 type V3GateLike = {
   blocksApproval?: boolean;
@@ -29,6 +33,7 @@ export type CustomerOpenContractResult = {
   ok: boolean;
   status: 'pass' | 'blocked';
   packageId: string | null;
+  packageStatus?: string | null;
   checkedAt: string;
   blockers: string[];
   warnings: string[];
@@ -117,6 +122,7 @@ export function evaluateCustomerOpenContract(input: {
     ok: blockers.length === 0,
     status: blockers.length === 0 ? 'pass' : 'blocked',
     packageId,
+    packageStatus: asString(input.pkg.status),
     checkedAt: new Date().toISOString(),
     blockers,
     warnings: [],
@@ -166,6 +172,7 @@ export async function loadCustomerOpenContractForPackage(
       ok: false,
       status: 'blocked',
       packageId,
+      packageStatus: null,
       checkedAt: new Date().toISOString(),
       blockers: [`package_lookup:${error?.message ?? 'not_found'}`],
       warnings: [],
@@ -200,10 +207,16 @@ export async function loadCustomerOpenContractForPackage(
 }
 
 export function isCustomerOpenContractBlogPublishable(contract: CustomerOpenContractResult): boolean {
+  if (contract.packageStatus != null && !isBlogProductPublishableStatus(contract.packageStatus)) {
+    return false;
+  }
   return contract.ok && contract.evidencePack.downstream_eligibility.blog_publish !== false;
 }
 
 export function customerOpenContractBlogBlockReason(contract: CustomerOpenContractResult): string {
+  if (contract.packageStatus != null && !isBlogProductPublishableStatus(contract.packageStatus)) {
+    return blogProductStatusBlockReason(contract.packageStatus);
+  }
   const blockers = contract.blockers.slice(0, 5);
   if (blockers.length > 0) return blockers.join('|');
   if (contract.evidencePack.downstream_eligibility.blog_publish === false) {
@@ -219,6 +232,7 @@ export function customerOpenContractAuditPayload(contract: CustomerOpenContractR
   return {
     status: contract.status,
     ok: contract.ok,
+    package_status: contract.packageStatus ?? null,
     checked_at: contract.checkedAt,
     blockers: contract.blockers,
     warnings: contract.warnings,

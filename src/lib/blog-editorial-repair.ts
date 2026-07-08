@@ -350,6 +350,11 @@ function repairAwkwardSemanticSurface(
     })
     .replace(/(대학생|가족|부모님|아이|고객|여행자)에서\s+먼저\s+볼\s+것은/g, '$1 여행에서 먼저 볼 것은');
 
+  text = text
+    .replace(/(^|\n)([-*]\s+)([가-힣A-Za-z/·\s]{2,40}\s+)?예산는\s/g, '$1$2$3예산은 ')
+    .replace(/(^|\n)([-*]\s+)([가-힣A-Za-z/·\s]{2,40}\s+)?비용는\s/g, '$1$2$3비용은 ')
+    .replace(/(^|\n)([-*]\s+)([가-힣A-Za-z/·\s]{2,40}\s+)?경비는\s/g, '$1$2$3경비는 ');
+
   const destination = inferDestinationLabelForSurfaceRepair(input);
   if (destination) {
     text = text
@@ -1113,13 +1118,19 @@ export function normalizeBlogVisualAccents(markdown: string): { text: string; ch
 function removeResidualHtmlMarkdownBold(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
   const stripBold = (value: string) => value
-    .replace(/^\s*>?\s*\*\*\s*$/g, '')
+    .replace(/^\s*>?\s*(?:<p\b[^>]*>)?\s*(?:\*\*|__)\s*(?:<\/p>)?\s*$/gi, '')
+    .replace(/(?:\\\*){2}([^\\\n]{1,180}?)(?:\\\*){2}/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim())
     .replace(/\*\*([^*\n]{1,180}?)\*\*/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim())
     .replace(/__([^_\n]{1,180}?)__/g, (_match, inner: string) => inner.replace(/\s+/g, ' ').trim());
   const text = markdown
+    .replace(/<strong\b[^>]*>\s*(?:\*\*|__)\s*<\/strong>/gi, '')
+    .replace(/<b\b[^>]*>\s*(?:\*\*|__)\s*<\/b>/gi, '')
+    .replace(/<p\b([^>]*)>\s*(?:\*\*|__)\s*<\/p>/gi, '')
     .split('\n')
     .map((line) => stripBold(line))
-    .join('\n');
+    .join('\n')
+    .replace(/(^|\n)\s*>?\s*(?:\*\*|__)\s*(?=\n|$)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n');
 
   return { text, changed: text !== before };
 }
@@ -2474,6 +2485,14 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     blogHtml = finalLegacySurfaceRepair.text;
     if (!changes.includes('removed_legacy_surface_artifacts')) {
       changes.push('removed_legacy_surface_artifacts');
+    }
+  }
+
+  const finalResidualBoldRepair = removeResidualHtmlMarkdownBold(blogHtml);
+  if (finalResidualBoldRepair.changed) {
+    blogHtml = finalResidualBoldRepair.text;
+    if (!changes.includes('removed_residual_html_markdown_bold')) {
+      changes.push('removed_residual_html_markdown_bold');
     }
   }
 
