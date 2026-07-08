@@ -88,6 +88,10 @@ export type EntityResolutionDependencies = {
 
 const CUSTOMER_REVIEW_CATEGORIES = new Set(['shopping', 'optional_tour', 'notice']);
 const NON_MASTER_ACTIONS = new Set(['reject_noise', 'structure_non_master']);
+const READABLE_KOREAN_BACKLOG_PUBLIC_GENERIC_NON_MASTER_RE =
+  /^(?:\uD638\uD551\uC2E0\uCCAD\uC2DC|\uC774\uB860\s*\uAD50\uC721|\uD55C\uC57D\uBC29\s*\uC911\s*2\uD68C|\uC9DA\uCC28\s*OR\s*7\uC778\uC2B9|\uCC9C\uC800\uC6B0\s*\uC2DC\uB0B4|\uC774\uB3C4\uBC31\uD558\uC11C\s*\uD30C)$/u;
+const READABLE_KOREAN_BACKLOG_PUBLIC_DESCRIPTIVE_NON_MASTER_RE =
+  /(?:\uC911\uAD6D\s*\uC120\uC885\uC744\s*\uB300\uD45C\uD558\uB294\s*\uCC9C\uB144\uACE0\uCC30|\uCE6D\uB2E4\uC624\uC5D0\uC11C\s*\uB9CC\uB098\uB294\s*\uC791\uC740\s*\uC720\uB7FD|\uBE5B\uC73C\uB85C\s*\uBB3C\uB4E0\s*\uACC4\uB9BC\uC758\s*\uBC24|\uC0B0\uCC45\uB85C\uB97C\s*\uB530\uB77C\s*\uC790\uC720\uB86D\uAC8C\s*\uB3D9\uBB3C\uC6D0|\uC77C\uBCF8\uC774\s*\uD328\uB9DD\uD55C|\uB9AC\uC544\uC2A4\uC2DD\uD574\uC548\s*\uC544\uC18C\uB9CC\uC744\s*\uBCFC\s*\uC218\s*\uC788\uB294|\uC790\uC5F0\s*\uACBD\uAD00\uC744|\uC804\uACBD$|\uC0BC\uD310\uBC30\uB97C\s*\uD0C0\uACE0.*\uC790\uC5F0\uACBD\uAD00|\uC81C2\uCC28\s*\uC138\uACC4\uB300\uC804.*\uC790\uC774\uC2B9\s*\uC2B9\uC804\uD0D1)/u;
 const READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE =
   /(?:^\+?\s*(?:\uBC18\uC138\uC624|\uBC18\uC9F1\uB290\uC5C9|\uC624\uB9AC\uAD6C\uC774|\uBAA8\uB4EC\uAD6C\uC774|\uB2ED\uAD6C\uC774|\uC9DC\uC870|\uC815\uC2DD|\uC138\uD2B8|\uC804\uD1B5\uC2DD|\uB9E4\uC6B4\uD0D5|\uBCF4\uC308|\uC2A4\uD14C\uC774\uD06C|\uC528\uD478\uB4DC|\uACFC\uC77C|\uC625\uC218\uC218|\uBC00\uD06C\uD2F0|\uC0C8\uC6B0\uC7A5|\uBC31\s*\uC219|\uB300\uD1B5\uBC25\uC815\uC2DD|\uB3FC\uC9C0\uAC08\uBE44\uC815\uC2DD|\uC18C\uACE0\uAE30\uBAA8\uB4EC|\uB118\uB2A5\uC138\uD2B8|\uC62C\uC720\uCE94\uC787|\uB8E9\uB77D|\uD654\uC774\uD2B8\s*\uB85C\uC988|\uB7AD[\s\u3164]*\u3146?\u3154\u3142)\)?$|\uB545\uCF69\s*1?\s*\uBD09\uC9C0|\uBCF4\uD1A0\uCF34\s*BBQ|\uBAA8\uB2DD\uAE00\uB85C\uB9AC\s*\uBCF6\uC74C|\uACE0\uAD6C\uB9C8\s*\uD280(?:\uAE40|\uD0B4)|\uC5F4\uB300\s*\uACFC\uC77C\s*\uC2DC\uC2DD|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uC2DD\uC0AC|\uC815\uC2DD|\uD2B9\uC2DD|\uBD84\uC9DC|\uC300\uAD6D\uC218|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uBD88\uACE0\uAE30|\uAD6C\uC774|\uCEE4\uD53C|coffee|cafe|\uC74C\uB8CC|\uB9E5\uC8FC|\uB514\uC800\uD2B8)/iu;
 const READABLE_KOREAN_GENERIC_NON_MASTER_RE =
@@ -401,6 +405,12 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
     return 'generic, itinerary, or attribute fragment, not attraction master';
   }
   if (category === 'attraction' && (
+    READABLE_KOREAN_BACKLOG_PUBLIC_GENERIC_NON_MASTER_RE.test(name) ||
+    READABLE_KOREAN_BACKLOG_PUBLIC_GENERIC_NON_MASTER_RE.test(raw)
+  )) {
+    return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
     READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE.test(name) ||
     READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE.test(raw)
   )) {
@@ -424,6 +434,12 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   if (category === 'attraction' && (
     READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(name) ||
     (name === raw && READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(raw))
+  )) {
+    return 'descriptive itinerary phrase, not an attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_BACKLOG_PUBLIC_DESCRIPTIVE_NON_MASTER_RE.test(name) ||
+    (name === raw && READABLE_KOREAN_BACKLOG_PUBLIC_DESCRIPTIVE_NON_MASTER_RE.test(raw))
   )) {
     return 'descriptive itinerary phrase, not an attraction master';
   }

@@ -117,6 +117,11 @@ const CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE =
   /^(?:케이블카\s*편도|궁전\s*게르(?:\s*\(?\s*2\s*인\s*실)?|대성당|오후\s*플레이\s*욕장)$/u;
 const CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
   /(?:세계에서\s*두\s*번째|해상\s*케이블카\s*왕복\s*티켓|동양의\s*유럽\s*마을|푸꾸옥의\s*작은\s*유럽|각종\s*동물쇼|다채로운\s*볼거리|소선이\s*신선을\s*만난|건축물들이\s*보전|공룡화석이\s*전시)/u;
+const CUSTOMER_READABLE_BACKLOG_GENERIC_NON_MASTER_RE =
+  /^(?:\uD638\uD551\uC2E0\uCCAD\uC2DC|\uC774\uB860\s*\uAD50\uC721|\uD55C\uC57D\uBC29\s*\uC911\s*2\uD68C|\uC9DA\uCC28\s*OR\s*7\uC778\uC2B9|\uCC9C\uC800\uC6B0\s*\uC2DC\uB0B4|\uC774\uB3C4\uBC31\uD558\uC11C\s*\uD30C)$/u;
+const CUSTOMER_READABLE_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
+  /(?:\uC911\uAD6D\s*\uC120\uC885\uC744\s*\uB300\uD45C\uD558\uB294\s*\uCC9C\uB144\uACE0\uCC30|\uCE6D\uB2E4\uC624\uC5D0\uC11C\s*\uB9CC\uB098\uB294\s*\uC791\uC740\s*\uC720\uB7FD|\uBE5B\uC73C\uB85C\s*\uBB3C\uB4E0\s*\uACC4\uB9BC\uC758\s*\uBC24|\uC0B0\uCC45\uB85C\uB97C\s*\uB530\uB77C\s*\uC790\uC720\uB86D\uAC8C\s*\uB3D9\uBB3C\uC6D0|\uC77C\uBCF8\uC774\s*\uD328\uB9DD\uD55C|\uB9AC\uC544\uC2A4\uC2DD\uD574\uC548\s*\uC544\uC18C\uB9CC\uC744\s*\uBCFC\s*\uC218\s*\uC788\uB294|\uC790\uC5F0\s*\uACBD\uAD00\uC744|\uC804\uACBD$|\uC0BC\uD310\uBC30\uB97C\s*\uD0C0\uACE0.*\uC790\uC5F0\uACBD\uAD00|\uC81C2\uCC28\s*\uC138\uACC4\uB300\uC804.*\uC790\uC774\uC2B9\s*\uC2B9\uC804\uD0D1)/u;
+
 const READABLE_KNOWN_ATTRACTION_LABELS = [
   '패치워크의 길',
   '간몬대교',
@@ -307,7 +312,20 @@ function cleanExtractedAttractionLabel(value: string | undefined): string | null
   return clean;
 }
 
+function extractPrefixBeforeParenthetical(normalizedLabel: string): string | null {
+  const match = normalizedLabel.match(/^(.{2,40}?)\s*\([^()]{2,40}\)/u);
+  const prefix = cleanExtractedAttractionLabel(match?.[1]);
+  if (!prefix) return null;
+  const tokenCount = prefix.split(/\s+/).filter(Boolean).length;
+  if (prefix.length > 14 || tokenCount > 2) return null;
+  if (DESCRIPTIVE_PHRASE_RE.test(prefix) && !ATTRACTION_HINT_RE.test(prefix)) return null;
+  return prefix;
+}
+
 function extractAttractionLabelFromDescription(normalizedLabel: string): string | null {
+  const parentheticalPrefix = extractPrefixBeforeParenthetical(normalizedLabel);
+  if (parentheticalPrefix) return parentheticalPrefix;
+
   const bracketMatch = normalizedLabel.match(/\[([^\]]{2,40})\]/);
   const bracketLabel = cleanExtractedAttractionLabel(bracketMatch?.[1]);
   if (bracketLabel) return bracketLabel;
@@ -408,9 +426,11 @@ function isNonMasterNoise(normalizedLabel: string): string | null {
   if (CUSTOMER_PRODUCT_PROMO_FRAGMENT_RE.test(normalizedLabel)) return 'product title fragment';
   if (CUSTOMER_READABLE_SECTION_FRAGMENT_RE.test(normalizedLabel)) return 'readable section or generic fragment';
   if (CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE.test(normalizedLabel)) return 'readable section or generic fragment';
+  if (CUSTOMER_READABLE_BACKLOG_GENERIC_NON_MASTER_RE.test(normalizedLabel)) return 'readable section or generic fragment';
   if (CUSTOMER_OPERATIONAL_MASTER_FRAGMENT_RE.test(normalizedLabel)) return 'operational schedule fragment';
   if (CUSTOMER_DESCRIPTIVE_ONLY_FRAGMENT_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
   if (CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
+  if (CUSTOMER_READABLE_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
   if (CUSTOMER_VIEW_METHOD_FRAGMENT_RE.test(normalizedLabel)) return 'viewing method fragment';
   if (CUSTOMER_COMMERCIAL_PLACE_RE.test(normalizedLabel)) return 'commercial place fragment';
   if (ROOM_OR_GOLF_DETAIL_RE.test(normalizedLabel)) return 'room/golf detail fragment';
