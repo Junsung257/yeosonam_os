@@ -5,6 +5,7 @@ import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
 import { countPublishableQueueCandidates } from '@/lib/blog-scheduler';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
+import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
 import { evaluateCurrentDayPublisherHealth } from '@/lib/blog-current-day-publisher-health';
 import { classifyDestinationlessInfoCandidate } from '@/lib/blog-destinationless-info';
 import { evaluateBlogEngineV2 } from '@/lib/blog-engine-v2';
@@ -515,6 +516,7 @@ export async function buildBlogOpsSummary(supabase: any) {
   const publishedYesterday = publishedRows.filter((row) => row.published_at && new Date(row.published_at) >= yesterdayStart && new Date(row.published_at) < todayStart).length;
   const policy = policyRows[0] || {};
   const dailyTarget = Math.max(1, Math.round(asNumber(policy.posts_per_day) || 3));
+  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
   const qualitySummary = summarizePublishedBlogQuality(publishedRows, 30);
   const engineCategoryScorecard = summarizeEngineCategoryScorecard(publishedRows, 30);
   const lowQualityRecent = qualitySummary.non_slug_failure_count;
@@ -628,9 +630,26 @@ export async function buildBlogOpsSummary(supabase: any) {
     recentPublished: publishedRows.slice(0, 100),
     requested: 3,
   });
+  const canaryProductIds = Array.from(new Set(
+    queueRows
+      .filter((row) => (row.status === 'queued' || row.status === 'generating') && row.product_id)
+      .map((row) => String(row.product_id)),
+  )).slice(0, 12);
+  const productCanaryPackages = canaryProductIds.length > 0
+    ? await settle<any>(
+      'travel_packages_canary',
+      supabase.from('travel_packages').select('*').in('id', canaryProductIds),
+      warnings,
+    )
+    : [];
+  const productGeneratedCanaryRows = buildProductGeneratedCanaryRows({
+    queueRows: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
+    products: productCanaryPackages,
+    limit: Math.min(3, Math.max(2, generatedCanaryRequested - 2)),
+  });
   const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
-    posts: publishedRows.slice(0, 8),
-    requested: 3,
+    posts: [...publishedRows.slice(0, 8), ...productGeneratedCanaryRows],
+    requested: generatedCanaryRequested,
   });
   const canaryLevel: BlogOpsLevel = canaryPreflight.status === 'block' ? 'risk' : canaryPreflight.status === 'warn' ? 'watch' : 'healthy';
   const generatedCanaryLevel: BlogOpsLevel = generatedCanaryQuality.status === 'block' ? 'risk' : generatedCanaryQuality.status === 'warn' ? 'watch' : 'healthy';
