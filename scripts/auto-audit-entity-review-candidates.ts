@@ -47,9 +47,15 @@ type ExistingAttractionMatch = {
   id: string;
   name: string;
   aliases?: string[] | null;
+  badge_type?: string | null;
   customer_publishable?: boolean | null;
   country?: string | null;
   region?: string | null;
+};
+
+type AttractionAliasRow = {
+  canonical_name: string | null;
+  alias: string | null;
 };
 
 type IndexedAttractionTerm = {
@@ -78,6 +84,9 @@ const GENERIC_CONTAINED_MATCH_TERMS = new Set([
   '투어',
 ]);
 const PRODUCT_LIKE_ATTRACTION_NAME_RE = /(?:투어|티켓|입장권|할인|픽업|당일|즉시|출발|예약|패키지|PKG|\[[^\]]+\]|[()[\]])/i;
+
+const LODGING_LIKE_ATTRACTION_NAME_RE = /(?:호텔|리조트|윈덤|노보텔|멜리아|하바나|하얏트|풀만|홀리데이|아쿠아썬|스파)/i;
+const NON_ATTRACTION_BADGE_TYPES = new Set(['hotel', 'restaurant', 'meal', 'shopping', 'golf']);
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 const candidateColumns = [
@@ -207,7 +216,7 @@ async function fetchAttractionIndex(): Promise<AttractionIndex> {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id, name, aliases, customer_publishable, country, region')
+      .select('id, name, aliases, badge_type, customer_publishable, country, region')
       .eq('is_active', true)
       .range(from, from + pageSize - 1);
     if (error) throw error;
@@ -217,6 +226,31 @@ async function fetchAttractionIndex(): Promise<AttractionIndex> {
       for (const alias of attraction.aliases ?? []) addIndexedTerm(index, attraction, alias);
     }
     if (rows.length < pageSize) break;
+  }
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('attractions_aliases')
+      .select('canonical_name, alias')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const aliasRows = (data ?? []) as AttractionAliasRow[];
+    for (const aliasRow of aliasRows) {
+      const canonicalName = typeof aliasRow.canonical_name === 'string'
+        ? aliasRow.canonical_name.replace(/\s+/g, ' ').trim()
+        : '';
+      const alias = typeof aliasRow.alias === 'string'
+        ? aliasRow.alias.replace(/\s+/g, ' ').trim()
+        : '';
+      if (!canonicalName || !alias) continue;
+
+      const canonicalAttraction =
+        uniqueAttractionMatch(index.literal.get(canonicalName)) ??
+        uniqueAttractionMatch(index.normalized.get(normalizedAttractionMatchTerm(canonicalName)));
+      if (!canonicalAttraction) continue;
+      addIndexedTerm(index, canonicalAttraction, alias);
+    }
+    if (aliasRows.length < pageSize) break;
   }
   return index;
 }
@@ -284,7 +318,9 @@ function isGenericContainedMatchTerm(entry: IndexedAttractionTerm): boolean {
 }
 
 function isProductLikeAttractionName(attraction: ExistingAttractionMatch): boolean {
-  return PRODUCT_LIKE_ATTRACTION_NAME_RE.test(attraction.name);
+  return PRODUCT_LIKE_ATTRACTION_NAME_RE.test(attraction.name) ||
+    LODGING_LIKE_ATTRACTION_NAME_RE.test(attraction.name) ||
+    NON_ATTRACTION_BADGE_TYPES.has(String(attraction.badge_type ?? '').toLowerCase());
 }
 
 function findContainedExistingAttractionMatch(
@@ -332,12 +368,12 @@ function findExistingAttractionMatch(row: ReviewCandidateRow, index: AttractionI
     if (isUnsafeExactAttractionTerm(row, term)) continue;
 
     const literalMatch = uniqueAttractionMatch(index.literal.get(term));
-    if (literalMatch) return literalMatch;
+    if (literalMatch && !isProductLikeAttractionName(literalMatch)) return literalMatch;
 
     const normalized = normalizedAttractionMatchTerm(term);
     if (normalized.length < 2) continue;
     const normalizedMatch = uniqueAttractionMatch(index.normalized.get(normalized));
-    if (normalizedMatch) return normalizedMatch;
+    if (normalizedMatch && !isProductLikeAttractionName(normalizedMatch)) return normalizedMatch;
   }
   return findContainedExistingAttractionMatch(row, index);
 }
