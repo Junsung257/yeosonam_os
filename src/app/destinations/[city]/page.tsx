@@ -23,6 +23,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -494,8 +495,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   ] = await Promise.all([
     supabaseAdmin
       .from('attractions')
-      .select('id, name, short_desc, photos, badge_type')
+      .select('id, name, short_desc, photos, badge_type, category, is_active, customer_publishable')
       .in('region', queryNames)
+      .eq('is_active', true)
+      .eq('customer_publishable', true)
       .order('mention_count', { ascending: false })
       .limit(8),
     supabaseAdmin
@@ -584,6 +587,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     reviewCount,
     minPrice: fallbackMinPrice,
     attractions: ((attractions as unknown[] | null) ?? [])
+      .filter((row): row is AttractionData => isCustomerRenderableAttraction(row as AttractionData))
       .map(normalizeAttractionRow)
       .filter((row): row is PillarData['attractions'][number] => row !== null),
     packages: alivePkgs,
