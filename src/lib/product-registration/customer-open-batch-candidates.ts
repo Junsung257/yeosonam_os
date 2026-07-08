@@ -20,6 +20,7 @@ type SelectOptions = {
   limit: number;
   includeReady?: boolean;
   retryErrors?: boolean;
+  includeTerminalBlocked?: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -34,6 +35,11 @@ export function customerOpenBatchStage(row: Pick<CustomerOpenBatchCandidateRow, 
   return typeof autopilot.stage === 'string' ? autopilot.stage : null;
 }
 
+export function isTerminalCustomerOpenBatchStage(stage: string | null): boolean {
+  return stage === 'expired_ticketing_deadline_detected'
+    || stage === 'expired_ticketing_deadline_archived';
+}
+
 export function selectCustomerOpenBatchCandidates(
   rows: CustomerOpenBatchCandidateRow[],
   options: SelectOptions,
@@ -44,6 +50,7 @@ export function selectCustomerOpenBatchCandidates(
     if (candidates.length >= limit) break;
     const stage = customerOpenBatchStage(row);
     if (stage === 'ready_not_opened' && !options.includeReady) continue;
+    if (isTerminalCustomerOpenBatchStage(stage) && !options.includeTerminalBlocked) continue;
     if (stage === 'error' && !options.retryErrors) continue;
     if (stage && stage !== 'error' && stage !== 'ready_not_opened' && !options.retryErrors) continue;
     candidates.push({
