@@ -38,6 +38,15 @@ describe('terminalNonMasterReason attraction fragment gate', () => {
       '천지 조망',
       '썬월드 내 자유',
       '테를지 현대식 캠프',
+      '낮과 밤이 다른 호이안 야간',
+      '다낭 야간',
+      '계림 시내',
+      '나트랑 시내',
+      '비에이ㆍ오타루ㆍ도야ㆍ노보리베츠',
+      '영해CC 18홀 라운딩',
+      '써핑카트',
+      '엘승타사르 현대식 캠프',
+      '60여마리의 말과 사람이 함께하는 대형 마상쇼',
     ]) {
       expect(terminalNonMasterReason('attraction', label, label)).toBe(
         'generic, itinerary, or attribute fragment, not attraction master',
@@ -48,6 +57,9 @@ describe('terminalNonMasterReason attraction fragment gate', () => {
   it('keeps plausible real attractions review-gated instead of auto-rejecting them', () => {
     expect(terminalNonMasterReason('attraction', '대소사', '대소사')).toBeNull();
     expect(terminalNonMasterReason('attraction', '사오비치', '사오비치')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '링응사', '링응사')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '깟깟마을', '깟깟마을')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '동강호풍경구', '동강호풍경구')).toBeNull();
     expect(terminalNonMasterReason('attraction', '볼거리 가득한 소나시 야시장', '볼거리 가득한 소나시 야시장 투어 망고주스 1잔 제공')).toBeNull();
   });
 });
