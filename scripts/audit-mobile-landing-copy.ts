@@ -302,6 +302,7 @@ async function main() {
   const textTimeoutMs = Math.max(2_000, Math.min(Number(argValue('text-timeout-ms') ?? '5_000') || 5_000, 30_000));
   const retryArg = argValue('retry');
   const retryCount = Math.max(0, Math.min(retryArg === null ? 1 : Number(retryArg) || 0, 3));
+  const screenNonPublic = hasFlag('screen-non-public') || hasFlag('proof-non-public');
   const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/mobile-copy-audit');
   const textDir = path.join(outputDir, 'texts');
   const jsonOnly = hasFlag('json');
@@ -309,11 +310,15 @@ async function main() {
   ensureDir(textDir);
 
   const proofSecret = process.env.REVALIDATE_SECRET || process.env.ADMIN_API_TOKEN || null;
+  if (screenNonPublic && !proofSecret) {
+    throw new Error('--screen-non-public requires REVALIDATE_SECRET or ADMIN_API_TOKEN so non-public package screens can render under proof.');
+  }
   const packages = await loadPackages(ids, limit, scope);
   const screenTargets = packages
-    .filter(pkg => isCustomerVisibleStatus(pkg.status))
+    .filter(pkg => isCustomerVisibleStatus(pkg.status) || screenNonPublic)
     .flatMap(pkg => surfaces.map(surface => ({ pkg, surface })));
-  const dbTargets = packages.filter(pkg => !isCustomerVisibleStatus(pkg.status));
+  const screenTargetPackageIds = new Set(screenTargets.map(target => target.pkg.id));
+  const dbTargets = packages.filter(pkg => !screenTargetPackageIds.has(pkg.id));
 
   const browser = screenTargets.length > 0 ? await chromium.launch({ headless: true }) : null;
   const context = browser ? await browser.newContext({
@@ -364,7 +369,10 @@ async function main() {
     totalPackages: packages.length,
     totalChecks: results.length,
     screenChecks: screenResults.length,
+    nonPublicScreenChecks: screenResults.filter(result => !isCustomerVisibleStatus(result.status)).length,
     dbChecks: dbResults.length,
+    screenNonPublic,
+    proofHeaderPresent: Boolean(proofSecret),
     pass: results.filter(result => result.result === 'pass').length,
     fail: results.filter(result => result.result === 'fail').length,
     blocking: results.reduce((sum, result) => sum + result.blocking_count, 0),
@@ -387,7 +395,10 @@ async function main() {
     `- Packages: ${summary.totalPackages}`,
     `- Checks: ${summary.totalChecks}`,
     `- Screen checks: ${summary.screenChecks}`,
+    `- Non-public screen checks: ${summary.nonPublicScreenChecks}`,
     `- DB checks: ${summary.dbChecks}`,
+    `- Screen non-public packages: ${summary.screenNonPublic ? 'yes' : 'no'}`,
+    `- Proof header present: ${summary.proofHeaderPresent ? 'yes' : 'no'}`,
     `- Pass: ${summary.pass}`,
     `- Fail: ${summary.fail}`,
     `- Blocking issues: ${summary.blocking}`,
