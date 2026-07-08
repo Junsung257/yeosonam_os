@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   customerOpenBatchStage,
+  isTerminalCustomerOpenBatchStage,
   selectCustomerOpenBatchCandidates,
   type CustomerOpenBatchCandidateRow,
 } from './customer-open-batch-candidates';
@@ -49,6 +50,34 @@ describe('customer open batch candidate selection', () => {
     expect(selectCustomerOpenBatchCandidates(rows, { limit: 10 }).map(candidate => candidate.id)).toEqual([]);
     expect(selectCustomerOpenBatchCandidates(rows, { limit: 10, includeReady: true, retryErrors: true }).map(candidate => candidate.id))
       .toEqual(['ready', 'error']);
+  });
+
+  it('keeps expired source offers out of retry batches unless explicitly requested', () => {
+    const rows = [
+      row({
+        id: 'expired',
+        audit_report: { upload_to_open_autopilot: { stage: 'expired_ticketing_deadline_detected' } },
+      }),
+      row({
+        id: 'retryable',
+        audit_report: { upload_to_open_autopilot: { stage: 'blocked_after_mobile_proof' } },
+      }),
+    ];
+
+    expect(selectCustomerOpenBatchCandidates(rows, { limit: 10, retryErrors: true }).map(candidate => candidate.id))
+      .toEqual(['retryable']);
+    expect(selectCustomerOpenBatchCandidates(rows, {
+      limit: 10,
+      retryErrors: true,
+      includeTerminalBlocked: true,
+    }).map(candidate => candidate.id))
+      .toEqual(['expired', 'retryable']);
+  });
+
+  it('classifies expired ticketing deadline stages as terminal', () => {
+    expect(isTerminalCustomerOpenBatchStage('expired_ticketing_deadline_detected')).toBe(true);
+    expect(isTerminalCustomerOpenBatchStage('expired_ticketing_deadline_archived')).toBe(true);
+    expect(isTerminalCustomerOpenBatchStage('blocked_after_mobile_proof')).toBe(false);
   });
 
   it('returns the current autopilot stage from audit_report', () => {

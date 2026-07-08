@@ -19,6 +19,7 @@ type Options = {
   statusList: string[];
   includeReady: boolean;
   retryErrors: boolean;
+  includeTerminalBlocked: boolean;
   strict: boolean;
   baseUrl: string;
 };
@@ -50,6 +51,7 @@ function options(): Options {
       .filter(Boolean),
     includeReady: hasFlag('--include-ready'),
     retryErrors: hasFlag('--retry-errors'),
+    includeTerminalBlocked: hasFlag('--include-terminal-blocked'),
     strict: hasFlag('--strict'),
     baseUrl: (argValue('--base', process.env.PRODUCTION_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')).replace(/\/+$/, ''),
   };
@@ -73,6 +75,7 @@ async function main() {
     limit: opts.limit,
     includeReady: opts.includeReady,
     retryErrors: opts.retryErrors,
+    includeTerminalBlocked: opts.includeTerminalBlocked,
   });
   const autopilot = opts.apply && candidates.length > 0
     ? await runUploadToOpenAutopilot({
