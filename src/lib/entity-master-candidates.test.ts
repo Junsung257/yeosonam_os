@@ -254,6 +254,29 @@ describe('entity master candidate automation', () => {
     }
   });
 
+  it('rejects booking and generic market tokens instead of creating attraction masters', () => {
+    const rejectedLabels = [
+      '\uBC1C\uAD8C',
+      '\uB098\uC774\uD2B8 \uB9C8\uCF13',
+      '\uC57C\uC2DC\uC7A5',
+      '\uC720 \uD6C4 \uC778',
+    ];
+
+    for (const rawLabel of rejectedLabels) {
+      const decision = evaluateMasterCandidate({
+        rawLabel,
+        category: 'attraction',
+        occurrenceCount: 2,
+        evidenceCount: 2,
+        packageCount: 1,
+      });
+
+      expect(decision.autoAction).toBe('reject_noise');
+      expect(decision.promotionStatus).toBe('rejected_noise');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
+
   it('rejects food, flight, and commercial fragments from becoming attraction masters', () => {
     const rejectedLabels = [
       '증편)',
