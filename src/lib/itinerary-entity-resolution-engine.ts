@@ -102,7 +102,15 @@ const READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE =
 const READABLE_KOREAN_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE =
   /^(?:\uCF00\uC774\uBE14\uCE74\s*\uD3B8\uB3C4|\uAD81\uC804\s*\uAC8C\uB974(?:\s*\(?\s*2\s*\uC778\s*\uC2E4)?|\uB300\uC131\uB2F9|\uC624\uD6C4\s*\uD50C\uB808\uC774\s*\uC695\uC7A5)$/u;
 const READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
-  /(?:\uC138\uACC4\uC5D0\uC11C\s*\uB450\s*\uBC88\uC9F8|\uD574\uC0C1\s*\uCF00\uC774\uBE14\uCE74\s*\uC655\uBCF5\s*\uD2F0\uCF13|\uB3D9\uC591\uC758\s*\uC720\uB7FD\s*\uB9C8\uC744|\uD478\uAFB8\uC625\uC758\s*\uC791\uC740\s*\uC720\uB7FD|\uAC01\uC885\s*\uB3D9\uBB3C\uC1FC|\uB2E4\uCC44\uB85C\uC6B4\s*\uBCFC\uAC70\uB9AC|\uC18C\uC120\uC774\s*\uC2E0\uC120\uC744\s*\uB9CC\uB09C|\uAC74\uCD95\uBB3C\uB4E4\uC774\s*\uBCF4\uC804|\uACF5\uB8E1\uD654\uC11D\uC774\s*\uC804\uC2DC)/u;
+  /(?:\uC138\uACC4\uC5D0\uC11C\s*\uB450\s*\uBC88\uC9F8|\uD574\uC0C1\s*\uCF00\uC774\uBE14\uCE74\s*\uC655\uBCF5\s*\uD2F0\uCF13|\uB3D9\uC591\uC758\s*\uC720\uB7FD\s*\uB9C8\uC744|\uD478\uAFB8\uC625\uC758\s*\uC791\uC740\s*\uC720\uB7FD|\uAC01\uC885\s*\uB3D9\uBB3C\uC1FC|\uB2E4\uCC44\uB85C\uC6B4\s*\uBCFC\uAC70\uB9AC|\uC18C\uC120\uC774\s*\uC2E0\uC120\uC744\s*\uB9CC\uB09C|\uAC74\uCD95\uBB3C\uB4E4\uC774\s*\uBCF4\uC804|\uACF5\uB8E1\uD654\uC11D\uC774\s*\uC804\uC2DC|\d{3,4}\s*\uB144\s*\uAC74\uB9BD|\uD574\uC218\uAD00\uC74C\uC0C1\uC774\s*\uC704\uCE58\uD55C)/u;
+const READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE =
+  /^(?:\uC655\uBCF5\s*\uCF00\uC774\uBE14\uCE74|\uCF00\uC774\uBE14\uCE74\s*\uC655\uBCF5|\uCF00\uC774\uBE14\uCE74\s*\uD3B8\uB3C4|\uD3B8\uB3C4\s*\uCF00\uC774\uBE14\uCE74|\uB8E8\uC9C0\s*\uD3B8\uB3C4|\uC655\uBCF5\s*\uD2F0\uCF13|\uC785\uC7A5\uAD8C|\uC790\uC720\uC774\uC6A9\uAD8C|\uC9DA\uCC28\s*\uD0D1\uC2B9|\uB4DC\uB860\s*\uCD2C\uC601|\uB098\uB8FB\uBC30)$/u;
+const READABLE_KOREAN_DANGLING_ATTRACTION_FRAGMENT_RE =
+  /^(?:(?:\uC788\uB294|\uB290\uB084\s*\uC218\s*\uC788\uB294|\uBCFC\s*\uC218\s*\uC788\uB294|\uC990\uAE38\s*\uC218\s*\uC788\uB294)\s*)?\uC57C\uC2DC\uC7A5$/u;
+const READABLE_KOREAN_LODGING_AS_ATTRACTION_RE =
+  /(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uB808\uAC08\uB9AC\uC544|\uB178\uBCF4\uD154|\uC708\uB364|\uD558\uBC14\uB098|\uC544\uCFE0\uC544\uC36C|\uBA5C\uB9AC\uC544\s*\uBE48\uD384|\uBE48\uD384\s*(?:\uB9AC\uC870\uD2B8|\uD638\uD154|\uC2A4\uD30C))/u;
+const READABLE_KOREAN_GOLF_VENUE_AS_ATTRACTION_RE =
+  /(?:CC|\uCEE8\uD2B8\uB9AC\s*\uD074\uB7FD|\uACE8\uD504\s*\uC7A5)$/iu;
 const HIGH_RISK_NOTICE_RE = /(?:취소|환불|비자|여권|입국|출국|보험|예약금|결제|추가\s*요금|가격\s*변동|유류|수수료|환율|여행자\s*보험)/i;
 const LOW_RISK_SCHEDULE_NOTICE_RE = /(?:상기\s*일정|현지\s*사정|항공사의?\s*사정|다소\s*변동|변경될\s*수|양지하시기|천재지변)/i;
 const OPTION_STRUCTURED_DETAIL_RE = /(?:골프장\s*정보|그린피|캐디피|카트피|캐디팁|티타임|코스정보|홀수\s*인원|싱글카트|클럽\s*렌탈|현장\s*결제|락카\s*사용|라커\s*사용)/i;
@@ -386,8 +394,29 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
     return 'generic, itinerary, or attribute fragment, not attraction master';
   }
   if (category === 'attraction' && (
+    READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE.test(name) ||
+    READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE.test(raw)
+  )) {
+    return 'activity or operational detail, not an attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_DANGLING_ATTRACTION_FRAGMENT_RE.test(name) ||
+    READABLE_KOREAN_DANGLING_ATTRACTION_FRAGMENT_RE.test(raw)
+  )) {
+    return 'descriptive itinerary phrase, not an attraction master';
+  }
+  if (category === 'attraction' && READABLE_KOREAN_LODGING_AS_ATTRACTION_RE.test(combined)) {
+    return 'lodging or room fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_GOLF_VENUE_AS_ATTRACTION_RE.test(name) ||
+    READABLE_KOREAN_GOLF_VENUE_AS_ATTRACTION_RE.test(raw)
+  )) {
+    return 'golf venue, not attraction master';
+  }
+  if (category === 'attraction' && (
     READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(name) ||
-    READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(raw)
+    (name === raw && READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(raw))
   )) {
     return 'descriptive itinerary phrase, not an attraction master';
   }
