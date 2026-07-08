@@ -675,6 +675,31 @@ describe('resolveItineraryEntityCandidate', () => {
     }
   });
 
+  it('auto-rejects current backlog product-condition and descriptive attraction fragments', () => {
+    const genericLabels = [
+      '\uCF00\uC774\uBE14\uCE74\uD3B8\uB3C4',
+      '\uAD81\uC804\uAC8C\uB974(2\uC778\uC2E4',
+      '\uB300\uC131\uB2F9',
+      '\uC624\uD6C4 \uD50C\uB808\uC774 \uC695\uC7A5',
+    ];
+    for (const label of genericLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('generic, itinerary, or attribute fragment, not attraction master');
+    }
+
+    const descriptiveLabels = [
+      '\uC138\uACC4\uC5D0\uC11C \uB450 \uBC88\uC9F8\uB85C \uAE34 \uC57D 8KM\uC758 \uD574\uC0C1\uCF00\uC774\uBE14\uCE74 \uC655\uBCF5 \uD2F0\uCF13',
+      '\uB3D9\uC591\uC758 \uC720\uB7FD\uB9C8\uC744',
+      '\uD478\uAFB8\uC625\uC758 \uC791\uC740 \uC720\uB7FD',
+      '\uAC01\uC885 \uB3D9\uBB3C\uC1FC\uC640 \uC0C8\uACF5\uC6D0\uB4F1 \uB2E4\uCC44\uB85C\uC6B4 \uBCFC\uAC70\uB9AC',
+      '\uC18C\uC120\uC774 \uC2E0\uC120\uC744 \uB9CC\uB09C \uACF3\uC774\uB77C\uB294 \uC804\uC124\uC774 \uAE43\uB4E4\uC5B4 \uC788\uACE0',
+    ];
+    for (const label of descriptiveLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('descriptive itinerary phrase, not an attraction master');
+    }
+  });
+
   it('auto-rejects city and route labels that should not become attraction cards', () => {
     const labels = [
       '\uCE58\uC559\uB9C8\uC774',
