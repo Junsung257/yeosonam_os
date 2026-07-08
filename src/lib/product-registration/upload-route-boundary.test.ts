@@ -46,6 +46,10 @@ function readMobileQualityEngine(): string {
   return readFileSync(join(process.cwd(), 'scripts/run-product-registration-mobile-quality-engine.ts'), 'utf8');
 }
 
+function readMobileCopyAudit(): string {
+  return readFileSync(join(process.cwd(), 'scripts/audit-mobile-landing-copy.ts'), 'utf8');
+}
+
 function readMobileReadinessCandidateRepair(): string {
   return readFileSync(join(process.cwd(), 'scripts/repair-product-mobile-readiness-candidates.ts'), 'utf8');
 }
@@ -997,5 +1001,13 @@ describe('upload route registration pipeline boundary', () => {
     const postTasks = readPostRegistrationTasks();
 
     expect(postTasks).toContain("runAutoMobileQA(input.packageId, input.auditBaseUrl, { includeLpForProof: true })");
+  });
+
+  it('audits both package and LP mobile copy surfaces by default', () => {
+    const mobileCopyAudit = readMobileCopyAudit();
+
+    expect(mobileCopyAudit).toContain("String(value ?? 'packages,lp')");
+    expect(mobileCopyAudit).toContain('screenChecks: screenResults.length');
+    expect(mobileCopyAudit).toContain('dbChecks: dbResults.length');
   });
 });
