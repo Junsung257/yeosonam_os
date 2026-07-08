@@ -198,6 +198,17 @@ function groupRows(rows: ActiveAttractionRow[]): CandidateGroup[] {
     if (row.package_id) existing.packageIds.add(row.package_id);
     if (row.package_title) existing.packageTitles.add(row.package_title);
     if (existing.examples.length < 10) existing.examples.push(example);
+    existing.decision = evaluateMasterCandidate({
+      rawLabel: existing.decision.rawLabel,
+      category: existing.decision.category,
+      country: existing.decision.countryScope,
+      region: existing.decision.regionScope,
+      destination: existing.decision.destinationScope,
+      occurrenceCount: existing.occurrenceCount,
+      evidenceCount: existing.ids.length,
+      packageCount: existing.packageIds.size,
+      externalSources: externalSourcesFrom(row),
+    });
   }
 
   return [...groups.values()];

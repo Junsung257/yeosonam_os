@@ -11,6 +11,7 @@ export type PublicEligibilityBlockerCode =
   | 'mobile_readiness_failed'
   | 'attraction_unlinked_registered'
   | 'entity_review_unresolved'
+  | 'entity_master_candidate_unresolved'
   | 'trust_score_blocked';
 
 export type PublicEligibilityBlocker = {

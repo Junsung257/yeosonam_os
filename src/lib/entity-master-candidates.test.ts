@@ -231,6 +231,11 @@ describe('entity master candidate automation', () => {
       '도보산책',
       '총길이 430M, 넓이 6M, 계곡에서의 높이 300M에 달하는 세계 최고의',
       '특전4] 이탈리아의 베네치아를 본따 만든 잠들지 않는 도시',
+      '[부관훼리] 초특가로 떠나는 가성비 3일',
+      '6, 13, 20, 27',
+      '5, 7, 8, 12, 13, 14, 15, 19',
+      '자율',
+      '차창',
     ];
 
     for (const rawLabel of rejectedLabels) {
@@ -248,17 +253,63 @@ describe('entity master candidate automation', () => {
     }
   });
 
+  it('rejects food, flight, and commercial fragments from becoming attraction masters', () => {
+    const rejectedLabels = [
+      '증편)',
+      '반세오',
+      '세트',
+      '랍스터1⁄2)',
+      '정규)',
+      '비어플라자',
+      '포 함 사 항',
+      '비       고',
+      '매운탕',
+    ];
+
+    for (const rawLabel of rejectedLabels) {
+      const decision = evaluateMasterCandidate({
+        rawLabel,
+        category: 'attraction',
+        occurrenceCount: 80,
+        evidenceCount: 10,
+        packageCount: 8,
+      });
+
+      expect(decision.autoAction).toBe('reject_noise');
+      expect(decision.promotionStatus).toBe('rejected_noise');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
+
+  it('does not auto-create attraction masters from repetition alone', () => {
+    const decision = evaluateMasterCandidate({
+      rawLabel: '새로운반복문구',
+      category: 'attraction',
+      occurrenceCount: 500,
+      evidenceCount: 50,
+      packageCount: 20,
+    });
+
+    expect(decision.autoAction).toBe('needs_review');
+    expect(decision.promotionStatus).toBe('needs_review');
+    expect(decision.suggestedMaster.customer_publishable).toBe(false);
+  });
+
   it('extracts readable Korean canonical attraction names from descriptive backlog labels', () => {
     const cases = [
       ['200M의 봉우리 2개가 연결되어 있는 천하제일교', '천하제일교'],
       ['7개의 봉우리가 북두칠성을 가리키는 칠성산', '칠성산'],
       ['장가계의 혼이라 불리는 천문산 등정', '천문산'],
-      ['천문산을 배경으로 펼쳐지는 대형오페라쇼 천문호선쇼 관람', '천문호선쇼'],
       ['푸꾸옥의 명소 소나씨 야시장 자유시간 ★특전! 망고주스 1인 1잔 서비스★', '소나씨 야시장'],
       ['또는 캠비치', '캠비치'],
       ['세계 6대 해변으로 꼽히는 사오비치 관광', '사오비치'],
       ['백두산 서파 코스 금강대협곡 방문', '금강대협곡'],
       ['베트남 현지 분위기가 녹아있는 한시장', '한시장'],
+      ['▷일본 CF에 자주 등장하는 명소 패치워크의 길(차창관광)', '패치워크의 길'],
+      ['도야 불꽃놀이 : 4/28~10/31 (20:45 경부터 20분간 // 개별자유)', '도야 불꽃놀이'],
+      ['▷오타루의 아름다운 상징 오타루운하 관광', '오타루운하'],
+      ['성요셉 대성당 관광', '성요셉 대성당'],
+      ['▷청푸른 빛의 신비로운 호수 아오이이케(청의 호수)', '청의 호수'],
     ];
 
     for (const [rawLabel, expected] of cases) {
@@ -272,6 +323,28 @@ describe('entity master candidate automation', () => {
 
       expect(decision.normalizedLabel).toBe(expected);
       expect(decision.autoAction).toBe('create_internal_master');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
+
+  it('keeps readable multi-attraction supplier prose in review instead of picking one place', () => {
+    const cases = [
+      ['용암 분출로 인해 생긴 금강대협곡 / 고산화원 관광', '고산화원'],
+      ['천문산을 배경으로 펼쳐지는 대형오페라쇼 천문호선쇼 관람', '천문호선쇼'],
+      ['에메랄드 빛 바다가 아름다운 사오비치 또는 캠비치 방문', '사오비치'],
+    ];
+
+    for (const [rawLabel, expected] of cases) {
+      const decision = evaluateMasterCandidate({
+        rawLabel,
+        category: 'attraction',
+        occurrenceCount: 120,
+        evidenceCount: 7,
+        packageCount: 7,
+      });
+
+      expect(decision.normalizedLabel).toBe(expected);
+      expect(decision.autoAction).toBe('needs_review');
       expect(decision.suggestedMaster.customer_publishable).toBe(false);
     }
   });

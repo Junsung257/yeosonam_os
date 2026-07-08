@@ -326,6 +326,7 @@ function trustScore(row) {
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
   add(row.standard_notices === 0 && row.structured_facts === 0, 'v3.facts_missing', 'medium', 15);
   add(row.entity_attraction_unresolved > 0, 'entity.attraction_unresolved', 'high', Math.min(30, 10 + row.entity_attraction_unresolved * 5));
+  add(row.entity_master_candidate_unresolved > 0, 'entity.master_candidate_unresolved', 'high', Math.min(30, 10 + row.entity_master_candidate_unresolved * 5));
   add(row.entity_shopping_review_needed > 0, 'entity.shopping_review_needed', 'high', Math.min(20, 8 + row.entity_shopping_review_needed * 3));
   add(row.entity_option_review_needed > 0, 'entity.option_review_needed', 'high', Math.min(20, 8 + row.entity_option_review_needed * 3));
   add(row.entity_unknown_customer_visible > 0, 'entity.unknown_customer_visible', 'high', Math.min(25, 10 + row.entity_unknown_customer_visible * 5));
@@ -1578,6 +1579,10 @@ function readinessFor(row) {
     if (nonPublicSourceReview) addHumanReviewWarning();
     else failures.push('entity_attraction_unresolved');
   }
+  if (row.entity_master_candidate_unresolved > 0) {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else failures.push('entity_master_candidate_unresolved');
+  }
   if (row.entity_shopping_review_needed > 0) {
     if (nonPublicSourceReview) addHumanReviewWarning();
     else failures.push('entity_shopping_review_needed');
@@ -1716,6 +1721,7 @@ const productPriceRowsByCode = new Map();
 const productRowsByCode = new Map();
 const unmatchedCountMap = new Map();
 const unmatchedEntityMap = new Map();
+const entityCandidateUnresolvedMap = new Map();
 const priceRowsLookupFailedCodes = new Set();
 const draftLookupFailedPackageIds = new Set();
 let unmatchedScopeReady = false;
@@ -1810,6 +1816,42 @@ if (packageIds.length > 0) {
         unmatchedEntityMap.set(item.package_id, current);
       }
     }
+  }
+
+  const scopedPackageIdSet = new Set(packageIds);
+  const unresolvedCandidateStatuses = new Set(['candidate', 'auto_internal', 'needs_review', 'publishable_ready']);
+  for (let from = 0; ; from += 1000) {
+    const { data: candidateRows, error: candidateError } = await runSupabaseQuery(
+      `entity master candidates ${from}`,
+      () => supabase
+        .from('entity_master_candidates')
+        .select('candidate_key, category, promotion_status, source_context')
+        .range(from, from + 999),
+    );
+    if (candidateError) {
+      auditDataErrors.push({ scope: 'entity_master_candidates', message: candidateError.message ?? String(candidateError) });
+      break;
+    }
+    for (const candidate of candidateRows ?? []) {
+      const status = String(candidate.promotion_status ?? '');
+      if (!unresolvedCandidateStatuses.has(status)) continue;
+      const packageIdsFromCandidate = Array.isArray(candidate.source_context?.package_ids)
+        ? [...new Set(candidate.source_context.package_ids)]
+        : [];
+      for (const packageId of packageIdsFromCandidate) {
+        if (!scopedPackageIdSet.has(packageId)) continue;
+        const current = entityCandidateUnresolvedMap.get(packageId) ?? {
+          total: 0,
+          attraction: 0,
+          needs_review: 0,
+        };
+        current.total++;
+        if (candidate.category === 'attraction') current.attraction++;
+        if (status === 'needs_review') current.needs_review++;
+        entityCandidateUnresolvedMap.set(packageId, current);
+      }
+    }
+    if (!candidateRows || candidateRows.length < 1000) break;
   }
 }
 
@@ -2315,6 +2357,7 @@ let rows = allPackageRows
     const draftLookupFailed = draftLookupFailedPackageIds.has(pkg.id);
     const draftEntities = draftEntitySummary(draft);
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
+    const entityCandidateEntities = entityCandidateUnresolvedMap.get(pkg.id) ?? {};
     const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
     const row = {
       id: pkg.id,
@@ -2344,6 +2387,9 @@ let rows = allPackageRows
       entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
       entity_option_review_needed: queueEntities.option_review_needed || 0,
       entity_unknown_customer_visible: draft && !draftLookupFailed ? draftEntities.unknown_customer_visible : queueEntities.unknown_customer_visible || 0,
+      entity_master_candidate_unresolved: entityCandidateEntities.total || 0,
+      entity_master_candidate_attraction_unresolved: entityCandidateEntities.attraction || 0,
+      entity_master_candidate_needs_review: entityCandidateEntities.needs_review || 0,
       entity_noise_removed: draftEntities.noise_removed,
       entity_meal_structured: draftEntities.meal_structured,
       entity_transfer_structured: draftEntities.transfer_structured,
@@ -2606,6 +2652,7 @@ const summary = {
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
   entity_attraction_unresolved_packages: rows.filter(row => row.entity_attraction_unresolved > 0).length,
+  entity_master_candidate_unresolved_packages: rows.filter(row => row.entity_master_candidate_unresolved > 0).length,
   entity_shopping_review_packages: rows.filter(row => row.entity_shopping_review_needed > 0).length,
   entity_option_review_packages: rows.filter(row => row.entity_option_review_needed > 0).length,
   entity_unknown_customer_visible_packages: rows.filter(row => row.entity_unknown_customer_visible > 0).length,
