@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildRepairFirstOpenabilitySummary } from './repair-first-openability';
 import {
+  buildAutopilotStageAuditReport,
   buildSourceBackedDepartureDaysRepair,
   buildPackageDerivedV3Result,
   classifyUploadToOpenReviewReason,
@@ -31,6 +32,41 @@ import {
   sanitizeCustomerVisibleTitle,
   shouldAutoApplySourceBackedPriceRepair,
 } from './upload-to-open-autopilot';
+
+describe('buildAutopilotStageAuditReport', () => {
+  it('persists the customer open contract at the standard top level and inside the autopilot snapshot', () => {
+    const contract = {
+      status: 'pass',
+      ok: true,
+      blockers: [],
+      checked_at: '2026-07-08T10:00:00.000Z',
+    };
+
+    const auditReport = buildAutopilotStageAuditReport(
+      {
+        existing_signal: true,
+        upload_to_open_autopilot: {
+          previous: 'kept',
+        },
+      },
+      'ready_not_opened',
+      '2026-07-08T11:00:00.000Z',
+      {
+        source_verify: 'clean',
+        customer_open_contract: contract,
+      },
+    );
+
+    expect(auditReport.customer_open_contract).toEqual(contract);
+    expect(auditReport.upload_to_open_autopilot).toEqual(expect.objectContaining({
+      previous: 'kept',
+      stage: 'ready_not_opened',
+      checked_at: '2026-07-08T11:00:00.000Z',
+      customer_open_contract: contract,
+    }));
+    expect(auditReport.existing_signal).toBe(true);
+  });
+});
 
 describe('buildSourceBackedDepartureDaysRepair', () => {
   it('fills missing departure_days from source-backed supplier weekdays', () => {

@@ -2956,6 +2956,26 @@ async function applyScorecardDrivenRepairs(input: {
   return { pkg: data as unknown as UploadToOpenAutopilotPackage, repairs, blockedReasons };
 }
 
+export function buildAutopilotStageAuditReport(
+  existingAuditReport: unknown,
+  stage: string,
+  checkedAt: string,
+  patch: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const existing = asRecord(existingAuditReport);
+  const customerOpenContract = asRecord(patch.customer_open_contract);
+  return {
+    ...existing,
+    ...(customerOpenContract ? { customer_open_contract: customerOpenContract } : {}),
+    upload_to_open_autopilot: {
+      ...asRecord(existing.upload_to_open_autopilot),
+      stage,
+      checked_at: checkedAt,
+      ...patch,
+    },
+  };
+}
+
 async function markAutopilotStage(
   supabase: SupabaseClient,
   packageId: string,
@@ -2977,15 +2997,7 @@ async function markAutopilotStage(
     .from('travel_packages')
     .update({
       ...(readyAuditStatus ? { audit_status: readyAuditStatus } : {}),
-      audit_report: {
-        ...existing,
-        upload_to_open_autopilot: {
-          ...asRecord(existing.upload_to_open_autopilot),
-          stage,
-          checked_at: checkedAt,
-          ...patch,
-        },
-      },
+      audit_report: buildAutopilotStageAuditReport(existing, stage, checkedAt, patch),
       audit_checked_at: checkedAt,
     })
     .eq('id', packageId);
@@ -4334,6 +4346,7 @@ async function evaluateAndMaybeOpenPackage(input: {
   const auditReport = {
     ...asRecord(pkg.audit_report),
     ...(openedMobileProof ? { mobile_browser_proof: openedMobileProof } : {}),
+    customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
     upload_to_open_autopilot: {
       stage: 'opened',
       opened_at: openedAt,
