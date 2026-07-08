@@ -693,11 +693,39 @@ describe('resolveItineraryEntityCandidate', () => {
       '\uD478\uAFB8\uC625\uC758 \uC791\uC740 \uC720\uB7FD',
       '\uAC01\uC885 \uB3D9\uBB3C\uC1FC\uC640 \uC0C8\uACF5\uC6D0\uB4F1 \uB2E4\uCC44\uB85C\uC6B4 \uBCFC\uAC70\uB9AC',
       '\uC18C\uC120\uC774 \uC2E0\uC120\uC744 \uB9CC\uB09C \uACF3\uC774\uB77C\uB294 \uC804\uC124\uC774 \uAE43\uB4E4\uC5B4 \uC788\uACE0',
+      '1579\uB144 \uAC74\uB9BD\uB41C \uAC00\uC7A5 \uC624\uB798\uB41C \uD2F0\uBCA0\uD2B8 \uBD88\uAD50\uC0AC\uC6D0',
+      'm \uD574\uC218\uAD00\uC74C\uC0C1\uC774 \uC704\uCE58\uD55C \uC36C\uC9DC \uBC18\uB3C4\uC758 \uBE44\uBC00\uC758 \uC0AC\uC6D0',
     ];
     for (const label of descriptiveLabels) {
       expect(terminalNonMasterReason('attraction', label, label))
         .toBe('descriptive itinerary phrase, not an attraction master');
     }
+
+    const transportOrActivityLabels = [
+      '\uC655\uBCF5\uCF00\uC774\uBE14\uCE74',
+      '\uC655\uBCF5 \uD2F0\uCF13',
+      '\uC785\uC7A5\uAD8C',
+      '\uC790\uC720\uC774\uC6A9\uAD8C',
+      '\uC9DA\uCC28 \uD0D1\uC2B9',
+    ];
+    for (const label of transportOrActivityLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('activity or operational detail, not an attraction master');
+    }
+
+    const danglingLabels = [
+      '\uC788\uB294 \uC57C\uC2DC\uC7A5',
+      '\uB290\uB084 \uC218 \uC788\uB294 \uC57C\uC2DC\uC7A5',
+    ];
+    for (const label of danglingLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('descriptive itinerary phrase, not an attraction master');
+    }
+
+    expect(terminalNonMasterReason('attraction', '\uB098\uD2B8\uB791\uB808\uAC08\uB9AC\uC544\uACE8\uB4DC', '\uB098\uD2B8\uB791\uB808\uAC08\uB9AC\uC544\uACE8\uB4DC'))
+      .toBe('lodging or room fragment, not attraction master');
+    expect(terminalNonMasterReason('attraction', '\uC0AC\uAC00\uB77CCC', '\uC0AC\uAC00\uB77CCC'))
+      .toBe('golf venue, not attraction master');
   });
 
   it('auto-rejects city and route labels that should not become attraction cards', () => {
@@ -766,6 +794,7 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(terminalNonMasterReason('attraction', '\uC0AC\uC624\uBE44\uCE58', '\uC5D0\uBA54\uB784\uB4DC \uBE5B \uBC14\uB2E4\uAC00 \uC544\uB984\uB2E4\uC6B4 \uC0AC\uC624\uBE44\uCE58')).toBeNull();
     expect(terminalNonMasterReason('attraction', '\uB9C1\uC751\uC0AC', '\uB9C1\uC751\uC0AC')).toBeNull();
     expect(terminalNonMasterReason('attraction', '\uB2E4\uB534\uB780 \uD3ED\uD3EC', '\uBCA0\uD2B8\uB0A8\uC5D0\uC11C \uAC00\uC7A5 \uC720\uBA85\uD55C \uB2E4\uB534\uB780 \uD3ED\uD3EC')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\u5927\u53EC\u5BFA', '1579\uB144 \uAC74\uB9BD\uB41C \uAC00\uC7A5 \uC624\uB798\uB41C \uD2F0\uBCA0\uD2B8 \uBD88\uAD50\uC0AC\uC6D0 \u5927\u53EC\u5BFA')).toBeNull();
   });
 
   it('auto-rejects generic Korean itinerary tokens that should not become internal masters', () => {
