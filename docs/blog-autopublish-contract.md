@@ -171,6 +171,7 @@ Required writer split:
 
 - `info_writer`: answer the reader's search intent first. The first 120-200 characters must contain a concrete answer, question, comparison, price/time/weather/document trigger, or checklist direction. Product or consultation CTA appears only near the bottom and must be soft.
 - `product_consultant_writer`: help the customer make a pre-inquiry decision. The post must show price/from-city/duration, included/excluded items, fit/not-fit, risk notes, price-change conditions, and questions to ask before consultation.
+- Public-render table contract: information posts whose public title/body implies cost, budget, weather, itinerary, checklist, visa, currency, or expense must contain at least one renderable Markdown table with a separator row and three or more body rows before publish. Pseudo-table prose such as `식사 종류 / 비용 / 특징` is not enough because the public renderer will expose it as plain text and fail the customer scan task.
 
 Forbidden customer-visible patterns:
 

@@ -1358,6 +1358,49 @@ describe('blog editorial repair', () => {
     expect(checkMarkdownTableIntegrity(result.blogHtml).passed).toBe(true);
   });
 
+  it('adds a renderable decision table when public info posts only have pseudo-table prose', () => {
+    const source = [
+      '# 클락 여행 가이드 2026',
+      '',
+      '클락은 총액에서 식사, 이동, 선택 관광이 빠졌는지 먼저 보면 가족 예산 오차를 줄이기 좋습니다.',
+      '',
+      '## 확인된 근거로 보는 클락 식사 예산',
+      '',
+      '식사 종류 / 1인당 평균 비용 / 특징',
+      '',
+      '- 가족 여행객이라면 메뉴 선정과 위생까지 함께 봐야 합니다.',
+      '- 식사 포함 여부와 자유식 횟수를 나눠 봅니다.',
+      '- 아이 동반이면 익숙한 메뉴가 있는지 확인합니다.',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '클락 가족 식사 체크',
+      slug: 'clark-food',
+      category: 'food',
+      contentType: 'guide',
+      primaryKeyword: '클락 음식',
+      destination: '클락',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('added_required_info_decision_table');
+    expect(result.blogHtml).toContain('## 클락 비용·판단 표');
+    expect((result.blogHtml.match(/^\|.+\|$/gm) || []).length).toBeGreaterThanOrEqual(5);
+    expect(result.blogHtml).toContain('| 식사·이동 |');
+
+    const finalResult = repairBlogStructureQuality({
+      title: '클락 가족 식사 체크',
+      slug: 'clark-food',
+      category: 'food',
+      contentType: 'guide',
+      primaryKeyword: '클락 음식',
+      destination: '클락',
+      blogHtml: result.blogHtml,
+    });
+    expect(checkMarkdownTableIntegrity(finalResult.blogHtml).passed).toBe(true);
+  });
+
   it('converts too-short markdown tables into scan-friendly bullets', () => {
     const source = [
       '# Mongolia family budget',
