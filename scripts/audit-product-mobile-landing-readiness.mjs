@@ -41,6 +41,7 @@ const repairEmptyItineraryDays = process.argv.includes('--repair-empty-itinerary
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const verifyPublicHtml = process.argv.includes('--verify-public-html');
+const persistReadinessResult = process.argv.includes('--persist-readiness-result');
 const baseArg = process.argv.find(arg => arg.startsWith('--base='))?.split('=')[1]?.trim();
 const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
   .split(',')
@@ -111,6 +112,7 @@ const supabase = createClient(url, serviceKey, { auth: { persistSession: false }
 
 const PUBLIC_STATUSES = new Set(['approved', 'active', 'published']);
 const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function replaceProductPricesForProduct(productId, rows) {
   const payload = rows.map(row => ({
@@ -1642,13 +1644,20 @@ const packageIds = allPackageRows.map(pkg => pkg.id);
 const internalCodes = allPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
 const auditDataErrors = [];
 const attractionIds = new Set();
+const malformedAttractionIds = new Set();
 for (const pkg of allPackageRows) {
   const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
   for (const day of days) {
     const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
     for (const item of schedule) {
       const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids : [];
-      for (const id of ids) if (typeof id === 'string' && id) attractionIds.add(id);
+      for (const id of ids) {
+        if (typeof id !== 'string') continue;
+        const trimmed = id.trim();
+        if (!trimmed) continue;
+        if (UUID_RE.test(trimmed)) attractionIds.add(trimmed);
+        else malformedAttractionIds.add(trimmed);
+      }
     }
   }
 }
@@ -2371,6 +2380,51 @@ if (verifyPublicHtml) {
   rows = verifiedRows;
 }
 
+const readinessPersistence = [];
+if (persistReadinessResult) {
+  const checkedAt = new Date().toISOString();
+  for (const row of rows) {
+    const previousReport = row.audit_report && typeof row.audit_report === 'object' && !Array.isArray(row.audit_report)
+      ? row.audit_report
+      : {};
+    const nextAuditReport = {
+      ...previousReport,
+      mobile_landing_readiness: {
+        source: 'audit-product-mobile-landing-readiness',
+        checked_at: checkedAt,
+        status: row.readiness.status,
+        failures: row.readiness.failures,
+        warnings: row.readiness.warnings,
+        trust_score: row.trust_score,
+        public_html_failure: row.public_html_failure,
+        entity_counts: {
+          unmatched_activities: row.unmatched_activities,
+          attraction_unresolved: row.entity_attraction_unresolved,
+          shopping_review_needed: row.entity_shopping_review_needed,
+          option_review_needed: row.entity_option_review_needed,
+          unknown_customer_visible: row.entity_unknown_customer_visible,
+        },
+        malformed_attraction_ids_skipped: malformedAttractionIds.size,
+      },
+    };
+    const { error } = await supabase
+      .from('travel_packages')
+      .update({
+        audit_report: nextAuditReport,
+        audit_checked_at: checkedAt,
+      })
+      .eq('id', row.id);
+    readinessPersistence.push({
+      id: row.id,
+      code: row.code,
+      status: row.readiness.status,
+      ok: !error,
+      error: error?.message ?? null,
+    });
+    if (!error) row.audit_report = nextAuditReport;
+  }
+}
+
 const publicRows = rows.filter(row => row.public);
 const failedRows = rows.filter(row => row.readiness.status === 'fail');
 const warnedRows = rows.filter(row => row.readiness.status === 'warn');
@@ -2563,6 +2617,10 @@ const summary = {
   schema_failures: unmatchedScopeReady ? 0 : 1,
   data_query_failures: blockingAuditDataErrors.length,
   nonblocking_data_query_failures: auditDataErrors.length - blockingAuditDataErrors.length,
+  malformed_attraction_ids_skipped: malformedAttractionIds.size,
+  persist_readiness_result: persistReadinessResult,
+  persisted_readiness_results: readinessPersistence.filter(row => row.ok).length,
+  readiness_persistence_errors: readinessPersistence.filter(row => !row.ok).length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
   repaired_price_source_evidence: priceSourceEvidenceRepairs.filter(repair => repair.ok).length,
   repaired_price_tiers: priceTierRepairs.filter(repair => repair.ok).length,
@@ -2595,6 +2653,7 @@ const report = {
     ...excludeFragmentRepairs.map(repair => ({ ...repair, type: 'exclude_fragments' })),
     ...durationTripStyleRepairs.map(repair => ({ ...repair, type: 'duration_trip_style' })),
   ],
+  readiness_persistence: readinessPersistence,
   demotions,
   archives,
   failed: failedRows.map(row => ({

@@ -174,4 +174,65 @@ describe('package public eligibility', () => {
     expect(blockers.map((b) => b.code)).toContain('stale_or_missing_mobile_proof');
     expect(isCustomerPubliclyOpenable({ status: 'active', audit_report: passingContract })).toBe(true);
   });
+
+  it('fails closed when stored mobile readiness contradicts a passing customer contract', () => {
+    const blockers = getPackagePublicEligibilityBlockers({
+      status: 'active',
+      audit_status: 'clean',
+      audit_report: {
+        ...passingContract,
+        readiness: {
+          status: 'fail',
+          failures: ['attraction_unlinked_registered', 'entity_attraction_unresolved'],
+        },
+        trust_score: {
+          publishable: false,
+          blockers: ['attraction.unlinked_registered', 'entity.attraction_unresolved'],
+        },
+      },
+      optional_tours: [],
+      itinerary_data: { days: [] },
+    }).map((b) => b.code);
+
+    expect(blockers).toContain('mobile_readiness_failed');
+    expect(blockers).toContain('attraction_unlinked_registered');
+    expect(blockers).toContain('entity_review_unresolved');
+    expect(blockers).toContain('trust_score_blocked');
+  });
+
+  it('uses the latest persisted mobile landing readiness snapshot before stale legacy audit fields', () => {
+    const blockers = getPackagePublicEligibilityBlockers({
+      status: 'active',
+      audit_status: 'clean',
+      audit_report: {
+        ...passingContract,
+        quality_status: 'blocked',
+        readiness: {
+          status: 'fail',
+          failures: ['entity_attraction_unresolved'],
+        },
+        trust_score: {
+          publishable: false,
+          blockers: ['entity.attraction_unresolved'],
+        },
+        mobile_landing_readiness: {
+          source: 'audit-product-mobile-landing-readiness',
+          checked_at: '2026-07-08T00:00:00.000Z',
+          status: 'pass',
+          failures: [],
+          warnings: [],
+          trust_score: {
+            publishable: true,
+            blockers: [],
+          },
+        },
+      },
+      optional_tours: [],
+      itinerary_data: { days: [] },
+    }).map((b) => b.code);
+
+    expect(blockers).not.toContain('mobile_readiness_failed');
+    expect(blockers).not.toContain('entity_review_unresolved');
+    expect(blockers).not.toContain('trust_score_blocked');
+  });
 });

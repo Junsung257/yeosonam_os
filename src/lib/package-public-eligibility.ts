@@ -7,7 +7,11 @@ export type PublicEligibilityBlockerCode =
   | 'customer_open_contract_blocked'
   | 'stale_or_missing_mobile_proof'
   | 'optional_tour_display_pollution'
-  | 'broken_attraction_id';
+  | 'broken_attraction_id'
+  | 'mobile_readiness_failed'
+  | 'attraction_unlinked_registered'
+  | 'entity_review_unresolved'
+  | 'trust_score_blocked';
 
 export type PublicEligibilityBlocker = {
   code: PublicEligibilityBlockerCode;
@@ -118,10 +122,52 @@ function asContract(value: unknown): CustomerOpenContractPayload | null {
   return record ? (record as CustomerOpenContractPayload) : null;
 }
 
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(String).map((item) => item.trim()).filter(Boolean);
+}
+
 export function getStoredCustomerOpenContract(auditReport: unknown): CustomerOpenContractPayload | null {
   const report = asRecord(auditReport);
   return asContract(report?.customer_open_contract)
     ?? asContract(asRecord(report?.upload_to_open_autopilot)?.customer_open_contract);
+}
+
+function collectStoredReadinessSignals(auditReport: unknown): {
+  failed: boolean;
+  failures: string[];
+  trustScoreBlocked: boolean;
+  trustScoreBlockers: string[];
+} {
+  const report = asRecord(auditReport);
+  if (!report) {
+    return { failed: false, failures: [], trustScoreBlocked: false, trustScoreBlockers: [] };
+  }
+
+  const currentReadiness = asRecord(report.mobile_landing_readiness);
+  if (currentReadiness) {
+    const failures = asStringArray(currentReadiness.failures);
+    const trustScore = asRecord(currentReadiness.trust_score);
+    const trustScoreBlockers = asStringArray(trustScore?.blockers);
+    return {
+      failed: currentReadiness.status === 'fail' || failures.length > 0,
+      failures,
+      trustScoreBlocked: trustScore?.publishable === false || trustScoreBlockers.length > 0,
+      trustScoreBlockers,
+    };
+  }
+
+  const readiness = asRecord(report.readiness);
+  const failures = asStringArray(readiness?.failures);
+  const failed = readiness?.status === 'fail'
+    || report.quality_status === 'blocked'
+    || failures.length > 0;
+
+  const trustScore = asRecord(report.trust_score);
+  const trustScoreBlockers = asStringArray(trustScore?.blockers);
+  const trustScoreBlocked = trustScore?.publishable === false || trustScoreBlockers.length > 0;
+
+  return { failed, failures, trustScoreBlocked, trustScoreBlockers };
 }
 
 function uniqueBlockers(blockers: PublicEligibilityBlocker[]): PublicEligibilityBlocker[] {
@@ -331,6 +377,42 @@ export function getPackagePublicEligibilityBlockers(
     blockers.push({
       code: 'audit_status_blocked',
       message: 'audit_status=blocked',
+    });
+  }
+
+  const readinessSignals = collectStoredReadinessSignals(pkg.audit_report);
+  if (readinessSignals.failed) {
+    blockers.push({
+      code: 'mobile_readiness_failed',
+      message: readinessSignals.failures.length > 0
+        ? `stored mobile readiness failed: ${readinessSignals.failures.slice(0, 3).join(', ')}`
+        : 'stored mobile readiness or quality status is blocked',
+    });
+  }
+  if (
+    readinessSignals.failures.includes('attraction_unlinked_registered')
+    || readinessSignals.trustScoreBlockers.includes('attraction.unlinked_registered')
+  ) {
+    blockers.push({
+      code: 'attraction_unlinked_registered',
+      message: 'registered attraction is mentioned but not linked to a validated attraction_id',
+    });
+  }
+  if (
+    readinessSignals.failures.some((failure) => failure.startsWith('entity_'))
+    || readinessSignals.trustScoreBlockers.some((blocker) => blocker.startsWith('entity.'))
+  ) {
+    blockers.push({
+      code: 'entity_review_unresolved',
+      message: 'customer-visible entity review or attraction resolution is still unresolved',
+    });
+  }
+  if (readinessSignals.trustScoreBlocked) {
+    blockers.push({
+      code: 'trust_score_blocked',
+      message: readinessSignals.trustScoreBlockers.length > 0
+        ? `trust score blockers: ${readinessSignals.trustScoreBlockers.slice(0, 3).join(', ')}`
+        : 'trust score is not publishable',
     });
   }
 
