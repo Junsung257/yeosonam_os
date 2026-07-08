@@ -31,15 +31,9 @@ const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'duplicate_content',
   'context_missing',
   'product_open_contract',
-  'length',
-  'links',
-  'keyword_density',
-  'structure_integrity',
-  'intent_quality',
   'evidence_insufficient',
   'topic_fit',
   'candidate_pre_publish_contract',
-  'seo_score',
   'linked_draft_invalid',
 ]);
 
@@ -79,19 +73,19 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
   }
 
   if (hasFailedGate(qa, 'keyword_density') || /\[keyword_density\]|keyword_density|키워드.*밀도/i.test(text)) {
-    return { code: 'keyword_density', retryable: true, selfHealAllowed: false, skipped: false };
+    return { code: 'keyword_density', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'length') || /\[length\]|thin content|최소\s*\d+\s*자\s*미달|minimum length|min length/i.test(text)) {
-    return { code: 'length', retryable: true, selfHealAllowed: false, skipped: false };
+    return { code: 'length', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'links') || /\[links\]|내부링크|internal link|external authority|authority link/i.test(text)) {
-    return { code: 'links', retryable: true, selfHealAllowed: false, skipped: false };
+    return { code: 'links', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'structure_integrity') || /\[structure_integrity\]|structure_integrity|raw_directive|checklist_shape/i.test(text)) {
-    return { code: 'structure_integrity', retryable: true, selfHealAllowed: false, skipped: false };
+    return { code: 'structure_integrity', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'table_integrity') || /\[table_integrity\]|table_integrity|table_shape|markdown_table/i.test(text)) {
@@ -107,7 +101,7 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
   }
 
   if (hasFailedGate(qa, 'intent_quality') || /\[intent_quality\]|intent_quality|weak_reading_design|weak_list_or_table/i.test(text)) {
-    return { code: 'intent_quality', retryable: true, selfHealAllowed: false, skipped: false };
+    return { code: 'intent_quality', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (/evidence_insufficient|source_support|근거\s*부족/i.test(text)) {
@@ -127,7 +121,7 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
   }
 
   if (/seo score|seo_score/i.test(text)) {
-    return { code: 'seo_score', retryable: true, selfHealAllowed: false, skipped: false };
+    return { code: 'seo_score', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (/db insert|db update|database|supabase/i.test(lower)) {

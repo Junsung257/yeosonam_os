@@ -19,17 +19,31 @@ describe('blog queue failure policy', () => {
     })).toBe(false);
   });
 
-  it('allows one publisher retry for quality failures but blocks orchestrator self-heal loops', () => {
+  it('keeps deterministic quality failures self-healable so quota can be recovered', () => {
     const decision = classifyBlogQueueFailure('1/13 failed: [structure_integrity] checklist_shape_invalid');
 
     expect(decision).toMatchObject({
       code: 'structure_integrity',
       retryable: true,
-      selfHealAllowed: false,
+      selfHealAllowed: true,
     });
     expect(shouldSelfHealBlogQueueItem({
       lastError: '1/13 failed: [structure_integrity] checklist_shape_invalid',
-    })).toBe(false);
+    })).toBe(true);
+
+    for (const reason of [
+      '2/19 failed: [links] internal link missing',
+      '2/19 failed: [keyword_density] stuffing risk',
+      'SEO score 71/100 - internal_links_cta',
+      'quality failed: [intent_quality] weak_reading_design',
+      '2/19 failed: [length] thin content minimum length',
+    ]) {
+      expect(classifyBlogQueueFailure(reason)).toMatchObject({
+        retryable: true,
+        selfHealAllowed: true,
+      });
+      expect(shouldSelfHealBlogQueueItem({ lastError: reason })).toBe(true);
+    }
   });
 
   it('keeps rendered markdown residue failures recoverable for a repaired rerun', () => {
@@ -76,7 +90,7 @@ describe('blog queue failure policy', () => {
     )).toMatchObject({
       code: 'length',
       retryable: true,
-      selfHealAllowed: false,
+      selfHealAllowed: true,
     });
 
     expect(classifyBlogQueueFailure(
@@ -84,11 +98,11 @@ describe('blog queue failure policy', () => {
     )).toMatchObject({
       code: 'links',
       retryable: true,
-      selfHealAllowed: false,
+      selfHealAllowed: true,
     });
     expect(shouldSelfHealBlogQueueItem({
       lastError: '2/19 실패: [links] 내부링크 0개 — 최소 1개 필요',
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('honors stored quarantine metadata even if the text is ambiguous', () => {

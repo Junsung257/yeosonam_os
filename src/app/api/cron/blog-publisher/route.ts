@@ -2039,6 +2039,7 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
   const decision = classifyBlogQueueFailure(reason, qa);
   const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure || decision.code === 'duplicate_content';
   const shouldForceFailure = forceFailure || !decision.retryable;
+  const retryDelayMs = decision.selfHealAllowed ? 0 : 2 * 3600 * 1000;
   const finalStatus = (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
     ? 'skipped'
     : shouldForceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
@@ -2048,9 +2049,8 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
       status: finalStatus,
       attempts,
       last_error: reason,
-      // 재시도 시 2시간 뒤로 미룸
       target_publish_at: finalStatus === 'queued'
-        ? new Date(Date.now() + 2 * 3600 * 1000).toISOString()
+        ? new Date(Date.now() + retryDelayMs).toISOString()
         : item.target_publish_at,
       meta: {
         ...(item.meta || {}),

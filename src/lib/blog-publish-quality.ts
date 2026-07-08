@@ -242,6 +242,19 @@ export async function prepareBlogForPublish(
     changes.push(...categoryRepair.changes);
   }
 
+  const finalReadinessRepair = repairPublishReadiness({
+    markdown: blogHtml,
+    blogType: input.product_id ? 'product' : 'info',
+    slug: input.slug,
+    destination: input.destination ?? null,
+    topic: input.seo_title ?? input.slug,
+    primaryKeyword,
+  });
+  if (finalReadinessRepair.changed) {
+    blogHtml = finalReadinessRepair.markdown;
+    changes.push(...finalReadinessRepair.changes);
+  }
+
   const report = await evaluateBlogPublishQuality({
     ...input,
     blog_html: blogHtml,
