@@ -9,6 +9,7 @@ loadEnv();
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
 const json = args.includes('--json');
+const allowAutoInternal = args.includes('--allow-auto-internal');
 const limit = Number(argValue('--limit', '1000'));
 
 function argValue(name: string, fallback: string): string {
@@ -35,12 +36,14 @@ type ReviewCandidateRow = {
   auto_verification_status: string | null;
   decision_reason: string | null;
   source_unmatched_ids: string[] | null;
+  source_context: Record<string, unknown> | null;
   suggested_master: Record<string, unknown> | null;
 };
 
-type PublishedAttractionMatch = {
+type ExistingAttractionMatch = {
   id: string;
   name: string;
+  customer_publishable?: boolean | null;
 };
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
@@ -56,6 +59,7 @@ const candidateColumns = [
   'auto_verification_status',
   'decision_reason',
   'source_unmatched_ids',
+  'source_context',
   'suggested_master',
 ].join(', ');
 
@@ -125,16 +129,40 @@ function exactCandidateTerms(row: ReviewCandidateRow): string[] {
     .filter(value => value.length >= 2)));
 }
 
-async function findExactPublishedAttraction(row: ReviewCandidateRow): Promise<PublishedAttractionMatch | null> {
+function isUnsafeExactAttractionTerm(row: ReviewCandidateRow, term: string): boolean {
+  if (row.category !== 'attraction') return false;
+  const cleaned = term.replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned.length < 2) return true;
+  return Boolean(terminalNonMasterReason('attraction', cleaned, term));
+}
+
+function sourcePackageIds(row: ReviewCandidateRow): string[] {
+  const ids = row.source_context?.package_ids;
+  return Array.isArray(ids)
+    ? ids.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+}
+
+async function findExactExistingAttraction(row: ReviewCandidateRow): Promise<ExistingAttractionMatch | null> {
   if (row.category !== 'attraction') return null;
   for (const term of exactCandidateTerms(row)) {
-    const { data, error } = await supabase
+    if (isUnsafeExactAttractionTerm(row, term)) continue;
+
+    const { data: nameData, error: nameError } = await supabase
       .from('attractions')
-      .select('id, name')
+      .select('id, name, customer_publishable')
       .eq('name', term)
-      .eq('customer_publishable', true)
+      .eq('is_active', true)
       .limit(1);
-    if (!error && data && data.length > 0) return data[0] as PublishedAttractionMatch;
+    if (!nameError && nameData && nameData.length > 0) return nameData[0] as ExistingAttractionMatch;
+
+    const { data: aliasData, error: aliasError } = await supabase
+      .from('attractions')
+      .select('id, name, customer_publishable')
+      .contains('aliases', [term])
+      .eq('is_active', true)
+      .limit(1);
+    if (!aliasError && aliasData && aliasData.length > 0) return aliasData[0] as ExistingAttractionMatch;
   }
   return null;
 }
@@ -202,7 +230,7 @@ async function persistInternalCandidate(row: ReviewCandidateRow): Promise<void> 
   if (error) throw error;
 }
 
-async function persistExistingMatch(row: ReviewCandidateRow, attraction: PublishedAttractionMatch): Promise<string[]> {
+async function persistExistingMatch(row: ReviewCandidateRow, attraction: ExistingAttractionMatch): Promise<string[]> {
   const now = new Date().toISOString();
   const { error } = await supabase
     .from('entity_master_candidates')
@@ -210,40 +238,45 @@ async function persistExistingMatch(row: ReviewCandidateRow, attraction: Publish
       promotion_status: 'promoted',
       promoted_attraction_id: attraction.id,
       promoted_at: now,
-      auto_verification_status: 'verified_publishable',
-      decision_reason: `auto-linked to exact published attraction ${attraction.name}`,
+      auto_verification_status: attraction.customer_publishable === true ? 'verified_publishable' : 'verified_internal',
+      decision_reason: `auto-linked to exact existing attraction ${attraction.name}`,
     })
     .eq('id', row.id);
   if (error) throw error;
 
   const sourceUnmatchedIds = (row.source_unmatched_ids ?? []).filter(Boolean);
-  if (sourceUnmatchedIds.length === 0) return [];
+  let sourceRows: Array<{ package_id: string | null }> = [];
+  if (sourceUnmatchedIds.length > 0) {
+    const { data: loadedSourceRows, error: sourceRowsError } = await supabase
+      .from('unmatched_activities')
+      .select('package_id')
+      .in('id', sourceUnmatchedIds)
+      .not('package_id', 'is', null);
+    if (sourceRowsError) throw sourceRowsError;
+    sourceRows = (loadedSourceRows ?? []) as Array<{ package_id: string | null }>;
 
-  const { data: sourceRows, error: sourceRowsError } = await supabase
-    .from('unmatched_activities')
-    .select('package_id')
-    .in('id', sourceUnmatchedIds)
-    .not('package_id', 'is', null);
-  if (sourceRowsError) throw sourceRowsError;
+    const { error: closeError } = await supabase
+      .from('unmatched_activities')
+      .update({
+        status: 'added',
+        resolved_at: now,
+        resolved_kind: 'auto_existing_exact_attraction',
+        resolved_attraction_id: attraction.id,
+        resolved_by: 'auto-audit-entity-review-candidates',
+        updated_at: now,
+      })
+      .in('id', sourceUnmatchedIds)
+      .eq('status', 'pending')
+      .is('resolved_at', null);
+    if (closeError) throw closeError;
+  }
 
-  const { error: closeError } = await supabase
-    .from('unmatched_activities')
-    .update({
-      status: 'added',
-      resolved_at: now,
-      resolved_kind: 'auto_existing_exact_published_attraction',
-      resolved_attraction_id: attraction.id,
-      resolved_by: 'auto-audit-entity-review-candidates',
-      updated_at: now,
-    })
-    .in('id', sourceUnmatchedIds)
-    .eq('status', 'pending')
-    .is('resolved_at', null);
-  if (closeError) throw closeError;
-
-  return Array.from(new Set((sourceRows ?? [])
-    .map(row => (row as { package_id: string | null }).package_id)
-    .filter((value): value is string => Boolean(value))));
+  return Array.from(new Set([
+    ...sourcePackageIds(row),
+    ...sourceRows
+      .map(sourceRow => sourceRow.package_id)
+      .filter((value): value is string => Boolean(value)),
+  ]));
 }
 
 async function main() {
@@ -268,13 +301,19 @@ async function main() {
         continue;
       }
 
-      const exactMatch = await findExactPublishedAttraction(row);
+      const exactMatch = await findExactExistingAttraction(row);
       if (!exactMatch) {
-        internalCandidates.push({
+        const unresolved = {
           candidate_key: row.candidate_key,
           category: row.category,
           canonical_name: canonicalFor(row),
-        });
+        };
+        if (!allowAutoInternal) {
+          remaining.push(unresolved);
+          continue;
+        }
+
+        internalCandidates.push(unresolved);
         if (apply) {
           try {
             await persistInternalCandidate(row);
@@ -349,6 +388,7 @@ async function main() {
     auto_internal_candidates: internalCandidates.length,
     remaining_review: remaining.length,
     apply,
+    allow_auto_internal: allowAutoInternal,
     reEnrich,
     errors,
     byReason: audited.reduce<Record<string, number>>((acc, row) => {

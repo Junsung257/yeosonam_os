@@ -581,6 +581,42 @@ describe('resolveItineraryEntityCandidate', () => {
       .toBe('hotel operational or room fragment');
   });
 
+  it('auto-rejects readable Korean meal and service fragments', () => {
+    const labels = [
+      '\uC624\uB9AC\uAD6C\uC774',
+      '\uBAA8\uB4EC\uAD6C\uC774',
+      '\uC9DC\uC870',
+      '\uC815\uC2DD',
+      '\uBC18\uC9F1\uB290\uC5C9',
+      '\uBAA8\uB2DD\uAE00\uB85C\uB9AC \uBCF6\uC74C \uB4F1',
+      '\uB610\uB294 \uB2ED\uAD6C\uC774',
+      '\uBCF4\uD1A0\uCF34 BBQ)',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('activity, meal, or service detail, not an attraction master');
+    }
+  });
+
+  it('auto-rejects readable Korean generic itinerary tokens', () => {
+    const labels = [
+      '=>',
+      '\uBB34\uC81C\uD55C',
+      '\uD655\uC778',
+      '\uC6D4\uD654\uC218\uBAA9\uAE08',
+      '\uC218\uBAA9\uAE08',
+      '\uD1A0\uC77C\uC6D4\uD654',
+      '\uD1A0\uC77C',
+      '\uBE44\uC6B4\uD56D\uC77C',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('generic, itinerary, or attribute fragment, not attraction master');
+    }
+  });
+
   it('keeps clean Korean place names reviewable', () => {
     expect(terminalNonMasterReason('attraction', '시나무런초원', '시나무런 초원')).toBeNull();
     expect(terminalNonMasterReason('attraction', '관운장 사당', '관운장 사당')).toBeNull();

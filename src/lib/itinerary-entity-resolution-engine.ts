@@ -87,6 +87,10 @@ export type EntityResolutionDependencies = {
 
 const CUSTOMER_REVIEW_CATEGORIES = new Set(['shopping', 'optional_tour', 'notice']);
 const NON_MASTER_ACTIONS = new Set(['reject_noise', 'structure_non_master']);
+const READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE =
+  /(?:^\+?\s*(?:\uBC18\uC138\uC624|\uBC18\uC9F1\uB290\uC5C9|\uC624\uB9AC\uAD6C\uC774|\uBAA8\uB4EC\uAD6C\uC774|\uB2ED\uAD6C\uC774|\uC9DC\uC870|\uC815\uC2DD|\uC138\uD2B8|\uC804\uD1B5\uC2DD|\uB9E4\uC6B4\uD0D5)\)?$|\uBCF4\uD1A0\uCF34\s*BBQ|\uBAA8\uB2DD\uAE00\uB85C\uB9AC\s*\uBCF6\uC74C|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uC2DD\uC0AC|\uD2B9\uC2DD|\uBD84\uC9DC|\uC300\uAD6D\uC218|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uBD88\uACE0\uAE30|\uAD6C\uC774|\uCEE4\uD53C|\uC74C\uB8CC|\uB9E5\uC8FC|\uB514\uC800\uD2B8)/iu;
+const READABLE_KOREAN_GENERIC_NON_MASTER_RE =
+  /^(?:=>|\uBB34\uC81C\uD55C|\uD655\uC778|\uC6D4\uD654\uC218\uBAA9\uAE08|\uC218\uBAA9\uAE08|\uD1A0\uC77C\uC6D4\uD654|\uD1A0\uC77C|\uBE44\uC6B4\uD56D\uC77C)$/u;
 const HIGH_RISK_NOTICE_RE = /(?:취소|환불|비자|여권|입국|출국|보험|예약금|결제|추가\s*요금|가격\s*변동|유류|수수료|환율|여행자\s*보험)/i;
 const LOW_RISK_SCHEDULE_NOTICE_RE = /(?:상기\s*일정|현지\s*사정|항공사의?\s*사정|다소\s*변동|변경될\s*수|양지하시기|천재지변)/i;
 const OPTION_STRUCTURED_DETAIL_RE = /(?:골프장\s*정보|그린피|캐디피|카트피|캐디팁|티타임|코스정보|홀수\s*인원|싱글카트|클럽\s*렌탈|현장\s*결제|락카\s*사용|라커\s*사용)/i;
@@ -359,7 +363,18 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   if (category === 'attraction' && KOREAN_OPERATIONAL_ATTRACTION_FRAGMENT_RE.test(combined)) {
     return 'operational or non-attraction schedule fragment';
   }
-  if (category === 'attraction' && KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(combined)) {
+  if (category === 'attraction' && (
+    READABLE_KOREAN_GENERIC_NON_MASTER_RE.test(name) ||
+    READABLE_KOREAN_GENERIC_NON_MASTER_RE.test(raw)
+  )) {
+    return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(combined)
+    || READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(name)
+    || READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(raw)
+    || READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(combined)
+  )) {
     return 'activity, meal, or service detail, not an attraction master';
   }
   if (category === 'attraction' && KOREAN_ACTIVITY_OR_OPERATION_FRAGMENT_RE.test(name)) {

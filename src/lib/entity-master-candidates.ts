@@ -106,13 +106,13 @@ const CUSTOMER_PRODUCT_PROMO_FRAGMENT_RE =
 const CUSTOMER_VIEW_METHOD_FRAGMENT_RE =
   /^(?:차창|차창관광|자율|자율관광|개별자유|선상유람)$/i;
 const CUSTOMER_FOOD_OR_SERVICE_FRAGMENT_RE =
-  /(?:^\+?\s*(?:반세오|세트|전통식|정규|증편|매운탕)\)?$|랍스터|특식|조식|중식|석식|식사|분짜|쌀국수|샤브샤브|삼겹살|불고기|커피|음료|맥주|디저트)/iu;
+  /(?:^\+?\s*(?:반세오|반짱느엉|오리구이|모듬구이|닭구이|짜조|정식|세트|전통식|정규|증편|매운탕)\)?$|보토콴\s*BBQ|모닝글로리\s*볶음|랍스터|특식|조식|중식|석식|식사|분짜|쌀국수|샤브샤브|삼겹살|불고기|구이|커피|음료|맥주|디저트)/iu;
 const CUSTOMER_DANGLING_PAREN_FRAGMENT_RE =
   /(?:^[\p{L}\p{N}⁄/]{1,12}[)]$|^[\p{L}\p{N}⁄/]{1,12}[(]$)/u;
 const CUSTOMER_COMMERCIAL_PLACE_RE =
   /^(?:비어\s*플라자|비어플라자|쇼핑센터|쇼핑\s*센터)$/iu;
 const CUSTOMER_READABLE_SECTION_FRAGMENT_RE =
-  /^(?:포\s*함\s*사\s*항|포\s*함\s*내\s*역|불\s*포\s*함(?:\s*내\s*역)?|비\s*고|일\s*자|요\s*금|상품\s*가|테마\s*파크)$/iu;
+  /^(?:=>|무제한|확인|월화수목금|수목금|토일월화|토일|비운항일|포\s*함\s*사\s*항|포\s*함\s*내\s*역|불\s*포\s*함(?:\s*내\s*역)?|비\s*고|일\s*자|요\s*금|상품\s*가|테마\s*파크)$/iu;
 const READABLE_KNOWN_ATTRACTION_LABELS = [
   '패치워크의 길',
   '간몬대교',
