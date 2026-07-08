@@ -129,6 +129,34 @@ const NORMAL_NOISE_RE =
   /(?:^=+>$|^전용$|대기시간\s*최소화|중복\s*없는\s*관광\s*동선|탑승하여|차창|울창한\s*밀림과\s*자연경관|사막\s*진입시\s*케이블카\s*또는\s*버스\s*이용|^\s*\d{3,5}\s*M\s*$)/i;
 const NORMAL_ATTRACTION_HINT_RE =
   /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|비치|해변|광장|브릿지|마을|천등|온천|정원|풍경구|구시가지|사찰|temple|park|museum|beach|market|tower|garden)/i;
+const CUSTOMER_PRICE_FRAGMENT_RE =
+  /(?:^\s*\d{1,2}\/\d{1,2}(?:\s*\([^)]+\))?\s*$|^\s*\d{1,4}(?:,\d{3})+(?:\s*원)?(?:\s*\/\s*인)?\s*[★*]?\s*$|^\s*\d{1,4}(?:,\d{3})*\s*(?:원|엔|동|VND|JPY|USD|\$)\s*(?:\/\s*인)?\s*[★*]?\s*$|^\s*\d{1,2}\/\d{1,2}\s*(?:-|–|~)\s*\d{1,2}\/\d{1,2}\s*$|^\s*\d{1,2}\/\d{1,2}(?:,\s*\d{1,2})+\s*\([^)]+\)\s*$)/i;
+const CUSTOMER_SHORT_LABEL_FRAGMENT_RE =
+  /^(?:&?\s*마감일|출\s*발\s*일\s*자)$/i;
+const CUSTOMER_NOTICE_FRAGMENT_RE =
+  /(?:여권\s*유효기간|상기\s*일정|항공\s*및\s*현지\s*사정|기상\s*여건|천재지변|변경될\s*수|양해|발권하는\s*조건|마감일|준비물|수영복\s*개별\s*지참)/i;
+const CUSTOMER_INCLUSION_NOTICE_FRAGMENT_RE =
+  /(?:항공료\s*및\s*텍스|유류할증료\s*\d*\s*월\s*기준|여행자보험|한국어\s*가이드|입장료|기사\/가이드\s*경비)/i;
+const CUSTOMER_PARTICIPANT_NOTICE_FRAGMENT_RE =
+  /(?:성인\s*\d+\s*명\s*이상|인솔자\s*미동행)/i;
+const CUSTOMER_ATTRACTION_ROUTE_HINT_RE =
+  /(?:전망대|쇼와신산|천문산|금편계곡|대협곡|칠성산|천하제일교|진달래광장|고산화원|부용진|폭포마을|불광대|칠성애|소천대|마천령|도해관음|금편신주)/i;
+const CUSTOMER_PLACE_WITH_FREE_TIME_RE =
+  /(?:(?:야시장|시장|비치|해변|공원|광장|사원|사찰|성당).*(?:자유\s*시간|자유시간)|(?:자유\s*시간|자유시간).*(?:야시장|시장|비치|해변|공원|광장|사원|사찰|성당))/i;
+const CUSTOMER_PLACE_WITH_DRIVE_BY_RE =
+  /(?:(?:패치워크의\s*길|간몬대교|대교|다리|브릿지|공원|시장|비치|해변|광장|사원|사찰|성당|마을|거리|로드).*(?:차창\s*관광|차창관광)|(?:차창\s*관광|차창관광).*(?:패치워크의\s*길|간몬대교|대교|다리|브릿지|공원|시장|비치|해변|광장|사원|사찰|성당|마을|거리|로드))/i;
+const CUSTOMER_MIN_PARTICIPANT_FRAGMENT_RE =
+  /^\s*\d+\s*명\s*이상\s*$/i;
+const CUSTOMER_COST_FRAGMENT_RE =
+  /(?:매너팁|유류비\s*변동분|싱글\s*비용|싱글비용|카트비|그린피|개인\s*경비|기사\/가이드\s*경비)/i;
+const CUSTOMER_HOTEL_ROOM_FRAGMENT_RE =
+  /(?:게르|비즈니스\s*게르|럭셔리\s*게르|전통\s*게르|\d+\s*인실|내부\s*욕실|화장실|객실|룸\s*타입)/i;
+const CUSTOMER_SHOPPING_FRAGMENT_RE =
+  /(?:^노\s*쇼핑$|쇼핑\s*\d+\s*회|쇼핑센터|잡화|노니|침향|라텍스|명품샵|면세점|면세\s*\d*\s*곳\s*방문)/i;
+const CUSTOMER_OPTION_FRAGMENT_RE =
+  /(?:마사지|맛사지|스파|공연|오페라쇼|퍼포먼스\s*쇼|케이블카|티켓|입장권|추천\s*옵션|강력추천옵션|액티비티|래프팅|호핑|스노클링|체험|전동차|쇼\s*관람)/i;
+const CUSTOMER_FREE_TIME_FRAGMENT_RE =
+  /(?:자유\s*시간|자유시간|자유\s*일정|차창\s*관광|차창관광|필수관광\s*[①②③④\d]*|일정\s*중\s*내\s*마음대로\s*택\s*1|^#.*(?:화요일|수요일|일요일|온천|게뷔페|시내|실속))/i;
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -160,17 +188,56 @@ export function classifyUnmatchedActivity(
   let category: UnmatchedEntityCategory = existing ?? 'attraction';
   let confidence = existing ? 0.72 : 0.65;
 
-  if (!text || KO_PRICE_NOISE_RE.test(text) || NORMAL_PRICE_NOISE_RE.test(text) || NORMAL_EXTRA_PRICE_NOISE_RE.test(text) || NORMAL_TRAVEL_COST_RE.test(text)) {
+  if (NORMAL_OPTION_FEE_RE.test(text)) {
+    category = 'optional_tour';
+    confidence = 0.9;
+  } else if (CUSTOMER_SHOPPING_FRAGMENT_RE.test(text)) {
+    category = 'shopping';
+    confidence = 0.9;
+  } else if (CUSTOMER_INCLUSION_NOTICE_FRAGMENT_RE.test(text) || CUSTOMER_PARTICIPANT_NOTICE_FRAGMENT_RE.test(text)) {
+    category = 'notice';
+    confidence = 0.9;
+  } else if (!text || CUSTOMER_PRICE_FRAGMENT_RE.test(text) || KO_PRICE_NOISE_RE.test(text) || NORMAL_PRICE_NOISE_RE.test(text) || NORMAL_EXTRA_PRICE_NOISE_RE.test(text) || NORMAL_TRAVEL_COST_RE.test(text)) {
     category = 'price_noise';
     confidence = 0.92;
+  } else if (CUSTOMER_SHORT_LABEL_FRAGMENT_RE.test(text)) {
+    category = 'free_time';
+    confidence = 0.92;
+  } else if (CUSTOMER_MIN_PARTICIPANT_FRAGMENT_RE.test(text)) {
+    category = 'price_noise';
+    confidence = 0.9;
+  } else if (CUSTOMER_PLACE_WITH_FREE_TIME_RE.test(text)) {
+    category = 'attraction';
+    confidence = 0.78;
+  } else if (CUSTOMER_PLACE_WITH_DRIVE_BY_RE.test(text)) {
+    category = 'attraction';
+    confidence = 0.78;
+  } else if (CUSTOMER_ATTRACTION_ROUTE_HINT_RE.test(text)) {
+    category = 'attraction';
+    confidence = 0.78;
+  } else if (CUSTOMER_NOTICE_FRAGMENT_RE.test(text)) {
+    category = 'notice';
+    confidence = 0.9;
+  } else if (CUSTOMER_HOTEL_ROOM_FRAGMENT_RE.test(text)) {
+    category = 'hotel';
+    confidence = 0.88;
   } else if (NORMAL_OPTION_HEADING_NOISE_RE.test(text)) {
     category = 'free_time';
+    confidence = 0.9;
+  } else if (CUSTOMER_OPTION_FRAGMENT_RE.test(text)) {
+    category = 'optional_tour';
+    confidence = 0.9;
+  } else if (CUSTOMER_COST_FRAGMENT_RE.test(text)) {
+    category = 'price_noise';
     confidence = 0.9;
   } else if (NORMAL_SHORT_LABEL_NOISE_RE.test(text) || NORMAL_PACKAGE_TIER_NOISE_RE.test(text) || NORMAL_DURATION_NOISE_RE.test(text) || NORMAL_TIME_LABEL_NOISE_RE.test(text)) {
     category = 'free_time';
     confidence = 0.92;
   } else if (KO_MEAL_RE.test(text) || KO_MEAL_ABBREVIATION_RE.test(text) || NORMAL_MEAL_RE.test(text) || NORMAL_MEAL_SHORT_RE.test(text) || NORMAL_BEVERAGE_SERVICE_RE.test(text) || NORMAL_DESSERT_OR_FOOD_SERVICE_RE.test(text)) {
     category = 'meal';
+    confidence = 0.9;
+  } else if (CUSTOMER_FREE_TIME_FRAGMENT_RE.test(text)) {
+    category = 'free_time';
     confidence = 0.9;
   } else if (KO_NOTICE_RE.test(text) || NORMAL_NOTICE_RE.test(text) || NORMAL_PREP_NOTICE_RE.test(text)) {
     category = 'notice';
