@@ -142,6 +142,16 @@ export interface BuildAttractionIndexOptions {
   customerFacing?: boolean;
 }
 
+export type CustomerAttractionRenderBlocker =
+  | 'missing_name'
+  | 'inactive'
+  | 'not_customer_publishable'
+  | 'non_customer_category'
+  | 'non_customer_badge_type'
+  | 'generic_name'
+  | 'product_like_name'
+  | 'long_fragment_name';
+
 /**
  * 매칭 대상에서 제외할 카테고리 (2026-05-15 박제, 나트랑/달랏 호텔 오매칭 사고).
  *   accommodation = 호텔/리조트/빌라 — 활동 매칭 대상 아님
@@ -175,25 +185,34 @@ function hasOwn(object: AttractionData, key: keyof AttractionData): boolean {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
-export function isCustomerRenderableAttraction(attraction: AttractionData | null | undefined): boolean {
-  if (!attraction?.name?.trim()) return false;
-  if (hasOwn(attraction, 'is_active') && attraction.is_active === false) return false;
-  if (hasOwn(attraction, 'customer_publishable') && attraction.customer_publishable !== true) return false;
-
-  const category = String(attraction.category ?? '').toLowerCase();
-  if (category && NON_CUSTOMER_ATTRACTION_CATEGORIES.has(category)) return false;
-
-  const badgeType = String(attraction.badge_type ?? '').toLowerCase();
-  if (badgeType && NON_CUSTOMER_ATTRACTION_BADGE_TYPES.has(badgeType)) return false;
-
-  const name = attraction.name.replace(/\s+/g, ' ').trim();
-  if (CUSTOMER_ATTRACTION_GENERIC_NAMES.has(name)) return false;
-  if (CUSTOMER_ATTRACTION_PRODUCT_NAME_RE.test(name)) return false;
-  if (name.length > 45 && /[\[\]()（）【】]|상품|일정|관광|차량|가이드|입장권|티켓|투어|호텔|리조트|패키지/.test(name)) {
-    return false;
+export function getCustomerAttractionRenderBlockers(
+  attraction: AttractionData | null | undefined,
+): CustomerAttractionRenderBlocker[] {
+  const blockers: CustomerAttractionRenderBlocker[] = [];
+  if (!attraction?.name?.trim()) return ['missing_name'];
+  if (hasOwn(attraction, 'is_active') && attraction.is_active === false) blockers.push('inactive');
+  if (hasOwn(attraction, 'customer_publishable') && attraction.customer_publishable !== true) {
+    blockers.push('not_customer_publishable');
   }
 
-  return true;
+  const category = String(attraction.category ?? '').toLowerCase();
+  if (category && NON_CUSTOMER_ATTRACTION_CATEGORIES.has(category)) blockers.push('non_customer_category');
+
+  const badgeType = String(attraction.badge_type ?? '').toLowerCase();
+  if (badgeType && NON_CUSTOMER_ATTRACTION_BADGE_TYPES.has(badgeType)) blockers.push('non_customer_badge_type');
+
+  const name = attraction.name.replace(/\s+/g, ' ').trim();
+  if (CUSTOMER_ATTRACTION_GENERIC_NAMES.has(name)) blockers.push('generic_name');
+  if (CUSTOMER_ATTRACTION_PRODUCT_NAME_RE.test(name)) blockers.push('product_like_name');
+  if (name.length > 45 && /[\[\]()（）【】]|상품|일정|관광|차량|가이드|입장권|티켓|투어|호텔|리조트|패키지/.test(name)) {
+    blockers.push('long_fragment_name');
+  }
+
+  return blockers;
+}
+
+export function isCustomerRenderableAttraction(attraction: AttractionData | null | undefined): boolean {
+  return getCustomerAttractionRenderBlockers(attraction).length === 0;
 }
 
 function normalizeScope(value: string | null | undefined): string {

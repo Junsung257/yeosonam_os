@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import {
   type AttractionData,
   buildAttractionIndex,
+  getCustomerAttractionRenderBlockers,
   isCustomerRenderableAttraction,
   matchAttraction,
   matchAttractionIndexed,
@@ -279,6 +280,14 @@ describe('customer-facing attraction gate', () => {
     expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[2])).toBe(false);
     expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[3])).toBe(false);
     expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[4])).toBe(false);
+  });
+
+  it('returns actionable blockers for DB repair reports', () => {
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[0])).toEqual([]);
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[1])).toContain('product_like_name');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[2])).toContain('non_customer_badge_type');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[3])).toContain('not_customer_publishable');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[4])).toContain('generic_name');
   });
 });
 
