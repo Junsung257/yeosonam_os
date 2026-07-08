@@ -88,9 +88,13 @@ export type EntityResolutionDependencies = {
 const CUSTOMER_REVIEW_CATEGORIES = new Set(['shopping', 'optional_tour', 'notice']);
 const NON_MASTER_ACTIONS = new Set(['reject_noise', 'structure_non_master']);
 const READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE =
-  /(?:^\+?\s*(?:\uBC18\uC138\uC624|\uBC18\uC9F1\uB290\uC5C9|\uC624\uB9AC\uAD6C\uC774|\uBAA8\uB4EC\uAD6C\uC774|\uB2ED\uAD6C\uC774|\uC9DC\uC870|\uC815\uC2DD|\uC138\uD2B8|\uC804\uD1B5\uC2DD|\uB9E4\uC6B4\uD0D5)\)?$|\uBCF4\uD1A0\uCF34\s*BBQ|\uBAA8\uB2DD\uAE00\uB85C\uB9AC\s*\uBCF6\uC74C|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uC2DD\uC0AC|\uD2B9\uC2DD|\uBD84\uC9DC|\uC300\uAD6D\uC218|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uBD88\uACE0\uAE30|\uAD6C\uC774|\uCEE4\uD53C|\uC74C\uB8CC|\uB9E5\uC8FC|\uB514\uC800\uD2B8)/iu;
+  /(?:^\+?\s*(?:\uBC18\uC138\uC624|\uBC18\uC9F1\uB290\uC5C9|\uC624\uB9AC\uAD6C\uC774|\uBAA8\uB4EC\uAD6C\uC774|\uB2ED\uAD6C\uC774|\uC9DC\uC870|\uC815\uC2DD|\uC138\uD2B8|\uC804\uD1B5\uC2DD|\uB9E4\uC6B4\uD0D5|\uBCF4\uC308|\uC2A4\uD14C\uC774\uD06C|\uC528\uD478\uB4DC|\uACFC\uC77C|\uC625\uC218\uC218|\uBC00\uD06C\uD2F0|\uC0C8\uC6B0\uC7A5|\uBC31\s*\uC219|\uB300\uD1B5\uBC25\uC815\uC2DD|\uB3FC\uC9C0\uAC08\uBE44\uC815\uC2DD|\uC18C\uACE0\uAE30\uBAA8\uB4EC|\uB118\uB2A5\uC138\uD2B8|\uC62C\uC720\uCE94\uC787|\uB8E9\uB77D)\)?$|\uB545\uCF69\s*1?\s*\uBD09\uC9C0|\uBCF4\uD1A0\uCF34\s*BBQ|\uBAA8\uB2DD\uAE00\uB85C\uB9AC\s*\uBCF6\uC74C|\uACE0\uAD6C\uB9C8\s*\uD280(?:\uAE40|\uD0B4)|\uC5F4\uB300\s*\uACFC\uC77C\s*\uC2DC\uC2DD|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uC2DD\uC0AC|\uC815\uC2DD|\uD2B9\uC2DD|\uBD84\uC9DC|\uC300\uAD6D\uC218|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uBD88\uACE0\uAE30|\uAD6C\uC774|\uCEE4\uD53C|\uC74C\uB8CC|\uB9E5\uC8FC|\uB514\uC800\uD2B8)/iu;
 const READABLE_KOREAN_GENERIC_NON_MASTER_RE =
-  /^(?:=>|\uBB34\uC81C\uD55C|\uD655\uC778|\uC6D4\uD654\uC218\uBAA9\uAE08|\uC218\uBAA9\uAE08|\uD1A0\uC77C\uC6D4\uD654|\uD1A0\uC77C|\uBE44\uC6B4\uD56D\uC77C)$/u;
+  /^(?:=>|\uBB34\uC81C\uD55C|\uD655\uC778|\uC6D4\uD654\uC218\uBAA9\uAE08|\uC218\uBAA9\uAE08|\uD1A0\uC77C\uC6D4\uD654|\uD1A0\uC77C|\uBE44\uC6B4\uD56D\uC77C|\uC678\uAD00|\uC678\uBD80|\uAD6D\uAC00\s*\uBA85\uC2B9|\uAD6D\uAC00\s*5A\uAE09\s*\uD48D\uACBD\uAD6C|\uC77C\uBCF8\s*3\uB300\s*\uC1A1\uB9BC\uC911\s*\uD558\uB098\uC778|\uC2DC\s*\uAC04|\uC2DD\s*\uC0AC|\uAD50\s*\uD1B5|\uD14D\uC2A4|\uC5EC\uD589\uACBD\uBE44|\uC2F1\uAE00\uCC28\uC9C0|\uB8F8\s*\uD0C0\s*\uC785|\uC0E4\uC6CC\uC2E4\s*\uBCF4\uC720|\uC218\uC601\uBCF5\s*\uCC29\uC6A9\s*\uD544\uC218|\uC544\uCFE0\uC544\uC288\uC988|\uC5EC\uBC8C\s*\uC637|\uBC18\uBC14\uC9C0|\uBB34\uB8CC\uC874|\uC0DD\uC218|\uACF5\uC608|\uBB38\uD654|\uB3D9\uC120|\uBE44\uC988\uB2C8\uC2A4\uAC8C\uB974(?:\(2\uC778\uC2E4)?|\uD638\uD654\uD638\uD2B9|\uD06C\uB77C\uC6B4|\uD56B\uD50C\s*\uCE74\uD398|\uBD88\uAF43\uCD95\uC81C|\uBD88\uAF43\uB180\uC774|\uBD05\uC2AC\uB808\uC774|\uB808\uC77C\uBC14\uC774\uD06C|\uB8E8\uC9C0|\uBAA8\uB798\s*\uC378\uB9E4|\uB099\uD0C0|\uC2E4\uC81C\s*\uB099\uD0C0|\uB7ED\uC154\uB9AC\s*\uC804\uB3D9\uCE74|\uB274\uCE74\uBA5C\uB9AC\uC544|\uC4F0\uC2DC\uB9C8\uB9C1\uD06C|\uBABD\uACE8\s*\uB85C\uCEEC\s*\uB9C8\uD2B8|\uAC00\uBCCD\uAC8C\s*\uB5A0\uB098\uACE0|\uAE30\uC554\uAD34\uC11D|\uAD11\uD65C\uD55C\s*\uB179\uCC28\uBC2D|\uAC00\uD30C\uB978\s*\uD611\uACE1|\uBC14\uB2E4\uC640\s*\uC0B0\uC758\s*\uB9CC\uB0A8|\uBB3C\uACFC\s*\uBE5B)$/u;
+const READABLE_KOREAN_GENERIC_NON_MASTER_FRAGMENT_RE =
+  /(?:^\d+\s*N\s*\d+\s*D$|^\d{1,2}\uC6D4$|^\d+(?:~\d+)?\s*cm\s*\uBBF8\uB9CC$|^\d+\uAC1C$|^\d+\uC778\s*\d+\uAC1C$|^\uD0DD\d+\)|\]\s*\uC678\uAD00$|\]\s*\uC678\uBD80$|^\uB3C4\uBCF4\s*\d+\s*\uC2DC\uAC04$|^\uBB34\uAC8C\s*\d+\s*t\)\uACFC\s*\uC885$|^\uBD80\s*\uC0B0(?:\s*\u2192\s*.+)?$|^(?:[^-]+-){2,}[^-]+$|^OR\s+\S+)/iu;
+const READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE =
+  /^(?:\uCE58\uC559\uB9C8\uC774|\uD0C0\uC774\uBCA0\uC774|\uD310\uB791|\uB098\uB9AC\uD0C0|\uB178\uBCF4\uB9AC\uBCA0\uCE20|\uB2CC\uBE48|\uC624\uD0C0\uB8E8|\uCE58\uD1A0\uC138|\uB3C4\uC57C|\uB300\uB9C8\uB3C4|\uB3D9\uACBD|\uD63C\uAC00\uC774|\uC11D\uAC00\uC7A5|\uC0E4\uC624\uAD00|\uC6A9\s*\uC815|\uCE74\uC640\uCFE0\uCE58|\uC544\uD0C0\uBBF8|\uC544\uB9C8\uAC00\uC138)$/u;
 const HIGH_RISK_NOTICE_RE = /(?:취소|환불|비자|여권|입국|출국|보험|예약금|결제|추가\s*요금|가격\s*변동|유류|수수료|환율|여행자\s*보험)/i;
 const LOW_RISK_SCHEDULE_NOTICE_RE = /(?:상기\s*일정|현지\s*사정|항공사의?\s*사정|다소\s*변동|변경될\s*수|양지하시기|천재지변)/i;
 const OPTION_STRUCTURED_DETAIL_RE = /(?:골프장\s*정보|그린피|캐디피|카트피|캐디팁|티타임|코스정보|홀수\s*인원|싱글카트|클럽\s*렌탈|현장\s*결제|락카\s*사용|라커\s*사용)/i;
@@ -365,9 +369,17 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   }
   if (category === 'attraction' && (
     READABLE_KOREAN_GENERIC_NON_MASTER_RE.test(name) ||
-    READABLE_KOREAN_GENERIC_NON_MASTER_RE.test(raw)
+    READABLE_KOREAN_GENERIC_NON_MASTER_RE.test(raw) ||
+    READABLE_KOREAN_GENERIC_NON_MASTER_FRAGMENT_RE.test(name) ||
+    READABLE_KOREAN_GENERIC_NON_MASTER_FRAGMENT_RE.test(raw)
   )) {
     return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE.test(name) ||
+    READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE.test(raw)
+  )) {
+    return 'city or route token, not attraction master';
   }
   if (category === 'attraction' && (
     KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(combined)
