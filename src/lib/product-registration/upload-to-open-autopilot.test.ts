@@ -13,6 +13,7 @@ import {
   reconcileV3DraftWithLiveEntityQueueClear,
   repairMojibakeAttractionNamesInItinerary,
   repairMissingSourceBackedHotelsInItinerary,
+  repairHotelNightsForCustomerItinerary,
   repairNonLodgingHotelNamesInItinerary,
   repairOvernightArrivalDaySplit,
   repairPollutedSourceBackedHotelNamesInItinerary,
@@ -91,6 +92,30 @@ describe('repairMissingSourceBackedHotelsInItinerary', () => {
     });
 
     expect(result.repaired).toBe(false);
+  });
+
+  it('does not refill departure-day hotels when source-backed nights are already occupied', () => {
+    const result = repairMissingSourceBackedHotelsInItinerary({
+      nights: 3,
+      accommodations: [
+        '\uB3C4\uC57C \uC120\uD314\uB808\uC2A4, \uD638\uBC18\uC815 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09',
+        '\uC8E0\uC794\uCF00\uC774\uBDF0, \uBC00\uB9AC\uC624\uB124 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09',
+        '\uC0BF\uD3EC\uB85C \uB818\uBE0C\uB780\uD2B8 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09',
+      ],
+      rawText: '',
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: '\uB3C4\uC57C \uC120\uD314\uB808\uC2A4, \uD638\uBC18\uC815 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09' } },
+          { day: 2, hotel: { name: '\uC8E0\uC794\uCF00\uC774\uBDF0, \uBC00\uB9AC\uC624\uB124 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09' } },
+          { day: 3, hotel: { name: '\uC0BF\uD3EC\uB85C \uB818\uBE0C\uB780\uD2B8 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09' } },
+          { day: 4, hotel: null },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } | null }> }).days;
+    expect(result.repaired).toBe(false);
+    expect(days[3].hotel).toBeNull();
   });
 });
 
@@ -451,6 +476,10 @@ describe('sanitizeCustomerVisibleTitle', () => {
   it('keeps normal customer titles unchanged', () => {
     expect(sanitizeCustomerVisibleTitle('방콕 파타야 3박 5일 실속 패키지')).toBe('방콕 파타야 3박 5일 실속 패키지');
   });
+
+  it('drops supplier promo-only display titles from customer-facing title policy', () => {
+    expect(sanitizeCustomerVisibleTitle('SPECIAL PRICE')).toBeNull();
+  });
 });
 
 describe('repairPolicyLeakInItinerarySchedule', () => {
@@ -504,6 +533,52 @@ describe('repairPolicyLeakInItinerarySchedule', () => {
     expect(result.removed).toHaveLength(2);
     expect(days[0].schedule.map(item => item.activity)).toEqual(['\uC138\uBD80 \uD638\uD154 \uD734\uC2DD \uBC0F \uC790\uC720\uC2DC\uAC04']);
   });
+
+  it('removes weather notices and standalone price rows from itinerary schedules', () => {
+    const result = repairPolicyLeakInItinerarySchedule({
+      days: [
+        {
+          day: 4,
+          schedule: [
+            { activity: '\u203B \uAE30\uC0C1 \uC5EC\uAC74\uC5D0 \uB530\uB77C \uBCC0\uB3D9\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4' },
+            { activity: '1,729,000\uC6D0/\uC778' },
+            { activity: '\uC624\uD0C0\uB8E8 \uC6B4\uD558\uC218 \uC790\uC720\uC2DC\uAC04' },
+          ],
+        },
+      ],
+    });
+
+    const days = (result.itineraryData as { days: Array<{ schedule: Array<{ activity: string }> }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toEqual([
+      '\u203B \uAE30\uC0C1 \uC5EC\uAC74\uC5D0 \uB530\uB77C \uBCC0\uB3D9\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4',
+      '1,729,000\uC6D0/\uC778',
+    ]);
+    expect(days[0].schedule.map(item => item.activity)).toEqual(['\uC624\uD0C0\uB8E8 \uC6B4\uD558\uC218 \uC790\uC720\uC2DC\uAC04']);
+  });
+
+  it('removes supplier departure-table rows from the last itinerary day', () => {
+    const result = repairPolicyLeakInItinerarySchedule({
+      days: [
+        {
+          day: 4,
+          schedule: [
+            { activity: '\uBD81\uD574\uB3C4 \uD488\uACA9BA\uD329 3\uBC154\uC77C' },
+            { activity: '8/13, 17, 23, 26,' },
+            { activity: '\uC608\uC57D\uD6C4 3\uC77C\uB0B4 \uBC1C\uAD8C' },
+            { activity: '7/24\uAE4C\uC9C0' },
+            { activity: '\uD2B9\uAC00♥ 8/23, 26' },
+            { activity: '\uCE58\uD1A0\uC138\uACF5\uD56D\uC73C\uB85C \uC774\uB3D9' },
+          ],
+        },
+      ],
+    });
+
+    const days = (result.itineraryData as { days: Array<{ schedule: Array<{ activity: string }> }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toHaveLength(5);
+    expect(days[0].schedule.map(item => item.activity)).toEqual(['\uCE58\uD1A0\uC138\uACF5\uD56D\uC73C\uB85C \uC774\uB3D9']);
+  });
 });
 
 describe('repairNonLodgingHotelNamesInItinerary', () => {
@@ -523,6 +598,34 @@ describe('repairNonLodgingHotelNamesInItinerary', () => {
       '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131)',
       '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131)',
     ]);
+  });
+});
+
+describe('repairHotelNightsForCustomerItinerary', () => {
+  it('cleans hotel display markers and removes hotels after the source-backed night count', () => {
+    const result = repairHotelNightsForCustomerItinerary({
+      nights: 2,
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: '\uDB80\uDDB9 \uC655\uC870\uC131\uC9C0(\uB2E4\uC774\uB108\uC2A4\uD2F0)\uD638\uD154 \uB610\uB294 \uB3D9\uAE09', grade: '5\uC131' } },
+          { day: 2, hotel: { name: '\uDB80\uDDB9 \uC5F0\uAE38 \uAD6D\uC81C\uD638\uD154 \uB610\uB294 \uB3D9\uAE09', grade: '5\uC131' } },
+          {
+            day: 3,
+            hotel: {
+              name: '\uC655\uC870\uC131\uC9C0(\uB2E4\uC774\uB108\uC2A4\uD2F0)\uD638\uD154 \uB610\uB294 \uB3D9\uAE09 / \uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44, \uC804\uC2E0\uB9C8\uC0AC\uC9C0 90\uBD84 1\uD68C, \uD2B9\uC2DD2\uD68C',
+            },
+          },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } | null }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.cleaned).toHaveLength(2);
+    expect(result.removed).toHaveLength(1);
+    expect(days[0].hotel?.name).toBe('\uC655\uC870\uC131\uC9C0(\uB2E4\uC774\uB108\uC2A4\uD2F0)\uD638\uD154 \uB610\uB294 \uB3D9\uAE09');
+    expect(days[1].hotel?.name).toBe('\uC5F0\uAE38 \uAD6D\uC81C\uD638\uD154 \uB610\uB294 \uB3D9\uAE09');
+    expect(days[2].hotel).toBeNull();
   });
 });
 
@@ -571,11 +674,11 @@ describe('repairPollutedSourceBackedHotelNamesInItinerary', () => {
 describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
   it('matches only existing customer-publishable attractions and removes product/hotel fragments', () => {
     const result = repairSavedItineraryAttractionIdsFromExistingAttractions({
-      destination: '\uD478\uAFB8\uC625',
+      destination: '\uD478\uAFB8\uC625 \uD488\uACA9\uD329',
       accommodations: ['\uC708\uB364 \uADF8\uB79C\uB4DC \uD478\uAFB8\uC625'],
       attractions: [
         {
-          id: 'attr-sunset',
+          id: '8ccb7e3f-bbd8-41d7-9c97-ef283e399820',
           name: '\uC120\uC14B\uD0C0\uC6B4',
           region: '\uD478\uAFB8\uC625',
           is_active: true,
@@ -583,7 +686,7 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
           aliases: [],
         },
         {
-          id: 'attr-temple',
+          id: '44cf6e6a-1349-4e3b-829f-2c56ae06f10c',
           name: '\uD638\uAD6D\uC0AC',
           region: '\uD478\uAFB8\uC625',
           is_active: true,
@@ -591,7 +694,7 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
           aliases: [],
         },
         {
-          id: 'attr-waterpark-private',
+          id: '29c29ce9-2fb9-49a0-8f05-ef87fa9a28e3',
           name: '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C',
           region: '\uD478\uAFB8\uC625',
           is_active: true,
@@ -607,7 +710,7 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
               {
                 activity: '\uD478\uAFB8\uC625 \uB0A8\uBD80 \uC120\uC14B\uD0C0\uC6B4 \uAD00\uAD11',
                 attraction_names: ['\uC120\uC14B\uD0C0\uC6B4'],
-                attraction_ids: [],
+                attraction_ids: ['bbd8-41d7-9c97-ef283e399820'],
               },
               {
                 activity: '\uD478\uAFB8\uC625 \uBE48\uD384 \uC0AC\uD30C\uB9AC \uC785\uC7A5',
@@ -640,10 +743,10 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
     expect(result.matched).toBe(2);
     expect(result.removedNoise).toBe(2);
     expect(result.remainingUnmatched).toBe(1);
-    expect(schedule[0].attraction_ids).toEqual(['attr-sunset']);
+    expect(schedule[0].attraction_ids).toEqual(['8ccb7e3f-bbd8-41d7-9c97-ef283e399820']);
     expect(schedule[1].attraction_names).toEqual([]);
     expect(schedule[2].attraction_names).toEqual([]);
-    expect(schedule[3].attraction_ids).toEqual(['attr-temple']);
+    expect(schedule[3].attraction_ids).toEqual(['44cf6e6a-1349-4e3b-829f-2c56ae06f10c']);
     expect(schedule[4].attraction_names).toEqual(['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C']);
   });
 });

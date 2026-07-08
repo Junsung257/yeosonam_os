@@ -6,6 +6,7 @@ dotenv.config({ path: '.env.local' });
 
 type PackageRow = {
   id: string;
+  internal_code: string | null;
   title: string | null;
   destination: string | null;
   status: string | null;
@@ -17,13 +18,19 @@ type PackageRow = {
 };
 
 function parseArgs() {
-  const args = new Set(process.argv.slice(2));
-  const status = process.argv.find((arg) => arg.startsWith('--status='))?.split('=')[1]
-    ?? CUSTOMER_VISIBLE_STATUSES.join(',');
+  const rawArgs = process.argv.slice(2);
+  const args = new Set(rawArgs);
+  const argValue = (name: string, fallback: string) => {
+    const prefix = `--${name}=`;
+    const found = rawArgs.find((arg) => arg.startsWith(prefix));
+    return found ? found.slice(prefix.length) : fallback;
+  };
   return {
+    demoteUnsafePublic: args.has('--demote-unsafe-public'),
     json: args.has('--json'),
-    samples: Number(process.argv.find((arg) => arg.startsWith('--samples='))?.split('=')[1] ?? 10),
-    statusList: status
+    limit: Number(argValue('limit', '5000')),
+    samples: Number(argValue('samples', '10')),
+    statusList: argValue('status', CUSTOMER_VISIBLE_STATUSES.join(','))
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean),
@@ -47,9 +54,9 @@ async function main() {
 
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
-    .select('id,title,destination,status,audit_status,audit_report,updated_at,optional_tours,itinerary_data')
+    .select('id,internal_code,title,destination,status,audit_status,audit_report,updated_at,optional_tours,itinerary_data')
     .in('status', options.statusList)
-    .limit(5000);
+    .limit(options.limit);
 
   if (error) throw error;
 
@@ -64,6 +71,17 @@ async function main() {
   }> = [];
 
   const openable = rows.filter(isCustomerPubliclyOpenable);
+  const demotions: Array<{
+    id: string;
+    internal_code: string | null;
+    title: string | null;
+    destination: string | null;
+    previous_status: string | null;
+    new_status: string;
+    product_status_updated: boolean;
+    blockers: string[];
+    error?: string;
+  }> = [];
   for (const row of rows) {
     const blockers = getPackagePublicEligibilityBlockers(row);
     if (blockers.length === 0) continue;
@@ -77,6 +95,69 @@ async function main() {
         blockers: blockers.map((blocker) => blocker.code),
       });
     }
+    if (options.demoteUnsafePublic) {
+      const checkedAt = new Date().toISOString();
+      const blockerCodes = blockers.map((blocker) => blocker.code);
+      const previousReport = row.audit_report && typeof row.audit_report === 'object' && !Array.isArray(row.audit_report)
+        ? row.audit_report as Record<string, unknown>
+        : {};
+      const auditReport = {
+        ...previousReport,
+        public_eligibility_demotion: {
+          source: 'audit-package-public-eligibility',
+          checked_at: checkedAt,
+          previous_status: row.status,
+          blockers: blockers.map((blocker) => ({
+            code: blocker.code,
+            message: blocker.message,
+          })),
+          next_action: 'repair_customer_open_contract_and_mobile_proof_before_publication',
+        },
+      };
+      const { error: packageError } = await supabaseAdmin
+        .from('travel_packages')
+        .update({
+          status: 'pending_review',
+          audit_status: 'blocked',
+          audit_report: auditReport,
+          audit_checked_at: checkedAt,
+          updated_at: checkedAt,
+        })
+        .eq('id', row.id);
+      if (packageError) {
+        demotions.push({
+          id: row.id,
+          internal_code: row.internal_code,
+          title: row.title,
+          destination: row.destination,
+          previous_status: row.status,
+          new_status: 'pending_review',
+          product_status_updated: false,
+          blockers: blockerCodes,
+          error: packageError.message,
+        });
+        continue;
+      }
+
+      let productStatusUpdated = false;
+      if (row.internal_code) {
+        const { error: productError } = await supabaseAdmin
+          .from('products')
+          .update({ status: 'REVIEW_NEEDED', updated_at: checkedAt })
+          .eq('internal_code', row.internal_code);
+        productStatusUpdated = !productError;
+      }
+      demotions.push({
+        id: row.id,
+        internal_code: row.internal_code,
+        title: row.title,
+        destination: row.destination,
+        previous_status: row.status,
+        new_status: 'pending_review',
+        product_status_updated: productStatusUpdated,
+        blockers: blockerCodes,
+      });
+    }
   }
 
   const report = {
@@ -85,6 +166,10 @@ async function main() {
     openable: openable.length,
     blocked: rows.length - openable.length,
     blocker_counts: blockerCounts,
+    demote_unsafe_public: options.demoteUnsafePublic,
+    demoted: demotions.filter((row) => !row.error).length,
+    demotion_errors: demotions.filter((row) => row.error).length,
+    demotions,
     samples,
   };
 

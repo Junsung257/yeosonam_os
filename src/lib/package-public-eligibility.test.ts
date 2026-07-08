@@ -42,6 +42,20 @@ describe('package public eligibility', () => {
     ).toBe(true);
   });
 
+  it('accepts the ready_not_opened autopilot nested customer_open_contract shape', () => {
+    expect(
+      isCustomerPubliclyOpenable({
+        status: 'active',
+        audit_status: 'warnings',
+        audit_report: {
+          upload_to_open_autopilot: passingContract,
+        },
+        optional_tours: [],
+        itinerary_data: { days: [] },
+      }),
+    ).toBe(true);
+  });
+
   it('blocks optional tour pollution from no-option and table fragments', () => {
     expect(hasOptionalTourDisplayPollution(['\ub178\uc635\uc158'])).toBe(true);
     expect(hasOptionalTourDisplayPollution([{ name: '\ud3ec \ud568 \ub0b4 \uc5ed' }])).toBe(true);

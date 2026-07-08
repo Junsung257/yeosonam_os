@@ -52,6 +52,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
 
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(request.url);
   const id             = searchParams.get('id');
   const status         = searchParams.get('status');
