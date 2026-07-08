@@ -1645,12 +1645,12 @@ const scopedPackageRows = allPackageRows
   .filter(pkg => includeArchived || !isArchivedStatus(pkg.status))
   .filter(pkg => !publicOnly || isPublicStatus(pkg.status));
 const scopedPackageIds = new Set(scopedPackageRows.map(pkg => pkg.id));
-const packageIds = allPackageRows.map(pkg => pkg.id);
-const internalCodes = allPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
+const packageIds = scopedPackageRows.map(pkg => pkg.id);
+const internalCodes = scopedPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
 const auditDataErrors = [];
 const attractionIds = new Set();
 const malformedAttractionIds = new Set();
-for (const pkg of allPackageRows) {
+for (const pkg of scopedPackageRows) {
   const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
   for (const day of days) {
     const schedule = Array.isArray(day?.schedule) ? day.schedule : [];

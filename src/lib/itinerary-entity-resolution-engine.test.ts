@@ -541,6 +541,9 @@ describe('resolveItineraryEntityCandidate', () => {
       '호이안 디저트 - 반짱느엉 + 못 주스',
       '일본 3대 온천지로 꼽히는 아타미로 이동 후',
       '증편특가',
+      '모래 썰매',
+      '왕복 모노레일',
+      '럭셔리 전동카',
     ];
 
     for (const label of labels) {
