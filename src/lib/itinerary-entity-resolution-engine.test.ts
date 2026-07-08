@@ -591,6 +591,14 @@ describe('resolveItineraryEntityCandidate', () => {
       '\uBAA8\uB2DD\uAE00\uB85C\uB9AC \uBCF6\uC74C \uB4F1',
       '\uB610\uB294 \uB2ED\uAD6C\uC774',
       '\uBCF4\uD1A0\uCF34 BBQ)',
+      '\uBCF4\uC308',
+      '\uC2A4\uD14C\uC774\uD06C \uC815\uC2DD',
+      '\uC528\uD478\uB4DC',
+      '\uB545\uCF69 1\uBD09\uC9C0',
+      '\uB300\uD1B5\uBC25\uC815\uC2DD',
+      '\uC5F4\uB300 \uACFC\uC77C \uC2DC\uC2DD',
+      '\uB098\uD2B8\uB791 \uBA85\uBB3C \uCE58\uC988\uC528\uC988\uB2DD \uACE0\uAD6C\uB9C8 \uD280\uD0B4',
+      '\uC625\uC218\uC218',
     ];
 
     for (const label of labels) {
@@ -609,11 +617,83 @@ describe('resolveItineraryEntityCandidate', () => {
       '\uD1A0\uC77C\uC6D4\uD654',
       '\uD1A0\uC77C',
       '\uBE44\uC6B4\uD56D\uC77C',
+      '\uC678\uAD00',
+      '\uC678\uBD80',
+      '4N6D',
+      '100~140cm\uBBF8\uB9CC',
+      '1\uAC1C',
+      '2\uC7781\uAC1C',
+      '10\uC6D4',
+      '\uB3C4\uBCF41\uC2DC\uAC04',
+      '\uC2DC \uAC04',
+      '\uC2DD \uC0AC',
+      '\uAD50 \uD1B5',
+      '\uD14D\uC2A4',
+      '\uC5EC\uD589\uACBD\uBE44',
+      '\uC2F1\uAE00\uCC28\uC9C0',
+      '\uB8F8 \uD0C0 \uC785',
+      '\uC0E4\uC6CC\uC2E4 \uBCF4\uC720',
+      '\uC218\uC601\uBCF5\uCC29\uC6A9\uD544\uC218',
+      '\uC544\uCFE0\uC544\uC288\uC988',
+      '\uC5EC\uBC8C \uC637',
+      '\uBC18\uBC14\uC9C0',
+      '\uBB34\uB8CC\uC874',
+      '\uC0DD\uC218',
+      '\uACF5\uC608',
+      '\uBB38\uD654',
+      '\uB3D9\uC120',
+      '\uBD80 \uC0B0 \u2192 \uD478\uAFB8\uC625',
+      '\uC5EC\uC2E0\uC0C1]\uC678\uAD00',
+      '\uBE44\uC988\uB2C8\uC2A4\uAC8C\uB974',
+      '\uBE44\uC988\uB2C8\uC2A4\uAC8C\uB974(2\uC778\uC2E4',
+      '\uD638\uD654\uD638\uD2B9',
+      '\uD06C\uB77C\uC6B4',
+      '\uD56B\uD50C \uCE74\uD398',
+      '\uCC9C\uC81C\uC6A9\uB839-\uC0C1\uC6A9\uB839-\uAE08\uC0AC\uAD00-\uC911\uBD09-\uB0A8\uBD09',
+      'OR \uB8E9\uB77D',
+      '\uBD88\uAF43\uCD95\uC81C',
+      '\uBD88\uAF43\uB180\uC774',
+      '\uBD05\uC2AC\uB808\uC774',
+      '\uB808\uC77C\uBC14\uC774\uD06C',
+      '\uB8E8\uC9C0',
+      '\uBAA8\uB798 \uC378\uB9E4',
+      '\uB099\uD0C0',
+      '\uB7ED\uC154\uB9AC \uC804\uB3D9\uCE74',
+      '\uB274\uCE74\uBA5C\uB9AC\uC544',
+      '\uC4F0\uC2DC\uB9C8\uB9C1\uD06C',
+      '\uBABD\uACE8 \uB85C\uCEEC \uB9C8\uD2B8',
+      '\uAE30\uC554\uAD34\uC11D',
+      '\uAD11\uD65C\uD55C \uB179\uCC28\uBC2D',
     ];
 
     for (const label of labels) {
       expect(terminalNonMasterReason('attraction', label, label))
         .toBe('generic, itinerary, or attribute fragment, not attraction master');
+    }
+  });
+
+  it('auto-rejects city and route labels that should not become attraction cards', () => {
+    const labels = [
+      '\uCE58\uC559\uB9C8\uC774',
+      '\uD0C0\uC774\uBCA0\uC774',
+      '\uD310\uB791',
+      '\uB098\uB9AC\uD0C0',
+      '\uB178\uBCF4\uB9AC\uBCA0\uCE20',
+      '\uB2CC\uBE48',
+      '\uC624\uD0C0\uB8E8',
+      '\uCE58\uD1A0\uC138',
+      '\uB3C4\uC57C',
+      '\uB300\uB9C8\uB3C4',
+      '\uB3D9\uACBD',
+      '\uD63C\uAC00\uC774',
+      '\uC11D\uAC00\uC7A5',
+      '\uC0E4\uC624\uAD00',
+      '\uC6A9 \uC815',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('city or route token, not attraction master');
     }
   });
 
@@ -623,6 +703,10 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(terminalNonMasterReason('attraction', '베이사이드플레이스', '베이사이드플레이스 관광')).toBeNull();
     expect(terminalNonMasterReason('attraction', '판시판산', '케이블카 탑승 후 판시판산 관광')).toBeNull();
     expect(terminalNonMasterReason('attraction', '아쿠아토피아 워터파크', '아쿠아토피아 워터파크+놀이공원 무제한 이용 가능')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uC131\uBC14\uC6B8 \uC131\uB2F9', '\uB9C8\uCE74\uC624 \uC0C1\uC9D5\uC801 \uAC74\uCD95\uBB3C\uB85C \uC720\uBA85\uD55C \uC131\uBC14\uC6B8 \uC131\uB2F9')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uC0AC\uC624\uBE44\uCE58', '\uC5D0\uBA54\uB784\uB4DC \uBE5B \uBC14\uB2E4\uAC00 \uC544\uB984\uB2E4\uC6B4 \uC0AC\uC624\uBE44\uCE58')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uB9C1\uC751\uC0AC', '\uB9C1\uC751\uC0AC')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uB2E4\uB534\uB780 \uD3ED\uD3EC', '\uBCA0\uD2B8\uB0A8\uC5D0\uC11C \uAC00\uC7A5 \uC720\uBA85\uD55C \uB2E4\uB534\uB780 \uD3ED\uD3EC')).toBeNull();
   });
 
   it('auto-rejects generic Korean itinerary tokens that should not become internal masters', () => {

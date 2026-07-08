@@ -167,7 +167,8 @@ describe('entity master candidate automation', () => {
     });
 
     expect(routeMetric.promotionStatus).toBe('rejected_noise');
-    expect(descriptive.autoAction).toBe('needs_review');
+    expect(descriptive.autoAction).toBe('reject_noise');
+    expect(descriptive.promotionStatus).toBe('rejected_noise');
     expect(descriptive.suggestedMaster.customer_publishable).toBe(false);
   });
 
