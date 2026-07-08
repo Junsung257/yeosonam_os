@@ -105,6 +105,7 @@ const LOW_RISK_PREP_RE = /(?:준비물|수영복|구명조끼|미끼|편도\s*�
 const KOREAN_OPERATIONAL_ATTRACTION_FRAGMENT_RE = /(?:출항|도착|이동\s*후|왕복\s*전동차|전동차|항공권|증편\s*특가|특가|차창|자유\s*시간|선택\s*관광|선택관광|옵션|프리미엄)/;
 const KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE = /(?:디저트|무침|못\s*주스|반짱느엉|삼겹|백숙|옥수수\s*삶는법|메뉴|마사지|수영장|풀빌라)/;
 const KOREAN_ACTIVITY_OR_OPERATION_FRAGMENT_RE = /(?:이용|감상|환복|락커|불가|탑승|승마|귀빈석|놀이공원\s*무제한|핫플레이스|유리잔도|소원등|쪽배)/;
+const KOREAN_ACTIVITY_LABEL_FRAGMENT_RE = /(?:모래\s*썰매|왕복\s*모노레일|봅슬레이|레일\s*바이크|루지|실제\s*낙타|낙타\s*체험|럭셔리\s*전동카)/;
 const KOREAN_METRIC_OR_ATTRIBUTE_FRAGMENT_RE = /(?:해발|\d+\s*M\b|\d+\s*m\b|360\s*도|높이\s*\d+|총길이|넓이|붉은색|내부\s*욕실)/i;
 const KOREAN_MULTI_ENTITY_OR_OPTION_FRAGMENT_RE = /(?:[,/&+]|또는)/;
 const KOREAN_DESCRIPTIVE_ATTRACTION_PHRASE_RE = /(?:세계적으로\s*유명한|가장\s*유명한|꼽히는|환상적이고|아름다운|드넓은|어우러져|드러냅니다|내려다|세계\s*최고의|듯한|봉우리|절경|최초의|반야생|계림의\s*상징|에서\s*파\s*$|등\s*$)/;
@@ -390,6 +391,9 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
     return 'activity, meal, or service detail, not an attraction master';
   }
   if (category === 'attraction' && KOREAN_ACTIVITY_OR_OPERATION_FRAGMENT_RE.test(name)) {
+    return 'activity or operational detail, not an attraction master';
+  }
+  if (category === 'attraction' && KOREAN_ACTIVITY_LABEL_FRAGMENT_RE.test(combined)) {
     return 'activity or operational detail, not an attraction master';
   }
   if (category === 'attraction' && KOREAN_METRIC_OR_ATTRIBUTE_FRAGMENT_RE.test(name)) {

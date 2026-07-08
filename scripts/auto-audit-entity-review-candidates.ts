@@ -43,7 +43,13 @@ type ReviewCandidateRow = {
 type ExistingAttractionMatch = {
   id: string;
   name: string;
+  aliases?: string[] | null;
   customer_publishable?: boolean | null;
+};
+
+type AttractionIndex = {
+  literal: Map<string, ExistingAttractionMatch[]>;
+  normalized: Map<string, ExistingAttractionMatch[]>;
 };
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
@@ -129,6 +135,65 @@ function exactCandidateTerms(row: ReviewCandidateRow): string[] {
     .filter(value => value.length >= 2)));
 }
 
+function normalizedAttractionMatchTerm(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[()[\]{}<>〈〉《》「」『』【】]/g, '')
+    .replace(/[·ㆍ.,/\\|:;'"`~!@#$%^&*_+=?，。]/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function addIndexedTerm(
+  index: AttractionIndex,
+  attraction: ExistingAttractionMatch,
+  term: unknown,
+) {
+  if (typeof term !== 'string') return;
+  const literal = term.replace(/\s+/g, ' ').trim();
+  if (literal.length < 2) return;
+
+  const literalRows = index.literal.get(literal) ?? [];
+  literalRows.push(attraction);
+  index.literal.set(literal, literalRows);
+
+  const normalized = normalizedAttractionMatchTerm(literal);
+  if (normalized.length < 2) return;
+  const normalizedRows = index.normalized.get(normalized) ?? [];
+  normalizedRows.push(attraction);
+  index.normalized.set(normalized, normalizedRows);
+}
+
+async function fetchAttractionIndex(): Promise<AttractionIndex> {
+  const index: AttractionIndex = {
+    literal: new Map(),
+    normalized: new Map(),
+  };
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('attractions')
+      .select('id, name, aliases, customer_publishable')
+      .eq('is_active', true)
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as ExistingAttractionMatch[];
+    for (const attraction of rows) {
+      addIndexedTerm(index, attraction, attraction.name);
+      for (const alias of attraction.aliases ?? []) addIndexedTerm(index, attraction, alias);
+    }
+    if (rows.length < pageSize) break;
+  }
+  return index;
+}
+
+function uniqueAttractionMatch(matches: ExistingAttractionMatch[] | undefined): ExistingAttractionMatch | null {
+  if (!matches || matches.length === 0) return null;
+  const byId = new Map(matches.map(match => [match.id, match]));
+  return byId.size === 1 ? [...byId.values()][0] ?? null : null;
+}
+
 function isUnsafeExactAttractionTerm(row: ReviewCandidateRow, term: string): boolean {
   if (row.category !== 'attraction') return false;
   const cleaned = term.replace(/\s+/g, ' ').trim();
@@ -143,26 +208,18 @@ function sourcePackageIds(row: ReviewCandidateRow): string[] {
     : [];
 }
 
-async function findExactExistingAttraction(row: ReviewCandidateRow): Promise<ExistingAttractionMatch | null> {
+function findExistingAttractionMatch(row: ReviewCandidateRow, index: AttractionIndex): ExistingAttractionMatch | null {
   if (row.category !== 'attraction') return null;
   for (const term of exactCandidateTerms(row)) {
     if (isUnsafeExactAttractionTerm(row, term)) continue;
 
-    const { data: nameData, error: nameError } = await supabase
-      .from('attractions')
-      .select('id, name, customer_publishable')
-      .eq('name', term)
-      .eq('is_active', true)
-      .limit(1);
-    if (!nameError && nameData && nameData.length > 0) return nameData[0] as ExistingAttractionMatch;
+    const literalMatch = uniqueAttractionMatch(index.literal.get(term));
+    if (literalMatch) return literalMatch;
 
-    const { data: aliasData, error: aliasError } = await supabase
-      .from('attractions')
-      .select('id, name, customer_publishable')
-      .contains('aliases', [term])
-      .eq('is_active', true)
-      .limit(1);
-    if (!aliasError && aliasData && aliasData.length > 0) return aliasData[0] as ExistingAttractionMatch;
+    const normalized = normalizedAttractionMatchTerm(term);
+    if (normalized.length < 2) continue;
+    const normalizedMatch = uniqueAttractionMatch(index.normalized.get(normalized));
+    if (normalizedMatch) return normalizedMatch;
   }
   return null;
 }
@@ -281,6 +338,7 @@ async function persistExistingMatch(row: ReviewCandidateRow, attraction: Existin
 
 async function main() {
   const rows = await fetchRows();
+  const attractionIndex = await fetchAttractionIndex();
   const audited: Array<{ candidate_key: string; category: string; canonical_name: string; reason: string }> = [];
   const linkedExisting: Array<{ candidate_key: string; category: string; canonical_name: string; attraction: string }> = [];
   const internalCandidates: Array<{ candidate_key: string; category: string; canonical_name: string }> = [];
@@ -301,7 +359,7 @@ async function main() {
         continue;
       }
 
-      const exactMatch = await findExactExistingAttraction(row);
+      const exactMatch = findExistingAttractionMatch(row, attractionIndex);
       if (!exactMatch) {
         const unresolved = {
           candidate_key: row.candidate_key,
