@@ -692,11 +692,42 @@ describe('resolveItineraryEntityCandidate', () => {
       '\uC11D\uAC00\uC7A5',
       '\uC0E4\uC624\uAD00',
       '\uC6A9 \uC815',
+      '\uD30C\uD0C0\uC57C',
+      '\uD558\uB178\uC774',
+      '\uD0C0\uC774\uD398\uC774',
+      '\uD6C4\uC544\uD78C',
+      '\uCE58\uC559\uB77C\uC774',
+      '\uD788 \uD0C0',
+      '\uC774\uC988',
+      '\uC591 \uC0AD',
+      '\uC11C \uD30C',
+      '\uBD81 \uD30C',
+      '\uB0A8 \uD30C',
     ];
 
     for (const label of labels) {
       expect(terminalNonMasterReason('attraction', label, label))
         .toBe('city or route token, not attraction master');
+    }
+  });
+
+  it('auto-rejects customer notice and operation tokens that leaked into attraction candidates', () => {
+    const labels = [
+      '\uC804\uC6A9',
+      '\uC81C\uC678',
+      '\uCD94\uC11D',
+      '\uD3EC \uD568',
+      '\uC7781\uC2E4',
+      '\uCF5C\uB77C\uAC90',
+      '\uD1A0\uC0B0\uD488',
+      '\uC804\uC790\uB2F4\uBC30',
+      '\uC154\uD2C0\uBC84\uC2A4',
+      '\uD480\uB9CC',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('operational or non-attraction schedule fragment');
     }
   });
 
