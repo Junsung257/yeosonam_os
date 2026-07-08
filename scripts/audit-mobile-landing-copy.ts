@@ -96,7 +96,7 @@ function parseScope(value: string | null): AuditScope {
 }
 
 function parseSurfaces(value: string | null): AuditSurface[] {
-  const parsed = String(value ?? 'packages')
+  const parsed = String(value ?? 'packages,lp')
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
@@ -363,6 +363,8 @@ async function main() {
     surfaces,
     totalPackages: packages.length,
     totalChecks: results.length,
+    screenChecks: screenResults.length,
+    dbChecks: dbResults.length,
     pass: results.filter(result => result.result === 'pass').length,
     fail: results.filter(result => result.result === 'fail').length,
     blocking: results.reduce((sum, result) => sum + result.blocking_count, 0),
@@ -384,6 +386,8 @@ async function main() {
     `- Surfaces: ${summary.surfaces.join(', ')}`,
     `- Packages: ${summary.totalPackages}`,
     `- Checks: ${summary.totalChecks}`,
+    `- Screen checks: ${summary.screenChecks}`,
+    `- DB checks: ${summary.dbChecks}`,
     `- Pass: ${summary.pass}`,
     `- Fail: ${summary.fail}`,
     `- Blocking issues: ${summary.blocking}`,
