@@ -36,9 +36,10 @@ import {
 } from '@/lib/source-price-date-repair';
 import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
-import { runUploadVerify, evaluateVerifyChecks } from '@/lib/upload-verify';
+import { runUploadVerify, evaluateVerifyChecks, type VerifyResult } from '@/lib/upload-verify';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { sanitizeBrokenAttractionIdsForPublicEligibility } from '@/lib/package-public-eligibility';
 import { buildCustomerSourceRawText } from './source-evidence-raw-text';
 import { replaceProductPricesForProduct } from './product-price-replacement';
 import {
@@ -970,6 +971,7 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
   if (publicAttractions.length === 0) {
     return { itineraryData: input.itineraryData, repaired: false, matched: 0, removedNoise: 0, remainingUnmatched: 0 };
   }
+  const publicAttractionIds = new Set(publicAttractions.map(attraction => attraction.id));
 
   const accommodations = Array.isArray(input.accommodations)
     ? input.accommodations.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
@@ -1013,6 +1015,10 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
 
       for (const id of existingIds) {
         if (!FULL_UUID_RE.test(id)) {
+          changed = true;
+          continue;
+        }
+        if (!publicAttractionIds.has(id)) {
           changed = true;
           continue;
         }
@@ -1874,7 +1880,7 @@ export function classifyUploadToOpenReviewReason(reason: string): UploadToOpenRe
       nextAction: 'Regenerate V3 customer payload from saved package facts and source evidence, then replay readiness until ready_to_publish or a precise blocker remains.',
     };
   }
-  if (/source_verify|publish_gate|publish_warning/i.test(reason)) {
+  if (/source_verify|upload_verify|publish_gate|publish_warning/i.test(reason)) {
     return {
       reason,
       category: 'publish_gate_required',
@@ -1964,6 +1970,70 @@ export function filterResolvedUploadToOpenReasons(input: {
     }
     return true;
   });
+}
+
+export function evaluateUploadVerifyAutopilotGate(results: Array<VerifyResult | null>): {
+  ok: boolean;
+  status: VerifyResult['status'] | 'missing';
+  blockers: string[];
+  snapshots: Array<{
+    status: VerifyResult['status'] | 'missing';
+    passCount?: number;
+    warnCount?: number;
+    failCount?: number;
+    failedChecks?: string[];
+  }>;
+} {
+  const snapshots = results.map(result => {
+    if (!result) return { status: 'missing' as const };
+    return {
+      status: result.status,
+      passCount: result.passCount,
+      warnCount: result.warnCount,
+      failCount: result.failCount,
+      failedChecks: result.checks
+        .filter(check => check.status === 'warn' || check.status === 'fail')
+        .map(check => check.id)
+        .slice(0, 12),
+    };
+  });
+  if (snapshots.length === 0 || snapshots.some(snapshot => snapshot.status === 'missing')) {
+    return {
+      ok: false,
+      status: 'missing',
+      blockers: ['upload_verify:missing_result'],
+      snapshots,
+    };
+  }
+  if (snapshots.some(snapshot => snapshot.status === 'blocked')) {
+    const failedChecks = snapshots
+      .flatMap(snapshot => snapshot.failedChecks ?? [])
+      .filter(Boolean)
+      .slice(0, 8);
+    const blocker = failedChecks.length > 0
+      ? `upload_verify:blocked:${failedChecks.join(',')}`
+      : 'upload_verify:blocked';
+    return {
+      ok: false,
+      status: 'blocked',
+      blockers: [blocker],
+      snapshots,
+    };
+  }
+  if (snapshots.some(snapshot => snapshot.status === 'skipped')) {
+    return {
+      ok: false,
+      status: 'skipped',
+      blockers: ['upload_verify:skipped'],
+      snapshots,
+    };
+  }
+  return {
+    ok: true,
+    status: snapshots.some(snapshot => snapshot.status === 'warnings') ? 'warnings' : 'clean',
+    blockers: [],
+    snapshots,
+  };
 }
 
 function validPriceDates(priceDates: PriceDate[]): PriceDate[] {
@@ -3306,6 +3376,22 @@ async function applySourceBackedRepairs(
   }
 
   const publicAttractions = await loadActiveAttractionsForV3(supabase);
+  const validPublicAttractionIds = publicAttractions.length > 0
+    ? new Set(publicAttractions.map(attraction => attraction.id).filter((id): id is string => typeof id === 'string' && FULL_UUID_RE.test(id)))
+    : undefined;
+  const initialAttractionIdRepair = sanitizeBrokenAttractionIdsForPublicEligibility(
+    workingPkg.itinerary_data,
+    validPublicAttractionIds,
+  );
+  if (initialAttractionIdRepair.repaired) {
+    updates.itinerary_data = initialAttractionIdRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: initialAttractionIdRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:invalid_attraction_ids_removed:${initialAttractionIdRepair.removed.length}`);
+  }
+
   const attractionRepair = repairSavedItineraryAttractionIdsFromExistingAttractions({
     itineraryData: workingPkg.itinerary_data,
     attractions: publicAttractions,
@@ -3477,6 +3563,19 @@ async function applySourceBackedRepairs(
       itinerary_data: finalAttractionRepair.itineraryData,
     };
     repairs.push(`itinerary_data:final_public_attractions_repaired:${finalAttractionRepair.matched}/${finalAttractionRepair.remainingUnmatched}`);
+  }
+
+  const finalAttractionIdRepair = sanitizeBrokenAttractionIdsForPublicEligibility(
+    workingPkg.itinerary_data,
+    validPublicAttractionIds,
+  );
+  if (finalAttractionIdRepair.repaired) {
+    updates.itinerary_data = finalAttractionIdRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: finalAttractionIdRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:final_invalid_attraction_ids_removed:${finalAttractionIdRepair.removed.length}`);
   }
 
   if (Object.keys(updates).length === 0) {
@@ -4121,7 +4220,8 @@ async function evaluateAndMaybeOpenPackage(input: {
     allRepairs.push(`entity_queue_resolved_from_latest_v3:${resolvedStaleEntityQueueRows}`);
   }
 
-  await runUploadVerify(pkg.id);
+  const uploadVerifyResults: Array<VerifyResult | null> = [];
+  uploadVerifyResults.push(await runUploadVerify(pkg.id));
   pkg = await reloadPackage(input.supabase, pkg.id);
   const preMobileProductPrices = await loadProductPriceRows(input.supabase, pkg.internal_code);
   const preMobileScorecard = evaluateRegistrationQualityScorecard({
@@ -4143,7 +4243,7 @@ async function evaluateAndMaybeOpenPackage(input: {
   if (scorecardRepairs.repairs.length > 0) {
     allRepairs.push(...scorecardRepairs.repairs);
     pkg = scorecardRepairs.pkg;
-    await runUploadVerify(pkg.id);
+    uploadVerifyResults.push(await runUploadVerify(pkg.id));
   }
   reasons.push(...scorecardRepairs.blockedReasons);
   const baseUrl = input.baseUrl || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -4237,6 +4337,11 @@ async function evaluateAndMaybeOpenPackage(input: {
   });
   if (!customerOpenContract.ok) reasons.push(...customerOpenContract.blockers);
 
+  const uploadVerifyGate = evaluateUploadVerifyAutopilotGate(uploadVerifyResults);
+  if (!uploadVerifyGate.ok) {
+    reasons.push(...uploadVerifyGate.blockers);
+  }
+
   const deliveryContext = await loadDeliveryContext(input.supabase, pkg.id);
   const deliveryFailedChecks = customerOpenContract.ok ? [] : deliveryContext.failedChecks;
   const delivery = evaluateCustomerDeliveryReadiness({
@@ -4296,6 +4401,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       repair_first_summary: summary,
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
       mobile_proof: mobileProof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
@@ -4321,6 +4427,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       repair_first_summary: summary,
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
       mobile_proof: mobileProof.proof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
@@ -4354,6 +4461,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       repair_first_summary: repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] }),
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
       mobile_browser_proof: openedMobileProof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
