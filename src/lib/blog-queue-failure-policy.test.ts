@@ -57,6 +57,19 @@ describe('blog queue failure policy', () => {
     });
   });
 
+  it('keeps engine v2 quality gaps recoverable by the current category repair loop', () => {
+    expect(classifyBlogQueueFailure(
+      'quality failed: [engine_v2] engine v2 90/100: engine_task_incomplete (reader_task_completion:90)',
+    )).toMatchObject({
+      code: 'engine_v2',
+      retryable: true,
+      selfHealAllowed: true,
+    });
+    expect(shouldSelfHealBlogQueueItem({
+      lastError: 'quality failed: [engine_v2] sales_pressure_control:80',
+    })).toBe(true);
+  });
+
   it('classifies thin content and link gate failures without hiding them as unknown', () => {
     expect(classifyBlogQueueFailure(
       '2/19 실패: [length] 본문 2467자 — info 최소 2500자 미달 (thin content)',

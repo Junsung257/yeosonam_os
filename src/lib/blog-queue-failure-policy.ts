@@ -36,7 +36,6 @@ const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'keyword_density',
   'structure_integrity',
   'intent_quality',
-  'engine_v2',
   'evidence_insufficient',
   'topic_fit',
   'candidate_pre_publish_contract',
@@ -116,7 +115,7 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
   }
 
   if (hasFailedGate(qa, 'engine_v2') || /\[engine_v2\]|engine v2|product_decision_helpfulness|engine_task_incomplete|ai_naturalness|sales_pressure/i.test(text)) {
-    return { code: 'engine_v2', retryable: true, selfHealAllowed: false, skipped: false };
+    return { code: 'engine_v2', retryable: true, selfHealAllowed: true, skipped: false };
   }
 
   if (hasFailedGate(qa, 'topic_fit') || /topic_fit|topic fit/i.test(text)) {
