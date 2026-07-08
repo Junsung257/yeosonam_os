@@ -101,6 +101,8 @@ describe('package public eligibility', () => {
       .toBe('valid_paid_option');
     expect(classifyOptionalTourForPublicEligibility({ name: '\ucd94\ucc9c \uc635\uc158 : \ud06c\ub8e8\uc988 60$' }).classification)
       .toBe('valid_paid_option');
+    expect(classifyOptionalTourForPublicEligibility({ name: '\u25b3 \ud63c\ub62c\uc12c \ucf00\uc774\ube14\uce74 &\uc6cc\ud130\ud30c\ud06c', price: '$60/\uc778' }).classification)
+      .toBe('valid_paid_option');
   });
 
   it('sanitizes optional tours by keeping paid options and quarantining no-option/table noise', () => {
