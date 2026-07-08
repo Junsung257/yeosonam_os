@@ -46,6 +46,34 @@ describe('repairCustomerVisibleCopyPayload', () => {
     expect(blockingCustomerVisibleTextIssues(result.value)).toEqual([]);
   });
 
+  it('normalizes customer schedule copy without changing internal attraction ids', () => {
+    const truncatedAttractionId = 'fcf2-4df5-ac1d-f454bb4a84a4';
+    const result = repairCustomerVisibleCopyPayload({
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '공항으로 이동합니다.',
+                landing_sentence: '공항으로 이동합니다.',
+                attraction_ids: [truncatedAttractionId],
+                entity_kind: 'transfer',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const schedule = (result.value as {
+      itinerary_data: { days: Array<{ schedule: Array<{ landing_sentence: string; attraction_ids: string[] }> }> };
+    }).itinerary_data.days[0].schedule[0];
+
+    expect(schedule.landing_sentence).toBe('공항 이동');
+    expect(schedule.attraction_ids).toEqual([truncatedAttractionId]);
+  });
+
   it('normalizes duplicated inclusions/options while preserving source evidence and core fields', () => {
     const result = repairCustomerVisibleCopyPayload({
       title: '다낭 바나힐 패키지',

@@ -203,6 +203,26 @@ function embeddedCandidateTerms(value: string): string[] {
   return terms;
 }
 
+function descriptiveAttractionCandidateTerms(value: string): string[] {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+
+  const terms: string[] = [];
+  const patterns = [
+    /(바오다이\s*황제(?:의)?\s*여름별장)/,
+    /(두만강\s*강변공원)/,
+    /(그랜드\s*월드|그랜드월드)(?:\s*나이트)?/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const term = match?.[1]?.replace(/\s+/g, ' ').trim();
+    if (term && term.length >= 2) terms.push(term);
+  }
+
+  return terms;
+}
+
 function exactCandidateTerms(row: ReviewCandidateRow): string[] {
   const baseTerms = [
     row.canonical_name,
@@ -214,6 +234,7 @@ function exactCandidateTerms(row: ReviewCandidateRow): string[] {
   return Array.from(new Set([
     ...baseTerms,
     ...baseTerms.flatMap(embeddedCandidateTerms),
+    ...baseTerms.flatMap(descriptiveAttractionCandidateTerms),
   ]));
 }
 
