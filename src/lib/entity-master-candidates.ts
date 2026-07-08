@@ -290,6 +290,7 @@ function cleanExtractedAttractionLabel(value: string | undefined): string | null
     .replace(/[.。]+$/g, '')
     .trim();
   if (!clean) return null;
+  if (/부이페스트\s*바자\s*나이트\s*마켓/u.test(clean)) return '부이페스트 바자 나이트 마켓';
 
   const tokens = clean.split(/\s+/).filter(Boolean);
   const lastToken = tokens.at(-1) ?? '';
@@ -326,6 +327,10 @@ function extractAttractionLabelFromDescription(normalizedLabel: string): string 
   const parentheticalPrefix = extractPrefixBeforeParenthetical(normalizedLabel);
   if (parentheticalPrefix) return parentheticalPrefix;
 
+  const knownNameBeforeBracket = normalizedLabel.match(/(부이페스트\s*바자\s*나이트\s*마켓|빈\s*사파리월드|소나시\s*야시장|동강호풍경구|무앙보란|오부치사사바|칭기스칸\s*기마동상|머드온천|유노하나|쇼화신산\s*활화산|신잔\s*활화산|비천산\s*구룡수채뗏목|백산수\s*공장|백산수공장)/u);
+  const knownNameBeforeBracketLabel = cleanExtractedAttractionLabel(knownNameBeforeBracket?.[1]);
+  if (knownNameBeforeBracketLabel) return knownNameBeforeBracketLabel;
+
   const bracketMatch = normalizedLabel.match(/\[([^\]]{2,40})\]/);
   const bracketLabel = cleanExtractedAttractionLabel(bracketMatch?.[1]);
   if (bracketLabel) return bracketLabel;
@@ -343,7 +348,7 @@ function extractAttractionLabelFromDescription(normalizedLabel: string): string 
   const dashLabel = cleanExtractedAttractionLabel(dashMatch?.[1]);
   if (dashLabel) return dashLabel;
 
-  const knownNameMatch = normalizedLabel.match(/(깟깟마을|성바울\s*성당|천문동|판시판산|아오이\s*이케|코코넛\s*수용소|도잔\s*신사|아쿠아토피아\s*워터파크)/u);
+  const knownNameMatch = normalizedLabel.match(/(깟깟마을|성바울\s*성당|천문동|판시판산|아오이\s*이케|코코넛\s*수용소|도잔\s*신사|아쿠아토피아\s*워터파크|빈\s*사파리월드|소나시\s*야시장|부이페스트\s*바자\s*나이트\s*마켓|동강호풍경구|무앙보란|오부치사사바|칭기스칸\s*기마동상|머드온천|유노하나|쇼화신산\s*활화산|신잔\s*활화산|비천산\s*구룡수채뗏목|백산수\s*공장|백산수공장)/u);
   const knownName = cleanExtractedAttractionLabel(knownNameMatch?.[1]);
   if (knownName) return knownName;
 
@@ -371,7 +376,7 @@ function extractAttractionLabelFromDescription(normalizedLabel: string): string 
   const trailingLabel = cleanExtractedAttractionLabel(trailingTourism?.[1]);
   if (trailingLabel) return trailingLabel;
 
-  const suffixMatch = normalizedLabel.match(/([\p{L}\p{N}\s]{2,40}(?:신사|제전|화원|유리다리|워터파크|마을|공원|시장|마켓|전망대|협곡|폭포|호수|온천))$/u);
+  const suffixMatch = normalizedLabel.match(/([\p{L}\p{N}\s]{2,40}(?:신사|제전|화원|유리다리|워터파크|마을|공원|시장|마켓|전망대|협곡|폭포|호수|온천|풍경구|활화산|기마동상|공장))$/u);
   const suffixLabel = cleanExtractedAttractionLabel(suffixMatch?.[1]);
   if (suffixLabel) return suffixLabel;
 
@@ -391,7 +396,7 @@ function deriveAttractionMasterLabel(normalizedLabel: string): string {
     return lastToken;
   }
 
-  const suffixMatches = normalizedLabel.match(/([가-힣A-Za-z0-9·\s]{2,24}(?:공원|사원|성당|교회|전망대|유적지?|박물관|기념관|거리|시장|해변|비치|협곡|폭포|호수|동굴|케이블카|정원|궁|성|신사|천만궁|마을|타운|브릿지|부두|광장|사찰|묘|생가|슈라인))/gi);
+  const suffixMatches = normalizedLabel.match(/([가-힣A-Za-z0-9·\s]{2,24}(?:공원|사원|성당|교회|전망대|유적지?|박물관|기념관|거리|시장|해변|비치|협곡|폭포|호수|동굴|케이블카|정원|궁|성|신사|천만궁|마을|타운|브릿지|부두|광장|사찰|묘|생가|슈라인|풍경구|활화산|기마동상|공장))/gi);
   const candidate = suffixMatches?.at(-1);
   if (!candidate) return normalizedLabel;
 
