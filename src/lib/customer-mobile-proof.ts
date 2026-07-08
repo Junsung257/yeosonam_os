@@ -11,6 +11,11 @@ export type CustomerMobileProof = {
     status?: string | null;
     screen_hash?: string | null;
     customer_visible_hash?: string | null;
+    checks?: Array<{
+      name?: string | null;
+      ok?: boolean | null;
+      detail?: string | null;
+    }> | null;
   }> | null;
 };
 
@@ -42,14 +47,50 @@ function extractSurfaceResults(value: unknown): NonNullable<CustomerMobileProof[
   for (const item of value) {
     const record = asRecord(item);
     if (!record) continue;
+    const rawChecks = Array.isArray(record.checks) ? record.checks : [];
     results.push({
       surface: asString(record.surface),
       status: asString(record.status),
       screen_hash: asString(record.screen_hash),
       customer_visible_hash: asString(record.customer_visible_hash),
+      checks: rawChecks
+        .map(check => {
+          const checkRecord = asRecord(check);
+          if (!checkRecord) return null;
+          return {
+            name: asString(checkRecord.name),
+            ok: typeof checkRecord.ok === 'boolean' ? checkRecord.ok : null,
+            detail: asString(checkRecord.detail),
+          };
+        })
+        .filter((check): check is { name: string | null; ok: boolean | null; detail: string | null } => Boolean(check)),
     });
   }
   return results;
+}
+
+const REQUIRED_PROOF_CHECKS_BY_SURFACE: Record<string, string[]> = {
+  packages: [
+    'packages_reservation_cta_visible',
+    'packages_reservation_sheet_opens',
+    'packages_reservation_sheet_has_product_context',
+  ],
+  lp: [
+    'lp_lead_cta_visible',
+    'lp_lead_sheet_opens',
+    'lp_lead_sheet_has_customer_copy',
+  ],
+};
+
+function missingRequiredProofChecks(
+  surface: string,
+  surfaceResult: NonNullable<CustomerMobileProof['surface_results']>[number],
+): string[] {
+  const checks = new Map((surfaceResult.checks ?? [])
+    .filter(check => check.name)
+    .map(check => [check.name as string, check.ok === true]));
+  return (REQUIRED_PROOF_CHECKS_BY_SURFACE[surface] ?? [])
+    .filter(name => checks.get(name) !== true);
 }
 
 function parseTime(value: string | null | undefined): number | null {
@@ -193,6 +234,14 @@ export function evaluateCustomerMobileProof(input: {
       return {
         ok: false,
         reason: `actual customer mobile browser proof ${requiredSurface} hashes are missing`,
+        proof,
+      };
+    }
+    const missingChecks = missingRequiredProofChecks(requiredSurface, surfaceResult);
+    if (missingChecks.length > 0) {
+      return {
+        ok: false,
+        reason: `actual customer mobile browser proof ${requiredSurface} CTA checks are missing or failed: ${missingChecks.join(', ')}`,
         proof,
       };
     }
