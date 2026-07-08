@@ -29,6 +29,22 @@ describe('terminalNonMasterReason attraction fragment gate', () => {
     );
   });
 
+  it('rejects current backlog schedule fragments that are not attraction masters', () => {
+    for (const label of [
+      '왕복 40분 소요',
+      '이루어집니다.',
+      '4륜 오토바이',
+      '나트랑 야간',
+      '천지 조망',
+      '썬월드 내 자유',
+      '테를지 현대식 캠프',
+    ]) {
+      expect(terminalNonMasterReason('attraction', label, label)).toBe(
+        'generic, itinerary, or attribute fragment, not attraction master',
+      );
+    }
+  });
+
   it('keeps plausible real attractions review-gated instead of auto-rejecting them', () => {
     expect(terminalNonMasterReason('attraction', '대소사', '대소사')).toBeNull();
     expect(terminalNonMasterReason('attraction', '사오비치', '사오비치')).toBeNull();
