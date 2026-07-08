@@ -7,6 +7,7 @@ import {
   buildPackageDerivedV3Result,
   classifyUploadToOpenReviewReason,
   detectSourceTicketingDeadline,
+  evaluateUploadVerifyAutopilotGate,
   filterResolvedUploadToOpenReasons,
   filterCustomerOpenPriceDates,
   missingPriceDatesFromScorecard,
@@ -236,6 +237,56 @@ describe('filterResolvedUploadToOpenReasons', () => {
     });
 
     expect(reasons).toEqual(['publish_gate:critical 품질 실패: 고객 노출 문구 원문 근거 없음: 호텔명']);
+  });
+});
+
+describe('evaluateUploadVerifyAutopilotGate', () => {
+  it('blocks the autopilot when deterministic upload verify is blocked even if later gates look ready', () => {
+    const gate = evaluateUploadVerifyAutopilotGate([
+      {
+        status: 'blocked',
+        checks: [
+          { id: 'C18', label: 'customer visible copy', status: 'fail' },
+          { id: 'C19', label: 'registration quality scorecard', status: 'fail' },
+        ],
+        fixable: [],
+        passCount: 18,
+        warnCount: 0,
+        failCount: 2,
+      },
+    ]);
+
+    expect(gate.ok).toBe(false);
+    expect(gate.status).toBe('blocked');
+    expect(gate.blockers).toEqual(['upload_verify:blocked:C18,C19']);
+    expect(gate.snapshots[0]).toEqual(expect.objectContaining({
+      failedChecks: ['C18', 'C19'],
+    }));
+  });
+
+  it('blocks fail-closed when upload verify returns no result', () => {
+    const gate = evaluateUploadVerifyAutopilotGate([null]);
+
+    expect(gate.ok).toBe(false);
+    expect(gate.status).toBe('missing');
+    expect(gate.blockers).toEqual(['upload_verify:missing_result']);
+  });
+
+  it('allows warning-only upload verify results to continue through the later contract gates', () => {
+    const gate = evaluateUploadVerifyAutopilotGate([
+      {
+        status: 'warnings',
+        checks: [{ id: 'C5', label: 'departure weekdays', status: 'warn' }],
+        fixable: ['C5:departure_days'],
+        passCount: 19,
+        warnCount: 1,
+        failCount: 0,
+      },
+    ]);
+
+    expect(gate.ok).toBe(true);
+    expect(gate.status).toBe('warnings');
+    expect(gate.blockers).toEqual([]);
   });
 });
 
@@ -746,7 +797,10 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
               {
                 activity: '\uD478\uAFB8\uC625 \uB0A8\uBD80 \uC120\uC14B\uD0C0\uC6B4 \uAD00\uAD11',
                 attraction_names: ['\uC120\uC14B\uD0C0\uC6B4'],
-                attraction_ids: ['bbd8-41d7-9c97-ef283e399820'],
+                attraction_ids: [
+                  'bbd8-41d7-9c97-ef283e399820',
+                  '11111111-1111-4111-8111-111111111111',
+                ],
               },
               {
                 activity: '\uD478\uAFB8\uC625 \uBE48\uD384 \uC0AC\uD30C\uB9AC \uC785\uC7A5',
