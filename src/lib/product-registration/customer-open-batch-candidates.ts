@@ -13,7 +13,7 @@ export type CustomerOpenBatchCandidate = {
   title: string | null;
   status: string | null;
   updatedAt: string | null;
-  reason: 'not_ready_not_opened' | 'retry_previous_error';
+  reason: 'not_ready_not_opened' | 'retry_previous_error' | 'retry_previous_blocker';
 };
 
 type SelectOptions = {
@@ -21,6 +21,9 @@ type SelectOptions = {
   includeReady?: boolean;
   retryErrors?: boolean;
   includeTerminalBlocked?: boolean;
+  includeRecentRetries?: boolean;
+  retryCooldownMinutes?: number;
+  now?: Date;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -40,6 +43,27 @@ export function isTerminalCustomerOpenBatchStage(stage: string | null): boolean 
     || stage === 'expired_ticketing_deadline_archived';
 }
 
+function isRetryStage(stage: string | null): boolean {
+  return Boolean(stage && stage !== 'ready_not_opened');
+}
+
+function parseDatabaseTimestampMs(value: string): number {
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+  return new Date(normalized).getTime();
+}
+
+function isWithinRetryCooldown(row: CustomerOpenBatchCandidateRow, options: SelectOptions): boolean {
+  if (options.includeRecentRetries) return false;
+  const cooldownMinutes = options.retryCooldownMinutes ?? 0;
+  if (!Number.isFinite(cooldownMinutes) || cooldownMinutes <= 0) return false;
+  if (!row.updated_at) return false;
+  const updatedAt = parseDatabaseTimestampMs(row.updated_at);
+  if (!Number.isFinite(updatedAt)) return false;
+  const now = options.now?.getTime() ?? Date.now();
+  if (!Number.isFinite(now)) return false;
+  return now - updatedAt >= 0 && now - updatedAt < cooldownMinutes * 60 * 1000;
+}
+
 export function selectCustomerOpenBatchCandidates(
   rows: CustomerOpenBatchCandidateRow[],
   options: SelectOptions,
@@ -51,6 +75,7 @@ export function selectCustomerOpenBatchCandidates(
     const stage = customerOpenBatchStage(row);
     if (stage === 'ready_not_opened' && !options.includeReady) continue;
     if (isTerminalCustomerOpenBatchStage(stage) && !options.includeTerminalBlocked) continue;
+    if (isRetryStage(stage) && isWithinRetryCooldown(row, options)) continue;
     if (stage === 'error' && !options.retryErrors) continue;
     if (stage && stage !== 'error' && stage !== 'ready_not_opened' && !options.retryErrors) continue;
     candidates.push({
@@ -59,7 +84,11 @@ export function selectCustomerOpenBatchCandidates(
       title: row.title,
       status: row.status,
       updatedAt: row.updated_at,
-      reason: stage === 'error' ? 'retry_previous_error' : 'not_ready_not_opened',
+      reason: stage === 'error'
+        ? 'retry_previous_error'
+        : stage
+          ? 'retry_previous_blocker'
+          : 'not_ready_not_opened',
     });
   }
   return candidates;
