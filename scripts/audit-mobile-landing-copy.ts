@@ -145,6 +145,11 @@ function customerCopySnapshot(pkg: PackageRow) {
     airline: typeof pkg.airline === 'string' ? pkg.airline : null,
     product_highlights: Array.isArray(pkg.product_highlights) ? pkg.product_highlights.filter((item): item is string => typeof item === 'string') : null,
     inclusions: Array.isArray(pkg.inclusions) ? pkg.inclusions.filter((item): item is string => typeof item === 'string') : null,
+    excludes: Array.isArray(pkg.excludes) ? pkg.excludes.filter((item): item is string => typeof item === 'string') : null,
+    customer_notes: typeof pkg.customer_notes === 'string' ? pkg.customer_notes : null,
+    optional_tours: Array.isArray(pkg.optional_tours)
+      ? pkg.optional_tours as Array<{ name?: string | null; displayName?: string | null; note?: string | null }>
+      : null,
   });
   return {
     customer_title: copy.cardTitle,

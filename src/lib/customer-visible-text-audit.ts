@@ -58,6 +58,22 @@ const LOW_VALUE_SCREEN_LINES = new Set([
   '선택관광',
 ]);
 
+const NON_CUSTOMER_VISIBLE_STRING_KEYS = new Set([
+  'id',
+  'package_id',
+  'product_id',
+  'internal_code',
+  'short_code',
+  'attraction_id',
+  'attraction_ids',
+  'resolved_attraction_id',
+  'entity_id',
+  'entity_kind',
+  'source_id',
+  'source_ids',
+  'raw_text_hash',
+]);
+
 type TextRow = {
   fieldPath: string;
   value: string;
@@ -134,6 +150,7 @@ function walkCustomerStrings(value: unknown, pathParts: string[], visit: (fieldP
   }
   if (!value || typeof value !== 'object') return;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (NON_CUSTOMER_VISIBLE_STRING_KEYS.has(key)) continue;
     if (key === 'raw_text' || key === 'net_price' || key === 'cost_price' || key === 'margin_rate') continue;
     walkCustomerStrings(item, [...pathParts, key], visit);
   }

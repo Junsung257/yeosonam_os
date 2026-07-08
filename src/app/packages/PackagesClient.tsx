@@ -42,6 +42,10 @@ interface Package {
   departure_airport?: string;
   product_highlights?: string[];
   product_tags?: string[];
+  inclusions?: string[];
+  excludes?: string[];
+  optional_tours?: { name?: string | null; displayName?: string | null; note?: string | null }[];
+  customer_notes?: string | null;
   itinerary_data?: any;
   is_airtel?: boolean;
   display_title?: string;
@@ -161,6 +165,10 @@ function getCustomerPackageTitle(pkg: Package): string {
     product_type: pkg.product_type,
     airline: pkg.airline,
     product_highlights: pkg.product_highlights ?? null,
+    inclusions: pkg.inclusions ?? null,
+    excludes: pkg.excludes ?? null,
+    customer_notes: pkg.customer_notes ?? null,
+    optional_tours: pkg.optional_tours ?? null,
   }).cardTitle;
 }
 

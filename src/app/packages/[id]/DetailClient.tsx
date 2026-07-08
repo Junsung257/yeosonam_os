@@ -690,6 +690,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     airline: pkg.airline,
     product_highlights: pkg.product_highlights ?? null,
     inclusions: pkg.inclusions ?? null,
+    excludes: pkg.excludes ?? null,
+    customer_notes: pkg.customer_notes ?? null,
     optional_tours: pkg.optional_tours ?? null,
   }) : null;
   const proactiveChatDoneRef = useRef(false);
