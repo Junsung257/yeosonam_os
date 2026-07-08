@@ -246,11 +246,22 @@ function scoreInfoTask(markdown: string): number {
   if (first.length >= 80) score += 20;
   if (/(먼저|기준|확인|준비|주의|비용|가격|날씨|동선|필요|달라질 수|좋습니다|맞습니다|핵심|결론)/.test(first)) score += 25;
   if (!/^(안녕하세요|오늘은|이번\s*글에서는|여소남\s*에디터)/.test(first)) score += 10;
+  const answerSignals = [
+    /먼저|나눠|비교|확인|준비|챙기|봐야|체크|기준|잡아/,
+    /기온|비|소나기|옷차림|숙소|이동|식사|교통|포함|불포함|가격|비용|예산|총액|비자|여권|환율|서류|좌석|호텔|공항/,
+    /\d|원|℃|박|일|시간|성수기|우기|건기|출발|현지|공식|~|–|-/,
+  ];
+  const answerSignalCount = answerSignals.filter((pattern) => pattern.test(first)).length;
+  if (answerSignalCount < 2) score = Math.min(score, 75);
+  else if (answerSignalCount < 3) score = Math.min(score, 90);
   const structuredEvidence =
     (markdown.match(/(^|\n)\s*\|.+\|/g) ?? []).length >= 3
     || (markdown.match(/(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g) ?? []).length >= 5;
   if (score < 80 && structuredEvidence && /(비용|일정|준비|체크|지역|호텔|동선|날씨|환전|입국)/.test(markdown)) {
     score = 80;
+  }
+  if (!/\d|[0-9]|~|-|USD|KRW|JPY|VND|\$/.test(first)) {
+    score = Math.min(score, 90);
   }
   return Math.min(100, score);
 }
@@ -375,7 +386,7 @@ function scoreFaithfulness(markdown: string, brief: BlogEngineV2Brief): number {
 function chooseFailureBucket(metrics: BlogEngineEvaluation['metrics']): BlogEngineFailureBucket {
   const entries = Object.entries(metrics) as Array<[keyof typeof metrics, number]>;
   const [lowestMetric, lowestScore] = entries.sort((a, b) => a[1] - b[1])[0];
-  if (lowestScore >= 80) return 'passed';
+  if (lowestScore >= 100) return 'passed';
   if (lowestMetric === 'source_support') return 'evidence_insufficient';
   if (lowestMetric === 'task_completion') return 'engine_task_incomplete';
   if (lowestMetric === 'customer_language') return 'customer_language';
@@ -396,25 +407,25 @@ function buildCategoryScores(
         ? '문의 전 판단 완성도'
         : '검색 의도 답변 완성도',
       score: metrics.task_completion,
-      passed: metrics.task_completion >= 80,
+      passed: metrics.task_completion >= 100,
     },
     {
       id: 'customer_language',
       label: '고객 언어와 한국어 자연스러움',
       score: metrics.customer_language,
-      passed: metrics.customer_language >= 80,
+      passed: metrics.customer_language >= 100,
     },
     {
       id: 'naturalness',
       label: 'AI 티/반복 템플릿 억제',
       score: metrics.naturalness,
-      passed: metrics.naturalness >= 80,
+      passed: metrics.naturalness >= 100,
     },
     {
       id: 'evidence_faithfulness',
       label: '근거 충실도와 출처 지원',
       score: Math.min(metrics.faithfulness, metrics.source_support),
-      passed: metrics.faithfulness >= 80 && metrics.source_support >= 80,
+      passed: metrics.faithfulness >= 100 && metrics.source_support >= 100,
     },
     {
       id: 'sales_pressure_control',
@@ -422,7 +433,7 @@ function buildCategoryScores(
         ? '과장/희소성 억제'
         : '정보성 상단 강CTA 억제',
       score: metrics.sales_pressure,
-      passed: metrics.sales_pressure >= 80,
+      passed: metrics.sales_pressure >= 100,
     },
   ];
 
@@ -431,7 +442,7 @@ function buildCategoryScores(
       id: 'product_decision_helpfulness',
       label: '상품 문의 전 판단 도움성',
       score: metrics.product_decision_helpfulness,
-      passed: metrics.product_decision_helpfulness >= 80,
+      passed: metrics.product_decision_helpfulness >= 100,
     });
   }
 
@@ -467,7 +478,7 @@ export function evaluateBlogEngineV2(input: BuildBriefInput): BlogEngineEvaluati
 
   return {
     score,
-    passed: score >= 80 && failure_bucket === 'passed' && category_scores.every((category) => category.passed),
+    passed: score === 100 && failure_bucket === 'passed' && category_scores.every((category) => category.passed),
     failure_bucket,
     category_scores,
     metrics,

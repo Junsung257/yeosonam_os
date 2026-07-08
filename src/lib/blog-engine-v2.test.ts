@@ -110,6 +110,45 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.category_scores.find((category) => category.id === 'evidence_faithfulness')?.passed).toBe(false);
   });
 
+  it('does not pass near-100 informational posts as publish-ready', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 세부 숙소 지역별 예산',
+        '',
+        '세부 숙소 지역별 예산은 여행 전에 전체 흐름을 알아두면 도움이 됩니다. 여러 조건이 달라질 수 있으므로 차분하게 살펴보는 것이 좋습니다.',
+        '',
+        '## 예산 비교표',
+        '| 항목 | 확인 기준 | 주의할 점 |',
+        '| --- | --- | --- |',
+        '| 숙소 | 위치와 조식 포함 여부 | 이동비가 달라질 수 있습니다. |',
+        '| 교통 | 공항 이동과 시내 이동 | 가족 여행은 차량 조건을 봐야 합니다. |',
+        '| 식사 | 1인 1끼 기준 | 리조트 안팎 가격이 다릅니다. |',
+        '',
+        '## 공식 확인',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
+      ].join('\n'),
+      primaryKeyword: '세부 숙소 지역별 예산',
+      destination: '세부',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '세부 숙소 지역별 예산은 어떻게 봐야 하나요?',
+          answer_first: '숙소 위치와 이동비를 먼저 나눠 봅니다.',
+          official_sources_required: true,
+        },
+        content_brief: {
+          search_intent: 'cost',
+          evidence: ['숙소 위치별 총액 비교 필요'],
+        },
+      },
+    });
+
+    expect(evaluation.score).toBeLessThan(100);
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('engine_task_incomplete');
+    expect(evaluation.category_scores.find((category) => category.id === 'reader_task_completion')?.passed).toBe(false);
+  });
+
   it('treats readable Korean opening CTA as sales pressure for info writer posts', () => {
     const evaluation = evaluateBlogEngineV2({
       blogHtml: [
