@@ -29,6 +29,18 @@ export type MobileProofRefreshCandidate = {
   priority: number;
 };
 
+export function parseMobileProofRefreshStatusFilter(
+  value: string | null | undefined,
+  fallback: readonly string[],
+): string[] {
+  const rawStatuses = String(value ?? '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+  const statuses = rawStatuses.length > 0 ? rawStatuses : [...fallback];
+  return [...new Set(statuses)];
+}
+
 function reasonFromDetail(detail: string): MobileProofRefreshReason {
   const text = detail.toLowerCase();
   if (text.includes('stale')) return 'stale';

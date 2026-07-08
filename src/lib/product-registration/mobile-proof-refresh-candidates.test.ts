@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyMobileProofRefreshCandidate,
+  parseMobileProofRefreshStatusFilter,
   selectMobileProofRefreshCandidates,
   summarizeMobileProofRefreshCandidates,
 } from './mobile-proof-refresh-candidates';
@@ -58,5 +59,13 @@ describe('mobile proof refresh candidates', () => {
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.id).toBe('stale');
+  });
+
+  it('parses explicit status filters without changing the safe default', () => {
+    expect(parseMobileProofRefreshStatusFilter(null, ['active', 'approved'])).toEqual(['active', 'approved']);
+    expect(parseMobileProofRefreshStatusFilter('pending_review,active,pending_review', ['active'])).toEqual([
+      'pending_review',
+      'active',
+    ]);
   });
 });

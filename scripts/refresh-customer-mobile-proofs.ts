@@ -7,6 +7,7 @@ import process from 'node:process';
 import { supabaseAdmin } from '../src/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
 import {
+  parseMobileProofRefreshStatusFilter,
   selectMobileProofRefreshCandidates,
   summarizeMobileProofRefreshCandidates,
   type MobileProofRefreshCandidate,
@@ -22,6 +23,7 @@ type Options = {
   batchSize: number;
   baseUrl: string;
   reasons: MobileProofRefreshReason[];
+  statusList: string[];
   skipAxe: boolean;
 };
 
@@ -65,16 +67,17 @@ function options(): Options {
     batchSize: numberArg('--batch-size', 20, 100),
     baseUrl: (argValue('--base') || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/+$/, ''),
     reasons: parseReasons(argValue('--reasons')),
+    statusList: parseMobileProofRefreshStatusFilter(argValue('--status'), CUSTOMER_VISIBLE_STATUSES),
     skipAxe: hasFlag('--skip-axe'),
   };
 }
 
-async function loadPublicRows(limit: number): Promise<MobileProofRefreshCandidateRow[]> {
+async function loadRows(limit: number, statusList: string[]): Promise<MobileProofRefreshCandidateRow[]> {
   const scanLimit = Math.max(500, limit * 10, limit);
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select('id,internal_code,title,status,updated_at,audit_report')
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+    .in('status', statusList)
     .order('updated_at', { ascending: false })
     .limit(scanLimit);
   if (error) throw new Error(error.message);
@@ -118,7 +121,7 @@ function runProofBatch(input: { batch: MobileProofRefreshCandidate[]; options: O
 
 async function main() {
   const opts = options();
-  const rows = await loadPublicRows(opts.limit);
+  const rows = await loadRows(opts.limit, opts.statusList);
   const candidates = selectMobileProofRefreshCandidates(rows, {
     limit: opts.limit,
     reasons: opts.reasons,
@@ -132,6 +135,7 @@ async function main() {
     checkedAt: new Date().toISOString(),
     mode: opts.apply ? 'apply' : 'dry-run',
     baseUrl: opts.baseUrl,
+    statusFilter: opts.statusList,
     summary,
     candidates: opts.summaryOnly ? [] : candidates.map(candidate => ({
       id: candidate.id,
@@ -149,7 +153,7 @@ async function main() {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log('[mobile-proof-refresh]');
-    console.log(`mode=${report.mode} candidates=${summary.total}`);
+    console.log(`mode=${report.mode} candidates=${summary.total} status=${opts.statusList.join(',')}`);
     console.log(`byReason=${JSON.stringify(summary.byReason)}`);
     for (const candidate of report.candidates.slice(0, 20)) {
       console.log(`- ${candidate.internalCode ?? candidate.id} ${candidate.reason}: ${candidate.detail}`);
