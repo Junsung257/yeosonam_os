@@ -414,7 +414,7 @@ export async function runUnmatchedClassification(options: {
   let updated = 0;
   let autoAdded = 0;
   let autoIgnored = 0;
-  let aliasAdded = 0;
+  const aliasAdded = 0;
 
   for (const row of rows) {
     try {
