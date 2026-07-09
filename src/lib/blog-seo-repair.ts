@@ -36,6 +36,7 @@ function buildTitle(input: BlogSeoMetadataRepairInput): string {
   const keyword = pickKeyword(input);
   const intent = pickIntentTerm(input);
   const candidates = [
+    `${keyword} 여행 준비 체크리스트와 비교 기준 2026`,
     `${keyword} 2026 ${intent}`,
     `${keyword} ${intent}, 2026 기준`,
     `${keyword} 체크리스트 | 비용·일정·주의사항`,

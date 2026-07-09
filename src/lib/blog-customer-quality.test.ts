@@ -31,6 +31,88 @@ describe('inspectBlogCustomerQuality', () => {
     expect(report.issues.map((issue) => issue.code)).toContain('generic_answer_opening');
   });
 
+  it('blocks chatty blog intros that delay the answer-first promise', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      blogHtml: [
+        '# 몽골 7월 날씨',
+        '',
+        '몽골 7월은 낮 25~30도, 밤 10도 안팎까지 떨어질 수 있어 얇은 긴팔과 플리스, 방수 재킷을 함께 챙기는 편이 안전합니다.',
+        '',
+        '안녕하세요, 소중한 여행을 계획하시는 여러분. 7월 몽골은 초원이 가장 푸른 시기라 더없이 좋지만, 날씨가 자주 바뀌어 준비가 중요합니다.',
+        '',
+        '## 기온과 옷차림',
+        '',
+        '| 구분 | 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 낮 | 25~30도 | 얇은 긴팔 |',
+        '| 밤 | 10도 안팎 | 플리스 |',
+        '| 비 | 짧은 소나기 | 방수 재킷 |',
+        '',
+        '- 외교부 해외안전여행 기준으로 출발 전 안전 공지를 확인합니다.',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('chatty_intro_residue');
+  });
+
+  it('blocks empty CTA residue that lost its button or link target', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      blogHtml: [
+        '# 몽골 7월 날씨',
+        '',
+        '몽골 7월은 낮 25~30도, 밤 10도 안팎까지 떨어질 수 있어 반팔보다 얇은 긴팔과 플리스, 방수 재킷을 함께 챙기는 편이 안전합니다.',
+        '',
+        '지금 바로 를 클릭해 꿈같은 몽골 여행을 시작해 보세요.',
+        '',
+        '## 기온과 옷차림',
+        '',
+        '| 구분 | 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 낮 | 25~30도 | 얇은 긴팔 |',
+        '| 밤 | 10도 안팎 | 플리스 |',
+        '| 비 | 짧은 소나기 | 방수 재킷 |',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('empty_cta_residue');
+  });
+
+  it('blocks destinationless local labels when a concrete destination exists', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '몽골 준비물',
+      destination: '몽골',
+      blogHtml: [
+        '# 몽골 준비물',
+        '',
+        '몽골 여행은 낮과 밤 기온 차이가 커서 겉옷, 방수 재킷, 보조배터리, 비상약을 먼저 챙겨야 현지에서 불편을 줄일 수 있습니다.',
+        '',
+        '## 준비 순서',
+        '',
+        '- 현지 비용: 출발 전 추가 비용을 확인합니다.',
+        '- 현지 준비물: 계절과 고도 차이에 맞춰 챙깁니다.',
+        '- 현지 예약: 이동 동선과 취소 조건을 확인합니다.',
+        '',
+        '| 구분 | 확인 | 이유 |',
+        '| --- | --- | --- |',
+        '| 옷 | 겉옷 | 밤 기온 대비 |',
+        '| 비 | 우비 | 소나기 대비 |',
+        '| 전원 | 보조배터리 | 게르 숙소 대비 |',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('destination_generic_residue');
+  });
+
   it('blocks product copy with duplicate price suffix and repeated consultation fallback', () => {
     const report = inspectBlogCustomerQuality({
       blogType: 'product',
@@ -117,6 +199,27 @@ describe('inspectBlogCustomerQuality', () => {
 
     expect(report.passed).toBe(false);
     expect(report.issues.map((issue) => issue.code)).toContain('table_render_risk');
+  });
+
+  it('allows fit and non-fit consultation lists without treating them as broken tables', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '몽골 여행 예산',
+      destination: '몽골',
+      blogHtml: [
+        '# 몽골 여행 예산',
+        '',
+        '몽골 여행 예산은 식사, 이동, 선택 관광을 나눠 보면 실제 지출을 더 현실적으로 잡을 수 있습니다.',
+        '',
+        '## 맞는 사람과 안 맞는 사람',
+        '',
+        '- 맞는 사람: 이동 동선과 안전 변수를 먼저 줄이고 싶은 분.',
+        '- 안 맞는 사람: 숙소와 이동을 모두 직접 조합하고 싶은 분.',
+        '- 보류할 것: 출발일과 항공 시간이 확정되기 전에는 총액을 확정하지 않습니다.',
+      ].join('\n'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('table_render_risk');
   });
 
   it('blocks readable Korean weather guides that open with reservation or cost copy', () => {

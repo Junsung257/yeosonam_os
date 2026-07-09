@@ -507,8 +507,7 @@ function softenUnsupportedYeosonamDataClaims(markdown: string): { text: string; 
   const plain = stripMarkup(markdown);
   const hasUnsupportedClaim =
     UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain) || READABLE_UNSUPPORTED_YEOSONAM_DATA_CLAIM_RE.test(plain);
-  const hasEvidence = YEOSONAM_DATA_EVIDENCE_RE.test(plain) || READABLE_YEOSONAM_DATA_EVIDENCE_RE.test(plain);
-  if (!hasUnsupportedClaim || hasEvidence) {
+  if (!hasUnsupportedClaim) {
     return { text: markdown, changed: false };
   }
 
@@ -1223,6 +1222,20 @@ function repairCustomerVisiblePlaceholderCopy(markdown: string): { text: string;
   return { text, changed: text !== before };
 }
 
+function repairCommonParticleMisuse(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .replace(/여부을/g, '여부를')
+    .replace(/연휴을/g, '연휴를')
+    .replace(/유심을을/g, '유심을')
+    .replace(/데이터을/g, '데이터를')
+    .replace(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/g, (match, word: string, particleValue: string) => {
+      if (hasFinalConsonant(word) !== false) return match;
+      return `${word}${particleValue === '은' ? '는' : '를'}`;
+    });
+  return { text, changed: text !== before };
+}
+
 export function normalizeBlogVisualAccents(markdown: string): { text: string; changed: boolean } {
   const before = markdown;
   const text = markdown
@@ -1286,6 +1299,70 @@ function buildWeatherAnswerFirstIntro(input: BlogEditorialRepairInput): string {
   return `${keyword}에서 핵심은 낮 기온만 보는 것이 아닙니다. ${destination} 여행은 아침·저녁 기온 차이, 비 예보, 이동 동선을 함께 보고 얇은 긴팔과 바람막이, 비 대비 용품을 준비하는 편이 안전합니다.`;
 }
 
+function buildReadableWeatherAnswerFirstIntro(input: BlogEditorialRepairInput): string {
+  const keyword = (input.primaryKeyword || input.title || '여행 날씨와 옷차림').replace(/\s+/g, ' ').trim();
+  const destination = (input.destination || keyword.split(/\s+/)[0] || '여행지').replace(/\s+/g, ' ').trim();
+  return `${keyword}은 낮과 밤 기온, 비 예보, 일교차를 먼저 봐야 옷차림 실수를 줄일 수 있습니다. ${destination} 출발 전에는 아래 체크리스트 기준으로 얇은 겉옷, 방수용품, 자외선 차단, 여벌 옷을 일정과 이동 동선에 맞춰 나눠 준비하세요.`;
+}
+
+function repairWeatherAnswerFirstLead(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const weatherTopic = /weather|날씨|옷차림|월별\s*날씨|기온|강수|우기|건기|일교차/i.test(
+    `${input.primaryKeyword || ''} ${input.title || ''} ${input.category || ''} ${input.slug || ''}`,
+  );
+  if (!weatherTopic) return { text: markdown, changed: false };
+
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (h1Index < 0) return { text: markdown, changed: false };
+
+  let leadStart = h1Index + 1;
+  while (leadStart < lines.length && lines[leadStart]?.trim() === '') leadStart += 1;
+  if (leadStart >= lines.length || /^#{2,6}\s+\S/.test(lines[leadStart]?.trim() ?? '')) {
+    return { text: markdown, changed: false };
+  }
+
+  let leadEnd = leadStart + 1;
+  while (leadEnd < lines.length && lines[leadEnd]?.trim() !== '') leadEnd += 1;
+
+  const lead = lines.slice(leadStart, leadEnd).join(' ').replace(/\s+/g, ' ').trim();
+  const hasWrongLead = /일정,\s*비용,\s*이동|비용,\s*이동|현지\s*결제|예약|상품|상담|포함\/불포함|예산\s*범위|이동\s*순서/i.test(lead.slice(0, 180));
+  if (!hasWrongLead) return { text: markdown, changed: false };
+
+  lines.splice(leadStart, leadEnd - leadStart, buildReadableWeatherAnswerFirstIntro(input));
+  return {
+    text: lines.join('\n').replace(/\n{3,}/g, '\n\n'),
+    changed: true,
+  };
+}
+
+function ensureWeatherChecklistList(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  const weatherTopic = /weather|날씨|옷차림|월별\s*날씨|기온|강수|우기|건기|일교차/i.test(
+    `${input.primaryKeyword || ''} ${input.title || ''} ${input.category || ''} ${input.slug || ''}`,
+  );
+  if (!weatherTopic) return { text: markdown, changed: false };
+  if (!/checklist|체크\s*리스트|체크리스트/i.test(`${input.primaryKeyword || ''} ${input.title || ''} ${markdown.slice(0, 900)}`)) {
+    return { text: markdown, changed: false };
+  }
+  if (/^##\s+.*(?:체크리스트|준비물|확인\s*목록)[\s\S]{0,420}(?:^|\n)\s*[-*]\s+\S[\s\S]{0,420}(?:^|\n)\s*[-*]\s+\S[\s\S]{0,420}(?:^|\n)\s*[-*]\s+\S/m.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const destination = (input.destination || input.primaryKeyword || '여행지').replace(/\s+/g, ' ').trim();
+  const block = [
+    '',
+    '## 출발 전 날씨 준비물 체크리스트',
+    '',
+    `- ${destination} 출발 7일 전에는 낮·밤 기온과 비 예보를 함께 확인합니다.`,
+    '- 얇은 겉옷, 우산 또는 우비, 방수 가방을 일정 중 바로 꺼낼 수 있게 나눠 담습니다.',
+    '- 강한 햇볕에 대비해 선크림, 모자, 선글라스, 보습제를 따로 챙깁니다.',
+    '- 밤 일정이나 장거리 이동이 있으면 여벌 양말과 가벼운 방풍 겉옷을 추가합니다.',
+    '- 출발 24시간 전에는 항공 운항, 현지 교통, 공식 안전 안내를 다시 확인합니다.',
+    '',
+  ].join('\n');
+
+  return { text: `${markdown.trimEnd()}\n${block}`.replace(/\n{4,}/g, '\n\n\n'), changed: true };
+}
+
 function repairArticleQualityV2Surface(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
   const before = markdown;
   const isWeatherInfo = /날씨|옷차림|준비물|체크리스트|weather|packing/i.test(
@@ -1300,6 +1377,7 @@ function repairArticleQualityV2Surface(markdown: string, input: BlogEditorialRep
     .replace(/일정은은/g, '일정은')
     .replace(/여행을 즐길 수 있는하기/g, '여행하기')
     .replace(/이 정보는\s*20\d{2}년\s*\d{1,2}월\s*\d{1,2}일\s*확인\s*기준으로\s*작성되었습니다\.?/g, '출발 전에는 공식 예보와 예약 조건을 다시 확인하세요.')
+    .replace(/20\d{2}년\s*\d{1,2}월\s*\d{1,2}일\s*확인\s*기준(?:으로\s*작성되었습니다\.?)?/g, '출발 전 공식 안내 확인 기준')
     .replace(/여소남\s*내부\s*(?:상품|예약|상품\s*\/\s*예약)\s*데이터\s*기준[,，]?\s*/g, '')
     .split('\n')
     .map((line) => {
@@ -1317,7 +1395,11 @@ function repairArticleQualityV2Surface(markdown: string, input: BlogEditorialRep
       return line;
     });
 
-  const text = lines.join('\n').replace(/\n{4,}/g, '\n\n\n');
+  let text = lines.join('\n').replace(/\n{4,}/g, '\n\n\n');
+  const readableWeatherLead = repairWeatherAnswerFirstLead(text, input);
+  if (readableWeatherLead.changed) text = readableWeatherLead.text;
+  const weatherChecklist = ensureWeatherChecklistList(text, input);
+  if (weatherChecklist.changed) text = weatherChecklist.text;
   return { text, changed: text !== before };
 }
 
@@ -1482,6 +1564,47 @@ function ensurePublishChecklist(markdown: string, input: BlogEditorialRepairInpu
   }
 
   return { text: `${markdown.trimEnd()}\n${block}`, changed: true };
+}
+
+function repairWeakChecklistSection(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  if (!hasChecklistIntent(markdown, input) || !hasChecklistHeading(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const lines = markdown.split('\n');
+  const headingIndex = lines.findIndex((line) =>
+    /^#{2,3}\s+.*(?:checklist|packing\s+list|체크리스트|준비물|필수\s*아이템|확인\s*목록)/i.test(line.trim()),
+  );
+  if (headingIndex < 0) return { text: markdown, changed: false };
+
+  let cursor = headingIndex + 1;
+  const sectionLines: string[] = [];
+  while (cursor < lines.length && !/^#{1,3}\s+\S/.test((lines[cursor] ?? '').trim())) {
+    sectionLines.push(lines[cursor] ?? '');
+    cursor += 1;
+  }
+
+  const itemCount = sectionLines.filter((line) => /^\s*[-*]\s+\S/.test(line.trim())).length;
+  const collapsedItem = sectionLines.some((line) => /\s\d{1,2}\.\s+\S/.test(line) && line.length > 120);
+  if (itemCount >= 3 && !collapsedItem) return { text: markdown, changed: false };
+
+  const keyword = input.primaryKeyword || input.title || '여행 준비';
+  const additions = [
+    '',
+    `- ${keyword} 일정은 항공, 숙소, 이동 시간을 함께 비교합니다.`,
+    '- 여권, 입국 서류, 예약 번호는 출발 전 다시 확인합니다.',
+    '- 현지 날씨, 결제 수단, 통신 준비는 따로 목록으로 저장합니다.',
+    '- 취소 규정, 추가 비용, 비상 연락처는 동행자와 공유합니다.',
+    '',
+  ];
+
+  const next = [
+    ...lines.slice(0, headingIndex + 1),
+    ...additions,
+    ...lines.slice(headingIndex + 1),
+  ].join('\n').replace(/\n{4,}/g, '\n\n\n');
+
+  return { text: next, changed: next !== markdown };
 }
 
 function ensureComparisonDecisionBlock(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
@@ -2241,7 +2364,7 @@ function repairKeywordDensityToTargetLegacy(
   }
 
   const words = keyword.split(/\s+/).filter(Boolean);
-  const replacement = words.length > 1 ? words[words.length - 1] : '여행지';
+  const replacement = words.length > 1 ? words[words.length - 1] : '이곳';
   let seen = 0;
   const blogHtml = markdown.replace(pattern, () => {
     seen += 1;
@@ -2291,7 +2414,7 @@ export function repairKeywordDensityToTarget(
   }
 
   const words = keyword.split(/\s+/).filter(Boolean);
-  const replacement = words.length > 1 ? words[words.length - 1] : '현지';
+  const replacement = words.length > 1 ? words[words.length - 1] : '이곳';
   const gateMaxDensity = blogType === 'info' ? 1.8 : 2.5;
   const renderWithKeepCount = (keepCount: number) => {
     let seen = 0;
@@ -2345,6 +2468,9 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (articleQualityV2Repair.changed) {
     blogHtml = articleQualityV2Repair.text;
     changes.push('repaired_article_quality_v2_surface');
+    if (/weather|날씨|옷차림|월별\s*날씨|기온|강수|우기|건기|일교차/i.test(`${input.primaryKeyword || ''} ${input.title || ''} ${input.category || ''} ${input.slug || ''}`)) {
+      changes.push('repaired_generic_answer_opening');
+    }
   }
 
   const generatedImageContextRepair = repairGeneratedImageContext(blogHtml, input);
@@ -2419,6 +2545,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('repaired_customer_visible_placeholder_copy');
   }
 
+  const particleRepair = repairCommonParticleMisuse(blogHtml);
+  if (particleRepair.changed) {
+    blogHtml = particleRepair.text;
+    changes.push('repaired_common_particle_misuse');
+  }
+
   const toneRepair = softenPromotionalInfoTone(blogHtml);
   if (toneRepair.changed) {
     blogHtml = toneRepair.text;
@@ -2475,6 +2607,12 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (publishChecklistRepair.changed) {
     blogHtml = publishChecklistRepair.text;
     changes.push('added_publish_checklist');
+  }
+
+  const weakChecklistRepair = repairWeakChecklistSection(blogHtml, input);
+  if (weakChecklistRepair.changed) {
+    blogHtml = weakChecklistRepair.text;
+    changes.push('repaired_weak_checklist_section');
   }
 
   const comparisonDecisionRepair = ensureComparisonDecisionBlock(blogHtml, input);
@@ -2631,6 +2769,14 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   if (publicLinksRepaired !== blogHtml) {
     blogHtml = publicLinksRepaired;
     changes.push('repaired_public_link_surface');
+  }
+
+  const finalWeakChecklistRepair = repairWeakChecklistSection(blogHtml, input);
+  if (finalWeakChecklistRepair.changed) {
+    blogHtml = finalWeakChecklistRepair.text;
+    if (!changes.includes('repaired_weak_checklist_section')) {
+      changes.push('repaired_weak_checklist_section');
+    }
   }
 
   const after = inspectBlogIntentQuality({ ...input, blogHtml });
@@ -2857,6 +3003,9 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (articleQualityV2Repair.changed) {
     blogHtml = articleQualityV2Repair.text;
     changes.push('repaired_article_quality_v2_surface');
+    if (/weather|날씨|옷차림|월별\s*날씨|기온|강수|우기|건기|일교차/i.test(`${input.primaryKeyword || ''} ${input.title || ''} ${input.category || ''} ${input.slug || ''}`)) {
+      changes.push('repaired_generic_answer_opening');
+    }
   }
 
   const generatedImageContextRepair = repairGeneratedImageContext(blogHtml, input);
@@ -2929,6 +3078,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
   if (customerPlaceholderRepair.changed) {
     blogHtml = customerPlaceholderRepair.text;
     changes.push('repaired_customer_visible_placeholder_copy');
+  }
+
+  const particleRepair = repairCommonParticleMisuse(blogHtml);
+  if (particleRepair.changed) {
+    blogHtml = particleRepair.text;
+    changes.push('repaired_common_particle_misuse');
   }
 
   const yeosonamDataRepair = softenUnsupportedYeosonamDataClaims(blogHtml);

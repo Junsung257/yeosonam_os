@@ -64,6 +64,7 @@ export default function InlineRelated({
 
   return (
     <aside
+      data-related-posts="inline"
       className="not-prose my-12 rounded-2xl border border-blue-200 bg-gradient-to-br from-brand-light/50 to-blue-50/30 p-5 md:p-6"
       aria-label="함께 보면 좋은 여행"
     >

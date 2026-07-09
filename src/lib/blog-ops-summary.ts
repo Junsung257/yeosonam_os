@@ -9,6 +9,7 @@ import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-ca
 import { evaluateCurrentDayPublisherHealth } from '@/lib/blog-current-day-publisher-health';
 import { classifyDestinationlessInfoCandidate } from '@/lib/blog-destinationless-info';
 import { evaluateBlogEngineV2 } from '@/lib/blog-engine-v2';
+import { inspectBlogFleetPhraseDrift } from '@/lib/blog-fleet-phrase-drift';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -650,11 +651,22 @@ export async function buildBlogOpsSummary(supabase: any) {
   const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
     posts: [...publishedRows.slice(0, 8), ...productGeneratedCanaryRows],
     requested: generatedCanaryRequested,
+    writerMixRequired: productGeneratedCanaryRows.length > 0,
   });
+  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(
+    publishedRows.slice(0, 100).map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      blog_html: row.blog_html,
+      writer_type: row.generation_meta?.writer as string | null | undefined,
+    })),
+  );
   const canaryLevel: BlogOpsLevel = canaryPreflight.status === 'block' ? 'risk' : canaryPreflight.status === 'warn' ? 'watch' : 'healthy';
   const generatedCanaryLevel: BlogOpsLevel = generatedCanaryQuality.status === 'block' ? 'risk' : generatedCanaryQuality.status === 'warn' ? 'watch' : 'healthy';
+  const fleetPhraseLevel: BlogOpsLevel = fleetPhraseDrift.status === 'block' ? 'risk' : fleetPhraseDrift.status === 'warn' ? 'watch' : 'healthy';
   const candidateContractLevel: BlogOpsLevel = candidateContractBlocked > 0 ? 'watch' : 'healthy';
-  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, generatedCanaryLevel, currentDayPublisherLevel, candidateContractLevel);
+  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, generatedCanaryLevel, fleetPhraseLevel, currentDayPublisherLevel, candidateContractLevel);
 
   const nextActions: Array<{ severity: BlogOpsLevel; title: string; detail: string; href: string; action?: string }> = [];
   if (publishedToday < dailyTarget) {
@@ -719,6 +731,21 @@ export async function buildBlogOpsSummary(supabase: any) {
       severity: generatedCanaryLevel,
       title: '상품/정보성 생성 샘플 검증 보강',
       detail: generatedCanaryQuality.next_action,
+      href: '/admin/blog/system',
+    });
+  }
+  if (fleetPhraseDrift.status === 'block') {
+    nextActions.unshift({
+      severity: fleetPhraseLevel,
+      title: '최근 글 말투 반복 차단',
+      detail: fleetPhraseDrift.summary,
+      href: '/admin/blog/system',
+    });
+  } else if (fleetPhraseDrift.status === 'warn') {
+    nextActions.push({
+      severity: fleetPhraseLevel,
+      title: '최근 글 말투 반복 주의',
+      detail: fleetPhraseDrift.next_action,
       href: '/admin/blog/system',
     });
   }
@@ -813,6 +840,7 @@ export async function buildBlogOpsSummary(supabase: any) {
         ...(preflight.status === 'block' ? ['publish_preflight_blocked'] : []),
         ...(canaryPreflight.status === 'block' ? ['canary_candidates_unavailable'] : []),
         ...(generatedCanaryQuality.status === 'block' ? ['generated_canary_quality_failed'] : []),
+        ...(fleetPhraseDrift.status === 'block' ? ['fleet_phrase_drift'] : []),
         ...(currentDayPublisherHealth.status === 'risk' ? ['current_day_publisher_failure'] : []),
         ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
       ],
@@ -834,11 +862,12 @@ export async function buildBlogOpsSummary(supabase: any) {
         ],
       },
       quality: {
-        level: maxLevel(qualityLevel, generatedCanaryLevel),
-        failed: qualitySummary.non_slug_failure_count > 0 || generatedCanaryQuality.status === 'block',
+        level: maxLevel(qualityLevel, generatedCanaryLevel, fleetPhraseLevel),
+        failed: qualitySummary.non_slug_failure_count > 0 || generatedCanaryQuality.status === 'block' || fleetPhraseDrift.status === 'block',
         checks: [
           ...Object.keys(qualitySummary.buckets),
           ...(generatedCanaryQuality.status === 'block' ? ['generated_canary_quality_failed'] : []),
+          ...(fleetPhraseDrift.status === 'block' ? ['fleet_phrase_drift'] : []),
         ],
       },
       indexing: {
@@ -901,6 +930,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       low_quality_recent: lowQualityRecent,
       summary: qualitySummary,
       engine_category_scorecard: engineCategoryScorecard,
+      fleet_phrase_drift: fleetPhraseDrift,
       failure_buckets: qualitySummary.buckets,
       non_slug_failures: qualitySummary.non_slug_failure_count,
       slug_only_failures: qualitySummary.slug_only_failure_count,

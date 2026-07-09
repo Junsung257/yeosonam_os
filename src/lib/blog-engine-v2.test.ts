@@ -74,6 +74,69 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.failure_bucket).toBe('evidence_insufficient');
   });
 
+  it('treats customer travel need openings as complete answer-first intros', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 해외여행 보험 꼭 필요한가요?',
+        '',
+        '해외여행 보험은 출발 전 항공 지연, 병원 이용, 수하물 분실, 현지 결제 가능 범위를 먼저 나눠 보면 필요 여부를 판단하기 쉽습니다. 여행 기간, 동행자 나이, 기존 카드 보험, 목적지 의료비를 확인한 뒤 부족한 보장만 추가하세요.',
+        '',
+        '## 보험 판단표',
+        '| 상황 | 먼저 볼 것 | 메모 |',
+        '| --- | --- | --- |',
+        '| 가족여행 | 병원비와 동행자 나이 | 보장 한도를 확인합니다. |',
+        '| 짧은 일정 | 항공 지연과 수하물 | 카드 보험과 중복을 봅니다. |',
+        '| 장거리 | 의료비와 긴급 연락 | 목적지 의료비를 확인합니다. |',
+        '',
+        '## 공식 확인',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
+      ].join('\n'),
+      primaryKeyword: '해외여행 보험',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '해외여행 보험은 꼭 필요한가요?',
+          official_sources_required: true,
+        },
+      },
+    });
+
+    expect(evaluation.category_scores.find((category) => category.id === 'reader_task_completion')?.score).toBe(100);
+  });
+
+  it('does not treat hero image alt text as the answer-first paragraph', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 시드니 7월 날씨',
+        '',
+        '![시드니 여행 이미지](https://images.example.com/sydney.jpg)',
+        '',
+        '시드니 7월 날씨는 겨울 기준으로 낮 기온, 비 예보, 바람을 함께 봐야 합니다. 출발 7일 전에는 겉옷과 방수용품, 실내외 이동 시간을 다시 확인하세요.',
+        '',
+        '## 월별 날씨 체크표',
+        '',
+        '| 구간 | 날씨 포인트 | 옷차림 준비 |',
+        '| --- | --- | --- |',
+        '| 7월 | 겨울이라 아침저녁이 쌀쌀합니다. | 겉옷을 준비합니다. |',
+        '| 비 예보 | 이동 동선에 영향을 줄 수 있습니다. | 우산을 챙깁니다. |',
+        '| 바람 | 해안가 체감온도가 낮을 수 있습니다. | 방풍 겉옷을 챙깁니다. |',
+        '',
+        '## 공식 확인',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
+      ].join('\n'),
+      primaryKeyword: '시드니',
+      destination: '시드니',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+        content_brief: { search_intent: 'weather' },
+      },
+    });
+
+    expect(evaluation.metrics.task_completion).toBe(100);
+    expect(evaluation.passed).toBe(true);
+  });
+
   it('requires external source evidence when an info brief marks official sources required', () => {
     const evaluation = evaluateBlogEngineV2({
       blogHtml: [
@@ -185,6 +248,48 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.passed).toBe(false);
     expect(evaluation.failure_bucket).toBe('sales_pressure');
     expect(evaluation.metrics.sales_pressure).toBe(35);
+  });
+
+  it('allows a bottom-soft CTA when the final surface repair demotes the heading to a bold label', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 몽골 7월 날씨와 옷차림',
+        '',
+        '몽골 7월 날씨는 낮과 밤의 기온 차이, 소나기 가능성, 차량 이동 시간을 먼저 나눠 보면 준비물이 분명해집니다.',
+        '',
+        '## 날씨 판단 기준',
+        '| 항목 | 확인 기준 | 주의할 점 |',
+        '| --- | --- | --- |',
+        '| 낮 | 햇볕과 자외선 | 얇은 긴팔을 준비합니다. |',
+        '| 밤 | 일교차 | 방풍 겉옷을 챙깁니다. |',
+        '| 비 | 소나기 | 우비와 방수팩을 챙깁니다. |',
+        '',
+        '## 공식 확인',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
+        '',
+        '**여행 상품과 함께 확인하기**',
+        '',
+        '- [현재 판매 중인 여행상품 보기](/packages?destination=mongolia)',
+        '- [내 일정에 맞는 상품 상담하기](/group-inquiry)',
+      ].join('\n'),
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '몽골 7월 날씨와 옷차림은 어떻게 준비하나요?',
+          answer_first: '낮과 밤의 기온 차이, 소나기 가능성, 차량 이동 시간을 나눠 봅니다.',
+          official_sources_required: true,
+        },
+        content_brief: {
+          search_intent: 'weather',
+          evidence: ['기상 정보 확인 필요'],
+        },
+      },
+    });
+
+    expect(evaluation.metrics.sales_pressure).toBe(100);
+    expect(evaluation.category_scores.find((category) => category.id === 'sales_pressure_control')?.passed).toBe(true);
   });
 
   it('blocks customer-language defects that make otherwise structured posts feel machine-written', () => {
@@ -329,5 +434,27 @@ describe('blog engine v2 evaluation', () => {
       product_id: 'pkg_123',
     });
     expect(brief.evidence_items.some((item) => item.kind === 'product_db')).toBe(true);
+  });
+
+  it('scores the first body paragraph instead of the H1 title', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 7월 호주 시드니 여행, 한국과 반대! 겨울 날씨와 즐길 거리',
+        '',
+        '시드니 날씨는 낮 최고기온보다 일교차, 비 예보, 이동 동선을 함께 봐야 합니다. 출발 7일 전에는 겉옷·방수용품·자외선 차단 품목을 다시 확인하는 편이 좋습니다.',
+        '',
+        '## 월별 날씨 체크표',
+        '',
+        '| 구간 | 확인 포인트 | 옷차림 준비 |',
+        '| --- | --- | --- |',
+        '| 6~8월 | 우기·강수 가능성 확인 | 우산, 방수 가방, 통풍 옷 |',
+      ].join('\n'),
+      primaryKeyword: '시드니',
+      destination: '시드니',
+      contentType: 'guide',
+      generationMeta: { writer: 'info_writer' },
+    });
+
+    expect(evaluation.metrics.task_completion).toBe(100);
   });
 });

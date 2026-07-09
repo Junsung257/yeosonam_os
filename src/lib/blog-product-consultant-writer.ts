@@ -59,7 +59,7 @@ function firstSentence(input: {
   priceText: string;
   fitFor: string;
 }): string {
-  return `${input.departure} 출발 ${input.destination} ${input.duration} 상품은 ${input.priceText} 기준으로 먼저 보고, ${input.fitFor}에게 맞는지까지 함께 확인해야 합니다.`;
+  return `${input.departure} 출발 ${input.destination} ${input.duration} 상품은 ${input.priceText} 기준으로 보되, ${input.fitFor}에게 일정이 무리 없는지까지 같이 보면 좋아요.`;
 }
 
 export function generateProductConsultantBlogPost(
@@ -88,7 +88,7 @@ export function generateProductConsultantBlogPost(
   const opening = [
     firstSentence({ destination, duration, departure, priceText, fitFor }),
     `같은 ${duration}이라도 출발일, 항공, 객실, 포함 항목에 따라 실제 결제 금액은 달라질 수 있습니다.`,
-    `아래 내용은 등록된 상품 정보 기준으로 정리했고, 호텔명이나 확정 혜택처럼 상품 DB에 없는 내용은 만들지 않았습니다.`,
+    '아래 내용은 등록된 상품 정보 기준으로만 정리했습니다. 호텔명이나 확정 혜택처럼 상품 DB에 없는 내용은 임의로 만들지 않았어요.',
   ].join('\n\n');
 
   return [
@@ -116,7 +116,7 @@ export function generateProductConsultantBlogPost(
     '',
     itinerary.length > 0
       ? itinerary.map((item, index) => `- ${index + 1}일차: ${item}`).join('\n')
-      : '- 일차별 상세 코스가 비어 있다면 항공 시간, 숙소 위치, 장거리 이동 구간부터 확인해야 합니다.',
+      : '- 일차별 상세 코스가 비어 있다면 항공 시간, 숙소 위치, 장거리 이동 구간부터 먼저 확인하는 것이 좋습니다.',
     '',
     highlights.length > 0 ? '### 먼저 볼 포인트' : '',
     highlights.length > 0 ? list(highlights, '상품 핵심 포인트는 상담 시점에 다시 확인합니다.') : '',
@@ -138,25 +138,25 @@ export function generateProductConsultantBlogPost(
     '',
     '## 문의 전 질문',
     '',
-    list(brief.consult_questions, '출발일과 인원 기준 가능 여부를 확인합니다.'),
+    list(brief.consult_questions, '출발일과 인원 기준 가능 여부를 확인해요.'),
     '',
     '## 자주 묻는 질문',
     '',
     `Q. ${destination} ${duration} 가격은 확정인가요?`,
     'A. 표시 금액은 시작가 기준입니다. 출발일, 좌석, 객실 조건, 유류할증료에 따라 달라질 수 있습니다.',
     '',
-    'Q. 포함/불포함은 어디를 보면 되나요?',
+    'Q. 포함/불포함은 어디를 먼저 보면 되나요?',
     'A. 위 표의 포함/불포함을 먼저 보고, 개인경비와 선택관광은 문의 전에 다시 확인하는 편이 안전합니다.',
     '',
     'Q. 일정 강도는 어떻게 판단하나요?',
-    'A. 이동 시간, 자유시간, 숙소 위치를 함께 보면 동행자에게 맞는지 판단하기 쉽습니다.',
+    'A. 이동 시간, 자유시간, 숙소 위치를 함께 보면 동행자에게 맞는지 판단하기 쉬워요.',
     '',
     '공식 출입국과 항공 조건은 아래 자료에서 함께 확인하세요.',
     '',
     '- [외교부 해외안전여행](https://www.0404.go.kr/)',
     '- [IATA Travel Centre](https://www.iatatravelcentre.com/)',
     '',
-    '### 내 출발일 기준으로 확인',
+    '### 이 출발일 기준으로 확인',
     '',
     `- [상품 조건 먼저 보기](${packageUrl(product.id)})`,
     `- [출발일과 인원 기준 가능 여부 확인](${inquiryUrl(product.id)})`,

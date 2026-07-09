@@ -377,6 +377,35 @@ function sanitizeServerBlogHtml(html: string): string {
     .replace(/<\/h1>/gi, '</h2>');
 }
 
+function normalizeHeadingTextForCompare(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|\u00a0/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/[^\p{L}\p{N}\uac00-\ud7a3]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function stripDuplicateBodyTitleHeading(html: string, pageTitle: string): string {
+  const titleSignature = normalizeHeadingTextForCompare(pageTitle);
+  if (!titleSignature) return html;
+
+  return html.replace(
+    /^\s*<h2\b([^>]*)>([\s\S]*?)<\/h2>\s*/i,
+    (match, attrs: string, headingHtml: string) => {
+      const headingSignature = normalizeHeadingTextForCompare(headingHtml);
+      if (!headingSignature) return match;
+      const isSameTitle =
+        headingSignature === titleSignature ||
+        headingSignature.includes(titleSignature) ||
+        titleSignature.includes(headingSignature);
+      return isSameTitle ? '' : `<h2${attrs}>${headingHtml}</h2>`;
+    },
+  );
+}
+
 // ── 데이터 페칭 ──────────────────────────────────────────────
 async function getPost(slug: string): Promise<BlogPost | null> {
   if (!isSupabaseConfigured) return null;
@@ -1094,7 +1123,7 @@ async function renderBlogDetail({
     // blog_html은 "마크다운 + 일부 안전한 HTML(figcaption/aside)" 혼합 저장값이다.
     // figcaption 태그만 보고 전체를 raw HTML로 취급하면 이미지/표/링크 마크다운이 그대로 노출된다.
     const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
-    const sanitized = sanitizeServerBlogHtml(rendered);
+    const sanitized = stripDuplicateBodyTitleHeading(sanitizeServerBlogHtml(rendered), abTestTitle);
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;
@@ -1516,7 +1545,11 @@ async function RelatedPostsSection({
 
   return (
     <ScrollReveal>
-    <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
+    <section
+      data-related-posts="footer"
+      className="border-t border-slate-200 bg-white"
+      aria-label="관련 여행 가이드"
+    >
       <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
         <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
           <div className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
@@ -1598,7 +1631,7 @@ async function SidebarRelatedPosts({
   if (posts.length === 0) return null;
 
   return (
-    <div>
+    <div data-related-posts="sidebar">
       <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">추천 포스팅</p>
       <ul className="space-y-3">
         {posts.slice(0, 4).map((rp) => {

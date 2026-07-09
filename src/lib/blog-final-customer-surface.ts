@@ -255,6 +255,60 @@ function removeDuplicateHeadingSections(markdown: string): { markdown: string; c
   return { markdown: next, changed: changed && next !== markdown.trim() };
 }
 
+function removeRedundantTitleHeading(markdown: string, input: BlogFinalCustomerSurfaceInput): { markdown: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex((line) => /^#\s+\S/.test(line.trim()));
+  if (h1Index < 0) return { markdown, changed: false };
+
+  const h1Sig = headingSignature(lines[h1Index] ?? '');
+  const titleSig = input.title ? stripMarkup(input.title).toLowerCase().replace(/[^\p{L}\p{N}\uac00-\ud7a3{}]+/gu, ' ').replace(/\s+/g, ' ').trim() : '';
+  let changed = false;
+
+  for (let index = h1Index + 1; index < Math.min(lines.length, h1Index + 10); index += 1) {
+    const line = lines[index] ?? '';
+    if (!/^##\s+\S/.test(line.trim())) continue;
+    const sig = headingSignature(line);
+    const sameAsH1 = sig && h1Sig && (sig === h1Sig || h1Sig.includes(sig) || sig.includes(h1Sig));
+    const sameAsTitle = sig && titleSig && (sig === titleSig || titleSig.includes(sig) || sig.includes(titleSig));
+    if (!sameAsH1 && !sameAsTitle) continue;
+    lines.splice(index, 1);
+    changed = true;
+    break;
+  }
+
+  const next = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { markdown: next, changed: changed && next !== markdown.trim() };
+}
+
+const LOW_VALUE_SUBHEADING_RE =
+  /^(?:\uC0C1\uD669\uBCC4\s*\uC120\uD0DD\s*\uAE30\uC900|\uCD9C\uBC1C\s*\uC804\s*\uCD5C\uC885\s*\uCCB4\uD06C|\uACE0\uAC1D\uC774\s*\uB9CE\uC774\s*\uD5F7\uAC08\uB9AC\uB294\s*\uBD80\uBD84|\uC5EC\uD589\s*\uC0C1\uD488\uACFC\s*\uD568\uAED8\s*\uD655\uC778\uD558\uAE30|\uC0C1\uD488\uACFC\s*\uD568\uAED8\s*\uD655\uC778\uD558\uAE30|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38|FAQ|Q\s*&\s*A|recommended\s+posts?|related\s+posts?|related\s+packages?|Q\d+[.)]?\s*.+)$/i;
+
+function flattenLowValueSubheadings(markdown: string): { markdown: string; changed: boolean } {
+  let changed = false;
+  const next = markdown
+    .split('\n')
+    .map((line) => {
+      const match = line.match(/^#{2,3}\s+(.+?)\s*$/);
+      if (!match) return line;
+      const heading = match[1]?.trim() ?? '';
+      if (!LOW_VALUE_SUBHEADING_RE.test(heading)) return line;
+      changed = true;
+      return `**${heading}**`;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { markdown: next, changed: changed && next !== markdown.trim() };
+}
+
+function removeStandaloneHorizontalRules(markdown: string): { markdown: string; changed: boolean } {
+  const next = markdown
+    .replace(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { markdown: next, changed: next !== markdown.trim() };
+}
+
 const LOW_VALUE_OVERFLOW_HEADING_RE =
   /(?:\uC77D\uB294\s*\uC21C\uC11C|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38|\uAD00\uB828\s*\uD328\uD0A4\uC9C0|\uCD94\uCC9C\s*\uD3EC\uC2A4\uD305|\uC5EC\uC18C\uB0A8\s*\uC5EC\uD589\s*\uC900\uBE44|\uC0C1\uB2F4|CTA|FAQ|Q\s*&\s*A|recommended\s+posts?|related\s+packages?)/i;
 
@@ -293,6 +347,56 @@ function pruneLowValueOverflowSections(markdown: string): { markdown: string; ch
 
   const next = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   return { markdown: next, changed: changed && next !== markdown.trim() };
+}
+
+const PRESERVE_H2_HEADING_RE =
+  /(?:공식\s*확인\s*링크|official\s+source|출처|근거|주의\s*사항|가격\s*변동|포함\/불포함|10초\s*판단|자주\s*묻는\s*질문|체크\s*리스트|체크리스트|준비물|checklist|packing)/i;
+
+function flattenExcessH2Headings(markdown: string, maxH2 = 8): { markdown: string; changed: boolean } {
+  let h2Seen = 0;
+  let changed = false;
+  const next = markdown
+    .split('\n')
+    .map((line) => {
+      const match = line.match(/^##\s+(.+?)\s*$/);
+      if (!match) return line;
+      const heading = match[1]?.trim() ?? '';
+      h2Seen += 1;
+      if (h2Seen <= maxH2 || PRESERVE_H2_HEADING_RE.test(heading)) return line;
+      changed = true;
+      return `**${heading}**`;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { markdown: next, changed: changed && next !== markdown.trim() };
+}
+
+function separateMarkdownTables(markdown: string): { markdown: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+  const isTableRow = (line: string | undefined) => Boolean(line && /^\s*\|.*\|\s*$/.test(line));
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const previous = next[next.length - 1];
+    if (isTableRow(line) && previous && previous.trim() && !isTableRow(previous)) {
+      next.push('');
+      changed = true;
+    }
+
+    next.push(line);
+
+    const following = lines[index + 1];
+    if (isTableRow(line) && following && following.trim() && !isTableRow(following)) {
+      next.push('');
+      changed = true;
+    }
+  }
+
+  const output = next.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { markdown: output, changed: changed && output !== markdown.trim() };
 }
 
 function removeEmptyCtaResidue(markdown: string): { markdown: string; changed: boolean } {
@@ -645,7 +749,12 @@ export function repairBlogFinalCustomerSurface(input: BlogFinalCustomerSurfaceIn
   apply('dedupe_repeated_plain_paragraphs', dedupeRepeatedPlainParagraphs(markdown));
   apply('dedupe_repeated_plain_sentences', dedupeRepeatedPlainSentences(markdown));
   apply('remove_duplicate_heading_sections', removeDuplicateHeadingSections(markdown));
+  apply('remove_redundant_title_heading', removeRedundantTitleHeading(markdown, input));
+  apply('flatten_low_value_subheadings', flattenLowValueSubheadings(markdown));
+  apply('remove_standalone_horizontal_rules', removeStandaloneHorizontalRules(markdown));
   apply('prune_low_value_overflow_sections', pruneLowValueOverflowSections(markdown));
+  apply('flatten_excess_h2_headings', flattenExcessH2Headings(markdown));
+  apply('separate_markdown_tables', separateMarkdownTables(markdown));
   apply('repair_destination_surface', repairDestinationSurface(markdown, destination));
   apply('split_paragraph_walls', splitParagraphWalls(markdown));
   apply('dedupe_lead_sentences', dedupeLeadSentences(markdown));

@@ -3,6 +3,35 @@ import { evaluateBlogEngineV2 } from './blog-engine-v2';
 import { repairBlogEngineCategoryGaps } from './blog-engine-category-repair';
 
 describe('repairBlogEngineCategoryGaps', () => {
+  it('replaces generic answer-first leads with topic-specific customer decisions', () => {
+    const result = repairBlogEngineCategoryGaps({
+      markdown: [
+        '# 다낭 비자·입국 서류 필요 여부',
+        '',
+        '다낭 비자·입국 서류 필요 여부는 먼저 핵심 요약, 여행 전 확인 기준으로 보면 됩니다.',
+        '',
+        '## 확인 표',
+        '| 항목 | 기준 | 메모 |',
+        '| --- | --- | --- |',
+        '| 여권 | 6개월 | 출발 전 확인 |',
+        '| 숙소 | 예약 정보 | 입국 시 필요할 수 있음 |',
+        '| 항공 | 영문 이름 | 여권과 일치 |',
+        '',
+        '## 공식 확인',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
+      ].join('\n'),
+      blogType: 'info',
+      title: '다낭 비자·입국 서류 필요 여부',
+      slug: 'danang-visa-entry-documents',
+      destination: '다낭',
+      primaryKeyword: '다낭 비자·입국 서류 필요 여부',
+      generationMeta: { writer: 'info_writer' },
+    });
+
+    expect(result.markdown).not.toContain('핵심 요약, 여행 전 확인 기준으로 보면 됩니다');
+    expect(result.markdown).toContain('출발 2주 전 무비자 가능 여부');
+  });
+
   it('adds answer-first and official source support for weak information guides', () => {
     const markdown = [
       '# 몽골 7월 날씨',
@@ -38,10 +67,39 @@ describe('repairBlogEngineCategoryGaps', () => {
       'engine_category_reader_task_intro',
       'engine_category_evidence_links',
     ]));
-    expect(result.markdown).toContain('몽골 7월 날씨에서 핵심은');
+    expect(result.markdown).toMatch(/몽골.*(?:날씨|옷차림|준비물|기온|비 예보)/);
     expect(result.markdown).not.toContain('날씨은');
     expect(result.markdown).toMatch(/https:\/\/(?:www\.)?0404\.go\.kr|https:\/\/www\.iatatravelcentre\.com/);
     expect(result.afterScore).toBeGreaterThan(result.beforeScore);
+  });
+
+  it('replaces old weather answer boilerplate before engine scoring', () => {
+    const result = repairBlogEngineCategoryGaps({
+      markdown: [
+        '# 발리 7월 날씨',
+        '',
+        '발리 7월 날씨은 먼저 발리 7월 날씨 한눈에 보기, 7월 기온/강수/습도 표 기준으로 확인하면 됩니다.',
+        '',
+        '## 날씨 표',
+        '| 구분 | 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 낮 | 30℃ | 얇은 옷 |',
+        '| 밤 | 24℃ | 얇은 겉옷 |',
+        '| 비 | 소나기 | 우산 |',
+      ].join('\n'),
+      blogType: 'info',
+      title: '발리 7월 날씨',
+      slug: 'bali-weather-packing',
+      destination: '발리',
+      primaryKeyword: '발리 7월 날씨',
+      contentType: 'guide',
+      generationMeta: { writer: 'info_writer' },
+    });
+
+    expect(result.markdown).not.toContain('날씨은 먼저');
+    expect(result.markdown).not.toContain('기준으로 확인하면 됩니다');
+    expect(result.markdown).toMatch(/발리.*(?:출발 7일|출발 24시간|3가지)/);
+    expect(result.afterScore).toBe(100);
   });
 
   it('adds missing product decision blocks from product brief evidence', () => {

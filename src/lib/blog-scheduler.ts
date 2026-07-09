@@ -107,6 +107,14 @@ function microAngleKey(destination: string | null | undefined, microAngle: strin
   return `${dest}::${angle}`;
 }
 
+function destinationAngleKey(row: QueueCandidateLike): string | null {
+  if (row.product_id) return null;
+  const destination = row.destination?.trim();
+  if (!destination || row.source === 'pillar') return null;
+  const angle = row.angle_type?.trim() || 'value';
+  return `info_writer::destination_angle::${destination}::${angle}`;
+}
+
 function readMicroAngle(row: { angle_type?: string | null; generation_meta?: any; meta?: any }): string | null {
   const fromMeta = row.meta?.micro_angle ?? row.generation_meta?.micro_angle;
   if (typeof fromMeta === 'string' && fromMeta.trim()) return fromMeta.trim();
@@ -176,6 +184,8 @@ function publishableQueueKey(row: QueueCandidateLike): string | null {
   const micro = readMicroAngle(row);
   const microKey = microAngleKey(row.destination, micro);
   if (microKey) return `${writer}::${microKey}`;
+  const destinationAngle = destinationAngleKey(row);
+  if (destinationAngle) return destinationAngle;
   const slug = readExpectedSlug(row);
   if (slug) return `${writer}::slug::${slug}`;
   if (typeof row.topic === 'string' && row.topic.trim()) {
@@ -411,7 +421,9 @@ export async function ensureDailyPublishableQueue(opts?: {
   const recentDestinations = (recentPublishedRes.data ?? [])
     .map(row => row.destination)
     .filter((destination): destination is string => typeof destination === 'string' && destination.trim().length > 0);
-  const destinations = Array.from(new Set([...recentDestinations, ...MICRO_ANGLE_DESTINATIONS])).slice(0, 24);
+  const recentDestinationSet = new Set(recentDestinations);
+  const freshDestinations = MICRO_ANGLE_DESTINATIONS.filter(destination => !recentDestinationSet.has(destination));
+  const destinations = Array.from(new Set([...freshDestinations, ...MICRO_ANGLE_DESTINATIONS])).slice(0, 24);
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
@@ -428,6 +440,15 @@ export async function ensureDailyPublishableQueue(opts?: {
       const topic = template.topic(destination, year, month);
       if (!key) continue;
       if (recentKeys.has(key)) {
+        skippedRecentDuplicate += 1;
+        continue;
+      }
+      const destinationAngle = destinationAngleKey({
+        destination,
+        angle_type: 'value',
+        source: 'coverage_gap',
+      });
+      if (destinationAngle && recentKeys.has(destinationAngle)) {
         skippedRecentDuplicate += 1;
         continue;
       }

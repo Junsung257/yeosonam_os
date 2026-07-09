@@ -128,10 +128,15 @@ function asNumber(value: unknown): number | null {
 
 function firstBodyParagraph(source: string): string {
   for (const chunk of source.split(/\n{2,}/)) {
-    const text = stripMarkup(chunk)
+    const text = chunk
       .replace(/^#{1,6}\s+\S.*$/gm, '')
+      .replace(/^!\[[^\]\n]*]\([^)]+\).*$/gm, '')
+      .replace(/<figcaption>[\s\S]*?<\/figcaption>/gi, ' ')
       .replace(/^\|.*\|$/gm, '')
       .replace(/^\s*(?:[-*]|\d+\.)\s+\S.*$/gm, '')
+      .replace(/[-*]\s+\S.*$/gm, '')
+      .replace(/\d+\.\s+\S.*$/gm, '')
+      .replace(/[\s\S]*/, (text) => stripMarkup(text))
       .replace(/\s+/g, ' ')
       .trim();
     if (text.length >= 30) return text;
@@ -248,7 +253,7 @@ function scoreInfoTask(markdown: string): number {
   if (!/^(안녕하세요|오늘은|이번\s*글에서는|여소남\s*에디터)/.test(first)) score += 10;
   const answerSignals = [
     /먼저|나눠|비교|확인|준비|챙기|봐야|체크|기준|잡아/,
-    /기온|비|소나기|옷차림|숙소|이동|식사|교통|포함|불포함|가격|비용|예산|총액|비자|여권|환율|서류|좌석|호텔|공항/,
+    /기온|비|소나기|옷차림|숙소|이동|식사|교통|포함|불포함|가격|비용|예산|경비|식비|이동비|선택\s*관광|카드\s*수수료|총액|비자|여권|환율|서류|좌석|호텔|공항/,
     /\d|원|℃|박|일|시간|성수기|우기|건기|출발|현지|공식|~|–|-/,
   ];
   const answerSignalCount = answerSignals.filter((pattern) => pattern.test(first)).length;
@@ -262,6 +267,20 @@ function scoreInfoTask(markdown: string): number {
   }
   if (!/\d|[0-9]|~|-|USD|KRW|JPY|VND|\$/.test(first)) {
     score = Math.min(score, 90);
+  }
+  const actionFirst = /(먼저|기준|확인|비교|나눠|봐야|체크|준비|챙기|판단)/.test(first);
+  const customerTravelNeed =
+    /(보험|보장|병원|수하물|로밍|유심|데이터|통신|픽업|택시|그랩|셔틀|공항|비자|입국|여권|서류|날씨|옷차림|준비물|일정|동선|비용|예산|경비|식비|이동비|선택\s*관광|카드\s*수수료|가격|숙소|호텔|가족|아이)/.test(first);
+  const concreteSignal = /\d|원|℃|박|일|시간|성수기|우기|건기|출발|현지|공식|공항|항공|숙소|~|–|-/.test(first);
+  if (actionFirst && customerTravelNeed && concreteSignal) {
+    score = Math.max(score, 100);
+  }
+  const weatherDecisionFirst =
+    /(날씨|옷차림|기온|비|우산|우비|방수|겉옷|자외선|일교차)/.test(first)
+    && /(먼저|확인|체크|준비|챙기|나눠|봐야)/.test(first)
+    && /(출발|일정|이동|밤|장거리|\d|℃)/.test(first);
+  if (weatherDecisionFirst) {
+    score = Math.max(score, 100);
   }
   return Math.min(100, score);
 }
@@ -355,7 +374,7 @@ function scoreCustomerLanguage(markdown: string, writer: BlogWriterType): number
 
 function scoreSalesPressure(markdown: string, writer: BlogWriterType): number {
   const bodyWithoutBottomCta = markdown
-    .replace(/\n##\s*여행\s*상품과\s*함께\s*확인하기[\s\S]*$/i, '')
+    .replace(/\n(?:##\s*|\*\*)여행\s*상품과\s*함께\s*확인하기(?:\*\*)?[\s\S]*$/i, '')
     .replace(/\n---[\s\S]*$/i, '');
   const plain = stripMarkup(bodyWithoutBottomCta).replace(/https?:\/\/\S+/gi, ' ');
   const firstThird = plain.slice(0, Math.ceil(plain.length * 0.3));

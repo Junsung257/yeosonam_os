@@ -103,7 +103,7 @@
     },
     {
       "path": "/api/cron/blog-publisher",
-      "schedule": "5 3,6,9,12 * * *"
+      "schedule": "5 3,6,9,12,13 * * *"
     },
     {
       "path": "/api/cron/trend-topic-miner",
@@ -123,7 +123,7 @@
     },
     {
       "path": "/api/cron/blog-daily-summary",
-      "schedule": "12 13 * * *"
+      "schedule": "45 13 * * *"
     },
     {
       "path": "/api/cron/sync-engagement",

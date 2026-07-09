@@ -159,7 +159,7 @@ Detailed runbook: [`docs/supabase-auth-open-gate.md`](./supabase-auth-open-gate.
 
 - [ ] `/api/cron/blog-lifecycle` — 매일 01:30 KST
 - [ ] `/api/cron/blog-scheduler` — 매주 월 00:00 KST
-- [ ] `/api/cron/blog-publisher` — 매일 KST 12:05, 15:05, 18:05, 21:05
+- [ ] `/api/cron/blog-publisher` — 매일 KST 12:05, 15:05, 18:05, 21:05, 22:05 catch-up
 - [ ] `/api/cron/blog-learn` — 매주 일 23:00 KST
 - [ ] 기타 11개 기존 크론 (meta-optimize, auto-archive, post-travel 등) 유지
 - [ ] `/api/cron/marketing-rules` — 등록/ENABLED 확인

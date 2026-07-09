@@ -86,6 +86,35 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).not.toContain('예산 범위, 이동 순서, 현지 확인 사항');
   });
 
+  it('repairs readable weather leads that still answer with generic cost and movement language', () => {
+    const result = repairBlogEditorialQuality({
+      title: '광저우 월별 날씨와 옷차림 가이드',
+      slug: 'guangzhou-weather',
+      primaryKeyword: '광저우 월별 날씨와 옷차림',
+      destination: '광저우',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: [
+        '# 광저우 월별 날씨와 옷차림 가이드',
+        '',
+        '광저우 월별 날씨와 옷차림은 일정, 비용, 이동 시간, 현지 확인 조건을 먼저 나누면 판단이 쉽습니다. 출발일 기준으로 바뀔 수 있는 항목을 다시 확인하고, 표와 체크리스트에서 필요한 부분만 빠르게 비교하세요.',
+        '',
+        '## 월별 날씨 표',
+        '',
+        '| 월 | 날씨 포인트 | 옷차림 |',
+        '| --- | --- | --- |',
+        '| 1월 | 아침저녁 일교차가 있습니다. | 얇은 겉옷 |',
+        '| 7월 | 비 예보와 습도를 함께 봅니다. | 통풍되는 옷 |',
+        '| 12월 | 바람을 확인합니다. | 가벼운 외투 |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('낮과 밤 기온, 비 예보, 일교차');
+    expect(result.blogHtml).toContain('## 출발 전 날씨 준비물 체크리스트');
+    expect(result.blogHtml).not.toContain('일정, 비용, 이동 시간, 현지 확인 조건');
+  });
+
   it('splits mobile paragraph walls before customer quality gates', () => {
     const longParagraph = [
       '몽골 7월 여행은 낮과 밤의 기온 차이가 커서 옷을 한 벌로 정하기보다 얇은 긴팔, 바람막이, 밤용 겉옷을 나눠 준비하는 편이 안전합니다.',
@@ -1144,6 +1173,33 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).not.toContain('2024년 6월 10일 확인 기준');
     expect(result.blogHtml).not.toContain('여소남 내부 상품/예약 데이터 기준');
     expect((result.blogHtml.match(/^## 공식 확인 링크$/gm) || []).length).toBe(1);
+  });
+
+  it('removes stale confirmation dates even when the phrase is not sentence-prefixed', () => {
+    const result = repairBlogStructureQuality({
+      title: '푸꾸옥 가족여행 2026 실제 경비표',
+      category: 'budget',
+      contentType: 'guide',
+      primaryKeyword: '푸꾸옥 가족여행 경비',
+      destination: '푸꾸옥',
+      blogHtml: [
+        '# 푸꾸옥 가족여행 2026 실제 경비표',
+        '',
+        '푸꾸옥 가족여행 경비는 항공, 숙소, 식비를 먼저 나눠 보면 됩니다. 4인 가족은 숙소 위치와 현지 이동 시간이 총액 차이를 만듭니다.',
+        '',
+        '세부 비용은 2024년 7월 8일 확인 기준으로 정리했습니다.',
+        '',
+        '## 경비 표',
+        '| 항목 | 확인 기준 | 메모 |',
+        '| --- | --- | --- |',
+        '| 항공 | 출발일 | 성수기 변동 |',
+        '| 숙소 | 위치 | 이동비 차이 |',
+        '| 식비 | 동선 | 리조트 포함 여부 |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).not.toContain('2024년 7월 8일 확인 기준');
   });
 
   it('repairs data rows that were accidentally promoted to markdown table headers', () => {
