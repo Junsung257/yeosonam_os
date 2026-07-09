@@ -399,21 +399,6 @@ async function fetchAttractions(): Promise<AttractionSuggestRow[]> {
   return rows;
 }
 
-async function addAlias(attraction: AttractionSuggestRow, alias: string): Promise<boolean> {
-  const cleanAlias = normalizeText(alias);
-  if (cleanAlias.length < 2 || cleanAlias.length > 80) return false;
-  const aliases = attraction.aliases ?? [];
-  if (aliases.includes(cleanAlias) || attraction.name === cleanAlias) return false;
-  const nextAliases = [...new Set([...aliases, cleanAlias])];
-  const { error } = await supabaseAdmin
-    .from('attractions')
-    .update({ aliases: nextAliases })
-    .eq('id', attraction.id);
-  if (error) throw error;
-  attraction.aliases = nextAliases;
-  return true;
-}
-
 export async function runUnmatchedClassification(options: {
   limit?: number;
   minAttractionScore?: number;
@@ -450,7 +435,6 @@ export async function runUnmatchedClassification(options: {
           const top = suggestions[0];
           const target = attractions.find(attr => attr.id === top.id);
           if (target) {
-            if (await addAlias(target, row.activity)) aliasAdded++;
             resolvedAttractionId = top.id;
             status = 'added';
             resolvedKind = 'auto_classifier_existing_attraction';
