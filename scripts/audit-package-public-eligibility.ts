@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 
 import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
+import { evaluateEntityMasterCandidatePublicGate } from '../src/lib/entity-master-candidate-public-gate';
 
 dotenv.config({ path: '.env.local' });
 
@@ -44,31 +45,31 @@ function increment(map: Record<string, number>, key: string): void {
 async function loadUnresolvedEntityCandidateMap(
   supabaseAdmin: Awaited<typeof import('../src/lib/supabase')>['supabaseAdmin'],
   packageIds: string[],
-): Promise<Map<string, { total: number; attraction: number; needsReview: number }>> {
+): Promise<Map<string, { hard: number; total: number; attractionWarnings: number; needsReview: number }>> {
   const packageIdSet = new Set(packageIds);
-  const unresolvedStatuses = new Set(['candidate', 'auto_internal', 'needs_review', 'publishable_ready']);
-  const result = new Map<string, { total: number; attraction: number; needsReview: number }>();
+  const result = new Map<string, { hard: number; total: number; attractionWarnings: number; needsReview: number }>();
 
   if (packageIdSet.size === 0) return result;
 
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabaseAdmin
       .from('entity_master_candidates')
-      .select('category,promotion_status,source_context')
+      .select('category,promotion_status,auto_action,auto_verification_status,source_context')
       .range(from, from + 999);
     if (error) throw error;
     for (const candidate of data ?? []) {
-      const status = String(candidate.promotion_status ?? '');
-      if (!unresolvedStatuses.has(status)) continue;
+      const decision = evaluateEntityMasterCandidatePublicGate(candidate);
+      if (!decision.unresolved) continue;
       const candidatePackageIds = Array.isArray(candidate.source_context?.package_ids)
         ? [...new Set(candidate.source_context.package_ids.map(String))] as string[]
         : [];
       for (const packageId of candidatePackageIds) {
         if (!packageIdSet.has(packageId)) continue;
-        const current = result.get(packageId) ?? { total: 0, attraction: 0, needsReview: 0 };
+        const current = result.get(packageId) ?? { hard: 0, total: 0, attractionWarnings: 0, needsReview: 0 };
         current.total++;
-        if (candidate.category === 'attraction') current.attraction++;
-        if (status === 'needs_review') current.needsReview++;
+        if (decision.hardBlocker) current.hard++;
+        if (decision.warning && candidate.category === 'attraction') current.attractionWarnings++;
+        if (candidate.promotion_status === 'needs_review') current.needsReview++;
         result.set(packageId, current);
       }
     }
@@ -114,10 +115,10 @@ async function main() {
   const blockersFor = (row: PackageRow) => {
     const blockers = getPackagePublicEligibilityBlockers(row);
     const unresolved = unresolvedEntityCandidateMap.get(row.id);
-    if (unresolved && unresolved.total > 0) {
+    if (unresolved && unresolved.hard > 0) {
       blockers.push({
         code: 'entity_master_candidate_unresolved',
-        message: `entity_master_candidates has unresolved customer-linked candidates: total=${unresolved.total}, attractions=${unresolved.attraction}, needs_review=${unresolved.needsReview}`,
+        message: `entity_master_candidates has unresolved customer disclosure candidates: hard=${unresolved.hard}, total=${unresolved.total}, attraction_warnings=${unresolved.attractionWarnings}, needs_review=${unresolved.needsReview}`,
       });
     }
     return blockers;
