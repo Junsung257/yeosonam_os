@@ -205,6 +205,7 @@ export async function generateMetadata({
     status?: string | null;
     audit_status?: string | null;
     publication_state?: string | null;
+    package_revision?: number | null;
     audit_report?: unknown;
     updated_at?: string | null;
     optional_tours?: unknown;
@@ -215,11 +216,7 @@ export async function generateMetadata({
   let publicSnapshotFound = false;
   try {
     const allowInternalProof = await isInternalRenderProofRequest();
-    const publicSnapshot = allowInternalProof
-      ? null
-      : await fetchLatestPublicPackageSnapshot(sb, id).catch(() => null);
-    publicSnapshotFound = Boolean(publicSnapshot);
-    const metadataSelect = 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, audit_report, updated_at, optional_tours, itinerary_data';
+    const metadataSelect = 'title, display_title, hero_tagline, destination, duration, nights, trip_style, price, airline, product_type, product_summary, status, audit_status, publication_state, package_revision, audit_report, updated_at, optional_tours, itinerary_data';
     let result = await runSupabaseQueryWithTimeout(
       sb
         .from('travel_packages')
@@ -254,6 +251,12 @@ export async function generateMetadata({
       return buildPackageNoindexMetadata(id, canonical);
     }
     rawData = result.data as MetadataPackageRow | null;
+    const publicSnapshot = allowInternalProof || !rawData
+      ? null
+      : await fetchLatestPublicPackageSnapshot(sb, id, {
+          expectedPackageRevision: Number(rawData.package_revision ?? 1),
+        }).catch(() => null);
+    publicSnapshotFound = Boolean(publicSnapshot);
     data = (publicSnapshot?.package as MetadataPackageRow | undefined) ?? rawData;
   } catch {
     return buildPackageNoindexMetadata(id, canonical);
@@ -334,25 +337,20 @@ export default async function PackageDetailPage({
   const sb = sbOrNull;
   const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
   const allowInternalProof = await isInternalRenderProofRequest();
-  const publicSnapshot = allowInternalProof
-    ? null
-    : await fetchLatestPublicPackageSnapshot(sb, id).catch(() => null);
 
   // ACL: 怨좉컼 ?몄텧 ?섏씠吏?먯꽌???대??꾨뱶(net_price/selling_price/margin_rate) SELECT 湲덉?.
   // ?대뱶誘?UI??/api/packages GET?쇰줈 蹂꾨룄 議고쉶?섎ŉ 嫄곌린?쒕뒗 ?먭? ?뺣낫媛 ?좎??쒕떎.
-  let pkgResult = publicSnapshot
-    ? { data: publicSnapshot.package, error: null }
-    : await runSupabaseQueryWithTimeout(
-        sb.from('travel_packages')
-          .select(DETAIL_FIELDS)
-          .eq('id', id)
-          .maybeSingle(),
-        { label: 'package.detail.primary', timeoutMs: 6000 },
-      ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
+  let rawPkgResult = await runSupabaseQueryWithTimeout(
+    sb.from('travel_packages')
+      .select(DETAIL_FIELDS)
+      .eq('id', id)
+      .maybeSingle(),
+    { label: 'package.detail.primary', timeoutMs: 6000 },
+  ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
 
-  if (!pkgResult.data && !publicSnapshot) {
+  if (!rawPkgResult.data) {
     await waitForPackageDetailRetry(500);
-    pkgResult = await runSupabaseQueryWithTimeout(
+    rawPkgResult = await runSupabaseQueryWithTimeout(
       sb.from('travel_packages')
         .select(DETAIL_FIELDS)
         .eq('id', id)
@@ -361,9 +359,9 @@ export default async function PackageDetailPage({
     ).catch(() => ({ data: null, error: new Error('package detail retry1 timed out') }));
   }
 
-  if (!pkgResult.data && !publicSnapshot) {
+  if (!rawPkgResult.data) {
     await waitForPackageDetailRetry(1_000);
-    pkgResult = await runSupabaseQueryWithTimeout(
+    rawPkgResult = await runSupabaseQueryWithTimeout(
       sb.from('travel_packages')
         .select(DETAIL_FIELDS)
         .eq('id', id)
@@ -372,22 +370,29 @@ export default async function PackageDetailPage({
     ).catch(() => ({ data: null, error: new Error('package detail retry2 timed out') }));
   }
 
-  const pkg = pkgResult.data;
+  const rawPkg = rawPkgResult.data;
 
   // 議댁옱?섏? ?딅뒗 ?⑦궎吏 ??404
-  if (!pkg && pkgResult.error) {
+  if (!rawPkg && rawPkgResult.error) {
     console.error('[packages/detail] package detail lookup unavailable', {
       id,
-      message: pkgResult.error instanceof Error ? pkgResult.error.message : String(pkgResult.error),
+      message: rawPkgResult.error instanceof Error ? rawPkgResult.error.message : String(rawPkgResult.error),
     });
     throw new Error('PACKAGE_DETAIL_LOOKUP_UNAVAILABLE');
   }
 
-  if (!pkg) {
+  if (!rawPkg) {
     notFound();
   }
 
-  const publicationState = (pkg as { publication_state?: string | null }).publication_state;
+  const publicSnapshot = allowInternalProof
+    ? null
+    : await fetchLatestPublicPackageSnapshot(sb, id, {
+        expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1),
+      }).catch(() => null);
+  const pkg = publicSnapshot?.package ?? rawPkg;
+
+  const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
   if (!allowInternalProof && publicationState && !isPublicPublicationState(publicationState)) {
     notFound();
   }
@@ -396,13 +401,13 @@ export default async function PackageDetailPage({
   }
 
   // 媛먯궗 李⑤떒 ?곹뭹? 怨좉컼 ?곸꽭??404 泥섎━ (媛먯궗 寃뚯씠???댁쨷 媛??
-  if ('audit_status' in pkg && pkg.audit_status === 'blocked') {
+  if ('audit_status' in rawPkg && rawPkg.audit_status === 'blocked') {
     if (!allowInternalProof) notFound();
   }
 
   // status 寃뚯씠????REVIEW_NEEDED/draft/expired/archived ?깆? 怨좉컼 ?몄텧 李⑤떒
-  const pkgStatus = 'status' in pkg ? pkg.status : undefined;
-  if (!allowInternalProof && (!isCustomerVisibleStatus(pkgStatus) || !isCustomerPubliclyOpenable(pkg))) {
+  const pkgStatus = 'status' in rawPkg ? rawPkg.status : undefined;
+  if (!allowInternalProof && (!isCustomerVisibleStatus(pkgStatus) || !isCustomerPubliclyOpenable(rawPkg))) {
     notFound();
   }
 
@@ -822,20 +827,20 @@ export default async function PackageDetailPage({
     const { data: siblings } = await runOptionalSupabaseQuery(
       sb
         .from('travel_packages')
-        .select('id, title, display_title, destination, product_highlights, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .select('id, title, display_title, destination, product_highlights, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .eq('catalog_id', currentCatalogId)
         .neq('id', id)
         .order('created_at', { ascending: true }),
       { data: [] },
       { label: 'package.catalog.siblings', timeoutMs: 1200 },
     );
-    const siblingRows = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; publication_state?: string | null; audit_status?: string; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown }>)
+    const siblingRows = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; package_revision?: number | null; status?: string; publication_state?: string | null; audit_status?: string; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown }>)
       .filter(s => isPublicPublicationState(s.publication_state) && isCustomerPubliclyOpenable(s));
     const siblingSnapshots = siblingRows.length > 0
       ? await runOptionalSupabaseQuery(
           sb
             .from('public_package_snapshots')
-            .select('package_id, card_projection, status, created_at')
+            .select('package_id, package_revision, card_projection, status, created_at')
             .in('package_id', siblingRows.map(row => row.id))
             .in('status', ['approved', 'published'])
             .order('created_at', { ascending: false }),
@@ -843,8 +848,10 @@ export default async function PackageDetailPage({
           { label: 'package.catalog.sibling-snapshots', timeoutMs: 1200 },
         )
       : { data: [] };
+    const siblingRevisionByPackage = new Map(siblingRows.map(row => [row.id, Number(row.package_revision ?? 1)]));
     const siblingSnapshotByPackage = new Map<string, { card_projection?: Record<string, unknown> | null }>();
-    for (const row of ((siblingSnapshots.data ?? []) as Array<{ package_id: string; card_projection?: Record<string, unknown> | null }>)) {
+    for (const row of ((siblingSnapshots.data ?? []) as Array<{ package_id: string; package_revision?: number | null; card_projection?: Record<string, unknown> | null }>)) {
+      if (Number(row.package_revision ?? 1) !== siblingRevisionByPackage.get(row.package_id)) continue;
       if (!siblingSnapshotByPackage.has(row.package_id)) siblingSnapshotByPackage.set(row.package_id, row);
     }
     catalogSiblings = siblingRows

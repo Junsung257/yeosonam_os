@@ -43,12 +43,19 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
 export async function fetchLatestPublicPackageSnapshot(
   supabase: SupabaseClient,
   packageId: string,
+  options: { expectedPackageRevision?: number | null } = {},
 ): Promise<{ row: SnapshotRow; package: AnyRecord } | null> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('public_package_snapshots')
     .select('id, package_id, package_revision, snapshot_hash, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .eq('package_id', packageId)
-    .in('status', ['approved', 'published'])
+    .in('status', ['approved', 'published']);
+
+  if (Number.isFinite(Number(options.expectedPackageRevision))) {
+    query = query.eq('package_revision', Number(options.expectedPackageRevision));
+  }
+
+  const { data, error } = await query
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
