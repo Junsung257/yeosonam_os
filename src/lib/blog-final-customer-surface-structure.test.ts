@@ -90,7 +90,6 @@ describe('repairBlogFinalCustomerSurface structure cleanup', () => {
     expect(result.markdown).toContain('## Official source links');
     expect(result.markdown).toContain('https://www.0404.go.kr/');
   });
-
   it('removes repeated title H2 and flattens low-value FAQ subheadings', () => {
     const result = repairBlogFinalCustomerSurface({
       destination: 'Bohol',
