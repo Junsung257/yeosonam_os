@@ -67,6 +67,18 @@ export type MasterCandidateDecision = {
   suggestedMaster: Record<string, unknown>;
 };
 
+export type MasterCandidatePublicGateContract = {
+  customer_publishable: boolean;
+  public_gate:
+    | 'blocked_until_verified'
+    | 'internal_only'
+    | 'publishable_ready'
+    | 'non_master';
+  route_impact: 'hard_blocker' | 'warning' | 'none';
+  required_evidence: string[];
+  operator_action: string;
+};
+
 const CATEGORY_SET = new Set<MasterCandidateCategory>([
   'attraction',
   'hotel',
@@ -236,6 +248,86 @@ function hasReliableExternalSource(input: CandidateEvidenceInput): boolean {
   const supportKinds = new Set(strongSources.map(source => source.source));
 
   return identityKinds.size >= 1 && supportKinds.size >= 2;
+}
+
+export function mergeCandidateExternalSources(sources: CandidateExternalSource[]): CandidateExternalSource[] {
+  const seen = new Set<string>();
+  const result: CandidateExternalSource[] = [];
+  for (const source of sources) {
+    const sourceName = source.source || 'supplier';
+    const key = [
+      sourceName,
+      source.id ?? '',
+      source.url ?? '',
+      source.name ?? '',
+      source.confidence ?? '',
+    ].join('|').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      source: sourceName,
+      id: source.id ?? null,
+      url: source.url ?? null,
+      confidence: typeof source.confidence === 'number' ? source.confidence : null,
+      name: source.name ?? null,
+    });
+  }
+  return result;
+}
+
+function publicGateContract(input: {
+  category: MasterCandidateCategory;
+  autoAction: MasterCandidateAutoAction;
+  promotionStatus: MasterCandidatePromotionStatus;
+  externalVerified: boolean;
+}): MasterCandidatePublicGateContract {
+  if (input.autoAction === 'reject_noise' || input.autoAction === 'structure_non_master') {
+    return {
+      customer_publishable: false,
+      public_gate: 'non_master',
+      route_impact: 'none',
+      required_evidence: [],
+      operator_action: 'keep out of customer master data; preserve source evidence only',
+    };
+  }
+
+  if (input.autoAction === 'create_publishable_master' && input.externalVerified) {
+    return {
+      customer_publishable: true,
+      public_gate: 'publishable_ready',
+      route_impact: 'none',
+      required_evidence: [],
+      operator_action: 'admin may publish after route proof and snapshot regeneration',
+    };
+  }
+
+  if (input.autoAction === 'create_internal_master') {
+    return {
+      customer_publishable: false,
+      public_gate: 'internal_only',
+      route_impact: input.category === 'attraction' || input.category === 'hotel' ? 'warning' : 'hard_blocker',
+      required_evidence: [
+        'independent identity source such as Wikidata, OSM, official site, Google Places, or manual approval',
+        'destination/region fit evidence',
+        'fresh customer route proof after promotion',
+      ],
+      operator_action: 'keep as hidden internal candidate until verified; never expose in customer payload',
+    };
+  }
+
+  return {
+    customer_publishable: false,
+    public_gate: 'blocked_until_verified',
+    route_impact: input.category === 'attraction' || input.category === 'hotel' ? 'warning' : 'hard_blocker',
+    required_evidence: [
+      'source span from supplier itinerary or admin review',
+      'identity evidence or explicit non-master classification',
+      'fresh public snapshot after resolution',
+    ],
+    operator_action: input.promotionStatus === 'needs_review'
+      ? 'manual review required before customer publication'
+      : 'resolve candidate state before customer publication',
+  };
 }
 
 function inferCategory(input: CandidateEvidenceInput, normalizedLabel: string): MasterCandidateCategory {
@@ -519,6 +611,12 @@ export function evaluateMasterCandidate(input: CandidateEvidenceInput): MasterCa
     regionScope,
     destinationScope,
   });
+  const publicGate = publicGateContract({
+    category,
+    autoAction,
+    promotionStatus,
+    externalVerified,
+  });
 
   return {
     candidateKey,
@@ -539,8 +637,9 @@ export function evaluateMasterCandidate(input: CandidateEvidenceInput): MasterCa
       region: regionScope,
       destination: destinationScope,
       external_verified: externalVerified,
-      customer_publishable: autoAction === 'create_publishable_master',
+      customer_publishable: publicGate.customer_publishable,
       verification_status: promotionStatus,
+      public_gate: publicGate,
     },
   };
 }
