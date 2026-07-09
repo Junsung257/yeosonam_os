@@ -114,6 +114,15 @@ function normalizeSignature(value: string): string {
     .slice(0, 140);
 }
 
+function normalizeHeadingSignature(value: string): string {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s{}]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 140);
+}
+
 function addIssue(
   issues: PublicBlogCustomerQualityIssue[],
   code: PublicBlogCustomerQualityIssueCode,
@@ -143,30 +152,25 @@ function extractPublicArticle(input: PublicBlogCustomerQualityInput): ExtractedP
   $('script, style, template, noscript, svg').remove();
   const article = $('article').first();
   const root = article.length ? article : $('main').first().length ? $('main').first() : $('body');
+  const bodyRoot = root.clone();
+  bodyRoot.find('nav, aside, footer, [aria-label*="목차"], [aria-label*="추천"], [data-toc], [data-related-posts]').remove();
 
   const title = normalizeText(input.title || root.find('h1').first().text() || $('title').text() || '') || null;
   const text = normalizeText(root.text());
-  const bodyText = normalizeText(
-    root
-      .clone()
-      .find('nav, aside, footer')
-      .remove()
-      .end()
-      .text(),
-  );
-  const paragraphs = root
+  const bodyText = normalizeText(bodyRoot.text());
+  const paragraphs = bodyRoot
     .find('p, li')
     .toArray()
     .map((element) => textOf($, element))
     .filter((value) => value.length >= 30);
   const firstParagraph = paragraphs[0] || normalizeText(bodyText.slice(0, 260));
   const topThirdText = bodyText.slice(0, Math.ceil(bodyText.length * 0.34));
-  const headings = root
+  const headings = bodyRoot
     .find('h2, h3')
     .toArray()
     .map((element) => textOf($, element))
     .filter(Boolean);
-  const tableLikeParagraphs = root
+  const tableLikeParagraphs = bodyRoot
     .find('p, div, li')
     .toArray()
     .map((element) => textOf($, element))
@@ -184,11 +188,11 @@ function extractPublicArticle(input: PublicBlogCustomerQualityInput): ExtractedP
     firstParagraph,
     topThirdText,
     headings,
-    h2Count: root.find('h2').length,
-    tableCount: root.find('table').length,
-    hrCount: root.find('hr').length,
+    h2Count: bodyRoot.find('h2').length,
+    tableCount: bodyRoot.find('table').length,
+    hrCount: bodyRoot.find('hr').length,
     tableLikeParagraphs,
-    htmlFragment: root.html() || '',
+    htmlFragment: bodyRoot.html() || '',
   };
 }
 
@@ -197,7 +201,7 @@ function countDuplicateHeadings(headings: string[]): { count: number; samples: s
   const samples: string[] = [];
   let count = 0;
   for (const heading of headings) {
-    const signature = normalizeSignature(heading);
+    const signature = normalizeHeadingSignature(heading);
     if (!signature) continue;
     if (seen.has(signature)) {
       count += 1;
