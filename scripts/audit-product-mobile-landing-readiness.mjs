@@ -1299,6 +1299,23 @@ function isTransferOnlyAttractionContext(text) {
   return !hasCustomerVisibleAttractionHint(text);
 }
 
+function isNonAttractionScheduleKind(item) {
+  const values = [item?.type, item?.entity_kind]
+    .map(value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_'))
+    .filter(Boolean);
+  return values.some(value => [
+    'flight',
+    'hotel',
+    'meal',
+    'transfer',
+    'shopping',
+    'optional_tour',
+    'notice',
+    'free_time',
+    'price_noise',
+  ].includes(value));
+}
+
 function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
   const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
   for (const day of days) {
@@ -1311,8 +1328,7 @@ function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
       if (!activity) continue;
       if (/^\d{1,2}[./-]\d{1,2}(?:\s*\([^)]+\))?$/.test(activity)) continue;
       if (/(?:추천옵션|선택\s*관광|\$\s*\d+|USD\s*\d+|\/\s*인)/i.test(activity)) continue;
-      const type = String(item?.type ?? item?.entity_kind ?? '').toLowerCase();
-      if (['flight', 'hotel', 'meal', 'transfer', 'shopping', 'optional_tour', 'notice', 'free_time', 'price_noise'].includes(type)) continue;
+      if (isNonAttractionScheduleKind(item)) continue;
       const itemText = [activity, item?.note].filter(Boolean).join(' ');
       const context = [itemText, dayContext].filter(Boolean).join(' ');
       if (!hasCustomerVisibleAttractionHint(context)) continue;
