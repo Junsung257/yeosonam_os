@@ -21,6 +21,7 @@ import {
 } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
@@ -507,7 +508,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .limit(8),
     supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
+      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
       .in('destination', queryNames)
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .in('publication_state', ['approved', 'published'])
@@ -536,15 +537,19 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     departureQuery,
   ]);
 
-  const alivePkgs = ((packages as unknown[] | null) ?? [])
+  const alivePackageRows = ((packages as unknown[] | null) ?? [])
     .filter(isCustomerPubliclyOpenable)
-    .map(normalizePackageRow)
-    .filter((p): p is PillarData['packages'][number] => p !== null)
     .filter((p) => {
-      const pd = p.price_dates ?? [];
+      const pd = ((p as Record<string, unknown>).price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some((d) => d.date && d.date >= today);
     });
+  const alivePkgs = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    supabaseAdmin,
+    alivePackageRows as Array<Record<string, unknown>>,
+  ))
+    .map(normalizePackageRow)
+    .filter((p): p is PillarData['packages'][number] => p !== null);
 
   if (alivePkgs.length === 0) return null;
 

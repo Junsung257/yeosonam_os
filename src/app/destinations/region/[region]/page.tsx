@@ -18,6 +18,7 @@ import {
 } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -163,7 +164,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null
       ? supabaseAdmin
           .from('travel_packages')
-          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
+          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
           .in('destination', queryNames)
           .in('status', [...CUSTOMER_VISIBLE_STATUSES])
           .in('publication_state', ['approved', 'published'])
@@ -208,12 +209,15 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   });
 
   // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
-  const alivePkgs = pkgs
+  const currentPublicPackageRows = pkgs
+  const alivePackageRows = pkgs
     .filter(p => {
       const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some(d => d.date && d.date >= today);
-    })
+    });
+  const publicCardRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, alivePackageRows);
+  const alivePkgs = publicCardRows
     .map(p => ({
       ...p,
       products: Array.isArray(p.products) ? p.products[0] ?? null : p.products,
@@ -221,7 +225,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     .slice(0, 12) as PackageCardData[];
 
   const packageStatsByDestination = new Map<string, { count: number; minPrice: number | null }>();
-  for (const pkg of pkgs) {
+  for (const pkg of publicCardRows) {
     const destination = typeof pkg.destination === 'string' ? aliasToDestination.get(pkg.destination) ?? pkg.destination : null;
     if (!destination) continue;
     const price = getPositiveNumber(pkg.price);

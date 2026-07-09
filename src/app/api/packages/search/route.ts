@@ -13,6 +13,7 @@ import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -118,34 +119,7 @@ export async function GET(request: NextRequest) {
     aliveRaw = aliveRaw.slice(0, 50);
 
     if (aliveRaw.length > 0) {
-      const ids = aliveRaw.map((p: any) => p.id).filter(Boolean);
-      const { data: snapshotRows, error: snapshotErr } = await sb
-        .from('public_package_snapshots')
-        .select('package_id, snapshot_json, card_projection, status, created_at')
-        .in('package_id', ids)
-        .in('status', ['approved', 'published'])
-        .order('created_at', { ascending: false });
-      if (snapshotErr) throw snapshotErr;
-      const snapshotByPackage = new Map<string, any>();
-      for (const row of snapshotRows ?? []) {
-        if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
-      }
-      aliveRaw = aliveRaw
-        .filter((p: any) => snapshotByPackage.has(p.id))
-        .map((p: any) => {
-          const snapshot = snapshotByPackage.get(p.id);
-          const packagePayload = snapshot?.snapshot_json?.package ?? {};
-          return {
-            ...p,
-            ...packagePayload,
-            ...(snapshot?.card_projection ?? {}),
-            id: p.id,
-            _public_snapshot: {
-              status: snapshot?.status,
-              created_at: snapshot?.created_at,
-            },
-          };
-        });
+      aliveRaw = await fetchAndMergeCurrentPublicPackageCardSnapshots(sb, aliveRaw as Array<Record<string, unknown>>) as any[];
     }
 
     const packages = aliveRaw.map((pkg: any) => ({

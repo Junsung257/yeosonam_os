@@ -26,7 +26,11 @@ export async function fetchLpPackageUncached(
   if (error || !rawPkg) return null;
   const publicSnapshot = options.allowNonPublicProof
     ? null
-    : await fetchLatestPublicPackageSnapshot(supabaseAdmin, (rawPkg as { id: string }).id).catch(() => null);
+    : await fetchLatestPublicPackageSnapshot(
+        supabaseAdmin,
+        (rawPkg as { id: string }).id,
+        { expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1) },
+      ).catch(() => null);
   const pkg = publicSnapshot?.package ?? rawPkg;
   const status = (rawPkg as { status?: string | null }).status;
   const auditStatus = (rawPkg as { audit_status?: string | null }).audit_status;
