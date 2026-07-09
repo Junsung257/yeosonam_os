@@ -32,6 +32,10 @@ describe('customer visible copy quality', () => {
     expect(normalized).toBe('베트남 하노이/하롱/옌뜨 또는 메가 또는 닌빈 3박5일 실속');
     expect(issueCodes(normalized)).toEqual([]);
     expect(issueCodes('[VN] 베트남 하노이/하롱/옌뜨or메가or닌빈 3박5일 ☑실속')).toContain('supplier_notation');
+    expect(issueCodes('✓')).toEqual([]);
+    expect(issueCodes('✓ 노팁·노옵션')).toEqual([]);
+    expect(issueCodes('✓실속')).toContain('supplier_notation');
+    expect(issueCodes('실속✓')).toContain('supplier_notation');
     expect(normalizeCustomerVisibleCopy('📍 [BX] 나트랑 3박5일 &#9745일정표')).toBe('📍 나트랑 3박5일 일정표');
     expect(normalizeCustomerVisibleCopy('나트랑 3박5일 &#974')).toBe('나트랑 3박5일');
   });
