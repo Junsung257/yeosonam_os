@@ -36,6 +36,7 @@ Local code references:
 - Publish preflight evaluator: `src/lib/blog-publish-preflight.ts`
 - Canary candidate preflight evaluator: `src/lib/blog-canary-preflight.ts`
 - Generated canary quality evaluator: `src/lib/blog-canary-generated-quality.ts`
+- Fleet phrase-drift evaluator: `src/lib/blog-fleet-phrase-drift.ts`
 - Product dry-run generated canary builder: `src/lib/blog-product-generated-canary.ts`
 - Current-day publisher health evaluator: `src/lib/blog-current-day-publisher-health.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
@@ -97,7 +98,17 @@ The live publish gate must use the same 100-point category definition. Do not al
 
 Daily quota recovery must distinguish repairable post defects from unsafe seeds. Deterministic quality failures such as `length`, `links`, `keyword_density`, `structure_integrity`, `table_integrity`, `render_integrity`, `intent_quality`, `seo_score`, and `engine_v2` are self-heal candidates after the shared repair path is deployed. They should be retried without an artificial two-hour delay and, after the normal attempt limit, routed to the editorial recovery backlog instead of hidden terminal failure. Unsafe seeds still do not self-heal: duplicate content, missing context, insufficient evidence, product open-contract failure, topic-fit failure, candidate pre-publish contract failure, and invalid linked drafts must be skipped, quarantined, or repaired at the source before requeueing.
 
+Product-open blockers must not reduce the daily publish target. If product-backed rows are blocked by `pending_review`, customer-open contract failure, stale mobile proof, or missing product evidence, the scheduler/publisher must exclude them from `publishable_candidate_count` and refill or claim information candidates instead. Commercial posts may wait for source repair; the day still needs enough safe information candidates to meet the target without inventing product facts.
+
+When the publisher has enough remaining time for deterministic information fallback but not enough for full AI/product/card generation, claimed queue rows must be ordered so fallback-eligible information posts are attempted before product, card-news, or pillar rows. The day should not miss quota merely because a slow source-specific candidate was claimed ahead of a safe information fallback candidate.
+
+Extra recovery claims must use the shared time-budget plan in `src/lib/blog-publisher-time-budget.ts`. When normal generation time remains, the publisher may claim the mixed publishable pool. When only deterministic fallback time remains, it must pull and claim fallback-eligible information candidates first. It should stop claiming only when even deterministic fallback cannot safely finish, or when the daily quota is already filled.
+
+If the publisher claims queue rows but exits for time budget before attempting all of them, every unattempted row must be released back to `queued` with an immediate `target_publish_at`. A claimed-but-unattempted row must not remain stuck in `generating`, because that silently removes publishable inventory from the next recovery run and can cause the daily target to miss again.
+
 The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. Both the live publisher and the backfill/audit tool must call the same `repairBlogFinalCustomerSurface()` implementation so a defect fixed in recent published rows cannot recur in new automatic posts. The same applies to `repairBlogEngineCategoryGaps()`: live publishing, shared publish preparation, and recent-post backfill/audit must use the category repair path so 100-point category weaknesses are fixed consistently before final evaluation. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.
+
+The daily publisher schedule must include a final same-day catch-up slot before the daily summary close window. With the current 22:45 KST summary, the required publisher slots are 12:05, 15:05, 18:05, 21:05, and 22:05 KST. The 22:05 run is a quota recovery run: it no-ops when the day has already reached target, and it must attempt safe publishable information candidates when quota remains. The external 22:07 publisher retry, pre-summary publisher catch-up, 22:27 indexing-worker backup, final 22:40 indexing drain, and pre-summary indexing drain must finish before the daily summary closes, so late recovery posts and indexing outbox evidence are counted in the same operating day.
 
 ## Publish Preflight Contract
 
@@ -136,6 +147,7 @@ Before widening automatic publishing after engine changes, `diagnose:blog-autopu
 - Generated canary proof must cover both writer paths. If recent published rows do not include a product-backed post, diagnostics and admin health must build a non-publishing dry-run sample from `blog_topic_queue.product_id` + the registered `travel_packages` row and run the same engine/customer/render checks. This prevents the system from claiming overall blog quality when only information posts have been proven.
 - Generated canary volume should track the daily target, capped at five samples per run. For the current 4/day policy, diagnostics and admin health must request four generated samples rather than stopping at the old three-sample minimum.
 - Product writer templates use `product-template-v4`. Customer-facing copy must be natural Korean, not prompt residue or encoded text. The product dry-run canary is expected to include price/from-city/duration opening, included/excluded, fit/not-fit, price-change risk, consult questions, official links, and bottom consultation links without inventing facts outside the product DB.
+- Generated canary quality must include fleet phrase-drift checks across the selected recent/dry-run samples. Individual posts can pass engine/customer/render checks and still warn or block if the fleet repeats the same opening signature, H2 order, CTA sentence, or generic "first check budget/movement/local condition" formula. Repeated generic opening formulas are a block because they make the whole blog read like automated SEO copy.
 
 ## Blocking Rules
 
@@ -261,6 +273,7 @@ Run:
 npm run audit:blog-quality -- --limit=50
 npm run audit:blog-search-daily:strict
 npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict
+npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --strict
 npm run audit:blog-images -- --base=https://www.yeosonam.com --json
 npm run audit:blog-seo -- --base=https://www.yeosonam.com --json
 npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
@@ -270,6 +283,7 @@ npm run diagnose:blog-autopublish -- --json
 Failure policy:
 
 - Any non-slug quality failure blocks the “healthy” status.
+- Any public customer-quality failure blocks healthy status even when DB quality, render integrity, SEO, and public URL checks pass. This audit catches reader-visible defects such as broken table surfaces, generated instruction residue, duplicate headings/sections, early hard CTA in information posts, unsupported internal-data claims, and AI-cliche tone.
 - Any recent published post missing a durable indexing outbox job blocks healthy status as `indexing_outbox_missing`.
 - Any public blog section with a missing/mismatched canonical URL, duplicate brand title, noindex, DB-unavailable fallback, or missing blog collection sitemap entry blocks healthy status.
 - Indexing provider success below 80% creates an admin alert.

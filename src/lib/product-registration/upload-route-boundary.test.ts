@@ -58,6 +58,10 @@ function readLandingClient(): string {
   return readFileSync(join(process.cwd(), 'src/app/lp/[id]/LandingClient.tsx'), 'utf8');
 }
 
+function readPackageDetailClient(): string {
+  return readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
+}
+
 function readMobileReadinessCandidateRepair(): string {
   return readFileSync(join(process.cwd(), 'scripts/repair-product-mobile-readiness-candidates.ts'), 'utf8');
 }
@@ -1039,6 +1043,17 @@ describe('upload route registration pipeline boundary', () => {
     expect(landingClient).not.toContain("'출발 확정\\n일정 확인'");
     expect(landingClient).not.toContain("'일정 확정\\n출발 표시'");
     expect(landingClient).not.toContain("? '출발 확정' : '상담 가능'");
+  });
+
+  it('keeps package sticky proof copy away from risky confirmation promises', () => {
+    const detailClient = readPackageDetailClient();
+
+    expect(detailClient).toContain('모객 기준까지');
+    expect(detailClient).toContain('조건 확인');
+    expect(detailClient).toContain('출발일 상담 확인');
+    expect(detailClient).not.toContain('출발 확정까지');
+    expect(detailClient).not.toContain('출발 확정!');
+    expect(detailClient).not.toContain('출발 확정 후 안심 예약');
   });
 
   it('runs the operational gate against pre-public proof screens too', () => {

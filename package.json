@@ -145,6 +145,7 @@
     "audit:blog-visual": "node scripts/audit-blog-visual-system.mjs",
     "audit:blog-gsc-domain": "node scripts/audit-blog-gsc-domain.mjs",
     "audit:blog-public-surfaces": "npx tsx scripts/audit-blog-public-surfaces.ts",
+    "audit:blog-public-customer-quality": "npx tsx scripts/audit-blog-public-customer-quality.ts",
     "check:blog-indexnow": "npx tsx scripts/check-blog-indexnow-config.ts",
     "audit:blog-revenue-funnel": "node scripts/audit-blog-revenue-funnel.mjs",
     "audit:destinations": "node scripts/audit-destinations-full.mjs",
