@@ -157,6 +157,10 @@ const CUSTOMER_OPTION_FRAGMENT_RE =
   /(?:마사지|맛사지|스파|공연|오페라쇼|퍼포먼스\s*쇼|케이블카|티켓|입장권|추천\s*옵션|강력추천옵션|액티비티|래프팅|호핑|스노클링|체험|전동차|쇼\s*관람)/i;
 const CUSTOMER_FREE_TIME_FRAGMENT_RE =
   /(?:자유\s*시간|자유시간|자유\s*일정|차창\s*관광|차창관광|필수관광\s*[①②③④\d]*|일정\s*중\s*내\s*마음대로\s*택\s*1|^#.*(?:화요일|수요일|일요일|온천|게뷔페|시내|실속))/i;
+const EXPLICIT_OPTIONAL_TOUR_EVIDENCE_RE =
+  /(?:선택\s*관광|추천\s*옵션|강력\s*추천\s*옵션|옵션\s*가능|현지\s*지불|현지\s*별도|별도\s*문의|별도\s*비용|유료|선\s*포함|팁\s*별도|매너\s*팁\s*별도|\$\s*\d+|USD\s*\d+|US\$\s*\d+|\d{1,4}(?:,\d{3})*\s*(?:원|동|엔|만\s*원)|\d+\s*(?:불|달러)\s*\/?\s*인)/i;
+const ATTRACTION_VISIT_SIGNAL_RE =
+  /(?:관광|관람|방문|감상|등정|투어|나이트\s*투어|시티\s*투어|사파리|야시장|그랜드\s*월드|그랜드월드|대협곡|협곡|공원|사원|교회|생가|거리|대학교|민속촌|마을|광장|시장|비치|해변|섬|폭포|박물관|전망대|전망|공연장|유람선|나룻배|명소|장로봉)/i;
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -176,6 +180,14 @@ function categoryFromExisting(value: string | null): UnmatchedEntityCategory | n
     'unknown',
   ]);
   return allowed.has(value as UnmatchedEntityCategory) ? value as UnmatchedEntityCategory : null;
+}
+
+function hasExplicitOptionalTourEvidence(text: string): boolean {
+  return EXPLICIT_OPTIONAL_TOUR_EVIDENCE_RE.test(text);
+}
+
+function shouldKeepAsAttractionGap(text: string): boolean {
+  return ATTRACTION_VISIT_SIGNAL_RE.test(text) && !hasExplicitOptionalTourEvidence(text);
 }
 
 export function classifyUnmatchedActivity(
@@ -225,8 +237,13 @@ export function classifyUnmatchedActivity(
     category = 'free_time';
     confidence = 0.9;
   } else if (CUSTOMER_OPTION_FRAGMENT_RE.test(text)) {
-    category = 'optional_tour';
-    confidence = 0.9;
+    if (shouldKeepAsAttractionGap(text)) {
+      category = 'attraction';
+      confidence = 0.78;
+    } else {
+      category = 'optional_tour';
+      confidence = hasExplicitOptionalTourEvidence(text) ? 0.9 : 0.78;
+    }
   } else if (CUSTOMER_COST_FRAGMENT_RE.test(text)) {
     category = 'price_noise';
     confidence = 0.9;
@@ -255,8 +272,13 @@ export function classifyUnmatchedActivity(
     category = 'shopping';
     confidence = 0.86;
   } else if (KO_OPTION_RE.test(text) || NORMAL_OPTION_RE.test(text) || NORMAL_OPTION_FEE_RE.test(text)) {
-    category = 'optional_tour';
-    confidence = 0.86;
+    if (shouldKeepAsAttractionGap(text)) {
+      category = 'attraction';
+      confidence = 0.78;
+    } else {
+      category = 'optional_tour';
+      confidence = hasExplicitOptionalTourEvidence(text) || NORMAL_OPTION_FEE_RE.test(text) ? 0.86 : 0.78;
+    }
   } else if (KO_FREE_TIME_RE.test(text) || NORMAL_FREE_TIME_RE.test(text)) {
     category = 'free_time';
     confidence = 0.92;
@@ -285,7 +307,7 @@ export function classifyUnmatchedActivity(
     };
   }
 
-  if (category === 'optional_tour' && confidence >= 0.85) {
+  if (category === 'optional_tour' && confidence >= 0.85 && hasExplicitOptionalTourEvidence(text)) {
     return {
       category,
       confidence,

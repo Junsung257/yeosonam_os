@@ -126,6 +126,10 @@ const CUSTOMER_TOUR_OVERRIDE_RE = /(?:\uC2DC\uD2F0\s*\uD22C\uC5B4|\uC2DC\uD2F0\u
 const CUSTOMER_ATTRACTION_CANDIDATE_RE = /(?:\uBE48\uD384\s*\uC0AC\uD30C\uB9AC|\uBE48\uD384\uC0AC\uD30C\uB9AC)/i;
 const NO_OPTION_EVIDENCE_RE = /(?:\uB178\s*\uC635\uC158(?:\uC785\uB2C8\uB2E4)?|\uC120\uD0DD\s*\uAD00\uAD11\s*[:\uFF1A]?\s*\uB178\s*\uC635\uC158)/i;
 const INCLUDED_SERVICE_NOTICE_RE = /(?:(?:\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0).*(?:\uCCB4\uD5D8|\uD3EC\uD568|\uD301\s*\uBCC4\uB3C4|\uB9E4\uB108\s*\uD301\s*\uBCC4\uB3C4|\$\s*\d+)|(?:\uC695\uC7A5|\uB77D\uCEE4).*\uC0AC\uC6A9\s*\uBD88\uAC00|\uBBF8\uB9AC\s*\uD658\uBCF5|\uB178\s*\uD301\s*\uB178\s*\uC635\uC158\s*PKG)/i;
+const EXPLICIT_OPTIONAL_TOUR_EVIDENCE_RE =
+  /(?:선택\s*관광|추천\s*옵션|강력\s*추천\s*옵션|옵션\s*가능|현지\s*지불|현지\s*별도|별도\s*문의|별도\s*비용|유료|선\s*포함|팁\s*별도|매너\s*팁\s*별도|\$\s*\d+|USD\s*\d+|US\$\s*\d+|\d{1,4}(?:,\d{3})*\s*(?:원|동|엔|만\s*원)|\d+\s*(?:불|달러)\s*\/?\s*인)/i;
+const ATTRACTION_VISIT_SIGNAL_RE =
+  /(?:관광|관람|방문|감상|등정|투어|나이트\s*투어|시티\s*투어|사파리|야시장|그랜드\s*월드|그랜드월드|대협곡|협곡|공원|사원|교회|생가|거리|대학교|민속촌|마을|광장|시장|비치|해변|섬|폭포|박물관|전망대|전망|공연장|유람선|나룻배|명소|장로봉)/i;
 
 function cleanText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -166,6 +170,14 @@ function looksLikeRegionLabel(text: string, row?: Pick<UnmatchedRow, 'country' |
   return scope.includes(compact);
 }
 
+function hasExplicitOptionalTourEvidence(text: string): boolean {
+  return EXPLICIT_OPTIONAL_TOUR_EVIDENCE_RE.test(text);
+}
+
+function shouldKeepAsAttractionGap(text: string): boolean {
+  return ATTRACTION_VISIT_SIGNAL_RE.test(text) && !hasExplicitOptionalTourEvidence(text);
+}
+
 function classifyText(
   activity: string,
   existingCategory: string | null,
@@ -183,7 +195,11 @@ function classifyText(
   if (/^(?:길이|높이|직경|총길이)\s*\d/i.test(text)) return { category: 'price_noise', confidence: 0.9 };
   if (CUSTOMER_ATTRACTION_OVERRIDE_RE.test(text)) return { category: 'attraction', confidence: 0.78 };
   if (CUSTOMER_ATTRACTION_CANDIDATE_RE.test(text)) return { category: 'attraction', confidence: 0.78 };
-  if (CUSTOMER_TOUR_OVERRIDE_RE.test(text)) return { category: 'optional_tour', confidence: 0.88 };
+  if (CUSTOMER_TOUR_OVERRIDE_RE.test(text)) {
+    return hasExplicitOptionalTourEvidence(text)
+      ? { category: 'optional_tour', confidence: 0.88 }
+      : { category: 'attraction', confidence: 0.78 };
+  }
   if (NO_OPTION_EVIDENCE_RE.test(text)) return { category: 'notice', confidence: 0.92 };
   if (INCLUDED_SERVICE_NOTICE_RE.test(text) && !/\uC120\s*\uD3EC\uD568|\uAC15\uB825\s*\uCD94\uCC9C\s*\uC635\uC158|\uCD94\uCC9C\s*\uC635\uC158/.test(text)) {
     return { category: 'notice', confidence: 0.9 };
@@ -200,7 +216,10 @@ function classifyText(
   if (HOTEL_RE.test(text)) return { category: 'hotel', confidence: 0.86 };
   if (SHOPPING_RE.test(text)) return { category: 'shopping', confidence: 0.88 };
   if (GOLF_DETAIL_RE.test(text)) return { category: 'optional_tour', confidence: 0.88 };
-  if (OPTION_RE.test(text)) return { category: 'optional_tour', confidence: 0.88 };
+  if (OPTION_RE.test(text)) {
+    if (shouldKeepAsAttractionGap(text)) return { category: 'attraction', confidence: 0.78 };
+    return { category: 'optional_tour', confidence: hasExplicitOptionalTourEvidence(text) ? 0.88 : 0.72 };
+  }
   if (NOTICE_RE.test(text)) return { category: 'notice', confidence: 0.86 };
   if (GOLF_OPTION_RE.test(context)) return { category: 'optional_tour', confidence: 0.86 };
   if (ATTRACTION_TEXT_RE.test(text) || DESCRIPTIVE_FRAGMENT_RE.test(text)) return { category: 'attraction', confidence: 0.72 };
