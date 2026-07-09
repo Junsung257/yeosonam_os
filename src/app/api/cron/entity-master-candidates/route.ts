@@ -3,7 +3,11 @@ import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { evaluateMasterCandidate, type CandidateExternalSource } from '@/lib/entity-master-candidates';
+import {
+  evaluateMasterCandidate,
+  mergeCandidateExternalSources,
+  type CandidateExternalSource,
+} from '@/lib/entity-master-candidates';
 import {
   closeUnmatchedAsCandidateQueued,
   closeUnmatchedAsIgnored,
@@ -32,6 +36,7 @@ type CandidateGroup = {
   packageIds: Set<string>;
   packageTitles: Set<string>;
   occurrenceCount: number;
+  externalSources: CandidateExternalSource[];
   examples: Array<Record<string, unknown>>;
 };
 
@@ -62,6 +67,7 @@ function buildGroups(rows: UnmatchedRow[]): CandidateGroup[] {
   const groups = new Map<string, CandidateGroup>();
 
   for (const row of rows) {
+    const externalSources = externalSourcesFrom(row);
     const decision = evaluateMasterCandidate({
       rawLabel: row.activity,
       category: row.segment_kind_guess,
@@ -71,7 +77,7 @@ function buildGroups(rows: UnmatchedRow[]): CandidateGroup[] {
       occurrenceCount: row.occurrence_count ?? 1,
       evidenceCount: 1,
       packageCount: row.package_id ? 1 : 0,
-      externalSources: externalSourcesFrom(row),
+      externalSources,
     });
 
     const existing = groups.get(decision.candidateKey);
@@ -82,6 +88,7 @@ function buildGroups(rows: UnmatchedRow[]): CandidateGroup[] {
         packageIds: new Set(row.package_id ? [row.package_id] : []),
         packageTitles: new Set(row.package_title ? [row.package_title] : []),
         occurrenceCount: row.occurrence_count ?? 1,
+        externalSources,
         examples: [{
           id: row.id,
           package_id: row.package_id,
@@ -99,6 +106,10 @@ function buildGroups(rows: UnmatchedRow[]): CandidateGroup[] {
     existing.occurrenceCount += row.occurrence_count ?? 1;
     if (row.package_id) existing.packageIds.add(row.package_id);
     if (row.package_title) existing.packageTitles.add(row.package_title);
+    existing.externalSources = mergeCandidateExternalSources([
+      ...existing.externalSources,
+      ...externalSources,
+    ]);
     if (existing.examples.length < 5) {
       existing.examples.push({
         id: row.id,
@@ -119,7 +130,7 @@ function buildGroups(rows: UnmatchedRow[]): CandidateGroup[] {
       occurrenceCount: existing.occurrenceCount,
       evidenceCount: existing.ids.length,
       packageCount: existing.packageIds.size,
-      externalSources: externalSourcesFrom(row),
+      externalSources: existing.externalSources,
     });
   }
 
@@ -145,10 +156,13 @@ function payloadFor(group: CandidateGroup) {
       package_titles: [...group.packageTitles].slice(0, 20),
       mobile_landing_impact: group.packageIds.size > 0,
       examples: group.examples,
+      external_source_count: group.externalSources.length,
+      external_source_types: [...new Set(group.externalSources.map(source => source.source))],
+      public_gate: decision.suggestedMaster.public_gate,
       analyzer: 'entity-master-candidates-cron',
       analyzed_at: new Date().toISOString(),
     },
-    external_sources: [],
+    ...(group.externalSources.length > 0 ? { external_sources: group.externalSources } : {}),
     suggested_master: decision.suggestedMaster,
     confidence: decision.confidence,
     promotion_status: decision.promotionStatus,

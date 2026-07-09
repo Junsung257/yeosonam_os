@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateMasterCandidate, normalizeCandidateLabel } from './entity-master-candidates';
+import {
+  evaluateMasterCandidate,
+  mergeCandidateExternalSources,
+  normalizeCandidateLabel,
+} from './entity-master-candidates';
 
 describe('entity master candidate automation', () => {
   it('rejects movement tokens instead of creating attraction masters', () => {
@@ -85,6 +89,41 @@ describe('entity master candidate automation', () => {
     expect(decision.autoAction).toBe('create_publishable_master');
     expect(decision.promotionStatus).toBe('publishable_ready');
     expect(decision.suggestedMaster.customer_publishable).toBe(true);
+    expect(decision.suggestedMaster.public_gate).toMatchObject({
+      public_gate: 'publishable_ready',
+      route_impact: 'none',
+    });
+  });
+
+  it('keeps probable places internal until identity evidence is verified', () => {
+    const decision = evaluateMasterCandidate({
+      rawLabel: '\uB9C8\uD669\uAD6C \uB300\uD611\uACE1',
+      category: 'attraction',
+      country: '\uC911\uAD6D',
+      region: '\uC5F0\uAE38',
+      occurrenceCount: 7,
+      evidenceCount: 4,
+      packageCount: 4,
+    });
+
+    expect(decision.autoAction).toBe('create_internal_master');
+    expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    expect(decision.suggestedMaster.public_gate).toMatchObject({
+      public_gate: 'internal_only',
+      route_impact: 'warning',
+      operator_action: 'keep as hidden internal candidate until verified; never expose in customer payload',
+    });
+  });
+
+  it('deduplicates external evidence before candidate group evaluation persists it', () => {
+    const sources = mergeCandidateExternalSources([
+      { source: 'wikidata', id: 'Q1', confidence: 0.9, name: 'A' },
+      { source: 'wikidata', id: 'Q1', confidence: 0.9, name: 'A' },
+      { source: 'official_site', url: 'https://example.com', confidence: 0.8, name: 'A official' },
+    ]);
+
+    expect(sources).toHaveLength(2);
+    expect(sources.map(source => source.source)).toEqual(['wikidata', 'official_site']);
   });
 
   it('extracts a compact attraction label from supplier descriptive prose', () => {
