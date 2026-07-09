@@ -11,6 +11,7 @@ for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) 
 }
 
 const apply = process.argv.includes('--apply');
+const onlyAdditions = process.argv.includes('--only-additions') || process.argv.includes('--safe-additive-only');
 const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
   .split(',')
   .map(code => code.trim())
@@ -112,6 +113,16 @@ async function main() {
     removed_ids: string[];
     matched_names: string[];
   }> = [];
+  const skipped: Array<{
+    id: string;
+    code: string | null;
+    title: string | null;
+    status: string | null;
+    reason: string;
+    added_ids: string[];
+    removed_ids: string[];
+    matched_names: string[];
+  }> = [];
 
   for (const row of rows) {
     const before = attractionIdSet(row.itinerary_data);
@@ -120,6 +131,19 @@ async function main() {
     const added = diffIds(before, after);
     const removed = diffIds(after, before);
     if (added.length === 0 && removed.length === 0 && canonicalJson(row.itinerary_data) === canonicalJson(enriched.itineraryData)) continue;
+    if (onlyAdditions && (added.length === 0 || removed.length > 0)) {
+      skipped.push({
+        id: row.id,
+        code: row.internal_code,
+        title: row.title,
+        status: row.status,
+        reason: removed.length > 0 ? 'requires_removal_review' : 'metadata_only_change',
+        added_ids: added,
+        removed_ids: removed,
+        matched_names: enriched.matchedCanonicalNames,
+      });
+      continue;
+    }
     changed.push({
       id: row.id,
       code: row.internal_code,
@@ -140,13 +164,16 @@ async function main() {
 
   console.log(JSON.stringify({
     apply,
+    only_additions: onlyAdditions,
     active_attractions: attractions.length,
     code_filter: codeFilter,
     status_filter: statusFilter,
     limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : null,
     scanned: rows.length,
     changed: changed.length,
+    skipped: skipped.length,
     rows: changed,
+    skipped_rows: skipped,
   }, null, 2));
 }
 

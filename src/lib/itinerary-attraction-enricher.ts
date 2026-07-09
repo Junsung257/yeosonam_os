@@ -350,11 +350,11 @@ export function enrichItineraryWithAttractionReferences(
     const schedule = (day.schedule ?? []).map((item) => {
       if (item.type && SKIP_TYPES.has(item.type)) return item;
       if (shouldStripAttractionReferences(item)) return removeAttractionReferences(item);
+      const itemText = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
       const existingIds = Array.isArray(item.attraction_ids)
         ? item.attraction_ids.map(id => String(id)).filter(Boolean)
         : [];
       if (existingIds.length > 0) {
-        const itemText = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
         const directValues = dedupeAttractionMatches(
           findRegisteredAttractionTermsInText(itemText, attractions, matchDestination),
           itemText,
@@ -389,35 +389,36 @@ export function enrichItineraryWithAttractionReferences(
         return removeAttractionReferences(item);
       }
 
+      let pendingCompiledQueryUnmatched: string | null = null;
       const compiledQueries = getAttractionQueries(item);
       if (compiledQueries.length > 0) {
         const values = dedupeAttractionMatches(
           findMatchesForQueries(compiledQueries, attractions, matchDestination),
-          [item.activity, item.note ?? '', ...compiledQueries].filter(Boolean).join(' '),
+          [itemText, ...compiledQueries].filter(Boolean).join(' '),
         );
         if (values.length === 0) {
-          unmatched.push({ activity: compiledQueries[0], day_number: day.day ?? 0 });
-          return item;
+          pendingCompiledQueryUnmatched = compiledQueries[0] ?? null;
+        } else {
+          matchedScheduleItemCount++;
+          values.forEach(v => matchedNames.add(v.name));
+          return {
+            ...item,
+            attraction_ids: values.map(v => v.id).filter(Boolean),
+            attraction_names: values.map(v => v.name),
+            attraction_note: customerSafeAttractionNote(item, values[0]),
+          };
         }
-        matchedScheduleItemCount++;
-        values.forEach(v => matchedNames.add(v.name));
-        return {
-          ...item,
-          attraction_ids: values.map(v => v.id).filter(Boolean),
-          attraction_names: values.map(v => v.name),
-          attraction_note: customerSafeAttractionNote(item, values[0]),
-        };
       }
 
       const noteHasAttractionHint = /(산|궁|공원|호수|폭포|사원|성당|교회|광장|마을|전망|유적|박물관|시장|민속촌)/.test(item.note ?? '');
       if (isDirectScanUnsafeActivity(item.activity) && !noteHasAttractionHint) return item;
       const directMatches = findRegisteredAttractionTermsInText(
-        [item.activity, item.note ?? ''].filter(Boolean).join(' '),
+        itemText,
         attractions,
         matchDestination,
       );
       if (directMatches.length > 0) {
-        const values = dedupeAttractionMatches(directMatches, [item.activity, item.note ?? ''].filter(Boolean).join(' '));
+        const values = dedupeAttractionMatches(directMatches, itemText);
         if (values.length === 0) return removeAttractionReferences(item);
         matchedScheduleItemCount++;
         values.forEach(v => matchedNames.add(v.name));
@@ -429,9 +430,15 @@ export function enrichItineraryWithAttractionReferences(
         };
       }
 
-      if (!shouldAttemptAttractionMatch(item)) return item;
+      if (!shouldAttemptAttractionMatch(item)) {
+        if (pendingCompiledQueryUnmatched) unmatched.push({ activity: pendingCompiledQueryUnmatched, day_number: day.day ?? 0 });
+        return item;
+      }
       const candidates = extractAttractionCandidates(item.activity, item.note);
-      if (candidates.length === 0) return item;
+      if (candidates.length === 0) {
+        if (pendingCompiledQueryUnmatched) unmatched.push({ activity: pendingCompiledQueryUnmatched, day_number: day.day ?? 0 });
+        return item;
+      }
 
       const found = new Map<string, AttractionData>();
       for (const c of candidates) {
@@ -443,11 +450,11 @@ export function enrichItineraryWithAttractionReferences(
       }
 
       if (found.size === 0) {
-        unmatched.push({ activity: candidates[0], day_number: day.day ?? 0 });
+        unmatched.push({ activity: pendingCompiledQueryUnmatched ?? candidates[0], day_number: day.day ?? 0 });
         return item;
       }
 
-      const values = dedupeAttractionMatches([...found.values()], [item.activity, item.note ?? ''].filter(Boolean).join(' '));
+      const values = dedupeAttractionMatches([...found.values()], itemText);
       if (values.length === 0) return removeAttractionReferences(item);
       matchedScheduleItemCount++;
       values.forEach(v => matchedNames.add(v.name));
