@@ -44,8 +44,9 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('destination, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+      .select('destination, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .not('destination', 'is', null)
       .limit(DESTINATION_STATIC_PRERENDER_LIMIT);
     const unique: string[] = [
@@ -159,9 +160,10 @@ async function destinationHasPublicInventory(city: string): Promise<boolean | nu
     const queryNames = getPublicDestinationQueryNames(city);
     const { data, error } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+      .select('id, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .in('destination', queryNames)
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .limit(200);
     if (error) return null;
     return ((data ?? []) as Array<Record<string, unknown>>).some(isCustomerPubliclyOpenable);
@@ -200,8 +202,9 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
   try {
     const { data: packageRows, error } = await supabaseAdmin
       .from('travel_packages')
-      .select('destination, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+      .select('destination, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .limit(2000);
     if (error) return decoded;
 
@@ -478,9 +481,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 
   const departureQuery = supabaseAdmin
     .from('travel_packages')
-    .select('departure_airport, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+    .select('departure_airport, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
     .in('destination', queryNames)
     .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+    .in('publication_state', ['approved', 'published'])
     .not('departure_airport', 'is', null);
 
   const [
@@ -503,9 +507,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .limit(8),
     supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
+      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
       .in('destination', queryNames)
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(100),
     supabaseAdmin

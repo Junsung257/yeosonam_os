@@ -6,7 +6,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
-  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,status,audit_status,audit_report,updated_at,optional_tours,itinerary_data';
+  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,status,publication_state,audit_status,audit_report,updated_at,optional_tours,itinerary_data';
 
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
@@ -28,6 +28,7 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
+    .in('publication_state', ['approved', 'published'])
     .ilike('destination', `%${destinationHint}%`)
     .order('created_at', { ascending: false })
     .limit(120);
@@ -42,6 +43,7 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
+    .in('publication_state', ['approved', 'published'])
     .order('created_at', { ascending: false })
     .limit(150);
 

@@ -163,9 +163,10 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null
       ? supabaseAdmin
           .from('travel_packages')
-          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
+          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
           .in('destination', queryNames)
           .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+          .in('publication_state', ['approved', 'published'])
           .order('price', { ascending: true })
           .limit(2000)
       : Promise.resolve(emptyResult),
