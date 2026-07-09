@@ -20,7 +20,6 @@ type QueueRow = {
   attempts: number | null;
   priority: number | null;
   angle_type: string | null;
-  slug_hint: string | null;
   last_error: string | null;
   target_publish_at: string | null;
   updated_at: string | null;
@@ -36,7 +35,6 @@ type ActiveQueueRow = {
   destination: string | null;
   status: string | null;
   angle_type: string | null;
-  slug_hint: string | null;
   meta: unknown;
   generation_meta?: unknown;
 };
