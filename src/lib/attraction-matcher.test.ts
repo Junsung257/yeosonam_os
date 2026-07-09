@@ -258,6 +258,24 @@ describe('customer-facing attraction gate', () => {
       is_active: true,
       customer_publishable: true,
     }),
+    attr({
+      name: '\uC528\uD074\uB85C',
+      region: '\uB2E4\uB0AD',
+      country: 'VN',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '\uC704\uC990\uCEE4\uD53C',
+      region: '\uB098\uD2B8\uB791',
+      country: 'VN',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
   ];
 
   it('blocks product-like and non-public masters on customer-facing indexes', () => {
@@ -280,6 +298,8 @@ describe('customer-facing attraction gate', () => {
     expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[2])).toBe(false);
     expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[3])).toBe(false);
     expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[4])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[5])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[6])).toBe(false);
   });
 
   it('returns actionable blockers for DB repair reports', () => {
@@ -288,6 +308,8 @@ describe('customer-facing attraction gate', () => {
     expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[2])).toContain('non_customer_badge_type');
     expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[3])).toContain('not_customer_publishable');
     expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[4])).toContain('generic_name');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[5])).toContain('generic_name');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[6])).toContain('generic_name');
   });
 });
 
