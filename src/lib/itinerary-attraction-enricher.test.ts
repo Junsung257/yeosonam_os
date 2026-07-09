@@ -174,6 +174,44 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(schedule[0].attraction_ids).toEqual(['river-park']);
   });
 
+  it('keeps attraction cards for customer-visible perk rows with visit hints', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '\uD478\uAFB8\uC625\uC758 \uC791\uC740 \uC720\uB7FD, \uC120\uC14B\uD0C0\uC6B4 \uC804\uB3D9\uCE74 \uCCB4\uD5D8',
+                entity_kind: 'perk',
+              },
+              {
+                activity: '\uC120\uD0DD\uAD00\uAD11 \uC120\uC14B\uD0C0\uC6B4 \uD22C\uC5B4 $30',
+                entity_kind: 'optional_tour',
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'sunset-town',
+          name: '\uC120\uC14B\uD0C0\uC6B4',
+          region: '\uD478\uAFB8\uC625',
+          country: 'VN',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '\uD478\uAFB8\uC625',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toEqual(['sunset-town']);
+    expect(schedule[1].attraction_ids).toBeUndefined();
+  });
+
   it('removes stale non-sightseeing attraction ids such as eSIM data products', () => {
     const res = enrichItineraryWithAttractionReferences(
       {

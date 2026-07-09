@@ -139,7 +139,7 @@ function compactScheduleText(value: string | null | undefined): string {
 
 function hasAttractionVisitHint(text: string): boolean {
   const compact = compactScheduleText(text);
-  return /(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uC77C\uC1A1\uC815|\uD574\uB780\uAC15|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|CC)/.test(compact);
+  return /(?:\uAD00\uAD11|\uAD00\uB78C|\uBC29\uBB38|\uCCB4\uD5D8|\uB4F1\uC815|\uAC10\uC0C1|\uD22C\uC5B4|\uC1FC|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uC77C\uC1A1\uC815|\uD574\uB780\uAC15|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|CC)/.test(compact);
 }
 
 function isSupplierHeaderOrCommerceLine(text: string): boolean {
@@ -162,7 +162,8 @@ function shouldStripAttractionReferences(item: ItineraryScheduleItem): boolean {
   if (isHotelOperationLine(text)) return true;
   if (isHotelStayLine(text)) return true;
   if (isSupplierHeaderOrCommerceLine(text)) return true;
-  if (item.entity_kind === 'optional_tour' || item.entity_kind === 'perk') return true;
+  if (item.entity_kind === 'optional_tour') return true;
+  if (item.entity_kind === 'perk' && !hasAttractionVisitHint(text)) return true;
   if (item.entity_kind === 'transfer' && !hasAttractionVisitHint(text)) return true;
   return false;
 }

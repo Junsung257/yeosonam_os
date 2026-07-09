@@ -48,6 +48,10 @@ const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split(
   .split(',')
   .map(code => code.trim())
   .filter(Boolean);
+const statusFilter = (process.argv.find(arg => arg.startsWith('--status='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(status => status.trim())
+  .filter(Boolean);
 const packageIdFilter = (process.argv.find(arg => arg.startsWith('--package-ids='))?.split('=')[1] ?? '')
   .split(',')
   .map(id => id.trim())
@@ -1191,7 +1195,14 @@ function normalizeTerm(value) {
 }
 
 function isMatchableAttractionRow(attraction) {
-  return !attraction?.category || !['accommodation', 'hotel', 'mrt_product'].includes(String(attraction.category));
+  if (!attraction?.name) return false;
+  if (attraction.is_active === false) return false;
+  if (attraction.customer_publishable !== true) return false;
+  const category = String(attraction.category ?? '').toLowerCase();
+  if (['accommodation', 'hotel', 'mrt_product', 'meal', 'restaurant', 'service'].includes(category)) return false;
+  const badgeType = String(attraction.badge_type ?? '').toLowerCase();
+  if (['hotel', 'restaurant', 'meal', 'golf', 'optional'].includes(badgeType)) return false;
+  return !isBadRegisteredAttractionTermV2(attraction.name);
 }
 
 function isBadRegisteredAttractionTerm(term) {
@@ -1216,6 +1227,7 @@ function isBadRegisteredAttractionTerm(term) {
     '\uC99D\uD3B8',
     '\uAC00\uC774\uB4DC\uBBF8\uD305',
   ]).has(normalized)) return true;
+  if (/(?:\uC138\uD2B8\uBA54\uB274|\uBD84\uC9DC|\uBC18\uC384\uC624|\uBC18\uC138\uC624|\uBBFC\uC18C\uB9E4|\uBC18\uBC14\uC9C0|\uC0E4\uC6CC\uC6A9\uD488|\uC18D\uC637|\uC528\uD074\uB85C|\uC704\uC990\uCEE4\uD53C)/.test(normalized)) return true;
   return /(?:마사지|오일마사지|전통마사지|전신마사지|발마사지|쇼핑센터|\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i.test(normalized);
 }
 
@@ -1232,6 +1244,7 @@ function isUnsafeRegisteredAttractionAlias(term, attraction) {
   const normalized = normalizeTerm(term);
   const canonical = normalizeTerm(attraction?.name);
   if (canonical && normalized === canonical) return false;
+  if (/^(?:\uBC15\uBB3C\uAD00|\uC0AC\uC6D0|\uC131\uB2F9|\uC57C\uC2DC\uC7A5|\uC2DC\uC7A5|\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uD574\uBCC0)$/.test(normalized)) return true;
   if (canonical && (normalized.includes(canonical) || canonical.includes(normalized))) return false;
   const hasScope = Boolean(normalizeTerm(attraction?.region) || normalizeTerm(attraction?.country));
   if (!hasScope && normalized.length < 5) return true;
@@ -1269,7 +1282,15 @@ function directTermOccursInSchedule(text, term) {
 
 function hasCustomerVisibleAttractionHint(text) {
   const compact = normalizeTerm(text);
-  return /(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uCCB4\uD5D8|\uC21C\uB840|\uC870\uB9DD|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uAD11\uC7A5|\uC0DD\uAC00|\uAD50\uD68C)/.test(compact);
+  return /(?:\uAD00\uAD11|\uAD00\uB78C|\uBC29\uBB38|\uCCB4\uD5D8|\uB4F1\uC815|\uAC10\uC0C1|\uD22C\uC5B4|\uC1FC|\uC0B0\uCC45|\uC21C\uB840|\uC870\uB9DD|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uAD11\uC7A5|\uC0DD\uAC00|\uAD50\uD68C|\uC131\uB2F9|\uC0AC\uC6D0)/.test(compact);
+}
+
+function isServiceOrMealCenteredAttractionContext(text) {
+  const compact = normalizeTerm(text);
+  if (/(?:\uC911\uC2DD|\uC11D\uC2DD|\uC870\uC2DD|\uCEE4\uD53C|\uC74C\uB8CC|\uC81C\uACF5|\uB808\uC2A4\uD1A0\uB791|\uC2A4\uB178\uD074\uB9C1|\uB0DA\uC2DC|\uC120\uCC29\uC7A5|\uC120\uC0C1)/.test(compact)) {
+    return !/(?:\uAD00\uAD11|\uAD00\uB78C|\uBC29\uBB38|\uD22C\uC5B4|\uC1FC|\uC0AC\uC6D0|\uC131\uB2F9)/.test(compact);
+  }
+  return false;
 }
 
 function isTransferOnlyAttractionContext(text) {
@@ -1294,6 +1315,8 @@ function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
       if (['flight', 'hotel', 'meal', 'transfer', 'shopping', 'optional_tour', 'notice', 'free_time', 'price_noise'].includes(type)) continue;
       const itemText = [activity, item?.note].filter(Boolean).join(' ');
       const context = [itemText, dayContext].filter(Boolean).join(' ');
+      if (!hasCustomerVisibleAttractionHint(context)) continue;
+      if (isServiceOrMealCenteredAttractionContext(context)) continue;
       if (isTransferOnlyAttractionContext(context)) continue;
       for (const term of attractionTerms) {
         if (!destinationAllowsAttraction(pkg.destination, term.attraction, context)) continue;
@@ -1621,6 +1644,9 @@ let packageQuery = supabase
 if (codeFilter.length > 0) {
   packageQuery = packageQuery.in('internal_code', codeFilter);
 }
+if (statusFilter.length > 0) {
+  packageQuery = packageQuery.in('status', statusFilter);
+}
 if (packageIdFilter.length > 0) {
   packageQuery = packageQuery.in('id', packageIdFilter);
 }
@@ -1694,8 +1720,9 @@ for (let from = 0; ; from += 1000) {
     `active attractions ${from}`,
     () => supabase
       .from('attractions')
-      .select('id,name,aliases,region,country,category')
+      .select('id,name,aliases,region,country,category,badge_type,is_active,customer_publishable,mrt_gid')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .range(from, from + 999),
   );
   if (activeAttractionError) {
