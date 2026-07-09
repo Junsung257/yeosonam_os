@@ -721,6 +721,7 @@ function repairLegacyStructureArtifacts(markdown: string): string {
 }
 
 function ensureMinimumArticleDepth(markdown: string, destination?: string | null, primaryKeyword?: string | null): string {
+  if (/^##\s*예약\s*전\s*추가\s*확인\s*포인트\s*$/im.test(markdown)) return markdown;
   const plainLength = markdown
     .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
     .replace(/\[[^\]]+]\([^)]+\)/g, ' ')
@@ -3225,17 +3226,29 @@ function dedupeOfficialLinksHeadingFinal(markdown: string): string {
     const trimmed = line.trim();
     const isOfficialHeading = /^#{2,4}\s*(?:공식\s*)?확인\s*링크\s*$/i.test(trimmed);
     if (isOfficialHeading) {
-      if (officialInsertIndex < 0) {
-        officialInsertIndex = next.length;
-        next.push('## 공식 확인 링크', '');
-      }
+      const collected: string[] = [];
       let cursor = index + 1;
       while (cursor < lines.length) {
         const candidate = lines[cursor] ?? '';
         const candidateTrimmed = candidate.trim();
         if (/^#{1,4}\s+\S/.test(candidateTrimmed) || /^---+$/.test(candidateTrimmed)) break;
-        addOfficialContent(candidate);
-        cursor += 1;
+        if (!candidateTrimmed) {
+          cursor += 1;
+          continue;
+        }
+        if (/^\s*(?:[-*]\s*)?\[[^\]\n]+]\(https?:\/\/[^)\n]+\)\s*$/.test(candidateTrimmed)) {
+          collected.push(candidate);
+          cursor += 1;
+          continue;
+        }
+        break;
+      }
+      if (collected.length > 0) {
+        if (officialInsertIndex < 0) {
+          officialInsertIndex = next.length;
+          next.push('## 공식 확인 링크', '');
+        }
+        collected.forEach(addOfficialContent);
       }
       index = cursor - 1;
       continue;
@@ -3344,6 +3357,94 @@ function repairProseContaminatedTablesFinal(markdown: string): string {
     index = cursor - 1;
   }
   return next.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function ensureMarkdownTableSeparatorsFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  const isTableRow = (line: string | undefined) => /^\s*\|.+\|\s*$/.test(line ?? '');
+  const isSeparator = (line: string | undefined) =>
+    /^\s*\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|\s*$/.test(line ?? '');
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    next.push(line);
+    if (!isTableRow(line)) continue;
+    if (index > 0 && isTableRow(lines[index - 1])) continue;
+    if (isSeparator(lines[index + 1])) continue;
+
+    const cellCount = Math.max(2, line.split('|').slice(1, -1).length);
+    next.push(`| ${Array.from({ length: cellCount }, () => '---').join(' | ')} |`);
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function repairRepeatedFitDecisionBlocksFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let fitBlockCount = 0;
+
+  const isFitLabel = (line: string) =>
+    /^(?:#{2,4}\s*)?(?:\*\*)?\s*맞는\s*사람과\s*안\s*맞는\s*사람\s*(?:\*\*)?\s*$/i.test(line.trim());
+  const isBrokenFitFragment = (line: string) =>
+    /^\s*-\s*(?:-\s*)?(?:맞는|안|사람|보류할\s*것|상황|아이\s*동반|첫\s*해외여행|예산\s*중심|항공·숙소)/i.test(line.trim()) ||
+    /^\s*(?:서류,\s*)?이곳\s*이동\s*난이도\b/i.test(line.trim()) ||
+    /^\s*(?:맞는|안|사람):/i.test(line.trim()) ||
+    /^\s*맞는\s*사람과\s*안\s*맞는\s*사람\s*$/i.test(line.trim());
+  const isFitBullet = (line: string) =>
+    /^\s*-\s*(?:맞는\s*사람|안\s*맞는\s*사람|보류할\s*것)\s*[:：]/i.test(line.trim());
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (isFitLabel(line)) {
+      fitBlockCount += 1;
+      if (fitBlockCount === 1) {
+        next.push(line);
+        continue;
+      }
+
+      while (index + 1 < lines.length) {
+        const lookahead = lines[index + 1] ?? '';
+        if (/^\s*$/.test(lookahead) || isFitBullet(lookahead) || isBrokenFitFragment(lookahead)) {
+          index += 1;
+          continue;
+        }
+        break;
+      }
+      continue;
+    }
+
+    if (fitBlockCount > 0 && isBrokenFitFragment(line)) continue;
+    next.push(line);
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function repairRepeatedOfficialLinkLabelsFinal(markdown: string): string {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let seenOfficialLabel = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const normalized = trimmed
+      .replace(/^#{2,4}\s*/, '')
+      .replace(/^\*\*|\*\*$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const isOfficialLabel = /^(?:공식\s*)?확인\s*링크$/.test(normalized);
+    if (isOfficialLabel) {
+      if (seenOfficialLabel) continue;
+      seenOfficialLabel = true;
+      next.push(line);
+      continue;
+    }
+    next.push(line.replace(/(?:공식\s*확인\s*링크\s*){2,}/g, '공식 확인 링크 '));
+  }
+
+  return next.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function splitCollapsedHeadingBodyFinal(markdown: string): string {
@@ -4920,7 +5021,10 @@ function ensureCostRangeBlockFinal(markdown: string, row: BlogRow, primaryKeywor
 }
 
 function ensureReadableFaqFinal(markdown: string, primaryKeyword: string): string {
-  if (/^##\s*(?:자주\s*)?묻는\s*질문|^##\s*FAQ/im.test(markdown)) return markdown;
+  if (
+    hasFaqQuestionAnswerPatternFinal(markdown) ||
+    /(^|\n)\s*(?:#{2,4}\s*)?(?:\*\*)?\s*(?:자주\s*)?묻는\s*질문|(^|\n)\s*(?:#{2,4}\s*)?(?:\*\*)?\s*FAQ/im.test(markdown)
+  ) return markdown;
   const keyword = cleanTravelKeyword(primaryKeyword) || '여행';
   return `${markdown.trim()}\n\n## 자주 묻는 질문\n\n### Q1. ${keyword} 준비에서 가장 먼저 볼 것은 무엇인가요?\nA. 비용, 일정, 이동 시간, 현지 변동 가능성을 먼저 확인하면 선택이 쉬워집니다.\n\n### Q2. 현지에서 비용이 달라질 수 있나요?\nA. 성수기, 환율, 좌석, 호텔 위치, 현지 운영 상황에 따라 달라질 수 있습니다.\n\n### Q3. 출발 전 마지막으로 확인할 것은 무엇인가요?\nA. 여권, 결제 수단, 날씨, 취소 조건, 현지 이동 시간을 다시 확인하세요.\n`;
 }
@@ -5166,7 +5270,7 @@ function removeOrphanFaqHeadingsFinal(markdown: string): string {
 }
 
 function ensureFaqHeadingForLooseQuestionsFinal(markdown: string): string {
-  const hasFaqHeading = /(^|\n)\s*#{2,3}\s*(?:FAQ|자주\s*묻는\s*질문|자주\s*하는\s*질문|Q\s*&\s*A)\s*$/im.test(markdown);
+  const hasFaqHeading = /(^|\n)\s*(?:#{2,4}\s*)?(?:\*\*)?\s*(?:FAQ|자주\s*묻는\s*질문|자주\s*하는\s*질문|Q\s*&\s*A)(?:\*\*)?\s*$/im.test(markdown);
   if (hasFaqHeading) return markdown;
   const lines = markdown.split('\n');
   const firstQuestionIndex = lines.findIndex((line) =>
@@ -6076,6 +6180,47 @@ async function main() {
       destination: normalizedDestinationForWrite || destination,
       seo_title: normalizedTitle,
     }, primaryKeyword));
+    {
+      const finalSurfaceRepair = repairBlogFinalCustomerSurface({
+        markdown: nextHtml,
+        destination: normalizedDestinationForWrite || destination,
+        primaryKeyword,
+        slug,
+        title: normalizedTitle,
+      });
+      if (finalSurfaceRepair.changed) {
+        nextHtml = finalSurfaceRepair.markdown;
+      }
+    }
+    nextHtml = repairRepeatedOfficialLinkLabelsFinal(
+      repairRepeatedFitDecisionBlocksFinal(ensureMarkdownTableSeparatorsFinal(repairMarkdownTables(nextHtml))),
+    );
+    nextHtml = ensureOfficialReferenceLinksCustomer(nextHtml, {
+      ...row,
+      slug,
+      destination: normalizedDestinationForWrite || destination,
+      seo_title: normalizedTitle,
+    }, primaryKeyword);
+    nextHtml = dedupeOfficialLinksHeadingFinal(nextHtml);
+    {
+      const finalSurfaceRepair = repairBlogFinalCustomerSurface({
+        markdown: nextHtml,
+        destination: normalizedDestinationForWrite || destination,
+        primaryKeyword,
+        slug,
+        title: normalizedTitle,
+      });
+      if (finalSurfaceRepair.changed) {
+        nextHtml = finalSurfaceRepair.markdown;
+      }
+    }
+    nextHtml = ensureOfficialReferenceLinksCustomer(nextHtml, {
+      ...row,
+      slug,
+      destination: normalizedDestinationForWrite || destination,
+      seo_title: normalizedTitle,
+    }, primaryKeyword);
+    nextHtml = dedupeOfficialLinksHeadingFinal(nextHtml);
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
@@ -6337,6 +6482,8 @@ async function main() {
         reason: row.qualityGateSummary,
         failedGates: row.failedGates.slice(0, 3),
         qualityIssues: row.qualityIssues.slice(0, 5),
+        firstHtmlDiff: debugDiff ? row.firstHtmlDiff : undefined,
+        debugHtmlExcerpt: debugDiff ? row.debugHtmlExcerpt : undefined,
       })),
   };
 

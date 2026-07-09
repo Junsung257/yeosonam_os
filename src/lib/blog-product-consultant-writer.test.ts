@@ -29,8 +29,11 @@ describe('blog product consultant writer', () => {
     expect(markdown).toContain('## 자주 묻는 질문');
     expect(markdown).not.toContain('상담에서 최종 확인');
     expect(markdown).not.toContain('이게 말이 되나 싶으시죠');
+    expect(markdown).not.toMatch(/[占揶獄筌珥癒媛]/);
     expect(markdown).toContain('599,000원~');
     expect(markdown).toMatch(/부산 출발 나트랑/);
+    expect(markdown).toMatch(/같이 보면 좋아요|달라질 수 있어요|확인해요/);
+    expect(markdown).not.toMatch(/확인해야 합니다/);
     expect((markdown.match(/^##\s+/gm) || []).length).toBeLessThanOrEqual(8);
 
     const articleGate = checkArticleQualityV2({

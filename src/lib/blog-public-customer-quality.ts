@@ -153,7 +153,7 @@ function extractPublicArticle(input: PublicBlogCustomerQualityInput): ExtractedP
   const article = $('article').first();
   const root = article.length ? article : $('main').first().length ? $('main').first() : $('body');
   const bodyRoot = root.clone();
-  bodyRoot.find('nav, aside, footer, [aria-label*="목차"], [aria-label*="추천"], [data-toc], [data-related-posts]').remove();
+  bodyRoot.find('nav, aside, footer, [aria-label*="목차"], [aria-label*="추천"], [data-toc], [data-related-posts], [data-blog-supporting]').remove();
 
   const title = normalizeText(input.title || root.find('h1').first().text() || $('title').text() || '') || null;
   const text = normalizeText(root.text());

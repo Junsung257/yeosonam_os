@@ -12,6 +12,8 @@ import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
 import { evaluateBlogGeneratedQualityCanaryReport } from '../src/lib/blog-canary-generated-quality';
 import { buildProductGeneratedCanaryRows } from '../src/lib/blog-product-generated-canary';
 import { evaluateCurrentDayPublisherHealth } from '../src/lib/blog-current-day-publisher-health';
+import { classifyBlogAutopublishDiagnosisBuckets } from '../src/lib/blog-autopublish-diagnosis';
+import { inspectBlogFleetPhraseDrift } from '../src/lib/blog-fleet-phrase-drift';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -34,6 +36,7 @@ type BucketCode =
   | 'canary_candidates_unavailable'
   | 'generated_canary_quality_incomplete'
   | 'generated_canary_quality_failed'
+  | 'fleet_phrase_drift'
   | 'current_day_publisher_failure';
 
 type Bucket = {
@@ -48,6 +51,7 @@ const jsonMode = args.includes('--json');
 const dateArg = args.find((arg) => arg.startsWith('--date='))?.split('=')[1];
 const limitArg = Number(args.find((arg) => arg.startsWith('--limit='))?.split('=')[1] ?? 20);
 const limit = Number.isFinite(limitArg) && limitArg > 0 ? Math.min(limitArg, 100) : 20;
+const recentPublishedLimit = Math.max(limit, 100);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -253,7 +257,7 @@ async function main() {
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
-      .limit(limit),
+      .limit(recentPublishedLimit),
     countByStatus('blog_topic_queue', ['queued', 'generating', 'failed', 'skipped', 'deferred']),
     countByStatus('blog_indexing_jobs', ['pending', 'retry', 'processing', 'succeeded', 'failed']),
     supabase
@@ -413,7 +417,17 @@ async function main() {
   const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
     posts: [...(recentPublishedRes.data ?? []), ...productGeneratedCanaryRows],
     requested: generatedCanaryRequested,
+    writerMixRequired: productGeneratedCanaryRows.length > 0,
   });
+  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(
+    (recentPublishedRes.data ?? []).slice(0, recentPublishedLimit).map((row: any) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      blog_html: row.blog_html,
+      writer_type: row.generation_meta?.writer ?? null,
+    })),
+  );
   const latestPublisherLog = publisherLogs[0] ?? null;
   const latestPublisherSummary = summaryObject(latestPublisherLog);
   const healthPublisherSummary = lastSummaryObject(publisherHealth);
@@ -630,10 +644,16 @@ async function main() {
     });
   }
   if (generatedCanaryQuality.status === 'block') {
+    const fleetPhraseDrift = generatedCanaryQuality.fleet_phrase_drift;
+    const detail = generatedCanaryQuality.fail_count > 0
+      ? `${generatedCanaryQuality.fail_count}/${generatedCanaryQuality.checked_count} generated canary sample(s) failed engine/customer/render checks.`
+      : fleetPhraseDrift.status === 'block'
+        ? fleetPhraseDrift.summary
+        : 'Generated canary quality failed.';
     buckets.push({
       code: 'generated_canary_quality_failed',
       severity: 'high',
-      detail: `${generatedCanaryQuality.fail_count}/${generatedCanaryQuality.checked_count} generated canary sample(s) failed engine/customer/render checks.`,
+      detail,
       evidence: generatedCanaryQuality,
     });
   } else if (generatedCanaryQuality.status === 'warn') {
@@ -644,6 +664,14 @@ async function main() {
       evidence: generatedCanaryQuality,
     });
   }
+  if (fleetPhraseDrift.status !== 'pass') {
+    buckets.push({
+      code: 'fleet_phrase_drift',
+      severity: fleetPhraseDrift.status === 'block' ? 'high' : 'warning',
+      detail: fleetPhraseDrift.summary,
+      evidence: fleetPhraseDrift,
+    });
+  }
   if (currentDayPublisherHealth.status === 'risk') {
     buckets.push({
       code: 'current_day_publisher_failure',
@@ -652,6 +680,16 @@ async function main() {
       evidence: currentDayPublisherHealth.evidence,
     });
   }
+
+  const classifiedBuckets = classifyBlogAutopublishDiagnosisBuckets(buckets, {
+    reportDay: day.dayKey,
+    currentDay: currentDay.dayKey,
+    currentDayPublished: publishedCurrentDayRes.count ?? 0,
+    dailyTarget,
+    currentDayPublisherHealthy: currentDayPublisherHealth.status === 'healthy',
+    publishPreflightBlocked: publishPreflight.status === 'block' || publishPreflight.blockers.length > 0,
+    candidateShortage: publishabilitySnapshot.candidate_shortage,
+  });
 
   const report = {
     date: day.dayKey,
@@ -672,6 +710,27 @@ async function main() {
       yesterday: publishedYesterdayRes.count ?? 0,
       daily_target: dailyTarget,
       under_target: selectedDayUnderTarget,
+      closed_day: {
+        key: day.dayKey,
+        published: selectedDayPublished,
+        raw_published: selectedDayRawPublished,
+        target: dailyTarget,
+        remaining: Math.max(0, dailyTarget - selectedDayPublished),
+        under_target: selectedDayUnderTarget,
+        reconciliation_source: selectedDayPublishedEvidence.source,
+        selected_because: day.usedPreviousDayForPreCloseRun
+          ? 'pre_close_previous_day'
+          : 'closed_current_day',
+      },
+      current_day_status: {
+        key: currentDay.dayKey,
+        published: publishedCurrentDayRes.count ?? 0,
+        target: dailyTarget,
+        remaining: Math.max(0, dailyTarget - (publishedCurrentDayRes.count ?? 0)),
+        quota_met: (publishedCurrentDayRes.count ?? 0) >= dailyTarget,
+        publisher_health: currentDayPublisherHealth.status,
+        operating_status: classifiedBuckets.operating_status,
+      },
     },
     queue: queueCounts,
     queue_operational_health: queueOperationalHealth,
@@ -683,11 +742,15 @@ async function main() {
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
     generated_canary_quality: generatedCanaryQuality,
+    fleet_phrase_drift: fleetPhraseDrift,
     current_day_publisher_health: currentDayPublisherHealth,
     indexing_outbox_coverage: indexingOutboxCoverage,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
     latest_publisher_runs: publisherLogs,
+    operating_status: classifiedBuckets.operating_status,
+    active_buckets: classifiedBuckets.active_buckets,
+    historical_buckets: classifiedBuckets.historical_buckets,
     buckets,
   };
 
@@ -697,17 +760,26 @@ async function main() {
   }
 
   console.log(`Blog autopublish diagnosis (${report.date} KST)`);
-  console.log(`Published: ${report.published.today}/${dailyTarget} selected day, ${report.published.yesterday} previous day`);
+  console.log(`Closed day: ${selectedDayPublished}/${dailyTarget} (${day.dayKey}, under target: ${selectedDayUnderTarget ? 'yes' : 'no'})`);
+  console.log(`Current day: ${report.published.current_day}/${dailyTarget} (${currentDay.dayKey}, quota met: ${report.published.current_day_status.quota_met ? 'yes' : 'no'})`);
   console.log(`Queue: ${JSON.stringify(queueCounts)}`);
   console.log(`Publish preflight: ${publishPreflight.status} (${publishPreflight.score}/100)`);
   console.log(`Canary preflight: ${canaryPreflight.status} (${canaryPreflight.ready_count}/${canaryPreflight.requested})`);
   console.log(`Generated canary quality: ${generatedCanaryQuality.status} (${generatedCanaryQuality.pass_count}/${generatedCanaryQuality.checked_count})`);
+  console.log(`Fleet phrase drift: ${fleetPhraseDrift.status} (${fleetPhraseDrift.checked_count} checked, ${fleetPhraseDrift.issue_count} issues)`);
   console.log(`Current-day publisher: ${currentDayPublisherHealth.status}`);
   console.log(`Indexing jobs: ${JSON.stringify(indexingCounts)}`);
   console.log(`Indexing outbox coverage: ${indexingOutboxCoverage.coverage_rate ?? '-'}% (${indexingOutboxCoverage.missing_count} missing)`);
-  console.log('Buckets:');
-  for (const bucket of buckets) {
+  console.log(`Operating status: ${classifiedBuckets.operating_status} (active ${classifiedBuckets.active_buckets.length}, historical ${classifiedBuckets.historical_buckets.length})`);
+  console.log('Active buckets:');
+  if (classifiedBuckets.active_buckets.length === 0) {
+    console.log('- none');
+  }
+  for (const bucket of classifiedBuckets.active_buckets) {
     console.log(`- [${bucket.severity}] ${bucket.code}: ${bucket.detail}`);
+  }
+  if (classifiedBuckets.historical_buckets.length > 0) {
+    console.log(`Historical evidence retained: ${classifiedBuckets.historical_buckets.map((bucket) => bucket.code).join(', ')}`);
   }
 }
 

@@ -147,6 +147,25 @@ describe('customer-open contract', () => {
     expect(customerOpenContractBlogBlockReason(staleEvidence)).toBe('downstream_blog_publish_false');
   });
 
+  it('blocks customer opening and product-backed blog publishing when source verify is blocked', () => {
+    const result = evaluateCustomerOpenContract({
+      pkg: basePkg,
+      verifyChecks: [{ id: 'C15', status: 'pass' }, { id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      v3Gate: { blocksApproval: false, payloadError: null, blockReasons: [], draftStatus: 'ready_to_publish' },
+      sourceVerifyStatus: 'blocked',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('blocked');
+    expect(result.blockers).toContain('source_verify:blocked');
+    expect(result.evidencePack.status).toBe('blocked');
+    expect(result.evidencePack.downstream_eligibility.blog_publish).toBe(false);
+    expect(isCustomerOpenContractBlogPublishable(result)).toBe(false);
+    expect(customerOpenContractBlogBlockReason(result)).toBe('source_verify:blocked');
+  });
+
   it('does not allow product-backed blog publishing for non-customer-visible package statuses', () => {
     const result = evaluateCustomerOpenContract({
       pkg: {

@@ -73,7 +73,7 @@ function cleanKeywordPart(value: unknown): string | null {
     .replace(/\[[^\]]*]/g, ' ')
     .replace(/\([^)]*\)/g, ' ')
     .replace(/[\/|,+~]+/g, ' ')
-    .replace(/\b(?:PKG|ZE|LJ|7C|TW|KE|OZ|BX|RS|YP|YSN)\b/gi, ' ')
+    .replace(/\b(?:PKG|ZE|LJ|7C|TW|KE|OZ|BX|RS|YP|YSN|VJ)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return text.length >= 2 ? text : null;
@@ -210,7 +210,7 @@ export function buildProductBlogBrief(product: ProductWithOpsFields, angle: Angl
   const supplierCode = resolveProductSupplierCode(product);
   const seoKeyword = buildProductSeoKeyword(product);
   const nights = product.nights ?? (product.duration ? Math.max(product.duration - 1, 0) : null);
-  const duration = product.duration ? `${nights ? `${nights}박 ` : ''}${product.duration}일` : null;
+  const duration = product.duration ? `${nights ? `${nights}박` : ''}${product.duration}일` : null;
   const departureCity = cleanKeywordPart(product.departure_airport);
   const included = listFrom(product.inclusions);
   const excluded = listFrom(product.excludes);
@@ -219,8 +219,10 @@ export function buildProductBlogBrief(product: ProductWithOpsFields, angle: Angl
 
   const fitFor = [
     `${destinationLabel} 패키지를 가격, 일정, 포함 항목 기준으로 먼저 비교하고 싶은 분`,
-    departureCity ? `${departureLabel} 출발 상품을 찾는 분` : '출발지와 항공 조건을 상담으로 확인하고 싶은 분',
-    '자유여행보다 항공, 숙소, 이동이 한 번에 정리되는 방식을 선호하는 분',
+    departureCity
+      ? `${departureLabel} 출발 상품을 찾는 분`
+      : '출발지와 항공 조건을 상담으로 확인하고 싶은 분',
+    '자유여행보다 항공, 숙소, 이동을 한 번에 정리하는 방식을 선호하는 분',
   ];
   const notFitFor = [
     '호텔명, 객실, 항공 시간까지 모두 확정된 뒤에만 결정하고 싶은 분',
@@ -228,10 +230,10 @@ export function buildProductBlogBrief(product: ProductWithOpsFields, angle: Angl
   ];
   const riskNotes = [
     '가격은 출발일, 좌석, 유류할증료, 객실 조건에 따라 달라질 수 있습니다.',
-    '포함/불포함, 선택관광, 취소 규정은 예약 시점의 최종 조건을 다시 확인해야 합니다.',
+    '포함/불포함, 선택관광, 취소 규정은 예약 시점의 최종 조건으로 다시 확인하면 안전합니다.',
     departureDate
-      ? `가장 빠른 출발일은 ${departureDate} 기준으로 확인했습니다.`
-      : '출발 가능일은 상담 시점 기준으로 다시 확인해야 합니다.',
+      ? `가장 이른 출발일은 ${departureDate} 기준으로 확인했습니다.`
+      : '출발 가능일은 상담 시점 기준으로 다시 확인해요.',
   ];
   const consultQuestions = [
     '이 출발일에 현재 가능한 좌석과 객실이 있나요?',

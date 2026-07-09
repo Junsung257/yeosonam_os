@@ -83,7 +83,7 @@ function extractImages(markdownOrHtml: string): Array<{ alt: string; src: string
 }
 
 function hasFaqBlock(markdownOrHtml: string): boolean {
-  return /(^|\n)#{2,3}\s*(FAQ|자주 묻는 질문|Q\s*&\s*A)|(^|\n)\s*(Q\.|Q:|질문[:.]?)/i.test(markdownOrHtml);
+  return /(^|\n)#{2,3}\s*(FAQ|자주\s*묻는\s*질문|Q\s*&\s*A)|(^|\n)\s*(?:#{2,4}\s*)?(?:\*\*)?\s*(Q\d{0,2}[.:]|Q\s*&\s*A|질문[:.]?)/i.test(markdownOrHtml);
 }
 
 function hasHowToBlock(markdownOrHtml: string): boolean {

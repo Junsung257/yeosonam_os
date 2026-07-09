@@ -51,6 +51,12 @@ export interface BlogImageQualityReport {
   };
 }
 
+export interface BlogImageQualityRepairResult {
+  markdown: string;
+  changed: boolean;
+  changes: string[];
+}
+
 function stripHtml(value: string): string {
   return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -178,5 +184,94 @@ export function inspectBlogImageQuality(
       contextMatchedImages,
       issues,
     },
+  };
+}
+
+function labelForImageContext(options: BlogImageQualityOptions): string {
+  const raw = [
+    options.destination,
+    options.primaryKeyword,
+  ].find((value): value is string => typeof value === 'string' && value.trim().length >= 2);
+  const cleaned = String(raw ?? '여행')
+    .replace(/[_|()[\]{}"'`~!@#$%^&*+=<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || '여행';
+}
+
+function includesAnyContextToken(text: string, tokens: string[]): boolean {
+  if (tokens.length === 0) return true;
+  const normalized = normalizeToken(text);
+  return tokens.some((token) => normalized.includes(token));
+}
+
+export function repairBlogImageQuality(
+  markdown: string,
+  options: BlogImageQualityOptions = {},
+): BlogImageQualityRepairResult {
+  const report = inspectBlogImageQuality(markdown, options);
+  const issues = new Set(report.evidence.issues);
+  const shouldRepair =
+    issues.has('missing_alt')
+    || issues.has('generic_alt')
+    || issues.has('no_contextual_alt_or_caption');
+
+  if (!shouldRepair) return { markdown, changed: false, changes: [] };
+
+  const contextTokens = buildContextTokens(options);
+  const label = labelForImageContext(options);
+  const captionText = options.blogType === 'product'
+    ? `${label} 상품 조건을 비교할 때 함께 확인할 이미지입니다.`
+    : `${label} 여행 준비와 현지 판단 기준을 함께 확인할 이미지입니다.`;
+  const altText = options.blogType === 'product'
+    ? `${label} 여행 상품 조건 참고 이미지`
+    : `${label} 여행 준비 참고 이미지`;
+
+  const lines = markdown.split('\n');
+  let changed = false;
+  const next: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const match = line.match(/^(\s*)!\[([^\]]*)]\(([^)\s]+)([^)]*)\)\s*$/);
+    if (!match) {
+      next.push(line);
+      continue;
+    }
+
+    const [, indent = '', rawAlt = '', url = '', suffix = ''] = match;
+    const following = lines[index + 1] ?? '';
+    const followingCaption = following.match(/^\s*<figcaption[^>]*>([\s\S]*?)<\/figcaption>\s*$/i);
+    const combinedContext = `${rawAlt} ${followingCaption?.[1] ?? ''}`;
+    const needsAlt = rawAlt.trim().length < 3 || GENERIC_ALT_RE.test(rawAlt.trim());
+    const needsContext = !includesAnyContextToken(combinedContext, contextTokens);
+    const nextAlt = needsAlt || needsContext ? altText : rawAlt.trim();
+
+    if (nextAlt !== rawAlt.trim()) changed = true;
+    next.push(`${indent}![${nextAlt}](${url}${suffix})`);
+
+    if (followingCaption) {
+      const existingCaption = stripHtml(followingCaption[1] ?? '');
+      if (!includesAnyContextToken(existingCaption, contextTokens)) {
+        next.push(`${indent}<figcaption>${captionText}</figcaption>`);
+        changed = true;
+      } else {
+        next.push(following);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (needsAlt || needsContext) {
+      next.push(`${indent}<figcaption>${captionText}</figcaption>`);
+      changed = true;
+    }
+  }
+
+  if (!changed) return { markdown, changed: false, changes: [] };
+  return {
+    markdown: next.join('\n').replace(/\n{4,}/g, '\n\n\n'),
+    changed: true,
+    changes: ['repaired_image_alt_caption_context'],
   };
 }

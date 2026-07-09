@@ -1,6 +1,7 @@
 import { evaluateBlogEngineV2, type BlogEngineEvaluation } from './blog-engine-v2';
 import { inspectBlogCustomerQuality, type BlogCustomerQualityReport } from './blog-customer-quality';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml, type RenderedBlogIntegrityReport } from './blog-renderer';
+import { inspectBlogFleetPhraseDrift, type BlogFleetPhraseDriftReport } from './blog-fleet-phrase-drift';
 
 export interface BlogGeneratedQualityCanaryInput {
   markdown: string;
@@ -42,6 +43,8 @@ export interface BlogGeneratedQualityCanaryReport {
   checked_count: number;
   pass_count: number;
   fail_count: number;
+  writer_mix_required: boolean;
+  fleet_phrase_drift: BlogFleetPhraseDriftReport;
   samples: Array<{
     id: string | null;
     slug: string | null;
@@ -154,11 +157,45 @@ function selectGeneratedCanaryRows(
   return selected;
 }
 
+function generatedCanaryNextAction(input: {
+  status: BlogGeneratedQualityCanaryReport['status'];
+  requested: number;
+  checkedCount: number;
+  hasWriterMix: boolean;
+  failCount: number;
+  fleetPhraseDrift: BlogFleetPhraseDriftReport;
+}): string {
+  if (input.status === 'pass') {
+    return 'Generated canary samples passed engine, customer, render, and fleet phrase-drift contracts.';
+  }
+  if (input.status === 'warn') {
+    if (input.checkedCount < input.requested) {
+      return 'Collect at least three recent posts with body content before expanding prompt or writer changes.';
+    }
+    if (!input.hasWriterMix) {
+      return 'Publish or dry-run at least one product-consultant sample so generated canary proof covers both writer paths.';
+    }
+    if (input.fleetPhraseDrift.status !== 'pass') {
+      return input.fleetPhraseDrift.next_action;
+    }
+    return 'Review generated canary warnings before expanding automatic publishing.';
+  }
+  if (input.failCount > 0) {
+    return 'Repair generated canary engine/customer/render failures before expanding automatic publishing.';
+  }
+  if (input.fleetPhraseDrift.status === 'block') {
+    return input.fleetPhraseDrift.next_action;
+  }
+  return 'Repair generated canary failures before expanding automatic publishing.';
+}
+
 export async function evaluateBlogGeneratedQualityCanaryReport(input: {
   posts: BlogGeneratedQualityCanaryRow[];
   requested?: number;
+  writerMixRequired?: boolean;
 }): Promise<BlogGeneratedQualityCanaryReport> {
   const requested = Math.max(1, Math.min(5, Math.round(input.requested ?? 3)));
+  const writerMixRequired = input.writerMixRequired ?? true;
   const candidates = selectGeneratedCanaryRows(input.posts, requested);
   const samples: BlogGeneratedQualityCanaryReport['samples'] = [];
 
@@ -187,8 +224,19 @@ export async function evaluateBlogGeneratedQualityCanaryReport(input: {
   const passCount = samples.filter((sample) => sample.status === 'pass').length;
   const failCount = samples.length - passCount;
   const writerTypes = new Set(samples.map((sample) => sample.writer_type));
-  const hasWriterMix = requested < 2 || (writerTypes.has('info_writer') && writerTypes.has('product_consultant_writer'));
-  const status = samples.length < requested ? 'warn' : failCount > 0 ? 'block' : !hasWriterMix ? 'warn' : 'pass';
+  const hasWriterMix = !writerMixRequired || requested < 2 || (writerTypes.has('info_writer') && writerTypes.has('product_consultant_writer'));
+  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(candidates.map((post) => ({
+    id: post.id ?? null,
+    slug: post.slug ?? null,
+    title: post.seo_title ?? post.title ?? null,
+    blog_html: post.blog_html ?? null,
+    writer_type: readWriterType(post.generation_meta, post.product_id),
+  })));
+  const status = failCount > 0 || fleetPhraseDrift.status === 'block'
+    ? 'block'
+    : samples.length < requested || !hasWriterMix || fleetPhraseDrift.status === 'warn'
+      ? 'warn'
+      : 'pass';
 
   return {
     status,
@@ -196,13 +244,16 @@ export async function evaluateBlogGeneratedQualityCanaryReport(input: {
     checked_count: samples.length,
     pass_count: passCount,
     fail_count: failCount,
+    writer_mix_required: writerMixRequired,
+    fleet_phrase_drift: fleetPhraseDrift,
     samples,
-    next_action: status === 'pass'
-      ? 'Generated canary samples passed engine, customer, and render contracts.'
-      : status === 'warn'
-        ? samples.length < requested
-          ? 'Collect at least three recent posts with body content before expanding prompt or writer changes.'
-          : 'Publish or dry-run at least one product-consultant sample so generated canary proof covers both writer paths.'
-        : 'Repair generated canary failures before expanding automatic publishing.',
+    next_action: generatedCanaryNextAction({
+      status,
+      requested,
+      checkedCount: samples.length,
+      hasWriterMix,
+      failCount,
+      fleetPhraseDrift,
+    }),
   };
 }

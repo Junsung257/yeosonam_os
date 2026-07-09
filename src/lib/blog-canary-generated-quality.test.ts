@@ -255,4 +255,71 @@ describe('evaluateBlogGeneratedQualityCanary', () => {
     expect(report.status).toBe('warn');
     expect(report.next_action).toContain('product-consultant');
   });
+
+  it('surfaces fleet phrase drift warnings when individual samples pass', async () => {
+    const products = [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        title: 'Bali 3-night package',
+        destination: 'Bali',
+        duration: 4,
+        price_dates: [{ date: '2026-08-01', price: 899000 }],
+        departure_airport: 'Busan',
+        airline: 'KE',
+        inclusions: ['round-trip flight', 'hotel', 'local transfer'],
+        excludes: ['personal expenses', 'optional tours'],
+        itinerary: ['Busan departure', 'Bali arrival', 'main sightseeing', 'Busan arrival'],
+      },
+      {
+        id: '22222222-2222-2222-2222-222222222222',
+        title: 'Cebu 4-night package',
+        destination: 'Cebu',
+        duration: 5,
+        price_dates: [{ date: '2026-08-01', price: 699000 }],
+        departure_airport: 'Busan',
+        airline: '7C',
+        inclusions: ['round-trip flight', 'hotel', 'local transfer'],
+        excludes: ['personal expenses', 'optional tours'],
+        itinerary: ['Busan departure', 'Cebu arrival', 'island hopping', 'Busan arrival'],
+      },
+      {
+        id: '33333333-3333-3333-3333-333333333333',
+        title: 'Nha Trang 3-night package',
+        destination: 'Nha Trang',
+        duration: 5,
+        price_dates: [{ date: '2026-08-01', price: 599000 }],
+        departure_airport: 'Busan',
+        airline: 'BX',
+        inclusions: ['round-trip flight', 'hotel', 'local transfer'],
+        excludes: ['personal expenses', 'optional tours'],
+        itinerary: ['Busan departure', 'Nha Trang arrival', 'free day', 'Busan arrival'],
+      },
+    ];
+
+    const report = await evaluateBlogGeneratedQualityCanaryReport({
+      requested: 3,
+      writerMixRequired: false,
+      posts: products.map((product) => {
+        const brief = buildProductBlogBrief(product, 'value');
+        return {
+          slug: product.id,
+          seo_title: product.title,
+          blog_html: generateProductConsultantBlogPost(product, brief),
+          destination: product.destination,
+          content_type: 'package_intro',
+          product_id: product.id,
+          generation_meta: {
+            writer: 'product_consultant_writer',
+            product_consult_brief: brief,
+            content_brief: { evidence: ['product_db'] },
+          },
+        };
+      }),
+    });
+
+    expect(report.status).toBe('warn');
+    expect(report.fail_count).toBe(0);
+    expect(report.fleet_phrase_drift.status).toBe('warn');
+    expect(report.next_action).toContain('repeated openings');
+  });
 });

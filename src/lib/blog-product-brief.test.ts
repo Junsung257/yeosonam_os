@@ -42,7 +42,7 @@ describe('blog product brief', () => {
       seo_keyword: '다낭 5일 패키지',
       departure_date: '2026-07-11',
       departure_city: null,
-      duration: '4박 5일',
+      duration: '4박5일',
       duration_days: 5,
       supplier_code: 'YSN',
       price_from: 899000,
@@ -74,9 +74,9 @@ describe('blog product brief', () => {
   it('builds a short product SEO keyword instead of using the full package title', () => {
     expect(buildProductSeoKeyword({
       id: 'pkg_long',
-      destination: '푸꾸옥',
+      destination: '몽골',
       duration: 6,
-      title: 'PKG ZE 푸꾸옥 2색 골프 리조트 빈펄 4박6일 가성비 리뷰',
-    })).toBe('푸꾸옥 6일 패키지');
+      title: 'PKG ZE 몽골 2인 골프 리조트 빈펄 4박6일 가성비 리뷰',
+    })).toBe('몽골 6일 패키지');
   });
 });

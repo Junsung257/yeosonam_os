@@ -53,21 +53,21 @@ export function extractFaqItems(blogHtml: string): FaqItem[] {
   const items: FaqItem[] = []
   if (!blogHtml) return items
 
-  const re1 = /\*\*Q[.:]\s*(.+?)\*\*\s*\n+\s*A[.:]\s*([\s\S]+?)(?=\n\n\*\*Q[.:]|\n\n##|\n\n###|$)/g
+  const re1 = /\*\*Q\d{0,2}[.:]\s*(.+?)\*\*\s*\n+\s*A[.:]\s*([\s\S]+?)(?=\n\n\*\*Q\d{0,2}[.:]|\n\n##|\n\n###|$)/g
   let m
   while ((m = re1.exec(blogHtml)) !== null) {
     items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
   }
 
   if (items.length === 0) {
-    const re2 = /^###\s+Q[.:]?\s*(.+?)$\n+([\s\S]+?)(?=^###|^##|$)/gm
+    const re2 = /^###\s+Q\d{0,2}[.:]?\s*(.+?)$\n+([\s\S]+?)(?=^###|^##|$)/gm
     while ((m = re2.exec(blogHtml)) !== null) {
       items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
     }
   }
 
   if (items.length === 0) {
-    const re3 = /^Q[.:]?\s+(.+?)$\n+\s*A[.:]?\s+([\s\S]+?)(?=\n\nQ[.:]|\n##|$)/gm
+    const re3 = /^Q\d{0,2}[.:]?\s+(.+?)$\n+\s*A[.:]?\s+([\s\S]+?)(?=\n\nQ\d{0,2}[.:]|\n##|$)/gm
     while ((m = re3.exec(blogHtml)) !== null) {
       items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
     }

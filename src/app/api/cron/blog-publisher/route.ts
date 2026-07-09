@@ -28,6 +28,7 @@ import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
+import { repairBlogImageQuality } from '@/lib/blog-image-quality';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
@@ -68,6 +69,7 @@ import {
 } from '@/lib/blog-editorial-repair';
 import { repairBlogFinalCustomerSurface } from '@/lib/blog-final-customer-surface';
 import { repairBlogEngineCategoryGaps } from '@/lib/blog-engine-category-repair';
+import { repairArticleQualityV2Specifics } from '@/lib/blog-article-quality-v2-repair';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
@@ -80,9 +82,12 @@ import {
 import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
 import {
   canRunOptionalPublisherWork,
-  canStartPublisherItem,
+  canStartPublisherItemWithFallback,
+  getPublisherExtraClaimRecoveryPlan,
   getPublisherGenerationTimeoutMs,
   getPublisherRemainingMs,
+  getUnattemptedClaimReleaseIds,
+  sortPublisherQueueForTimeBudget,
 } from '@/lib/blog-publisher-time-budget';
 import { readBoundedIntEnv } from '@/lib/env-utils';
 
@@ -116,12 +121,13 @@ export const dynamic = 'force-dynamic';
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
 const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
 const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 12, MAX_BATCH, 20);
-const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 0, 4);
+const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
 const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
 const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
+const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
 const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
 const MAX_ATTEMPTS = 2;
@@ -187,6 +193,25 @@ function generatePublisherBlogText(
 
 function publisherRemainingMs(startedAtMs: number): number {
   return getPublisherRemainingMs(startedAtMs, MAX_EXEC_MS);
+}
+
+function isFastFallbackEligibleInfoItem(item: any): boolean {
+  return !item?.product_id && !item?.card_news_id && item?.source !== 'pillar';
+}
+
+function canStartPublisherQueueItem(item: any, remainingMs: number): boolean {
+  return canStartPublisherItemWithFallback({
+    remainingMs,
+    minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+    fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+    fallbackEligible: isFastFallbackEligibleInfoItem(item),
+  });
+}
+
+function shouldUseFastDeterministicInfoFallback(item: any, remainingMs: number): boolean {
+  return isFastFallbackEligibleInfoItem(item)
+    && remainingMs < BLOG_PUBLISHER_MIN_ITEM_START_MS
+    && remainingMs >= BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS;
 }
 
 async function withGenerationBudget<T>(
@@ -552,6 +577,221 @@ function applyEngineCategoryRepair(
   return categoryRepair.changes;
 }
 
+function buildDeterministicInfoFallbackMarkdown(item: any, primaryKeyword?: string | null): string {
+  const keyword = String(primaryKeyword || item.primary_keyword || item.topic || item.destination || '여행 준비');
+  const destination = item.destination || extractDestination(String(item.topic || keyword)) || keyword.split(/\s+/)[0] || '여행지';
+  const subject = destination && destination !== keyword ? destination : '이 여행';
+  const seed = `${item.id || ''}|${item.topic || ''}|${primaryKeyword || ''}|${destination || ''}`;
+  const pick = (variants: string[]) => {
+    let hash = 0;
+    for (const char of seed) hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
+    return variants[hash % variants.length] ?? variants[0] ?? '';
+  };
+  const keywordParticle = (() => {
+    const chars = Array.from(keyword.trim()).reverse();
+    const lastHangul = chars.find((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 0xac00 && code <= 0xd7a3;
+    });
+    return lastHangul && ((lastHangul.charCodeAt(0) - 0xac00) % 28) > 0 ? '은' : '는';
+  })();
+  const context = `${item.topic || ''} ${keyword} ${item.category || ''}`;
+  const currentYear = new Date().getFullYear();
+  const shortLabel = /보험|보장|병원|수하물|상해|질병|분실/.test(context)
+    ? '여행자 보험'
+    : /로밍|유심|이심|eSIM|데이터|통신|전화/.test(context)
+      ? '통신 준비'
+      : /비자|입국|서류|여권|세관|면세/.test(context)
+        ? '입국 서류'
+        : /공항|픽업|택시|렌터카|교통|이동|동선|시내/.test(context)
+          ? '공항 이동'
+          : /아이|가족|일정|코스/.test(context)
+            ? '가족 일정'
+            : /예산|비용|식비|경비|쇼핑/.test(context)
+              ? '여행 경비'
+              : '여행 준비';
+  const lead = /보험|보장|병원|수하물|상해|질병|분실/.test(context)
+    ? pick([
+      `${keyword}${keywordParticle} 1차로 항공 지연, 병원 이용, 수하물 분실, 현지 결제 가능 범위를 비교하면 필요 여부를 판단하기 쉽습니다. 여행 기간, 동행자 나이, 기존 카드 보험을 확인한 뒤 부족한 보장만 추가하세요.`,
+      `${keyword}${keywordParticle} 보장 이름보다 실제로 쓸 상황을 먼저 보는 편이 안전합니다. 항공 지연, 병원비, 수하물 분실, 동행자 나이를 나누면 과한 보장과 부족한 보장을 구분할 수 있습니다.`,
+    ])
+    : /로밍|유심|이심|eSIM|데이터|통신|전화/.test(context)
+      ? pick([
+        `${keyword}${keywordParticle} 가격만 보지 말고 개통 방식, 데이터 용량, 통화 필요 여부, 현지 앱 인증 가능성을 함께 확인해야 합니다. 짧은 일정은 로밍, 장기·가족 일정은 유심이나 eSIM 비교가 유리한 경우가 많습니다.`,
+        `${keyword}${keywordParticle} 공항에서 시간을 줄이려면 구매 가격보다 개통 난이도를 먼저 봐야 합니다. 동행자가 많으면 공유 방식, 혼자라면 인증과 통화 가능 여부를 기준으로 고르세요.`,
+      ])
+      : /비자|입국|서류|여권|세관|면세/.test(context)
+        ? pick([
+          `${keyword}${keywordParticle} 출발 2주 전 무비자 가능 여부, 체류 가능 일수, 여권 6개월 기준, 항공사 요구 서류를 공식 안내로 다시 확인해야 합니다. 여권·항공권·숙소 정보·입국 신고 조건을 나누면 공항에서 빠뜨릴 항목을 줄일 수 있습니다.`,
+          `${keyword}${keywordParticle} 후기보다 공식 조건을 먼저 확인해야 하는 항목입니다. 여권 유효기간, 체류 가능 일수, 항공사 서류 요구를 따로 보면 공항에서 다시 줄 서는 일을 줄일 수 있습니다.`,
+        ])
+        : /공항|픽업|택시|렌터카|교통|이동|동선|시내/.test(context)
+          ? pick([
+            `${keyword}${keywordParticle} 도착 시간, 숙소 위치, 결제 수단, 이동 앱 사용 가능 여부를 함께 봐야 첫날 1~2시간 손실을 줄일 수 있습니다. 짐이 많거나 밤 도착이면 택시·픽업, 낮 도착이면 앱 호출과 셔틀을 비교하세요.`,
+            `${keyword}${keywordParticle} 첫날 피로를 줄이려면 가장 싼 이동수단보다 실패 가능성이 낮은 방법을 먼저 고르는 편이 좋습니다. 도착 시간, 짐 개수, 숙소 위치, 결제 수단을 함께 확인하세요.`,
+          ])
+          : /아이|가족|일정|코스/.test(context)
+            ? pick([
+              `${destination} 가족여행은 하루 코스를 많이 넣기보다 이동 1회당 시간, 숙소 위치, 식사·휴식 시간을 먼저 맞추는 편이 좋습니다. 첫날은 이동과 휴식, 둘째 날 이후는 투어·리조트·시내 일정을 나눠 잡으세요.`,
+              `${destination} 가족 일정은 관광지 개수보다 컨디션 관리가 먼저입니다. 공항 이동, 낮잠이나 휴식 시간, 식사 간격을 잡아 두면 아이와 부모님 모두 일정이 편해집니다.`,
+            ])
+            : /예산|비용|식비|경비|쇼핑/.test(context)
+              ? pick([
+                `${keyword}${keywordParticle} 항공·숙소 결제액과 현지 식비, 교통비, 선택 관광, 팁을 따로 봐야 실제 총액이 잡힙니다. 먼저 1인 비용과 가족 총액, 현지 추가비 가능 항목을 나누면 과소예산을 줄일 수 있습니다.`,
+                `${keyword}${keywordParticle} 표시 가격만 보면 저렴해 보여도 현지에서 다시 쓰는 돈이 생길 수 있습니다. 결제 완료 금액, 식비, 이동비, 선택 관광, 카드 수수료 5가지를 나눠 계산하세요.`,
+                `${keyword}${keywordParticle} 예산표를 만들 때는 “이미 낸 돈”과 “현장에서 낼 돈”을 분리해야 합니다. 가족이나 단체 일정은 1인 금액보다 전체 총액으로 비교하는 편이 정확합니다.`,
+              ])
+              : pick([
+                `${keyword}${keywordParticle} 일정, 비용, 이동 시간, 현지 확인 조건을 먼저 나누면 판단이 쉽습니다. 출발일 기준으로 바뀔 수 있는 항목을 다시 확인하고, 표와 체크리스트에서 필요한 부분만 빠르게 비교하세요.`,
+                `${keyword}${keywordParticle} 처음부터 모든 정보를 읽기보다 바뀔 수 있는 항목을 먼저 보는 편이 좋습니다. 출발일, 인원, 이동 시간, 현지 결제 조건을 나누면 준비 기준이 선명해집니다.`,
+                `${keyword}${keywordParticle} 준비 순서를 잡으면 불필요한 검색 시간을 줄일 수 있습니다. 공식 확인이 필요한 항목과 개인 취향으로 고를 항목을 나눠 보고 마지막에 체크리스트로 정리하세요.`,
+              ]);
+
+  return [
+    `# ${keyword}`,
+    '',
+    lead,
+    '',
+    '## 먼저 볼 4가지',
+    '',
+    `- ${subject}은 출발일, 인원, 숙소 위치, 항공 시간에 따라 준비 기준이 달라집니다.`,
+    '- 정책, 항공, 현지 교통, 날씨처럼 바뀔 수 있는 항목은 출발 7일 전과 24시간 전에 다시 확인합니다.',
+    '- 비용은 결제 완료 금액과 현지 추가 비용을 분리해서 봐야 예산 오차를 줄일 수 있습니다.',
+    '- 아이·부모님 동반 일정은 이동 시간 30분 차이도 체감 피로가 커질 수 있습니다.',
+    '',
+    '## 빠른 판단표',
+    '',
+    '| 상황 | 먼저 볼 것 | 문의 전 확인할 점 |',
+    '| --- | --- | --- |',
+    `| 처음 가는 일정 | 입국, 이동, 결제, 통신 | 여권 정보와 항공권 영문 이름 일치 여부 |`,
+    '| 가족 여행 | 이동 시간, 숙소 위치, 식사 간격 | 아이 연령, 침대 조건, 차량 탑승 시간 |',
+    '| 예산 중심 | 총액, 현지 추가비, 취소 규정 | 포함/불포함 항목과 환율 변동 가능성 |',
+    '| 짧은 일정 | 공항 동선, 첫날 피로도 | 늦은 도착이면 야간 일정을 줄일지 여부 |',
+    '',
+    '## 준비 순서',
+    '',
+    `1. 출발 2주 전에는 여권, 항공권, 숙소 예약, 입국 조건을 먼저 확인합니다.`,
+    '2. 출발 7일 전에는 날씨, 현지 결제 수단, 통신 준비, 이동 앱 사용 가능 여부를 다시 봅니다.',
+    '3. 출발 전날에는 바우처, 보험, 비상 연락처, 공항 이동 시간을 동행자와 공유합니다.',
+    '4. 현지에서는 일정 변경 가능성이 있으니 첫날과 마지막 날은 여유 시간을 남겨둡니다.',
+    '',
+    '## 실수하기 쉬운 부분',
+    '',
+    `같은 지역 일정이라도 항공 도착 시간과 숙소 위치에 따라 체감 난이도가 크게 달라집니다. 낮 도착이면 이동 후 가벼운 식사와 산책이 가능하지만, 밤 도착이면 숙소 이동과 체크인만 해도 피로가 쌓일 수 있습니다.`,
+    '',
+    '비용도 상품가나 항공권만 보면 부족합니다. 현지 교통비, 식비, 선택 관광, 팁, 카드 수수료, 환율 변동까지 따로 봐야 실제 총액이 잡힙니다. 특히 가족 여행은 1인 금액보다 가족 총액으로 비교하는 편이 안전합니다.',
+    '',
+    '## 상황별 선택 기준',
+    '',
+    '아이와 함께라면 이동 시간을 가장 먼저 줄이는 편이 좋습니다. 숙소가 조금 비싸더라도 공항, 식당, 주요 일정과 가까우면 대기 시간이 줄고 컨디션 관리가 쉬워집니다. 부모님과 함께라면 계단, 차량 탑승 시간, 식사 간격, 화장실 접근성을 같이 봐야 합니다.',
+    '',
+    '친구나 커플 일정이라면 비용과 자유 시간을 더 세밀하게 비교할 수 있습니다. 다만 첫날부터 빡빡한 일정을 넣으면 항공 지연이나 입국 대기 시간이 생겼을 때 전체 계획이 밀릴 수 있습니다. 첫날은 체크인과 주변 동선 확인, 둘째 날부터 핵심 일정을 배치하는 구성이 안정적입니다.',
+    '',
+    '예산을 아끼고 싶다면 가장 싼 선택지만 고르기보다 포함 항목을 먼저 나눠야 합니다. 공항 이동, 식사, 선택 관광, 보험, 통신, 현지 팁이 빠져 있으면 처음에는 저렴해 보여도 총액은 올라갈 수 있습니다. 반대로 이미 포함된 항목이 많다면 표시 가격이 조금 높아도 실제 지출은 더 안정적일 수 있습니다.',
+    '',
+    '## 출발 전 최종 체크',
+    '',
+    '- 여권 유효기간, 항공권 영문 이름, 숙소 예약자 이름을 서로 맞춰 봅니다.',
+    '- 항공 도착 시간이 늦다면 첫날 일정은 식사와 체크인 중심으로 줄입니다.',
+    '- 카드 결제 가능 여부와 소액 현금 준비를 나눠 확인합니다.',
+    '- 현지 통신은 로밍, 유심, eSIM 중 개통 난이도와 동행자 수를 기준으로 고릅니다.',
+    '- 비상 연락처, 보험 증권, 예약 번호는 휴대폰과 종이 메모에 나눠 보관합니다.',
+    '',
+    '## 고객이 많이 헷갈리는 부분',
+    '',
+    '예약 전에는 “가능하다”와 “확정됐다”를 구분해야 합니다. 항공 좌석, 객실 가능 여부, 차량 배정, 현지 행사 일정은 조회 시점에 따라 달라질 수 있습니다. 그래서 상담이나 예약 전 확인에서는 금액만 묻기보다 출발일, 인원, 아이 나이, 원하는 객실, 피하고 싶은 이동 시간을 함께 알려주는 편이 빠릅니다.',
+    '',
+    '또 하나는 공식 정보와 후기 정보를 섞어 보는 문제입니다. 후기는 실제 체감 난이도를 이해하는 데 도움이 되지만, 비자, 입국, 항공, 안전, 날씨 경보처럼 바뀔 수 있는 정보는 공식 안내를 기준으로 마지막에 다시 확인해야 합니다. 이 글의 숫자와 예시는 판단 기준이고, 최종 조건은 출발 시점 안내가 기준입니다.',
+    '',
+    '## 공식 확인 링크',
+    '',
+    '- [외교부 해외안전여행](https://www.0404.go.kr/)',
+    '- [외교부](https://www.mofa.go.kr/)',
+    '',
+    '## 문의 전 질문',
+    '',
+    'Q. 언제 확인하면 좋나요?',
+    `A. ${currentYear}년 기준으로는 출발 2주 전 1차 확인, 출발 7일 전 재확인, 출발 24시간 전 최종 확인 순서가 가장 안전합니다.`,
+    '',
+    'Q. 현지에서 바로 바꿔도 되나요?',
+    'A. 가능한 항목도 있지만 공항, 호텔, 현지 업체 조건이 다를 수 있습니다. 비용과 시간 손실을 줄이려면 출발 전에 큰 항목을 정리해 두는 편이 좋습니다.',
+    '',
+    '**내 일정 기준으로 확인하기**',
+    '',
+    `[내 일정 기준으로 가능 여부 확인](${resolveBlogCanonicalOrigin()}/?utm_source=naver_blog&utm_medium=organic&utm_campaign=${encodeURIComponent(buildQueueSlug(item))}&utm_content=bottom_soft_cta)`,
+    '',
+    `[관련 여행 가이드 더 보기](${resolveBlogCanonicalOrigin()}/blog?utm_source=naver_blog&utm_medium=organic&utm_campaign=${encodeURIComponent(buildQueueSlug(item))}&utm_content=related_blog)`,
+    '',
+    `[여행 상품 조건 확인](${resolveBlogCanonicalOrigin()}/packages?utm_source=naver_blog&utm_medium=organic&utm_campaign=${encodeURIComponent(buildQueueSlug(item))}&utm_content=package_check)`,
+  ].join('\n');
+}
+
+async function applyDeterministicInfoFallback(
+  generated: GeneratedBlog,
+  item: any,
+  primaryKeyword?: string | null,
+  reason?: string,
+): Promise<string[]> {
+  if (item.product_id) return [];
+  const changes = ['deterministic_info_fallback'];
+  generated.blog_html = buildDeterministicInfoFallbackMarkdown(item, primaryKeyword);
+  generated.seo_title = repairBlogSeoMetadata({
+    seoTitle: `${primaryKeyword || item.topic} 체크리스트와 비교 기준 2026`,
+    seoDescription: '',
+    topic: item.topic,
+    primaryKeyword,
+    destination: item.destination,
+    category: item.category,
+  }).seoTitle;
+  const fallbackContext = `${item.topic || ''} ${primaryKeyword || ''} ${item.category || ''}`;
+  const fallbackShortLabel = /보험|보장|병원|수하물|상해|질병|분실/.test(fallbackContext)
+    ? '여행자 보험'
+    : /로밍|유심|이심|eSIM|데이터|통신|전화/.test(fallbackContext)
+      ? '통신 준비'
+      : /비자|입국|서류|여권|세관|면세/.test(fallbackContext)
+        ? '입국 서류'
+        : /공항|픽업|택시|렌터카|교통|이동|동선|시내/.test(fallbackContext)
+          ? '공항 이동'
+          : /아이|가족|일정|코스/.test(fallbackContext)
+            ? '가족 일정'
+            : /예산|비용|식비|경비|쇼핑/.test(fallbackContext)
+              ? '여행 경비'
+              : '여행 준비';
+  const fallbackKeyword = String(primaryKeyword || item.topic || fallbackShortLabel);
+  generated.seo_description = `${fallbackKeyword} 기준으로 일정, 비용, 이동, 준비물, 공식 확인 링크, 예약 전 체크 포인트를 한 번에 정리했습니다.`.slice(0, 155);
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    deterministic_info_fallback: true,
+    deterministic_fallback_reason: reason || null,
+    writer: 'info_writer',
+  };
+  try {
+    const imageResult = await ensureBlogInlineImages({
+      markdown: generated.blog_html,
+      destination: item.destination,
+      primaryKeyword,
+      ogImageUrl: generated.og_image_url,
+      minImages: 3,
+      maxImages: 4,
+    });
+    if (imageResult.inserted > 0) generated.blog_html = imageResult.markdown;
+  } catch { /* fallback remains publishable without blocking image fetch errors */ }
+  generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+  generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+    destination: item.destination,
+    slug: generated.slug,
+    utmSource: 'naver_blog',
+  });
+  const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+  changes.push(...surfaceChanges);
+  const densityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, 'info');
+  if (densityRepair.changed) {
+    generated.blog_html = densityRepair.blogHtml;
+    changes.push('deterministic_keyword_density_repair');
+  }
+  return changes;
+}
+
 function failedGateSet(qa: QualityGateReport): Set<string> {
   return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
 }
@@ -567,6 +807,15 @@ async function repairFailedQualityGates(
     const failed = failedGateSet(qa);
     const changes: string[] = [];
     let changed = false;
+
+    if (failed.has('article_quality_v2')) {
+      const articleRepair = repairArticleQualityV2Specifics(generated.blog_html, blogType);
+      if (articleRepair.changes.length > 0) {
+        generated.blog_html = articleRepair.markdown;
+        changes.push(...articleRepair.changes);
+        changed = true;
+      }
+    }
 
     if (failed.has('intent_quality') || failed.has('engine_v2') || failed.has('article_quality_v2') || failed.has('editorial_quality')) {
       const editorialRepair = repairBlogEditorialQuality({
@@ -642,6 +891,19 @@ async function repairFailedQualityGates(
       if (internalLinks.changed) {
         generated.blog_html = internalLinks.markdown;
         changes.push(...internalLinks.changes);
+        changed = true;
+      }
+    }
+
+    if (failed.has('image_quality')) {
+      const imageRepair = repairBlogImageQuality(generated.blog_html, {
+        destination: item.destination ?? null,
+        primaryKeyword,
+        blogType,
+      });
+      if (imageRepair.changed) {
+        generated.blog_html = imageRepair.markdown;
+        changes.push(...imageRepair.changes);
         changed = true;
       }
     }
@@ -827,18 +1089,25 @@ async function recoverStaleGeneratingQueueItems(): Promise<{ recovered: number; 
   return { recovered, failed };
 }
 
-async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> = new Set()): Promise<number> {
+async function pullForwardQueuedBacklog(
+  limit: number,
+  excludeIds: Set<string> = new Set(),
+  opts?: {
+    fallbackEligibleOnly?: boolean;
+    priority?: number;
+  },
+): Promise<number> {
   if (limit <= 0) return 0;
 
   const now = new Date().toISOString();
   const { data: candidates, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id')
+    .select('id,product_id,card_news_id,source')
     .eq('status', 'queued')
     .gt('target_publish_at', now)
     .order('priority', { ascending: false })
     .order('target_publish_at', { ascending: true })
-    .limit(limit);
+    .limit(opts?.fallbackEligibleOnly ? Math.max(limit * 3, 12) : limit);
 
   if (error || !candidates || candidates.length === 0) {
     if (error) logWarning('[cron/blog-publisher] backlog pull-forward scan failed', error);
@@ -846,17 +1115,25 @@ async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> =
   }
 
   const ids = candidates
+    .filter((row: { id?: string | null; product_id?: string | null; card_news_id?: string | null; source?: string | null }) =>
+      !opts?.fallbackEligibleOnly || isFastFallbackEligibleInfoItem(row),
+    )
     .map((row: { id?: string | null }) => row.id)
     .filter((id): id is string => typeof id === 'string' && id.length > 0 && !excludeIds.has(id));
   if (ids.length === 0) return 0;
 
+  const updatePayload: Record<string, unknown> = {
+    target_publish_at: now,
+    updated_at: now,
+  };
+  if (typeof opts?.priority === 'number') {
+    updatePayload.priority = opts.priority;
+  }
+
   const { error: updateError } = await supabaseAdmin
     .from('blog_topic_queue')
-    .update({
-      target_publish_at: now,
-      updated_at: now,
-    } as never)
-    .in('id', ids)
+    .update(updatePayload as never)
+    .in('id', ids.slice(0, limit))
     .eq('status', 'queued');
 
   if (updateError) {
@@ -864,7 +1141,45 @@ async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> =
     return 0;
   }
 
-  return ids.length;
+  return Math.min(ids.length, limit);
+}
+
+async function releaseUnattemptedClaimedQueueItems(
+  claimedRows: Array<{ id?: string | null; meta?: unknown }>,
+  attemptedIds: Set<string>,
+): Promise<{ released: number; errors: string[] }> {
+  const now = new Date().toISOString();
+  const releaseIds = new Set(getUnattemptedClaimReleaseIds(claimedRows, attemptedIds));
+  let released = 0;
+  const errors: string[] = [];
+
+  for (const row of claimedRows) {
+    const id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : null;
+    if (!id || !releaseIds.has(id)) continue;
+    releaseIds.delete(id);
+    const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+      ? row.meta as Record<string, unknown>
+      : {};
+    const { error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update({
+        status: 'queued',
+        target_publish_at: now,
+        updated_at: now,
+        last_error: 'publisher_released_unattempted_time_budget_claim',
+        meta: {
+          ...meta,
+          time_budget_claim_released_at: now,
+          time_budget_claim_release_reason: 'not_attempted_before_publisher_exit',
+        },
+      } as never)
+      .eq('id', id)
+      .eq('status', 'generating');
+    if (error) errors.push(`${id}: ${error.message}`);
+    else released += 1;
+  }
+
+  return { released, errors };
 }
 
 async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
@@ -987,9 +1302,11 @@ async function runBlogPublisher(request: NextRequest) {
       MAX_CANDIDATE_POOL,
       Math.max(MAX_BATCH, remainingToday * CLAIM_POOL_MULTIPLIER),
     );
+    const claimedQueueRows: any[] = [];
     let { data: queue } = await supabaseAdmin.rpc('claim_queue_items', {
       limit_rows: claimLimit,
     });
+    if (Array.isArray(queue)) claimedQueueRows.push(...queue);
 
     if (!queue || queue.length === 0) {
       const pulled = await pullForwardQueuedBacklog(claimLimit, attemptedQueueIds);
@@ -998,6 +1315,7 @@ async function runBlogPublisher(request: NextRequest) {
           limit_rows: claimLimit,
         });
         queue = retryClaim.data;
+        if (Array.isArray(queue)) claimedQueueRows.push(...queue);
         if (retryClaim.error) {
           errors.push(`claim_queue_items retry failed: ${retryClaim.error.message}`);
         }
@@ -1037,22 +1355,28 @@ async function runBlogPublisher(request: NextRequest) {
     let emergencyRefillRounds = 0;
     let stoppedForTimeBudget = false;
     const emergencyRefills: Array<Awaited<ReturnType<typeof ensureDailyPublishableQueue>> | null> = [];
-    for (const item of queue) {
+    const orderedInitialQueue = sortPublisherQueueForTimeBudget(queue, {
+      remainingMs: publisherRemainingMs(startTime),
+      minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+      fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+      isFallbackEligible: isFastFallbackEligibleInfoItem,
+    });
+    for (const item of orderedInitialQueue) {
       if (attemptedQueueIds.has(item.id)) {
         results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
         continue;
       }
-      attemptedQueueIds.add(item.id);
       if (publishedThisRun >= remainingToday) {
         break;
       }
       // 남은 시간 체크 — 30초 미만이면 중단
       const remaining = publisherRemainingMs(startTime);
-      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+      if (!canStartPublisherQueueItem(item, remaining)) {
         stoppedForTimeBudget = true;
         console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next item`);
         break;
       }
+      attemptedQueueIds.add(item.id);
       try {
         const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime });
         results.push(r);
@@ -1069,23 +1393,38 @@ async function runBlogPublisher(request: NextRequest) {
 
     while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
       const remaining = publisherRemainingMs(startTime);
-      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+      const extraClaimPlan = getPublisherExtraClaimRecoveryPlan({
+        remainingMs: remaining,
+        minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+        remainingQuota: remainingToday - publishedThisRun,
+        maxBatch: MAX_BATCH,
+        claimPoolMultiplier: CLAIM_POOL_MULTIPLIER,
+        maxCandidatePool: MAX_CANDIDATE_POOL,
+      });
+      if (!extraClaimPlan.canClaim) {
         stoppedForTimeBudget = true;
-        console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next claim`);
+        console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next claim: ${extraClaimPlan.reason}`);
         break;
       }
 
-      const remainingQuota = remainingToday - publishedThisRun;
-      const extraClaimLimit = Math.min(
-        MAX_CANDIDATE_POOL,
-        Math.max(MAX_BATCH, remainingQuota * CLAIM_POOL_MULTIPLIER),
-      );
+      const remainingQuota = extraClaimPlan.remainingQuota;
+      const extraClaimLimit = extraClaimPlan.claimLimit;
       extraClaimRounds += 1;
+      const lowTimeFallbackOnly = extraClaimPlan.fallbackEligibleOnly;
+      if (lowTimeFallbackOnly) {
+        const pulledFallback = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds, {
+          fallbackEligibleOnly: true,
+          priority: 95,
+        });
+        pullForwarded += pulledFallback;
+      }
 
       const nextClaimResult = await supabaseAdmin.rpc('claim_queue_items', {
         limit_rows: extraClaimLimit,
       });
       let nextQueue = nextClaimResult.data;
+      if (Array.isArray(nextQueue)) claimedQueueRows.push(...nextQueue);
       const nextClaimError = nextClaimResult.error;
       if (nextClaimError) {
         errors.push(`claim_queue_items extra failed: ${nextClaimError.message}`);
@@ -1104,7 +1443,9 @@ async function runBlogPublisher(request: NextRequest) {
         });
         emergencyRefills.push(emergencyRefill);
 
-        const pulled = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds);
+        const pulled = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds, lowTimeFallbackOnly
+          ? { fallbackEligibleOnly: true, priority: 95 }
+          : undefined);
         pullForwarded += pulled;
         if (pulled <= 0 && !emergencyRefill?.added) break;
 
@@ -1112,6 +1453,7 @@ async function runBlogPublisher(request: NextRequest) {
           limit_rows: extraClaimLimit,
         });
         nextQueue = retryClaim.data;
+        if (Array.isArray(nextQueue)) claimedQueueRows.push(...nextQueue);
         if (retryClaim.error) {
           errors.push(`claim_queue_items extra retry failed: ${retryClaim.error.message}`);
           break;
@@ -1126,20 +1468,27 @@ async function runBlogPublisher(request: NextRequest) {
       const nextEligibleByCardNewsId =
         nextCardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(nextCardNewsIds) : new Map<string, number>();
 
-      for (const item of nextQueue) {
+      const orderedNextQueue = sortPublisherQueueForTimeBudget(nextQueue, {
+        remainingMs: publisherRemainingMs(startTime),
+        minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+        isFallbackEligible: isFastFallbackEligibleInfoItem,
+      });
+
+      for (const item of orderedNextQueue) {
         if (attemptedQueueIds.has(item.id)) {
           results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
           continue;
         }
-        attemptedQueueIds.add(item.id);
         if (publishedThisRun >= remainingToday) break;
 
         const itemRemaining = publisherRemainingMs(startTime);
-        if (!canStartPublisherItem(itemRemaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+        if (!canStartPublisherQueueItem(item, itemRemaining)) {
           stoppedForTimeBudget = true;
           console.log(`[blog-publisher] remaining ${Math.round(itemRemaining / 1000)}s - stopping before next item`);
           break;
         }
+        attemptedQueueIds.add(item.id);
 
         try {
           const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime });
@@ -1154,6 +1503,11 @@ async function runBlogPublisher(request: NextRequest) {
           candidateFailures.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
+    }
+
+    const timeBudgetClaimRelease = await releaseUnattemptedClaimedQueueItems(claimedQueueRows, attemptedQueueIds);
+    if (timeBudgetClaimRelease.errors.length > 0) {
+      errors.push(...timeBudgetClaimRelease.errors.map((error) => `time_budget_claim_release_failed:${error}`));
     }
 
     const baseUrl = resolveBlogCanonicalOrigin();
@@ -1318,9 +1672,11 @@ async function runBlogPublisher(request: NextRequest) {
       emergencyRefillRounds,
       emergencyRefills,
       pullForwarded,
+      timeBudgetClaimRelease,
       time_budget: {
         max_exec_ms: MAX_EXEC_MS,
         min_item_start_ms: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        fast_fallback_min_item_start_ms: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
         item_finish_reserve_ms: BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS,
         optional_work_min_ms: BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS,
         remaining_ms: publisherRemainingMs(startTime),
@@ -1341,6 +1697,38 @@ export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
   handlerTimeoutMs: 285_000,
   sideEffectTimeoutMs: 5_000,
 });
+
+async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
+  if (item.product_id) return false;
+  const destination = typeof item.destination === 'string' ? item.destination.trim() : '';
+  if (!destination) return false;
+  const angleType = typeof item.angle_type === 'string' && item.angle_type.trim()
+    ? item.angle_type.trim()
+    : 'value';
+  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { count, error } = await supabaseAdmin
+    .from('content_creatives')
+    .select('id', { count: 'exact', head: true })
+    .eq('channel', 'naver_blog')
+    .eq('status', 'published')
+    .eq('destination', destination)
+    .eq('angle_type', angleType)
+    .is('product_id', null)
+    .gte('published_at', cutoff);
+
+  if (error) {
+    logWarning('[cron/blog-publisher] recent duplicate precheck failed', {
+      id: item.id,
+      destination,
+      angleType,
+      error: error.message,
+    });
+    return false;
+  }
+
+  return Number(count ?? 0) > 0;
+}
 
 async function processQueueItem(
   item: any,
@@ -1406,6 +1794,14 @@ async function processQueueItem(
         .map((issue) => issue.code)
         .join(', ') || 'unknown'}`;
       await handleFailure(item, reason, { topic_fit_gate: topicFit }, true);
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
+
+    if (await isRecentInfoDuplicateCandidate(item)) {
+      const reason = `recent_info_duplicate_before_generation: 최근 14일 내 ${item.destination ?? '동일 목적지'} + ${item.angle_type ?? 'value'} 정보성 글 이미 발행됨`;
+      await handleFailure(item, reason, null, false, {
+        pre_generation_duplicate_check: true,
+      });
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
 
@@ -1479,7 +1875,47 @@ async function processQueueItem(
     } else if (item.source === 'product' && item.product_id) {
       generated = await withGenerationBudget(startedAtMs, 'product_generation', () => generateFromProduct(item));
     } else {
-      generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
+      const remainingBeforeTopicGeneration = publisherRemainingMs(startedAtMs);
+      if (shouldUseFastDeterministicInfoFallback(item, remainingBeforeTopicGeneration)) {
+        generated = {
+          blog_html: '',
+          slug: buildQueueSlug(item),
+          seo_title: item.topic || item.primary_keyword || '여행 준비 가이드',
+          seo_description: '',
+          generation_meta: {
+            writer: 'info_writer',
+            deterministic_fast_fallback: true,
+            deterministic_fast_fallback_remaining_ms: remainingBeforeTopicGeneration,
+          },
+        };
+        await applyDeterministicInfoFallback(
+          generated,
+          item,
+          item.primary_keyword ?? item.destination ?? item.topic,
+          `low_time_budget:${remainingBeforeTopicGeneration}ms`,
+        );
+      } else {
+        try {
+          generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
+        } catch (error) {
+          generated = {
+            blog_html: '',
+            slug: buildQueueSlug(item),
+            seo_title: item.topic || item.primary_keyword || '여행 준비 가이드',
+            seo_description: '',
+            generation_meta: {
+              writer: 'info_writer',
+              topic_generation_error: error instanceof Error ? error.message : String(error),
+            },
+          };
+          await applyDeterministicInfoFallback(
+            generated,
+            item,
+            item.primary_keyword ?? item.destination ?? item.topic,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
     }
 
     const slugNormalized = normalizeGeneratedSlug(generated, item);
@@ -1676,6 +2112,14 @@ async function processQueueItem(
       qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);
     }
 
+    if (!qa.passed && blogType === 'info') {
+      const fallbackChanges = await applyDeterministicInfoFallback(generated, item, primaryKeyword, qa.summary);
+      if (fallbackChanges.length > 0) {
+        console.log(`[blog-publisher] deterministic info fallback: ${fallbackChanges.join(', ')}`);
+        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      }
+    }
+
     if (!qa.passed) {
       const failureStatus = await handleFailure(item, qa.summary, qa);
       return {
@@ -1799,6 +2243,13 @@ async function processQueueItem(
       const finalRepairChanges: string[] = [];
       let finalRepairChanged = false;
 
+      const finalArticleRepair = repairArticleQualityV2Specifics(generated.blog_html, blogType);
+      if (finalArticleRepair.changes.length > 0) {
+        generated.blog_html = finalArticleRepair.markdown;
+        finalRepairChanges.push(...finalArticleRepair.changes);
+        finalRepairChanged = true;
+      }
+
       const finalEditorialRepair = repairBlogEditorialQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -1877,10 +2328,36 @@ async function processQueueItem(
       }
     }
 
+    if (!publishQuality.passed && blogType === 'info') {
+      const fallbackChanges = await applyDeterministicInfoFallback(generated, item, primaryKeyword, publishQuality.summary);
+      if (fallbackChanges.length > 0) {
+        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+        seoScore = computeSeoScore(buildSeoScoreInput());
+        publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+        console.log(`[blog-publisher] deterministic info fallback before publish: ${fallbackChanges.join(', ')} -> passed=${publishQuality.passed}`);
+      }
+    }
+
     if (!publishQuality.passed) {
       console.log(`[blog-publisher] publish quality blocked (${publishQuality.summary})`);
-      await handleFailure(item, publishQuality.summary, publishQuality.qualityGate);
-      return { id: item.id, topic: item.topic, status: 'publish_quality_failed', reason: publishQuality.summary };
+      const failureStatus = await handleFailure(item, publishQuality.summary, publishQuality.qualityGate, false, {
+        last_publish_quality: {
+          score: publishQuality.blogQualityScore.score,
+          issues: publishQuality.blogQualityScore.issues.slice(0, 8),
+          components: publishQuality.blogQualityScore.components.map((component) => ({
+            id: component.id,
+            passed: component.passed,
+            score: component.score,
+            issue_codes: component.issues.map((issue) => issue.code).slice(0, 5),
+          })),
+        },
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: failureStatus === 'skipped' ? 'skipped' : 'publish_quality_failed',
+        reason: publishQuality.summary,
+      };
     }
 
     qa = publishQuality.qualityGate;
@@ -2032,22 +2509,38 @@ async function processQueueItem(
   }
 }
 
-async function handleFailure(item: any, reason: string, qa: any, forceFailure = false): Promise<'queued' | 'failed' | 'skipped'> {
+async function handleFailure(
+  item: any,
+  reason: string,
+  qa: any,
+  forceFailure = false,
+  extraMeta?: Record<string, unknown>,
+): Promise<'queued' | 'failed' | 'skipped'> {
   const attempts = (item.attempts || 0) + 1;
-  const duplicateFailure = /동일 slug|유사 slug|이미 발행됨|최근 \d+일 내/i.test(reason);
+  const duplicateFailure = /동일\s*slug|유사\s*slug|이미\s*발행|최근\s*\d+\s*일\s*내|중복/i.test(reason);
   const duplicateTaggedFailure = /\[duplicate\]|duplicate|slug already|slug .*exists/i.test(reason);
   const decision = classifyBlogQueueFailure(reason, qa);
   const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure || decision.code === 'duplicate_content';
   const shouldForceFailure = forceFailure || !decision.retryable;
   const retryDelayMs = decision.selfHealAllowed ? 0 : 2 * 3600 * 1000;
+  const currentSelfHealRetries = Number((item.meta || {}).self_heal_retry_count ?? 0);
+  const keepSelfHealCandidateLive =
+    decision.selfHealAllowed
+    && !shouldForceFailure
+    && !isDuplicateFailure
+    && item.source !== 'manual'
+    && currentSelfHealRetries < 4;
   const finalStatus = (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
     ? 'skipped'
-    : shouldForceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
+    : shouldForceFailure || (attempts >= MAX_ATTEMPTS && !keepSelfHealCandidateLive) ? 'failed' : 'queued';
+  const storedAttempts = keepSelfHealCandidateLive && finalStatus === 'queued'
+    ? Math.min(attempts, Math.max(0, MAX_ATTEMPTS - 1))
+    : attempts;
 
   const { error: queueUpdateError } = await supabaseAdmin.from('blog_topic_queue')
     .update({
       status: finalStatus,
-      attempts,
+      attempts: storedAttempts,
       last_error: reason,
       target_publish_at: finalStatus === 'queued'
         ? new Date(Date.now() + retryDelayMs).toISOString()
@@ -2058,6 +2551,13 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
         failure_code: decision.code,
         failure_retryable: decision.retryable,
         self_heal_blocked: !decision.selfHealAllowed,
+        ...(keepSelfHealCandidateLive
+          ? {
+              self_heal_retry_count: currentSelfHealRetries + 1,
+              self_heal_last_kept_live_at: new Date().toISOString(),
+            }
+          : {}),
+        ...(extraMeta || {}),
         ...(decision.selfHealAllowed ? {} : { quarantine_reason: 'non_retryable_failure' }),
         last_failed_at: new Date().toISOString(),
         ...(isDuplicateFailure ? { skipped_duplicate: true } : {}),
@@ -2211,13 +2711,13 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 **목적지**: ${item.destination}
 **섹션 구조** (반드시 아래 H2 순서 지켜라):
 
-# ${item.destination} 여행 완벽 가이드
+# ${item.destination} 여행 준비 가이드
 
 ## 1. ${item.destination}는 어디인가요?
-(위치·역사·문화적 특징 3~4문단, 여소남 큐레이터 관점)
+(위치·계절·이동 난이도 중심으로 2~3문단. 광고 문구보다 독자가 출발 전 판단할 정보를 우선)
 
-## 2. ${item.destination}의 매력 포인트
-(여기서 ==핵심 문장== 하이라이트 2개 필수. 주요 관광지 3~5개 언급: ${ctx.attractions.slice(0, 6).join(', ')})
+## 2. 먼저 볼 여행 포인트
+(형광펜 문법 금지. 주요 관광지 3~5개를 나열하되, 왜 가는지보다 이동 시간·체류 시간·피로도 기준으로 설명: ${ctx.attractions.slice(0, 6).join(', ')})
 
 ## 3. 언제 가면 좋을까요?
 (월별/계절별 날씨·옷차림·추천시기 표 형태 권장. 현재 ${ctx.seasonHint})
@@ -2235,13 +2735,13 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 ## 7. 자주 묻는 질문
 (Q&A 4~6개. **Q. 질문** 형식)
 
-## 8. 여소남과 함께 떠나는 ${item.destination}
-(CTA: 카카오톡 상담 + 상품 리스트 링크)
+## 8. 내 일정 기준으로 확인할 것
+(CTA는 마지막에만 약하게. 카카오톡 상담·상품 리스트는 “출발일/인원 기준 가능 여부 확인” 톤으로 연결)
 
 ## 작성 규칙
-- 총 2,500~3,500자 (장문 Pillar)
-- 마크다운만, H1 1개, H2 8개 고정
-- 운영팀 직접 답사 톤 ("여소남이 검토한 결과", "운영팀이 확인한 일정")
+- 총 2,200~3,000자. 필요한 내용만 남기고 공통 블록을 억지로 늘리지 말 것
+- 마크다운만, H1 1개, H2는 6~8개 범위. 고정 개수 채우기 금지
+- 운영팀 직접 답사처럼 보이는 허위 경험 톤 금지. 상품/공식 자료 기준으로 확인 가능한 표현만 사용
 - 체크 가능한 구체 수치 (기온·시간·거리·가격)
 - 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
 - 마크다운 코드블록으로 감싸지 말 것`;
@@ -2257,8 +2757,8 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
   const destEn = romanize(dest) || slugifyTopic(dest);
   const slug = `${destEn}-complete-guide`;
   const destDisplay = item.destination || dest;
-  const seoTitle = `${destDisplay} 여행 완벽 가이드 | 관광지·일정·비용`.substring(0, 60);
-  const seoDescription = `${destDisplay} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지 정리한 완벽 가이드.`.substring(0, 160);
+  const seoTitle = `${destDisplay} 여행 준비 가이드 | 관광지·일정·비용`.substring(0, 60);
+  const seoDescription = `${destDisplay} 여행 전 확인할 관광지, 일정, 예상 비용, 계절별 준비 기준을 정리했습니다.`.substring(0, 160);
 
   // OG 이미지: Pexels에서 destination 기반 이미지 할당
   let og_image_url: string | null = null;
@@ -2449,25 +2949,25 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   const tierGuidance: Record<string, string> = {
     head: `
 ## SEO Tier: HEAD (고경쟁 · 검색량 ${volume ?? '?'})
-- 본문 2,500~3,500자 (Pillar 수준 장문)
-- H2 7~9개 (목차로 구조화 — TOC 자동 생성됨)
+- 본문 2,200~3,000자. 필요한 정보가 없으면 길이를 억지로 늘리지 말 것
+- H2 6~8개. 목차를 채우기 위한 제목 추가 금지
 - 첫 H2 안에 ${primaryKw} 정의/위치/한 줄 요약
 - 내부링크 ≥3 (관련 longtail 글로 분산)
-- E-E-A-T 강화: "여소남이 직접 검토한", "운영팀이 ${new Date().getFullYear()}년 ${new Date().getMonth() + 1}월 확인" 1회 이상
+- E-E-A-T 강화: 공식 출처·상품 DB·검색 의도 근거처럼 독자가 확인 가능한 근거를 사용
 - FAQ schema 호환 H2 1개 ("자주 묻는 질문")
 `,
     mid: `
 ## SEO Tier: MID (중경쟁 · 검색량 ${volume ?? '?'})
 - 본문 1,800~2,500자
-- H2 5~7개
+- H2 5~7개. FAQ·공식 링크·CTA 블록이 목차를 과하게 늘리지 않도록 짧게 정리
 - 검색 의도 직답 — 첫 200자 안에 ${primaryKw}의 핵심 답 제시
 - 비교/리스트형 구조 권장 (월별 표·체크리스트·Top N)
 - 내부링크 ≥2 (head 글 + 다른 mid 글)
 `,
     longtail: `
 ## SEO Tier: LONGTAIL (저경쟁 · 검색량 ${volume ?? '?'})
-- 본문 1,500자 이상
-- H2 5개
+- 본문 1,200~1,800자. 구체 질문에 답하면 충분하며 분량 채우기 금지
+- H2 4~6개
 - 매우 구체적 사용자 시나리오에 1:1 답변 (예: "${primaryKw} 검색하는 사람의 1순위 궁금증 = 가격/일정/포함")
 - 상품 랜딩은 본문 하단 1회만 약하게 연결. 검색 의도 해결이 우선이며, 도입부·중간 강CTA 금지
 - 내부링크 ≥1 (head pillar로)
@@ -2475,7 +2975,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   };
 
   const trendBlock = trendScore && trendScore > 30
-    ? `\n## ⚡ 트렌드 신호\n- 트렌드 점수: ${trendScore}/100 — "지금 검색되는" 토픽\n- 도입부에 "최근 ${new Date().getMonth() + 1}월 검색 급증", "지금 한국인이 가장 많이 묻는" 같은 신선도 트리거 포함\n- 데이터 출처 추정 → 출처 한 줄 명시 ("트렌드 분석 기준")\n` : '';
+    ? `\n## 검색 수요 참고\n- 트렌드 점수: ${trendScore}/100은 내부 우선순위 참고값입니다.\n- 본문에 "검색 급증", "가장 많이 묻는" 같은 단정형 표현을 쓰지 말고, 시의성이 필요한 확인 항목만 자연스럽게 반영하세요.\n` : '';
 
   // SERP analysis: always for head/mid, selectively for proven longtail opportunities.
   let serpBlock = '';
@@ -2507,10 +3007,10 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
           );
           if (gapResult.missingTopics.length > 0) {
             serpGapBlock = `
-## 경쟁사 대비 부족한 주제 (반드시 H2로 추가)
+## 경쟁 글에서 자주 다루는 보강 주제
 
 아래는 경쟁사 상위 글이 공통으로 다루지만 이 글에는 없는 주제입니다.
-각각을 **추가 H2 섹션**으로 본문에 포함하세요. (기존 H2 순서는 유지하며 적절한 위치에 삽입)
+각각을 무조건 H2로 늘리지 말고, 기존 섹션에 자연스럽게 통합하세요. 꼭 별도 판단이 필요한 주제만 H2로 승격합니다.
 
 ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggestions[i] || '관련 내용으로 H2 섹션 추가'}`).join('\n')}
 

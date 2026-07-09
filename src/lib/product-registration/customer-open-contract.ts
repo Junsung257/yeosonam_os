@@ -76,6 +76,10 @@ function v3Blockers(v3Gate: V3GateLike | null | undefined, pkg: Record<string, u
   return blockers;
 }
 
+function sourceVerifyBlockers(status: VerifyResult['status'] | null | undefined): string[] {
+  return status === 'blocked' ? ['source_verify:blocked'] : [];
+}
+
 export function evaluateCustomerOpenContract(input: {
   pkg: Record<string, unknown>;
   verifyChecks?: RegistrationQualityVerifyCheck[];
@@ -101,6 +105,7 @@ export function evaluateCustomerOpenContract(input: {
       ? qualityScorecard.blockers.map(blocker => `quality_scorecard:${blocker}`)
       : []),
     ...v3Blockers(input.v3Gate, input.pkg),
+    ...sourceVerifyBlockers(input.sourceVerifyStatus),
   ]);
   const v3GateSnapshot = input.v3Gate
     ? {

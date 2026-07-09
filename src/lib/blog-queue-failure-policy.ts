@@ -120,7 +120,7 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
     return { code: 'candidate_pre_publish_contract', retryable: false, selfHealAllowed: false, skipped: true };
   }
 
-  if (/seo score|seo_score/i.test(text)) {
+  if (/seo score|seo_score|Blog quality score|publish_quality_failed|overbuilt_mechanical_structure|meta_description/i.test(text)) {
     return { code: 'seo_score', retryable: true, selfHealAllowed: true, skipped: false };
   }
 

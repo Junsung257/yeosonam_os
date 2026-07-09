@@ -223,6 +223,32 @@ describe('blog editorial backlog recheck', () => {
     expect(decision.reasons).toContain('stale_generating_or_non_retryable_failure');
   });
 
+  it('requeues timeout-only editorial rows so the publisher can retry with the repaired engine', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-09T00:00:00.000Z',
+      row: {
+        id: 'queue-timeout',
+        status: 'failed',
+        attempts: 2,
+        topic: '세부 공항 도착 후 입국 심사 환전 픽업 순서',
+        destination: '세부',
+        source: 'coverage_gap',
+        last_error: 'topic_generation_timeout:84106ms',
+        meta: {
+          micro_angle: 'airport_arrival',
+          failure_code: 'timeout',
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.last_error).toBeNull();
+    expect(decision.meta).toMatchObject({
+      editorial_backlog_recheck_result: 'requeue',
+    });
+  });
+
   it('retires legacy pillar seeds that were blocked by missing context', () => {
     const decision = buildBlogEditorialBacklogRecheckDecision({
       checkedAt: '2026-07-02T00:00:00.000Z',

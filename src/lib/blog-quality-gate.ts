@@ -217,7 +217,7 @@ export function checkHook(blog_html: string): GateResult {
   const hasQuestion = /[?？]/.test(intro);
   const hasPriceHook = /(만원|원|만\s|절약|저렴|차이|할인|특가)/.test(intro);
   const hasTimeHook = /(\d+분|\d+시간|즉시|당일|바로)/.test(intro);
-  const hasCompare = /(시중가|단품|직접|비교|보다)/.test(intro);
+  const hasCompare = /(시중가|단품|직접|비교|보다|나눠|분리|따로|포함\/불포함)/.test(intro);
 
   const triggers = [hasQuestion, hasPriceHook, hasTimeHook, hasCompare].filter(Boolean).length;
   // 숫자 + 트리거 1개 이상 OR 트리거 2개 이상
@@ -698,7 +698,7 @@ export function checkImageQuality(input: CheckInput): GateResult {
 
 function hasConcreteCostEvidenceForGate(markdownOrHtml: string): boolean {
   const text = stripMarkup(markdownOrHtml).replace(/\s+/g, ' ').trim();
-  return /(\d[\d,]*\s*(?:원|만원|달러|엔|위안|페소|바트)|\d+\s*만?\s*[~–-]\s*\d+\s*만?\s*원?|예산|환율|상품가|개인경비|추가비)/.test(text);
+  return /(\d[\d,]*\s*(?:원|만원|달러|엔|위안|페소|바트)|\d+\s*만?\s*[~–-]\s*\d+\s*만?\s*원?|예산|경비|식비|이동비|선택\s*관광|카드\s*수수료|환율|상품가|개인경비|추가비)/.test(text);
 }
 
 export function checkIntentQuality(input: CheckInput): GateResult {

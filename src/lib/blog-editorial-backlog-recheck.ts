@@ -75,7 +75,13 @@ const RECOVERABLE_PATTERNS = [
   /engine_task_incomplete/i,
   /ai_naturalness/i,
   /seo_score/i,
+  /Blog quality score/i,
+  /publish_quality_failed/i,
+  /overbuilt_mechanical_structure/i,
+  /meta_description/i,
   /image_count_below_minimum/i,
+  /timeout/i,
+  /topic_generation_timeout/i,
 ];
 
 const RECOVERABLE_IMAGE_PATTERNS = [

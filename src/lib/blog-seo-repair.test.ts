@@ -74,4 +74,18 @@ describe('blog SEO repair', () => {
     expect(after.details.find(detail => detail.name === 'title')?.status).toBe('pass');
     expect(after.score).toBeGreaterThan(before.score);
   });
+
+  it('pads short generic keywords into a passing title length', () => {
+    const repair = repairBlogSeoMetadata({
+      seoTitle: '해외 로밍 비교 체크 2026',
+      seoDescription: '짧은 설명',
+      topic: '여름 휴가철 해외여행 전화/데이터 로밍 vs 유심 비교',
+      primaryKeyword: '해외 로밍',
+      category: 'travel_tips',
+    });
+
+    expect(repair.seoTitle).toContain('해외 로밍');
+    expect(repair.seoTitle.length).toBeGreaterThanOrEqual(25);
+    expect(repair.seoTitle.length).toBeLessThanOrEqual(60);
+  });
 });

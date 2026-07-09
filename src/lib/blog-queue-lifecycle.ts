@@ -267,7 +267,7 @@ type RecoverableQueueRow = {
   attempts: number | null;
   priority: number | null;
   angle_type: string | null;
-  slug_hint: string | null;
+  slug_hint?: string | null;
   last_error: string | null;
   target_publish_at: string | null;
   created_at: string | null;
@@ -335,7 +335,7 @@ async function loadActiveEditorialDedupKeys(): Promise<Map<string, string>> {
   const keys = new Map<string, string>();
   const { data: activeRows } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id,product_id,topic,destination,status,angle_type,slug_hint,meta')
+    .select('id,product_id,topic,destination,status,angle_type,meta')
     .in('status', ['queued', 'generating'])
     .limit(1000);
   for (const row of (activeRows ?? []) as ActiveDedupRow[]) {
@@ -372,7 +372,7 @@ export async function recoverRequeueableFailedBlogQueueItems(opts?: {
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id,product_id,topic,destination,source,status,attempts,priority,angle_type,slug_hint,last_error,target_publish_at,created_at,updated_at,meta')
+    .select('id,product_id,topic,destination,source,status,attempts,priority,angle_type,last_error,target_publish_at,created_at,updated_at,meta')
     .eq('status', 'failed')
     .order('updated_at', { ascending: false })
     .limit(opts?.limit ?? 80);
