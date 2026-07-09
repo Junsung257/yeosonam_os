@@ -775,6 +775,15 @@ describe('upload route registration pipeline boundary', () => {
     expect(audit).toContain('render.public_html_failure');
   });
 
+  it('does not flag transfer/entity-kind rows as unlinked attraction visits', () => {
+    const audit = readMobileReadinessAudit();
+
+    expect(audit).toContain('function isNonAttractionScheduleKind(item)');
+    expect(audit).toContain('[item?.type, item?.entity_kind]');
+    expect(audit).toContain("replace(/\\s+/g, '_')");
+    expect(audit).toContain('if (isNonAttractionScheduleKind(item)) continue;');
+  });
+
   it('fails mobile/A4 audit before product checks when Supabase REST is unavailable', () => {
     const audit = readMobileReadinessAudit();
 
