@@ -179,6 +179,11 @@ const CUSTOMER_ATTRACTION_GENERIC_NAMES = new Set([
   '온천욕',
   '\uC528\uD074\uB85C',
   '\uC704\uC990\uCEE4\uD53C',
+  '\uC720\uB9AC\uC794\uB3C4',
+  '\uBAA8\uB178\uB808\uC77C',
+  '\uBC15\uBB3C\uAD00',
+  '\uC7AC\uB798\uC2DC\uC7A5',
+  '\uD14C\uB9C8\uD30C\uD06C',
 ]);
 const CUSTOMER_ATTRACTION_PRODUCT_NAME_RE =
   /(?:^\s*[\[【].+[\]】])|(?:특가|즉시확정|당일\s*사용|입장권|티켓|투어|패키지|패스트트랙|픽업|샌딩|단독차량|가이드|포켓와이파이|와이파이도시락|유심|데이터|공항|호텔|리조트|스파|마사지|뷔페|할인|예약|출발|항공|골프|뮤지컬|스냅|렌트|렌터카)/i;
@@ -234,6 +239,11 @@ const GENERIC_ALIAS_TERMS = new Set([
   '\uD50C\uB77C\uC6CC\uAC00\uB4E0',
   '\uC57C\uACBD',
   '\uB9E5\uC8FC',
+  '\uC720\uB9AC\uC794\uB3C4',
+  '\uBAA8\uB178\uB808\uC77C',
+  '\uBC15\uBB3C\uAD00',
+  '\uC7AC\uB798\uC2DC\uC7A5',
+  '\uD14C\uB9C8\uD30C\uD06C',
   '\uBB34\uC81C\uD55C',
   '(\uBB34\uC81C\uD55C',
   '\uC8FC\uB958\uBB34\uC81C\uD55C)',
