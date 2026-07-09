@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { createClient } from '@supabase/supabase-js';
 import { extractPriceIR } from '../src/lib/parser/deterministic/price-ir/index.ts';
+import { evaluateEntityMasterCandidatePublicGate } from '../src/lib/entity-master-candidate-public-gate.ts';
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -1819,13 +1820,12 @@ if (packageIds.length > 0) {
   }
 
   const scopedPackageIdSet = new Set(packageIds);
-  const unresolvedCandidateStatuses = new Set(['candidate', 'auto_internal', 'needs_review', 'publishable_ready']);
   for (let from = 0; ; from += 1000) {
     const { data: candidateRows, error: candidateError } = await runSupabaseQuery(
       `entity master candidates ${from}`,
       () => supabase
         .from('entity_master_candidates')
-        .select('candidate_key, category, promotion_status, source_context')
+        .select('candidate_key, category, promotion_status, auto_action, auto_verification_status, source_context')
         .range(from, from + 999),
     );
     if (candidateError) {
@@ -1833,8 +1833,8 @@ if (packageIds.length > 0) {
       break;
     }
     for (const candidate of candidateRows ?? []) {
-      const status = String(candidate.promotion_status ?? '');
-      if (!unresolvedCandidateStatuses.has(status)) continue;
+      const gateDecision = evaluateEntityMasterCandidatePublicGate(candidate);
+      if (!gateDecision.unresolved) continue;
       const packageIdsFromCandidate = Array.isArray(candidate.source_context?.package_ids)
         ? [...new Set(candidate.source_context.package_ids)]
         : [];
@@ -1844,10 +1844,12 @@ if (packageIds.length > 0) {
           total: 0,
           attraction: 0,
           needs_review: 0,
+          hard: 0,
         };
         current.total++;
-        if (candidate.category === 'attraction') current.attraction++;
-        if (status === 'needs_review') current.needs_review++;
+        if (gateDecision.warning && candidate.category === 'attraction') current.attraction++;
+        if (candidate.promotion_status === 'needs_review') current.needs_review++;
+        if (gateDecision.hardBlocker) current.hard++;
         entityCandidateUnresolvedMap.set(packageId, current);
       }
     }
@@ -2387,7 +2389,7 @@ let rows = allPackageRows
       entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
       entity_option_review_needed: queueEntities.option_review_needed || 0,
       entity_unknown_customer_visible: draft && !draftLookupFailed ? draftEntities.unknown_customer_visible : queueEntities.unknown_customer_visible || 0,
-      entity_master_candidate_unresolved: entityCandidateEntities.total || 0,
+      entity_master_candidate_unresolved: entityCandidateEntities.hard || 0,
       entity_master_candidate_attraction_unresolved: entityCandidateEntities.attraction || 0,
       entity_master_candidate_needs_review: entityCandidateEntities.needs_review || 0,
       entity_noise_removed: draftEntities.noise_removed,
