@@ -1,5 +1,6 @@
 import {
   destinationAllowsAttractionScope,
+  isCustomerRenderableAttraction,
   isMatchableAttractionAlias,
   matchAttractions,
   type AttractionData,
@@ -72,11 +73,15 @@ function destinationAllowsAttraction(attraction: AttractionData, destination?: s
 }
 
 function isSightseeingAttractionRow(attraction: AttractionData): boolean {
-  return !NON_SIGHTSEEING_ATTRACTION_ROW_RE.test([
+  return isCustomerRenderableAttraction(attraction) && !NON_SIGHTSEEING_ATTRACTION_ROW_RE.test([
     attraction.name,
     attraction.category ?? '',
     ...(attraction.aliases ?? []),
   ].join(' '));
+}
+
+function hasAttractionScope(attraction: AttractionData): boolean {
+  return Boolean(normalizeDirectTerm(attraction.region) || normalizeDirectTerm(attraction.country));
 }
 
 function directTermOccurs(text: string, term: string): boolean {
@@ -85,6 +90,10 @@ function directTermOccurs(text: string, term: string): boolean {
   const compact = clean.replace(/\s+/g, '');
   if (compact.length <= 2) return hasTermBoundary(text.toLowerCase(), clean);
   return normalizeDirectTerm(text).includes(compact);
+}
+
+function attractionNameOccurs(text: string, attraction: AttractionData): boolean {
+  return typeof attraction.name === 'string' && directTermOccurs(text, attraction.name);
 }
 
 function contextAllowsAttractionScope(attraction: AttractionData, text: string): boolean {
@@ -177,7 +186,9 @@ function removeAttractionReferences(item: ItineraryScheduleItem): ItinerarySched
 
 function dedupeAttractionMatches(values: AttractionData[], text: string): AttractionData[] {
   const compact = compactScheduleText(text);
-  let filtered = values;
+  let filtered = values
+    .filter(isSightseeingAttractionRow)
+    .filter(value => hasAttractionScope(value) || attractionNameOccurs(text, value));
 
   if (/\uC545\uD654\uD3ED\uD3EC/.test(compact) && !/\uCC9C\uC9C0/.test(compact)) {
     filtered = filtered.filter(value => {
@@ -203,14 +214,11 @@ function dedupeAttractionMatches(values: AttractionData[], text: string): Attrac
   const unique = [...byNormalized.values()];
   return unique.filter(value => {
     const name = normalizeDirectTerm(value.name);
-    if (name.length <= 2) {
-      return !unique.some(other => {
-        if (other === value) return false;
-        const otherName = normalizeDirectTerm(other.name);
-        return otherName.length > name.length && otherName.includes(name);
-      });
-    }
-    return true;
+    return !unique.some(other => {
+      if (other === value) return false;
+      const otherName = normalizeDirectTerm(other.name);
+      return otherName.length > name.length && otherName.includes(name);
+    });
   });
 }
 
@@ -272,7 +280,7 @@ function findMatchesForQueries(
     for (const direct of findRegisteredAttractionTermsInText(query, attractions, destination)) {
       found.set(String(direct.id ?? direct.name), direct);
     }
-    for (const matched of matchAttractions(query, attractions, destination)) {
+    for (const matched of matchAttractions(query, attractions, destination, { customerFacing: true })) {
       found.set(String(matched.id ?? matched.name), matched);
     }
   }
@@ -293,7 +301,7 @@ function isGenericNonAttractionActivity(activity: string): boolean {
   if (/디스커버리\s*투어|시내관광|스쿠버다이빙|수영장\s*실습|오일마사지|호핑투어|자유시간|선택관광\s*즐기기/i.test(text)) return true;
   if (/기념품|토산품|건강보조식품|잡화|진주/.test(text)) return true;
   if (/^(?:\uC804\uC6A9\uCC28\uB7C9|\uC804\uC77C|\uACF5\uD56D\uC73C\uB85C\uC774\uB3D9|\uD638\uD154\uD22C\uC219\uBC0F\uD734\uC2DD)$/.test(compact)) return true;
-  if (/^(?:\uC870|\uC911|\uC11D)\s*:/.test(text)) return true;
+  if (/^(?:\uC870|\uC911|\uC11D)\s*[:-]/.test(text)) return true;
   if (/^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/.test(compact)) return true;
   if (/^\$?\d+/.test(text)) return true;
   if (/(관광|방문|투어|입장|관람|탐방|체험)/.test(text)) return false;
@@ -426,7 +434,7 @@ export function enrichItineraryWithAttractionReferences(
 
       const found = new Map<string, AttractionData>();
       for (const c of candidates) {
-        const matches = matchAttractions(c, attractions, matchDestination);
+        const matches = matchAttractions(c, attractions, matchDestination, { customerFacing: true });
         for (const m of matches) {
           const key = (m.id ?? m.name).toString();
           found.set(key, m);

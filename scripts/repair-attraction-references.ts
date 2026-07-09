@@ -3,7 +3,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
-import type { AttractionData } from '@/lib/attraction-matcher';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) {
   const fullPath = path.join(process.cwd(), file);
@@ -19,6 +19,7 @@ const statusFilter = (process.argv.find(arg => arg.startsWith('--status='))?.spl
   .split(',')
   .map(status => status.trim())
   .filter(Boolean);
+const limit = Number(process.argv.find(arg => arg.startsWith('--limit='))?.split('=')[1] ?? '0');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -65,11 +66,12 @@ async function fetchAllActiveAttractions(): Promise<AttractionData[]> {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id,name,aliases,region,country,short_desc,badge_type,emoji,category,mrt_gid')
+      .select('id,name,aliases,region,country,short_desc,badge_type,emoji,category,mrt_gid,is_active,customer_publishable')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .range(from, from + 999);
     if (error) throw error;
-    out.push(...((data ?? []) as AttractionData[]));
+    out.push(...((data ?? []) as AttractionData[]).filter(isCustomerRenderableAttraction));
     if (!data || data.length < 1000) break;
   }
   return out;
@@ -90,6 +92,8 @@ async function fetchPackages(): Promise<PackageRow[]> {
       .eq('status', 'active')
       .or('title.ilike.%백두%,title.ilike.%연길%,destination.ilike.%백두%,destination.ilike.%연길%');
   }
+
+  if (Number.isFinite(limit) && limit > 0) query = query.limit(Math.min(limit, 1000));
 
   const { data, error } = await query;
   if (error) throw error;
@@ -139,6 +143,7 @@ async function main() {
     active_attractions: attractions.length,
     code_filter: codeFilter,
     status_filter: statusFilter,
+    limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : null,
     scanned: rows.length,
     changed: changed.length,
     rows: changed,
