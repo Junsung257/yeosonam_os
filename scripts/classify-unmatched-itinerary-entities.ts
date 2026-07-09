@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '../src/lib/unmatched-suggest';
+import { isCustomerRenderableAttraction, isMatchableAttractionAlias } from '../src/lib/attraction-matcher';
 
 loadEnv({ path: '.env.local' });
 loadEnv();
@@ -59,6 +60,7 @@ const argValue = (name: string, fallback: string) => {
 };
 
 const apply = args.has('--apply');
+const addAliases = args.has('--add-aliases');
 const json = args.has('--json');
 const limit = Number(argValue('--limit', '5000'));
 const minAttractionScore = Number(argValue('--min-attraction-score', '100'));
@@ -114,6 +116,10 @@ const SHOPPING_TEXT_RE = /(?:선물\s*구입|쇼핑|라텍스|잡화|기념품|�
 const HIGH_RISK_NOTICE_TEXT_RE = /(?:취소|공제|수수료|예약금|특별\s*약관|특별약관|현금영수증|여권|입국|이트래블|QR코드|발급|환불|결제|유효기간)/i;
 const MEAL_TEXT_RE = /(?:^석\s*[:：]|^중\s*[:：]|^조\s*[:：]|반찬|일정식|쇼카도우고젠|저녁\s*메뉴|먹자골목|음식|식사|조식|중식|석식|디너|런치|메뉴\s*안내)/i;
 
+const CUSTOMER_CONDITION_NOTICE_RE = /(?:\uC5EC\uAD8C\s*\uC720\uD6A8\uAE30\uAC04|\uC131\uC778\s*\d+\s*\uBA85\s*\uC774\uC0C1|\uC778\uC194\uC790\s*\uBBF8\uB3D9\uD589|\uD56D\uACF5\uB8CC\s*(?:\uBC0F|and)?\s*\uD14D\uC2A4|\uC720\uB958\uD560\uC99D\uB8CC|\uC5EC\uD589\uC790\uBCF4\uD5D8|\uD55C\uAD6D\uC5B4\s*\uAC00\uC774\uB4DC|\uC785\uC7A5\uB8CC|\uAE30\uC0AC\s*\/?\s*\uAC00\uC774\uB4DC\s*\uACBD\uBE44)/i;
+const CUSTOMER_ATTRACTION_OVERRIDE_RE = /(?:\uACE0\uC758\uB839|\uB300\uC548\uD0D1|\uADF8\uB79C\uB4DC\s*\uC6D4\uB4DC|\uADF8\uB79C\uB4DC\uC6D4\uB4DC)/i;
+const CUSTOMER_TOUR_OVERRIDE_RE = /(?:\uC2DC\uD2F0\s*\uD22C\uC5B4|\uC2DC\uD2F0\uD22C\uC5B4|\uB098\uC774\uD2B8\s*\uD22C\uC5B4|\uC57C\uAC04\s*\uC2DC\uD2F0|\uD2B8\uB7A8.*\uC720\uB8CC|\uBCC4\uB3C4\s*\uBB38\uC758\s*\/?\s*\uC720\uB8CC)/i;
+
 function cleanText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -129,7 +135,8 @@ function standardCategory(value: string | null): EntityCategory | null {
 function isSafeAutoStructuredEntity(category: EntityCategory, activity: string): boolean {
   if (category === 'notice') {
     return (LOW_RISK_SCHEDULE_NOTICE_RE.test(activity) && !HIGH_RISK_NOTICE_RE.test(activity)) ||
-      LOW_RISK_PREP_RE.test(activity);
+      LOW_RISK_PREP_RE.test(activity) ||
+      CUSTOMER_CONDITION_NOTICE_RE.test(activity);
   }
   if (category === 'optional_tour') {
     return OPTION_STRUCTURED_DETAIL_RE.test(activity) ||
@@ -165,6 +172,9 @@ function classifyText(
   if (AGE_PRICE_RE.test(text)) return { category: 'price_noise', confidence: 0.92 };
   if (PRICE_NOISE_RE.test(text)) return { category: 'price_noise', confidence: 0.9 };
   if (/^(?:길이|높이|직경|총길이)\s*\d/i.test(text)) return { category: 'price_noise', confidence: 0.9 };
+  if (CUSTOMER_ATTRACTION_OVERRIDE_RE.test(text)) return { category: 'attraction', confidence: 0.78 };
+  if (CUSTOMER_TOUR_OVERRIDE_RE.test(text)) return { category: 'optional_tour', confidence: 0.88 };
+  if (CUSTOMER_CONDITION_NOTICE_RE.test(text)) return { category: 'notice', confidence: 0.9 };
   if (SHOPPING_TEXT_RE.test(text)) return { category: 'shopping', confidence: 0.88 };
   if (GOLF_METRIC_RE.test(text)) return { category: 'optional_tour', confidence: 0.9 };
   if (LOW_RISK_PREP_RE.test(text)) return { category: 'notice', confidence: 0.88 };
@@ -198,6 +208,7 @@ function statusFor(category: EntityCategory, confidence: number, resolvedAttract
   if (resolvedAttractionId) return 'added';
   if ((category === 'meal' || category === 'transfer') && confidence >= 0.85) return 'added';
   if ((category === 'free_time' || category === 'price_noise') && confidence >= 0.85) return 'ignored';
+  if (category === 'notice' && confidence >= 0.85 && isSafeAutoStructuredEntity(category, activity)) return 'ignored';
   if (confidence >= 0.85 && isSafeAutoStructuredEntity(category, activity)) return 'added';
   return 'pending';
 }
@@ -257,12 +268,18 @@ async function fetchAttractions(): Promise<AttractionSuggestRow[]> {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id, name, aliases, region, country, category, emoji, short_desc')
+      .select('id, name, aliases, region, country, category, badge_type, emoji, short_desc, is_active, customer_publishable, mrt_gid')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .range(from, from + pageSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
-    rows.push(...data as AttractionSuggestRow[]);
+    rows.push(...(data as AttractionSuggestRow[])
+      .filter(isCustomerRenderableAttraction)
+      .map(attr => ({
+        ...attr,
+        aliases: (attr.aliases ?? []).filter(alias => isMatchableAttractionAlias(alias, attr)),
+      })));
     if (data.length < pageSize) break;
   }
   return rows;
@@ -293,7 +310,9 @@ function classifyRow(row: UnmatchedRow, attractions: AttractionSuggestRow[]): Cl
   }
 
   const status = statusFor(classified.category, classified.confidence, resolvedAttractionId, row.activity);
-  const action = status === 'added' && isSafeAutoStructuredEntity(classified.category, row.activity)
+  const action = status === 'ignored'
+    ? 'auto_ignore_noise'
+    : status === 'added' && isSafeAutoStructuredEntity(classified.category, row.activity)
     ? 'auto_resolve_existing'
     : actionFor(classified.category, classified.confidence, resolvedAttractionId);
 
@@ -319,6 +338,7 @@ function classifyRow(row: UnmatchedRow, attractions: AttractionSuggestRow[]): Cl
 }
 
 async function maybeAddAlias(item: ClassifiedRow, attractions: AttractionSuggestRow[]) {
+  if (!addAliases) return false;
   if (!item.resolvedAttractionId) return false;
   const raw = cleanText(item.row.activity);
   if (raw.length > 60) return false;
