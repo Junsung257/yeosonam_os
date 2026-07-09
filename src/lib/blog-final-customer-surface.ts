@@ -206,6 +206,95 @@ function dedupeRepeatedPlainSentences(markdown: string): { markdown: string; cha
   return { markdown: next, changed: changed && next !== markdown.trim() };
 }
 
+function headingLevel(line: string): number | null {
+  const match = line.match(/^(#{2,6})\s+\S/);
+  return match ? match[1].length : null;
+}
+
+function headingSignature(line: string): string {
+  return stripMarkup(line)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\uac00-\ud7a3{}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function removeDuplicateHeadingSections(markdown: string): { markdown: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index] ?? '';
+    const level = headingLevel(line);
+    if (!level) {
+      kept.push(line);
+      index += 1;
+      continue;
+    }
+
+    const signature = headingSignature(line);
+    if (signature && seen.has(signature)) {
+      changed = true;
+      index += 1;
+      while (index < lines.length) {
+        const nextLevel = headingLevel(lines[index] ?? '');
+        if (nextLevel && nextLevel <= level) break;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (signature) seen.add(signature);
+    kept.push(line);
+    index += 1;
+  }
+
+  const next = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { markdown: next, changed: changed && next !== markdown.trim() };
+}
+
+const LOW_VALUE_OVERFLOW_HEADING_RE =
+  /(?:\uC77D\uB294\s*\uC21C\uC11C|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38|\uAD00\uB828\s*\uD328\uD0A4\uC9C0|\uCD94\uCC9C\s*\uD3EC\uC2A4\uD305|\uC5EC\uC18C\uB0A8\s*\uC5EC\uD589\s*\uC900\uBE44|\uC0C1\uB2F4|CTA|FAQ|Q\s*&\s*A|recommended\s+posts?|related\s+packages?)/i;
+
+function pruneLowValueOverflowSections(markdown: string): { markdown: string; changed: boolean } {
+  const h2Lines = markdown.match(/^##\s+\S.*$/gm) ?? [];
+  if (h2Lines.length < 10) return { markdown, changed: false };
+
+  const lines = markdown.split('\n');
+  const kept: string[] = [];
+  let h2Seen = 0;
+  let changed = false;
+
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index] ?? '';
+    const isH2 = /^##\s+\S/.test(line);
+    if (!isH2) {
+      kept.push(line);
+      index += 1;
+      continue;
+    }
+
+    h2Seen += 1;
+    const shouldPrune = h2Seen > 8 && LOW_VALUE_OVERFLOW_HEADING_RE.test(stripMarkup(line));
+    if (!shouldPrune) {
+      kept.push(line);
+      index += 1;
+      continue;
+    }
+
+    changed = true;
+    index += 1;
+    while (index < lines.length && !/^##\s+\S/.test(lines[index] ?? '')) {
+      index += 1;
+    }
+  }
+
+  const next = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { markdown: next, changed: changed && next !== markdown.trim() };
+}
+
 function removeEmptyCtaResidue(markdown: string): { markdown: string; changed: boolean } {
   const next = markdown
     .replace(EMPTY_CTA_SENTENCE_RE, (match) => (match.startsWith('\n') ? '\n' : ''))
@@ -555,6 +644,8 @@ export function repairBlogFinalCustomerSurface(input: BlogFinalCustomerSurfaceIn
   apply('remove_generated_instruction_residue', removeGeneratedInstructionResidue(markdown));
   apply('dedupe_repeated_plain_paragraphs', dedupeRepeatedPlainParagraphs(markdown));
   apply('dedupe_repeated_plain_sentences', dedupeRepeatedPlainSentences(markdown));
+  apply('remove_duplicate_heading_sections', removeDuplicateHeadingSections(markdown));
+  apply('prune_low_value_overflow_sections', pruneLowValueOverflowSections(markdown));
   apply('repair_destination_surface', repairDestinationSurface(markdown, destination));
   apply('split_paragraph_walls', splitParagraphWalls(markdown));
   apply('dedupe_lead_sentences', dedupeLeadSentences(markdown));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { inspectPublicBlogCustomerQuality } from './blog-public-customer-quality';
 
-function page(body: string, title = '발리 7월 날씨 옷차림 체크리스트') {
+function page(body: string, title = '발리 7월 날씨 옷차림 체크리스트'): string {
   return `<!doctype html><html><head><title>${title}</title></head><body><main><article>${body}</article></main></body></html>`;
 }
 
@@ -74,5 +74,51 @@ describe('inspectPublicBlogCustomerQuality', () => {
 
     expect(report.passed).toBe(true);
     expect(report.score).toBeGreaterThanOrEqual(88);
+  });
+
+  it('does not treat numbered itinerary day headings as duplicates', () => {
+    const report = inspectPublicBlogCustomerQuality({
+      expectedType: 'product',
+      html: page(`
+        <h1>Cebu family itinerary</h1>
+        <p>Cebu family trips are easier when airport movement, hotel location, and child rest time are checked first.</p>
+        <h2>1일 차</h2><p>Arrive and move to the hotel.</p>
+        <h2>2일 차</h2><p>Keep the first activity short.</p>
+        <h2>3일 차</h2><p>Use the morning for a light route.</p>
+        <h2>4일 차</h2><p>Leave enough time before the flight.</p>
+      `),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('duplicate_heading');
+  });
+
+  it('still catches truly repeated headings in the article body', () => {
+    const report = inspectPublicBlogCustomerQuality({
+      expectedType: 'product',
+      html: page(`
+        <h1>Cebu family itinerary</h1>
+        <p>Cebu family trips are easier when airport movement, hotel location, and child rest time are checked first.</p>
+        <h2>2일 차</h2><p>Keep the first activity short.</p>
+        <h2>2일 차</h2><p>This repeated day section should be caught.</p>
+      `),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).toContain('duplicate_heading');
+  });
+
+  it('ignores table of contents and recommendation headings outside the body', () => {
+    const report = inspectPublicBlogCustomerQuality({
+      expectedType: 'info',
+      html: page(`
+        <nav aria-label="목차"><h3>2일 차</h3><h3>3일 차</h3></nav>
+        <h1>Cebu travel prep</h1>
+        <p>Cebu travel prep should start with documents, airport movement, budget, and weather checks.</p>
+        <h2>2일 차</h2><p>Use a short route.</p>
+        <h2>3일 차</h2><p>Check return timing.</p>
+        <aside aria-label="추천 포스팅"><h3>2일 차</h3><h3>3일 차</h3></aside>
+      `),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('duplicate_heading');
   });
 });

@@ -5,6 +5,9 @@ export type BlogCustomerQualityIssueSeverity = 'critical' | 'major';
 export type BlogCustomerQualityIssueCode =
   | 'generic_answer_opening'
   | 'weak_answer_first'
+  | 'empty_cta_residue'
+  | 'chatty_intro_residue'
+  | 'destination_generic_residue'
   | 'product_price_suffix_duplicate'
   | 'product_consult_repetition'
   | 'product_specificity_weak'
@@ -78,6 +81,13 @@ const READABLE_HARD_CTA_RE =
 const READABLE_GENERIC_INFO_OPENING_RE =
   /^(?:안녕하세요|이번\s*글에서는|오늘은|여소남\s*에디터|여행을\s*계획\s*중이시라면)|먼저\s*볼\s*것은\s*예산\s*범위,\s*이동\s*순서/i;
 
+const READABLE_CHATTY_INTRO_RE =
+  /(?:\uC548\uB155\uD558\uC138\uC694|hello)[,\s]*(?:\uC18C\uC911\uD55C\s*)?\uC5EC\uD589|\uC5EC\uD589\uC744\s*\uACC4\uD68D\uD558\uC2DC\uB294\s*(?:\uC5EC\uB7EC\uBD84|\uBD84\uB4E4)|\uAFB8\uAC19\uC740\s*\uC5EC\uD589|\uB354\uC5C6\uC774\s*\uC88B\uC9C0\uB9CC|\uAF3C\uAF3C\uD558\uAC8C\s*\uC815\uB9AC\uD574\s*\uB4DC\uB9BD\uB2C8\uB2E4/i;
+const READABLE_EMPTY_CTA_RE =
+  /(?:\uC9C0\uAE08\s*\uBC14\uB85C|\uC544\uB798|\uC5EC\uAE30)\s*(?:\uB97C|\uC744)?\s*(?:\uD074\uB9AD|\uB20C\uB7EC)\s*(?:\uD574|\uD558\uC5EC)?\s*(?:\uAFB8\uAC19\uC740|\uC990\uAC70\uC6B4|\uC644\uBCBD\uD55C)?\s*[^.\n]{0,30}(?:\uC2DC\uC791|\uD655\uC778|\uC0C1\uB2F4|\uC608\uC57D)|(?:\uBC14\uB85C\s*\uB97C\s*\uD074\uB9AD|\uC9C0\uAE08\s*\uBC14\uB85C\s*\uB97C\s*\uD074\uB9AD)/i;
+const GENERIC_LOCAL_LABEL_RE =
+  /(?:^|\s)\uD604\uC9C0\s*(?:\uBE44\uC6A9|\uC900\uBE44\uBB3C|\uC608\uC57D|\uC77C\uC815|\uC815\uBCF4|\uC5EC\uD589)(?=[:：\s]|$)/g;
+
 const READABLE_AI_TONE_PATTERNS = [
   /완벽\s*가이드/g,
   /총정리/g,
@@ -143,6 +153,17 @@ function duplicateHeadingCount(markdown: string): number {
     else seen.add(heading);
   }
   return duplicates;
+}
+
+function markdownHeadingCounts(markdown: string): { h2Count: number; headingCount: number } {
+  let h2Count = 0;
+  let headingCount = 0;
+  for (const line of markdown.split('\n')) {
+    if (!/^#{2,6}\s+\S/.test(line)) continue;
+    headingCount += 1;
+    if (/^##\s+\S/.test(line)) h2Count += 1;
+  }
+  return { h2Count, headingCount };
 }
 
 function productDecisionSignalsReadable(plain: string): number {
@@ -213,7 +234,7 @@ function firstParagraph(markdown: string): string {
 }
 
 function hasConcreteAnswer(text: string): boolean {
-  return /(\d[\d,]*(?:원|만원|분|시간|일|박|도|℃|mm|%|벌|달러|USD)|먼저|기준|확인|비교|챙기|피하|나누|분리|정리|준비|비용|예산|총액|상품가|개인경비|추가비)/.test(text);
+  return /(\d[\d,]*(?:원|만원|분|시간|일|박|도|℃|mm|%|벌|달러|USD)|먼저|기준|확인|비교|챙기|피하|나누|분리|정리|준비|비용|예산|경비|식비|이동비|총액|상품가|개인경비|추가비|선택\s*관광|카드\s*수수료)/.test(text);
 }
 
 function metricFromIssues(
@@ -261,6 +282,22 @@ function inspectInfo(input: BlogCustomerQualityInput, plain: string, issues: Blo
       'generic_answer_opening',
       'major',
       '반복형 답변 도입부가 감지되었습니다. 검색어별로 고객 상황과 수치를 바꿔 써야 합니다.',
+      { first: first.slice(0, 180) },
+    );
+  }
+
+  const topForTone = stripMarkup(input.blogHtml)
+    .replace(/^#{1,6}\s+\S.*$/gm, ' ')
+    .replace(/^\|.*\|$/gm, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 900);
+  if (READABLE_CHATTY_INTRO_RE.test(first) || READABLE_CHATTY_INTRO_RE.test(topForTone)) {
+    addIssue(
+      issues,
+      'chatty_intro_residue',
+      'major',
+      '정보성 자동 발행 글은 인사형 블로그 도입부보다 고객 질문에 대한 답부터 시작해야 합니다.',
       { first: first.slice(0, 180) },
     );
   }
@@ -442,6 +479,28 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
     );
   }
 
+  const emptyCta = plain.match(READABLE_EMPTY_CTA_RE);
+  if (emptyCta) {
+    addIssue(
+      issues,
+      'empty_cta_residue',
+      'critical',
+      '링크나 버튼명이 빠진 CTA 문구가 고객에게 그대로 보입니다.',
+      { sample: emptyCta[0].slice(0, 140) },
+    );
+  }
+
+  const genericLocalLabels = plain.match(GENERIC_LOCAL_LABEL_RE) ?? [];
+  if (input.destination && genericLocalLabels.length >= 2) {
+    addIssue(
+      issues,
+      'destination_generic_residue',
+      'major',
+      '목적지가 있는데도 "현지 비용/현지 준비물"처럼 비어 보이는 일반 문구가 반복됩니다.',
+      { destination: input.destination, count: genericLocalLabels.length, samples: genericLocalLabels.slice(0, 5) },
+    );
+  }
+
   if (UNSUPPORTED_INTERNAL_DATA_RE.test(plain) && !/(집계\s*기준|표본|로그|기간|GSC|서치콘솔|예약\s*건수|상담\s*건수)/.test(plain)) {
     addIssue(
       issues,
@@ -462,17 +521,26 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
     );
   }
 
-  const h2Count = countMatches(input.blogHtml, /^##\s+\S/gm);
+  const { h2Count, headingCount } = markdownHeadingCounts(input.blogHtml);
   const faqCount = countMatches(plain, /Q\d?\.|Q:|자주\s*묻는\s*질문/g);
   const summaryCount = countMatches(plain, /핵심\s*요약|한눈에\s*보는\s*요약/g);
   const duplicateHeadings = duplicateHeadingCount(input.blogHtml);
-  if (duplicateHeadings >= 2) {
+  if (duplicateHeadings >= 1) {
     addIssue(
       issues,
       'overbuilt_mechanical_structure',
       'major',
       '같은 제목이 반복되어 자동 생성 템플릿처럼 보입니다.',
       { duplicateHeadings },
+    );
+  }
+  if (h2Count >= 12 || headingCount >= 22) {
+    addIssue(
+      issues,
+      'overbuilt_mechanical_structure',
+      'major',
+      '\uACF5\uAC1C \uD398\uC774\uC9C0\uC5D0\uC11C \uBAA9\uCC28\uC640 \uBCF8\uBB38\uC774 \uC790\uB3D9 \uC870\uB9BD\uB41C \uBB38\uC11C\uCC98\uB7FC \uBCF4\uC77C \uC815\uB3C4\uB85C \uC81C\uBAA9 \uC218\uAC00 \uB9CE\uC2B5\uB2C8\uB2E4.',
+      { h2Count, headingCount },
     );
   }
   if (h2Count >= 10 && faqCount >= 4 && summaryCount >= 2) {
@@ -539,13 +607,13 @@ export function inspectBlogCustomerQuality(input: BlogCustomerQualityInput): Blo
   inspectCommon(input, plain, issues);
 
   const metrics = {
-    customer_language: metricFromIssues(issues, ['placeholder_destination_copy', 'product_price_suffix_duplicate', 'unnatural_korean_tone', 'product_internal_terms_leak']),
-    answer_usefulness: metricFromIssues(issues, ['weak_answer_first', 'generic_answer_opening', 'mobile_readability_wall']),
+    customer_language: metricFromIssues(issues, ['placeholder_destination_copy', 'destination_generic_residue', 'product_price_suffix_duplicate', 'unnatural_korean_tone', 'product_internal_terms_leak']),
+    answer_usefulness: metricFromIssues(issues, ['weak_answer_first', 'generic_answer_opening', 'chatty_intro_residue', 'mobile_readability_wall']),
     product_decision_helpfulness: input.blogType === 'product'
       ? metricFromIssues(issues, ['product_specificity_weak', 'product_source_contract_weak', 'product_consult_repetition', 'product_evidence_omission'])
       : 100,
-    naturalness: metricFromIssues(issues, ['generic_answer_opening', 'overbuilt_mechanical_structure', 'product_consult_repetition', 'unnatural_korean_tone']),
-    trust_and_evidence: metricFromIssues(issues, ['unsupported_internal_data', 'early_sales_pressure', 'table_render_risk', 'info_source_support_weak', 'product_evidence_omission', 'product_internal_terms_leak']),
+    naturalness: metricFromIssues(issues, ['generic_answer_opening', 'chatty_intro_residue', 'empty_cta_residue', 'overbuilt_mechanical_structure', 'product_consult_repetition', 'unnatural_korean_tone']),
+    trust_and_evidence: metricFromIssues(issues, ['unsupported_internal_data', 'early_sales_pressure', 'empty_cta_residue', 'table_render_risk', 'info_source_support_weak', 'product_evidence_omission', 'product_internal_terms_leak']),
   };
   const score = Math.round(Object.values(metrics).reduce((sum, value) => sum + value, 0) / Object.values(metrics).length);
   const passed = issues.length === 0 && score >= 90;
