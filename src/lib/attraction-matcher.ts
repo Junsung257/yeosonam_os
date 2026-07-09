@@ -13,12 +13,12 @@ export interface AttractionData {
   name: string;
   short_desc?: string | null;
   long_desc?: string | null;
-  badge_type?: string;
+  badge_type?: string | null;
   emoji?: string | null;
   country?: string | null;
   region?: string | null;
   category?: string | null;
-  aliases?: string[];
+  aliases?: string[] | null;
   photos?: { src_medium: string; src_large: string; photographer: string; pexels_id: number }[];
   /** MRT canonical 여부 — 동일 fuzzy 후보 중 우선 선택 (2026-05-14) */
   mrt_gid?: string | null;

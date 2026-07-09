@@ -5,8 +5,12 @@ export interface AttractionSuggestRow {
   region: string | null;
   country: string | null;
   category: string | null;
+  badge_type?: string | null;
   emoji: string | null;
   short_desc: string | null;
+  is_active?: boolean | null;
+  customer_publishable?: boolean | null;
+  mrt_gid?: string | null;
 }
 
 export interface Suggestion {
