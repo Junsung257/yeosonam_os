@@ -34,6 +34,44 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(res.unmatchedCandidates).toHaveLength(0);
   });
 
+  it('falls back to scanning full activity text when attraction_query has no match', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 3,
+            schedule: [
+              {
+                activity: '\uC808\uBCBD\uC5D0 \uC0C8\uACA8\uC9C4 \uD669\uAE08\uBD88\uC0C1 \uD669\uAE08\uC808\uBCBD\uC0AC\uC6D0 \uAD00\uAD11(\uCF54\uB07C\uB9AC \uD2B8\uB798\uD0B9 \uCCB4\uD5D8)',
+                type: 'normal',
+                entity_kind: 'attraction visit',
+                attraction_query: '\uC808\uBCBD\uC5D0 \uC0C8\uACA8\uC9C4 \uD669\uAE08\uBD88\uC0C1 \uD669\uAE08\uC808\uBCBD\uC0AC\uC6D0',
+                attraction_queries: ['\uC808\uBCBD\uC5D0 \uC0C8\uACA8\uC9C4 \uD669\uAE08\uBD88\uC0C1 \uD669\uAE08\uC808\uBCBD\uC0AC\uC6D0'],
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'elephant-trekking',
+          name: '\uCF54\uB07C\uB9AC \uD2B8\uB798\uD0B9',
+          region: '\uD30C\uD0C0\uC57C',
+          country: 'TH',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '\uBC29\uCF55/\uD30C\uD0C0\uC57C',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['elephant-trekking']);
+    expect(item.attraction_names).toEqual(['\uCF54\uB07C\uB9AC \uD2B8\uB798\uD0B9']);
+    expect(res.unmatchedCandidates).toHaveLength(0);
+  });
+
   it('does not direct-scan long MRT product titles as attraction cards', () => {
     const res = enrichItineraryWithAttractionReferences(
       {
