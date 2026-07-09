@@ -1,4 +1,5 @@
 const MARKDOWN_IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g;
+const HTML_IMAGE_RE = /<img\b[^>]*>/gi;
 const FIGCAPTION_RE = /<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i;
 
 const GENERIC_ALT_RE = /^(?:image|photo|picture|travel|travel image|여행|이미지|사진|여행 이미지|여행 사진)$/i;
@@ -7,7 +8,6 @@ const MALFORMED_PEXELS_RE = /https:\/\/(?:images\/pexels\.com|images-pexels\.com
 const STOP_WORDS = new Set([
   '여소남',
   '여행',
-  '완벽',
   '가이드',
   '총정리',
   '체크리스트',
@@ -19,6 +19,7 @@ const STOP_WORDS = new Set([
   '준비물',
   '비용',
   '일정',
+  '패키지',
 ]);
 
 export interface BlogImageQualityOptions {
@@ -28,7 +29,7 @@ export interface BlogImageQualityOptions {
   minImages?: number;
 }
 
-interface MarkdownImage {
+interface BlogImage {
   alt: string;
   url: string;
   caption: string;
@@ -56,6 +57,11 @@ function stripHtml(value: string): string {
 
 function normalizeToken(value: string): string {
   return value.toLowerCase().replace(/[^\p{Script=Hangul}\p{Letter}\p{Number}]+/gu, '');
+}
+
+function readAttr(tag: string, attr: string): string {
+  const match = tag.match(new RegExp(`\\b${attr}=(["'])(.*?)\\1`, 'i'));
+  return match?.[2]?.trim() ?? '';
 }
 
 function isWeakContextToken(token: string): boolean {
@@ -91,8 +97,8 @@ function isValidImageUrl(url: string): boolean {
   return /^https?:\/\//i.test(url) || url.startsWith('/');
 }
 
-export function extractMarkdownImages(markdown: string): MarkdownImage[] {
-  const images: MarkdownImage[] = [];
+export function extractMarkdownImages(markdown: string): BlogImage[] {
+  const images: BlogImage[] = [];
   let match: RegExpExecArray | null;
 
   while ((match = MARKDOWN_IMAGE_RE.exec(markdown)) !== null) {
@@ -101,6 +107,17 @@ export function extractMarkdownImages(markdown: string): MarkdownImage[] {
     images.push({
       alt: stripHtml(match[1] ?? ''),
       url: (match[2] ?? '').trim(),
+      caption: stripHtml(captionMatch?.[1] ?? ''),
+    });
+  }
+
+  while ((match = HTML_IMAGE_RE.exec(markdown)) !== null) {
+    const tag = match[0] ?? '';
+    const after = markdown.slice(match.index + tag.length, match.index + tag.length + 260);
+    const captionMatch = after.match(FIGCAPTION_RE);
+    images.push({
+      alt: stripHtml(readAttr(tag, 'alt')),
+      url: readAttr(tag, 'src'),
       caption: stripHtml(captionMatch?.[1] ?? ''),
     });
   }

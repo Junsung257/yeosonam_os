@@ -15,6 +15,7 @@
  */
 
 import { supabaseAdmin } from './supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 
 const MAX_CLUSTERS_PER_PILLAR = 12;
 const MAX_SIBLINGS_FOR_CLUSTER = 4;
@@ -191,7 +192,7 @@ export async function rebuildAllClusters(): Promise<{
   const { data: pkgs } = await supabaseAdmin
     .from('travel_packages')
     .select('destination')
-    .in('status', ['approved', 'active']);
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
   const destinations = Array.from(new Set(
     ((pkgs || []) as Array<{ destination: string | null }>)

@@ -2,10 +2,11 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { extractQaDestinationHint } from '@/lib/qa-destination-hint';
 import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
-  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,publication_state';
+  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,status,publication_state,audit_status,audit_report,updated_at,optional_tours,itinerary_data';
 
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
@@ -28,13 +29,13 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
     .in('publication_state', ['approved', 'published'])
-    .or('audit_status.is.null,audit_status.neq.blocked')
     .ilike('destination', `%${destinationHint}%`)
     .order('created_at', { ascending: false })
     .limit(120);
 
   if (error) throw error;
-  return sanitizeQaPackageRows(await rankQaPackagesForHint((data || []) as Record<string, unknown>[], destinationHint));
+  const openable = ((data || []) as Record<string, unknown>[]).filter(isCustomerPubliclyOpenable);
+  return sanitizeQaPackageRows(await rankQaPackagesForHint(openable, destinationHint));
 }
 
 async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
@@ -43,12 +44,11 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
     .in('publication_state', ['approved', 'published'])
-    .or('audit_status.is.null,audit_status.neq.blocked')
     .order('created_at', { ascending: false })
     .limit(150);
 
   if (error) throw error;
-  return sanitizeQaPackageRows((data || []) as Record<string, unknown>[]);
+  return sanitizeQaPackageRows(((data || []) as Record<string, unknown>[]).filter(isCustomerPubliclyOpenable));
 }
 
 async function rankQaPackagesForHint(

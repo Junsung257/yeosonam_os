@@ -27,7 +27,7 @@ type ProductWithOpsFields = {
 
 export type ProductBlogBrief = {
   content_type: 'package_intro';
-  prompt_version: 'product-template-v2';
+  prompt_version: 'product-template-v4';
   product_id: string;
   product_title: string;
   destination: string | null;
@@ -72,7 +72,7 @@ function cleanKeywordPart(value: unknown): string | null {
     .replace(/&#8211;|&ndash;|&mdash;|&amp;/gi, ' ')
     .replace(/\[[^\]]*]/g, ' ')
     .replace(/\([^)]*\)/g, ' ')
-    .replace(/[\/|,+·ㆍ:–—-]+/g, ' ')
+    .replace(/[\/|,+~]+/g, ' ')
     .replace(/\b(?:PKG|ZE|LJ|7C|TW|KE|OZ|BX|RS|YP|YSN)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -82,7 +82,7 @@ function cleanKeywordPart(value: unknown): string | null {
 function inferDestinationFromTitle(title: string): string | null {
   const cleaned = cleanKeywordPart(title);
   if (!cleaned) return null;
-  const first = cleaned.split(/\s+/).find((part) => /[가-힣]{2,}/.test(part));
+  const first = cleaned.split(/\s+/).find((part) => /[\uAC00-\uD7A3]{2,}/.test(part));
   return first ?? null;
 }
 
@@ -91,13 +91,13 @@ function compactSeoKeyword(parts: Array<string | null | undefined>): string {
   const keyword = uniqueParts.join(' ').replace(/\s+/g, ' ').trim();
   if (keyword.length <= 42) return keyword;
 
-  const withoutMiddle = uniqueParts.filter((part) => !/\d+\s*일/.test(part)).join(' ').trim();
-  if (withoutMiddle && withoutMiddle.length <= 42) return withoutMiddle;
+  const withoutDuration = uniqueParts.filter((part) => !/\d+\s*(?:일|박)/.test(part)).join(' ').trim();
+  if (withoutDuration && withoutDuration.length <= 42) return withoutDuration;
   return keyword.slice(0, 42).trim();
 }
 
 export function buildProductSeoKeyword(product: ProductWithOpsFields): string {
-  const title = product.title || product.display_title || 'package';
+  const title = product.title || product.display_title || '패키지';
   const destination = cleanKeywordPart(product.destination) ?? inferDestinationFromTitle(title);
   const duration = product.duration ? `${product.duration}일` : null;
   const base = compactSeoKeyword([destination, duration, '패키지']);
@@ -197,47 +197,57 @@ export function buildProductSlugSuffix(product: ProductWithOpsFields): string {
   return [idPart, datePart, durationPart, supplierPart].filter(Boolean).join('-');
 }
 
+function listFrom(value: string[] | null | undefined, limit = 12): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => String(item ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, limit)
+    : [];
+}
+
 export function buildProductBlogBrief(product: ProductWithOpsFields, angle: AngleType): ProductBlogBrief {
-  const destination = product.destination ?? null;
-  const title = product.title || product.display_title || 'package';
+  const destination = cleanKeywordPart(product.destination) ?? inferDestinationFromTitle(product.title || product.display_title || '');
+  const title = product.title || product.display_title || '여행 패키지';
   const departureDate = resolveProductDepartureDate(product);
   const supplierCode = resolveProductSupplierCode(product);
   const seoKeyword = buildProductSeoKeyword(product);
-  const primaryKeyword = seoKeyword;
-  const nights = product.nights ?? (product.duration ? product.duration - 1 : null);
+  const nights = product.nights ?? (product.duration ? Math.max(product.duration - 1, 0) : null);
   const duration = product.duration ? `${nights ? `${nights}박 ` : ''}${product.duration}일` : null;
-  const departureCity = product.departure_airport ?? null;
-  const included = Array.isArray(product.inclusions) ? product.inclusions.slice(0, 12) : [];
-  const excluded = Array.isArray(product.excludes) ? product.excludes.slice(0, 12) : [];
+  const departureCity = cleanKeywordPart(product.departure_airport);
+  const included = listFrom(product.inclusions);
+  const excluded = listFrom(product.excludes);
+  const destinationLabel = destination || '해당 여행지';
+  const departureLabel = departureCity || '출발지';
+
   const fitFor = [
-    destination ? `${destination} 패키지를 가격과 일정 기준으로 먼저 비교하려는 고객` : '패키지 가격과 일정을 먼저 비교하려는 고객',
-    departureCity ? `${departureCity} 출발 상품을 찾는 고객` : '출발지와 항공 조건을 상담으로 확인하려는 고객',
-    '포함사항과 추가 비용을 나눠 보고 문의하고 싶은 고객',
+    `${destinationLabel} 패키지를 가격, 일정, 포함 항목 기준으로 먼저 비교하고 싶은 분`,
+    departureCity ? `${departureLabel} 출발 상품을 찾는 분` : '출발지와 항공 조건을 상담으로 확인하고 싶은 분',
+    '자유여행보다 항공, 숙소, 이동이 한 번에 정리되는 방식을 선호하는 분',
   ];
   const notFitFor = [
-    '호텔명, 객실 타입, 항공 시간이 확정된 뒤에만 결정하려는 고객',
-    '자유일정 비중이 큰 개별여행을 원하는 고객',
+    '호텔명, 객실, 항공 시간까지 모두 확정된 뒤에만 결정하고 싶은 분',
+    '자유시간을 길게 두고 현지 일정을 직접 조합하고 싶은 분',
   ];
   const riskNotes = [
-    '가격과 좌석은 발권/예약 시점에 따라 달라질 수 있음',
-    '포함/불포함, 선택관광, 취소 규정은 상담 전에 재확인 필요',
-    departureDate ? `대표 출발일은 ${departureDate} 기준으로 추출됨` : '대표 출발일은 상담에서 확인 필요',
+    '가격은 출발일, 좌석, 유류할증료, 객실 조건에 따라 달라질 수 있습니다.',
+    '포함/불포함, 선택관광, 취소 규정은 예약 시점의 최종 조건을 다시 확인해야 합니다.',
+    departureDate
+      ? `가장 빠른 출발일은 ${departureDate} 기준으로 확인했습니다.`
+      : '출발 가능일은 상담 시점 기준으로 다시 확인해야 합니다.',
   ];
   const consultQuestions = [
-    '인원과 출발 가능일은 어떻게 되나요?',
-    '항공 시간과 호텔 등급은 확정 기준으로 볼 수 있나요?',
-    '선택관광, 가이드/기사 경비, 추가 차지가 있나요?',
-    '취소/변경 규정은 출발일 기준으로 어떻게 적용되나요?',
+    '이 출발일에 현재 가능한 좌석과 객실이 있나요?',
+    '표시 가격 외에 현지 추가비나 선택관광 비용이 있나요?',
+    '항공 시간, 호텔 조건, 조인 행사 여부는 어떻게 확인하나요?',
+    '취소와 변경 규정은 출발일 기준으로 어떻게 적용되나요?',
   ];
 
   return {
     content_type: 'package_intro',
-    prompt_version: 'product-template-v2',
+    prompt_version: 'product-template-v4',
     product_id: product.id,
     product_title: title,
     destination,
     angle,
-    primary_keyword: primaryKeyword,
+    primary_keyword: seoKeyword,
     seo_keyword: seoKeyword,
     departure_date: departureDate,
     departure_city: departureCity,

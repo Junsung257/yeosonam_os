@@ -5,14 +5,37 @@ const queriedTables: string[] = [];
 
 function queryResult(table: string) {
   const dataByTable: Record<string, unknown[]> = {
-    active_destinations: [
-      { destination: '오사카', package_count: 2 },
-      { destination: '석가장', package_count: 0 },
+    travel_packages: [
+      {
+        destination: 'osaka',
+        status: 'approved',
+        audit_status: 'warnings',
+        audit_report: {
+          customer_open_contract: {
+            ok: true,
+            status: 'pass',
+            mobile_browser_proof: { ok: true },
+          },
+        },
+      },
+      {
+        destination: 'hidden',
+        status: 'pending',
+        audit_status: 'blocked',
+        audit_report: {
+          customer_open_contract: {
+            ok: false,
+            status: 'blocked',
+            blockers: ['not public'],
+            mobile_browser_proof: { ok: false },
+          },
+        },
+      },
     ],
     content_creatives: [
       {
         slug: 'osaka-weather',
-        destination: '오사카',
+        destination: 'osaka',
         angle_type: 'value',
         published_at: '2026-06-01T00:00:00.000Z',
         updated_at: '2026-06-02T00:00:00.000Z',
@@ -58,10 +81,10 @@ describe('sitemap', () => {
     const expectedBaseUrl = resolveBlogCanonicalOrigin();
 
     expect(urls).toContain(`${expectedBaseUrl}/packages`);
-    expect(urls).toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('오사카')}`);
-    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('석가장')}`);
+    expect(urls).toContain(`${expectedBaseUrl}/destinations/osaka`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
-    expect(queriedTables).not.toContain('travel_packages');
+    expect(queriedTables).toContain('travel_packages');
   });
 });

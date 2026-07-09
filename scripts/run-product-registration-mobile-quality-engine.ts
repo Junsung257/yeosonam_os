@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { config as loadEnv } from 'dotenv';
 
+import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
+
 loadEnv({ path: '.env.local' });
 loadEnv();
 
@@ -20,6 +22,7 @@ const skipVerify = args.has('--skip-verify');
 const skipPromote = args.has('--skip-promote');
 const skipPhotoFill = args.has('--skip-photo-fill');
 const skipCandidateRepair = args.has('--skip-candidate-repair');
+const CUSTOMER_VISIBLE_STATUS_ARG = CUSTOMER_VISIBLE_STATUSES.join(',');
 
 type Step = {
   label: string;
@@ -77,7 +80,7 @@ const steps: Step[] = [
     args: [
       'tsx',
       'scripts/repair-product-mobile-readiness-candidates.ts',
-      `--status=${publicOnly ? 'active,approved' : status}`,
+      `--status=${publicOnly ? CUSTOMER_VISIBLE_STATUS_ARG : status}`,
       `--limit=${limit}`,
       '--days=365',
       ...(apply ? ['--apply'] : []),

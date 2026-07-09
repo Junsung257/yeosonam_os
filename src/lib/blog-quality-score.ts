@@ -1,4 +1,5 @@
 import type { BlogIntentQualityReport } from './blog-content-intent';
+import type { BlogCustomerQualityReport } from './blog-customer-quality';
 import type { QualityGateReport } from './blog-quality-gate';
 import type { ReadabilityResult } from './blog-readability';
 import type { SeoScoreResult } from './blog-seo-scorer';
@@ -19,6 +20,7 @@ export type BlogQualityComponentId =
   | 'seo'
   | 'readability'
   | 'editorial'
+  | 'customer'
   | 'render'
   | 'image'
   | 'business'
@@ -61,6 +63,7 @@ export interface BlogQualityScoreInput {
   seoScore?: SeoScoreResult | null;
   readability?: ReadabilityResult | null;
   editorial?: BlogIntentQualityReport | null;
+  customerQuality?: BlogCustomerQualityReport | null;
   renderedAudit?: BlogQualityAuditPayload | null;
   imageAudit?: BlogQualityAuditPayload | null;
   revenueAudit?: BlogQualityAuditPayload | null;
@@ -226,6 +229,28 @@ function editorialComponent(report: BlogIntentQualityReport): BlogQualityCompone
   return component('editorial', report.score, issues, report.passed);
 }
 
+function customerComponent(report: BlogCustomerQualityReport): BlogQualityComponent {
+  const issues: BlogQualityIssue[] = report.issues.map((issue) => ({
+    code: `customer.${issue.code}`,
+    severity: issue.severity === 'critical' ? 'critical' as const : 'major' as const,
+    message: issue.message,
+    source: 'customer_quality',
+    evidence: issue.evidence,
+  }));
+
+  if (!report.passed && issues.length === 0) {
+    issues.push({
+      code: 'customer.low_score',
+      severity: 'major',
+      message: `Customer quality failed at ${report.score}/100.`,
+      source: 'customer_quality',
+      evidence: { score: report.score, metrics: report.metrics },
+    });
+  }
+
+  return component('customer', report.score, issues, report.passed);
+}
+
 function auditComponent(
   id: Extract<BlogQualityComponentId, 'render' | 'image' | 'business' | 'search'>,
   payload: BlogQualityAuditPayload,
@@ -288,6 +313,7 @@ export function calculateBlogQualityScore(input: BlogQualityScoreInput): BlogQua
   if (input.seoScore) components.push(seoComponent(input.seoScore));
   if (input.readability) components.push(readabilityComponent(input.readability));
   if (input.editorial) components.push(editorialComponent(input.editorial));
+  if (input.customerQuality) components.push(customerComponent(input.customerQuality));
   if (input.renderedAudit) components.push(auditComponent('render', input.renderedAudit));
   if (input.imageAudit) components.push(auditComponent('image', input.imageAudit));
   if (input.revenueAudit) components.push(auditComponent('business', input.revenueAudit));

@@ -1,3 +1,5 @@
+import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
+
 type MicroAngleId =
   | 'budget_family'
   | 'transport_cost'
@@ -736,7 +738,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
   const { data: freshProducts } = await supabaseAdmin
     .from('travel_packages')
     .select('id, destination, title, created_at, ticketing_deadline, duration, price_dates, price_tiers, confirmed_dates, land_operator, land_operator_id, internal_code')
-    .in('status', ['approved', 'active'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: false })
     .limit(productTarget * 2);

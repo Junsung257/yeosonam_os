@@ -541,6 +541,9 @@ describe('resolveItineraryEntityCandidate', () => {
       '호이안 디저트 - 반짱느엉 + 못 주스',
       '일본 3대 온천지로 꼽히는 아타미로 이동 후',
       '증편특가',
+      '모래 썰매',
+      '왕복 모노레일',
+      '럭셔리 전동카',
     ];
 
     for (const label of labels) {
@@ -581,12 +584,217 @@ describe('resolveItineraryEntityCandidate', () => {
       .toBe('hotel operational or room fragment');
   });
 
+  it('auto-rejects readable Korean meal and service fragments', () => {
+    const labels = [
+      '\uC624\uB9AC\uAD6C\uC774',
+      '\uBAA8\uB4EC\uAD6C\uC774',
+      '\uC9DC\uC870',
+      '\uC815\uC2DD',
+      '\uBC18\uC9F1\uB290\uC5C9',
+      '\uBAA8\uB2DD\uAE00\uB85C\uB9AC \uBCF6\uC74C \uB4F1',
+      '\uB610\uB294 \uB2ED\uAD6C\uC774',
+      '\uBCF4\uD1A0\uCF34 BBQ)',
+      '\uBCF4\uC308',
+      '\uC2A4\uD14C\uC774\uD06C \uC815\uC2DD',
+      '\uC528\uD478\uB4DC',
+      '\uB545\uCF69 1\uBD09\uC9C0',
+      '\uB300\uD1B5\uBC25\uC815\uC2DD',
+      '\uC5F4\uB300 \uACFC\uC77C \uC2DC\uC2DD',
+      '\uB098\uD2B8\uB791 \uBA85\uBB3C \uCE58\uC988\uC528\uC988\uB2DD \uACE0\uAD6C\uB9C8 \uD280\uD0B4',
+      '\uC625\uC218\uC218',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('activity, meal, or service detail, not an attraction master');
+    }
+  });
+
+  it('auto-rejects readable Korean generic itinerary tokens', () => {
+    const labels = [
+      '=>',
+      '\uBB34\uC81C\uD55C',
+      '\uD655\uC778',
+      '\uC6D4\uD654\uC218\uBAA9\uAE08',
+      '\uC218\uBAA9\uAE08',
+      '\uD1A0\uC77C\uC6D4\uD654',
+      '\uD1A0\uC77C',
+      '\uBE44\uC6B4\uD56D\uC77C',
+      '\uC678\uAD00',
+      '\uC678\uBD80',
+      '4N6D',
+      '100~140cm\uBBF8\uB9CC',
+      '1\uAC1C',
+      '2\uC7781\uAC1C',
+      '10\uC6D4',
+      '\uB3C4\uBCF41\uC2DC\uAC04',
+      '\uC2DC \uAC04',
+      '\uC2DD \uC0AC',
+      '\uAD50 \uD1B5',
+      '\uD14D\uC2A4',
+      '\uC5EC\uD589\uACBD\uBE44',
+      '\uC2F1\uAE00\uCC28\uC9C0',
+      '\uB8F8 \uD0C0 \uC785',
+      '\uC0E4\uC6CC\uC2E4 \uBCF4\uC720',
+      '\uC218\uC601\uBCF5\uCC29\uC6A9\uD544\uC218',
+      '\uC544\uCFE0\uC544\uC288\uC988',
+      '\uC5EC\uBC8C \uC637',
+      '\uBC18\uBC14\uC9C0',
+      '\uBB34\uB8CC\uC874',
+      '\uC0DD\uC218',
+      '\uACF5\uC608',
+      '\uBB38\uD654',
+      '\uB3D9\uC120',
+      '\uBD80 \uC0B0 \u2192 \uD478\uAFB8\uC625',
+      '\uC5EC\uC2E0\uC0C1]\uC678\uAD00',
+      '\uBE44\uC988\uB2C8\uC2A4\uAC8C\uB974',
+      '\uBE44\uC988\uB2C8\uC2A4\uAC8C\uB974(2\uC778\uC2E4',
+      '\uD638\uD654\uD638\uD2B9',
+      '\uD06C\uB77C\uC6B4',
+      '\uD56B\uD50C \uCE74\uD398',
+      '\uCC9C\uC81C\uC6A9\uB839-\uC0C1\uC6A9\uB839-\uAE08\uC0AC\uAD00-\uC911\uBD09-\uB0A8\uBD09',
+      'OR \uB8E9\uB77D',
+      '\uBD88\uAF43\uCD95\uC81C',
+      '\uBD88\uAF43\uB180\uC774',
+      '\uBD05\uC2AC\uB808\uC774',
+      '\uB808\uC77C\uBC14\uC774\uD06C',
+      '\uB8E8\uC9C0',
+      '\uBAA8\uB798 \uC378\uB9E4',
+      '\uB099\uD0C0',
+      '\uB7ED\uC154\uB9AC \uC804\uB3D9\uCE74',
+      '\uB274\uCE74\uBA5C\uB9AC\uC544',
+      '\uC4F0\uC2DC\uB9C8\uB9C1\uD06C',
+      '\uBABD\uACE8 \uB85C\uCEEC \uB9C8\uD2B8',
+      '\uAE30\uC554\uAD34\uC11D',
+      '\uAD11\uD65C\uD55C \uB179\uCC28\uBC2D',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('generic, itinerary, or attribute fragment, not attraction master');
+    }
+  });
+
+  it('auto-rejects current backlog product-condition and descriptive attraction fragments', () => {
+    const genericLabels = [
+      '\uCF00\uC774\uBE14\uCE74\uD3B8\uB3C4',
+      '\uAD81\uC804\uAC8C\uB974(2\uC778\uC2E4',
+      '\uB300\uC131\uB2F9',
+      '\uC624\uD6C4 \uD50C\uB808\uC774 \uC695\uC7A5',
+    ];
+    for (const label of genericLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('generic, itinerary, or attribute fragment, not attraction master');
+    }
+
+    const descriptiveLabels = [
+      '\uC138\uACC4\uC5D0\uC11C \uB450 \uBC88\uC9F8\uB85C \uAE34 \uC57D 8KM\uC758 \uD574\uC0C1\uCF00\uC774\uBE14\uCE74 \uC655\uBCF5 \uD2F0\uCF13',
+      '\uB3D9\uC591\uC758 \uC720\uB7FD\uB9C8\uC744',
+      '\uD478\uAFB8\uC625\uC758 \uC791\uC740 \uC720\uB7FD',
+      '\uAC01\uC885 \uB3D9\uBB3C\uC1FC\uC640 \uC0C8\uACF5\uC6D0\uB4F1 \uB2E4\uCC44\uB85C\uC6B4 \uBCFC\uAC70\uB9AC',
+      '\uC18C\uC120\uC774 \uC2E0\uC120\uC744 \uB9CC\uB09C \uACF3\uC774\uB77C\uB294 \uC804\uC124\uC774 \uAE43\uB4E4\uC5B4 \uC788\uACE0',
+      '1579\uB144 \uAC74\uB9BD\uB41C \uAC00\uC7A5 \uC624\uB798\uB41C \uD2F0\uBCA0\uD2B8 \uBD88\uAD50\uC0AC\uC6D0',
+      'm \uD574\uC218\uAD00\uC74C\uC0C1\uC774 \uC704\uCE58\uD55C \uC36C\uC9DC \uBC18\uB3C4\uC758 \uBE44\uBC00\uC758 \uC0AC\uC6D0',
+    ];
+    for (const label of descriptiveLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('descriptive itinerary phrase, not an attraction master');
+    }
+
+    const transportOrActivityLabels = [
+      '\uC655\uBCF5\uCF00\uC774\uBE14\uCE74',
+      '\uC655\uBCF5 \uD2F0\uCF13',
+      '\uC785\uC7A5\uAD8C',
+      '\uC790\uC720\uC774\uC6A9\uAD8C',
+      '\uC9DA\uCC28 \uD0D1\uC2B9',
+    ];
+    for (const label of transportOrActivityLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('activity or operational detail, not an attraction master');
+    }
+
+    const danglingLabels = [
+      '\uC788\uB294 \uC57C\uC2DC\uC7A5',
+      '\uB290\uB084 \uC218 \uC788\uB294 \uC57C\uC2DC\uC7A5',
+    ];
+    for (const label of danglingLabels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('descriptive itinerary phrase, not an attraction master');
+    }
+
+    expect(terminalNonMasterReason('attraction', '\uB098\uD2B8\uB791\uB808\uAC08\uB9AC\uC544\uACE8\uB4DC', '\uB098\uD2B8\uB791\uB808\uAC08\uB9AC\uC544\uACE8\uB4DC'))
+      .toBe('lodging or room fragment, not attraction master');
+    expect(terminalNonMasterReason('attraction', '\uC0AC\uAC00\uB77CCC', '\uC0AC\uAC00\uB77CCC'))
+      .toBe('golf venue, not attraction master');
+  });
+
+  it('auto-rejects city and route labels that should not become attraction cards', () => {
+    const labels = [
+      '\uCE58\uC559\uB9C8\uC774',
+      '\uD0C0\uC774\uBCA0\uC774',
+      '\uD310\uB791',
+      '\uB098\uB9AC\uD0C0',
+      '\uB178\uBCF4\uB9AC\uBCA0\uCE20',
+      '\uB2CC\uBE48',
+      '\uC624\uD0C0\uB8E8',
+      '\uCE58\uD1A0\uC138',
+      '\uB3C4\uC57C',
+      '\uB300\uB9C8\uB3C4',
+      '\uB3D9\uACBD',
+      '\uD63C\uAC00\uC774',
+      '\uC11D\uAC00\uC7A5',
+      '\uC0E4\uC624\uAD00',
+      '\uC6A9 \uC815',
+      '\uD30C\uD0C0\uC57C',
+      '\uD558\uB178\uC774',
+      '\uD0C0\uC774\uD398\uC774',
+      '\uD6C4\uC544\uD78C',
+      '\uCE58\uC559\uB77C\uC774',
+      '\uD788 \uD0C0',
+      '\uC774\uC988',
+      '\uC591 \uC0AD',
+      '\uC11C \uD30C',
+      '\uBD81 \uD30C',
+      '\uB0A8 \uD30C',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('city or route token, not attraction master');
+    }
+  });
+
+  it('auto-rejects customer notice and operation tokens that leaked into attraction candidates', () => {
+    const labels = [
+      '\uC804\uC6A9',
+      '\uC81C\uC678',
+      '\uCD94\uC11D',
+      '\uD3EC \uD568',
+      '\uC7781\uC2E4',
+      '\uCF5C\uB77C\uAC90',
+      '\uD1A0\uC0B0\uD488',
+      '\uC804\uC790\uB2F4\uBC30',
+      '\uC154\uD2C0\uBC84\uC2A4',
+      '\uD480\uB9CC',
+    ];
+
+    for (const label of labels) {
+      expect(terminalNonMasterReason('attraction', label, label))
+        .toBe('operational or non-attraction schedule fragment');
+    }
+  });
+
   it('keeps clean Korean place names reviewable', () => {
     expect(terminalNonMasterReason('attraction', '시나무런초원', '시나무런 초원')).toBeNull();
     expect(terminalNonMasterReason('attraction', '관운장 사당', '관운장 사당')).toBeNull();
     expect(terminalNonMasterReason('attraction', '베이사이드플레이스', '베이사이드플레이스 관광')).toBeNull();
     expect(terminalNonMasterReason('attraction', '판시판산', '케이블카 탑승 후 판시판산 관광')).toBeNull();
     expect(terminalNonMasterReason('attraction', '아쿠아토피아 워터파크', '아쿠아토피아 워터파크+놀이공원 무제한 이용 가능')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uC131\uBC14\uC6B8 \uC131\uB2F9', '\uB9C8\uCE74\uC624 \uC0C1\uC9D5\uC801 \uAC74\uCD95\uBB3C\uB85C \uC720\uBA85\uD55C \uC131\uBC14\uC6B8 \uC131\uB2F9')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uC0AC\uC624\uBE44\uCE58', '\uC5D0\uBA54\uB784\uB4DC \uBE5B \uBC14\uB2E4\uAC00 \uC544\uB984\uB2E4\uC6B4 \uC0AC\uC624\uBE44\uCE58')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uB9C1\uC751\uC0AC', '\uB9C1\uC751\uC0AC')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\uB2E4\uB534\uB780 \uD3ED\uD3EC', '\uBCA0\uD2B8\uB0A8\uC5D0\uC11C \uAC00\uC7A5 \uC720\uBA85\uD55C \uB2E4\uB534\uB780 \uD3ED\uD3EC')).toBeNull();
+    expect(terminalNonMasterReason('attraction', '\u5927\u53EC\u5BFA', '1579\uB144 \uAC74\uB9BD\uB41C \uAC00\uC7A5 \uC624\uB798\uB41C \uD2F0\uBCA0\uD2B8 \uBD88\uAD50\uC0AC\uC6D0 \u5927\u53EC\u5BFA')).toBeNull();
   });
 
   it('auto-rejects generic Korean itinerary tokens that should not become internal masters', () => {

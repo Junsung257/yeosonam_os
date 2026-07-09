@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { analyzeMobileHtml, buildMobileQaImprovementEvent, type ExpectedRender } from './auto-mobile-qa';
+import {
+  analyzeMobileHtml,
+  buildAttractionMatchLowMessage,
+  buildMobileQaImprovementEvent,
+  type ExpectedRender,
+} from './auto-mobile-qa';
 import { hashSourceText } from './product-registration/improvement-ledger';
 
 const expectedRender: ExpectedRender = {
@@ -75,6 +80,30 @@ describe('auto mobile QA learning ledger bridge', () => {
     }));
   });
 
+  it('does not fail final arrival proof when a later CTA repeats the departure airport', () => {
+    const incidents = analyzeMobileHtml(
+      [
+        '<html><body>',
+        '\uD310\uB9E4\uAC00 \uC5EC\uD589 \uC77C\uC815 \uC608\uC57D \uBB38\uC758',
+        'DAY 3 \uCCAD\uB3C4 \uAD6D\uC81C\uACF5\uD56D \uCD9C\uBC1C \uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uB3C4\uCC29',
+        '\uBD80\uC0B0/\uAE40\uD574 \uCD9C\uBC1C \uC0C1\uB2F4 CTA',
+        '<img src="https://images.pexels.com/photo.jpg" />',
+        '</body></html>',
+      ].join(' '),
+      {
+        ...expectedRender,
+        lastDayNumber: 3,
+        lastDayArrivalCity: '\uAE40\uD574',
+        homeCity: '\uBD80\uC0B0/\uAE40\uD574',
+      },
+      'packages',
+    );
+
+    expect(incidents).not.toContainEqual(expect.objectContaining({
+      id: 'mobile_final_arrival_rendered_as_departure',
+    }));
+  });
+
   it('does not treat hidden UUID fragments as customer-visible phone leaks', () => {
     const incidents = analyzeMobileHtml(
       '<html><head><script>{"attraction_id":"8c01-4561-9921-abcdef"}</script></head><body><h1>고객 화면</h1></body></html>',
@@ -97,6 +126,25 @@ describe('auto mobile QA learning ledger bridge', () => {
     expect(incidents).not.toContainEqual(expect.objectContaining({
       id: 'mobile_flight_card_missing',
     }));
+  });
+
+  it('explains attraction blockers as publish-approval work when masters already exist', () => {
+    const message = buildAttractionMatchLowMessage({
+      matchedCount: 0,
+      denom: 5,
+      unmatchedNames: ['단하산', '동천선경', '소선령', '대불사', '망산'],
+      attractionMasters: [
+        { name: '단하산', is_active: true, customer_publishable: false },
+        { name: '동천선경', is_active: true, customer_publishable: false },
+        { name: '소선령', is_active: true, customer_publishable: false },
+        { name: '대불사', is_active: true, customer_publishable: false },
+        { name: '망산', is_active: true, customer_publishable: false },
+      ],
+    });
+
+    expect(message).toContain('고객 공개 승인 전');
+    expect(message).toContain('공개 승인/사진/설명 검수 필요');
+    expect(message).not.toContain('시드');
   });
 
   it('accepts rendered hotel alternatives when the full combined source string is split on screen', () => {

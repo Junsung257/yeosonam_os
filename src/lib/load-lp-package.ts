@@ -6,6 +6,7 @@ import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
 export async function fetchLpPackageUncached(
   id: string,
@@ -27,14 +28,15 @@ export async function fetchLpPackageUncached(
     ? null
     : await fetchLatestPublicPackageSnapshot(supabaseAdmin, (rawPkg as { id: string }).id).catch(() => null);
   const pkg = publicSnapshot?.package ?? rawPkg;
-  const status = (pkg as { status?: string | null }).status;
-  const auditStatus = (pkg as { audit_status?: string | null }).audit_status;
-  const publicationState = (pkg as { publication_state?: string | null }).publication_state;
+  const status = (rawPkg as { status?: string | null }).status;
+  const auditStatus = (rawPkg as { audit_status?: string | null }).audit_status;
+  const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
   if (!options.allowNonPublicProof && publicationState && !isPublicPublicationState(publicationState)) return null;
   if (!options.allowNonPublicProof && publicationState && isPublicPublicationState(publicationState) && !publicSnapshot) return null;
   if (!options.allowNonPublicProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) return null;
+  if (!options.allowNonPublicProof && !isCustomerPubliclyOpenable(rawPkg)) return null;
 
-  const liveVerify = evaluateVerifyChecks(pkg as Parameters<typeof evaluateVerifyChecks>[0]);
+  const liveVerify = evaluateVerifyChecks(rawPkg as Parameters<typeof evaluateVerifyChecks>[0]);
   if (!options.allowNonPublicProof && liveVerify.status === 'blocked') return null;
 
   const { data: scores } = await supabaseAdmin

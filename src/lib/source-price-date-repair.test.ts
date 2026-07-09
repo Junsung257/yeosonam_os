@@ -208,6 +208,44 @@ describe('buildSourceBackedPriceDateRepair', () => {
     }
   });
 
+  it('limits generated weekday matrix dates to the source short-year price-table period', () => {
+    const rawText = [
+      '\u2605\ubd80\uc0b0-\ud478\uafb8\uc625 26\ub1446\uc6d4~10\uc6d4 \uc9c4\uc5d0\uc5b4 \ud328\ud0a4\uc9c0(3/4\ubc15)\u2605\uc815\uaddc\uc694\uae08',
+      '6/1-7/23',
+      '\uc6d4\ubaa9\uae08',
+      '879,000',
+      '\uc77c\uc6d4',
+      '939,000',
+      '7/24-8/5',
+      '\uc6d4',
+      '1,139,000',
+      '\ud478\uafb8\uc625 \uc368\ucc28\uc9c0',
+      '26/08/29 ~ 26/09/02',
+      '5\uc131\uae09 \ud638\ud154',
+      '25,000',
+    ].join('\n');
+
+    const result = buildSourceBackedPriceDateRepair({
+      title: 'LJ \ud478\uafb8\uc625 \ub178\uc635\uc158 \ud328\ud0a4\uc9c0 3\ubc155\uc77c',
+      duration: 5,
+      raw_text: rawText,
+      departure_days: '\uc6d4,\ubaa9,\uae08',
+      price_dates: [
+        { date: '2026-07-09', price: 879000, confirmed: false },
+        { date: '2027-01-04', price: 939000, confirmed: false },
+        { date: '2028-02-07', price: 939000, confirmed: false },
+      ],
+    });
+
+    expect(result.status).toBe('repaired');
+    if (result.status !== 'repaired') throw new Error('expected repair');
+    expect(result.priceDates.length).toBeGreaterThan(0);
+    expect(result.priceDates.every(row => row.date.startsWith('2026-'))).toBe(true);
+    expect(result.priceDates.every(row => row.date <= '2026-10-31')).toBe(true);
+    expect(result.priceDates.some(row => row.date.startsWith('2027-') || row.date.startsWith('2028-'))).toBe(false);
+    expect(JSON.stringify(result.excludedPriceCandidates ?? [])).not.toContain('25000');
+  });
+
   it('selects duplicate same-date transport prices from the structured variant, not raw table order', () => {
     const rows = [
       { date: '2026-09-02', adult_price: 1179000, child_price: null, status: 'available' },

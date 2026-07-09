@@ -46,6 +46,22 @@ function readMobileQualityEngine(): string {
   return readFileSync(join(process.cwd(), 'scripts/run-product-registration-mobile-quality-engine.ts'), 'utf8');
 }
 
+function readMobileCopyAudit(): string {
+  return readFileSync(join(process.cwd(), 'scripts/audit-mobile-landing-copy.ts'), 'utf8');
+}
+
+function readCustomerOpenOperationalGate(): string {
+  return readFileSync(join(process.cwd(), 'scripts/run-customer-open-operational-gate.ts'), 'utf8');
+}
+
+function readLandingClient(): string {
+  return readFileSync(join(process.cwd(), 'src/app/lp/[id]/LandingClient.tsx'), 'utf8');
+}
+
+function readPackageDetailClient(): string {
+  return readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
+}
+
 function readMobileReadinessCandidateRepair(): string {
   return readFileSync(join(process.cwd(), 'scripts/repair-product-mobile-readiness-candidates.ts'), 'utf8');
 }
@@ -997,5 +1013,55 @@ describe('upload route registration pipeline boundary', () => {
     const postTasks = readPostRegistrationTasks();
 
     expect(postTasks).toContain("runAutoMobileQA(input.packageId, input.auditBaseUrl, { includeLpForProof: true })");
+  });
+
+  it('audits both package and LP mobile copy surfaces by default', () => {
+    const mobileCopyAudit = readMobileCopyAudit();
+
+    expect(mobileCopyAudit).toContain("String(value ?? 'packages,lp')");
+    expect(mobileCopyAudit).toContain('screenChecks: screenResults.length');
+    expect(mobileCopyAudit).toContain('dbChecks: dbResults.length');
+  });
+
+  it('can audit pre-public package and LP screens with the internal proof header', () => {
+    const mobileCopyAudit = readMobileCopyAudit();
+
+    expect(mobileCopyAudit).toContain("const screenNonPublic = hasFlag('screen-non-public') || hasFlag('proof-non-public')");
+    expect(mobileCopyAudit).toContain('--screen-non-public requires REVALIDATE_SECRET or ADMIN_API_TOKEN');
+    expect(mobileCopyAudit).toContain('isCustomerVisibleStatus(pkg.status) || screenNonPublic');
+    expect(mobileCopyAudit).toContain('const screenTargetPackageIds = new Set(screenTargets.map(target => target.pkg.id))');
+    expect(mobileCopyAudit).toContain('dbTargets = packages.filter(pkg => !screenTargetPackageIds.has(pkg.id))');
+    expect(mobileCopyAudit).toContain('nonPublicScreenChecks: screenResults.filter');
+  });
+
+  it('keeps LP proof copy away from risky confirmation promises', () => {
+    const landingClient = readLandingClient();
+
+    expect(landingClient).toContain("'일정 조건\\n상담 확인'");
+    expect(landingClient).toContain("'출발일\\n상담 확인'");
+    expect(landingClient).toContain("'조건 확인'");
+    expect(landingClient).not.toContain("'출발 확정\\n일정 확인'");
+    expect(landingClient).not.toContain("'일정 확정\\n출발 표시'");
+    expect(landingClient).not.toContain("? '출발 확정' : '상담 가능'");
+  });
+
+  it('keeps package sticky proof copy away from risky confirmation promises', () => {
+    const detailClient = readPackageDetailClient();
+
+    expect(detailClient).toContain('모객 기준까지');
+    expect(detailClient).toContain('조건 확인');
+    expect(detailClient).toContain('출발일 상담 확인');
+    expect(detailClient).not.toContain('출발 확정까지');
+    expect(detailClient).not.toContain('출발 확정!');
+    expect(detailClient).not.toContain('출발 확정 후 안심 예약');
+  });
+
+  it('runs the operational gate against pre-public proof screens too', () => {
+    const gate = readCustomerOpenOperationalGate();
+
+    expect(gate).toContain("const prePublicLimit = readArg('--pre-public-limit', '50')");
+    expect(gate).toContain("name: 'pre-public proof mobile text audit packages+lp'");
+    expect(gate).toContain("'--screen-non-public'");
+    expect(gate).toContain('`--limit=${prePublicLimit}`');
   });
 });

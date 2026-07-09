@@ -690,6 +690,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     airline: pkg.airline,
     product_highlights: pkg.product_highlights ?? null,
     inclusions: pkg.inclusions ?? null,
+    excludes: pkg.excludes ?? null,
+    customer_notes: pkg.customer_notes ?? null,
     optional_tours: pkg.optional_tours ?? null,
   }) : null;
   const proactiveChatDoneRef = useRef(false);
@@ -1255,11 +1257,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       <div className="h-full bg-brand rounded-full transition-all" style={{ width: `${Math.min(100, (booked / minP) * 100)}%` }} />
                     </div>
                     <span className="text-[11px] text-brand font-bold whitespace-nowrap">
-                      {m}/{d} 출발 확정까지 {remaining}명
+                      {m}/{d} 모객 기준까지 {remaining}명
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[11px] text-emerald-600 font-bold">✅ {m}/{d} 출발 확정!</span>
+                  <span className="text-[11px] text-emerald-600 font-bold">✅ {m}/{d} 조건 확인</span>
                 );
               })()}
             </div>
@@ -2360,7 +2362,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <span className="truncate">
                 ✅ {specialTermsProduct
                   ? '상담 후 항공·숙박 확인'
-                  : (nextConfirmedDate ? `${nextConfirmedDate} 출발 확정` : '출발 확정 후 안심 예약')}
+                  : (nextConfirmedDate ? `${nextConfirmedDate} 조건 확인` : '출발일 상담 확인')}
               </span>
             </div>
           );

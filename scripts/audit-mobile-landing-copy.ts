@@ -96,7 +96,7 @@ function parseScope(value: string | null): AuditScope {
 }
 
 function parseSurfaces(value: string | null): AuditSurface[] {
-  const parsed = String(value ?? 'packages')
+  const parsed = String(value ?? 'packages,lp')
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
@@ -145,6 +145,11 @@ function customerCopySnapshot(pkg: PackageRow) {
     airline: typeof pkg.airline === 'string' ? pkg.airline : null,
     product_highlights: Array.isArray(pkg.product_highlights) ? pkg.product_highlights.filter((item): item is string => typeof item === 'string') : null,
     inclusions: Array.isArray(pkg.inclusions) ? pkg.inclusions.filter((item): item is string => typeof item === 'string') : null,
+    excludes: Array.isArray(pkg.excludes) ? pkg.excludes.filter((item): item is string => typeof item === 'string') : null,
+    customer_notes: typeof pkg.customer_notes === 'string' ? pkg.customer_notes : null,
+    optional_tours: Array.isArray(pkg.optional_tours)
+      ? pkg.optional_tours as Array<{ name?: string | null; displayName?: string | null; note?: string | null }>
+      : null,
   });
   return {
     customer_title: copy.cardTitle,
@@ -297,6 +302,7 @@ async function main() {
   const textTimeoutMs = Math.max(2_000, Math.min(Number(argValue('text-timeout-ms') ?? '5_000') || 5_000, 30_000));
   const retryArg = argValue('retry');
   const retryCount = Math.max(0, Math.min(retryArg === null ? 1 : Number(retryArg) || 0, 3));
+  const screenNonPublic = hasFlag('screen-non-public') || hasFlag('proof-non-public');
   const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/mobile-copy-audit');
   const textDir = path.join(outputDir, 'texts');
   const jsonOnly = hasFlag('json');
@@ -304,11 +310,15 @@ async function main() {
   ensureDir(textDir);
 
   const proofSecret = process.env.REVALIDATE_SECRET || process.env.ADMIN_API_TOKEN || null;
+  if (screenNonPublic && !proofSecret) {
+    throw new Error('--screen-non-public requires REVALIDATE_SECRET or ADMIN_API_TOKEN so non-public package screens can render under proof.');
+  }
   const packages = await loadPackages(ids, limit, scope);
   const screenTargets = packages
-    .filter(pkg => isCustomerVisibleStatus(pkg.status))
+    .filter(pkg => isCustomerVisibleStatus(pkg.status) || screenNonPublic)
     .flatMap(pkg => surfaces.map(surface => ({ pkg, surface })));
-  const dbTargets = packages.filter(pkg => !isCustomerVisibleStatus(pkg.status));
+  const screenTargetPackageIds = new Set(screenTargets.map(target => target.pkg.id));
+  const dbTargets = packages.filter(pkg => !screenTargetPackageIds.has(pkg.id));
 
   const browser = screenTargets.length > 0 ? await chromium.launch({ headless: true }) : null;
   const context = browser ? await browser.newContext({
@@ -358,6 +368,11 @@ async function main() {
     surfaces,
     totalPackages: packages.length,
     totalChecks: results.length,
+    screenChecks: screenResults.length,
+    nonPublicScreenChecks: screenResults.filter(result => !isCustomerVisibleStatus(result.status)).length,
+    dbChecks: dbResults.length,
+    screenNonPublic,
+    proofHeaderPresent: Boolean(proofSecret),
     pass: results.filter(result => result.result === 'pass').length,
     fail: results.filter(result => result.result === 'fail').length,
     blocking: results.reduce((sum, result) => sum + result.blocking_count, 0),
@@ -379,6 +394,11 @@ async function main() {
     `- Surfaces: ${summary.surfaces.join(', ')}`,
     `- Packages: ${summary.totalPackages}`,
     `- Checks: ${summary.totalChecks}`,
+    `- Screen checks: ${summary.screenChecks}`,
+    `- Non-public screen checks: ${summary.nonPublicScreenChecks}`,
+    `- DB checks: ${summary.dbChecks}`,
+    `- Screen non-public packages: ${summary.screenNonPublic ? 'yes' : 'no'}`,
+    `- Proof header present: ${summary.proofHeaderPresent ? 'yes' : 'no'}`,
     `- Pass: ${summary.pass}`,
     `- Fail: ${summary.fail}`,
     `- Blocking issues: ${summary.blocking}`,

@@ -95,6 +95,87 @@ const PRODUCT_TITLE_FRAGMENT_RE = /(?:\d+\s*박|\d+\s*일|갓성(?:비)?|시내�
 const OPERATIONAL_FRAGMENT_RE = /(?:한국어\s*가능\s*현지\s*가이드|한국인\s*가이드|현지\s*가이드|가이드|총길이\s*\d+\s*M|상\s*동|^\s*동일\s*$|상행|하행|에스컬레이터|쾌속\s*케이블카|탑승하여|항공|기준|문의|예약|행사|일정|도착|귀환|증명서|반드시\s*지참|유류|할증료|팁\s*별도|팁별도|제공|전통식|음료|간식|활쏘기|액티비티|이용\s*가능)/i;
 const UNSAFE_ATTRACTION_LABEL_RE = /(?:가파른|울창한|신선이|하늘과\s*바다|해발\s*\d|총길이|동물의\s*세계|자연경관|머드온천$|고산초원|초원\s*캠프파이어|유명한|비밀의\s*사원$|상행|하행|에스컬레이터|쾌속)/i;
 
+const CUSTOMER_OPERATIONAL_MASTER_FRAGMENT_RE =
+  /(?:^\d+\s*분$|^\d+\s*시간\s*소요$|관광\s*\d+\s*시간\s*소요|^VIP\s*통로$|^엘리베이터$|^도보\s*산책$|^도보산책$|^총길이\s*\d+|^선택\s*관광$|^선택관광$|^여권\s*유효기간|^상기\s*일정|^상기일정|^항공료\s*및\s*텍스|^성인\s*\d+\s*명\s*이상)/i;
+const CUSTOMER_DESCRIPTIVE_ONLY_FRAGMENT_RE =
+  /(?:세계\s*최고의$|높은\s*의자와\s*같다고\s*하여$|본따\s*만든\s*잠들지\s*않는\s*도시$|^특전\d+\]|^\[?★?\s*특전\d+\]?)/i;
+const CUSTOMER_NUMERIC_LIST_FRAGMENT_RE =
+  /^(?:\d{1,2}\s*,\s*){2,}\d{1,2}$/;
+const CUSTOMER_PRODUCT_PROMO_FRAGMENT_RE =
+  /(?:초특가|특가로\s*떠나는|가성비\s*\d*\s*일|부관훼리|패키지|일정표|출발)/i;
+const CUSTOMER_VIEW_METHOD_FRAGMENT_RE =
+  /^(?:차창|차창관광|자율|자율관광|개별자유|선상유람)$/i;
+const CUSTOMER_FOOD_OR_SERVICE_FRAGMENT_RE =
+  /(?:^\+?\s*(?:반세오|반짱느엉|오리구이|모듬구이|닭구이|짜조|정식|세트|전통식|정규|증편|매운탕|보쌈|스테이크|씨푸드|과일|옥수수|밀크티|새우장|백\s*숙|대통밥정식|돼지갈비정식|소고기모듬|넘능세트|올유캔잇|룩락)\)?$|땅콩\s*1?\s*봉지|보토콴\s*BBQ|모닝글로리\s*볶음|고구마\s*튀(?:김|킴)|열대\s*과일\s*시식|랍스터|특식|조식|중식|석식|식사|정식|분짜|쌀국수|샤브샤브|삼겹살|불고기|구이|커피|음료|맥주|디저트)/iu;
+const CUSTOMER_DANGLING_PAREN_FRAGMENT_RE =
+  /(?:^[\p{L}\p{N}⁄/]{1,12}[)]$|^[\p{L}\p{N}⁄/]{1,12}[(]$)/u;
+const CUSTOMER_COMMERCIAL_PLACE_RE =
+  /^(?:비어\s*플라자|비어플라자|쇼핑센터|쇼핑\s*센터)$/iu;
+const CUSTOMER_READABLE_SECTION_FRAGMENT_RE =
+  /^(?:=>|무제한|확인|월화수목금|수목금|토일월화|토일|비운항일|외관|외부|국가\s*명승|국가\s*5A급\s*풍경구|일본\s*3대\s*송림중\s*하나인|시\s*간|식\s*사|교\s*통|텍스|여행경비|싱글차지|룸\s*타\s*입|샤워실\s*보유|수영복\s*착용\s*필수|아쿠아슈즈|여벌\s*옷|반바지|무료존|생수|공예|문화|동선|비즈니스게르(?:\(2인실)?|호화호특|크라운|핫플\s*카페|불꽃축제|불꽃놀이|봅슬레이|레일바이크|루지|모래\s*썰매|낙타|실제\s*낙타|럭셔리\s*전동카|뉴카멜리아|쓰시마링크|몽골\s*로컬\s*마트|가볍게\s*떠나고|기암괴석|광활한\s*녹차밭|가파른\s*협곡|바다와\s*산의\s*만남|물과\s*빛|포\s*함\s*사\s*항|포\s*함\s*내\s*역|불\s*포\s*함(?:\s*내\s*역)?|비\s*고|일\s*자|요\s*금|상품\s*가|테마\s*파크)$/iu;
+const CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE =
+  /^(?:케이블카\s*편도|궁전\s*게르(?:\s*\(?\s*2\s*인\s*실)?|대성당|오후\s*플레이\s*욕장)$/u;
+const CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
+  /(?:세계에서\s*두\s*번째|해상\s*케이블카\s*왕복\s*티켓|동양의\s*유럽\s*마을|푸꾸옥의\s*작은\s*유럽|각종\s*동물쇼|다채로운\s*볼거리|소선이\s*신선을\s*만난|건축물들이\s*보전|공룡화석이\s*전시)/u;
+const CUSTOMER_READABLE_BACKLOG_GENERIC_NON_MASTER_RE =
+  /^(?:\uD638\uD551\uC2E0\uCCAD\uC2DC|\uC774\uB860\s*\uAD50\uC721|\uD55C\uC57D\uBC29\s*\uC911\s*2\uD68C|\uC9DA\uCC28\s*OR\s*7\uC778\uC2B9|\uCC9C\uC800\uC6B0\s*\uC2DC\uB0B4|\uC774\uB3C4\uBC31\uD558\uC11C\s*\uD30C)$/u;
+const CUSTOMER_READABLE_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
+  /(?:\uC911\uAD6D\s*\uC120\uC885\uC744\s*\uB300\uD45C\uD558\uB294\s*\uCC9C\uB144\uACE0\uCC30|\uCE6D\uB2E4\uC624\uC5D0\uC11C\s*\uB9CC\uB098\uB294\s*\uC791\uC740\s*\uC720\uB7FD|\uBE5B\uC73C\uB85C\s*\uBB3C\uB4E0\s*\uACC4\uB9BC\uC758\s*\uBC24|\uC0B0\uCC45\uB85C\uB97C\s*\uB530\uB77C\s*\uC790\uC720\uB86D\uAC8C\s*\uB3D9\uBB3C\uC6D0|\uC77C\uBCF8\uC774\s*\uD328\uB9DD\uD55C|\uB9AC\uC544\uC2A4\uC2DD\uD574\uC548\s*\uC544\uC18C\uB9CC\uC744\s*\uBCFC\s*\uC218\s*\uC788\uB294|\uC790\uC5F0\s*\uACBD\uAD00\uC744|\uC804\uACBD$|\uC0BC\uD310\uBC30\uB97C\s*\uD0C0\uACE0.*\uC790\uC5F0\uACBD\uAD00|\uC81C2\uCC28\s*\uC138\uACC4\uB300\uC804.*\uC790\uC774\uC2B9\s*\uC2B9\uC804\uD0D1)/u;
+const CUSTOMER_READABLE_ROUTE_OR_GENERIC_NON_MASTER_RE =
+  /^(?:\uBC1C\uAD8C|\uC720\s*\uD6C4\s*\uC778|\uB098\uC774\uD2B8\s*\uB9C8\uCF13|\uC57C\uC2DC\uC7A5)$/u;
+
+const READABLE_KNOWN_ATTRACTION_LABELS = [
+  '패치워크의 길',
+  '간몬대교',
+  '천하제일교',
+  '진달래광장',
+  '고산화원',
+  '금강대협곡',
+  '금편계곡',
+  '천문호선쇼',
+  '천문산',
+  '사오비치',
+  '캠비치',
+  '소나씨 야시장',
+  '부용진',
+  '칠성산',
+  '곡강유적지 공원',
+  '호이안 구시가지',
+  '한시장',
+  '도야 불꽃놀이',
+  '오타루운하',
+  '성요셉 대성당',
+  '청의 호수',
+  '광동회관',
+  '링엄사',
+  '해수관음 보살상',
+  '코코넛 빌리지',
+  '핑크성당',
+  '안호이교',
+];
+
+function isReadableKnownAttractionName(value: string): boolean {
+  const cleanValue = value.replace(/\s+/g, ' ').trim();
+  return READABLE_KNOWN_ATTRACTION_LABELS.some(label => label === cleanValue);
+}
+
+function findReadableKnownAttractionName(value: string): string | null {
+  const cleanValue = value.replace(/\s+/g, ' ').trim();
+  const segments = [
+    cleanValue,
+    ...cleanValue.split(/[()[\],/，]+/u).map(segment => segment.trim()).filter(Boolean),
+  ];
+  for (const label of READABLE_KNOWN_ATTRACTION_LABELS) {
+    if (segments.some(segment => segment.includes(label))) return label;
+  }
+  return null;
+}
+
+function countReadableKnownAttractionNames(value: string): number {
+  const cleanValue = value.replace(/\s+/g, ' ').trim();
+  return READABLE_KNOWN_ATTRACTION_LABELS.filter(label => cleanValue.includes(label)).length;
+}
+
 function clamp(value: number): number {
   return Math.max(0, Math.min(1, Number(value.toFixed(4))));
 }
@@ -204,11 +285,14 @@ function endsWithAny(value: string, suffixes: string[]): boolean {
 function cleanExtractedAttractionLabel(value: string | undefined): string | null {
   if (!value) return null;
   let clean = normalizeCandidateLabel(value)
+    .replace(/^(?:또는|및|등)\s+/i, '')
+    .replace(/\s*(?:관광|방문|관람|등정|야경관광|도보산책)$/i, '')
     .replace(/^(?:관광|탐방|방문|투어|코스|일정)\s+/i, '')
     .replace(/\s*(?:관광|탐방|방문)$/i, '')
     .replace(/[.。]+$/g, '')
     .trim();
   if (!clean) return null;
+  if (/부이페스트\s*바자\s*나이트\s*마켓/u.test(clean)) return '부이페스트 바자 나이트 마켓';
 
   const tokens = clean.split(/\s+/).filter(Boolean);
   const lastToken = tokens.at(-1) ?? '';
@@ -224,16 +308,39 @@ function cleanExtractedAttractionLabel(value: string | undefined): string | null
   }
 
   if (clean.length < 2 || clean.length > 24) return null;
+  if (CUSTOMER_VIEW_METHOD_FRAGMENT_RE.test(clean)) return null;
   if (/[+/,，]/.test(clean)) return null;
   if (/^(?:관광|탐방|방문|투어|코스|시내관광|일정|날짜|해발|산비탈|유럽풍|건축물)$/i.test(clean)) return null;
   if (/(?:입니다|합니다|가능|기준|동일|별도|문의|금액|요금|항공|출발|도착|날씨|선크림|환율)/i.test(clean)) return null;
   return clean;
 }
 
+function extractPrefixBeforeParenthetical(normalizedLabel: string): string | null {
+  const match = normalizedLabel.match(/^(.{2,40}?)\s*\([^()]{2,40}\)/u);
+  const prefix = cleanExtractedAttractionLabel(match?.[1]);
+  if (!prefix) return null;
+  const tokenCount = prefix.split(/\s+/).filter(Boolean).length;
+  if (prefix.length > 14 || tokenCount > 2) return null;
+  if (DESCRIPTIVE_PHRASE_RE.test(prefix) && !ATTRACTION_HINT_RE.test(prefix)) return null;
+  return prefix;
+}
+
 function extractAttractionLabelFromDescription(normalizedLabel: string): string | null {
+  const parentheticalPrefix = extractPrefixBeforeParenthetical(normalizedLabel);
+  if (parentheticalPrefix) return parentheticalPrefix;
+
+  const knownNameBeforeBracket = normalizedLabel.match(/(부이페스트\s*바자\s*나이트\s*마켓|빈\s*사파리월드|소나시\s*야시장|동강호풍경구|무앙보란|오부치사사바|칭기스칸\s*기마동상|머드온천|유노하나|쇼화신산\s*활화산|신잔\s*활화산|비천산\s*구룡수채뗏목|백산수\s*공장|백산수공장)/u);
+  const knownNameBeforeBracketLabel = cleanExtractedAttractionLabel(knownNameBeforeBracket?.[1]);
+  if (knownNameBeforeBracketLabel) return knownNameBeforeBracketLabel;
+
   const bracketMatch = normalizedLabel.match(/\[([^\]]{2,40})\]/);
   const bracketLabel = cleanExtractedAttractionLabel(bracketMatch?.[1]);
   if (bracketLabel) return bracketLabel;
+
+  if (/\uD328\uCE58\uC6CC\uD06C\uC758\s*\uAE38/u.test(normalizedLabel)) return '\uD328\uCE58\uC6CC\uD06C\uC758 \uAE38';
+  if (/천문호선쇼/u.test(normalizedLabel)) return '천문호선쇼';
+  const readableKnownName = cleanExtractedAttractionLabel(findReadableKnownAttractionName(normalizedLabel) ?? undefined);
+  if (readableKnownName) return readableKnownName;
 
   const parentheticalMatch = normalizedLabel.match(/\(([^()]{2,40})\)/);
   const parentheticalLabel = cleanExtractedAttractionLabel(parentheticalMatch?.[1]);
@@ -243,7 +350,7 @@ function extractAttractionLabelFromDescription(normalizedLabel: string): string 
   const dashLabel = cleanExtractedAttractionLabel(dashMatch?.[1]);
   if (dashLabel) return dashLabel;
 
-  const knownNameMatch = normalizedLabel.match(/(깟깟마을|성바울\s*성당|천문동|판시판산|아오이\s*이케|코코넛\s*수용소|도잔\s*신사|아쿠아토피아\s*워터파크)/u);
+  const knownNameMatch = normalizedLabel.match(/(깟깟마을|성바울\s*성당|천문동|판시판산|아오이\s*이케|코코넛\s*수용소|도잔\s*신사|아쿠아토피아\s*워터파크|빈\s*사파리월드|소나시\s*야시장|부이페스트\s*바자\s*나이트\s*마켓|동강호풍경구|무앙보란|오부치사사바|칭기스칸\s*기마동상|머드온천|유노하나|쇼화신산\s*활화산|신잔\s*활화산|비천산\s*구룡수채뗏목|백산수\s*공장|백산수공장)/u);
   const knownName = cleanExtractedAttractionLabel(knownNameMatch?.[1]);
   if (knownName) return knownName;
 
@@ -271,7 +378,7 @@ function extractAttractionLabelFromDescription(normalizedLabel: string): string 
   const trailingLabel = cleanExtractedAttractionLabel(trailingTourism?.[1]);
   if (trailingLabel) return trailingLabel;
 
-  const suffixMatch = normalizedLabel.match(/([\p{L}\p{N}\s]{2,40}(?:신사|제전|화원|유리다리|워터파크|마을|공원|시장|마켓|전망대|협곡|폭포|호수|온천))$/u);
+  const suffixMatch = normalizedLabel.match(/([\p{L}\p{N}\s]{2,40}(?:신사|제전|화원|유리다리|워터파크|마을|공원|시장|마켓|전망대|협곡|폭포|호수|온천|풍경구|활화산|기마동상|공장))$/u);
   const suffixLabel = cleanExtractedAttractionLabel(suffixMatch?.[1]);
   if (suffixLabel) return suffixLabel;
 
@@ -291,7 +398,7 @@ function deriveAttractionMasterLabel(normalizedLabel: string): string {
     return lastToken;
   }
 
-  const suffixMatches = normalizedLabel.match(/([가-힣A-Za-z0-9·\s]{2,24}(?:공원|사원|성당|교회|전망대|유적지?|박물관|기념관|거리|시장|해변|비치|협곡|폭포|호수|동굴|케이블카|정원|궁|성|신사|천만궁|마을|타운|브릿지|부두|광장|사찰|묘|생가|슈라인))/gi);
+  const suffixMatches = normalizedLabel.match(/([가-힣A-Za-z0-9·\s]{2,24}(?:공원|사원|성당|교회|전망대|유적지?|박물관|기념관|거리|시장|해변|비치|협곡|폭포|호수|동굴|케이블카|정원|궁|성|신사|천만궁|마을|타운|브릿지|부두|광장|사찰|묘|생가|슈라인|풍경구|활화산|기마동상|공장))/gi);
   const candidate = suffixMatches?.at(-1);
   if (!candidate) return normalizedLabel;
 
@@ -302,6 +409,8 @@ function deriveAttractionMasterLabel(normalizedLabel: string): string {
 }
 
 function isUnsafeDescriptiveMasterLabel(label: string, rawLabel: string): boolean {
+  if (countReadableKnownAttractionNames(rawLabel) > 1) return true;
+  if (isReadableKnownAttractionName(label)) return false;
   if (MULTI_ATTRACTION_RE.test(rawLabel)) return true;
   if (/(?:볼거리|제공|생산|유명|절경|꼽히며)/i.test(label)) return true;
   if (UNSAFE_ATTRACTION_LABEL_RE.test(label) || UNSAFE_ATTRACTION_LABEL_RE.test(rawLabel)) return true;
@@ -314,13 +423,27 @@ function isUnsafeDescriptiveMasterLabel(label: string, rawLabel: string): boolea
 function isNonMasterNoise(normalizedLabel: string): string | null {
   if (!normalizedLabel) return 'empty label';
   if (normalizedLabel.length <= 1) return 'too short';
+  if (CUSTOMER_DANGLING_PAREN_FRAGMENT_RE.test(normalizedLabel)) return 'dangling parenthetical fragment';
+  if (CUSTOMER_FOOD_OR_SERVICE_FRAGMENT_RE.test(normalizedLabel)) return 'food or service fragment';
   if (SECTION_HEADING_RE.test(normalizedLabel)) return 'section heading';
   if (MOVEMENT_ONLY_RE.test(normalizedLabel)) return 'movement or status token';
   if (AIRPORT_CODE_RE.test(normalizedLabel)) return 'airport code fragment';
   if (PRICE_OR_DATE_RE.test(normalizedLabel)) return 'price/date fragment';
+  if (CUSTOMER_NUMERIC_LIST_FRAGMENT_RE.test(normalizedLabel)) return 'date/list fragment';
+  if (CUSTOMER_PRODUCT_PROMO_FRAGMENT_RE.test(normalizedLabel)) return 'product title fragment';
+  if (CUSTOMER_READABLE_SECTION_FRAGMENT_RE.test(normalizedLabel)) return 'readable section or generic fragment';
+  if (CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE.test(normalizedLabel)) return 'readable section or generic fragment';
+  if (CUSTOMER_READABLE_BACKLOG_GENERIC_NON_MASTER_RE.test(normalizedLabel)) return 'readable section or generic fragment';
+  if (CUSTOMER_READABLE_ROUTE_OR_GENERIC_NON_MASTER_RE.test(normalizedLabel)) return 'readable section or generic fragment';
+  if (CUSTOMER_OPERATIONAL_MASTER_FRAGMENT_RE.test(normalizedLabel)) return 'operational schedule fragment';
+  if (CUSTOMER_DESCRIPTIVE_ONLY_FRAGMENT_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
+  if (CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
+  if (CUSTOMER_READABLE_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(normalizedLabel)) return 'descriptive schedule fragment';
+  if (CUSTOMER_VIEW_METHOD_FRAGMENT_RE.test(normalizedLabel)) return 'viewing method fragment';
+  if (CUSTOMER_COMMERCIAL_PLACE_RE.test(normalizedLabel)) return 'commercial place fragment';
   if (ROOM_OR_GOLF_DETAIL_RE.test(normalizedLabel)) return 'room/golf detail fragment';
   if (/^#/.test(normalizedLabel)) return 'hashtag or destination tag';
-  if (/^(?:놀이공원|옛거리|케이블카|온천|시장|비치|해변|공원|사원|성당)$/.test(normalizedLabel)) return 'generic attraction type token';
+  if (/^(?:놀이공원|옛거리|케이블카|온천|시장|비치|해변|공원|사원|성당|볼거리)$/.test(normalizedLabel)) return 'generic attraction type token';
   if (/^漠\s*:?\s*상\s*동$/i.test(normalizedLabel)) return 'corrupted repeat marker';
   if (PRODUCT_TITLE_FRAGMENT_RE.test(normalizedLabel)) return 'product title fragment';
   if (OPERATIONAL_FRAGMENT_RE.test(normalizedLabel)) return 'operational schedule fragment';
@@ -367,6 +490,7 @@ export function evaluateMasterCandidate(input: CandidateEvidenceInput): MasterCa
       : 'hotel candidate needs external identity or admin review';
   } else if (category === 'attraction') {
     const attractionHint = ATTRACTION_HINT_RE.test(normalizedLabel);
+    const knownReadableAttraction = isReadableKnownAttractionName(normalizedLabel);
     confidence = clamp(0.55 + Math.min(0.16, evidenceCount * 0.025) + Math.min(0.12, occurrenceCount * 0.005) + (attractionHint ? 0.12 : 0));
     if (unsafeDescriptiveAttraction && !externalVerified) {
       autoAction = 'needs_review';
@@ -377,7 +501,7 @@ export function evaluateMasterCandidate(input: CandidateEvidenceInput): MasterCa
       autoAction = 'create_publishable_master';
       promotionStatus = 'publishable_ready';
       decisionReason = 'attraction candidate has repeated evidence and at least two reliable external identifiers';
-    } else if (confidence >= 0.7 || attractionHint) {
+    } else if (attractionHint || knownReadableAttraction) {
       autoAction = 'create_internal_master';
       promotionStatus = 'auto_internal';
       decisionReason = 'probable new attraction; create internal non-customer-publishable master candidate';

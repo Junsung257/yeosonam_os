@@ -4,6 +4,8 @@
  */
 
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export interface AnglePackage {
   id: string;
@@ -17,7 +19,7 @@ export interface AnglePackage {
 }
 
 const SELECT_FIELDS =
-  'id, title, destination, price, product_type, product_highlights, ticketing_deadline, display_title';
+  'id, title, destination, price, product_type, product_highlights, ticketing_deadline, display_title, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
 
 const KEYWORD_RULES: Record<string, RegExp> = {
   emotional: /감성|뷰|일몰|온천|벚꽃|단풍|야경|로맨틱|풍경/,
@@ -81,14 +83,14 @@ export async function getPackagesByAngle(angle: string, limit = 6): Promise<Angl
       supabaseAdmin
         .from('travel_packages')
         .select(SELECT_FIELDS)
-        .in('status', ['active', 'approved'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .not('price', 'is', null)
         .order('created_at', { ascending: false })
         .limit(120),
       { data: [] as AnglePackage[], error: null },
     );
 
-    const all = (data || []) as AnglePackage[];
+    const all = ((data || []) as AnglePackage[]).filter(isCustomerPubliclyOpenable);
 
     switch (angle) {
       case 'value':

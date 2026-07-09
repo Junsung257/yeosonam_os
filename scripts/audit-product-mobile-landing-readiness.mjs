@@ -41,6 +41,7 @@ const repairEmptyItineraryDays = process.argv.includes('--repair-empty-itinerary
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const verifyPublicHtml = process.argv.includes('--verify-public-html');
+const persistReadinessResult = process.argv.includes('--persist-readiness-result');
 const baseArg = process.argv.find(arg => arg.startsWith('--base='))?.split('=')[1]?.trim();
 const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
   .split(',')
@@ -111,6 +112,7 @@ const supabase = createClient(url, serviceKey, { auth: { persistSession: false }
 
 const PUBLIC_STATUSES = new Set(['approved', 'active', 'published']);
 const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function replaceProductPricesForProduct(productId, rows) {
   const payload = rows.map(row => ({
@@ -324,6 +326,7 @@ function trustScore(row) {
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
   add(row.standard_notices === 0 && row.structured_facts === 0, 'v3.facts_missing', 'medium', 15);
   add(row.entity_attraction_unresolved > 0, 'entity.attraction_unresolved', 'high', Math.min(30, 10 + row.entity_attraction_unresolved * 5));
+  add(row.entity_master_candidate_unresolved > 0, 'entity.master_candidate_unresolved', 'high', Math.min(30, 10 + row.entity_master_candidate_unresolved * 5));
   add(row.entity_shopping_review_needed > 0, 'entity.shopping_review_needed', 'high', Math.min(20, 8 + row.entity_shopping_review_needed * 3));
   add(row.entity_option_review_needed > 0, 'entity.option_review_needed', 'high', Math.min(20, 8 + row.entity_option_review_needed * 3));
   add(row.entity_unknown_customer_visible > 0, 'entity.unknown_customer_visible', 'high', Math.min(25, 10 + row.entity_unknown_customer_visible * 5));
@@ -1576,6 +1579,10 @@ function readinessFor(row) {
     if (nonPublicSourceReview) addHumanReviewWarning();
     else failures.push('entity_attraction_unresolved');
   }
+  if (row.entity_master_candidate_unresolved > 0) {
+    if (nonPublicSourceReview) addHumanReviewWarning();
+    else failures.push('entity_master_candidate_unresolved');
+  }
   if (row.entity_shopping_review_needed > 0) {
     if (nonPublicSourceReview) addHumanReviewWarning();
     else failures.push('entity_shopping_review_needed');
@@ -1638,17 +1645,24 @@ const scopedPackageRows = allPackageRows
   .filter(pkg => includeArchived || !isArchivedStatus(pkg.status))
   .filter(pkg => !publicOnly || isPublicStatus(pkg.status));
 const scopedPackageIds = new Set(scopedPackageRows.map(pkg => pkg.id));
-const packageIds = allPackageRows.map(pkg => pkg.id);
-const internalCodes = allPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
+const packageIds = scopedPackageRows.map(pkg => pkg.id);
+const internalCodes = scopedPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
 const auditDataErrors = [];
 const attractionIds = new Set();
-for (const pkg of allPackageRows) {
+const malformedAttractionIds = new Set();
+for (const pkg of scopedPackageRows) {
   const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
   for (const day of days) {
     const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
     for (const item of schedule) {
       const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids : [];
-      for (const id of ids) if (typeof id === 'string' && id) attractionIds.add(id);
+      for (const id of ids) {
+        if (typeof id !== 'string') continue;
+        const trimmed = id.trim();
+        if (!trimmed) continue;
+        if (UUID_RE.test(trimmed)) attractionIds.add(trimmed);
+        else malformedAttractionIds.add(trimmed);
+      }
     }
   }
 }
@@ -1707,6 +1721,7 @@ const productPriceRowsByCode = new Map();
 const productRowsByCode = new Map();
 const unmatchedCountMap = new Map();
 const unmatchedEntityMap = new Map();
+const entityCandidateUnresolvedMap = new Map();
 const priceRowsLookupFailedCodes = new Set();
 const draftLookupFailedPackageIds = new Set();
 let unmatchedScopeReady = false;
@@ -1801,6 +1816,42 @@ if (packageIds.length > 0) {
         unmatchedEntityMap.set(item.package_id, current);
       }
     }
+  }
+
+  const scopedPackageIdSet = new Set(packageIds);
+  const unresolvedCandidateStatuses = new Set(['candidate', 'auto_internal', 'needs_review', 'publishable_ready']);
+  for (let from = 0; ; from += 1000) {
+    const { data: candidateRows, error: candidateError } = await runSupabaseQuery(
+      `entity master candidates ${from}`,
+      () => supabase
+        .from('entity_master_candidates')
+        .select('candidate_key, category, promotion_status, source_context')
+        .range(from, from + 999),
+    );
+    if (candidateError) {
+      auditDataErrors.push({ scope: 'entity_master_candidates', message: candidateError.message ?? String(candidateError) });
+      break;
+    }
+    for (const candidate of candidateRows ?? []) {
+      const status = String(candidate.promotion_status ?? '');
+      if (!unresolvedCandidateStatuses.has(status)) continue;
+      const packageIdsFromCandidate = Array.isArray(candidate.source_context?.package_ids)
+        ? [...new Set(candidate.source_context.package_ids)]
+        : [];
+      for (const packageId of packageIdsFromCandidate) {
+        if (!scopedPackageIdSet.has(packageId)) continue;
+        const current = entityCandidateUnresolvedMap.get(packageId) ?? {
+          total: 0,
+          attraction: 0,
+          needs_review: 0,
+        };
+        current.total++;
+        if (candidate.category === 'attraction') current.attraction++;
+        if (status === 'needs_review') current.needs_review++;
+        entityCandidateUnresolvedMap.set(packageId, current);
+      }
+    }
+    if (!candidateRows || candidateRows.length < 1000) break;
   }
 }
 
@@ -2306,6 +2357,7 @@ let rows = allPackageRows
     const draftLookupFailed = draftLookupFailedPackageIds.has(pkg.id);
     const draftEntities = draftEntitySummary(draft);
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
+    const entityCandidateEntities = entityCandidateUnresolvedMap.get(pkg.id) ?? {};
     const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
     const row = {
       id: pkg.id,
@@ -2335,6 +2387,9 @@ let rows = allPackageRows
       entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
       entity_option_review_needed: queueEntities.option_review_needed || 0,
       entity_unknown_customer_visible: draft && !draftLookupFailed ? draftEntities.unknown_customer_visible : queueEntities.unknown_customer_visible || 0,
+      entity_master_candidate_unresolved: entityCandidateEntities.total || 0,
+      entity_master_candidate_attraction_unresolved: entityCandidateEntities.attraction || 0,
+      entity_master_candidate_needs_review: entityCandidateEntities.needs_review || 0,
       entity_noise_removed: draftEntities.noise_removed,
       entity_meal_structured: draftEntities.meal_structured,
       entity_transfer_structured: draftEntities.transfer_structured,
@@ -2369,6 +2424,51 @@ if (verifyPublicHtml) {
     verifiedRows.push({ ...nextRow, readiness: readinessFor(nextRow), trust_score: trustScore(nextRow) });
   }
   rows = verifiedRows;
+}
+
+const readinessPersistence = [];
+if (persistReadinessResult) {
+  const checkedAt = new Date().toISOString();
+  for (const row of rows) {
+    const previousReport = row.audit_report && typeof row.audit_report === 'object' && !Array.isArray(row.audit_report)
+      ? row.audit_report
+      : {};
+    const nextAuditReport = {
+      ...previousReport,
+      mobile_landing_readiness: {
+        source: 'audit-product-mobile-landing-readiness',
+        checked_at: checkedAt,
+        status: row.readiness.status,
+        failures: row.readiness.failures,
+        warnings: row.readiness.warnings,
+        trust_score: row.trust_score,
+        public_html_failure: row.public_html_failure,
+        entity_counts: {
+          unmatched_activities: row.unmatched_activities,
+          attraction_unresolved: row.entity_attraction_unresolved,
+          shopping_review_needed: row.entity_shopping_review_needed,
+          option_review_needed: row.entity_option_review_needed,
+          unknown_customer_visible: row.entity_unknown_customer_visible,
+        },
+        malformed_attraction_ids_skipped: malformedAttractionIds.size,
+      },
+    };
+    const { error } = await supabase
+      .from('travel_packages')
+      .update({
+        audit_report: nextAuditReport,
+        audit_checked_at: checkedAt,
+      })
+      .eq('id', row.id);
+    readinessPersistence.push({
+      id: row.id,
+      code: row.code,
+      status: row.readiness.status,
+      ok: !error,
+      error: error?.message ?? null,
+    });
+    if (!error) row.audit_report = nextAuditReport;
+  }
 }
 
 const publicRows = rows.filter(row => row.public);
@@ -2552,6 +2652,7 @@ const summary = {
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
   entity_attraction_unresolved_packages: rows.filter(row => row.entity_attraction_unresolved > 0).length,
+  entity_master_candidate_unresolved_packages: rows.filter(row => row.entity_master_candidate_unresolved > 0).length,
   entity_shopping_review_packages: rows.filter(row => row.entity_shopping_review_needed > 0).length,
   entity_option_review_packages: rows.filter(row => row.entity_option_review_needed > 0).length,
   entity_unknown_customer_visible_packages: rows.filter(row => row.entity_unknown_customer_visible > 0).length,
@@ -2563,6 +2664,10 @@ const summary = {
   schema_failures: unmatchedScopeReady ? 0 : 1,
   data_query_failures: blockingAuditDataErrors.length,
   nonblocking_data_query_failures: auditDataErrors.length - blockingAuditDataErrors.length,
+  malformed_attraction_ids_skipped: malformedAttractionIds.size,
+  persist_readiness_result: persistReadinessResult,
+  persisted_readiness_results: readinessPersistence.filter(row => row.ok).length,
+  readiness_persistence_errors: readinessPersistence.filter(row => !row.ok).length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
   repaired_price_source_evidence: priceSourceEvidenceRepairs.filter(repair => repair.ok).length,
   repaired_price_tiers: priceTierRepairs.filter(repair => repair.ok).length,
@@ -2595,6 +2700,7 @@ const report = {
     ...excludeFragmentRepairs.map(repair => ({ ...repair, type: 'exclude_fragments' })),
     ...durationTripStyleRepairs.map(repair => ({ ...repair, type: 'duration_trip_style' })),
   ],
+  readiness_persistence: readinessPersistence,
   demotions,
   archives,
   failed: failedRows.map(row => ({

@@ -17,6 +17,8 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -30,10 +32,32 @@ const BASE_URL = resolveBlogCanonicalOrigin();
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
   og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
-  travel_packages: { id: string; title: string; destination: string; price: number | null; duration: string | null } | null;
+  travel_packages: {
+    id: string;
+    title: string;
+    destination: string;
+    price: number | null;
+    duration: string | null;
+    status?: string | null;
+    audit_status?: string | null;
+    audit_report?: unknown;
+    updated_at?: string | null;
+    optional_tours?: unknown;
+    itinerary_data?: unknown;
+  } | null;
 }
 
-type DestinationPackage = { id: string; title: string; price: number | null };
+type DestinationPackage = {
+  id: string;
+  title: string;
+  price: number | null;
+  status?: string | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
+};
 
 type DestinationPageData = {
   destination: string;
@@ -167,7 +191,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
     // 블로그 글 (해당 목적지)
     const postsQuery = supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, duration)')
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, duration, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('destination', destination)
@@ -180,22 +204,27 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
       throw createBlogDatabaseUnavailableError();
     }
 
-    const posts = ((postsResult.data || []) as unknown as BlogPost[]).filter(
-      p => {
+    const posts = ((postsResult.data || []) as unknown as BlogPost[])
+      .map((post) => ({
+        ...post,
+        travel_packages: post.travel_packages && isCustomerPubliclyOpenable(post.travel_packages)
+          ? post.travel_packages
+          : null,
+      }))
+      .filter(p => {
         const postDestination = (p.destination || p.travel_packages?.destination || '').trim();
         return (
           postDestination.includes(destination) ||
           destinationSlugMatches(postDestination, destination)
         );
-      },
-    );
+      });
 
     // 관련 상품
     const packagesQuery = supabaseAdmin
       .from('travel_packages')
-      .select('id, title, price')
+      .select('id, title, price, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .ilike('destination', `%${destination}%`)
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('price', { ascending: true })
       .limit(6);
 
@@ -204,7 +233,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
     return {
       destination,
       posts,
-      packages: (packagesResult.data || []) as unknown as DestinationPackage[],
+      packages: ((packagesResult.data || []) as unknown as DestinationPackage[]).filter(isCustomerPubliclyOpenable),
       unavailable: false,
     };
   } catch {

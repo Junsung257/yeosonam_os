@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /**
  * 콘텐츠 갭 분석 API — "블로그가 없는 고전환 상품" 자동 감지
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     const { data: packages } = await supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, duration, price, status, seats_held, seats_confirmed')
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('created_at', { ascending: false })
       .limit(200);
 

@@ -5,6 +5,7 @@ import {
   type MasterCandidateAutoAction,
   type MasterCandidatePromotionStatus,
 } from '@/lib/entity-master-candidates';
+import { KOREAN_DESTINATION_TO_ISO } from '@/lib/destination-iso';
 import { verifyNaverEntityName, type NaverEntityVerificationResult } from '@/lib/naver-entity-verifier';
 import {
   getGooglePlacesBudgetFromEnv,
@@ -87,6 +88,36 @@ export type EntityResolutionDependencies = {
 
 const CUSTOMER_REVIEW_CATEGORIES = new Set(['shopping', 'optional_tour', 'notice']);
 const NON_MASTER_ACTIONS = new Set(['reject_noise', 'structure_non_master']);
+const READABLE_KOREAN_BACKLOG_PUBLIC_GENERIC_NON_MASTER_RE =
+  /^(?:\uD638\uD551\uC2E0\uCCAD\uC2DC|\uC774\uB860\s*\uAD50\uC721|\uD55C\uC57D\uBC29\s*\uC911\s*2\uD68C|\uC9DA\uCC28\s*OR\s*7\uC778\uC2B9|\uCC9C\uC800\uC6B0\s*\uC2DC\uB0B4|\uC774\uB3C4\uBC31\uD558\uC11C\s*\uD30C)$/u;
+const READABLE_KOREAN_BACKLOG_PUBLIC_DESCRIPTIVE_NON_MASTER_RE =
+  /(?:\uC911\uAD6D\s*\uC120\uC885\uC744\s*\uB300\uD45C\uD558\uB294\s*\uCC9C\uB144\uACE0\uCC30|\uCE6D\uB2E4\uC624\uC5D0\uC11C\s*\uB9CC\uB098\uB294\s*\uC791\uC740\s*\uC720\uB7FD|\uBE5B\uC73C\uB85C\s*\uBB3C\uB4E0\s*\uACC4\uB9BC\uC758\s*\uBC24|\uC0B0\uCC45\uB85C\uB97C\s*\uB530\uB77C\s*\uC790\uC720\uB86D\uAC8C\s*\uB3D9\uBB3C\uC6D0|\uC77C\uBCF8\uC774\s*\uD328\uB9DD\uD55C|\uB9AC\uC544\uC2A4\uC2DD\uD574\uC548\s*\uC544\uC18C\uB9CC\uC744\s*\uBCFC\s*\uC218\s*\uC788\uB294|\uC790\uC5F0\s*\uACBD\uAD00\uC744|\uC804\uACBD$|\uC0BC\uD310\uBC30\uB97C\s*\uD0C0\uACE0.*\uC790\uC5F0\uACBD\uAD00|\uC81C2\uCC28\s*\uC138\uACC4\uB300\uC804.*\uC790\uC774\uC2B9\s*\uC2B9\uC804\uD0D1)/u;
+const READABLE_KOREAN_ROUTE_OR_GENERIC_PLACE_TOKEN_RE =
+  /^(?:\uBC1C\uAD8C|\uC720\s*\uD6C4\s*\uC778|\uB098\uC774\uD2B8\s*\uB9C8\uCF13|\uC57C\uC2DC\uC7A5)$/u;
+const READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE =
+  /(?:^\+?\s*(?:\uBC18\uC138\uC624|\uBC18\uC9F1\uB290\uC5C9|\uC624\uB9AC\uAD6C\uC774|\uBAA8\uB4EC\uAD6C\uC774|\uB2ED\uAD6C\uC774|\uC9DC\uC870|\uC815\uC2DD|\uC138\uD2B8|\uC804\uD1B5\uC2DD|\uB9E4\uC6B4\uD0D5|\uBCF4\uC308|\uC2A4\uD14C\uC774\uD06C|\uC528\uD478\uB4DC|\uACFC\uC77C|\uC625\uC218\uC218|\uBC00\uD06C\uD2F0|\uC0C8\uC6B0\uC7A5|\uBC31\s*\uC219|\uB300\uD1B5\uBC25\uC815\uC2DD|\uB3FC\uC9C0\uAC08\uBE44\uC815\uC2DD|\uC18C\uACE0\uAE30\uBAA8\uB4EC|\uB118\uB2A5\uC138\uD2B8|\uC62C\uC720\uCE94\uC787|\uB8E9\uB77D|\uD654\uC774\uD2B8\s*\uB85C\uC988|\uB7AD[\s\u3164]*\u3146?\u3154\u3142)\)?$|\uB545\uCF69\s*1?\s*\uBD09\uC9C0|\uBCF4\uD1A0\uCF34\s*BBQ|\uBAA8\uB2DD\uAE00\uB85C\uB9AC\s*\uBCF6\uC74C|\uACE0\uAD6C\uB9C8\s*\uD280(?:\uAE40|\uD0B4)|\uC5F4\uB300\s*\uACFC\uC77C\s*\uC2DC\uC2DD|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uC2DD\uC0AC|\uC815\uC2DD|\uD2B9\uC2DD|\uBD84\uC9DC|\uC300\uAD6D\uC218|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uBD88\uACE0\uAE30|\uAD6C\uC774|\uCEE4\uD53C|coffee|cafe|\uC74C\uB8CC|\uB9E5\uC8FC|\uB514\uC800\uD2B8)/iu;
+const READABLE_KOREAN_GENERIC_NON_MASTER_RE =
+  /^(?:=>|\uBB34\uC81C\uD55C|\uD655\uC778|\uC6D4\uD654\uC218\uBAA9\uAE08|\uC218\uBAA9\uAE08|\uD1A0\uC77C\uC6D4\uD654|\uD1A0\uC77C|\uBE44\uC6B4\uD56D\uC77C|\uC678\uAD00|\uC678\uBD80|\uAD6D\uAC00\s*\uBA85\uC2B9|\uAD6D\uAC00\s*5A\uAE09\s*\uD48D\uACBD\uAD6C|\uC77C\uBCF8\s*3\uB300\s*\uC1A1\uB9BC\uC911\s*\uD558\uB098\uC778|\uC2DC\s*\uAC04|\uC2DD\s*\uC0AC|\uAD50\s*\uD1B5|\uD14D\uC2A4|\uC5EC\uD589\uACBD\uBE44|\uC2F1\uAE00\uCC28\uC9C0|\uB8F8\s*\uD0C0\s*\uC785|\uC0E4\uC6CC\uC2E4\s*\uBCF4\uC720|\uC218\uC601\uBCF5\s*\uCC29\uC6A9\s*\uD544\uC218|\uC544\uCFE0\uC544\uC288\uC988|\uC5EC\uBC8C\s*\uC637|\uBC18\uBC14\uC9C0|\uBB34\uB8CC\uC874|\uC0DD\uC218|\uACF5\uC608|\uBB38\uD654|\uB3D9\uC120|\uBE44\uC988\uB2C8\uC2A4\uAC8C\uB974(?:\(2\uC778\uC2E4)?|\uD638\uD654\uD638\uD2B9|\uD06C\uB77C\uC6B4|\uD56B\uD50C\s*\uCE74\uD398|\uBD88\uAF43\uCD95\uC81C|\uBD88\uAF43\uB180\uC774|\uBD05\uC2AC\uB808\uC774|\uB808\uC77C\uBC14\uC774\uD06C|\uB8E8\uC9C0|\uBAA8\uB798\s*\uC378\uB9E4|\uB099\uD0C0|\uC2E4\uC81C\s*\uB099\uD0C0|\uB7ED\uC154\uB9AC\s*\uC804\uB3D9\uCE74|\uB274\uCE74\uBA5C\uB9AC\uC544|\uC4F0\uC2DC\uB9C8\uB9C1\uD06C|\uBABD\uACE8\s*\uB85C\uCEEC\s*\uB9C8\uD2B8|\uAC00\uBCCD\uAC8C\s*\uB5A0\uB098\uACE0|\uAE30\uC554\uAD34\uC11D|\uAD11\uD65C\uD55C\s*\uB179\uCC28\uBC2D|\uAC00\uD30C\uB978\s*\uD611\uACE1|\uBC14\uB2E4\uC640\s*\uC0B0\uC758\s*\uB9CC\uB0A8|\uBB3C\uACFC\s*\uBE5B)$/u;
+const READABLE_KOREAN_GENERIC_NON_MASTER_FRAGMENT_RE =
+  /(?:^\d+\s*N\s*\d+\s*D$|^\d{1,2}\uC6D4$|^\d+(?:~\d+)?\s*cm\s*\uBBF8\uB9CC$|^\d+\uAC1C$|^\d+\uC778\s*\d+\uAC1C$|^\uD0DD\d+\)|\]\s*\uC678\uAD00$|\]\s*\uC678\uBD80$|^\uB3C4\uBCF4\s*\d+\s*\uC2DC\uAC04$|^\uBB34\uAC8C\s*\d+\s*t\)\uACFC\s*\uC885$|^\uBD80\s*\uC0B0(?:\s*\u2192\s*.+)?$|^(?:[^-]+-){2,}[^-]+$|^OR\s+\S+)/iu;
+const READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE =
+  /^(?:\uCE58\uC559\uB9C8\uC774|\uD0C0\uC774\uBCA0\uC774|\uD310\uB791|\uB098\uB9AC\uD0C0|\uB178\uBCF4\uB9AC\uBCA0\uCE20|\uB2CC\uBE48|\uC624\uD0C0\uB8E8|\uCE58\uD1A0\uC138|\uB3C4\uC57C|\uB300\uB9C8\uB3C4|\uB3D9\uACBD|\uD63C\uAC00\uC774|\uC11D\uAC00\uC7A5|\uC0E4\uC624\uAD00|\uC6A9\s*\uC815|\uCE74\uC640\uCFE0\uCE58|\uC544\uD0C0\uBBF8|\uC544\uB9C8\uAC00\uC138)$/u;
+const READABLE_KOREAN_EXTRA_CITY_OR_ROUTE_TOKEN_RE =
+  /^(?:\uD30C\uD0C0\uC57C|\uD558\uB178\uC774|\uD0C0\uC774\uD398\uC774|\uD6C4\uC544\uD78C|\uCE58\uC559\uB77C\uC774|\uD788\s*\uD0C0|\uC774\uC988|\uC591\s*\uC0AD|\uC11C\s*\uD30C|\uBD81\s*\uD30C|\uB0A8\s*\uD30C|\uC774\uB3C4\uBC31\uD558|\uC774\uB3C4\uBC31\uD654)$/u;
+const READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE =
+  /^(?:\uC804\uC6A9|\uC81C\uC678|\uCD94\uC11D|\uD3EC\s*\uD568|\uC778\s*1\s*\uC2E4|\uCF5C\uB77C\uAC90|\uD1A0\uC0B0\uD488|\uC804\uC790\uB2F4\uBC30|\uC154\uD2C0\uBC84\uC2A4|\uD480\uB9CC)$/u;
+const READABLE_KOREAN_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE =
+  /^(?:\uCF00\uC774\uBE14\uCE74\s*\uD3B8\uB3C4|\uAD81\uC804\s*\uAC8C\uB974(?:\s*\(?\s*2\s*\uC778\s*\uC2E4)?|\uB300\uC131\uB2F9|\uC624\uD6C4\s*\uD50C\uB808\uC774\s*\uC695\uC7A5|\uC655\uBCF5\s*\d+\s*\uBD84\s*\uC18C\uC694|\uC774\uB8E8\uC5B4\uC9D1\uB2C8\uB2E4\.?|\d+\s*\uB95C\s*\uC624\uD1A0\uBC14\uC774|\uB098\uD2B8\uB791\s*\uC57C\uAC04|\uCC9C\uC9C0\s*\uC870\uB9DD|\uC36C\uC6D4\uB4DC\s*\uB0B4\s*\uC790\uC720|\uD14C\uB97C\uC9C0\s*\uD604\uB300\uC2DD\s*\uCEA0\uD504|(?:\uB0AE\uACFC\s*\uBC24\uC774\s*\uB2E4\uB978\s*)?\uD638\uC774\uC548\s*\uC57C\uAC04|\uB2E4\uB0AD\s*\uC57C\uAC04|(?:\uACC4\uB9BC|\uB098\uD2B8\uB791)\s*\uC2DC\uB0B4|\uBE44\uC5D0\uC774\u318D\uC624\uD0C0\uB8E8\u318D\uB3C4\uC57C\u318D\uB178\uBCF4\uB9AC\uBCA0\uCE20|\uC601\uD574CC\s*18\uD640\s*\uB77C\uC6B4\uB529|\uC368\uD551\uCE74\uD2B8|\uC5D8\uC2B9\uD0C0\uC0AC\uB974\s*\uD604\uB300\uC2DD\s*\uCEA0\uD504|\d+\uC5EC\s*\uB9C8\uB9AC\uC758\s*\uB9D0\uACFC\s*\uC0AC\uB78C\uC774\s*\uD568\uAED8\uD558\uB294\s*\uB300\uD615\s*\uB9C8\uC0C1\uC1FC)$/u;
+const READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
+  /(?:\uC138\uACC4\uC5D0\uC11C\s*\uB450\s*\uBC88\uC9F8|\uD574\uC0C1\s*\uCF00\uC774\uBE14\uCE74\s*\uC655\uBCF5\s*\uD2F0\uCF13|\uB3D9\uC591\uC758\s*\uC720\uB7FD\s*\uB9C8\uC744|\uD478\uAFB8\uC625\uC758\s*\uC791\uC740\s*\uC720\uB7FD|\uAC01\uC885\s*\uB3D9\uBB3C\uC1FC|\uB2E4\uCC44\uB85C\uC6B4\s*\uBCFC\uAC70\uB9AC|\uC18C\uC120\uC774\s*\uC2E0\uC120\uC744\s*\uB9CC\uB09C|\uAC74\uCD95\uBB3C\uB4E4\uC774\s*\uBCF4\uC804|\uACF5\uB8E1\uD654\uC11D\uC774\s*\uC804\uC2DC|\d{3,4}\s*\uB144\s*\uAC74\uB9BD|\uD574\uC218\uAD00\uC74C\uC0C1\uC774\s*\uC704\uCE58\uD55C)/u;
+const READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE =
+  /^(?:\uC655\uBCF5\s*\uCF00\uC774\uBE14\uCE74|\uCF00\uC774\uBE14\uCE74\s*\uC655\uBCF5|\uCF00\uC774\uBE14\uCE74\s*\uD3B8\uB3C4|\uD3B8\uB3C4\s*\uCF00\uC774\uBE14\uCE74|\uB8E8\uC9C0\s*\uD3B8\uB3C4|\uC655\uBCF5\s*\uD2F0\uCF13|\uC785\uC7A5\uAD8C|\uC790\uC720\uC774\uC6A9\uAD8C|\uC9DA\uCC28\s*\uD0D1\uC2B9|\uB4DC\uB860\s*\uCD2C\uC601|\uB098\uB8FB\uBC30)$/u;
+const READABLE_KOREAN_DANGLING_ATTRACTION_FRAGMENT_RE =
+  /^(?:(?:\uC788\uB294|\uB290\uB084\s*\uC218\s*\uC788\uB294|\uBCFC\s*\uC218\s*\uC788\uB294|\uC990\uAE38\s*\uC218\s*\uC788\uB294)\s*)?\uC57C\uC2DC\uC7A5$/u;
+const READABLE_KOREAN_LODGING_AS_ATTRACTION_RE =
+  /(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uB808\uAC08\uB9AC\uC544|\uB178\uBCF4\uD154|\uC708\uB364|\uD558\uBC14\uB098|\uC544\uCFE0\uC544\uC36C|\uBA5C\uB9AC\uC544\s*\uBE48\uD384|\uBE48\uD384\s*(?:\uB9AC\uC870\uD2B8|\uD638\uD154|\uC2A4\uD30C))/u;
+const READABLE_KOREAN_GOLF_VENUE_AS_ATTRACTION_RE =
+  /(?:CC|\uCEE8\uD2B8\uB9AC\s*\uD074\uB7FD|\uACE8\uD504\s*\uC7A5)$/iu;
 const HIGH_RISK_NOTICE_RE = /(?:취소|환불|비자|여권|입국|출국|보험|예약금|결제|추가\s*요금|가격\s*변동|유류|수수료|환율|여행자\s*보험)/i;
 const LOW_RISK_SCHEDULE_NOTICE_RE = /(?:상기\s*일정|현지\s*사정|항공사의?\s*사정|다소\s*변동|변경될\s*수|양지하시기|천재지변)/i;
 const OPTION_STRUCTURED_DETAIL_RE = /(?:골프장\s*정보|그린피|캐디피|카트피|캐디팁|티타임|코스정보|홀수\s*인원|싱글카트|클럽\s*렌탈|현장\s*결제|락카\s*사용|라커\s*사용)/i;
@@ -97,6 +128,7 @@ const LOW_RISK_PREP_RE = /(?:준비물|수영복|구명조끼|미끼|편도\s*�
 const KOREAN_OPERATIONAL_ATTRACTION_FRAGMENT_RE = /(?:출항|도착|이동\s*후|왕복\s*전동차|전동차|항공권|증편\s*특가|특가|차창|자유\s*시간|선택\s*관광|선택관광|옵션|프리미엄)/;
 const KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE = /(?:디저트|무침|못\s*주스|반짱느엉|삼겹|백숙|옥수수\s*삶는법|메뉴|마사지|수영장|풀빌라)/;
 const KOREAN_ACTIVITY_OR_OPERATION_FRAGMENT_RE = /(?:이용|감상|환복|락커|불가|탑승|승마|귀빈석|놀이공원\s*무제한|핫플레이스|유리잔도|소원등|쪽배)/;
+const KOREAN_ACTIVITY_LABEL_FRAGMENT_RE = /(?:모래\s*썰매|왕복\s*모노레일|봅슬레이|레일\s*바이크|루지|실제\s*낙타|낙타\s*체험|럭셔리\s*전동카)/;
 const KOREAN_METRIC_OR_ATTRIBUTE_FRAGMENT_RE = /(?:해발|\d+\s*M\b|\d+\s*m\b|360\s*도|높이\s*\d+|총길이|넓이|붉은색|내부\s*욕실)/i;
 const KOREAN_MULTI_ENTITY_OR_OPTION_FRAGMENT_RE = /(?:[,/&+]|또는)/;
 const KOREAN_DESCRIPTIVE_ATTRACTION_PHRASE_RE = /(?:세계적으로\s*유명한|가장\s*유명한|꼽히는|환상적이고|아름다운|드넓은|어우러져|드러냅니다|내려다|세계\s*최고의|듯한|봉우리|절경|최초의|반야생|계림의\s*상징|에서\s*파\s*$|등\s*$)/;
@@ -356,13 +388,100 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   if (category === 'attraction' && /^\s*\uC778\s*\uC6D0\s*$/.test(name)) {
     return 'operational or non-attraction schedule fragment';
   }
+  if (
+    category === 'attraction' &&
+    Object.prototype.hasOwnProperty.call(KOREAN_DESTINATION_TO_ISO, name)
+  ) {
+    return 'city or route token, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE.test(name) ||
+    READABLE_KOREAN_EXTRA_OPERATIONAL_NON_MASTER_RE.test(raw)
+  )) {
+    return 'operational or non-attraction schedule fragment';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE.test(name) ||
+    READABLE_KOREAN_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE.test(raw)
+  )) {
+    return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_BACKLOG_PUBLIC_GENERIC_NON_MASTER_RE.test(name) ||
+    READABLE_KOREAN_BACKLOG_PUBLIC_GENERIC_NON_MASTER_RE.test(raw)
+  )) {
+    return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_ROUTE_OR_GENERIC_PLACE_TOKEN_RE.test(name) ||
+    READABLE_KOREAN_ROUTE_OR_GENERIC_PLACE_TOKEN_RE.test(raw)
+  )) {
+    return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE.test(name) ||
+    READABLE_KOREAN_BACKLOG_TRANSPORT_OR_ACTIVITY_TOKEN_RE.test(raw)
+  )) {
+    return 'activity or operational detail, not an attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_DANGLING_ATTRACTION_FRAGMENT_RE.test(name) ||
+    READABLE_KOREAN_DANGLING_ATTRACTION_FRAGMENT_RE.test(raw)
+  )) {
+    return 'descriptive itinerary phrase, not an attraction master';
+  }
+  if (category === 'attraction' && READABLE_KOREAN_LODGING_AS_ATTRACTION_RE.test(combined)) {
+    return 'lodging or room fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_GOLF_VENUE_AS_ATTRACTION_RE.test(name) ||
+    READABLE_KOREAN_GOLF_VENUE_AS_ATTRACTION_RE.test(raw)
+  )) {
+    return 'golf venue, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(name) ||
+    (name === raw && READABLE_KOREAN_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE.test(raw))
+  )) {
+    return 'descriptive itinerary phrase, not an attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_BACKLOG_PUBLIC_DESCRIPTIVE_NON_MASTER_RE.test(name) ||
+    (name === raw && READABLE_KOREAN_BACKLOG_PUBLIC_DESCRIPTIVE_NON_MASTER_RE.test(raw))
+  )) {
+    return 'descriptive itinerary phrase, not an attraction master';
+  }
   if (category === 'attraction' && KOREAN_OPERATIONAL_ATTRACTION_FRAGMENT_RE.test(combined)) {
     return 'operational or non-attraction schedule fragment';
   }
-  if (category === 'attraction' && KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(combined)) {
+  if (category === 'attraction' && (
+    READABLE_KOREAN_GENERIC_NON_MASTER_RE.test(name) ||
+    READABLE_KOREAN_GENERIC_NON_MASTER_RE.test(raw) ||
+    READABLE_KOREAN_GENERIC_NON_MASTER_FRAGMENT_RE.test(name) ||
+    READABLE_KOREAN_GENERIC_NON_MASTER_FRAGMENT_RE.test(raw)
+  )) {
+    return 'generic, itinerary, or attribute fragment, not attraction master';
+  }
+  if (category === 'attraction' && (
+    READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE.test(name) ||
+    READABLE_KOREAN_CITY_OR_ROUTE_TOKEN_RE.test(raw) ||
+    READABLE_KOREAN_EXTRA_CITY_OR_ROUTE_TOKEN_RE.test(name) ||
+    READABLE_KOREAN_EXTRA_CITY_OR_ROUTE_TOKEN_RE.test(raw)
+  )) {
+    return 'city or route token, not attraction master';
+  }
+  if (category === 'attraction' && (
+    KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(combined)
+    || READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(name)
+    || READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(raw)
+    || READABLE_KOREAN_FOOD_OR_SERVICE_FRAGMENT_RE.test(combined)
+  )) {
     return 'activity, meal, or service detail, not an attraction master';
   }
   if (category === 'attraction' && KOREAN_ACTIVITY_OR_OPERATION_FRAGMENT_RE.test(name)) {
+    return 'activity or operational detail, not an attraction master';
+  }
+  if (category === 'attraction' && KOREAN_ACTIVITY_LABEL_FRAGMENT_RE.test(combined)) {
     return 'activity or operational detail, not an attraction master';
   }
   if (category === 'attraction' && KOREAN_METRIC_OR_ATTRIBUTE_FRAGMENT_RE.test(name)) {
@@ -402,7 +521,7 @@ export function terminalNonMasterReason(category: string, canonicalName: string,
   if (category === 'attraction' && /(?:포\s*함\s*내\s*역|최\s*소\s*출\s*발|발제외\s*\/?\s*\d+\s*분|수많은\s*볼거리|볼거리를\s*제공|생태왕국|꼽히며\s*폭포|아름다운\s*자태|협곡입니다|개화시기는|상이\s*라벤더)/i.test(combined)) {
     return 'descriptive itinerary phrase, not an attraction master';
   }
-  if (category === 'attraction' && /(?:출\s*발\s*(?:요\s*일|인\s*원)|여행의\s*피로|넓이\s*\d+\s*M|아동\s*제외|개인\s*여벌옷|여벌옷\s*지참|메뉴\s*다양|관내\s*사용조건|노가이드|전담기사|알뜰\s*3\s*색\s*골프|단독행사|미니\s*줄낚시|빛의\s*도시.*야간)/i.test(combined)) {
+  if (category === 'attraction' && /(?:출\s*발\s*(?:요\s*일|인\s*원|일\s*자)|여행의\s*피로|넓이\s*\d+\s*M|아동\s*제외|개인\s*여벌옷|여벌옷\s*지참|메뉴\s*다양|관내\s*사용조건|노가이드|전담기사|알뜰\s*3\s*색\s*골프|단독행사|미니\s*줄낚시|빛의\s*도시.*야간)/i.test(combined)) {
     return 'operational or non-attraction schedule fragment';
   }
   if (category === 'attraction' && /(?:^\s*인\s*원\s*$|날씨$|라라포트|LALAPORT|케이블카,?골든브릿지,?테마파크\s*등)/i.test(combined)) {

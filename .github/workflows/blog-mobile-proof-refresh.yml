@@ -1,0 +1,78 @@
+name: Blog Product Proof Refresh
+
+on:
+  schedule:
+    # KST 11:35, before blog-scheduler and the first publisher slot.
+    - cron: '35 2 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Maximum stale product proofs to refresh.
+        required: true
+        default: '50'
+      batch_size:
+        description: Product proof batch size.
+        required: true
+        default: '10'
+
+concurrency:
+  group: blog-product-proof-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      NEXT_PUBLIC_SITE_URL: https://www.yeosonam.com
+      NEXT_PUBLIC_BASE_URL: https://www.yeosonam.com
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET || secrets.ADMIN_API_TOKEN || secrets.CRON_SECRET }}
+      ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN || secrets.REVALIDATE_SECRET || secrets.CRON_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Refresh stale product mobile proof
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          limit="${{ github.event.inputs.limit || '50' }}"
+          batch_size="${{ github.event.inputs.batch_size || '10' }}"
+
+          if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] || { [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] && [ -z "${SUPABASE_SERVICE_KEY:-}" ]; }; then
+            echo "Missing Supabase secrets required for product proof refresh." >&2
+            exit 1
+          fi
+
+          if [ -z "${REVALIDATE_SECRET:-}" ] && [ -z "${ADMIN_API_TOKEN:-}" ]; then
+            echo "Missing REVALIDATE_SECRET, ADMIN_API_TOKEN, or CRON_SECRET for protected customer proof." >&2
+            exit 1
+          fi
+
+          npm run refresh:customer-mobile-proofs:apply -- \
+            --base=https://www.yeosonam.com \
+            --limit="${limit}" \
+            --batch-size="${batch_size}" \
+            --reasons=missing,stale,hash_missing,surface_missing,source_invalid,status_not_pass \
+            --summary-only \
+            --json
+
+      - name: Requeue recovered blog product candidates
+        run: npm run recheck:blog-product-evidence -- --json --write --limit=200

@@ -4,6 +4,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 // GET /api/attractions — 전체 관광지 목록
 export async function GET(request: NextRequest) {
@@ -22,8 +23,12 @@ export async function GET(request: NextRequest) {
     // photos_only=1: 홈페이지용 경량 쿼리 (사진 매칭에 필요한 최소 필드만)
     const photosOnly = searchParams.get('photos_only');
     const fields = photosOnly
-      ? 'id, name, country, region, photos, mention_count, mrt_gid'
+      ? 'id, name, country, region, photos, mention_count, mrt_gid, category, badge_type, is_active, customer_publishable'
       : 'id, name, short_desc, long_desc, category, badge_type, emoji, country, region, aliases, photos, mention_count, mrt_gid, mrt_rating, mrt_review_count, customer_publishable, verification_status, auto_created, source_ids, created_at';
+    const filterCustomerRenderable = (rows: unknown[]) =>
+      includeUnpublishable
+        ? rows
+        : rows.filter((row): row is AttractionData => isCustomerRenderableAttraction(row as AttractionData));
 
     // ids 지정 조회: itinerary_data attraction_ids 기반 경량 조회
     if (idsParam) {
@@ -40,7 +45,7 @@ export async function GET(request: NextRequest) {
       if (!includeUnpublishable) query = query.eq('customer_publishable', true);
       const { data, error } = await query;
       if (error) throw error;
-      return NextResponse.json({ attractions: data || [] }, {
+      return NextResponse.json({ attractions: filterCustomerRenderable(data || []) }, {
         headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' },
       });
     }
@@ -91,7 +96,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ attractions: allData }, {
+    return NextResponse.json({ attractions: filterCustomerRenderable(allData) }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (error) {

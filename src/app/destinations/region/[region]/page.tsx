@@ -16,6 +16,8 @@ import {
   mergePublicDestinationStats,
   type ActiveDestinationLike,
 } from '@/lib/public-destinations';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -161,12 +163,12 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null
       ? supabaseAdmin
           .from('travel_packages')
-          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, products(display_name, internal_code, thumbnail_urls)')
+          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, publication_state, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
           .in('destination', queryNames)
-          .in('status', ['active', 'approved'])
+          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
           .in('publication_state', ['approved', 'published'])
           .order('price', { ascending: true })
-          .limit(24)
+          .limit(2000)
       : Promise.resolve(emptyResult),
     queryNames.length > 0
       ? supabaseAdmin
@@ -181,7 +183,8 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       : Promise.resolve(emptyResult),
   ]);
   const attrs = attrsRes.data;
-  const pkgs = pkgsRes.data;
+  const pkgs = ((pkgsRes.data as unknown as Record<string, unknown>[] | null) ?? [])
+    .filter(isCustomerPubliclyOpenable);
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
@@ -205,7 +208,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   });
 
   // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
-  const alivePkgs = ((pkgs as unknown as Record<string, unknown>[] | null) ?? [])
+  const alivePkgs = pkgs
     .filter(p => {
       const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
@@ -217,12 +220,24 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     }))
     .slice(0, 12) as PackageCardData[];
 
+  const packageStatsByDestination = new Map<string, { count: number; minPrice: number | null }>();
+  for (const pkg of pkgs) {
+    const destination = typeof pkg.destination === 'string' ? aliasToDestination.get(pkg.destination) ?? pkg.destination : null;
+    if (!destination) continue;
+    const price = getPositiveNumber(pkg.price);
+    const current = packageStatsByDestination.get(destination) ?? { count: 0, minPrice: null };
+    current.count += 1;
+    if (price != null && (current.minPrice == null || price < current.minPrice)) current.minPrice = price;
+    packageStatsByDestination.set(destination, current);
+  }
+
   const cities: CityCard[] = regionDests
-    .sort((a, b) => (b.package_count ?? 0) - (a.package_count ?? 0))
+    .filter((d) => packageStatsByDestination.has(d.destination))
+    .sort((a, b) => (packageStatsByDestination.get(b.destination)?.count ?? 0) - (packageStatsByDestination.get(a.destination)?.count ?? 0))
     .map(d => ({
       destination: d.destination,
-      package_count: d.package_count,
-      min_price: d.min_price,
+      package_count: packageStatsByDestination.get(d.destination)?.count ?? 0,
+      min_price: packageStatsByDestination.get(d.destination)?.minPrice ?? null,
       avg_rating: d.avg_rating,
       total_reviews: d.total_reviews,
       image: imgByDest[d.destination] ?? null,

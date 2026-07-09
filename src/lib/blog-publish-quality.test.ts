@@ -82,6 +82,11 @@ describe('blog publish quality', () => {
     expect(report.passed).toBe(false);
     expect(blogPublishQualityWarnings(report)).toEqual([
       { type: 'seo', gate: 'image_seo', reason: 'images 0, alt 0' },
+      {
+        type: 'customer_quality',
+        gate: 'customer.weak_answer_first',
+        reason: '정보성 글은 첫 문단에서 고객 질문에 바로 답해야 합니다.',
+      },
     ]);
   });
 
@@ -162,5 +167,44 @@ describe('blog publish quality', () => {
 
     expect(result.changes).toContain('appended_standard_internal_cta');
     expect(result.blogHtml).toContain('/packages?');
+  });
+
+  it('prepares weak product posts with customer decision blocks before final evaluation', async () => {
+    const result = await prepareBlogForPublish({
+      blog_html: [
+        '# 다낭 패키지',
+        '',
+        '다낭 패키지를 간단히 비교해 보세요.',
+      ].join('\n'),
+      slug: 'danang-package-value',
+      seo_title: '부산출발 다낭 3박5일 패키지',
+      seo_description: '다낭 패키지 가격과 포함 항목 안내',
+      destination: '다낭',
+      content_type: 'package_intro',
+      product_id: 'pkg_123',
+      primary_keyword: '다낭 패키지',
+      generation_meta: {
+        product_consult_brief: {
+          price_from: 579000,
+          departure_city: '부산/김해',
+          duration: '3박5일',
+          included: ['왕복 항공', '호텔'],
+          excluded: ['개인경비'],
+          fit_for: ['부산 출발 가족 패키지를 비교하는 분'],
+          not_fit_for: ['자유일정 중심 여행을 원하는 분'],
+          risk_notes: ['항공 좌석과 객실 가능 여부에 따라 가격 변동'],
+          consult_questions: ['출발일과 인원은 어떻게 되나요?'],
+        },
+      },
+    });
+
+    expect(result.changes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/product_consult_decision_blocks|engine_category_product_decision_blocks/),
+      ]),
+    );
+    expect(result.blogHtml).toContain('## 포함/불포함');
+    expect(result.blogHtml).toContain('## 맞는 사람과 안 맞는 사람');
+    expect(result.blogHtml).toContain('## 문의 전 질문');
   });
 });

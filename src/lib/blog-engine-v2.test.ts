@@ -42,6 +42,14 @@ describe('blog engine v2 evaluation', () => {
     expect(evaluation.passed).toBe(true);
     expect(evaluation.score).toBeGreaterThanOrEqual(80);
     expect(evaluation.brief.evidence_items.some((item) => item.kind === 'official_source')).toBe(true);
+    expect(evaluation.category_scores.map((category) => category.id)).toEqual([
+      'reader_task_completion',
+      'customer_language',
+      'naturalness',
+      'evidence_faithfulness',
+      'sales_pressure_control',
+    ]);
+    expect(evaluation.category_scores.every((category) => category.passed)).toBe(true);
   });
 
   it('blocks informational posts without evidence', () => {
@@ -64,6 +72,81 @@ describe('blog engine v2 evaluation', () => {
 
     expect(evaluation.passed).toBe(false);
     expect(evaluation.failure_bucket).toBe('evidence_insufficient');
+  });
+
+  it('requires external source evidence when an info brief marks official sources required', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 몽골 7월 날씨',
+        '',
+        '몽골 7월 날씨는 낮에는 덥고 밤에는 쌀쌀해서 얇은 긴팔과 방풍 겉옷을 함께 준비하는 편이 좋습니다.',
+        '',
+        '## 준비 체크',
+        '| 항목 | 확인 기준 | 메모 |',
+        '| --- | --- | --- |',
+        '| 낮 | 햇볕 | 선글라스와 모자 |',
+        '| 밤 | 일교차 | 겉옷 준비 |',
+        '| 비 | 소나기 | 우비 준비 |',
+      ].join('\n'),
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '몽골 7월 날씨와 옷차림은 어떻게 준비하나요?',
+          answer_first: '낮/밤 일교차와 소나기를 함께 확인합니다.',
+          official_sources_required: true,
+        },
+        content_brief: {
+          search_intent: 'weather',
+          evidence: ['기상 정보 확인 필요'],
+        },
+      },
+    });
+
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('evidence_insufficient');
+    expect(evaluation.metrics.source_support).toBe(35);
+    expect(evaluation.category_scores.find((category) => category.id === 'evidence_faithfulness')?.passed).toBe(false);
+  });
+
+  it('does not pass near-100 informational posts as publish-ready', () => {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: [
+        '# 세부 숙소 지역별 예산',
+        '',
+        '세부 숙소 지역별 예산은 여행 전에 전체 흐름을 알아두면 도움이 됩니다. 여러 조건이 달라질 수 있으므로 차분하게 살펴보는 것이 좋습니다.',
+        '',
+        '## 예산 비교표',
+        '| 항목 | 확인 기준 | 주의할 점 |',
+        '| --- | --- | --- |',
+        '| 숙소 | 위치와 조식 포함 여부 | 이동비가 달라질 수 있습니다. |',
+        '| 교통 | 공항 이동과 시내 이동 | 가족 여행은 차량 조건을 봐야 합니다. |',
+        '| 식사 | 1인 1끼 기준 | 리조트 안팎 가격이 다릅니다. |',
+        '',
+        '## 공식 확인',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
+      ].join('\n'),
+      primaryKeyword: '세부 숙소 지역별 예산',
+      destination: '세부',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: {
+          reader_question: '세부 숙소 지역별 예산은 어떻게 봐야 하나요?',
+          answer_first: '숙소 위치와 이동비를 먼저 나눠 봅니다.',
+          official_sources_required: true,
+        },
+        content_brief: {
+          search_intent: 'cost',
+          evidence: ['숙소 위치별 총액 비교 필요'],
+        },
+      },
+    });
+
+    expect(evaluation.score).toBeLessThan(100);
+    expect(evaluation.passed).toBe(false);
+    expect(evaluation.failure_bucket).toBe('engine_task_incomplete');
+    expect(evaluation.category_scores.find((category) => category.id === 'reader_task_completion')?.passed).toBe(false);
   });
 
   it('treats readable Korean opening CTA as sales pressure for info writer posts', () => {
@@ -214,6 +297,8 @@ describe('blog engine v2 evaluation', () => {
 
     expect(evaluation.passed).toBe(true);
     expect(evaluation.metrics.product_decision_helpfulness).toBe(100);
+    expect(evaluation.category_scores.map((category) => category.id)).toContain('product_decision_helpfulness');
+    expect(evaluation.category_scores.every((category) => category.score === 100)).toBe(true);
   });
 
   it('builds the public V2 brief shape from generation meta', () => {

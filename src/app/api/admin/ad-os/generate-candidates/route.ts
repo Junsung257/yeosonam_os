@@ -4,6 +4,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildAndSaveSearchAdPackagePlan } from '@/lib/search-ads-auto-planner';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const { data: packages, error: packageError } = await supabaseAdmin
     .from('travel_packages')
     .select('id,title,destination,ticketing_deadline,created_at')
-    .in('status', ['active', 'approved'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .order('created_at', { ascending: false })
     .limit(limit * 4);
 

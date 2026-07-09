@@ -23,6 +23,7 @@ import { supabaseAdmin } from './supabase';
 import { researchKeywordsBatch, classifyKeywordTier } from './keyword-research';
 import { classifySearchIntent, intentPriorityDelta } from './blog-search-intent';
 import { computeSeasonalTargetPublishAt } from './blog-season-publish';
+import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 import { normalizeBlogTopicQueueRow } from './blog-queue-normalize';
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
 
@@ -136,7 +137,7 @@ export async function seedProgrammaticTopics(opts?: { destinations?: string[] })
     const { data } = await supabaseAdmin
       .from('travel_packages')
       .select('destination')
-      .in('status', ['approved', 'active']);
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
     destinations = Array.from(new Set(
       ((data || []) as Array<{ destination: string | null }>)
         .map(p => p.destination)

@@ -132,8 +132,30 @@ describe('public package snapshot gate', () => {
           customer_visible_hash: 'visible',
           surfaces: ['packages', 'lp'],
           surface_results: [
-            { surface: 'packages', status: 'pass', screen_hash: 'a', customer_visible_hash: 'b', public_snapshot_hash: 'old-hash' },
-            { surface: 'lp', status: 'pass', screen_hash: 'c', customer_visible_hash: 'd', public_snapshot_hash: 'old-hash' },
+            {
+              surface: 'packages',
+              status: 'pass',
+              screen_hash: 'a',
+              customer_visible_hash: 'b',
+              public_snapshot_hash: 'old-hash',
+              checks: [
+                { name: 'packages_reservation_cta_visible', ok: true },
+                { name: 'packages_reservation_sheet_opens', ok: true },
+                { name: 'packages_reservation_sheet_has_product_context', ok: true },
+              ],
+            },
+            {
+              surface: 'lp',
+              status: 'pass',
+              screen_hash: 'c',
+              customer_visible_hash: 'd',
+              public_snapshot_hash: 'old-hash',
+              checks: [
+                { name: 'lp_lead_cta_visible', ok: true },
+                { name: 'lp_lead_sheet_opens', ok: true },
+                { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+              ],
+            },
           ],
         },
       },

@@ -18,6 +18,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -192,20 +194,23 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
   const [{ data: attractions }, { data: packages }] = await Promise.all([
     supabaseAdmin
       .from('attractions')
-      .select('id, name, short_desc, long_desc, category, badge_type, photos, emoji, region')
+      .select('id, name, short_desc, long_desc, category, badge_type, photos, emoji, region, is_active, customer_publishable')
       .eq('region', region)
+      .eq('is_active', true)
+      .eq('customer_publishable', true)
       .order('mention_count', { ascending: false })
       .limit(60),
     supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, duration, nights, price, airline, photos, photo_urls, status')
       .eq('destination', region)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('price', { ascending: true })
       .limit(8),
   ]).catch(() => [{ data: null }, { data: null }]);
 
   const normalizedAttractions = ((attractions as unknown[] | null) ?? [])
+    .filter((row): row is AttractionData => isCustomerRenderableAttraction(row as AttractionData))
     .map((row) => normalizeAttractionRow(row, region))
     .filter((row): row is AttractionRow => row != null);
   if (normalizedAttractions.length === 0) return null;

@@ -14,6 +14,8 @@ import { describe, it, expect } from 'vitest';
 import {
   type AttractionData,
   buildAttractionIndex,
+  getCustomerAttractionRenderBlockers,
+  isCustomerRenderableAttraction,
   matchAttraction,
   matchAttractionIndexed,
   matchAttractions,
@@ -206,6 +208,86 @@ describe('buildAttractionIndex / matchAttractionIndexed', () => {
     const names = idx.filtered.map(a => a.name);
     expect(names).toContain('호이안 바구니배');
     expect(names).toContain('나트랑 진흙온천');
+  });
+});
+
+describe('customer-facing attraction gate', () => {
+  const pollutedCustomerAttractions: AttractionData[] = [
+    attr({
+      name: '교토 청수사',
+      region: '교토',
+      country: '일본',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '[한국어 가이드] 오사카 출발 교토&나라 체험 투어',
+      region: '교토',
+      country: '일본',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '지오베르티 호텔',
+      region: '로마',
+      country: '이탈리아',
+      category: 'sightseeing',
+      badge_type: 'hotel',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '관리자 검수 전 관광지',
+      region: '교토',
+      country: '일본',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: false,
+    }),
+    attr({
+      name: '쇼핑',
+      region: '방콕',
+      country: '태국',
+      category: 'sightseeing',
+      badge_type: 'shopping',
+      is_active: true,
+      customer_publishable: true,
+    }),
+  ];
+
+  it('blocks product-like and non-public masters on customer-facing indexes', () => {
+    const idx = buildAttractionIndex(pollutedCustomerAttractions, '교토', { customerFacing: true });
+    expect(idx.filtered.map(a => a.name)).toEqual(['교토 청수사']);
+    expect(matchAttraction('교토 청수사 방문', pollutedCustomerAttractions, '교토', { customerFacing: true })?.name)
+      .toBe('교토 청수사');
+    expect(matchAttraction('[한국어 가이드] 오사카 출발 교토&나라 체험 투어', pollutedCustomerAttractions, '교토', { customerFacing: true }))
+      .toBeNull();
+  });
+
+  it('keeps legacy internal matching broad unless customerFacing is requested', () => {
+    const internal = buildAttractionIndex(pollutedCustomerAttractions, '교토');
+    expect(internal.filtered.map(a => a.name)).toContain('[한국어 가이드] 오사카 출발 교토&나라 체험 투어');
+  });
+
+  it('exposes the customer render predicate for route/API filters', () => {
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[0])).toBe(true);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[1])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[2])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[3])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[4])).toBe(false);
+  });
+
+  it('returns actionable blockers for DB repair reports', () => {
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[0])).toEqual([]);
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[1])).toContain('product_like_name');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[2])).toContain('non_customer_badge_type');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[3])).toContain('not_customer_publishable');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[4])).toContain('generic_name');
   });
 });
 

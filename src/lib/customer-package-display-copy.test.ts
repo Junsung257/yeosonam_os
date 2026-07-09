@@ -116,4 +116,21 @@ describe('buildCustomerPackageDisplayCopy', () => {
     expect(copy.heroHeadline).not.toContain('온천');
     expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '5성호텔', '온천']));
   });
+
+  it('uses no-option evidence from exclusions and optional-tour fields across customer surfaces', () => {
+    const copy = buildCustomerPackageDisplayCopy({
+      title: 'LJ 연길 5성 온천 4박5일',
+      destination: '연길',
+      duration: 5,
+      nights: 4,
+      product_highlights: ['연길·백두산 핵심 관광'],
+      inclusions: ['숙박료', '온천욕'],
+      excludes: ['선택관광: 노옵션'],
+      optional_tours: [{ name: '노옵션' }],
+    });
+
+    expect(copy.heroHeadline).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(copy.heroHeadline).not.toMatch(/LJ|온천|5성/);
+    expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '온천']));
+  });
 });

@@ -10,6 +10,8 @@ import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlo
 import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
+import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
+import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -201,6 +203,24 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
+  if (summary.generated_canary_quality?.status === 'block') {
+    issues.push({
+      code: 'generated_canary_quality_failed',
+      severity: 'high',
+      title: 'Generated blog canary quality failed',
+      detail: `${summary.generated_canary_quality.fail_count}/${summary.generated_canary_quality.checked_count} generated sample(s) failed engine/customer/render checks.`,
+      recommendation: summary.generated_canary_quality.next_action ?? 'Repair generated canary failures before expanding automatic publishing.',
+    });
+  } else if (summary.generated_canary_quality?.status === 'warn') {
+    issues.push({
+      code: 'generated_canary_quality_incomplete',
+      severity: 'warning',
+      title: 'Generated blog canary proof is incomplete',
+      detail: summary.generated_canary_quality.next_action ?? 'Generated canary proof needs more body samples.',
+      recommendation: 'Publish or dry-run mixed info/product samples before calling the full blog engine 100점.',
+    });
+  }
+
   const hasCritical = issues.some((issue) => issue.severity === 'critical');
   const hasHigh = issues.some((issue) => issue.severity === 'high');
   const hasWarning = issues.some((issue) => issue.severity === 'warning');
@@ -242,6 +262,7 @@ async function runDailySummary(request: NextRequest) {
   );
   const policy = policyRow?.[0];
   const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
+  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
 
   // Report the latest closed KST publishing day. If the route is delayed past
   // midnight or called manually before 22:12 KST, it must not evaluate the new
@@ -263,7 +284,7 @@ async function runDailySummary(request: NextRequest) {
     { data: [], count: 0 },
   ] as any;
   const summaryResults = await withTimeout(Promise.all([
-    supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
+    supabaseAdmin.from('content_creatives').select('id, slug, seo_title, content_type, product_id, destination, blog_html, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
     supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, destination, angle_type, topic, source, priority, primary_keyword, category, attempts, last_error, created_at, updated_at, target_publish_at, meta', { count: 'exact' })
@@ -407,6 +428,27 @@ async function runDailySummary(request: NextRequest) {
     recentPublished: recentPublishedRes.data || [],
     requested: 3,
   });
+  const productCanaryIds = Array.from(new Set(
+    (queueRes.data || [])
+      .filter((row: any) => (row.status === 'queued' || row.status === 'generating') && row.product_id)
+      .map((row: any) => String(row.product_id)),
+  )).slice(0, 12);
+  const productCanaryProducts = productCanaryIds.length > 0
+    ? await withTimeout(
+      supabaseAdmin.from('travel_packages').select('*').in('id', productCanaryIds),
+      8_000,
+      { data: [], count: 0 } as any,
+    )
+    : { data: [] };
+  const productGeneratedCanaryRows = buildProductGeneratedCanaryRows({
+    queueRows: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
+    products: productCanaryProducts.data || [],
+    limit: Math.min(3, Math.max(2, generatedCanaryRequested - 2)),
+  });
+  const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
+    posts: [...(published as any[]), ...productGeneratedCanaryRows],
+    requested: generatedCanaryRequested,
+  });
 
   // destination별 발행 분포
   const destDist: Record<string, number> = {};
@@ -457,6 +499,7 @@ async function runDailySummary(request: NextRequest) {
     publishability,
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
+    generated_canary_quality: generatedCanaryQuality,
     rank_alerts_open: alertRes.count || 0,
     indexing_success_rate: +indexRate.toFixed(1),
     search_standard: {

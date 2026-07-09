@@ -27,7 +27,8 @@ import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
-import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -357,7 +358,8 @@ const PACKAGE_LIST_FIELDS_LITE = `
   land_operator, commission_rate, product_tags, product_highlights, product_summary,
   itinerary,
   internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
-  audit_status, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
+  audit_status, audit_report, updated_at, optional_tours, itinerary_data,
+  products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
@@ -388,8 +390,10 @@ export async function GET(request: NextRequest) {
       // 1. mv_destination_aggregates → RPC 우선 (사전 집계, O(distinct destinations))
       //    마이그레이션: supabase/migrations/20260513000000_destination_aggregate_mv.sql
       //    nightly cron (KST 09:10) 으로 갱신. 즉시성 필요 시 SELECT public.refresh_mv_destination_aggregates();
-      const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('get_destinations_aggregate');
-      if (!rpcErr && Array.isArray(rpcData)) {
+      const { data: rpcData, error: rpcErr } = isAdmin
+        ? await supabaseAdmin.rpc('get_destinations_aggregate')
+        : { data: null, error: null };
+      if (isAdmin && !rpcErr && Array.isArray(rpcData)) {
         return successResponse({ destinations: rpcData });
       }
 
@@ -398,11 +402,11 @@ export async function GET(request: NextRequest) {
       logWarning('[api/packages] GET aggregate=destination RPC failed, using fallback', rpcErr);
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
-        .select('destination, price, price_tiers, price_dates, country')
-        .in('status', ['active', 'approved']);
+        .select('destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
       const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
-      (allPkgs ?? []).forEach((p: any) => {
+      (allPkgs ?? []).filter((p: any) => isAdmin || isCustomerPubliclyOpenable(p)).forEach((p: any) => {
         const dest = p.destination;
         if (!dest) return;
         if (!destMap[dest]) destMap[dest] = { count: 0, minPrice: Infinity, country: p.country || '' };
@@ -438,6 +442,9 @@ export async function GET(request: NextRequest) {
         .eq(col, id)
         .single();
       if (pkgErr || !pkg) return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+      if (!isAdmin && !isCustomerPubliclyOpenable(pkg)) {
+        return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+      }
 
       let lp_hero_image_url: string | null = null;
       if (supabaseAdmin) {
@@ -497,7 +504,7 @@ export async function GET(request: NextRequest) {
     if (status && status !== 'all') {
       // 관리자 탭 상태(semantic) 호환
       if (status === 'selling') {
-        query = query.in('status', ['approved', 'active']);
+        query = query.in('status', [...CUSTOMER_VISIBLE_STATUSES]);
       } else if (status === 'pending') {
         query = query.in('status', ['pending', 'pending_review', 'draft']);
       } else if (status === 'archived') {
@@ -523,7 +530,10 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const enrichedData = (data ?? []).map((row: any) => {
+    const visibleRows = isAdmin
+      ? (data ?? [])
+      : (data ?? []).filter((row: any) => isCustomerPubliclyOpenable(row));
+    const enrichedData = visibleRows.map((row: any) => {
       const safeRow = isAdmin
         ? stripSupplierRemarkFields(row)
         : stripPublicPackageFields(row);
@@ -539,7 +549,7 @@ export async function GET(request: NextRequest) {
     // Edge CDN cache 5분 + SWR 10분 (이전: 1분/2분).
     //   상품 목록은 매분 바뀌지 않으므로 적극 캐시. 등록/승인 시 revalidatePath('/packages') 로 무효화.
     return listResponse(enrichedData, {
-      total: count ?? 0,
+      total: isAdmin ? (count ?? 0) : enrichedData.length,
       page,
       limit,
       cacheSeconds: 300,

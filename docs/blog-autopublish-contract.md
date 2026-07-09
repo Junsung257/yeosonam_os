@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-04
+Last updated: 2026-07-08
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -25,6 +25,8 @@ Local code references:
 - Content brief gate: `src/lib/blog-content-brief.ts`
 - SERP/free intent analyzer: `src/lib/serp-analyzer.ts`
 - Shared publish evaluator: `src/lib/blog-publish-quality.ts`
+- Customer-facing quality evaluator: `src/lib/blog-customer-quality.ts`
+- Final customer-surface repair: `src/lib/blog-final-customer-surface.ts`
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`
@@ -33,6 +35,9 @@ Local code references:
 - Manual indexing worker runner: `scripts/run-blog-indexing-worker.ts`
 - Publish preflight evaluator: `src/lib/blog-publish-preflight.ts`
 - Canary candidate preflight evaluator: `src/lib/blog-canary-preflight.ts`
+- Generated canary quality evaluator: `src/lib/blog-canary-generated-quality.ts`
+- Fleet phrase-drift evaluator: `src/lib/blog-fleet-phrase-drift.ts`
+- Product dry-run generated canary builder: `src/lib/blog-product-generated-canary.ts`
 - Current-day publisher health evaluator: `src/lib/blog-current-day-publisher-health.ts`
 - Slug redirect map: `src/lib/blog-slug-redirects.ts`
 - Slug migration dry-run/write tool: `scripts/migrate-blog-slugs.ts`
@@ -79,10 +84,33 @@ Before the first publish gate:
 10. Run `repairBlogEditorialQuality()`.
 11. Run `repairBlogStructureQuality()`.
 12. Run `runQualityGates()`, including `topic_fit`, `editorial_quality`, `accent_density`, `table_integrity`, and `cta_destination_integrity`.
-13. Run `computeSeoScore()`.
-14. Run `computeReadability()` on the final post-gate body.
+13. Run `inspectBlogCustomerQuality()` through `evaluateBlogPublishQuality()` so customer-visible writing defects are scored with the same publish decision as render/SEO gates.
+14. Run `computeSeoScore()`.
+15. Run `computeReadability()` on the final post-gate body.
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
+
+`engine_v2` must expose category scores, not just a single average. Required categories are search/reader task completion, customer language, AI-template naturalness, evidence/faithfulness, sales-pressure control, and for product-backed posts product decision helpfulness. A post is not a true 100-point candidate unless every category passes. Weak category scores must feed `repairBlogEngineCategoryGaps()` before publish: information posts get answer-first/source support repairs, product posts get missing decision blocks from product evidence, and naturalness/customer-language/sales-pressure issues go through the editorial repair path before the next gate check. Category repair must re-evaluate and retry up to three rounds or until every category reaches 100, and write repair round evidence when it mutates the post. If `official_sources_required=true`, information posts need an external source link; SERP intent or internal notes alone are not enough.
+
+The live publish gate must use the same 100-point category definition. Do not allow near-pass exceptions for `ai_naturalness` or `sales_pressure`: if any `engine_v2.category_scores` item is below 100 after repair rounds, the candidate remains a repair/fallback candidate and must not be written as `published`.
+
+`evaluateBlogEngineV2()` itself must use the same 100-point contract as the publish gate. A score in the 80-99 range is repairable evidence, not a pass. `engine_v2` failures caused by reader-task incompleteness, customer-language defects, AI-template naturalness, sales-pressure control, or product decision helpfulness are self-heal eligible because the current category repair loop can mutate and re-evaluate them. Evidence insufficiency, product open-contract failure, topic-fit failure, and candidate pre-publish contract failure remain non-self-heal blockers.
+
+Daily quota recovery must distinguish repairable post defects from unsafe seeds. Deterministic quality failures such as `length`, `links`, `keyword_density`, `structure_integrity`, `table_integrity`, `render_integrity`, `intent_quality`, `seo_score`, and `engine_v2` are self-heal candidates after the shared repair path is deployed. They should be retried without an artificial two-hour delay and, after the normal attempt limit, routed to the editorial recovery backlog instead of hidden terminal failure. Unsafe seeds still do not self-heal: duplicate content, missing context, insufficient evidence, product open-contract failure, topic-fit failure, candidate pre-publish contract failure, and invalid linked drafts must be skipped, quarantined, or repaired at the source before requeueing.
+
+Product-open blockers must not reduce the daily publish target. If product-backed rows are blocked by `pending_review`, customer-open contract failure, stale mobile proof, or missing product evidence, the scheduler/publisher must exclude them from `publishable_candidate_count` and refill or claim information candidates instead. Commercial posts may wait for source repair; the day still needs enough safe information candidates to meet the target without inventing product facts.
+
+When the publisher has enough remaining time for deterministic information fallback but not enough for full AI/product/card generation, claimed queue rows must be ordered so fallback-eligible information posts are attempted before product, card-news, or pillar rows. The day should not miss quota merely because a slow source-specific candidate was claimed ahead of a safe information fallback candidate.
+
+Extra recovery claims must use the shared time-budget plan in `src/lib/blog-publisher-time-budget.ts`. When normal generation time remains, the publisher may claim the mixed publishable pool. When only deterministic fallback time remains, it must pull and claim fallback-eligible information candidates first. It should stop claiming only when even deterministic fallback cannot safely finish, or when the daily quota is already filled.
+
+If the publisher claims queue rows but exits for time budget before attempting all of them, every unattempted row must be released back to `queued` with an immediate `target_publish_at`. A claimed-but-unattempted row must not remain stuck in `generating`, because that silently removes publishable inventory from the next recovery run and can cause the daily target to miss again.
+
+The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. Both the live publisher and the backfill/audit tool must call the same `repairBlogFinalCustomerSurface()` implementation so a defect fixed in recent published rows cannot recur in new automatic posts. The same applies to `repairBlogEngineCategoryGaps()`: live publishing, shared publish preparation, and recent-post backfill/audit must use the category repair path so 100-point category weaknesses are fixed consistently before final evaluation. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.
+
+Public customer-quality audit must evaluate the customer article body, not table-of-contents or related-post UI. Numbered itinerary headings such as `1일 차`, `2일 차`, and `3일 차` are distinct headings and must not be normalized into one duplicate signature. True repeated headings remain a major issue; slightly high heading counts are a warning unless they are clearly excessive or duplicate.
+
+The daily publisher schedule must include a final same-day catch-up slot before the daily summary close window. With the current 22:45 KST summary, the required publisher slots are 12:05, 15:05, 18:05, 21:05, and 22:05 KST. The 22:05 run is a quota recovery run: it no-ops when the day has already reached target, and it must attempt safe publishable information candidates when quota remains. The external 22:07 publisher retry, pre-summary publisher catch-up, 22:27 indexing-worker backup, final 22:40 indexing drain, and pre-summary indexing drain must finish before the daily summary closes, so late recovery posts and indexing outbox evidence are counted in the same operating day.
 
 ## Publish Preflight Contract
 
@@ -116,12 +144,19 @@ Before widening automatic publishing after engine changes, `diagnose:blog-autopu
 - Queue/admin operational health must use the same candidate pre-publish contract. A blocked queued row must be counted as `candidate_pre_publish_contract` / `quarantine_candidate_contract`, not as `publish_ready` or merely overdue inventory. Broad `pillar` rows are separate planning inventory and must be counted as `pillar_deferred`, not as candidate-contract failures.
 - Editorial cliche blockers are `총정리`, `완벽 가이드`, `완벽 정리`, and similar title templates. If older mojibake text appears in historical evidence, interpret it as one of these Korean cliche blockers and do not use it as a literal prompt phrase.
 - Candidate pre-publish contract failures are unsafe seeds, not manual rewrite backlog. Cleanup and publisher preflight should move them to `skipped` with durable `candidate_pre_publish_contract` metadata so they stop inflating failed/manual-review queue counts.
+- Each selected canary must expose `quality_contract='customer_surface_100'` and writer-specific expectations. `info_writer` must prove answer-first Korean intent, official source support when changeable, valid table/checklist rendering, bottom-only soft CTA, and no AI-cliche opening. `product_consultant_writer` must prove product DB-only claims, price/departure/duration opening, included/excluded blocks, fit/not-fit blocks, risk notes, consult questions, no hard booking pressure, and clean rendered tables.
+- Candidate canary is not enough after writer or repair changes. At least one generated canary sample must also pass `evaluateBlogGeneratedQualityCanary()`, which combines `evaluateBlogEngineV2()`, `inspectBlogCustomerQuality()`, and `inspectRenderedBlogIntegrity()`. A generated sample is pass only when all three are clean and the combined score is exactly 100.
+- Generated canary proof must cover both writer paths. If recent published rows do not include a product-backed post, diagnostics and admin health must build a non-publishing dry-run sample from `blog_topic_queue.product_id` + the registered `travel_packages` row and run the same engine/customer/render checks. This prevents the system from claiming overall blog quality when only information posts have been proven.
+- Generated canary volume should track the daily target, capped at five samples per run. For the current 4/day policy, diagnostics and admin health must request four generated samples rather than stopping at the old three-sample minimum.
+- Product writer templates use `product-template-v4`. Customer-facing copy must be natural Korean, not prompt residue or encoded text. The product dry-run canary is expected to include price/from-city/duration opening, included/excluded, fit/not-fit, price-change risk, consult questions, official links, and bottom consultation links without inventing facts outside the product DB.
+- Generated canary quality must include fleet phrase-drift checks across the selected recent/dry-run samples. Individual posts can pass engine/customer/render checks and still warn or block if the fleet repeats the same opening signature, H2 order, CTA sentence, or generic "first check budget/movement/local condition" formula. Repeated generic opening formulas are a block because they make the whole blog read like automated SEO copy.
 
 ## Blocking Rules
 
 The post must not be published when any of these are true:
 
 - The quality gate fails after repair rounds.
+- `customer_quality` fails because the post still has AI-like generic openings, weak answer-first paragraphs, duplicated product price suffixes such as `원부터부터`, repeated consultation placeholders, placeholder destination copy, unsupported internal data claims, early hard CTA in information posts, or table render risk.
 - `generation_meta.content_brief` is missing, failed, or contradicts the raw topic/search intent.
 - SERP/free-intent evidence is presented as ranking proof when it came from autocomplete fallback.
 - `topic_fit` fails because the topic is a machine slug, placeholder, weak travel intent, or bad destination/intent combination.
@@ -141,6 +176,30 @@ The post must not be published when any of these are true:
 - Public article links contain localhost, 127.0.0.1, 0.0.0.0, or any non-public HTTP origin. Product CTA links must use the blog canonical public origin.
 
 SEO score alone is not a publish success signal. A post is complete only when topic fit, editorial quality, render integrity, image quality, SEO, readability, indexing enqueue, and later visibility observation all have durable evidence.
+
+## Customer Writing Contract
+
+Automatic publishing must optimize for a reader who is deciding what to do next, not for a template that only looks SEO-complete.
+
+Required writer split:
+
+- `info_writer`: answer the reader's search intent first. The first 120-200 characters must contain a concrete answer, question, comparison, price/time/weather/document trigger, or checklist direction. Product or consultation CTA appears only near the bottom and must be soft.
+- `product_consultant_writer`: help the customer make a pre-inquiry decision. The post must show price/from-city/duration, included/excluded items, fit/not-fit, risk notes, price-change conditions, and questions to ask before consultation.
+- Public-render table contract: information posts whose public title/body implies cost, budget, weather, itinerary, checklist, visa, currency, or expense must contain at least one renderable Markdown table with a separator row and three or more body rows before publish. Pseudo-table prose such as `식사 종류 / 비용 / 특징` is not enough because the public renderer will expose it as plain text and fail the customer scan task.
+
+Forbidden customer-visible patterns:
+
+- Generic openings such as "답부터 말하면, 20XX년 X월 기준..." or "먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다."
+- Product copy that says only "상담에서 최종 확인" repeatedly instead of giving a useful condition to check.
+- Duplicate price suffixes such as `1,369,000원부터부터`.
+- Broken Korean/encoding residue such as mojibake characters (`�`, `媛`, `諛`, `留`) in customer-visible body must fail customer quality. A post that customers cannot read is never a near-pass, even when SEO, headings, and links look complete.
+- Weather or packing guides that open with cost/reservation copy instead of temperature, rain, clothing, and packing decisions.
+- Product posts that invent hotel names, fixed benefits, scarcity, or confirmed schedules not present in product evidence.
+- Repeated answer-first hooks, duplicated CTA/FAQ blocks, duplicate hashtags, generic customer labels such as `여행 정보를 볼 때` when a destination is known, and placeholder surfaces such as `현지 관련 상품` or `상품 가격 변동_PKG`.
+
+Backfill and live publishing must use the same customer contract. `scripts/backfill-blog-quality.ts` should repair customer-visible copy and then run the full publish evaluator; a dry run with `qualityGateFailed=0`, `publishBlocked=0`, and `minorOnlyIssues=0` is the target for "100점" recent-post evidence.
+
+For recent-post stabilization, the stronger target is `changed=0`, `qualityGateFailed=0`, `publishBlocked=0`, indexing worker success for every changed row in write mode, and diagnostics that still report publish preflight pass, publishable candidate inventory, and indexing outbox coverage.
 
 ## Indexing Contract
 
@@ -216,6 +275,7 @@ Run:
 npm run audit:blog-quality -- --limit=50
 npm run audit:blog-search-daily:strict
 npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --strict
+npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --strict
 npm run audit:blog-images -- --base=https://www.yeosonam.com --json
 npm run audit:blog-seo -- --base=https://www.yeosonam.com --json
 npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
@@ -225,6 +285,7 @@ npm run diagnose:blog-autopublish -- --json
 Failure policy:
 
 - Any non-slug quality failure blocks the “healthy” status.
+- Any public customer-quality failure blocks healthy status even when DB quality, render integrity, SEO, and public URL checks pass. This audit catches reader-visible defects such as broken table surfaces, generated instruction residue, duplicate headings/sections, early hard CTA in information posts, unsupported internal-data claims, and AI-cliche tone.
 - Any recent published post missing a durable indexing outbox job blocks healthy status as `indexing_outbox_missing`.
 - Any public blog section with a missing/mismatched canonical URL, duplicate brand title, noindex, DB-unavailable fallback, or missing blog collection sitemap entry blocks healthy status.
 - Indexing provider success below 80% creates an admin alert.

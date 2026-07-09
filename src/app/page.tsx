@@ -16,6 +16,8 @@ import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 import { getDestinationUrl } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -65,6 +67,12 @@ interface AggPkgRow {
   price_tiers: Array<{ adult_price?: number }> | null;
   price_dates: Array<{ date?: string; price?: number }> | null;
   country: string | null;
+  status?: string | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
 }
 interface RankingPkg extends AggPkgRow {
   id: string;
@@ -157,8 +165,8 @@ export default async function HomePage() {
   const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
     runOptionalSupabaseQuery(
       sb.from('travel_packages')
-        .select('destination, price, price_tiers, price_dates, country')
-        .in('status', ['active', 'approved'])
+        .select('destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .order('updated_at', { ascending: false })
         .limit(200),
       emptyResult,
@@ -174,8 +182,8 @@ export default async function HomePage() {
     ),
     runOptionalSupabaseQuery(
       sb.from('travel_packages')
-        .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
-        .in('status', ['active', 'approved'])
+        .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .order('created_at', { ascending: false })
         .limit(30),
       emptyResult,
@@ -201,9 +209,9 @@ export default async function HomePage() {
     ),
   ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
-  const allPkgs = (pkgResult.data ?? []) as AggPkgRow[];
+  const allPkgs = ((pkgResult.data ?? []) as AggPkgRow[]).filter(isCustomerPubliclyOpenable);
   const attractions = (attrResult.data ?? []) as AttractionRow[];
-  const rankingPkgs = (rankingResult.data ?? []) as RankingPkg[];
+  const rankingPkgs = ((rankingResult.data ?? []) as RankingPkg[]).filter(isCustomerPubliclyOpenable);
 
   /** 홈 검색 시트 하단 — 마감 임박·특가 상품 최대 3개(랭킹 풀에서 추림) */
   const cutoffTeaser = new Date();

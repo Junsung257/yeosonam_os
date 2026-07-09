@@ -66,6 +66,17 @@ vi.mock('@/lib/map-travel-package-to-lp', () => ({
   }),
 }));
 
+vi.mock('@/lib/upload-verify', () => ({
+  evaluateVerifyChecks: vi.fn((pkg: Record<string, unknown>) => ({
+    status: String(pkg.title ?? '').startsWith('Stale') ? 'blocked' : 'clean',
+    checks: [],
+    fixable: [],
+    passCount: 0,
+    warnCount: 0,
+    failCount: String(pkg.title ?? '').startsWith('Stale') ? 1 : 0,
+  })),
+}));
+
 import { fetchLpPackageUncached } from './load-lp-package';
 
 describe('fetchLpPackageUncached', () => {
@@ -75,6 +86,13 @@ describe('fetchLpPackageUncached', () => {
       title: 'Visible package',
       status: 'approved',
       audit_status: 'warnings',
+      audit_report: {
+        customer_open_contract: {
+          ok: true,
+          status: 'pass',
+          mobile_browser_proof: { ok: true },
+        },
+      },
       price: 100000,
     };
     mocks.packageError = null;
@@ -125,6 +143,13 @@ describe('fetchLpPackageUncached', () => {
       title: 'Stale active package',
       status: 'active',
       audit_status: 'clean',
+      audit_report: {
+        customer_open_contract: {
+          ok: true,
+          status: 'pass',
+          mobile_browser_proof: { ok: true },
+        },
+      },
       duration: 5,
       raw_text: `
 spot
@@ -154,6 +179,13 @@ premium villa golf package 3n5d
       title: 'Stale proof package',
       status: 'active',
       audit_status: 'clean',
+      audit_report: {
+        customer_open_contract: {
+          ok: true,
+          status: 'pass',
+          mobile_browser_proof: { ok: true },
+        },
+      },
       duration: 5,
       raw_text: `
 spot
