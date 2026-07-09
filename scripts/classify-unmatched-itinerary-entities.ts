@@ -119,6 +119,9 @@ const MEAL_TEXT_RE = /(?:^석\s*[:：]|^중\s*[:：]|^조\s*[:：]|반찬|일정
 const CUSTOMER_CONDITION_NOTICE_RE = /(?:\uC5EC\uAD8C\s*\uC720\uD6A8\uAE30\uAC04|\uC131\uC778\s*\d+\s*\uBA85\s*\uC774\uC0C1|\uC778\uC194\uC790\s*\uBBF8\uB3D9\uD589|\uD56D\uACF5\uB8CC\s*(?:\uBC0F|and)?\s*\uD14D\uC2A4|\uC720\uB958\uD560\uC99D\uB8CC|\uC5EC\uD589\uC790\uBCF4\uD5D8|\uD55C\uAD6D\uC5B4\s*\uAC00\uC774\uB4DC|\uC785\uC7A5\uB8CC|\uAE30\uC0AC\s*\/?\s*\uAC00\uC774\uB4DC\s*\uACBD\uBE44)/i;
 const CUSTOMER_ATTRACTION_OVERRIDE_RE = /(?:\uACE0\uC758\uB839|\uB300\uC548\uD0D1|\uADF8\uB79C\uB4DC\s*\uC6D4\uB4DC|\uADF8\uB79C\uB4DC\uC6D4\uB4DC)/i;
 const CUSTOMER_TOUR_OVERRIDE_RE = /(?:\uC2DC\uD2F0\s*\uD22C\uC5B4|\uC2DC\uD2F0\uD22C\uC5B4|\uB098\uC774\uD2B8\s*\uD22C\uC5B4|\uC57C\uAC04\s*\uC2DC\uD2F0|\uD2B8\uB7A8.*\uC720\uB8CC|\uBCC4\uB3C4\s*\uBB38\uC758\s*\/?\s*\uC720\uB8CC)/i;
+const CUSTOMER_ATTRACTION_CANDIDATE_RE = /(?:\uBE48\uD384\s*\uC0AC\uD30C\uB9AC|\uBE48\uD384\uC0AC\uD30C\uB9AC)/i;
+const NO_OPTION_EVIDENCE_RE = /(?:\uB178\s*\uC635\uC158(?:\uC785\uB2C8\uB2E4)?|\uC120\uD0DD\s*\uAD00\uAD11\s*[:\uFF1A]?\s*\uB178\s*\uC635\uC158)/i;
+const INCLUDED_SERVICE_NOTICE_RE = /(?:(?:\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0).*(?:\uCCB4\uD5D8|\uD3EC\uD568|\uD301\s*\uBCC4\uB3C4|\uB9E4\uB108\s*\uD301\s*\uBCC4\uB3C4|\$\s*\d+)|(?:\uC695\uC7A5|\uB77D\uCEE4).*\uC0AC\uC6A9\s*\uBD88\uAC00|\uBBF8\uB9AC\s*\uD658\uBCF5|\uB178\s*\uD301\s*\uB178\s*\uC635\uC158\s*PKG)/i;
 
 function cleanText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -136,6 +139,8 @@ function isSafeAutoStructuredEntity(category: EntityCategory, activity: string):
   if (category === 'notice') {
     return (LOW_RISK_SCHEDULE_NOTICE_RE.test(activity) && !HIGH_RISK_NOTICE_RE.test(activity)) ||
       LOW_RISK_PREP_RE.test(activity) ||
+      NO_OPTION_EVIDENCE_RE.test(activity) ||
+      (INCLUDED_SERVICE_NOTICE_RE.test(activity) && !/\uC120\s*\uD3EC\uD568|\uAC15\uB825\s*\uCD94\uCC9C\s*\uC635\uC158|\uCD94\uCC9C\s*\uC635\uC158/.test(activity)) ||
       CUSTOMER_CONDITION_NOTICE_RE.test(activity);
   }
   if (category === 'optional_tour') {
@@ -173,7 +178,12 @@ function classifyText(
   if (PRICE_NOISE_RE.test(text)) return { category: 'price_noise', confidence: 0.9 };
   if (/^(?:길이|높이|직경|총길이)\s*\d/i.test(text)) return { category: 'price_noise', confidence: 0.9 };
   if (CUSTOMER_ATTRACTION_OVERRIDE_RE.test(text)) return { category: 'attraction', confidence: 0.78 };
+  if (CUSTOMER_ATTRACTION_CANDIDATE_RE.test(text)) return { category: 'attraction', confidence: 0.78 };
   if (CUSTOMER_TOUR_OVERRIDE_RE.test(text)) return { category: 'optional_tour', confidence: 0.88 };
+  if (NO_OPTION_EVIDENCE_RE.test(text)) return { category: 'notice', confidence: 0.92 };
+  if (INCLUDED_SERVICE_NOTICE_RE.test(text) && !/\uC120\s*\uD3EC\uD568|\uAC15\uB825\s*\uCD94\uCC9C\s*\uC635\uC158|\uCD94\uCC9C\s*\uC635\uC158/.test(text)) {
+    return { category: 'notice', confidence: 0.9 };
+  }
   if (CUSTOMER_CONDITION_NOTICE_RE.test(text)) return { category: 'notice', confidence: 0.9 };
   if (SHOPPING_TEXT_RE.test(text)) return { category: 'shopping', confidence: 0.88 };
   if (GOLF_METRIC_RE.test(text)) return { category: 'optional_tour', confidence: 0.9 };
