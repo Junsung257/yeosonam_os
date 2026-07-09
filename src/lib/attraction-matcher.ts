@@ -181,6 +181,9 @@ const CUSTOMER_ATTRACTION_GENERIC_NAMES = new Set([
 const CUSTOMER_ATTRACTION_PRODUCT_NAME_RE =
   /(?:^\s*[\[【].+[\]】])|(?:특가|즉시확정|당일\s*사용|입장권|티켓|투어|패키지|패스트트랙|픽업|샌딩|단독차량|가이드|포켓와이파이|와이파이도시락|유심|데이터|공항|호텔|리조트|스파|마사지|뷔페|할인|예약|출발|항공|골프|뮤지컬|스냅|렌트|렌터카)/i;
 
+const CUSTOMER_ATTRACTION_READABLE_PRODUCT_NAME_RE =
+  /(?:QR\s*티켓|입장권|패스트\s*패스|패스트트랙|공항\s*패스트트랙|당일\s*사용|즉시\s*확정|와우\s*패스|콤보|쿠폰|예약|특가|할인|뷔페|패키지|상품|eSIM|유심)/i;
+
 function hasOwn(object: AttractionData, key: keyof AttractionData): boolean {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
@@ -203,7 +206,9 @@ export function getCustomerAttractionRenderBlockers(
 
   const name = attraction.name.replace(/\s+/g, ' ').trim();
   if (CUSTOMER_ATTRACTION_GENERIC_NAMES.has(name)) blockers.push('generic_name');
-  if (CUSTOMER_ATTRACTION_PRODUCT_NAME_RE.test(name)) blockers.push('product_like_name');
+  if (CUSTOMER_ATTRACTION_PRODUCT_NAME_RE.test(name) || CUSTOMER_ATTRACTION_READABLE_PRODUCT_NAME_RE.test(name)) {
+    blockers.push('product_like_name');
+  }
   if (name.length > 45 && /[\[\]()（）【】]|상품|일정|관광|차량|가이드|입장권|티켓|투어|호텔|리조트|패키지/.test(name)) {
     blockers.push('long_fragment_name');
   }
@@ -239,7 +244,7 @@ const GENERIC_ALIAS_TERMS = new Set([
 ]);
 
 const ALIAS_NOISE_RE =
-  /(?:\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i;
+  /(?:\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC138\uD2B8\uBA54\uB274|\uC815\uADDC|\uC99D\uD3B8|\uBD84\uC9DC|\uBC18\uC384\uC624|\uBC18\uC138\uC624|\uBBFC\uC18C\uB9E4|\uBC18\uBC14\uC9C0|\uC0E4\uC6CC\uC6A9\uD488|\uC18D\uC637|^\uC870\s*[-:]|^\uC911\s*[-:]|^\uC11D\s*[-:]|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i;
 
 export function isMatchableAttractionAlias(term: string | null | undefined, attraction: AttractionData): boolean {
   const clean = (term ?? '').replace(/\s+/g, ' ').trim();
