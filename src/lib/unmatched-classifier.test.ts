@@ -95,8 +95,8 @@ describe('classifyUnmatchedActivity', () => {
     });
     expect(classifyUnmatchedActivity('왕복케이블카')).toMatchObject({
       category: 'optional_tour',
-      terminalStatus: 'added',
-      suggestedAction: 'structure_non_master',
+      terminalStatus: 'pending',
+      suggestedAction: 'needs_review',
     });
     expect(classifyUnmatchedActivity('【추천옵션】')).toMatchObject({
       category: 'free_time',
@@ -105,8 +105,8 @@ describe('classifyUnmatchedActivity', () => {
     });
     expect(classifyUnmatchedActivity('#다색골프')).toMatchObject({
       category: 'optional_tour',
-      terminalStatus: 'added',
-      suggestedAction: 'structure_non_master',
+      terminalStatus: 'pending',
+      suggestedAction: 'needs_review',
     });
     expect(classifyUnmatchedActivity('명품샵 방문')).toMatchObject({
       category: 'shopping',
@@ -219,11 +219,11 @@ describe('classifyUnmatchedActivity', () => {
     });
   });
 
-  it('does not ignore real optional activities only because they mention inclusion', () => {
+  it('keeps inclusion-only activity claims reviewable instead of auto-closing them as optional tours', () => {
     expect(classifyUnmatchedActivity('천등 날리기 체험 포함(4인 기준)')).toMatchObject({
       category: 'optional_tour',
-      terminalStatus: 'added',
-      suggestedAction: 'structure_non_master',
+      terminalStatus: 'pending',
+      suggestedAction: 'needs_review',
     });
   });
 
@@ -316,6 +316,37 @@ describe('classifyUnmatchedActivity', () => {
       category: 'attraction',
       terminalStatus: 'pending',
       suggestedAction: 'needs_new_master',
+    });
+  });
+
+  it('does not auto-close attraction visits as optional tours without explicit paid-option evidence', () => {
+    expect(classifyUnmatchedActivity('각종 동물쇼와 새공원등 다채로운 볼거리 가득한 빈펄 사파리.')).toMatchObject({
+      category: 'attraction',
+      terminalStatus: 'pending',
+      suggestedAction: 'needs_new_master',
+    });
+    expect(classifyUnmatchedActivity('베트남의 베네치아 그랜드월드 나이트투어')).toMatchObject({
+      category: 'attraction',
+      terminalStatus: 'pending',
+      suggestedAction: 'needs_new_master',
+    });
+    expect(classifyUnmatchedActivity('협곡과 호수 원시림, 자연을 느낄수 있는 고의령 등정 (드론촬영포함)')).toMatchObject({
+      category: 'attraction',
+      terminalStatus: 'pending',
+      suggestedAction: 'needs_new_master',
+    });
+  });
+
+  it('auto-closes optional tours only when paid-option evidence is explicit', () => {
+    expect(classifyUnmatchedActivity('전신마사지 60분($50): 선포함 3만원/인')).toMatchObject({
+      category: 'optional_tour',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
+    });
+    expect(classifyUnmatchedActivity('[강력추천옵션] 춘쿤산 왕복 전동차 $25')).toMatchObject({
+      category: 'optional_tour',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
     });
   });
 });
