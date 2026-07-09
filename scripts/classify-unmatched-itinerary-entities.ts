@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '../src/lib/unmatched-suggest';
-import { isCustomerRenderableAttraction, isMatchableAttractionAlias } from '../src/lib/attraction-matcher';
+import {
+  destinationAllowsAttractionScope,
+  isCustomerRenderableAttraction,
+  isMatchableAttractionAlias,
+} from '../src/lib/attraction-matcher';
 
 loadEnv({ path: '.env.local' });
 loadEnv();
@@ -252,6 +256,21 @@ function resolution(row: UnmatchedRow, category: EntityCategory, action: Suggest
   };
 }
 
+function rowDestinationScope(row: UnmatchedRow): string | undefined {
+  return row.region || row.country || undefined;
+}
+
+function hasAttractionScope(attr: AttractionSuggestRow): boolean {
+  return Boolean(attr.region?.trim() || attr.country?.trim());
+}
+
+function isAttractionInRowScope(attr: AttractionSuggestRow, row: UnmatchedRow): boolean {
+  const destination = rowDestinationScope(row);
+  if (!destination) return true;
+  if (!hasAttractionScope(attr)) return false;
+  return destinationAllowsAttractionScope(attr, destination);
+}
+
 async function fetchUnmatchedRows(): Promise<UnmatchedRow[]> {
   const rows: UnmatchedRow[] = [];
   const pageSize = 1000;
@@ -301,10 +320,8 @@ function classifyRow(row: UnmatchedRow, attractions: AttractionSuggestRow[]): Cl
   let resolvedAttractionId: string | null = null;
 
   if (classified.category === 'attraction') {
-    const scoped = attractions.filter(attr =>
-      (!row.region || !attr.region || row.region === attr.region) &&
-      (!row.country || !attr.country || row.country === attr.country));
-    const pool = scoped.length > 0 ? scoped : attractions;
+    const scoped = attractions.filter(attr => isAttractionInRowScope(attr, row));
+    const pool = rowDestinationScope(row) ? scoped : attractions;
     const { suggestions } = suggestAttractionsForActivity(row.activity, pool, minAttractionScore, 1);
     if (suggestions.length > 0) {
       const top = suggestions[0];
