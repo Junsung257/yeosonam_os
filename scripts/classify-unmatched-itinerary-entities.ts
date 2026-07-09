@@ -386,10 +386,15 @@ function classifyRow(row: UnmatchedRow, attractions: AttractionSuggestRow[]): Cl
 async function maybeAddAlias(item: ClassifiedRow, attractions: AttractionSuggestRow[]) {
   if (!addAliases) return false;
   if (!item.resolvedAttractionId) return false;
-  const raw = cleanText(item.row.activity);
-  if (raw.length > 60) return false;
+  const suggestion = item.suggestedResolution.attraction_suggestion;
+  const matchedTerm = suggestion && typeof suggestion === 'object'
+    ? (suggestion as Record<string, unknown>).matched_term
+    : null;
+  const raw = cleanText(typeof matchedTerm === 'string' ? matchedTerm : '');
+  if (raw.length < 2 || raw.length > 40) return false;
   const attraction = attractions.find(attr => attr.id === item.resolvedAttractionId);
   if (!attraction) return false;
+  if (!isMatchableAttractionAlias(raw, attraction)) return false;
   const aliases = attraction.aliases ?? [];
   if (aliases.includes(raw) || attraction.name === raw) return false;
   const { error } = await supabase

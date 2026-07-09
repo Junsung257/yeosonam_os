@@ -102,21 +102,6 @@ async function fetchAttractions(): Promise<AttractionSuggestRow[]> {
   return rows;
 }
 
-async function addAlias(attraction: AttractionSuggestRow, alias: string) {
-  const cleanAlias = alias.replace(/\s+/g, ' ').trim();
-  if (!cleanAlias || cleanAlias.length > 80) return false;
-  const aliases = attraction.aliases ?? [];
-  if (aliases.includes(cleanAlias) || attraction.name === cleanAlias) return false;
-  const nextAliases = [...new Set([...aliases, cleanAlias])];
-  const { error } = await supabase
-    .from('attractions')
-    .update({ aliases: nextAliases })
-    .eq('id', attraction.id);
-  if (error) throw error;
-  attraction.aliases = nextAliases;
-  return true;
-}
-
 async function closeAsExistingAlias(row: ActiveAttractionRow, attraction: AttractionSuggestRow, score: number) {
   const now = new Date().toISOString();
   const { error } = await supabase
@@ -331,7 +316,7 @@ async function main() {
   const [rows, attractions] = await Promise.all([fetchActiveAttractions(), fetchAttractions()]);
   const aliasResolvedIds = new Set<string>();
   let aliasResolved = 0;
-  let aliasAdded = 0;
+  const aliasAdded = 0;
 
   for (const row of rows) {
     const scoped = attractions.filter(attr =>
@@ -345,7 +330,6 @@ async function main() {
     if (!target) continue;
     aliasResolvedIds.add(row.id);
     if (apply) {
-      if (await addAlias(target, row.activity)) aliasAdded++;
       await closeAsExistingAlias(row, target, top.score);
     }
     aliasResolved++;
