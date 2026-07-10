@@ -35,7 +35,12 @@ function isoDate(year: number, month: number, day: number): string | null {
 }
 
 function parsePrice(value: string): number | null {
-  const price = Number(value.replace(/[^\d]/g, ''));
+  const trimmed = value.trim();
+  const truncatedLastDigit = trimmed.match(/^(\d{1,3}),(\d{3}),(\d{2})(?:\s*\uC6D0)?$/);
+  const normalized = truncatedLastDigit
+    ? `${truncatedLastDigit[1]}${truncatedLastDigit[2]}${truncatedLastDigit[3]}0`
+    : trimmed.replace(/[^\d]/g, '');
+  const price = Number(normalized);
   if (!Number.isInteger(price) || price < 250_000 || price > 8_000_000) return null;
   return price;
 }
@@ -50,7 +55,7 @@ function normalizeLine(line: string): string {
 }
 
 function hasPrice(line: string): boolean {
-  return /(?:\d{1,3}(?:,\d{3})+|\d{5,8})/.test(normalizeLine(line));
+  return /(?:\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8})/.test(normalizeLine(line));
 }
 
 function hasDateHint(line: string): boolean {
@@ -108,13 +113,17 @@ function prepareLines(rawText: string): string[] {
 }
 
 function monthFromHeader(line: string): number | null {
-  const cjk = line.match(new RegExp(`^\\s*(\\d{1,2})\\s*${MONTH_CJK}`));
+  const cjk = line.match(new RegExp(`^\\s*(\\d{1,2})\\s*${MONTH_CJK}\\s*$`));
   if (cjk) return Number(cjk[1]);
-  const koPrefix = line.match(new RegExp(`^\\s*${MONTH_KO}\\s*(\\d{1,2})\\b`));
+  const koPrefix = line.match(new RegExp(`^\\s*${MONTH_KO}\\s*(\\d{1,2})\\s*$`));
   if (koPrefix) return Number(koPrefix[1]);
-  const koSuffix = line.match(new RegExp(`^\\s*(\\d{1,2})\\s*${MONTH_KO}\\b`));
+  const koSuffix = line.match(new RegExp(`^\\s*(\\d{1,2})\\s*${MONTH_KO}\\s*$`));
   if (koSuffix) return Number(koSuffix[1]);
   return null;
+}
+
+function isStandaloneKoreanMonthHeader(line: string): boolean {
+  return new RegExp(`^\\s*(?:\\d{1,2}\\s*${MONTH_KO}|${MONTH_KO}\\s*\\d{1,2})\\s*$`).test(line);
 }
 
 function expandRange(year: number, month: number, startDay: number, endMonth: number, endDay: number): string[] {
@@ -146,7 +155,8 @@ function dateObjectsFromSegment(segment: string, fallbackYear: number, fallbackM
 
   cleaned = cleaned
     .replace(/\d+\s*\uC778/g, ' ')
-    .replace(/\uC131\uC778\s*\d+/g, ' ');
+    .replace(/\uC131\uC778\s*\d+/g, ' ')
+    .replace(/\d{1,2}\s*\/\s*\d{1,2}\s*(?=[^\d]*(?:\uAE4C\uC9C0|\uBC1C\uAD8C|\uC120\uBC1C\uAD8C|\uB9C8\uAC10|\uC870\uAC74))/g, ' ');
 
   cleaned = cleaned.replace(/(\d{1,2})\s*\/\s*(\d{1,2})\s*~\s*(?:(\d{1,2})\s*\/\s*)?(\d{1,2})/g, (match, monthText, startDayText, endMonthText, endDayText) => {
     const month = Number(monthText);
@@ -187,7 +197,7 @@ function splitConcatenatedTail(line: string): {
   extraBareDay: number;
   extraMonth: number | null;
 } | null {
-  const match = line.match(/^(.*?)(\d{2,7}(?:,\d{3}){1,2})(?:\s*\uC6D0)?(?:\s*\/\s*\S+)?$/);
+  const match = line.match(/^(.*?)(\d{1,3},\d{3},\d{2}|\d{2,7}(?:,\d{3}){1,2})(?:\s*\uC6D0)?(?:\s*\/\s*\S+)?$/);
   if (!match) return null;
   let beforeTail = match[1];
   const tail = match[2];
@@ -231,7 +241,7 @@ function rowsFromSpacedMonthDayPriceLine(line: string, fallbackYear: number): Ma
       .map(dayMatch => Number(dayMatch[0]))
       .filter(day => day >= 1 && day <= 31);
     if (days.length === 0) continue;
-    const prices = [...match[3].matchAll(/\d{1,3}(?:,\d{3})+|\d{5,8}/g)]
+    const prices = [...match[3].matchAll(/\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8}/g)]
       .map(priceMatch => parsePrice(priceMatch[0]))
       .filter((price): price is number => price != null);
     if (prices.length === 0) continue;
@@ -281,7 +291,7 @@ function rowsFromLine(line: string, fallbackYear: number, currentMonth: number |
     }));
   }
 
-  const priceRe = /(\d{1,3}(?:,\d{3})+|\d{5,8})(?:\s*\uC6D0)?/g;
+  const priceRe = /(\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8})(?:\s*\uC6D0)?/g;
   let previousEnd = 0;
   for (const match of line.matchAll(priceRe)) {
     const price = parsePrice(match[1]);
@@ -312,11 +322,13 @@ export function extractPdfDatePriceRows(
   const rows: MatrixPriceRow[] = [];
   const seen = new Set<string>();
   let currentMonth: number | null = null;
+  let hasKoreanMonthSections = false;
 
   for (const line of prepareLines(rawText)) {
     const month = monthFromHeader(line);
     if (month && month >= 1 && month <= 12) {
       currentMonth = month;
+      hasKoreanMonthSections = hasKoreanMonthSections || isStandaloneKoreanMonthHeader(line);
       continue;
     }
     const extracted = rowsFromLine(line, fallbackYear, currentMonth);
@@ -326,6 +338,14 @@ export function extractPdfDatePriceRows(
       seen.add(key);
       rows.push(row);
     }
+  }
+
+  if (hasKoreanMonthSections) {
+    const latestByDate = new Map<string, MatrixPriceRow>();
+    for (const row of rows) {
+      latestByDate.set(row.date, row);
+    }
+    return [...latestByDate.values()].sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
   }
 
   return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
