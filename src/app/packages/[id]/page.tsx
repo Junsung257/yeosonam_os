@@ -511,7 +511,7 @@ export default async function PackageDetailPage({
   const attrResult = { data: relevantAttractions };
 
   const parserVersion = String((pkg as { parser_version?: string } | null)?.parser_version ?? '');
-  const writeTimeProcessed = parserVersion.includes(POSTPROCESS_VERSION);
+  const writeTimeProcessed = Boolean(publicSnapshot) || parserVersion.includes(POSTPROCESS_VERSION);
   const pkgBase = pkg
     ? ({
         ...(pkg as Record<string, unknown>),

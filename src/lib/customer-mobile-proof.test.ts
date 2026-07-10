@@ -29,6 +29,20 @@ function passingSurfaceResults() {
   ];
 }
 
+function passingProof(extra: Record<string, unknown> = {}) {
+  return {
+    status: 'pass',
+    checked_at: '2026-06-22T09:00:00.000Z',
+    package_updated_at: '2026-06-22T08:59:00.000Z',
+    source: 'hwp-mobile-browser-proof',
+    screen_hash: 'screen-hash',
+    customer_visible_hash: 'visible-hash',
+    surfaces: ['packages', 'lp'],
+    surface_results: passingSurfaceResults(),
+    ...extra,
+  };
+}
+
 describe('evaluateCustomerMobileProof', () => {
   it('blocks customer publication when actual packages mobile proof is missing', () => {
     const result = evaluateCustomerMobileProof({ auditReport: null });
@@ -218,5 +232,55 @@ describe('evaluateCustomerMobileProof', () => {
 
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('CTA checks');
+  });
+
+  it('requires expected package revision when approval checks a final revision', () => {
+    const result = evaluateCustomerMobileProof({
+      auditReport: { mobile_browser_proof: passingProof() },
+      packageUpdatedAt: '2026-06-22T08:59:00.000Z',
+      packageRevision: 8,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('package revision is missing');
+  });
+
+  it('requires expected public snapshot hash on top-level and surface proofs', () => {
+    const result = evaluateCustomerMobileProof({
+      auditReport: {
+        mobile_browser_proof: passingProof({
+          package_revision: 8,
+        }),
+      },
+      packageUpdatedAt: '2026-06-22T08:59:00.000Z',
+      packageRevision: 8,
+      publicSnapshotHash: 'snapshot-hash',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('public snapshot hash is missing');
+  });
+
+  it('passes when revision, snapshot hash, and app build id match the expected final artifact', () => {
+    const surfaceResults = passingSurfaceResults().map(surface => ({
+      ...surface,
+      public_snapshot_hash: 'snapshot-hash',
+    }));
+    const result = evaluateCustomerMobileProof({
+      auditReport: {
+        mobile_browser_proof: passingProof({
+          package_revision: 8,
+          public_snapshot_hash: 'snapshot-hash',
+          app_build_id: 'build-123',
+          surface_results: surfaceResults,
+        }),
+      },
+      packageUpdatedAt: '2026-06-22T08:59:00.000Z',
+      packageRevision: 8,
+      publicSnapshotHash: 'snapshot-hash',
+      appBuildId: 'build-123',
+    });
+
+    expect(result.ok).toBe(true);
   });
 });

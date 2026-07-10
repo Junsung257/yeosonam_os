@@ -2,7 +2,7 @@ import type { PriceListItem } from '@/lib/parser';
 import { normalizeDays } from '@/lib/attraction-matcher';
 import { getEffectivePriceDates } from '@/lib/price-dates';
 import { getKakaoChannelChatUrl } from '@/lib/kakaoChannel';
-import { renderPackage } from '@/lib/render-contract';
+import { renderPackage, type CanonicalView } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
@@ -193,11 +193,38 @@ function readProductDisplayName(pkg: Record<string, unknown>): string | undefine
   return Array.isArray(products) ? products[0]?.display_name ?? undefined : products?.display_name ?? undefined;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readCanonicalView(pkg: Record<string, unknown>): CanonicalView {
+  const snapshotView = asRecord(pkg._canonical_view);
+  if (snapshotView) return snapshotView as unknown as CanonicalView;
+  return renderPackage(pkg);
+}
+
+function readLpProjection(pkg: Record<string, unknown>): Record<string, unknown> {
+  return asRecord(pkg._lp_projection) ?? {};
+}
+
+function projectionString(projection: Record<string, unknown>, key: string): string | null {
+  const value = projection[key];
+  return typeof value === 'string' && value.trim() ? normalizeCustomerVisibleCopy(value) : null;
+}
+
+function projectionNumber(projection: Record<string, unknown>, key: string): number | null {
+  const value = Number(projection[key]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export function mapTravelPackageToLandingData(
   pkg: Record<string, unknown>,
   lpHeroImageUrl: string | null,
 ): LandingProductData {
-  const view = renderPackage(pkg);
+  const view = readCanonicalView(pkg);
+  const lpProjection = readLpProjection(pkg);
   const internalCode = readInternalCode(pkg);
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
   const displayCopy = buildCustomerPackageDisplayCopy({
@@ -227,7 +254,8 @@ export function mapTravelPackageToLandingData(
   const upcoming = sortedDates.find(row => isUpcomingKstDate(row.date, todayStr)) ?? sortedDates[0] ?? null;
 
   const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
-  const minPrice = priceNums.length > 0 ? Math.min(...priceNums) : (Number(pkg.price) || 0);
+  const minPrice = projectionNumber(lpProjection, 'price')
+    ?? (priceNums.length > 0 ? Math.min(...priceNums) : (Number(pkg.price) || 0));
   const maxPrice = priceNums.length > 0 ? Math.max(...priceNums) : null;
   const compareAtPrice = maxPrice != null && maxPrice > minPrice ? maxPrice : null;
 
@@ -286,8 +314,11 @@ export function mapTravelPackageToLandingData(
         subline: '전 일정 확인 · 항공/호텔 조건 상담 · 직판가 안내',
       },
       default: {
-        headline: displayCopy.heroHeadline,
-        subline: displayCopy.heroSubline || displayCopy.summaryLead,
+        headline: projectionString(lpProjection, 'title') ?? displayCopy.heroHeadline,
+        subline: projectionString(lpProjection, 'subtitle')
+          ?? projectionString(lpProjection, 'summary')
+          ?? displayCopy.heroSubline
+          ?? displayCopy.summaryLead,
       },
     },
     priceFrom: minPrice,

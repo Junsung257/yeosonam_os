@@ -32,6 +32,7 @@ import {
 } from '@/lib/product-registration-v3/customer-payload';
 import { calculateProductRegistrationTrustScore } from '@/lib/product-registration-trust-score';
 import { createPublicPackageSnapshotAndDecision } from '@/lib/package-publication/repository';
+import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 
 interface ApproveBody {
   action: 'approve' | 'reject';
@@ -309,10 +310,50 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
       );
     }
     const publishGate = delivery.publishGate;
+    const approvedTitle = title?.trim() || pkg.title;
+    const approvedSummary = summary === undefined
+      ? ((pkg as { product_summary?: string | null }).product_summary ?? null)
+      : (summary?.trim() ?? null);
     const nextPackageRevision = Number((pkg as { package_revision?: unknown }).package_revision ?? 1) + 1;
+    const updatedCopies: MarketingCopy[] = Array.isArray(pkg.marketing_copies)
+      ? (pkg.marketing_copies as MarketingCopy[]).map(c => ({
+          ...c,
+          selected: c.type === selectedCopyType,
+        }))
+      : [];
+    const approvedAt = new Date().toISOString();
+    const approvedBaseFields = {
+      package_revision: nextPackageRevision,
+      title:            approvedTitle,
+      product_summary:  approvedSummary,
+      ...(v3NoticeGate.payload ? {
+        notices_parsed: v3NoticeGate.payload.notices_parsed,
+        customer_notes: v3NoticeGate.payload.customer_notes,
+      } : {}),
+      marketing_copies: updatedCopies,
+      ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
+      ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
+      ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
+      ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
+      audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
+      audit_checked_at: approvedAt,
+      updated_at:       approvedAt,
+    };
+    const finalSnapshotPkg = {
+      ...(verifiedPkgForDelivery as Record<string, unknown>),
+      id,
+      status: 'active',
+      ...approvedBaseFields,
+      audit_report: sourceAuditReport,
+    };
+    const finalSnapshotPreview = buildPublicPackageSnapshot(finalSnapshotPkg);
+    const finalAppBuildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null;
     const mobileProof = evaluateCustomerMobileProof({
       auditReport: (pkg as { audit_report?: unknown }).audit_report ?? sourceAuditReport,
       packageUpdatedAt: (pkg as { updated_at?: string | null }).updated_at ?? null,
+      packageRevision: nextPackageRevision,
+      publicSnapshotHash: finalSnapshotPreview.snapshotHash,
+      appBuildId: finalAppBuildId,
     });
     if (!mobileProof.ok) {
       await supabaseAdmin
@@ -429,76 +470,69 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
         { status: 409 },
       );
     }
-    // Update the selected flag on marketing copy variants.
-    const updatedCopies: MarketingCopy[] = Array.isArray(pkg.marketing_copies)
-      ? (pkg.marketing_copies as MarketingCopy[]).map(c => ({
-          ...c,
-          selected: c.type === selectedCopyType,
-        }))
-      : [];
+    const approvedAuditReport = {
+      ...sourceAuditReport,
+      mobile_browser_proof: mobileProof.proof,
+      approved_from_mobile_browser_proof_at: mobileProof.proof?.checked_at ?? null,
+      quality_scorecard: qualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    };
+    const approvedPackageFields = {
+      ...approvedBaseFields,
+      audit_report: approvedAuditReport,
+    };
 
-    const { error: pkgError } = await supabaseAdmin
-      .from('travel_packages')
-      .update({
-        status:           'active',
-        package_revision: nextPackageRevision,
-        title:            title?.trim() || pkg.title,
-        product_summary:  summary?.trim() ?? null,
-        ...(v3NoticeGate.payload ? {
-          notices_parsed: v3NoticeGate.payload.notices_parsed,
-          customer_notes: v3NoticeGate.payload.customer_notes,
-        } : {}),
-        marketing_copies: updatedCopies,
-        ...(sourceFieldRepair.status === 'repaired' && sourceFieldRepair.airline ? { airline: sourceFieldRepair.airline } : {}),
-        ...(sourcePriceDateRepair.status === 'repaired' ? { price_dates: sourcePriceDateRepair.priceDates } : {}),
-        ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.inclusions ? { inclusions: sourceTermsRepair.inclusions } : {}),
-        ...(sourceTermsRepair.status === 'repaired' && sourceTermsRepair.excludes ? { excludes: sourceTermsRepair.excludes } : {}),
-        audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
-        audit_report: {
-          ...sourceAuditReport,
-          mobile_browser_proof: mobileProof.proof,
-          approved_from_mobile_browser_proof_at: mobileProof.proof?.checked_at ?? null,
-          quality_scorecard: qualityScorecard,
-          customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    const snapshotPkg = {
+      ...finalSnapshotPkg,
+      audit_report: approvedAuditReport,
+    };
+    let publicSnapshot: Awaited<ReturnType<typeof createPublicPackageSnapshotAndDecision>>;
+    try {
+      publicSnapshot = await createPublicPackageSnapshotAndDecision(supabaseAdmin, snapshotPkg, {
+        legacyPublishGate: publishGate,
+        mobileProof,
+        customerOpenContractOk: customerOpenContract.ok,
+        customerOpenContractBlockers: customerOpenContract.blockers,
+      }, {
+        packagePatch: {
+          ...approvedPackageFields,
+          status: 'active',
         },
-        audit_checked_at: new Date().toISOString(),
-        updated_at:       new Date().toISOString(),
-      })
-      .eq('id', id);
+      });
+    } catch (error) {
+      const message = sanitizeDbError(error);
+      await supabaseAdmin
+        .from('travel_packages')
+        .update({
+          status: 'draft',
+          publication_state: 'blocked',
+          audit_status: 'blocked',
+          audit_report: {
+            ...sourceAuditReport,
+            mobile_browser_proof: mobileProof.proof,
+            quality_scorecard: qualityScorecard,
+            customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+            public_snapshot_error: {
+              code: 'PUBLIC_SNAPSHOT_SAVE_FAILED',
+              message,
+              failed_at: new Date().toISOString(),
+            },
+          },
+          audit_checked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
 
-    if (pkgError) {
       return NextResponse.json(
-        { error: `travel_packages ?낅뜲?댄듃 ?ㅽ뙣: ${pkgError.message}` },
+        {
+          error: 'Customer publishing failed while saving the final public snapshot. The package was returned to blocked draft state.',
+          code: 'PUBLIC_SNAPSHOT_SAVE_FAILED',
+          publication_state: 'blocked',
+          detail: message,
+        },
         { status: 500 },
       );
     }
-
-    const snapshotPkg = {
-      ...(verifiedPkgForDelivery as Record<string, unknown>),
-      id,
-      package_revision: nextPackageRevision,
-      status: 'active',
-      title: title?.trim() || pkg.title,
-      product_summary: summary?.trim() ?? null,
-      ...(v3NoticeGate.payload ? {
-        notices_parsed: v3NoticeGate.payload.notices_parsed,
-        customer_notes: v3NoticeGate.payload.customer_notes,
-      } : {}),
-      audit_status: sourceVerify.status === 'clean' ? 'clean' : sourceVerify.status,
-      audit_report: {
-        ...sourceAuditReport,
-        mobile_browser_proof: mobileProof.proof,
-        approved_from_mobile_browser_proof_at: mobileProof.proof?.checked_at ?? null,
-        quality_scorecard: qualityScorecard,
-        customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
-      },
-    };
-    const publicSnapshot = await createPublicPackageSnapshotAndDecision(supabaseAdmin, snapshotPkg, {
-      legacyPublishGate: publishGate,
-      mobileProof,
-      customerOpenContractOk: customerOpenContract.ok,
-      customerOpenContractBlockers: customerOpenContract.blockers,
-    });
     if (!publicSnapshot.publishable) {
       return NextResponse.json(
         {
@@ -513,6 +547,7 @@ async function patchHandler(request: NextRequest, props: { params: Promise<{ id:
     }
 
     // products ?뚯씠釉붾룄 active濡??숆린??(FK ?곌껐??寃쎌슦)
+    // Final customer-open travel_packages state is written inside publish_package_snapshot_atomic().
     if (pkg.internal_code) {
       const { error: productError } = await supabaseAdmin
         .from('products')

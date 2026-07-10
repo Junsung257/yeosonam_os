@@ -7,6 +7,11 @@ const HANGUL_WORD = '[가-힣A-Za-z0-9·.,&()/\\-\\s]';
 
 const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   {
+    code: 'customer_forbidden_internal_terms',
+    pattern: /(?:\uB79C\uB4DC\uC0AC|\uAC70\uB798\uCC98|\uACF5\uAE09\uC0AC|\uC6D0\uAC00|\uACF5\uAE09\uAC00|\uB3C4\uB9E4\uAC00|\uB9C8\uC9C4|\uC218\uC775|\uCEE4\uBBF8\uC158|\uC815\uC0B0|\uAD00\uB9AC\uC790\s*(?:\uB178\uD2B8|\uBA54\uBAA8)|\uB0B4\uBD80\s*(?:\uBA54\uBAA8|\uC6A9|\uD655\uC778)|\uBE44\uACF5\uAC1C|\uC601\uC5C5\uC6A9|\uD310\uB9E4\uC790\s*\uD655\uC778|\uC785\uAE08\s*\uD655\uC778|\uB300\uAE30\s*\uC785\uAE08|\bNET\b|\bB2B\b|\bcommission\b|\bcomm\b|\bmargin\b|\boperator\b|\bsupplier\b|land\s*operator|land\s*agency|\bOP\b|\bPAX\b|(?:\uCEF4|\uCEE4\uBBF8\uC158|comm(?:ission)?)\s*\d{1,2}\s*%)/iu,
+    label: '?쒕뱶???댁쁺?먯슜 ?대? ?⑹뼱媛 怨좉컼 臾멸뎄??蹂댁엯?덈떎.',
+  },
+  {
     code: 'html_entity_visible',
     pattern: /&#(?:x[0-9a-f]+|\d+);?|&(amp|lt|gt|quot|apos);/i,
     label: 'HTML 문자 코드가 고객 문구에 그대로 보입니다.',
@@ -23,7 +28,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'customer_forbidden_internal_terms',
-    pattern: /\b(?:NET|OP|PAX)\b|랜드사\s*공급가|거래처\s*단가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민\s*담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/i,
+    pattern: /\b(?:NET|OP|PAX|B2B|commission)\b|랜드사|거래처|랜드\s*오퍼레이터|커미션|랜드사\s*공급가|거래처\s*단가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민\s*담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|마진|커미션).{0,12}정산|정산\s*(?:메모|요청|확인)/i,
     label: '랜드사/운영자용 내부 용어가 고객 문구에 보입니다.',
   },
   {

@@ -77,7 +77,7 @@ async function loadRows(limit: number, statusList: string[]): Promise<MobileProo
   const scanLimit = Math.max(500, limit * 10, limit);
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
-    .select('id,internal_code,title,status,updated_at,audit_report')
+    .select('*')
     .in('status', statusList)
     .order('updated_at', { ascending: false })
     .limit(scanLimit);

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeMobileHtml,
   buildAttractionMatchLowMessage,
+  buildMobileBrowserProofPayload,
   buildMobileQaImprovementEvent,
   type ExpectedRender,
 } from './auto-mobile-qa';
@@ -22,12 +23,54 @@ const expectedRender: ExpectedRender = {
   internalCode: 'PUS-ETC-FSZ-03-0016',
   rawText: null,
   updatedAt: '2026-06-22T00:00:00.000Z',
+  currentPackageRevision: 7,
+  proofPackageRevision: 8,
+  proofPublicSnapshotHash: 'snapshot-hash',
+  proofAppBuildId: 'build-id',
   lastDayNumber: 3,
   lastDayArrivalCity: '부산',
   homeCity: '부산',
 };
 
 describe('auto mobile QA learning ledger bridge', () => {
+  it('stores proof revision and snapshot hash on both the proof and each surface result', () => {
+    const proof = buildMobileBrowserProofPayload({
+      status: 'pass',
+      checkedAt: '2026-07-10T00:00:00.000Z',
+      packageUpdatedAt: '2026-07-09T00:00:00.000Z',
+      packageRevision: 8,
+      publicSnapshotHash: 'snapshot-hash',
+      appBuildId: 'build-id',
+      surfaces: [{ surface: 'packages' }, { surface: 'lp' }],
+      surfaceProofResults: [
+        {
+          surface: 'packages',
+          status: 'pass',
+          page_url: 'https://example.com/packages/pkg',
+          screen_hash: 'packages-screen',
+          customer_visible_hash: 'packages-visible',
+        },
+        {
+          surface: 'lp',
+          status: 'pass',
+          page_url: 'https://example.com/lp/pkg',
+          screen_hash: 'lp-screen',
+          customer_visible_hash: 'lp-visible',
+        },
+      ],
+    });
+
+    expect(proof).toEqual(expect.objectContaining({
+      package_revision: 8,
+      public_snapshot_hash: 'snapshot-hash',
+      app_build_id: 'build-id',
+    }));
+    expect(proof.surface_results).toEqual([
+      expect.objectContaining({ surface: 'packages', public_snapshot_hash: 'snapshot-hash' }),
+      expect.objectContaining({ surface: 'lp', public_snapshot_hash: 'snapshot-hash' }),
+    ]);
+  });
+
   it('blocks an actual customer package page application error from becoming mobile proof', () => {
     const incidents = analyzeMobileHtml(
       '<html><body>Application error: a client-side exception has occurred while loading www.yeosonam.com</body></html>',
@@ -188,6 +231,10 @@ describe('auto mobile QA learning ledger bridge', () => {
         shortCode: 'TWN-001',
         internalCode: 'PUS-BA-TPE-05-0001',
         rawText: '원문 가격표와 일정표',
+        currentPackageRevision: 7,
+        proofPackageRevision: 8,
+        proofPublicSnapshotHash: 'snapshot-hash',
+        proofAppBuildId: 'build-id',
         lastDayNumber: 4,
         lastDayArrivalCity: '부산',
         homeCity: '부산',

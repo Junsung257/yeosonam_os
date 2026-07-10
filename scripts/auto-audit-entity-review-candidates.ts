@@ -112,6 +112,7 @@ const COUNTRY_SCOPE_ALIASES = (() => {
 })();
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
+const REVIEW_CATEGORIES = ['attraction', 'hotel', 'shopping', 'optional_tour', 'notice', 'unknown'];
 const candidateColumns = [
   'id',
   'candidate_key',
@@ -136,7 +137,7 @@ async function fetchRows(): Promise<ReviewCandidateRow[]> {
     .from('entity_master_candidates')
     .select(candidateColumns)
     .eq('promotion_status', 'needs_review')
-    .in('category', ['attraction', 'hotel'])
+    .in('category', REVIEW_CATEGORIES)
     .limit(limit);
   if (reviewError) throw reviewError;
 
@@ -144,7 +145,7 @@ async function fetchRows(): Promise<ReviewCandidateRow[]> {
     .from('entity_master_candidates')
     .select(candidateColumns)
     .eq('promotion_status', 'candidate')
-    .in('category', ['attraction', 'hotel'])
+    .in('category', REVIEW_CATEGORIES)
     .limit(limit);
   if (candidateError) throw candidateError;
 

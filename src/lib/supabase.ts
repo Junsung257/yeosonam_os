@@ -133,7 +133,7 @@ export async function saveTravelPackage(data: {
   duration?: number;
   price?: number;
   filename: string;
-  fileType: 'pdf' | 'image' | 'hwp';
+  fileType: 'text' | 'pdf' | 'image' | 'hwp' | 'hwpx';
   rawText: string;
   itinerary?: string[];
   inclusions?: string[];

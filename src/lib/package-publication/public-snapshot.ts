@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { renderPackage } from '@/lib/render-contract';
 import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 
 type AnyRecord = Record<string, unknown>;
@@ -125,6 +126,25 @@ function priceDisplay(pkg: AnyRecord): string | null {
   return `${price.toLocaleString('ko-KR')}원~`;
 }
 
+function representativeCustomerPrice(pkg: AnyRecord): number | null {
+  const productPrices = Array.isArray(pkg.product_prices) ? pkg.product_prices : [];
+  const sellingPrices = productPrices
+    .map(row => asNumber(asRecord(row)?.adult_selling_price))
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  if (sellingPrices.length > 0) return Math.min(...sellingPrices);
+
+  const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
+  const datePrices = priceDates
+    .map(row => {
+      const record = asRecord(row);
+      return asNumber(record?.adult_selling_price ?? record?.price ?? record?.selling_price);
+    })
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  if (datePrices.length > 0) return Math.min(...datePrices);
+
+  return asNumber(pkg.price);
+}
+
 function formatDuration(pkg: AnyRecord): string | null {
   const nights = asNumber(pkg.nights);
   const duration = asNumber(pkg.duration);
@@ -236,6 +256,10 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   optionalTourClassification: ReturnType<typeof classifyOptionalTours>;
 } {
   const publicPackage = sanitizeCustomerPackageForClient(pkg) ?? {};
+  const customerPrice = representativeCustomerPrice(publicPackage);
+  if (customerPrice !== null) {
+    publicPackage.price = customerPrice;
+  }
   const displayCopy = buildCustomerPackageDisplayCopy({
     title: asString(publicPackage.title),
     display_title: asString(publicPackage.display_title),
@@ -263,6 +287,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     optionalTourClassification.badges,
   ) || displayCopy.heroHeadline || firstNonEmpty(publicPackage.display_title, publicPackage.title, publicPackage.destination) || '여소남 패키지';
   const duration = asNumber(publicPackage.duration);
+  const canonicalView = renderPackage(publicPackage as Parameters<typeof renderPackage>[0]) as unknown as Record<string, unknown>;
   const snapshotBase: Omit<PublicPackageSnapshot, 'route_text_dump'> = {
     snapshot_version: SNAPSHOT_VERSION,
     package_id: String(pkg.id ?? publicPackage.id ?? ''),
@@ -276,6 +301,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       status: optionalTourClassification.status,
       badges: optionalTourClassification.badges,
     },
+    canonical_view: canonicalView,
     package: {
       ...publicPackage,
       title: publicTitle,

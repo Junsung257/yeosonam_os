@@ -80,6 +80,8 @@ New supplier uploads are not "auto published." They become automatic customer-op
 
 Customer exposure is decided by publication state and public snapshots, not by `status` or `audit_status` alone. `status` remains the sales/operations state, while `publication_state` is the customer-public state. Customer routes must prefer `public_package_snapshots` and must fail closed when a row has `publication_state in ('approved','published')` but no approved/published snapshot exists. The publish gate writes `package_publish_decisions`; hidden DB pollution, stale proof, broken attraction IDs, risky CTA copy, and unsupported title claims remain blockers even when the renderer can hide the affected section.
 
+Final approval must not mark a package customer-active before the immutable public snapshot and publish decision are saved. The approval API must assemble final title/copy/repair data in memory and send it to `publish_package_snapshot_atomic()` as the package patch; the success path must not stage a separate `travel_packages` update before publication. `public_package_snapshots` upsert, `package_publish_decisions` insert, and the final `travel_packages.status='active'`/`publication_state` update happen inside one database RPC transaction. RPC persistence failure must return `PUBLIC_SNAPSHOT_SAVE_FAILED`, record `audit_report.public_snapshot_error`, and move or keep the package at `status='draft'` with `publication_state='blocked'`.
+
 The operational gate is scripted so release readiness does not depend on memory or one-off audits:
 
 ```bash
@@ -187,6 +189,7 @@ The upload verify layer owns these customer-render gates:
 - Attraction enrichment must not stop just because a saved `attraction_query` fails to match. The engine must fall back to the full customer-visible schedule text before creating an unmatched review row, so registered attractions embedded inside a longer activity sentence are not missed. Broad DB repair runs must use additive-only mode first; any removal or metadata-only rewrite remains a review item unless explicitly approved.
 - Mobile/A4 readiness audits must evaluate both `type` and `entity_kind` before reporting an unlinked registered attraction. Transfer, meal, shopping, optional tour, notice, free-time, hotel, flight, and price-noise rows are not attraction visits even when a destination or attraction name appears in the sentence.
 - `C18 customer visible copy V2`: customer-visible DB fields and actual `/packages/{id}` plus `/lp/{id}` body text must be checked with the same deterministic copy-quality rules. Safe repairs include HTML entity decode, RMK/P.P/backslash price cleanup, `OR` -> `또는`, `월기준` spacing, `기사가이드경비` wording, `바나산 정산` -> `바나산 정상`, and low-information action sentences such as `OO로 이동합니다` -> `OO 이동`. Unsafe issues such as mojibake, internal/operator terms, and unresolved attraction placeholders remain blocking. Duplicate checks must target real customer-section duplication such as optional tour vs inclusion/highlight, not internal render helper fields such as `entity_kind`, `attraction_query`, `a4_sentence`, or `landing_sentence`.
+- Public snapshots and customer payloads must recursively strip internal nested keys before rendering or storage. `랜드사`, `거래처`, `공급가`, `원가`, `마진`, `커미션`, `정산`, `관리자노트`, `내부메모`, `supplier`, `operator`, `commission`, and equivalent internal price/operator fields are never customer-visible, even when hidden inside `itinerary_data`, `optional_tours`, or nested product objects. Customer-facing fee lines such as guide expense remain allowed when they do not expose internal settlement or margin information.
 
 These gates are not optional advisory checks. If any fail, the product can be saved for review, but it is not customer-openable and must not be described as mobile-landing-ready.
 
@@ -448,6 +451,8 @@ price success =
 If a `product_prices` date is missing from `price_dates`, the registration is not customer-ready because the customer calendar can hide a sellable option.
 
 Customer pages must never read or serialize internal `net_price` as the customer selling price. Customer-safe price payloads use `adult_selling_price`.
+Public snapshots must derive representative customer price from the minimum positive `product_prices.adult_selling_price` first, then `price_dates`, and only then legacy `travel_packages.price`. A stale or internal top-level `price` must not override customer option rows.
+For the same `target_date` and same customer option/variant, conflicting positive `adult_selling_price` values are blocking. If `adult_selling_price` is absent, the gate may fall back to `net_price` for conflict detection, but customer-ready rows still require a positive `adult_selling_price`.
 
 The central registration object must populate `product_prices.adult_selling_price` from `net_price` before the deliverability gate when no approved selling override exists. If a positive `product_prices.net_price` still has no positive `adult_selling_price` at gate time, customer deliverability is blocked.
 

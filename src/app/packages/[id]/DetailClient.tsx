@@ -115,6 +115,7 @@ interface Package {
   lp_hero_image_url?: string | null;
   thumbnail_urls?: string[] | null;
   products?: { display_name?: string; internal_code?: string };
+  _canonical_view?: CanonicalView | null;
 }
 
 interface AttractionInfo {
@@ -761,7 +762,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   // pkg 의존 헤비 계산은 메모이제이션 (state 변경 시 불필요한 재계산 방지)
   // CRC: renderPackage()는 845줄 모듈의 풀 파이프라인이므로 매 렌더 호출 비용 큼.
   const view: CanonicalView | null = useMemo(
-    () => (pkg ? renderPackage(pkg as Parameters<typeof renderPackage>[0]) : null),
+    () => {
+      if (!pkg) return null;
+      return pkg._canonical_view ?? renderPackage(pkg as Parameters<typeof renderPackage>[0]);
+    },
     [pkg],
   );
   const days: DaySchedule[] = useMemo(() => {

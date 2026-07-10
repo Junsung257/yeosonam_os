@@ -49,6 +49,65 @@ describe('public package snapshot gate', () => {
     expect(snapshot.option_policy.badges).toContain('노옵션');
   });
 
+  it('stores the canonical render view inside the public snapshot', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({ optional_tours: [] }));
+
+    expect(snapshot.canonical_view).toEqual(expect.objectContaining({
+      days: expect.any(Array),
+      flightHeader: expect.any(Object),
+      inclusions: expect.any(Object),
+      optionalTours: expect.any(Object),
+    }));
+  });
+
+  it('keeps internal nested price and operator fields out of the public snapshot package', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      optional_tours: [{
+        name: '야간 시티투어',
+        price: '$40',
+        commission_rate: 9,
+        supplier_note: 'supplier only',
+      }],
+      itinerary_data: {
+        days: [{
+          day: 1,
+          schedule: [{
+            activity: '오다이바 관광',
+            internal_note: '랜드사 커미션',
+            net_price: 900_000,
+            margin_rate: 0.1,
+          }],
+        }],
+      },
+    }));
+
+    const schedule = (((snapshot.package.itinerary_data as Record<string, unknown>).days as Array<Record<string, unknown>>)[0]
+      ?.schedule as Array<Record<string, unknown>>)[0];
+    const serializedPackage = JSON.stringify(snapshot.package);
+
+    expect(schedule).not.toHaveProperty('internal_note');
+    expect(schedule).not.toHaveProperty('net_price');
+    expect(schedule).not.toHaveProperty('margin_rate');
+    expect(serializedPackage).not.toContain('commission_rate');
+    expect(serializedPackage).not.toContain('supplier_note');
+  });
+
+  it('uses customer selling price rows as the public representative price', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      optional_tours: [],
+      price: 900_000,
+      product_prices: [
+        { target_date: '2026-08-07', adult_selling_price: 1_099_000, note: '세이브' },
+        { target_date: '2026-08-08', adult_selling_price: 1_199_000, note: '스탠다드' },
+      ],
+    }));
+
+    expect(snapshot.package.price).toBe(1_099_000);
+    expect(snapshot.price_display).toContain('1,099,000');
+    expect(snapshot.card_projection.price).toBe(1_099_000);
+    expect(snapshot.lp_projection.price).toBe(1_099_000);
+  });
+
   it('blocks publication while polluted optional_tours remain in the DB row', () => {
     const pkg = yanjiPackage();
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
@@ -116,6 +175,23 @@ describe('public package snapshot gate', () => {
 
     expect(gate.publishable).toBe(false);
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('risky_reservation_claim');
+  });
+
+  it('blocks Korean internal land-operator copy at the public snapshot gate', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      product_summary: '관리자노트: 랜드사 커미션 9% 내부 확인',
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      snapshotExists: true,
+      routeTextDump: [...snapshot.route_text_dump, '관리자노트: 랜드사 커미션 9% 내부 확인'],
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('customer_forbidden_internal_terms');
   });
 
   it('invalidates mobile proof when the expected public snapshot hash differs', () => {

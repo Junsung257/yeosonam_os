@@ -25,6 +25,7 @@ import {
   type ImprovementLedgerEvent,
 } from '@/lib/product-registration/improvement-ledger';
 import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
+import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 
 export interface QAIncident {
   id: string;
@@ -56,6 +57,10 @@ export type ExpectedRender = {
   internalCode: string | null;
   rawText: string | null;
   updatedAt?: string | null;
+  currentPackageRevision: number | null;
+  proofPackageRevision: number | null;
+  proofPublicSnapshotHash: string | null;
+  proofAppBuildId: string | null;
   lastDayNumber: number | null;
   lastDayArrivalCity: string | null;
   homeCity: string | null;
@@ -98,6 +103,10 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     internalCode: null,
     rawText: null,
     updatedAt: null,
+    currentPackageRevision: null,
+    proofPackageRevision: null,
+    proofPublicSnapshotHash: null,
+    proofAppBuildId: null,
     lastDayNumber: null,
     lastDayArrivalCity: null,
     homeCity: null,
@@ -108,21 +117,22 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, destination, duration, nights, trip_style, product_type, airline, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code, raw_text, updated_at')
+      .select('*')
       .eq('id', packageId)
       .maybeSingle();
     if (!data) {
       return empty;
     }
+    const row = data as Record<string, unknown>;
 
-    const rowTitle = (data as { title?: string | null }).title || null;
-    const displayTitle = (data as { display_title?: string | null }).display_title || null;
+    const rowTitle = (row as { title?: string | null }).title || null;
+    const displayTitle = (row as { display_title?: string | null }).display_title || null;
     const title = (displayTitle && !isSupplierPromoDisplayTitle(displayTitle) ? displayTitle : null)
       || rowTitle
       || null;
 
-    const days: ItineraryDay[] = Array.isArray((data as { itinerary_data?: { days?: ItineraryDay[] } }).itinerary_data?.days)
-      ? ((data as { itinerary_data: { days: ItineraryDay[] } }).itinerary_data.days)
+    const days: ItineraryDay[] = Array.isArray((row as { itinerary_data?: { days?: ItineraryDay[] } }).itinerary_data?.days)
+      ? ((row as { itinerary_data: { days: ItineraryDay[] } }).itinerary_data.days)
       : [];
     const lastDay = days.at(-1) as (ItineraryDay & { day?: number; schedule?: Array<{ activity?: string | null; type?: string | null }> }) | undefined;
     const lastArrival = lastDay?.schedule?.find(item =>
@@ -131,7 +141,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       && !/출발|향발/.test(String(item.activity ?? '')),
     );
     const lastDayArrivalCity = extractCityFromArrival(String(lastArrival?.activity ?? ''));
-    const homeCity = String((data as { departure_airport?: string | null }).departure_airport ?? '')
+    const homeCity = String((row as { departure_airport?: string | null }).departure_airport ?? '')
       .replace(/\s*(국제)?공항.*$/, '')
       .trim() || lastDayArrivalCity;
     // 마지막 날은 hotel.name null 정상 (귀국일). 0..N-2 만 검사 대상.
@@ -140,13 +150,13 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       .map(d => (d?.hotel?.name ?? '').trim())
       .filter(n => n.length >= 2);
 
-    const tours = (data as { optional_tours?: unknown[] }).optional_tours;
+    const tours = (row as { optional_tours?: unknown[] }).optional_tours;
     const hasOptionalTours = Array.isArray(tours) && tours.length > 0;
-    const itineraryData = (data as { itinerary_data?: { flight_segments?: unknown[] } }).itinerary_data;
+    const itineraryData = (row as { itinerary_data?: { flight_segments?: unknown[] } }).itinerary_data;
     const requiresFlightCard = shouldRequireFlightCard({
-      rawText: (data as { raw_text?: string | null }).raw_text ?? null,
-      airline: (data as { airline?: string | null }).airline ?? null,
-      productType: (data as { product_type?: string | null }).product_type ?? null,
+      rawText: (row as { raw_text?: string | null }).raw_text ?? null,
+      airline: (row as { airline?: string | null }).airline ?? null,
+      productType: (row as { product_type?: string | null }).product_type ?? null,
       flightSegments: Array.isArray(itineraryData?.flight_segments) ? itineraryData.flight_segments : [],
     });
     let currentAttractionMatchedCount = 0;
@@ -168,20 +178,41 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       }
     }
 
+    const currentPackageRevision = Number((row as { package_revision?: unknown }).package_revision ?? 1);
+    const safeCurrentRevision = Number.isFinite(currentPackageRevision) && currentPackageRevision > 0
+      ? currentPackageRevision
+      : 1;
+    const proofPackageRevision = isCustomerVisibleStatus((row as { status?: string | null }).status)
+      ? safeCurrentRevision
+      : safeCurrentRevision + 1;
+    const proofSnapshotPkg = {
+      ...row,
+      status: isCustomerVisibleStatus((row as { status?: string | null }).status)
+        ? (row as { status?: string | null }).status
+        : 'active',
+      package_revision: proofPackageRevision,
+    };
+    const proofPublicSnapshotHash = buildPublicPackageSnapshot(proofSnapshotPkg).snapshotHash;
+    const proofAppBuildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null;
+
     return {
       title,
-      destination: (data as { destination?: string | null }).destination ?? null,
-      tripStyle: (data as { trip_style?: string | null }).trip_style ?? null,
-      duration: typeof (data as { duration?: unknown }).duration === 'number' ? (data as { duration: number }).duration : null,
-      nights: typeof (data as { nights?: unknown }).nights === 'number' ? (data as { nights: number }).nights : null,
+      destination: (row as { destination?: string | null }).destination ?? null,
+      tripStyle: (row as { trip_style?: string | null }).trip_style ?? null,
+      duration: typeof (row as { duration?: unknown }).duration === 'number' ? (row as { duration: number }).duration : null,
+      nights: typeof (row as { nights?: unknown }).nights === 'number' ? (row as { nights: number }).nights : null,
       requiresFlightCard,
       hotelNames,
       hasOptionalTours,
-      status: (data as { status?: string | null }).status ?? null,
-      shortCode: (data as { short_code?: string | null }).short_code ?? null,
-      internalCode: (data as { internal_code?: string | null }).internal_code ?? null,
-      rawText: (data as { raw_text?: string | null }).raw_text ?? null,
-      updatedAt: (data as { updated_at?: string | null }).updated_at ?? null,
+      status: (row as { status?: string | null }).status ?? null,
+      shortCode: (row as { short_code?: string | null }).short_code ?? null,
+      internalCode: (row as { internal_code?: string | null }).internal_code ?? null,
+      rawText: (row as { raw_text?: string | null }).raw_text ?? null,
+      updatedAt: (row as { updated_at?: string | null }).updated_at ?? null,
+      currentPackageRevision: safeCurrentRevision,
+      proofPackageRevision,
+      proofPublicSnapshotHash,
+      proofAppBuildId,
       lastDayNumber: typeof lastDay?.day === 'number' ? lastDay.day : days.length || null,
       lastDayArrivalCity,
       homeCity,
@@ -387,10 +418,13 @@ function isHotelVisibleInHtml(hotelName: string, html: string, text: string): bo
   return tokens.length === 1 ? matched === 1 : matched >= Math.min(2, tokens.length);
 }
 
-function buildMobileBrowserProofPayload(input: {
+export function buildMobileBrowserProofPayload(input: {
   status: 'pass' | 'fail';
   checkedAt: string;
   packageUpdatedAt: string | null | undefined;
+  packageRevision: number | string | null | undefined;
+  publicSnapshotHash: string | null | undefined;
+  appBuildId: string | null | undefined;
   surfaces: Array<{ surface: 'packages' | 'lp' }>;
   surfaceProofResults: Array<{
     surface: 'packages' | 'lp';
@@ -405,10 +439,16 @@ function buildMobileBrowserProofPayload(input: {
     status: input.status,
     checked_at: input.checkedAt,
     package_updated_at: input.packageUpdatedAt,
+    package_revision: input.packageRevision ?? null,
+    public_snapshot_hash: input.publicSnapshotHash ?? null,
+    app_build_id: input.appBuildId ?? null,
     surfaces: input.surfaces.map(item => item.surface),
     screen_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.screen_hash}`).join('|')),
     customer_visible_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.customer_visible_hash}`).join('|')),
-    surface_results: input.surfaceProofResults,
+    surface_results: input.surfaceProofResults.map(result => ({
+      ...result,
+      public_snapshot_hash: input.publicSnapshotHash ?? null,
+    })),
   };
 }
 
@@ -849,6 +889,9 @@ export async function runAutoMobileQA(
                   status: 'pass',
                   checkedAt,
                   packageUpdatedAt: expected.updatedAt,
+                  packageRevision: expected.proofPackageRevision,
+                  publicSnapshotHash: expected.proofPublicSnapshotHash,
+                  appBuildId: expected.proofAppBuildId,
                   surfaces,
                   surfaceProofResults,
                 }),
@@ -889,6 +932,9 @@ export async function runAutoMobileQA(
                   status: 'fail',
                   checkedAt,
                   packageUpdatedAt: expected.updatedAt,
+                  packageRevision: expected.proofPackageRevision,
+                  publicSnapshotHash: expected.proofPublicSnapshotHash,
+                  appBuildId: expected.proofAppBuildId,
                   surfaces,
                   surfaceProofResults,
                 }),
@@ -947,6 +993,9 @@ export async function runAutoMobileQA(
                 status: 'pass',
                 checkedAt,
                 packageUpdatedAt: expected.updatedAt,
+                packageRevision: expected.proofPackageRevision,
+                publicSnapshotHash: expected.proofPublicSnapshotHash,
+                appBuildId: expected.proofAppBuildId,
                 surfaces,
                 surfaceProofResults,
               }),

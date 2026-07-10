@@ -26,7 +26,12 @@ function packageRevision(row: AnyRecord): number {
 }
 
 function snapshotPackage(row: SnapshotProjectionRow): AnyRecord {
-  return asRecord(asRecord(row.snapshot_json)?.package) ?? {};
+  const snapshot = asRecord(row.snapshot_json);
+  const pkg = asRecord(snapshot?.package) ?? {};
+  return {
+    ...pkg,
+    _canonical_view: asRecord(snapshot?.canonical_view),
+  };
 }
 
 export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(

@@ -42,6 +42,16 @@ describe('customer visible text audit v2', () => {
     ]));
   });
 
+  it('blocks land-operator admin notes in customer-visible payloads', () => {
+    const issues = blockingCustomerVisibleTextIssues({
+      product_summary: '관리자노트: 랜드사 커미션 9% 내부 확인',
+      inclusions: ['왕복항공권+TAX, 전일정 호텔 숙박'],
+    });
+
+    expect(issues.map(issue => issue.code)).toContain('customer_forbidden_internal_terms');
+    expect(issues[0]?.fieldPath).toBe('product_summary');
+  });
+
   it('blocks risky customer promise wording in product and screen text', () => {
     const productIssues = blockingCustomerVisibleTextIssues({
       title: '나트랑 출발확정 3박5일',
