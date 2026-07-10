@@ -126,7 +126,7 @@ describe('product registration strict cutover policy', () => {
     const approve = source('src/app/api/packages/[id]/approve/route.ts');
     const v3GateIndex = approve.indexOf('if (v3NoticeGate.blocksApproval)');
     const forceRequiredIndex = approve.indexOf("if (publishGate.decision === 'force_required' && !force)");
-    const activeIndex = approve.indexOf("status:           'active'");
+    const activeIndex = approve.indexOf("status: 'active'", forceRequiredIndex);
 
     expect(v3GateIndex).toBeGreaterThanOrEqual(0);
     expect(forceRequiredIndex).toBeGreaterThan(v3GateIndex);

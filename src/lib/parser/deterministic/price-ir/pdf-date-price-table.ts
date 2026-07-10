@@ -3,6 +3,8 @@ import type { MatrixPriceRow, PriceIROptions } from './types.ts';
 const WON = '\uC6D0';
 const MONTH_KO = '\uC6D4';
 const MONTH_CJK = '\u6708';
+const PRICE_TOKEN_RE = /\d{1,2},\d{3},-|\d{3},-|\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8}/g;
+const PRICE_TOKEN_SOURCE = '\\d{1,2},\\d{3},-|\\d{3},-|\\d{1,3},\\d{3},\\d{2}|\\d{1,3}(?:,\\d{3})+|\\d{5,8}';
 
 const EXCLUDED_CONTEXT_RE = new RegExp([
   '\uD3EC\uD568',
@@ -36,6 +38,16 @@ function isoDate(year: number, month: number, day: number): string | null {
 
 function parsePrice(value: string): number | null {
   const trimmed = value.trim();
+  const abbreviatedMillion = trimmed.match(/^(\d{1,2}),(\d{3}),-$/);
+  if (abbreviatedMillion) {
+    const price = Number(`${abbreviatedMillion[1]}${abbreviatedMillion[2]}000`);
+    return Number.isInteger(price) && price >= 250_000 && price <= 8_000_000 ? price : null;
+  }
+  const abbreviatedThousand = trimmed.match(/^(\d{3}),-$/);
+  if (abbreviatedThousand) {
+    const price = Number(`${abbreviatedThousand[1]}000`);
+    return Number.isInteger(price) && price >= 250_000 && price <= 8_000_000 ? price : null;
+  }
   const truncatedLastDigit = trimmed.match(/^(\d{1,3}),(\d{3}),(\d{2})(?:\s*\uC6D0)?$/);
   const normalized = truncatedLastDigit
     ? `${truncatedLastDigit[1]}${truncatedLastDigit[2]}${truncatedLastDigit[3]}0`
@@ -55,7 +67,7 @@ function normalizeLine(line: string): string {
 }
 
 function hasPrice(line: string): boolean {
-  return /(?:\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8})/.test(normalizeLine(line));
+  return new RegExp(`(?:${PRICE_TOKEN_SOURCE})`).test(normalizeLine(line));
 }
 
 function hasDateHint(line: string): boolean {
@@ -197,7 +209,7 @@ function splitConcatenatedTail(line: string): {
   extraBareDay: number;
   extraMonth: number | null;
 } | null {
-  const match = line.match(/^(.*?)(\d{1,3},\d{3},\d{2}|\d{2,7}(?:,\d{3}){1,2})(?:\s*\uC6D0)?(?:\s*\/\s*\S+)?$/);
+  const match = line.match(/^(.*?)(\d{1,2},\d{3},-|\d{3},-|\d{1,3},\d{3},\d{2}|\d{2,7}(?:,\d{3}){1,2})(?:\s*\uC6D0)?(?:\s*\/\s*\S+)?$/);
   if (!match) return null;
   let beforeTail = match[1];
   const tail = match[2];
@@ -241,7 +253,7 @@ function rowsFromSpacedMonthDayPriceLine(line: string, fallbackYear: number): Ma
       .map(dayMatch => Number(dayMatch[0]))
       .filter(day => day >= 1 && day <= 31);
     if (days.length === 0) continue;
-    const prices = [...match[3].matchAll(/\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8}/g)]
+    const prices = [...match[3].matchAll(PRICE_TOKEN_RE)]
       .map(priceMatch => parsePrice(priceMatch[0]))
       .filter((price): price is number => price != null);
     if (prices.length === 0) continue;
@@ -291,7 +303,7 @@ function rowsFromLine(line: string, fallbackYear: number, currentMonth: number |
     }));
   }
 
-  const priceRe = /(\d{1,3},\d{3},\d{2}|\d{1,3}(?:,\d{3})+|\d{5,8})(?:\s*\uC6D0)?/g;
+  const priceRe = new RegExp(`(${PRICE_TOKEN_SOURCE})(?:\\s*\\uC6D0)?`, 'g');
   let previousEnd = 0;
   for (const match of line.matchAll(priceRe)) {
     const price = parsePrice(match[1]);
