@@ -215,8 +215,7 @@ export default function AttractionsPage() {
       const data = await res.json();
       if (!res.ok) { alert(data.error ?? 'AI 분해 실패'); return; }
       setParsedCards(data.cards ?? []);
-      // 디폴트 전체 선택
-      setSelectedCardIdx(new Set(Array.from({ length: data.cards?.length ?? 0 }, (_, i) => i)));
+      setSelectedCardIdx(new Set());
     } catch (e) {
       alert(e instanceof Error ? e.message : '분해 실패');
     } finally {
@@ -225,6 +224,8 @@ export default function AttractionsPage() {
   };
 
   const bulkRegisterSelectedCards = async () => {
+    alert('AI 파싱 후보의 신규 관광지 일괄 등록은 차단되었습니다. 기존 관광지 별칭 연결 또는 마스터 후보 검수를 사용하세요.');
+    return;
     const targets = parsedCards.filter((_, i) => selectedCardIdx.has(i));
     if (targets.length === 0) { alert('선택된 카드가 없습니다'); return; }
     if (!confirm(`${targets.length}개 attraction 일괄 등록하시겠습니까?\n동일 name 발견 시 alias 추가됩니다 (덮어쓰기 안 함)`)) return;
@@ -681,7 +682,7 @@ export default function AttractionsPage() {
                     <label key={i} className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition ${
                       selectedCardIdx.has(i) ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'
                     }`}>
-                      <input type="checkbox" checked={selectedCardIdx.has(i)}
+                      <input type="checkbox" checked={selectedCardIdx.has(i)} disabled
                         onChange={e => {
                           const next = new Set(selectedCardIdx);
                           e.target.checked ? next.add(i) : next.delete(i);
@@ -704,13 +705,11 @@ export default function AttractionsPage() {
                 </div>
                 <div className="flex justify-between items-center mt-4 pt-3 border-t border-slate-200">
                   <span className="text-sm text-admin-muted">
-                    선택: <b className="text-emerald-700">{selectedCardIdx.size}</b> / {parsedCards.length}
+                    검수 후보: <b className="text-emerald-700">{parsedCards.length}</b>건
                   </span>
-                  <button onClick={bulkRegisterSelectedCards} disabled={!!bulkRegisterProgress || selectedCardIdx.size === 0}
+                  <button onClick={bulkRegisterSelectedCards} disabled
                     className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50">
-                    {bulkRegisterProgress
-                      ? `등록 중… ${bulkRegisterProgress.current}/${bulkRegisterProgress.total}`
-                      : `✅ 선택한 ${selectedCardIdx.size}건 일괄 등록`}
+                    검수 후 직접 등록
                   </button>
                 </div>
               </>
