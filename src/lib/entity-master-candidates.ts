@@ -125,6 +125,14 @@ const CUSTOMER_COMMERCIAL_PLACE_RE =
   /^(?:비어\s*플라자|비어플라자|쇼핑센터|쇼핑\s*센터)$/iu;
 const CUSTOMER_READABLE_SECTION_FRAGMENT_RE =
   /^(?:=>|무제한|확인|월화수목금|수목금|토일월화|토일|비운항일|외관|외부|국가\s*명승|국가\s*5A급\s*풍경구|일본\s*3대\s*송림중\s*하나인|시\s*간|식\s*사|교\s*통|텍스|여행경비|싱글차지|룸\s*타\s*입|샤워실\s*보유|수영복\s*착용\s*필수|아쿠아슈즈|여벌\s*옷|반바지|무료존|생수|공예|문화|동선|비즈니스게르(?:\(2인실)?|호화호특|크라운|핫플\s*카페|불꽃축제|불꽃놀이|봅슬레이|레일바이크|루지|모래\s*썰매|낙타|실제\s*낙타|럭셔리\s*전동카|뉴카멜리아|쓰시마링크|몽골\s*로컬\s*마트|가볍게\s*떠나고|기암괴석|광활한\s*녹차밭|가파른\s*협곡|바다와\s*산의\s*만남|물과\s*빛|포\s*함\s*사\s*항|포\s*함\s*내\s*역|불\s*포\s*함(?:\s*내\s*역)?|비\s*고|일\s*자|요\s*금|상품\s*가|테마\s*파크)$/iu;
+const CUSTOMER_DISCLOSURE_PRICE_OR_FEE_RE =
+  /(?:\d[\d,]*\s*(?:\uC6D0|\uB9CC\uC6D0|USD|US\$|\$|KRW)|\uBCC4\uB3C4\s*(?:\uBE44\uC6A9|\uACB0\uC81C|\uBB38\uC758)|\uD604\uC9C0\s*\uACB0\uC81C|\uC720\uB8CC|\uC694\uAE08|\uBE44\uC6A9)/iu;
+const LOW_RISK_OPTION_DESCRIPTIVE_FRAGMENT_RE =
+  /(?:KISS\s*OF\s*THE\s*SEA\s*SHOW|\uC544\uC774\uBD80\uD130\s*\uC5B4\uB978\uAE4C\uC9C0|\uBAA8\uB450\uAC00\s*\uB9CC\uC871\uD558\uB294|\uBA40\uD2F0\uBBF8\uB514\uC5B4\s*\uC57C\uAC04\s*\uC1FC|\uC74C\uC545\uACFC\s*\uBD88\uAF43|\uC5B4\uC6B0\uB7EC\uC9C4\s*\uD37C\uD3EC\uBA3C\uC2A4|\uC544\uD2B8\s*\uD37C\uD3EC\uBA3C\uC2A4\s*\uACF5\uC5F0|\uB291\uB300\uAC00\s*\uCD9C\uC5F0|\uC2A4\uB9B4\uACFC\s*\uC0DD\uB3D9\uAC10|\uD478\uAFB8\uC625.{0,12}\uC1FC)/iu;
+const LOW_RISK_NOTICE_NON_MASTER_RE =
+  /(?:\uC778\uC194\uC790\s*\uBBF8\uB3D9\uD589|\uD30C\uD0C0\uC57C\s*\uD574\uBCC0.{0,8}\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30.{0,6}\uBD88\uAC00|\uC816\uC744\s*\uC218\s*\uC788\uB294\s*\uC637|\uC218\uC601\uBCF5\s*\uC900\uBE44)/u;
+const LOW_RISK_SHOPPING_DESCRIPTION_RE =
+  /(?:\uD2B9\uC0B0\uD488|\uD1A0\uC0B0\uD488|\uD6C4\uCD94\s*\uB18D\uC7A5|\uB300\uD45C\s*\uC0C1\uD488|\uAE30\uB150\uD488)/u;
 const CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE =
   /^(?:케이블카\s*편도|궁전\s*게르(?:\s*\(?\s*2\s*인\s*실)?|대성당|오후\s*플레이\s*욕장)$/u;
 const CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
@@ -543,6 +551,32 @@ function isNonMasterNoise(normalizedLabel: string): string | null {
   return null;
 }
 
+function customerDisclosureNonMasterReason(
+  category: MasterCandidateCategory,
+  normalizedLabel: string,
+  sourceLabel: string,
+): string | null {
+  const combined = `${sourceLabel} ${normalizedLabel}`;
+  if (category === 'notice' && LOW_RISK_NOTICE_NON_MASTER_RE.test(combined)) {
+    return 'low-risk notice or preparation detail, not a master entity';
+  }
+  if (
+    category === 'optional_tour' &&
+    LOW_RISK_OPTION_DESCRIPTIVE_FRAGMENT_RE.test(combined) &&
+    !CUSTOMER_DISCLOSURE_PRICE_OR_FEE_RE.test(combined)
+  ) {
+    return 'option show description without price evidence, not a master entity';
+  }
+  if (
+    category === 'shopping' &&
+    LOW_RISK_SHOPPING_DESCRIPTION_RE.test(combined) &&
+    !CUSTOMER_DISCLOSURE_PRICE_OR_FEE_RE.test(combined)
+  ) {
+    return 'shopping description without price evidence, not a master entity';
+  }
+  return null;
+}
+
 export function evaluateMasterCandidate(input: CandidateEvidenceInput): MasterCandidateDecision {
   const rawLabel = input.rawLabel ?? '';
   const sourceLabel = normalizeCandidateLabel(rawLabel);
@@ -554,7 +588,14 @@ export function evaluateMasterCandidate(input: CandidateEvidenceInput): MasterCa
   const evidenceCount = Math.max(1, input.evidenceCount ?? 1);
   const occurrenceCount = Math.max(1, input.occurrenceCount ?? 1);
   const packageCount = Math.max(0, input.packageCount ?? 0);
-  const nonMasterReason = isNonMasterNoise(normalizedLabel);
+  const rawNonMasterReason = isNonMasterNoise(normalizedLabel);
+  const combinedCustomerDisclosureLabel = `${sourceLabel} ${normalizedLabel}`;
+  const customerDisclosureWithPriceClaim =
+    (category === 'optional_tour' || category === 'shopping' || category === 'notice') &&
+    CUSTOMER_DISCLOSURE_PRICE_OR_FEE_RE.test(combinedCustomerDisclosureLabel) &&
+    /(?:[A-Za-z]{2,}|[\uAC00-\uD7A3]{2,})/u.test(combinedCustomerDisclosureLabel);
+  const nonMasterReason = customerDisclosureWithPriceClaim ? null : rawNonMasterReason;
+  const customerNonMasterReason = customerDisclosureNonMasterReason(category, normalizedLabel, sourceLabel);
   const unsafeDescriptiveAttraction = category === 'attraction' && isUnsafeDescriptiveMasterLabel(normalizedLabel, sourceLabel);
   const externalVerified = hasReliableExternalSource(input);
 
@@ -563,11 +604,14 @@ export function evaluateMasterCandidate(input: CandidateEvidenceInput): MasterCa
   let promotionStatus: MasterCandidatePromotionStatus = 'needs_review';
   let decisionReason = 'low evidence or unclear itinerary entity';
 
-  if (nonMasterReason) {
+  if (nonMasterReason || customerNonMasterReason) {
+    const terminalReason = nonMasterReason || customerNonMasterReason || 'non-master fragment';
     confidence = 0.92;
-    autoAction = nonMasterReason.includes('room/golf') ? 'structure_non_master' : 'reject_noise';
-    promotionStatus = nonMasterReason.includes('room/golf') ? 'candidate' : 'rejected_noise';
-    decisionReason = `not a master entity: ${nonMasterReason}`;
+    autoAction = terminalReason.includes('room/golf') || Boolean(customerNonMasterReason)
+      ? 'structure_non_master'
+      : 'reject_noise';
+    promotionStatus = autoAction === 'structure_non_master' ? 'candidate' : 'rejected_noise';
+    decisionReason = `not a master entity: ${terminalReason}`;
   } else if (category === 'shopping' || category === 'optional_tour' || category === 'notice') {
     confidence = clamp(0.62 + Math.min(0.18, evidenceCount * 0.03) + Math.min(0.1, packageCount * 0.02));
     autoAction = 'needs_review';

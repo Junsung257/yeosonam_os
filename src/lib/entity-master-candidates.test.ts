@@ -492,4 +492,43 @@ describe('entity master candidate automation', () => {
       expect(decision.suggestedMaster.customer_publishable).toBe(false);
     }
   });
+
+  it('structures low-risk customer disclosure fragments instead of blocking as master candidates', () => {
+    const labels = [
+      { category: 'optional_tour', rawLabel: 'KISS OF THE SEA SHOW' },
+      { category: 'optional_tour', rawLabel: '\uC544\uC774\uBD80\uD130 \uC5B4\uB978\uAE4C\uC9C0 \uBAA8\uB450\uAC00 \uB9CC\uC871\uD558\uB294 \uBA40\uD2F0\uBBF8\uB514\uC5B4 \uC57C\uAC04 \uC1FC' },
+      { category: 'optional_tour', rawLabel: '\uC74C\uC545\uACFC \uBD88\uAF43\uC774 \uC5B4\uC6B0\uB7EC\uC9C4 \uD37C\uD3EC\uBA3C\uC2A4 \uC1FC' },
+      { category: 'optional_tour', rawLabel: '\uC544\uD2B8 \uD37C\uD3EC\uBA3C\uC2A4 \uACF5\uC5F0' },
+      { category: 'notice', rawLabel: '\uC778\uC194\uC790 \uBBF8\uB3D9\uD589' },
+      { category: 'notice', rawLabel: '\uD30C\uD0C0\uC57C \uD574\uBCC0 \uC808\uB300\uAE08\uC5F0(\uC804\uC790\uB2F4\uBC30\uBD88\uAC00) + \uC816\uC744 \uC218 \uC788\uB294 \uC637 \uB610\uB294 \uC218\uC601\uBCF5 \uC900\uBE44' },
+      { category: 'shopping', rawLabel: '\uD478\uAFB8\uC625\uC758 \uB300\uD45C \uD2B9\uC0B0\uD488 \uD6C4\uCD94 \uB18D\uC7A5' },
+    ] as const;
+
+    for (const label of labels) {
+      const decision = evaluateMasterCandidate({
+        ...label,
+        occurrenceCount: 2,
+        evidenceCount: 2,
+        packageCount: 1,
+      });
+
+      expect(decision.autoAction).toBe('structure_non_master');
+      expect(decision.promotionStatus).toBe('candidate');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+      expect(decision.decisionReason).toContain('not a master entity');
+    }
+  });
+
+  it('keeps priced optional tour customer claims review-gated', () => {
+    const decision = evaluateMasterCandidate({
+      rawLabel: 'KISS OF THE SEA SHOW 50,000\uC6D0',
+      category: 'optional_tour',
+      occurrenceCount: 2,
+      evidenceCount: 2,
+      packageCount: 1,
+    });
+
+    expect(decision.autoAction).toBe('needs_review');
+    expect(decision.promotionStatus).toBe('needs_review');
+  });
 });

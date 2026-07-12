@@ -39,4 +39,18 @@ describe('evaluateEntityMasterCandidatePublicGate', () => {
       warning: false,
     });
   });
+
+  it('does not hard-block customer disclosure rows already classified as terminal non-master fragments', () => {
+    expect(evaluateEntityMasterCandidatePublicGate({
+      category: 'optional_tour',
+      promotion_status: 'candidate',
+      auto_action: 'structure_non_master',
+      auto_verification_status: 'structured_non_master',
+    })).toMatchObject({
+      unresolved: false,
+      hardBlocker: false,
+      warning: false,
+      reason: 'terminal_non_master_or_noise',
+    });
+  });
 });
