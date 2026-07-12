@@ -31,6 +31,17 @@ const NON_BLOCKING_ENTITY_CATEGORIES = new Set([
   'hotel',
 ]);
 
+const TERMINAL_NON_MASTER_ACTIONS = new Set([
+  'reject_noise',
+  'structure_non_master',
+]);
+
+const TERMINAL_NON_MASTER_VERIFICATION_STATUSES = new Set([
+  'rejected_noise',
+  'structured_non_master',
+  'template_matched',
+]);
+
 export function evaluateEntityMasterCandidatePublicGate(
   input: EntityMasterCandidatePublicGateInput,
 ): EntityMasterCandidatePublicGateDecision {
@@ -39,6 +50,18 @@ export function evaluateEntityMasterCandidatePublicGate(
   const autoAction = String(input.auto_action ?? '').trim();
   const autoVerificationStatus = String(input.auto_verification_status ?? '').trim();
   const unresolved = UNRESOLVED_STATUSES.has(status);
+
+  if (
+    TERMINAL_NON_MASTER_ACTIONS.has(autoAction) ||
+    TERMINAL_NON_MASTER_VERIFICATION_STATUSES.has(autoVerificationStatus)
+  ) {
+    return {
+      unresolved: false,
+      hardBlocker: false,
+      warning: false,
+      reason: 'terminal_non_master_or_noise',
+    };
+  }
 
   if (!unresolved) {
     return {
