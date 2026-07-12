@@ -29,6 +29,9 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   if (!pkg) return null;
   return {
     ...pkg,
+    _canonical_view: asRecord(snapshot?.canonical_view),
+    _lp_projection: asRecord(row.lp_projection),
+    _card_projection: asRecord(row.card_projection),
     _public_snapshot: {
       id: row.id,
       package_id: row.package_id,
@@ -69,6 +72,7 @@ export async function createPublicPackageSnapshotAndDecision(
   supabase: SupabaseClient,
   pkg: AnyRecord,
   gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'publicSnapshotHash' | 'snapshotExists' | 'routeTextDump'> = {},
+  options: { packagePatch?: AnyRecord } = {},
 ): Promise<{
   snapshot: PublicPackageSnapshot;
   snapshotHash: string;
@@ -87,55 +91,44 @@ export async function createPublicPackageSnapshotAndDecision(
     routeTextDump: snapshot.route_text_dump,
   });
   const snapshotStatus = gate.publishable ? 'published' : 'blocked';
+  const nowIso = new Date().toISOString();
+  const packagePatch = {
+    status: gate.publishable ? 'active' : 'draft',
+    publication_state: gate.publication_state,
+    package_revision: packageRevision,
+    updated_at: nowIso,
+    ...(options.packagePatch ?? {}),
+  };
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('public_package_snapshots')
-    .upsert({
-      package_id: packageId,
-      package_revision: packageRevision,
-      snapshot_hash: snapshotHash,
-      snapshot_json: snapshot,
-      card_projection: snapshot.card_projection,
-      lp_projection: snapshot.lp_projection,
-      route_text_dump: snapshot.route_text_dump,
-      source_raw_text_hash: typeof pkg.raw_text_hash === 'string' ? pkg.raw_text_hash : null,
-      audit_revision: typeof pkg.audit_checked_at === 'string' ? pkg.audit_checked_at : null,
-      mobile_proof_revision: typeof gateInput.mobileProof?.proof?.checked_at === 'string'
-        ? gateInput.mobileProof.proof.checked_at
-        : null,
-      app_build_id: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
-      status: snapshotStatus,
-      published_at: gate.publishable ? new Date().toISOString() : null,
-    }, { onConflict: 'package_id,snapshot_hash' })
-    .select('id')
-    .single();
+  const { error: publishError } = await supabase.rpc('publish_package_snapshot_atomic', {
+    p_package_id: packageId,
+    p_package_revision: packageRevision,
+    p_package_patch: packagePatch,
+    p_snapshot_hash: snapshotHash,
+    p_snapshot_json: snapshot,
+    p_card_projection: snapshot.card_projection,
+    p_lp_projection: snapshot.lp_projection,
+    p_route_text_dump: snapshot.route_text_dump,
+    p_source_raw_text_hash: typeof pkg.raw_text_hash === 'string' ? pkg.raw_text_hash : null,
+    p_audit_revision: typeof pkg.audit_checked_at === 'string' ? pkg.audit_checked_at : null,
+    p_mobile_proof_revision: typeof gateInput.mobileProof?.proof?.checked_at === 'string'
+      ? gateInput.mobileProof.proof.checked_at
+      : null,
+    p_app_build_id: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
+    p_snapshot_status: snapshotStatus,
+    p_publication_state: gate.publication_state,
+    p_publishable: gate.publishable,
+    p_hard_blockers: gate.hard_blockers,
+    p_soft_warnings: gate.soft_warnings,
+    p_required_actions: gate.required_actions,
+    p_audit_run_ref: null,
+    p_mobile_proof_ref: typeof gateInput.mobileProof?.proof?.checked_at === 'string'
+      ? gateInput.mobileProof.proof.checked_at
+      : null,
+    p_decision_source: 'publish_gate_v1',
+  });
 
-  if (insertError) throw insertError;
-
-  await supabase
-    .from('package_publish_decisions')
-    .insert({
-      package_id: packageId,
-      package_revision: packageRevision,
-      public_snapshot_id: (inserted as { id?: string } | null)?.id ?? null,
-      public_snapshot_hash: snapshotHash,
-      publication_state: gate.publication_state,
-      publishable: gate.publishable,
-      hard_blockers: gate.hard_blockers,
-      soft_warnings: gate.soft_warnings,
-      required_actions: gate.required_actions,
-      mobile_proof_ref: typeof gateInput.mobileProof?.proof?.checked_at === 'string'
-        ? gateInput.mobileProof.proof.checked_at
-        : null,
-    });
-
-  await supabase
-    .from('travel_packages')
-    .update({
-      publication_state: gate.publication_state,
-      package_revision: packageRevision,
-    })
-    .eq('id', packageId);
+  if (publishError) throw publishError;
 
   return {
     snapshot,

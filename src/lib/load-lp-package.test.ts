@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   packageRow: null as Record<string, unknown> | null,
   packageError: null as { message: string } | null,
+  publicSnapshotRow: null as Record<string, unknown> | null,
   scores: [] as Record<string, unknown>[],
   mappedInput: null as Record<string, unknown> | null,
 }));
@@ -45,6 +46,30 @@ vi.mock('@/lib/supabase', () => ({
           },
           order() {
             return query;
+          },
+        };
+        return query;
+      }
+
+      if (table === 'public_package_snapshots') {
+        const query = {
+          select() {
+            return query;
+          },
+          eq() {
+            return query;
+          },
+          in() {
+            return query;
+          },
+          order() {
+            return query;
+          },
+          limit() {
+            return query;
+          },
+          async maybeSingle() {
+            return { data: mocks.publicSnapshotRow, error: null };
           },
         };
         return query;
@@ -96,6 +121,7 @@ describe('fetchLpPackageUncached', () => {
       price: 100000,
     };
     mocks.packageError = null;
+    mocks.publicSnapshotRow = null;
     mocks.scores = [];
     mocks.mappedInput = null;
   });
@@ -165,6 +191,106 @@ premium villa golf package 3n5d
         { date: '2027-07-02', price: 999000 },
         { date: '2027-07-09', price: 999000 },
       ],
+    };
+
+    const result = await fetchLpPackageUncached('pkg-1');
+
+    expect(result).toBeNull();
+    expect(mocks.mappedInput).toBeNull();
+  });
+
+  it('renders from an approved public snapshot without re-running live raw-row verification', async () => {
+    mocks.packageRow = {
+      id: 'pkg-1',
+      title: 'Stale active package',
+      status: 'active',
+      audit_status: 'clean',
+      publication_state: 'published',
+      package_revision: 3,
+      audit_report: {
+        customer_open_contract: {
+          ok: true,
+          status: 'pass',
+          mobile_browser_proof: { ok: true },
+        },
+      },
+      duration: 5,
+      raw_text: `
+spot
+7/2,9
+999,-
+1,159,-
+
+PKG
+premium villa golf package 3n5d
+`,
+    };
+    mocks.publicSnapshotRow = {
+      id: 'snap-1',
+      package_id: 'pkg-1',
+      package_revision: 3,
+      snapshot_hash: 'snapshot-hash',
+      snapshot_json: {
+        package: {
+          id: 'pkg-1',
+          title: 'Snapshot customer title',
+          status: 'active',
+          price: 1230000,
+        },
+      },
+      card_projection: {},
+      lp_projection: {},
+      route_text_dump: ['Snapshot customer title'],
+      status: 'published',
+      created_at: '2026-07-10T00:00:00.000Z',
+    };
+
+    const result = await fetchLpPackageUncached('pkg-1');
+
+    expect(result).toMatchObject({ id: 'pkg-1', title: 'Snapshot customer title' });
+    expect(mocks.mappedInput).toMatchObject({
+      id: 'pkg-1',
+      title: 'Snapshot customer title',
+      _lp_projection: {},
+      _public_snapshot: expect.objectContaining({ snapshot_hash: 'snapshot-hash' }),
+    });
+  });
+
+  it('does not render a public snapshot while the source package is still non-public', async () => {
+    mocks.packageRow = {
+      id: 'pkg-1',
+      title: 'Staged package',
+      status: 'draft',
+      audit_status: 'warnings',
+      publication_state: 'needs_review',
+      package_revision: 3,
+      audit_report: {
+        customer_open_contract: {
+          ok: true,
+          status: 'pass',
+          mobile_browser_proof: { ok: true },
+        },
+      },
+      price: 100000,
+    };
+    mocks.publicSnapshotRow = {
+      id: 'snap-1',
+      package_id: 'pkg-1',
+      package_revision: 3,
+      snapshot_hash: 'snapshot-hash',
+      snapshot_json: {
+        package: {
+          id: 'pkg-1',
+          title: 'Snapshot customer title',
+          status: 'active',
+          price: 1230000,
+        },
+      },
+      card_projection: {},
+      lp_projection: {},
+      route_text_dump: ['Snapshot customer title'],
+      status: 'published',
+      created_at: '2026-07-10T00:00:00.000Z',
     };
 
     const result = await fetchLpPackageUncached('pkg-1');

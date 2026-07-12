@@ -50,6 +50,7 @@ export type PublicPackageSnapshot = {
     status: OptionalTourStatus;
     badges: string[];
   };
+  canonical_view: Record<string, unknown> | null;
   package: Record<string, unknown>;
   inclusions_public: unknown[];
   exclusions_public: unknown[];

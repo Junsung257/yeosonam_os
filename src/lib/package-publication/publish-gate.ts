@@ -1,4 +1,5 @@
 import type { CustomerMobileProofResult } from '@/lib/customer-mobile-proof';
+import { customerCopyQualityIssues } from '@/lib/customer-copy-quality';
 import type { PublishGateResult as LegacyPublishGateResult } from '@/lib/product-publish-gate';
 import { hasRiskyCustomerCopy, isOptionalTourFragment } from './public-snapshot';
 import type { PublicationState, PublishFinding } from './types';
@@ -28,6 +29,11 @@ export type PublicSnapshotGateResult = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INTERNAL_ENGLISH_RE = /\bDecision\s*guide\b|\boperator\b|\binternal\b|\bpublish_gate\b/i;
+const BLOCKING_CUSTOMER_COPY_CODES = new Set([
+  'placeholder_or_mojibake',
+  'internal_source_copy',
+  'customer_forbidden_internal_terms',
+]);
 
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
@@ -75,6 +81,26 @@ function hasInternalEnglishCopy(input: PublicSnapshotGateInput): string | null {
     input.pkg.product_summary,
   ].map(value => String(value ?? ''));
   return texts.find(text => INTERNAL_ENGLISH_RE.test(text)) ?? null;
+}
+
+function findBlockingCustomerCopy(input: PublicSnapshotGateInput): { code: string; text: string } | null {
+  const texts = [
+    ...(input.routeTextDump ?? []),
+    input.pkg.title,
+    input.pkg.display_title,
+    input.pkg.hero_tagline,
+    input.pkg.product_summary,
+    ...(Array.isArray(input.pkg.product_highlights) ? input.pkg.product_highlights : []),
+    ...(Array.isArray(input.pkg.inclusions) ? input.pkg.inclusions : []),
+    ...(Array.isArray(input.pkg.excludes) ? input.pkg.excludes : []),
+    ...(Array.isArray(input.pkg.customer_notes) ? input.pkg.customer_notes : []),
+  ].map(value => String(value ?? '')).filter(Boolean);
+
+  for (const text of texts) {
+    const issue = customerCopyQualityIssues(text).find(item => BLOCKING_CUSTOMER_COPY_CODES.has(item.code));
+    if (issue) return { code: issue.code, text };
+  }
+  return null;
 }
 
 function titleHasUnsupportedClaim(pkg: AnyRecord): string | null {
@@ -154,6 +180,15 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
 
   if (hasRiskyCustomerCopy(input.routeTextDump ?? input.pkg)) {
     addBlocker(hard, 'risky_reservation_claim', 'customer copy contains risky reservation/guarantee wording');
+  }
+
+  const blockingCopy = findBlockingCustomerCopy(input);
+  if (blockingCopy) {
+    addBlocker(
+      hard,
+      blockingCopy.code,
+      `blocking customer-visible copy remains in public snapshot text: ${blockingCopy.text.slice(0, 120)}`,
+    );
   }
 
   const internalCopy = hasInternalEnglishCopy(input);

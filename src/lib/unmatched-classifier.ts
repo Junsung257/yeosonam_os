@@ -1,5 +1,6 @@
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
+import { terminalNonMasterReason } from '@/lib/itinerary-entity-resolution-engine';
 
 export type UnmatchedEntityCategory =
   | 'attraction'
@@ -39,6 +40,8 @@ type UnmatchedRow = {
   segment_kind_guess: string | null;
   confidence: number | null;
 };
+
+const CUSTOMER_REVIEW_CATEGORIES = new Set<UnmatchedEntityCategory>(['shopping', 'optional_tour', 'notice', 'unknown']);
 
 const PRICE_NOISE_RE =
   /(?:^\s*$|^\d{1,4}(?:,\d{3})*(?:\s*(?:원|krw|usd|\$))?$|^\d+\s*월\s*기준$|가격|요금|판매가|출발일|마감일|성인|아동|소아|예약금|총\s*금액|취소료|수수료|^\d{1,2}[./-]\d{1,2})/i;
@@ -199,8 +202,14 @@ export function classifyUnmatchedActivity(
 
   let category: UnmatchedEntityCategory = existing ?? 'attraction';
   let confidence = existing ? 0.72 : 0.65;
+  const existingTerminalReason = existing && CUSTOMER_REVIEW_CATEGORIES.has(existing)
+    ? terminalNonMasterReason(existing, text, activity)
+    : null;
 
-  if (NORMAL_OPTION_FEE_RE.test(text)) {
+  if (existing && existingTerminalReason) {
+    category = existing;
+    confidence = 0.9;
+  } else if (NORMAL_OPTION_FEE_RE.test(text)) {
     category = 'optional_tour';
     confidence = 0.9;
   } else if (CUSTOMER_SHOPPING_FRAGMENT_RE.test(text)) {
@@ -307,7 +316,11 @@ export function classifyUnmatchedActivity(
     };
   }
 
-  if (category === 'optional_tour' && confidence >= 0.85 && hasExplicitOptionalTourEvidence(text)) {
+  const terminalNonMaster = CUSTOMER_REVIEW_CATEGORIES.has(category)
+    ? terminalNonMasterReason(category, text, activity)
+    : null;
+
+  if (category === 'optional_tour' && confidence >= 0.85 && (hasExplicitOptionalTourEvidence(text) || terminalNonMaster)) {
     return {
       category,
       confidence,

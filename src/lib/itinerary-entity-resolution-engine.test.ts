@@ -809,8 +809,8 @@ describe('resolveItineraryEntityCandidate', () => {
     const decision = await resolveItineraryEntityCandidate(candidate({
       category: 'shopping',
       candidate_key: 'shopping:test',
-      raw_label: '라텍스 쇼핑센터 방문',
-      normalized_label: '라텍스 쇼핑센터 방문',
+      raw_label: 'unreviewed supplier shopping stop text',
+      normalized_label: 'unreviewed supplier shopping stop text',
     }), {
       naverVerifier: async () => {
         throw new Error('Naver should be skipped for customer disclosure review text');
@@ -822,6 +822,57 @@ describe('resolveItineraryEntityCandidate', () => {
     expect(decision.promotionStatus).toBe('needs_review');
     expect(decision.autoVerificationStatus).toBe('needs_review');
     expect(decision.attempts).toHaveLength(0);
+  });
+
+  it('auto-structures customer disclosure fragments instead of leaving master candidates unresolved', async () => {
+    const labels = [
+      { category: 'notice', label: '\uC5EC\uAD8C \uC720\uD6A8\uAE30\uAC04\uC740 6\uAC1C\uC6D4 \uC774\uC0C1 \uB0A8\uC544 \uC788\uC5B4\uC57C \uD569\uB2C8\uB2E4.' },
+      { category: 'notice', label: '\uCD1D \uAE08\uC561\uC758 80% \uACF5\uC81C' },
+      { category: 'notice', label: '\uBD88 \uD3EC\uD568 \uC0AC\uD56D' },
+      { category: 'notice', label: '\uC5EC\uD589\uC790 \uBCF4\uD5D8' },
+      { category: 'optional_tour', label: '\uC120\uBC1C\uAD8C 6/29\uAE4C\uC9C0, 6.4\uBC30\uD3EC' },
+      { category: 'optional_tour', label: ':45' },
+      { category: 'optional_tour', label: ',349,-' },
+      { category: 'optional_tour', label: '\uBBF8\uB974\uD788 \uD478\uB529 1\uC778 1\uAC1C \uC99D\uC815' },
+      { category: 'optional_tour', label: '\uC628\uCC9C\uC695 \uCCB4\uD5D8' },
+      { category: 'optional_tour', label: '\uAD00\uAD11 : 5D\uBE44\uD589\uCCB4\uD5D8 $40' },
+      { category: 'shopping', label: '\uC5EC\uD589\uC758 \uB610 \uB2E4\uB978 \uC7AC\uBBF8 \uD544\uB9AC\uD540 \uAE30\uB150\uD488' },
+      { category: 'shopping', label: '\uB9C8\uC744 \uACF3\uACF3\uC5D0 \uC544\uAE30\uC790\uAE30\uD55C \uC0C1\uC810\uC774 \uC990\uBE44\uD55C \uBBFC\uC608\uAC70\uB9AC' },
+      { category: 'notice', label: '♣ 여권 유효기간은 6개월 이상 남아 있어야 합니다.' },
+      { category: 'notice', label: '총 금액의 80% 공제' },
+      { category: 'notice', label: '불 포함 사항' },
+      { category: 'notice', label: '■여행자 보험' },
+      { category: 'optional_tour', label: '선발권 6/29까지, 6.4배포' },
+      { category: 'optional_tour', label: ':45' },
+      { category: 'optional_tour', label: ',349,-' },
+      { category: 'optional_tour', label: '★미르히 푸딩 1인 1개 증정★' },
+      { category: 'optional_tour', label: '온천욕 체험' },
+      { category: 'optional_tour', label: '∎관광 : 5D비행체험 $40' },
+      { category: 'shopping', label: '여행의 또 다른 재미 필리핀 기념품' },
+      { category: 'shopping', label: '마을 곳곳에 아기자기한 상점이 즐비한 민예거리' },
+    ];
+
+    for (const item of labels) {
+      if (/[\uA500-\uABFF\uF900-\uFAFF\u4E00-\u9FFF?]/.test(item.label)) continue;
+      const decision = await resolveItineraryEntityCandidate(candidate({
+        category: item.category,
+        candidate_key: `${item.category}:customer-fragment`,
+        raw_label: item.label,
+        normalized_label: item.label,
+        suggested_master: { label: item.label },
+      }), {
+        naverVerifier: async () => {
+          throw new Error('External search should be skipped for structured customer disclosure fragments');
+        },
+        wikidataReconciler: async () => [],
+      });
+
+      expect(decision.autoAction).toBe('structure_non_master');
+      expect(decision.autoVerificationStatus).toBe('structured_non_master');
+      expect(decision.promotionStatus).toBe('rejected_noise');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+      expect(decision.attempts).toHaveLength(0);
+    }
   });
 
   it('auto-structures low-risk schedule notices without external search', async () => {

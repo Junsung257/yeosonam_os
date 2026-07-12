@@ -110,6 +110,50 @@ describe('customer package client payload', () => {
     }]);
   });
 
+  it('removes internal price and operator fields from nested customer payloads', () => {
+    const sanitized = sanitizeCustomerPackageForClient({
+      id: 'pkg-1',
+      itinerary_data: {
+        days: [{
+          day: 1,
+          schedule: [{
+            activity: '오다이바 관광',
+            source_activity: '오다이바 관광',
+            internal_note: '랜드사 커미션 9%',
+            net_price: 900_000,
+            margin_rate: 0.1,
+            supplier_code: 'LAND-SECRET',
+          }],
+        }],
+      },
+      optional_tours: [{
+        name: '야간 시티투어',
+        price: '$40',
+        commission_rate: 9,
+        supplier_note: 'supplier only',
+      }],
+    });
+
+    const schedule = (((sanitized?.itinerary_data as Record<string, unknown>).days as Array<Record<string, unknown>>)[0]
+      ?.schedule as Array<Record<string, unknown>>)[0];
+    const optionalTour = (sanitized?.optional_tours as Array<Record<string, unknown>>)[0];
+
+    expect(schedule).toMatchObject({
+      activity: '오다이바 관광',
+      source_activity: '오다이바 관광',
+    });
+    expect(schedule).not.toHaveProperty('internal_note');
+    expect(schedule).not.toHaveProperty('net_price');
+    expect(schedule).not.toHaveProperty('margin_rate');
+    expect(schedule).not.toHaveProperty('supplier_code');
+    expect(optionalTour).toMatchObject({
+      name: '야간 시티투어',
+      price: '$40',
+    });
+    expect(optionalTour).not.toHaveProperty('commission_rate');
+    expect(optionalTour).not.toHaveProperty('supplier_note');
+  });
+
   it('uses the sanitizer at the package detail server-to-client boundary', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
 
@@ -123,6 +167,20 @@ describe('customer package client payload', () => {
     expect(pageSource).toContain("export const dynamic = 'force-dynamic'");
     expect(pageSource).toContain('export const revalidate = 0');
     expect(pageSource).not.toContain('export async function generateStaticParams');
+  });
+
+  it('does not post-process already published public snapshot rows on the package detail page', () => {
+    const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
+
+    expect(pageSource).toContain('const writeTimeProcessed = Boolean(publicSnapshot) || parserVersion.includes(POSTPROCESS_VERSION)');
+    expect(pageSource).toContain('const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow');
+  });
+
+  it('uses the public snapshot canonical view before recalculating package render data on the client', () => {
+    const detailSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
+
+    expect(detailSource).toContain('_canonical_view?: CanonicalView | null');
+    expect(detailSource).toContain('return pkg._canonical_view ?? renderPackage');
   });
 
   it('passes package detail duration and hero render facts through the customer boundary', () => {

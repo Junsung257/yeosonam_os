@@ -112,4 +112,17 @@ describe('mobile proof refresh candidates', () => {
 
     expect(candidate?.reason).toBe('cta_missing');
   });
+
+  it('classifies legacy proof without revision metadata as reproof work when the row has a stored revision', () => {
+    const candidate = classifyMobileProofRefreshCandidate({
+      id: 'legacy-proof',
+      status: 'active',
+      package_revision: 7,
+      updated_at: '2026-07-01T00:00:00.000Z',
+      audit_report: passProof(),
+    });
+
+    expect(candidate?.reason).toBe('hash_missing');
+    expect(candidate?.detail).toContain('package revision is missing');
+  });
 });

@@ -269,24 +269,49 @@ export function evaluateCustomerMobileProof(input: {
     };
   }
   const expectedRevision = input.packageRevision == null ? null : String(input.packageRevision);
-  if (expectedRevision && proof.package_revision != null && String(proof.package_revision) !== expectedRevision) {
-    return {
-      ok: false,
-      reason: 'actual customer mobile browser proof is stale for the current package revision',
-      proof,
-    };
+  if (expectedRevision) {
+    if (proof.package_revision == null) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof package revision is missing',
+        proof,
+      };
+    }
+    if (String(proof.package_revision) !== expectedRevision) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof is stale for the current package revision',
+        proof,
+      };
+    }
   }
   const expectedSnapshotHash = input.publicSnapshotHash?.trim();
-  if (expectedSnapshotHash && proof.public_snapshot_hash && proof.public_snapshot_hash !== expectedSnapshotHash) {
-    return {
-      ok: false,
-      reason: 'actual customer mobile browser proof public snapshot hash does not match',
-      proof,
-    };
+  if (expectedSnapshotHash) {
+    if (!proof.public_snapshot_hash) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof public snapshot hash is missing',
+        proof,
+      };
+    }
+    if (proof.public_snapshot_hash !== expectedSnapshotHash) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof public snapshot hash does not match',
+        proof,
+      };
+    }
   }
   if (expectedSnapshotHash) {
     for (const surfaceResult of proof.surface_results ?? []) {
-      if (surfaceResult.public_snapshot_hash && surfaceResult.public_snapshot_hash !== expectedSnapshotHash) {
+      if (!surfaceResult.public_snapshot_hash) {
+        return {
+          ok: false,
+          reason: `actual customer mobile browser proof ${surfaceResult.surface ?? 'surface'} public snapshot hash is missing`,
+          proof,
+        };
+      }
+      if (surfaceResult.public_snapshot_hash !== expectedSnapshotHash) {
         return {
           ok: false,
           reason: `actual customer mobile browser proof ${surfaceResult.surface ?? 'surface'} public snapshot hash does not match`,
@@ -296,12 +321,21 @@ export function evaluateCustomerMobileProof(input: {
     }
   }
   const expectedAppBuildId = input.appBuildId?.trim();
-  if (expectedAppBuildId && proof.app_build_id && proof.app_build_id !== expectedAppBuildId) {
-    return {
-      ok: false,
-      reason: 'actual customer mobile browser proof app build id does not match',
-      proof,
-    };
+  if (expectedAppBuildId) {
+    if (!proof.app_build_id) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof app build id is missing',
+        proof,
+      };
+    }
+    if (proof.app_build_id !== expectedAppBuildId) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof app build id does not match',
+        proof,
+      };
+    }
   }
   return { ok: true, reason: 'actual /packages and /lp mobile browser proof passed', proof };
 }

@@ -205,11 +205,7 @@ SELECT
       'inclusions', p.inclusions,
       'excludes', p.excludes,
       'surcharges', p.surcharges,
-      'optional_tours', CASE
-        WHEN COALESCE(p.optional_tours::text, '') ~ '(노옵션|포\s*함\s*내\s*역|불\s*포\s*함\s*내\s*역|상품가|출발일|예약금|유류할증료|000\s*원|"\s*\d{1,3}\s*")'
-          THEN '[]'::jsonb
-        ELSE COALESCE(p.optional_tours, '[]'::jsonb)
-      END,
+      'optional_tours', COALESCE(p.optional_tours, '[]'::jsonb),
       'product_tags', p.product_tags,
       'product_highlights', p.product_highlights,
       'product_summary', p.product_summary,

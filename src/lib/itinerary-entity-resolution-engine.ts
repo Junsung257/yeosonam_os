@@ -135,6 +135,18 @@ const KOREAN_DESCRIPTIVE_ATTRACTION_PHRASE_RE = /(?:세계적으로\s*유명한|
 const KOREAN_GENERIC_OR_ROUTE_TOKEN_RE = /^(?:초원|해발|귀빈석|북파|남파|서파|양구코스|양커우코스|노노노|완톤)$/;
 const KOREAN_HOTEL_ROOM_OR_FACILITY_RE = /(?:객실|룸|BED|베드|풀빌라|가든풀빌라|욕실|락커|환복|체크\s*-?\s*인|체크\s*-?\s*아웃)/i;
 const KOREAN_EXTRA_GENERIC_OR_ITINERARY_FRAGMENT_RE = /(?:^or$|^마감$|^자유식$|^내부$|^반자연$|^초록색$|^붉은색$|^일\s*-\s*수$|^노노$|^\d+\s*분$|트레킹|온천계란|안전교육|약\s*\d+\s*시간|천지조망|무료이용|놀이기구|노팁|노옵션|특가|출확|발권|개별지참|명소\s*중|산\s*전체가|최대규모|포함|가능\s*$|집결|전동카.*소요|전동카트|차장관광|전통문화|전통복장|캠프파이어|민속공연|관람|특정일|혹은|투어$|보이는|매주|최고의|사진스팟|기원인|하늘과\s*바다|경계비|체험|지프차|대게|연어|전골|피자|몽골족의|역사|약\s*\d+만|화려하게|장식|[▷▶★♥]|\)$|BX\s*\d+|편으로|향발|[:：])/i;
+const CUSTOMER_FRAGMENT_CATEGORIES = new Set(['notice', 'optional_tour', 'shopping', 'unknown']);
+const CUSTOMER_PRICE_DATE_TIME_FRAGMENT_SAFE_RE =
+  /(?:^\s*\d{1,6}\s*$|^\s*[:\uFF1A]\s*\d{2}\s*$|^\s*[:\uFF1A]?\s*\d{1,2}\s*[:\uFF1A]\s*\d{2}\s*$|^\s*[,.\d]{1,8}\s*,?-\s*$|^\s*\/?\d{1,2}\s*[~\/]\s*\d{1,2}(?:\s*[~\/]\s*\d{1,2})?\s*$|(?:\uC120\s*)?\uBC1C\uAD8C\s*\d{1,2}\s*[./]\s*\d{1,2}|\uBC30\uD3EC|\uC0C1\uD488\uAC00|\uC608\uC57D\uAE08|\uC720\uB958\uD560\uC99D\uB8CC|\uC6D0\s*\/\s*\uC778|\d{1,3}\s*%|\d[\d,]*\s*(?:\uC6D0|\uB9CC\uC6D0|USD|US\$|\$|KRW)|\d{1,2}\s*\uC6D4\s*\d{1,2}\s*\uC77C|\d{1,2}\s*\/\s*\d{1,2})/iu;
+const CUSTOMER_POLICY_OR_SECTION_FRAGMENT_SAFE_RE =
+  /(?:\uC5EC\uAD8C\s*\uC720\uD6A8\uAE30\uAC04|\uCDE8\uC18C\s*\uADDC\uC815|\uCDE8\uC18C\uC2DC\uAE30|\uC218\uC218\uB8CC|\uCD1D\s*\uAE08\uC561(?:\uC758)?\s*\d{1,3}\s*%\s*\uACF5\uC81C|\uD658\uBD88|\uD3EC\s*\uD568\s*\uB0B4\s*\uC5ED|\uD3EC\uD568\s*\uB0B4\uC5ED|\uBD88\s*\uD3EC\s*\uD568\s*(?:\uB0B4\uC5ED|\uC0AC\uD56D)?|\uBD88\uD3EC\uD568\s*(?:\uB0B4\uC5ED|\uC0AC\uD56D)?|\uD3EC\s*\uD568\s*\uC0AC\s*\uD56D|\uC5EC\uD589\uC790\s*\uBCF4\uD5D8|\uD638\uD154\s*\uC548\uB0B4|\uC1FC\uD551\s*\uC13C\uD130|\uCD94\uCC9C\s*\uC120\uD0DD\uAD00\uAD11|\uB178\s*\uC635\uC158|\uB178\uC635\uC158)/u;
+const CUSTOMER_BENEFIT_OR_SERVICE_FRAGMENT_SAFE_RE =
+  /(?:\uC99D\uC815|\uD2B9\uC804|\uD478\uB529|\uB3C8\uCE74\uCE20|\uC2DD\uC0AC|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uD638\uD154\uC2DD|\uD2B9\uC2DD|\uD638\uD154\b|\uB9AC\uC870\uD2B8|\uD480\uBE4C\uB77C|\uB9C8\uC0AC\uC9C0|\uC628\uCC9C\uC695|\uC871\uC695|\uC544\uC624\uC790\uC774|\uC804\uD1B5\uC758\uC0C1|\uAE30\uB150\uC0AC\uC9C4|\uD2B8\uB7A8|\uB3D9\uBB3C\uBA39\uC774\uC8FC\uAE30|\uC804\uB3D9\uCE74|\uC2A4\uCFE0\uBC84\s*\uB2E4\uC774\uBE59|\uCCB4\uD5D8\s*\uB2E4\uC774\uBE59|\uBB34\uB8CC\s*\uAC15\uC2B5)/u;
+const CUSTOMER_OPTION_OR_ACTIVITY_FRAGMENT_SAFE_RE =
+  /(?:\uC120\uD0DD\s*\uAD00\uAD11|\uC120\uD0DD\uAD00\uAD11|\uC57C\uAC04\s*\uC2DC\uD2F0\s*\uD22C\uC5B4|\uC2DC\uD2F0\uD22C\uC5B4|\uB514\uC2A4\uCEE4\uBC84\uB9AC\s*\uD22C\uC5B4|\uD638\uD551\s*\uD22C\uC5B4|\uACE8\uD504|\uB77C\uC6B4\uB529|\uBD88\uAF43\s*\uD37C\uD3EC\uBA3C\uC2A4|\uC1FC\s*\uAD00\uB78C|5D\s*\uBE44\uD589\s*\uCCB4\uD5D8|\uC54C\uD30C\uC778\s*\uB864\uB7EC\s*\uCF54\uC2A4\uD130|\uC2A4\uCE74\uC774\uC6CC\uD06C|\uC804\uB9DD\uB300|\uC5B4\uB4DC\uBCA4\uCC98\s*\uCCB4\uD5D8\uC874|\uC5D1\uC870\uD2F0\uCE74\s*\uD30C\uD06C|\uCCB4\uD5D8|\uD22C\uC5B4|\uAD00\uB78C|\uBCC4\uB3C4\s*(?:\uBB38\uC758|\uACB0\uC81C|\uBE44\uC6A9|\uC720\uB8CC)|\uD604\uC9C0\s*\uACB0\uC81C)/u;
+const CUSTOMER_SHOPPING_OR_COMMERCIAL_FRAGMENT_SAFE_RE =
+  /(?:\uC1FC\uD551|\uC0C1\uC810|\uC2DC\uC7A5|\uC57C\uC2DC\uC7A5|\uBC14\uC790|\uB098\uC774\uD2B8\s*\uB9C8\uCF13|\uAE30\uB150\uD488|\uD1A0\uC0B0\uD488|\uD1A0\uC18D\uD488|\uC7A1\uD654|\uBBFC\uC608\uAC70\uB9AC|\uB77C\uB77C\s*\uD3EC\uD2B8|lala\s*port|lalaport|\uBD84\uC704\uAE30.*\uB290\uB084\s*\uC218\s*\uC788\uB294|\uC5EC\uD589\uC758\s*\uB610\s*\uB2E4\uB978\s*\uC7AC\uBBF8)/iu;
+
 const COUNTRY_TO_ISO2: Record<string, string> = {
   korea: 'KR',
   japan: 'JP',
@@ -377,11 +389,40 @@ function isSafeMasterName(category: string, canonicalName: string, rawLabel: str
   return true;
 }
 
+function customerFragmentReason(category: string, combined: string): string | null {
+  if (!CUSTOMER_FRAGMENT_CATEGORIES.has(category)) return null;
+  const compacted = compactForGate(combined);
+  if (/^\d{1,8}$/.test(compacted)) {
+    return 'price, date, or time fragment';
+  }
+  if (/(?:^|\s)[,.\d]{1,8}\s*,?-\s*(?:$|\s)/.test(combined)) {
+    return 'price, date, or time fragment';
+  }
+  if (CUSTOMER_PRICE_DATE_TIME_FRAGMENT_SAFE_RE.test(combined)) {
+    return 'price, date, or time fragment';
+  }
+  if (CUSTOMER_POLICY_OR_SECTION_FRAGMENT_SAFE_RE.test(combined)) {
+    return 'customer disclosure or policy fragment';
+  }
+  if (CUSTOMER_BENEFIT_OR_SERVICE_FRAGMENT_SAFE_RE.test(combined)) {
+    return 'benefit, meal, or service detail';
+  }
+  if (CUSTOMER_OPTION_OR_ACTIVITY_FRAGMENT_SAFE_RE.test(combined)) {
+    return 'structured option or experience detail, not a master entity';
+  }
+  if (CUSTOMER_SHOPPING_OR_COMMERCIAL_FRAGMENT_SAFE_RE.test(combined)) {
+    return 'shopping or commercial prose, not a master entity';
+  }
+  return null;
+}
+
 export function terminalNonMasterReason(category: string, canonicalName: string, rawLabel: string | null | undefined): string | null {
   const name = normalizeCandidateLabel(canonicalName);
   const raw = normalizeCandidateLabel(rawLabel ?? name);
   const combined = `${raw} ${name}`;
   if (!name || name.length <= 1) return 'empty or too short';
+  const customerReason = customerFragmentReason(category, combined);
+  if (customerReason) return customerReason;
   if (category === 'attraction' && /[\uA500-\uABFF]/.test(combined)) {
     return 'mojibake or corrupted source text';
   }
@@ -574,6 +615,14 @@ function safeTemplateResolution(category: string, label: string): {
     return {
       status: 'template_matched',
       reason: 'low-risk source-backed notice matched a standard template',
+    };
+  }
+
+  const customerReason = customerFragmentReason(category, label);
+  if (customerReason) {
+    return {
+      status: 'structured_non_master',
+      reason: `${customerReason}; source-backed customer disclosure data must not become a master entity`,
     };
   }
 

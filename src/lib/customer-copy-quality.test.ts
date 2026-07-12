@@ -88,6 +88,8 @@ describe('customer visible copy quality', () => {
     const codes = issueCodes('랜드사 NET 기준으로 마진 확인 후 담당자 확인');
 
     expect(codes).toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('랜드사: 투어비 / 커미션 9%')).toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('B2B 거래처 단가 기준으로 정산 확인')).toContain('customer_forbidden_internal_terms');
   });
 
   it('does not flag valid attraction copy as mojibake', () => {
@@ -98,6 +100,13 @@ describe('customer visible copy quality', () => {
   it('does not mistake internal field keys containing pp for per-person shorthand', () => {
     expect(issueCodes('supplier_raw_facts')).toEqual([]);
     expect(normalizeCustomerVisibleCopy('P.P $60')).toBe('1인 $60');
+  });
+
+  it('blocks Korean land-operator and admin notes from customer-visible fields', () => {
+    expect(issueCodes('랜드사 커미션 9% 관리자노트')).toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('내부메모: 공급가 기준 마진 확인')).toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('land operator comm 10% supplier margin')).toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('가이드 경비 4만원 성인/아동 동일')).not.toContain('customer_forbidden_internal_terms');
   });
 
   it('detects mojibake and visible html entities', () => {

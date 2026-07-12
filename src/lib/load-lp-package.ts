@@ -40,8 +40,10 @@ export async function fetchLpPackageUncached(
   if (!options.allowNonPublicProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) return null;
   if (!options.allowNonPublicProof && !isCustomerPubliclyOpenable(rawPkg)) return null;
 
-  const liveVerify = evaluateVerifyChecks(rawPkg as Parameters<typeof evaluateVerifyChecks>[0]);
-  if (!options.allowNonPublicProof && liveVerify.status === 'blocked') return null;
+  const liveVerify = publicSnapshot
+    ? null
+    : evaluateVerifyChecks(rawPkg as Parameters<typeof evaluateVerifyChecks>[0]);
+  if (!options.allowNonPublicProof && liveVerify?.status === 'blocked') return null;
 
   const { data: scores } = await supabaseAdmin
     .from('package_scores')
