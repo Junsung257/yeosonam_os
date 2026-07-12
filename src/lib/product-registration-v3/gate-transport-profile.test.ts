@@ -87,6 +87,27 @@ describe('evaluateProductRegistrationV3Gate transport profile', () => {
     expect(gate.status).toBe('blocked');
   });
 
+  it('accepts source-backed meal and hotel inclusions as V3 gate evidence', () => {
+    const ledger = baseLedger([]);
+    const variant = ledger.variants[0];
+    variant.days = [{
+      day: 1,
+      route: ['tour'],
+      events: [],
+      meals: { breakfast: {}, lunch: {}, dinner: {} },
+      hotel: {},
+    }];
+    variant.inclusions = [
+      { value: '\ud638\ud154(2\uc7781\uc2e4)', evidence },
+      { value: '\uc77c\uc815\ud45c\uc0c1\uc758 \uc2dd\uc0ac', evidence },
+    ];
+
+    const gate = evaluateProductRegistrationV3Gate(basePlan(false), ledger);
+
+    expect(gate.checks.find(check => check.id === 'v1.meals_or_notice')).toMatchObject({ status: 'pass' });
+    expect(gate.checks.find(check => check.id === 'v1.hotel_or_notice')).toMatchObject({ status: 'pass' });
+  });
+
   it('does not treat numeric price table values as flight codes', () => {
     const raw = [
       '\uBD80\uAD00\uD6FC\uB9AC \uD6C4\uCFE0\uC624\uCE74 3\uC77C',
