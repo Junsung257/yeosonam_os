@@ -770,6 +770,82 @@ ZE982
     expect(result.match_summary.attraction_unmatched_count).toBe(0);
   });
 
+  it('recognizes Korean 제N일차 itinerary headers as customer itinerary days', async () => {
+    const raw = [
+      '상품: 방콕 파타야 노팁 노옵션 3박5일',
+      '비행기 스케줄 안내 : LJ021 19:05 - 22:40 // LJ022 23:40 - 07:00+1',
+      '최소 출발인원 성인 4명 이상 출발가능',
+      '포함 호텔, 차량, 전일정 식사, 관광지 입장료',
+      '제1일차',
+      '김해 국제공항 출발',
+      '방콕 수완나폼 국제공항 도착 후 가이드 미팅',
+      '호텔 CHECK-IN 및 휴식',
+      '제2일차',
+      '호텔 조식 후 체크아웃',
+      '무앙보란 관광',
+      '제3일차',
+      '파타야 수산시장 플로팅마켓 관광',
+      '제4일차',
+      '아시아티크 관광',
+      '제5일차',
+      '부산 김해 국제공항 도착',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '방콕',
+      attractions: [
+        { id: 'muang-boran', name: '무앙보란', region: '방콕' },
+        { id: 'floating-market', name: '플로팅마켓', region: '파타야' },
+        { id: 'asiatique', name: '아시아티크', region: '방콕' },
+      ],
+    });
+    const variant = result.ledger.variants[0];
+
+    expect(variant.days.map(day => day.day)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('days'))?.status).toBe('pass');
+  });
+
+  it('does not split a package at duration-shaped surcharge notice lines', async () => {
+    const raw = [
+      '베트남 나트랑/달랏 3박5일 노팁 노옵션 PKG',
+      '스마트',
+      '출발인원 성인 4명이상',
+      '포함내역',
+      '국제선항공료, 호텔, 일정표상의 식사, 차량, 가이드',
+      '불포함내역',
+      '개인경비, 매너팁',
+      '비고',
+      '▶싱글 차지 전일정 1인/3박5일-12만원',
+      '▶패키지 일정 미 참여시 1인/100 패널티 발생합니다.',
+      '날짜',
+      '제1일',
+      'BX781',
+      '부산 김해국제공항 출발',
+      '나트랑 깜란 국제공항 도착',
+      '제2일',
+      '나트랑 시내관광',
+      '제3일',
+      '달랏 기차역 관광',
+      '제4일',
+      'BX782',
+      '나트랑 깜란 국제 공항 출발',
+      '제5일',
+      '부산 김해 국제 공항 도착 후 해산',
+    ].join('\n');
+
+    const plan = planProductRegistrationV3(createSourceLineIndex(raw));
+    const result = await runProductRegistrationV3(raw, {
+      destination: '나트랑',
+      attractions: [{ id: 'dalat-station', name: '달랏 기차역', region: '달랏' }],
+    });
+
+    expect(plan.expected_products).toBe(1);
+    expect(plan.product_boundaries).toHaveLength(1);
+    expect(result.ledger.variants[0].days.map(day => day.day)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.ledger.variants[0].standard_notices.some(notice => notice.category === 'single_room_surcharge')).toBe(true);
+  });
+
   it('keeps golf cart fees out of customer optional tours', async () => {
     const raw = [
       '상품: PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 4박6일',

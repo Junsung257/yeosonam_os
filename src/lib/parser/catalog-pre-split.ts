@@ -10,6 +10,9 @@ const READABLE_DURATION_RE = /\d+\s*박\s*\d+\s*일/u;
 const READABLE_DAY_DURATION_RE = /(?:^|[^\d])\d{1,2}\s*일(?:\s*\/\s*\d{1,2}\s*일)?(?:$|[^\d])/u;
 const MONEY_RE = /\d{1,3}(?:,\d{3})+\s*(?:원)?/;
 
+const DURATION_SURCHARGE_NOTICE_RE =
+  /(?:\uC2F1\uAE00\s*\uCC28\uC9C0|\uC2F1\uAE00\uCC28\uC9C0|\uC368\s*\uCC28\uC9C0|\uC11C\s*\uCC28\uC9C0|surcharge|single\s*charge|\uD328\uB110\uD2F0|\uCD94\uAC00\s*\uAE08|\uCD94\uAC00|\uB8F8\s*\uB2F9|\uBC15\s*\uB2F9|\uC778\s*\/|\uC778\uB2F9|\uAC1D\uC2E4)/iu;
+
 function hasReadableDurationSignal(line: string): boolean {
   return READABLE_DURATION_RE.test(line) || KOREAN_DURATION_TITLE_RE.test(line);
 }
@@ -260,6 +263,7 @@ function collectReadableDurationHeaderStarts(raw: string): number[] {
     if (!hasReadableDurationSignal(line)) continue;
     if (!hasReadableTitleText(line)) continue;
     if (MONEY_RE.test(line)) continue;
+    if (DURATION_SURCHARGE_NOTICE_RE.test(line)) continue;
     if (/^(?:출발|출발일|출발날짜|상품가|요금|요금표|행사일자|패턴|비고)\b/u.test(line)) continue;
     if (/(?:\uC5F0\uD569\uD589\uC0AC|\uC635\uC158\uC548\uB0B4|\uD328\uB110\uD2F0|\uD604\uC9C0\uC5D0\uC11C|\uD300\uACFC)/u.test(line)) continue;
 
