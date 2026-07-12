@@ -101,6 +101,29 @@ describe('chooseCanonicalNameFromNaver', () => {
 });
 
 describe('resolveItineraryEntityCandidate', () => {
+  it('classifies customer disclosure fragments as non-master structured data', () => {
+    const examples = [
+      ['notice', '사진은 연출된 이미지이며'],
+      ['notice', '■ 기타 개인경비 및 매너 팁'],
+      ['notice', '일본공휴일 7/21~23 기간은 일본연휴기간으로 지상비 추가'],
+      ['optional_tour', '현지지불옵션'],
+      ['optional_tour', '강력추천옵션 : 중국에서 가장 완벽히 보존된 명대성벽'],
+      ['optional_tour', '스노클링, 워터슬라이드, 다이빙, 낚시 등'],
+      ['optional_tour', '60여마리의 말과 사람이 함께하는 대형 마상쇼'],
+      ['optional_tour', '목선 아일랜드 호핑'],
+      ['optional_tour', 'VIP 럭셔리 스파'],
+      ['optional_tour', 'HOTEL: 호텔 죠시 또는 동급'],
+      ['shopping', '면세 1곳 방문'],
+      ['shopping', '쇼 핑 차, 캐시미어 2회'],
+      ['shopping', '센터포인트'],
+      ['shopping', '간단한 선물 구입가능'],
+    ] as const;
+
+    for (const [category, label] of examples) {
+      expect(terminalNonMasterReason(category, label, label)).toBeTruthy();
+    }
+  });
+
   it('uses Google Places strong identity plus supplier corpus as internal-only attraction evidence', async () => {
     const decision = await resolveItineraryEntityCandidate(candidate({
       raw_label: 'Tokyo Tower',
@@ -805,7 +828,7 @@ describe('resolveItineraryEntityCandidate', () => {
     }
   });
 
-  it('keeps shopping text review-gated without wasting external search', async () => {
+  it('structures shopping disclosure text without wasting external search', async () => {
     const decision = await resolveItineraryEntityCandidate(candidate({
       category: 'shopping',
       candidate_key: 'shopping:test',
@@ -818,9 +841,9 @@ describe('resolveItineraryEntityCandidate', () => {
       wikidataReconciler: async () => [],
     });
 
-    expect(decision.autoAction).toBe('needs_review');
-    expect(decision.promotionStatus).toBe('needs_review');
-    expect(decision.autoVerificationStatus).toBe('needs_review');
+    expect(decision.autoAction).toBe('structure_non_master');
+    expect(decision.promotionStatus).toBe('rejected_noise');
+    expect(decision.autoVerificationStatus).toBe('structured_non_master');
     expect(decision.attempts).toHaveLength(0);
   });
 
