@@ -32,4 +32,14 @@ describe('attraction-policy SSOT', () => {
     expect(unmatchedQueue).toContain("from('unmatched_activities').upsert");
     expect(unmatchedQueue).not.toMatch(/from\(['"]attractions['"]\)\s*\.\s*insert/);
   });
+
+  it('blocks AI or paste-derived attraction cards from direct master creation', () => {
+    const attractionRoute = readFileSync(path.join(process.cwd(), 'src/app/api/attractions/route.ts'), 'utf8');
+    const adminAttractionsPage = readFileSync(path.join(process.cwd(), 'src/app/admin/attractions/page.tsx'), 'utf8');
+
+    expect(attractionRoute).toContain("sourceLevel !== 'manual'");
+    expect(attractionRoute).toContain('ATTRACTION_CREATION_REQUIRES_DIRECT_MANUAL_ENTRY');
+    expect(adminAttractionsPage).toContain('AI 파싱 후보의 신규 관광지 일괄 등록은 차단되었습니다.');
+    expect(adminAttractionsPage).toContain('검수 후 직접 등록');
+  });
 });

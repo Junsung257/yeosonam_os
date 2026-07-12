@@ -5,6 +5,7 @@ import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { canCreateAttractionRecord } from '@/lib/attraction-policy';
 
 // GET /api/attractions — 전체 관광지 목록
 export async function GET(request: NextRequest) {
@@ -117,7 +118,13 @@ export async function POST(request: NextRequest) {
     //   sourceLevel: 'manual' (사장님 직접) | 'paste' (paste-and-parse 사장님 ☑) → 둘 다 manual_override=true
     //   'auto' (Wikidata 자동) → false
     const sourceLevel = (body.source_level ?? 'manual') as 'manual' | 'paste' | 'auto';
-    const isManual = sourceLevel === 'manual' || sourceLevel === 'paste';
+    if (sourceLevel !== 'manual' || !canCreateAttractionRecord('admin_manual')) {
+      return NextResponse.json({
+        error: 'AI/붙여넣기 후보는 신규 관광지로 바로 등록할 수 없습니다. 기존 관광지 별칭 연결 또는 마스터 후보 검수를 사용하세요.',
+        code: 'ATTRACTION_CREATION_REQUIRES_DIRECT_MANUAL_ENTRY',
+      }, { status: 403 });
+    }
+    const isManual = true;
 
     // 동일 name 중복 체크 — 사장님 paste-and-parse 시 중복 방지 (3-옵션 모달 트리거)
     const cleanName = sanitizeName(body.name) || body.name;
