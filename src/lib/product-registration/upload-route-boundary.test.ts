@@ -758,12 +758,25 @@ describe('upload route registration pipeline boundary', () => {
     const audit = readMobileReadinessAudit();
 
     expect(audit).toContain('function isBlockingV3NeedsReview(row)');
-    expect(audit).toContain("row.public || !hasNeedsHumanSourceReview(row)");
+    expect(audit).toContain("row.public || !hasNonPublicReviewHold(row)");
     expect(audit).toContain("warnings.push('v3_needs_review')");
     expect(audit).toContain('missing_v3_draft');
     expect(audit).toContain("strictFailures.push('v3_blocked')");
     expect(audit).toContain("strictFailures.push('v3_needs_review')");
     expect(audit).toContain("strictFailures.push('missing_v3_draft')");
+  });
+
+  it('separates expired source offers and non-human repair holds from true source review warnings', () => {
+    const audit = readMobileReadinessAudit();
+
+    expect(audit).toContain('function isExpiredSourceOffer(row)');
+    expect(audit).toContain('function hasNonHumanRepairReview(row)');
+    expect(audit).toContain('function hasNonPublicReviewHold(row)');
+    expect(audit).toContain('function reviewHoldWarning(row)');
+    expect(audit).toContain('ticketing_deadline_expired');
+    expect(audit).toContain('source_offer_expired_nonblocking');
+    expect(audit).toContain('nonpublic_repair_review_required');
+    expect(audit).toContain('needs_human_source_review');
   });
 
   it('keeps stale non-public V3 needs-review drafts from blocking current live-queue readiness', () => {
@@ -775,6 +788,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(audit).toContain('STALE_RESOLVABLE_V3_CHECK_IDS');
     expect(audit).toContain('function draftGateReasonCount(draft)');
     expect(audit).toContain('!row.public');
+    expect(audit).toContain('!hasNonPublicReviewHold(row)');
     expect(audit).toContain('!row.unmatched_lookup_failed');
     expect(audit).toContain('row.v3_gate_blocking_failed_check_count === 0');
     expect(audit).toContain('row.v3_gate_reason_count === 0');

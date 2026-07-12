@@ -1590,14 +1590,23 @@ async function verifyPublicHtmlSurface(row) {
   return failures.length > 0 ? failures.join(' | ') : null;
 }
 
-function hasNeedsHumanSourceReview(row) {
+function uploadToOpenAutopilot(row) {
   const report = row.audit_report && typeof row.audit_report === 'object' ? row.audit_report : {};
-  const autopilot = report.upload_to_open_autopilot && typeof report.upload_to_open_autopilot === 'object'
+  return report.upload_to_open_autopilot && typeof report.upload_to_open_autopilot === 'object'
     ? report.upload_to_open_autopilot
     : {};
-  const repairFirstSummary = autopilot.repair_first_summary && typeof autopilot.repair_first_summary === 'object'
+}
+
+function repairFirstSummaryFor(row) {
+  const autopilot = uploadToOpenAutopilot(row);
+  return autopilot.repair_first_summary && typeof autopilot.repair_first_summary === 'object'
     ? autopilot.repair_first_summary
     : {};
+}
+
+function hasNeedsReviewState(row) {
+  const autopilot = uploadToOpenAutopilot(row);
+  const repairFirstSummary = repairFirstSummaryFor(row);
   return autopilot.final_state === 'needs_human_source_review'
     || autopilot.status === 'needs_human_source_review'
     || autopilot.openabilityState === 'needs_human_source_review'
@@ -1605,10 +1614,50 @@ function hasNeedsHumanSourceReview(row) {
     || row.audit === 'needs_human_source_review';
 }
 
+function repairSummaryList(repairFirstSummary, key) {
+  return Array.isArray(repairFirstSummary?.[key]) ? repairFirstSummary[key] : [];
+}
+
+function isExpiredSourceOffer(row) {
+  const repairFirstSummary = repairFirstSummaryFor(row);
+  const unresolvedReasons = repairSummaryList(repairFirstSummary, 'unresolved_reasons');
+  const unresolvedCategories = repairSummaryList(repairFirstSummary, 'unresolved_categories');
+  const repairsApplied = repairSummaryList(repairFirstSummary, 'repairs_applied');
+  return unresolvedReasons.some(reason => /ticketing_deadline_expired/i.test(String(reason)))
+    || unresolvedCategories.includes('possibly_unusable_source')
+    || repairsApplied.some(repair => /ticketing_deadline:expired_source_offer_archived/i.test(String(repair)));
+}
+
+function hasNeedsHumanSourceReview(row) {
+  if (!hasNeedsReviewState(row) || isExpiredSourceOffer(row)) return false;
+  const repairFirstSummary = repairFirstSummaryFor(row);
+  return repairFirstSummary.human_source_review_required !== false;
+}
+
+function hasNonHumanRepairReview(row) {
+  return hasNeedsReviewState(row)
+    && !isExpiredSourceOffer(row)
+    && !hasNeedsHumanSourceReview(row);
+}
+
+function hasNonPublicReviewHold(row) {
+  return !row.public && (
+    hasNeedsHumanSourceReview(row)
+    || hasNonHumanRepairReview(row)
+    || isExpiredSourceOffer(row)
+  );
+}
+
+function reviewHoldWarning(row) {
+  if (isExpiredSourceOffer(row)) return 'source_offer_expired_nonblocking';
+  if (hasNonHumanRepairReview(row)) return 'nonpublic_repair_review_required';
+  return 'needs_human_source_review';
+}
+
 function isBlockingV3NeedsReview(row) {
   return row.v3 === 'needs_review'
     && !isStaleResolvedV3NeedsReview(row)
-    && (row.public || !hasNeedsHumanSourceReview(row));
+    && (row.public || !hasNonPublicReviewHold(row));
 }
 
 function hasCurrentReadinessBlocker(row) {
@@ -1640,7 +1689,7 @@ function hasCurrentReadinessBlocker(row) {
 function isStaleResolvedV3NeedsReview(row) {
   return row.v3 === 'needs_review'
     && !row.public
-    && !hasNeedsHumanSourceReview(row)
+    && !hasNonPublicReviewHold(row)
     && !row.draft_lookup_failed
     && !row.unmatched_lookup_failed
     && row.v3_gate_blocking_failed_check_count === 0
@@ -1657,9 +1706,10 @@ function isStaleResolvedV3NeedsReview(row) {
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
-  const nonPublicSourceReview = !row.public && hasNeedsHumanSourceReview(row);
-  const addHumanReviewWarning = () => {
-    if (!warnings.includes('needs_human_source_review')) warnings.push('needs_human_source_review');
+  const nonPublicReviewHold = hasNonPublicReviewHold(row);
+  const addReviewHoldWarning = () => {
+    const warning = reviewHoldWarning(row);
+    if (!warnings.includes(warning)) warnings.push(warning);
   };
   const hardV3Blocked = row.v3 === 'blocked' && (
     row.entity_attraction_unresolved > 0
@@ -1676,7 +1726,7 @@ function readinessFor(row) {
   if (row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
   if (row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
   if (row.price_source_evidence_mismatch) {
-    if (nonPublicSourceReview) warnings.push('needs_human_source_review');
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('price_source_evidence_mismatch');
   }
   if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
@@ -1694,31 +1744,31 @@ function readinessFor(row) {
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
   if (hardV3Blocked) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('v3_blocked');
   }
   if (row.entity_attraction_unresolved > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_attraction_unresolved');
   }
   if (row.entity_master_candidate_unresolved > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_master_candidate_unresolved');
   }
   if (row.entity_shopping_review_needed > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_shopping_review_needed');
   }
   if (row.entity_option_review_needed > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_option_review_needed');
   }
   if (row.entity_unknown_customer_visible > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_unknown_customer_visible');
   }
   if (row.v3 === 'needs_review') {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else if (isStaleResolvedV3NeedsReview(row)) warnings.push('v3_stale_needs_review_nonblocking');
     else warnings.push('v3_needs_review');
   }
@@ -2777,6 +2827,10 @@ const summary = {
     row.readiness.failures.includes('price_source_evidence_mismatch')).length,
   needs_human_source_review: rows.filter(row =>
     row.readiness.warnings.includes('needs_human_source_review')).length,
+  nonpublic_repair_review_required: rows.filter(row =>
+    row.readiness.warnings.includes('nonpublic_repair_review_required')).length,
+  source_offer_expired_nonblocking: rows.filter(row =>
+    row.readiness.warnings.includes('source_offer_expired_nonblocking')).length,
   attraction_context_mismatch: rows.filter(row => row.attraction_context_mismatch).length,
   attraction_unlinked_registered: rows.filter(row => row.attraction_unlinked_registered).length,
   attraction_description_missing: rows.filter(row => row.attraction_description_missing).length,
