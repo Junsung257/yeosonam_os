@@ -757,11 +757,30 @@ describe('upload route registration pipeline boundary', () => {
   it('fails strict mobile/A4 audit when customer-visible products are not V3 publishable', () => {
     const audit = readMobileReadinessAudit();
 
+    expect(audit).toContain('function isBlockingV3NeedsReview(row)');
+    expect(audit).toContain("row.public || !hasNeedsHumanSourceReview(row)");
     expect(audit).toContain("warnings.push('v3_needs_review')");
     expect(audit).toContain('missing_v3_draft');
     expect(audit).toContain("strictFailures.push('v3_blocked')");
     expect(audit).toContain("strictFailures.push('v3_needs_review')");
     expect(audit).toContain("strictFailures.push('missing_v3_draft')");
+  });
+
+  it('keeps stale non-public V3 needs-review drafts from blocking current live-queue readiness', () => {
+    const audit = readMobileReadinessAudit();
+
+    expect(audit).toContain('function isStaleResolvedV3NeedsReview(row)');
+    expect(audit).toContain('function draftGateFailedCheckCount(draft)');
+    expect(audit).toContain('function draftGateBlockingFailedCheckCount(draft)');
+    expect(audit).toContain('STALE_RESOLVABLE_V3_CHECK_IDS');
+    expect(audit).toContain('function draftGateReasonCount(draft)');
+    expect(audit).toContain('!row.public');
+    expect(audit).toContain('!row.unmatched_lookup_failed');
+    expect(audit).toContain('row.v3_gate_blocking_failed_check_count === 0');
+    expect(audit).toContain('row.v3_gate_reason_count === 0');
+    expect(audit).toContain('!hasCurrentReadinessBlocker(row)');
+    expect(audit).toContain("warnings.push('v3_stale_needs_review_nonblocking')");
+    expect(audit).toContain('v3_stale_resolved_needs_review');
   });
 
   it('can fail strict mobile/A4 audit from the actual public package HTML surface', () => {
