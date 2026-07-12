@@ -307,88 +307,44 @@ function EntityMasterCandidatePanel({ onAfterAction }: { onAfterAction: () => vo
   );
 }
 
-function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem[]; onAfterRegister: () => void }) {
+function SuggestedCardsBanner({ items }: { items: UnmatchedItem[] }) {
   const candidates = useMemo(
     () => items.filter(i => i.status === 'pending' && i.suggested_card && typeof i.suggested_card === 'object'),
     [items],
   );
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
-
-  useEffect(() => {
-    setSelectedIds(new Set(candidates.map(c => c.id)));
-  }, [candidates]);
 
   if (candidates.length === 0) return null;
 
-  const toggleOne = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const bulkRegister = async () => {
-    const ids = [...selectedIds];
-    if (ids.length === 0) { alert('선택된 카드 없음'); return; }
-    if (!confirm(`${ids.length}건 AI 추천 카드를 attractions 에 일괄 등록하시겠습니까?\n(동일 name 시 alias 추가, 모바일 즉시 반영)`)) return;
-    setBulkProgress({ current: 0, total: ids.length });
-    let saved = 0, aliased = 0, failed = 0;
-    for (let i = 0; i < ids.length; i++) {
-      setBulkProgress({ current: i + 1, total: ids.length });
-      try {
-        const res = await fetch('/api/unmatched', {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: ids[i], action: 'register_from_suggested_card' }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          if (data.message?.includes('alias 추가')) aliased++;
-          else saved++;
-        } else failed++;
-        await new Promise(r => setTimeout(r, 150));
-      } catch { failed++; }
-    }
-    setBulkProgress(null);
-    alert(`등록 완료\n신규: ${saved} / alias 추가: ${aliased} / 실패: ${failed}`);
-    setSelectedIds(new Set());
-    onAfterRegister();
-  };
-
   return (
-    <div className="mb-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-emerald-700">
-          🤖 AI 자동 추천 카드 ({candidates.length}건) — 신규 지역 자동 부트스트랩
-        </h3>
-        <button
-          onClick={bulkRegister}
-          disabled={!!bulkProgress || selectedIds.size === 0}
-          className="px-4 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-semibold"
-        >
-          {bulkProgress ? `등록 중… ${bulkProgress.current}/${bulkProgress.total}` : `✅ ${selectedIds.size}건 일괄 등록`}
-        </button>
+    <div className="mb-4 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-emerald-700">
+            AI 추천 관광지 후보 ({candidates.length}건)
+          </h3>
+          <p className="mt-1 text-xs text-emerald-700/80">
+            추천 후보는 검수 참고용입니다. 신규 관광지 일괄 등록은 차단되고, 기존 관광지 별칭 연결 또는 마스터 후보 검수만 사용합니다.
+          </p>
+        </div>
+        <span className="rounded bg-white/80 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+          검수 필요
+        </span>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-96 overflow-y-auto">
+      <div className="grid max-h-96 grid-cols-1 gap-2 overflow-y-auto md:grid-cols-2 lg:grid-cols-3">
         {candidates.map(c => {
           const card = c.suggested_card!;
-          const isSelected = selectedIds.has(c.id);
           return (
-            <label key={c.id} className={`flex gap-2 p-2 rounded border cursor-pointer transition ${
-              isSelected ? 'bg-white border-emerald-400' : 'bg-white/60 border-slate-200'
-            }`}>
-              <input type="checkbox" checked={isSelected} onChange={() => toggleOne(c.id)} className="mt-1" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 mb-0.5">
+            <article key={c.id} className="flex gap-2 rounded border border-emerald-200 bg-white/80 p-2">
+              <div className="min-w-0 flex-1">
+                <div className="mb-0.5 flex items-center gap-1">
                   <span>{card.emoji}</span>
-                  <span className="font-bold text-sm truncate">{card.name}</span>
-                  <span className="text-[10px] bg-slate-100 px-1 py-0.5 rounded">{card.badge_type}</span>
+                  <span className="truncate text-sm font-bold">{card.name}</span>
+                  <span className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">{card.badge_type}</span>
                 </div>
-                {card.short_desc && <p className="text-xs text-admin-muted line-clamp-2">{card.short_desc}</p>}
-                <p className="text-[10px] text-admin-muted-2 mt-1 truncate">원본: {c.activity}</p>
+                {card.short_desc && <p className="line-clamp-2 text-xs text-admin-muted">{card.short_desc}</p>}
+                <p className="mt-1 truncate text-[10px] text-admin-muted-2">원문: {c.activity}</p>
               </div>
-            </label>
+            </article>
           );
         })}
       </div>
@@ -921,7 +877,7 @@ export default function UnmatchedPage() {
       )}
 
       {/* PR #94 — AI 자동 추천 카드 일괄 등록 */}
-      <SuggestedCardsBanner items={items} onAfterRegister={() => { load(); loadSummary(); }} />
+      <SuggestedCardsBanner items={items} />
 
       {/* 필터 */}
       <div className="flex gap-3 mb-4 items-center flex-wrap">
