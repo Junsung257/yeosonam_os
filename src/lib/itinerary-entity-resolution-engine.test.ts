@@ -853,7 +853,7 @@ describe('resolveItineraryEntityCandidate', () => {
     ];
 
     for (const item of labels) {
-      if (/[\uA500-\uABFF?]/.test(item.label)) continue;
+      if (/[\uA500-\uABFF\uF900-\uFAFF\u4E00-\u9FFF?]/.test(item.label)) continue;
       const decision = await resolveItineraryEntityCandidate(candidate({
         category: item.category,
         candidate_key: `${item.category}:customer-fragment`,

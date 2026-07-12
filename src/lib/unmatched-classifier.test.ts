@@ -227,6 +227,17 @@ describe('classifyUnmatchedActivity', () => {
     });
   });
 
+  it('auto-closes source-backed optional tour fragments that are not attraction masters', () => {
+    expect(classifyUnmatchedActivity(
+      '(\u203B \uD2B8\uB7A8\uC740 \uD3B8\uB3C4 (\uC0C1\uD589) \uB9CC \uD3EC\uD568\uC774\uBA70, \uD558\uD589\uC120\uC740 \uAC00\uC774\uB4DC\uC5D0\uAC8C \uBCC4\uB3C4 \uBB38\uC758/\uC720\uB8CC)',
+      'optional_tour',
+    )).toMatchObject({
+      category: 'optional_tour',
+      terminalStatus: 'added',
+      suggestedAction: 'structure_non_master',
+    });
+  });
+
   it('keeps supplier price, condition, and option fragments out of attraction review', () => {
     expect(classifyUnmatchedActivity('1,299,000원/인')).toMatchObject({
       category: 'price_noise',
