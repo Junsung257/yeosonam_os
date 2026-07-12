@@ -819,7 +819,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(repair).not.toContain("status: 'approved'");
   });
 
-  it('uses the latest V3 draft match summary before stale unmatched queue rows in mobile/A4 audit', () => {
+  it('uses the live unmatched queue before stale V3 draft match summary in mobile/A4 audit', () => {
     const audit = readMobileReadinessAudit();
 
     expect(audit).toContain('function draftAttractionUnmatchedCount(draft)');
@@ -827,7 +827,11 @@ describe('upload route registration pipeline boundary', () => {
     expect(audit).toContain('match_summary, created_at');
     expect(audit).toContain("eq('status', 'pending')");
     expect(audit).toContain("is('resolved_attraction_id', null)");
-    expect(audit).toContain('unmatchedCountMap.get(pkg.id) ?? draftAttractionUnmatchedCount(draft) ?? 0');
+    expect(audit).toContain('unmatchedLookupFailedPackageIds');
+    expect(audit).toContain("auditDataErrors.push({ scope: 'unmatched_activities'");
+    expect(audit).toContain('const unmatchedLookupFailed = unmatchedLookupFailedPackageIds.has(pkg.id)');
+    expect(audit).toContain('? (draftAttractionUnmatchedCount(draft) ?? 0)');
+    expect(audit).toContain(': (unmatchedCountMap.get(pkg.id) ?? 0)');
     expect(audit).toContain('entity_attraction_unresolved: queueEntities.attraction_unresolved || 0');
     expect(audit).toContain('entity_option_review_needed: queueEntities.option_review_needed || 0');
   });

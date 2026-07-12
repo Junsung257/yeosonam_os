@@ -1768,6 +1768,7 @@ const unmatchedEntityMap = new Map();
 const entityCandidateUnresolvedMap = new Map();
 const priceRowsLookupFailedCodes = new Set();
 const draftLookupFailedPackageIds = new Set();
+const unmatchedLookupFailedPackageIds = new Set();
 let unmatchedScopeReady = false;
 let unmatchedScopeError = null;
 
@@ -1859,6 +1860,10 @@ if (packageIds.length > 0) {
         if (kind === 'unknown') current.unknown_customer_visible++;
         unmatchedEntityMap.set(item.package_id, current);
       }
+    } else {
+      const message = unmatchedError.message ?? String(unmatchedError);
+      for (const packageId of chunk) unmatchedLookupFailedPackageIds.add(packageId);
+      auditDataErrors.push({ scope: 'unmatched_activities', package_ids: chunk, message });
     }
   }
 
@@ -2400,6 +2405,7 @@ let rows = allPackageRows
   .map(pkg => {
     const draft = draftMap.get(pkg.id);
     const draftLookupFailed = draftLookupFailedPackageIds.has(pkg.id);
+    const unmatchedLookupFailed = unmatchedLookupFailedPackageIds.has(pkg.id);
     const draftEntities = draftEntitySummary(draft);
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
     const entityCandidateEntities = entityCandidateUnresolvedMap.get(pkg.id) ?? {};
@@ -2422,7 +2428,12 @@ let rows = allPackageRows
       itinerary_days: countItineraryDays(pkg),
       standard_notices: countLedgerRows(draft, 'standard_notices'),
       structured_facts: countLedgerRows(draft, 'structured_facts'),
-      unmatched_activities: unmatchedCountMap.get(pkg.id) ?? draftAttractionUnmatchedCount(draft) ?? 0,
+      // Live unmatched_activities is the authoritative current queue. Older V3
+      // drafts can keep stale unmatched counts after the queue has been resolved,
+      // so only fall back to draft counts when the live queue lookup itself failed.
+      unmatched_activities: unmatchedLookupFailed
+        ? (draftAttractionUnmatchedCount(draft) ?? 0)
+        : (unmatchedCountMap.get(pkg.id) ?? 0),
       // The live unmatched queue is the canonical customer-open blocker after
       // deterministic repairs. Older V3 drafts can keep stale review counts after the
       // queue has already resolved rows, so use the current pending queue for blockers.
