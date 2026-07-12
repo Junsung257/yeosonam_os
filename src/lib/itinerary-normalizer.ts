@@ -181,36 +181,74 @@ function normalizeMeals(meals: Meals | undefined): Meals | undefined {
   };
 }
 
+const FLIGHT_CODE_RE = /\b[A-Z0-9]{2}\s*\d{3,4}\b/i;
+const FLIGHT_ACTIVITY_NEGATIVE_RE = /관광|체험|등정|산책|조망|이동|호텔|식사|조식|중식|석식|자유일정|휴식|마사지|온천|차량|가이드|쇼핑|선택\s*관광|요금|상품가|출발\s*가능/;
+const AIRPORT_PROCESS_RE = /출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층|공항\s*도착\s*후|도착\s*후/;
+
+function hasFlightCode(item: ScheduleItem, activity: string): boolean {
+  const transport = typeof item.transport === 'string' ? item.transport : '';
+  return FLIGHT_CODE_RE.test(activity) || FLIGHT_CODE_RE.test(transport);
+}
+
+function looksLikeFlightScheduleItem(item: ScheduleItem): boolean {
+  const act = (item.activity ?? '').trim();
+  if (!act) return false;
+  if (AIRPORT_PROCESS_RE.test(act)) return false;
+  if (FLIGHT_ACTIVITY_NEGATIVE_RE.test(act)) return false;
+  if (hasFlightCode(item, act)) return true;
+
+  const compactAct = act.replace(/\s+/g, '');
+  const isArrowFlight = /[→↦⇒]/.test(act) && /출발/.test(act) && /도착/.test(act);
+  const isAirportDeparture =
+    /(국제)?\s*공항\s*출발/.test(act) ||
+    (/출발/.test(act) && !/도착/.test(act) && /공항|김해|인천|김포|부산/.test(act));
+  const isAirportArrival =
+    /(국제)?\s*공항\s*도착/.test(act) ||
+    (/도착/.test(act) && !/출발/.test(act) && /공항/.test(act));
+  const isSimpleDeparture =
+    /^[\w가-힣]+(?:\s+[\w가-힣]+)?\s*출발$/.test(act) &&
+    !/미팅|수속|층/.test(act);
+  const isSimpleArrival =
+    /^[\w가-힣]+(?:\s+[\w가-힣]+)?\s*도착$/.test(act);
+
+  return isArrowFlight || isAirportDeparture || isAirportArrival || isSimpleDeparture || isSimpleArrival || /(?:출발|도착)$/.test(compactAct);
+}
+
+function normalizeFlightArrivalActivityCopy(item: ScheduleItem): ScheduleItem {
+  const act = (item.activity ?? '').trim();
+  const arrival = act.match(/^(.+?\s*도착)\s*(?:[☺☻]+.*|즐거운\s*여행.*)$/);
+  if (!arrival?.[1]) return item;
+  return { ...item, activity: arrival[1].trim() };
+}
+
+function downgradeUnsupportedFlightItem(item: ScheduleItem): ScheduleItem {
+  const next: ScheduleItem = { ...item, type: 'normal' };
+  if (next.entity_kind === 'flight') next.entity_kind = 'unknown';
+  return next;
+}
+
 /** LLM이 공항 출발/도착을 type=normal 로 두는 경우 flight 로 보정 (flight_segments·헤더 카드 SSOT) */
 export function coerceAirportScheduleTypes(schedule: ScheduleItem[] | undefined): ScheduleItem[] {
   if (!Array.isArray(schedule)) return [];
   return schedule.map(item => {
-    if (item.type === 'flight') return item;
-    const act = (item.activity ?? '').trim();
+    const normalizedItem = normalizeFlightArrivalActivityCopy(item);
+    if (normalizedItem.type === 'flight' || normalizedItem.entity_kind === 'flight') {
+      return looksLikeFlightScheduleItem(normalizedItem)
+        ? { ...normalizedItem, type: 'flight' }
+        : downgradeUnsupportedFlightItem(normalizedItem);
+    }
+    const act = (normalizedItem.activity ?? '').trim();
     if (!act) return item;
 
     // 미팅·수속 — flight 아님 (sanitizeFlightScheduleTimes 가 time 제거)
-    if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층|공항\s*도착\s*후|도착\s*후/.test(act)) {
+    if (AIRPORT_PROCESS_RE.test(act)) {
       return item;
     }
 
-    const isArrowFlight = /[→↦⇒]/.test(act) && /출발/.test(act) && /도착/.test(act);
-    const isDep =
-      /(국제)?\s*공항\s*출발/.test(act) ||
-      (/출발/.test(act) && !/도착/.test(act) && /공항|김해|인천|김포|부산/.test(act));
-    const isArr =
-      /(국제)?\s*공항\s*도착/.test(act) ||
-      (/도착/.test(act) && !/출발/.test(act) && /공항/.test(act));
-    const isSimpleDep =
-      /^[\w가-힣]+(?:\s+[\w가-힣]+)?\s*출발$/.test(act) &&
-      !/미팅|수속|층/.test(act);
-    const isSimpleArr =
-      /^[\w가-힣]+(?:\s+[\w가-힣]+)?\s*도착$/.test(act);
-
-    if (isArrowFlight || isDep || isArr || isSimpleDep || isSimpleArr) {
-      return { ...item, type: 'flight' };
+    if (looksLikeFlightScheduleItem(normalizedItem)) {
+      return { ...normalizedItem, type: 'flight' };
     }
-    return item;
+    return normalizedItem;
   });
 }
 
@@ -316,6 +354,11 @@ function applyMetaFlightHints(days: DayBlock[], meta: ItineraryDataBlock['meta']
       const activity = item.activity ?? '';
       if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층/.test(activity)) {
         return item;
+      }
+      if (FLIGHT_ACTIVITY_NEGATIVE_RE.test(activity) || AIRPORT_PROCESS_RE.test(activity)) {
+        return item.type === 'flight' || item.entity_kind === 'flight'
+          ? downgradeUnsupportedFlightItem(item)
+          : item;
       }
       const isOutboundDeparture =
         isFirstDay

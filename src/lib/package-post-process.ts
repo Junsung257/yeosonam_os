@@ -6,7 +6,7 @@
  */
 
 /** write-time 후처리 버전 — DB drift·backfill 판별용 */
-export const POSTPROCESS_VERSION = '2026-05-22-v1';
+export const POSTPROCESS_VERSION = '2026-07-13-v1';
 
 import { enrichItineraryForDisplay } from './itinerary-normalizer';
 import { normalizeFlightSegments } from './parser/normalize-flight-segments';
@@ -38,9 +38,19 @@ function unwrapItineraryData<T extends ItineraryLike>(itin: T): T {
   return itin;
 }
 
+function cloneItineraryData<T extends ItineraryLike>(itin: T): T {
+  if (!itin || typeof itin !== 'object') return itin;
+  try {
+    return structuredClone(itin);
+  } catch {
+    return JSON.parse(JSON.stringify(itin)) as T;
+  }
+}
+
 export function postProcessItineraryData<T extends ItineraryLike>(itin: T): T {
   const unwrapped = unwrapItineraryData(itin);
-  return enrichItineraryForDisplay(unwrapped, data =>
+  const draft = cloneItineraryData(unwrapped);
+  return enrichItineraryForDisplay(draft, data =>
     normalizeFlightSegments(data as Parameters<typeof normalizeFlightSegments>[0]),
   );
 }

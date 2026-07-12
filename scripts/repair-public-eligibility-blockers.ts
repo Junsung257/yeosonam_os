@@ -8,9 +8,10 @@ import {
   sanitizeBrokenAttractionIdsForPublicEligibility,
   sanitizeOptionalToursForPublicEligibility,
 } from '../src/lib/package-public-eligibility';
+import { POSTPROCESS_VERSION, postProcessItineraryData } from '../src/lib/package-post-process';
 import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '../src/lib/visibility-status';
 
-for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) {
+for (const file of ['.env.local', '.env.croncheck.local', '.env']) {
   const fullPath = path.join(process.cwd(), file);
   if (fs.existsSync(fullPath)) dotenv.config({ path: fullPath, quiet: true });
 }
@@ -23,6 +24,7 @@ type PackageRow = {
   audit_status: string | null;
   audit_report: unknown;
   updated_at: string | null;
+  parser_version: string | null;
   optional_tours: unknown;
   itinerary_data: unknown;
 };
@@ -44,6 +46,11 @@ type RepairRow = {
   attraction_ids?: {
     removed_count: number;
     removed: Array<{ path: string; id: unknown; reason: string }>;
+  };
+  itinerary_data?: {
+    status: string;
+    unsupported_flight_rows_normalized: number;
+    flight_activity_text_normalized: number;
   };
   demotion?: {
     from: string | null;
@@ -70,7 +77,7 @@ const ids = argValue('ids', '')
   .map((value) => value.trim())
   .filter(Boolean);
 const only = new Set(
-  argValue('only', 'optional,attractions')
+  argValue('only', 'optional,attractions,itinerary')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
@@ -176,7 +183,7 @@ async function fetchActiveAttractionIds(): Promise<Set<string> | undefined> {
 async function fetchPackages(): Promise<PackageRow[]> {
   let query = supabase
     .from('travel_packages')
-    .select('id,title,destination,status,audit_status,audit_report,updated_at,optional_tours,itinerary_data')
+    .select('id,title,destination,status,audit_status,audit_report,updated_at,parser_version,optional_tours,itinerary_data')
     .order('updated_at', { ascending: false, nullsFirst: false })
     .limit(limit);
 
@@ -191,12 +198,76 @@ async function fetchPackages(): Promise<PackageRow[]> {
   return (data ?? []) as PackageRow[];
 }
 
+function parserVersionWithPostprocess(value: string | null | undefined): string {
+  const prev = String(value ?? '').trim();
+  if (prev.includes(POSTPROCESS_VERSION)) return prev;
+  return prev ? `${POSTPROCESS_VERSION} / ${prev}` : POSTPROCESS_VERSION;
+}
+
+function countUnsupportedFlightRowsNormalized(before: unknown, after: unknown): number {
+  const beforeDaysRaw = asRecord(before).days;
+  const afterDaysRaw = asRecord(after).days;
+  const beforeDays = Array.isArray(beforeDaysRaw) ? beforeDaysRaw : [];
+  const afterDays = Array.isArray(afterDaysRaw) ? afterDaysRaw : [];
+  let count = 0;
+  for (let dayIndex = 0; dayIndex < beforeDays.length; dayIndex++) {
+    const beforeScheduleRaw = asRecord(beforeDays[dayIndex]).schedule;
+    const afterScheduleRaw = asRecord(afterDays[dayIndex]).schedule;
+    const beforeSchedule = Array.isArray(beforeScheduleRaw)
+      ? beforeScheduleRaw
+      : [];
+    const afterSchedule = Array.isArray(afterScheduleRaw)
+      ? afterScheduleRaw
+      : [];
+    for (let itemIndex = 0; itemIndex < beforeSchedule.length; itemIndex++) {
+      const beforeItem = asRecord(beforeSchedule[itemIndex]);
+      const afterItem = asRecord(afterSchedule[itemIndex]);
+      if (beforeItem.type === 'flight' && afterItem.type !== 'flight') count++;
+      if (beforeItem.entity_kind === 'flight' && afterItem.entity_kind !== 'flight') count++;
+    }
+  }
+  return count;
+}
+
+function countFlightActivityTextNormalized(before: unknown, after: unknown): number {
+  const beforeDaysRaw = asRecord(before).days;
+  const afterDaysRaw = asRecord(after).days;
+  const beforeDays = Array.isArray(beforeDaysRaw) ? beforeDaysRaw : [];
+  const afterDays = Array.isArray(afterDaysRaw) ? afterDaysRaw : [];
+  let count = 0;
+  for (let dayIndex = 0; dayIndex < beforeDays.length; dayIndex++) {
+    const beforeScheduleRaw = asRecord(beforeDays[dayIndex]).schedule;
+    const afterScheduleRaw = asRecord(afterDays[dayIndex]).schedule;
+    const beforeSchedule = Array.isArray(beforeScheduleRaw)
+      ? beforeScheduleRaw
+      : [];
+    const afterSchedule = Array.isArray(afterScheduleRaw)
+      ? afterScheduleRaw
+      : [];
+    for (let itemIndex = 0; itemIndex < beforeSchedule.length; itemIndex++) {
+      const beforeItem = asRecord(beforeSchedule[itemIndex]);
+      const afterItem = asRecord(afterSchedule[itemIndex]);
+      if (
+        beforeItem.type === 'flight'
+        && afterItem.type === 'flight'
+        && typeof beforeItem.activity === 'string'
+        && typeof afterItem.activity === 'string'
+        && beforeItem.activity !== afterItem.activity
+      ) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) {
   const updates: Record<string, unknown> = {};
   const actions: string[] = [];
   const details: Record<string, unknown> = {};
   let optionalSummary: RepairRow['optional_tours'];
   let attractionSummary: RepairRow['attraction_ids'];
+  let itinerarySummary: RepairRow['itinerary_data'];
 
   if (only.has('optional')) {
     const optionalRepair = sanitizeOptionalToursForPublicEligibility(pkg.optional_tours);
@@ -221,6 +292,23 @@ function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) 
     }
   }
 
+  if (only.has('itinerary')) {
+    const nextItinerary = postProcessItineraryData(pkg.itinerary_data as Parameters<typeof postProcessItineraryData>[0]);
+    const normalizedFlightRows = countUnsupportedFlightRowsNormalized(pkg.itinerary_data, nextItinerary);
+    const normalizedFlightActivityText = countFlightActivityTextNormalized(pkg.itinerary_data, nextItinerary);
+    if ((normalizedFlightRows > 0 || normalizedFlightActivityText > 0) && stableJson(nextItinerary) !== stableJson(pkg.itinerary_data)) {
+      updates.itinerary_data = nextItinerary;
+      updates.parser_version = parserVersionWithPostprocess(pkg.parser_version);
+      actions.push('itinerary_flight_type_normalized');
+      itinerarySummary = {
+        status: normalizedFlightRows > 0 ? 'unsupported_flight_rows_normalized' : 'flight_activity_text_normalized',
+        unsupported_flight_rows_normalized: normalizedFlightRows,
+        flight_activity_text_normalized: normalizedFlightActivityText,
+      };
+      details.itinerary_data = itinerarySummary;
+    }
+  }
+
   if (only.has('attractions')) {
     const attractionRepair = sanitizeBrokenAttractionIdsForPublicEligibility(pkg.itinerary_data, validAttractionIds);
     if (attractionRepair.repaired && stableJson(attractionRepair.itineraryData) !== stableJson(pkg.itinerary_data)) {
@@ -236,7 +324,7 @@ function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) 
     }
   }
 
-  return { updates, actions, details, optionalSummary, attractionSummary };
+  return { updates, actions, details, optionalSummary, attractionSummary, itinerarySummary };
 }
 
 async function main() {
@@ -286,6 +374,7 @@ async function main() {
       actions,
       optional_tours: repair.optionalSummary,
       attraction_ids: repair.attractionSummary,
+      itinerary_data: repair.itinerarySummary,
       demotion,
       applied: false,
     };
