@@ -66,10 +66,16 @@ function normalizeOptionDisclosureText(rawText: string): string {
     .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b()]+/, '')
     .replace(/[()]+$/g, '')
     .replace(/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uad00\uad11|\ub9c8\uc0ac\uc9c0|\uc2dd\uc0ac)\s*[:：]\s*/i, '')
-    .replace(/\$\s*\d+(?:\.\d+)?/g, '')
+    .replace(/(?:USD|US\$|\$)\s*\d+(?:\.\d+)?/gi, '')
+    .replace(/\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/gi, '')
     .replace(/\s*\/\s*\uc778/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function hasExplicitCurrencyAmount(rawText: string): boolean {
+  return /(?:USD|US\$|\$)\s*\d+(?:\.\d+)?/i.test(rawText)
+    || /\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/i.test(rawText);
 }
 
 function optionalEventHasCustomerSafeDisclosure(rawText: string): boolean {
@@ -79,9 +85,9 @@ function optionalEventHasCustomerSafeDisclosure(rawText: string): boolean {
     .replace(/\s+/g, '');
   if (/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158)$/.test(compact)) return true;
   if (/^(?:\uc120\ud0dd\uad00\uad11\ube44\uc6a9|\uc720\ub958\ubcc0\ub3d9\ubd84|\ub9e4\ub108\ud301\ubc0f\uac1c\uc778\uacbd\ube44|\uac1c\uc778\uacbd\ube44)$/.test(compact)) return true;
-  if (/^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)\$?\d+/i.test(compact)) return true;
+  if (/^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)(?:\$?\d+|\d+\$)/i.test(compact)) return true;
   if (/(?:\uc120\ud0dd\s*\uad00\uad11|\uc120\ud0dd\uad00\uad11).*(?:\uc870\uc778|\uc2e0\uccad\s*\ud6c4)/.test(rawText)) return true;
-  return /\$\s*\d+(?:\.\d+)?/.test(rawText) && normalizeOptionDisclosureText(rawText).length >= 2;
+  return hasExplicitCurrencyAmount(rawText) && normalizeOptionDisclosureText(rawText).length >= 2;
 }
 
 function hasExplicitShoppingCountDisclosure(text: string): boolean {
