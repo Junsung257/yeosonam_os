@@ -125,6 +125,57 @@ function extractAttractionCandidateLabels(rawText: string): string[] {
   return candidates;
 }
 
+const DESTINATION_SCOPE_HINT_STOP_WORDS = new Set([
+  'day',
+  'include',
+  'exclude',
+  'pkg',
+  '\uc77c\uc815',
+  '\uad00\uad11',
+  '\ubc29\ubb38',
+  '\uc870\uc2dd',
+  '\uc911\uc2dd',
+  '\uc11d\uc2dd',
+  '\ud638\ud154',
+  '\uacf5\ud56d',
+]);
+
+function compactAttractionText(value: string | null | undefined): string {
+  return String(value ?? '').replace(/\s+/g, '').toLowerCase();
+}
+
+function pushScopeHint(scopes: string[], value: string | null | undefined, currentDestination?: string): void {
+  const normalized = normalizedAttractionCandidate(value ?? '');
+  const compact = compactAttractionText(normalized);
+  if (compact.length < 2 || compact.length > 16) return;
+  if (compact === compactAttractionText(currentDestination)) return;
+  if (DESTINATION_SCOPE_HINT_STOP_WORDS.has(compact)) return;
+  if (!/[A-Za-z\uac00-\ud7a3]/.test(normalized)) return;
+  if (!scopes.some(scope => compactAttractionText(scope) === compact)) scopes.push(normalized);
+}
+
+function extractDestinationScopeHints(
+  rawText: string,
+  candidate: string,
+  currentDestination?: string,
+): string[] {
+  const cleaned = normalizedAttractionCandidate(rawText);
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  const candidateTokens = normalizedAttractionCandidate(candidate).split(/\s+/).filter(Boolean);
+  if (tokens.length <= candidateTokens.length || candidateTokens.length === 0) return [];
+
+  const tail = tokens.slice(-candidateTokens.length).join('');
+  if (tail !== candidateTokens.join('')) return [];
+
+  const prefixTokens = tokens.slice(0, -candidateTokens.length);
+  if (prefixTokens.length === 0 || prefixTokens.length > 2) return [];
+
+  const scopes: string[] = [];
+  pushScopeHint(scopes, prefixTokens.join(' '), currentDestination);
+  for (const token of prefixTokens) pushScopeHint(scopes, token, currentDestination);
+  return scopes;
+}
+
 export function applyProductRegistrationV3Matching(
   ledger: V3DraftLedger,
   attractions: AttractionData[] = [],
@@ -167,7 +218,16 @@ export function applyProductRegistrationV3Matching(
         const scopedDestination = destination?.trim() || undefined;
         let match: AttractionData | null = null;
         for (const candidate of extractAttractionCandidateLabels(event.raw_text)) {
-          match = matchAttraction(candidate, attractions, scopedDestination);
+          const destinationScopes = [
+            scopedDestination,
+            ...extractDestinationScopeHints(event.raw_text, candidate, scopedDestination),
+          ].filter((scope, index, scopes): scope is string | undefined =>
+            index === scopes.findIndex(other => compactAttractionText(other) === compactAttractionText(scope)),
+          );
+          for (const scope of destinationScopes) {
+            match = matchAttraction(candidate, attractions, scope);
+            if (match) break;
+          }
           if (!match && (!scopedDestination || DESCRIPTION_LABEL_FALLBACKS.has(candidate.replace(/\s+/g, '')))) {
             match = matchAttraction(candidate, attractions, undefined);
           }
