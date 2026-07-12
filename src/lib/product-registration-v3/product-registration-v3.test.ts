@@ -711,6 +711,31 @@ ZE982
     );
   });
 
+  it('uses an explicit city prefix to match an existing attraction without widening globally', async () => {
+    const raw = [
+      '상품: 다낭 호이안 3박5일',
+      '가격: 599,000원',
+      'DAY 1 다낭 도착',
+      'DAY 2 호이안 구시가지',
+      '포함: 호텔 식사',
+      '불포함: 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '다낭',
+      attractions: [
+        { id: 'hoian-old-town', name: '구시가지', aliases: ['호이안 구시가지'], region: '호이안/바나힐' },
+        { id: 'bohol-night', name: '나이트투어', region: '보홀' },
+      ],
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(events.some(event => event.canonical_id === 'hoian-old-town')).toBe(true);
+    expect(events.some(event => event.canonical_id === 'bohol-night')).toBe(false);
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).not.toContain('호이안 구시가지');
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+  });
+
   it('keeps golf cart fees out of customer optional tours', async () => {
     const raw = [
       '상품: PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 4박6일',
