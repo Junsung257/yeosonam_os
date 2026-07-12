@@ -23,6 +23,36 @@ describe('postProcessItineraryData', () => {
     });
     expect(out?.flight_segments?.[0]?.arr_time).toBe('23:50');
   });
+
+  it('does not re-promote minimum-departure condition rows through flight segment normalization', () => {
+    const out = postProcessItineraryData({
+      days: [{
+        day: 5,
+        schedule: [
+          {
+            time: '01:15',
+            activity: '\uC131\uC778 8\uBA85 \uC774\uC0C1 \uCD9C\uBC1C\uAC00\uB2A5',
+            type: 'flight',
+            entity_kind: 'unknown',
+            transport: 'VN428',
+          },
+        ],
+      }],
+      meta: {
+        flight_in: 'VN428',
+        flight_in_time: '01:15',
+      },
+      flight_segments: [] as FlightSegment[],
+    });
+
+    expect(out?.days?.[0]?.schedule?.[0]).toMatchObject({
+      activity: '\uC131\uC778 8\uBA85 \uC774\uC0C1 \uCD9C\uBC1C\uAC00\uB2A5',
+      type: 'normal',
+      entity_kind: 'unknown',
+      transport: 'VN428',
+    });
+    expect(out?.flight_segments ?? []).toEqual([]);
+  });
 });
 
 describe('postProcessCatalogFields', () => {
