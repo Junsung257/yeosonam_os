@@ -18,7 +18,8 @@ const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const FLIGHT_CODE_RE = /\b([A-Z][A-Z0-9]|[0-9][A-Z])\s*(\d{3,4})\b/;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(\uc6d0|KRW|USD|\$)?/i;
 const ABBREVIATED_PRICE_RE = /^[1-9]\d{1,2},\s*-$/;
-const USD_RE = /\$\s*(\d+(?:\.\d+)?)/;
+const USD_RE = /(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/i;
+const USD_RE_GLOBAL = /(?:USD|US\$|\$)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/gi;
 const DAY_HEADER_RE = /^(?:day\s*(\d{1,2})(?:\b|\s|$)|\uc81c\s*(\d{1,2})\s*\uc77c(?:\uCC28)?(?:\s|$)|(\d{1,2})\s*\uc77c(?:\uCC28)?(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
 const PRICE_HEADER_RE = /^price\s*[:\-]|^(?:\uac00\uaca9|\uc694\uae08)\s*[:\-]?/i;
@@ -213,6 +214,14 @@ function splitOptionLine(line: V3SourceLine): Array<{ text: string; line: V3Sour
     .map(segment => ({ text: segment, line }));
 }
 
+function parseUsdAmount(text: string): number | null {
+  const match = text.match(USD_RE);
+  const value = match?.[1] ?? match?.[2];
+  if (!value) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
 function optionDurationMinutes(text: string): number | null {
   const hourMinute = text.match(/(\d+)\s*(?:\uc2dc\uac04|hour)s?\s*(\d+)\s*(?:\ubd84|min|minutes?)?/i);
   if (hourMinute) return Number(hourMinute[1]) * 60 + Number(hourMinute[2]);
@@ -227,9 +236,11 @@ function normalizeOptionName(text: string): string {
     .replace(/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uad00\uad11|\ub9c8\uc0ac\uc9c0|\uc2dd\uc0ac)\s*[:：]\s*/i, '')
     .replace(/\(\s*\$\s*\d+(?:\.\d+)?\s*\)/g, '')
     .replace(/\s*\/\s*\ud604\uc9c0\s*\uc635\uc158\uac00\s*(?:\/\s*\uc778)?/gi, '')
-    .replace(USD_RE, '')
+    .replace(USD_RE_GLOBAL, '')
+    .replace(/\(\s*\)/g, '')
     .replace(/\s*\/\s*\uc778/g, '')
     .replace(/\s*\uc778\.?$/g, '')
+    .replace(/\s*\uB4F1$/g, '')
     .replace(/\(\s*\ud301\ubcc4\ub3c4\s*\)/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -456,7 +467,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     .filter(candidate => !isOptionHeadingOrNonCustomerOption(candidate.text))
     .filter(candidate => isCustomerOptionalTourCandidate(candidate.text));
   const options = optionCandidates.map(candidate => {
-    const usd = candidate.text.match(USD_RE);
+    const usdAmount = parseUsdAmount(candidate.text);
     const day = [...days].reverse().find(d => d.events.some(event => event.evidence.line_start <= candidate.line.lineNumber));
     return {
       region: null,
@@ -464,8 +475,8 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       raw_name: candidate.text,
       normalized_name: normalizeOptionName(candidate.text),
       category: optionCategory(candidate.text),
-      price_amount: usd ? Number(usd[1]) : null,
-      currency: usd ? 'USD' : null,
+      price_amount: usdAmount,
+      currency: usdAmount == null ? null : 'USD',
       duration_minutes: optionDurationMinutes(candidate.text),
       day_number: day?.day ?? null,
       evidence: evidenceFromLines(lines, candidate.line.lineNumber),
