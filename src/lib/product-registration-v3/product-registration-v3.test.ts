@@ -736,6 +736,40 @@ ZE982
     expect(result.match_summary.attraction_unmatched_count).toBe(0);
   });
 
+  it('uses day city headings as scoped attraction context and ignores structural itinerary labels', async () => {
+    const raw = [
+      '상품: 나트랑 판랑 달랏 3박5일',
+      '가격: 599,000원',
+      'DAY 1 나트랑 도착',
+      'DAY 2 판랑',
+      'DAY 2 ▶ 베트남 독립을 기념하는 416광장',
+      'DAY 2 또는',
+      'DAY 2 정식',
+      'DAY 3 달랏',
+      'DAY 3 ▶ 아담하고 아름다운 기차역 달랏 기차역',
+      'DAY 3 ★특전1★ 망고도시락 제공 1인1개',
+      '포함: 호텔 식사',
+      '불포함: 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '나트랑',
+      attractions: [
+        { id: 'phan-rang-square', name: '416광장', region: '판랑' },
+        { id: 'dalat-station', name: '달랏기차역', aliases: ['달랏 기차역'], region: '달랏' },
+      ],
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(events.some(event => event.canonical_id === 'phan-rang-square')).toBe(true);
+    expect(events.some(event => event.canonical_id === 'dalat-station')).toBe(true);
+    expect(events.find(event => event.raw_text === '판랑')?.match_status).toBe('ignored');
+    expect(events.find(event => event.raw_text === '또는')?.match_status).toBe('ignored');
+    expect(events.find(event => event.raw_text === '정식')?.match_status).toBe('ignored');
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).toEqual([]);
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+  });
+
   it('keeps golf cart fees out of customer optional tours', async () => {
     const raw = [
       '상품: PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 4박6일',

@@ -121,6 +121,9 @@ function extractAttractionCandidateLabels(rawText: string): string[] {
 
   const tokens = cleaned.split(/\s+/).filter(Boolean);
   pushCandidate(candidates, tokens.at(-1));
+  for (let size = 2; size <= 3; size++) {
+    if (tokens.length >= size) pushCandidate(candidates, tokens.slice(-size).join(' '));
+  }
 
   return candidates;
 }
@@ -176,6 +179,44 @@ function extractDestinationScopeHints(
   return scopes;
 }
 
+const STRUCTURAL_NON_ATTRACTION_COMPACT = new Set([
+  '\ub610\ub294',
+  '\uc815\uc2dd',
+  '\uc77c\uc815',
+  '\uad00\uad11',
+  '\ud2b9\uc804',
+]);
+
+function isStructuralNonAttractionCandidate(rawText: string): boolean {
+  const cleaned = normalizedAttractionCandidate(rawText);
+  const compact = compactAttractionText(cleaned);
+  if (STRUCTURAL_NON_ATTRACTION_COMPACT.has(compact)) return true;
+  if (/^\u2605?\ud2b9\uc804\d*\u2605?/.test(compact)) return true;
+  if (compact.includes('\ud2b9\uc804') && (compact.includes('\uc81c\uacf5') || compact.includes('\ub3c4\uc2dc\ub77d') || compact.includes('\ud558\uc774\ud2f0'))) return true;
+  return false;
+}
+
+function attractionScopeTokens(attraction: AttractionData): string[] {
+  return String(attraction.region ?? '')
+    .split(/[,/|&\u00b7\u318d\uBC0F\s]+/)
+    .map(token => normalizedAttractionCandidate(token))
+    .filter(token => compactAttractionText(token).length >= 2);
+}
+
+function isStandaloneKnownDestinationScope(
+  rawText: string,
+  attractions: AttractionData[],
+): boolean {
+  const cleaned = normalizedAttractionCandidate(rawText);
+  const compact = compactAttractionText(cleaned);
+  if (compact.length < 2 || compact.length > 16) return false;
+  if (/\s/.test(cleaned) || /\d/.test(cleaned)) return false;
+  if (STRUCTURAL_NON_ATTRACTION_COMPACT.has(compact)) return false;
+  return attractions.some(attraction =>
+    attractionScopeTokens(attraction).some(token => compactAttractionText(token) === compact),
+  );
+}
+
 export function applyProductRegistrationV3Matching(
   ledger: V3DraftLedger,
   attractions: AttractionData[] = [],
@@ -196,7 +237,10 @@ export function applyProductRegistrationV3Matching(
       notice.category === 'optional_tour'
       && notice.review_status === 'auto_clean'
     );
+    const destinationScopesByDay = new Map<number, string[]>();
     for (const day of variant.days) {
+      const dayDestinationScopes = destinationScopesByDay.get(day.day) ?? [];
+      if (!destinationScopesByDay.has(day.day)) destinationScopesByDay.set(day.day, dayDestinationScopes);
       for (const event of day.events) {
         if (event.type === 'shopping') shoppingCount++;
         if (event.type === 'option' && !variantHasAutoCleanOptionalDisclosure) optionReview++;
@@ -208,7 +252,11 @@ export function applyProductRegistrationV3Matching(
           continue;
         }
 
-        if (isNonAttractionCandidate(event.raw_text) || isDestinationScopedNonAttractionCandidate(event.raw_text, destination)) {
+        if (
+          isStructuralNonAttractionCandidate(event.raw_text)
+          || isNonAttractionCandidate(event.raw_text)
+          || isDestinationScopedNonAttractionCandidate(event.raw_text, destination)
+        ) {
           event.type = 'notice';
           event.canonical_type = null;
           event.match_status = 'ignored';
@@ -220,6 +268,7 @@ export function applyProductRegistrationV3Matching(
         for (const candidate of extractAttractionCandidateLabels(event.raw_text)) {
           const destinationScopes = [
             scopedDestination,
+            ...dayDestinationScopes,
             ...extractDestinationScopeHints(event.raw_text, candidate, scopedDestination),
           ].filter((scope, index, scopes): scope is string | undefined =>
             index === scopes.findIndex(other => compactAttractionText(other) === compactAttractionText(scope)),
@@ -238,6 +287,11 @@ export function applyProductRegistrationV3Matching(
           event.canonical_type = 'attraction';
           event.match_status = 'matched';
           attractionMatched++;
+        } else if (isStandaloneKnownDestinationScope(event.raw_text, attractions)) {
+          pushScopeHint(dayDestinationScopes, event.raw_text, scopedDestination);
+          event.type = 'notice';
+          event.canonical_type = null;
+          event.match_status = 'ignored';
         } else {
           event.match_status = 'unmatched';
           attractionUnmatched++;
