@@ -531,4 +531,35 @@ describe('entity master candidate automation', () => {
     expect(decision.autoAction).toBe('needs_review');
     expect(decision.promotionStatus).toBe('needs_review');
   });
+
+  it('structures operator, table, and policy fragments from golf supplier sheets as non-master data', () => {
+    const labels = [
+      { category: 'attraction', rawLabel: 'FA\uCF54\uB9AC\uC544' },
+      { category: 'optional_tour', rawLabel: 'FA\uCF54\uB9AC\uC544' },
+      { category: 'optional_tour', rawLabel: '\uBD80 \uC0B0' },
+      { category: 'optional_tour', rawLabel: '\uC778  \uC6D0' },
+      { category: 'optional_tour', rawLabel: '\uD310 \uB9E4 \uAC00' },
+      { category: 'optional_tour', rawLabel: '\uCD9C \uBC1C \uC77C' },
+      { category: 'optional_tour', rawLabel: '\uC7781\uC2E4' },
+      { category: 'optional_tour', rawLabel: '2\uBD80 TEE \uC870\uAC74' },
+      { category: 'optional_tour', rawLabel: '1\uC778 300' },
+      { category: 'optional_tour', rawLabel: '\uD604\uAE08\uC601\uC218\uC99D \uBC1C\uAE09 \uC548\uB0B4 \uB4DC\uB9BD\uB2C8\uB2E4' },
+      { category: 'notice', rawLabel: '\uD604\uAE08\uC601\uC218\uC99D \uBC1C\uAE09 \uC548\uB0B4 \uB4DC\uB9BD\uB2C8\uB2E4' },
+      { category: 'optional_tour', rawLabel: '\uB098\uBA38\uC9C0 \uC778\uC6D0\uB3C4 \uCD94\uAC00\uAE08\uC561 \uBC1C\uC0DD\uD569\uB2C8\uB2E4.' },
+      { category: 'optional_tour', rawLabel: '\u2605 \uD544\uB9AC\uD540 \uD638\uD154' },
+    ] as const;
+
+    for (const label of labels) {
+      const decision = evaluateMasterCandidate({
+        ...label,
+        occurrenceCount: 2,
+        evidenceCount: 2,
+        packageCount: 1,
+      });
+
+      expect(decision.autoAction).toBe('structure_non_master');
+      expect(decision.promotionStatus).toBe('candidate');
+      expect(decision.suggestedMaster.customer_publishable).toBe(false);
+    }
+  });
 });
