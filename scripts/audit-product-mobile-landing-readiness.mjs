@@ -1457,6 +1457,43 @@ function gateStatus(draft, lookupFailed = false) {
   return draft?.gate_result?.status ?? draft?.status ?? 'none';
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+const STALE_RESOLVABLE_V3_CHECK_IDS = new Set([
+  'attraction_unmatched_queue_clear',
+  'option_review_queue_clear',
+  'entity_attraction_unresolved_clear',
+  'entity_shopping_review_clear',
+  'entity_option_review_clear',
+  'entity_unknown_customer_visible_clear',
+]);
+
+function isFailedV3GateCheck(check) {
+  return check?.status === 'fail' || check?.passed === false;
+}
+
+function draftGateFailedCheckCount(draft) {
+  return asArray(draft?.gate_result?.checks).filter(isFailedV3GateCheck).length;
+}
+
+function draftGateBlockingFailedCheckCount(draft) {
+  return asArray(draft?.gate_result?.checks).filter(check =>
+    isFailedV3GateCheck(check) && !STALE_RESOLVABLE_V3_CHECK_IDS.has(String(check?.id ?? ''))
+  ).length;
+}
+
+function draftGateReasonCount(draft) {
+  const gate = draft?.gate_result;
+  if (!gate || typeof gate !== 'object') return 0;
+  return asArray(gate.reasons).length
+    + asArray(gate.failedChecks).length
+    + asArray(gate.failed_checks).length
+    + asArray(gate.blockers).length
+    + asArray(gate.errors).length;
+}
+
 function draftAttractionUnmatchedCount(draft) {
   const entityCount = Number(draft?.match_summary?.entity_summary?.attraction_unresolved_count);
   if (Number.isFinite(entityCount) && entityCount >= 0) return entityCount;
@@ -1569,7 +1606,52 @@ function hasNeedsHumanSourceReview(row) {
 }
 
 function isBlockingV3NeedsReview(row) {
-  return row.v3 === 'needs_review' && (row.public || !hasNeedsHumanSourceReview(row));
+  return row.v3 === 'needs_review'
+    && !isStaleResolvedV3NeedsReview(row)
+    && (row.public || !hasNeedsHumanSourceReview(row));
+}
+
+function hasCurrentReadinessBlocker(row) {
+  return Boolean(row.raw_notice_leak_risk)
+    || Boolean(row.code_unk)
+    || (row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0)
+    || Boolean(row.price_storage_mismatch)
+    || Boolean(row.customer_price_option_mismatch)
+    || Boolean(row.product_ledger_price_mismatch)
+    || Boolean(row.price_tiers_mismatch)
+    || Boolean(row.price_source_evidence_mismatch)
+    || Boolean(row.attraction_context_mismatch)
+    || Boolean(row.attraction_unlinked_registered)
+    || Boolean(row.attraction_description_missing)
+    || Boolean(row.itinerary_semantic_mismatch)
+    || Boolean(row.duration_trip_style_mismatch)
+    || Boolean(row.hotel_field_semantic_mismatch)
+    || Boolean(row.exclude_fragment_corruption)
+    || Boolean(row.optional_tour_surcharge_pollution)
+    || Boolean(row.optional_tour_display_pollution)
+    || Boolean(row.render_failure)
+    || Boolean(row.public_html_failure)
+    || Boolean(row.itinerary_policy_leak)
+    || row.itinerary_days === 0
+    || row.v3 === 'lookup_failed'
+    || row.v3 === 'blocked';
+}
+
+function isStaleResolvedV3NeedsReview(row) {
+  return row.v3 === 'needs_review'
+    && !row.public
+    && !hasNeedsHumanSourceReview(row)
+    && !row.draft_lookup_failed
+    && !row.unmatched_lookup_failed
+    && row.v3_gate_blocking_failed_check_count === 0
+    && row.v3_gate_reason_count === 0
+    && row.unmatched_activities === 0
+    && row.entity_attraction_unresolved === 0
+    && row.entity_master_candidate_unresolved === 0
+    && row.entity_shopping_review_needed === 0
+    && row.entity_option_review_needed === 0
+    && row.entity_unknown_customer_visible === 0
+    && !hasCurrentReadinessBlocker(row);
 }
 
 function readinessFor(row) {
@@ -1637,6 +1719,7 @@ function readinessFor(row) {
   }
   if (row.v3 === 'needs_review') {
     if (nonPublicSourceReview) addHumanReviewWarning();
+    else if (isStaleResolvedV3NeedsReview(row)) warnings.push('v3_stale_needs_review_nonblocking');
     else warnings.push('v3_needs_review');
   }
   if (row.v3 === 'blocked' && !hardV3Blocked) warnings.push('v3_blocked_nonblocking');
@@ -2422,6 +2505,10 @@ let rows = allPackageRows
       v3: gateStatus(draft, draftLookupFailed),
       draft_id: draft?.id ?? null,
       draft_lookup_failed: draftLookupFailed,
+      unmatched_lookup_failed: unmatchedLookupFailed,
+      v3_gate_failed_check_count: draftGateFailedCheckCount(draft),
+      v3_gate_blocking_failed_check_count: draftGateBlockingFailedCheckCount(draft),
+      v3_gate_reason_count: draftGateReasonCount(draft),
       price_dates: Array.isArray(pkg.price_dates) ? pkg.price_dates.length : 0,
       price_tiers: Array.isArray(pkg.price_tiers) ? pkg.price_tiers.length : 0,
       product_prices: priceRowsLookupFailed ? null : priceCountMap.get(pkg.internal_code) ?? 0,
@@ -2705,6 +2792,7 @@ const summary = {
   v3_blocked: rows.filter(row => row.readiness.failures.includes('v3_blocked')).length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   v3_needs_review_blocking: rows.filter(row => isBlockingV3NeedsReview(row)).length,
+  v3_stale_resolved_needs_review: rows.filter(row => isStaleResolvedV3NeedsReview(row)).length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
   entity_attraction_unresolved_packages: rows.filter(row => row.entity_attraction_unresolved > 0).length,
@@ -2778,7 +2866,16 @@ const report = {
     render_failure: row.render_failure,
     public_html_failure: row.public_html_failure,
   })),
-  warnings: warnedRows.slice(0, 50).map(row => ({ id: row.id, code: row.code, title: row.title, status: row.status, warnings: row.readiness.warnings })),
+  warnings: warnedRows.slice(0, 50).map(row => ({
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    status: row.status,
+    warnings: row.readiness.warnings,
+    v3_gate_failed_check_count: row.v3_gate_failed_check_count,
+    v3_gate_blocking_failed_check_count: row.v3_gate_blocking_failed_check_count,
+    v3_gate_reason_count: row.v3_gate_reason_count,
+  })),
   rows,
 };
 
