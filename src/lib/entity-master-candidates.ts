@@ -133,6 +133,14 @@ const LOW_RISK_NOTICE_NON_MASTER_RE =
   /(?:\uC778\uC194\uC790\s*\uBBF8\uB3D9\uD589|\uD30C\uD0C0\uC57C\s*\uD574\uBCC0.{0,8}\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30.{0,6}\uBD88\uAC00|\uC816\uC744\s*\uC218\s*\uC788\uB294\s*\uC637|\uC218\uC601\uBCF5\s*\uC900\uBE44)/u;
 const LOW_RISK_SHOPPING_DESCRIPTION_RE =
   /(?:\uD2B9\uC0B0\uD488|\uD1A0\uC0B0\uD488|\uD6C4\uCD94\s*\uB18D\uC7A5|\uB300\uD45C\s*\uC0C1\uD488|\uAE30\uB150\uD488)/u;
+const OPERATOR_COMPANY_FRAGMENT_RE =
+  /^(?:FA\s*\uCF54\uB9AC\uC544|[A-Z]{2,}\s*\uCF54\uB9AC\uC544)$/iu;
+const CUSTOMER_DISCLOSURE_TABLE_FRAGMENT_RE =
+  /^(?:\uBD80\s*\uC0B0|\uC778\s*\uC6D0|\uD310\s*\uB9E4\s*\uAC00|\uCD9C\s*\uBC1C\s*\uC77C|\uC778\s*1\s*\uC2E4|1\s*\uC778\s*\d{2,6}|\d+\s*\uBD80\s*TEE\s*\uC870\uAC74)$/iu;
+const CUSTOMER_DISCLOSURE_POLICY_FRAGMENT_RE =
+  /(?:\uD604\uAE08\uC601\uC218\uC99D\s*\uBC1C\uAE09\s*\uC548\uB0B4|\uB098\uBA38\uC9C0\s*\uC778\uC6D0\uB3C4\s*\uCD94\uAC00\s*\uAE08\uC561\s*\uBC1C\uC0DD)/u;
+const CUSTOMER_DISCLOSURE_GENERIC_HOTEL_FRAGMENT_RE =
+  /^(?:\uD544\uB9AC\uD540|\uBCA0\uD2B8\uB0A8|\uC77C\uBCF8|\uC911\uAD6D|\uD0DC\uAD6D|\uD64D\uCF69)?\s*\uD638\uD154$/u;
 const CUSTOMER_CURRENT_BACKLOG_GENERIC_NON_MASTER_RE =
   /^(?:케이블카\s*편도|궁전\s*게르(?:\s*\(?\s*2\s*인\s*실)?|대성당|오후\s*플레이\s*욕장)$/u;
 const CUSTOMER_CURRENT_BACKLOG_DESCRIPTIVE_NON_MASTER_RE =
@@ -557,6 +565,27 @@ function customerDisclosureNonMasterReason(
   sourceLabel: string,
 ): string | null {
   const combined = `${sourceLabel} ${normalizedLabel}`;
+  if (OPERATOR_COMPANY_FRAGMENT_RE.test(normalizedLabel) || OPERATOR_COMPANY_FRAGMENT_RE.test(sourceLabel)) {
+    return 'supplier or operator company token, not a master entity';
+  }
+  if (
+    (category === 'optional_tour' || category === 'notice' || category === 'unknown') &&
+    CUSTOMER_DISCLOSURE_TABLE_FRAGMENT_RE.test(normalizedLabel)
+  ) {
+    return 'price table header or value fragment, not a master entity';
+  }
+  if (
+    (category === 'optional_tour' || category === 'notice') &&
+    CUSTOMER_DISCLOSURE_POLICY_FRAGMENT_RE.test(combined)
+  ) {
+    return 'source-backed customer policy fragment, not a master entity';
+  }
+  if (
+    (category === 'optional_tour' || category === 'hotel' || category === 'unknown') &&
+    CUSTOMER_DISCLOSURE_GENERIC_HOTEL_FRAGMENT_RE.test(normalizedLabel)
+  ) {
+    return 'generic hotel category fragment, not a master entity';
+  }
   if (category === 'notice' && LOW_RISK_NOTICE_NON_MASTER_RE.test(combined)) {
     return 'low-risk notice or preparation detail, not a master entity';
   }
