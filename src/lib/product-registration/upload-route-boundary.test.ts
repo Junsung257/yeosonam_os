@@ -416,7 +416,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(autoMobileQa).toContain(".from('products')");
     expect(autoMobileQa).toContain('persistImprovementLedgerEvents');
     expect(autoMobileQa).toContain("detectedFormat: 'post_save_mobile_landing'");
-    expect(autoMobileQa).toContain("source: 'hwp-mobile-browser-proof'");
+    expect(autoMobileQa).toContain("source: 'auto-mobile-fetch-proof'");
+    expect(autoMobileQa).toContain('auto_mobile_fetch_proof');
     expect(autoMobileQa).toContain('screen_hash');
     expect(autoMobileQa).toContain('customer_visible_hash');
     expect(autoMobileQa).toContain('surface_results');
