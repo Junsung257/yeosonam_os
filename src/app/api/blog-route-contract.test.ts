@@ -14,6 +14,20 @@ describe('blog API and editorial audit contracts', () => {
     expect(route).toContain('isValidContentCreativeId(id)');
   });
 
+  it('attaches product data to public blog id responses only through public snapshots', () => {
+    const route = source('src/app/api/blog/route.ts');
+    const idBranchStart = route.indexOf('if (id) {');
+    const adminBranchStart = route.indexOf("if (searchParams.get('admin') === '1')");
+    const idBranch = route.slice(idBranchStart, adminBranchStart);
+
+    expect(route).toContain('attachPublicPackageSnapshotToBlogPost');
+    expect(route).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(route).toContain('isBlogApiPublicSnapshotCandidate');
+    expect(idBranch).not.toContain('travel_packages(');
+    expect(idBranch).toContain('product_id, destination');
+    expect(idBranch).toContain('const post = await attachPublicPackageSnapshotToBlogPost');
+  });
+
   it('lets the editorial web audit recover the largest rendered body when article is shell-only', () => {
     const audit = source('scripts/audit-blog-editorial-quality.ts');
 
