@@ -126,7 +126,10 @@ describe('public package snapshot gate', () => {
   });
 
   it('allows the repaired no-option package once fragments are removed and snapshot exists', () => {
-    const pkg = yanjiPackage({ optional_tours: [] });
+    const pkg = yanjiPackage({
+      display_title: '연길·백두산 노옵션 핵심관광 4박5일',
+      optional_tours: [],
+    });
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
@@ -137,6 +140,132 @@ describe('public package snapshot gate', () => {
 
     expect(gate.publishable).toBe(true);
     expect(gate.publication_state).toBe('published');
+  });
+
+  it('blocks an onsen title when onsen is only a minor service, not the trip theme', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      raw_text: [
+        '연길 5성 온천 4박5일',
+        'DAY 2 백두산 천지 관광',
+        '온천욕으로 휴식 수영복 개별지참',
+      ].join('\n'),
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '연길 도착', attraction_ids: [] }] },
+          { day: 2, schedule: [{ activity: '백두산 천지 관광', attraction_ids: [VALID_ATTRACTION_ID] }] },
+          { day: 3, schedule: [{ activity: '온천욕으로 휴식', attraction_ids: [] }] },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('unsupported_title_claim');
+  });
+
+  it('allows an onsen title only when the source has strong onsen-theme evidence', () => {
+    const pkg = yanjiPackage({
+      title: '규슈 온천·관광 3박4일',
+      display_title: '규슈 온천·관광 3박4일',
+      destination: '규슈',
+      optional_tours: [],
+      raw_text: [
+        '규슈 온천·관광 3박4일',
+        '쿠로가와 온천마을 산책',
+        '온천 료칸 숙박',
+      ].join('\n'),
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '쿠로가와 온천마을 산책', attraction_ids: [VALID_ATTRACTION_ID] }] },
+          { day: 2, schedule: [{ activity: '온천 료칸 숙박', attraction_ids: [] }] },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('unsupported_title_claim');
+  });
+
+  it('blocks risky departure-confirmed wording in customer titles even when it appears in source text', () => {
+    const pkg = yanjiPackage({
+      title: '연길·백두산 출발확정 4박5일',
+      display_title: '연길·백두산 출발확정 4박5일',
+      optional_tours: [],
+      raw_text: '2명부터 출발확정 연길·백두산 4박5일',
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('unsupported_title_claim');
+  });
+
+  it('blocks 5-star title claims when the source has no hotel-grade evidence', () => {
+    const pkg = yanjiPackage({
+      title: '연길·백두산 5성 핵심관광 4박5일',
+      display_title: '연길·백두산 5성 핵심관광 4박5일',
+      optional_tours: [],
+      raw_text: '연길·백두산 핵심관광 4박5일',
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '연길 도착 후 호텔 투숙', attraction_ids: [] }] },
+          { day: 2, schedule: [{ activity: '백두산 천지 관광', attraction_ids: [VALID_ATTRACTION_ID] }] },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('unsupported_title_claim');
+  });
+
+  it('allows 5-star title claims when hotel-grade evidence is present', () => {
+    const pkg = yanjiPackage({
+      title: '나트랑 5성 핵심관광 3박5일',
+      display_title: '나트랑 5성 핵심관광 3박5일',
+      destination: '나트랑',
+      optional_tours: [],
+      raw_text: '호텔: 나트랑 5성 호텔 또는 동급',
+      itinerary_data: {
+        days: [
+          { day: 1, hotel: { name: '나트랑 리조트', grade: '5성' }, schedule: [] },
+          { day: 2, schedule: [{ activity: '나트랑 시내 관광', attraction_ids: [VALID_ATTRACTION_ID] }] },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('unsupported_title_claim');
   });
 
   it('fails closed on malformed attraction ids', () => {
