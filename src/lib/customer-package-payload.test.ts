@@ -202,7 +202,9 @@ describe('customer package client payload', () => {
     expect(routeSource).toContain('isAdminRequest');
     expect(routeSource).toContain('function stripPublicPackageFields');
     expect(routeSource).toContain('sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row))');
-    expect(routeSource).toContain(': stripPublicPackageFields(pkg as Record<string, unknown>)');
+    expect(routeSource).toContain('fetchLatestPublicPackageSnapshot');
+    expect(routeSource).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(routeSource).toContain('isCustomerPublicSnapshotCandidate');
     expect(routeSource).toContain(': stripPublicPackageFields(row)');
   });
 });

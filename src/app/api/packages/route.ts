@@ -29,6 +29,9 @@ import { isAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -64,6 +67,11 @@ function stripSupplierRemarkFields<T extends Record<string, unknown>>(row: T): O
 
 function stripPublicPackageFields(row: Record<string, unknown>): Record<string, unknown> {
   return sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row)) ?? {};
+}
+
+function isCustomerPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  return isPublicPublicationState(typeof row.publication_state === 'string' ? row.publication_state : null)
+    && isCustomerPubliclyOpenable(row);
 }
 
 function includesCustomerNoticeFields(input: Record<string, unknown>): boolean {
@@ -348,6 +356,7 @@ const PACKAGE_LIST_FIELDS = `
   seats_held, seats_confirmed, nights, accommodations, cancellation_policy,
   avg_rating, review_count, view_count, inquiry_count,
   audit_status, audit_report, audit_checked_at,
+  publication_state, package_revision,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
@@ -359,6 +368,7 @@ const PACKAGE_LIST_FIELDS_LITE = `
   itinerary,
   internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
   audit_status, audit_report, updated_at, optional_tours, itinerary_data,
+  publication_state, package_revision,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
@@ -402,11 +412,17 @@ export async function GET(request: NextRequest) {
       logWarning('[api/packages] GET aggregate=destination RPC failed, using fallback', rpcErr);
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
-        .select('destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .select('id, destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
         .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
       const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
-      (allPkgs ?? []).filter((p: any) => isAdmin || isCustomerPubliclyOpenable(p)).forEach((p: any) => {
+      const aggregateRows = isAdmin
+        ? (allPkgs ?? [])
+        : await fetchAndMergeCurrentPublicPackageCardSnapshots(
+          supabaseAdmin,
+          (allPkgs ?? []).filter((p: any) => isCustomerPublicSnapshotCandidate(p)),
+        );
+      aggregateRows.forEach((p: any) => {
         const dest = p.destination;
         if (!dest) return;
         if (!destMap[dest]) destMap[dest] = { count: 0, minPrice: Infinity, country: p.country || '' };
@@ -442,28 +458,38 @@ export async function GET(request: NextRequest) {
         .eq(col, id)
         .single();
       if (pkgErr || !pkg) return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
-      if (!isAdmin && !isCustomerPubliclyOpenable(pkg)) {
+      const publicSnapshot = !isAdmin
+        ? await fetchLatestPublicPackageSnapshot(supabaseAdmin, String(pkg.id), {
+          expectedPackageRevision: Number(pkg.package_revision ?? 1),
+        })
+        : null;
+      if (!isAdmin && (!isCustomerPublicSnapshotCandidate(pkg as Record<string, unknown>) || !publicSnapshot)) {
         return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
       }
+
+      const responsePkg: Record<string, unknown> = isAdmin
+        ? pkg as Record<string, unknown>
+        : { ...(publicSnapshot?.package ?? {}), id: pkg.id };
 
       let lp_hero_image_url: string | null = null;
       if (supabaseAdmin) {
         try {
-          lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
+          lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, responsePkg);
         } catch (e) {
           logWarning('[api/packages] GET lp hero resolve failed', e);
         }
       }
 
-      const attraction_ids = collectAttractionIds(pkg.itinerary_data);
+      const itineraryData = responsePkg.itinerary_data;
+      const attraction_ids = collectAttractionIds(itineraryData);
       return successResponse(
         {
           package: isAdmin
-            ? stripSupplierRemarkFields(pkg as Record<string, unknown>)
-            : stripPublicPackageFields(pkg as Record<string, unknown>),
+            ? stripSupplierRemarkFields(responsePkg)
+            : stripPublicPackageFields(responsePkg),
           lp_hero_image_url,
           attraction_ids,
-          attraction_preview_names: getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 8),
+          attraction_preview_names: getAttractionPreviewNamesFromItinerary(itineraryData, 8),
         },
         200,
         300,
@@ -532,7 +558,10 @@ export async function GET(request: NextRequest) {
 
     const visibleRows = isAdmin
       ? (data ?? [])
-      : (data ?? []).filter((row: any) => isCustomerPubliclyOpenable(row));
+      : await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        supabaseAdmin,
+        (data ?? []).filter((row: any) => isCustomerPublicSnapshotCandidate(row)),
+      );
     const enrichedData = visibleRows.map((row: any) => {
       const safeRow = isAdmin
         ? stripSupplierRemarkFields(row)
