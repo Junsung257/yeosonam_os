@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeSurface } from '@/lib/standard-terms';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 
 /**
  * GET /api/packages/:id/terms?surface=mobile|a4|booking_guide
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     const { data: pkg, error } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, product_type, land_operator_id, notices_parsed, price_dates')
+      .select('id, package_revision, product_type, land_operator_id, notices_parsed, price_dates')
       .eq('id', id)
       .limit(1);
     if (error) throw error;
@@ -28,11 +29,16 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     const row = pkg[0] as {
       id: string;
+      package_revision: number | null;
       product_type: string | null;
       land_operator_id: string | null;
       notices_parsed: unknown;
       price_dates: { date: string }[] | null;
     };
+    const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, row.id, {
+      expectedPackageRevision: row.package_revision,
+    });
+    if (!publicSnapshot) return NextResponse.json({ data: [] });
 
     const earliestDate = (row.price_dates ?? [])
       .map(d => d.date)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 
 export async function GET(
   _req: NextRequest,
@@ -12,6 +13,13 @@ export async function GET(
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(id)) {
     return NextResponse.json({ data: [] });
+  }
+
+  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, id);
+  if (!publicSnapshot) {
+    return NextResponse.json({ data: [] }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
+    });
   }
 
   const { data, error } = await supabaseAdmin
