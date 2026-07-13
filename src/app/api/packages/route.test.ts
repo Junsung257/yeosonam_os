@@ -10,6 +10,25 @@ function routeSourceWithoutComments() {
 }
 
 describe('packages bulk/customer publication gate', () => {
+  it('serves customer package API responses only from current public snapshots', () => {
+    const source = routeSourceWithoutComments();
+    const detailIndex = source.indexOf('if (id) {');
+    const detailSnapshotIndex = source.indexOf('fetchLatestPublicPackageSnapshot', detailIndex);
+    const detailCandidateIndex = source.indexOf('isCustomerPublicSnapshotCandidate', detailSnapshotIndex);
+    const responsePkgIndex = source.indexOf('const responsePkg: Record<string, unknown> = isAdmin', detailCandidateIndex);
+    const listIndex = source.indexOf('const visibleRows = isAdmin', responsePkgIndex);
+    const listSnapshotIndex = source.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', listIndex);
+    const aggregateIndex = source.indexOf("if (aggregate === 'destination')");
+    const aggregateSnapshotIndex = source.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', aggregateIndex);
+
+    expect(source).toContain('function isCustomerPublicSnapshotCandidate');
+    expect(detailSnapshotIndex).toBeGreaterThan(detailIndex);
+    expect(detailCandidateIndex).toBeGreaterThan(detailSnapshotIndex);
+    expect(responsePkgIndex).toBeGreaterThan(detailCandidateIndex);
+    expect(listSnapshotIndex).toBeGreaterThan(listIndex);
+    expect(aggregateSnapshotIndex).toBeGreaterThan(aggregateIndex);
+  });
+
   it('blocks publication when source repair changes customer-visible data before mobile re-proof', () => {
     const source = routeSourceWithoutComments();
     const proofImportIndex = source.indexOf('extractCustomerMobileProof');
