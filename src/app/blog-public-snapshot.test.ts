@@ -43,4 +43,26 @@ describe('blog public package data boundary', () => {
     expect(text).not.toContain('travel_packages?.title');
     expect(text).toContain("const title = escXml(post.seo_title || '여소남 블로그')");
   });
+
+  it('does not join raw package destinations into blog Open Graph images', () => {
+    const text = source('src/app/blog/[slug]/opengraph-image.tsx');
+
+    expect(text).not.toContain('travel_packages(destination)');
+    expect(text).not.toContain('travel_packages?.destination');
+    expect(text).toContain(".select('seo_title, angle_type, og_image_url, destination')");
+    expect(text).toContain('if (post?.destination) destination = post.destination');
+  });
+
+  it('filters destination RSS posts with public snapshot destinations only', () => {
+    const text = source('src/app/destinations/[city]/rss.xml/route.ts');
+    const packageQueryIndex = text.indexOf(".from('travel_packages')");
+    const snapshotIndex = text.indexOf('const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    const filterIndex = text.indexOf('publicPackageDestinationById.get');
+
+    expect(text).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(text).not.toContain('travel_packages(destination)');
+    expect(text).not.toContain('p.travel_packages?.destination');
+    expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
+    expect(filterIndex).toBeGreaterThan(snapshotIndex);
+  });
 });

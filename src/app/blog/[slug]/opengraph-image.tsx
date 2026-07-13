@@ -26,19 +26,19 @@ export default async function OgImage({ params }: { params: { slug: string } }) 
   if (isSupabaseConfigured && !shouldSkipPublicDbReadsForResourceSaver()) {
     const { data } = await supabaseAdmin
       .from('content_creatives')
-      .select('seo_title, angle_type, og_image_url, travel_packages(destination)')
+      .select('seo_title, angle_type, og_image_url, destination')
       .eq('slug', safeDecodeSlug(params.slug))
       .eq('status', 'published')
       .limit(1);
 
     const post = data?.[0] as
-      | { seo_title?: string | null; angle_type?: string | null; og_image_url?: string | null; travel_packages?: { destination?: string } | null }
+      | { seo_title?: string | null; angle_type?: string | null; og_image_url?: string | null; destination?: string | null }
       | undefined;
 
     // DB에 og_image_url이 있으면 그쪽으로 리다이렉트하지 말고, 동적 카드는 폴백 전용
     // (메타 태그에서 ogImage 우선순위 처리는 page.tsx의 generateMetadata 담당)
     if (post?.seo_title) title = post.seo_title;
-    if (post?.travel_packages?.destination) destination = post.travel_packages.destination;
+    if (post?.destination) destination = post.destination;
     if (post?.angle_type && ANGLE_LABELS[post.angle_type]) angleLabel = ANGLE_LABELS[post.angle_type];
   }
 
