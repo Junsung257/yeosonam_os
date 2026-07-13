@@ -34,9 +34,7 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const lpProjection = asRecord(row.lp_projection);
   if (!pkg) return null;
   const publicTitle = asNonEmptyString(cardProjection?.title) ?? asNonEmptyString(lpProjection?.title);
-  if (!publicTitle && !asNonEmptyString(pkg.title) && !asNonEmptyString(pkg.display_title)) {
-    return null;
-  }
+  if (!publicTitle) return null;
   const publicSummary = asNonEmptyString(lpProjection?.summary);
   return {
     ...pkg,

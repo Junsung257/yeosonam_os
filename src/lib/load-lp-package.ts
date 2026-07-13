@@ -31,14 +31,15 @@ export async function fetchLpPackageUncached(
         (rawPkg as { id: string }).id,
         { expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1) },
       ).catch(() => null);
-  const pkg = publicSnapshot?.package ?? rawPkg;
+  const pkg = options.allowNonPublicProof ? rawPkg : publicSnapshot?.package;
   const status = (rawPkg as { status?: string | null }).status;
   const auditStatus = (rawPkg as { audit_status?: string | null }).audit_status;
   const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
-  if (!options.allowNonPublicProof && publicationState && !isPublicPublicationState(publicationState)) return null;
-  if (!options.allowNonPublicProof && publicationState && isPublicPublicationState(publicationState) && !publicSnapshot) return null;
+  if (!options.allowNonPublicProof && !isPublicPublicationState(publicationState)) return null;
+  if (!options.allowNonPublicProof && !publicSnapshot) return null;
   if (!options.allowNonPublicProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status))) return null;
   if (!options.allowNonPublicProof && !isCustomerPubliclyOpenable(rawPkg)) return null;
+  if (!pkg) return null;
 
   const liveVerify = publicSnapshot
     ? null
@@ -48,7 +49,7 @@ export async function fetchLpPackageUncached(
   const { data: scores } = await supabaseAdmin
     .from('package_scores')
     .select('package_id, group_key, departure_date, list_price, effective_price, topsis_score, rank_in_group, group_size, breakdown, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, duration_days')
-    .eq('package_id', pkg.id)
+    .eq('package_id', (pkg as { id: string }).id)
     .order('group_size', { ascending: false })
     .order('rank_in_group', { ascending: true });
 

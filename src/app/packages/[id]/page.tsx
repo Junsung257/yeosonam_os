@@ -257,7 +257,7 @@ export async function generateMetadata({
           expectedPackageRevision: Number(rawData.package_revision ?? 1),
         }).catch(() => null);
     publicSnapshotFound = Boolean(publicSnapshot);
-    data = (publicSnapshot?.package as MetadataPackageRow | undefined) ?? rawData;
+    data = allowInternalProof ? rawData : (publicSnapshot?.package as MetadataPackageRow | undefined) ?? null;
   } catch {
     return buildPackageNoindexMetadata(id, canonical);
   }
@@ -268,10 +268,10 @@ export async function generateMetadata({
   const auditStatus = rawData?.audit_status;
   const allowInternalProof = await isInternalRenderProofRequest();
   const publicationState = rawData?.publication_state;
-  if (!allowInternalProof && publicationState && !isPublicPublicationState(publicationState)) {
+  if (!allowInternalProof && !isPublicPublicationState(publicationState)) {
     notFound();
   }
-  if (!allowInternalProof && publicationState && isPublicPublicationState(publicationState) && !publicSnapshotFound) {
+  if (!allowInternalProof && !publicSnapshotFound) {
     notFound();
   }
   if (!allowInternalProof && (auditStatus === 'blocked' || !isCustomerVisibleStatus(status) || !isCustomerPubliclyOpenable(rawData))) {
@@ -390,13 +390,16 @@ export default async function PackageDetailPage({
     : await fetchLatestPublicPackageSnapshot(sb, id, {
         expectedPackageRevision: Number((rawPkg as { package_revision?: unknown }).package_revision ?? 1),
       }).catch(() => null);
-  const pkg = publicSnapshot?.package ?? rawPkg;
+  const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package;
 
   const publicationState = (rawPkg as { publication_state?: string | null }).publication_state;
-  if (!allowInternalProof && publicationState && !isPublicPublicationState(publicationState)) {
+  if (!allowInternalProof && !isPublicPublicationState(publicationState)) {
     notFound();
   }
-  if (!allowInternalProof && publicationState && isPublicPublicationState(publicationState) && !publicSnapshot) {
+  if (!allowInternalProof && !publicSnapshot) {
+    notFound();
+  }
+  if (!pkg) {
     notFound();
   }
 

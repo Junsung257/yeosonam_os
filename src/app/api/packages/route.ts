@@ -467,9 +467,13 @@ export async function GET(request: NextRequest) {
         return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
       }
 
+      const publicSnapshotPackage = publicSnapshot?.package ?? null;
+      if (!isAdmin && !publicSnapshotPackage) {
+        return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+      }
       const responsePkg: Record<string, unknown> = isAdmin
         ? pkg as Record<string, unknown>
-        : { ...(publicSnapshot?.package ?? {}), id: pkg.id };
+        : { ...publicSnapshotPackage, id: pkg.id };
 
       let lp_hero_image_url: string | null = null;
       if (supabaseAdmin) {

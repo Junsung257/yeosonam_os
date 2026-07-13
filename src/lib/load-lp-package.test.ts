@@ -108,7 +108,94 @@ describe('fetchLpPackageUncached', () => {
   beforeEach(() => {
     mocks.packageRow = {
       id: 'pkg-1',
-      title: 'Visible package',
+      title: 'Raw visible package',
+      status: 'active',
+      publication_state: 'published',
+      package_revision: 3,
+      updated_at: '2026-07-10T00:00:00.000Z',
+      audit_status: 'warnings',
+      audit_report: {
+        mobile_browser_proof: {
+          status: 'pass',
+          source: 'hwp-mobile-browser-proof',
+          checked_at: '2026-07-10T00:05:00.000Z',
+          package_updated_at: '2026-07-10T00:00:00.000Z',
+          screen_hash: 'screen-hash',
+          customer_visible_hash: 'visible-hash',
+          surfaces: ['packages', 'lp'],
+          surface_results: [
+            {
+              surface: 'packages',
+              status: 'pass',
+              screen_hash: 'packages-screen-hash',
+              customer_visible_hash: 'packages-visible-hash',
+              checks: [
+                { name: 'packages_reservation_cta_visible', ok: true },
+                { name: 'packages_reservation_sheet_opens', ok: true },
+                { name: 'packages_reservation_sheet_has_product_context', ok: true },
+              ],
+            },
+            {
+              surface: 'lp',
+              status: 'pass',
+              screen_hash: 'lp-screen-hash',
+              customer_visible_hash: 'lp-visible-hash',
+              checks: [
+                { name: 'lp_lead_cta_visible', ok: true },
+                { name: 'lp_lead_sheet_opens', ok: true },
+                { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+              ],
+            },
+          ],
+        },
+        customer_open_contract: {
+          ok: true,
+          status: 'pass',
+          mobile_browser_proof: { ok: true },
+        },
+      },
+      price: 100000,
+    };
+    mocks.publicSnapshotRow = {
+      id: 'snap-1',
+      package_id: 'pkg-1',
+      package_revision: 3,
+      snapshot_hash: 'snapshot-hash',
+      snapshot_json: {
+        package: {
+          id: 'pkg-1',
+          title: 'Raw visible package',
+          status: 'active',
+          price: 1230000,
+        },
+      },
+      card_projection: { title: 'Snapshot customer title' },
+      lp_projection: { title: 'Snapshot customer title', summary: '고객용 요약' },
+      route_text_dump: ['Snapshot customer title', '고객용 요약'],
+      status: 'published',
+      created_at: '2026-07-10T00:00:00.000Z',
+    };
+    mocks.packageError = null;
+    mocks.scores = [];
+    mocks.mappedInput = null;
+  });
+
+  it('returns landing data only through the approved public snapshot', async () => {
+    const result = await fetchLpPackageUncached('pkg-1');
+
+    expect(result).toMatchObject({ id: 'pkg-1', title: 'Snapshot customer title' });
+    expect(mocks.mappedInput).toMatchObject({
+      id: 'pkg-1',
+      title: 'Snapshot customer title',
+      status: 'active',
+      _public_snapshot: expect.objectContaining({ snapshot_hash: 'snapshot-hash' }),
+    });
+  });
+
+  it('blocks otherwise-visible packages when publication_state is missing', async () => {
+    mocks.packageRow = {
+      id: 'pkg-1',
+      title: 'Legacy approved package',
       status: 'approved',
       audit_status: 'warnings',
       audit_report: {
@@ -120,17 +207,12 @@ describe('fetchLpPackageUncached', () => {
       },
       price: 100000,
     };
-    mocks.packageError = null;
     mocks.publicSnapshotRow = null;
-    mocks.scores = [];
-    mocks.mappedInput = null;
-  });
 
-  it('returns landing data for customer-visible packages', async () => {
     const result = await fetchLpPackageUncached('pkg-1');
 
-    expect(result).toMatchObject({ id: 'pkg-1', title: 'Visible package' });
-    expect(mocks.mappedInput).toMatchObject({ id: 'pkg-1', status: 'approved' });
+    expect(result).toBeNull();
+    expect(mocks.mappedInput).toBeNull();
   });
 
   it('blocks packages that are not customer-visible', async () => {
@@ -141,6 +223,7 @@ describe('fetchLpPackageUncached', () => {
       audit_status: 'blocked',
       price: 100000,
     };
+    mocks.publicSnapshotRow = null;
 
     const result = await fetchLpPackageUncached('pkg-1');
 
@@ -192,6 +275,7 @@ premium villa golf package 3n5d
         { date: '2027-07-09', price: 999000 },
       ],
     };
+    mocks.publicSnapshotRow = null;
 
     const result = await fetchLpPackageUncached('pkg-1');
 
@@ -238,8 +322,8 @@ premium villa golf package 3n5d
           price: 1230000,
         },
       },
-      card_projection: {},
-      lp_projection: {},
+      card_projection: { title: 'Snapshot customer title' },
+      lp_projection: { title: 'Snapshot customer title', summary: '고객용 요약' },
       route_text_dump: ['Snapshot customer title'],
       status: 'published',
       created_at: '2026-07-10T00:00:00.000Z',
@@ -286,8 +370,8 @@ premium villa golf package 3n5d
           price: 1230000,
         },
       },
-      card_projection: {},
-      lp_projection: {},
+      card_projection: { title: 'Snapshot customer title' },
+      lp_projection: { title: 'Snapshot customer title', summary: '고객용 요약' },
       route_text_dump: ['Snapshot customer title'],
       status: 'published',
       created_at: '2026-07-10T00:00:00.000Z',
