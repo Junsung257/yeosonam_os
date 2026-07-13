@@ -78,6 +78,7 @@
     "register:schedule-hwp-open": "npx tsx scripts/run-schedule-hwp-customer-open-batch.ts --open-active --base=https://www.yeosonam.com",
     "prove:hwp-mobile": "npx tsx scripts/prove-hwp-mobile-render.ts",
     "refresh:customer-mobile-proofs": "npx tsx scripts/refresh-customer-mobile-proofs.ts",
+    "refresh:customer-mobile-proofs:pending": "npx tsx scripts/refresh-customer-mobile-proofs.ts --include-pending",
     "refresh:customer-mobile-proofs:apply": "npx tsx scripts/refresh-customer-mobile-proofs.ts --apply",
     "quality:product-mobile-engine": "npx tsx scripts/run-product-registration-mobile-quality-engine.ts",
     "quality:product-mobile-engine:apply": "npx tsx scripts/run-product-registration-mobile-quality-engine.ts --apply",

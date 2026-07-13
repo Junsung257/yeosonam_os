@@ -435,7 +435,7 @@ export function buildMobileBrowserProofPayload(input: {
   }>;
 }) {
   return {
-    source: 'hwp-mobile-browser-proof',
+    source: 'auto-mobile-fetch-proof',
     status: input.status,
     checked_at: input.checkedAt,
     package_updated_at: input.packageUpdatedAt,
@@ -885,7 +885,7 @@ export async function runAutoMobileQA(
                 source: 'auto_mobile_qa',
                 incidents,
                 checked_at: checkedAt,
-                mobile_browser_proof: buildMobileBrowserProofPayload({
+                auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
                   status: 'pass',
                   checkedAt,
                   packageUpdatedAt: expected.updatedAt,
@@ -928,7 +928,7 @@ export async function runAutoMobileQA(
                 source: 'auto_mobile_qa',
                 incidents: hiSev,
                 checked_at: checkedAt,
-                mobile_browser_proof: buildMobileBrowserProofPayload({
+                auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
                   status: 'fail',
                   checkedAt,
                   packageUpdatedAt: expected.updatedAt,
@@ -989,7 +989,7 @@ export async function runAutoMobileQA(
           .update({
             audit_report: {
               ...clearStaleMobileQaFailures(existingReport),
-              mobile_browser_proof: buildMobileBrowserProofPayload({
+              auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
                 status: 'pass',
                 checkedAt,
                 packageUpdatedAt: expected.updatedAt,

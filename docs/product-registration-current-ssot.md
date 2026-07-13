@@ -96,6 +96,8 @@ npx tsx scripts/rehearse-customer-open-candidate.ts --code=<INTERNAL_CODE> --bas
 
 The rehearsal must run with `autoOpen:false`. A pass means `customer_open_candidate`; a fail must end as `needs_human_source_review` with attempted repairs, remaining blockers, and next action. Do not expose the product to customers from a rehearsal result alone.
 
+Saved package rehearsal includes the final re-proof step by default: after bounded repairs, if the only remaining blockers are `/packages` or `/lp` mobile proof blockers, it must regenerate real `hwp-mobile-browser-proof` evidence and reload `customer_open_contract` before reporting the final state. Use `--skip-proof-refresh` only for a dry diagnostic run where browser proof is intentionally deferred.
+
 Stored mobile proof freshness is part of the same operational contract. A public screen audit can prove the current customer page is clean, but approval, blog, and marketing gates still require non-stale stored `/packages` and `/lp` proof hashes. Use the refresh selector before release work:
 
 ```bash
@@ -104,6 +106,15 @@ npm run refresh:customer-mobile-proofs:apply -- --base=https://www.yeosonam.com 
 ```
 
 The dry run must list only packages whose stored proof is missing, stale, hashless, surface-incomplete, or source-invalid. The apply run reuses the internal mobile proof renderer and must not publish or unpublish products by itself; it only refreshes `audit_report.mobile_browser_proof` and clears proof-required audit markers when the proof passes.
+
+For upload-to-open preparation, pending rows can require the same real browser proof before they are opened. Use the explicit pending selector instead of trusting fetch-only AutoQA output:
+
+```bash
+npm run refresh:customer-mobile-proofs:pending -- --summary-only --json --status=pending_review
+npm run refresh:customer-mobile-proofs:pending -- --apply --base=https://www.yeosonam.com --status=pending_review --limit=20 --batch-size=5
+```
+
+`auto-mobile-fetch-proof` is diagnostic evidence only. It must not satisfy `customer_open_contract`; customer-open proof must be stored with `source='hwp-mobile-browser-proof'` and include `/packages` and `/lp` CTA interaction checks.
 
 If a live sweep finds `active`/`approved` rows that fail `customer_open_contract` or stored mobile proof, treat that as a publication-state drift, not a copy-only issue. First audit, then demote unsafe public statuses so no raw status/API/listing path can treat them as customer-open:
 
