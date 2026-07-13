@@ -18,7 +18,7 @@ export interface CustomerPackageDisplayCopyInput {
   inclusions?: string[] | null;
   excludes?: string[] | null;
   customer_notes?: string | null;
-  optional_tours?: Array<{ name?: string | null; displayName?: string | null; note?: string | null }> | null;
+  optional_tours?: Array<string | { name?: string | null; displayName?: string | null; note?: string | null }> | null;
 }
 
 export interface CustomerPackageDisplayCopy {
@@ -96,7 +96,7 @@ function collectSourceText(input: CustomerPackageDisplayCopyInput): string {
     ...(input.inclusions ?? []),
     ...(input.excludes ?? []),
     input.customer_notes,
-    ...(input.optional_tours ?? []).flatMap((tour) => [tour.name, tour.displayName, tour.note]),
+    ...(input.optional_tours ?? []).flatMap(optionalTourCopyParts),
   ]
     .map(normalizeForCustomer)
     .filter(Boolean)
@@ -176,21 +176,56 @@ function detectTheme(text: string, destination: string): string {
   return '핵심관광';
 }
 
+function collectClaimEvidenceText(input: CustomerPackageDisplayCopyInput): string {
+  return [
+    input.hero_tagline,
+    input.product_summary,
+    ...(input.product_highlights ?? []),
+    ...(input.inclusions ?? []),
+    ...(input.excludes ?? []),
+    input.customer_notes,
+    ...(input.optional_tours ?? []).flatMap(optionalTourCopyParts),
+  ]
+    .map(normalizeForCustomer)
+    .filter(Boolean)
+    .join(' ');
+}
+
+function optionalTourCopyParts(
+  tour: string | { name?: string | null; displayName?: string | null; note?: string | null },
+): Array<string | null | undefined> {
+  if (typeof tour === 'string') return [tour];
+  return [tour.name, tour.displayName, tour.note];
+}
+
+function hasHotelGradeEvidence(text: string): boolean {
+  return /(?:호텔|리조트|숙박|동급).{0,16}(?:준\s*5성|정\s*5성|5성|오성|월드체인)|(?:준\s*5성|정\s*5성|5성|오성|월드체인).{0,16}(?:호텔|리조트|숙박|동급)|특급\s*호텔|특급호텔/i.test(text);
+}
+
+function hasPremiumHotelEvidence(text: string): boolean {
+  return /특급\s*호텔|특급호텔|프리미엄\s*(?:호텔|리조트)|고품격\s*(?:호텔|리조트)/i.test(text);
+}
+
+function hasStrongOnsenEvidence(text: string): boolean {
+  return /온천(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광)|료칸|(?:쿠로카와|유후인|벳부|노보리베츠|하코네|아타미|기노사키).{0,12}온천/i.test(text);
+}
+
 function buildBadges(text: string, input: CustomerPackageDisplayCopyInput): string[] {
   const badges: string[] = [];
   const push = (label: string, pattern: RegExp) => {
     if (pattern.test(text) && !badges.includes(label)) badges.push(label);
   };
+  const claimEvidenceText = collectClaimEvidenceText(input);
 
   push('노팁', /노팁|NO\s*팁/i);
   push('노옵션', /노옵션|NO\s*옵션|선택관광\s*없/i);
   push('노쇼핑', /노쇼핑|NO\s*쇼핑|쇼핑\s*없/i);
-  push('5성호텔', /5성|오성|월드체인/i);
-  push('특급호텔', /특급호텔|특급\s*호텔/i);
+  if (hasHotelGradeEvidence(claimEvidenceText)) push('5성호텔', /./);
+  if (hasPremiumHotelEvidence(claimEvidenceText)) push('특급호텔', /./);
   push('호핑', /호핑/i);
   push('바나힐', /바나힐/i);
   push('골프', /골프|라운드|라운딩/i);
-  push('온천', /온천|료칸/i);
+  if (hasStrongOnsenEvidence(claimEvidenceText)) push('온천', /./);
   push('자유일정', /자유일정|자유시간|1일자유|오전자유/i);
 
   const airline = clean(input.airline);
