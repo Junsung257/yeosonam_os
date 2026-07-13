@@ -839,6 +839,47 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
     expect(schedule[3].attraction_ids).toEqual(['44cf6e6a-1349-4e3b-829f-2c56ae06f10c']);
     expect(schedule[4].attraction_names).toEqual(['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C']);
   });
+
+  it('falls back to the visible activity text when a saved attraction candidate is wrong', () => {
+    const result = repairSavedItineraryAttractionIdsFromExistingAttractions({
+      destination: '\uB2E4\uB0AD',
+      attractions: [
+        {
+          id: '00000000-0000-4000-8000-000000000123',
+          name: '\uD55C\uC2DC\uC7A5',
+          region: '\uB2E4\uB0AD',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
+      ],
+      itineraryData: {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              {
+                activity: '\uD604\uC9C0\uC778\uB4E4\uC758 \uC0B6\uC774 \uACE0\uC2A4\uB780\uD788 \uB179\uC544\uC788\uB294 \uD55C\uC2DC\uC7A5 \uBC29\uBB38',
+                attraction_query: '\uD55C\uC815\uC2DD',
+                attraction_names: ['\uD55C\uC815\uC2DD'],
+                attraction_ids: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const item = (result.itineraryData as {
+      days: Array<{ schedule: Array<{ attraction_names: string[]; attraction_ids: string[] }> }>;
+    }).days[0].schedule[0];
+
+    expect(result.repaired).toBe(true);
+    expect(result.matched).toBe(1);
+    expect(result.remainingUnmatched).toBe(0);
+    expect(item.attraction_names).toEqual(['\uD55C\uC2DC\uC7A5']);
+    expect(item.attraction_ids).toEqual(['00000000-0000-4000-8000-000000000123']);
+  });
 });
 
 describe('repairOptionalTourScheduleDuplicates', () => {
