@@ -20,6 +20,25 @@ function asNonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function asNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function hasSourceBackedPriceDates(row: SnapshotProjectionRow): boolean {
+  const snapshot = asRecord(row.snapshot_json);
+  const pkg = asRecord(snapshot?.package);
+  const priceDates = Array.isArray(pkg?.price_dates) ? pkg.price_dates : [];
+  if (priceDates.length === 0) return false;
+
+  return priceDates.every((item) => {
+    const priceDate = asRecord(item);
+    const date = typeof priceDate?.date === 'string' ? priceDate.date.trim() : '';
+    const price = asNumber(priceDate?.adult_selling_price ?? priceDate?.price ?? priceDate?.selling_price);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof price === 'number' && price > 0;
+  });
+}
+
 function packageId(row: AnyRecord): string | null {
   return typeof row.id === 'string' && row.id.trim() ? row.id : null;
 }
@@ -102,6 +121,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
     if (!expectedRevision) continue;
     if (Number(row.package_revision ?? 1) !== expectedRevision) continue;
     if (!hasPublicTitle(row, projection)) continue;
+    if (!hasSourceBackedPriceDates(row)) continue;
     if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
   }
 

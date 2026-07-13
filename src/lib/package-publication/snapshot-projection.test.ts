@@ -39,7 +39,13 @@ describe('public snapshot card projection', () => {
         package_revision: 3,
         status: 'published',
         created_at: '2026-07-09T00:00:00.000Z',
-        snapshot_json: { package: { title: 'current public title', destination: 'current dest' } },
+        snapshot_json: {
+          package: {
+            title: 'current public title',
+            destination: 'current dest',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+          },
+        },
         card_projection: { title: 'current card title' },
       },
     ]);
@@ -89,7 +95,7 @@ describe('public snapshot card projection', () => {
         package_revision: 3,
         status: 'published',
         created_at: '2026-07-09T00:00:00.000Z',
-        snapshot_json: { package: { title: 'public title' } },
+        snapshot_json: { package: { title: 'public title', price_dates: [{ date: '2026-07-12', price: 599000 }] } },
         card_projection: {},
       },
     ]);
@@ -99,5 +105,29 @@ describe('public snapshot card projection', () => {
     expect(merged[0]).not.toHaveProperty('destination');
     expect(merged[0]).not.toHaveProperty('product_summary');
     expect(merged[0]).not.toHaveProperty('inclusions');
+  });
+
+  it('drops current snapshots without source-backed price dates instead of exposing projection price', () => {
+    const packages = [
+      { id: 'pkg-1', package_revision: 3, title: 'raw supplier title', price: 599000 },
+    ];
+    const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: {
+          package: {
+            title: '연길·백두산 노옵션 핵심관광 4박5일',
+            price: 599000,
+            price_dates: [],
+          },
+        },
+        card_projection: { title: '연길·백두산 노옵션 핵심관광 4박5일', price: 599000 },
+      },
+    ]);
+
+    expect(merged).toEqual([]);
   });
 });
