@@ -10,6 +10,7 @@ import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { calculateSeoScore } from '@/lib/seo-scorer';
 import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/prompt-version';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 /** slug 중복 방지: 동일 slug 존재 시 -2, -3 접미사 자동 부여 */
 async function ensureUniqueSlug(baseSlug: string): Promise<string> {
@@ -46,14 +47,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 상품 조회
-    const { data: pkgRaw } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, price_tiers, price_dates, inclusions, excludes, product_type, airline, departure_airport, product_highlights, itinerary, itinerary_data, optional_tours, notices_parsed')
-      .eq('id', product_id)
-      .single();
-
-    if (!pkgRaw) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
-    const pkg = pkgRaw as unknown as ProductData & { photo_urls?: string[] };
+    const publicPackage = await loadPublicContentPackageForGeneration(product_id);
+    if (!publicPackage) {
+      return NextResponse.json({ error: '고객 공개 승인된 상품만 콘텐츠 허브 생성에 사용할 수 있습니다.' }, { status: 404 });
+    }
+    const pkg = publicPackage as unknown as ProductData & { photo_urls?: string[] };
 
     const trackingId = trackingIdOverride || generateTrackingId(pkg.destination || '');
     const options = {

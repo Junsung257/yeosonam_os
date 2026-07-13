@@ -6,13 +6,16 @@ import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-pu
 export type PublicContentPackage = {
   id: string;
   title: string;
-  destination: string | null;
-  duration: number | string | null;
-  nights: number | null;
-  price: number | null;
-  airline?: string | null;
-  departure_airport?: string | null;
-  product_summary?: string | null;
+  destination?: string;
+  duration?: number;
+  nights?: number;
+  price?: number;
+  price_tiers?: Array<{ adult_price?: number; period_label?: string }>;
+  price_dates?: Array<{ date: string; price: number; confirmed: boolean }>;
+  product_type?: string;
+  airline?: string;
+  departure_airport?: string;
+  product_summary?: string;
   product_highlights?: string[];
   inclusions?: string[];
   excludes?: string[];
@@ -33,6 +36,33 @@ function asStringArray(value: unknown): string[] {
   return value.map((item) => String(item).trim()).filter(Boolean);
 }
 
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)));
+}
+
+function asPriceTiers(value: unknown): Array<{ adult_price?: number; period_label?: string }> {
+  return asRecordArray(value).map((item) => ({
+    adult_price: asNumber(item.adult_price) ?? asNumber(item.price) ?? undefined,
+    period_label: asString(item.period_label) ?? asString(item.label) ?? undefined,
+  }));
+}
+
+function asPriceDates(value: unknown): Array<{ date: string; price: number; confirmed: boolean }> {
+  return asRecordArray(value)
+    .map((item) => {
+      const date = asString(item.date) ?? asString(item.departure_date);
+      const price = asNumber(item.price) ?? asNumber(item.adult_price);
+      if (!date || price === null) return null;
+      return {
+        date,
+        price,
+        confirmed: Boolean(item.confirmed),
+      };
+    })
+    .filter((item): item is { date: string; price: number; confirmed: boolean } => Boolean(item));
+}
+
 function isPublicContentPackageCandidate(row: Record<string, unknown>): boolean {
   const publicationState = asString(row.publication_state);
   return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
@@ -44,13 +74,16 @@ function toPublicContentPackage(row: Record<string, unknown>): PublicContentPack
   return {
     id,
     title: asString(row.title) ?? asString(row.display_title) ?? '여소남 추천 패키지',
-    destination: asString(row.destination),
-    duration: asNumber(row.duration) ?? asString(row.duration),
-    nights: asNumber(row.nights),
-    price: asNumber(row.price),
-    airline: asString(row.airline),
-    departure_airport: asString(row.departure_airport),
-    product_summary: asString(row.product_summary) ?? asString(row.summary),
+    destination: asString(row.destination) ?? undefined,
+    duration: asNumber(row.duration) ?? undefined,
+    nights: asNumber(row.nights) ?? undefined,
+    price: asNumber(row.price) ?? undefined,
+    price_tiers: asPriceTiers(row.price_tiers),
+    price_dates: asPriceDates(row.price_dates),
+    product_type: asString(row.product_type) ?? undefined,
+    airline: asString(row.airline) ?? undefined,
+    departure_airport: asString(row.departure_airport) ?? undefined,
+    product_summary: asString(row.product_summary) ?? asString(row.summary) ?? undefined,
     product_highlights: asStringArray(row.product_highlights),
     inclusions: asStringArray(row.inclusions),
     excludes: asStringArray(row.excludes),
