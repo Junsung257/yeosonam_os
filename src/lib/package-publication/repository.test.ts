@@ -6,6 +6,8 @@ import { createPublicPackageSnapshotAndDecision, fetchLatestPublicPackageSnapsho
 
 type RpcResult = {
   rpcError?: Error | null;
+  activeAttractionIds?: string[];
+  attractionLookupError?: Error | null;
 };
 
 function makeSupabaseMock(result: RpcResult = {}) {
@@ -14,6 +16,27 @@ function makeSupabaseMock(result: RpcResult = {}) {
     rpc(name: string, payload: Record<string, unknown>) {
       calls.push({ name, payload });
       return Promise.resolve({ data: { ok: true }, error: result.rpcError ?? null });
+    },
+    from(table: string) {
+      if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
+      const requestedIds = new Set<string>();
+      const chain = {
+        select: () => chain,
+        in(_column: string, values: string[]) {
+          values.forEach(value => requestedIds.add(value));
+          return chain;
+        },
+        eq() {
+          const activeIds = new Set(result.activeAttractionIds ?? []);
+          return Promise.resolve({
+            data: [...requestedIds]
+              .filter(id => activeIds.has(id))
+              .map(id => ({ id })),
+            error: result.attractionLookupError ?? null,
+          });
+        },
+      };
+      return chain;
     },
   };
 
@@ -147,6 +170,67 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         package_revision: 3,
         audit_status: 'clean',
       }),
+    });
+  });
+
+  it('blocks publication when itinerary attraction ids do not exist in active attractions', async () => {
+    const missingAttractionId = '22222222-2222-4222-8222-222222222222';
+    const { supabase, calls } = makeSupabaseMock({ activeAttractionIds: [] });
+
+    const result = await createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      publishablePackage({
+        itinerary_data: {
+          days: [
+            { day: 1, schedule: [{ activity: 'Odaiba sightseeing', attraction_ids: [missingAttractionId] }] },
+          ],
+        },
+      }),
+      { customerOpenContractOk: true },
+    );
+
+    expect(result.publishable).toBe(false);
+    expect(result.publicationState).toBe('blocked');
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'broken_attraction_id',
+        message: expect.stringContaining(missingAttractionId),
+      }),
+    ]));
+    expect(calls[0].payload).toMatchObject({
+      p_snapshot_status: 'blocked',
+      p_publication_state: 'blocked',
+      p_publishable: false,
+    });
+  });
+
+  it('fails closed when active attraction lookup fails before publication', async () => {
+    const attractionId = '33333333-3333-4333-8333-333333333333';
+    const { supabase, calls } = makeSupabaseMock({
+      attractionLookupError: new Error('attractions unavailable'),
+    });
+
+    const result = await createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      publishablePackage({
+        itinerary_data: {
+          days: [
+            { day: 1, schedule: [{ activity: 'Odaiba sightseeing', attraction_ids: [attractionId] }] },
+          ],
+        },
+      }),
+      { customerOpenContractOk: true },
+    );
+
+    expect(result.publishable).toBe(false);
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'audit_query_failed' }),
+      expect.objectContaining({ code: 'broken_attraction_id' }),
+    ]));
+    expect(calls[0].payload).toMatchObject({
+      p_snapshot_status: 'blocked',
+      p_publication_state: 'blocked',
+      p_publishable: false,
     });
   });
 

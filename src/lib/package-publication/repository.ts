@@ -27,6 +27,56 @@ function asNonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function collectItineraryAttractionIds(value: unknown): string[] {
+  const ids = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+    if (Array.isArray(record.attraction_ids)) {
+      for (const id of record.attraction_ids) {
+        if (typeof id === 'string' && id.trim()) ids.add(id.trim());
+      }
+    }
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(value);
+  return [...ids];
+}
+
+async function validateActiveAttractionIds(
+  supabase: SupabaseClient,
+  ids: string[],
+): Promise<{ invalidIds: string[]; lookupError: string | null }> {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (uniqueIds.length === 0) return { invalidIds: [], lookupError: null };
+
+  const { data, error } = await supabase
+    .from('attractions')
+    .select('id')
+    .in('id', uniqueIds)
+    .eq('is_active', true);
+  if (error) {
+    return {
+      invalidIds: uniqueIds,
+      lookupError: `active attraction_id lookup failed: ${error.message ?? String(error)}`,
+    };
+  }
+
+  const activeIds = new Set(
+    ((data ?? []) as Array<{ id?: unknown }>)
+      .map(row => typeof row.id === 'string' ? row.id.trim() : '')
+      .filter(Boolean),
+  );
+  return {
+    invalidIds: uniqueIds.filter(id => !activeIds.has(id)),
+    lookupError: null,
+  };
+}
+
 function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
@@ -94,6 +144,12 @@ export async function createPublicPackageSnapshotAndDecision(
   const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
   const packageId = String(pkg.id ?? snapshot.package_id);
   const packageRevision = Number(pkg.package_revision ?? snapshot.package_revision ?? 1);
+  const attractionIds = collectItineraryAttractionIds(pkg.itinerary_data);
+  const attractionValidation = await validateActiveAttractionIds(supabase, attractionIds);
+  const auditQueryFailed = [
+    gateInput.auditQueryFailed,
+    attractionValidation.lookupError,
+  ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join('; ') || null;
   const gate = evaluatePublicSnapshotPublishGate({
     ...gateInput,
     pkg,
@@ -101,6 +157,8 @@ export async function createPublicPackageSnapshotAndDecision(
     publicSnapshotTitle: snapshot.public_title,
     snapshotExists: true,
     routeTextDump: snapshot.route_text_dump,
+    auditQueryFailed,
+    invalidAttractionIds: attractionValidation.invalidIds,
   });
   const snapshotStatus = gate.publishable ? 'published' : 'blocked';
   const nowIso = new Date().toISOString();
