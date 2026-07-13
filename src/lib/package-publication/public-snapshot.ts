@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
+import { hasRiskyCustomerPromiseCopy } from '@/lib/customer-risky-copy';
 import { renderPackage } from '@/lib/render-contract';
 import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 
@@ -248,7 +249,7 @@ export function hasRiskyCustomerCopy(value: unknown): boolean {
   const text = typeof value === 'string'
     ? value
     : JSON.stringify(value ?? '');
-  return RISKY_COPY_PATTERNS.some(pattern => pattern.test(text));
+  return hasRiskyCustomerPromiseCopy(text) || RISKY_COPY_PATTERNS.some(pattern => pattern.test(text));
 }
 
 export function buildPublicPackageSnapshot(pkg: AnyRecord): {
