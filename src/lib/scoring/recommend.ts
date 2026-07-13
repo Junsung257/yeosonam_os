@@ -14,6 +14,8 @@ import { topsis, type CriterionType } from './topsis';
 import { loadBrandEntries, type HotelBrandEntry } from './hotel-brands';
 import { SCORING_ELIGIBLE_STATUSES } from '@/lib/visibility-status';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 export interface RecommendBestInput {
   destination: string;
@@ -47,7 +49,7 @@ export interface RecommendBestResult {
 
 // 실 스키마 (2026-04-29 schema drift fix): price · duration · price_dates
 const PACKAGE_SELECT_COLS =
-  'id, title, destination, price, price_dates, duration, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, land_operator_id, created_at';
+  'id, title, destination, price, price_dates, duration, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, land_operator_id, created_at';
 
 // v3.2 (2026-04-30): TOPSIS 10 criteria (기존 6 + P1 4개)
 const TOPSIS_CRITERIA: CriterionType[] = [
@@ -183,8 +185,17 @@ export async function recommendBestPackages(
 
   const { data, error } = await q;
   if (error) throw new Error(`패키지 조회 실패: ${error.message}`);
-  const candidates = ((data ?? []) as Array<RawPackageRow & { title: string }>)
+  const eligibleRows = ((data ?? []) as Array<RawPackageRow & {
+    title: string;
+    publication_state?: string | null;
+    package_revision?: number | null;
+  }>)
+    .filter((row) => isPublicPublicationState(row.publication_state ?? null))
     .filter((row) => isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>));
+  const candidates = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    supabaseAdmin,
+    eligibleRows as unknown as Array<Record<string, unknown>>,
+  )) as unknown as Array<RawPackageRow & { title: string }>;
 
   // 그룹 키: destination + duration (출발일 컬럼 없음 — price_dates 의 dates는 제각각)
   const groupKey = `${input.destination}|d${input.duration_days ?? '*'}`;

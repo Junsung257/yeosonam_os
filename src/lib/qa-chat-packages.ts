@@ -1,22 +1,61 @@
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { extractQaDestinationHint } from '@/lib/qa-destination-hint';
 import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
-import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
-  'id,title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,status,publication_state,audit_status,audit_report,updated_at,optional_tours,itinerary_data';
+  'id,destination,status,publication_state,package_revision,audit_status,audit_report,updated_at,optional_tours,itinerary_data';
 
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 90_000;
 
-function sanitizeQaPackageRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
-  return rows.map((row) => ({
-    ...row,
-    raw_text: safeRawTextExcerpt(typeof row.raw_text === 'string' ? row.raw_text : null, 800) ?? '',
-  }));
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function asNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function isQaPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = asString(row.publication_state);
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+function toQaCustomerPackageRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows
+    .map((row) => ({
+      id: asString(row.id),
+      title: asString(row.title) ?? asString(row.display_title) ?? '여소남 추천 패키지',
+      destination: asString(row.destination),
+      duration: asNumber(row.duration),
+      nights: asNumber(row.nights),
+      price: asNumber(row.price),
+      product_summary: asString(row.product_summary) ?? asString(row.summary),
+      product_highlights: asStringArray(row.product_highlights),
+      inclusions: asStringArray(row.inclusions),
+      excludes: asStringArray(row.excludes),
+      itinerary: asStringArray(row.itinerary),
+      _public_snapshot: row._public_snapshot ?? null,
+    }))
+    .filter((row) => typeof row.id === 'string' && row.id.length > 0);
+}
+
+async function mergeQaPublicSnapshots(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
+  const candidates = rows.filter(isQaPublicSnapshotCandidate);
+  if (candidates.length === 0) return [];
+  const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, candidates);
+  return toQaCustomerPackageRows(merged);
 }
 
 function fresh(entry: CacheEntry | undefined, now: number): boolean {
@@ -34,8 +73,8 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
     .limit(120);
 
   if (error) throw error;
-  const openable = ((data || []) as Record<string, unknown>[]).filter(isCustomerPubliclyOpenable);
-  return sanitizeQaPackageRows(await rankQaPackagesForHint(openable, destinationHint));
+  const publicRows = await mergeQaPublicSnapshots((data || []) as Record<string, unknown>[]);
+  return rankQaPackagesForHint(publicRows, destinationHint);
 }
 
 async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
@@ -48,7 +87,7 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
     .limit(150);
 
   if (error) throw error;
-  return sanitizeQaPackageRows(((data || []) as Record<string, unknown>[]).filter(isCustomerPubliclyOpenable));
+  return mergeQaPublicSnapshots((data || []) as Record<string, unknown>[]);
 }
 
 async function rankQaPackagesForHint(

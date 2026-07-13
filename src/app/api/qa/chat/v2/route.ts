@@ -322,6 +322,8 @@ export async function POST(req: NextRequest) {
             destination: p.destination,
             duration: p.duration,
             price: p.price,
+            product_summary: p.product_summary,
+            product_highlights: p.product_highlights,
             inclusions: p.inclusions,
             itinerary: p.itinerary,
           })),
@@ -373,7 +375,7 @@ export async function POST(req: NextRequest) {
         const critique = await critiqueReply({
           userQuestion: message,
           packageContext: packages.length > 0
-            ? packages.map((p: any) => `[${p.id}] ${p.title} ${p.destination} ${p.price ? p.price.toLocaleString() + '원' : ''}`).join('\n')
+            ? packages.map((p: any) => `[${p.id}] ${p.title} ${p.destination} ${p.price ? p.price.toLocaleString() + '원' : ''} ${p.product_summary ?? ''}`).join('\n')
             : '',
           reply: fullResponse || finalResult?.response || '',
           recommendedPackageIds,
@@ -428,6 +430,8 @@ export async function POST(req: NextRequest) {
             destination: p.destination,
             duration: p.duration,
             price: p.price,
+            product_summary: p.product_summary,
+            product_highlights: p.product_highlights,
             sellingPrice: p.price ? applyCommission(p.price) : null,
             commissionRate: COMMISSION_RATE,
           }))
