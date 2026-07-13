@@ -6,6 +6,8 @@ import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -24,8 +26,11 @@ type ActiveDestinationSitemapRow = {
 };
 
 type PublicPackageDestinationSitemapRow = {
+  id: string | null;
   destination: string | null;
   status?: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
   audit_status?: string | null;
   audit_report?: unknown;
   updated_at?: string | null;
@@ -64,6 +69,24 @@ function isAbortLikeError(err: unknown): boolean {
     return err.name === 'AbortError' || /abort|timeout|timed out/i.test(err.message);
   }
   return false;
+}
+
+function isSitemapPublicSnapshotCandidate(row: PublicPackageDestinationSitemapRow): boolean {
+  return isPublicPublicationState(row.publication_state)
+    && isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>);
+}
+
+async function fetchSitemapPublicSnapshotRows(rows: PublicPackageDestinationSitemapRow[]): Promise<PublicPackageDestinationSitemapRow[]> {
+  if (rows.length === 0) return [];
+  try {
+    return await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      supabaseAdmin,
+      rows as unknown as Array<Record<string, unknown>>,
+    ) as unknown as PublicPackageDestinationSitemapRow[];
+  } catch (error) {
+    console.warn('[sitemap] public snapshot merge failed; hiding package destination URLs:', error);
+    return [];
+  }
 }
 
 async function runSitemapQuery<T>(
@@ -109,8 +132,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     runSitemapQuery<PublicPackageDestinationSitemapRow>('destinations', (signal) =>
       supabaseAdmin
         .from('travel_packages')
-        .select('destination, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published'])
         .not('destination', 'is', null)
         .limit(PACKAGE_LIMIT)
         .abortSignal(signal),
@@ -137,8 +161,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ? queriedPosts
     : getFallbackBlogPosts().filter((post) => post.detail_available);
 
+  const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
+    packageDestinations.filter(isSitemapPublicSnapshotCandidate),
+  );
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
-  for (const pkg of packageDestinations.filter(isCustomerPubliclyOpenable)) {
+  for (const pkg of snapshotDestinations) {
     const destination = pkg.destination?.trim();
     if (!destination) continue;
     const current = publicDestinations.get(destination) ?? { destination, package_count: 0 };

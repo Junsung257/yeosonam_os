@@ -7,8 +7,11 @@ function queryResult(table: string) {
   const dataByTable: Record<string, unknown[]> = {
     travel_packages: [
       {
+        id: 'pkg-osaka',
         destination: 'osaka',
         status: 'approved',
+        publication_state: 'published',
+        package_revision: 3,
         audit_status: 'warnings',
         audit_report: {
           customer_open_contract: {
@@ -19,8 +22,11 @@ function queryResult(table: string) {
         },
       },
       {
+        id: 'pkg-hidden',
         destination: 'hidden',
         status: 'pending',
+        publication_state: 'needs_review',
+        package_revision: 1,
         audit_status: 'blocked',
         audit_report: {
           customer_open_contract: {
@@ -41,6 +47,27 @@ function queryResult(table: string) {
         updated_at: '2026-06-02T00:00:00.000Z',
       },
     ],
+    public_package_snapshots: [
+      {
+        package_id: 'pkg-osaka',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-06-03T00:00:00.000Z',
+        card_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
+        lp_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
+        snapshot_json: {
+          package: {
+            id: 'pkg-osaka',
+            title: 'Osaka public title',
+            display_title: 'Osaka public title',
+            destination: 'osaka',
+            publication_state: 'published',
+            package_revision: 3,
+          },
+          canonical_view: {},
+        },
+      },
+    ],
   };
 
   const chain = {
@@ -48,7 +75,11 @@ function queryResult(table: string) {
     in: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     not: vi.fn(() => chain),
-    order: vi.fn(() => chain),
+    order: vi.fn(() => (
+      table === 'public_package_snapshots'
+        ? Promise.resolve({ data: dataByTable[table] ?? [], error: null })
+        : chain
+    )),
     limit: vi.fn(() => chain),
     abortSignal: vi.fn(() => Promise.resolve({ data: dataByTable[table] ?? [], error: null })),
   };
@@ -86,5 +117,6 @@ describe('sitemap', () => {
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).toContain('travel_packages');
+    expect(queriedTables).toContain('public_package_snapshots');
   });
 });
