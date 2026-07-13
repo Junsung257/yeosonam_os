@@ -1,5 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import {
+  auditCustomerVisibleScreenText,
+  blockingCustomerVisibleTextIssues,
+} from '@/lib/customer-visible-text-audit';
+
 type AnyRecord = Record<string, unknown>;
 
 export type SnapshotProjectionRow = {
@@ -8,6 +13,7 @@ export type SnapshotProjectionRow = {
   snapshot_json?: AnyRecord | null;
   card_projection?: AnyRecord | null;
   lp_projection?: AnyRecord | null;
+  route_text_dump?: string[] | null;
   status?: string | null;
   created_at?: string | null;
 };
@@ -104,6 +110,24 @@ function hasPublicTitle(row: SnapshotProjectionRow, projection: 'card' | 'lp'): 
   );
 }
 
+function hasBlockingSnapshotCopy(row: SnapshotProjectionRow, projection: 'card' | 'lp'): boolean {
+  const projectionPayload = projection === 'lp' ? asRecord(row.lp_projection) : asRecord(row.card_projection);
+  const customerPackage = {
+    ...snapshotPackage(row),
+    ...(projectionPayload ?? {}),
+  };
+  if (typeof customerPackage.summary === 'string' && typeof customerPackage.product_summary !== 'string') {
+    customerPackage.product_summary = customerPackage.summary;
+  }
+
+  const productIssues = blockingCustomerVisibleTextIssues(customerPackage);
+  if (productIssues.length > 0) return true;
+
+  const routeText = Array.isArray(row.route_text_dump) ? row.route_text_dump.join('\n') : '';
+  return auditCustomerVisibleScreenText(routeText, { surface: 'public_snapshot' })
+    .some(issue => !issue.safeFixable);
+}
+
 export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
   packages: T[],
   snapshotRows: SnapshotProjectionRow[],
@@ -122,6 +146,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
     if (Number(row.package_revision ?? 1) !== expectedRevision) continue;
     if (!hasPublicTitle(row, projection)) continue;
     if (!hasSourceBackedPriceDates(row)) continue;
+    if (hasBlockingSnapshotCopy(row, projection)) continue;
     if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
   }
 
@@ -157,7 +182,7 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
 
   const { data, error } = await supabase
     .from('public_package_snapshots')
-    .select('package_id, package_revision, snapshot_json, card_projection, lp_projection, status, created_at')
+    .select('package_id, package_revision, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
     .in('package_id', ids)
     .in('status', ['approved', 'published'])
     .order('created_at', { ascending: false });

@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import {
+  auditCustomerVisibleScreenText,
+  blockingCustomerVisibleTextIssues,
+} from '@/lib/customer-visible-text-audit';
 import { buildPublicPackageSnapshot } from './public-snapshot';
 import { evaluatePublicSnapshotPublishGate, type PublicSnapshotGateInput } from './publish-gate';
 import type { PublicPackageSnapshot } from './types';
@@ -43,6 +47,15 @@ function hasSourceBackedPriceDates(value: unknown): boolean {
     const price = asNumber(row?.adult_selling_price ?? row?.price ?? row?.selling_price);
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof price === 'number' && price > 0;
   });
+}
+
+function hasBlockingSnapshotCopy(pkg: AnyRecord, row: SnapshotRow): boolean {
+  const productIssues = blockingCustomerVisibleTextIssues(pkg);
+  if (productIssues.length > 0) return true;
+
+  const routeText = Array.isArray(row.route_text_dump) ? row.route_text_dump.join('\n') : '';
+  return auditCustomerVisibleScreenText(routeText, { surface: 'public_snapshot' })
+    .some(issue => !issue.safeFixable);
 }
 
 function collectItineraryAttractionIds(value: unknown): string[] {
@@ -105,7 +118,7 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const publicTitle = asNonEmptyString(cardProjection?.title) ?? asNonEmptyString(lpProjection?.title);
   if (!publicTitle) return null;
   const publicSummary = asNonEmptyString(lpProjection?.summary);
-  return {
+  const customerPackage = {
     ...pkg,
     ...(publicTitle ? { title: publicTitle, display_title: publicTitle } : {}),
     product_summary: publicSummary,
@@ -121,6 +134,7 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
       created_at: row.created_at,
     },
   };
+  return hasBlockingSnapshotCopy(customerPackage, row) ? null : customerPackage;
 }
 
 export async function fetchLatestPublicPackageSnapshot(

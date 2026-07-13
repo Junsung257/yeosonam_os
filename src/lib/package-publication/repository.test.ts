@@ -168,6 +168,38 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     expect(snapshot).toBeNull();
   });
 
+  it('does not return legacy public snapshots with risky customer promise copy', async () => {
+    const snapshot = await fetchLatestPublicPackageSnapshot(
+      makeSnapshotFetchSupabaseMock({
+        id: 'snap-risky-copy',
+        package_id: 'pkg-risky-copy',
+        package_revision: 3,
+        snapshot_hash: 'hash-risky-copy',
+        snapshot_json: {
+          package: {
+            id: 'pkg-risky-copy',
+            title: '연길·백두산 노옵션 핵심관광 4박5일',
+            display_title: '연길·백두산 노옵션 핵심관광 4박5일',
+            destination: '연길',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+          },
+        },
+        card_projection: { title: '연길·백두산 노옵션 핵심관광 4박5일' },
+        lp_projection: {
+          title: '연길·백두산 노옵션 핵심관광 4박5일',
+          summary: '예약 즉시 항공·숙박 확보',
+        },
+        route_text_dump: ['연길·백두산 노옵션 핵심관광 4박5일', '예약 즉시 항공·숙박 확보'],
+        status: 'published',
+        created_at: '2026-07-13T00:00:00.000Z',
+      }) as never,
+      'pkg-risky-copy',
+      { expectedPackageRevision: 3 },
+    );
+
+    expect(snapshot).toBeNull();
+  });
+
   it('publishes snapshot, decision, and package final state through one atomic RPC', async () => {
     const { supabase, calls } = makeSupabaseMock();
 
