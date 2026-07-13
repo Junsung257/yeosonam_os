@@ -25,6 +25,14 @@ const contentProductRoutes = [
   'src/app/api/orchestrator/auto-publish/route.ts',
   'src/app/api/influencer/content/route.ts',
   'src/app/api/packages/[id]/regenerate-copies/route.ts',
+  'src/lib/marketing-pipeline/agents/content-agent.ts',
+  'src/lib/marketing-pipeline/agents/ad-agent.ts',
+  'src/lib/search-ads-auto-planner.ts',
+  'src/lib/ad-os-product-autopilot.ts',
+  'src/app/api/admin/ad-os/generate-candidates/route.ts',
+  'src/app/api/admin/ad-os/creative-factory/route.ts',
+  'src/app/api/admin/ad-os/creative-factory/search-rsa/route.ts',
+  'src/app/api/admin/ad-os/creative-factory/asset-group/route.ts',
 ];
 
 describe('content generation public package gate', () => {
@@ -45,9 +53,16 @@ describe('content generation public package gate', () => {
     for (const path of contentProductRoutes) {
       const text = source(path);
 
-      expect(text, path).toContain('loadPublicContentPackageForGeneration');
+      expect(
+        text.includes('loadPublicContentPackageForGeneration') ||
+          text.includes('loadPublicSearchAdPackage') ||
+          text.includes('buildAndSaveSearchAdPackagePlan'),
+        path,
+      ).toBe(true);
       expect(text, path).not.toContain("select('id, title");
+      expect(text, path).not.toContain("select('id,title");
       expect(text, path).not.toContain("select('title, destination");
+      expect(text, path).not.toContain("select('title,destination");
       expect(text, path).not.toMatch(/from\('travel_packages'\)[\s\S]{0,260}\.select\('[^']*(title|price|inclusions|itinerary|product_summary|product_highlights)/);
     }
   });
