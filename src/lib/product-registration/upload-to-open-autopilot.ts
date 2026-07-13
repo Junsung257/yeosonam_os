@@ -924,6 +924,42 @@ function isCustomerPublishableAttraction(attraction: AttractionData | null | und
   );
 }
 
+function normalizeAttractionMatchCandidate(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function savedItineraryAttractionMatchCandidates(record: Record<string, unknown>, activity: string): string[] {
+  const candidates = [
+    firstSourceBackedAttractionQuery(record),
+    inferAttractionNameFromActivity(record.activity),
+    normalizeAttractionMatchCandidate(record.landing_sentence),
+    normalizeAttractionMatchCandidate(record.a4_sentence),
+    normalizeAttractionMatchCandidate(record.title),
+    normalizeAttractionMatchCandidate(record.description),
+    normalizeAttractionMatchCandidate(activity),
+  ];
+  const unique: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeAttractionMatchCandidate(candidate);
+    if (!normalized) continue;
+    const key = normalized.replace(/\s+/g, '').toLowerCase();
+    if (unique.some(value => value.replace(/\s+/g, '').toLowerCase() === key)) continue;
+    unique.push(normalized);
+  }
+  return unique;
+}
+
+function matchCustomerPublishableAttraction(
+  candidate: unknown,
+  publicAttractions: AttractionData[],
+  destination?: string | null,
+): AttractionData | null {
+  const normalized = normalizeAttractionMatchCandidate(candidate);
+  if (!normalized) return null;
+  return matchAttraction(normalized, publicAttractions, destination ?? undefined)
+    ?? matchAttraction(normalized, publicAttractions, undefined);
+}
+
 function isNonCustomerAttractionName(value: string, activity: string, accommodations: string[]): boolean {
   const normalized = value.replace(/\s+/g, ' ').trim();
   const compact = normalized.replace(/\s+/g, '');
@@ -993,6 +1029,20 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
       const activity = firstText(record.activity, record.title, record.description) ?? '';
       const nextNames: string[] = [];
       const nextIds: string[] = [];
+      const fallbackCandidates = savedItineraryAttractionMatchCandidates(record, activity);
+
+      const appendMatchedAttraction = (match: AttractionData): boolean => {
+        let appended = false;
+        if (!nextNames.includes(match.name)) {
+          nextNames.push(match.name);
+          appended = true;
+        }
+        if (match.id && !nextIds.includes(match.id)) {
+          nextIds.push(match.id);
+          appended = true;
+        }
+        return appended;
+      };
 
       for (const name of attractionNames) {
         if (isNonCustomerAttractionName(name, activity, accommodations)) {
@@ -1000,12 +1050,19 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
           changed = true;
           continue;
         }
-        const match = matchAttraction(name, publicAttractions, input.destination ?? undefined)
-          ?? matchAttraction(name, publicAttractions, undefined);
+        const match = matchCustomerPublishableAttraction(name, publicAttractions, input.destination);
         if (isCustomerPublishableAttraction(match)) {
-          if (!nextNames.includes(match.name)) nextNames.push(match.name);
-          if (match.id && !nextIds.includes(match.id)) nextIds.push(match.id);
-          matched++;
+          if (appendMatchedAttraction(match)) matched++;
+          changed = true;
+          continue;
+        }
+        const nameKey = name.replace(/\s+/g, '').toLowerCase();
+        const fallbackMatch = fallbackCandidates
+          .filter(candidate => candidate.replace(/\s+/g, '').toLowerCase() !== nameKey)
+          .map(candidate => matchCustomerPublishableAttraction(candidate, publicAttractions, input.destination))
+          .find(isCustomerPublishableAttraction);
+        if (isCustomerPublishableAttraction(fallbackMatch)) {
+          if (appendMatchedAttraction(fallbackMatch)) matched++;
           changed = true;
           continue;
         }
