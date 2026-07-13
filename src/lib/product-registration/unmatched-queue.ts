@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { AttractionData } from '@/lib/attraction-matcher';
+import { matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { inferCountryFromDestination } from '@/lib/destination-iso';
 
 export type UploadUnmatchedActivityRow = {
@@ -93,13 +93,45 @@ export async function queueUploadAttractionReviewCandidates(
   let unmatchedQueued = 0;
   let mentionCounted = 0;
   let newCandidateQueued = 0;
+  const mentionNames = new Set(
+    [...input.matchedCanonicalNames]
+      .map(name => String(name).replace(/\s+/g, ' ').trim())
+      .filter(Boolean),
+  );
 
   for (const row of input.unmatchedRows) {
     await upsertScopedUnmatched(input.supabaseAdmin, row);
     unmatchedQueued++;
   }
 
-  for (const name of input.matchedCanonicalNames) {
+  const existingAttractionsByName = new Map(
+    input.activeAttractions.map(attraction => [
+      attraction.name.toLowerCase().replace(/\s+/g, ''),
+      attraction,
+    ]),
+  );
+  const newActivities: UploadExtractedCandidateRow[] = [];
+  for (const candidate of input.extractedCandidateRows) {
+    const key = candidate.activity.toLowerCase().replace(/\s+/g, '');
+    const exactAttraction = existingAttractionsByName.get(key);
+    if (exactAttraction) {
+      mentionNames.add(exactAttraction.name);
+      continue;
+    }
+    const matchedAttraction = matchAttraction(
+      candidate.activity,
+      input.activeAttractions,
+      candidate.destination,
+      { customerFacing: true },
+    );
+    if (matchedAttraction) {
+      mentionNames.add(matchedAttraction.name);
+      continue;
+    }
+    newActivities.push(candidate);
+  }
+
+  for (const name of mentionNames) {
     await input.supabaseAdmin
       .rpc('increment_mention_count', { attraction_name: name })
       .then(undefined, () => {});
@@ -109,13 +141,6 @@ export async function queueUploadAttractionReviewCandidates(
   if (input.extractedCandidateRows.length === 0) {
     return { unmatchedQueued, newCandidateQueued, mentionCounted };
   }
-
-  const existingNames = new Set(
-    input.activeAttractions.map(attraction => attraction.name.toLowerCase().replace(/\s+/g, '')),
-  );
-  const newActivities = input.extractedCandidateRows.filter(candidate =>
-    !existingNames.has(candidate.activity.toLowerCase().replace(/\s+/g, '')),
-  );
   if (newActivities.length === 0 || !input.fallbackPackageId) {
     return { unmatchedQueued, newCandidateQueued, mentionCounted };
   }
