@@ -22,6 +22,9 @@ const contentProductRoutes = [
   'src/app/api/blog/from-card-news/route.ts',
   'src/app/api/blog/bulk-generate/route.ts',
   'src/app/api/meta/creatives/route.ts',
+  'src/app/api/orchestrator/auto-publish/route.ts',
+  'src/app/api/influencer/content/route.ts',
+  'src/app/api/packages/[id]/regenerate-copies/route.ts',
 ];
 
 describe('content generation public package gate', () => {
