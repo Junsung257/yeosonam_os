@@ -70,10 +70,12 @@ function isPublicContentPackageCandidate(row: Record<string, unknown>): boolean 
 
 function toPublicContentPackage(row: Record<string, unknown>): PublicContentPackage | null {
   const id = asString(row.id);
+  const title = asString(row.title) ?? asString(row.display_title);
   if (!id) return null;
+  if (!title) return null;
   return {
     id,
-    title: asString(row.title) ?? asString(row.display_title) ?? '여소남 추천 패키지',
+    title,
     destination: asString(row.destination) ?? undefined,
     duration: asNumber(row.duration) ?? undefined,
     nights: asNumber(row.nights) ?? undefined,

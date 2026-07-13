@@ -56,7 +56,7 @@ function toPublicV1Package(row: PublicPackageRow): Record<string, unknown> {
     nights: row.nights,
     price: row.price,
     price_display: row.price_display,
-    summary: lpProjection?.summary ?? cardProjection?.summary ?? row.product_summary ?? row.summary ?? null,
+    summary: lpProjection?.summary ?? cardProjection?.summary ?? null,
     badges: cardProjection?.badges ?? row.badges ?? [],
     publication_state: row.publication_state,
     package_revision: row.package_revision,
