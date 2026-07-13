@@ -19,6 +19,8 @@ import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -32,19 +34,6 @@ const BASE_URL = resolveBlogCanonicalOrigin();
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
   og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
-  travel_packages: {
-    id: string;
-    title: string;
-    destination: string;
-    price: number | null;
-    duration: string | null;
-    status?: string | null;
-    audit_status?: string | null;
-    audit_report?: unknown;
-    updated_at?: string | null;
-    optional_tours?: unknown;
-    itinerary_data?: unknown;
-  } | null;
 }
 
 type DestinationPackage = {
@@ -52,6 +41,8 @@ type DestinationPackage = {
   title: string;
   price: number | null;
   status?: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
   audit_status?: string | null;
   audit_report?: unknown;
   updated_at?: string | null;
@@ -130,6 +121,21 @@ function getDisplayImageUrl(post: BlogPost): string | null {
   return toBlogImageDisplaySrc(post.og_image_url);
 }
 
+function isBlogDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+async function mergeBlogDestinationPublicPackages<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
+  if (rows.length === 0) return [];
+  try {
+    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+  } catch (error) {
+    console.warn('[blog/destination] public snapshot merge failed; hiding package rows', error);
+    return [];
+  }
+}
+
 async function resolveDestinationRouteParamUncached(value: string): Promise<string> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded || !isSupabaseConfigured || !isSupabaseAdminConfigured) return decoded;
@@ -191,7 +197,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
     // 블로그 글 (해당 목적지)
     const postsQuery = supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, duration, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data)')
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('destination', destination)
@@ -205,14 +211,8 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
     }
 
     const posts = ((postsResult.data || []) as unknown as BlogPost[])
-      .map((post) => ({
-        ...post,
-        travel_packages: post.travel_packages && isCustomerPubliclyOpenable(post.travel_packages)
-          ? post.travel_packages
-          : null,
-      }))
       .filter(p => {
-        const postDestination = (p.destination || p.travel_packages?.destination || '').trim();
+        const postDestination = (p.destination || '').trim();
         return (
           postDestination.includes(destination) ||
           destinationSlugMatches(postDestination, destination)
@@ -222,9 +222,10 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
     // 관련 상품
     const packagesQuery = supabaseAdmin
       .from('travel_packages')
-      .select('id, title, price, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+      .select('id, title, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .ilike('destination', `%${destination}%`)
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(6);
 
@@ -233,7 +234,10 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
     return {
       destination,
       posts,
-      packages: ((packagesResult.data || []) as unknown as DestinationPackage[]).filter(isCustomerPubliclyOpenable),
+      packages: await mergeBlogDestinationPublicPackages(
+        ((packagesResult.data || []) as unknown as Array<Record<string, unknown>>)
+          .filter(isBlogDestinationPublicSnapshotCandidate),
+      ) as unknown as DestinationPackage[],
       unavailable: false,
     };
   } catch {
