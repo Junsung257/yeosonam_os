@@ -7,6 +7,7 @@ import { createPublicPackageSnapshotAndDecision, fetchLatestPublicPackageSnapsho
 type RpcResult = {
   rpcError?: Error | null;
   activeAttractionIds?: string[];
+  nonCustomerPublishableAttractionIds?: string[];
   attractionLookupError?: Error | null;
 };
 
@@ -28,10 +29,11 @@ function makeSupabaseMock(result: RpcResult = {}) {
         },
         eq() {
           const activeIds = new Set(result.activeAttractionIds ?? []);
+          const nonCustomerPublishableIds = new Set(result.nonCustomerPublishableAttractionIds ?? []);
           return Promise.resolve({
             data: [...requestedIds]
               .filter(id => activeIds.has(id))
-              .map(id => ({ id })),
+              .map(id => ({ id, customer_publishable: !nonCustomerPublishableIds.has(id) })),
             error: result.attractionLookupError ?? null,
           });
         },
@@ -258,6 +260,40 @@ describe('createPublicPackageSnapshotAndDecision', () => {
       expect.objectContaining({
         code: 'broken_attraction_id',
         message: expect.stringContaining(missingAttractionId),
+      }),
+    ]));
+    expect(calls[0].payload).toMatchObject({
+      p_snapshot_status: 'blocked',
+      p_publication_state: 'blocked',
+      p_publishable: false,
+    });
+  });
+
+  it('blocks publication when itinerary attraction ids are not customer-publishable', async () => {
+    const nonPublicAttractionId = '44444444-4444-4444-8444-444444444444';
+    const { supabase, calls } = makeSupabaseMock({
+      activeAttractionIds: [nonPublicAttractionId],
+      nonCustomerPublishableAttractionIds: [nonPublicAttractionId],
+    });
+
+    const result = await createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      publishablePackage({
+        itinerary_data: {
+          days: [
+            { day: 1, schedule: [{ activity: 'Odaiba sightseeing', attraction_ids: [nonPublicAttractionId] }] },
+          ],
+        },
+      }),
+      { customerOpenContractOk: true },
+    );
+
+    expect(result.publishable).toBe(false);
+    expect(result.publicationState).toBe('blocked');
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'broken_attraction_id',
+        message: expect.stringContaining(nonPublicAttractionId),
       }),
     ]));
     expect(calls[0].payload).toMatchObject({

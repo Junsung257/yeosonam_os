@@ -287,7 +287,7 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'broken_attraction_id', brokenAttraction, 'itinerary_data');
   }
   for (const id of input.invalidAttractionIds ?? []) {
-    addBlocker(hard, 'broken_attraction_id', `itinerary_data references an inactive or missing attraction_id: ${id}`, 'itinerary_data');
+    addBlocker(hard, 'broken_attraction_id', `itinerary_data references an inactive, missing, or non-customer-publishable attraction_id: ${id}`, 'itinerary_data');
   }
 
   const unsupportedClaim = findUnsupportedCustomerClaim(input);

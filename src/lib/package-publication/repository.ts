@@ -78,7 +78,7 @@ function collectItineraryAttractionIds(value: unknown): string[] {
   return [...ids];
 }
 
-async function validateActiveAttractionIds(
+async function validateCustomerPublishableAttractionIds(
   supabase: SupabaseClient,
   ids: string[],
 ): Promise<{ invalidIds: string[]; lookupError: string | null }> {
@@ -87,23 +87,24 @@ async function validateActiveAttractionIds(
 
   const { data, error } = await supabase
     .from('attractions')
-    .select('id')
+    .select('id, customer_publishable')
     .in('id', uniqueIds)
     .eq('is_active', true);
   if (error) {
     return {
       invalidIds: uniqueIds,
-      lookupError: `active attraction_id lookup failed: ${error.message ?? String(error)}`,
+      lookupError: `customer-publishable attraction_id lookup failed: ${error.message ?? String(error)}`,
     };
   }
 
-  const activeIds = new Set(
-    ((data ?? []) as Array<{ id?: unknown }>)
+  const publishableIds = new Set(
+    ((data ?? []) as Array<{ id?: unknown; customer_publishable?: unknown }>)
+      .filter(row => row.customer_publishable === true)
       .map(row => typeof row.id === 'string' ? row.id.trim() : '')
       .filter(Boolean),
   );
   return {
-    invalidIds: uniqueIds.filter(id => !activeIds.has(id)),
+    invalidIds: uniqueIds.filter(id => !publishableIds.has(id)),
     lookupError: null,
   };
 }
@@ -185,7 +186,7 @@ export async function createPublicPackageSnapshotAndDecision(
   const packageId = String(pkg.id ?? snapshot.package_id);
   const packageRevision = Number(pkg.package_revision ?? snapshot.package_revision ?? 1);
   const attractionIds = collectItineraryAttractionIds(pkg.itinerary_data);
-  const attractionValidation = await validateActiveAttractionIds(supabase, attractionIds);
+  const attractionValidation = await validateCustomerPublishableAttractionIds(supabase, attractionIds);
   const auditQueryFailed = [
     gateInput.auditQueryFailed,
     attractionValidation.lookupError,
