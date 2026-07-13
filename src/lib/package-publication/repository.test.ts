@@ -8,6 +8,7 @@ type RpcResult = {
   rpcError?: Error | null;
   activeAttractionIds?: string[];
   nonCustomerPublishableAttractionIds?: string[];
+  attractionNames?: Record<string, string>;
   attractionLookupError?: Error | null;
 };
 
@@ -33,7 +34,14 @@ function makeSupabaseMock(result: RpcResult = {}) {
           return Promise.resolve({
             data: [...requestedIds]
               .filter(id => activeIds.has(id))
-              .map(id => ({ id, customer_publishable: !nonCustomerPublishableIds.has(id) })),
+              .map(id => ({
+                id,
+                name: result.attractionNames?.[id] ?? 'Safe public attraction',
+                category: 'sightseeing',
+                badge_type: 'tour',
+                is_active: true,
+                customer_publishable: !nonCustomerPublishableIds.has(id),
+              })),
             error: result.attractionLookupError ?? null,
           });
         },
@@ -45,17 +53,46 @@ function makeSupabaseMock(result: RpcResult = {}) {
   return { supabase, calls };
 }
 
-function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null) {
-  const chain = {
-    select: () => chain,
-    eq: () => chain,
-    in: () => chain,
-    order: () => chain,
-    limit: () => chain,
+function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, result: RpcResult = {}) {
+  const snapshotChain = {
+    select: () => snapshotChain,
+    eq: () => snapshotChain,
+    in: () => snapshotChain,
+    order: () => snapshotChain,
+    limit: () => snapshotChain,
     maybeSingle: () => Promise.resolve({ data: row, error: null }),
   };
   return {
-    from: () => chain,
+    from(table: string) {
+      if (table === 'public_package_snapshots') return snapshotChain;
+      if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
+      const requestedIds = new Set<string>();
+      const attractionChain = {
+        select: () => attractionChain,
+        in(_column: string, values: string[]) {
+          values.forEach(value => requestedIds.add(value));
+          return attractionChain;
+        },
+        eq() {
+          const activeIds = new Set(result.activeAttractionIds ?? []);
+          const nonCustomerPublishableIds = new Set(result.nonCustomerPublishableAttractionIds ?? []);
+          return Promise.resolve({
+            data: [...requestedIds]
+              .filter(id => activeIds.has(id))
+              .map(id => ({
+                id,
+                name: result.attractionNames?.[id] ?? 'Safe public attraction',
+                category: 'sightseeing',
+                badge_type: 'tour',
+                is_active: true,
+                customer_publishable: !nonCustomerPublishableIds.has(id),
+              })),
+            error: result.attractionLookupError ?? null,
+          });
+        },
+      };
+      return attractionChain;
+    },
   };
 }
 
@@ -196,6 +233,126 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-risky-copy',
+      { expectedPackageRevision: 3 },
+    );
+
+    expect(snapshot).toBeNull();
+  });
+
+  it('does not return legacy public snapshots with non-customer-publishable attraction ids', async () => {
+    const nonPublicAttractionId = '44444444-4444-4444-8444-444444444444';
+    const snapshot = await fetchLatestPublicPackageSnapshot(
+      makeSnapshotFetchSupabaseMock({
+        id: 'snap-non-public-attraction',
+        package_id: 'pkg-non-public-attraction',
+        package_revision: 3,
+        snapshot_hash: 'hash-non-public-attraction',
+        snapshot_json: {
+          package: {
+            id: 'pkg-non-public-attraction',
+            title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
+            destination: 'Yanji',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+            itinerary_data: {
+              days: [
+                {
+                  day: 1,
+                  schedule: [
+                    { activity: 'Legacy non-public attraction', attraction_ids: [nonPublicAttractionId] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        lp_projection: {
+          title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
+          summary: 'Check schedule, airline, hotel, and included conditions before consultation.',
+        },
+        route_text_dump: ['Yanji Baekdusan no-option core tour 4 nights 5 days'],
+        status: 'published',
+        created_at: '2026-07-13T00:00:00.000Z',
+      }, {
+        activeAttractionIds: [nonPublicAttractionId],
+        nonCustomerPublishableAttractionIds: [nonPublicAttractionId],
+      }) as never,
+      'pkg-non-public-attraction',
+      { expectedPackageRevision: 3 },
+    );
+
+    expect(snapshot).toBeNull();
+  });
+
+  it('does not return legacy public snapshots when attraction approval lookup fails', async () => {
+    const attractionId = '55555555-5555-4555-8555-555555555555';
+    const snapshot = await fetchLatestPublicPackageSnapshot(
+      makeSnapshotFetchSupabaseMock({
+        id: 'snap-attraction-lookup-error',
+        package_id: 'pkg-attraction-lookup-error',
+        package_revision: 3,
+        snapshot_hash: 'hash-attraction-lookup-error',
+        snapshot_json: {
+          package: {
+            id: 'pkg-attraction-lookup-error',
+            title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
+            destination: 'Yanji',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+            itinerary_data: {
+              days: [
+                { day: 1, schedule: [{ activity: 'Attraction lookup error', attraction_ids: [attractionId] }] },
+              ],
+            },
+          },
+        },
+        card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        lp_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        route_text_dump: ['Yanji Baekdusan no-option core tour 4 nights 5 days'],
+        status: 'published',
+        created_at: '2026-07-13T00:00:00.000Z',
+      }, {
+        attractionLookupError: new Error('attractions unavailable'),
+      }) as never,
+      'pkg-attraction-lookup-error',
+      { expectedPackageRevision: 3 },
+    );
+
+    expect(snapshot).toBeNull();
+  });
+
+  it('does not return legacy public snapshots with product-like customer-publishable attraction names', async () => {
+    const productLikeAttractionId = '66666666-6666-4666-8666-666666666666';
+    const snapshot = await fetchLatestPublicPackageSnapshot(
+      makeSnapshotFetchSupabaseMock({
+        id: 'snap-product-like-attraction',
+        package_id: 'pkg-product-like-attraction',
+        package_revision: 3,
+        snapshot_hash: 'hash-product-like-attraction',
+        snapshot_json: {
+          package: {
+            id: 'pkg-product-like-attraction',
+            title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
+            destination: 'Yanji',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+            itinerary_data: {
+              days: [
+                { day: 1, schedule: [{ activity: 'Product-like attraction', attraction_ids: [productLikeAttractionId] }] },
+              ],
+            },
+          },
+        },
+        card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        lp_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        route_text_dump: ['Yanji Baekdusan no-option core tour 4 nights 5 days'],
+        status: 'published',
+        created_at: '2026-07-13T00:00:00.000Z',
+      }, {
+        activeAttractionIds: [productLikeAttractionId],
+        attractionNames: {
+          [productLikeAttractionId]: 'Tokyo eSIM unlimited data product',
+        },
+      }) as never,
+      'pkg-product-like-attraction',
       { expectedPackageRevision: 3 },
     );
 

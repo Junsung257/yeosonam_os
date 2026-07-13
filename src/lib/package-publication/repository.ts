@@ -4,6 +4,10 @@ import {
   auditCustomerVisibleScreenText,
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
+import {
+  collectItineraryAttractionIds,
+  validateCustomerPublishableAttractionIds,
+} from './attraction-validation';
 import { buildPublicPackageSnapshot } from './public-snapshot';
 import { evaluatePublicSnapshotPublishGate, type PublicSnapshotGateInput } from './publish-gate';
 import type { PublicPackageSnapshot } from './types';
@@ -58,57 +62,6 @@ function hasBlockingSnapshotCopy(pkg: AnyRecord, row: SnapshotRow): boolean {
     .some(issue => !issue.safeFixable);
 }
 
-function collectItineraryAttractionIds(value: unknown): string[] {
-  const ids = new Set<string>();
-  const visit = (node: unknown): void => {
-    if (Array.isArray(node)) {
-      for (const item of node) visit(item);
-      return;
-    }
-    const record = asRecord(node);
-    if (!record) return;
-    if (Array.isArray(record.attraction_ids)) {
-      for (const id of record.attraction_ids) {
-        if (typeof id === 'string' && id.trim()) ids.add(id.trim());
-      }
-    }
-    for (const child of Object.values(record)) visit(child);
-  };
-  visit(value);
-  return [...ids];
-}
-
-async function validateCustomerPublishableAttractionIds(
-  supabase: SupabaseClient,
-  ids: string[],
-): Promise<{ invalidIds: string[]; lookupError: string | null }> {
-  const uniqueIds = [...new Set(ids.filter(Boolean))];
-  if (uniqueIds.length === 0) return { invalidIds: [], lookupError: null };
-
-  const { data, error } = await supabase
-    .from('attractions')
-    .select('id, customer_publishable')
-    .in('id', uniqueIds)
-    .eq('is_active', true);
-  if (error) {
-    return {
-      invalidIds: uniqueIds,
-      lookupError: `customer-publishable attraction_id lookup failed: ${error.message ?? String(error)}`,
-    };
-  }
-
-  const publishableIds = new Set(
-    ((data ?? []) as Array<{ id?: unknown; customer_publishable?: unknown }>)
-      .filter(row => row.customer_publishable === true)
-      .map(row => typeof row.id === 'string' ? row.id.trim() : '')
-      .filter(Boolean),
-  );
-  return {
-    invalidIds: uniqueIds.filter(id => !publishableIds.has(id)),
-    lookupError: null,
-  };
-}
-
 function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
@@ -160,7 +113,13 @@ export async function fetchLatestPublicPackageSnapshot(
 
   if (error || !data) return null;
   const pkg = snapshotPackage(data as SnapshotRow);
-  return pkg ? { row: data as SnapshotRow, package: pkg } : null;
+  if (!pkg) return null;
+  const attractionValidation = await validateCustomerPublishableAttractionIds(
+    supabase,
+    collectItineraryAttractionIds(pkg.itinerary_data),
+  );
+  if (attractionValidation.lookupError || attractionValidation.invalidIds.length > 0) return null;
+  return { row: data as SnapshotRow, package: pkg };
 }
 
 export async function createPublicPackageSnapshotAndDecision(
