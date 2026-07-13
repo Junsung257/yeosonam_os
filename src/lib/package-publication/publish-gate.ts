@@ -158,8 +158,8 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'audit_query_failed', input.auditQueryFailed);
   }
 
-  if (input.customerOpenContractOk === false) {
-    for (const blocker of input.customerOpenContractBlockers ?? ['customer_open_contract blocked']) {
+  if (input.customerOpenContractOk !== true) {
+    for (const blocker of input.customerOpenContractBlockers ?? ['customer_open_contract missing or blocked']) {
       addBlocker(hard, 'unsupported_customer_claim', blocker);
     }
   }
