@@ -18,6 +18,7 @@ export type PublicSnapshotGateInput = {
   snapshotExists?: boolean;
   routeTextDump?: string[];
   auditQueryFailed?: string | null;
+  invalidAttractionIds?: string[];
 };
 
 export type PublicSnapshotGateResult = {
@@ -197,6 +198,9 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
   const brokenAttraction = findBrokenAttractionId(input.pkg);
   if (brokenAttraction) {
     addBlocker(hard, 'broken_attraction_id', brokenAttraction, 'itinerary_data');
+  }
+  for (const id of input.invalidAttractionIds ?? []) {
+    addBlocker(hard, 'broken_attraction_id', `itinerary_data references an inactive or missing attraction_id: ${id}`, 'itinerary_data');
   }
 
   const unsupportedTitle = titleHasUnsupportedClaim(input.pkg);
