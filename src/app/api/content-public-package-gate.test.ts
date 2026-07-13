@@ -44,8 +44,10 @@ describe('content generation public package gate', () => {
     expect(helper).toContain('isPublicPublicationState');
     expect(helper).toContain(".in('publication_state', ['approved', 'published'])");
     expect(helper).toContain('price_dates: asPriceDates(row.price_dates)');
+    expect(helper).toContain('if (!title) return null');
     expect(helper).not.toContain("select('id, title");
     expect(helper).not.toContain("select('title, destination");
+    expect(helper).not.toContain('여소남 추천 패키지');
     expect(helper).not.toContain('optional_tours_public');
   });
 

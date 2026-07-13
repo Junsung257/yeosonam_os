@@ -25,6 +25,8 @@ describe('public v1 packages API publication gate', () => {
 
     expect(projectionIndex).toBeGreaterThan(0);
     expect(projectionSource).toContain('sanitizeCustomerPackageForClient');
+    expect(projectionSource).not.toContain('row.product_summary');
+    expect(projectionSource).not.toContain('row.summary');
     expect(projectionSource).not.toContain('audit_report');
     expect(projectionSource).not.toContain('optional_tours');
     expect(projectionSource).not.toContain('itinerary_data');

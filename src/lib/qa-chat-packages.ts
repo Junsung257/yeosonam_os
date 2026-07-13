@@ -36,7 +36,7 @@ function toQaCustomerPackageRows(rows: Record<string, unknown>[]): Record<string
   return rows
     .map((row) => ({
       id: asString(row.id),
-      title: asString(row.title) ?? asString(row.display_title) ?? '여소남 추천 패키지',
+      title: asString(row.title) ?? asString(row.display_title),
       destination: asString(row.destination),
       duration: asNumber(row.duration),
       nights: asNumber(row.nights),
@@ -48,7 +48,7 @@ function toQaCustomerPackageRows(rows: Record<string, unknown>[]): Record<string
       itinerary: asStringArray(row.itinerary),
       _public_snapshot: row._public_snapshot ?? null,
     }))
-    .filter((row) => typeof row.id === 'string' && row.id.length > 0);
+    .filter((row) => typeof row.id === 'string' && row.id.length > 0 && typeof row.title === 'string' && row.title.length > 0);
 }
 
 async function mergeQaPublicSnapshots(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
