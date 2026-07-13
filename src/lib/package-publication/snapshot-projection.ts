@@ -16,6 +16,10 @@ function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
 }
 
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function packageId(row: AnyRecord): string | null {
   return typeof row.id === 'string' && row.id.trim() ? row.id : null;
 }
@@ -34,6 +38,53 @@ function snapshotPackage(row: SnapshotProjectionRow): AnyRecord {
   };
 }
 
+const RAW_CUSTOMER_FIELD_KEYS = [
+  'title',
+  'display_title',
+  'hero_tagline',
+  'destination',
+  'country',
+  'duration',
+  'days',
+  'nights',
+  'price',
+  'price_display',
+  'price_tiers',
+  'price_dates',
+  'summary',
+  'product_summary',
+  'badges',
+  'product_highlights',
+  'inclusions',
+  'included',
+  'excludes',
+  'itinerary',
+  'itinerary_data',
+  'optional_tours',
+  'airline',
+  'departure_airport',
+  'product_type',
+];
+
+function stripRawCustomerFields(row: AnyRecord): AnyRecord {
+  const stripped = { ...row };
+  for (const key of RAW_CUSTOMER_FIELD_KEYS) {
+    delete stripped[key];
+  }
+  return stripped;
+}
+
+function hasPublicTitle(row: SnapshotProjectionRow, projection: 'card' | 'lp'): boolean {
+  const snapshot = asRecord(row.snapshot_json);
+  const pkg = asRecord(snapshot?.package);
+  const projectionPayload = projection === 'lp' ? asRecord(row.lp_projection) : asRecord(row.card_projection);
+  return Boolean(
+    asNonEmptyString(projectionPayload?.title) ||
+      asNonEmptyString(pkg?.title) ||
+      asNonEmptyString(pkg?.display_title),
+  );
+}
+
 export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
   packages: T[],
   snapshotRows: SnapshotProjectionRow[],
@@ -50,6 +101,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
     const expectedRevision = revisionByPackage.get(row.package_id);
     if (!expectedRevision) continue;
     if (Number(row.package_revision ?? 1) !== expectedRevision) continue;
+    if (!hasPublicTitle(row, projection)) continue;
     if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
   }
 
@@ -63,7 +115,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
       const snapshot = snapshotByPackage.get(id) as SnapshotProjectionRow;
       const projectionPayload = projection === 'lp' ? snapshot.lp_projection : snapshot.card_projection;
       return {
-        ...pkg,
+        ...stripRawCustomerFields(pkg),
         ...snapshotPackage(snapshot),
         ...(projectionPayload ?? {}),
         id,
@@ -73,7 +125,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
           package_revision: snapshot.package_revision ?? null,
         },
       };
-    }) as T[];
+    }) as unknown as T[];
 }
 
 export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends AnyRecord>(

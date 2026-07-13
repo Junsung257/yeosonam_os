@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createPublicPackageSnapshotAndDecision } from './repository';
+import { createPublicPackageSnapshotAndDecision, fetchLatestPublicPackageSnapshot } from './repository';
 
 type RpcResult = {
   rpcError?: Error | null;
@@ -18,6 +18,20 @@ function makeSupabaseMock(result: RpcResult = {}) {
   };
 
   return { supabase, calls };
+}
+
+function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null) {
+  const chain = {
+    select: () => chain,
+    eq: () => chain,
+    in: () => chain,
+    order: () => chain,
+    limit: () => chain,
+    maybeSingle: () => Promise.resolve({ data: row, error: null }),
+  };
+  return {
+    from: () => chain,
+  };
 }
 
 function publishablePackage(overrides: Record<string, unknown> = {}) {
@@ -44,6 +58,27 @@ function publishablePackage(overrides: Record<string, unknown> = {}) {
 }
 
 describe('createPublicPackageSnapshotAndDecision', () => {
+  it('does not return a latest public snapshot when customer title evidence is missing', async () => {
+    const snapshot = await fetchLatestPublicPackageSnapshot(
+      makeSnapshotFetchSupabaseMock({
+        id: 'snap-1',
+        package_id: 'pkg-1',
+        package_revision: 3,
+        snapshot_hash: 'hash-1',
+        snapshot_json: { package: { destination: 'Tokyo' } },
+        card_projection: { destination: 'Tokyo' },
+        lp_projection: { summary: 'Tokyo trip' },
+        route_text_dump: ['Tokyo trip'],
+        status: 'published',
+        created_at: '2026-07-13T00:00:00.000Z',
+      }) as never,
+      'pkg-1',
+      { expectedPackageRevision: 3 },
+    );
+
+    expect(snapshot).toBeNull();
+  });
+
   it('publishes snapshot, decision, and package final state through one atomic RPC', async () => {
     const { supabase, calls } = makeSupabaseMock();
 

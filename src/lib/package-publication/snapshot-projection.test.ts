@@ -53,4 +53,51 @@ describe('public snapshot card projection', () => {
       package_revision: 3,
     });
   });
+
+  it('drops rows when the current snapshot has no public title instead of falling back to raw title', () => {
+    const packages = [
+      { id: 'pkg-1', package_revision: 3, title: 'raw supplier title', destination: 'raw dest' },
+    ];
+    const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: { package: { destination: 'public dest' } },
+        card_projection: { destination: 'public dest' },
+      },
+    ]);
+
+    expect(merged).toEqual([]);
+  });
+
+  it('does not preserve raw customer fields when the snapshot omits them', () => {
+    const packages = [
+      {
+        id: 'pkg-1',
+        package_revision: 3,
+        title: 'raw supplier title',
+        destination: 'raw destination',
+        product_summary: 'raw supplier summary',
+        inclusions: ['raw inclusion'],
+      },
+    ];
+    const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: { package: { title: 'public title' } },
+        card_projection: {},
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ id: 'pkg-1', title: 'public title' });
+    expect(merged[0]).not.toHaveProperty('destination');
+    expect(merged[0]).not.toHaveProperty('product_summary');
+    expect(merged[0]).not.toHaveProperty('inclusions');
+  });
 });

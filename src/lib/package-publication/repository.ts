@@ -23,15 +23,24 @@ function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
 }
 
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
+  const cardProjection = asRecord(row.card_projection);
+  const lpProjection = asRecord(row.lp_projection);
   if (!pkg) return null;
+  if (!asNonEmptyString(cardProjection?.title) && !asNonEmptyString(lpProjection?.title) && !asNonEmptyString(pkg.title) && !asNonEmptyString(pkg.display_title)) {
+    return null;
+  }
   return {
     ...pkg,
     _canonical_view: asRecord(snapshot?.canonical_view),
-    _lp_projection: asRecord(row.lp_projection),
-    _card_projection: asRecord(row.card_projection),
+    _lp_projection: lpProjection,
+    _card_projection: cardProjection,
     _public_snapshot: {
       id: row.id,
       package_id: row.package_id,
