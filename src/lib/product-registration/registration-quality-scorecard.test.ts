@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
+import { hashRawText } from '@/lib/source-evidence';
 import { evaluateRegistrationQualityScorecard } from './registration-quality-scorecard';
+
+const validRawText = 'Supplier source text for Da Nang package. '.repeat(20);
 
 const validPackage = {
   id: 'pkg-1',
   internal_code: 'PUS-TEST-001',
-  title: '다낭 3박 5일',
-  destination: '다낭',
-  raw_text: '상품 원문 '.repeat(20),
+  title: 'Da Nang 3 nights 5 days',
+  destination: 'Da Nang',
+  raw_text: validRawText,
+  raw_text_hash: hashRawText(validRawText),
   airline: 'BX',
   itinerary_data: {
     days: [
-      { day: 1, schedule: [{ activity: '공항 미팅' }], hotel: { name: '다낭 호텔' } },
-      { day: 2, schedule: [{ activity: '바나힐 관광' }], hotel: { name: '다낭 호텔' } },
+      { day: 1, schedule: [{ activity: 'Airport meeting' }], hotel: { name: 'Da Nang Hotel' } },
+      { day: 2, schedule: [{ activity: 'Ba Na Hills sightseeing' }], hotel: { name: 'Da Nang Hotel' } },
     ],
   },
   price_dates: [{ date: '2099-07-01', price: 899000 }],
@@ -99,15 +103,39 @@ describe('evaluateRegistrationQualityScorecard', () => {
     expect(scorecard.domains.find(domain => domain.id === 'customer_copy')?.score).toBe(0);
   });
 
+  it('fails source preservation when raw_text_hash is missing or mismatched', () => {
+    const missingHash = evaluateRegistrationQualityScorecard({
+      pkg: { ...validPackage, raw_text_hash: null },
+      verifyChecks: [{ id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      learning: { micro: 100, macro: 100, combined: 100, productionReady: true, blockers: [] },
+    });
+    const mismatchedHash = evaluateRegistrationQualityScorecard({
+      pkg: { ...validPackage, raw_text_hash: '0'.repeat(64) },
+      verifyChecks: [{ id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      learning: { micro: 100, macro: 100, combined: 100, productionReady: true, blockers: [] },
+    });
+
+    expect(missingHash.customerOpenCandidate).toBe(false);
+    expect(missingHash.domains.find(domain => domain.id === 'source_preservation')?.blockers).toContain('raw_text_hash is missing or invalid');
+    expect(mismatchedHash.customerOpenCandidate).toBe(false);
+    expect(mismatchedHash.domains.find(domain => domain.id === 'source_preservation')?.blockers).toContain('raw_text_hash does not match raw_text');
+  });
+
   it('does not require airline for source-backed ferry packages', () => {
+    const ferryRawText = `${validRawText}\nferry ship terminal Busan port departure\n`.repeat(2);
     const scorecard = evaluateRegistrationQualityScorecard({
       pkg: {
         ...validPackage,
-        title: '쓰시마링크호 대마도 1박2일',
-        destination: '대마도',
+        title: 'Tsushima ferry 1 night 2 days',
+        destination: 'Tsushima',
         airline: null,
-        departure_airport: '부산 국제 여객터미널',
-        raw_text: '왕복훼리비 포함\n쓰시마링크호\n선박 승선 후 부산항 출항\n'.repeat(10),
+        departure_airport: 'Busan ferry terminal',
+        raw_text: ferryRawText,
+        raw_text_hash: hashRawText(ferryRawText),
       },
       verifyChecks: [
         { id: 'C15', status: 'pass', detail: 'no pending entities' },
