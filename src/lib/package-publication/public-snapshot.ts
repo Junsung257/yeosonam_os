@@ -142,7 +142,7 @@ function representativeCustomerPrice(pkg: AnyRecord): number | null {
     .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
   if (datePrices.length > 0) return Math.min(...datePrices);
 
-  return asNumber(pkg.price);
+  return null;
 }
 
 function formatDuration(pkg: AnyRecord): string | null {
@@ -260,6 +260,8 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   const customerPrice = representativeCustomerPrice(publicPackage);
   if (customerPrice !== null) {
     publicPackage.price = customerPrice;
+  } else {
+    delete publicPackage.price;
   }
   const displayCopy = buildCustomerPackageDisplayCopy({
     title: asString(publicPackage.title),

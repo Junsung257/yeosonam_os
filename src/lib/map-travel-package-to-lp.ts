@@ -255,7 +255,7 @@ export function mapTravelPackageToLandingData(
 
   const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
   const minPrice = projectionNumber(lpProjection, 'price')
-    ?? (priceNums.length > 0 ? Math.min(...priceNums) : (Number(pkg.price) || 0));
+    ?? (priceNums.length > 0 ? Math.min(...priceNums) : 0);
   const maxPrice = priceNums.length > 0 ? Math.max(...priceNums) : null;
   const compareAtPrice = maxPrice != null && maxPrice > minPrice ? maxPrice : null;
 

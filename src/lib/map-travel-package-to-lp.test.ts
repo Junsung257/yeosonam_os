@@ -266,5 +266,6 @@ describe('mapTravelPackageToLandingData', () => {
 
     expect(mapped.departureFullDate).toBeNull();
     expect(mapped.departureDateLabel).toBe('미정');
+    expect(mapped.priceFrom).toBe(0);
   });
 });

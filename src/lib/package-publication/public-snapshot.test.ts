@@ -16,6 +16,8 @@ function yanjiPackage(overrides: Record<string, unknown> = {}) {
     duration: 5,
     nights: 4,
     price: 599000,
+    product_prices: [{ target_date: '2026-07-12', adult_selling_price: 599000 }],
+    price_dates: [{ date: '2026-07-12', price: 599000, confirmed: false }],
     status: 'active',
     raw_text: [
       '연길 5성 온천 4박5일',
@@ -146,6 +148,30 @@ describe('public package snapshot gate', () => {
     expect(snapshot.price_display).toContain('1,099,000');
     expect(snapshot.card_projection.price).toBe(1_099_000);
     expect(snapshot.lp_projection.price).toBe(1_099_000);
+  });
+
+  it('fails closed instead of exposing a raw package price without source-backed price dates', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      price: 599000,
+      product_prices: [],
+      price_dates: [],
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(snapshot.price_display).toBeNull();
+    expect(snapshot.card_projection.price).toBeNull();
+    expect(snapshot.lp_projection.price).toBeNull();
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('price_source_missing');
   });
 
   it('blocks publication while polluted optional_tours remain in the DB row', () => {
