@@ -63,6 +63,7 @@ function queryResult(table: string) {
             destination: 'osaka',
             publication_state: 'published',
             package_revision: 3,
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
           },
           canonical_view: {},
         },
