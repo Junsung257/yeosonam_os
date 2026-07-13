@@ -80,7 +80,7 @@ export async function fetchLatestPublicPackageSnapshot(
 export async function createPublicPackageSnapshotAndDecision(
   supabase: SupabaseClient,
   pkg: AnyRecord,
-  gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'publicSnapshotHash' | 'snapshotExists' | 'routeTextDump'> = {},
+  gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'publicSnapshotHash' | 'publicSnapshotTitle' | 'snapshotExists' | 'routeTextDump'> = {},
   options: { packagePatch?: AnyRecord } = {},
 ): Promise<{
   snapshot: PublicPackageSnapshot;
@@ -96,6 +96,7 @@ export async function createPublicPackageSnapshotAndDecision(
     ...gateInput,
     pkg,
     publicSnapshotHash: snapshotHash,
+    publicSnapshotTitle: snapshot.public_title,
     snapshotExists: true,
     routeTextDump: snapshot.route_text_dump,
   });

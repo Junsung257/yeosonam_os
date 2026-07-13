@@ -167,12 +167,12 @@ function sourceBundle(pkg: AnyRecord): string {
   ].map(normalizeText).filter(Boolean).join(' ');
 }
 
-function titleDestination(pkg: AnyRecord, sourceText: string): string {
-  const destination = firstNonEmpty(pkg.destination, pkg.title, pkg.display_title) ?? '여행';
+function titleDestination(pkg: AnyRecord, sourceText: string): string | null {
+  const destination = firstNonEmpty(pkg.destination);
   const cleanDestination = destination
-    .replace(/\s*\/\s*/g, '·')
+    ?.replace(/\s*\/\s*/g, '·')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim() ?? '';
 
   if (/연길|백두산|장백산/.test(cleanDestination + sourceText)) return '연길·백두산';
   if (/하노이|하롱|하롱베이/.test(cleanDestination + sourceText)) return '하노이·하롱베이';
@@ -180,7 +180,7 @@ function titleDestination(pkg: AnyRecord, sourceText: string): string {
   if (/다낭|호이안/.test(cleanDestination + sourceText)) return '다낭·호이안';
   if (/후쿠오카|유후인|벳부|규슈|큐슈/.test(cleanDestination + sourceText)) return /규슈|큐슈/.test(cleanDestination) ? '규슈' : '후쿠오카·규슈';
   if (/북해도|홋카이도|삿포로/.test(cleanDestination + sourceText)) return '북해도';
-  return cleanDestination;
+  return cleanDestination || null;
 }
 
 function titleCondition(sourceText: string, optionBadges: string[]): string | null {
@@ -202,9 +202,10 @@ function titleTheme(sourceText: string, destination: string): string {
 function composePublicTitle(pkg: AnyRecord, optionBadges: string[]): string {
   const sourceText = sourceBundle(pkg);
   const destination = titleDestination(pkg, sourceText);
+  const duration = formatDuration(pkg);
+  if (!destination || !duration) return '';
   const condition = titleCondition(sourceText, optionBadges);
   const theme = titleTheme(sourceText, destination);
-  const duration = formatDuration(pkg);
   const parts = [destination, condition, theme, duration].filter(Boolean) as string[];
   return [...new Set(parts)].join(' ').replace(/\s+/g, ' ').trim();
 }
@@ -285,7 +286,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   const publicTitle = composePublicTitle(
     { ...pkg, ...publicPackage },
     optionalTourClassification.badges,
-  ) || displayCopy.heroHeadline || firstNonEmpty(publicPackage.display_title, publicPackage.title, publicPackage.destination) || '여소남 패키지';
+  );
   const duration = asNumber(publicPackage.duration);
   const canonicalView = renderPackage(publicPackage as Parameters<typeof renderPackage>[0]) as unknown as Record<string, unknown>;
   const snapshotBase: Omit<PublicPackageSnapshot, 'route_text_dump'> = {
@@ -334,7 +335,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       title: publicTitle,
       subtitle: displayCopy.heroSubline || null,
       destination: publicPackage.destination ?? null,
-      summary: displayCopy.summaryBody || publicPackage.product_summary || null,
+      summary: displayCopy.summaryBody || null,
       price: asNumber(publicPackage.price),
       price_display: priceDisplay(publicPackage),
       cta_copy: '예약 가능 여부 확인',
