@@ -175,6 +175,13 @@ export async function createPublicPackageSnapshotAndDecision(
   blockers: unknown[];
 }> {
   const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+  const gatePackage = {
+    ...pkg,
+    hero_tagline: snapshot.public_subtitle ?? pkg.hero_tagline,
+    product_summary: asRecord(snapshot.package)?.product_summary ?? pkg.product_summary,
+    _card_projection: snapshot.card_projection,
+    _lp_projection: snapshot.lp_projection,
+  };
   const packageId = String(pkg.id ?? snapshot.package_id);
   const packageRevision = Number(pkg.package_revision ?? snapshot.package_revision ?? 1);
   const attractionIds = collectItineraryAttractionIds(pkg.itinerary_data);
@@ -185,7 +192,7 @@ export async function createPublicPackageSnapshotAndDecision(
   ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join('; ') || null;
   const gate = evaluatePublicSnapshotPublishGate({
     ...gateInput,
-    pkg,
+    pkg: gatePackage,
     publicSnapshotHash: snapshotHash,
     publicSnapshotTitle: snapshot.public_title,
     snapshotExists: true,

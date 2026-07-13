@@ -5,6 +5,11 @@ import { hasRiskyCustomerCopy, isOptionalTourFragment } from './public-snapshot'
 import type { PublicationState, PublishFinding } from './types';
 
 type AnyRecord = Record<string, unknown>;
+type CustomerClaimSurface = {
+  label: string;
+  fieldPath: string;
+  text: string;
+};
 
 export type PublicSnapshotGateInput = {
   pkg: AnyRecord;
@@ -132,8 +137,69 @@ function findBlockingCustomerCopy(input: PublicSnapshotGateInput): { code: strin
   return null;
 }
 
-function titleHasUnsupportedClaim(pkg: AnyRecord): string | null {
-  const title = String(pkg.display_title || pkg.title || '');
+function unsupportedClaimInSurface(surface: CustomerClaimSurface, sourceText: string): string | null {
+  const text = surface.text;
+  if (!text) return null;
+  const hasOnsen = /온천/.test(text);
+  const strongOnsenEvidence = (sourceText.match(/온천/g) ?? []).length >= 2
+    && /온천(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광)/.test(sourceText);
+  if (hasOnsen && !strongOnsenEvidence) {
+    return `${surface.label} claims onsen as a theme without strong source evidence`;
+  }
+  const hasHotelGrade = /(?:준\s*5성|정\s*5성|5성|오성|특급\s*호텔|특급호텔)/.test(text);
+  const hotelGradeEvidence =
+    /(?:호텔|리조트|숙박|동급).{0,16}(?:준\s*5성|정\s*5성|5성|오성)|(?:준\s*5성|정\s*5성|5성|오성).{0,16}(?:호텔|리조트|숙박|동급|월드체인)|특급\s*호텔|특급호텔/.test(sourceText);
+  if (hasHotelGrade && !hotelGradeEvidence) {
+    return `${surface.label} claims 5-star or premium hotel grade without hotel-grade evidence`;
+  }
+  if (/출발\s*확정|출발확정/.test(text)) {
+    return `${surface.label} contains risky departure-confirmed claim`;
+  }
+  return null;
+}
+
+function customerClaimSurfaces(input: PublicSnapshotGateInput): CustomerClaimSurface[] {
+  const pkg = input.pkg;
+  const card = asRecord(pkg._card_projection);
+  const lp = asRecord(pkg._lp_projection);
+  const badgeSurfaces = [
+    ...(Array.isArray(card?.badges)
+      ? card.badges.map((badge, index) => ({
+        label: 'card badge',
+        fieldPath: `_card_projection.badges.${index}`,
+        text: String(badge ?? ''),
+      }))
+      : []),
+    ...(Array.isArray(lp?.badges)
+      ? lp.badges.map((badge, index) => ({
+        label: 'LP badge',
+        fieldPath: `_lp_projection.badges.${index}`,
+        text: String(badge ?? ''),
+      }))
+      : []),
+    ...(Array.isArray(pkg.badges)
+      ? pkg.badges.map((badge, index) => ({
+        label: 'badge',
+        fieldPath: `badges.${index}`,
+        text: String(badge ?? ''),
+      }))
+      : []),
+  ];
+
+  return [
+    { label: 'title', fieldPath: 'title', text: String(pkg.display_title || pkg.title || '') },
+    { label: 'subtitle', fieldPath: 'hero_tagline', text: String(pkg.hero_tagline || '') },
+    { label: 'summary', fieldPath: 'product_summary', text: String(pkg.product_summary || '') },
+    { label: 'card title', fieldPath: '_card_projection.title', text: String(card?.title || '') },
+    { label: 'card summary', fieldPath: '_card_projection.summary', text: String(card?.summary || '') },
+    { label: 'LP title', fieldPath: '_lp_projection.title', text: String(lp?.title || '') },
+    { label: 'LP summary', fieldPath: '_lp_projection.summary', text: String(lp?.summary || '') },
+    ...badgeSurfaces,
+  ].filter(surface => surface.text.trim());
+}
+
+function findUnsupportedCustomerClaim(input: PublicSnapshotGateInput): { message: string; fieldPath: string } | null {
+  const pkg = input.pkg;
   const raw = String(pkg.raw_text || '');
   const itinerary = JSON.stringify(pkg.itinerary_data ?? {});
   const sourceText = [
@@ -143,20 +209,10 @@ function titleHasUnsupportedClaim(pkg: AnyRecord): string | null {
     ...(Array.isArray(pkg.inclusions) ? pkg.inclusions : []),
     itinerary,
   ].map(value => String(value ?? '')).join(' ');
-  const titleHasOnsen = /온천/.test(title);
-  const strongOnsenEvidence = (sourceText.match(/온천/g) ?? []).length >= 2
-    && /온천(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광)/.test(sourceText);
-  if (titleHasOnsen && !strongOnsenEvidence) {
-    return 'title claims onsen as a theme without strong source evidence';
-  }
-  const titleHasHotelGrade = /(?:준\s*5성|정\s*5성|5성|오성|특급\s*호텔|특급호텔)/.test(title);
-  const hotelGradeEvidence =
-    /(?:호텔|리조트|숙박|동급).{0,16}(?:준\s*5성|정\s*5성|5성|오성)|(?:준\s*5성|정\s*5성|5성|오성).{0,16}(?:호텔|리조트|숙박|동급|월드체인)|특급\s*호텔|특급호텔/.test(sourceText);
-  if (titleHasHotelGrade && !hotelGradeEvidence) {
-    return 'title claims 5-star or premium hotel grade without hotel-grade evidence';
-  }
-  if (/출발\s*확정|출발확정/.test(title)) {
-    return 'title contains risky departure-confirmed claim';
+
+  for (const surface of customerClaimSurfaces(input)) {
+    const message = unsupportedClaimInSurface(surface, sourceText);
+    if (message) return { message, fieldPath: surface.fieldPath };
   }
   return null;
 }
@@ -234,9 +290,9 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'broken_attraction_id', `itinerary_data references an inactive or missing attraction_id: ${id}`, 'itinerary_data');
   }
 
-  const unsupportedTitle = titleHasUnsupportedClaim(input.pkg);
-  if (unsupportedTitle) {
-    addBlocker(hard, 'unsupported_title_claim', unsupportedTitle, 'title');
+  const unsupportedClaim = findUnsupportedCustomerClaim(input);
+  if (unsupportedClaim) {
+    addBlocker(hard, 'unsupported_title_claim', unsupportedClaim.message, unsupportedClaim.fieldPath);
   }
 
   if (hasRiskyCustomerCopy(input.routeTextDump ?? input.pkg)) {

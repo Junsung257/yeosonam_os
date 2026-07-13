@@ -281,6 +281,69 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('unsupported_title_claim');
   });
 
+  it('blocks unsupported onsen claims in LP summary even when the title is safe', () => {
+    const safeTitle = '연길·백두산 노옵션 핵심관광 4박5일';
+    const pkg = yanjiPackage({
+      title: safeTitle,
+      display_title: safeTitle,
+      optional_tours: [],
+      raw_text: [
+        '연길 백두산 핵심관광 4박5일',
+        'DAY 2 백두산 천지 관광',
+      ].join('\n'),
+      _lp_projection: {
+        title: safeTitle,
+        summary: '온천 중심 휴식 여행으로 편하게 다녀오는 일정입니다.',
+      },
+    });
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: 'hash',
+      publicSnapshotTitle: safeTitle,
+      customerOpenContractOk: true,
+      snapshotExists: true,
+      routeTextDump: [safeTitle],
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'unsupported_title_claim',
+        fieldPath: '_lp_projection.summary',
+      }),
+    ]));
+  });
+
+  it('blocks risky departure-confirmed claims in card badges', () => {
+    const safeTitle = '연길·백두산 노옵션 핵심관광 4박5일';
+    const pkg = yanjiPackage({
+      title: safeTitle,
+      display_title: safeTitle,
+      optional_tours: [],
+      raw_text: '연길 백두산 핵심관광 4박5일',
+      _card_projection: {
+        title: safeTitle,
+        badges: ['출발확정'],
+      },
+    });
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: 'hash',
+      publicSnapshotTitle: safeTitle,
+      customerOpenContractOk: true,
+      snapshotExists: true,
+      routeTextDump: [safeTitle],
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'unsupported_title_claim',
+        fieldPath: '_card_projection.badges.0',
+      }),
+    ]));
+  });
+
   it('allows an onsen title only when the source has strong onsen-theme evidence', () => {
     const pkg = yanjiPackage({
       title: '규슈 온천·관광 3박4일',
