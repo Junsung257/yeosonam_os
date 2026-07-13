@@ -7,7 +7,7 @@ describe('customer package client payload', () => {
   it('removes internal source, audit, and margin fields before client serialization', () => {
     const sanitized = sanitizeCustomerPackageForClient({
       id: 'pkg-1',
-      title: '고객 상품',
+      title: 'customer package',
       price: 1_290_000,
       raw_text: 'supplier raw source',
       raw_text_hash: 'hash',
@@ -30,9 +30,10 @@ describe('customer package client payload', () => {
       catalog_id: 'catalog-1',
       commission_rate: 9,
       data_completeness: 80,
+      internal_code: 'LAND-SECRET',
       products: {
         internal_code: 'PUS-CEB-001',
-        display_name: '세부',
+        display_name: 'public product',
         net_price: 900_000,
         margin_rate: 0.2,
         selling_price: 1_290_000,
@@ -41,11 +42,10 @@ describe('customer package client payload', () => {
 
     expect(sanitized).toMatchObject({
       id: 'pkg-1',
-      title: '고객 상품',
+      title: 'customer package',
       price: 1_290_000,
       products: {
-        internal_code: 'PUS-CEB-001',
-        display_name: '세부',
+        display_name: 'public product',
       },
     });
     expect(sanitized).not.toHaveProperty('raw_text');
@@ -69,17 +69,19 @@ describe('customer package client payload', () => {
     expect(sanitized).not.toHaveProperty('catalog_id');
     expect(sanitized).not.toHaveProperty('commission_rate');
     expect(sanitized).not.toHaveProperty('data_completeness');
+    expect(sanitized).not.toHaveProperty('internal_code');
     expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('net_price');
     expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('margin_rate');
     expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('selling_price');
+    expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('internal_code');
   });
 
-  it('strips margin fields from nested product arrays as well as objects', () => {
+  it('strips internal product fields from nested product arrays as well as objects', () => {
     const sanitized = sanitizeCustomerPackageForClient({
       id: 'pkg-1',
       products: [{
         internal_code: 'PUS-CEB-001',
-        display_name: '?몃?',
+        display_name: 'public product',
         net_price: 900_000,
         cost_price: 800_000,
         margin_rate: 0.2,
@@ -88,8 +90,7 @@ describe('customer package client payload', () => {
     });
 
     expect(sanitized?.products).toEqual([{
-      internal_code: 'PUS-CEB-001',
-      display_name: '?몃?',
+      display_name: 'public product',
     }]);
   });
 
@@ -101,12 +102,12 @@ describe('customer package client payload', () => {
         adult_selling_price: 1_290_000,
         net_price: 900_000,
         margin_rate: 0.2,
-        note: 'A 호텔',
+        note: 'A option',
       }],
     })?.product_prices).toEqual([{
       target_date: '2026-07-01',
       adult_selling_price: 1_290_000,
-      note: 'A 호텔',
+      note: 'A option',
     }]);
   });
 
@@ -117,20 +118,22 @@ describe('customer package client payload', () => {
         days: [{
           day: 1,
           schedule: [{
-            activity: '오다이바 관광',
-            source_activity: '오다이바 관광',
-            internal_note: '랜드사 커미션 9%',
+            activity: 'public attraction visit',
+            source_activity: 'public attraction visit',
+            internal_note: 'supplier commission 9%',
             net_price: 900_000,
             margin_rate: 0.1,
             supplier_code: 'LAND-SECRET',
+            internal_code: 'ATTR-SECRET',
           }],
         }],
       },
       optional_tours: [{
-        name: '야간 시티투어',
+        name: 'night city tour',
         price: '$40',
         commission_rate: 9,
         supplier_note: 'supplier only',
+        internal_code: 'OPT-SECRET',
       }],
     });
 
@@ -139,19 +142,21 @@ describe('customer package client payload', () => {
     const optionalTour = (sanitized?.optional_tours as Array<Record<string, unknown>>)[0];
 
     expect(schedule).toMatchObject({
-      activity: '오다이바 관광',
-      source_activity: '오다이바 관광',
+      activity: 'public attraction visit',
+      source_activity: 'public attraction visit',
     });
     expect(schedule).not.toHaveProperty('internal_note');
     expect(schedule).not.toHaveProperty('net_price');
     expect(schedule).not.toHaveProperty('margin_rate');
     expect(schedule).not.toHaveProperty('supplier_code');
+    expect(schedule).not.toHaveProperty('internal_code');
     expect(optionalTour).toMatchObject({
-      name: '야간 시티투어',
+      name: 'night city tour',
       price: '$40',
     });
     expect(optionalTour).not.toHaveProperty('commission_rate');
     expect(optionalTour).not.toHaveProperty('supplier_note');
+    expect(optionalTour).not.toHaveProperty('internal_code');
   });
 
   it('uses the sanitizer at the package detail server-to-client boundary', () => {
