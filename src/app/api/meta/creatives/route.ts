@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { isSupabaseConfigured, getAdCreatives, saveCreatives } from '@/lib/supabase';
 import { generateAdVariants } from '@/lib/ai';
 import type { AiModel, CreativePlatform } from '@/types/meta-ads';
-import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 const PostBodySchema = z.object({
   package_id: z.string().uuid('package_id는 UUID 형식이어야 합니다.'),
@@ -62,20 +62,21 @@ export async function POST(request: NextRequest) {
     const { package_id, ai_model } = parsed.data;
 
     // 상품 정보 조회
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(
-      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
-    );
-    const { data: pkg } = await sb
-      .from('travel_packages')
-      .select('destination, price, duration, product_highlights, inclusions, product_summary')
-      .eq('id', package_id)
-      .single();
-
+    const pkg = await loadPublicContentPackageForGeneration(package_id);
     if (!pkg) {
-      return NextResponse.json({ error: '상품을 찾을 수 없습니다' }, { status: 404 });
+      return NextResponse.json({ error: '고객 공개 승인된 상품만 광고 문구 생성에 사용할 수 있습니다.' }, { status: 404 });
     }
+    if (!pkg.destination || typeof pkg.price !== 'number' || typeof pkg.duration !== 'number') {
+      return NextResponse.json({ error: '목적지, 가격, 기간이 공개 승인된 상품만 광고 문구를 만들 수 있습니다.' }, { status: 422 });
+    }
+    const adPackageInput = {
+      destination: pkg.destination,
+      price: pkg.price,
+      duration: pkg.duration,
+      product_highlights: pkg.product_highlights,
+      inclusions: pkg.inclusions,
+      product_summary: pkg.product_summary,
+    };
 
     const platforms: CreativePlatform[] = ['thread', 'instagram', 'blog'];
     const allCreatives: Omit<import('@/types/meta-ads').AdCreative, 'id' | 'created_at'>[] = [];
@@ -86,14 +87,7 @@ export async function POST(request: NextRequest) {
       platforms.map(async (platform) => {
         try {
           const variants = await generateAdVariants(
-            {
-              destination: pkg.destination,
-              price: pkg.price,
-              duration: pkg.duration,
-              product_highlights: pkg.product_highlights,
-              inclusions: pkg.inclusions,
-              product_summary: pkg.product_summary,
-            },
+            adPackageInput,
             platform,
             ai_model as AiModel
           );

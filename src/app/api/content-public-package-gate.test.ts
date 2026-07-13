@@ -18,6 +18,10 @@ const contentProductRoutes = [
   'src/app/api/content/cover-critic/route.ts',
   'src/app/api/card-news/route.ts',
   'src/app/api/card-news/campaign/route.ts',
+  'src/app/api/content-hub/generate/route.ts',
+  'src/app/api/blog/from-card-news/route.ts',
+  'src/app/api/blog/bulk-generate/route.ts',
+  'src/app/api/meta/creatives/route.ts',
 ];
 
 describe('content generation public package gate', () => {
@@ -28,6 +32,7 @@ describe('content generation public package gate', () => {
     expect(helper).toContain('isCustomerPubliclyOpenable');
     expect(helper).toContain('isPublicPublicationState');
     expect(helper).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(helper).toContain('price_dates: asPriceDates(row.price_dates)');
     expect(helper).not.toContain("select('id, title");
     expect(helper).not.toContain("select('title, destination");
     expect(helper).not.toContain('optional_tours_public');
