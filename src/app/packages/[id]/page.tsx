@@ -26,6 +26,7 @@ import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/sup
 import { getSecret } from '@/lib/secret-registry';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 
@@ -687,19 +688,46 @@ export default async function PackageDetailPage({
       const { data } = await runOptionalSupabaseQuery(
         sb
           .from('package_scores')
-          .select('departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)')
+          .select('departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key')
           .in('group_key', uniqueGroupKeys)
           .neq('package_id', id)
           .limit(80),
         { data: [] },
         { label: 'package.score-rivals', timeoutMs: 1200 },
       );
-      for (const r of data ?? []) {
-        const row = r as unknown as { departure_date: string; travel_packages: { title: string } | { title: string }[] } & Rival;
-        const t = Array.isArray(row.travel_packages) ? row.travel_packages[0]?.title : row.travel_packages?.title;
+      const rivalScoreRows = (data ?? []) as Array<Omit<Rival, 'title'> & { group_key?: string | null }>;
+      const rivalPackageIds = Array.from(new Set(rivalScoreRows.map(row => row.package_id).filter(Boolean))).slice(0, 80);
+      const publicRivalPackages = rivalPackageIds.length > 0
+        ? await runOptionalSupabaseQuery(
+            sb
+              .from('travel_packages')
+              .select('id, title, display_title, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+              .in('id', rivalPackageIds)
+              .in('status', ['active', 'approved'])
+              .in('publication_state', ['approved', 'published']),
+            { data: [] as Array<Record<string, unknown>> },
+            { label: 'package.score-rival-packages', timeoutMs: 1200 },
+          )
+        : { data: [] as Array<Record<string, unknown>> };
+      const publicRivals = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        sb,
+        ((publicRivalPackages.data ?? []) as Array<Record<string, unknown>>)
+          .filter(row => {
+            const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+            return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+          }),
+      ).catch(() => []);
+      const titleByRivalId = new Map(
+        publicRivals
+          .map(row => [String(row.id), decodeCustomerHtmlEntities(getNonEmptyString(row.title) ?? '')] as const)
+          .filter(([, title]) => title.length > 0),
+      );
+      for (const row of rivalScoreRows) {
+        const publicTitle = titleByRivalId.get(row.package_id);
+        if (!publicTitle) continue;
         if (!row.departure_date) continue;
         if (!rivalsByDate[row.departure_date]) rivalsByDate[row.departure_date] = [];
-        rivalsByDate[row.departure_date].push({ ...row, title: decodeCustomerHtmlEntities(t ?? '') });
+        rivalsByDate[row.departure_date].push({ ...row, title: publicTitle });
       }
       for (const date of Object.keys(rivalsByDate)) {
         rivalsByDate[date].sort((a, b) => a.rank_in_group - b.rank_in_group);
