@@ -1886,9 +1886,28 @@ DAY 3 KE124 출발 13:00 도착 15:00
       'DAY 1',
       '달랏 언덕에 위치한 아름다운 핑크빛 건축물 수녀원 도멘 드 마리 성당',
       '베트남에서 가장 유명한 다딴라 폭포 (레일바이크 탑승)',
+      '아담하고 아름다운 기차역 달랏 기차역',
+      '분홍빛 외관이 아름다운 달랏 대표 성당 도멘드 드 마리 성당',
+      '달랏의 경치를 한눈에 내려다볼수있는 천국의계단 (음료제공)',
+      '압록강대협곡',
       '삼겹구이',
       '(무제한)',
       '8/4-15',
+      '수목금',
+      '(8/28제외)',
+      '☞ 사원 관람시 민소매, 반바지, 끈없는 신발 입장불가',
+      '(뷰말레레스토랑)',
+      '돈까스',
+      '넘능세트',
+      '(왕새우/민물가재/오징어볶음/가리비구이/문어구이/소고기안심구이/샐러드',
+      '치킨윙등 16종의 요리)',
+      '올유캔잇',
+      '우렁이찜+핫팟',
+      '소고기모듬',
+      '닭구이',
+      '대통밥정식',
+      '파타야에서 최고로 핫한 럭셔리 카페 “3 머메이드 카페”(수박쥬스 1잔제공)',
+      '미식',
       '전용',
       'DAY 2',
       '▷약1만여점의 오르골이 화려하게 장식되어있는 오르골당',
@@ -1898,6 +1917,9 @@ DAY 3 KE124 출발 13:00 도착 15:00
       attractions: [
         { id: 'domaine', name: '도멘 드 마리 성당', aliases: [], region: '달랏', country: 'VN' },
         { id: 'datanla', name: '다딴라 폭포', aliases: [], region: '달랏', country: 'VN' },
+        { id: 'dalat-station', name: '달랏기차역', aliases: ['달랏 기차역'], region: '달랏', country: 'VN' },
+        { id: 'heaven-stair', name: '천국의계단', aliases: ['천국의 계단'], region: '달랏', country: 'VN' },
+        { id: 'yalu-canyon', name: '압록강대협곡', aliases: ['압록강 대협곡'], region: '백두산', country: 'CN' },
         { id: 'music-box', name: '오르골당', aliases: [], region: '오타루', country: 'JP' },
         { id: 'blue-pond', name: '아오이이케', aliases: [], region: '비에이', country: 'JP' },
       ],
@@ -1910,6 +1932,10 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(unresolved).toEqual([]);
     expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('삼겹구이');
     expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('8/4-15');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('수목금');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('돈까스');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('뷰말레레스토랑');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('3 머메이드 카페');
   });
 
   it('treats explicit shopping-center and duty-free visit notices as customer-safe disclosure', async () => {
