@@ -12,6 +12,9 @@ import { apiResponse } from '@/lib/api-response';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getFallbackBlogPost, getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -37,6 +40,33 @@ type BlogListPayload = {
 };
 
 const lastGoodBlogLists = new Map<string, BlogListPayload>();
+
+function isBlogApiPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+async function attachPublicPackageSnapshotToBlogPost<T extends Record<string, unknown>>(post: T): Promise<T> {
+  const productId = typeof post.product_id === 'string' ? post.product_id : null;
+  if (!productId) return { ...post, travel_packages: null };
+
+  const { data, error } = await supabaseAdmin
+    .from('travel_packages')
+    .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+    .eq('id', productId)
+    .in('publication_state', ['approved', 'published'])
+    .limit(1);
+  if (error) throw error;
+
+  const candidate = ((data ?? []) as Array<Record<string, unknown>>).find(isBlogApiPublicSnapshotCandidate);
+  if (!candidate) return { ...post, travel_packages: null };
+
+  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [candidate]);
+  return {
+    ...post,
+    travel_packages: publicRows[0] ?? null,
+  };
+}
 
 function blogListCacheKey(page: number, limit: number, destination: string | null): string {
   return JSON.stringify({ page, limit, destination: destination || '' });
@@ -163,7 +193,7 @@ export async function GET(request: NextRequest) {
       }
       const { data, error } = await runApiBlogQuery('id', supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, category, tracking_id, tone, published_at, created_at, updated_at, product_id, travel_packages(id, title, destination, price, duration, nights, category)')
+        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, category, tracking_id, tone, published_at, created_at, updated_at, product_id, destination')
         .eq('id', id)
         .limit(1));
 
@@ -171,7 +201,8 @@ export async function GET(request: NextRequest) {
       if (!data || data.length === 0) {
         return apiResponse({ error: 'Post not found' }, { status: 404 });
       }
-      return apiResponse({ post: data[0] });
+      const post = await attachPublicPackageSnapshotToBlogPost(data[0] as Record<string, unknown>);
+      return apiResponse({ post });
     }
 
     if (searchParams.get('admin') === '1') {
@@ -429,7 +460,7 @@ export async function PATCH(request: NextRequest) {
       try {
         const { data: existing, error: existingError } = await supabaseAdmin
           .from('content_creatives')
-          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)')
+          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id')
           .eq('id', id)
           .limit(1);
         if (existingError) throw existingError;
@@ -441,7 +472,6 @@ export async function PATCH(request: NextRequest) {
           destination?: string | null;
           angle_type?: string | null;
           product_id?: string | null;
-          travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
         } | undefined;
         const finalHtml = (blog_html as string | undefined) ?? row?.blog_html ?? '';
         const finalSlug = (updateData.slug as string | undefined) ?? row?.slug ?? '';
