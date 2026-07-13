@@ -130,4 +130,31 @@ describe('public snapshot card projection', () => {
 
     expect(merged).toEqual([]);
   });
+
+  it('drops current snapshots with risky customer promise copy in projections', () => {
+    const packages = [
+      { id: 'pkg-1', package_revision: 3, title: 'raw supplier title' },
+    ];
+    const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: {
+          package: {
+            title: '연길·백두산 노옵션 핵심관광 4박5일',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+          },
+        },
+        card_projection: {
+          title: '연길·백두산 노옵션 핵심관광 4박5일',
+          summary: '좌석 확보 완료',
+        },
+        route_text_dump: ['연길·백두산 노옵션 핵심관광 4박5일', '좌석 확보 완료'],
+      },
+    ]);
+
+    expect(merged).toEqual([]);
+  });
 });
