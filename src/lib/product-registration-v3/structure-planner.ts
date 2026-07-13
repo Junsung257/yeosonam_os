@@ -53,9 +53,37 @@ function collectCatalogBoundaryStarts(raw: string): number[] {
   return [...new Set(starts)].sort((a, b) => a - b);
 }
 
+function sectionHasItineraryDayEvidence(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  return lines
+    .slice(startLine - 1, endLine)
+    .some(line => DAY_HEADER_RE.test(line.quote.trim()));
+}
+
+function filterCatalogStartsBySectionEvidence(lines: V3SourceLine[], starts: number[]): number[] {
+  if (starts.length < 2) return starts;
+
+  const filtered = starts.filter((start, index) => {
+    const startLine = lineNumberForCharOffset(lines, start);
+    const nextStart = starts[index + 1];
+    const endLine = nextStart == null
+      ? lines.length
+      : Math.max(startLine, lineNumberForCharOffset(lines, nextStart) - 1);
+    return sectionHasItineraryDayEvidence(lines, startLine, endLine);
+  });
+
+  return filtered.length >= 2 ? filtered : [];
+}
+
 function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boundaries'] {
   const raw = lines.map(line => line.quote).join('\n');
-  const catalogStarts = collectCatalogBoundaryStarts(raw);
+  const hasExplicitCatalogStarts =
+    collectPkgBlockStarts(raw).length >= 2
+    || collectTransportVariantDetailBlockStarts(raw).length >= 2
+    || collectVariantCatalogBlockStarts(raw).length >= 2;
+  const rawCatalogStarts = collectCatalogBoundaryStarts(raw);
+  const catalogStarts = hasExplicitCatalogStarts
+    ? rawCatalogStarts
+    : filterCatalogStartsBySectionEvidence(lines, rawCatalogStarts);
   if (catalogStarts.length >= 2) {
     return catalogStarts.map((start, index) => {
       const startLine = lineNumberForCharOffset(lines, start);

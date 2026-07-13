@@ -277,6 +277,104 @@ ZE982
     expect(titleHints.some(title => /\b4/.test(title))).toBe(true);
   });
 
+  it('keeps shared PKG price tables attached to the itinerary product instead of splitting fake products', async () => {
+    const raw = [
+      '부산-연길/백두산(남파+북파) 3박4일 품격 일정표',
+      '출발인원',
+      '성인 8명 이상 / 인솔자 미동행',
+      '포    함',
+      '왕복항공료, 유류할증료, 호텔, 식사, 전용차량, 기사/현지가이드, 관광지 입장료, 여행자보험, 기사/가이드팁',
+      '불 포 함',
+      '유류할증료 변동분, 싱글차지, 개인경비 및 매너팁',
+      '쇼핑센터',
+      '침향+콜라겐, 라텍스, 한약방 중 2회',
+      '날 짜',
+      '지 역',
+      '교통편',
+      '시 간',
+      '주 요 일 정',
+      '식  사',
+      '제1일',
+      '부산',
+      '연길',
+      'BX337',
+      '09:40',
+      '11:30',
+      '부산 김해공항 출발',
+      '연길 국제공항 도착',
+      '가이드 미팅 후 도문으로 이동',
+      '중:냉면',
+      '석:불고기전골',
+      'HOTEL: 퍼스완 호텔 또는 동급',
+      '제2일',
+      '송강하',
+      '전용차량',
+      '전일',
+      '호텔 조식 후 남파로 이동',
+      '백두산 천지 관광',
+      '조:호텔식',
+      '중:현지식',
+      '석:샤브샤브',
+      'HOTEL: 현지 호텔 또는 동급',
+      '제3일',
+      '이도백하',
+      '전용차량',
+      '전일',
+      '호텔 조식 후 북파로 이동',
+      '장백폭포 관광',
+      '조:호텔식',
+      '중:현지식',
+      '석:현지식',
+      'HOTEL: 연길 호텔 또는 동급',
+      '제4일',
+      '연길',
+      '부산',
+      'BX338',
+      '12:30',
+      '16:20',
+      '호텔 조식 후 체크아웃',
+      '연길 국제공항 출발',
+      '부산 김해공항 도착',
+      '조:호텔식',
+      '중:김밥',
+      '[공통 가격표 원문 근거]',
+      '부산-연길/백두산(남파+북파) 3박4일 품격PKG',
+      '백산수공장+온천욕+특식+마사지+노팁+노옵션',
+      '***07/31까지 발권조건***',
+      '항공',
+      '스케줄',
+      '부산-연길 BX337 09:35-11:30',
+      '연길-부산 BX338 12:30-16:30',
+      '출 발 일',
+      '품격(노팁+노옵션)',
+      '7/1-17',
+      '월',
+      '3박4일',
+      '1,169,000',
+      '금',
+      '1,099,000',
+      '*8/29 제외 (2박3일)',
+      '월',
+      '화',
+      '수',
+      '1,199,000',
+    ].join('\n');
+
+    const plan = planProductRegistrationV3(createSourceLineIndex(raw));
+    const result = await runProductRegistrationV3(raw);
+
+    expect(plan.document_type).toBe('single_package');
+    expect(plan.expected_products).toBe(1);
+    expect(plan.product_boundaries).toHaveLength(1);
+    expect(result.ledger.variants).toHaveLength(1);
+    expect(result.ledger.variants[0].days.map(day => day.day)).toEqual([1, 2, 3, 4]);
+    expect(result.ledger.variants[0].price_calendar.length).toBeGreaterThan(0);
+    expect(result.ledger.variants[0].flight_segments).toHaveLength(2);
+    expect(result.ledger.variants[0].days.flatMap(day => day.events).map(event => event.raw_text)).not.toContain('항공');
+    expect(result.ledger.variants[0].days.flatMap(day => day.events).map(event => event.raw_text)).not.toContain('스케줄');
+    expect(result.gate_result.checks.some(check => check.id.startsWith('v2.'))).toBe(false);
+  });
+
   it('keeps airport meeting time as meeting, not flight departure', async () => {
     const result = await runProductRegistrationV3(buildBaekduEightVariantFixture());
     const variant = result.ledger.variants[0];
@@ -1890,6 +1988,7 @@ DAY 3 KE124 출발 13:00 도착 15:00
       '분홍빛 외관이 아름다운 달랏 대표 성당 도멘드 드 마리 성당',
       '달랏의 경치를 한눈에 내려다볼수있는 천국의계단 (음료제공)',
       '압록강대협곡',
+      '연길에서 느껴보는 우리의 전통 한옥 마을 중국 조선족 민속원',
       '삼겹구이',
       '(무제한)',
       '8/4-15',
@@ -1920,6 +2019,7 @@ DAY 3 KE124 출발 13:00 도착 15:00
         { id: 'dalat-station', name: '달랏기차역', aliases: ['달랏 기차역'], region: '달랏', country: 'VN' },
         { id: 'heaven-stair', name: '천국의계단', aliases: ['천국의 계단'], region: '달랏', country: 'VN' },
         { id: 'yalu-canyon', name: '압록강대협곡', aliases: ['압록강 대협곡'], region: '백두산', country: 'CN' },
+        { id: 'yanji-folk', name: '연길민속촌', aliases: ['연길 민속촌'], region: '연길/백두산', country: 'CN' },
         { id: 'music-box', name: '오르골당', aliases: [], region: '오타루', country: 'JP' },
         { id: 'blue-pond', name: '아오이이케', aliases: [], region: '비에이', country: 'JP' },
       ],
