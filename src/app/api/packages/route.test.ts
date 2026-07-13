@@ -9,6 +9,13 @@ function routeSourceWithoutComments() {
     .replace(/^\s*\/\/.*$/gm, '');
 }
 
+function sourceWithoutComments(path: string) {
+  const source = readFileSync(join(process.cwd(), path), 'utf8');
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+}
+
 describe('packages bulk/customer publication gate', () => {
   it('serves customer package API responses only from current public snapshots', () => {
     const source = routeSourceWithoutComments();
@@ -64,5 +71,46 @@ describe('packages bulk/customer publication gate', () => {
     expect(mobileProofGateIndex).toBeGreaterThan(mobileProofIndex);
     expect(customerOpenContractIndex).toBeGreaterThan(sourceAuditHelperIndex);
     expect(updateIndex).toBeGreaterThan(mobileProofGateIndex);
+  });
+
+  it('keeps legacy approvals blocked from customer publication without atomic public snapshots', () => {
+    const source = routeSourceWithoutComments();
+    const dbHelper = sourceWithoutComments('src/lib/db/packages.ts');
+    const bulkIndex = source.indexOf("if (action === 'bulk_approve')");
+    const bulkUpdateIndex = source.indexOf("status: 'approved'", bulkIndex);
+    const bulkBlockedIndex = source.indexOf("publication_state: 'blocked'", bulkUpdateIndex);
+    const approveIndex = source.indexOf("if (action === 'approve')");
+    const approvePackageIndex = source.indexOf('approvePackage(packageId)', approveIndex);
+    const helperIndex = dbHelper.indexOf('export async function approvePackage');
+    const helperApprovedIndex = dbHelper.indexOf("status: 'approved'", helperIndex);
+    const helperBlockedIndex = dbHelper.indexOf("publication_state: 'blocked'", helperApprovedIndex);
+
+    expect(bulkBlockedIndex).toBeGreaterThan(bulkUpdateIndex);
+    expect(approvePackageIndex).toBeGreaterThan(approveIndex);
+    expect(source).toContain("publication_state: 'blocked'");
+    expect(helperBlockedIndex).toBeGreaterThan(helperApprovedIndex);
+  });
+
+  it('invalidates public snapshots when generic PATCH changes customer-visible fields', () => {
+    const source = routeSourceWithoutComments();
+    const helperIndex = source.indexOf('const CUSTOMER_PUBLIC_REAUDIT_FIELDS = new Set');
+    const keysIndex = source.indexOf('const publicReauditKeys = customerPublicReauditKeys(sanitized)');
+    const beforeRowIndex = source.indexOf('trackedKeysChanged.length > 0 || publicReauditKeys.length > 0');
+    const revisionIndex = source.indexOf('sanitized.package_revision = nextRevision', beforeRowIndex);
+    const auditIndex = source.indexOf("sanitized.audit_status = 'blocked'", revisionIndex);
+    const needsReauditIndex = source.indexOf("'needs_reaudit'", auditIndex);
+    const updateIndex = source.indexOf('.update(sanitized)', needsReauditIndex);
+
+    expect(helperIndex).toBeGreaterThanOrEqual(0);
+    expect(keysIndex).toBeGreaterThan(helperIndex);
+    expect(beforeRowIndex).toBeGreaterThan(keysIndex);
+    expect(revisionIndex).toBeGreaterThan(beforeRowIndex);
+    expect(auditIndex).toBeGreaterThan(revisionIndex);
+    expect(needsReauditIndex).toBeGreaterThan(auditIndex);
+    expect(updateIndex).toBeGreaterThan(needsReauditIndex);
+    expect(source).toContain("'title'");
+    expect(source).toContain("'optional_tours'");
+    expect(source).toContain("'itinerary_data'");
+    expect(source).toContain("'price_dates'");
   });
 });
