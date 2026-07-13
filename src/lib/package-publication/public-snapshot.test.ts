@@ -102,6 +102,20 @@ describe('public package snapshot gate', () => {
     }));
   });
 
+  it('builds the canonical render view from the same cleaned public snapshot package', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage());
+    const canonicalView = snapshot.canonical_view as {
+      optionalTours?: { count?: number; flat?: unknown[] };
+    };
+
+    expect(snapshot.package.title).toBe(snapshot.public_title);
+    expect(snapshot.package.optional_tours).toEqual(snapshot.optional_tours_public);
+    expect(canonicalView.optionalTours?.count).toBe(0);
+    expect(canonicalView.optionalTours?.flat).toEqual([]);
+    expect(JSON.stringify(snapshot.canonical_view)).not.toContain('599');
+    expect(JSON.stringify(snapshot.canonical_view)).not.toContain('포 함 내 역');
+  });
+
   it('keeps internal nested price and operator fields out of the public snapshot package', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
       optional_tours: [{

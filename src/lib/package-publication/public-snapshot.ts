@@ -292,7 +292,16 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   );
   const publicSummary = displayCopy.summaryBody || null;
   const duration = asNumber(publicPackage.duration);
-  const canonicalView = renderPackage(publicPackage as Parameters<typeof renderPackage>[0]) as unknown as Record<string, unknown>;
+  const snapshotPackage = {
+    ...publicPackage,
+    title: publicTitle,
+    display_title: publicTitle,
+    product_summary: publicSummary,
+    optional_tours: optionalTourClassification.publicTours,
+    publication_state: pkg.publication_state ?? publicPackage.publication_state ?? null,
+    package_revision: asNumber(pkg.package_revision) ?? 1,
+  };
+  const canonicalView = renderPackage(snapshotPackage as Parameters<typeof renderPackage>[0]) as unknown as Record<string, unknown>;
   const snapshotBase: Omit<PublicPackageSnapshot, 'route_text_dump'> = {
     snapshot_version: SNAPSHOT_VERSION,
     package_id: String(pkg.id ?? publicPackage.id ?? ''),
@@ -307,15 +316,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       badges: optionalTourClassification.badges,
     },
     canonical_view: canonicalView,
-    package: {
-      ...publicPackage,
-      title: publicTitle,
-      display_title: publicTitle,
-      product_summary: publicSummary,
-      optional_tours: optionalTourClassification.publicTours,
-      publication_state: pkg.publication_state ?? publicPackage.publication_state ?? null,
-      package_revision: asNumber(pkg.package_revision) ?? 1,
-    },
+    package: snapshotPackage,
     inclusions_public: Array.isArray(publicPackage.inclusions) ? publicPackage.inclusions : [],
     exclusions_public: Array.isArray(publicPackage.excludes) ? publicPackage.excludes : [],
     itinerary_public: publicPackage.itinerary_data ?? null,
