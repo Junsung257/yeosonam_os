@@ -20,6 +20,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -61,6 +62,10 @@ interface AttractionRow {
   country: string | null;
   region: string | null;
   mention_count: number | null;
+  category?: string | null;
+  badge_type?: string | null;
+  is_active?: boolean | null;
+  customer_publishable?: boolean | null;
 }
 
 interface AggPkgRow {
@@ -195,7 +200,9 @@ export default async function HomePage() {
     ),
     runOptionalSupabaseQuery(
       sb.from('attractions')
-        .select('name, photos, country, region, mention_count')
+        .select('name, photos, country, region, mention_count, category, badge_type, is_active, customer_publishable')
+        .eq('is_active', true)
+        .eq('customer_publishable', true)
         .not('photos', 'is', null)
         .limit(60),
       emptyResult,
@@ -237,7 +244,8 @@ export default async function HomePage() {
         .filter(isHomePublicSnapshotCandidate) as unknown as Array<Record<string, unknown>>,
     )
     : []) as unknown as AggPkgRow[];
-  const attractions = (attrResult.data ?? []) as AttractionRow[];
+  const attractions = ((attrResult.data ?? []) as AttractionRow[])
+    .filter((row): row is AttractionRow => isCustomerRenderableAttraction(row as unknown as AttractionData));
   const rankingPkgs = (isSupabaseConfigured && !skipPublicDbReads
     ? await fetchHomePublicSnapshotRows(
       ((rankingResult.data ?? []) as RankingPkg[])
