@@ -2,10 +2,60 @@ import { describe, expect, it } from 'vitest';
 
 import { mergePackageRowsWithCurrentPublicSnapshots } from './snapshot-projection';
 
+function openPackage(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const updatedAt = '2026-07-09T00:00:00.000Z';
+  return {
+    id: 'pkg-1',
+    package_revision: 3,
+    status: 'active',
+    publication_state: 'published',
+    updated_at: updatedAt,
+    optional_tours: [],
+    itinerary_data: { days: [{ day: 1, schedule: [{ activity: 'public schedule', attraction_ids: [] }] }] },
+    audit_report: {
+      customer_open_contract: { ok: true, status: 'pass', blockers: [] },
+      mobile_browser_proof: {
+        status: 'pass',
+        checked_at: updatedAt,
+        package_updated_at: updatedAt,
+        source: 'hwp-mobile-browser-proof',
+        screen_hash: 'screen',
+        customer_visible_hash: 'visible',
+        surfaces: ['packages', 'lp'],
+        surface_results: [
+          {
+            surface: 'packages',
+            status: 'pass',
+            screen_hash: 'packages-screen',
+            customer_visible_hash: 'packages-visible',
+            checks: [
+              { name: 'packages_reservation_cta_visible', ok: true },
+              { name: 'packages_reservation_sheet_opens', ok: true },
+              { name: 'packages_reservation_sheet_has_product_context', ok: true },
+            ],
+          },
+          {
+            surface: 'lp',
+            status: 'pass',
+            screen_hash: 'lp-screen',
+            customer_visible_hash: 'lp-visible',
+            checks: [
+              { name: 'lp_lead_cta_visible', ok: true },
+              { name: 'lp_lead_sheet_opens', ok: true },
+              { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+            ],
+          },
+        ],
+      },
+    },
+    ...overrides,
+  };
+}
+
 describe('public snapshot card projection', () => {
   it('drops customer packages when only stale snapshots exist', () => {
     const packages = [
-      { id: 'pkg-1', package_revision: 3, title: 'raw title' },
+      openPackage({ title: 'raw title' }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
       {
@@ -23,7 +73,7 @@ describe('public snapshot card projection', () => {
 
   it('uses the current revision snapshot projection instead of raw card text', () => {
     const packages = [
-      { id: 'pkg-1', package_revision: 3, title: 'raw supplier title', destination: 'raw dest' },
+      openPackage({ title: 'raw supplier title', destination: 'raw dest' }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
       {
@@ -62,7 +112,7 @@ describe('public snapshot card projection', () => {
 
   it('drops rows when the current snapshot has no public title instead of falling back to raw title', () => {
     const packages = [
-      { id: 'pkg-1', package_revision: 3, title: 'raw supplier title', destination: 'raw dest' },
+      openPackage({ title: 'raw supplier title', destination: 'raw dest' }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
       {
@@ -80,14 +130,12 @@ describe('public snapshot card projection', () => {
 
   it('does not preserve raw customer fields when the snapshot omits them', () => {
     const packages = [
-      {
-        id: 'pkg-1',
-        package_revision: 3,
+      openPackage({
         title: 'raw supplier title',
         destination: 'raw destination',
         product_summary: 'raw supplier summary',
         inclusions: ['raw inclusion'],
-      },
+      }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
       {
@@ -109,14 +157,11 @@ describe('public snapshot card projection', () => {
 
   it('strips internal root and nested fields after merging a public snapshot', () => {
     const packages = [
-      {
-        id: 'pkg-1',
-        package_revision: 3,
+      openPackage({
         title: 'raw supplier title',
         internal_code: 'LAND-SECRET',
         catalog_id: 'catalog-secret',
         audit_status: 'clean',
-        audit_report: { internal: true },
         seats_held: 12,
         seats_confirmed: 6,
         products: [
@@ -128,7 +173,7 @@ describe('public snapshot card projection', () => {
             margin_rate: 0.12,
           },
         ],
-      },
+      }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
       {
@@ -166,7 +211,7 @@ describe('public snapshot card projection', () => {
 
   it('drops current snapshots without source-backed price dates instead of exposing projection price', () => {
     const packages = [
-      { id: 'pkg-1', package_revision: 3, title: 'raw supplier title', price: 599000 },
+      openPackage({ title: 'raw supplier title', price: 599000 }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
       {
@@ -190,7 +235,7 @@ describe('public snapshot card projection', () => {
 
   it('drops current snapshots with risky customer promise copy in projections', () => {
     const packages = [
-      { id: 'pkg-1', package_revision: 3, title: 'raw supplier title' },
+      openPackage({ title: 'raw supplier title' }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
       {
@@ -209,6 +254,58 @@ describe('public snapshot card projection', () => {
           summary: '좌석 확보 완료',
         },
         route_text_dump: ['연길·백두산 노옵션 핵심관광 4박5일', '좌석 확보 완료'],
+      },
+    ]);
+
+    expect(merged).toEqual([]);
+  });
+
+  it('fails closed before snapshot merge when the source package is not customer-openable', () => {
+    const blockedPackage = openPackage({
+      audit_report: {
+        customer_open_contract: {
+          ok: false,
+          status: 'blocked',
+          blockers: ['mobile proof missing'],
+        },
+      },
+    });
+
+    const merged = mergePackageRowsWithCurrentPublicSnapshots([blockedPackage], [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: {
+          package: {
+            title: 'public title',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+          },
+        },
+        card_projection: { title: 'public card title' },
+      },
+    ]);
+
+    expect(merged).toEqual([]);
+  });
+
+  it('fails closed before snapshot merge when publication_state is not public', () => {
+    const nonPublicPackage = openPackage({ publication_state: 'needs_review' });
+
+    const merged = mergePackageRowsWithCurrentPublicSnapshots([nonPublicPackage], [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: {
+          package: {
+            title: 'public title',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+          },
+        },
+        card_projection: { title: 'public card title' },
       },
     ]);
 

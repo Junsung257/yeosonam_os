@@ -5,6 +5,8 @@ import {
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { isPublicPublicationState } from './types';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -53,6 +55,11 @@ function packageId(row: AnyRecord): string | null {
 function packageRevision(row: AnyRecord): number {
   const revision = Number(row.package_revision ?? 1);
   return Number.isFinite(revision) && revision > 0 ? revision : 1;
+}
+
+function isPublicPackageRowOpenable(row: AnyRecord): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
 function snapshotPackage(row: SnapshotProjectionRow): AnyRecord {
@@ -136,6 +143,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
 ): T[] {
   const revisionByPackage = new Map<string, number>();
   for (const pkg of packages) {
+    if (!isPublicPackageRowOpenable(pkg)) continue;
     const id = packageId(pkg);
     if (id) revisionByPackage.set(id, packageRevision(pkg));
   }
