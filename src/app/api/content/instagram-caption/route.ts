@@ -17,6 +17,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { generateInstagramCaption } from '@/lib/content-pipeline/agents/instagram-caption';
 import type { ContentBrief } from '@/lib/validators/content-brief';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -39,15 +40,11 @@ export async function POST(request: NextRequest) {
     // 1. product 조회 (product_id 있으면)
     let product: Parameters<typeof generateInstagramCaption>[0]['product'] | undefined = undefined;
     if (body.product_id) {
-      const { data: pkg, error } = await supabaseAdmin
-        .from('travel_packages')
-        .select('title, destination, duration, nights, price, airline, product_summary, product_highlights')
-        .eq('id', body.product_id)
-        .single();
-      if (error || !pkg) {
-        return NextResponse.json({ error: '상품 조회 실패' }, { status: 404 });
+      const publicProduct = await loadPublicContentPackageForGeneration(body.product_id);
+      if (!publicProduct) {
+        return NextResponse.json({ error: '고객 공개 승인된 상품만 콘텐츠를 만들 수 있습니다.' }, { status: 404 });
       }
-      product = pkg as never;
+      product = publicProduct as never;
     }
 
     // 2. brief 확보

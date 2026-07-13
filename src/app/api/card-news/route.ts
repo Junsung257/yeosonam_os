@@ -9,6 +9,7 @@ import { pickMarketingPrice } from '@/lib/marketing-price';
 import { getSecret } from '@/lib/secret-registry';
 import { logError, logWarning } from '@/lib/sentry-logger';
 import type { ContentBrief } from '@/lib/validators/content-brief';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
@@ -276,29 +277,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'package_id 필수 (또는 mode=info + topic)' }, { status: 400 });
     }
 
-    const { supabaseAdmin } = await import('@/lib/supabase');
-    const { data: pkg } = await supabaseAdmin
-      .from('travel_packages')
-      .select('title, destination, price, duration, itinerary, inclusions, excludes, product_highlights, product_summary')
-      .eq('id', package_id)
-      .single();
-
+    const pkg = await loadPublicContentPackageForGeneration(package_id);
     if (!pkg) {
-      return NextResponse.json({ error: '상품을 찾을 수 없습니다' }, { status: 404 });
+      return NextResponse.json({ error: '고객 공개 승인된 상품만 카드뉴스를 만들 수 있습니다.' }, { status: 404 });
     }
 
     const title = customTitle ?? `${pkg.title} — 카드뉴스`;
     const destination = pkg.destination ?? '여행지';
     const slideNum = slide_count ?? 6;
 
-    const { data: pkgFull } = await supabaseAdmin
-      .from('travel_packages')
-      .select('product_summary, product_type, airline, departure_airport')
-      .eq('id', package_id)
-      .single();
-
     const slides = await buildAutoSlides(
-      { ...pkg, ...(pkgFull ?? {}) },
+      pkg,
       destination,
       { slideCount: slideNum, tone, extraPrompt: extra_prompt }
     ) as import('@/lib/supabase').CardNewsSlide[];

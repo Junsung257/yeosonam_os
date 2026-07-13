@@ -12,6 +12,7 @@ import { critiqueCover } from '@/lib/content-pipeline/agents/cover-critic';
 import { applyCritiqueToCover } from '@/lib/content-pipeline/apply-critique';
 import { logError } from '@/lib/sentry-logger';
 import type { SlideV2 } from '@/lib/card-news/v2/types';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -45,13 +46,9 @@ export async function POST(request: NextRequest) {
     // product 맥락
     let productContext: Parameters<typeof critiqueCover>[0]['product_context'] = undefined;
     if (cn.package_id) {
-      const { data: pkg } = await supabaseAdmin
-        .from('travel_packages')
-        .select('title, destination, price, nights, product_highlights')
-        .eq('id', cn.package_id)
-        .single();
-      if (pkg) {
-        const p = pkg as Record<string, unknown>;
+      const publicProduct = await loadPublicContentPackageForGeneration(String(cn.package_id));
+      if (publicProduct) {
+        const p = publicProduct as Record<string, unknown>;
         productContext = {
           title: p.title as string,
           destination: p.destination as string | undefined,
