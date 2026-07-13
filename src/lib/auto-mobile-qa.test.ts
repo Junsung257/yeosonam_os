@@ -7,6 +7,7 @@ import {
   buildMobileQaImprovementEvent,
   type ExpectedRender,
 } from './auto-mobile-qa';
+import { evaluateCustomerMobileProof } from './customer-mobile-proof';
 import { hashSourceText } from './product-registration/improvement-ledger';
 
 const expectedRender: ExpectedRender = {
@@ -61,6 +62,7 @@ describe('auto mobile QA learning ledger bridge', () => {
     });
 
     expect(proof).toEqual(expect.objectContaining({
+      source: 'auto-mobile-fetch-proof',
       package_revision: 8,
       public_snapshot_hash: 'snapshot-hash',
       app_build_id: 'build-id',
@@ -69,6 +71,8 @@ describe('auto mobile QA learning ledger bridge', () => {
       expect.objectContaining({ surface: 'packages', public_snapshot_hash: 'snapshot-hash' }),
       expect.objectContaining({ surface: 'lp', public_snapshot_hash: 'snapshot-hash' }),
     ]);
+    expect(evaluateCustomerMobileProof({ auditReport: { mobile_browser_proof: proof } }).reason)
+      .toBe('actual customer mobile browser proof source is auto-mobile-fetch-proof');
   });
 
   it('blocks an actual customer package page application error from becoming mobile proof', () => {

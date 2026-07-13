@@ -24,6 +24,7 @@ type Options = {
   baseUrl: string;
   reasons: MobileProofRefreshReason[];
   statusList: string[];
+  includePending: boolean;
   skipAxe: boolean;
 };
 
@@ -60,6 +61,10 @@ function parseReasons(value: string | null): MobileProofRefreshReason[] {
 }
 
 function options(): Options {
+  const includePending = hasFlag('--include-pending');
+  const defaultStatuses = includePending
+    ? [...CUSTOMER_VISIBLE_STATUSES, 'pending', 'pending_review']
+    : CUSTOMER_VISIBLE_STATUSES;
   return {
     apply: hasFlag('--apply'),
     json: hasFlag('--json'),
@@ -68,7 +73,8 @@ function options(): Options {
     batchSize: numberArg('--batch-size', 20, 100),
     baseUrl: (argValue('--base') || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/+$/, ''),
     reasons: parseReasons(argValue('--reasons')),
-    statusList: parseMobileProofRefreshStatusFilter(argValue('--status'), CUSTOMER_VISIBLE_STATUSES),
+    statusList: parseMobileProofRefreshStatusFilter(argValue('--status'), defaultStatuses),
+    includePending,
     skipAxe: hasFlag('--skip-axe'),
   };
 }
@@ -137,6 +143,7 @@ async function main() {
     mode: opts.apply ? 'apply' : 'dry-run',
     baseUrl: opts.baseUrl,
     statusFilter: opts.statusList,
+    includePending: opts.includePending,
     summary,
     candidates: opts.summaryOnly ? [] : candidates.map(candidate => ({
       id: candidate.id,

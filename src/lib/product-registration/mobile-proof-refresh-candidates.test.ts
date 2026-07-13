@@ -125,4 +125,42 @@ describe('mobile proof refresh candidates', () => {
     expect(candidate?.reason).toBe('hash_missing');
     expect(candidate?.detail).toContain('package revision is missing');
   });
+
+  it('classifies fetch-only AutoQA proof as source-invalid browser reproof work', () => {
+    const candidate = classifyMobileProofRefreshCandidate({
+      id: 'fetch-proof',
+      status: 'pending_review',
+      package_revision: 7,
+      updated_at: '2026-07-01T00:00:00.000Z',
+      audit_report: {
+        mobile_browser_proof: {
+          ...passProof().mobile_browser_proof,
+          source: 'auto-mobile-fetch-proof',
+          package_revision: 8,
+          public_snapshot_hash: 'snapshot-hash',
+          surface_results: [
+            {
+              surface: 'packages',
+              status: 'pass',
+              screen_hash: 'p-screen',
+              customer_visible_hash: 'p-visible',
+              public_snapshot_hash: 'snapshot-hash',
+              checks: [],
+            },
+            {
+              surface: 'lp',
+              status: 'pass',
+              screen_hash: 'l-screen',
+              customer_visible_hash: 'l-visible',
+              public_snapshot_hash: 'snapshot-hash',
+              checks: [],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(candidate?.reason).toBe('source_invalid');
+    expect(candidate?.detail).toContain('auto-mobile-fetch-proof');
+  });
 });
