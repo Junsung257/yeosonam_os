@@ -27,6 +27,24 @@ function asNonEmptyString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function asNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function hasSourceBackedPriceDates(value: unknown): boolean {
+  const pkg = asRecord(value);
+  const priceDates = Array.isArray(pkg?.price_dates) ? pkg.price_dates : [];
+  if (priceDates.length === 0) return false;
+
+  return priceDates.every((item) => {
+    const row = asRecord(item);
+    const date = typeof row?.date === 'string' ? row.date.trim() : '';
+    const price = asNumber(row?.adult_selling_price ?? row?.price ?? row?.selling_price);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof price === 'number' && price > 0;
+  });
+}
+
 function collectItineraryAttractionIds(value: unknown): string[] {
   const ids = new Set<string>();
   const visit = (node: unknown): void => {
@@ -83,6 +101,7 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const cardProjection = asRecord(row.card_projection);
   const lpProjection = asRecord(row.lp_projection);
   if (!pkg) return null;
+  if (!hasSourceBackedPriceDates(pkg)) return null;
   const publicTitle = asNonEmptyString(cardProjection?.title) ?? asNonEmptyString(lpProjection?.title);
   if (!publicTitle) return null;
   const publicSummary = asNonEmptyString(lpProjection?.summary);

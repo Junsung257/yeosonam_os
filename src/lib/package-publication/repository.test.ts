@@ -112,6 +112,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         snapshot_json: {
           package: {
             id: 'pkg-2',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
             title: '[BX] 랜드사 원문 제목',
             display_title: '[BX] 랜드사 원문 제목',
             product_summary: '관리자노트: 랜드사 커미션 9% 내부 확인',
@@ -135,6 +136,36 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     expect(snapshot?.package.display_title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
     expect(snapshot?.package.product_summary).toBe('일정, 항공, 숙소, 포함 조건을 상담 전 빠르게 확인할 수 있어요.');
     expect(JSON.stringify(snapshot?.package)).not.toContain('랜드사 커미션');
+  });
+
+  it('does not return legacy public snapshots that only contain a raw package price', async () => {
+    const snapshot = await fetchLatestPublicPackageSnapshot(
+      makeSnapshotFetchSupabaseMock({
+        id: 'snap-raw-price',
+        package_id: 'pkg-raw-price',
+        package_revision: 3,
+        snapshot_hash: 'hash-raw-price',
+        snapshot_json: {
+          package: {
+            id: 'pkg-raw-price',
+            title: '연길·백두산 노옵션 핵심관광 4박5일',
+            display_title: '연길·백두산 노옵션 핵심관광 4박5일',
+            destination: '연길',
+            price: 599000,
+            price_dates: [],
+          },
+        },
+        card_projection: { title: '연길·백두산 노옵션 핵심관광 4박5일', price: 599000 },
+        lp_projection: { title: '연길·백두산 노옵션 핵심관광 4박5일', price: 599000 },
+        route_text_dump: ['연길·백두산 노옵션 핵심관광 4박5일'],
+        status: 'published',
+        created_at: '2026-07-13T00:00:00.000Z',
+      }) as never,
+      'pkg-raw-price',
+      { expectedPackageRevision: 3 },
+    );
+
+    expect(snapshot).toBeNull();
   });
 
   it('publishes snapshot, decision, and package final state through one atomic RPC', async () => {
