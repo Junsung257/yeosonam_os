@@ -55,6 +55,66 @@ function normalizeText(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
+const ROUTE_TEXT_SKIP_KEYS = new Set([
+  'admin_note',
+  'admin_notes',
+  'audit_report',
+  'commission_rate',
+  'created_at',
+  'hash',
+  'id',
+  'internal_note',
+  'internal_notes',
+  'margin_rate',
+  'net_price',
+  'operator',
+  'package_id',
+  'package_revision',
+  'public_snapshot_hash',
+  'raw_text',
+  'revision',
+  'snapshot_version',
+  'source_context',
+  'source_evidence',
+  'supplier',
+  'supplier_note',
+  'updated_at',
+  'vendor',
+]);
+
+function collectCustomerVisibleStrings(value: unknown, output: string[] = []): string[] {
+  if (typeof value === 'string') {
+    const text = normalizeText(value);
+    if (text) output.push(text);
+    return output;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null || value === undefined) {
+    return output;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach(item => collectCustomerVisibleStrings(item, output));
+    return output;
+  }
+
+  const record = asRecord(value);
+  if (!record) return output;
+
+  for (const [key, childValue] of Object.entries(record)) {
+    const normalizedKey = key.toLowerCase();
+    if (
+      ROUTE_TEXT_SKIP_KEYS.has(normalizedKey)
+      || /(?:^|_)id$|(?:^|_)ids$|hash|revision|created_at|updated_at/.test(normalizedKey)
+    ) {
+      continue;
+    }
+    collectCustomerVisibleStrings(childValue, output);
+  }
+
+  return output;
+}
+
 function optionalTourText(tour: unknown): string {
   if (typeof tour === 'string') return normalizeText(tour);
   const record = asRecord(tour);
@@ -230,6 +290,11 @@ function routeTextDump(snapshot: Omit<PublicPackageSnapshot, 'route_text_dump'>)
     ...stringList(snapshot.package.product_highlights),
     ...stringList(snapshot.package.inclusions),
     ...stringList(snapshot.package.excludes),
+    ...collectCustomerVisibleStrings(snapshot.card_projection),
+    ...collectCustomerVisibleStrings(snapshot.lp_projection),
+    ...collectCustomerVisibleStrings(snapshot.itinerary_public),
+    ...collectCustomerVisibleStrings(snapshot.optional_tours_public),
+    ...collectCustomerVisibleStrings(snapshot.canonical_view),
   ];
   return [...new Set(values.map(normalizeText).filter(Boolean))];
 }
