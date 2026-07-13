@@ -1669,6 +1669,7 @@ ZE982
       '가격: 899,000원 / 최소출발 4명',
       'DAY 1 LJ001 부산 출발 09:00 방콕 도착 13:00',
       'DAY 2 파타야 자유시간',
+      'DAY 2 해변 자유시간 및 해양스포츠 선택 관광',
       'DAY 3 산호섬 자유시간',
       'DAY 5 LJ002 방콕 출발 01:00 부산 도착 08:00',
       '포함 호텔 식사',
@@ -1686,6 +1687,37 @@ ZE982
       '제트스키',
       '씨워킹',
     ]));
+    expect((preview.optional_tours ?? []).map(tour => tour.price_usd)).toEqual(expect.arrayContaining([
+      20,
+      30,
+      80,
+    ]));
+  });
+
+  it('auto-structures slash-separated recommendation option bundles', async () => {
+    const raw = [
+      '상품: 방콕 파타야 해양스포츠 3박5일',
+      '가격: 899,000원 / 최소출발 4명',
+      'DAY 1 LJ001 부산 출발 09:00 방콕 도착 13:00',
+      'DAY 2 파타야 자유시간',
+      'DAY 3 산호섬 자유시간',
+      'DAY 5 LJ002 방콕 출발 01:00 부산 도착 08:00',
+      '포함 호텔 식사',
+      '불포함 개인경비',
+      '추천해양스포츠 : 바나나보트$20/파라셀링$30/제트스키$30/씨워킹$80',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '방콕' });
+    const preview = result.render_contract_preview[0];
+
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
+    expect((preview.optional_tours ?? []).map(tour => tour.name)).toEqual(expect.arrayContaining([
+      '바나나보트',
+      '파라셀링',
+      '제트스키',
+      '씨워킹',
+    ]));
+    expect((preview.optional_tours ?? []).map(tour => tour.name)).not.toContain('해변 자유시간 및 해양스포츠 선택 관광');
     expect((preview.optional_tours ?? []).map(tour => tour.price_usd)).toEqual(expect.arrayContaining([
       20,
       30,
