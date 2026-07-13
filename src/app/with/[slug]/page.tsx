@@ -10,6 +10,8 @@ import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/aff
 import { isSafeImageSrc } from '@/lib/image-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 function extractYoutubeEmbedUrl(input?: string | null): string | null {
   if (!input) return null;
@@ -23,7 +25,7 @@ function extractYoutubeEmbedUrl(input?: string | null): string | null {
 export const dynamic = 'force-dynamic';
 
 const PKG_CARD_FIELDS =
-  'id, title, destination, country, price, display_title, product_summary, product_highlights, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
+  'id, title, destination, country, price, display_title, product_summary, product_highlights, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
 
 interface PageProps {
   params: Promise<{ slug?: string | string[] }>;
@@ -48,6 +50,21 @@ function safeDecodePathSegment(value: string): string {
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+function isWithPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+async function toPublicAffiliatePicks<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
+  if (rows.length === 0) return [];
+  try {
+    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+  } catch (error) {
+    console.warn('[with] public snapshot merge failed; hiding affiliate package picks', error);
+    return [];
+  }
 }
 
 export async function generateMetadata(props: PageProps): Promise<Metadata> {
@@ -175,13 +192,19 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
         .in('id', pickIds)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published']);
       const order = new Map(pickIds.map((id, i) => [id, i]));
-      picks = (picked || [])
-        .filter(isCustomerPubliclyOpenable)
+      const pickedRows = ((picked || []) as Array<Record<string, unknown>>)
+        .filter(isWithPublicSnapshotCandidate)
         .sort(
-          (a: { id: string }, b: { id: string }) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
+          (a, b) => {
+            const aId = typeof a.id === 'string' ? a.id : '';
+            const bId = typeof b.id === 'string' ? b.id : '';
+            return (order.get(aId) ?? 99) - (order.get(bId) ?? 99);
+          },
         );
+      picks = await toPublicAffiliatePicks(pickedRows) as typeof picks;
     } catch {
       picks = [];
     }
@@ -193,9 +216,14 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
         .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published'])
         .order('created_at', { ascending: false })
         .limit(100);
-      picks = (fallback || []).filter(isCustomerPubliclyOpenable).slice(0, 6);
+      picks = await toPublicAffiliatePicks(
+        ((fallback || []) as Array<Record<string, unknown>>)
+          .filter(isWithPublicSnapshotCandidate)
+          .slice(0, 6),
+      ) as typeof picks;
     } catch {
       picks = [];
     }
