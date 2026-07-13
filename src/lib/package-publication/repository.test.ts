@@ -65,7 +65,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         package_id: 'pkg-1',
         package_revision: 3,
         snapshot_hash: 'hash-1',
-        snapshot_json: { package: { destination: 'Tokyo' } },
+        snapshot_json: { package: { title: 'Raw supplier title', destination: 'Tokyo' } },
         card_projection: { destination: 'Tokyo' },
         lp_projection: { summary: 'Tokyo trip' },
         route_text_dump: ['Tokyo trip'],

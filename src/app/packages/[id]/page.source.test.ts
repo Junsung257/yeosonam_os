@@ -14,7 +14,7 @@ describe('package customer detail page publication contract', () => {
   it('checks the source package publication state before rendering a public snapshot', () => {
     const source = pageSourceWithoutComments();
     const snapshotIndex = source.indexOf('const publicSnapshot = allowInternalProof');
-    const pkgIndex = source.indexOf('const pkg = publicSnapshot?.package ?? rawPkg', snapshotIndex);
+    const pkgIndex = source.indexOf('const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package', snapshotIndex);
     const stateIndex = source.indexOf('const publicationState = (rawPkg as', pkgIndex);
     const nonPublicBlockIndex = source.indexOf('!isPublicPublicationState(publicationState)', stateIndex);
     const renderStartIndex = source.indexOf('let matchQuery = sb.from', nonPublicBlockIndex);
@@ -25,6 +25,8 @@ describe('package customer detail page publication contract', () => {
     expect(nonPublicBlockIndex).toBeGreaterThan(stateIndex);
     expect(renderStartIndex).toBeGreaterThan(nonPublicBlockIndex);
     expect(source.slice(nonPublicBlockIndex, renderStartIndex)).toContain('notFound()');
+    expect(source.slice(stateIndex, renderStartIndex)).toContain('!publicSnapshot');
+    expect(source.slice(stateIndex, renderStartIndex)).not.toContain('publicationState &&');
   });
 
   it('does not fall back to raw sibling package titles for customer option cards', () => {
