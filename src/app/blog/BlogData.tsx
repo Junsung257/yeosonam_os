@@ -184,7 +184,7 @@ type BlogListData = {
 };
 
 function unavailableBlogData(filter: { destination?: string; angle?: string } = {}): BlogListData {
-  const fallbackPosts = getFallbackBlogPosts(filter);
+  const fallbackPosts = stripRawPackageDataFromBlogListPosts(getFallbackBlogPosts(filter));
   if (fallbackPosts.length > 0) {
     const destinations = [...new Set(fallbackPosts.map((post) => post.destination).filter(Boolean))]
       .map((destination) => ({
@@ -211,6 +211,13 @@ function unavailableBlogData(filter: { destination?: string; angle?: string } = 
 }
 
 const lastGoodBlogData = new Map<string, BlogListData>();
+
+function stripRawPackageDataFromBlogListPosts(posts: BlogPost[]): BlogPost[] {
+  return posts.map(post => ({
+    ...post,
+    travel_packages: null,
+  }));
+}
 
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -318,7 +325,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
     return unavailableBlogData(filter);
   }
 
-  const fetchedPosts = (listRes.data as unknown as BlogPost[]) || [];
+  const fetchedPosts = stripRawPackageDataFromBlogListPosts((listRes.data as unknown as BlogPost[]) || []);
   const hasNextPage = fetchedPosts.length > PER_PAGE;
   const posts = fetchedPosts.slice(0, PER_PAGE);
 
