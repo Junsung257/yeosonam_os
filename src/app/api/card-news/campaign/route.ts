@@ -23,6 +23,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { generateCardCopy, type CardSlideCopy } from '@/lib/content-pipeline/card-copy';
 import { searchPexelsPhotos, isPexelsConfigured } from '@/lib/pexels';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const maxDuration = 120;
 export const runtime = 'nodejs';
@@ -89,34 +90,24 @@ export async function POST(request: NextRequest) {
     const templateFamily = (body.template_family ?? 'editorial') as 'editorial' | 'cinematic' | 'premium' | 'bold';
 
     // Step 1: 상품 정보 조회
-    type PkgRow = {
-      title: string; destination?: string; price?: number; duration?: string | number;
-      itinerary?: string[]; inclusions?: string[]; product_highlights?: string[];
-      product_summary?: string; airline?: string; departure_airport?: string;
-    };
-    const { data: pkg } = await supabaseAdmin
-      .from('travel_packages')
-      .select('title, destination, price, duration, itinerary, inclusions, product_highlights, product_summary, airline, departure_airport')
-      .eq('id', body.package_id)
-      .maybeSingle();
-    if (!pkg) {
-      return NextResponse.json({ error: '상품을 찾을 수 없습니다' }, { status: 404 });
+    const pkgRow = await loadPublicContentPackageForGeneration(body.package_id);
+    if (!pkgRow) {
+      return NextResponse.json({ error: '고객 공개 승인된 상품만 카드뉴스를 만들 수 있습니다.' }, { status: 404 });
     }
-    const pkgRow = pkg as PkgRow;
 
     // Step 2: ContentBrief 생성 (라이브러리 직접 호출)
     const brief = await generateContentBrief({
       mode: 'product',
       product: {
         title: pkgRow.title,
-        destination: pkgRow.destination,
-        price: pkgRow.price,
+        destination: pkgRow.destination ?? undefined,
+        price: pkgRow.price ?? undefined,
         inclusions: pkgRow.inclusions,
         product_highlights: pkgRow.product_highlights,
         itinerary: pkgRow.itinerary,
-        product_summary: pkgRow.product_summary,
-        airline: pkgRow.airline,
-        departure_airport: pkgRow.departure_airport,
+        product_summary: pkgRow.product_summary ?? undefined,
+        airline: pkgRow.airline ?? undefined,
+        departure_airport: pkgRow.departure_airport ?? undefined,
       },
       angle: body.angle,
     });
