@@ -60,6 +60,7 @@ describe('blog public package data boundary', () => {
     const filterIndex = text.indexOf('publicPackageDestinationById.get');
 
     expect(text).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(text).toContain('status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data');
     expect(text).not.toContain('travel_packages(destination)');
     expect(text).not.toContain('p.travel_packages?.destination');
     expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);

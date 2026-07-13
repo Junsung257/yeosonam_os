@@ -137,11 +137,11 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
       if (productIds.length > 0) {
         const { data: packageRows } = await supabaseAdmin
           .from('travel_packages')
-          .select('id, package_revision')
+          .select('id, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
           .in('id', productIds);
         const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
           supabaseAdmin,
-          (packageRows ?? []) as Array<{ id: string; package_revision?: number | null }>,
+          (packageRows ?? []) as Array<Record<string, unknown>>,
         );
         publicPackageDestinationById = new Map(
           (publicPackages as Array<{ id?: unknown; destination?: unknown }>)
