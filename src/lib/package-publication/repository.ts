@@ -33,11 +33,15 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const cardProjection = asRecord(row.card_projection);
   const lpProjection = asRecord(row.lp_projection);
   if (!pkg) return null;
-  if (!asNonEmptyString(cardProjection?.title) && !asNonEmptyString(lpProjection?.title) && !asNonEmptyString(pkg.title) && !asNonEmptyString(pkg.display_title)) {
+  const publicTitle = asNonEmptyString(cardProjection?.title) ?? asNonEmptyString(lpProjection?.title);
+  if (!publicTitle && !asNonEmptyString(pkg.title) && !asNonEmptyString(pkg.display_title)) {
     return null;
   }
+  const publicSummary = asNonEmptyString(lpProjection?.summary);
   return {
     ...pkg,
+    ...(publicTitle ? { title: publicTitle, display_title: publicTitle } : {}),
+    product_summary: publicSummary,
     _canonical_view: asRecord(snapshot?.canonical_view),
     _lp_projection: lpProjection,
     _card_projection: cardProjection,

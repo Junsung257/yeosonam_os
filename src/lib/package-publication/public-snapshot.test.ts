@@ -61,6 +61,9 @@ describe('public package snapshot gate', () => {
     expect(snapshot.lp_projection.summary).toBeTruthy();
     expect(snapshot.lp_projection.summary).not.toContain('관리자노트');
     expect(snapshot.lp_projection.summary).not.toContain('랜드사 커미션');
+    expect(snapshot.package.product_summary).toBe(snapshot.lp_projection.summary);
+    expect(snapshot.package.product_summary).not.toContain('관리자노트');
+    expect(snapshot.package.product_summary).not.toContain('랜드사 커미션');
   });
 
   it('fails closed when a policy title cannot include a verified duration', () => {

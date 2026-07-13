@@ -287,6 +287,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     { ...pkg, ...publicPackage },
     optionalTourClassification.badges,
   );
+  const publicSummary = displayCopy.summaryBody || null;
   const duration = asNumber(publicPackage.duration);
   const canonicalView = renderPackage(publicPackage as Parameters<typeof renderPackage>[0]) as unknown as Record<string, unknown>;
   const snapshotBase: Omit<PublicPackageSnapshot, 'route_text_dump'> = {
@@ -307,6 +308,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       ...publicPackage,
       title: publicTitle,
       display_title: publicTitle,
+      product_summary: publicSummary,
       optional_tours: optionalTourClassification.publicTours,
       publication_state: pkg.publication_state ?? publicPackage.publication_state ?? null,
       package_revision: asNumber(pkg.package_revision) ?? 1,
@@ -335,7 +337,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       title: publicTitle,
       subtitle: displayCopy.heroSubline || null,
       destination: publicPackage.destination ?? null,
-      summary: displayCopy.summaryBody || null,
+      summary: publicSummary,
       price: asNumber(publicPackage.price),
       price_display: priceDisplay(publicPackage),
       cta_copy: '예약 가능 여부 확인',
