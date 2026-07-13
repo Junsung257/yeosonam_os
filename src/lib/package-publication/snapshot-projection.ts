@@ -4,6 +4,7 @@ import {
   auditCustomerVisibleScreenText,
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
+import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -159,7 +160,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
       const id = packageId(pkg) as string;
       const snapshot = snapshotByPackage.get(id) as SnapshotProjectionRow;
       const projectionPayload = projection === 'lp' ? snapshot.lp_projection : snapshot.card_projection;
-      return {
+      const mergedPackage = {
         ...stripRawCustomerFields(pkg),
         ...snapshotPackage(snapshot),
         ...(projectionPayload ?? {}),
@@ -170,6 +171,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
           package_revision: snapshot.package_revision ?? null,
         },
       };
+      return sanitizeCustomerPackageForClient(mergedPackage) ?? { id };
     }) as unknown as T[];
 }
 

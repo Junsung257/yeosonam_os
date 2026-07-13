@@ -107,6 +107,63 @@ describe('public snapshot card projection', () => {
     expect(merged[0]).not.toHaveProperty('inclusions');
   });
 
+  it('strips internal root and nested fields after merging a public snapshot', () => {
+    const packages = [
+      {
+        id: 'pkg-1',
+        package_revision: 3,
+        title: 'raw supplier title',
+        internal_code: 'LAND-SECRET',
+        catalog_id: 'catalog-secret',
+        audit_status: 'clean',
+        audit_report: { internal: true },
+        seats_held: 12,
+        seats_confirmed: 6,
+        products: [
+          {
+            display_name: '공개 상품명',
+            internal_code: 'PRODUCT-SECRET',
+            net_price: 510000,
+            cost_price: 500000,
+            margin_rate: 0.12,
+          },
+        ],
+      },
+    ];
+    const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: {
+          package: {
+            title: 'public title',
+            products: [
+              {
+                display_name: '공개 상품명',
+                internal_code: 'SNAPSHOT-PRODUCT-SECRET',
+                net_price: 510000,
+              },
+            ],
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+          },
+        },
+        card_projection: { title: 'public card title' },
+      },
+    ]) as Array<Record<string, unknown>>;
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ id: 'pkg-1', title: 'public card title' });
+    expect(merged[0]).not.toHaveProperty('internal_code');
+    expect(merged[0]).not.toHaveProperty('catalog_id');
+    expect(merged[0]).not.toHaveProperty('audit_status');
+    expect(merged[0]).not.toHaveProperty('audit_report');
+    expect(merged[0]).not.toHaveProperty('seats_held');
+    expect(merged[0]).not.toHaveProperty('seats_confirmed');
+    expect(merged[0].products).toEqual([{ display_name: '공개 상품명' }]);
+  });
+
   it('drops current snapshots without source-backed price dates instead of exposing projection price', () => {
     const packages = [
       { id: 'pkg-1', package_revision: 3, title: 'raw supplier title', price: 599000 },

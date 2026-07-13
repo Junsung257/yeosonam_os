@@ -35,6 +35,7 @@ const INTERNAL_PACKAGE_KEYS = new Set([
   'commission_currency',
   'data_completeness',
   'field_confidences',
+  'internal_code',
   'price_markup_rate',
   'hard_block_quota',
   'dp_reason',
@@ -70,6 +71,7 @@ const INTERNAL_NESTED_KEYS = new Set([
   'supplier_code',
   'supplier_note',
   'operator_note',
+  'internal_code',
 ]);
 
 type AnyRecord = Record<string, unknown>;
@@ -88,6 +90,7 @@ function sanitizeProductPrices(value: unknown): CustomerProductPriceRow[] {
 
 function sanitizeNestedProductRecord(value: AnyRecord): AnyRecord {
   const product = { ...value };
+  delete product.internal_code;
   delete product.net_price;
   delete product.cost_price;
   delete product.margin_rate;
