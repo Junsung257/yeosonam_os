@@ -26,4 +26,19 @@ describe('package customer detail page publication contract', () => {
     expect(renderStartIndex).toBeGreaterThan(nonPublicBlockIndex);
     expect(source.slice(nonPublicBlockIndex, renderStartIndex)).toContain('notFound()');
   });
+
+  it('does not fall back to raw sibling package titles for customer option cards', () => {
+    const source = pageSourceWithoutComments();
+    const siblingIndex = source.indexOf('const siblingSnapshotByPackage');
+    const siblingMapIndex = source.indexOf('catalogSiblings = siblingRows', siblingIndex);
+    const siblingEndIndex = source.indexOf('JSON-LD Product', siblingMapIndex);
+    const siblingBlock = source.slice(siblingMapIndex, siblingEndIndex);
+
+    expect(siblingIndex).toBeGreaterThanOrEqual(0);
+    expect(siblingMapIndex).toBeGreaterThan(siblingIndex);
+    expect(siblingBlock).toContain('const publicTitle = getNonEmptyString(cardProjection?.title)');
+    expect(siblingBlock).toContain('if (!publicTitle) return []');
+    expect(siblingBlock).not.toContain('?? title');
+    expect(siblingBlock).not.toContain('?? display_title');
+  });
 });
