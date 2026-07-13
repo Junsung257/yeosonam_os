@@ -42,4 +42,19 @@ describe('affiliate and embed public package data boundary', () => {
     expect(pickedIndex).toBeGreaterThan(helperIndex);
     expect(fallbackIndex).toBeGreaterThan(helperIndex);
   });
+
+  it('serves affiliate public API packages only from public snapshots', () => {
+    const text = source('src/app/api/affiliate/public/[referral_code]/route.ts');
+    const packageQueryIndex = text.indexOf(".from('travel_packages')");
+    const snapshotIndex = text.indexOf('const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    const responseIndex = text.indexOf('packages = publicPackages.map(toAffiliatePublicPackage)');
+    const packageQuery = text.slice(packageQueryIndex, snapshotIndex);
+
+    expect(text).toContain('function isAffiliatePublicSnapshotCandidate');
+    expect(text).toContain('sanitizeCustomerPackageForClient');
+    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
+    expect(responseIndex).toBeGreaterThan(snapshotIndex);
+    expect(packageQuery).not.toMatch(/select\('[^']*\b(title|price|location_summary|original_price|discount_rate|main_image)\b/);
+  });
 });
