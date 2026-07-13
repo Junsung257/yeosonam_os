@@ -42,6 +42,11 @@ function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
 }
 
+function asNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function addBlocker(blockers: PublishFinding[], code: string, message: string, fieldPath?: string) {
   blockers.push({ code, message, fieldPath, severity: 'critical' });
 }
@@ -74,6 +79,27 @@ function findBrokenAttractionId(pkg: AnyRecord): string | null {
 function hasOptionalTourPollution(pkg: AnyRecord): boolean {
   const tours = Array.isArray(pkg.optional_tours) ? pkg.optional_tours : [];
   return tours.some(isOptionalTourFragment);
+}
+
+function sourceBackedPriceDateProblem(pkg: AnyRecord): string | null {
+  const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
+  if (priceDates.length === 0) {
+    return 'public package snapshot requires source-backed price_dates before customer opening';
+  }
+
+  for (const [index, value] of priceDates.entries()) {
+    const row = asRecord(value);
+    const date = String(row?.date ?? '');
+    const price = asNumber(row?.adult_selling_price ?? row?.price ?? row?.selling_price);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return `price_dates.${index} has no valid departure date`;
+    }
+    if (!price || price <= 0) {
+      return `price_dates.${index} has no valid customer price`;
+    }
+  }
+
+  return null;
 }
 
 function hasInternalEnglishCopy(input: PublicSnapshotGateInput): string | null {
@@ -171,6 +197,11 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
 
   if (input.snapshotExists === false) {
     addBlocker(hard, 'public_snapshot_missing', 'approved public package snapshot is missing');
+  }
+
+  const priceDateProblem = sourceBackedPriceDateProblem(input.pkg);
+  if (priceDateProblem) {
+    addBlocker(hard, 'price_source_missing', priceDateProblem, 'price_dates');
   }
 
   if (input.publicSnapshotTitle !== undefined) {
