@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergePackageRowsWithCurrentPublicSnapshots } from './snapshot-projection';
+import {
+  fetchAndMergeCurrentPublicPackageCardSnapshots,
+  mergePackageRowsWithCurrentPublicSnapshots,
+} from './snapshot-projection';
+
+type FetchMockOptions = {
+  activeAttractionIds?: string[];
+  nonCustomerPublishableAttractionIds?: string[];
+  attractionNames?: Record<string, string>;
+  attractionLookupError?: Error | null;
+};
 
 function openPackage(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   const updatedAt = '2026-07-09T00:00:00.000Z';
@@ -49,6 +59,48 @@ function openPackage(overrides: Record<string, unknown> = {}): Record<string, un
       },
     },
     ...overrides,
+  };
+}
+
+function makeFetchSupabaseMock(snapshotRows: Record<string, unknown>[], options: FetchMockOptions = {}) {
+  return {
+    from(table: string) {
+      if (table === 'public_package_snapshots') {
+        const snapshotChain = {
+          select: () => snapshotChain,
+          in: () => snapshotChain,
+          order: () => Promise.resolve({ data: snapshotRows, error: null }),
+        };
+        return snapshotChain;
+      }
+      if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
+      const requestedIds = new Set<string>();
+      const attractionChain = {
+        select: () => attractionChain,
+        in(_column: string, values: string[]) {
+          values.forEach(value => requestedIds.add(value));
+          return attractionChain;
+        },
+        eq() {
+          const activeIds = new Set(options.activeAttractionIds ?? []);
+          const nonCustomerPublishableIds = new Set(options.nonCustomerPublishableAttractionIds ?? []);
+          return Promise.resolve({
+            data: [...requestedIds]
+              .filter(id => activeIds.has(id))
+              .map(id => ({
+                id,
+                name: options.attractionNames?.[id] ?? 'Safe public attraction',
+                category: 'sightseeing',
+                badge_type: 'tour',
+                is_active: true,
+                customer_publishable: !nonCustomerPublishableIds.has(id),
+              })),
+            error: options.attractionLookupError ?? null,
+          });
+        },
+      };
+      return attractionChain;
+    },
   };
 }
 
@@ -308,6 +360,123 @@ describe('public snapshot card projection', () => {
         card_projection: { title: 'public card title' },
       },
     ]);
+
+    expect(merged).toEqual([]);
+  });
+
+  it('drops fetched card snapshots with non-customer-publishable attraction ids', async () => {
+    const nonPublicAttractionId = '44444444-4444-4444-8444-444444444444';
+    const packages = [
+      openPackage({ title: 'raw supplier title' }),
+    ];
+
+    const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      makeFetchSupabaseMock([
+        {
+          package_id: 'pkg-1',
+          package_revision: 3,
+          status: 'published',
+          created_at: '2026-07-09T00:00:00.000Z',
+          snapshot_json: {
+            package: {
+              title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
+              destination: 'Yanji',
+              price_dates: [{ date: '2026-07-12', price: 599000 }],
+              itinerary_data: {
+                days: [
+                  {
+                    day: 1,
+                    schedule: [
+                      { activity: 'Legacy non-public attraction', attraction_ids: [nonPublicAttractionId] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        },
+      ], {
+        activeAttractionIds: [nonPublicAttractionId],
+        nonCustomerPublishableAttractionIds: [nonPublicAttractionId],
+      }) as never,
+      packages,
+    );
+
+    expect(merged).toEqual([]);
+  });
+
+  it('fails closed for fetched card snapshots with attraction ids when approval lookup fails', async () => {
+    const attractionId = '55555555-5555-4555-8555-555555555555';
+    const packages = [
+      openPackage({ title: 'raw supplier title' }),
+    ];
+
+    const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      makeFetchSupabaseMock([
+        {
+          package_id: 'pkg-1',
+          package_revision: 3,
+          status: 'published',
+          created_at: '2026-07-09T00:00:00.000Z',
+          snapshot_json: {
+            package: {
+              title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
+              destination: 'Yanji',
+              price_dates: [{ date: '2026-07-12', price: 599000 }],
+              itinerary_data: {
+                days: [
+                  { day: 1, schedule: [{ activity: 'Attraction lookup error', attraction_ids: [attractionId] }] },
+                ],
+              },
+            },
+          },
+          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        },
+      ], {
+        attractionLookupError: new Error('attractions unavailable'),
+      }) as never,
+      packages,
+    );
+
+    expect(merged).toEqual([]);
+  });
+
+  it('drops fetched card snapshots with product-like customer-publishable attraction names', async () => {
+    const productLikeAttractionId = '66666666-6666-4666-8666-666666666666';
+    const packages = [
+      openPackage({ title: 'raw supplier title' }),
+    ];
+
+    const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      makeFetchSupabaseMock([
+        {
+          package_id: 'pkg-1',
+          package_revision: 3,
+          status: 'published',
+          created_at: '2026-07-09T00:00:00.000Z',
+          snapshot_json: {
+            package: {
+              title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
+              destination: 'Yanji',
+              price_dates: [{ date: '2026-07-12', price: 599000 }],
+              itinerary_data: {
+                days: [
+                  { day: 1, schedule: [{ activity: 'Product-like attraction', attraction_ids: [productLikeAttractionId] }] },
+                ],
+              },
+            },
+          },
+          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+        },
+      ], {
+        activeAttractionIds: [productLikeAttractionId],
+        attractionNames: {
+          [productLikeAttractionId]: 'Tokyo eSIM unlimited data product',
+        },
+      }) as never,
+      packages,
+    );
 
     expect(merged).toEqual([]);
   });

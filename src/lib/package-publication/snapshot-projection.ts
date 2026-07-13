@@ -6,6 +6,10 @@ import {
 } from '@/lib/customer-visible-text-audit';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import {
+  collectItineraryAttractionIds,
+  validateCustomerPublishableAttractionIds,
+} from './attraction-validation';
 import { isPublicPublicationState } from './types';
 
 type AnyRecord = Record<string, unknown>;
@@ -136,6 +140,35 @@ function hasBlockingSnapshotCopy(row: SnapshotProjectionRow, projection: 'card' 
     .some(issue => !issue.safeFixable);
 }
 
+function snapshotItineraryAttractionIds(row: SnapshotProjectionRow): string[] {
+  return collectItineraryAttractionIds(snapshotPackage(row).itinerary_data);
+}
+
+async function filterSnapshotsWithPublishableAttractions(
+  supabase: SupabaseClient,
+  snapshotRows: SnapshotProjectionRow[],
+): Promise<SnapshotProjectionRow[]> {
+  const idsByRow = new Map<SnapshotProjectionRow, string[]>();
+  const allIds = new Set<string>();
+  for (const row of snapshotRows) {
+    const ids = snapshotItineraryAttractionIds(row);
+    idsByRow.set(row, ids);
+    ids.forEach(id => allIds.add(id));
+  }
+  if (allIds.size === 0) return snapshotRows;
+
+  const validation = await validateCustomerPublishableAttractionIds(supabase, [...allIds]);
+  const invalidIds = new Set(validation.invalidIds);
+  if (validation.lookupError) {
+    return snapshotRows.filter(row => (idsByRow.get(row) ?? []).length === 0);
+  }
+
+  return snapshotRows.filter((row) => {
+    const ids = idsByRow.get(row) ?? [];
+    return ids.every(id => !invalidIds.has(id));
+  });
+}
+
 export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
   packages: T[],
   snapshotRows: SnapshotProjectionRow[],
@@ -198,5 +231,9 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return mergePackageRowsWithCurrentPublicSnapshots(packages, (data ?? []) as SnapshotProjectionRow[], 'card');
+  const publishableSnapshotRows = await filterSnapshotsWithPublishableAttractions(
+    supabase,
+    (data ?? []) as SnapshotProjectionRow[],
+  );
+  return mergePackageRowsWithCurrentPublicSnapshots(packages, publishableSnapshotRows, 'card');
 }
