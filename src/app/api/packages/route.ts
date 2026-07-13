@@ -79,6 +79,53 @@ function includesCustomerNoticeFields(input: Record<string, unknown>): boolean {
     || Object.prototype.hasOwnProperty.call(input, 'customer_notes');
 }
 
+const CUSTOMER_PUBLIC_REAUDIT_FIELDS = new Set([
+  'title',
+  'display_title',
+  'hero_tagline',
+  'destination',
+  'country',
+  'duration',
+  'nights',
+  'price',
+  'price_tiers',
+  'price_dates',
+  'price_list',
+  'surcharges',
+  'excluded_dates',
+  'category',
+  'product_type',
+  'trip_style',
+  'departure_days',
+  'departure_airport',
+  'airline',
+  'min_participants',
+  'ticketing_deadline',
+  'guide_tip',
+  'single_supplement',
+  'small_group_surcharge',
+  'optional_tours',
+  'cancellation_policy',
+  'category_attrs',
+  'inclusions',
+  'excludes',
+  'customer_notes',
+  'notices_parsed',
+  'itinerary',
+  'itinerary_data',
+  'product_tags',
+  'product_highlights',
+  'product_summary',
+  'marketing_copies',
+  'raw_text',
+  'accommodations',
+  'status',
+]);
+
+function customerPublicReauditKeys(patch: Record<string, unknown>): string[] {
+  return Object.keys(patch).filter(key => CUSTOMER_PUBLIC_REAUDIT_FIELDS.has(key));
+}
+
 async function assertPackageV3NoticePatchAllowed(packageId: string, input: Record<string, unknown>) {
   if (!includesCustomerNoticeFields(input)) return null;
   const latestDraft = await loadLatestV3DraftForPackage(supabaseAdmin, packageId);
@@ -908,6 +955,7 @@ export async function PATCH(request: NextRequest) {
         .from('travel_packages')
         .update({
           status: 'approved',
+          publication_state: 'blocked',
           updated_at: now,
           // Option B: 승인 시 자동으로 visual baseline 재생성 큐 등록
           baseline_requested_at: now,
@@ -1082,6 +1130,7 @@ export async function PATCH(request: NextRequest) {
     if (sanitized.price_tiers && !sanitized.price_dates) {
       sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as unknown as import('@/lib/parser').PriceTier[]);
     }
+    const publicReauditKeys = customerPublicReauditKeys(sanitized);
     if (typeof sanitized.status === 'string' && isCustomerVisibleStatus(sanitized.status)) {
       const sourceAuditBlock = await assertPackageSourceAuditAllowsPublication(packageId);
       if (sourceAuditBlock) return sourceAuditBlock;
@@ -1105,10 +1154,18 @@ export async function PATCH(request: NextRequest) {
     );
     let beforeSnapshot: Record<string, unknown> | null = null;
     let beforePkgMeta: { land_operator_id: string | null; destination: string | null; raw_text: string | null } | null = null;
-    if (trackedKeysChanged.length > 0) {
+    if (trackedKeysChanged.length > 0 || publicReauditKeys.length > 0) {
+      const selectFields = Array.from(new Set([
+        'id',
+        'land_operator_id',
+        'destination',
+        'raw_text',
+        'package_revision',
+        ...trackedKeysChanged,
+      ]));
       const { data: beforeRow } = await supabaseAdmin
         .from('travel_packages')
-        .select(`id, land_operator_id, destination, raw_text, ${trackedKeysChanged.join(', ')}`)
+        .select(selectFields.join(', '))
         .eq('id', packageId)
         .single();
       if (beforeRow) {
@@ -1119,6 +1176,15 @@ export async function PATCH(request: NextRequest) {
           raw_text: (beforeRow as unknown as { raw_text?: string | null }).raw_text ?? null,
         };
       }
+    }
+    if (publicReauditKeys.length > 0) {
+      const nextRevision = Number(beforeSnapshot?.package_revision ?? 1) + 1;
+      const nextStatus = typeof sanitized.status === 'string' ? sanitized.status : null;
+      sanitized.package_revision = nextRevision;
+      sanitized.audit_status = 'blocked';
+      sanitized.publication_state = nextStatus && !isCustomerVisibleStatus(nextStatus)
+        ? 'blocked'
+        : 'needs_reaudit';
     }
 
     const { data: result, error: updateErr } = await supabaseAdmin
