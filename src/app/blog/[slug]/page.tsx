@@ -157,7 +157,10 @@ interface RelatedPost {
   og_image_url: string | null;
   angle_type: string;
   published_at: string;
+  product_id: string | null;
+  destination: string | null;
   travel_packages: {
+    id?: string;
     destination: string;
     price: number | null;
     duration: string | number | null;
@@ -718,6 +721,60 @@ function splitHtmlForInlineInjection(html: string): { before: string; after: str
   return { before, after };
 }
 
+function relatedPostDestination(post: RelatedPost): string | null {
+  return post.travel_packages?.destination || post.destination || null;
+}
+
+async function attachRelatedPostPublicSnapshots(posts: RelatedPost[]): Promise<RelatedPost[]> {
+  const productIds = Array.from(
+    new Set(posts.map((post) => post.product_id).filter((id): id is string => Boolean(id))),
+  );
+  if (productIds.length === 0) {
+    return posts.map((post) => ({ ...post, travel_packages: null }));
+  }
+
+  try {
+    const { data } = await runBlogDetailQuery(
+      'relatedPostPublicPackages',
+      supabaseAdmin
+        .from('travel_packages')
+        .select('id, title, destination, price, duration, nights, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .in('id', productIds)
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published']),
+      { data: [] as Array<Record<string, unknown>>, error: null },
+      2200,
+    );
+    const publicRows = await mergeBlogPublicPackageSnapshots(
+      ((data || []) as Array<Record<string, unknown>>).filter(isBlogPublicSnapshotCandidate),
+    );
+    const publicById = new Map(
+      publicRows.map((pkg) => [String(pkg.id), pkg]),
+    );
+
+    return posts.map((post) => {
+      const publicPkg = post.product_id ? publicById.get(post.product_id) : null;
+      if (!publicPkg) return { ...post, travel_packages: null };
+      return {
+        ...post,
+        travel_packages: {
+          id: typeof publicPkg.id === 'string' ? publicPkg.id : undefined,
+          destination: typeof publicPkg.destination === 'string' ? publicPkg.destination : '',
+          price: typeof publicPkg.price === 'number' ? publicPkg.price : null,
+          duration:
+            typeof publicPkg.duration === 'number' || typeof publicPkg.duration === 'string'
+              ? publicPkg.duration
+              : null,
+          nights: typeof publicPkg.nights === 'number' ? publicPkg.nights : null,
+        },
+      };
+    });
+  } catch (error) {
+    console.warn('[blog] related post public snapshot merge failed; hiding package price/duration', error);
+    return posts.map((post) => ({ ...post, travel_packages: null }));
+  }
+}
+
 async function getRelatedPosts(
   currentSlug: string,
   destination: string | undefined,
@@ -730,7 +787,7 @@ async function getRelatedPosts(
     supabaseAdmin
       .from('content_creatives')
       .select(
-        'id, slug, seo_title, og_image_url, angle_type, published_at, travel_packages(destination, price, duration, nights)',
+        'id, slug, seo_title, og_image_url, angle_type, published_at, product_id, destination',
       )
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -743,20 +800,20 @@ async function getRelatedPosts(
   );
   if (isBlogDetailQueryUnavailable(result) || result.error || !result.data) return [];
   const { data } = result;
-  const posts = data as unknown as RelatedPost[];
+  const posts = await attachRelatedPostPublicSnapshots(data as unknown as RelatedPost[]);
 
   // 우선순위: 같은 destination + 같은 angle → 같은 destination → 같은 angle → 최신
   const sameDestSameAngle = posts.filter(
-    (p) => p.travel_packages?.destination === destination && p.angle_type === angleType,
+    (p) => relatedPostDestination(p) === destination && p.angle_type === angleType,
   );
   const sameDest = posts.filter(
-    (p) => p.travel_packages?.destination === destination && p.angle_type !== angleType,
+    (p) => relatedPostDestination(p) === destination && p.angle_type !== angleType,
   );
   const sameAngle = posts.filter(
-    (p) => p.angle_type === angleType && p.travel_packages?.destination !== destination,
+    (p) => p.angle_type === angleType && relatedPostDestination(p) !== destination,
   );
   const rest = posts.filter(
-    (p) => p.travel_packages?.destination !== destination && p.angle_type !== angleType,
+    (p) => relatedPostDestination(p) !== destination && p.angle_type !== angleType,
   );
 
   const merged: RelatedPost[] = [];
@@ -1446,7 +1503,7 @@ async function renderBlogDetail({
                   .map((rp) => ({
                     slug: rp.slug,
                     seo_title: rp.seo_title,
-                    destination: rp.travel_packages?.destination,
+                    destination: relatedPostDestination(rp) ?? undefined,
                   }));
                 const canInject =
                   split &&
@@ -1621,6 +1678,7 @@ async function RelatedPostsSection({
               .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
               .trim();
             const rpDur = formatDuration(rp.travel_packages?.duration, rp.travel_packages?.nights);
+            const rpDestination = relatedPostDestination(rp);
             return (
               <Link
                 key={rp.id}
@@ -1644,10 +1702,10 @@ async function RelatedPostsSection({
                 )}
                 <div className="p-5">
                   <div className="mb-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
-                    {rp.travel_packages?.destination && (
-                      <span>{rp.travel_packages.destination}</span>
+                    {rpDestination && (
+                      <span>{rpDestination}</span>
                     )}
-                    {rp.travel_packages?.destination && <span>·</span>}
+                    {rpDestination && <span>·</span>}
                     <span>{ANGLE_LABELS[rp.angle_type] || rp.angle_type}</span>
                     {rpDur && <><span>·</span><span>{rpDur}</span></>}
                   </div>
