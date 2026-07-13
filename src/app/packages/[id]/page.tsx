@@ -856,13 +856,18 @@ export default async function PackageDetailPage({
     }
     catalogSiblings = siblingRows
       .filter(s => siblingSnapshotByPackage.has(s.id))
-      .map(({ id: sid, title, display_title, destination, product_highlights }) => ({
-        id: sid,
-        title: decodeCustomerHtmlEntities(String(siblingSnapshotByPackage.get(sid)?.card_projection?.title ?? title)),
-        display_title: decodeCustomerHtmlEntities(String(siblingSnapshotByPackage.get(sid)?.card_projection?.title ?? display_title ?? title)),
-        destination: decodeCustomerHtmlEntities(String(siblingSnapshotByPackage.get(sid)?.card_projection?.destination ?? destination ?? '')),
-        product_highlights: product_highlights?.map(item => decodeCustomerHtmlEntities(item)) ?? null,
-      }));
+      .flatMap(({ id: sid, product_highlights }) => {
+        const cardProjection = siblingSnapshotByPackage.get(sid)?.card_projection;
+        const publicTitle = getNonEmptyString(cardProjection?.title);
+        if (!publicTitle) return [];
+        return [{
+          id: sid,
+          title: decodeCustomerHtmlEntities(publicTitle),
+          display_title: decodeCustomerHtmlEntities(publicTitle),
+          destination: decodeCustomerHtmlEntities(getNonEmptyString(cardProjection?.destination) ?? ''),
+          product_highlights: product_highlights?.map(item => decodeCustomerHtmlEntities(item)) ?? null,
+        }];
+      });
   }
 
   // JSON-LD Product + BreadcrumbList
