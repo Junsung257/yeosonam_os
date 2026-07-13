@@ -4,16 +4,11 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildAndSaveSearchAdPackagePlan } from '@/lib/search-ads-auto-planner';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 
 type PackageRow = {
   id: string;
-  title: string | null;
-  destination: string | null;
-  ticketing_deadline: string | null;
-  created_at: string | null;
 };
 
 type DecisionLogRow = {
@@ -40,8 +35,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const { data: packages, error: packageError } = await supabaseAdmin
     .from('travel_packages')
-    .select('id,title,destination,ticketing_deadline,created_at')
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+    .select('id')
+    .in('publication_state', ['approved', 'published'])
     .order('created_at', { ascending: false })
     .limit(limit * 4);
 
@@ -88,7 +83,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     );
   }
 
-  const results: Array<{ package_id: string; title: string | null; saved: number; keywords: number; error?: string }> = [];
+  const results: Array<{ package_id: string; campaign_name?: string; saved: number; keywords: number; error?: string }> = [];
   const decisions: DecisionLogRow[] = [];
 
   for (const pkg of targets) {
@@ -96,7 +91,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       const plan = await buildAndSaveSearchAdPackagePlan(pkg.id);
       results.push({
         package_id: pkg.id,
-        title: pkg.title,
+        campaign_name: plan.campaignName,
         saved: plan.saved,
         keywords: plan.summary.total,
       });
@@ -116,7 +111,6 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     } catch (error) {
       results.push({
         package_id: pkg.id,
-        title: pkg.title,
         saved: 0,
         keywords: 0,
         error: sanitizeDbError(error, 'Candidate generation failed'),

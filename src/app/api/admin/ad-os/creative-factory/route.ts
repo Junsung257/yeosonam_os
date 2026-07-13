@@ -4,6 +4,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,17 +28,23 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const packageQuery = supabaseAdmin
     .from('travel_packages')
-    .select('id,title,destination,tenant_id')
+    .select('id,tenant_id')
+    .in('publication_state', ['approved', 'published'])
     .order('created_at', { ascending: false })
     .limit(1);
   const packageRes = packageId ? await packageQuery.eq('id', packageId).maybeSingle() : await packageQuery.maybeSingle();
   if (packageRes.error) return apiResponse({ ok: false, error: sanitizeDbError(packageRes.error) }, { status: 500 });
-  const pkg = packageRes.data as { id: string; title: string | null; destination: string | null; tenant_id?: string | null } | null;
+  const pkg = packageRes.data as { id: string; tenant_id?: string | null } | null;
   if (!pkg) return apiResponse({ ok: false, error: 'No package found for creative factory' }, { status: 404 });
 
+  const publicPackage = await loadPublicContentPackageForGeneration(pkg.id);
+  if (!publicPackage?.destination) {
+    return apiResponse({ ok: false, error: 'Approved public package snapshot is required for creative factory' }, { status: 409 });
+  }
+
   const drafts = buildCreativeFactoryDrafts({
-    destination: pkg.destination || 'travel',
-    productTitle: pkg.title,
+    destination: publicPackage.destination,
+    productTitle: publicPackage.title,
   }).slice(0, limit);
 
   const rows = drafts.map((draft) => {
@@ -45,7 +52,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     const title = draft.headline;
     return {
       tenant_id: pkg.tenant_id || null,
-      product_id: pkg.id,
+      product_id: publicPackage.id,
       angle_type: draft.angle,
       target_audience: draft.angle,
       channel,
@@ -63,7 +70,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       },
       tone: 'professional',
       status: 'draft',
-      slug: `${slugify(`${pkg.destination || 'travel'}-${draft.angle}-${pkg.id}`)}`,
+      slug: `${slugify(`${publicPackage.destination}-${draft.angle}-${publicPackage.id}`)}`,
       seo_title: title,
       seo_description: draft.brief,
       category: 'ad_os_creative_factory',
@@ -72,8 +79,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       sub_keyword: draft.headline,
       generation_params: {
         ad_os_v: 'v17',
-        product_title: pkg.title,
-        destination: pkg.destination,
+        product_title: publicPackage.title,
+        destination: publicPackage.destination,
       },
       topic_source: 'ad_os_creative_factory',
       generation_meta: {
@@ -81,7 +88,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         angle: draft.angle,
         publish_policy: 'draft_only',
       },
-      destination: pkg.destination || null,
+      destination: publicPackage.destination,
       target_ad_keywords: [draft.headline],
       landing_headline: draft.headline,
       landing_subtitle: draft.brief,
@@ -107,7 +114,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   return apiResponse({
     ok: true,
     applied: apply,
-    package: pkg,
+    package: { id: publicPackage.id, title: publicPackage.title, destination: publicPackage.destination },
     prepared_drafts: rows.length,
     inserted_drafts: inserted.length,
     drafts: rows,
