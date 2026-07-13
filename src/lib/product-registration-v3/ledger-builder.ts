@@ -74,6 +74,8 @@ const BAKEKDU_DESCRIPTION_FRAGMENT_RE =
 
 const TIME_WITH_ARRIVAL_OFFSET_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+?\d+\))?$/;
 const SOURCE_EVIDENCE_HEADER_RE = /^\[\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\]$/;
+const POST_ITINERARY_PRICE_EVIDENCE_SECTION_RE =
+  /^(?:\[\s*\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\s*\]|.*\bPKG\b.*(?:\d+\s*\ubc15\s*\d+\s*\uc77c|\d+N\d+D)|\*{2,}.*\ubc1c\uad8c\uc870\uac74.*\*{2,})/i;
 const HOLIDAY_PRICE_NOISE_RE = /^[\s\u25cf\u2605\u2606*]+.*\uc5f0\ud734\s*\ucd9c\ubc1c/;
 const KOREAN_REGION_CELL_ONLY_RE =
   /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c)$/;
@@ -370,6 +372,18 @@ function resolveSeparatedArrivalTime(
   return null;
 }
 
+function itineraryLinesBeforePriceEvidenceTail(sectionLines: V3SourceLine[]): V3SourceLine[] {
+  let seenItineraryDay = false;
+  for (let index = 0; index < sectionLines.length; index++) {
+    const trimmed = sectionLines[index].quote.trim();
+    if (DAY_HEADER_RE.test(trimmed)) seenItineraryDay = true;
+    if (seenItineraryDay && POST_ITINERARY_PRICE_EVIDENCE_SECTION_RE.test(trimmed)) {
+      return sectionLines.slice(0, index);
+    }
+  }
+  return sectionLines;
+}
+
 function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_boundaries'][number]): V3LedgerVariant {
   const sectionLines = lines.slice(boundary.line_start - 1, boundary.line_end);
   const linePrices = sectionLines
@@ -384,16 +398,17 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     }))
     .filter(price => price.amount > 0);
   const prices = linePrices.length > 0 ? linePrices : buildPriceCalendarFromIR(sectionLines, boundary.title_hint);
+  const itinerarySectionLines = itineraryLinesBeforePriceEvidenceTail(sectionLines);
 
-  const flightRows = sectionLines
+  const flightRows = itinerarySectionLines
     .map((line, sectionIndex) => ({ line, sectionIndex, match: line.quote.match(FLIGHT_CODE_RE) }))
     .filter((row): row is { line: V3SourceLine; sectionIndex: number; match: RegExpMatchArray } => Boolean(row.match));
   const flight_segments = flightRows.map(({ line, match, sectionIndex }, index) => {
     const times = [...line.quote.matchAll(TIME_RE_GLOBAL)].map(m => m[0]);
-    const resolvedTimes = resolveAdjacentFlightTimes(sectionLines, sectionIndex, times);
+    const resolvedTimes = resolveAdjacentFlightTimes(itinerarySectionLines, sectionIndex, times);
     let arrTime = resolvedTimes.arrTime;
     if (!arrTime) {
-      for (const next of sectionLines.slice(sectionIndex + 1, sectionIndex + 4)) {
+      for (const next of itinerarySectionLines.slice(sectionIndex + 1, sectionIndex + 4)) {
         if (FLIGHT_CODE_RE.test(next.quote)) break;
         if (!/\ub3c4\ucc29/.test(next.quote)) continue;
         const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
@@ -403,7 +418,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
         }
       }
     }
-    arrTime ??= resolveSeparatedArrivalTime(sectionLines, sectionIndex);
+    arrTime ??= resolveSeparatedArrivalTime(itinerarySectionLines, sectionIndex);
     return {
       leg: index === 0 ? 'outbound' as const : index === 1 ? 'inbound' as const : 'unknown' as const,
       code: `${match[1]}${match[2]}`,
@@ -418,7 +433,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   let inRemarkSection = false;
   let seenItineraryDay = false;
   let itineraryClosed = false;
-  for (const line of sectionLines) {
+  for (const line of itinerarySectionLines) {
     const trimmed = line.quote.trim();
     if (/^(REMARK|비고|주의\s*사항|공지\s*사항)\s*$/i.test(trimmed)) {
       inRemarkSection = true;
