@@ -79,6 +79,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -154,6 +155,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -175,12 +177,52 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
 
     expect(gate.publishable).toBe(true);
     expect(gate.publication_state).toBe('published');
+  });
+
+  it('fails closed when the customer-open contract was not explicitly passed', () => {
+    const pkg = yanjiPackage({
+      display_title: '연길·백두산 노옵션 핵심관광 4박5일',
+      optional_tours: [],
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('unsupported_customer_claim');
+    expect(gate.hard_blockers.map(blocker => blocker.message).join('\n')).toContain('customer_open_contract');
+  });
+
+  it('keeps customer-open contract blockers as publish gate blockers', () => {
+    const pkg = yanjiPackage({
+      display_title: '연길·백두산 노옵션 핵심관광 4박5일',
+      optional_tours: [],
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: false,
+      customerOpenContractBlockers: ['source_verify:blocked'],
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.message)).toContain('source_verify:blocked');
   });
 
   it('blocks an onsen title when onsen is only a minor service, not the trip theme', () => {
@@ -204,6 +246,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -235,6 +278,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -254,6 +298,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -280,6 +325,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -307,6 +353,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -328,6 +375,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -346,6 +394,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: [...snapshot.route_text_dump, '예약 즉시 항공·숙박 확보'],
     });
@@ -364,6 +413,7 @@ describe('public package snapshot gate', () => {
       pkg,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: [...snapshot.route_text_dump, '관리자노트: 랜드사 커미션 9% 내부 확인'],
     });

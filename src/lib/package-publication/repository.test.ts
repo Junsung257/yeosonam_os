@@ -120,7 +120,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     const result = await createPublicPackageSnapshotAndDecision(
       supabase as never,
       publishablePackage(),
-      {},
+      { customerOpenContractOk: true },
       {
         packagePatch: {
           status: 'active',
