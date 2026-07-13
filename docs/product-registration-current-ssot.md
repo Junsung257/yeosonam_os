@@ -116,7 +116,7 @@ npm run refresh:customer-mobile-proofs:pending -- --apply --base=https://www.yeo
 
 `auto-mobile-fetch-proof` is diagnostic evidence only. It must not satisfy `customer_open_contract`; customer-open proof must be stored with `source='hwp-mobile-browser-proof'` and include `/packages` and `/lp` CTA interaction checks.
 
-Customer title claims are checked again at the public snapshot gate, even when the title generator already cleaned the copy. `출발확정` is never allowed in a customer title. `온천` may be a title theme only when source evidence shows a real onsen-themed trip, such as an onsen town/ryokan/hotel/stay/theme, not a single included `온천욕` service. `5성`, `준5성`, or `특급호텔` may appear in a customer title only when hotel-grade evidence exists in the source hotel/accommodation facts.
+Customer title claims are checked again at the public snapshot gate, even when the title generator already cleaned the copy. The same claim policy applies to subtitle, card badges, and LP summary copy so raw supplier title claims cannot re-enter through secondary surfaces. `출발확정` is never allowed in a customer title. `온천` may be a title theme or badge only when source evidence shows a real onsen-themed trip, such as an onsen town/ryokan/hotel/stay/theme, not a single included `온천욕` service. `5성`, `준5성`, or `특급호텔` may appear in customer title/subtitle/badges only when hotel-grade evidence exists in the source hotel/accommodation facts.
 
 If a live sweep finds `active`/`approved` rows that fail `customer_open_contract` or stored mobile proof, treat that as a publication-state drift, not a copy-only issue. First audit, then demote unsafe public statuses so no raw status/API/listing path can treat them as customer-open:
 

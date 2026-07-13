@@ -114,7 +114,8 @@ describe('buildCustomerPackageDisplayCopy', () => {
 
     expect(copy.heroHeadline).toBe('연길·백두산 노옵션 핵심관광 4박5일');
     expect(copy.heroHeadline).not.toContain('온천');
-    expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '5성호텔', '온천']));
+    expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '5성호텔']));
+    expect(copy.badges).not.toContain('온천');
   });
 
   it('uses no-option evidence from exclusions and optional-tour fields across customer surfaces', () => {
@@ -131,6 +132,26 @@ describe('buildCustomerPackageDisplayCopy', () => {
 
     expect(copy.heroHeadline).toBe('연길·백두산 노옵션 핵심관광 4박5일');
     expect(copy.heroHeadline).not.toMatch(/LJ|온천|5성/);
-    expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '온천']));
+    expect(copy.badges).toEqual(expect.arrayContaining(['노옵션']));
+    expect(copy.badges).not.toContain('온천');
+    expect(copy.badges).not.toContain('5성호텔');
+    expect(copy.heroSubline).not.toMatch(/온천|5성/);
+    expect(copy.summaryBody).not.toMatch(/온천|5성/);
+  });
+
+  it('uses onsen and hotel-grade badges only when non-title evidence supports them', () => {
+    const copy = buildCustomerPackageDisplayCopy({
+      title: '규슈 온천·관광 3박4일',
+      destination: '규슈',
+      duration: 4,
+      nights: 3,
+      product_highlights: ['쿠로카와 온천마을 산책'],
+      inclusions: ['온천 료칸 숙박', '규슈 5성 호텔 또는 동급'],
+      optional_tours: [{ name: '노옵션' }],
+    });
+
+    expect(copy.heroHeadline).toContain('온천');
+    expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '5성호텔', '온천']));
+    expect(copy.heroSubline).toMatch(/5성호텔|온천/);
   });
 });

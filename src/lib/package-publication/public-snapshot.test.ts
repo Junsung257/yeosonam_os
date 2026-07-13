@@ -43,6 +43,9 @@ describe('public package snapshot gate', () => {
 
     expect(snapshot.public_title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
     expect(snapshot.public_title).not.toContain('온천');
+    expect(snapshot.public_subtitle).not.toMatch(/온천|5성/);
+    expect(snapshot.card_projection.badges).not.toEqual(expect.arrayContaining(['온천', '5성호텔']));
+    expect(snapshot.lp_projection.summary).not.toMatch(/온천|5성/);
     expect(optionalTourClassification.status).toBe('none_explicit');
     expect(snapshot.optional_tours_public).toEqual([]);
     expect(snapshot.package.optional_tours).toEqual([]);
