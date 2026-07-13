@@ -14,6 +14,7 @@ export type PublicSnapshotGateInput = {
   customerOpenContractBlockers?: string[];
   publicSnapshotHash?: string | null;
   expectedPublicSnapshotHash?: string | null;
+  publicSnapshotTitle?: string | null;
   snapshotExists?: boolean;
   routeTextDump?: string[];
   auditQueryFailed?: string | null;
@@ -28,6 +29,7 @@ export type PublicSnapshotGateResult = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PUBLIC_TITLE_DURATION_RE = /\d+\s*박\s*\d+\s*일|\d+\s*일/;
 const INTERNAL_ENGLISH_RE = /\bDecision\s*guide\b|\boperator\b|\binternal\b|\bpublish_gate\b/i;
 const BLOCKING_CUSTOMER_COPY_CODES = new Set([
   'placeholder_or_mojibake',
@@ -168,6 +170,15 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
 
   if (input.snapshotExists === false) {
     addBlocker(hard, 'public_snapshot_missing', 'approved public package snapshot is missing');
+  }
+
+  if (input.publicSnapshotTitle !== undefined) {
+    const title = String(input.publicSnapshotTitle ?? '').trim();
+    if (!title) {
+      addBlocker(hard, 'public_title_missing', 'public package snapshot title is missing or not policy-generated', 'public_title');
+    } else if (!PUBLIC_TITLE_DURATION_RE.test(title)) {
+      addBlocker(hard, 'unsupported_title_claim', 'public package snapshot title must include the verified trip duration', 'public_title');
+    }
   }
 
   if (

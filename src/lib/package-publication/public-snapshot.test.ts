@@ -52,6 +52,39 @@ describe('public package snapshot gate', () => {
     expect(snapshot.option_policy.badges).toContain('노옵션');
   });
 
+  it('does not fall back to a raw supplier summary for the LP projection', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      optional_tours: [],
+      product_summary: '관리자노트: 랜드사 커미션 9% 내부 확인',
+    }));
+
+    expect(snapshot.lp_projection.summary).toBeTruthy();
+    expect(snapshot.lp_projection.summary).not.toContain('관리자노트');
+    expect(snapshot.lp_projection.summary).not.toContain('랜드사 커미션');
+  });
+
+  it('fails closed when a policy title cannot include a verified duration', () => {
+    const pkg = yanjiPackage({
+      duration: null,
+      nights: null,
+      title: '연길 핵심관광',
+      display_title: null,
+      trip_style: null,
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(snapshot.public_title).toBe('');
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('public_title_missing');
+  });
+
   it('stores the canonical render view inside the public snapshot', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({ optional_tours: [] }));
 
@@ -117,6 +150,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -137,6 +171,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -165,6 +200,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -195,6 +231,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -213,6 +250,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -238,6 +276,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -264,6 +303,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -284,6 +324,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
@@ -301,6 +342,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: [...snapshot.route_text_dump, '예약 즉시 항공·숙박 확보'],
     });
@@ -318,6 +360,7 @@ describe('public package snapshot gate', () => {
     const gate = evaluatePublicSnapshotPublishGate({
       pkg,
       publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,
       routeTextDump: [...snapshot.route_text_dump, '관리자노트: 랜드사 커미션 9% 내부 확인'],
     });
