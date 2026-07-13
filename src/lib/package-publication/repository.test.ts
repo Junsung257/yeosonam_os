@@ -79,6 +79,41 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     expect(snapshot).toBeNull();
   });
 
+  it('normalizes legacy snapshot packages to projection-approved customer copy', async () => {
+    const snapshot = await fetchLatestPublicPackageSnapshot(
+      makeSnapshotFetchSupabaseMock({
+        id: 'snap-2',
+        package_id: 'pkg-2',
+        package_revision: 3,
+        snapshot_hash: 'hash-2',
+        snapshot_json: {
+          package: {
+            id: 'pkg-2',
+            title: '[BX] 랜드사 원문 제목',
+            display_title: '[BX] 랜드사 원문 제목',
+            product_summary: '관리자노트: 랜드사 커미션 9% 내부 확인',
+            destination: '연길',
+          },
+        },
+        card_projection: { title: '연길·백두산 노옵션 핵심관광 4박5일', destination: '연길' },
+        lp_projection: {
+          title: '연길·백두산 노옵션 핵심관광 4박5일',
+          summary: '일정, 항공, 숙소, 포함 조건을 상담 전 빠르게 확인할 수 있어요.',
+        },
+        route_text_dump: ['연길·백두산 노옵션 핵심관광 4박5일'],
+        status: 'published',
+        created_at: '2026-07-13T00:00:00.000Z',
+      }) as never,
+      'pkg-2',
+      { expectedPackageRevision: 3 },
+    );
+
+    expect(snapshot?.package.title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(snapshot?.package.display_title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(snapshot?.package.product_summary).toBe('일정, 항공, 숙소, 포함 조건을 상담 전 빠르게 확인할 수 있어요.');
+    expect(JSON.stringify(snapshot?.package)).not.toContain('랜드사 커미션');
+  });
+
   it('publishes snapshot, decision, and package final state through one atomic RPC', async () => {
     const { supabase, calls } = makeSupabaseMock();
 
