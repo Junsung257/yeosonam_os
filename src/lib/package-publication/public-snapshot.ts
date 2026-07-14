@@ -5,6 +5,7 @@ import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-
 import { hasRiskyCustomerPromiseCopy } from '@/lib/customer-risky-copy';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { renderPackage } from '@/lib/render-contract';
+import { composeCustomerPublicTitle } from './public-title-policy';
 import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 
 type AnyRecord = Record<string, unknown>;
@@ -383,6 +384,9 @@ function titleTheme(sourceText: string, destination: string): string {
 }
 
 function composePublicTitle(pkg: AnyRecord, optionBadges: string[]): string {
+  const policyTitle = composeCustomerPublicTitle(pkg, optionBadges);
+  if (policyTitle) return policyTitle;
+
   const sourceText = sourceBundle(pkg);
   const destination = titleDestination(pkg, sourceText);
   const duration = formatDuration(pkg);

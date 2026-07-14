@@ -123,6 +123,7 @@ describe('public package snapshot gate', () => {
       title: '연길 핵심관광',
       display_title: null,
       trip_style: null,
+      raw_text: '선택관광: 노옵션\nDAY 2 백두산 천지 관광',
     });
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
     const gate = evaluatePublicSnapshotPublishGate({
