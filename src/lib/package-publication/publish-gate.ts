@@ -25,6 +25,7 @@ export type PublicSnapshotGateInput = {
   routeTextDump?: string[];
   auditQueryFailed?: string | null;
   invalidAttractionIds?: string[];
+  publicNoticeSourcePaths?: string[];
 };
 
 export type PublicSnapshotGateResult = {
@@ -97,7 +98,19 @@ function hasOptionalTourPollution(pkg: AnyRecord): boolean {
   return tours.some(isOptionalTourFragment);
 }
 
-function findMaskedCustomerCopyPollution(pkg: AnyRecord): { path: string; text: string; risky: boolean } | null {
+function coveredPublicNoticeSourcePaths(input: PublicSnapshotGateInput): Set<string> {
+  return new Set([
+    ...(input.publicNoticeSourcePaths ?? []),
+    ...(Array.isArray(input.pkg._public_notice_source_paths)
+      ? input.pkg._public_notice_source_paths.map(item => String(item ?? ''))
+      : []),
+  ].filter(Boolean));
+}
+
+function findMaskedCustomerCopyPollution(
+  pkg: AnyRecord,
+  coveredSourcePaths = new Set<string>(),
+): { path: string; text: string; risky: boolean } | null {
   let pollution: { path: string; text: string; risky: boolean } | null = null;
 
   for (const root of RAW_CUSTOMER_COPY_ROOTS) {
@@ -110,8 +123,10 @@ function findMaskedCustomerCopyPollution(pkg: AnyRecord): { path: string; text: 
         .find(issue => BLOCKING_CUSTOMER_COPY_CODES.has(issue.code));
       const risky = hasRiskyCustomerCopy(text) || RAW_OPERATIONAL_POLLUTION_RE.test(text);
       if (qualityIssue || risky) {
+        const fullPath = `${root}${path ? `.${path}` : ''}`;
+        if (coveredSourcePaths.has(fullPath)) return;
         pollution = {
-          path: `${root}${path ? `.${path}` : ''}`,
+          path: fullPath,
           text,
           risky,
         };
@@ -438,7 +453,10 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'masked_data_pollution', 'renderer may hide optional_tours pollution, but source DB still contains polluted customer data', 'optional_tours');
   }
 
-  const maskedCopyPollution = findMaskedCustomerCopyPollution(input.pkg);
+  const maskedCopyPollution = findMaskedCustomerCopyPollution(
+    input.pkg,
+    coveredPublicNoticeSourcePaths(input),
+  );
   if (maskedCopyPollution) {
     addBlocker(
       hard,

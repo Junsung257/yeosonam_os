@@ -161,6 +161,7 @@ export async function createPublicPackageSnapshotAndDecision(
     hero_image_url: asRecord(snapshot.package)?.hero_image_url ?? pkg.hero_image_url,
     lp_hero_image_url: asRecord(snapshot.package)?.lp_hero_image_url ?? pkg.lp_hero_image_url,
     thumbnail_urls: asRecord(snapshot.package)?.thumbnail_urls ?? pkg.thumbnail_urls,
+    _public_notice_source_paths: snapshot.public_notice_source_paths,
     _card_projection: snapshot.card_projection,
     _lp_projection: snapshot.lp_projection,
   };
@@ -179,6 +180,7 @@ export async function createPublicPackageSnapshotAndDecision(
     publicSnapshotTitle: snapshot.public_title,
     snapshotExists: true,
     routeTextDump: snapshot.route_text_dump,
+    publicNoticeSourcePaths: snapshot.public_notice_source_paths,
     auditQueryFailed,
     invalidAttractionIds: attractionValidation.invalidIds,
   });
