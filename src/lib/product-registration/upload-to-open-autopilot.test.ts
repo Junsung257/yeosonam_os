@@ -958,6 +958,20 @@ describe('repairOptionalTourScheduleDuplicates', () => {
     ]);
   });
 
+  it('removes no-option policy labels from optional tours without dropping paid options', () => {
+    const result = repairOptionalToursForCustomerDisplay([
+      { name: '\uB178\uD301 \uB178\uC635\uC158!!' },
+      { name: '\uB178\uC1FC\uD551' },
+      { name: '\uCD94\uCC9C\uC120\uD0DD\uAD00\uAD11 : \uC544\uC77C\uB79C\uB4DC \uD638\uD551\uD22C\uC5B4', price: '$80/\uC778' },
+    ]);
+
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toEqual(['\uB178\uD301 \uB178\uC635\uC158!!', '\uB178\uC1FC\uD551']);
+    expect(result.optionalTours).toEqual([
+      { name: '\uC544\uC77C\uB79C\uB4DC \uD638\uD551\uD22C\uC5B4', price: '$80/\uC778' },
+    ]);
+  });
+
   it('keeps optional tours in the optional_tours section and removes duplicate schedule rows', () => {
     const result = repairOptionalTourScheduleDuplicates(
       {

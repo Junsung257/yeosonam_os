@@ -155,6 +155,42 @@ describe('public package snapshot gate', () => {
     expect(snapshot.route_text_dump.join('\n')).not.toContain(rawSupplierTitle);
   });
 
+  it('keeps public snapshot structural metadata out of the route text dump', () => {
+    const customerActivity = '\uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11';
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      optional_tours: [],
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: customerActivity,
+                type: 'optional',
+                entity_kind: 'shopping',
+                status: 'auto_clean',
+                template_key: 'shopping_disclosure_check',
+                review_status: 'auto_clean',
+                source: 'parser',
+                match_method: 'alias',
+              },
+            ],
+          },
+        ],
+      },
+    }));
+
+    expect(snapshot.route_text_dump).toContain(customerActivity);
+    expect(snapshot.route_text_dump).not.toEqual(expect.arrayContaining([
+      'optional',
+      'shopping',
+      'auto_clean',
+      'shopping_disclosure_check',
+      'parser',
+      'alias',
+    ]));
+  });
+
   it('uses a neutral brand fallback image when no source-backed product image exists', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
       products: { display_name: '연길·백두산 패키지', thumbnail_urls: [] },
@@ -987,6 +1023,53 @@ describe('public package snapshot gate', () => {
     expect(gate.publishable).toBe(false);
     expect(gate.hard_blockers).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'masked_data_pollution', fieldPath: 'itinerary_data.days.0.schedule.0.activity' }),
+      expect.objectContaining({ code: 'risky_reservation_claim' }),
+    ]));
+  });
+
+  it('maps reservation-risk helper fields to approved public notices with source evidence', () => {
+    const a4Sentence = '\uBCF8 \uC0C1\uD488\uC740 \uC608\uC57D\uC2DC \uC778\uB2F9 30\uB9CC\uC6D0\uC758 \uC608\uC57D\uAE08 \uD544\uC218\uC785\uB2C8\uB2E4. \uC608\uC57D\uAE08 \uC785\uAE08 \uD655\uC778 \uD6C4 \uC608\uC57D \uD655\uC815\uB429\uB2C8\uB2E4.';
+    const remark = '\uD56D\uACF5 \uBC0F \uD638\uD154 \uBBF8\uD655\uBCF4\uC785\uB2C8\uB2E4. \uAC00\uB2A5\uC5EC\uBD80 \uBB38\uC758 \uBD80\uD0C1\uB4DC\uB9BD\uB2C8\uB2E4.';
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      itinerary_data: {
+        highlights: {
+          remarks: [remark],
+        },
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '\uACF5\uD56D \uBBF8\uD305',
+                a4_sentence: a4Sentence,
+                attraction_ids: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+      publicNoticeSourcePaths: snapshot.public_notice_source_paths,
+    });
+
+    const publicText = snapshot.route_text_dump.join('\n');
+    expect(snapshot.public_notice_source_paths).toEqual(expect.arrayContaining([
+      'itinerary_data.highlights.remarks.0',
+      'itinerary_data.days.0.schedule.0.a4_sentence',
+    ]));
+    expect(publicText).not.toContain(a4Sentence);
+    expect(publicText).not.toContain(remark);
+    expect(gate.hard_blockers).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'masked_data_pollution' }),
       expect.objectContaining({ code: 'risky_reservation_claim' }),
     ]));
   });

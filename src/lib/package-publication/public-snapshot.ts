@@ -238,7 +238,7 @@ function walkSourceStrings(
 function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeTemplateKey[] {
   const keys: PublicNoticeTemplateKey[] = [];
   const isOperationalPath = /itinerary_data\.highlights\.(?:remarks|shopping)/.test(path)
-    || /itinerary_data\.days\.\d+\.schedule\.\d+\.(?:activity|note|attraction_names\.\d+)/.test(path)
+    || /itinerary_data\.days\.\d+\.schedule\.\d+\.(?:activity|note|a4_sentence|landing_sentence|attraction_names\.\d+)/.test(path)
     || /itinerary_data\.meta\.title/.test(path)
     || /^product_highlights\.\d+/.test(path)
     || /^product_summary/.test(path)
@@ -247,7 +247,7 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
     || /^notices_parsed/.test(path);
   if (!isOperationalPath) return keys;
 
-  if (/\uC608\uC57D\s*\uC989\uC2DC|\uC989\uC2DC\s*\uD655\uC815|\uCD9C\uBC1C\s*\uD655\uC815|\uC88C\uC11D\s*(?:\uD655\uBCF4|\uD655\uC815|\uBCF4\uC7A5)|\uD56D\uACF5\s*\uC694\uAE08|\uBC1C\uAD8C|\uC608\uC57D\uAE08|\uC785\uAE08/i.test(text)) {
+  if (/\uC608\uC57D\s*\uC989\uC2DC|\uC989\uC2DC\s*\uD655\uC815|\uCD9C\uBC1C\s*\uD655\uC815|\uC88C\uC11D\s*(?:\uD655\uBCF4|\uD655\uC815|\uBCF4\uC7A5)|\uD56D\uACF5\s*\uC694\uAE08|\uBC1C\uAD8C|\uC608\uC57D\uAE08|\uC785\uAE08|\uBBF8\s*\uD655\uBCF4|\uAC00\uB2A5\s*\uC5EC\uBD80|\uBB38\uC758/i.test(text)) {
     keys.push('reservation_availability_check');
   }
   if (/\uCDE8\uC18C|\uD658\uBD88|\uC218\uC218\uB8CC|\uCC28\uC9C0|\uC704\uC57D/i.test(text)) {
@@ -480,30 +480,45 @@ const ROUTE_TEXT_SKIP_KEYS = new Set([
   'admin_note',
   'admin_notes',
   'audit_report',
+  'category',
   'commission_rate',
+  'confidence',
   'created_at',
+  'currency',
+  'entity_kind',
+  'field',
+  'field_path',
   'hash',
   'id',
   'internal_note',
   'internal_notes',
   'margin_rate',
+  'match_confidence',
+  'match_method',
   'net_price',
   'operator',
   'package_id',
   'package_revision',
   'public_snapshot_hash',
   'raw_text',
+  'review_status',
   'revision',
   'snapshot_version',
   'slug',
+  'source',
   'source_context',
   'source_evidence',
+  'source_line',
+  'status',
   'supplier',
   'supplier_note',
+  'template_key',
   'thumbnail_url',
   'thumbnail_urls',
+  'type',
   'updated_at',
   'url',
+  'values',
   'vendor',
 ]);
 
