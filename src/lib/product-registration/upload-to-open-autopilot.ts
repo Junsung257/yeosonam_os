@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { isCustomerRenderableAttraction, matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
@@ -919,9 +919,12 @@ function isCustomerPublishableAttraction(attraction: AttractionData | null | und
   return Boolean(
     attraction?.id
     && FULL_UUID_RE.test(attraction.id)
-    && attraction.is_active !== false
-    && attraction.customer_publishable !== false,
+    && isCustomerRenderableAttraction(attraction),
   );
+}
+
+function attractionNameKey(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, '').trim().toLowerCase() : '';
 }
 
 function normalizeAttractionMatchCandidate(value: unknown): string {
@@ -1004,8 +1007,11 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
   }
 
   const publicAttractions = input.attractions.filter(isCustomerPublishableAttraction);
-  if (publicAttractions.length === 0) {
-    return { itineraryData: input.itineraryData, repaired: false, matched: 0, removedNoise: 0, remainingUnmatched: 0 };
+  const unsafeAttractionNameKeys = new Set<string>();
+  for (const attraction of input.attractions) {
+    if (isCustomerPublishableAttraction(attraction as AttractionData | null | undefined)) continue;
+    const key = attractionNameKey(attraction.name);
+    if (key) unsafeAttractionNameKeys.add(key);
   }
   const publicAttractionIds = new Set(publicAttractions.map(attraction => attraction.id));
 
@@ -1045,6 +1051,12 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
       };
 
       for (const name of attractionNames) {
+        const nameKey = attractionNameKey(name);
+        if (unsafeAttractionNameKeys.has(nameKey)) {
+          removedNoise++;
+          changed = true;
+          continue;
+        }
         if (isNonCustomerAttractionName(name, activity, accommodations)) {
           removedNoise++;
           changed = true;
@@ -1056,9 +1068,8 @@ export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: 
           changed = true;
           continue;
         }
-        const nameKey = name.replace(/\s+/g, '').toLowerCase();
         const fallbackMatch = fallbackCandidates
-          .filter(candidate => candidate.replace(/\s+/g, '').toLowerCase() !== nameKey)
+          .filter(candidate => attractionNameKey(candidate) !== nameKey)
           .map(candidate => matchCustomerPublishableAttraction(candidate, publicAttractions, input.destination))
           .find(isCustomerPublishableAttraction);
         if (isCustomerPublishableAttraction(fallbackMatch)) {
