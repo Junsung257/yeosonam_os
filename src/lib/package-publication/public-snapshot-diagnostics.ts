@@ -189,13 +189,15 @@ export function diagnosePublicSnapshotGeneration(input: {
   );
 
   const priceBlockers = byField.get('price_dates') ?? [];
+  const snapshotPackage = asRecord(snapshot.package);
+  const snapshotPriceDates = snapshotPackage?.price_dates ?? pkg.price_dates;
   addDiagnostic(
     diagnostics,
     'price',
     snapshot.price_display && priceBlockers.length === 0 ? 'generated' : (PRICE_RE.test(rawText) ? 'repairable' : 'blocked'),
     [
       snapshot.price_display ? `price_display=${snapshot.price_display}` : 'price_display_missing',
-      hasArrayItems(pkg.price_dates) ? 'price_dates_present' : 'price_dates_missing',
+      hasArrayItems(snapshotPriceDates) ? 'price_dates_present' : 'price_dates_missing',
       PRICE_RE.test(rawText) ? 'raw_price_pattern_present' : 'raw_price_pattern_missing',
     ],
     snapshot.price_display && priceBlockers.length === 0

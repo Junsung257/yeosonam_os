@@ -161,6 +161,20 @@ describe('customer public title policy', () => {
     expect(title).not.toContain('세부');
   });
 
+  it('keeps Hong Kong as the destination when surrounding copy mentions detailed conditions', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '홍콩',
+      title: '홍IN/OUT 홍콩똑딱 2박4일 UO',
+      duration: 4,
+      nights: 2,
+      raw_text: '예약 가능 여부와 세부 조건은 상담 후 확인됩니다. 홍콩 자유일정과 항공 조건을 확인합니다.',
+    });
+
+    expect(title).toBe('홍콩 자유일정 2박4일');
+    expect(title).not.toContain('세부');
+    expect(title).not.toContain('휴양관광');
+  });
+
   it('prefers the explicit source duration when package nights are inferred incorrectly', () => {
     const title = composeCustomerPublicTitle({
       destination: '란주',
