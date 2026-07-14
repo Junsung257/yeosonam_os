@@ -56,11 +56,15 @@ function queryResult(table: string) {
         card_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
         lp_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
         snapshot_json: {
+          images_public: [
+            { url: 'https://cdn.yeosonam.com/public/osaka-hero.jpg', source: 'destination_metadata' },
+          ],
           package: {
             id: 'pkg-osaka',
             title: 'Osaka public title',
             display_title: 'Osaka public title',
             destination: 'osaka',
+            hero_image_url: 'https://cdn.yeosonam.com/public/osaka-hero.jpg',
             publication_state: 'published',
             package_revision: 3,
             price_dates: [{ date: '2026-07-12', price: 599000 }],
