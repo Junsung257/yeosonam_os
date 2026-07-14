@@ -1324,6 +1324,21 @@ function isShoppingOptionalTour(value: unknown): boolean {
   return /(?:\uC1FC\uD551|\uAE30\uB150\uD488|\uD1A0\uC0B0\uD488)/u.test(text);
 }
 
+function hasOptionalTourPrice(value: unknown): boolean {
+  const record = asRecord(value);
+  return ['price', 'price_usd', 'price_krw', 'price_jpy', 'amount'].some((key) => {
+    const candidate = record[key];
+    if (typeof candidate === 'number') return candidate > 0;
+    return typeof candidate === 'string' && /\d/.test(candidate);
+  });
+}
+
+function isNoOptionPolicyTour(value: unknown): boolean {
+  const text = optionalTourText(value);
+  if (!text || hasOptionalTourPrice(value)) return false;
+  return /(?:\uB178\s*\uD301|\uB178\s*\uC635\uC158|\uB178\s*\uC1FC\uD551|no\s*(?:tip|option|shopping))/iu.test(text);
+}
+
 function normalizeOptionalTourPrice(value: unknown): unknown {
   return typeof value === 'string'
     ? value.replace(/^\$\$+/, '$').replace(/\s+/g, ' ').trim()
@@ -1348,7 +1363,7 @@ export function repairOptionalToursForCustomerDisplay(optionalTours: unknown): {
   for (const tour of optionalTours) {
     const record = asRecord(tour);
     const label = optionalTourText(tour);
-    if (isShoppingOptionalTour(tour)) {
+    if (isShoppingOptionalTour(tour) || isNoOptionPolicyTour(tour)) {
       removed.push(label);
       continue;
     }
