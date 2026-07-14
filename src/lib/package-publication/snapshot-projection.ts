@@ -5,6 +5,7 @@ import {
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
+import { isSafeImageSrc } from '@/lib/image-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import {
   collectItineraryAttractionIds,
@@ -50,6 +51,21 @@ function hasSourceBackedPriceDates(row: SnapshotProjectionRow): boolean {
     const price = asNumber(priceDate?.adult_selling_price ?? priceDate?.price ?? priceDate?.selling_price);
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof price === 'number' && price > 0;
   });
+}
+
+function hasPublicImageCandidate(row: SnapshotProjectionRow): boolean {
+  const snapshot = asRecord(row.snapshot_json);
+  const pkg = asRecord(snapshot?.package);
+  const images = Array.isArray(snapshot?.images_public) ? snapshot.images_public : [];
+  for (const item of images) {
+    if (isSafeImageSrc(item)) return true;
+    const image = asRecord(item);
+    if (isSafeImageSrc(image?.url ?? image?.src_large ?? image?.src_medium)) return true;
+  }
+
+  if (isSafeImageSrc(pkg?.hero_image_url) || isSafeImageSrc(pkg?.lp_hero_image_url)) return true;
+  const thumbnails = Array.isArray(pkg?.thumbnail_urls) ? pkg.thumbnail_urls : [];
+  return thumbnails.some(isSafeImageSrc);
 }
 
 function packageId(row: AnyRecord): string | null {
@@ -188,6 +204,7 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
     if (Number(row.package_revision ?? 1) !== expectedRevision) continue;
     if (!hasPublicTitle(row, projection)) continue;
     if (!hasSourceBackedPriceDates(row)) continue;
+    if (!hasPublicImageCandidate(row)) continue;
     if (hasBlockingSnapshotCopy(row, projection)) continue;
     if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
   }

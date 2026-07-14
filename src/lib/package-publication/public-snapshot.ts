@@ -3,10 +3,16 @@ import { createHash } from 'crypto';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 import { hasRiskyCustomerPromiseCopy } from '@/lib/customer-risky-copy';
+import { isSafeImageSrc } from '@/lib/image-url';
 import { renderPackage } from '@/lib/render-contract';
 import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 
 type AnyRecord = Record<string, unknown>;
+type PublicImageCandidate = {
+  url: string;
+  source: 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og';
+  alt: string | null;
+};
 
 const SNAPSHOT_VERSION = 'public-package-snapshot-v1' as const;
 
@@ -53,6 +59,122 @@ function stringList(value: unknown): string[] {
 
 function normalizeText(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function addPublicImageCandidate(
+  candidates: PublicImageCandidate[],
+  seen: Set<string>,
+  rawUrl: unknown,
+  source: PublicImageCandidate['source'],
+  alt: unknown = null,
+) {
+  if (!isSafeImageSrc(rawUrl)) return;
+  const url = rawUrl.trim();
+  if (seen.has(url)) return;
+  seen.add(url);
+  candidates.push({
+    url,
+    source,
+    alt: asString(alt),
+  });
+}
+
+function addPublicImageUrlList(
+  candidates: PublicImageCandidate[],
+  seen: Set<string>,
+  value: unknown,
+  source: PublicImageCandidate['source'],
+  alt: unknown = null,
+) {
+  if (!Array.isArray(value)) return;
+  for (const item of value) {
+    addPublicImageCandidate(candidates, seen, item, source, alt);
+  }
+}
+
+function addPublicPhotoArray(
+  candidates: PublicImageCandidate[],
+  seen: Set<string>,
+  value: unknown,
+  alt: unknown = null,
+) {
+  if (!Array.isArray(value)) return;
+  for (const item of value) {
+    const photo = asRecord(item);
+    if (!photo) continue;
+    addPublicImageCandidate(
+      candidates,
+      seen,
+      photo.src_large ?? photo.src_medium ?? photo.url ?? photo.image_url,
+      'attraction_photo',
+      photo.alt ?? alt,
+    );
+  }
+}
+
+function collectNestedPublicPhotos(
+  value: unknown,
+  candidates: PublicImageCandidate[],
+  seen: Set<string>,
+  depth = 0,
+) {
+  if (depth > 6 || candidates.length >= 8) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectNestedPublicPhotos(item, candidates, seen, depth + 1);
+    return;
+  }
+
+  const record = asRecord(value);
+  if (!record) return;
+  const alt = record.name ?? record.title ?? record.activity ?? record.label ?? null;
+  addPublicPhotoArray(candidates, seen, record.photos, alt);
+
+  for (const [key, child] of Object.entries(record)) {
+    if (key === 'raw_text' || key === 'audit_report') continue;
+    collectNestedPublicPhotos(child, candidates, seen, depth + 1);
+  }
+}
+
+function collectProductThumbnailImages(
+  candidates: PublicImageCandidate[],
+  seen: Set<string>,
+  products: unknown,
+) {
+  if (Array.isArray(products)) {
+    for (const product of products) collectProductThumbnailImages(candidates, seen, product);
+    return;
+  }
+  const product = asRecord(products);
+  if (!product) return;
+  addPublicImageUrlList(
+    candidates,
+    seen,
+    product.thumbnail_urls,
+    'product_thumbnail',
+    product.display_name,
+  );
+}
+
+function collectPublicImages(pkg: AnyRecord): PublicImageCandidate[] {
+  const candidates: PublicImageCandidate[] = [];
+  const seen = new Set<string>();
+  const title = pkg.display_title ?? pkg.title ?? pkg.destination ?? null;
+
+  for (const key of ['lp_hero_image_url', 'hero_image_url', 'main_image', 'thumbnail_url']) {
+    addPublicImageCandidate(candidates, seen, pkg[key], 'package_hero', title);
+  }
+  addPublicImageUrlList(candidates, seen, pkg.thumbnail_urls, 'package_thumbnail', title);
+  collectProductThumbnailImages(candidates, seen, pkg.products);
+
+  addPublicImageCandidate(candidates, seen, pkg.og_image_url, 'content_og', title);
+  addPublicImageUrlList(candidates, seen, pkg.slide_image_urls, 'content_og', title);
+
+  collectNestedPublicPhotos(pkg.attractions, candidates, seen);
+  collectNestedPublicPhotos(pkg.matched_attractions, candidates, seen);
+  collectNestedPublicPhotos(pkg.destination_attractions, candidates, seen);
+  collectNestedPublicPhotos(pkg.itinerary_data, candidates, seen);
+
+  return candidates.slice(0, 8);
 }
 
 const ROUTE_TEXT_SKIP_KEYS = new Set([
@@ -323,6 +445,13 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   optionalTourClassification: ReturnType<typeof classifyOptionalTours>;
 } {
   const publicPackage = sanitizeCustomerPackageForClient(pkg) ?? {};
+  const imagesPublic = collectPublicImages({ ...pkg, ...publicPackage });
+  const imageUrls = imagesPublic.map(image => image.url);
+  if (imageUrls.length > 0) {
+    publicPackage.hero_image_url = imageUrls[0];
+    publicPackage.lp_hero_image_url = imageUrls[0];
+    publicPackage.thumbnail_urls = imageUrls;
+  }
   const customerPrice = representativeCustomerPrice(publicPackage);
   if (customerPrice !== null) {
     publicPackage.price = customerPrice;
@@ -363,6 +492,10 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     display_title: publicTitle,
     product_summary: publicSummary,
     optional_tours: optionalTourClassification.publicTours,
+    images_public: imagesPublic,
+    hero_image_url: imageUrls[0] ?? null,
+    lp_hero_image_url: imageUrls[0] ?? null,
+    thumbnail_urls: imageUrls,
     publication_state: pkg.publication_state ?? publicPackage.publication_state ?? null,
     package_revision: asNumber(pkg.package_revision) ?? 1,
   };
@@ -386,7 +519,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     exclusions_public: Array.isArray(publicPackage.excludes) ? publicPackage.excludes : [],
     itinerary_public: publicPackage.itinerary_data ?? null,
     optional_tours_public: optionalTourClassification.publicTours,
-    images_public: [],
+    images_public: imagesPublic,
     cta_copy: {
       primary: '예약 가능 여부 확인',
       helper: '출발일과 객실 상황에 따라 요금이 달라질 수 있습니다.',
@@ -399,6 +532,8 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       nights: asNumber(publicPackage.nights),
       price: asNumber(publicPackage.price),
       price_display: priceDisplay(publicPackage),
+      hero_image_url: imageUrls[0] ?? null,
+      thumbnail_urls: imageUrls,
       badges: displayCopy.badges,
     },
     lp_projection: {
@@ -409,6 +544,9 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       summary: publicSummary,
       price: asNumber(publicPackage.price),
       price_display: priceDisplay(publicPackage),
+      hero_image_url: imageUrls[0] ?? null,
+      lp_hero_image_url: imageUrls[0] ?? null,
+      thumbnail_urls: imageUrls,
       cta_copy: '예약 가능 여부 확인',
     },
   };

@@ -4,6 +4,7 @@ import {
   auditCustomerVisibleScreenText,
   blockingCustomerVisibleTextIssues,
 } from '@/lib/customer-visible-text-audit';
+import { isSafeImageSrc } from '@/lib/image-url';
 import {
   collectItineraryAttractionIds,
   validateCustomerPublishableAttractionIds,
@@ -53,6 +54,19 @@ function hasSourceBackedPriceDates(value: unknown): boolean {
   });
 }
 
+function hasPublicImageCandidate(snapshot: AnyRecord, pkg: AnyRecord): boolean {
+  const images = Array.isArray(snapshot.images_public) ? snapshot.images_public : [];
+  for (const item of images) {
+    if (isSafeImageSrc(item)) return true;
+    const image = asRecord(item);
+    if (isSafeImageSrc(image?.url ?? image?.src_large ?? image?.src_medium)) return true;
+  }
+
+  if (isSafeImageSrc(pkg.hero_image_url) || isSafeImageSrc(pkg.lp_hero_image_url)) return true;
+  const thumbnails = Array.isArray(pkg.thumbnail_urls) ? pkg.thumbnail_urls : [];
+  return thumbnails.some(isSafeImageSrc);
+}
+
 function hasBlockingSnapshotCopy(pkg: AnyRecord, row: SnapshotRow): boolean {
   const productIssues = blockingCustomerVisibleTextIssues(pkg);
   if (productIssues.length > 0) return true;
@@ -67,8 +81,10 @@ function snapshotPackage(row: SnapshotRow): AnyRecord | null {
   const pkg = asRecord(snapshot?.package);
   const cardProjection = asRecord(row.card_projection);
   const lpProjection = asRecord(row.lp_projection);
+  if (!snapshot) return null;
   if (!pkg) return null;
   if (!hasSourceBackedPriceDates(pkg)) return null;
+  if (!hasPublicImageCandidate(snapshot, pkg)) return null;
   const publicTitle = asNonEmptyString(cardProjection?.title) ?? asNonEmptyString(lpProjection?.title);
   if (!publicTitle) return null;
   const publicSummary = asNonEmptyString(lpProjection?.summary);
@@ -139,6 +155,10 @@ export async function createPublicPackageSnapshotAndDecision(
     ...pkg,
     hero_tagline: snapshot.public_subtitle ?? pkg.hero_tagline,
     product_summary: asRecord(snapshot.package)?.product_summary ?? pkg.product_summary,
+    images_public: snapshot.images_public,
+    hero_image_url: asRecord(snapshot.package)?.hero_image_url ?? pkg.hero_image_url,
+    lp_hero_image_url: asRecord(snapshot.package)?.lp_hero_image_url ?? pkg.lp_hero_image_url,
+    thumbnail_urls: asRecord(snapshot.package)?.thumbnail_urls ?? pkg.thumbnail_urls,
     _card_projection: snapshot.card_projection,
     _lp_projection: snapshot.lp_projection,
   };

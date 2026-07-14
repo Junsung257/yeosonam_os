@@ -1,5 +1,6 @@
 import type { CustomerMobileProofResult } from '@/lib/customer-mobile-proof';
 import { customerCopyQualityIssues } from '@/lib/customer-copy-quality';
+import { isSafeImageSrc } from '@/lib/image-url';
 import type { PublishGateResult as LegacyPublishGateResult } from '@/lib/product-publish-gate';
 import { hasRiskyCustomerCopy, isOptionalTourFragment } from './public-snapshot';
 import type { PublicationState, PublishFinding } from './types';
@@ -105,6 +106,19 @@ function sourceBackedPriceDateProblem(pkg: AnyRecord): string | null {
   }
 
   return null;
+}
+
+function hasPublicImageCandidate(pkg: AnyRecord): boolean {
+  const images = Array.isArray(pkg.images_public) ? pkg.images_public : [];
+  for (const item of images) {
+    if (isSafeImageSrc(item)) return true;
+    const image = asRecord(item);
+    if (isSafeImageSrc(image?.url ?? image?.src_large ?? image?.src_medium)) return true;
+  }
+
+  if (isSafeImageSrc(pkg.hero_image_url) || isSafeImageSrc(pkg.lp_hero_image_url)) return true;
+  const thumbnails = Array.isArray(pkg.thumbnail_urls) ? pkg.thumbnail_urls : [];
+  return thumbnails.some(isSafeImageSrc);
 }
 
 function hasInternalEnglishCopy(input: PublicSnapshotGateInput): string | null {
@@ -299,6 +313,15 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
   const priceDateProblem = sourceBackedPriceDateProblem(input.pkg);
   if (priceDateProblem) {
     addBlocker(hard, 'price_source_missing', priceDateProblem, 'price_dates');
+  }
+
+  if (!hasPublicImageCandidate(input.pkg)) {
+    addBlocker(
+      hard,
+      'public_image_missing',
+      'public package snapshot requires at least one approved customer image candidate',
+      'images_public',
+    );
   }
 
   if (input.publicSnapshotTitle !== undefined) {
