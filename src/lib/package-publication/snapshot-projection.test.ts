@@ -187,6 +187,7 @@ describe('public snapshot card projection', () => {
         title: 'raw supplier title',
         destination: 'raw destination',
         product_summary: 'raw supplier summary',
+        marketing_copies: [{ title: 'raw promo title', body: 'raw promo body' }],
         inclusions: ['raw inclusion'],
       }),
     ];
@@ -205,6 +206,7 @@ describe('public snapshot card projection', () => {
     expect(merged[0]).toMatchObject({ id: 'pkg-1', title: 'public title' });
     expect(merged[0]).not.toHaveProperty('destination');
     expect(merged[0]).not.toHaveProperty('product_summary');
+    expect(merged[0]).not.toHaveProperty('marketing_copies');
     expect(merged[0]).not.toHaveProperty('inclusions');
   });
 
