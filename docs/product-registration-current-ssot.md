@@ -88,6 +88,12 @@ The operational gate is scripted so release readiness does not depend on memory 
 npx tsx scripts/run-customer-open-operational-gate.ts --base=https://www.yeosonam.com
 ```
 
+For process-level public snapshot generation auditing, use the read-only field classifier. It must report title, summary, price, itinerary, terms, optional tours, attractions, images, and customer copy as `generated`, `repairable`, or `blocked`, with repair actions that explain what source-backed generation step is missing:
+
+```bash
+npm run audit:public-snapshot-generation -- --json --limit=500
+```
+
 For a newly saved pending package rehearsal, run:
 
 ```bash

@@ -11,10 +11,12 @@ const KNOWN_DESTINATION_ALIASES: Array<[RegExp, string]> = [
   [/다낭.*호이안|호이안.*다낭|다낭\s*[/+·]\s*호이안/, '다낭·호이안'],
   [/나트랑.*달랏|달랏.*나트랑|나트랑\s*[/+·]\s*달랏/, '나트랑·달랏'],
   [/하노이.*하롱|하롱.*하노이|하노이\s*[/+·]\s*하롱/, '하노이·하롱베이'],
+  [/나가사키/, '나가사키'],
   [/후쿠오카|규슈|유후인|벳부|쿠로가와/, '후쿠오카·규슈'],
   [/북해도|홋카이도|삿포로|오타루|비에이|후라노|노보리베츠|죠잔케이/, '북해도'],
   [/푸꾸옥/, '푸꾸옥'],
   [/장가계|장자제/, '장가계'],
+  [/청도/, '청도'],
   [/세부/, '세부'],
   [/대마도|쓰시마/, '대마도'],
 ];
@@ -29,6 +31,17 @@ function cleanText(value: unknown): string {
     .replace(RISKY_TITLE_WORDS, ' ')
     .replace(/[_*#♥★◆◇]+/g, ' ')
     .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanDestinationText(value: unknown): string {
+  return cleanText(value)
+    .replace(/노\s*팁\s*[/+·&]?\s*노\s*옵션|노\s*옵션|노\s*팁/gi, ' ')
+    .replace(/특급\s*호텔|프리미엄\s*(?:호텔|리조트)?|준?\s*5\s*성(?:급)?\s*(?:호텔|리조트)?/gi, ' ')
+    .replace(/\b(?:LJ|BX|TW|ZE|7C|OZ|KE|RS|PKG|TL)\b/gi, ' ')
+    .replace(/\s*[/+&]\s*/g, '·')
+    .replace(/\s+/g, ' ')
+    .replace(/^·|·$/g, '')
     .trim();
 }
 
@@ -88,7 +101,7 @@ export function inferPublicTitleDuration(pkg: AnyRecord, text = sourceText(pkg))
 }
 
 export function inferPublicTitleDestination(pkg: AnyRecord, text = sourceText(pkg)): string | null {
-  const destinationText = cleanText(pkg.destination);
+  const destinationText = cleanDestinationText(pkg.destination);
   const combined = `${destinationText} ${text}`;
   for (const [pattern, label] of KNOWN_DESTINATION_ALIASES) {
     if (pattern.test(combined)) return label;
@@ -118,10 +131,6 @@ function hasHotelGradeEvidence(text: string): boolean {
   return /(호텔|리조트|숙박|동급).{0,20}(5\s*성|준\s*5\s*성|특급|특급호텔)|(5\s*성|준\s*5\s*성|특급).{0,20}(호텔|리조트|숙박|동급)/i.test(text);
 }
 
-function hasPremiumHotelEvidence(text: string): boolean {
-  return /(특급\s*호텔|프리미엄\s*(호텔|리조트)|고품격\s*(호텔|리조트))/i.test(text);
-}
-
 function hasStrongOnsenEvidence(text: string): boolean {
   return /(온천\s*(마을|호텔|리조트|숙박|2박|여행|관광|테마)|료칸|노보리베츠|죠잔케이|벳부|유후인|쿠로가와)/i.test(text);
 }
@@ -134,13 +143,12 @@ function inferCondition(text: string, optionBadges: string[]): string | null {
   if (noTip) return '노팁';
   if (hasNoShoppingEvidence(text)) return '노쇼핑';
   if (hasHotelGradeEvidence(text)) return '5성호텔';
-  if (hasPremiumHotelEvidence(text)) return '특급호텔';
   return null;
 }
 
 function inferTheme(text: string, destination: string): string {
   if (/골프|라운드|CC/i.test(text)) return '골프';
-  if (hasStrongOnsenEvidence(text)) return '온천·관광';
+  if (!/연길·백두산/.test(destination) && hasStrongOnsenEvidence(text)) return '온천·관광';
   if (/자유\s*일정|자유\s*시간|1일\s*자유|반일\s*자유/i.test(text)) return '자유일정';
   if (/다낭·호이안|푸꾸옥|세부|리조트|비치|해변|호핑|휴양/i.test(`${destination} ${text}`)) return '휴양관광';
   return '핵심관광';

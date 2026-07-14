@@ -153,6 +153,8 @@ export async function createPublicPackageSnapshotAndDecision(
   const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
   const gatePackage = {
     ...pkg,
+    title: snapshot.public_title,
+    display_title: snapshot.public_title,
     hero_tagline: snapshot.public_subtitle ?? pkg.hero_tagline,
     product_summary: asRecord(snapshot.package)?.product_summary ?? pkg.product_summary,
     images_public: snapshot.images_public,
