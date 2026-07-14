@@ -78,6 +78,50 @@ describe('customer public title policy', () => {
     expect(title).toBe('북해도 온천·관광 3박4일');
   });
 
+  it('does not promote Yanji/Baekdu onsen wording into the title theme', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '연길',
+      title: '0810,21 ★BX연길백두산(서,북파)패키지 0630TL',
+      duration: 4,
+      nights: 3,
+      raw_text: [
+        '노팁 노옵션',
+        '백두산 서파 북파 핵심 관광',
+        '온천 관광과 온천욕 포함',
+      ].join('\n'),
+    });
+
+    expect(title).toBe('연길·백두산 노팁·노옵션 핵심관광 3박4일');
+    expect(title).not.toContain('온천');
+  });
+
+  it('keeps Nagasaki golf as Nagasaki instead of widening it to Fukuoka/Kyushu', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '나가사키',
+      title: 'BX나가사키 파라다이스 골프 패키지 54H 3박4일',
+      duration: 4,
+      nights: 3,
+      raw_text: '나가사키 골프장 54홀 라운드 일정. 후쿠오카 공항 이용 가능.',
+    });
+
+    expect(title).toBe('나가사키 골프 3박4일');
+    expect(title).not.toContain('후쿠오카·규슈');
+  });
+
+  it('removes product conditions from destination before composing the title', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '노팁/노옵션 특급호텔 청도+맥주박물관',
+      title: '노팁/노옵션 특급호텔 BX 청도+맥주박물관 2박3일',
+      duration: 3,
+      nights: 2,
+      raw_text: '노팁 노옵션. 청도 맥주박물관 핵심 관광 일정.',
+    });
+
+    expect(title).toBe('청도 노팁·노옵션 핵심관광 2박3일');
+    expect(title).not.toContain('특급호텔');
+    expect(title.match(/노팁·노옵션/g)).toHaveLength(1);
+  });
+
   it('routes readable Korean package input through the public snapshot builder', () => {
     const { snapshot } = buildPublicPackageSnapshot({
       id: 'golden-danang',

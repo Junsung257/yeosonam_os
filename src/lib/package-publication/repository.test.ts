@@ -457,6 +457,48 @@ describe('createPublicPackageSnapshotAndDecision', () => {
     });
   });
 
+  it('evaluates customer title claims from the public snapshot title, not the raw supplier title', async () => {
+    const { supabase, calls } = makeSupabaseMock();
+    const pkg = publishablePackage({
+      id: '22222222-2222-4222-8222-222222222222',
+      title: '연길 5성 온천 4박5일 출발확정',
+      destination: '연길',
+      duration: 5,
+      nights: 4,
+      raw_text: [
+        '선택관광: 노옵션',
+        'DAY 2 백두산 천지 관광',
+        '온천욕으로 휴식',
+      ].join('\n'),
+      products: {
+        display_name: '연길·백두산 패키지',
+        thumbnail_urls: ['https://cdn.yeosonam.com/packages/yanji.jpg'],
+      },
+      itinerary_data: {
+        days: [
+          { day: 1, schedule: [{ activity: '연길 이동' }] },
+          { day: 2, schedule: [{ activity: '백두산 천지 관광' }] },
+        ],
+      },
+    });
+    const { snapshotHash } = buildPublicPackageSnapshot(pkg);
+
+    const result = await createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      pkg,
+      {
+        customerOpenContractOk: true,
+        mobileProof: mobileProofForSnapshot(snapshotHash),
+      },
+    );
+
+    expect(result.publishable).toBe(true);
+    expect(calls[0].payload?.p_hard_blockers).toEqual([]);
+    const snapshot = calls[0].payload?.p_snapshot_json as { public_title?: string; route_text_dump?: string[] };
+    expect(snapshot.public_title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(snapshot.route_text_dump?.join('\n')).not.toMatch(/출발확정|온천|5성/);
+  });
+
   it('blocks publication when itinerary attraction ids do not exist in active attractions', async () => {
     const missingAttractionId = '22222222-2222-4222-8222-222222222222';
     const { supabase, calls } = makeSupabaseMock({ activeAttractionIds: [] });

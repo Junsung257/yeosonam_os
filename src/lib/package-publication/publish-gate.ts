@@ -290,6 +290,63 @@ function addMobileProofBlockers(input: PublicSnapshotGateInput, hard: PublishFin
   }
 }
 
+function requiredActionsForBlockers(blockers: PublishFinding[]): string[] {
+  const actions: string[] = [];
+  const add = (action: string) => {
+    if (!actions.includes(action)) actions.push(action);
+  };
+
+  for (const blocker of blockers) {
+    switch (blocker.code) {
+      case 'price_source_missing':
+      case 'price_fragment_display':
+        add('원문 가격표에서 출발일·성인 판매가·1인 기준을 재추출해 price_dates/product_prices를 source-backed 값으로 재생성하세요.');
+        break;
+      case 'optional_tour_display_pollution':
+      case 'masked_data_pollution':
+      case 'inclusion_optional_mixup':
+        add('선택관광/포함/불포함 섹션을 다시 분리하고 노옵션·가격표·헤더 조각은 quarantine한 뒤 public optional/terms 필드를 재생성하세요.');
+        break;
+      case 'unsupported_title_claim':
+      case 'public_title_missing':
+        add('목적지·검증된 유리한 조건·핵심 여행 성격·기간만 사용해 public_title을 정책 기반으로 재생성하세요.');
+        break;
+      case 'unsupported_customer_claim':
+      case 'risky_reservation_claim':
+      case 'english_internal_copy':
+      case 'placeholder_or_mojibake':
+      case 'customer_forbidden_internal_terms':
+      case 'internal_source_copy':
+        add('CTA/설명/배지/route_text_dump를 승인된 고객용 템플릿으로 다시 만들고 확정·보장·내부·placeholder 문구를 제거하세요.');
+        break;
+      case 'broken_attraction_id':
+        add('깨진 attraction_id를 quarantine하고 원문 관광지명을 기존 attractions DB에 재매칭하세요. 불확실하면 고객 이미지/설명에 쓰지 마세요.');
+        break;
+      case 'public_image_missing':
+        add('상품 대표 관광지, 목적지 metadata, 상품 썸네일 중 실제 포함 경험을 암시하지 않는 승인 이미지를 연결하세요.');
+        break;
+      case 'itinerary_duration_mismatch':
+        add('원문 일정 섹션을 DAY 단위로 재분리하고 상품 기간과 일정 일수를 맞춘 itinerary_public을 재생성하세요.');
+        break;
+      case 'audit_query_failed':
+        add('감사 쿼리 실패 원인을 먼저 복구하세요. 감사가 실패하면 public snapshot은 fail-closed 상태를 유지합니다.');
+        break;
+      case 'stale_audit':
+      case 'stale_mobile_proof':
+      case 'public_snapshot_hash_mismatch':
+      case 'public_snapshot_missing':
+        add('public_package_snapshot을 다시 저장하고 현재 package_revision/snapshot_hash 기준으로 /packages와 /lp 모바일 proof를 재생성하세요.');
+        break;
+      default:
+        add(`${blocker.code} 원인을 source evidence 기준으로 복구한 뒤 public snapshot을 재생성하세요.`);
+        break;
+    }
+  }
+
+  if (actions.length > 0) add('수정 후 publish gate를 다시 실행하세요.');
+  return actions;
+}
+
 export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput): PublicSnapshotGateResult {
   const hard: PublishFinding[] = [];
   const soft: PublishFinding[] = [];
@@ -393,13 +450,6 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     publishable,
     hard_blockers: hard,
     soft_warnings: soft,
-    required_actions: publishable
-      ? []
-      : [
-          'Repair or quarantine polluted DB fields',
-          'Rebuild public_package_snapshot',
-          'Regenerate current /packages and /lp mobile proof',
-          'Rerun publish gate',
-        ],
+    required_actions: publishable ? [] : requiredActionsForBlockers(hard),
   };
 }
