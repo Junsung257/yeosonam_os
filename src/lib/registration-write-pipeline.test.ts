@@ -4,6 +4,7 @@ import {
   mapProductsStatusFromL1,
   mapTravelPackageUploadStatus,
 } from './registration-write-pipeline';
+import { POSTPROCESS_VERSION } from './package-post-process';
 
 describe('mapProductsStatusFromL1', () => {
   it('L1 BLOCK → REVIEW_NEEDED', () => {
@@ -56,7 +57,7 @@ describe('prepareRegistrationWrite', () => {
       shortCode: 'TST-XXX-05-01',
       confidence: 0.95,
     });
-    expect(String(r.row.parser_version ?? '')).toContain('2026-07-13-v1');
+    expect(String(r.row.parser_version ?? '')).toContain(POSTPROCESS_VERSION);
     expect(r.l1.reasons).toEqual([]);
     expect(r.travelPackageStatus).toMatch(/approved|pending_review/);
   });
