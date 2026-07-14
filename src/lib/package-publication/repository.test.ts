@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createPublicPackageSnapshotAndDecision, fetchLatestPublicPackageSnapshot } from './repository';
+import { buildPublicPackageSnapshot } from './public-snapshot';
 
 type RpcResult = {
   rpcError?: Error | null;
@@ -116,6 +117,50 @@ function publishablePackage(overrides: Record<string, unknown> = {}) {
     optional_tours: [],
     itinerary_data: { days: [{ day: 1, schedule: [{ activity: 'Odaiba sightseeing' }] }] },
     ...overrides,
+  };
+}
+
+function mobileProofForSnapshot(snapshotHash: string) {
+  return {
+    ok: true,
+    reason: 'actual /packages and /lp mobile browser proof passed',
+    proof: {
+      status: 'pass',
+      checked_at: '2026-07-07T00:00:00.000Z',
+      package_updated_at: '2026-07-07T00:00:00.000Z',
+      package_revision: 3,
+      public_snapshot_hash: snapshotHash,
+      source: 'hwp-mobile-browser-proof',
+      screen_hash: 'screen',
+      customer_visible_hash: 'visible',
+      surfaces: ['packages', 'lp'],
+      surface_results: [
+        {
+          surface: 'packages',
+          status: 'pass',
+          screen_hash: 'packages-screen',
+          customer_visible_hash: 'packages-visible',
+          public_snapshot_hash: snapshotHash,
+          checks: [
+            { name: 'packages_reservation_cta_visible', ok: true },
+            { name: 'packages_reservation_sheet_opens', ok: true },
+            { name: 'packages_reservation_sheet_has_product_context', ok: true },
+          ],
+        },
+        {
+          surface: 'lp',
+          status: 'pass',
+          screen_hash: 'lp-screen',
+          customer_visible_hash: 'lp-visible',
+          public_snapshot_hash: snapshotHash,
+          checks: [
+            { name: 'lp_lead_cta_visible', ok: true },
+            { name: 'lp_lead_sheet_opens', ok: true },
+            { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+          ],
+        },
+      ],
+    },
   };
 }
 
@@ -361,11 +406,16 @@ describe('createPublicPackageSnapshotAndDecision', () => {
 
   it('publishes snapshot, decision, and package final state through one atomic RPC', async () => {
     const { supabase, calls } = makeSupabaseMock();
+    const pkg = publishablePackage();
+    const { snapshotHash } = buildPublicPackageSnapshot(pkg);
 
     const result = await createPublicPackageSnapshotAndDecision(
       supabase as never,
-      publishablePackage(),
-      { customerOpenContractOk: true },
+      pkg,
+      {
+        customerOpenContractOk: true,
+        mobileProof: mobileProofForSnapshot(snapshotHash),
+      },
       {
         packagePatch: {
           status: 'active',
