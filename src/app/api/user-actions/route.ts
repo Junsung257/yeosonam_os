@@ -3,6 +3,9 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { trackUserAction, type UserActionType } from '@/lib/user-actions';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 const ACTION_TYPES = new Set<UserActionType>([
@@ -12,6 +15,9 @@ const ACTION_TYPES = new Set<UserActionType>([
   'package_inquiry',
   'search',
 ]);
+
+const USER_ACTION_PACKAGE_FIELDS =
+  'id, title, destination, category, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
 
 function cleanId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -37,6 +43,32 @@ function normalizePackageCards(rows: unknown): Array<Record<string, unknown>> {
         };
       })
     : [];
+}
+
+function isUserActionPublicSnapshotCandidate(row: unknown): row is Record<string, unknown> {
+  if (!row || typeof row !== 'object') return false;
+  const item = row as Record<string, unknown>;
+  const publicationState = typeof item.publication_state === 'string' ? item.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(item);
+}
+
+async function toPublicPackageCards(
+  rows: unknown,
+  order?: Map<string, number>,
+): Promise<Array<Record<string, unknown>>> {
+  const candidates = Array.isArray(rows)
+    ? rows.filter(isUserActionPublicSnapshotCandidate)
+    : [];
+  const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    supabaseAdmin,
+    candidates,
+  );
+  const sorted = order
+    ? [...merged].sort(
+        (a, b) => (order.get(String(a.id)) ?? 999) - (order.get(String(b.id)) ?? 999),
+      )
+    : merged;
+  return normalizePackageCards(sorted);
 }
 
 export async function POST(request: NextRequest) {
@@ -85,27 +117,34 @@ export async function GET(request: NextRequest) {
 
       const { data: pkg } = await supabaseAdmin
         .from('travel_packages')
-        .select('destination, category')
+        .select(USER_ACTION_PACKAGE_FIELDS)
         .eq('id', packageId)
+        .in('publication_state', ['approved', 'published'])
         .maybeSingle();
 
-      if (!pkg) return NextResponse.json({ packages: [] });
+      if (!isUserActionPublicSnapshotCandidate(pkg)) return NextResponse.json({ packages: [] });
+      const publicSource = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        supabaseAdmin,
+        [pkg],
+      );
+      if (publicSource.length === 0) return NextResponse.json({ packages: [] });
 
       let query = supabaseAdmin
         .from('travel_packages')
-        .select('id, title, destination, price')
+        .select(USER_ACTION_PACKAGE_FIELDS)
         .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published'])
         .neq('id', packageId)
         .limit(limit);
 
-      if (pkg.destination) {
+      if (typeof pkg.destination === 'string' && pkg.destination.trim()) {
         query = query.eq('destination', pkg.destination);
-      } else if (pkg.category) {
+      } else if (typeof pkg.category === 'string' && pkg.category.trim()) {
         query = query.eq('category', pkg.category);
       }
 
       const { data } = await query;
-      return NextResponse.json({ packages: normalizePackageCards(data) });
+      return NextResponse.json({ packages: await toPublicPackageCards(data) });
     }
 
     if (mode === 'recent') {
@@ -141,15 +180,13 @@ export async function GET(request: NextRequest) {
 
       const { data } = await supabaseAdmin
         .from('travel_packages')
-        .select('id, title, destination, price')
+        .select(USER_ACTION_PACKAGE_FIELDS)
         .in('id', ids)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published']);
 
       const order = new Map(ids.map((id, index) => [id, index]));
-      const packages = (data ?? []).sort(
-        (a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999),
-      );
-      return NextResponse.json({ packages: normalizePackageCards(packages) });
+      return NextResponse.json({ packages: await toPublicPackageCards(data, order) });
     }
 
     return NextResponse.json({ packages: [] });
