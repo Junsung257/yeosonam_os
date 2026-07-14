@@ -11,6 +11,7 @@ import {
   normalizeCustomerVisibleCopy,
 } from '@/lib/customer-copy-quality';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { postProcessItineraryData } from '@/lib/package-post-process';
 import { renderPackage } from '@/lib/render-contract';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
@@ -888,7 +889,9 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     exclusions: publicPackage.excludes,
     rawText: asString(pkg.raw_text),
   });
-  const sourceBackedItinerary = buildSourceBackedItineraryCandidate(pkg, publicPackage.itinerary_data);
+  const sourceBackedItinerary = postProcessItineraryData(
+    buildSourceBackedItineraryCandidate(pkg, publicPackage.itinerary_data) as Parameters<typeof postProcessItineraryData>[0],
+  );
   const publicOperationalNotices = buildPublicOperationalNotices({
     ...pkg,
     itinerary_data: sourceBackedItinerary,

@@ -191,6 +191,32 @@ describe('public package snapshot gate', () => {
     ]));
   });
 
+  it('sanitizes itinerary source rows before public snapshot text is generated', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      optional_tours: [],
+      destination: '\uB098\uD2B8\uB791',
+      itinerary_data: {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              { activity: '[\uC120\uD0DD\uC635\uC158] \uBC1C+\uC804\uC2E0\uB9C8\uC0AC\uC9C0 90\uBD84 : $??' },
+              {
+                activity: '\uBC14\uB2E4\uC640 \uBC14\uC704\uAC00 \uC808\uACBD\uC744 \uC774\uB8E8\uB294 \uD63C\uCD1D\uACEF \uC790\uC720\uC77C\uC815',
+                attraction_names: ['????? ?????'],
+              },
+            ],
+          },
+        ],
+      },
+    }));
+
+    const itinerary = snapshot.itinerary_public as { days?: Array<{ schedule?: Array<{ activity?: string; attraction_names?: string[] }> }> };
+    expect(itinerary.days?.[0]?.schedule).toHaveLength(1);
+    expect(itinerary.days?.[0]?.schedule?.[0]?.attraction_names).toEqual(['\uD63C\uCD1D\uACEF']);
+    expect(snapshot.route_text_dump.join('\n')).not.toMatch(/\uC120\uD0DD\uC635\uC158|\$\?\?|\?{2,}/);
+  });
+
   it('uses a neutral brand fallback image when no source-backed product image exists', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
       products: { display_name: '연길·백두산 패키지', thumbnail_urls: [] },
