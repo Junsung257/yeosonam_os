@@ -19,6 +19,7 @@ import {
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -64,6 +65,7 @@ function normalizeAttractionImageSample(row: unknown): AttractionImageSample | n
   if (!row || typeof row !== 'object') return null;
 
   const record = row as Record<string, unknown>;
+  if (!isCustomerRenderableAttraction(record as unknown as AttractionData)) return null;
   const region = typeof record.region === 'string' ? record.region.trim() : '';
   if (!region) return null;
 
@@ -158,7 +160,14 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       ? supabaseAdmin.from('destination_metadata').select('destination, hero_image_url, photo_approved').in('destination', queryNames).eq('photo_approved', true)
       : Promise.resolve(emptyResult),
     queryNames.length > 0
-      ? supabaseAdmin.from('attractions').select('region, photos').in('region', queryNames).not('photos', 'is', null).limit(2000)
+      ? supabaseAdmin
+          .from('attractions')
+          .select('region, photos, name, category, badge_type, is_active, customer_publishable')
+          .in('region', queryNames)
+          .eq('is_active', true)
+          .eq('customer_publishable', true)
+          .not('photos', 'is', null)
+          .limit(2000)
       : Promise.resolve(emptyResult),
     queryNames.length > 0
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null

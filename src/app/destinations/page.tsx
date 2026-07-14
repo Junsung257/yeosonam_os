@@ -12,6 +12,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -64,6 +65,7 @@ type DestinationPackageStatsRow = {
 function normalizeAttractionSample(row: unknown): AttractionSample | null {
   if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, unknown>;
+  if (!isCustomerRenderableAttraction(record as unknown as AttractionData)) return null;
   const destination = typeof record.region === 'string' ? record.region.trim() : '';
   const name = typeof record.name === 'string' ? record.name.trim() : '';
   if (!destination || !name) return null;
@@ -136,8 +138,10 @@ async function getDestinations() {
         .eq('photo_approved', true),
       supabaseAdmin
         .from('attractions')
-        .select('region, name, photos')
+        .select('region, name, photos, category, badge_type, is_active, customer_publishable')
         .in('region', queryNames)
+        .eq('is_active', true)
+        .eq('customer_publishable', true)
         .not('photos', 'is', null)
         .limit(4000),
       supabaseAdmin
