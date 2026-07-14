@@ -141,7 +141,7 @@ export async function fetchLatestPublicPackageSnapshot(
 export async function createPublicPackageSnapshotAndDecision(
   supabase: SupabaseClient,
   pkg: AnyRecord,
-  gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'publicSnapshotHash' | 'publicSnapshotTitle' | 'snapshotExists' | 'routeTextDump'> = {},
+  gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'sourcePkg' | 'publicSnapshotHash' | 'publicSnapshotTitle' | 'snapshotExists' | 'routeTextDump'> = {},
   options: { packagePatch?: AnyRecord; blockedPackagePatch?: AnyRecord } = {},
 ): Promise<{
   snapshot: PublicPackageSnapshot;
@@ -151,19 +151,27 @@ export async function createPublicPackageSnapshotAndDecision(
   blockers: unknown[];
 }> {
   const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+  const publicSnapshotPackage = asRecord(snapshot.package) ?? {};
   const gatePackage = {
     ...pkg,
     title: snapshot.public_title,
     display_title: snapshot.public_title,
     hero_tagline: snapshot.public_subtitle ?? pkg.hero_tagline,
-    product_summary: asRecord(snapshot.package)?.product_summary ?? pkg.product_summary,
-    price: asRecord(snapshot.package)?.price ?? pkg.price,
-    price_dates: asRecord(snapshot.package)?.price_dates ?? pkg.price_dates,
-    product_prices: asRecord(snapshot.package)?.product_prices ?? pkg.product_prices,
+    product_summary: publicSnapshotPackage.product_summary ?? pkg.product_summary,
+    product_highlights: publicSnapshotPackage.product_highlights ?? [],
+    marketing_copies: publicSnapshotPackage.marketing_copies ?? [],
+    inclusions: snapshot.inclusions_public,
+    excludes: snapshot.exclusions_public,
+    optional_tours: snapshot.optional_tours_public,
+    customer_notes: publicSnapshotPackage.customer_notes ?? null,
+    itinerary_data: snapshot.itinerary_public,
+    price: publicSnapshotPackage.price ?? pkg.price,
+    price_dates: publicSnapshotPackage.price_dates ?? pkg.price_dates,
+    product_prices: publicSnapshotPackage.product_prices ?? pkg.product_prices,
     images_public: snapshot.images_public,
-    hero_image_url: asRecord(snapshot.package)?.hero_image_url ?? pkg.hero_image_url,
-    lp_hero_image_url: asRecord(snapshot.package)?.lp_hero_image_url ?? pkg.lp_hero_image_url,
-    thumbnail_urls: asRecord(snapshot.package)?.thumbnail_urls ?? pkg.thumbnail_urls,
+    hero_image_url: publicSnapshotPackage.hero_image_url ?? pkg.hero_image_url,
+    lp_hero_image_url: publicSnapshotPackage.lp_hero_image_url ?? pkg.lp_hero_image_url,
+    thumbnail_urls: publicSnapshotPackage.thumbnail_urls ?? pkg.thumbnail_urls,
     _public_notice_source_paths: snapshot.public_notice_source_paths,
     _card_projection: snapshot.card_projection,
     _lp_projection: snapshot.lp_projection,
@@ -179,6 +187,7 @@ export async function createPublicPackageSnapshotAndDecision(
   const gate = evaluatePublicSnapshotPublishGate({
     ...gateInput,
     pkg: gatePackage,
+    sourcePkg: pkg,
     publicSnapshotHash: snapshotHash,
     publicSnapshotTitle: snapshot.public_title,
     snapshotExists: true,

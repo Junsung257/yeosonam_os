@@ -151,24 +151,35 @@ async function main() {
 
   for (const row of ((data ?? []) as unknown as AnyRecord[])) {
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot(row);
+    const snapshotPackage = snapshot.package && typeof snapshot.package === 'object' && !Array.isArray(snapshot.package)
+      ? snapshot.package as AnyRecord
+      : {};
     const gate = evaluatePublicSnapshotPublishGate({
       pkg: {
         ...row,
         title: snapshot.public_title,
         display_title: snapshot.public_title,
         hero_tagline: snapshot.public_subtitle ?? row.hero_tagline,
-        product_summary: snapshot.package.product_summary ?? row.product_summary,
-        price: snapshot.package.price ?? row.price,
-        price_dates: snapshot.package.price_dates ?? row.price_dates,
-        product_prices: snapshot.package.product_prices ?? row.product_prices,
+        product_summary: snapshotPackage.product_summary ?? row.product_summary,
+        product_highlights: snapshotPackage.product_highlights ?? [],
+        marketing_copies: snapshotPackage.marketing_copies ?? [],
+        inclusions: snapshot.inclusions_public,
+        excludes: snapshot.exclusions_public,
+        optional_tours: snapshot.optional_tours_public,
+        customer_notes: snapshotPackage.customer_notes ?? null,
+        itinerary_data: snapshot.itinerary_public,
+        price: snapshotPackage.price ?? row.price,
+        price_dates: snapshotPackage.price_dates ?? row.price_dates,
+        product_prices: snapshotPackage.product_prices ?? row.product_prices,
         images_public: snapshot.images_public,
-        hero_image_url: snapshot.package.hero_image_url,
-        lp_hero_image_url: snapshot.package.lp_hero_image_url,
-        thumbnail_urls: snapshot.package.thumbnail_urls,
+        hero_image_url: snapshotPackage.hero_image_url,
+        lp_hero_image_url: snapshotPackage.lp_hero_image_url,
+        thumbnail_urls: snapshotPackage.thumbnail_urls,
         _public_notice_source_paths: snapshot.public_notice_source_paths,
         _card_projection: snapshot.card_projection,
         _lp_projection: snapshot.lp_projection,
       },
+      sourcePkg: row,
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
       snapshotExists: true,

@@ -14,6 +14,7 @@ type CustomerClaimSurface = {
 
 export type PublicSnapshotGateInput = {
   pkg: AnyRecord;
+  sourcePkg?: AnyRecord;
   legacyPublishGate?: LegacyPublishGateResult | null;
   mobileProof?: CustomerMobileProofResult | null;
   customerOpenContractOk?: boolean | null;
@@ -205,8 +206,10 @@ function unsupportedClaimInSurface(surface: CustomerClaimSurface, sourceText: st
   const text = surface.text;
   if (!text) return null;
   const hasOnsen = /온천/.test(text);
-  const strongOnsenEvidence = (sourceText.match(/온천/g) ?? []).length >= 2
-    && /온천\s*(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광|도시|욕)|(?:벳부|유후인|쿠로가와|노보리베츠|죠잔케이|료칸)/.test(sourceText);
+  const onsenEvidenceCount = (sourceText.match(/온천/g) ?? []).length;
+  const strongOnsenEvidence = onsenEvidenceCount >= 2
+    && (/(?:온천\s*1박|온천욕)/.test(sourceText)
+      || /온천\s*(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광|도시|욕)|(?:벳부|유후인|쿠로가와|노보리베츠|죠잔케이|료칸)/.test(sourceText));
   if (hasOnsen && !strongOnsenEvidence) {
     return `${surface.label} claims onsen as a theme without strong source evidence`;
   }
@@ -263,10 +266,13 @@ function customerClaimSurfaces(input: PublicSnapshotGateInput): CustomerClaimSur
 }
 
 function findUnsupportedCustomerClaim(input: PublicSnapshotGateInput): { message: string; fieldPath: string } | null {
-  const pkg = input.pkg;
+  const pkg = input.sourcePkg ?? input.pkg;
   const raw = String(pkg.raw_text || '');
   const itinerary = JSON.stringify(pkg.itinerary_data ?? {});
   const sourceText = [
+    pkg.destination,
+    pkg.title,
+    pkg.display_title,
     raw,
     pkg.product_summary,
     ...(Array.isArray(pkg.product_highlights) ? pkg.product_highlights : []),
@@ -400,6 +406,7 @@ function requiredActionsForBlockers(blockers: PublishFinding[]): string[] {
 export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput): PublicSnapshotGateResult {
   const hard: PublishFinding[] = [];
   const soft: PublishFinding[] = [];
+  const sourcePkg = input.sourcePkg ?? input.pkg;
 
   if (input.auditQueryFailed) {
     addBlocker(hard, 'audit_query_failed', input.auditQueryFailed);
@@ -448,13 +455,13 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'public_snapshot_hash_mismatch', 'mobile proof hash does not match the public package snapshot hash');
   }
 
-  if (hasOptionalTourPollution(input.pkg)) {
+  if (hasOptionalTourPollution(sourcePkg)) {
     addBlocker(hard, 'optional_tour_display_pollution', 'optional_tours contains no-option, price-table, inclusion, or header fragments', 'optional_tours');
     addBlocker(hard, 'masked_data_pollution', 'renderer may hide optional_tours pollution, but source DB still contains polluted customer data', 'optional_tours');
   }
 
   const maskedCopyPollution = findMaskedCustomerCopyPollution(
-    input.pkg,
+    sourcePkg,
     coveredPublicNoticeSourcePaths(input),
   );
   if (maskedCopyPollution) {
@@ -469,7 +476,7 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     }
   }
 
-  const brokenAttraction = findBrokenAttractionId(input.pkg);
+  const brokenAttraction = findBrokenAttractionId(sourcePkg);
   if (brokenAttraction) {
     addBlocker(hard, 'broken_attraction_id', brokenAttraction, 'itinerary_data');
   }

@@ -694,6 +694,31 @@ function applySourceBackedPublicPriceRepair(sourcePackage: AnyRecord, publicPack
   }
 }
 
+function normalizeRawTitleEchoes(value: unknown, publicTitle: string, rawTitles: Set<string>): unknown {
+  if (typeof value === 'string') {
+    return rawTitles.has(normalizeText(value)) ? publicTitle : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeRawTitleEchoes(item, publicTitle, rawTitles));
+  }
+  const record = asRecord(value);
+  if (!record) return value;
+
+  const normalized: AnyRecord = {};
+  for (const [key, childValue] of Object.entries(record)) {
+    normalized[key] = normalizeRawTitleEchoes(childValue, publicTitle, rawTitles);
+  }
+  return normalized;
+}
+
+function rawTitleEchoCandidates(pkg: AnyRecord): Set<string> {
+  return new Set([
+    pkg.title,
+    pkg.display_title,
+    asRecord(pkg.products)?.display_name,
+  ].map(normalizeText).filter(Boolean));
+}
+
 function formatDuration(pkg: AnyRecord): string | null {
   const nights = asNumber(pkg.nights);
   const duration = asNumber(pkg.duration);
@@ -891,6 +916,17 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     optionBadges: optionalTourClassification.badges,
     optionalTourStatus: optionalTourClassification.status,
   }) || displayCopy.heroSubline || null;
+  const rawTitleEchoes = rawTitleEchoCandidates(pkg);
+  publicPackage.itinerary_data = normalizeRawTitleEchoes(
+    publicPackage.itinerary_data,
+    publicTitle,
+    rawTitleEchoes,
+  );
+  publicPackage.products = normalizeRawTitleEchoes(
+    publicPackage.products,
+    publicTitle,
+    rawTitleEchoes,
+  );
   const duration = asNumber(publicPackage.duration);
   const snapshotPackage = {
     ...publicPackage,

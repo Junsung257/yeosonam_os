@@ -116,6 +116,45 @@ describe('public package snapshot gate', () => {
     expect(snapshot.package.product_summary).not.toContain('랜드사 커미션');
   });
 
+  it('replaces exact raw supplier title echoes inside nested public snapshot fields', () => {
+    const rawSupplierTitle = '\uBD80\uC0B0 \uD6C4\uCFE0\uC624\uCE74-\uAD6C\uB9C8\uBAA8\uD1A0 \uC2DC\uD2F0 54\uD640 \uACE8\uD504 3\uBC154\uC77C';
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      title: rawSupplierTitle,
+      display_title: rawSupplierTitle,
+      destination: '\uD6C4\uCFE0\uC624\uCE74, \uAD6C\uB9C8\uBAA8\uD1A0',
+      duration: 4,
+      nights: 3,
+      optional_tours: [],
+      products: {
+        display_name: rawSupplierTitle,
+        thumbnail_urls: ['https://images.pexels.com/photos/123/pexels-photo-123.jpeg'],
+      },
+      itinerary_data: {
+        meta: { title: rawSupplierTitle },
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { activity: '\uD6C4\uCFE0\uC624\uCE74 \uB3C4\uCC29', attraction_ids: [] },
+            ],
+          },
+        ],
+      },
+      raw_text: [
+        rawSupplierTitle,
+        '\uD6C4\uCFE0\uC624\uCE74 \uACE8\uD504 \uC77C\uC815',
+        'DAY 1 \uD6C4\uCFE0\uC624\uCE74 \uB3C4\uCC29',
+      ].join('\n'),
+    }));
+
+    expect(snapshot.public_title).not.toBe(rawSupplierTitle);
+    expect(snapshot.package.title).toBe(snapshot.public_title);
+    expect(snapshot.package.display_title).toBe(snapshot.public_title);
+    expect((snapshot.package.products as { display_name?: string }).display_name).toBe(snapshot.public_title);
+    expect((snapshot.itinerary_public as { meta?: { title?: string } }).meta?.title).toBe(snapshot.public_title);
+    expect(snapshot.route_text_dump.join('\n')).not.toContain(rawSupplierTitle);
+  });
+
   it('uses a neutral brand fallback image when no source-backed product image exists', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
       products: { display_name: '연길·백두산 패키지', thumbnail_urls: [] },
@@ -650,6 +689,34 @@ describe('public package snapshot gate', () => {
       customerOpenContractOk: true,
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('unsupported_title_claim');
+  });
+
+  it('checks title claim evidence against the source package, not the shortened public projection', () => {
+    const publicTitle = '\uADDC\uC288 \uC628\uCC9C\u00B7\uAD00\uAD11 3\uBC154\uC77C';
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        title: publicTitle,
+        display_title: publicTitle,
+        product_summary: '\uC77C\uC815\u00B7\uAC00\uACA9\u00B7\uD56D\uACF5 \uD655\uC778',
+        price_dates: [{ date: '2026-08-01', price: 899000 }],
+        images_public: [{ url: '/logo.png' }],
+        _card_projection: { title: publicTitle },
+        _lp_projection: { title: publicTitle },
+      },
+      sourcePkg: {
+        raw_text: [
+          '\uADDC\uC288 \uC628\uCC9C\u00B7\uAD00\uAD11 3\uBC154\uC77C',
+          '\uC720\uD6C4\uC778 \uC628\uCC9C\uB9C8\uC744 \uC0B0\uCC45',
+          '\uC628\uCC9C \uB8CC\uCE78 \uC219\uBC15',
+        ].join('\n'),
+      },
+      publicSnapshotTitle: publicTitle,
+      snapshotExists: true,
+      customerOpenContractOk: true,
+      routeTextDump: [publicTitle],
     });
 
     expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('unsupported_title_claim');
