@@ -327,25 +327,32 @@ function buildPublicOperationalNotices(pkg: AnyRecord): {
 }
 
 function itineraryHasPublicDays(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
   const itinerary = asRecord(value);
   return Array.isArray(itinerary?.days) && itinerary.days.length > 0;
 }
 
+function normalizePublicItineraryShape(value: unknown): unknown {
+  if (Array.isArray(value)) return { days: value };
+  return value;
+}
+
 function buildSourceBackedItineraryCandidate(pkg: AnyRecord, existingItinerary: unknown): unknown {
-  if (itineraryHasPublicDays(existingItinerary)) {
-    return existingItinerary;
+  const normalizedExisting = normalizePublicItineraryShape(existingItinerary);
+  if (itineraryHasPublicDays(normalizedExisting)) {
+    return normalizedExisting;
   }
 
   const rawText = asString(pkg.raw_text);
-  if (!rawText) return existingItinerary;
+  if (!rawText) return normalizedExisting;
 
-  const parsedItinerary = buildSupplierRawDeterministicItinerary(rawText);
+  const parsedItinerary = normalizePublicItineraryShape(buildSupplierRawDeterministicItinerary(rawText));
   if (!itineraryHasPublicDays(parsedItinerary)) {
-    return existingItinerary;
+    return normalizedExisting;
   }
 
   return {
-    ...parsedItinerary,
+    ...(asRecord(parsedItinerary) ?? {}),
     optional_tours: [],
   };
 }

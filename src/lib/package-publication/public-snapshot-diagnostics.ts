@@ -47,6 +47,11 @@ function hasArrayItems(value: unknown): boolean {
   return Array.isArray(value) && value.length > 0;
 }
 
+function itineraryDays(value: unknown): unknown {
+  if (Array.isArray(value)) return value;
+  return asRecord(value)?.days;
+}
+
 function addDiagnostic(
   diagnostics: PublicSnapshotGenerationDiagnostic[],
   field: PublicSnapshotGenerationField,
@@ -205,13 +210,13 @@ export function diagnosePublicSnapshotGeneration(input: {
       : ['원문 가격표에서 출발일, 성인 판매가, 1인 기준을 구조화해 price_dates와 product_prices를 다시 생성하세요.'],
   );
 
-  const itineraryDays = asRecord(snapshot.itinerary_public)?.days;
+  const publicItineraryDays = itineraryDays(snapshot.itinerary_public);
   addDiagnostic(
     diagnostics,
     'itinerary',
-    hasArrayItems(itineraryDays) ? 'generated' : (rawText ? 'repairable' : 'blocked'),
-    [hasArrayItems(itineraryDays) ? `days=${(itineraryDays as unknown[]).length}` : 'itinerary_days_missing'],
-    hasArrayItems(itineraryDays)
+    hasArrayItems(publicItineraryDays) ? 'generated' : (rawText ? 'repairable' : 'blocked'),
+    [hasArrayItems(publicItineraryDays) ? `days=${(publicItineraryDays as unknown[]).length}` : 'itinerary_days_missing'],
+    hasArrayItems(publicItineraryDays)
       ? []
       : ['원문 일정 섹션을 DAY 단위로 다시 분리하고 가격표/포함내역 조각을 일정에서 제외하세요.'],
   );
