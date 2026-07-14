@@ -12,6 +12,7 @@ import {
 } from '@/lib/customer-copy-quality';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { renderPackage } from '@/lib/render-contract';
+import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
 import {
   composeCustomerPublicSubtitle,
@@ -631,6 +632,68 @@ function representativeCustomerPrice(pkg: AnyRecord): number | null {
   return null;
 }
 
+function hasValidPublicPriceDates(value: unknown): boolean {
+  const rows = Array.isArray(value) ? value : [];
+  if (rows.length === 0) return false;
+  return rows.every((item) => {
+    const record = asRecord(item);
+    const date = typeof record?.date === 'string' ? record.date.trim() : '';
+    const price = asNumber(record?.adult_selling_price ?? record?.price ?? record?.selling_price);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof price === 'number' && price > 0;
+  });
+}
+
+function productPriceRowsFromPublicPriceDates(value: unknown): Array<{
+  target_date: string;
+  adult_selling_price: number;
+  note: null;
+}> {
+  const rows = Array.isArray(value) ? value : [];
+  const output: Array<{ target_date: string; adult_selling_price: number; note: null }> = [];
+  const seen = new Set<string>();
+  for (const item of rows) {
+    const record = asRecord(item);
+    const date = typeof record?.date === 'string' ? record.date.trim() : '';
+    const price = asNumber(record?.adult_selling_price ?? record?.price ?? record?.selling_price);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !price || price <= 0) continue;
+    const key = `${date}:${price}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push({ target_date: date, adult_selling_price: price, note: null });
+  }
+  return output;
+}
+
+function applySourceBackedPublicPriceRepair(sourcePackage: AnyRecord, publicPackage: AnyRecord): void {
+  const repair = buildSourceBackedPriceDateRepair({
+    ...sourcePackage,
+    price_dates: Array.isArray(publicPackage.price_dates)
+      ? publicPackage.price_dates as never
+      : sourcePackage.price_dates as never,
+  });
+
+  if (repair.status === 'repaired') {
+    publicPackage.price_dates = repair.priceDates;
+    publicPackage.product_prices = productPriceRowsFromPublicPriceDates(repair.priceDates);
+    publicPackage.public_price_source = {
+      source: repair.source,
+      reason: repair.reason,
+      expected_count: repair.expectedCount,
+      added_count: repair.addedCount,
+    };
+    return;
+  }
+
+  if (hasValidPublicPriceDates(publicPackage.price_dates)) {
+    const currentProductPrices = Array.isArray(publicPackage.product_prices)
+      ? publicPackage.product_prices
+      : [];
+    if (currentProductPrices.length === 0) {
+      publicPackage.product_prices = productPriceRowsFromPublicPriceDates(publicPackage.price_dates);
+    }
+  }
+}
+
 function formatDuration(pkg: AnyRecord): string | null {
   const nights = asNumber(pkg.nights);
   const duration = asNumber(pkg.duration);
@@ -755,6 +818,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   optionalTourClassification: ReturnType<typeof classifyOptionalTours>;
 } {
   const publicPackage = sanitizeCustomerPackageForClient(pkg) ?? {};
+  applySourceBackedPublicPriceRepair(pkg, publicPackage);
   const imagesPublic = collectPublicImages({ ...pkg, ...publicPackage });
   const imageUrls = imagesPublic.map(image => image.url);
   if (imageUrls.length > 0) {

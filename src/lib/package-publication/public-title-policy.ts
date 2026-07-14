@@ -7,6 +7,8 @@ const INTERNAL_SUPPLIER_WORDS =
   /\b(?:LJ|BX|TW|ZE|7C|OZ|KE|RS|PKG|TL|NET|RMK|P\.?P\.?)\b|\[[^\]]*\]|\([^)]*(?:발권|스팟|특가|마감|TL)[^)]*\)/gi;
 
 const KNOWN_DESTINATION_ALIASES: Array<[RegExp, string]> = [
+  [/홍콩/, '홍콩'],
+  [/마카오/, '마카오'],
   [/연길|백두산|장백산/, '연길·백두산'],
   [/다낭.*호이안|호이안.*다낭|다낭\s*[/+·]\s*호이안/, '다낭·호이안'],
   [/나트랑.*달랏|달랏.*나트랑|나트랑\s*[/+·]\s*달랏/, '나트랑·달랏'],
@@ -196,7 +198,7 @@ function inferTheme(text: string, destination: string): string {
   if (/골프|라운드|(?:^|[\s/])C\.?C\.?(?:$|[\s/])/i.test(text)) return '골프';
   if (!/연길·백두산/.test(destination) && hasStrongOnsenEvidence(text)) return '온천·관광';
   if (/자유\s*일정|자유\s*시간|1일\s*자유|반일\s*자유/i.test(text)) return '자유일정';
-  if (/다낭·호이안|푸꾸옥|세부|리조트|비치|해변|호핑|휴양/i.test(`${destination} ${text}`)) return '휴양관광';
+  if (/다낭·호이안|푸꾸옥|리조트|비치|해변|호핑|휴양/i.test(`${destination} ${text}`) || (/세부/.test(destination) && /세부/.test(text))) return '휴양관광';
   return '핵심관광';
 }
 

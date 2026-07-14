@@ -340,6 +340,50 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('price_source_missing');
   });
 
+  it('rebuilds public price rows from source-backed raw date and price evidence', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      price: 599000,
+      product_prices: [],
+      price_dates: [],
+      raw_text: [
+        '\uC5F0\uAE38\u00B7\uBC31\uB450\uC0B0 \uB178\uC635\uC158 \uD575\uC2EC\uAD00\uAD11 4\uBC155\uC77C',
+        '2026\uB144 \uC0C1\uD488 \uAC00\uACA9\uD45C \uC548\uB0B4\uC785\uB2C8\uB2E4. \uBD80\uC0B0 \uCD9C\uBC1C \uD328\uD0A4\uC9C0 \uC0C1\uD488\uAC00 \uD45C\uC785\uB2C8\uB2E4.',
+        '8/1 799,000',
+        '\uD3EC\uD568\uB0B4\uC5ED',
+        '\uC655\uBCF5\uD56D\uACF5\uB8CC',
+      ].join('\n'),
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        price: snapshot.package.price,
+        price_dates: snapshot.package.price_dates,
+        product_prices: snapshot.package.product_prices,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(snapshot.package.price_dates).toEqual([
+      expect.objectContaining({ date: '2026-08-01', price: 799000 }),
+    ]);
+    expect(snapshot.package.product_prices).toEqual([
+      { target_date: '2026-08-01', adult_selling_price: 799000, note: null },
+    ]);
+    expect(snapshot.price_display).toMatch(/^799,000/);
+    expect(snapshot.card_projection.price).toBe(799000);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('price_source_missing');
+  });
+
   it('uses a safe brand fallback instead of failing open to missing or placeholder images', () => {
     const pkg = yanjiPackage({
       optional_tours: [],
