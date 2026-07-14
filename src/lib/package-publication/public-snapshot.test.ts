@@ -281,6 +281,25 @@ describe('public package snapshot gate', () => {
     expect(snapshot.route_text_dump.join('\n')).toContain('백두산 천지 관광');
   });
 
+  it('normalizes array-shaped saved itineraries before building the public snapshot', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      optional_tours: [],
+      itinerary_data: [
+        { day: 1, regions: ['Busan'], schedule: [{ type: 'normal', activity: 'Airport meeting' }] },
+        { day: 2, regions: ['Yanji'], schedule: [{ type: 'normal', activity: 'City tour' }] },
+      ],
+    }));
+    const itinerary = snapshot.itinerary_public as { days?: unknown[] } | null;
+    const canonical = snapshot.canonical_view as { days?: unknown[] };
+
+    expect(itinerary?.days).toHaveLength(2);
+    expect(canonical.days).toHaveLength(2);
+    expect(snapshot.package.itinerary_data).toEqual(expect.objectContaining({
+      days: expect.any(Array),
+    }));
+    expect(snapshot.route_text_dump.join('\n')).toContain('City tour');
+  });
+
   it('builds the canonical render view from the same cleaned public snapshot package', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage());
     const canonicalView = snapshot.canonical_view as {
