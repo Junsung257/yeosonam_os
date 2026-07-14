@@ -116,6 +116,29 @@ describe('public package snapshot gate', () => {
     expect(snapshot.package.product_summary).not.toContain('랜드사 커미션');
   });
 
+  it('uses a neutral brand fallback image when no source-backed product image exists', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      products: { display_name: '연길·백두산 패키지', thumbnail_urls: [] },
+      hero_image_url: null,
+      lp_hero_image_url: null,
+      thumbnail_urls: [],
+      attractions: [],
+      matched_attractions: [],
+      destination_attractions: [],
+    }));
+
+    expect(snapshot.images_public).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        url: '/logo.png',
+        source: 'brand_fallback',
+        alt: '여소남 브랜드 이미지',
+      }),
+    ]));
+    expect(snapshot.package.hero_image_url).toBe('/logo.png');
+    expect(snapshot.card_projection.hero_image_url).toBe('/logo.png');
+    expect(snapshot.route_text_dump.join('\n')).not.toMatch(/logo\.png|사진\s*준비|이미지\s*준비/);
+  });
+
   it('fails closed when a policy title cannot include a verified duration', () => {
     const pkg = yanjiPackage({
       duration: null,
@@ -290,7 +313,7 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('price_source_missing');
   });
 
-  it('fails closed when no public image candidate exists', () => {
+  it('uses a safe brand fallback instead of failing open to missing or placeholder images', () => {
     const pkg = yanjiPackage({
       optional_tours: [],
       products: { display_name: '연길·백두산 패키지', thumbnail_urls: [] },
@@ -310,11 +333,10 @@ describe('public package snapshot gate', () => {
       routeTextDump: snapshot.route_text_dump,
     });
 
-    expect(snapshot.images_public).toEqual([]);
-    expect(gate.publishable).toBe(false);
-    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'public_image_missing' }),
+    expect(snapshot.images_public).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'brand_fallback', url: '/logo.png' }),
     ]));
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('public_image_missing');
   });
 
   it('blocks publication while polluted optional_tours remain in the DB row', () => {

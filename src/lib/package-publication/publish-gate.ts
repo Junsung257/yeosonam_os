@@ -191,7 +191,7 @@ function unsupportedClaimInSurface(surface: CustomerClaimSurface, sourceText: st
   if (!text) return null;
   const hasOnsen = /온천/.test(text);
   const strongOnsenEvidence = (sourceText.match(/온천/g) ?? []).length >= 2
-    && /온천(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광)/.test(sourceText);
+    && /온천\s*(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광|도시|욕)|(?:벳부|유후인|쿠로가와|노보리베츠|죠잔케이|료칸)/.test(sourceText);
   if (hasOnsen && !strongOnsenEvidence) {
     return `${surface.label} claims onsen as a theme without strong source evidence`;
   }

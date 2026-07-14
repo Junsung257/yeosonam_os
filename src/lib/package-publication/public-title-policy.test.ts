@@ -78,6 +78,32 @@ describe('customer public title policy', () => {
     expect(title).toBe('북해도 온천·관광 3박4일');
   });
 
+  it('does not promote one mud-onsen activity into a trip-level title theme', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '나트랑/달랏',
+      title: '나트랑 달랏 3박5일',
+      duration: 5,
+      nights: 3,
+      raw_text: '나트랑 시내 관광과 머드온천 체험, 달랏 관광 일정입니다.',
+      itinerary_data: {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              {
+                activity: '베트남에서 유명한 머드온천 체험',
+                landing_sentence: '베트남에서 유명한 머드온천 일정을 진행합니다.',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(title).toBe('나트랑·달랏 핵심관광 3박5일');
+    expect(title).not.toContain('온천');
+  });
+
   it('does not promote Yanji/Baekdu onsen wording into the title theme', () => {
     const title = composeCustomerPublicTitle({
       destination: '연길',
