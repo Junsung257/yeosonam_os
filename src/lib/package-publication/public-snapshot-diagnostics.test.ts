@@ -137,7 +137,7 @@ describe('public snapshot generation diagnostics', () => {
 
     expect(report.overall_status).toBe('blocked');
     expect(byField.get('customer_copy')?.status).toBe('blocked');
-    expect(byField.get('customer_copy')?.repair_actions.join('\n')).toContain('승인된 템플릿');
+    expect(byField.get('customer_copy')?.repair_actions.join('\n')).toContain('승인된 고객용 템플릿');
     expect(byField.get('terms')?.status).toBe('generated');
     expect(byField.get('optional_tours')?.status).toBe('generated');
   });

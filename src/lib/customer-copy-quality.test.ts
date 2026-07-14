@@ -109,6 +109,16 @@ describe('customer visible copy quality', () => {
     expect(issueCodes('가이드 경비 4만원 성인/아동 동일')).not.toContain('customer_forbidden_internal_terms');
   });
 
+  it('does not block attraction names that contain internal-term substrings', () => {
+    expect(issueCodes('원가계로 이동')).not.toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('아바타 촬영지 원가계 관광')).not.toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('중국 5대 불교명산 중 하나인 범정산')).not.toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('바나산 정상 뷔페')).not.toContain('customer_forbidden_internal_terms');
+
+    expect(issueCodes('상품 원가 기준으로 마진 확인')).toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('정산 확인 후 판매자 확인')).toContain('customer_forbidden_internal_terms');
+  });
+
   it('detects mojibake and visible html entities', () => {
     expect(issueCodes('???? &#xAC00;')).toEqual(expect.arrayContaining([
       'placeholder_or_mojibake',

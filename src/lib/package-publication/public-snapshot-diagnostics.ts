@@ -96,6 +96,50 @@ function summarizeBlockers(blockers: PublishFinding[], codes: string[]): string[
     .map(blocker => `${blocker.code}: ${blocker.message}`);
 }
 
+function customerCopyRepairActions(blockers: PublishFinding[], routeTextIsBad: boolean): string[] {
+  const actions = new Set<string>();
+  for (const blocker of blockers) {
+    const fieldPath = String(blocker.fieldPath ?? '');
+    if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.highlights.remarks')) {
+      actions.add('결제/발권/취소/예약 조건 REMARK는 itinerary_public과 고객 카피에서 제거하고 approved operational notice 또는 quarantine 필드로 분리하세요.');
+      continue;
+    }
+    if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.highlights.shopping')) {
+      actions.add('쇼핑센터/싱글차지/REMARK 조각은 shopping disclosure 또는 exclusions/notice 후보로 분리하고 고객 일정·요약 문구 근거에서 제외하세요.');
+      continue;
+    }
+    if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.meta.title')) {
+      actions.add('itinerary meta title에 섞인 발권조건·출발확정 문구는 title evidence에서 제외하고 운영 조건 후보로 격리하세요.');
+      continue;
+    }
+    if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.days')) {
+      actions.add('일정 문장 copy lint 오염은 먼저 관광지명/일반 문구 오탐 여부를 검사하고, 실제 운영 조각이면 schedule row에서 notice/quarantine으로 분리하세요.');
+      continue;
+    }
+    if (blocker.code === 'masked_data_pollution' && /product_highlights|product_summary|hero_tagline|marketing_copies/.test(fieldPath)) {
+      actions.add('상품 요약·하이라이트는 raw 제목 복사 대신 public title policy와 source-backed 조건만으로 다시 생성하세요.');
+      continue;
+    }
+    if (blocker.code === 'masked_data_pollution' && fieldPath.includes('optional_tours')) {
+      actions.add('선택관광 원본 배열의 노옵션·가격표·포함내역 조각은 optional_tours_public에서 제외하고 optional_tour_status/quarantine으로 재분류하세요.');
+      continue;
+    }
+    if ([
+      'risky_reservation_claim',
+      'english_internal_copy',
+      'placeholder_or_mojibake',
+      'customer_forbidden_internal_terms',
+      'internal_source_copy',
+    ].includes(String(blocker.code))) {
+      actions.add('CTA·요약·배지·route_text_dump는 승인된 고객용 템플릿으로 재생성하고 확정·보장·내부·placeholder 문구를 제거하세요.');
+    }
+  }
+  if (routeTextIsBad) {
+    actions.add('route_text_dump를 다시 생성해 /packages, /lp, 카드, 비슷한 여행 영역에 고객 금지 문구가 남지 않는지 재검사하세요.');
+  }
+  return [...actions];
+}
+
 function publicText(snapshot: PublicPackageSnapshot): string {
   return snapshot.route_text_dump.join('\n');
 }
@@ -223,6 +267,7 @@ export function diagnosePublicSnapshotGeneration(input: {
   );
 
   const copyBlockers = summarizeBlockers(hardBlockers, [
+    'masked_data_pollution',
     'risky_reservation_claim',
     'english_internal_copy',
     'placeholder_or_mojibake',
@@ -235,9 +280,7 @@ export function diagnosePublicSnapshotGeneration(input: {
     'customer_copy',
     badCopy || copyBlockers.length > 0 ? 'blocked' : 'generated',
     copyBlockers.length > 0 ? copyBlockers : ['customer_visible_text_lint_passed'],
-    badCopy || copyBlockers.length > 0
-      ? ['CTA와 고객 문구를 승인된 템플릿으로 교체하고 내부/영어/보장/확정/placeholder 문구를 제거한 뒤 route_text_dump를 다시 생성하세요.']
-      : [],
+    badCopy || copyBlockers.length > 0 ? customerCopyRepairActions(hardBlockers, badCopy) : [],
   );
 
   const priority: Record<PublicSnapshotGenerationStatus, number> = {
