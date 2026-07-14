@@ -162,6 +162,7 @@ async function main() {
         hero_image_url: snapshot.package.hero_image_url,
         lp_hero_image_url: snapshot.package.lp_hero_image_url,
         thumbnail_urls: snapshot.package.thumbnail_urls,
+        _public_notice_source_paths: snapshot.public_notice_source_paths,
         _card_projection: snapshot.card_projection,
         _lp_projection: snapshot.lp_projection,
       },
@@ -170,6 +171,7 @@ async function main() {
       snapshotExists: true,
       customerOpenContractOk: true,
       routeTextDump: snapshot.route_text_dump,
+      publicNoticeSourcePaths: snapshot.public_notice_source_paths,
     });
     const report = diagnosePublicSnapshotGeneration({
       pkg: row,

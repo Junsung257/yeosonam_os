@@ -58,6 +58,8 @@ export type PublicPackageSnapshot = {
   inclusions_public: unknown[];
   exclusions_public: unknown[];
   itinerary_public: unknown;
+  public_notices: unknown[];
+  public_notice_source_paths: string[];
   optional_tours_public: unknown[];
   images_public: unknown[];
   cta_copy: {

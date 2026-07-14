@@ -701,6 +701,61 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('risky_reservation_claim');
   });
 
+  it('turns operational remarks into approved public notices instead of customer copy blockers', () => {
+    const rawRemark = '전세기 운항상품으로 예약시 항공요금이 입금되어야 좌석이 확정됩니다. 취소시 환불되지 않습니다';
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      itinerary_data: {
+        highlights: {
+          remarks: [rawRemark],
+        },
+        days: [
+          { day: 1, schedule: [{ activity: '연길 이동', attraction_ids: [] }] },
+          { day: 2, schedule: [{ activity: '백두산 천지 관광', attraction_ids: [VALID_ATTRACTION_ID] }] },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        title: snapshot.public_title,
+        display_title: snapshot.public_title,
+        product_summary: snapshot.package.product_summary,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+        _public_notice_source_paths: snapshot.public_notice_source_paths,
+        _card_projection: snapshot.card_projection,
+        _lp_projection: snapshot.lp_projection,
+      },
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+      publicNoticeSourcePaths: snapshot.public_notice_source_paths,
+    });
+
+    const publicText = snapshot.route_text_dump.join('\n');
+    expect(snapshot.public_notice_source_paths).toContain('itinerary_data.highlights.remarks.0');
+    expect(snapshot.public_notices).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        template_key: 'reservation_availability_check',
+        text: '항공 좌석과 요금은 상담 후 최종 확인됩니다.',
+      }),
+      expect.objectContaining({
+        template_key: 'cancellation_policy_check',
+        text: '취소·환불 규정은 예약 단계에서 담당자가 다시 안내합니다.',
+      }),
+    ]));
+    expect(publicText).not.toContain(rawRemark);
+    expect(publicText).not.toMatch(/좌석\s*확정|환불되지|출발\s*확정/);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('masked_data_pollution');
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('risky_reservation_claim');
+  });
+
   it('sanitizes risky itinerary customer copy from the public snapshot and blocks the masked source pollution', () => {
     const riskyItineraryCopy = '\uC219\uBC15 \uD655\uC815 \uD6C4 \uC548\uB0B4\uB4DC\uB9BD\uB2C8\uB2E4.';
     const pkg = yanjiPackage({

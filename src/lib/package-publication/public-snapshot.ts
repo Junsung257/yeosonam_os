@@ -26,6 +26,21 @@ type PublicImageCandidate = {
   source: 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og' | 'brand_fallback';
   alt: string | null;
 };
+type PublicNoticeTemplateKey =
+  | 'reservation_availability_check'
+  | 'cancellation_policy_check'
+  | 'shopping_disclosure_check'
+  | 'passport_validity_check';
+type PublicNoticeCandidate = {
+  type: 'INFO' | 'POLICY' | 'CRITICAL';
+  title: string;
+  text: string;
+  category: 'reservation' | 'cancellation' | 'shopping' | 'passport';
+  values: Record<string, unknown>;
+  template_key: PublicNoticeTemplateKey;
+  review_status: 'auto_clean';
+  source_line: null;
+};
 
 const SNAPSHOT_VERSION = 'public-package-snapshot-v1' as const;
 const BRAND_FALLBACK_IMAGE = '/logo.png';
@@ -68,6 +83,48 @@ const PUBLIC_STRUCTURE_STRING_KEY_RE =
   /(?:^|_)(?:id|ids|hash|url|urls|src|slug|icon|date|day|count|status|source|type|currency)$/i;
 
 const SAFE_RESERVATION_NOTICE = '예약 가능 여부는 담당자 확인 후 안내됩니다.';
+const APPROVED_OPERATIONAL_NOTICE_TEMPLATES: Record<PublicNoticeTemplateKey, PublicNoticeCandidate> = {
+  reservation_availability_check: {
+    type: 'INFO',
+    title: '예약 전 확인',
+    text: '항공 좌석과 요금은 상담 후 최종 확인됩니다.',
+    category: 'reservation',
+    values: {},
+    template_key: 'reservation_availability_check',
+    review_status: 'auto_clean',
+    source_line: null,
+  },
+  cancellation_policy_check: {
+    type: 'POLICY',
+    title: '취소 규정 안내',
+    text: '취소·환불 규정은 예약 단계에서 담당자가 다시 안내합니다.',
+    category: 'cancellation',
+    values: {},
+    template_key: 'cancellation_policy_check',
+    review_status: 'auto_clean',
+    source_line: null,
+  },
+  shopping_disclosure_check: {
+    type: 'INFO',
+    title: '쇼핑 일정 안내',
+    text: '쇼핑 일정이 포함될 수 있습니다. 방문 횟수와 품목은 상담 시 확인해 주세요.',
+    category: 'shopping',
+    values: {},
+    template_key: 'shopping_disclosure_check',
+    review_status: 'auto_clean',
+    source_line: null,
+  },
+  passport_validity_check: {
+    type: 'INFO',
+    title: '여권 확인',
+    text: '여권 유효기간과 입국 조건은 출발 전 담당자가 다시 확인해드립니다.',
+    category: 'passport',
+    values: {},
+    template_key: 'passport_validity_check',
+    review_status: 'auto_clean',
+    source_line: null,
+  },
+};
 
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
@@ -142,6 +199,86 @@ function sanitizePublicCustomerValue(value: unknown, key = ''): unknown {
     if (!isEmptyPublicValue(publicValue)) sanitized[key] = publicValue;
   }
   return sanitized;
+}
+
+function walkSourceStrings(
+  value: unknown,
+  visit: (text: string, path: string) => void,
+  path = '',
+  depth = 0,
+) {
+  if (depth > 6) return;
+  if (typeof value === 'string') {
+    const text = normalizeText(value);
+    if (text) visit(text, path);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => walkSourceStrings(item, visit, `${path}.${index}`.replace(/^\./, ''), depth + 1));
+    return;
+  }
+  const record = asRecord(value);
+  if (!record) return;
+  for (const [key, item] of Object.entries(record)) {
+    walkSourceStrings(item, visit, `${path}.${key}`.replace(/^\./, ''), depth + 1);
+  }
+}
+
+function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeTemplateKey[] {
+  const keys: PublicNoticeTemplateKey[] = [];
+  const isOperationalPath = /itinerary_data\.highlights\.(?:remarks|shopping)/.test(path)
+    || /itinerary_data\.meta\.title/.test(path)
+    || /^customer_notes/.test(path)
+    || /^notices_parsed/.test(path);
+  if (!isOperationalPath) return keys;
+
+  if (/예약\s*즉시|즉시\s*확정|출발\s*확정|좌석\s*(?:확보|확정|보장)|항공\s*요금|발권|예약금|입금/i.test(text)) {
+    keys.push('reservation_availability_check');
+  }
+  if (/취소|환불|수수료|차지|위약/i.test(text)) {
+    keys.push('cancellation_policy_check');
+  }
+  if (/쇼핑|라텍스|침향|보이차|보석|잡화|농산물|휴게소/i.test(text)) {
+    keys.push('shopping_disclosure_check');
+  }
+  if (/여권|비자|입국|출국/i.test(text)) {
+    keys.push('passport_validity_check');
+  }
+  return keys;
+}
+
+function buildPublicOperationalNotices(pkg: AnyRecord): {
+  notices: PublicNoticeCandidate[];
+  sourcePaths: string[];
+} {
+  const notices: PublicNoticeCandidate[] = [];
+  const sourcePaths: string[] = [];
+  const seenTemplates = new Set<string>();
+  const seenPaths = new Set<string>();
+  const sources: Array<{ root: string; value: unknown }> = [
+    { root: 'itinerary_data', value: pkg.itinerary_data },
+    { root: 'customer_notes', value: pkg.customer_notes },
+    { root: 'notices_parsed', value: pkg.notices_parsed },
+  ];
+
+  for (const source of sources) {
+    walkSourceStrings(source.value, (text, path) => {
+      const fullPath = `${source.root}${path ? `.${path}` : ''}`;
+      const templates = noticeTemplatesForSourceText(text, fullPath);
+      if (templates.length === 0) return;
+      if (!seenPaths.has(fullPath)) {
+        seenPaths.add(fullPath);
+        sourcePaths.push(fullPath);
+      }
+      for (const template of templates) {
+        if (seenTemplates.has(template)) continue;
+        seenTemplates.add(template);
+        notices.push({ ...APPROVED_OPERATIONAL_NOTICE_TEMPLATES[template] });
+      }
+    });
+  }
+
+  return { notices, sourcePaths };
 }
 
 function addPublicImageCandidate(
@@ -519,6 +656,7 @@ function routeTextDump(snapshot: Omit<PublicPackageSnapshot, 'route_text_dump'>)
     ...collectCustomerVisibleStrings(snapshot.card_projection),
     ...collectCustomerVisibleStrings(snapshot.lp_projection),
     ...collectCustomerVisibleStrings(snapshot.itinerary_public),
+    ...collectCustomerVisibleStrings(snapshot.public_notices),
     ...collectCustomerVisibleStrings(snapshot.optional_tours_public),
     ...collectCustomerVisibleStrings(snapshot.canonical_view),
   ];
@@ -571,12 +709,16 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     exclusions: publicPackage.excludes,
     rawText: asString(pkg.raw_text),
   });
+  const publicOperationalNotices = buildPublicOperationalNotices(pkg);
   publicPackage.inclusions = publicTerms.inclusionsPublic;
   publicPackage.excludes = publicTerms.exclusionsPublic;
   publicPackage.optional_tours = optionalTourClassification.publicTours;
   publicPackage.itinerary_data = sanitizePublicCustomerValue(publicPackage.itinerary_data);
   publicPackage.marketing_copies = sanitizePublicCustomerValue(publicPackage.marketing_copies);
-  publicPackage.customer_notes = sanitizePublicCustomerValue(publicPackage.customer_notes);
+  publicPackage.notices_parsed = publicOperationalNotices.notices;
+  publicPackage.customer_notes = publicOperationalNotices.notices.length > 0
+    ? publicOperationalNotices.notices.map(notice => notice.text).join('\n')
+    : sanitizePublicCustomerValue(publicPackage.customer_notes);
   const displayCopy = buildCustomerPackageDisplayCopy({
     title: asString(publicPackage.title),
     display_title: asString(publicPackage.display_title),
@@ -620,6 +762,10 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     inclusions: publicTerms.inclusionsPublic,
     excludes: publicTerms.exclusionsPublic,
     optional_tours: optionalTourClassification.publicTours,
+    notices_parsed: publicOperationalNotices.notices,
+    customer_notes: publicOperationalNotices.notices.length > 0
+      ? publicOperationalNotices.notices.map(notice => notice.text).join('\n')
+      : publicPackage.customer_notes,
     images_public: imagesPublic,
     hero_image_url: imageUrls[0] ?? null,
     lp_hero_image_url: imageUrls[0] ?? null,
@@ -648,6 +794,8 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     inclusions_public: publicTerms.inclusionsPublic,
     exclusions_public: publicTerms.exclusionsPublic,
     itinerary_public: publicPackage.itinerary_data ?? null,
+    public_notices: publicOperationalNotices.notices,
+    public_notice_source_paths: publicOperationalNotices.sourcePaths,
     optional_tours_public: optionalTourClassification.publicTours,
     images_public: imagesPublic,
     cta_copy: {
