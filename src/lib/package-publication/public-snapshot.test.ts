@@ -679,7 +679,7 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('risky_reservation_claim');
   });
 
-  it('includes itinerary customer copy in the route text dump before publish-gate evaluation', () => {
+  it('sanitizes risky itinerary customer copy from the public snapshot and blocks the masked source pollution', () => {
     const riskyItineraryCopy = '\uC219\uBC15 \uD655\uC815 \uD6C4 \uC548\uB0B4\uB4DC\uB9BD\uB2C8\uB2E4.';
     const pkg = yanjiPackage({
       optional_tours: [],
@@ -707,9 +707,17 @@ describe('public package snapshot gate', () => {
       routeTextDump: snapshot.route_text_dump,
     });
 
-    expect(snapshot.route_text_dump).toEqual(expect.arrayContaining([riskyItineraryCopy]));
+    const publicSnapshotText = [
+      snapshot.route_text_dump.join('\n'),
+      JSON.stringify(snapshot.itinerary_public),
+      JSON.stringify(snapshot.canonical_view),
+    ].join('\n');
+    expect(publicSnapshotText).not.toContain(riskyItineraryCopy);
+    expect(publicSnapshotText).not.toMatch(/숙박\s*확정/);
+    expect(snapshot.route_text_dump).toEqual(expect.arrayContaining(['예약 가능 여부는 담당자 확인 후 안내됩니다.']));
     expect(gate.publishable).toBe(false);
     expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'masked_data_pollution', fieldPath: 'itinerary_data.days.0.schedule.0.activity' }),
       expect.objectContaining({ code: 'risky_reservation_claim' }),
     ]));
   });
@@ -739,7 +747,7 @@ describe('public package snapshot gate', () => {
     ]));
   });
 
-  it('audits public snapshot marketing copies as customer-visible text', () => {
+  it('sanitizes risky marketing copies from the public snapshot and blocks the masked source pollution', () => {
     const riskyMarketingCopy = '\uCD5C\uC800\uAC00 \uBCF4\uC7A5 \uC0C1\uB2F4\uC73C\uB85C \uC9C0\uAE08 \uD655\uC778\uD558\uC138\uC694.';
     const pkg = yanjiPackage({
       optional_tours: [],
@@ -757,9 +765,16 @@ describe('public package snapshot gate', () => {
       routeTextDump: snapshot.route_text_dump,
     });
 
-    expect(snapshot.route_text_dump).toEqual(expect.arrayContaining([riskyMarketingCopy]));
+    const publicSnapshotText = [
+      snapshot.route_text_dump.join('\n'),
+      JSON.stringify(snapshot.package.marketing_copies),
+      JSON.stringify(snapshot.canonical_view),
+    ].join('\n');
+    expect(publicSnapshotText).not.toContain(riskyMarketingCopy);
+    expect(publicSnapshotText).not.toMatch(/최저가\s*보장/);
     expect(gate.publishable).toBe(false);
     expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'masked_data_pollution', fieldPath: 'marketing_copies.0.body' }),
       expect.objectContaining({ code: 'risky_reservation_claim' }),
     ]));
   });

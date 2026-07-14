@@ -38,6 +38,16 @@ export type PublicSnapshotGateResult = {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PUBLIC_TITLE_DURATION_RE = /\d+\s*박\s*\d+\s*일|\d+\s*일/;
 const INTERNAL_ENGLISH_RE = /\bDecision\s*guide\b|\boperator\b|\binternal\b|\bpublish_gate\b/i;
+const RAW_OPERATIONAL_POLLUTION_RE =
+  /환불\s*(?:은|이)?\s*절대\s*불가|환불\s*불가|취소\s*수수료.{0,12}100%|100%\s*차지|예약금|입금.{0,18}(?:좌석|예약|자동\s*취소|확정)|항공\s*요금.{0,12}입금|좌석.{0,12}(?:확정|확보|보장)|발권\s*마감|Decision\s*guide/i;
+const RAW_CUSTOMER_COPY_ROOTS = [
+  'itinerary_data',
+  'marketing_copies',
+  'customer_notes',
+  'hero_tagline',
+  'product_summary',
+  'product_highlights',
+] as const;
 const BLOCKING_CUSTOMER_COPY_CODES = new Set([
   'placeholder_or_mojibake',
   'internal_source_copy',
@@ -85,6 +95,31 @@ function findBrokenAttractionId(pkg: AnyRecord): string | null {
 function hasOptionalTourPollution(pkg: AnyRecord): boolean {
   const tours = Array.isArray(pkg.optional_tours) ? pkg.optional_tours : [];
   return tours.some(isOptionalTourFragment);
+}
+
+function findMaskedCustomerCopyPollution(pkg: AnyRecord): { path: string; text: string; risky: boolean } | null {
+  let pollution: { path: string; text: string; risky: boolean } | null = null;
+
+  for (const root of RAW_CUSTOMER_COPY_ROOTS) {
+    if (pollution) break;
+    walk(pkg[root], (value, path) => {
+      if (pollution || typeof value !== 'string') return;
+      const text = value.replace(/\s+/g, ' ').trim();
+      if (!text) return;
+      const qualityIssue = customerCopyQualityIssues(text)
+        .find(issue => BLOCKING_CUSTOMER_COPY_CODES.has(issue.code));
+      const risky = hasRiskyCustomerCopy(text) || RAW_OPERATIONAL_POLLUTION_RE.test(text);
+      if (qualityIssue || risky) {
+        pollution = {
+          path: `${root}${path ? `.${path}` : ''}`,
+          text,
+          risky,
+        };
+      }
+    });
+  }
+
+  return pollution;
 }
 
 function sourceBackedPriceDateProblem(pkg: AnyRecord): string | null {
@@ -401,6 +436,19 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
   if (hasOptionalTourPollution(input.pkg)) {
     addBlocker(hard, 'optional_tour_display_pollution', 'optional_tours contains no-option, price-table, inclusion, or header fragments', 'optional_tours');
     addBlocker(hard, 'masked_data_pollution', 'renderer may hide optional_tours pollution, but source DB still contains polluted customer data', 'optional_tours');
+  }
+
+  const maskedCopyPollution = findMaskedCustomerCopyPollution(input.pkg);
+  if (maskedCopyPollution) {
+    addBlocker(
+      hard,
+      'masked_data_pollution',
+      `renderer may hide customer-copy pollution, but source DB still contains polluted text at ${maskedCopyPollution.path}: ${maskedCopyPollution.text.slice(0, 120)}`,
+      maskedCopyPollution.path,
+    );
+    if (maskedCopyPollution.risky) {
+      addBlocker(hard, 'risky_reservation_claim', 'source DB contains risky reservation/guarantee wording even if the public snapshot masks it', maskedCopyPollution.path);
+    }
   }
 
   const brokenAttraction = findBrokenAttractionId(input.pkg);
