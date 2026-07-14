@@ -788,6 +788,14 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
           customer_publishable: false,
           aliases: [],
         },
+        {
+          id: '55555555-5555-4555-8555-555555555555',
+          name: 'Tokyo eSIM unlimited data product',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
       ],
       itineraryData: {
         days: [
@@ -822,6 +830,11 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
                 attraction_names: ['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C'],
                 attraction_ids: [],
               },
+              {
+                activity: 'Tokyo eSIM unlimited data product',
+                attraction_names: ['Tokyo eSIM unlimited data product'],
+                attraction_ids: ['55555555-5555-4555-8555-555555555555'],
+              },
             ],
           },
         ],
@@ -831,13 +844,15 @@ describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
     const schedule = (result.itineraryData as { days: Array<{ schedule: Array<{ attraction_names: string[]; attraction_ids: string[] }> }> }).days[0].schedule;
     expect(result.repaired).toBe(true);
     expect(result.matched).toBe(2);
-    expect(result.removedNoise).toBe(2);
-    expect(result.remainingUnmatched).toBe(1);
+    expect(result.removedNoise).toBe(4);
+    expect(result.remainingUnmatched).toBe(0);
     expect(schedule[0].attraction_ids).toEqual(['8ccb7e3f-bbd8-41d7-9c97-ef283e399820']);
     expect(schedule[1].attraction_names).toEqual([]);
     expect(schedule[2].attraction_names).toEqual([]);
     expect(schedule[3].attraction_ids).toEqual(['44cf6e6a-1349-4e3b-829f-2c56ae06f10c']);
-    expect(schedule[4].attraction_names).toEqual(['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C']);
+    expect(schedule[4].attraction_names).toEqual([]);
+    expect(schedule[5].attraction_names).toEqual([]);
+    expect(schedule[5].attraction_ids).toEqual([]);
   });
 
   it('falls back to the visible activity text when a saved attraction candidate is wrong', () => {
