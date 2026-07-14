@@ -81,6 +81,62 @@ describe('public terms policy', () => {
     expect(result.exclusionsPublic).toEqual(['개인경비', '기사/가이드 경비']);
   });
 
+  it('infers customer-safe terms from raw supplier lines when headings are missing', () => {
+    const result = buildPublicTermsPolicy({
+      inclusions: [],
+      exclusions: [],
+      rawText: [
+        '\uC655\uBCF5\uD56D\uACF5\uB8CC, \uC720\uB958\uD560\uC99D\uB8CC(4\uC6D4), TAX, \uD638\uD154(2\uC7781\uC2E4), \uC2DD\uC0AC, \uC804\uC6A9\uCC28\uB7C9(6\uBA85 \uC774\uC0C1 \uB9AC\uBB34\uC9C4\uBC84\uC2A4 / \uC774\uD558 9\uC778\uC2B9 \uBCA4),',
+        '\uAE30\uC0AC, \uAC00\uC774\uB4DC, \uAD00\uAD11\uC9C0 \uC785\uC7A5\uB8CC, \uC5EC\uD589\uC790\uBCF4\uD5D8',
+        '\uC720\uB958\uBCC0\uB3D9\uBD84, \uC2F1\uAE00\uCC28\uC9C0($80/\uC778/\uC804\uC77C\uC815), \uAC1C\uC778\uACBD\uBE44 \uBC0F \uB9E4\uB108\uD301, \uAE30\uC0AC&\uAC00\uC774\uB4DC\uD301 $40/\uC778',
+        '\uC120\uD0DD\uAD00\uAD11',
+      ].join('\n'),
+    });
+
+    expect(result.inclusionsPublic).toEqual([
+      '\uC655\uBCF5\uD56D\uACF5\uB8CC',
+      '\uC720\uB958\uD560\uC99D\uB8CC',
+      '\uC219\uBC15',
+      '\uC77C\uC815\uD45C\uC0C1 \uC2DD\uC0AC',
+      '\uD604\uC9C0\uCC28\uB7C9',
+      '\uAC00\uC774\uB4DC',
+      '\uAD00\uAD11\uC9C0 \uC785\uC7A5\uB8CC',
+      '\uC5EC\uD589\uC790\uBCF4\uD5D8',
+    ]);
+    expect(result.exclusionsPublic).toEqual([
+      '\uAC1C\uC778\uACBD\uBE44',
+      '\uB9E4\uB108\uD301',
+      '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44',
+      '\uC2F1\uAE00\uB8F8 \uCD94\uAC00\uBE44',
+    ]);
+  });
+
+  it('splits attached include and exclude headings into multiple public labels', () => {
+    const result = buildPublicTermsPolicy({
+      inclusions: [],
+      exclusions: [],
+      rawText: [
+        '\uD3EC    \uD568\uC655\uBCF5\uD56D\uACF5\uB8CC \uD638\uD154(2\uC7781\uC2E4) \uC2DD\uC0AC \uC804\uC6A9\uCC28\uB7C9 \uC5EC\uD589\uC790\uBCF4\uD5D8 \uC2A4\uB8E8\uAC00\uC774\uB4DC \uAD00\uAD11\uC9C0 \uC785\uC7A5\uB8CC',
+        '\uBD88 \uD3EC \uD568\uC2F1\uAE00\uCC28\uC9C0, \uAC1C\uC778\uACBD\uBE44, \uAE30\uC0AC\uAC00\uC774\uB4DC\uACBD\uBE44 40,000\uC6D0/\uC778',
+      ].join('\n'),
+    });
+
+    expect(result.inclusionsPublic).toEqual([
+      '\uC655\uBCF5\uD56D\uACF5\uB8CC',
+      '\uC219\uBC15',
+      '\uC77C\uC815\uD45C\uC0C1 \uC2DD\uC0AC',
+      '\uD604\uC9C0\uCC28\uB7C9',
+      '\uAC00\uC774\uB4DC',
+      '\uAD00\uAD11\uC9C0 \uC785\uC7A5\uB8CC',
+      '\uC5EC\uD589\uC790\uBCF4\uD5D8',
+    ]);
+    expect(result.exclusionsPublic).toEqual([
+      '\uAC1C\uC778\uACBD\uBE44',
+      '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44',
+      '\uC2F1\uAE00\uB8F8 \uCD94\uAC00\uBE44',
+    ]);
+  });
+
   it('makes the public snapshot use regenerated terms across canonical and projection surfaces', () => {
     const { snapshot } = buildPublicPackageSnapshot({
       id: 'terms-policy-sample',

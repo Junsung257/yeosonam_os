@@ -8,6 +8,7 @@ import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import { isCustomerOptionalTourCandidate } from '@/lib/customer-option-classifier';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { normalizeOptionalTours } from '@/lib/package-acl';
+import { sanitizeOptionalToursForPublicEligibility } from '@/lib/package-public-eligibility';
 import type { PriceDate } from '@/lib/price-dates';
 import { compareKstDate, formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 import { createPublicPackageSnapshotAndDecision } from '@/lib/package-publication/repository';
@@ -1359,8 +1360,13 @@ export function repairOptionalToursForCustomerDisplay(optionalTours: unknown): {
   const seen = new Set<string>();
   const removed: string[] = [];
   const renamed: Array<{ before: string; after: string }> = [];
+  const publicEligibilityRepair = sanitizeOptionalToursForPublicEligibility(optionalTours);
+  for (const finding of publicEligibilityRepair.removed) {
+    if (finding.text) removed.push(finding.text);
+  }
+  const sourceTours = publicEligibilityRepair.repaired ? publicEligibilityRepair.optionalTours : optionalTours;
 
-  for (const tour of optionalTours) {
+  for (const tour of sourceTours) {
     const record = asRecord(tour);
     const label = optionalTourText(tour);
     if (isShoppingOptionalTour(tour) || isNoOptionPolicyTour(tour)) {
