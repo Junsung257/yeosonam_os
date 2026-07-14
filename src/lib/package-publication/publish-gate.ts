@@ -233,6 +233,49 @@ function legacyGateBlockers(input: PublicSnapshotGateInput): PublishFinding[] {
   return result;
 }
 
+function addMobileProofBlockers(input: PublicSnapshotGateInput, hard: PublishFinding[]): void {
+  if (!input.mobileProof) {
+    addBlocker(hard, 'stale_mobile_proof', 'actual /packages and /lp mobile browser proof is missing');
+    return;
+  }
+
+  if (!input.mobileProof.ok) {
+    addBlocker(hard, 'stale_mobile_proof', input.mobileProof.reason);
+    return;
+  }
+
+  const expectedSnapshotHash = input.expectedPublicSnapshotHash?.trim() || input.publicSnapshotHash?.trim();
+  if (!expectedSnapshotHash) return;
+
+  const proof = input.mobileProof.proof;
+  if (!proof?.public_snapshot_hash) {
+    addBlocker(hard, 'public_snapshot_hash_mismatch', 'mobile proof is not bound to the public package snapshot hash');
+    return;
+  }
+
+  if (proof.public_snapshot_hash !== expectedSnapshotHash) {
+    addBlocker(hard, 'public_snapshot_hash_mismatch', 'mobile proof hash does not match the public package snapshot hash');
+  }
+
+  for (const surfaceResult of proof.surface_results ?? []) {
+    if (!surfaceResult.public_snapshot_hash) {
+      addBlocker(
+        hard,
+        'public_snapshot_hash_mismatch',
+        `mobile proof ${surfaceResult.surface ?? 'surface'} result is not bound to the public package snapshot hash`,
+      );
+      continue;
+    }
+    if (surfaceResult.public_snapshot_hash !== expectedSnapshotHash) {
+      addBlocker(
+        hard,
+        'public_snapshot_hash_mismatch',
+        `mobile proof ${surfaceResult.surface ?? 'surface'} hash does not match the public package snapshot hash`,
+      );
+    }
+  }
+}
+
 export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput): PublicSnapshotGateResult {
   const hard: PublishFinding[] = [];
   const soft: PublishFinding[] = [];
@@ -247,9 +290,7 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     }
   }
 
-  if (input.mobileProof && !input.mobileProof.ok) {
-    addBlocker(hard, 'stale_mobile_proof', input.mobileProof.reason);
-  }
+  addMobileProofBlockers(input, hard);
 
   if (input.snapshotExists === false) {
     addBlocker(hard, 'public_snapshot_missing', 'approved public package snapshot is missing');

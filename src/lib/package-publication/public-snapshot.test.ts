@@ -39,6 +39,50 @@ function yanjiPackage(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function mobileProofForSnapshot(snapshotHash: string) {
+  return {
+    ok: true,
+    reason: 'actual /packages and /lp mobile browser proof passed',
+    proof: {
+      status: 'pass',
+      checked_at: '2026-07-07T00:00:00.000Z',
+      package_updated_at: '2026-07-07T00:00:00.000Z',
+      package_revision: 7,
+      public_snapshot_hash: snapshotHash,
+      source: 'hwp-mobile-browser-proof',
+      screen_hash: 'screen',
+      customer_visible_hash: 'visible',
+      surfaces: ['packages', 'lp'],
+      surface_results: [
+        {
+          surface: 'packages',
+          status: 'pass',
+          screen_hash: 'packages-screen',
+          customer_visible_hash: 'packages-visible',
+          public_snapshot_hash: snapshotHash,
+          checks: [
+            { name: 'packages_reservation_cta_visible', ok: true },
+            { name: 'packages_reservation_sheet_opens', ok: true },
+            { name: 'packages_reservation_sheet_has_product_context', ok: true },
+          ],
+        },
+        {
+          surface: 'lp',
+          status: 'pass',
+          screen_hash: 'lp-screen',
+          customer_visible_hash: 'lp-visible',
+          public_snapshot_hash: snapshotHash,
+          checks: [
+            { name: 'lp_lead_cta_visible', ok: true },
+            { name: 'lp_lead_sheet_opens', ok: true },
+            { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 describe('public package snapshot gate', () => {
   it('generates a customer-safe Yanji title and treats no-option as a policy, not an optional tour', () => {
     const { snapshot, optionalTourClassification } = buildPublicPackageSnapshot(yanjiPackage());
@@ -218,12 +262,50 @@ describe('public package snapshot gate', () => {
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
       customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
       snapshotExists: true,
       routeTextDump: snapshot.route_text_dump,
     });
 
     expect(gate.publishable).toBe(true);
     expect(gate.publication_state).toBe('published');
+  });
+
+  it('fails closed when public snapshot publication has no mobile browser proof', () => {
+    const pkg = yanjiPackage({ optional_tours: [] });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'stale_mobile_proof' }),
+    ]));
+  });
+
+  it('fails closed when mobile proof is not bound to the public snapshot hash', () => {
+    const pkg = yanjiPackage({ optional_tours: [] });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot('old-hash'),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'public_snapshot_hash_mismatch' }),
+    ]));
   });
 
   it('fails closed when the customer-open contract was not explicitly passed', () => {
