@@ -667,6 +667,25 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('customer_forbidden_internal_terms');
   });
 
+  it('blocks customer-facing photo placeholder copy at the public snapshot gate', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      product_summary: '이미지 준비 중 · 조건 먼저 확인 가능',
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      snapshotExists: true,
+      routeTextDump: [...snapshot.route_text_dump, '사진 준비중'],
+    });
+
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('placeholder_or_mojibake');
+  });
+
   it('invalidates mobile proof when the expected public snapshot hash differs', () => {
     const result = evaluateCustomerMobileProof({
       auditReport: {

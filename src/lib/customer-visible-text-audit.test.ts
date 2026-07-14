@@ -42,6 +42,25 @@ describe('customer visible text audit v2', () => {
     ]));
   });
 
+  it('blocks customer-facing photo/image placeholder copy', () => {
+    const productIssues = blockingCustomerVisibleTextIssues({
+      product_summary: '이미지 준비 중 · 조건 먼저 확인 가능',
+      product_highlights: ['사진 준비중'],
+    });
+    expect(productIssues.map(issue => issue.code)).toEqual([
+      'placeholder_or_mojibake',
+      'placeholder_or_mojibake',
+    ]);
+
+    const screenIssues = auditCustomerVisibleScreenText('대표 이미지 준비중\n상세 이미지는 아직 없음', {
+      surface: 'packages',
+    });
+    expect(screenIssues.map(issue => issue.code)).toEqual([
+      'placeholder_or_mojibake',
+      'placeholder_or_mojibake',
+    ]);
+  });
+
   it('blocks land-operator admin notes in customer-visible payloads', () => {
     const issues = blockingCustomerVisibleTextIssues({
       product_summary: '관리자노트: 랜드사 커미션 9% 내부 확인',
