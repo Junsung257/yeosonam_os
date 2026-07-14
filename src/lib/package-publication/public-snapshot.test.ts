@@ -18,6 +18,10 @@ function yanjiPackage(overrides: Record<string, unknown> = {}) {
     price: 599000,
     product_prices: [{ target_date: '2026-07-12', adult_selling_price: 599000 }],
     price_dates: [{ date: '2026-07-12', price: 599000, confirmed: false }],
+    products: {
+      display_name: '연길·백두산 패키지',
+      thumbnail_urls: ['https://images.pexels.com/photos/123/pexels-photo-123.jpeg'],
+    },
     status: 'active',
     raw_text: [
       '연길 5성 온천 4박5일',
@@ -122,7 +126,12 @@ describe('public package snapshot gate', () => {
     });
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
     const gate = evaluatePublicSnapshotPublishGate({
-      pkg,
+      pkg: {
+        ...pkg,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
       customerOpenContractOk: true,
@@ -208,6 +217,49 @@ describe('public package snapshot gate', () => {
     expect(snapshot.lp_projection.price).toBe(1_099_000);
   });
 
+  it('collects approved image candidates into the public snapshot and projections', () => {
+    const { snapshot } = buildPublicPackageSnapshot(yanjiPackage({
+      optional_tours: [],
+      lp_hero_image_url: 'https://cdn.yeosonam.com/packages/yanji-hero.jpg',
+      products: {
+        display_name: '연길·백두산 패키지',
+        thumbnail_urls: ['https://cdn.yeosonam.com/packages/yanji-card.jpg'],
+      },
+      itinerary_data: {
+        days: [{
+          day: 1,
+          schedule: [{
+            activity: '백두산 천지 관광',
+            photos: [{ src_medium: 'https://images.pexels.com/photos/456/pexels-photo-456.jpeg' }],
+            attraction_ids: [VALID_ATTRACTION_ID],
+          }],
+        }],
+      },
+    }));
+
+    expect(snapshot.images_public).toEqual([
+      expect.objectContaining({
+        url: 'https://cdn.yeosonam.com/packages/yanji-hero.jpg',
+        source: 'package_hero',
+      }),
+      expect.objectContaining({
+        url: 'https://cdn.yeosonam.com/packages/yanji-card.jpg',
+        source: 'product_thumbnail',
+      }),
+      expect.objectContaining({
+        url: 'https://images.pexels.com/photos/456/pexels-photo-456.jpeg',
+        source: 'attraction_photo',
+      }),
+    ]);
+    expect(snapshot.package.hero_image_url).toBe('https://cdn.yeosonam.com/packages/yanji-hero.jpg');
+    expect(snapshot.card_projection.thumbnail_urls).toEqual([
+      'https://cdn.yeosonam.com/packages/yanji-hero.jpg',
+      'https://cdn.yeosonam.com/packages/yanji-card.jpg',
+      'https://images.pexels.com/photos/456/pexels-photo-456.jpeg',
+    ]);
+    expect(snapshot.lp_projection.lp_hero_image_url).toBe('https://cdn.yeosonam.com/packages/yanji-hero.jpg');
+  });
+
   it('fails closed instead of exposing a raw package price without source-backed price dates', () => {
     const pkg = yanjiPackage({
       optional_tours: [],
@@ -217,7 +269,12 @@ describe('public package snapshot gate', () => {
     });
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
     const gate = evaluatePublicSnapshotPublishGate({
-      pkg,
+      pkg: {
+        ...pkg,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
       customerOpenContractOk: true,
@@ -230,6 +287,33 @@ describe('public package snapshot gate', () => {
     expect(snapshot.lp_projection.price).toBeNull();
     expect(gate.publishable).toBe(false);
     expect(gate.hard_blockers.map(blocker => blocker.code)).toContain('price_source_missing');
+  });
+
+  it('fails closed when no public image candidate exists', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      products: { display_name: '연길·백두산 패키지', thumbnail_urls: [] },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        images_public: snapshot.images_public,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(snapshot.images_public).toEqual([]);
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'public_image_missing' }),
+    ]));
   });
 
   it('blocks publication while polluted optional_tours remain in the DB row', () => {
@@ -258,7 +342,12 @@ describe('public package snapshot gate', () => {
     });
     const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
     const gate = evaluatePublicSnapshotPublishGate({
-      pkg,
+      pkg: {
+        ...pkg,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
       publicSnapshotHash: snapshotHash,
       publicSnapshotTitle: snapshot.public_title,
       customerOpenContractOk: true,
@@ -267,6 +356,7 @@ describe('public package snapshot gate', () => {
       routeTextDump: snapshot.route_text_dump,
     });
 
+    expect(gate.hard_blockers).toEqual([]);
     expect(gate.publishable).toBe(true);
     expect(gate.publication_state).toBe('published');
   });

@@ -146,9 +146,10 @@ describe('public snapshot card projection', () => {
             title: 'current public title',
             destination: 'current dest',
             price_dates: [{ date: '2026-07-12', price: 599000 }],
+            hero_image_url: 'https://cdn.yeosonam.com/public-current.jpg',
           },
         },
-        card_projection: { title: 'current card title' },
+        card_projection: { title: 'current card title', hero_image_url: 'https://cdn.yeosonam.com/public-current.jpg' },
       },
     ]);
 
@@ -195,7 +196,7 @@ describe('public snapshot card projection', () => {
         package_revision: 3,
         status: 'published',
         created_at: '2026-07-09T00:00:00.000Z',
-        snapshot_json: { package: { title: 'public title', price_dates: [{ date: '2026-07-12', price: 599000 }] } },
+        snapshot_json: { package: { title: 'public title', price_dates: [{ date: '2026-07-12', price: 599000 }], hero_image_url: 'https://cdn.yeosonam.com/public.jpg' } },
         card_projection: {},
       },
     ]);
@@ -244,9 +245,10 @@ describe('public snapshot card projection', () => {
               },
             ],
             price_dates: [{ date: '2026-07-12', price: 599000 }],
+            hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
           },
         },
-        card_projection: { title: 'public card title' },
+        card_projection: { title: 'public card title', hero_image_url: 'https://cdn.yeosonam.com/public.jpg' },
       },
     ]) as Array<Record<string, unknown>>;
 
@@ -285,7 +287,7 @@ describe('public snapshot card projection', () => {
     expect(merged).toEqual([]);
   });
 
-  it('drops current snapshots with risky customer promise copy in projections', () => {
+  it('drops current snapshots without a public image candidate', () => {
     const packages = [
       openPackage({ title: 'raw supplier title' }),
     ];
@@ -300,10 +302,36 @@ describe('public snapshot card projection', () => {
             title: '연길·백두산 노옵션 핵심관광 4박5일',
             price_dates: [{ date: '2026-07-12', price: 599000 }],
           },
+          images_public: [],
+        },
+        card_projection: { title: '연길·백두산 노옵션 핵심관광 4박5일' },
+      },
+    ]);
+
+    expect(merged).toEqual([]);
+  });
+
+  it('drops current snapshots with risky customer promise copy in projections', () => {
+    const packages = [
+      openPackage({ title: 'raw supplier title' }),
+    ];
+    const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
+      {
+        package_id: 'pkg-1',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-07-09T00:00:00.000Z',
+        snapshot_json: {
+          package: {
+            title: '연길·백두산 노옵션 핵심관광 4박5일',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+            hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
+          },
         },
         card_projection: {
           title: '연길·백두산 노옵션 핵심관광 4박5일',
           summary: '좌석 확보 완료',
+          hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
         },
         route_text_dump: ['연길·백두산 노옵션 핵심관광 4박5일', '좌석 확보 완료'],
       },
@@ -333,9 +361,10 @@ describe('public snapshot card projection', () => {
           package: {
             title: 'public title',
             price_dates: [{ date: '2026-07-12', price: 599000 }],
+            hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
           },
         },
-        card_projection: { title: 'public card title' },
+        card_projection: { title: 'public card title', hero_image_url: 'https://cdn.yeosonam.com/public.jpg' },
       },
     ]);
 
@@ -355,9 +384,10 @@ describe('public snapshot card projection', () => {
           package: {
             title: 'public title',
             price_dates: [{ date: '2026-07-12', price: 599000 }],
+            hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
           },
         },
-        card_projection: { title: 'public card title' },
+        card_projection: { title: 'public card title', hero_image_url: 'https://cdn.yeosonam.com/public.jpg' },
       },
     ]);
 
@@ -382,6 +412,7 @@ describe('public snapshot card projection', () => {
               title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
               destination: 'Yanji',
               price_dates: [{ date: '2026-07-12', price: 599000 }],
+              hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
               itinerary_data: {
                 days: [
                   {
@@ -394,7 +425,7 @@ describe('public snapshot card projection', () => {
               },
             },
           },
-          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days', hero_image_url: 'https://cdn.yeosonam.com/public.jpg' },
         },
       ], {
         activeAttractionIds: [nonPublicAttractionId],
@@ -424,6 +455,7 @@ describe('public snapshot card projection', () => {
               title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
               destination: 'Yanji',
               price_dates: [{ date: '2026-07-12', price: 599000 }],
+              hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
               itinerary_data: {
                 days: [
                   { day: 1, schedule: [{ activity: 'Attraction lookup error', attraction_ids: [attractionId] }] },
@@ -431,7 +463,7 @@ describe('public snapshot card projection', () => {
               },
             },
           },
-          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days', hero_image_url: 'https://cdn.yeosonam.com/public.jpg' },
         },
       ], {
         attractionLookupError: new Error('attractions unavailable'),
@@ -460,6 +492,7 @@ describe('public snapshot card projection', () => {
               title: 'Yanji Baekdusan no-option core tour 4 nights 5 days',
               destination: 'Yanji',
               price_dates: [{ date: '2026-07-12', price: 599000 }],
+              hero_image_url: 'https://cdn.yeosonam.com/public.jpg',
               itinerary_data: {
                 days: [
                   { day: 1, schedule: [{ activity: 'Product-like attraction', attraction_ids: [productLikeAttractionId] }] },
@@ -467,7 +500,7 @@ describe('public snapshot card projection', () => {
               },
             },
           },
-          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days' },
+          card_projection: { title: 'Yanji Baekdusan no-option core tour 4 nights 5 days', hero_image_url: 'https://cdn.yeosonam.com/public.jpg' },
         },
       ], {
         activeAttractionIds: [productLikeAttractionId],

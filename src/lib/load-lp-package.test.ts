@@ -162,10 +162,14 @@ describe('fetchLpPackageUncached', () => {
       package_revision: 3,
       snapshot_hash: 'snapshot-hash',
       snapshot_json: {
+        images_public: [
+          { url: 'https://cdn.yeosonam.com/public/pkg-1-hero.jpg', source: 'product_thumbnail' },
+        ],
         package: {
           id: 'pkg-1',
           title: 'Raw visible package',
           status: 'active',
+          hero_image_url: 'https://cdn.yeosonam.com/public/pkg-1-hero.jpg',
           price: 1230000,
           price_dates: [{ date: '2026-07-12', price: 1230000 }],
         },
@@ -316,10 +320,14 @@ premium villa golf package 3n5d
       package_revision: 3,
       snapshot_hash: 'snapshot-hash',
       snapshot_json: {
+        images_public: [
+          { url: 'https://cdn.yeosonam.com/public/pkg-1-hero.jpg', source: 'product_thumbnail' },
+        ],
         package: {
           id: 'pkg-1',
           title: 'Snapshot customer title',
           status: 'active',
+          hero_image_url: 'https://cdn.yeosonam.com/public/pkg-1-hero.jpg',
           price: 1230000,
           price_dates: [{ date: '2026-07-12', price: 1230000 }],
         },

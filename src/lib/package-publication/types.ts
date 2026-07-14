@@ -23,6 +23,7 @@ export type PublishBlockerCode =
   | 'unsupported_customer_claim'
   | 'english_internal_copy'
   | 'risky_reservation_claim'
+  | 'public_image_missing'
   | 'price_source_missing'
   | 'price_fragment_display'
   | 'inclusion_optional_mixup'

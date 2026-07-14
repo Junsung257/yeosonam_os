@@ -112,6 +112,10 @@ function publishablePackage(overrides: Record<string, unknown> = {}) {
     price_dates: [
       { date: '2026-08-07', price: 1_099_000, confirmed: false },
     ],
+    products: {
+      display_name: 'Tokyo package',
+      thumbnail_urls: ['https://cdn.yeosonam.com/packages/tokyo.jpg'],
+    },
     inclusions: ['Round-trip airfare and TAX'],
     excludes: ['Guide fee 40,000 KRW'],
     optional_tours: [],
@@ -201,9 +205,17 @@ describe('createPublicPackageSnapshotAndDecision', () => {
             display_title: '[BX] 랜드사 원문 제목',
             product_summary: '관리자노트: 랜드사 커미션 9% 내부 확인',
             destination: '연길',
+            hero_image_url: 'https://cdn.yeosonam.com/packages/yanji.jpg',
           },
+          images_public: [
+            { url: 'https://cdn.yeosonam.com/packages/yanji.jpg', source: 'package_hero', alt: '연길' },
+          ],
         },
-        card_projection: { title: '연길·백두산 노옵션 핵심관광 4박5일', destination: '연길' },
+        card_projection: {
+          title: '연길·백두산 노옵션 핵심관광 4박5일',
+          destination: '연길',
+          hero_image_url: 'https://cdn.yeosonam.com/packages/yanji.jpg',
+        },
         lp_projection: {
           title: '연길·백두산 노옵션 핵심관광 4박5일',
           summary: '일정, 항공, 숙소, 포함 조건을 상담 전 빠르게 확인할 수 있어요.',
