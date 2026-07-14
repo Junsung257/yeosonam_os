@@ -9,6 +9,7 @@ import {
   composeCustomerPublicSubtitle,
   composeCustomerPublicSummary,
 } from './public-summary-policy';
+import { buildPublicTermsPolicy } from './public-terms-policy';
 import { composeCustomerPublicTitle } from './public-title-policy';
 import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 
@@ -467,6 +468,18 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   } else {
     delete publicPackage.price;
   }
+  const optionalTourClassification = classifyOptionalTours({
+    optionalTours: publicPackage.optional_tours,
+    rawText: asString(pkg.raw_text),
+  });
+  const publicTerms = buildPublicTermsPolicy({
+    inclusions: publicPackage.inclusions,
+    exclusions: publicPackage.excludes,
+    rawText: asString(pkg.raw_text),
+  });
+  publicPackage.inclusions = publicTerms.inclusionsPublic;
+  publicPackage.excludes = publicTerms.exclusionsPublic;
+  publicPackage.optional_tours = optionalTourClassification.publicTours;
   const displayCopy = buildCustomerPackageDisplayCopy({
     title: asString(publicPackage.title),
     display_title: asString(publicPackage.display_title),
@@ -484,10 +497,6 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     optional_tours: Array.isArray(publicPackage.optional_tours)
       ? publicPackage.optional_tours as Array<{ name?: string | null; displayName?: string | null; note?: string | null }>
       : [],
-  });
-  const optionalTourClassification = classifyOptionalTours({
-    optionalTours: publicPackage.optional_tours,
-    rawText: asString(pkg.raw_text),
   });
   const publicTitle = composePublicTitle(
     { ...pkg, ...publicPackage },
@@ -511,6 +520,8 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     title: publicTitle,
     display_title: publicTitle,
     product_summary: publicSummary,
+    inclusions: publicTerms.inclusionsPublic,
+    excludes: publicTerms.exclusionsPublic,
     optional_tours: optionalTourClassification.publicTours,
     images_public: imagesPublic,
     hero_image_url: imageUrls[0] ?? null,
@@ -535,8 +546,8 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     },
     canonical_view: canonicalView,
     package: snapshotPackage,
-    inclusions_public: Array.isArray(publicPackage.inclusions) ? publicPackage.inclusions : [],
-    exclusions_public: Array.isArray(publicPackage.excludes) ? publicPackage.excludes : [],
+    inclusions_public: publicTerms.inclusionsPublic,
+    exclusions_public: publicTerms.exclusionsPublic,
     itinerary_public: publicPackage.itinerary_data ?? null,
     optional_tours_public: optionalTourClassification.publicTours,
     images_public: imagesPublic,
