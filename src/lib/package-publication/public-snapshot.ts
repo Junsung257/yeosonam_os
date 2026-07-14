@@ -5,6 +5,10 @@ import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-
 import { hasRiskyCustomerPromiseCopy } from '@/lib/customer-risky-copy';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { renderPackage } from '@/lib/render-contract';
+import {
+  composeCustomerPublicSubtitle,
+  composeCustomerPublicSummary,
+} from './public-summary-policy';
 import { composeCustomerPublicTitle } from './public-title-policy';
 import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 
@@ -489,7 +493,18 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     { ...pkg, ...publicPackage },
     optionalTourClassification.badges,
   );
-  const publicSummary = displayCopy.summaryBody || null;
+  const publicSummary = composeCustomerPublicSummary({
+    publicTitle,
+    pkg: publicPackage,
+    optionBadges: optionalTourClassification.badges,
+    optionalTourStatus: optionalTourClassification.status,
+  }) || null;
+  const publicSubtitle = composeCustomerPublicSubtitle({
+    publicTitle,
+    pkg: publicPackage,
+    optionBadges: optionalTourClassification.badges,
+    optionalTourStatus: optionalTourClassification.status,
+  }) || displayCopy.heroSubline || null;
   const duration = asNumber(publicPackage.duration);
   const snapshotPackage = {
     ...publicPackage,
@@ -510,7 +525,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     package_id: String(pkg.id ?? publicPackage.id ?? ''),
     package_revision: asNumber(pkg.package_revision) ?? 1,
     public_title: publicTitle,
-    public_subtitle: displayCopy.heroSubline || null,
+    public_subtitle: publicSubtitle,
     duration,
     destinations: destinations(publicPackage),
     price_display: priceDisplay(publicPackage),
@@ -544,7 +559,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     lp_projection: {
       id: publicPackage.id,
       title: publicTitle,
-      subtitle: displayCopy.heroSubline || null,
+      subtitle: publicSubtitle,
       destination: publicPackage.destination ?? null,
       summary: publicSummary,
       price: asNumber(publicPackage.price),
