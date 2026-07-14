@@ -21,4 +21,20 @@ describe('review page public package data boundary', () => {
     expect(metadataSnapshotIndex).toBeGreaterThan(metadataQueryIndex);
     expect(pageSnapshotIndex).toBeGreaterThan(metadataSnapshotIndex);
   });
+
+  it('uses public snapshots for review section product schema text', () => {
+    const text = source('src/components/reviews/ReviewsSection.tsx');
+    const packageQueryIndex = text.indexOf(".from('travel_packages')");
+    const snapshotIndex = text.indexOf('fetchLatestPublicPackageSnapshot', packageQueryIndex);
+    const schemaIndex = text.indexOf("'@type': 'Product'");
+
+    expect(packageQueryIndex).toBeGreaterThanOrEqual(0);
+    expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
+    expect(schemaIndex).toBeGreaterThan(snapshotIndex);
+    expect(text).toContain('name: publicTitle');
+    expect(text).toContain('description: publicSummary || publicTitle');
+    expect(text).not.toContain("select('avg_rating, review_count, title, product_summary')");
+    expect(text).not.toContain('name: stats.title');
+    expect(text).not.toContain('description: stats.product_summary || stats.title');
+  });
 });
