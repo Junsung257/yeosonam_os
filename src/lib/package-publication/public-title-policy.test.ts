@@ -173,6 +173,68 @@ describe('customer public title policy', () => {
     expect(title).toBe('란주 핵심관광 4박6일');
   });
 
+  it('sums segmented source nights before composing a public title duration', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '북해도',
+      title: '이스타 부산 북해도 정통 온천 2박 시내 1박 4일',
+      duration: 4,
+      nights: 1,
+      raw_text: [
+        '북해도 정통 온천 2박',
+        '삿포로 시내 1박',
+        '전체 4일 일정',
+        '온천 호텔과 온천마을 관광 포함',
+      ].join('\n'),
+    });
+
+    expect(title).toBe('북해도 온천·관광 3박4일');
+    expect(title).not.toContain('1박4일');
+  });
+
+  it('does not let long operational source text override a clear standard duration', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '연길/백두산',
+      title: '연길/백두산(북파) 2박3일',
+      duration: 3,
+      nights: 2,
+      raw_text: [
+        '6/11(목) 까지 항공권 발권조건 2명부터 출발확정',
+        'DAY 1 연길 이동',
+        'DAY 2 백두산 북파 관광',
+        'DAY 3 귀국',
+        '14일 전 취소 규정과 운영 안내는 고객 제목 근거가 아닙니다.',
+      ].join('\n'),
+    });
+
+    expect(title).toBe('연길·백두산 핵심관광 2박3일');
+    expect(title).not.toContain('6박14일');
+  });
+
+  it('does not treat KLCC as golf course evidence', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '쿠알라룸푸르/싱가포르/말라카',
+      title: '쿠알라룸푸르 싱가포르 말라카 3박 5일 — 에어아시아 직항',
+      duration: 5,
+      nights: 3,
+      product_highlights: ['5성급 호텔 숙박', '쿠알라+싱가포르+말라카 3개 도시 동시 체험'],
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            hotel: { grade: '5성' },
+            schedule: [
+              { activity: 'KLCC 외관 관광' },
+              { activity: '포포인츠 쉐라톤 쿠알라 또는 동급 5성급 투숙' },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(title).toBe('쿠알라룸푸르·싱가포르·말라카 5성호텔 핵심관광 3박5일');
+    expect(title).not.toContain('골프');
+  });
+
   it('routes readable Korean package input through the public snapshot builder', () => {
     const { snapshot } = buildPublicPackageSnapshot({
       id: 'golden-danang',

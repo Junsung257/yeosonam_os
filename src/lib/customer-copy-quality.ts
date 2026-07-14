@@ -5,10 +5,45 @@ export type CustomerCopyQualityIssue = {
 
 const HANGUL_WORD = '[가-힣A-Za-z0-9·.,&()/\\-\\s]';
 
+const KOREAN_LETTER = '\\uAC00-\\uD7A3';
+
 const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   {
     code: 'customer_forbidden_internal_terms',
-    pattern: /(?:\uB79C\uB4DC\uC0AC|\uAC70\uB798\uCC98|\uACF5\uAE09\uC0AC|\uC6D0\uAC00|\uACF5\uAE09\uAC00|\uB3C4\uB9E4\uAC00|\uB9C8\uC9C4|\uC218\uC775|\uCEE4\uBBF8\uC158|\uC815\uC0B0|\uAD00\uB9AC\uC790\s*(?:\uB178\uD2B8|\uBA54\uBAA8)|\uB0B4\uBD80\s*(?:\uBA54\uBAA8|\uC6A9|\uD655\uC778)|\uBE44\uACF5\uAC1C|\uC601\uC5C5\uC6A9|\uD310\uB9E4\uC790\s*\uD655\uC778|\uC785\uAE08\s*\uD655\uC778|\uB300\uAE30\s*\uC785\uAE08|\bNET\b|\bB2B\b|\bcommission\b|\bcomm\b|\bmargin\b|\boperator\b|\bsupplier\b|land\s*operator|land\s*agency|\bOP\b|\bPAX\b|(?:\uCEF4|\uCEE4\uBBF8\uC158|comm(?:ission)?)\s*\d{1,2}\s*%)/iu,
+    pattern: new RegExp(
+      [
+        '\\uB79C\\uB4DC\\uC0AC',
+        '\\uAC70\\uB798\\uCC98',
+        '\\uACF5\\uAE09\\uC0AC',
+        `(?<![${KOREAN_LETTER}])\\uC6D0\\uAC00(?![${KOREAN_LETTER}])`,
+        '\\uACF5\\uAE09\\uAC00',
+        '\\uB3C4\\uB9E4\\uAC00',
+        '\\uB9C8\\uC9C4',
+        '\\uC218\\uC775',
+        '\\uCEE4\\uBBF8\\uC158',
+        `(?<![${KOREAN_LETTER}])\\uC815\\uC0B0(?![${KOREAN_LETTER}])`,
+        '\\uAD00\\uB9AC\\uC790\\s*(?:\\uB178\\uD2B8|\\uBA54\\uBAA8)',
+        '\\uB0B4\\uBD80\\s*(?:\\uBA54\\uBAA8|\\uC6A9|\\uD655\\uC778)',
+        '\\uBE44\\uACF5\\uAC1C',
+        '\\uC601\\uC5C5\\uC6A9',
+        '\\uD310\\uB9E4\\uC790\\s*\\uD655\\uC778',
+        '\\uC785\\uAE08\\s*\\uD655\\uC778',
+        '\\uB300\\uAE30\\s*\\uC785\\uAE08',
+        '\\bNET\\b',
+        '\\bB2B\\b',
+        '\\bcommission\\b',
+        '\\bcomm\\b',
+        '\\bmargin\\b',
+        '\\boperator\\b',
+        '\\bsupplier\\b',
+        'land\\s*operator',
+        'land\\s*agency',
+        '\\bOP\\b',
+        '\\bPAX\\b',
+        '(?:\\uCEF4|\\uCEE4\\uBBF8\\uC158|comm(?:ission)?)\\s*\\d{1,2}\\s*%',
+      ].join('|'),
+      'iu',
+    ),
     label: '?쒕뱶???댁쁺?먯슜 ?대? ?⑹뼱媛 怨좉컼 臾멸뎄??蹂댁엯?덈떎.',
   },
   {

@@ -94,17 +94,53 @@ function numberValue(value: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function inferSegmentedSourceDuration(text: string): string | null {
+  const dayMatches = [...text.matchAll(/(\d+)\s*일/g)];
+  const nightMatches = [...text.matchAll(/(\d+)\s*박/g)]
+    .map(match => ({ value: Number(match[1]), index: match.index ?? -1 }))
+    .filter(match => Number.isFinite(match.value) && match.value > 0 && match.index >= 0);
+
+  let segmentStart = 0;
+  for (const dayMatch of dayMatches) {
+    const sourceDuration = Number(dayMatch[1]);
+    const dayIndex = dayMatch.index ?? -1;
+    if (!Number.isFinite(sourceDuration) || sourceDuration <= 0 || dayIndex < 0) continue;
+
+    const segmentText = text.slice(segmentStart, dayIndex);
+    const segmentNights = nightMatches
+      .filter(match => match.index >= segmentStart && match.index < dayIndex)
+      .map(match => match.value);
+    segmentStart = dayIndex + dayMatch[0].length;
+
+    if (segmentText.length > 80) continue;
+    if (segmentNights.length < 2) continue;
+    const sourceNights = segmentNights.reduce((sum, value) => sum + value, 0);
+    if (sourceNights > 0 && sourceNights < sourceDuration) {
+      return `${sourceNights}박${sourceDuration}일`;
+    }
+  }
+
+  return null;
+}
+
 export function inferPublicTitleDuration(pkg: AnyRecord, text = sourceText(pkg)): string | null {
   const nights = numberValue(pkg.nights);
   const duration = numberValue(pkg.duration);
+
   const match = text.match(/(\d+)\s*박\s*(\d+)\s*일/);
   if (match) {
     const sourceNights = Number(match[1]);
     const sourceDuration = Number(match[2]);
+    const segmentedDuration = inferSegmentedSourceDuration(text);
+    if (sourceNights <= 1 && segmentedDuration?.endsWith(`${sourceDuration}일`)) {
+      return segmentedDuration;
+    }
     if (!duration || sourceDuration === duration || !nights || nights !== sourceNights) {
       return `${sourceNights}박${sourceDuration}일`;
     }
   }
+  const segmentedDuration = inferSegmentedSourceDuration(text);
+  if (segmentedDuration) return segmentedDuration;
   if (nights && duration) return `${nights}박${duration}일`;
   if (duration && duration > 1) return `${duration - 1}박${duration}일`;
   return null;
@@ -157,7 +193,7 @@ function inferCondition(text: string, optionBadges: string[]): string | null {
 }
 
 function inferTheme(text: string, destination: string): string {
-  if (/골프|라운드|CC/i.test(text)) return '골프';
+  if (/골프|라운드|(?:^|[\s/])C\.?C\.?(?:$|[\s/])/i.test(text)) return '골프';
   if (!/연길·백두산/.test(destination) && hasStrongOnsenEvidence(text)) return '온천·관광';
   if (/자유\s*일정|자유\s*시간|1일\s*자유|반일\s*자유/i.test(text)) return '자유일정';
   if (/다낭·호이안|푸꾸옥|세부|리조트|비치|해변|호핑|휴양/i.test(`${destination} ${text}`)) return '휴양관광';
