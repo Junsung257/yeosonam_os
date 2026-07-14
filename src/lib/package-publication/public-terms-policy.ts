@@ -62,6 +62,32 @@ const EXCLUSION_RULES: Array<[RegExp, string]> = [
   [/불\s*포\s*함.*식사|식사.*불\s*포\s*함/, '불포함 식사'],
 ];
 
+const READABLE_INCLUSION_RULES: Array<[RegExp, string]> = [
+  [/\uC655\uBCF5\s*\uD56D\uACF5\uB8CC|\uD56D\uACF5\s*\uB8CC|\uD56D\uACF5\uAD8C/, '\uC655\uBCF5\uD56D\uACF5\uB8CC'],
+  [/\uC720\uB958\s*\uD560\uC99D\uB8CC/, '\uC720\uB958\uD560\uC99D\uB8CC'],
+  [/\uC219\uBC15|\uD638\uD154|\uB9AC\uC870\uD2B8/, '\uC219\uBC15'],
+  [/\uC2DD\uC0AC|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD/, '\uC77C\uC815\uD45C\uC0C1 \uC2DD\uC0AC'],
+  [/\uC804\uC6A9\s*\uCC28\uB7C9|\uD604\uC9C0\s*\uCC28\uB7C9|\uCC28\uB7C9/, '\uD604\uC9C0\uCC28\uB7C9'],
+  [/\uC2A4\uB8E8\s*\uAC00\uC774\uB4DC|\uAC00\uC774\uB4DC|\uAE30\uC0AC/, '\uAC00\uC774\uB4DC'],
+  [/\uAD00\uAD11\uC9C0\s*\uC785\uC7A5\uB8CC|\uC785\uC7A5\uB8CC/, '\uAD00\uAD11\uC9C0 \uC785\uC7A5\uB8CC'],
+  [/\uC5EC\uD589\uC790\s*\uBCF4\uD5D8|\uBCF4\uD5D8/, '\uC5EC\uD589\uC790\uBCF4\uD5D8'],
+];
+
+const READABLE_EXCLUSION_RULES: Array<[RegExp, string]> = [
+  [/\uAC1C\uC778\s*\uACBD\uBE44/, '\uAC1C\uC778\uACBD\uBE44'],
+  [/\uB9E4\uB108\s*\uD301/, '\uB9E4\uB108\uD301'],
+  [/\uAE30\uC0AC\s*[&/+]?\s*\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAE30\uC0AC\s*\uD301|\uAC00\uC774\uB4DC\s*\uD301|\uBD09\uC0AC\uB8CC/, '\uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44'],
+  [/\uC120\uD0DD\s*(?:\uAD00\uAD11|\uC635\uC158).*(?:\uBE44\uC6A9|\uC694\uAE08|\uBCC4\uB3C4)/, '\uC120\uD0DD\uAD00\uAD11 \uBE44\uC6A9'],
+  [/\uC2F1\uAE00\s*\uCC28\uC9C0|\uC2F1\uAE00\s*\uB8F8/, '\uC2F1\uAE00\uB8F8 \uCD94\uAC00\uBE44'],
+  [/\uBE44\uC790\s*\uBE44?/, '\uBE44\uC790\uBE44'],
+];
+
+const RAW_INCLUSION_LINE_CUES = READABLE_INCLUSION_RULES.map(([pattern]) => pattern);
+const RAW_EXCLUSION_LINE_CUES = [
+  ...READABLE_EXCLUSION_RULES.map(([pattern]) => pattern),
+  /\uC720\uB958\s*\uBCC0\uB3D9\uBD84/,
+];
+
 function textOf(value: unknown): string {
   if (typeof value === 'string') return value;
   if (!value || typeof value !== 'object') return '';
@@ -129,9 +155,45 @@ function extractSectionCandidates(rawText: string | null | undefined, heading: R
   return output;
 }
 
+function countMatches(text: string, patterns: RegExp[]): number {
+  return patterns.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+}
+
+function readableRuleLabelsFromLine(text: string, kind: PublicTermKind): string[] {
+  const rules = kind === 'inclusion' ? READABLE_INCLUSION_RULES : READABLE_EXCLUSION_RULES;
+  return rules
+    .filter(([pattern]) => pattern.test(text))
+    .map(([, label]) => label);
+}
+
+function inferRawTermCandidates(rawText: string, kind: PublicTermKind): string[] {
+  if (!rawText) return [];
+  const output: string[] = [];
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+
+  for (const line of lines) {
+    if (SECTION_STOP_PATTERN.test(line)) continue;
+    const includeScore = countMatches(line, RAW_INCLUSION_LINE_CUES);
+    const excludeScore = countMatches(line, RAW_EXCLUSION_LINE_CUES);
+    if (kind === 'inclusion' && includeScore >= 2 && excludeScore === 0) {
+      output.push(...readableRuleLabelsFromLine(line, kind));
+      output.push(...splitRawLine(line));
+    }
+    if (kind === 'exclusion' && excludeScore >= 1) {
+      output.push(...readableRuleLabelsFromLine(line, kind));
+      output.push(...splitRawLine(line));
+    }
+  }
+
+  return output;
+}
+
 function classifyTerm(kind: PublicTermKind, value: string): string | null {
   if (kind === 'inclusion' && /가이드\s*경비|기사\s*\/?\s*가이드/.test(value)) return null;
-  const rules = kind === 'inclusion' ? INCLUSION_RULES : EXCLUSION_RULES;
+  if (kind === 'exclusion' && /^\s*선택\s*(?:관광|옵션)\s*$/.test(value)) return null;
+  const rules = kind === 'inclusion'
+    ? [...READABLE_INCLUSION_RULES, ...INCLUSION_RULES]
+    : [...READABLE_EXCLUSION_RULES, ...EXCLUSION_RULES];
   for (const [pattern, publicLabel] of rules) {
     if (pattern.test(value)) return publicLabel;
   }
@@ -177,13 +239,19 @@ export function buildPublicTermsPolicy(input: PublicTermPolicyInput): PublicTerm
   const inclusionsPublic = buildTerms(
     'inclusion',
     termCandidates(input.inclusions),
-    extractSectionCandidates(rawText, INCLUSION_HEADING_PATTERN),
+    [
+      ...extractSectionCandidates(rawText, INCLUSION_HEADING_PATTERN),
+      ...inferRawTermCandidates(rawText, 'inclusion'),
+    ],
     rejected,
   );
   const exclusionsPublic = buildTerms(
     'exclusion',
     termCandidates(input.exclusions),
-    extractSectionCandidates(rawText, EXCLUSION_HEADING_PATTERN),
+    [
+      ...extractSectionCandidates(rawText, EXCLUSION_HEADING_PATTERN),
+      ...inferRawTermCandidates(rawText, 'exclusion'),
+    ],
     rejected,
   );
 

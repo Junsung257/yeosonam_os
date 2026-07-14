@@ -972,6 +972,23 @@ describe('repairOptionalTourScheduleDuplicates', () => {
     ]);
   });
 
+  it('quarantines price-less perks from optional tours while keeping paid options', () => {
+    const result = repairOptionalToursForCustomerDisplay([
+      { name: '\uD2B9\uC2DD \u2013 \uBC14\uB098\uC0B0 \uC815\uC0C1 \uB808\uC2A4\uD1A0\uB791\uC5D0\uC11C \uC800\uB141\uC2DD\uC0AC' },
+      { name: '\uC804\uC2E0\uB9C8\uC0AC\uC9C0 50\uBD84\uC73C\uB85C \uD734\uC2DD \uB9E4\uB108\uD301\uC740 \uBCC4\uB3C4\uC785\uB2C8\uB2E4.' },
+      { name: '\uCD94\uCC9C\uC120\uD0DD\uAD00\uAD11 : \uC9D0\uBC14\uB780 \uC528\uD478\uB4DC', price: '$50/\uC778' },
+    ]);
+
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toEqual(expect.arrayContaining([
+      '\uD2B9\uC2DD \u2013 \uBC14\uB098\uC0B0 \uC815\uC0C1 \uB808\uC2A4\uD1A0\uB791\uC5D0\uC11C \uC800\uB141\uC2DD\uC0AC',
+      '\uC804\uC2E0\uB9C8\uC0AC\uC9C0 50\uBD84\uC73C\uB85C \uD734\uC2DD \uB9E4\uB108\uD301\uC740 \uBCC4\uB3C4\uC785\uB2C8\uB2E4.',
+    ]));
+    expect(result.optionalTours).toEqual([
+      { name: '\uC9D0\uBC14\uB780 \uC528\uD478\uB4DC', price: '$50/\uC778' },
+    ]);
+  });
+
   it('keeps optional tours in the optional_tours section and removes duplicate schedule rows', () => {
     const result = repairOptionalTourScheduleDuplicates(
       {
