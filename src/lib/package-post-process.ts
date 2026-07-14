@@ -6,7 +6,7 @@
  */
 
 /** write-time 후처리 버전 — DB drift·backfill 판별용 */
-export const POSTPROCESS_VERSION = '2026-07-13-v1';
+export const POSTPROCESS_VERSION = '2026-07-14-v2';
 
 import { enrichItineraryForDisplay } from './itinerary-normalizer';
 import { normalizeFlightSegments } from './parser/normalize-flight-segments';
@@ -22,6 +22,7 @@ import {
   stripFalseTipInclusions,
 } from './parser/deterministic/product-policy';
 import { sanitizePackageUpdate } from './customer-leak-sanitizer';
+import { customerCopyQualityIssues } from './customer-copy-quality';
 
 export type ItineraryLike = Parameters<typeof enrichItineraryForDisplay>[0];
 
@@ -47,12 +48,120 @@ function cloneItineraryData<T extends ItineraryLike>(itin: T): T {
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function isMojibakeAttractionName(value: unknown): boolean {
+  return typeof value === 'string' && /(?:\?{2,}|\uFFFD)/.test(value);
+}
+
+function hasBlockingCustomerCopyIssue(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  return customerCopyQualityIssues(value).some(issue => [
+    'placeholder_or_mojibake',
+    'internal_source_copy',
+    'customer_forbidden_internal_terms',
+  ].includes(issue.code));
+}
+
+function inferAttractionNameFromScheduleItem(item: Record<string, unknown>): string | null {
+  const direct = typeof item.attraction_query === 'string' ? item.attraction_query.trim() : '';
+  if (direct && !hasBlockingCustomerCopyIssue(direct)) return direct;
+
+  if (Array.isArray(item.attraction_queries)) {
+    const query = item.attraction_queries.find(value =>
+      typeof value === 'string' && value.trim() && !hasBlockingCustomerCopyIssue(value));
+    if (typeof query === 'string') return query.trim();
+  }
+
+  const activity = typeof item.activity === 'string' ? item.activity.replace(/\s+/g, ' ').trim() : '';
+  const knownNames = [
+    '\uD63C\uCD1D\uACEF',
+    '\uD63C\uB610\uC12C \uD574\uC0C1 \uCF00\uC774\uBE14\uCE74',
+    '\uB2E4\uB534\uB77C \uD3ED\uD3EC',
+    '\uC601\uD765\uC0AC',
+    '\uC8FD\uB9BC\uC0AC',
+    '\uBC14\uB098\uD790',
+    '\uD638\uC774\uC548 \uAD6C\uC2DC\uAC00\uC9C0',
+  ];
+  const matched = knownNames.find(name => activity.includes(name));
+  return matched ?? null;
+}
+
+function isOptionalScheduleFragment(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  return /^\[?\s*\uC120\uD0DD\s*(?:\uC635\uC158|\uAD00\uAD11)\s*\]?/u.test(text)
+    || /^\[?\s*OPTION\s*\]?/iu.test(text)
+    || /\uD604\uC9C0\s*\uC120\uD0DD\s*(?:\uC635\uC158|\uAD00\uAD11)/u.test(text);
+}
+
+function sanitizeItineraryScheduleForPublicSource<T extends ItineraryLike>(itin: T): T {
+  const root = asRecord(itin);
+  const days = Array.isArray(root.days) ? root.days : [];
+  if (days.length === 0) return itin;
+
+  let changed = false;
+  const next = cloneItineraryData(root) as Record<string, unknown>;
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+
+  for (const day of nextDays) {
+    const dayRecord = asRecord(day);
+    const schedule = Array.isArray(dayRecord.schedule) ? dayRecord.schedule : [];
+    if (schedule.length === 0) continue;
+
+    const kept: unknown[] = [];
+    for (const item of schedule) {
+      const itemRecord = asRecord(item);
+      if (isOptionalScheduleFragment(itemRecord.activity)) {
+        changed = true;
+        continue;
+      }
+
+      if (Array.isArray(itemRecord.attraction_names)) {
+        const attractionNames = itemRecord.attraction_names;
+        const inferred = inferAttractionNameFromScheduleItem(itemRecord);
+        const cleaned = attractionNames
+          .map(name => {
+            if (!isMojibakeAttractionName(name)) return name;
+            changed = true;
+            return inferred;
+          })
+          .filter(name => typeof name === 'string' && name.trim() && !hasBlockingCustomerCopyIssue(name));
+
+        if (cleaned.length !== attractionNames.length || cleaned.some((name, index) => name !== attractionNames[index])) {
+          changed = true;
+          if (cleaned.length > 0) {
+            itemRecord.attraction_names = [...new Set(cleaned)];
+          } else {
+            delete itemRecord.attraction_names;
+          }
+        }
+      }
+
+      kept.push(item);
+    }
+
+    if (kept.length !== schedule.length) {
+      dayRecord.schedule = kept;
+      changed = true;
+    }
+  }
+
+  return changed ? next as T : itin;
+}
+
 export function postProcessItineraryData<T extends ItineraryLike>(itin: T): T {
   const unwrapped = unwrapItineraryData(itin);
   const draft = cloneItineraryData(unwrapped);
-  return enrichItineraryForDisplay(draft, data =>
+  const enriched = enrichItineraryForDisplay(draft, data =>
     normalizeFlightSegments(data as Parameters<typeof normalizeFlightSegments>[0]),
   );
+  return sanitizeItineraryScheduleForPublicSource(enriched);
 }
 
 export interface PostProcessCatalogInput {
