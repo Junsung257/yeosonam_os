@@ -104,6 +104,18 @@ describe('customer public title policy', () => {
     expect(title).not.toContain('온천');
   });
 
+  it('does not promote a single onsen sightseeing mention into a trip-level title theme', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '\uC77C\uBCF8 \uBD81\uC54C\uD504\uC2A4, \uB3D9\uACBD, \uC54C\uD39C\uB8E8\uD2B8, \uD558\uCF54\uB124',
+      title: '\uC77C\uBCF8\uC758 \uBD81\uC54C\uD504\uC2A4 \uB3D9\uACBD \uC54C\uD39C\uB8E8\uD2B8 \uD558\uCF54\uB124 4\uC77C PKG',
+      duration: 4,
+      nights: 3,
+      raw_text: '\uD558\uCF54\uB124 \uC628\uCC9C \uAD00\uAD11 \uD6C4 \uB3D9\uACBD \uC2DC\uB0B4 \uAD00\uAD11\uC744 \uC9C4\uD589\uD569\uB2C8\uB2E4.',
+    });
+
+    expect(title).not.toContain('\uC628\uCC9C');
+  });
+
   it('does not promote Yanji/Baekdu onsen wording into the title theme', () => {
     const title = composeCustomerPublicTitle({
       destination: '연길',

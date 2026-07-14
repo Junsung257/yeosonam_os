@@ -176,11 +176,15 @@ function hasNoShoppingEvidence(text: string): boolean {
 }
 
 function hasHotelGradeEvidence(text: string): boolean {
+  if (/(?:준\s*5\s*성|준\s*성급\s*HOTEL|준성급\s*HOTEL)/i.test(text)) return false;
   return /(호텔|리조트|숙박|동급).{0,20}(5\s*성|준\s*5\s*성|특급|특급호텔)|(5\s*성|준\s*5\s*성|특급).{0,20}(호텔|리조트|숙박|동급)/i.test(text);
 }
 
 function hasStrongOnsenEvidence(text: string): boolean {
-  return /(온천\s*(마을|호텔|리조트|숙박|2박|여행|관광|테마)|료칸|노보리베츠|죠잔케이|벳부|유후인|쿠로가와)/i.test(text);
+  const onsenCount = (text.match(/온천/g) ?? []).length;
+  if (onsenCount >= 2 && /(?:온천\s*1박|온천욕)/i.test(text)) return true;
+  return onsenCount >= 2
+    && /(온천\s*(마을|호텔|리조트|숙박|2박|여행|관광|테마)|료칸|노보리베츠|죠잔케이|벳부|유후인|쿠로가와)/i.test(text);
 }
 
 function inferCondition(text: string, optionBadges: string[]): string | null {
