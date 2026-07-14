@@ -410,6 +410,7 @@ function routeTextDump(snapshot: Omit<PublicPackageSnapshot, 'route_text_dump'>)
     snapshot.cta_copy.helper,
     ...snapshot.option_policy.badges,
     ...stringList(snapshot.package.product_highlights),
+    ...collectCustomerVisibleStrings(snapshot.package.marketing_copies),
     ...stringList(snapshot.package.inclusions),
     ...stringList(snapshot.package.excludes),
     ...collectCustomerVisibleStrings(snapshot.card_projection),

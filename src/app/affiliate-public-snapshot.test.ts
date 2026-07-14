@@ -58,6 +58,20 @@ describe('affiliate and embed public package data boundary', () => {
     expect(packageQuery).not.toMatch(/select\('[^']*\b(title|price|location_summary|original_price|discount_rate|main_image)\b/);
   });
 
+  it('serves influencer marketing assets only after public snapshot merge', () => {
+    const text = source('src/app/api/influencer/assets/route.ts');
+    const packageQueryIndex = text.indexOf(".from('travel_packages')");
+    const snapshotIndex = text.indexOf('const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    const responseIndex = text.indexOf('marketing_copies: publicPackages.map');
+    const responseSlice = text.slice(responseIndex);
+
+    expect(text).toContain('function isInfluencerPublicSnapshotCandidate');
+    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
+    expect(responseIndex).toBeGreaterThan(snapshotIndex);
+    expect(responseSlice).not.toContain('(packages || []).map');
+  });
+
   it('renders affiliate OG images from current public snapshots only', () => {
     const text = source('src/app/api/og/affiliate/route.tsx');
     const packageGateIndex = text.indexOf('/rest/v1/travel_packages');

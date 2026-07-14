@@ -738,6 +738,31 @@ describe('public package snapshot gate', () => {
     ]));
   });
 
+  it('audits public snapshot marketing copies as customer-visible text', () => {
+    const riskyMarketingCopy = '\uCD5C\uC800\uAC00 \uBCF4\uC7A5 \uC0C1\uB2F4\uC73C\uB85C \uC9C0\uAE08 \uD655\uC778\uD558\uC138\uC694.';
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      marketing_copies: [
+        { type: 'social', title: '\uCD94\uCC9C \uBB38\uAD6C', body: riskyMarketingCopy },
+      ],
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(snapshot.route_text_dump).toEqual(expect.arrayContaining([riskyMarketingCopy]));
+    expect(gate.publishable).toBe(false);
+    expect(gate.hard_blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'risky_reservation_claim' }),
+    ]));
+  });
+
   it('blocks Korean internal land-operator copy at the public snapshot gate', () => {
     const pkg = yanjiPackage({
       optional_tours: [],

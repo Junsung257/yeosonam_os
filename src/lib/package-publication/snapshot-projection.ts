@@ -108,6 +108,7 @@ const RAW_CUSTOMER_FIELD_KEYS = [
   'product_summary',
   'badges',
   'product_highlights',
+  'marketing_copies',
   'inclusions',
   'included',
   'excludes',
