@@ -1,4 +1,5 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 import Stars from './Stars';
 
 /**
@@ -88,14 +89,24 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
 
   const { data: pkg } = await supabaseAdmin
     .from('travel_packages')
-    .select('avg_rating, review_count, title, product_summary')
+    .select('avg_rating, review_count, package_revision')
     .eq('id', packageId)
     .limit(1);
 
-  const stats = pkg?.[0] as { avg_rating: number | null; review_count: number; title: string; product_summary: string | null } | undefined;
+  const stats = pkg?.[0] as { avg_rating: number | null; review_count: number; package_revision?: number | null } | undefined;
+  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, packageId, {
+    expectedPackageRevision: Number(stats?.package_revision ?? 1),
+  }).catch(() => null);
+  const publicPackage = publicSnapshot?.package as { title?: unknown; product_summary?: unknown } | undefined;
+  const publicTitle = typeof publicPackage?.title === 'string' && publicPackage.title.trim()
+    ? publicPackage.title.trim()
+    : null;
+  const publicSummary = typeof publicPackage?.product_summary === 'string' && publicPackage.product_summary.trim()
+    ? publicPackage.product_summary.trim()
+    : null;
 
   // 리뷰 없으면 빈 상태 UI
-  if (!stats?.avg_rating || stats.review_count === 0) {
+  if (!publicTitle || !stats?.avg_rating || stats.review_count === 0) {
     return <EmptyReviewsState />;
   }
 
@@ -138,8 +149,8 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
           __html: JSON.stringify({
             '@context': 'https://schema.org',
             '@type': 'Product',
-            name: stats.title,
-            description: stats.product_summary || stats.title,
+            name: publicTitle,
+            description: publicSummary || publicTitle,
             aggregateRating: {
               '@type': 'AggregateRating',
               ratingValue: avg.toFixed(2),
