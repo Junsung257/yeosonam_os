@@ -4,8 +4,58 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { hasSecrets } from '@/lib/secret-registry';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isSupabaseConfigured } from '@/lib/supabase';
+
+type AnyRecord = Record<string, any>;
+type CampaignLaunchCreative = AnyRecord & {
+  id: string;
+  product_id?: string | null;
+  channel: string;
+  travel_packages?: AnyRecord | null;
+};
+
+const CAMPAIGN_LAUNCH_CREATIVE_FIELDS =
+  'id, product_id, channel, creative_type, variant_index, hook_type, target_segment, key_selling_point, primary_text, headline, status';
+
+const CAMPAIGN_LAUNCH_PACKAGE_FIELDS =
+  'id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
+
+function isCampaignPublicSnapshotCandidate(row: unknown): row is Record<string, unknown> {
+  if (!row || typeof row !== 'object') return false;
+  const item = row as Record<string, unknown>;
+  const publicationState = typeof item.publication_state === 'string' ? item.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(item);
+}
+
+async function loadPublicPackagesForCampaignLaunch(
+  sb: SupabaseClient,
+  creatives: AnyRecord[],
+): Promise<Map<string, AnyRecord>> {
+  const productIds = [...new Set(
+    creatives
+      .map((creative) => typeof creative.product_id === 'string' ? creative.product_id : null)
+      .filter((id): id is string => Boolean(id)),
+  )];
+  if (productIds.length === 0) return new Map();
+
+  const { data, error } = await sb
+    .from('travel_packages')
+    .select(CAMPAIGN_LAUNCH_PACKAGE_FIELDS)
+    .in('id', productIds)
+    .in('publication_state', ['approved', 'published']);
+  if (error) throw error;
+
+  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    sb,
+    ((data ?? []) as Array<Record<string, unknown>>).filter(isCampaignPublicSnapshotCandidate),
+  );
+  return new Map(publicRows.map((row) => [String(row.id), row as AnyRecord]));
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,16 +77,36 @@ export async function POST(request: NextRequest) {
     // 소재 조회
     const { data: creatives, error: fetchErr } = await supabaseAdmin
       .from('ad_creatives')
-      .select('*, travel_packages!inner(id, title, destination, price)')
+      .select(CAMPAIGN_LAUNCH_CREATIVE_FIELDS)
       .in('id', creative_ids);
 
     if (fetchErr || !creatives?.length) {
       return NextResponse.json({ error: '소재 조회 실패' }, { status: 404 });
     }
 
+    const creativeRows = creatives as CampaignLaunchCreative[];
+    const publicPackagesById = await loadPublicPackagesForCampaignLaunch(
+      supabaseAdmin,
+      creativeRows,
+    );
+    const launchableCreatives: CampaignLaunchCreative[] = creativeRows.map((creative) => {
+      const productId = typeof creative.product_id === 'string' ? creative.product_id : '';
+      return {
+        ...creative,
+        travel_packages: publicPackagesById.get(productId) ?? null,
+      };
+    });
+    const blockedCreatives = launchableCreatives.filter((creative) => !creative.travel_packages);
+    if (blockedCreatives.length > 0) {
+      return NextResponse.json({
+        error: 'PUBLIC_SNAPSHOT_REQUIRED_FOR_CAMPAIGN_LAUNCH',
+        blocked_creative_ids: blockedCreatives.map((creative) => creative.id),
+      }, { status: 409 });
+    }
+
     const results: { id: string; channel: string; status: string; error?: string }[] = [];
 
-    for (const creative of creatives) {
+    for (const creative of launchableCreatives) {
       try {
         if (creative.channel === 'meta') {
           // Meta 배포 — 기존 meta-api.ts 활용
