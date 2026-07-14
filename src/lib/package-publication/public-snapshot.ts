@@ -2,7 +2,14 @@ import { createHash } from 'crypto';
 
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
-import { hasRiskyCustomerPromiseCopy } from '@/lib/customer-risky-copy';
+import {
+  hasRiskyCustomerPromiseCopy,
+  stripRiskyCustomerPromiseCopy,
+} from '@/lib/customer-risky-copy';
+import {
+  customerCopyQualityIssues,
+  normalizeCustomerVisibleCopy,
+} from '@/lib/customer-copy-quality';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { renderPackage } from '@/lib/render-contract';
 import {
@@ -44,6 +51,23 @@ const RISKY_COPY_PATTERNS = [
   /Decision\s*guide/i,
 ];
 
+const PUBLIC_TEXT_BLOCKING_ISSUES = new Set([
+  'placeholder_or_mojibake',
+  'internal_source_copy',
+  'customer_forbidden_internal_terms',
+  'raw_supplier_shorthand',
+  'supplier_notation',
+  'raw_filename_or_hash_title',
+]);
+
+const HIGH_RISK_OPERATIONAL_COPY_RE =
+  /환불\s*(?:은|이)?\s*절대\s*불가|환불\s*불가|취소\s*수수료.{0,12}100%|100%\s*차지|예약금|입금.{0,18}(?:좌석|예약|자동\s*취소|확정)|항공\s*요금.{0,12}입금|좌석.{0,12}(?:확정|확보|보장)|발권\s*마감|Decision\s*guide/i;
+const LOW_INFORMATION_RISK_RESIDUE_RE = /^(?:후|전)?\s*안내(?:드립니다|합니다)?\.?$/;
+const PUBLIC_STRUCTURE_STRING_KEY_RE =
+  /(?:^|_)(?:id|ids|hash|url|urls|src|slug|icon|date|day|count|status|source|type|currency)$/i;
+
+const SAFE_RESERVATION_NOTICE = '예약 가능 여부는 담당자 확인 후 안내됩니다.';
+
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
 }
@@ -65,6 +89,58 @@ function stringList(value: unknown): string[] {
 
 function normalizeText(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function isEmptyPublicValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return normalizeText(value) === '';
+  return false;
+}
+
+function sanitizePublicCustomerString(value: string): string | null {
+  let candidate = normalizeCustomerVisibleCopy(value);
+  if (!candidate) return null;
+
+  if (hasRiskyCustomerPromiseCopy(candidate)) {
+    candidate = stripRiskyCustomerPromiseCopy(candidate) ?? SAFE_RESERVATION_NOTICE;
+    if (LOW_INFORMATION_RISK_RESIDUE_RE.test(candidate)) {
+      candidate = SAFE_RESERVATION_NOTICE;
+    }
+  }
+
+  if (HIGH_RISK_OPERATIONAL_COPY_RE.test(candidate)) {
+    return SAFE_RESERVATION_NOTICE;
+  }
+
+  const blockingIssue = customerCopyQualityIssues(candidate)
+    .find(issue => PUBLIC_TEXT_BLOCKING_ISSUES.has(issue.code));
+  if (blockingIssue) return null;
+
+  return normalizeText(candidate);
+}
+
+function sanitizePublicCustomerValue(value: unknown, key = ''): unknown {
+  if (typeof value === 'string') {
+    return PUBLIC_STRUCTURE_STRING_KEY_RE.test(key) ? value : sanitizePublicCustomerString(value);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null || value === undefined) return value;
+
+  if (Array.isArray(value)) {
+    const sanitized = value
+      .map(item => sanitizePublicCustomerValue(item, key))
+      .filter(item => !isEmptyPublicValue(item));
+    return sanitized;
+  }
+
+  const record = asRecord(value);
+  if (!record) return value;
+
+  const sanitized: AnyRecord = {};
+  for (const [key, childValue] of Object.entries(record)) {
+    const publicValue = sanitizePublicCustomerValue(childValue, key);
+    if (!isEmptyPublicValue(publicValue)) sanitized[key] = publicValue;
+  }
+  return sanitized;
 }
 
 function addPublicImageCandidate(
@@ -202,6 +278,7 @@ const ROUTE_TEXT_SKIP_KEYS = new Set([
   'raw_text',
   'revision',
   'snapshot_version',
+  'slug',
   'source_context',
   'source_evidence',
   'supplier',
@@ -369,6 +446,8 @@ function titleDestination(pkg: AnyRecord, sourceText: string): string | null {
   if (/다낭|호이안/.test(cleanDestination + sourceText)) return '다낭·호이안';
   if (/후쿠오카|유후인|벳부|규슈|큐슈/.test(cleanDestination + sourceText)) return /규슈|큐슈/.test(cleanDestination) ? '규슈' : '후쿠오카·규슈';
   if (/북해도|홋카이도|삿포로/.test(cleanDestination + sourceText)) return '북해도';
+  if (/보홀/.test(cleanDestination + sourceText)) return '보홀';
+  if (/세부/.test(cleanDestination + sourceText)) return '세부';
   return cleanDestination || null;
 }
 
@@ -480,6 +559,9 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   publicPackage.inclusions = publicTerms.inclusionsPublic;
   publicPackage.excludes = publicTerms.exclusionsPublic;
   publicPackage.optional_tours = optionalTourClassification.publicTours;
+  publicPackage.itinerary_data = sanitizePublicCustomerValue(publicPackage.itinerary_data);
+  publicPackage.marketing_copies = sanitizePublicCustomerValue(publicPackage.marketing_copies);
+  publicPackage.customer_notes = sanitizePublicCustomerValue(publicPackage.customer_notes);
   const displayCopy = buildCustomerPackageDisplayCopy({
     title: asString(publicPackage.title),
     display_title: asString(publicPackage.display_title),
@@ -530,7 +612,9 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     publication_state: pkg.publication_state ?? publicPackage.publication_state ?? null,
     package_revision: asNumber(pkg.package_revision) ?? 1,
   };
-  const canonicalView = renderPackage(snapshotPackage as Parameters<typeof renderPackage>[0]) as unknown as Record<string, unknown>;
+  const canonicalView = sanitizePublicCustomerValue(
+    renderPackage(snapshotPackage as Parameters<typeof renderPackage>[0]),
+  ) as Record<string, unknown>;
   const snapshotBase: Omit<PublicPackageSnapshot, 'route_text_dump'> = {
     snapshot_version: SNAPSHOT_VERSION,
     package_id: String(pkg.id ?? publicPackage.id ?? ''),

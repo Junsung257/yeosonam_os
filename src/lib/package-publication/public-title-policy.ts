@@ -17,6 +17,7 @@ const KNOWN_DESTINATION_ALIASES: Array<[RegExp, string]> = [
   [/푸꾸옥/, '푸꾸옥'],
   [/장가계|장자제/, '장가계'],
   [/청도/, '청도'],
+  [/보홀/, '보홀'],
   [/세부/, '세부'],
   [/대마도|쓰시마/, '대마도'],
 ];
@@ -93,10 +94,16 @@ function numberValue(value: unknown): number | null {
 export function inferPublicTitleDuration(pkg: AnyRecord, text = sourceText(pkg)): string | null {
   const nights = numberValue(pkg.nights);
   const duration = numberValue(pkg.duration);
+  const match = text.match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (match) {
+    const sourceNights = Number(match[1]);
+    const sourceDuration = Number(match[2]);
+    if (!duration || sourceDuration === duration || !nights || nights !== sourceNights) {
+      return `${sourceNights}박${sourceDuration}일`;
+    }
+  }
   if (nights && duration) return `${nights}박${duration}일`;
   if (duration && duration > 1) return `${duration - 1}박${duration}일`;
-  const match = text.match(/(\d+)\s*박\s*(\d+)\s*일/);
-  if (match) return `${match[1]}박${match[2]}일`;
   return null;
 }
 

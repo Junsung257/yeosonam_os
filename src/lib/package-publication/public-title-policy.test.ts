@@ -122,6 +122,31 @@ describe('customer public title policy', () => {
     expect(title.match(/노팁·노옵션/g)).toHaveLength(1);
   });
 
+  it('keeps Bohol as the public destination even when Cebu appears in surrounding itinerary text', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '보홀',
+      title: '요금표] 보홀 7C 부산출발 26년 헤난 여름휴가특가',
+      duration: 5,
+      nights: 3,
+      raw_text: '보홀 리조트 휴양 일정. 세부 공항 이동 후 보홀 숙소로 이동합니다.',
+    });
+
+    expect(title).toBe('보홀 휴양관광 3박5일');
+    expect(title).not.toContain('세부');
+  });
+
+  it('prefers the explicit source duration when package nights are inferred incorrectly', () => {
+    const title = composeCustomerPublicTitle({
+      destination: '란주',
+      title: '란주 황하석림 바단지린 칠채산 4박6일',
+      duration: 6,
+      nights: 5,
+      raw_text: '란주 황하석림 바단지린 칠채산 핵심 관광 일정입니다.',
+    });
+
+    expect(title).toBe('란주 핵심관광 4박6일');
+  });
+
   it('routes readable Korean package input through the public snapshot builder', () => {
     const { snapshot } = buildPublicPackageSnapshot({
       id: 'golden-danang',
