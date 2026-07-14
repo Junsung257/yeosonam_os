@@ -179,6 +179,33 @@ describe('public package snapshot gate', () => {
     }));
   });
 
+  it('regenerates public itinerary days from raw DAY sections when saved itinerary data is missing', () => {
+    const pkg = yanjiPackage({
+      itinerary_data: null,
+      optional_tours: [],
+      raw_text: [
+        '연길·백두산 노옵션 3박4일',
+        'DAY 1 연길',
+        '공항 도착',
+        '연길 이동',
+        'DAY 2 백두산',
+        '백두산 천지 관광',
+        'DAY 3 연길',
+        '연길 시내 이동',
+        'DAY 4 부산',
+        '공항 이동',
+      ].join('\n'),
+    });
+
+    const { snapshot } = buildPublicPackageSnapshot(pkg);
+    const itinerary = snapshot.itinerary_public as { days?: unknown[] } | null;
+    const canonical = snapshot.canonical_view as { days?: unknown[] };
+
+    expect(itinerary?.days).toHaveLength(4);
+    expect(canonical.days).toHaveLength(4);
+    expect(snapshot.route_text_dump.join('\n')).toContain('백두산 천지 관광');
+  });
+
   it('builds the canonical render view from the same cleaned public snapshot package', () => {
     const { snapshot } = buildPublicPackageSnapshot(yanjiPackage());
     const canonicalView = snapshot.canonical_view as {
@@ -752,6 +779,60 @@ describe('public package snapshot gate', () => {
     ]));
     expect(publicText).not.toContain(rawRemark);
     expect(publicText).not.toMatch(/좌석\s*확정|환불되지|출발\s*확정/);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('masked_data_pollution');
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('risky_reservation_claim');
+  });
+
+  it('removes risky source highlights and schedule policy rows from public copy using approved notices', () => {
+    const schedulePolicy = '100% 환불 불가';
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      product_highlights: ['6명출발확정', '컴10%', '노옵션'],
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { activity: '연길 이동', attraction_ids: [] },
+              { activity: schedulePolicy, attraction_ids: [] },
+            ],
+          },
+          { day: 2, schedule: [{ activity: '백두산 천지 관광', attraction_ids: [VALID_ATTRACTION_ID] }] },
+        ],
+      },
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        title: snapshot.public_title,
+        display_title: snapshot.public_title,
+        product_summary: snapshot.package.product_summary,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+        _public_notice_source_paths: snapshot.public_notice_source_paths,
+        _card_projection: snapshot.card_projection,
+        _lp_projection: snapshot.lp_projection,
+      },
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+      publicNoticeSourcePaths: snapshot.public_notice_source_paths,
+    });
+    const publicText = snapshot.route_text_dump.join('\n');
+
+    expect(snapshot.package.product_highlights).not.toEqual(expect.arrayContaining(['6명출발확정', '컴10%']));
+    expect(snapshot.public_notice_source_paths).toEqual(expect.arrayContaining([
+      'product_highlights.0',
+      'itinerary_data.days.0.schedule.1.activity',
+    ]));
+    expect(publicText).not.toContain('6명출발확정');
+    expect(publicText).not.toContain('컴10%');
+    expect(publicText).not.toContain(schedulePolicy);
     expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('masked_data_pollution');
     expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('risky_reservation_claim');
   });
