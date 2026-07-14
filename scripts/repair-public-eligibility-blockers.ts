@@ -9,7 +9,7 @@ import {
   sanitizeOptionalToursForPublicEligibility,
 } from '../src/lib/package-public-eligibility';
 import { POSTPROCESS_VERSION, postProcessItineraryData } from '../src/lib/package-post-process';
-import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '../src/lib/visibility-status';
+import { isCustomerVisibleStatus } from '../src/lib/visibility-status';
 
 for (const file of ['.env.local', '.env.croncheck.local', '.env']) {
   const fullPath = path.join(process.cwd(), file);
@@ -24,6 +24,7 @@ type PackageRow = {
   audit_status: string | null;
   audit_report: unknown;
   updated_at: string | null;
+  package_revision?: number | null;
   parser_version: string | null;
   optional_tours: unknown;
   itinerary_data: unknown;
@@ -61,6 +62,16 @@ type RepairRow = {
   error?: string;
 };
 
+type QuarantineFieldRow = {
+  package_id: string;
+  package_revision: number | null;
+  field_path: string;
+  old_value: unknown;
+  reason: string;
+  source_span: Record<string, unknown> | null;
+  repair_job_id: string;
+};
+
 function argValue(name: string, fallback: string): string {
   const prefix = `--${name}=`;
   const found = process.argv.find((arg) => arg.startsWith(prefix));
@@ -82,10 +93,11 @@ const only = new Set(
     .map((value) => value.trim())
     .filter(Boolean),
 );
-const statusList = argValue('status', CUSTOMER_VISIBLE_STATUSES.join(','))
+const statusList = argValue('status', 'all')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
+const includeAllStatuses = process.argv.includes('--all-statuses') || statusList.includes('all');
 const skipAttractionExistenceCheck = process.argv.includes('--skip-attraction-existence-check');
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -183,13 +195,13 @@ async function fetchActiveAttractionIds(): Promise<Set<string> | undefined> {
 async function fetchPackages(): Promise<PackageRow[]> {
   let query = supabase
     .from('travel_packages')
-    .select('id,title,destination,status,audit_status,audit_report,updated_at,parser_version,optional_tours,itinerary_data')
+    .select('id,title,destination,status,audit_status,audit_report,updated_at,package_revision,parser_version,optional_tours,itinerary_data')
     .order('updated_at', { ascending: false, nullsFirst: false })
     .limit(limit);
 
   if (ids.length > 0) {
     query = query.in('id', ids);
-  } else {
+  } else if (!includeAllStatuses) {
     query = query.in('status', statusList);
   }
 
@@ -265,6 +277,7 @@ function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) 
   const updates: Record<string, unknown> = {};
   const actions: string[] = [];
   const details: Record<string, unknown> = {};
+  const quarantines: QuarantineFieldRow[] = [];
   let optionalSummary: RepairRow['optional_tours'];
   let attractionSummary: RepairRow['attraction_ids'];
   let itinerarySummary: RepairRow['itinerary_data'];
@@ -289,6 +302,19 @@ function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) 
         removed: optionalRepair.removed,
         kept_count: optionalRepair.kept.length,
       };
+      quarantines.push({
+        package_id: pkg.id,
+        package_revision: pkg.package_revision ?? null,
+        field_path: 'optional_tours',
+        old_value: optionalRepair.removed,
+        reason: `optional_tours_${optionalRepair.status}`,
+        source_span: {
+          before_count: arrayLength(pkg.optional_tours),
+          after_count: optionalRepair.optionalTours.length,
+          classifications: [...new Set(optionalRepair.removed.map((finding) => finding.classification))],
+        },
+        repair_job_id: '',
+      });
     }
   }
 
@@ -321,10 +347,21 @@ function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) 
       details.attraction_ids = {
         removed: attractionRepair.removed,
       };
+      quarantines.push({
+        package_id: pkg.id,
+        package_revision: pkg.package_revision ?? null,
+        field_path: 'itinerary_data.attraction_ids',
+        old_value: attractionRepair.removed,
+        reason: 'broken_or_unpublishable_attraction_ids',
+        source_span: {
+          removed_count: attractionRepair.removed.length,
+        },
+        repair_job_id: '',
+      });
     }
   }
 
-  return { updates, actions, details, optionalSummary, attractionSummary, itinerarySummary };
+  return { updates, actions, details, quarantines, optionalSummary, attractionSummary, itinerarySummary };
 }
 
 async function main() {
@@ -334,6 +371,7 @@ async function main() {
   ]);
   const rows: RepairRow[] = [];
   const now = new Date().toISOString();
+  const repairJobId = `public-eligibility-repair:${now}`;
 
   for (const pkg of packages) {
     const beforeBlockers = getPackagePublicEligibilityBlockers(pkg).map((blocker) => blocker.code);
@@ -392,6 +430,20 @@ async function main() {
       if (error) {
         row.error = error.message || String(error);
       } else {
+        const quarantineRows = repair.quarantines
+          .filter((entry) => Array.isArray(entry.old_value) ? entry.old_value.length > 0 : entry.old_value !== undefined)
+          .map((entry) => ({
+            ...entry,
+            repair_job_id: repairJobId,
+          }));
+        if (quarantineRows.length > 0) {
+          const { error: quarantineError } = await supabase
+            .from('quarantined_package_fields')
+            .insert(quarantineRows);
+          if (quarantineError) {
+            row.error = quarantineError.message || String(quarantineError);
+          }
+        }
         row.applied = true;
       }
     }
