@@ -12,6 +12,7 @@ import {
 } from '@/lib/customer-copy-quality';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { renderPackage } from '@/lib/render-contract';
+import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
 import {
   composeCustomerPublicSubtitle,
   composeCustomerPublicSummary,
@@ -201,6 +202,15 @@ function sanitizePublicCustomerValue(value: unknown, key = ''): unknown {
   return sanitized;
 }
 
+function sanitizePublicHighlightList(value: unknown): string[] {
+  return stringList(value)
+    .filter(item => !hasRiskyCustomerPromiseCopy(item) && !HIGH_RISK_OPERATIONAL_COPY_RE.test(item))
+    .filter(item => !/컴\s*\d+\s*%|com\s*\d+\s*%/i.test(item))
+    .filter(item => !customerCopyQualityIssues(item).some(issue => PUBLIC_TEXT_BLOCKING_ISSUES.has(issue.code)))
+    .map(item => sanitizePublicCustomerString(item))
+    .filter((item): item is string => Boolean(item) && item !== SAFE_RESERVATION_NOTICE);
+}
+
 function walkSourceStrings(
   value: unknown,
   visit: (text: string, path: string) => void,
@@ -227,10 +237,27 @@ function walkSourceStrings(
 function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeTemplateKey[] {
   const keys: PublicNoticeTemplateKey[] = [];
   const isOperationalPath = /itinerary_data\.highlights\.(?:remarks|shopping)/.test(path)
+    || /itinerary_data\.days\.\d+\.schedule\.\d+\.(?:activity|note|attraction_names\.\d+)/.test(path)
     || /itinerary_data\.meta\.title/.test(path)
+    || /^product_highlights\.\d+/.test(path)
+    || /^product_summary/.test(path)
+    || /^hero_tagline/.test(path)
     || /^customer_notes/.test(path)
     || /^notices_parsed/.test(path);
   if (!isOperationalPath) return keys;
+
+  if (/\uC608\uC57D\s*\uC989\uC2DC|\uC989\uC2DC\s*\uD655\uC815|\uCD9C\uBC1C\s*\uD655\uC815|\uC88C\uC11D\s*(?:\uD655\uBCF4|\uD655\uC815|\uBCF4\uC7A5)|\uD56D\uACF5\s*\uC694\uAE08|\uBC1C\uAD8C|\uC608\uC57D\uAE08|\uC785\uAE08/i.test(text)) {
+    keys.push('reservation_availability_check');
+  }
+  if (/\uCDE8\uC18C|\uD658\uBD88|\uC218\uC218\uB8CC|\uCC28\uC9C0|\uC704\uC57D/i.test(text)) {
+    keys.push('cancellation_policy_check');
+  }
+  if (/\uC1FC\uD551|\uB77C\uD14D\uC2A4|\uCE68\uD5A5|\uBCF4\uC774\uCC28|\uBCF4\uC11D|\uC7A1\uD654|\uB18D\uC0B0\uBB3C|\uD734\uAC8C\uC18C/i.test(text)) {
+    keys.push('shopping_disclosure_check');
+  }
+  if (/\uC5EC\uAD8C|\uBE44\uC790|\uC785\uAD6D|\uCD9C\uAD6D/i.test(text)) {
+    keys.push('passport_validity_check');
+  }
 
   if (/예약\s*즉시|즉시\s*확정|출발\s*확정|좌석\s*(?:확보|확정|보장)|항공\s*요금|발권|예약금|입금/i.test(text)) {
     keys.push('reservation_availability_check');
@@ -247,6 +274,14 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
   return keys;
 }
 
+function isHandledUnsafePublicSourceText(text: string, path: string): boolean {
+  if (!/^product_highlights\.\d+/.test(path)) return false;
+  return hasRiskyCustomerPromiseCopy(text)
+    || HIGH_RISK_OPERATIONAL_COPY_RE.test(text)
+    || /컴\s*\d+\s*%|com\s*\d+\s*%/i.test(text)
+    || customerCopyQualityIssues(text).some(issue => PUBLIC_TEXT_BLOCKING_ISSUES.has(issue.code));
+}
+
 function buildPublicOperationalNotices(pkg: AnyRecord): {
   notices: PublicNoticeCandidate[];
   sourcePaths: string[];
@@ -257,6 +292,9 @@ function buildPublicOperationalNotices(pkg: AnyRecord): {
   const seenPaths = new Set<string>();
   const sources: Array<{ root: string; value: unknown }> = [
     { root: 'itinerary_data', value: pkg.itinerary_data },
+    { root: 'product_highlights', value: pkg.product_highlights },
+    { root: 'product_summary', value: pkg.product_summary },
+    { root: 'hero_tagline', value: pkg.hero_tagline },
     { root: 'customer_notes', value: pkg.customer_notes },
     { root: 'notices_parsed', value: pkg.notices_parsed },
   ];
@@ -265,7 +303,13 @@ function buildPublicOperationalNotices(pkg: AnyRecord): {
     walkSourceStrings(source.value, (text, path) => {
       const fullPath = `${source.root}${path ? `.${path}` : ''}`;
       const templates = noticeTemplatesForSourceText(text, fullPath);
-      if (templates.length === 0) return;
+      if (templates.length === 0) {
+        if (isHandledUnsafePublicSourceText(text, fullPath) && !seenPaths.has(fullPath)) {
+          seenPaths.add(fullPath);
+          sourcePaths.push(fullPath);
+        }
+        return;
+      }
       if (!seenPaths.has(fullPath)) {
         seenPaths.add(fullPath);
         sourcePaths.push(fullPath);
@@ -279,6 +323,30 @@ function buildPublicOperationalNotices(pkg: AnyRecord): {
   }
 
   return { notices, sourcePaths };
+}
+
+function itineraryHasPublicDays(value: unknown): boolean {
+  const itinerary = asRecord(value);
+  return Array.isArray(itinerary?.days) && itinerary.days.length > 0;
+}
+
+function buildSourceBackedItineraryCandidate(pkg: AnyRecord, existingItinerary: unknown): unknown {
+  if (itineraryHasPublicDays(existingItinerary)) {
+    return existingItinerary;
+  }
+
+  const rawText = asString(pkg.raw_text);
+  if (!rawText) return existingItinerary;
+
+  const parsedItinerary = buildSupplierRawDeterministicItinerary(rawText);
+  if (!itineraryHasPublicDays(parsedItinerary)) {
+    return existingItinerary;
+  }
+
+  return {
+    ...parsedItinerary,
+    optional_tours: [],
+  };
 }
 
 function addPublicImageCandidate(
@@ -709,11 +777,17 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     exclusions: publicPackage.excludes,
     rawText: asString(pkg.raw_text),
   });
-  const publicOperationalNotices = buildPublicOperationalNotices(pkg);
+  const sourceBackedItinerary = buildSourceBackedItineraryCandidate(pkg, publicPackage.itinerary_data);
+  const publicOperationalNotices = buildPublicOperationalNotices({
+    ...pkg,
+    itinerary_data: sourceBackedItinerary,
+  });
+  const publicItinerary = sanitizePublicCustomerValue(sourceBackedItinerary);
   publicPackage.inclusions = publicTerms.inclusionsPublic;
   publicPackage.excludes = publicTerms.exclusionsPublic;
   publicPackage.optional_tours = optionalTourClassification.publicTours;
-  publicPackage.itinerary_data = sanitizePublicCustomerValue(publicPackage.itinerary_data);
+  publicPackage.itinerary_data = publicItinerary;
+  publicPackage.product_highlights = sanitizePublicHighlightList(publicPackage.product_highlights);
   publicPackage.marketing_copies = sanitizePublicCustomerValue(publicPackage.marketing_copies);
   publicPackage.notices_parsed = publicOperationalNotices.notices;
   publicPackage.customer_notes = publicOperationalNotices.notices.length > 0
