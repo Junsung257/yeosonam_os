@@ -18,7 +18,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'placeholder_or_mojibake',
-    pattern: /�|占|锟|ï¿½|\?{2,}/i,
+    pattern: /�|占|锟|ï¿½|\?{2,}|(?:사진|이미지|대표\s*이미지|상세\s*이미지|썸네일)(?:은|는|이|가)?\s*(?:아직\s*)?(?:준비\s*중|준비중|없음|미등록)|(?:준비\s*중|준비중)\s*(?:사진|이미지)/i,
     label: '깨진 글자 또는 placeholder가 고객 문구에 보입니다.',
   },
   {
