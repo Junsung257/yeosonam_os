@@ -23,11 +23,12 @@ import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
 type AnyRecord = Record<string, unknown>;
 type PublicImageCandidate = {
   url: string;
-  source: 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og';
+  source: 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og' | 'brand_fallback';
   alt: string | null;
 };
 
 const SNAPSHOT_VERSION = 'public-package-snapshot-v1' as const;
+const BRAND_FALLBACK_IMAGE = '/logo.png';
 
 const OPTIONAL_TOUR_FRAGMENT_PATTERNS = [
   /노옵션/,
@@ -256,6 +257,16 @@ function collectPublicImages(pkg: AnyRecord): PublicImageCandidate[] {
   collectNestedPublicPhotos(pkg.destination_attractions, candidates, seen);
   collectNestedPublicPhotos(pkg.itinerary_data, candidates, seen);
 
+  if (candidates.length === 0) {
+    addPublicImageCandidate(
+      candidates,
+      seen,
+      BRAND_FALLBACK_IMAGE,
+      'brand_fallback',
+      '여소남 브랜드 이미지',
+    );
+  }
+
   return candidates.slice(0, 8);
 }
 
@@ -283,7 +294,10 @@ const ROUTE_TEXT_SKIP_KEYS = new Set([
   'source_evidence',
   'supplier',
   'supplier_note',
+  'thumbnail_url',
+  'thumbnail_urls',
   'updated_at',
+  'url',
   'vendor',
 ]);
 
@@ -311,6 +325,7 @@ function collectCustomerVisibleStrings(value: unknown, output: string[] = []): s
     if (
       ROUTE_TEXT_SKIP_KEYS.has(normalizedKey)
       || /(?:^|_)id$|(?:^|_)ids$|hash|revision|created_at|updated_at/.test(normalizedKey)
+      || /(?:^|_)url$|(?:^|_)urls$/.test(normalizedKey)
     ) {
       continue;
     }

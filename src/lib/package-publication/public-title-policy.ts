@@ -60,7 +60,10 @@ function collectStrings(value: unknown, output: string[] = [], depth = 0): strin
   const record = asRecord(value);
   if (!record) return output;
   for (const [key, child] of Object.entries(record)) {
-    if (/raw_html|audit|admin|internal|commission|margin|supplier|operator/i.test(key)) continue;
+    if (
+      /raw_html|audit|admin|internal|commission|margin|supplier|operator/i.test(key)
+      || /^(?:a4_sentence|landing_sentence|entity_kind|attraction_query|attraction_queries|source_span|source_section)$/i.test(key)
+    ) continue;
     collectStrings(child, output, depth + 1);
   }
   return output;
