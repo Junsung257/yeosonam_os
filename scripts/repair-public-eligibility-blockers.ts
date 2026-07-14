@@ -52,6 +52,8 @@ type RepairRow = {
     status: string;
     unsupported_flight_rows_normalized: number;
     flight_activity_text_normalized: number;
+    optional_schedule_rows_removed?: number;
+    mojibake_attraction_names_normalized?: number;
   };
   demotion?: {
     from: string | null;
@@ -273,6 +275,47 @@ function countFlightActivityTextNormalized(before: unknown, after: unknown): num
   return count;
 }
 
+function isOptionalScheduleFragment(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const text = value.replace(/\s+/g, ' ').trim();
+  return /^\[?\s*\uC120\uD0DD\s*(?:\uC635\uC158|\uAD00\uAD11)\s*\]?/u.test(text)
+    || /^\[?\s*OPTION\s*\]?/iu.test(text)
+    || /\uD604\uC9C0\s*\uC120\uD0DD\s*(?:\uC635\uC158|\uAD00\uAD11)/u.test(text);
+}
+
+function countOptionalScheduleRows(value: unknown): number {
+  const daysRaw = asRecord(value).days;
+  const days = Array.isArray(daysRaw) ? daysRaw : [];
+  let count = 0;
+  for (const day of days) {
+    const scheduleRaw = asRecord(day).schedule;
+    const schedule = Array.isArray(scheduleRaw) ? scheduleRaw : [];
+    for (const item of schedule) {
+      if (isOptionalScheduleFragment(asRecord(item).activity)) count++;
+    }
+  }
+  return count;
+}
+
+function countMojibakeAttractionNames(value: unknown): number {
+  let count = 0;
+  const visit = (item: unknown): void => {
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    const record = asRecord(item);
+    if (!record) return;
+    if (Array.isArray(record.attraction_names)) {
+      count += record.attraction_names.filter(name =>
+        typeof name === 'string' && /(?:\?{2,}|\uFFFD)/.test(name)).length;
+    }
+    Object.values(record).forEach(visit);
+  };
+  visit(value);
+  return count;
+}
+
 function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) {
   const updates: Record<string, unknown> = {};
   const actions: string[] = [];
@@ -322,14 +365,41 @@ function buildRepair(pkg: PackageRow, validAttractionIds?: ReadonlySet<string>) 
     const nextItinerary = postProcessItineraryData(pkg.itinerary_data as Parameters<typeof postProcessItineraryData>[0]);
     const normalizedFlightRows = countUnsupportedFlightRowsNormalized(pkg.itinerary_data, nextItinerary);
     const normalizedFlightActivityText = countFlightActivityTextNormalized(pkg.itinerary_data, nextItinerary);
-    if ((normalizedFlightRows > 0 || normalizedFlightActivityText > 0) && stableJson(nextItinerary) !== stableJson(pkg.itinerary_data)) {
+    const optionalScheduleRowsRemoved = Math.max(0, countOptionalScheduleRows(pkg.itinerary_data) - countOptionalScheduleRows(nextItinerary));
+    const mojibakeAttractionNamesNormalized = Math.max(0, countMojibakeAttractionNames(pkg.itinerary_data) - countMojibakeAttractionNames(nextItinerary));
+    const itineraryChanged = stableJson(nextItinerary) !== stableJson(pkg.itinerary_data);
+    if (
+      itineraryChanged
+      && (
+        normalizedFlightRows > 0
+        || normalizedFlightActivityText > 0
+        || optionalScheduleRowsRemoved > 0
+        || mojibakeAttractionNamesNormalized > 0
+      )
+    ) {
       updates.itinerary_data = nextItinerary;
       updates.parser_version = parserVersionWithPostprocess(pkg.parser_version);
-      actions.push('itinerary_flight_type_normalized');
+      if (normalizedFlightRows > 0 || normalizedFlightActivityText > 0) {
+        actions.push('itinerary_flight_type_normalized');
+      }
+      if (optionalScheduleRowsRemoved > 0) {
+        actions.push('itinerary_optional_schedule_rows_removed');
+      }
+      if (mojibakeAttractionNamesNormalized > 0) {
+        actions.push('itinerary_mojibake_attraction_names_normalized');
+      }
       itinerarySummary = {
-        status: normalizedFlightRows > 0 ? 'unsupported_flight_rows_normalized' : 'flight_activity_text_normalized',
+        status: normalizedFlightRows > 0
+          ? 'unsupported_flight_rows_normalized'
+          : normalizedFlightActivityText > 0
+            ? 'flight_activity_text_normalized'
+            : optionalScheduleRowsRemoved > 0
+              ? 'optional_schedule_rows_removed'
+              : 'mojibake_attraction_names_normalized',
         unsupported_flight_rows_normalized: normalizedFlightRows,
         flight_activity_text_normalized: normalizedFlightActivityText,
+        optional_schedule_rows_removed: optionalScheduleRowsRemoved,
+        mojibake_attraction_names_normalized: mojibakeAttractionNamesNormalized,
       };
       details.itinerary_data = itinerarySummary;
     }
