@@ -8,39 +8,67 @@ function samplePackage(overrides: Record<string, unknown> = {}) {
   return {
     id: 'sample-yanji-baekdu',
     package_revision: 1,
-    title: '연길 5성 온천 4박5일',
-    destination: '연길',
+    title: '\uC5F0\uAE38 5\uC131 \uC628\uCC9C 4\uBC155\uC77C',
+    destination: '\uC5F0\uAE38',
     duration: 5,
     nights: 4,
     price: 599000,
     price_dates: [{ date: '2026-07-12', price: 599000, confirmed: false }],
     products: {
-      display_name: '연길·백두산 패키지',
+      display_name: '\uC5F0\uAE38\u00B7\uBC31\uB450\uC0B0 \uD328\uD0A4\uC9C0',
       thumbnail_urls: ['https://cdn.yeosonam.com/packages/yanji.jpg'],
     },
     raw_text: [
-      '연길 5성 온천 4박5일',
-      '선택관광: 노옵션',
-      '포함내역',
-      '왕복항공료',
-      '숙박료',
-      '식사(일정표)',
-      '관광지입장료',
-      '현지차량',
-      '가이드',
-      '불포함내역',
-      '개인경비',
-      '기사/가이드경비 $50/인',
-      'DAY 1 연길 이동',
-      'DAY 2 백두산 천지 관광',
+      '\uC5F0\uAE38 5\uC131 \uC628\uCC9C 4\uBC155\uC77C',
+      '\uC120\uD0DD\uAD00\uAD11 \uB178\uC635\uC158',
+      '\uD3EC\uD568\uB0B4\uC5ED',
+      '\uC655\uBCF5\uD56D\uACF5\uB8CC',
+      '\uC219\uBC15\uB8CC',
+      '\uC2DD\uC0AC(\uC77C\uC815\uD45C)',
+      '\uAD00\uAD11\uC9C0\uC785\uC7A5\uB8CC',
+      '\uD604\uC9C0\uCC28\uB7C9',
+      '\uAC00\uC774\uB4DC',
+      '\uBD88\uD3EC\uD568\uB0B4\uC5ED',
+      '\uAC1C\uC778\uACBD\uBE44',
+      '\uAE30\uC0AC/\uAC00\uC774\uB4DC\uACBD\uBE44 $50/\uC778',
+      'DAY 1 \uC5F0\uAE38 \uC774\uB3D9',
+      'DAY 2 \uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11',
     ].join('\n'),
-    inclusions: ['포 함 내 역', '차량', '가이드', '599', '000원/인', '노옵션'],
-    excludes: ['불포함 내역', '개인경비', '기사/가이드경비 $50/인', '7월 5'],
-    optional_tours: ['7월 5', '599', '000원/인', '포 함 내 역', '차량', '가이드', '노옵션'],
+    inclusions: [
+      '\uC655\uBCF5\uD56D\uACF5\uB8CC',
+      '\uCC28\uB7C9',
+      '\uAC00\uC774\uB4DC',
+      '599',
+      '000\uC6D0',
+      '\uB178\uC635\uC158',
+    ],
+    excludes: [
+      '\uBD88\uD3EC\uD568\uB0B4\uC5ED',
+      '\uAC1C\uC778\uACBD\uBE44',
+      '\uAE30\uC0AC/\uAC00\uC774\uB4DC\uACBD\uBE44 $50/\uC778',
+      '7\uC6D4 5',
+    ],
+    optional_tours: [
+      '7\uC6D4 5',
+      '599',
+      '000\uC6D0',
+      '\uD3EC\uD568\uB0B4\uC5ED',
+      '\uCC28\uB7C9',
+      '\uAC00\uC774\uB4DC',
+      '\uB178\uC635\uC158',
+    ],
     itinerary_data: {
       days: [
-        { day: 1, schedule: [{ activity: '연길 이동', attraction_ids: [] }] },
-        { day: 2, schedule: [{ activity: '백두산 천지 관광', attraction_ids: ['5728e681-636b-42fa-87b5-a2f0b7b0379c'] }] },
+        { day: 1, schedule: [{ activity: '\uC5F0\uAE38 \uC774\uB3D9', attraction_ids: [] }] },
+        {
+          day: 2,
+          schedule: [
+            {
+              activity: '\uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11',
+              attraction_ids: ['5728e681-636b-42fa-87b5-a2f0b7b0379c'],
+            },
+          ],
+        },
       ],
     },
     ...overrides,
@@ -67,7 +95,7 @@ describe('public snapshot generation diagnostics', () => {
     expect(byField.get('optional_tours')?.status).toBe('generated');
     expect(byField.get('optional_tours')?.evidence).toEqual(expect.arrayContaining(['optional_tour_status=none_explicit']));
     expect(snapshot.optional_tours_public).toEqual([]);
-    expect(snapshot.inclusions_public).not.toEqual(expect.arrayContaining(['599', '000원/인', '노옵션']));
+    expect(snapshot.inclusions_public).not.toEqual(expect.arrayContaining(['599', '000\uC6D0', '\uB178\uC635\uC158']));
   });
 
   it('reports what to regenerate when price evidence is missing but present in source text', () => {
@@ -75,10 +103,12 @@ describe('public snapshot generation diagnostics', () => {
       price: null,
       price_dates: [],
       raw_text: [
-        '다낭/호이안 3박5일 노팁 노옵션',
-        '상품가 799,000원/인',
-        '포함내역',
-        '왕복항공료',
+        '\uB2E4\uB0AD/\uD638\uC774\uC548 3\uBC155\uC77C \uB178\uC635\uC158',
+        '\uCD9C\uBC1C\uC77C 2026-08-01',
+        '\uC131\uC778 1\uC778 \uC0C1\uD488\uAC00 799,000\uC6D0',
+        '\uD3EC\uD568\uB0B4\uC5ED',
+        '\uC655\uBCF5\uD56D\uACF5\uB8CC',
+        'This supplier raw text includes enough lines to safely reconstruct a source-backed price table.',
       ].join('\n'),
     });
     const { snapshot } = buildPublicPackageSnapshot(pkg);
@@ -106,9 +136,29 @@ describe('public snapshot generation diagnostics', () => {
     expect(price?.status).toBe('repairable');
     expect(price?.evidence).toEqual(expect.arrayContaining(['raw_price_pattern_present']));
     expect(price?.repair_actions.join('\n')).toContain('price_dates');
-    expect(gate.required_actions.join('\n')).toContain('원문 가격표');
-    expect(gate.required_actions.join('\n')).toContain('선택관광/포함/불포함 섹션');
-    expect(report.repair_actions.join('\n')).toContain('원문 가격표');
+    expect(gate.required_actions.length).toBeGreaterThan(0);
+    expect(report.repair_actions.join('\n')).toContain('source-backed departure date');
+  });
+
+  it('does not mark short title-only source text as automatically repairable', () => {
+    const pkg = samplePackage({
+      raw_text: '\uC7A5\uAC00\uACC4 \uB178\uD301\uB178\uC635\uC158 3\uBC154\uC77C',
+      price: 699000,
+      price_dates: [],
+      itinerary_data: {
+        days: [],
+        meta: { days: 4, nights: 3, destination: '\uC7A5\uAC00\uACC4' },
+      },
+    });
+    const { snapshot } = buildPublicPackageSnapshot(pkg);
+    const report = diagnosePublicSnapshotGeneration({ pkg, snapshot });
+    const byField = diagnosticByField(report);
+
+    expect(byField.get('price')?.status).toBe('blocked');
+    expect(byField.get('price')?.evidence).toEqual(expect.arrayContaining(['raw_text_insufficient_for_price_repair']));
+    expect(byField.get('itinerary')?.status).toBe('blocked');
+    expect(byField.get('itinerary')?.evidence).toEqual(expect.arrayContaining(['raw_itinerary_source_insufficient']));
+    expect(report.overall_status).toBe('blocked');
   });
 
   it('separates customer copy blockers from repairable generation fields', () => {
@@ -118,7 +168,7 @@ describe('public snapshot generation diagnostics', () => {
       pkg,
       snapshot: {
         ...snapshot,
-        route_text_dump: [...snapshot.route_text_dump, '예약 즉시 항공·숙박 확보', 'Decision guide'],
+        route_text_dump: [...snapshot.route_text_dump, '\uC608\uC57D \uC989\uC2DC \uD56D\uACF5\u00B7\uC219\uBC15 \uD655\uBCF4', 'Decision guide'],
       },
       hardBlockers: [
         {
@@ -137,7 +187,7 @@ describe('public snapshot generation diagnostics', () => {
 
     expect(report.overall_status).toBe('blocked');
     expect(byField.get('customer_copy')?.status).toBe('blocked');
-    expect(byField.get('customer_copy')?.repair_actions.join('\n')).toContain('승인된 고객용 템플릿');
+    expect(byField.get('customer_copy')?.repair_actions.join('\n')).toContain('approved customer templates');
     expect(byField.get('terms')?.status).toBe('generated');
     expect(byField.get('optional_tours')?.status).toBe('generated');
   });

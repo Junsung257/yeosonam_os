@@ -31,9 +31,23 @@ export type PublicSnapshotGenerationReport = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RISKY_OR_INTERNAL_COPY_RE =
-  /예약\s*즉시|즉시\s*확정|좌석\s*확보|최저가\s*보장|100%\s*보장|Decision\s*guide|관리자노트|랜드사|커미션|internal|operator/i;
-const PLACEHOLDER_RE = /사진\s*준비\s*중|이미지\s*준비\s*중|�/;
-const PRICE_RE = /\d{1,3}(?:,\d{3})+\s*원|\d+\s*만\s*원/;
+  /\uC608\uC57D\s*\uC989\uC2DC|\uC989\uC2DC\s*\uD655\uC815|\uC88C\uC11D\s*\uD655\uBCF4|\uCD5C\uC800\uAC00\s*\uBCF4\uC7A5|100%\s*\uBCF4\uC7A5|Decision\s*guide|\uAD00\uB9AC\uC790|\uB79C\uB4DC\uC0AC\s*\uCEE4\uBBF8\uC158|internal|operator/i;
+const PLACEHOLDER_RE =
+  /\uC0AC\uC9C4\s*\uC900\uBE44\s*\uC911|\uC774\uBBF8\uC9C0\s*\uC900\uBE44\s*\uC911|placeholder/i;
+const PRICE_RE =
+  /\d{1,3}(?:,\d{3})+\s*(?:\uC6D0|\uC6D0\s*\/\s*\uC778)?|\d+\s*\uB9CC\s*\uC6D0/u;
+
+const MIN_SOURCE_TEXT_FOR_FIELD_REPAIR = 120;
+const PRICE_SOURCE_REPAIR_ACTION =
+  'Regenerate price_dates and product_prices from source-backed departure date, adult selling price, and per-person basis.';
+const PRICE_SOURCE_MISSING_ACTION =
+  'Source text is missing a usable price table, product price, or departure-date basis. Do not use a scalar DB price as public evidence; re-upload supplier raw text with the price table.';
+const ITINERARY_SOURCE_REPAIR_ACTION =
+  'Re-split the source itinerary by DAY and exclude price table, inclusion, and exclusion fragments from itinerary rows.';
+const ITINERARY_SOURCE_MISSING_ACTION =
+  'Source text is missing a usable DAY itinerary section. Do not invent itinerary rows from title or summary; re-upload supplier raw text with the day-by-day itinerary.';
+const ITINERARY_SOURCE_CUE_RE =
+  /DAY\s*\d|Day\s*\d|D\s*\+?\s*\d|\uC77C\uCC28|\uC77C\uC815\uD45C|\uC5EC\uD589\s*\uC77C\uC815|\uACF5\uD56D|\uD638\uD154|\uAD00\uAD11|\uC774\uB3D9|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD/u;
 
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
@@ -45,6 +59,14 @@ function text(value: unknown): string {
 
 function hasArrayItems(value: unknown): boolean {
   return Array.isArray(value) && value.length > 0;
+}
+
+function sourceTextIsLongEnoughForFieldRepair(rawText: string): boolean {
+  return rawText.length >= MIN_SOURCE_TEXT_FOR_FIELD_REPAIR;
+}
+
+function itinerarySourceLooksRepairable(rawText: string): boolean {
+  return sourceTextIsLongEnoughForFieldRepair(rawText) && ITINERARY_SOURCE_CUE_RE.test(rawText);
 }
 
 function itineraryDays(value: unknown): unknown {
@@ -106,27 +128,27 @@ function customerCopyRepairActions(blockers: PublishFinding[], routeTextIsBad: b
   for (const blocker of blockers) {
     const fieldPath = String(blocker.fieldPath ?? '');
     if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.highlights.remarks')) {
-      actions.add('결제/발권/취소/예약 조건 REMARK는 itinerary_public과 고객 카피에서 제거하고 approved operational notice 또는 quarantine 필드로 분리하세요.');
+      actions.add('Move REMARK or operational notice text out of itinerary_public and quarantine it unless it maps to an approved customer notice template.');
       continue;
     }
     if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.highlights.shopping')) {
-      actions.add('쇼핑센터/싱글차지/REMARK 조각은 shopping disclosure 또는 exclusions/notice 후보로 분리하고 고객 일정·요약 문구 근거에서 제외하세요.');
+      actions.add('Reclassify shopping or commission fragments as exclusions or operational notices only when source-backed; do not expose them as itinerary copy.');
       continue;
     }
     if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.meta.title')) {
-      actions.add('itinerary meta title에 섞인 발권조건·출발확정 문구는 title evidence에서 제외하고 운영 조건 후보로 격리하세요.');
+      actions.add('Regenerate itinerary meta title from public title policy and remove supplier/internal title fragments from customer copy.');
       continue;
     }
     if (blocker.code === 'masked_data_pollution' && fieldPath.includes('itinerary_data.days')) {
-      actions.add('일정 문장 copy lint 오염은 먼저 관광지명/일반 문구 오탐 여부를 검사하고, 실제 운영 조각이면 schedule row에서 notice/quarantine으로 분리하세요.');
+      actions.add('Rebuild itinerary day rows from the source itinerary section and quarantine price, inclusion, exclusion, or notice fragments.');
       continue;
     }
     if (blocker.code === 'masked_data_pollution' && /product_highlights|product_summary|hero_tagline|marketing_copies/.test(fieldPath)) {
-      actions.add('상품 요약·하이라이트는 raw 제목 복사 대신 public title policy와 source-backed 조건만으로 다시 생성하세요.');
+      actions.add('Regenerate customer-facing marketing copy from approved templates and source-backed facts only.');
       continue;
     }
     if (blocker.code === 'masked_data_pollution' && fieldPath.includes('optional_tours')) {
-      actions.add('선택관광 원본 배열의 노옵션·가격표·포함내역 조각은 optional_tours_public에서 제외하고 optional_tour_status/quarantine으로 재분류하세요.');
+      actions.add('Reclassify optional tour candidates by source section; quarantine fragments and expose only validated paid options in optional_tours_public.');
       continue;
     }
     if ([
@@ -136,11 +158,11 @@ function customerCopyRepairActions(blockers: PublishFinding[], routeTextIsBad: b
       'customer_forbidden_internal_terms',
       'internal_source_copy',
     ].includes(String(blocker.code))) {
-      actions.add('CTA·요약·배지·route_text_dump는 승인된 고객용 템플릿으로 재생성하고 확정·보장·내부·placeholder 문구를 제거하세요.');
+      actions.add('Replace unsafe route text with approved customer templates and regenerate the route_text_dump before proof.');
     }
   }
   if (routeTextIsBad) {
-    actions.add('route_text_dump를 다시 생성해 /packages, /lp, 카드, 비슷한 여행 영역에 고객 금지 문구가 남지 않는지 재검사하세요.');
+    actions.add('Regenerate /packages, /lp, card, similar, and sticky CTA text from the approved public snapshot only.');
   }
   return [...actions];
 }
@@ -176,7 +198,7 @@ export function diagnosePublicSnapshotGeneration(input: {
       rawText ? 'raw_text_available' : 'raw_text_missing',
     ],
     titleBlockers.length > 0 || !snapshot.public_title
-      ? ['목적지, 기간, 노팁/노옵션, 핵심 여행 성격을 원문 근거에서 다시 추출해 public_title을 재생성하세요.']
+      ? ['Regenerate public_title from source-backed destinations, verified favorable conditions, core trip nature, and duration.']
       : [],
   );
 
@@ -190,35 +212,50 @@ export function diagnosePublicSnapshotGeneration(input: {
     [summary ? `summary=${summary.slice(0, 120)}` : 'summary_missing'],
     summary && summaryBlockers.length === 0 && !RISKY_OR_INTERNAL_COPY_RE.test(summary) && !PLACEHOLDER_RE.test(summary)
       ? []
-      : ['원문 제목 복사가 아니라 가격/기간/항공/조건 근거에서 고객용 한두 문장 설명을 다시 생성하세요.'],
+      : ['Regenerate the summary from approved customer copy templates and source-backed package facts only.'],
   );
 
   const priceBlockers = byField.get('price_dates') ?? [];
   const snapshotPackage = asRecord(snapshot.package);
   const snapshotPriceDates = snapshotPackage?.price_dates ?? pkg.price_dates;
+  const rawPricePatternPresent = PRICE_RE.test(rawText);
+  const priceSourceRepairable = rawPricePatternPresent && sourceTextIsLongEnoughForFieldRepair(rawText);
+  const priceGenerated = Boolean(snapshot.price_display && priceBlockers.length === 0);
+  const priceRepairActions = priceGenerated
+    ? []
+    : priceSourceRepairable
+      ? [PRICE_SOURCE_REPAIR_ACTION]
+      : [PRICE_SOURCE_MISSING_ACTION];
   addDiagnostic(
     diagnostics,
     'price',
-    snapshot.price_display && priceBlockers.length === 0 ? 'generated' : (PRICE_RE.test(rawText) ? 'repairable' : 'blocked'),
+    priceGenerated ? 'generated' : (priceSourceRepairable ? 'repairable' : 'blocked'),
     [
       snapshot.price_display ? `price_display=${snapshot.price_display}` : 'price_display_missing',
       hasArrayItems(snapshotPriceDates) ? 'price_dates_present' : 'price_dates_missing',
-      PRICE_RE.test(rawText) ? 'raw_price_pattern_present' : 'raw_price_pattern_missing',
+      rawPricePatternPresent ? 'raw_price_pattern_present' : 'raw_price_pattern_missing',
+      sourceTextIsLongEnoughForFieldRepair(rawText) ? 'raw_text_sufficient_for_price_repair' : 'raw_text_insufficient_for_price_repair',
     ],
-    snapshot.price_display && priceBlockers.length === 0
-      ? []
-      : ['원문 가격표에서 출발일, 성인 판매가, 1인 기준을 구조화해 price_dates와 product_prices를 다시 생성하세요.'],
+    priceRepairActions,
   );
 
   const publicItineraryDays = itineraryDays(snapshot.itinerary_public);
+  const itineraryRepairable = itinerarySourceLooksRepairable(rawText);
+  const itineraryGenerated = hasArrayItems(publicItineraryDays);
+  const itineraryRepairActions = itineraryGenerated
+    ? []
+    : itineraryRepairable
+      ? [ITINERARY_SOURCE_REPAIR_ACTION]
+      : [ITINERARY_SOURCE_MISSING_ACTION];
   addDiagnostic(
     diagnostics,
     'itinerary',
-    hasArrayItems(publicItineraryDays) ? 'generated' : (rawText ? 'repairable' : 'blocked'),
-    [hasArrayItems(publicItineraryDays) ? `days=${(publicItineraryDays as unknown[]).length}` : 'itinerary_days_missing'],
-    hasArrayItems(publicItineraryDays)
-      ? []
-      : ['원문 일정 섹션을 DAY 단위로 다시 분리하고 가격표/포함내역 조각을 일정에서 제외하세요.'],
+    itineraryGenerated ? 'generated' : (itineraryRepairable ? 'repairable' : 'blocked'),
+    [
+      itineraryGenerated ? `days=${(publicItineraryDays as unknown[]).length}` : 'itinerary_days_missing',
+      itineraryRepairable ? 'raw_itinerary_source_repairable' : 'raw_itinerary_source_insufficient',
+    ],
+    itineraryRepairActions,
   );
 
   addDiagnostic(
@@ -231,7 +268,7 @@ export function diagnosePublicSnapshotGeneration(input: {
     ],
     hasArrayItems(snapshot.inclusions_public) || hasArrayItems(snapshot.exclusions_public)
       ? []
-      : ['원문 포함/불포함 섹션을 재해석해 고객용 포함·불포함 항목만 다시 생성하세요.'],
+      : ['Regenerate inclusions and exclusions from their source sections; quarantine headers, price fragments, and unrelated table rows.'],
   );
 
   addDiagnostic(
@@ -244,7 +281,7 @@ export function diagnosePublicSnapshotGeneration(input: {
       snapshot.option_policy.badges.length > 0 ? `badges=${snapshot.option_policy.badges.join(',')}` : '',
     ],
     snapshot.option_policy.status === 'polluted'
-      ? ['선택관광 원문 섹션만 다시 파싱하고 노옵션/가격표/포함내역 조각은 optional_tours_public에서 제외하세요.']
+      ? ['Reclassify optional tour candidates by source section and rebuild optional_tours_public from validated paid options only.']
       : [],
   );
 
@@ -259,7 +296,7 @@ export function diagnosePublicSnapshotGeneration(input: {
       invalidAttractionIds.length > 0 ? `invalid=${invalidAttractionIds.slice(0, 5).join(',')}` : '',
     ],
     invalidAttractionIds.length > 0
-      ? ['깨진 attraction_id를 quarantine하고 원문 관광지명을 기존 attractions DB에 다시 매칭하세요. confidence가 낮으면 공개 이미지/설명에 쓰지 마세요.']
+      ? ['Quarantine invalid attraction IDs and rematch only to existing attractions with a valid UUID and sufficient confidence.']
       : [],
   );
 
@@ -270,7 +307,7 @@ export function diagnosePublicSnapshotGeneration(input: {
     [hasArrayItems(snapshot.images_public) ? `images=${snapshot.images_public.length}` : 'images_missing'],
     hasArrayItems(snapshot.images_public)
       ? []
-      : ['상품 대표 관광지 또는 목적지 metadata의 승인된 이미지를 연결하세요. 상품에 없는 온천/호텔/시설 이미지는 fallback으로 쓰지 마세요.'],
+      : ['Select source-backed product, attraction, or destination images; use only safe generic fallbacks that do not imply unavailable experiences.'],
   );
 
   const copyBlockers = summarizeBlockers(hardBlockers, [
