@@ -4,6 +4,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  attachPublicPackagesToCampaignCreatives,
+  CAMPAIGN_CREATIVE_PUBLIC_FIELDS,
+  type CampaignCreativeWithPublicPackage,
+} from '@/lib/campaign-public-packages';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
@@ -27,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabaseAdmin
     .from('ad_creatives')
-    .select('*, travel_packages!inner(id, title, destination)')
+    .select(CAMPAIGN_CREATIVE_PUBLIC_FIELDS)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -42,7 +47,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ creatives: data ?? [] });
+  const creatives = await attachPublicPackagesToCampaignCreatives(
+    supabaseAdmin,
+    ((data ?? []) as unknown) as CampaignCreativeWithPublicPackage[],
+  );
+
+  return NextResponse.json({
+    creatives: creatives.filter((creative) => creative.travel_packages),
+  });
 }
 
 export async function PATCH(request: NextRequest) {
