@@ -126,7 +126,7 @@ export async function createPublicPackageSnapshotAndDecision(
   supabase: SupabaseClient,
   pkg: AnyRecord,
   gateInput: Omit<PublicSnapshotGateInput, 'pkg' | 'publicSnapshotHash' | 'publicSnapshotTitle' | 'snapshotExists' | 'routeTextDump'> = {},
-  options: { packagePatch?: AnyRecord } = {},
+  options: { packagePatch?: AnyRecord; blockedPackagePatch?: AnyRecord } = {},
 ): Promise<{
   snapshot: PublicPackageSnapshot;
   snapshotHash: string;
@@ -161,13 +161,18 @@ export async function createPublicPackageSnapshotAndDecision(
     invalidAttractionIds: attractionValidation.invalidIds,
   });
   const snapshotStatus = gate.publishable ? 'published' : 'blocked';
-  const nowIso = new Date().toISOString();
+  const callerPatch = gate.publishable
+    ? options.packagePatch ?? {}
+    : options.blockedPackagePatch ?? options.packagePatch ?? {};
+  const patchUpdatedAt = typeof callerPatch.updated_at === 'string'
+    ? callerPatch.updated_at
+    : new Date().toISOString();
   const packagePatch = {
+    ...callerPatch,
     status: gate.publishable ? 'active' : 'draft',
     publication_state: gate.publication_state,
     package_revision: packageRevision,
-    updated_at: nowIso,
-    ...(options.packagePatch ?? {}),
+    updated_at: patchUpdatedAt,
   };
 
   const { error: publishError } = await supabase.rpc('publish_package_snapshot_atomic', {

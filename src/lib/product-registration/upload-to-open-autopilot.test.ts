@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { buildRepairFirstOpenabilitySummary } from './repair-first-openability';
 import {
@@ -35,6 +37,22 @@ import {
 } from './upload-to-open-autopilot';
 
 describe('buildAutopilotStageAuditReport', () => {
+  it('routes the final auto-open step through the immutable public snapshot gate before product activation', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/lib/product-registration/upload-to-open-autopilot.ts'),
+      'utf8',
+    );
+    const finalOpenStart = source.indexOf('const openedAt = nowIso();');
+    const snapshotGate = source.indexOf('createPublicPackageSnapshotAndDecision(', finalOpenStart);
+    const blockedStage = source.indexOf("stage: 'blocked_after_public_snapshot'", snapshotGate);
+    const productActivation = source.indexOf(".from('products')", snapshotGate);
+
+    expect(finalOpenStart).toBeGreaterThan(-1);
+    expect(snapshotGate).toBeGreaterThan(finalOpenStart);
+    expect(blockedStage).toBeGreaterThan(snapshotGate);
+    expect(productActivation).toBeGreaterThan(snapshotGate);
+  });
+
   it('persists the customer open contract at the standard top level and inside the autopilot snapshot', () => {
     const contract = {
       status: 'pass',

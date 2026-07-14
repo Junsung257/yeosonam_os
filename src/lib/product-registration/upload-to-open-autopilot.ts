@@ -10,6 +10,7 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { normalizeOptionalTours } from '@/lib/package-acl';
 import type { PriceDate } from '@/lib/price-dates';
 import { compareKstDate, formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
+import { createPublicPackageSnapshotAndDecision } from '@/lib/package-publication/repository';
 import {
   evaluateV3CustomerNoticeGate,
   getV3DraftGateStatus,
@@ -66,9 +67,12 @@ export type UploadToOpenAutopilotPackage = {
   internal_code: string | null;
   destination: string | null;
   status: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
   audit_status: string | null;
   audit_report: unknown;
   updated_at: string | null;
+  raw_text_hash?: string | null;
   raw_text: string | null;
   airline: string | null;
   duration: number | null;
@@ -427,9 +431,12 @@ const UPLOAD_TO_OPEN_PACKAGE_SELECT = [
   'internal_code',
   'destination',
   'status',
+  'publication_state',
+  'package_revision',
   'audit_status',
   'audit_report',
   'updated_at',
+  'raw_text_hash',
   'raw_text',
   'airline',
   'duration',
@@ -4518,7 +4525,7 @@ async function evaluateAndMaybeOpenPackage(input: {
   const openedMobileProof = mobileProof.proof
     ? { ...mobileProof.proof, package_updated_at: openedAt }
     : null;
-  const auditReport = {
+  const openedAuditReport = {
     ...asRecord(pkg.audit_report),
     ...(openedMobileProof ? { mobile_browser_proof: openedMobileProof } : {}),
     customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
@@ -4535,22 +4542,106 @@ async function evaluateAndMaybeOpenPackage(input: {
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
     },
   };
+  const blockedPublicSnapshotAuditReport = {
+    ...asRecord(pkg.audit_report),
+    ...(openedMobileProof ? { mobile_browser_proof: openedMobileProof } : {}),
+    customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    upload_to_open_autopilot: {
+      stage: 'blocked_after_public_snapshot',
+      checked_at: openedAt,
+      repairs: allRepairs,
+      repair_first_summary: repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] }),
+      source_verify: sourceVerify.status,
+      publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
+      mobile_browser_proof: openedMobileProof,
+      quality_scorecard: finalQualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    },
+  };
 
-  const { error } = await input.supabase
-    .from('travel_packages')
-    .update({
-      status: 'active',
-      ...(v3Gate.payload ? {
-        notices_parsed: v3Gate.payload.notices_parsed,
-        customer_notes: v3Gate.payload.customer_notes,
-      } : {}),
-      audit_status: 'clean',
-      audit_report: auditReport,
-      audit_checked_at: openedAt,
-      updated_at: openedAt,
-    })
-    .eq('id', pkg.id);
-  if (error) throw error;
+  const publicationPackage = {
+    ...(pkg as unknown as Record<string, unknown>),
+    ...(v3Gate.payload ? {
+      notices_parsed: v3Gate.payload.notices_parsed,
+      customer_notes: v3Gate.payload.customer_notes,
+    } : {}),
+    audit_status: 'clean',
+    audit_report: openedAuditReport,
+    audit_checked_at: openedAt,
+    updated_at: openedAt,
+  };
+  const publicSnapshotDecision = await createPublicPackageSnapshotAndDecision(
+    input.supabase,
+    publicationPackage,
+    {
+      customerOpenContractOk: customerOpenContract.ok,
+      customerOpenContractBlockers: customerOpenContract.blockers,
+      mobileProof: openedMobileProof ? { ...mobileProof, proof: openedMobileProof } : mobileProof,
+    },
+    {
+      packagePatch: {
+        ...(v3Gate.payload ? {
+          notices_parsed: v3Gate.payload.notices_parsed,
+          customer_notes: v3Gate.payload.customer_notes,
+        } : {}),
+        audit_status: 'clean',
+        audit_report: openedAuditReport,
+        audit_checked_at: openedAt,
+        updated_at: openedAt,
+      },
+      blockedPackagePatch: {
+        ...(v3Gate.payload ? {
+          notices_parsed: v3Gate.payload.notices_parsed,
+          customer_notes: v3Gate.payload.customer_notes,
+        } : {}),
+        audit_status: 'blocked',
+        audit_report: blockedPublicSnapshotAuditReport,
+        audit_checked_at: openedAt,
+        updated_at: openedAt,
+      },
+    },
+  );
+
+  if (!publicSnapshotDecision.publishable) {
+    const snapshotReasons = publicSnapshotDecision.blockers
+      .map(blocker => {
+        const record = asRecord(blocker);
+        return String(record.message ?? record.code ?? blocker).trim();
+      })
+      .filter(Boolean);
+    const uniqueReasons = uniqueIds(snapshotReasons.map(reason => `public_snapshot:${reason}`));
+    const reviewActions = uniqueReasons.map(classifyUploadToOpenReviewReason);
+    const summary = repairFirstSummary({ reasons: uniqueReasons, repairs: allRepairs, reviewActions });
+    await markAutopilotStage(input.supabase, pkg.id, 'blocked_after_public_snapshot', {
+      reasons: uniqueReasons,
+      repairs: allRepairs,
+      repair_first_summary: summary,
+      source_verify: sourceVerify.status,
+      publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
+      mobile_browser_proof: openedMobileProof,
+      quality_scorecard: finalQualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      public_snapshot: {
+        snapshot_hash: publicSnapshotDecision.snapshotHash,
+        publication_state: publicSnapshotDecision.publicationState,
+        blockers: publicSnapshotDecision.blockers,
+      },
+    });
+    return {
+      id: pkg.id,
+      title: pkg.title,
+      code: pkg.internal_code,
+      status: 'blocked',
+      openabilityState: summary.state,
+      stage: 'blocked_after_public_snapshot',
+      reasons: uniqueReasons,
+      repairs: allRepairs,
+      repairFirstSummary: summary,
+      reviewActions,
+    };
+  }
 
   if (pkg.internal_code) {
     await input.supabase

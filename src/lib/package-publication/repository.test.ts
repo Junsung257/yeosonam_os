@@ -409,6 +409,13 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         },
       }),
       { customerOpenContractOk: true },
+      {
+        packagePatch: {
+          status: 'active',
+          publication_state: 'published',
+          updated_at: '2026-07-14T00:00:00.000Z',
+        },
+      },
     );
 
     expect(result.publishable).toBe(false);
@@ -423,6 +430,11 @@ describe('createPublicPackageSnapshotAndDecision', () => {
       p_snapshot_status: 'blocked',
       p_publication_state: 'blocked',
       p_publishable: false,
+      p_package_patch: expect.objectContaining({
+        status: 'draft',
+        publication_state: 'blocked',
+        updated_at: '2026-07-14T00:00:00.000Z',
+      }),
     });
   });
 
