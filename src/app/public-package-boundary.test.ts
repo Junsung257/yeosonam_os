@@ -21,6 +21,7 @@ const PUBLIC_API_FILES = new Set([
 const SNAPSHOT_OR_STRIP_MARKERS = [
   'fetchLatestPublicPackageSnapshot',
   'fetchAndMergeCurrentPublicPackageCardSnapshots',
+  'public_package_snapshots',
   'sanitizeCustomerPackageForClient',
   'stripRawPackageDataFromBlogListPosts',
 ];
@@ -57,6 +58,7 @@ function readsOrRendersPackageData(source: string): boolean {
   return [
     ".from('travel_packages')",
     '.from("travel_packages")',
+    '/rest/v1/travel_packages',
     'travel_packages(',
     'travel_packages!',
     'travel_packages?.',

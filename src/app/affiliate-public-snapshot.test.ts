@@ -57,4 +57,19 @@ describe('affiliate and embed public package data boundary', () => {
     expect(responseIndex).toBeGreaterThan(snapshotIndex);
     expect(packageQuery).not.toMatch(/select\('[^']*\b(title|price|location_summary|original_price|discount_rate|main_image)\b/);
   });
+
+  it('renders affiliate OG images from current public snapshots only', () => {
+    const text = source('src/app/api/og/affiliate/route.tsx');
+    const packageGateIndex = text.indexOf('/rest/v1/travel_packages');
+    const snapshotIndex = text.indexOf('/rest/v1/public_package_snapshots');
+    const packageGateQuery = text.slice(packageGateIndex, snapshotIndex);
+    const productAssignmentIndex = text.indexOf('productTitle = publicProduct.title');
+
+    expect(text).toContain('function publicProductFromSnapshot');
+    expect(text).toContain('publication_state=in.(approved,published)');
+    expect(text).toContain('package_revision=eq.');
+    expect(snapshotIndex).toBeGreaterThan(packageGateIndex);
+    expect(productAssignmentIndex).toBeGreaterThan(snapshotIndex);
+    expect(packageGateQuery).not.toMatch(/select=[^`]*(title|destination|price|product_summary|display_title)/);
+  });
 });
