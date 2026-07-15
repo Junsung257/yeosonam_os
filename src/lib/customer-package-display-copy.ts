@@ -1,4 +1,5 @@
 import { hasCustomerCopyQualityIssues, normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { customerAirlineDisplayName, normalizeCustomerAirlineCodeCopy } from '@/lib/airline-display';
 
 export type PackageCopySource = 'display_title' | 'product_display_name' | 'title' | 'generated';
 
@@ -70,7 +71,7 @@ const CUSTOMER_NOISE_PATTERNS: Array<[RegExp, string]> = [
 ];
 
 function clean(value: string | null | undefined): string {
-  return normalizeCustomerVisibleCopy(value).replace(/\s+/g, ' ').trim();
+  return normalizeCustomerAirlineCodeCopy(normalizeCustomerVisibleCopy(value)).replace(/\s+/g, ' ').trim();
 }
 
 function normalizeForCustomer(value: string | null | undefined): string {
@@ -228,7 +229,7 @@ function buildBadges(text: string, input: CustomerPackageDisplayCopyInput): stri
   if (hasStrongOnsenEvidence(claimEvidenceText)) push('온천', /./);
   push('자유일정', /자유일정|자유시간|1일자유|오전자유/i);
 
-  const airline = clean(input.airline);
+  const airline = customerAirlineDisplayName(input.airline) ?? clean(input.airline);
   if (airline && !hasCustomerCopyQualityIssues(airline) && !INTERNAL_AIRLINE_CODES.includes(airline.toUpperCase())) {
     badges.push(airline);
   }

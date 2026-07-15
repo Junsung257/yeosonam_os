@@ -10,6 +10,7 @@ import {
   customerCopyQualityIssues,
   normalizeCustomerVisibleCopy,
 } from '@/lib/customer-copy-quality';
+import { normalizeCustomerAirlineCodeCopy } from '@/lib/airline-display';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { postProcessItineraryData } from '@/lib/package-post-process';
 import { renderPackage } from '@/lib/render-contract';
@@ -159,7 +160,7 @@ function isEmptyPublicValue(value: unknown): boolean {
 }
 
 function sanitizePublicCustomerString(value: string): string | null {
-  let candidate = normalizeCustomerVisibleCopy(value);
+  let candidate = normalizeCustomerAirlineCodeCopy(normalizeCustomerVisibleCopy(value));
   if (!candidate) return null;
 
   if (hasRiskyCustomerPromiseCopy(candidate)) {

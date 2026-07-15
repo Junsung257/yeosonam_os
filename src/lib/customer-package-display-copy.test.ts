@@ -154,4 +154,18 @@ describe('buildCustomerPackageDisplayCopy', () => {
     expect(copy.badges).toEqual(expect.arrayContaining(['노옵션', '5성호텔', '온천']));
     expect(copy.heroSubline).toMatch(/5성호텔|온천/);
   });
+  it('shows customer-readable airline names instead of raw supplier airline codes', () => {
+    const copy = buildCustomerPackageDisplayCopy({
+      title: '[LJ] 다낭/호이안 노팁노옵션 3박5일',
+      destination: '다낭/호이안',
+      duration: 5,
+      nights: 3,
+      airline: 'LJ',
+      product_highlights: ['LJ 항공 이용', '노옵션'],
+    });
+
+    expect(copy.badges).toContain('진에어');
+    expect(copy.heroSubline).toContain('진에어');
+    expect(copy.heroSubline).not.toMatch(/(^|[^A-Z0-9])LJ(?!\d|[A-Z0-9])/);
+  });
 });
