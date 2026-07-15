@@ -6,6 +6,8 @@
 
 > **정보성 대표키·canonical (2026-07-15, 로컬 migration only):** `blog_information_representatives`가 `destination_id + intent + audience + locale`당 신규 공개 URL을 하나로 제한한다. 기존 공개 글은 자동 backfill·redirect·병합하지 않는다.
 
+> **정보성 관련 글 랭킹 (2026-07-15, 로컬 코드):** 신규 정보성 글은 목적지·의도·국가/권역·특정 고객군·편집 클러스터를 기준으로만 내부링크를 추천한다. 미발행·noindex·redirect·비canonical 후보를 제외하고, 관련 후보가 없으면 빈 결과를 허용한다. 상품성·레거시 글의 기존 경로는 유지한다.
+
 > **헌법 기준 (2026-06-28):** 최상위 제품 원칙과 MVP 경계는 `docs/yeosonam-os-constitution.md`를 우선 확인한다. 이 파일은 2026-05-28 기준 운영 스냅샷이므로 실제 기술 스택은 `package.json`, 최신 스키마는 `supabase/migrations/**`, 도메인별 최신 규칙은 `docs/*-current-ssot.md`와 함께 대조한다.
 
 > **최근 작업 (2026-05-28):** as any 전수조사/제거, 타입 안전성 대폭 개선, 마일리지 시스템 전면 구현 (적립/사용/소멸/개인화/알림/분석), 게이미피케이션(출석/도전과제) 추가

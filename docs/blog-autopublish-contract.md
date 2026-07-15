@@ -238,6 +238,19 @@ Backfill and live publishing must use the same customer contract. `scripts/backf
 
 For recent-post stabilization, the stronger target is `changed=0`, `qualityGateFailed=0`, `publishBlocked=0`, indexing worker success for every changed row in write mode, and diagnostics that still report publish preflight pass, publishable candidate inventory, and indexing outbox coverage.
 
+## Informational Related-Link Contract
+
+New informational-engine articles use their persisted destination, intent, audience, locale, and editorial-cluster metadata for both publish-time interlinks and public related-post surfaces.
+
+Ranking priority is:
+
+1. same destination with the same or an adjacent intent;
+2. same country, then same region, with the same intent;
+3. the same non-general audience;
+4. an explicit editorial pillar/cluster relationship.
+
+Candidates must be published, indexable, non-redirecting, self-canonical, locale-compatible, and different from the current URL. Duplicate slugs and repeated anchor text are removed. When no candidate meets the relevance threshold, the correct result is no related link; unrelated recent posts must not be used as filler. Product-backed and legacy posts retain their current link behavior unless they carry a valid informational representative identity.
+
 ## Indexing Contract
 
 Publishing and indexing must be treated as separate responsibilities.

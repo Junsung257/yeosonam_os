@@ -48,6 +48,14 @@ Migration proof must run against local/test tooling only and must record apply o
 - New informational sitemap rows require active self-canonical metadata; legacy and product rows remain compatible.
 - Existing duplicate analysis is dry-run only and proposes `MERGE_REVIEW` without redirects, merges, deletes, or row mutation.
 
+### M7 — contextual informational related links
+
+- V2 informational links rank same-destination adjacent intents first, then same-country/region same-intent candidates, specific audience matches, and explicit editorial pillar/cluster relationships.
+- Unpublished, noindex, redirecting, non-canonical, self, duplicate-slug, and locale-mismatched candidates are excluded before ranking.
+- The minimum relevance threshold permits an empty result instead of filling the surface with unrelated recent posts.
+- Regression fixtures prove a Sapporo food article does not recommend Phu Quoc or Guangzhou and that repeated titles receive distinct anchor text.
+- Product-backed and legacy posts retain the existing related-post path because the new ranker requires a valid informational representative identity.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

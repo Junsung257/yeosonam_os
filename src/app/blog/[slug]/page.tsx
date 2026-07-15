@@ -44,6 +44,12 @@ import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import {
+  rankBlogInformationalRelatedLinks,
+  readBlogInformationalLinkCandidate,
+  type BlogInformationalLinkContext,
+} from '@/lib/blog-informational-related-links';
+import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-information-representative';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -111,6 +117,10 @@ interface BlogPost {
   landing_enabled: boolean | null;
   landing_headline: string | null;
   landing_subtitle: string | null;
+  content_type?: string | null;
+  pillar_for?: string | null;
+  target_audience?: string | null;
+  generation_meta?: Record<string, unknown> | null;
   travel_packages: {
     id: string;
     title: string;
@@ -159,6 +169,12 @@ interface RelatedPost {
   published_at: string;
   product_id: string | null;
   destination: string | null;
+  status?: string | null;
+  content_type?: string | null;
+  pillar_for?: string | null;
+  target_audience?: string | null;
+  generation_meta?: Record<string, unknown> | null;
+  related_anchor?: string;
   travel_packages: {
     id?: string;
     destination: string;
@@ -441,7 +457,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta',
     )
     .eq('slug', dbSlug)
     .eq('status', 'published')
@@ -478,7 +494,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
     supabaseAdmin
       .from('content_creatives')
       .select(
-        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle',
+        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta',
       )
       .eq('slug', dbSlug)
       .eq('status', 'published')
@@ -779,6 +795,10 @@ async function getRelatedPosts(
   currentSlug: string,
   destination: string | undefined,
   angleType: string | undefined,
+  sourcePost?: Pick<
+    BlogPost,
+    'product_id' | 'content_type' | 'pillar_for' | 'target_audience' | 'generation_meta'
+  >,
 ): Promise<RelatedPost[]> {
   if (!isSupabaseConfigured) return [];
 
@@ -787,7 +807,7 @@ async function getRelatedPosts(
     supabaseAdmin
       .from('content_creatives')
       .select(
-        'id, slug, seo_title, og_image_url, angle_type, published_at, product_id, destination',
+        'id, slug, seo_title, og_image_url, angle_type, published_at, product_id, destination, status, content_type, pillar_for, target_audience, generation_meta',
       )
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -801,6 +821,49 @@ async function getRelatedPosts(
   if (isBlogDetailQueryUnavailable(result) || result.error || !result.data) return [];
   const { data } = result;
   const posts = await attachRelatedPostPublicSnapshots(data as unknown as RelatedPost[]);
+
+  const informationIdentity = sourcePost?.product_id
+    ? null
+    : readBlogInformationRepresentativeIdentity(sourcePost?.generation_meta);
+  if (informationIdentity) {
+    const sourceMeta = sourcePost?.generation_meta || {};
+    const source: BlogInformationalLinkContext = {
+      slug: currentSlug,
+      destination: destination ?? null,
+      destinationId: informationIdentity.destinationId,
+      intent: informationIdentity.intent,
+      audience: informationIdentity.audience,
+      locale: informationIdentity.locale,
+      contentType: sourcePost?.content_type,
+      pillarFor: sourcePost?.pillar_for,
+      clusterId: typeof sourceMeta.editorial_cluster_id === 'string'
+        ? sourceMeta.editorial_cluster_id
+        : null,
+    };
+    const postBySlug = new Map(posts.map((post) => [post.slug, post]));
+    return rankBlogInformationalRelatedLinks(
+      source,
+      posts.flatMap((post) => {
+        const candidate = readBlogInformationalLinkCandidate({
+          id: post.id,
+          slug: post.slug,
+          title: post.seo_title,
+          destination: relatedPostDestination(post),
+          status: post.status,
+          contentType: post.content_type,
+          pillarFor: post.pillar_for,
+          targetAudience: post.target_audience,
+          publishedAt: post.published_at,
+          generationMeta: post.generation_meta,
+        });
+        return candidate ? [candidate] : [];
+      }),
+      6,
+    ).flatMap((entry) => {
+      const post = postBySlug.get(entry.candidate.slug);
+      return post ? [{ ...post, related_anchor: entry.anchorText }] : [];
+    });
+  }
 
   // 우선순위: 같은 destination + 같은 angle → 같은 destination → 같은 angle → 최신
   const sameDestSameAngle = posts.filter(
@@ -1215,7 +1278,7 @@ async function renderBlogDetail({
           null,
         )
       : Promise.resolve(null),
-    withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type), []),
+    withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type, post), []),
     withBlogRenderTimeout('relatedProducts', getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent), []),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
@@ -1252,11 +1315,13 @@ async function renderBlogDetail({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
+      sourcePost: post,
     }), null),
     withBlogRenderTimeout('relatedPostsSection', RelatedPostsSection({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
+      sourcePost: post,
     }), null),
     withBlogRenderTimeout('prevNextSection', PrevNextSection({ slug, publishedAt: post.published_at }), null),
   ]);
@@ -1502,7 +1567,7 @@ async function renderBlogDetail({
                   .slice(0, 2)
                   .map((rp) => ({
                     slug: rp.slug,
-                    seo_title: rp.seo_title,
+                    seo_title: rp.related_anchor || rp.seo_title,
                     destination: relatedPostDestination(rp) ?? undefined,
                   }));
                 const canInject =
@@ -1645,12 +1710,14 @@ async function RelatedPostsSection({
   currentSlug,
   destination,
   angleType,
+  sourcePost,
 }: {
   currentSlug: string;
   destination: string | undefined;
   angleType: string | undefined;
+  sourcePost?: BlogPost;
 }) {
-  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType);
+  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType, sourcePost);
   if (relatedPosts.length === 0) return null;
 
   return (
@@ -1674,7 +1741,7 @@ async function RelatedPostsSection({
         </div>
         <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {relatedPosts.slice(0, 6).map((rp) => {
-            const rpTitle = (rp.seo_title || '여행 가이드')
+            const rpTitle = (rp.related_anchor || rp.seo_title || '여행 가이드')
               .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
               .trim();
             const rpDur = formatDuration(rp.travel_packages?.duration, rp.travel_packages?.nights);
@@ -1733,12 +1800,14 @@ async function SidebarRelatedPosts({
   currentSlug,
   destination,
   angleType,
+  sourcePost,
 }: {
   currentSlug: string;
   destination: string | undefined;
   angleType: string | undefined;
+  sourcePost?: BlogPost;
 }) {
-  const posts = await getRelatedPosts(currentSlug, destination, angleType);
+  const posts = await getRelatedPosts(currentSlug, destination, angleType, sourcePost);
   if (posts.length === 0) return null;
 
   return (
@@ -1746,7 +1815,7 @@ async function SidebarRelatedPosts({
       <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">추천 포스팅</p>
       <ul className="space-y-3">
         {posts.slice(0, 4).map((rp) => {
-          const rpTitle = (rp.seo_title || '여행 가이드')
+          const rpTitle = (rp.related_anchor || rp.seo_title || '여행 가이드')
             .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
             .trim();
           return (

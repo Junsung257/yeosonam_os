@@ -1976,7 +1976,16 @@ async function processQueueItem(
 
     // 🆕 Topical Authority interlink 자동 주입 (본문 끝 "이 글과 함께 읽기" 섹션)
     try {
-      generated.blog_html = await appendInterlinkSection(generated.blog_html, generated.slug, item.destination);
+      generated.blog_html = await appendInterlinkSection(
+        generated.blog_html,
+        generated.slug,
+        item.destination,
+        {
+          generationMeta: generated.generation_meta,
+          contentType: item.source === 'pillar' ? 'pillar' : 'blog',
+          pillarFor: item.source === 'pillar' ? item.destination : null,
+        },
+      );
     } catch { /* interlink 실패는 발행을 막지 않음 */ }
 
     // Cold-start safety: AI가 internal link / CTA를 빠뜨렸을 때 표준 CTA 블록을 주입
