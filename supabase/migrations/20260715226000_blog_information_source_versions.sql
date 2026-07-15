@@ -3,7 +3,7 @@
 
 BEGIN;
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 ALTER TABLE public.blog_information_sources
   ADD COLUMN IF NOT EXISTS site_scope text NOT NULL DEFAULT 'www.yeosonam.com';
@@ -73,7 +73,7 @@ WITH legacy_versions AS (
     CASE
       WHEN COALESCE(s.metadata ->> 'content_hash', '') ~ '^[0-9a-fA-F]{64}$'
         THEN lower(s.metadata ->> 'content_hash')
-      ELSE encode(digest(concat_ws(E'\n', s.source_url, s.internal_identifier, s.publisher), 'sha256'), 'hex')
+      ELSE encode(extensions.digest(concat_ws(E'\n', s.source_url, s.internal_identifier, s.publisher), 'sha256'), 'hex')
     END AS backfill_content_hash
   FROM public.blog_information_sources s
 )
@@ -87,7 +87,7 @@ SELECT
   s.tenant_id,
   s.id,
   s.site_scope,
-  encode(digest(concat_ws(E'\n', s.source_key, COALESCE(s.source_url, s.internal_identifier, ''), s.retrieved_at::text, s.backfill_content_hash), 'sha256'), 'hex'),
+  encode(extensions.digest(concat_ws(E'\n', s.source_key, COALESCE(s.source_url, s.internal_identifier, ''), s.retrieved_at::text, s.backfill_content_hash), 'sha256'), 'hex'),
   s.backfill_content_hash,
   s.source_type,
   s.authority_level,
