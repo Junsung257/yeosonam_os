@@ -143,6 +143,10 @@ function countProductThumbnails(value: unknown): number {
   }, 0);
 }
 
+function countPriceTiers(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
 function countRouteText(snapshot: PublicPackageSnapshot): number {
   return snapshot.route_text_dump.filter(item => compactText(item)).length;
 }
@@ -208,6 +212,7 @@ export function buildAuditItem(
       nights: row.nights ?? null,
       scalar_price: row.price ?? null,
       price_dates_count: countArray(row.price_dates),
+      price_tiers_count: countPriceTiers(row.price_tiers),
       product_prices_count: countArray(row.product_prices),
       inclusions_count: countArray(row.inclusions),
       exclusions_count: countArray(row.excludes),
@@ -222,6 +227,7 @@ export function buildAuditItem(
       duration: snapshot.duration,
       destinations: snapshot.destinations,
       price_display: snapshot.price_display,
+      price_tiers_count: countPriceTiers(snapshotPackage.price_tiers),
       option_policy: snapshot.option_policy,
       inclusions_public_count: countArray(snapshot.inclusions_public),
       exclusions_public_count: countArray(snapshot.exclusions_public),
@@ -332,6 +338,7 @@ function auditRow(row: AnyRecord) {
       itinerary_data: snapshot.itinerary_public,
       price: snapshotPackage.price ?? row.price,
       price_dates: snapshotPackage.price_dates ?? row.price_dates,
+      price_tiers: snapshotPackage.price_tiers ?? row.price_tiers,
       product_prices: snapshotPackage.product_prices ?? row.product_prices,
       images_public: snapshot.images_public,
       hero_image_url: snapshotPackage.hero_image_url,
@@ -378,6 +385,7 @@ async function main() {
     'nights',
     'price',
     'price_dates',
+    'price_tiers',
     'status',
     'publication_state',
     'package_revision',

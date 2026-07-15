@@ -546,6 +546,62 @@ describe('public package snapshot gate', () => {
     expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('price_source_missing');
   });
 
+  it('accepts source-backed period price tiers when exact departure dates are not provided', () => {
+    const pkg = yanjiPackage({
+      optional_tours: [],
+      price: 619000,
+      product_prices: [],
+      price_dates: [],
+      price_tiers: [
+        {
+          status: 'available',
+          adult_price: 619000,
+          child_price: 619000,
+          period_label: '기본',
+        },
+      ],
+      departure_days: '매주 목요일',
+      raw_text: [
+        'YSN-PRODUCT-MD v1',
+        '## 기본정보',
+        '- 상품명: 나트랑/달랏 5성 3박5일',
+        '- 출발요일: 매주 목요일',
+        '## 가격',
+        '| 라벨 | 날짜 | 성인 | 아동 | 상태 | 비고 |',
+        '| 기본 | 전 출발일 | 619,000원 | 619,000원 | 가능 | |',
+        '## 일정',
+        '### DAY 1 | 부산, 나트랑',
+      ].join('\n'),
+    });
+    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(pkg);
+    const gate = evaluatePublicSnapshotPublishGate({
+      pkg: {
+        ...pkg,
+        price: snapshot.package.price,
+        price_dates: snapshot.package.price_dates,
+        price_tiers: snapshot.package.price_tiers,
+        product_prices: snapshot.package.product_prices,
+        images_public: snapshot.images_public,
+        hero_image_url: snapshot.package.hero_image_url,
+        thumbnail_urls: snapshot.package.thumbnail_urls,
+      },
+      sourcePkg: pkg,
+      publicSnapshotHash: snapshotHash,
+      publicSnapshotTitle: snapshot.public_title,
+      customerOpenContractOk: true,
+      mobileProof: mobileProofForSnapshot(snapshotHash),
+      snapshotExists: true,
+      routeTextDump: snapshot.route_text_dump,
+    });
+
+    expect(snapshot.price_display).toMatch(/^619,000/);
+    expect(snapshot.package.price_dates).toEqual([]);
+    expect(snapshot.package.price_tiers).toEqual([
+      expect.objectContaining({ period_label: '기본', adult_price: 619000 }),
+    ]);
+    expect(gate.hard_blockers.map(blocker => blocker.code)).not.toContain('price_source_missing');
+  });
+
   it('uses a safe brand fallback instead of failing open to missing or placeholder images', () => {
     const pkg = yanjiPackage({
       optional_tours: [],
