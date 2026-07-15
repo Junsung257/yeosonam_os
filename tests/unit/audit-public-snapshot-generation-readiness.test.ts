@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAuditItem, goldenKey } from '../../scripts/audit-public-snapshot-generation-readiness';
+import {
+  buildAuditItem,
+  GOLDEN_SET,
+  goldenKey,
+  goldenLookupFilter,
+} from '../../scripts/audit-public-snapshot-generation-readiness';
 import type { PublicSnapshotGenerationReport } from '../../src/lib/package-publication/public-snapshot-diagnostics';
 import type { PublicPackageSnapshot } from '../../src/lib/package-publication/types';
 
@@ -25,6 +30,17 @@ describe('public snapshot generation audit golden set matching', () => {
     })).toBeNull();
     expect(goldenKey({ destination: '후쿠오카', title: '후쿠오카 북큐슈 온천 2박3일' })).toBe('fukuoka');
     expect(goldenKey({ destination: '규슈', title: '북큐슈 료칸팩 2박3일' })).toBe('fukuoka');
+  });
+
+  it('provides supplemental lookup filters for every required golden sample', () => {
+    for (const item of GOLDEN_SET) {
+      expect(goldenLookupFilter(item)).toContain('title.ilike');
+    }
+
+    const tsushima = GOLDEN_SET.find(item => item.key === 'tsushima');
+    expect(tsushima).toBeDefined();
+    expect(goldenLookupFilter(tsushima!)).toContain('대마도');
+    expect(goldenLookupFilter(tsushima!)).toContain('쓰시마');
   });
 });
 
