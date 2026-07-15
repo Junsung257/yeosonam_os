@@ -83,6 +83,10 @@ const PUBLIC_TEXT_BLOCKING_ISSUES = new Set([
 const HIGH_RISK_OPERATIONAL_COPY_RE =
   /환불\s*(?:은|이)?\s*절대\s*불가|환불\s*불가|취소\s*수수료.{0,12}100%|100%\s*차지|예약금|입금.{0,18}(?:좌석|예약|자동\s*취소|확정)|항공\s*요금.{0,12}입금|좌석.{0,12}(?:확정|확보|보장)|발권\s*마감|Decision\s*guide/i;
 const LOW_INFORMATION_RISK_RESIDUE_RE = /^(?:후|전)?\s*안내(?:드립니다|합니다)?\.?$/;
+const LOW_INFORMATION_PUBLIC_ROUTE_TEXT_RE =
+  /^(?:x{2,}|n\/a|none|null|undefined|unknown|미정|없음|-|\.{1,3})$/i;
+const PUBLIC_ROUTE_TEXT_STATUS_COPY_RE =
+  /(?:\bUNKNOWN\b|출발일별\s*가격\s*등록|(?:포함사항|불포함사항)\s*\d+\s*개\s*등록|세부\s*일정은\s*상품\s*상담\s*시\s*안내|사진\s*준비\s*중|이미지\s*준비\s*중)/i;
 const PUBLIC_STRUCTURE_STRING_KEY_RE =
   /(?:^|_)(?:id|ids|hash|url|urls|src|slug|icon|date|day|count|status|source|type|currency)$/i;
 
@@ -151,6 +155,14 @@ function stringList(value: unknown): string[] {
 
 function normalizeText(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function isCustomerRouteTextDisplayable(value: string): boolean {
+  const text = normalizeText(value);
+  if (!text) return false;
+  if (LOW_INFORMATION_PUBLIC_ROUTE_TEXT_RE.test(text)) return false;
+  if (PUBLIC_ROUTE_TEXT_STATUS_COPY_RE.test(text)) return false;
+  return true;
 }
 
 function isEmptyPublicValue(value: unknown): boolean {
@@ -840,7 +852,7 @@ function routeTextDump(snapshot: Omit<PublicPackageSnapshot, 'route_text_dump'>)
     ...collectCustomerVisibleStrings(snapshot.optional_tours_public),
     ...collectCustomerVisibleStrings(snapshot.canonical_view),
   ];
-  return [...new Set(values.map(normalizeText).filter(Boolean))];
+  return [...new Set(values.map(normalizeText).filter(isCustomerRouteTextDisplayable))];
 }
 
 function stableStringify(value: unknown): string {
