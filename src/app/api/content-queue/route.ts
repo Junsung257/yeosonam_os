@@ -10,8 +10,9 @@ import {
 } from '@/lib/blog-publish-quality';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { getPublishedPackageCard } from '@/lib/public-packages';
 
-const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, travel_packages(id, title, destination)';
+const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination';
 
 const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ queue: [] });
@@ -88,7 +89,6 @@ const postHandler = async (request: NextRequest) => {
         destination?: string | null;
         angle_type?: string | null;
         product_id?: string | null;
-        travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
       } | undefined;
       if (!row?.blog_html) {
         return NextResponse.json({ error: 'blog_html is missing' }, { status: 400 });
@@ -96,7 +96,13 @@ const postHandler = async (request: NextRequest) => {
 
       const finalTitle = seo_title ?? row.seo_title ?? null;
       const finalDescription = seo_description ?? row.seo_description ?? null;
-      const destination = resolveBlogDestination(row);
+      const publicPackage = row.product_id
+        ? await getPublishedPackageCard(supabaseAdmin, row.product_id)
+        : null;
+      if (row.product_id && !publicPackage) {
+        return NextResponse.json({ error: 'A current approved public package snapshot is required before publishing linked content.' }, { status: 409 });
+      }
+      const destination = publicPackage?.destination ?? resolveBlogDestination(row);
       const prepared = await prepareBlogForPublish({
         id: creative_id,
         blog_html: row.blog_html,

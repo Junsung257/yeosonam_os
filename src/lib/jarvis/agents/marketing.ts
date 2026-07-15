@@ -3,6 +3,7 @@ import { MARKETING_PROMPT } from '../prompts'
 import type { AgentRunParams } from '../types'
 import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 import { getScopedClient, type JarvisContext } from '@/lib/jarvis'
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages'
 
 // ============================================================
 // Marketing Agent — Phase 2 확장 (블로그·콘텐츠·브랜드까지 풀 커버)
@@ -293,8 +294,12 @@ async function executeTool(toolName: string, args: any, ctx?: JarvisContext): Pr
     // ── SNS 카피 ──
     case 'generate_sns_copy': {
       if (args.package_id) {
-        const { data } = await sb.from('travel_packages').select('title, destination, base_price, highlights, duration_days').eq('id', args.package_id).limit(1)
-        return { package: data?.[0], platform: args.platform || 'instagram', tone: args.tone || '감성' }
+        const { data: selected } = await sb.from('travel_packages').select('id').eq('id', args.package_id).limit(1)
+        const packageId = selected?.[0]?.id
+        const publicPackage = packageId
+          ? (await getPublishedPackageMarketingClaims(supabaseAdmin, [String(packageId)]))[0] ?? null
+          : null
+        return { package: publicPackage, platform: args.platform || 'instagram', tone: args.tone || '감성' }
       }
       return { topic: args.topic, platform: args.platform || 'instagram', tone: args.tone || '감성' }
     }

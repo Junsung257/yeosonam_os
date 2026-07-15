@@ -8,7 +8,9 @@
  *   { operator: { id, name }, packages: [{ id, title, destination, status, price_dates }] }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { getPublishedPartnerPackages } from '@/lib/public-packages';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -23,12 +25,12 @@ function extractBearerToken(request: NextRequest): string | null {
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 500 });
   }
 
   const token = extractBearerToken(request);
   if (!token) {
-    return NextResponse.json(
+    return apiResponse(
       { error: '인증 토큰이 없습니다. Authorization: Bearer {token} 헤더를 포함해주세요.' },
       { status: 401 },
     );
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     const operator = operators?.[0] ?? null;
     if (!operator) {
-      return NextResponse.json(
+      return apiResponse(
         { error: '유효하지 않은 토큰이거나 포털 접근이 비활성화되어 있습니다.' },
         { status: 401 },
       );
@@ -56,18 +58,24 @@ export async function GET(request: NextRequest) {
     // 해당 랜드사의 여행 패키지 목록 조회
     const { data: packages, error: pkgError } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, status, price_dates')
+      .select('id')
       .eq('land_operator_id', operator.id)
+      .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false });
 
     if (pkgError) throw pkgError;
 
-    return NextResponse.json({
+    const publicPackages = await getPublishedPartnerPackages(
+      supabaseAdmin,
+      (packages ?? []).map(pkg => pkg.id),
+    );
+
+    return apiResponse({
       operator: { id: operator.id, name: operator.name },
-      packages: packages ?? [],
+      packages: publicPackages,
     });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       { error: err instanceof Error ? err.message : '처리 실패' },
       { status: 500 },
     );

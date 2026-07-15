@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeSurface } from '@/lib/standard-terms';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { getPublishedPackageDetail } from '@/lib/public-packages';
 
 /**
  * GET /api/packages/:id/terms?surface=mobile|a4|booking_guide
@@ -19,26 +19,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'invalid surface' }, { status: 400 });
     }
 
-    const { data: pkg, error } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, package_revision, product_type, land_operator_id, notices_parsed, price_dates')
-      .eq('id', id)
-      .limit(1);
-    if (error) throw error;
-    if (!pkg || pkg.length === 0) return NextResponse.json({ data: [] });
-
-    const row = pkg[0] as {
+    const published = await getPublishedPackageDetail(supabaseAdmin, id);
+    if (!published) return NextResponse.json({ data: [] });
+    const row = published as {
       id: string;
-      package_revision: number | null;
       product_type: string | null;
       land_operator_id: string | null;
       notices_parsed: unknown;
       price_dates: { date: string }[] | null;
     };
-    const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, row.id, {
-      expectedPackageRevision: row.package_revision,
-    });
-    if (!publicSnapshot) return NextResponse.json({ data: [] });
 
     const earliestDate = (row.price_dates ?? [])
       .map(d => d.date)

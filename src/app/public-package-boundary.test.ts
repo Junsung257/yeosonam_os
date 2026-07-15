@@ -19,8 +19,16 @@ const PUBLIC_API_FILES = new Set([
 ]);
 
 const SNAPSHOT_OR_STRIP_MARKERS = [
-  'fetchLatestPublicPackageSnapshot',
+  'fetchPromotedPublicPackageSnapshot',
   'fetchAndMergeCurrentPublicPackageCardSnapshots',
+  'getPublishedPackageCard',
+  'getPublishedPackageCards',
+  'getPublishedPackageDetail',
+  'getPublishedPackagePublicApi',
+  'getPublishedPackageMarketingClaims',
+  'getPublishedPartnerPackages',
+  'getPublishedPartnerPackagePage',
+  'published_public_package_',
   'public_package_snapshots',
   'sanitizeCustomerPackageForClient',
   'stripRawPackageDataFromBlogListPosts',

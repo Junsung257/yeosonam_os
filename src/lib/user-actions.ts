@@ -6,7 +6,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
@@ -51,7 +51,7 @@ async function toPublicSimilarPackageCards(rows: unknown): Promise<SimilarPackag
   const candidates = Array.isArray(rows)
     ? rows.filter(isUserActionPublicSnapshotCandidate)
     : [];
-  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+  const publicRows = await getPublishedPackageCards(
     supabaseAdmin,
     candidates,
   );
@@ -149,7 +149,7 @@ export async function getSimilarPackages(
     .single();
 
   if (pkgErr || !isUserActionPublicSnapshotCandidate(pkg)) return [];
-  const publicSource = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+  const publicSource = await getPublishedPackageCards(
     supabaseAdmin,
     [pkg],
   );

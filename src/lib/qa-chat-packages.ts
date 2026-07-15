@@ -3,7 +3,7 @@ import { extractQaDestinationHint } from '@/lib/qa-destination-hint';
 import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
@@ -54,7 +54,7 @@ function toQaCustomerPackageRows(rows: Record<string, unknown>[]): Record<string
 async function mergeQaPublicSnapshots(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
   const candidates = rows.filter(isQaPublicSnapshotCandidate);
   if (candidates.length === 0) return [];
-  const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, candidates);
+  const merged = await getPublishedPackageCards(supabaseAdmin, candidates);
   return toQaCustomerPackageRows(merged);
 }
 

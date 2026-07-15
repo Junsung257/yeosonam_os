@@ -4,13 +4,10 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { getSecret } from '@/lib/secret-registry';
 import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
-import {
-  loadPublicContentPackageForGeneration,
-  type PublicContentPackage,
-} from '@/lib/content-public-package';
+import { getPublishedMarketingPackage, type PublishedMarketingPackage } from '@/lib/public-packages';
 
 type PackageCandidateRow = { id: string };
-type MarketingAdPackage = PublicContentPackage & {
+type MarketingAdPackage = PublishedMarketingPackage & {
   destination: string;
   price: number;
 };
@@ -52,7 +49,7 @@ export class AdAgent extends BaseMarketingAgent {
     };
 
     for (const candidate of packageCandidates as PackageCandidateRow[]) {
-      const publicPackage = await loadPublicContentPackageForGeneration(candidate.id);
+      const publicPackage = await getPublishedMarketingPackage(supabaseAdmin, candidate.id);
       if (!publicPackage || !isMarketingAdPackage(publicPackage)) {
         results.blocked_by_customer_open_contract += 1;
         results.items.push({ package_id: candidate.id, skipped: true, reason: 'public_snapshot_missing_or_incomplete' });
@@ -87,7 +84,13 @@ export class AdAgent extends BaseMarketingAgent {
               channel: 'meta',
               creative_type: 'single_image',
               status: 'draft',
-              ad_copies: metaAds,
+              source_snapshot_id: publicPackage._public_snapshot.id,
+              source_snapshot_hash: publicPackage._public_snapshot.hash,
+              marketing_projection_version: publicPackage._public_snapshot.schema_version,
+              ad_copies: {
+                ...metaAds,
+                source_public_snapshot: publicPackage._public_snapshot,
+              },
             }).throwOnError();
           }
           item.meta = { ok: true, campaign_id: campaign?.id };
@@ -106,7 +109,13 @@ export class AdAgent extends BaseMarketingAgent {
             channel: 'google',
             creative_type: 'text_ad',
             status: 'draft',
-            ad_copies: googleAds,
+            source_snapshot_id: publicPackage._public_snapshot.id,
+            source_snapshot_hash: publicPackage._public_snapshot.hash,
+            marketing_projection_version: publicPackage._public_snapshot.schema_version,
+            ad_copies: {
+              ...googleAds,
+              source_public_snapshot: publicPackage._public_snapshot,
+            },
           }).throwOnError();
           item.google = { ok: true, saved: true };
         } catch (err) {
@@ -124,7 +133,7 @@ export class AdAgent extends BaseMarketingAgent {
   }
 }
 
-function isMarketingAdPackage(pkg: PublicContentPackage): pkg is MarketingAdPackage {
+function isMarketingAdPackage(pkg: PublishedMarketingPackage): pkg is MarketingAdPackage {
   return Boolean(pkg.destination && typeof pkg.price === 'number' && Number.isFinite(pkg.price));
 }
 
@@ -196,7 +205,7 @@ JSON 반환:
   };
 }
 
-function formatDuration(pkg: Pick<PublicContentPackage, 'duration' | 'nights'>): string {
+function formatDuration(pkg: Pick<PublishedMarketingPackage, 'duration' | 'nights'>): string {
   if (typeof pkg.duration === 'number' && Number.isFinite(pkg.duration)) {
     const nights = typeof pkg.nights === 'number' && Number.isFinite(pkg.nights)
       ? pkg.nights

@@ -10,7 +10,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
@@ -94,7 +94,7 @@ async function getDestinations() {
       .not('destination', 'is', null)
       .limit(2000);
 
-    const publicStats = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    const publicStats = await getPublishedPackageCards(
       supabaseAdmin,
       ((stats ?? []) as DestinationPackageStatsRow[])
         .filter((pkg) => isPublicPublicationState(pkg.publication_state))

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 type AnyRecord = Record<string, any>;
@@ -66,7 +66,7 @@ export async function loadPublicPackagesForCampaignCreatives(
     .in('publication_state', ['approved', 'published']);
   if (error) throw error;
 
-  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+  const publicRows = await getPublishedPackageCards(
     supabase,
     ((data ?? []) as Array<Record<string, unknown>>).filter(isCampaignPublicSnapshotCandidate),
   );

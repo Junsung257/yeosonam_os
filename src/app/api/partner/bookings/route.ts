@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getPublishedPartnerPackages } from '@/lib/public-packages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,20 +59,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 해당 랜드사의 확정 예약 목록 조회
-    // lead_customer_id 제외, travel_packages join으로 패키지 제목 포함
+    const { data: operatorPackages, error: operatorPackagesError } = await supabaseAdmin
+      .from('travel_packages')
+      .select('id')
+      .eq('land_operator_id', operator.id);
+    if (operatorPackagesError) throw operatorPackagesError;
+    const operatorPackageIds = new Set((operatorPackages ?? []).map(row => String(row.id)));
+
+    // lead_customer_id와 원본 상품 문구는 반환하지 않는다.
     const { data: bookings, error: bookingError } = await supabaseAdmin
       .from('bookings')
       .select(`
         booking_no,
+        package_id,
         departure_date,
         adult_count,
         status,
-        created_at,
-        travel_packages!package_id (
-          title,
-          land_operator_id
-        )
+        created_at
       `)
       .in('status', CONFIRMED_STATUSES)
       .order('departure_date', { ascending: true });
@@ -84,20 +88,21 @@ export async function GET(request: NextRequest) {
       adult_count: number | null;
       status: string;
       created_at: string | null;
-      travel_packages: { title: string | null; land_operator_id: string | null } | { title: string | null; land_operator_id: string | null }[] | null;
+      package_id: string | null;
     };
 
-    // 해당 랜드사 소속 예약만 필터링 (join으로 필터가 어려운 경우 앱 레벨에서)
-    const filtered = (bookings as BookingRow[] ?? [])
-      .filter((b) => {
-        const pkg = Array.isArray(b.travel_packages) ? b.travel_packages[0] : b.travel_packages;
-        return pkg?.land_operator_id === operator.id;
-      })
+    const operatorBookings = (bookings as BookingRow[] ?? [])
+      .filter(booking => booking.package_id && operatorPackageIds.has(booking.package_id));
+    const publicPackages = await getPublishedPartnerPackages(
+      supabaseAdmin,
+      operatorBookings.map(booking => String(booking.package_id)),
+    );
+    const titleByPackageId = new Map(publicPackages.map(pkg => [String(pkg.package_id ?? pkg.id), String(pkg.title ?? '')]));
+    const filtered = operatorBookings
       .map((b) => {
-        const pkg = Array.isArray(b.travel_packages) ? b.travel_packages[0] : b.travel_packages;
         return {
           booking_no: b.booking_no,
-          package_title: pkg?.title ?? '',
+          package_title: titleByPackageId.get(String(b.package_id)) ?? '',
           departure_date: b.departure_date,
           adult_count: b.adult_count,
           status: b.status,

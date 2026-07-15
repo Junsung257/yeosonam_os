@@ -12,6 +12,7 @@
 
 import type { AdCampaign, AdCreative, AdPerformanceSnapshot, CampaignStatus } from '@/types/meta-ads';
 import { getSupabaseAdmin } from '../supabase';
+import { getPublishedPackageMarketingClaims } from '../public-packages';
 
 // Server-only module. All 13 callers are in src/app/api/** (verified).
 // Uses service_role to bypass RLS so we can drop authenticated `*_all USING true` policies.
@@ -31,7 +32,7 @@ export async function getAdCampaigns(filters?: {
 
   let query = supabase
     .from('ad_campaigns')
-    .select('*, travel_packages(title, destination)')
+    .select('*')
     .order('created_at', { ascending: false });
 
   if (filters?.packageId) query = query.eq('package_id', filters.packageId);
@@ -42,10 +43,14 @@ export async function getAdCampaigns(filters?: {
   }
 
   const { data } = await query;
-  return (data ?? []).map((row: any) => ({
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const packageIds = rows.map(row => row.package_id).filter((id): id is string => typeof id === 'string');
+  const projections = await getPublishedPackageMarketingClaims(supabase, packageIds);
+  const projectionByPackage = new Map(projections.map(row => [String(row.package_id), row]));
+  return rows.map((row: any) => ({
     ...row,
-    package_title: row.travel_packages?.title,
-    package_destination: row.travel_packages?.destination,
+    package_title: projectionByPackage.get(String(row.package_id))?.title,
+    package_destination: projectionByPackage.get(String(row.package_id))?.destination,
   }));
 }
 
@@ -165,13 +170,18 @@ export async function getTopCampaignsByRoas(limit = 3): Promise<AdCampaign[]> {
 
   const { data: campaigns } = await supabase
     .from('ad_campaigns')
-    .select('*, travel_packages(title, destination)')
+    .select('*')
     .in('id', ranked.map(r => r.id));
 
-  return (campaigns ?? []).map((c: any) => ({
+  const campaignRows = (campaigns ?? []) as Array<Record<string, unknown>>;
+  const packageIds = campaignRows.map(row => row.package_id).filter((id): id is string => typeof id === 'string');
+  const projections = await getPublishedPackageMarketingClaims(supabase, packageIds);
+  const projectionByPackage = new Map(projections.map(row => [String(row.package_id), row]));
+
+  return campaignRows.map((c: any) => ({
     ...c,
-    package_title: c.travel_packages?.title,
-    package_destination: c.travel_packages?.destination,
+    package_title: projectionByPackage.get(String(c.package_id))?.title,
+    package_destination: projectionByPackage.get(String(c.package_id))?.destination,
     latest_roas: ranked.find(r => r.id === c.id)?.roas ?? 0,
   }));
 }

@@ -25,6 +25,12 @@ vi.mock('@/lib/supabase', () => ({
                   async single() {
                     return { data: mocks.packageRow, error: mocks.packageError };
                   },
+                  async maybeSingle() {
+                    return {
+                      data: mocks.packageRow ? { id: mocks.packageRow.id } : null,
+                      error: mocks.packageError,
+                    };
+                  },
                 };
               },
             };
@@ -51,7 +57,7 @@ vi.mock('@/lib/supabase', () => ({
         return query;
       }
 
-      if (table === 'public_package_snapshots') {
+      if (table === 'published_public_package_details_v1') {
         const query = {
           select() {
             return query;
@@ -345,12 +351,12 @@ premium villa golf package 3n5d
     expect(mocks.mappedInput).toMatchObject({
       id: 'pkg-1',
       title: 'Snapshot customer title',
-      _lp_projection: {},
+      _lp_projection: expect.objectContaining({ title: 'Snapshot customer title' }),
       _public_snapshot: expect.objectContaining({ snapshot_hash: 'snapshot-hash' }),
     });
   });
 
-  it('does not render a public snapshot while the source package is still non-public', async () => {
+  it('does not render when the authoritative published pointer view has no row', async () => {
     mocks.packageRow = {
       id: 'pkg-1',
       title: 'Staged package',
@@ -386,6 +392,7 @@ premium villa golf package 3n5d
       status: 'published',
       created_at: '2026-07-10T00:00:00.000Z',
     };
+    mocks.publicSnapshotRow = null;
 
     const result = await fetchLpPackageUncached('pkg-1');
 

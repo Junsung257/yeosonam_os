@@ -1,0 +1,59 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+import { PUBLIC_EGRESS_MANIFEST } from './egress-manifest';
+
+const ROOT = process.cwd();
+
+describe('public package egress boundary', () => {
+  it('keeps every declared egress path owned and reviewable', () => {
+    const files = new Set<string>();
+    for (const entry of PUBLIC_EGRESS_MANIFEST) {
+      expect(files.has(entry.file), `duplicate manifest entry: ${entry.file}`).toBe(false);
+      files.add(entry.file);
+      expect(fs.existsSync(path.join(ROOT, entry.file)), `missing file: ${entry.file}`).toBe(true);
+      expect(entry.owner.trim()).not.toBe('');
+      expect(entry.lastVerifiedCommit.trim()).not.toBe('');
+      if (entry.rawRead === 'internal') {
+        expect(entry.audience).toBe('internal');
+        expect(entry.canExport).toBe(false);
+        expect(entry.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    }
+  });
+
+  it('requires the central read model for every external projection consumer', () => {
+    for (const entry of PUBLIC_EGRESS_MANIFEST.filter(item => item.projection !== 'none')) {
+      const source = fs.readFileSync(path.join(ROOT, entry.file), 'utf8');
+      expect(source, `${entry.file} must use the central public read model`).toMatch(
+        /(?:@\/lib\/public-packages|\.\/public-packages|\.\.\/public-packages)/,
+      );
+      expect(source, `${entry.file} must not join raw customer copy`).not.toMatch(
+        /travel_packages(?:!inner|:package_id)?\s*\([^)]*(?:title|product_summary|price|optional_tours|itinerary_data)/s,
+      );
+      expect(source, `${entry.file} must not fall back from a projection to raw package copy`).not.toMatch(
+        /(?:card_projection|marketing_projection|partner_projection|public_api_projection)[^\n]*\?\?[^\n]*(?:travelPackage|travel_packages|rawPackage)/,
+      );
+      expect(source, `${entry.file} must not bypass the promoted pointer views`).not.toContain(
+        ".from('public_package_snapshots')",
+      );
+      if (entry.rawRead === 'forbidden') {
+        expect(source, `${entry.file} must not read travel_packages`).not.toContain(".from('travel_packages')");
+      }
+    }
+  });
+
+  it('routes legacy customer Jarvis product requests through the public concierge boundary', () => {
+    const source = fs.readFileSync(
+      path.join(ROOT, 'src/lib/jarvis/agents/products.ts'),
+      'utf8',
+    );
+    expect(source).toContain("params.ctx?.surface === 'customer'");
+    expect(source).toContain('return runConciergeAgent(params)');
+    const legacyRoute = fs.readFileSync(path.join(ROOT, 'src/app/api/jarvis/route.ts'), 'utf8');
+    const v2Dispatch = fs.readFileSync(path.join(ROOT, 'src/lib/jarvis/v2-dispatch.ts'), 'utf8');
+    expect(legacyRoute).toContain("ctx.surface === 'customer' ? 'products'");
+    expect(v2Dispatch).toContain("input.ctx.surface === 'customer' ? 'products'");
+  });
+});

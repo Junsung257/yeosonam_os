@@ -6,24 +6,31 @@ import {
 } from '@/lib/customer-visible-text-audit';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { isSafeImageSrc } from '@/lib/image-url';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import {
   collectItineraryAttractionIds,
   validateCustomerPublishableAttractionIds,
 } from './attraction-validation';
-import { isPublicPublicationState } from './types';
 
 type AnyRecord = Record<string, unknown>;
 
 export type SnapshotProjectionRow = {
   package_id: string;
+  published_snapshot_id?: string | null;
   package_revision?: number | null;
+  snapshot_hash?: string | null;
+  snapshot_schema_version?: string | null;
+  publish_gate_version?: string | null;
+  source_evidence_digest?: string | null;
   snapshot_json?: AnyRecord | null;
   card_projection?: AnyRecord | null;
   lp_projection?: AnyRecord | null;
+  detail_projection?: AnyRecord | null;
+  route_text_projection?: string[] | null;
   route_text_dump?: string[] | null;
   status?: string | null;
+  snapshot_created_at?: string | null;
   created_at?: string | null;
+  published_at?: string | null;
 };
 
 function asRecord(value: unknown): AnyRecord | null {
@@ -39,18 +46,24 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function hasSourceBackedPriceDates(row: SnapshotProjectionRow): boolean {
+function hasSourceBackedCustomerPrice(row: SnapshotProjectionRow, projection: 'card' | 'lp'): boolean {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
   const priceDates = Array.isArray(pkg?.price_dates) ? pkg.price_dates : [];
-  if (priceDates.length === 0) return false;
-
-  return priceDates.every((item) => {
+  const hasValidPriceDates = priceDates.length > 0 && priceDates.every((item) => {
     const priceDate = asRecord(item);
     const date = typeof priceDate?.date === 'string' ? priceDate.date.trim() : '';
     const price = asNumber(priceDate?.adult_selling_price ?? priceDate?.price ?? priceDate?.selling_price);
     return /^\d{4}-\d{2}-\d{2}$/.test(date) && typeof price === 'number' && price > 0;
   });
+  if (hasValidPriceDates) return true;
+
+  const projectionPayload = projection === 'lp'
+    ? asRecord(row.detail_projection ?? row.lp_projection)
+    : asRecord(row.card_projection);
+  const display = asNonEmptyString(projectionPayload?.price_display ?? snapshot?.price_display);
+  const price = asNumber(projectionPayload?.price ?? pkg?.price);
+  return Boolean(display && price && price > 0);
 }
 
 function hasPublicImageCandidate(row: SnapshotProjectionRow): boolean {
@@ -70,16 +83,6 @@ function hasPublicImageCandidate(row: SnapshotProjectionRow): boolean {
 
 function packageId(row: AnyRecord): string | null {
   return typeof row.id === 'string' && row.id.trim() ? row.id : null;
-}
-
-function packageRevision(row: AnyRecord): number {
-  const revision = Number(row.package_revision ?? 1);
-  return Number.isFinite(revision) && revision > 0 ? revision : 1;
-}
-
-function isPublicPackageRowOpenable(row: AnyRecord): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
 function snapshotPackage(row: SnapshotProjectionRow): AnyRecord {
@@ -131,7 +134,9 @@ function stripRawCustomerFields(row: AnyRecord): AnyRecord {
 function hasPublicTitle(row: SnapshotProjectionRow, projection: 'card' | 'lp'): boolean {
   const snapshot = asRecord(row.snapshot_json);
   const pkg = asRecord(snapshot?.package);
-  const projectionPayload = projection === 'lp' ? asRecord(row.lp_projection) : asRecord(row.card_projection);
+  const projectionPayload = projection === 'lp'
+    ? asRecord(row.detail_projection ?? row.lp_projection)
+    : asRecord(row.card_projection);
   return Boolean(
     asNonEmptyString(projectionPayload?.title) ||
       asNonEmptyString(pkg?.title) ||
@@ -140,7 +145,9 @@ function hasPublicTitle(row: SnapshotProjectionRow, projection: 'card' | 'lp'): 
 }
 
 function hasBlockingSnapshotCopy(row: SnapshotProjectionRow, projection: 'card' | 'lp'): boolean {
-  const projectionPayload = projection === 'lp' ? asRecord(row.lp_projection) : asRecord(row.card_projection);
+  const projectionPayload = projection === 'lp'
+    ? asRecord(row.detail_projection ?? row.lp_projection)
+    : asRecord(row.card_projection);
   const customerPackage = {
     ...snapshotPackage(row),
     ...(projectionPayload ?? {}),
@@ -152,7 +159,8 @@ function hasBlockingSnapshotCopy(row: SnapshotProjectionRow, projection: 'card' 
   const productIssues = blockingCustomerVisibleTextIssues(customerPackage);
   if (productIssues.length > 0) return true;
 
-  const routeText = Array.isArray(row.route_text_dump) ? row.route_text_dump.join('\n') : '';
+  const routeTextValues = row.route_text_projection ?? row.route_text_dump;
+  const routeText = Array.isArray(routeTextValues) ? routeTextValues.join('\n') : '';
   return auditCustomerVisibleScreenText(routeText, { surface: 'public_snapshot' })
     .some(issue => !issue.safeFixable);
 }
@@ -191,20 +199,13 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
   snapshotRows: SnapshotProjectionRow[],
   projection: 'card' | 'lp' = 'card',
 ): T[] {
-  const revisionByPackage = new Map<string, number>();
-  for (const pkg of packages) {
-    if (!isPublicPackageRowOpenable(pkg)) continue;
-    const id = packageId(pkg);
-    if (id) revisionByPackage.set(id, packageRevision(pkg));
-  }
+  const selectedPackageIds = new Set(packages.map(packageId).filter((id): id is string => Boolean(id)));
 
   const snapshotByPackage = new Map<string, SnapshotProjectionRow>();
   for (const row of snapshotRows) {
-    const expectedRevision = revisionByPackage.get(row.package_id);
-    if (!expectedRevision) continue;
-    if (Number(row.package_revision ?? 1) !== expectedRevision) continue;
+    if (!selectedPackageIds.has(row.package_id)) continue;
     if (!hasPublicTitle(row, projection)) continue;
-    if (!hasSourceBackedPriceDates(row)) continue;
+    if (!hasSourceBackedCustomerPrice(row, projection)) continue;
     if (!hasPublicImageCandidate(row)) continue;
     if (hasBlockingSnapshotCopy(row, projection)) continue;
     if (!snapshotByPackage.has(row.package_id)) snapshotByPackage.set(row.package_id, row);
@@ -218,15 +219,23 @@ export function mergePackageRowsWithCurrentPublicSnapshots<T extends AnyRecord>(
     .map((pkg) => {
       const id = packageId(pkg) as string;
       const snapshot = snapshotByPackage.get(id) as SnapshotProjectionRow;
-      const projectionPayload = projection === 'lp' ? snapshot.lp_projection : snapshot.card_projection;
+      const projectionPayload = projection === 'lp'
+        ? snapshot.detail_projection ?? snapshot.lp_projection
+        : snapshot.card_projection;
       const mergedPackage = {
         ...stripRawCustomerFields(pkg),
         ...snapshotPackage(snapshot),
         ...(projectionPayload ?? {}),
         id,
         _public_snapshot: {
-          status: snapshot.status ?? null,
-          created_at: snapshot.created_at ?? null,
+          id: snapshot.published_snapshot_id ?? null,
+          hash: snapshot.snapshot_hash ?? null,
+          schema_version: snapshot.snapshot_schema_version ?? null,
+          publish_gate_version: snapshot.publish_gate_version ?? null,
+          source_evidence_digest: snapshot.source_evidence_digest ?? null,
+          status: 'published',
+          created_at: snapshot.snapshot_created_at ?? snapshot.created_at ?? null,
+          published_at: snapshot.published_at ?? null,
           package_revision: snapshot.package_revision ?? null,
         },
       };
@@ -242,11 +251,9 @@ export async function fetchAndMergeCurrentPublicPackageCardSnapshots<T extends A
   if (ids.length === 0) return [];
 
   const { data, error } = await supabase
-    .from('public_package_snapshots')
-    .select('package_id, package_revision, snapshot_json, card_projection, lp_projection, route_text_dump, status, created_at')
-    .in('package_id', ids)
-    .in('status', ['approved', 'published'])
-    .order('created_at', { ascending: false });
+    .from('published_public_package_cards_v1')
+    .select('package_id, published_snapshot_id, package_revision, snapshot_hash, snapshot_schema_version, publish_gate_version, source_evidence_digest, snapshot_json, card_projection, route_text_projection, snapshot_created_at, published_at')
+    .in('package_id', ids);
 
   if (error) throw error;
   const publishableSnapshotRows = await filterSnapshotsWithPublishableAttractions(

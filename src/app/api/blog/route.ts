@@ -12,9 +12,7 @@ import { apiResponse } from '@/lib/api-response';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getFallbackBlogPost, getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCard } from '@/lib/public-packages';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -41,30 +39,14 @@ type BlogListPayload = {
 
 const lastGoodBlogLists = new Map<string, BlogListPayload>();
 
-function isBlogApiPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
 async function attachPublicPackageSnapshotToBlogPost<T extends Record<string, unknown>>(post: T): Promise<T> {
   const productId = typeof post.product_id === 'string' ? post.product_id : null;
   if (!productId) return { ...post, travel_packages: null };
 
-  const { data, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-    .eq('id', productId)
-    .in('publication_state', ['approved', 'published'])
-    .limit(1);
-  if (error) throw error;
-
-  const candidate = ((data ?? []) as Array<Record<string, unknown>>).find(isBlogApiPublicSnapshotCandidate);
-  if (!candidate) return { ...post, travel_packages: null };
-
-  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [candidate]);
+  const publicPackage = await getPublishedPackageCard(supabaseAdmin, productId);
   return {
     ...post,
-    travel_packages: publicRows[0] ?? null,
+    travel_packages: publicPackage,
   };
 }
 
@@ -209,7 +191,7 @@ export async function GET(request: NextRequest) {
       const adminStatus = searchParams.get('status');
       let adminQuery = supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, seo_title, status, category, published_at, created_at, view_count, topic_source, travel_packages(title, destination)', { count: 'exact' })
+        .select('id, slug, seo_title, status, category, published_at, created_at, view_count, topic_source, product_id', { count: 'exact' })
         .eq('channel', 'naver_blog')
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -218,7 +200,10 @@ export async function GET(request: NextRequest) {
       }
       const { data, count, error } = await runApiBlogQuery('admin', adminQuery);
       if (error) throw error;
-      return apiResponse({ posts: data || [], total: count ?? 0 });
+      const posts = await Promise.all(
+        ((data ?? []) as Array<Record<string, unknown>>).map(attachPublicPackageSnapshotToBlogPost),
+      );
+      return apiResponse({ posts, total: count ?? 0 });
     }
 
     if (slug) {
@@ -338,16 +323,15 @@ export async function POST(request: NextRequest) {
     const cleanSlug = normalizeSlug(slug);
     const status = reqStatus === 'published' ? 'published' : 'draft';
 
-    let destinationForQa: string | null = null;
-    if (product_id) {
-      const { data: packageRows, error: packageError } = await supabaseAdmin
-        .from('travel_packages')
-        .select('destination')
-        .eq('id', product_id)
-        .limit(1);
-      if (packageError) throw packageError;
-      destinationForQa = packageRows?.[0]?.destination ?? null;
+    const publicPackage = product_id
+      ? await getPublishedPackageCard(supabaseAdmin, product_id)
+      : null;
+    if (status === 'published' && product_id && !publicPackage) {
+      return apiResponse({ error: 'A current approved public package snapshot is required before publishing linked content.' }, { status: 409 });
     }
+    const destinationForQa = typeof publicPackage?.destination === 'string'
+      ? publicPackage.destination
+      : null;
 
     let qaReport: BlogPublishQualityReport | null = null;
     let finalBlogHtml = blog_html;

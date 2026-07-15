@@ -19,6 +19,7 @@ import type { AgentRunParams, AgentRunResult, JarvisContext } from '../types'
 import { supabaseAdmin } from '@/lib/supabase'
 import { recommendBestPackages } from '@/lib/scoring/recommend'
 import { getKnowledgeScope } from '../persona'
+import { getPublishedPackageCards } from '@/lib/public-packages'
 
 const CONCIERGE_PROMPT = `당신은 여소남 여행사의 AI 컨시어지입니다. 고객의 여행 상담을 돕습니다.
 
@@ -193,7 +194,7 @@ function buildExecutor(ctx: JarvisContext) {
         if (!aId || !bId) throw new Error('package_id_a, package_id_b 필수')
         let q = supabaseAdmin
           .from('package_scores')
-          .select('package_id, departure_date, list_price, effective_price, rank_in_group, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, breakdown, travel_packages!inner(title, product_highlights)')
+          .select('package_id, departure_date, list_price, effective_price, rank_in_group, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, breakdown')
           .in('package_id', [aId, bId])
         if (args.departure_date) q = q.eq('departure_date', args.departure_date)
         const { data, error } = await q.limit(10)
@@ -202,16 +203,18 @@ function buildExecutor(ctx: JarvisContext) {
           package_id: string; departure_date: string; list_price: number; effective_price: number;
           rank_in_group: number; shopping_count: number; hotel_avg_grade: number | null;
           free_option_count: number; is_direct_flight: boolean;
-          travel_packages: { title: string; product_highlights: string[] | null } | { title: string; product_highlights: string[] | null }[];
         }>
         const a = rows.find(r => r.package_id === aId)
         const b = rows.find(r => r.package_id === bId)
         if (!a || !b) return { error: '같은 출발일에 양쪽 패키지가 없어요' }
-        const titleOf = (r: typeof a) => Array.isArray(r.travel_packages) ? r.travel_packages[0]?.title : r.travel_packages?.title
-        const highlightsOf = (r: typeof a) => {
-          const t = Array.isArray(r.travel_packages) ? r.travel_packages[0] : r.travel_packages
-          return t?.product_highlights ?? []
-        }
+        const publicPackages = await getPublishedPackageCards(supabaseAdmin, [{ id: aId }, { id: bId }])
+        const publicById = new Map(publicPackages.map(pkg => [String(pkg.id), pkg]))
+        const publicA = publicById.get(aId)
+        const publicB = publicById.get(bId)
+        if (!publicA || !publicB) return { error: '현재 공개 승인이 완료된 상품만 비교할 수 있습니다.' }
+        const highlightsOf = (pkg: Record<string, unknown>) => Array.isArray(pkg.product_highlights)
+          ? pkg.product_highlights.filter((item): item is string => typeof item === 'string')
+          : []
         const { comparePackages } = await import('@/lib/scoring/pairwise-diff')
         const featLite = (r: typeof a) => ({
           package_id: r.package_id, destination: '', departure_date: r.departure_date,
@@ -224,12 +227,12 @@ function buildExecutor(ctx: JarvisContext) {
           climate_score: 50, popularity_score: 50, itinerary: null,
         })
         const diff = comparePackages(
-          { features: featLite(a), effective_price: a.effective_price, product_highlights: highlightsOf(a) },
-          { features: featLite(b), effective_price: b.effective_price, product_highlights: highlightsOf(b) },
+          { features: featLite(a), effective_price: a.effective_price, product_highlights: highlightsOf(publicA) },
+          { features: featLite(b), effective_price: b.effective_price, product_highlights: highlightsOf(publicB) },
         )
         return {
-          a: { title: titleOf(a), list_price: a.list_price, rank: a.rank_in_group },
-          b: { title: titleOf(b), list_price: b.list_price, rank: b.rank_in_group },
+          a: { title: publicA.title, list_price: publicA.price, rank: a.rank_in_group },
+          b: { title: publicB.title, list_price: publicB.price, rank: b.rank_in_group },
           summary: diff.summary,
           better: diff.better_axis,
           worse: diff.worse_axis,

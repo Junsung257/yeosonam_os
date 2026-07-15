@@ -177,7 +177,8 @@ describe('customer package client payload', () => {
   it('does not post-process already published public snapshot rows on the package detail page', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
 
-    expect(pageSource).toContain('const writeTimeProcessed = Boolean(publicSnapshot) || parserVersion.includes(POSTPROCESS_VERSION)');
+    expect(pageSource).toContain('const writeTimeProcessed = !allowInternalProof');
+    expect(pageSource).toContain('Boolean((pkg as { _public_snapshot?: unknown } | null)?._public_snapshot)');
     expect(pageSource).toContain('const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow');
   });
 
@@ -207,9 +208,9 @@ describe('customer package client payload', () => {
     expect(routeSource).toContain('isAdminRequest');
     expect(routeSource).toContain('function stripPublicPackageFields');
     expect(routeSource).toContain('sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row))');
-    expect(routeSource).toContain('fetchLatestPublicPackageSnapshot');
-    expect(routeSource).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(routeSource).toContain('isCustomerPublicSnapshotCandidate');
+    expect(routeSource).toContain('getPublishedPackageDetail');
+    expect(routeSource).toContain('getPublishedPackageCards');
+    expect(routeSource).not.toContain('isCustomerPublicSnapshotCandidate');
     expect(routeSource).toContain(': stripPublicPackageFields(row)');
   });
 
@@ -217,12 +218,13 @@ describe('customer package client payload', () => {
     const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
     const rivalScoreIndex = pageSource.indexOf("label: 'package.score-rivals'");
     const rivalPackageIndex = pageSource.indexOf("label: 'package.score-rival-packages'");
-    const snapshotMergeIndex = pageSource.indexOf('const publicRivals = await fetchAndMergeCurrentPublicPackageCardSnapshots', rivalPackageIndex);
+    const snapshotMergeIndex = pageSource.indexOf('const publicRivals = await getPublishedPackageCards', rivalPackageIndex);
     const titleMapIndex = pageSource.indexOf('const titleByRivalId = new Map', snapshotMergeIndex);
     const pushIndex = pageSource.indexOf('title: publicTitle', titleMapIndex);
 
     expect(pageSource).not.toContain('travel_packages!inner(title)');
-    expect(pageSource).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(pageSource).toContain('getPublishedPackageCards');
+    expect(pageSource).not.toContain(".from('public_package_snapshots')");
     expect(rivalPackageIndex).toBeGreaterThan(rivalScoreIndex);
     expect(snapshotMergeIndex).toBeGreaterThan(rivalPackageIndex);
     expect(titleMapIndex).toBeGreaterThan(snapshotMergeIndex);

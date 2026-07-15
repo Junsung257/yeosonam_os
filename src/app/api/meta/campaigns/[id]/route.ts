@@ -1,61 +1,56 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured, getAdCampaigns, upsertCampaign } from '@/lib/supabase';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages';
+import { isSupabaseConfigured, supabaseAdmin, upsertCampaign } from '@/lib/supabase';
 import { pauseAd, activateAd, updateAdsetBudget, isMetaConfigured, krwToMetaCents } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
-import { getSecret } from '@/lib/secret-registry';
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   try {
-    const [campaign] = await getAdCampaigns({ packageId: undefined });
-    // 단건 조회는 supabase 직접 사용
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(
-      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
-    );
-    const { data } = await sb
+    const { data } = await supabaseAdmin
       .from('ad_campaigns')
-      .select('*, travel_packages(title, destination)')
+      .select('*')
       .eq('id', params.id)
       .single();
 
-    if (!data) return NextResponse.json({ error: '캠페인 없음' }, { status: 404 });
-    return NextResponse.json({ campaign: data });
+    if (!data) return apiResponse({ error: '캠페인 없음' }, { status: 404 });
+    const publicPackages = data.package_id
+      ? await getPublishedPackageMarketingClaims(supabaseAdmin, [data.package_id])
+      : [];
+    return apiResponse({
+      campaign: {
+        ...data,
+        travel_packages: publicPackages[0] ?? null,
+      },
+    });
   } catch (error) {
-    return NextResponse.json({ error: '조회 실패' }, { status: 500 });
+    return apiResponse({ error: '조회 실패' }, { status: 500 });
   }
 }
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   try {
     const body = await request.json();
     const { status, daily_budget_krw } = body;
 
-    const [current] = await getAdCampaigns();
-    // 현재 캠페인 조회
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(
-      getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
-    );
-    const { data: currentCampaign } = await sb
+    const { data: currentCampaign } = await supabaseAdmin
       .from('ad_campaigns')
       .select('*')
       .eq('id', params.id)
       .single();
 
     if (!currentCampaign) {
-      return NextResponse.json({ error: '캠페인 없음' }, { status: 404 });
+      return apiResponse({ error: '캠페인 없음' }, { status: 404 });
     }
 
     // Meta API 동기화
@@ -84,23 +79,23 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       ...(daily_budget_krw && { daily_budget_krw }),
     });
 
-    return NextResponse.json({ campaign: updated });
+    return apiResponse({ campaign: updated });
   } catch (error) {
     console.error('캠페인 수정 실패:', error);
-    return NextResponse.json({ error: '수정 실패' }, { status: 500 });
+    return apiResponse({ error: '수정 실패' }, { status: 500 });
   }
 }
 
 export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   try {
     const updated = await upsertCampaign({ id: params.id, status: 'ARCHIVED' });
-    return NextResponse.json({ campaign: updated });
+    return apiResponse({ campaign: updated });
   } catch (error) {
-    return NextResponse.json({ error: '아카이브 실패' }, { status: 500 });
+    return apiResponse({ error: '아카이브 실패' }, { status: 500 });
   }
 }

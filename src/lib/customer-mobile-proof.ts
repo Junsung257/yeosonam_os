@@ -4,6 +4,7 @@ export type CustomerMobileProof = {
   package_updated_at?: string | null;
   package_revision?: string | number | null;
   public_snapshot_hash?: string | null;
+  proof_input_hash?: string | null;
   app_build_id?: string | null;
   source?: string | null;
   screen_hash?: string | null;
@@ -139,6 +140,7 @@ export function extractCustomerMobileProof(auditReport: unknown): CustomerMobile
     package_updated_at: asString(rawProof.package_updated_at),
     package_revision: asString(rawProof.package_revision) ?? (typeof rawProof.package_revision === 'number' ? rawProof.package_revision : null),
     public_snapshot_hash: asString(rawProof.public_snapshot_hash),
+    proof_input_hash: asString(rawProof.proof_input_hash),
     app_build_id: asString(rawProof.app_build_id),
     source: asString(rawProof.source),
     screen_hash: asString(rawProof.screen_hash),
@@ -154,6 +156,7 @@ export function evaluateCustomerMobileProof(input: {
   packageRevision?: string | number | null;
   publicSnapshotHash?: string | null;
   appBuildId?: string | null;
+  proofInputHash?: string | null;
 }): CustomerMobileProofResult {
   const proof = extractCustomerMobileProof(input.auditReport);
   if (!proof) {
@@ -333,6 +336,23 @@ export function evaluateCustomerMobileProof(input: {
       return {
         ok: false,
         reason: 'actual customer mobile browser proof app build id does not match',
+        proof,
+      };
+    }
+  }
+  const expectedProofInputHash = input.proofInputHash?.trim();
+  if (expectedProofInputHash) {
+    if (!proof.proof_input_hash) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof input hash is missing',
+        proof,
+      };
+    }
+    if (proof.proof_input_hash !== expectedProofInputHash) {
+      return {
+        ok: false,
+        reason: 'actual customer mobile browser proof is stale for the current proof inputs',
         proof,
       };
     }

@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { PRODUCTS_PROMPT } from '../prompts'
 import { AgentRunParams, AgentRunResult } from '../types'
 import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
+import { runConciergeAgent } from './concierge'
 import { recommendBestPackages } from '@/lib/scoring/recommend'
 import { getActivePolicy } from '@/lib/scoring/policy'
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status'
@@ -807,6 +808,9 @@ export { PRODUCTS_TOOLS, PRODUCTS_TOOLS_RAW }
 export { executeTool as executeProductsTool }
 
 export async function runProductsAgent(params: AgentRunParams): Promise<AgentRunResult> {
+  if (params.ctx?.surface === 'customer') {
+    return runConciergeAgent(params)
+  }
   return runDeepSeekAgentLoop({
     agentType: 'products',
     systemPrompt: PRODUCTS_PROMPT,

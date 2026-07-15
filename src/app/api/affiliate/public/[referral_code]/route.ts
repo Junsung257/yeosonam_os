@@ -3,7 +3,7 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 
@@ -105,7 +105,7 @@ export async function GET(
         .in('id', affiliate.landing_pick_package_ids)
         .in('publication_state', ['approved', 'published'])
         .limit(10);
-      const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      const publicPackages = await getPublishedPackageCards(
         supabaseAdmin,
         ((pkgData ?? []) as Array<Record<string, unknown>>).filter(isAffiliatePublicSnapshotCandidate),
       ).catch(() => []);

@@ -18,7 +18,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
@@ -116,7 +116,7 @@ function isHomePublicSnapshotCandidate(row: AggPkgRow | RankingPkg): boolean {
 async function fetchHomePublicSnapshotRows<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
   if (rows.length === 0) return [];
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+    return await getPublishedPackageCards(supabaseAdmin, rows);
   } catch (error) {
     console.warn('[home] public snapshot merge failed; hiding package-derived sections', error);
     return [];

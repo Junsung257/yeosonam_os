@@ -22,14 +22,9 @@ import {
 } from './public-summary-policy';
 import { buildPublicTermsPolicy } from './public-terms-policy';
 import { composeCustomerPublicTitle } from './public-title-policy';
-import type { OptionalTourStatus, PublicPackageSnapshot } from './types';
+import type { OptionalTourStatus, PublicImageCandidate, PublicPackageSnapshot } from './types';
 
 type AnyRecord = Record<string, unknown>;
-type PublicImageCandidate = {
-  url: string;
-  source: 'package_hero' | 'package_thumbnail' | 'product_thumbnail' | 'attraction_photo' | 'content_og' | 'brand_fallback';
-  alt: string | null;
-};
 type PublicNoticeTemplateKey =
   | 'reservation_availability_check'
   | 'cancellation_policy_check'
@@ -888,6 +883,9 @@ function routeTextDump(snapshot: Omit<PublicPackageSnapshot, 'route_text_dump'>)
     ...stringList(snapshot.package.excludes),
     ...collectCustomerVisibleStrings(snapshot.card_projection),
     ...collectCustomerVisibleStrings(snapshot.lp_projection),
+    ...collectCustomerVisibleStrings(snapshot.public_api_projection),
+    ...collectCustomerVisibleStrings(snapshot.marketing_projection),
+    ...collectCustomerVisibleStrings(snapshot.partner_projection),
     ...collectCustomerVisibleStrings(snapshot.itinerary_public),
     ...collectCustomerVisibleStrings(snapshot.public_notices),
     ...collectCustomerVisibleStrings(snapshot.optional_tours_public),
@@ -907,6 +905,19 @@ export function hashPublicPackageSnapshot(snapshot: PublicPackageSnapshot): stri
   return createHash('sha256').update(stableStringify(snapshot)).digest('hex');
 }
 
+function sourceEvidenceDigest(pkg: AnyRecord, sourcePaths: string[]): string {
+  const rawText = asString(pkg.raw_text);
+  const rawTextHash = asString(pkg.raw_text_hash)
+    ?? (rawText ? createHash('sha256').update(rawText).digest('hex') : null);
+  return createHash('sha256').update(stableStringify({
+    raw_text_hash: rawTextHash,
+    source_paths: [...sourcePaths].sort(),
+    source_price_dates: pkg.price_dates ?? null,
+    source_price_tiers: pkg.price_tiers ?? null,
+    source_title: asString(pkg.title),
+  })).digest('hex');
+}
+
 export function hasRiskyCustomerCopy(value: unknown): boolean {
   const text = typeof value === 'string'
     ? value
@@ -920,6 +931,9 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   optionalTourClassification: ReturnType<typeof classifyOptionalTours>;
 } {
   const publicPackage = sanitizeCustomerPackageForClient(pkg) ?? {};
+  if (typeof publicPackage.airline === 'string') {
+    publicPackage.airline = sanitizePublicCustomerString(publicPackage.airline);
+  }
   applySourceBackedPublicPriceRepair(pkg, publicPackage);
   const imagesPublic = collectPublicImages({ ...pkg, ...publicPackage });
   const imageUrls = imagesPublic.map(image => image.url);
@@ -1029,15 +1043,21 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
   const canonicalView = sanitizePublicCustomerValue(
     renderPackage(snapshotPackage as Parameters<typeof renderPackage>[0]),
   ) as Record<string, unknown>;
+  const evidenceDigest = sourceEvidenceDigest(pkg, publicOperationalNotices.sourcePaths);
+  const publicPriceDisplay = priceDisplay(publicPackage);
+  const publicPrice = asNumber(publicPackage.price);
+  const publicHighlights = sanitizePublicHighlightList(publicPackage.product_highlights);
+  const publicPriceDates = Array.isArray(publicPackage.price_dates) ? publicPackage.price_dates : [];
   const snapshotBase: Omit<PublicPackageSnapshot, 'route_text_dump'> = {
     snapshot_version: SNAPSHOT_VERSION,
+    source_evidence_digest: evidenceDigest,
     package_id: String(pkg.id ?? publicPackage.id ?? ''),
     package_revision: asNumber(pkg.package_revision) ?? 1,
     public_title: publicTitle,
     public_subtitle: publicSubtitle,
     duration,
     destinations: destinations(publicPackage),
-    price_display: priceDisplay(publicPackage),
+    price_display: publicPriceDisplay,
     option_policy: {
       status: optionalTourClassification.status,
       badges: optionalTourClassification.badges,
@@ -1059,10 +1079,16 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       id: publicPackage.id,
       title: publicTitle,
       destination: publicPackage.destination ?? null,
+      country: publicPackage.country ?? null,
       duration,
       nights: asNumber(publicPackage.nights),
-      price: asNumber(publicPackage.price),
-      price_display: priceDisplay(publicPackage),
+      price: publicPrice,
+      price_display: publicPriceDisplay,
+      summary: publicSummary,
+      airline: publicPackage.airline ?? null,
+      departure_airport: publicPackage.departure_airport ?? null,
+      product_type: publicPackage.product_type ?? null,
+      product_highlights: publicHighlights,
       hero_image_url: imageUrls[0] ?? null,
       thumbnail_urls: imageUrls,
       badges: displayCopy.badges,
@@ -1073,12 +1099,70 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
       subtitle: publicSubtitle,
       destination: publicPackage.destination ?? null,
       summary: publicSummary,
-      price: asNumber(publicPackage.price),
-      price_display: priceDisplay(publicPackage),
+      price: publicPrice,
+      price_display: publicPriceDisplay,
       hero_image_url: imageUrls[0] ?? null,
       lp_hero_image_url: imageUrls[0] ?? null,
       thumbnail_urls: imageUrls,
       cta_copy: '예약 가능 여부 확인',
+    },
+    public_api_projection: {
+      id: publicPackage.id,
+      title: publicTitle,
+      subtitle: publicSubtitle,
+      destination: publicPackage.destination ?? null,
+      country: publicPackage.country ?? null,
+      duration,
+      nights: asNumber(publicPackage.nights),
+      price: publicPrice,
+      price_display: publicPriceDisplay,
+      price_dates: publicPriceDates,
+      airline: publicPackage.airline ?? null,
+      departure_airport: publicPackage.departure_airport ?? null,
+      product_type: publicPackage.product_type ?? null,
+      product_highlights: publicHighlights,
+      hero_image_url: imageUrls[0] ?? null,
+      thumbnail_urls: imageUrls,
+      option_policy: {
+        status: optionalTourClassification.status,
+        badges: optionalTourClassification.badges,
+      },
+    },
+    marketing_projection: {
+      id: publicPackage.id,
+      title: publicTitle,
+      destination: publicPackage.destination ?? null,
+      duration,
+      nights: asNumber(publicPackage.nights),
+      product_type: publicPackage.product_type ?? null,
+      airline: publicPackage.airline ?? null,
+      departure_airport: publicPackage.departure_airport ?? null,
+      summary: publicSummary,
+      price: publicPrice,
+      price_display: publicPriceDisplay,
+      claims: publicHighlights,
+      hero_image_url: imageUrls[0] ?? null,
+      cta_copy: '예약 가능 여부 확인',
+      cta_helper: '출발일과 객실 상황에 따라 요금이 달라질 수 있습니다.',
+    },
+    partner_projection: {
+      id: publicPackage.id,
+      title: publicTitle,
+      destination: publicPackage.destination ?? null,
+      country: publicPackage.country ?? null,
+      duration,
+      nights: asNumber(publicPackage.nights),
+      price: publicPrice,
+      price_display: publicPriceDisplay,
+      price_dates: publicPriceDates,
+      airline: publicPackage.airline ?? null,
+      departure_airport: publicPackage.departure_airport ?? null,
+      inclusions: publicTerms.inclusionsPublic,
+      exclusions: publicTerms.exclusionsPublic,
+      option_policy: {
+        status: optionalTourClassification.status,
+        badges: optionalTourClassification.badges,
+      },
     },
   };
   const snapshot: PublicPackageSnapshot = {

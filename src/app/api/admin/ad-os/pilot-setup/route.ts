@@ -3,6 +3,7 @@ import { syncTenantAdAccountBudgetCaps } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,10 +24,16 @@ type KeywordPlanRow = {
   landing_url: string;
   utm_url: string;
   ad_campaign_id: string | null;
-  travel_packages?: {
+  marketing_projection?: {
     title?: string | null;
     destination?: string | null;
     price?: number | null;
+    price_display?: string | null;
+    _public_snapshot?: {
+      id?: string | null;
+      hash?: string | null;
+      schema_version?: string | null;
+    } | null;
   } | null;
 };
 
@@ -48,14 +55,14 @@ function groupKey(row: KeywordPlanRow): string {
 }
 
 function buildHeadline(row: KeywordPlanRow): string {
-  const destination = row.travel_packages?.destination || row.keyword_text.split(' ')[0] || '여행';
+  const destination = row.marketing_projection?.destination || '여행';
   return `${destination} 맞춤 패키지`.slice(0, 40);
 }
 
 function buildDescription(rows: KeywordPlanRow[]): string {
   const first = rows[0];
-  const price = first.travel_packages?.price ? `${Number(first.travel_packages.price).toLocaleString('ko-KR')}원` : '상담 문의';
-  return `${first.travel_packages?.title || first.keyword_text} ${price} 여소남에서 확인하세요.`.slice(0, 120);
+  const price = first.marketing_projection?.price_display || '상담 문의';
+  return `${first.marketing_projection?.title || ''} ${price} 여소남에서 확인하세요.`.trim().slice(0, 120);
 }
 
 async function upsertPilotBudget(platform: Platform, monthlyBudgetKrw: number, dailyBudgetKrw: number, maxCpcKrw: number) {
@@ -205,8 +212,7 @@ async function createInternalDrafts(runId: string, maxCpcKrw: number, dailyBudge
     .from('search_ad_keyword_plans')
     .select(`
       id, package_id, platform, campaign_name, ad_group_name, keyword_text, tier, match_type,
-      suggested_bid_krw, landing_url, utm_url, ad_campaign_id,
-      travel_packages:package_id(title,destination,price)
+      suggested_bid_krw, landing_url, utm_url, ad_campaign_id
     `)
     .in('platform', SEARCH_PLATFORMS)
     .eq('plan_status', 'approved')
@@ -217,7 +223,16 @@ async function createInternalDrafts(runId: string, maxCpcKrw: number, dailyBudge
     .limit(limit);
   if (error) throw new Error(error.message);
 
-  const rows = (data || []) as unknown as KeywordPlanRow[];
+  const sourceRows = (data || []) as unknown as KeywordPlanRow[];
+  const projections = await getPublishedPackageMarketingClaims(
+    supabaseAdmin,
+    sourceRows.map(row => row.package_id),
+  );
+  const projectionByPackage = new Map(projections.map(row => [String(row.package_id), row]));
+  const rows = sourceRows.map(row => ({
+    ...row,
+    marketing_projection: projectionByPackage.get(row.package_id) as KeywordPlanRow['marketing_projection'] ?? null,
+  }));
   const groups = new Map<string, KeywordPlanRow[]>();
   for (const row of rows) {
     const list = groups.get(groupKey(row)) || [];
@@ -233,7 +248,13 @@ async function createInternalDrafts(runId: string, maxCpcKrw: number, dailyBudge
   for (const groupRows of groups.values()) {
     const first = groupRows[0];
     const maxBid = Math.max(...groupRows.map((row) => Number(row.suggested_bid_krw || 0)));
-    const eligible = integrationReady(first.platform) && maxBid <= maxCpcKrw;
+    const hasPublishedProjection = Boolean(
+      first.marketing_projection?.title
+      && first.marketing_projection?.destination
+      && first.marketing_projection?._public_snapshot?.id
+      && first.marketing_projection?._public_snapshot?.hash,
+    );
+    const eligible = hasPublishedProjection && integrationReady(first.platform) && maxBid <= maxCpcKrw;
     decisions.push({
       run_id: runId,
       platform: first.platform,
@@ -242,11 +263,11 @@ async function createInternalDrafts(runId: string, maxCpcKrw: number, dailyBudge
       target_id: first.id,
       before_state: jsonState({ keyword_count: groupRows.length, campaign_name: first.campaign_name }),
       after_state: jsonState({ internal_draft: eligible ? 'ready' : 'blocked' }),
-      reason: eligible ? 'L1 pilot setup can create an internal campaign draft. External publishing remains blocked.' : 'L1 pilot setup held this group by integration or Max CPC guardrail.',
+      reason: eligible ? 'L1 pilot setup can create an internal campaign draft. External publishing remains blocked.' : hasPublishedProjection ? 'L1 pilot setup held this group by integration or Max CPC guardrail.' : 'A current approved marketing projection is required before advertising copy can be created.',
       confidence: eligible ? 0.78 : 0.58,
       expected_impact: jsonState({ external_spend_krw: 0, keyword_count: groupRows.length, max_bid_krw: maxBid }),
       applied: false,
-      blocked_reason: eligible ? null : 'guardrail',
+      blocked_reason: eligible ? null : hasPublishedProjection ? 'guardrail' : 'publication_gate',
     });
 
     if (!apply || !eligible) continue;
@@ -292,7 +313,13 @@ async function createInternalDrafts(runId: string, maxCpcKrw: number, dailyBudge
           final_url: first.utm_url,
           ad_group_name: first.ad_group_name,
           match_types: groupRows.map((row) => ({ keyword: row.keyword_text, match_type: row.match_type })),
+          source_snapshot_id: first.marketing_projection?._public_snapshot?.id,
+          source_snapshot_hash: first.marketing_projection?._public_snapshot?.hash,
+          marketing_projection_version: first.marketing_projection?._public_snapshot?.schema_version,
         },
+        source_snapshot_id: first.marketing_projection?._public_snapshot?.id,
+        source_snapshot_hash: first.marketing_projection?._public_snapshot?.hash,
+        marketing_projection_version: first.marketing_projection?._public_snapshot?.schema_version,
         utm_params: { final_url: first.utm_url, landing_url: first.landing_url, source: first.platform, medium: 'cpc' },
         status: 'review',
       })

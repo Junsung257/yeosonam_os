@@ -12,6 +12,7 @@ import { getSecret } from '../src/lib/secret-registry';
 import { renderPackage } from '../src/lib/render-contract';
 import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
 import { buildPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
+import { buildCustomerPackageMobileProofInputHash } from '../src/lib/package-publication/proof-input';
 import { isCustomerVisibleStatus } from '../src/lib/visibility-status';
 
 type PackageRow = {
@@ -71,6 +72,7 @@ type PackageProofResult = {
   package_updated_at: string | null;
   package_revision: number | null;
   public_snapshot_hash: string | null;
+  proof_input_hash: string | null;
   app_build_id: string | null;
   mobile_checks: CheckResult[];
   a4_checks: CheckResult[];
@@ -160,13 +162,13 @@ function proofPackageRevision(pkg: PackageRow): number {
   return isCustomerVisibleStatus(pkg.status) ? current : current + 1;
 }
 
-function proofSnapshotHash(pkg: PackageRow, revision: number): string {
+function proofSnapshot(pkg: PackageRow, revision: number) {
   const snapshotPkg = {
     ...pkg,
     status: isCustomerVisibleStatus(pkg.status) ? pkg.status : 'active',
     package_revision: revision,
   };
-  return buildPublicPackageSnapshot(snapshotPkg).snapshotHash;
+  return buildPublicPackageSnapshot(snapshotPkg);
 }
 
 function getItineraryDays(value: unknown): Array<Record<string, unknown>> {
@@ -486,7 +488,13 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
 async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: string): Promise<PackageProofResult> {
   const checkedAt = new Date().toISOString();
   const packageRevision = proofPackageRevision(pkg);
-  const publicSnapshotHash = proofSnapshotHash(pkg, packageRevision);
+  const publicSnapshot = proofSnapshot(pkg, packageRevision);
+  const proofInputHash = buildCustomerPackageMobileProofInputHash({
+    publicSnapshotHash: publicSnapshot.snapshotHash,
+    sourceEvidenceDigest: publicSnapshot.snapshot.source_evidence_digest,
+    assetUrls: publicSnapshot.snapshot.images_public.map(image => image.url),
+    appBuildId,
+  });
   const result: PackageProofResult = {
     id: pkg.id,
     title: pkg.display_title || pkg.title,
@@ -497,7 +505,8 @@ async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: strin
     checked_at: checkedAt,
     package_updated_at: pkg.updated_at,
     package_revision: packageRevision,
-    public_snapshot_hash: publicSnapshotHash,
+    public_snapshot_hash: publicSnapshot.snapshotHash,
+    proof_input_hash: proofInputHash,
     app_build_id: appBuildId,
     mobile_checks: [],
     a4_checks: auditA4PayloadForPackage(pkg),
@@ -526,7 +535,13 @@ function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackagePro
   const checkedAt = new Date().toISOString();
   const detail = errorDetail(error);
   const packageRevision = proofPackageRevision(pkg);
-  const publicSnapshotHash = proofSnapshotHash(pkg, packageRevision);
+  const publicSnapshot = proofSnapshot(pkg, packageRevision);
+  const proofInputHash = buildCustomerPackageMobileProofInputHash({
+    publicSnapshotHash: publicSnapshot.snapshotHash,
+    sourceEvidenceDigest: publicSnapshot.snapshot.source_evidence_digest,
+    assetUrls: publicSnapshot.snapshot.images_public.map(image => image.url),
+    appBuildId,
+  });
   return {
     id: pkg.id,
     title: pkg.display_title || pkg.title,
@@ -537,7 +552,8 @@ function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackagePro
     checked_at: checkedAt,
     package_updated_at: pkg.updated_at,
     package_revision: packageRevision,
-    public_snapshot_hash: publicSnapshotHash,
+    public_snapshot_hash: publicSnapshot.snapshotHash,
+    proof_input_hash: proofInputHash,
     app_build_id: appBuildId,
     mobile_checks: [
       {
@@ -580,6 +596,10 @@ function buildProofPayload(result: PackageProofResult, status: 'pass' | 'fail', 
     package_updated_at: result.package_updated_at,
     package_revision: result.package_revision,
     public_snapshot_hash: result.public_snapshot_hash,
+    proof_input_hash: result.proof_input_hash,
+    viewport_profile_version: 'mobile-v1',
+    locale: 'ko-KR',
+    copy_template_version: 'customer-copy-v1',
     app_build_id: result.app_build_id,
     screen_hash: sha256(screenHashSource),
     customer_visible_hash: sha256(visibleHashSource),

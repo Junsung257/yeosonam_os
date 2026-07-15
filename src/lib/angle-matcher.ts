@@ -6,7 +6,7 @@
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export interface AnglePackage {
@@ -98,7 +98,7 @@ export async function getPackagesByAngle(angle: string, limit = 6): Promise<Angl
       { data: [] as AnglePackage[], error: null },
     );
 
-    const all = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    const all = await getPublishedPackageCards(
       supabaseAdmin,
       ((data || []) as unknown as Array<Record<string, unknown>>).filter(isAnglePublicSnapshotCandidate),
     ) as unknown as AnglePackage[];

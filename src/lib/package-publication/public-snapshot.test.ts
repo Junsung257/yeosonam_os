@@ -91,7 +91,7 @@ describe('public package snapshot gate', () => {
   it('generates a customer-safe Yanji title and treats no-option as a policy, not an optional tour', () => {
     const { snapshot, optionalTourClassification } = buildPublicPackageSnapshot(yanjiPackage());
 
-    expect(snapshot.public_title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(snapshot.public_title).toBe('연길·백두산 노옵션 4박5일');
     expect(snapshot.public_title).not.toContain('온천');
     expect(snapshot.public_subtitle).not.toMatch(/온천|5성/);
     expect(snapshot.card_projection.badges).not.toEqual(expect.arrayContaining(['온천', '5성호텔']));
@@ -133,7 +133,7 @@ describe('public package snapshot gate', () => {
     }));
 
     const routeText = snapshot.route_text_dump.join('\n');
-    expect(routeText).toContain('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(routeText).toContain('연길·백두산 노옵션 4박5일');
     expect(routeText).toContain('백두산 천지 관광');
     expect(routeText).toContain('예약 전 포함 조건 확인');
     expect(routeText).not.toMatch(/포함사항\s*8개\s*등록|출발일별\s*가격\s*등록|세부\s*일정은\s*상품\s*상담\s*시\s*안내/);

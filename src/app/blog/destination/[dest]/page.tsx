@@ -19,7 +19,7 @@ import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export const revalidate = 300;
@@ -129,7 +129,7 @@ function isBlogDestinationPublicSnapshotCandidate(row: Record<string, unknown>):
 async function mergeBlogDestinationPublicPackages<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
   if (rows.length === 0) return [];
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+    return await getPublishedPackageCards(supabaseAdmin, rows);
   } catch (error) {
     console.warn('[blog/destination] public snapshot merge failed; hiding package rows', error);
     return [];

@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getPublishedPartnerPackagePage } from '@/lib/public-packages';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -90,30 +91,18 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * limit;
 
   try {
-    const { data, count, error } = await supabaseAdmin
-      .from('travel_packages')
-      .select(
-        `id, title, destination, duration_nights, duration_days,
-         status, product_summary, product_highlights,
-         display_title, hero_tagline,
-         price_dates, price_tiers,
-         itinerary_data,
-         created_at, updated_at`,
-        { count: 'exact' },
-      )
-      .eq('status', 'approved')
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw error;
+    const { packages: publicPackages, total } = await getPublishedPartnerPackagePage(
+      supabaseAdmin,
+      { offset, limit },
+    );
 
     return NextResponse.json({
-      data: data ?? [],
+      data: publicPackages,
       pagination: {
         page,
         limit,
-        total: count ?? 0,
-        total_pages: count ? Math.ceil(count / limit) : 0,
+        total,
+        total_pages: total ? Math.ceil(total / limit) : 0,
       },
     });
   } catch (err) {

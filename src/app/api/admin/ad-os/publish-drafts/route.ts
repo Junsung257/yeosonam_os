@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,12 +20,16 @@ type KeywordPlanRow = {
   utm_url: string;
   ad_campaign_id: string | null;
   ad_creative_id: string | null;
-  travel_packages?: {
+  marketing_projection?: {
     title?: string | null;
     destination?: string | null;
     price?: number | null;
-    ticketing_deadline?: string | null;
-    status?: string | null;
+    price_display?: string | null;
+    _public_snapshot?: {
+      id?: string | null;
+      hash?: string | null;
+      schema_version?: string | null;
+    } | null;
   } | null;
 };
 
@@ -47,14 +52,14 @@ function groupKey(row: KeywordPlanRow): string {
 }
 
 function buildHeadline(row: KeywordPlanRow): string {
-  const destination = row.travel_packages?.destination || row.keyword_text.split(' ')[0] || '여행';
+  const destination = row.marketing_projection?.destination || '여행';
   return `${destination} 맞춤 패키지`.slice(0, 40);
 }
 
 function buildDescription(rows: KeywordPlanRow[]): string {
   const first = rows[0];
-  const price = first.travel_packages?.price ? `${Number(first.travel_packages.price).toLocaleString('ko-KR')}원~` : '상담 문의';
-  return `${first.travel_packages?.title || first.keyword_text} ${price} 여소남에서 확인하세요.`.slice(0, 120);
+  const price = first.marketing_projection?.price_display || '상담 문의';
+  return `${first.marketing_projection?.title || ''} ${price} 여소남에서 확인하세요.`.trim().slice(0, 120);
 }
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
@@ -88,8 +93,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .from('search_ad_keyword_plans')
       .select(`
         id, package_id, platform, campaign_name, ad_group_name, keyword_text, tier, match_type,
-        suggested_bid_krw, landing_url, utm_url, ad_campaign_id, ad_creative_id,
-        travel_packages:package_id(title,destination,price,ticketing_deadline,status)
+        suggested_bid_krw, landing_url, utm_url, ad_campaign_id, ad_creative_id
       `)
       .eq('plan_status', 'approved')
       .in('autopilot_status', ['approved', 'testing'])
@@ -111,7 +115,16 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const budgets = new Map(
     (budgetRes.data || []).map((row) => [String(row.platform), row as { status: string; daily_budget_cap_krw: number; monthly_budget_krw: number; max_cpc_krw: number }]),
   );
-  const rows = (keywordRes.data || []) as unknown as KeywordPlanRow[];
+  const sourceRows = (keywordRes.data || []) as unknown as KeywordPlanRow[];
+  const projections = await getPublishedPackageMarketingClaims(
+    supabaseAdmin,
+    sourceRows.map(row => row.package_id),
+  );
+  const projectionByPackage = new Map(projections.map(row => [String(row.package_id), row]));
+  const rows = sourceRows.map(row => ({
+    ...row,
+    marketing_projection: projectionByPackage.get(row.package_id) as KeywordPlanRow['marketing_projection'] ?? null,
+  }));
   const groups = new Map<string, KeywordPlanRow[]>();
   for (const row of rows) {
     const list = groups.get(groupKey(row)) || [];
@@ -131,8 +144,14 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     const ready = integrationReady(first.platform);
     const budgetReady = Boolean(budget && budget.status === 'active' && Number(budget.monthly_budget_krw) > 0 && Number(budget.daily_budget_cap_krw) > 0);
     const bidAllowed = !budget?.max_cpc_krw || maxBid <= Number(budget.max_cpc_krw);
-    const eligible = ready && budgetReady && bidAllowed;
-    const blockedReason = !ready ? 'integration' : !budgetReady ? 'budget' : !bidAllowed ? 'max_cpc' : null;
+    const hasPublishedProjection = Boolean(
+      first.marketing_projection?.title
+      && first.marketing_projection?.destination
+      && first.marketing_projection?._public_snapshot?.id
+      && first.marketing_projection?._public_snapshot?.hash,
+    );
+    const eligible = hasPublishedProjection && ready && budgetReady && bidAllowed;
+    const blockedReason = !hasPublishedProjection ? 'publication_gate' : !ready ? 'integration' : !budgetReady ? 'budget' : !bidAllowed ? 'max_cpc' : null;
 
     decisions.push({
       run_id: run.id,
@@ -144,7 +163,9 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       after_state: jsonState({ draft_campaign: eligible ? 'ready' : 'blocked' }),
       reason: eligible
         ? '승인된 검색광고 키워드를 내부 캠페인 드래프트와 text ad 소재로 묶을 수 있습니다.'
-        : blockedReason === 'integration'
+        : blockedReason === 'publication_gate'
+          ? 'A current approved marketing projection is required before advertising copy can be created.'
+          : blockedReason === 'integration'
           ? '채널 API 키 또는 OAuth 구성이 부족해 캠페인 드래프트 생성을 보류합니다.'
           : blockedReason === 'budget'
             ? '채널 예산이 active가 아니거나 일/월 예산이 없어 캠페인 드래프트 생성을 보류합니다.'
@@ -209,7 +230,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
           final_url: first.utm_url,
           ad_group_name: first.ad_group_name,
           match_types: groupRows.map((row) => ({ keyword: row.keyword_text, match_type: row.match_type })),
+          source_snapshot_id: first.marketing_projection?._public_snapshot?.id,
+          source_snapshot_hash: first.marketing_projection?._public_snapshot?.hash,
+          marketing_projection_version: first.marketing_projection?._public_snapshot?.schema_version,
         },
+        source_snapshot_id: first.marketing_projection?._public_snapshot?.id,
+        source_snapshot_hash: first.marketing_projection?._public_snapshot?.hash,
+        marketing_projection_version: first.marketing_projection?._public_snapshot?.schema_version,
         utm_params: { final_url: first.utm_url, landing_url: first.landing_url, source: first.platform, medium: 'cpc' },
         status: 'review',
       })

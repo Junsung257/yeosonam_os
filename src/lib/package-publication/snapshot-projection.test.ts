@@ -65,7 +65,7 @@ function openPackage(overrides: Record<string, unknown> = {}): Record<string, un
 function makeFetchSupabaseMock(snapshotRows: Record<string, unknown>[], options: FetchMockOptions = {}) {
   return {
     from(table: string) {
-      if (table === 'public_package_snapshots') {
+      if (table === 'published_public_package_cards_v1') {
         const snapshotChain = {
           select: () => snapshotChain,
           in: () => snapshotChain,
@@ -105,7 +105,7 @@ function makeFetchSupabaseMock(snapshotRows: Record<string, unknown>[], options:
 }
 
 describe('public snapshot card projection', () => {
-  it('drops customer packages when only stale snapshots exist', () => {
+  it('keeps the exact promoted pointer even when a newer raw candidate revision is blocked', () => {
     const packages = [
       openPackage({ title: 'raw title' }),
     ];
@@ -115,27 +115,29 @@ describe('public snapshot card projection', () => {
         package_revision: 2,
         status: 'published',
         created_at: '2026-07-09T00:00:00.000Z',
-        snapshot_json: { package: { title: 'old public title' } },
-        card_projection: { title: 'old card title' },
+        snapshot_json: {
+          package: {
+            title: 'proven public title',
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+            hero_image_url: 'https://cdn.yeosonam.com/proven-public.jpg',
+          },
+        },
+        card_projection: {
+          title: 'proven public title',
+          hero_image_url: 'https://cdn.yeosonam.com/proven-public.jpg',
+        },
       },
     ]);
 
-    expect(merged).toEqual([]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe('proven public title');
   });
 
-  it('uses the current revision snapshot projection instead of raw card text', () => {
+  it('uses the pointer view projection instead of raw card text', () => {
     const packages = [
       openPackage({ title: 'raw supplier title', destination: 'raw dest' }),
     ];
     const merged = mergePackageRowsWithCurrentPublicSnapshots(packages, [
-      {
-        package_id: 'pkg-1',
-        package_revision: 2,
-        status: 'published',
-        created_at: '2026-07-08T00:00:00.000Z',
-        snapshot_json: { package: { title: 'old public title' } },
-        card_projection: { title: 'old card title' },
-      },
       {
         package_id: 'pkg-1',
         package_revision: 3,
@@ -156,7 +158,7 @@ describe('public snapshot card projection', () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].title).toBe('current card title');
     expect(merged[0].destination).toBe('current dest');
-    expect((merged[0] as Record<string, unknown>)._public_snapshot).toEqual({
+    expect((merged[0] as Record<string, unknown>)._public_snapshot).toMatchObject({
       status: 'published',
       created_at: '2026-07-09T00:00:00.000Z',
       package_revision: 3,
@@ -342,7 +344,7 @@ describe('public snapshot card projection', () => {
     expect(merged).toEqual([]);
   });
 
-  it('fails closed before snapshot merge when the source package is not customer-openable', () => {
+  it('uses the promoted snapshot instead of stale raw audit state', () => {
     const blockedPackage = openPackage({
       audit_report: {
         customer_open_contract: {
@@ -370,10 +372,11 @@ describe('public snapshot card projection', () => {
       },
     ]);
 
-    expect(merged).toEqual([]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe('public card title');
   });
 
-  it('fails closed before snapshot merge when publication_state is not public', () => {
+  it('uses the promoted snapshot view instead of raw publication-state fallback logic', () => {
     const nonPublicPackage = openPackage({ publication_state: 'needs_review' });
 
     const merged = mergePackageRowsWithCurrentPublicSnapshots([nonPublicPackage], [
@@ -393,7 +396,8 @@ describe('public snapshot card projection', () => {
       },
     ]);
 
-    expect(merged).toEqual([]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe('public card title');
   });
 
   it('drops fetched card snapshots with non-customer-publishable attraction ids', async () => {

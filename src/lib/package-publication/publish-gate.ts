@@ -4,6 +4,7 @@ import { isSafeImageSrc } from '@/lib/image-url';
 import type { PublishGateResult as LegacyPublishGateResult } from '@/lib/product-publish-gate';
 import { hasRiskyCustomerCopy, isOptionalTourFragment } from './public-snapshot';
 import type { PublicationState, PublishFinding } from './types';
+import { unsupportedTitleClaims } from './title-claim-registry';
 
 type AnyRecord = Record<string, unknown>;
 type CustomerClaimSurface = {
@@ -21,12 +22,15 @@ export type PublicSnapshotGateInput = {
   customerOpenContractBlockers?: string[];
   publicSnapshotHash?: string | null;
   expectedPublicSnapshotHash?: string | null;
+  expectedProofInputHash?: string | null;
   publicSnapshotTitle?: string | null;
   snapshotExists?: boolean;
   routeTextDump?: string[];
   auditQueryFailed?: string | null;
   invalidAttractionIds?: string[];
   publicNoticeSourcePaths?: string[];
+  activeUnresolvedPollutionCount?: number;
+  missingRequiredEvidenceFields?: string[];
 };
 
 export type PublicSnapshotGateResult = {
@@ -322,6 +326,28 @@ function findUnsupportedCustomerClaim(input: PublicSnapshotGateInput): { message
     itinerary,
   ].map(value => String(value ?? '')).join(' ');
 
+  const itineraryRecord = asRecord(pkg.itinerary_data);
+  const days = Array.isArray(itineraryRecord?.days) ? itineraryRecord.days : [];
+  const attractionTokens = JSON.stringify(pkg.itinerary_data ?? {}).match(/attraction_(?:id|name)s?/g) ?? [];
+  const hasPaidOptionalTour = (Array.isArray(pkg.optional_tours) ? pkg.optional_tours : []).some(item => {
+    const record = asRecord(item);
+    const itemText = String(record?.name ?? record?.title ?? item ?? '');
+    return Number(record?.price ?? record?.amount) > 0 || /(?:USD|KRW|달러|원)/i.test(itemText);
+  });
+  const publicTitle = String(input.publicSnapshotTitle ?? input.pkg.display_title ?? input.pkg.title ?? '');
+  const [unsupportedRegisteredClaim] = unsupportedTitleClaims(publicTitle, {
+    sourceText,
+    itineraryDayCount: days.length,
+    attractionCount: attractionTokens.length,
+    hasPaidOptionalTour,
+  });
+  if (unsupportedRegisteredClaim) {
+    return {
+      message: `title claim ${unsupportedRegisteredClaim.code} has no required source evidence`,
+      fieldPath: 'title',
+    };
+  }
+
   for (const surface of customerClaimSurfaces(input)) {
     const message = unsupportedClaimInSurface(surface, sourceText);
     if (message) return { message, fieldPath: surface.fieldPath };
@@ -367,6 +393,15 @@ function addMobileProofBlockers(input: PublicSnapshotGateInput, hard: PublishFin
 
   if (proof.public_snapshot_hash !== expectedSnapshotHash) {
     addBlocker(hard, 'public_snapshot_hash_mismatch', 'mobile proof hash does not match the public package snapshot hash');
+  }
+
+  const expectedProofInputHash = input.expectedProofInputHash?.trim();
+  if (expectedProofInputHash) {
+    if (!proof.proof_input_hash) {
+      addBlocker(hard, 'stale_mobile_proof', 'mobile proof input hash is missing');
+    } else if (proof.proof_input_hash !== expectedProofInputHash) {
+      addBlocker(hard, 'stale_mobile_proof', 'mobile proof is stale for the current content, render contract, assets, or route configuration');
+    }
   }
 
   for (const surfaceResult of proof.surface_results ?? []) {
@@ -452,6 +487,23 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
 
   if (input.auditQueryFailed) {
     addBlocker(hard, 'audit_query_failed', input.auditQueryFailed);
+  }
+
+  if ((input.activeUnresolvedPollutionCount ?? 0) > 0) {
+    addBlocker(
+      hard,
+      'masked_data_pollution',
+      `${input.activeUnresolvedPollutionCount} active unresolved quarantined field candidate(s) remain`,
+    );
+  }
+
+  for (const fieldPath of input.missingRequiredEvidenceFields ?? []) {
+    addBlocker(
+      hard,
+      'required_field_evidence_missing',
+      `customer-visible field has no validated source or approved derivation evidence: ${fieldPath}`,
+      fieldPath,
+    );
   }
 
   if (input.customerOpenContractOk !== true) {

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import ReviewForm from './ReviewForm';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { getPublishedPackageDetail } from '@/lib/public-packages';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,8 +58,7 @@ async function getBookingInfo(bookingId: string) {
 async function getReviewPublicPackage(productId: string | null | undefined): Promise<ReviewPublicPackage | null> {
   if (!isSupabaseConfigured || !productId) return null;
 
-  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, productId).catch(() => null);
-  const snapshotPackage = publicSnapshot?.package;
+  const snapshotPackage = await getPublishedPackageDetail(supabaseAdmin, productId).catch(() => null);
   if (!snapshotPackage) return null;
 
   const title =

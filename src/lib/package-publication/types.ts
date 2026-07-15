@@ -40,8 +40,21 @@ export type PublishFinding = {
   severity?: 'warning' | 'high' | 'critical';
 };
 
+export type PublicImageCandidate = {
+  url: string;
+  source:
+    | 'package_hero'
+    | 'package_thumbnail'
+    | 'product_thumbnail'
+    | 'attraction_photo'
+    | 'content_og'
+    | 'brand_fallback';
+  alt: string | null;
+};
+
 export type PublicPackageSnapshot = {
   snapshot_version: 'public-package-snapshot-v1';
+  source_evidence_digest: string;
   package_id: string;
   package_revision: number;
   public_title: string;
@@ -61,13 +74,16 @@ export type PublicPackageSnapshot = {
   public_notices: unknown[];
   public_notice_source_paths: string[];
   optional_tours_public: unknown[];
-  images_public: unknown[];
+  images_public: PublicImageCandidate[];
   cta_copy: {
     primary: '상담 요청하기' | '예약 가능 여부 확인' | '출발일 상담하기' | '견적 문의하기';
     helper: string;
   };
   card_projection: Record<string, unknown>;
   lp_projection: Record<string, unknown>;
+  public_api_projection: Record<string, unknown>;
+  marketing_projection: Record<string, unknown>;
+  partner_projection: Record<string, unknown>;
   route_text_dump: string[];
 };
 

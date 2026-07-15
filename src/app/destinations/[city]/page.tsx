@@ -21,7 +21,7 @@ import {
 } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
@@ -43,7 +43,7 @@ function isDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boo
 async function fetchDestinationPublicSnapshotRows<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
   if (rows.length === 0) return [];
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+    return await getPublishedPackageCards(supabaseAdmin, rows);
   } catch (error) {
     console.warn('[destination] public snapshot merge failed; hiding package-derived destination data', error);
     return [];

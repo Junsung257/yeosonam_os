@@ -26,6 +26,9 @@ import {
 } from '@/lib/product-registration/improvement-ledger';
 import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
 import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
+import {
+  buildCustomerPackageMobileProofInputHash,
+} from '@/lib/package-publication/proof-input';
 
 export interface QAIncident {
   id: string;
@@ -61,6 +64,7 @@ export type ExpectedRender = {
   proofPackageRevision: number | null;
   proofPublicSnapshotHash: string | null;
   proofAppBuildId: string | null;
+  proofInputHash?: string | null;
   lastDayNumber: number | null;
   lastDayArrivalCity: string | null;
   homeCity: string | null;
@@ -107,6 +111,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     proofPackageRevision: null,
     proofPublicSnapshotHash: null,
     proofAppBuildId: null,
+    proofInputHash: null,
     lastDayNumber: null,
     lastDayArrivalCity: null,
     homeCity: null,
@@ -192,8 +197,24 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
         : 'active',
       package_revision: proofPackageRevision,
     };
-    const proofPublicSnapshotHash = buildPublicPackageSnapshot(proofSnapshotPkg).snapshotHash;
+    const proofSnapshot = buildPublicPackageSnapshot(proofSnapshotPkg);
+    const proofPublicSnapshotHash = proofSnapshot.snapshotHash;
     const proofAppBuildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null;
+    const proofAssetUrls = proofSnapshot.snapshot.images_public
+      .map(item => {
+        if (typeof item === 'string') return item;
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return '';
+        return typeof (item as { url?: unknown }).url === 'string'
+          ? (item as { url: string }).url
+          : '';
+      })
+      .filter(Boolean);
+    const proofInputHash = buildCustomerPackageMobileProofInputHash({
+      publicSnapshotHash: proofPublicSnapshotHash,
+      sourceEvidenceDigest: proofSnapshot.snapshot.source_evidence_digest,
+      assetUrls: proofAssetUrls,
+      appBuildId: proofAppBuildId,
+    });
 
     return {
       title,
@@ -213,6 +234,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       proofPackageRevision,
       proofPublicSnapshotHash,
       proofAppBuildId,
+      proofInputHash,
       lastDayNumber: typeof lastDay?.day === 'number' ? lastDay.day : days.length || null,
       lastDayArrivalCity,
       homeCity,
@@ -425,6 +447,7 @@ export function buildMobileBrowserProofPayload(input: {
   packageRevision: number | string | null | undefined;
   publicSnapshotHash: string | null | undefined;
   appBuildId: string | null | undefined;
+  proofInputHash?: string | null | undefined;
   surfaces: Array<{ surface: 'packages' | 'lp' }>;
   surfaceProofResults: Array<{
     surface: 'packages' | 'lp';
@@ -442,6 +465,7 @@ export function buildMobileBrowserProofPayload(input: {
     package_revision: input.packageRevision ?? null,
     public_snapshot_hash: input.publicSnapshotHash ?? null,
     app_build_id: input.appBuildId ?? null,
+    proof_input_hash: input.proofInputHash ?? null,
     surfaces: input.surfaces.map(item => item.surface),
     screen_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.screen_hash}`).join('|')),
     customer_visible_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.customer_visible_hash}`).join('|')),
@@ -892,6 +916,7 @@ export async function runAutoMobileQA(
                   packageRevision: expected.proofPackageRevision,
                   publicSnapshotHash: expected.proofPublicSnapshotHash,
                   appBuildId: expected.proofAppBuildId,
+                  proofInputHash: expected.proofInputHash,
                   surfaces,
                   surfaceProofResults,
                 }),
@@ -935,6 +960,7 @@ export async function runAutoMobileQA(
                   packageRevision: expected.proofPackageRevision,
                   publicSnapshotHash: expected.proofPublicSnapshotHash,
                   appBuildId: expected.proofAppBuildId,
+                  proofInputHash: expected.proofInputHash,
                   surfaces,
                   surfaceProofResults,
                 }),
@@ -996,6 +1022,7 @@ export async function runAutoMobileQA(
                 packageRevision: expected.proofPackageRevision,
                 publicSnapshotHash: expected.proofPublicSnapshotHash,
                 appBuildId: expected.proofAppBuildId,
+                proofInputHash: expected.proofInputHash,
                 surfaces,
                 surfaceProofResults,
               }),

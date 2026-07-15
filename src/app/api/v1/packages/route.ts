@@ -23,46 +23,9 @@ import { withApiKey } from '@/lib/api-key-middleware'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { apiResponse, ApiErrors } from '@/lib/api-response'
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility'
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection'
-import { isPublicPublicationState } from '@/lib/package-publication/types'
-import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload'
+import { getPublishedPackagePublicApi } from '@/lib/public-packages'
 
 export const maxDuration = 30
-
-type PublicPackageRow = Record<string, unknown>
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-function isCustomerPublicSnapshotCandidate(row: PublicPackageRow): boolean {
-  return isPublicPublicationState(typeof row.publication_state === 'string' ? row.publication_state : null)
-    && isCustomerPubliclyOpenable(row)
-}
-
-function toPublicV1Package(row: PublicPackageRow): Record<string, unknown> {
-  const cardProjection = asRecord(row._card_projection)
-  const lpProjection = asRecord(row._lp_projection)
-  const publicPackage = sanitizeCustomerPackageForClient({
-    id: row.id,
-    title: row.title,
-    display_title: row.display_title,
-    destination: row.destination,
-    duration: row.duration ?? row.days,
-    days: row.duration ?? row.days,
-    nights: row.nights,
-    price: row.price,
-    price_display: row.price_display,
-    summary: lpProjection?.summary ?? cardProjection?.summary ?? null,
-    badges: cardProjection?.badges ?? row.badges ?? [],
-    publication_state: row.publication_state,
-    package_revision: row.package_revision,
-  })
-  return publicPackage ?? {}
-}
 
 /** GET: 패키지 검색 */
 export async function GET(request: NextRequest) {
@@ -91,9 +54,7 @@ export async function GET(request: NextRequest) {
   try {
     let query = supabaseAdmin
       .from('travel_packages')
-      .select('id, title, display_title, destination, price, days, duration, nights, summary, product_summary, is_active, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
-      .eq('is_active', true)
-      .in('publication_state', ['approved', 'published'])
+      .select('id')
 
     if (destination) query = query.ilike('destination', `%${destination}%`)
     if (keyword) query = query.or(`title.ilike.%${keyword}%,summary.ilike.%${keyword}%`)
@@ -106,10 +67,10 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
-    const visibleData = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    const visibleData = await getPublishedPackagePublicApi(
       supabaseAdmin,
-      (data ?? []).filter((row) => isCustomerPublicSnapshotCandidate(row as PublicPackageRow)) as PublicPackageRow[],
-    )).map(toPublicV1Package)
+      (data ?? []).map(row => row.id),
+    )
 
     return apiResponse({
       ok: true,
@@ -148,9 +109,7 @@ export async function POST(request: NextRequest) {
   try {
     let query = supabaseAdmin
       .from('travel_packages')
-      .select('id, title, display_title, destination, price, days, duration, nights, summary, product_summary, is_active, highlights, included, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
-      .eq('is_active', true)
-      .in('publication_state', ['approved', 'published'])
+      .select('id')
 
     if (body.destination) query = query.ilike('destination', `%${body.destination}%`)
     if (body.date_from) query = query.gte('start_date', body.date_from)
@@ -165,10 +124,10 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    const visibleData = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    const visibleData = await getPublishedPackagePublicApi(
       supabaseAdmin,
-      (data ?? []).filter((row) => isCustomerPublicSnapshotCandidate(row as PublicPackageRow)) as PublicPackageRow[],
-    )).map(toPublicV1Package)
+      (data ?? []).map(row => row.id),
+    )
 
     return apiResponse({
       ok: true,

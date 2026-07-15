@@ -4,10 +4,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { getSecret } from '@/lib/secret-registry';
 import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
-import {
-  loadPublicContentPackageForGeneration,
-  type PublicContentPackage,
-} from '@/lib/content-public-package';
+import { getPublishedMarketingPackage, type PublishedMarketingPackage } from '@/lib/public-packages';
 
 const CaptionSchema = z.object({
   caption: z.string().min(50).max(2200),
@@ -17,7 +14,7 @@ const CaptionSchema = z.object({
 });
 
 type PackageCandidateRow = { id: string };
-type MarketingContentPackage = PublicContentPackage & {
+type MarketingContentPackage = PublishedMarketingPackage & {
   destination: string;
   price: number;
 };
@@ -47,7 +44,7 @@ export class ContentAgent extends BaseMarketingAgent {
     let blockedByCustomerOpenContract = 0;
 
     for (const candidate of packageCandidates as PackageCandidateRow[]) {
-      const publicPackage = await loadPublicContentPackageForGeneration(candidate.id);
+      const publicPackage = await getPublishedMarketingPackage(supabaseAdmin, candidate.id);
       if (!publicPackage || !isMarketingContentPackage(publicPackage)) {
         blockedByCustomerOpenContract++;
         continue;
@@ -88,6 +85,7 @@ export class ContentAgent extends BaseMarketingAgent {
         status: 'draft',
         payload: {
           ...caption,
+          source_public_snapshot: publicPackage._public_snapshot,
           generated_at: new Date().toISOString(),
           pipeline_run_date: ctx.runDate,
         },
@@ -112,7 +110,7 @@ export class ContentAgent extends BaseMarketingAgent {
   }
 }
 
-function isMarketingContentPackage(pkg: PublicContentPackage): pkg is MarketingContentPackage {
+function isMarketingContentPackage(pkg: PublishedMarketingPackage): pkg is MarketingContentPackage {
   return Boolean(pkg.destination && typeof pkg.price === 'number' && Number.isFinite(pkg.price));
 }
 
@@ -161,7 +159,7 @@ function buildFallbackCaption(pkg: MarketingContentPackage) {
   };
 }
 
-function formatDuration(pkg: Pick<PublicContentPackage, 'duration' | 'nights'>): string {
+function formatDuration(pkg: Pick<PublishedMarketingPackage, 'duration' | 'nights'>): string {
   if (typeof pkg.duration === 'number' && Number.isFinite(pkg.duration)) {
     const nights = typeof pkg.nights === 'number' && Number.isFinite(pkg.nights)
       ? pkg.nights

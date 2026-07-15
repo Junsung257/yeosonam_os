@@ -4,7 +4,7 @@ import { rateLimitMutation } from '@/lib/rate-limiter';
 import { trackUserAction, type UserActionType } from '@/lib/user-actions';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
@@ -59,7 +59,7 @@ async function toPublicPackageCards(
   const candidates = Array.isArray(rows)
     ? rows.filter(isUserActionPublicSnapshotCandidate)
     : [];
-  const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+  const merged = await getPublishedPackageCards(
     supabaseAdmin,
     candidates,
   );
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
 
       if (!isUserActionPublicSnapshotCandidate(pkg)) return NextResponse.json({ packages: [] });
-      const publicSource = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      const publicSource = await getPublishedPackageCards(
         supabaseAdmin,
         [pkg],
       );

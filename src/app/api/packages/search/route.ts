@@ -13,7 +13,7 @@ import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
     aliveRaw = aliveRaw.slice(0, 50);
 
     if (aliveRaw.length > 0) {
-      aliveRaw = await fetchAndMergeCurrentPublicPackageCardSnapshots(sb, aliveRaw as Array<Record<string, unknown>>) as any[];
+      aliveRaw = await getPublishedPackageCards(sb, aliveRaw as Array<Record<string, unknown>>) as any[];
     }
 
     const packages = aliveRaw.map((pkg: any) => ({

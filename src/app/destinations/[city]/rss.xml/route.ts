@@ -3,7 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { canonicalizePublicDestination, getPublicDestinationQueryNames, slugMatchesPublicDestination } from '@/lib/public-destinations';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 
 /**
  * 목적지별 RSS 피드 — /destinations/[city]/rss.xml
@@ -139,7 +139,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
           .from('travel_packages')
           .select('id, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
           .in('id', productIds);
-        const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        const publicPackages = await getPublishedPackageCards(
           supabaseAdmin,
           (packageRows ?? []) as Array<Record<string, unknown>>,
         );

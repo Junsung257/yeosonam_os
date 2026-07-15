@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 
 export type PublicContentPackage = {
   id: string;
@@ -107,7 +107,7 @@ export async function loadPublicContentPackageForGeneration(
   const candidate = ((data ?? []) as Array<Record<string, unknown>>).find(isPublicContentPackageCandidate);
   if (!candidate) return null;
 
-  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [candidate]);
+  const publicRows = await getPublishedPackageCards(supabaseAdmin, [candidate]);
   const publicRow = publicRows[0];
   return publicRow ? toPublicContentPackage(publicRow) : null;
 }

@@ -27,6 +27,7 @@ import {
   createAd,
   krwToMetaCents,
 } from '@/lib/meta-api';
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages';
 
 /** 기본 일 최대 예산 (KRW) — budget_override=true면 무시 */
 const DEFAULT_MAX_DAILY_BUDGET = 50000;
@@ -40,6 +41,7 @@ export interface AdPublishResult {
   total_approved: number;
   published: number;
   skipped_budget: number;
+  skipped_publication_gate: number;
   failed: number;
   estimated_daily_spend: number;
   published_campaigns: Array<{
@@ -60,6 +62,7 @@ interface AdCampaignRow {
   daily_budget: number | null;
   budget_override: boolean | null;
   ad_account_id: string | null;
+  package_id: string | null;
 }
 
 interface AdCreativeRow {
@@ -69,6 +72,9 @@ interface AdCreativeRow {
   creative_type: string;
   ad_copies: Record<string, unknown>;
   status: string;
+  source_snapshot_id: string | null;
+  source_snapshot_hash: string | null;
+  marketing_projection_version: string | null;
 }
 
 export class AdPublishAgent extends BaseMarketingAgent {
@@ -89,7 +95,7 @@ export class AdPublishAgent extends BaseMarketingAgent {
     // ── 1. 승인된 캠페인 조회 ───────────────────────────────────────────────
     const { data: campaigns, error: fetchErr } = await supabaseAdmin
       .from('ad_campaigns')
-      .select('id, name, channel, daily_budget, budget_override, ad_account_id')
+      .select('id, name, channel, daily_budget, budget_override, ad_account_id, package_id')
       .eq('status', 'approved')
       .order('created_at', { ascending: false });
 
@@ -99,7 +105,7 @@ export class AdPublishAgent extends BaseMarketingAgent {
     }
 
     if (!campaigns?.length) {
-      return { ok: true, data: { total_approved: 0, published: 0, skipped_budget: 0, failed: 0, estimated_daily_spend: 0, published_campaigns: [] } satisfies AdPublishResult };
+      return { ok: true, data: { total_approved: 0, published: 0, skipped_budget: 0, skipped_publication_gate: 0, failed: 0, estimated_daily_spend: 0, published_campaigns: [] } satisfies AdPublishResult };
     }
 
     const rows = campaigns as AdCampaignRow[];
@@ -120,6 +126,7 @@ export class AdPublishAgent extends BaseMarketingAgent {
       total_approved: rows.length,
       published: 0,
       skipped_budget: 0,
+      skipped_publication_gate: 0,
       failed: 0,
       estimated_daily_spend: 0,
       published_campaigns: [],
@@ -151,8 +158,31 @@ export class AdPublishAgent extends BaseMarketingAgent {
       // 3c. 연관 ad_creatives 조회 (광고 소재 정보)
       const { data: creatives } = await supabaseAdmin
         .from('ad_creatives')
-        .select('id, campaign_id, channel, creative_type, ad_copies, status')
+        .select('id, campaign_id, channel, creative_type, ad_copies, status, source_snapshot_id, source_snapshot_hash, marketing_projection_version')
         .eq('campaign_id', campaign.id);
+
+      const [currentProjection] = campaign.package_id
+        ? await getPublishedPackageMarketingClaims(supabaseAdmin, [campaign.package_id])
+        : [];
+      const currentSnapshot = currentProjection?._public_snapshot as {
+        id?: string | null;
+        hash?: string | null;
+        schema_version?: string | null;
+      } | undefined;
+      const creativesMatchCurrentSnapshot = (creatives ?? []).length > 0 && (creatives ?? []).every(creative => (
+        creative.source_snapshot_id === currentSnapshot?.id
+        && creative.source_snapshot_hash === currentSnapshot?.hash
+        && creative.marketing_projection_version === currentSnapshot?.schema_version
+      ));
+      if (!campaign.package_id || !currentSnapshot?.id || !currentSnapshot.hash || !creativesMatchCurrentSnapshot) {
+        result.skipped_publication_gate++;
+        await this.logIncident(
+          ctx.tenantId,
+          'publication_gate',
+          `campaign ${campaign.id} is not bound to the current approved marketing projection`,
+        );
+        continue;
+      }
 
       try {
         if (this.dryRun) {

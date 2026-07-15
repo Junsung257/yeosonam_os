@@ -6,7 +6,7 @@ import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
@@ -79,7 +79,7 @@ function isSitemapPublicSnapshotCandidate(row: PublicPackageDestinationSitemapRo
 async function fetchSitemapPublicSnapshotRows(rows: PublicPackageDestinationSitemapRow[]): Promise<PublicPackageDestinationSitemapRow[]> {
   if (rows.length === 0) return [];
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    return await getPublishedPackageCards(
       supabaseAdmin,
       rows as unknown as Array<Record<string, unknown>>,
     ) as unknown as PublicPackageDestinationSitemapRow[];

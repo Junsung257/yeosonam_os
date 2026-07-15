@@ -3,18 +3,7 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
 import { supabaseAdmin } from '@/lib/supabase';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-
-const PACKAGE_MARKETING_ASSET_FIELDS =
-  'id, title, destination, duration, price, marketing_copies, product_highlights, product_summary, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
-
-function isInfluencerPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages';
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
@@ -59,8 +48,7 @@ export async function GET(req: NextRequest) {
 
     let packagesQuery = supabaseAdmin
       .from('travel_packages')
-      .select(PACKAGE_MARKETING_ASSET_FIELDS)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .select('id')
       .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false })
       .limit(50);
@@ -70,9 +58,9 @@ export async function GET(req: NextRequest) {
     }
 
     const { data: packages } = await packagesQuery;
-    const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    const publicPackages = await getPublishedPackageMarketingClaims(
       supabaseAdmin,
-      ((packages || []) as Array<Record<string, unknown>>).filter(isInfluencerPublicSnapshotCandidate),
+      (packages || []).map(pkg => pkg.id),
     );
 
     const assets = {
@@ -85,15 +73,17 @@ export async function GET(req: NextRequest) {
         created_at: cn.created_at,
       })),
       marketing_copies: publicPackages.map(pkg => ({
-        package_id: pkg.id,
+        package_id: pkg.package_id,
         title: pkg.title,
         destination: pkg.destination,
         duration: pkg.duration,
         price: pkg.price,
-        copies: publicMarketingCopies(pkg.marketing_copies),
-        highlights: stringArray(pkg.product_highlights),
-        summary: typeof pkg.product_summary === 'string' ? pkg.product_summary : null,
-      })).filter(pkg => pkg.copies.length > 0 || Boolean(pkg.summary)),
+        copies: publicMarketingCopies(pkg.claims),
+        highlights: stringArray(pkg.claims),
+        summary: typeof pkg.summary === 'string' ? pkg.summary : null,
+        cta_copy: pkg.cta_copy,
+        source_snapshot: pkg._public_snapshot,
+      })).filter(pkg => pkg.highlights.length > 0 || Boolean(pkg.summary)),
     };
 
     return apiResponse({ assets });

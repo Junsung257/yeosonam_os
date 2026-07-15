@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { getPublishedPackageDetail } from '@/lib/public-packages';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 export async function GET(
   _req: NextRequest,
@@ -15,8 +16,8 @@ export async function GET(
     return NextResponse.json({ data: [] });
   }
 
-  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, id);
-  if (!publicSnapshot) {
+  const publicPackage = await getPublishedPackageDetail(supabaseAdmin, id);
+  if (!publicPackage) {
     return NextResponse.json({ data: [] }, {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
     });
@@ -39,6 +40,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미연결' }, { status: 503 });
+  if (!(await isAdminRequest(req))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   const { id: packageId } = await params;
 
   const body = await req.json();
@@ -133,6 +135,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미연결' }, { status: 503 });
+  if (!(await isAdminRequest(req))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   const { id: packageId } = await params;
   const { reviewId, status } = await req.json();
 
@@ -171,6 +174,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미연결' }, { status: 503 });
+  if (!(await isAdminRequest(req))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
   const { id: packageId } = await params;
   const { searchParams } = req.nextUrl;
   const reviewId = searchParams.get('reviewId');

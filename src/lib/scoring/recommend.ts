@@ -15,7 +15,7 @@ import { loadBrandEntries, type HotelBrandEntry } from './hotel-brands';
 import { SCORING_ELIGIBLE_STATUSES } from '@/lib/visibility-status';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 
 export interface RecommendBestInput {
   destination: string;
@@ -192,7 +192,7 @@ export async function recommendBestPackages(
   }>)
     .filter((row) => isPublicPublicationState(row.publication_state ?? null))
     .filter((row) => isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>));
-  const candidates = (await fetchAndMergeCurrentPublicPackageCardSnapshots(
+  const candidates = (await getPublishedPackageCards(
     supabaseAdmin,
     eligibleRows as unknown as Array<Record<string, unknown>>,
   )) as unknown as Array<RawPackageRow & { title: string }>;

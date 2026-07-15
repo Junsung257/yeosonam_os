@@ -42,7 +42,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards, type PublishedPackageCard } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export const dynamic = 'force-dynamic';
@@ -140,10 +140,12 @@ function isBlogPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
   return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
-async function mergeBlogPublicPackageSnapshots<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
+async function mergeBlogPublicPackageSnapshots<T extends Record<string, unknown>>(
+  rows: T[],
+): Promise<Array<T & PublishedPackageCard>> {
   if (rows.length === 0) return [];
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+    return await getPublishedPackageCards(supabaseAdmin, rows);
   } catch (error) {
     console.warn('[blog] public snapshot merge failed; hiding package-derived blog data', error);
     return [];
@@ -599,12 +601,28 @@ async function getRelatedProducts(
   if (!isSupabaseConfigured || !destination) return [];
   if (shouldSkipPublicDbReadsForResourceSaver()) return [];
   const today = new Date().toISOString().slice(0, 10);
+  const selectionResult = await runBlogDetailQuery(
+    'relatedProductSelection',
+    supabaseAdmin
+      .from('travel_packages')
+      .select('id, package_revision')
+      .eq('destination', destination)
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
+      .limit(50),
+    { data: [] as Array<{ id: string; package_revision: number | null }>, error: null },
+    1800,
+  );
+  const selections = isBlogDetailQueryUnavailable(selectionResult) || selectionResult.error
+    ? []
+    : selectionResult.data ?? [];
+  const selectionById = new Map(selections.map(row => [row.id, row]));
   const scoreResult = await runBlogDetailQuery(
     'relatedProductScores',
     supabaseAdmin
       .from('package_scores')
-      .select('package_id, rank_in_group, effective_price, list_price, travel_packages!inner(id, title, destination, price, duration, nights, airline, departure_airport, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data)')
-      .ilike('travel_packages.destination', `%${destination}%`)
+      .select('package_id, rank_in_group, effective_price, list_price')
+      .in('package_id', [...selectionById.keys()])
       .gte('departure_date', today)
       .order('rank_in_group', { ascending: true })
       .order('effective_price', { ascending: true })
@@ -615,7 +633,6 @@ async function getRelatedProducts(
         rank_in_group: number | null;
         effective_price: number | null;
         list_price: number | null;
-        travel_packages: RelatedProductLite & { status?: string | null; publication_state?: string | null; package_revision?: number | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown };
       }>,
       error: null,
     },
@@ -633,14 +650,9 @@ async function getRelatedProducts(
       rank_in_group: number | null;
       effective_price: number | null;
       list_price: number | null;
-      travel_packages:
-        | (RelatedProductLite & { status?: string | null; publication_state?: string | null; package_revision?: number | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown })
-        | Array<RelatedProductLite & { status?: string | null; publication_state?: string | null; package_revision?: number | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown }>
-        | null;
     }>).entries()) {
-      const pkg = Array.isArray(row.travel_packages) ? row.travel_packages[0] : row.travel_packages;
-      if (!pkg || !isBlogPublicSnapshotCandidate(pkg as unknown as Record<string, unknown>)) continue;
-      if (pkg.id === currentProductId) continue;
+      const pkg = selectionById.get(row.package_id);
+      if (!pkg || pkg.id === currentProductId) continue;
       scoredCandidates.push({
         ...(pkg as unknown as Record<string, unknown>),
         _blog_score_rank: row.rank_in_group,
@@ -659,9 +671,7 @@ async function getRelatedProducts(
         id,
         title: typeof pkg.title === 'string' ? pkg.title : '',
         destination: typeof pkg.destination === 'string' ? pkg.destination : '',
-        price: (typeof pkg._blog_effective_price === 'number' ? pkg._blog_effective_price : null)
-          ?? (typeof pkg.price === 'number' ? pkg.price : null)
-          ?? (typeof pkg._blog_list_price === 'number' ? pkg._blog_list_price : null),
+        price: typeof pkg.price === 'number' ? pkg.price : null,
         duration: typeof pkg.duration === 'number' || typeof pkg.duration === 'string' ? pkg.duration : null,
         nights: typeof pkg.nights === 'number' ? pkg.nights : null,
         airline: typeof pkg.airline === 'string' ? pkg.airline : null,
@@ -678,12 +688,11 @@ async function getRelatedProducts(
 
   let query = supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, price, duration, nights, airline, departure_airport, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+    .select('id, package_revision')
     .eq('destination', destination)
     .in('status', [...CUSTOMER_VISIBLE_STATUSES])
     .in('publication_state', ['approved', 'published'])
-    .order('price', { ascending: true })
-    .limit(4);
+    .limit(20);
   if (currentProductId) query = query.neq('id', currentProductId);
   const result = await runBlogDetailQuery(
     'relatedProducts',
@@ -694,8 +703,10 @@ async function getRelatedProducts(
   if (isBlogDetailQueryUnavailable(result) || result.error) return [];
   const { data } = result;
   return (await mergeBlogPublicPackageSnapshots(
-    ((data as unknown as Array<Record<string, unknown>>) || []).filter(isBlogPublicSnapshotCandidate),
+    ((data as unknown as Array<Record<string, unknown>>) || []),
   ) as unknown as RelatedProductLite[])
+    .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, 4)
     .map((item, index) => ({
       ...item,
       recommended_rank: index + 1,
@@ -734,19 +745,8 @@ async function attachRelatedPostPublicSnapshots(posts: RelatedPost[]): Promise<R
   }
 
   try {
-    const { data } = await runBlogDetailQuery(
-      'relatedPostPublicPackages',
-      supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, price, duration, nights, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .in('id', productIds)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published']),
-      { data: [] as Array<Record<string, unknown>>, error: null },
-      2200,
-    );
     const publicRows = await mergeBlogPublicPackageSnapshots(
-      ((data || []) as Array<Record<string, unknown>>).filter(isBlogPublicSnapshotCandidate),
+      productIds.map(id => ({ id })),
     );
     const publicById = new Map(
       publicRows.map((pkg) => [String(pkg.id), pkg]),

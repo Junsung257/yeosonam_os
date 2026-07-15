@@ -74,9 +74,9 @@ describe('content brief customer remark safety', () => {
     expect(packagesRouteSource).toContain('function stripSupplierRemarkFields');
     expect(packagesRouteSource).toContain('function stripPublicPackageFields');
     expect(packagesRouteSource).toContain('sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row))');
-    expect(packagesRouteSource).toContain('fetchLatestPublicPackageSnapshot');
-    expect(packagesRouteSource).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(packagesRouteSource).toContain('isCustomerPublicSnapshotCandidate');
+    expect(packagesRouteSource).toContain('getPublishedPackageDetail');
+    expect(packagesRouteSource).toContain('getPublishedPackageCards');
+    expect(packagesRouteSource).not.toContain('isCustomerPublicSnapshotCandidate');
     expect(packagesRouteSource).toContain(': stripPublicPackageFields(row)');
   });
 });

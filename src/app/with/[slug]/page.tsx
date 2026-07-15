@@ -10,7 +10,7 @@ import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/aff
 import { isSafeImageSrc } from '@/lib/image-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 function extractYoutubeEmbedUrl(input?: string | null): string | null {
@@ -60,7 +60,7 @@ function isWithPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
 async function toPublicAffiliatePicks<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
   if (rows.length === 0) return [];
   try {
-    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+    return await getPublishedPackageCards(supabaseAdmin, rows);
   } catch (error) {
     console.warn('[with] public snapshot merge failed; hiding affiliate package picks', error);
     return [];

@@ -16,6 +16,7 @@
 
 import { supabaseAdmin } from './supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
+import { getPublishedPackageCards } from './public-packages';
 
 export interface PillarGenerationInput {
   destination: string;
@@ -96,23 +97,32 @@ export async function buildPillarContext(destination: string): Promise<{
   airlines: string[];
   seasonHint: string;
 } | null> {
-  const [{ data: attrs }, { data: pkgs }] = await Promise.all([
+  const [{ data: attrs }, { data: packageSelections }] = await Promise.all([
     supabaseAdmin.from('attractions').select('name, short_desc').eq('region', destination).limit(12),
-    supabaseAdmin.from('travel_packages').select('title, price, airline, duration, nights').eq('destination', destination).in('status', [...CUSTOMER_VISIBLE_STATUSES]).order('price', { ascending: true }).limit(10),
+    supabaseAdmin.from('travel_packages').select('id, package_revision').eq('destination', destination).in('status', [...CUSTOMER_VISIBLE_STATUSES]).limit(50),
   ]);
 
-  if ((!attrs || attrs.length === 0) && (!pkgs || pkgs.length === 0)) return null;
+  const publishedPackages = (await getPublishedPackageCards(
+    supabaseAdmin,
+    ((packageSelections ?? []) as Array<{ id: string; package_revision: number | null }>),
+  ))
+    .sort((a, b) => Number(a.price ?? Number.MAX_SAFE_INTEGER) - Number(b.price ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, 10);
+
+  if ((!attrs || attrs.length === 0) && publishedPackages.length === 0) return null;
 
   const attractions = ((attrs || []) as Array<{ name: string; short_desc?: string }>)
     .map(a => a.short_desc ? `${a.name}(${a.short_desc.slice(0, 30)})` : a.name);
 
-  const prices = ((pkgs || []) as unknown[]).map(p => (p as Record<string, unknown>).price).filter((p): p is number => !!p);
+  const prices = publishedPackages.map(p => p.price).filter((p): p is number => typeof p === 'number' && p > 0);
   const minP = prices.length ? Math.min(...prices) : 0;
   const maxP = prices.length ? Math.max(...prices) : 0;
   const priceRange = minP && maxP ? `${Math.round(minP / 10000)}만원 ~ ${Math.round(maxP / 10000)}만원` : '미정';
 
-  const airlines = Array.from(new Set(((pkgs || []) as unknown[]).map(p => (p as Record<string, unknown>).airline).filter(Boolean))) as string[];
-  const packageSummary = `활성 패키지 ${pkgs?.length || 0}개 · ${priceRange}`;
+  const airlines = Array.from(new Set(
+    publishedPackages.map(p => p.airline).filter((value): value is string => typeof value === 'string' && value.length > 0),
+  ));
+  const packageSummary = `공개 검증 패키지 ${publishedPackages.length}개 · ${priceRange}`;
 
   const month = new Date().getMonth() + 1;
   const season = month <= 2 ? '겨울' : month <= 5 ? '봄' : month <= 8 ? '여름' : month <= 11 ? '가을' : '겨울';

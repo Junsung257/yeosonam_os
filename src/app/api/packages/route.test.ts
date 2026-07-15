@@ -17,21 +17,21 @@ function sourceWithoutComments(path: string) {
 }
 
 describe('packages bulk/customer publication gate', () => {
-  it('serves customer package API responses only from current public snapshots', () => {
+  it('serves customer package API responses only from the promoted pointer views', () => {
     const source = routeSourceWithoutComments();
     const detailIndex = source.indexOf('if (id) {');
-    const detailSnapshotIndex = source.indexOf('fetchLatestPublicPackageSnapshot', detailIndex);
-    const detailCandidateIndex = source.indexOf('isCustomerPublicSnapshotCandidate', detailSnapshotIndex);
-    const responsePkgIndex = source.indexOf('const responsePkg: Record<string, unknown> = isAdmin', detailCandidateIndex);
+    const detailSnapshotIndex = source.indexOf('getPublishedPackageDetail', detailIndex);
+    const detailMissingIndex = source.indexOf('if (!isAdmin && !publicSnapshotPackage)', detailSnapshotIndex);
+    const responsePkgIndex = source.indexOf('const responsePkg: Record<string, unknown> = isAdmin', detailMissingIndex);
     const listIndex = source.indexOf('const visibleRows = isAdmin', responsePkgIndex);
-    const listSnapshotIndex = source.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', listIndex);
+    const listSnapshotIndex = source.indexOf('getPublishedPackageCards', listIndex);
     const aggregateIndex = source.indexOf("if (aggregate === 'destination')");
-    const aggregateSnapshotIndex = source.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', aggregateIndex);
+    const aggregateSnapshotIndex = source.indexOf('getPublishedPackageCards', aggregateIndex);
 
-    expect(source).toContain('function isCustomerPublicSnapshotCandidate');
+    expect(source).not.toContain('function isCustomerPublicSnapshotCandidate');
     expect(detailSnapshotIndex).toBeGreaterThan(detailIndex);
-    expect(detailCandidateIndex).toBeGreaterThan(detailSnapshotIndex);
-    expect(responsePkgIndex).toBeGreaterThan(detailCandidateIndex);
+    expect(detailMissingIndex).toBeGreaterThan(detailSnapshotIndex);
+    expect(responsePkgIndex).toBeGreaterThan(detailMissingIndex);
     expect(listSnapshotIndex).toBeGreaterThan(listIndex);
     expect(aggregateSnapshotIndex).toBeGreaterThan(aggregateIndex);
   });

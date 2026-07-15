@@ -28,10 +28,7 @@ import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { getPublishedPackageCards, getPublishedPackageDetail } from '@/lib/public-packages';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -67,11 +64,6 @@ function stripSupplierRemarkFields<T extends Record<string, unknown>>(row: T): O
 
 function stripPublicPackageFields(row: Record<string, unknown>): Record<string, unknown> {
   return sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row)) ?? {};
-}
-
-function isCustomerPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  return isPublicPublicationState(typeof row.publication_state === 'string' ? row.publication_state : null)
-    && isCustomerPubliclyOpenable(row);
 }
 
 function includesCustomerNoticeFields(input: Record<string, unknown>): boolean {
@@ -457,17 +449,18 @@ export async function GET(request: NextRequest) {
       // 2. Fallback (RPC 미설치 또는 일시 장애 시) — 인메모리 집계.
       //    travel_packages 가 수만 건으로 늘어나면 메모리 위험. RPC 정상화 우선.
       logWarning('[api/packages] GET aggregate=destination RPC failed, using fallback', rpcErr);
-      const { data: allPkgs } = await supabaseAdmin
+      let aggregateQuery = supabaseAdmin
         .from('travel_packages')
-        .select('id, destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
+        .select('id, destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision');
+      if (isAdmin) aggregateQuery = aggregateQuery.in('status', [...CUSTOMER_VISIBLE_STATUSES]);
+      const { data: allPkgs } = await aggregateQuery;
 
       const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
       const aggregateRows = isAdmin
         ? (allPkgs ?? [])
-        : await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        : await getPublishedPackageCards(
           supabaseAdmin,
-          (allPkgs ?? []).filter((p: any) => isCustomerPublicSnapshotCandidate(p)),
+          allPkgs ?? [],
         );
       aggregateRows.forEach((p: any) => {
         const dest = p.destination;
@@ -505,16 +498,13 @@ export async function GET(request: NextRequest) {
         .eq(col, id)
         .single();
       if (pkgErr || !pkg) return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
-      const publicSnapshot = !isAdmin
-        ? await fetchLatestPublicPackageSnapshot(supabaseAdmin, String(pkg.id), {
-          expectedPackageRevision: Number(pkg.package_revision ?? 1),
-        })
+      const publicSnapshotPackage = !isAdmin
+        ? await getPublishedPackageDetail(supabaseAdmin, String(pkg.id))
         : null;
-      if (!isAdmin && (!isCustomerPublicSnapshotCandidate(pkg as Record<string, unknown>) || !publicSnapshot)) {
+      if (!isAdmin && !publicSnapshotPackage) {
         return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
       }
 
-      const publicSnapshotPackage = publicSnapshot?.package ?? null;
       if (!isAdmin && !publicSnapshotPackage) {
         return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
       }
@@ -609,9 +599,9 @@ export async function GET(request: NextRequest) {
 
     const visibleRows = isAdmin
       ? (data ?? [])
-      : await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      : await getPublishedPackageCards(
         supabaseAdmin,
-        (data ?? []).filter((row: any) => isCustomerPublicSnapshotCandidate(row)),
+        data ?? [],
       );
     const enrichedData = visibleRows.map((row: any) => {
       const safeRow = isAdmin

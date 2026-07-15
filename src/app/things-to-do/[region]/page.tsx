@@ -21,7 +21,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export const revalidate = 86400; // 1d
@@ -239,7 +239,7 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
     grouped[cat].push(a);
   }
 
-  const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+  const publicPackages = await getPublishedPackageCards(
     supabaseAdmin,
     ((packages as Array<Record<string, unknown>> | null) ?? [])
       .filter(isThingsToDoPublicSnapshotCandidate),

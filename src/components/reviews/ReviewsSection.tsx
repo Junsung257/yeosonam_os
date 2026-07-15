@@ -1,5 +1,5 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { getPublishedPackageDetail } from '@/lib/public-packages';
 import Stars from './Stars';
 
 /**
@@ -89,15 +89,15 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
 
   const { data: pkg } = await supabaseAdmin
     .from('travel_packages')
-    .select('avg_rating, review_count, package_revision')
+    .select('avg_rating, review_count')
     .eq('id', packageId)
     .limit(1);
 
-  const stats = pkg?.[0] as { avg_rating: number | null; review_count: number; package_revision?: number | null } | undefined;
-  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, packageId, {
-    expectedPackageRevision: Number(stats?.package_revision ?? 1),
-  }).catch(() => null);
-  const publicPackage = publicSnapshot?.package as { title?: unknown; product_summary?: unknown } | undefined;
+  const stats = pkg?.[0] as { avg_rating: number | null; review_count: number } | undefined;
+  const publicPackage = await getPublishedPackageDetail(supabaseAdmin, packageId).catch(() => null) as {
+    title?: unknown;
+    product_summary?: unknown;
+  } | null;
   const publicTitle = typeof publicPackage?.title === 'string' && publicPackage.title.trim()
     ? publicPackage.title.trim()
     : null;

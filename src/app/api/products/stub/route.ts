@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -16,23 +18,23 @@ interface StubBody {
   notes?: string;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   let body: StubBody;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'JSON 파싱 실패' }, { status: 400 });
+    return apiResponse({ error: 'JSON 파싱 실패' }, { status: 400 });
   }
 
   if (!body.destination || body.destination.trim().length < 1) {
-    return NextResponse.json({ error: 'destination 필수' }, { status: 400 });
+    return apiResponse({ error: 'destination 필수' }, { status: 400 });
   }
   if (!body.land_operator_id && !body.land_operator_name) {
-    return NextResponse.json({ error: 'land_operator_id 또는 land_operator_name 중 하나 필수' }, { status: 400 });
+    return apiResponse({ error: 'land_operator_id 또는 land_operator_name 중 하나 필수' }, { status: 400 });
   }
 
   let landOperatorId = body.land_operator_id ?? null;
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
         .select('id, name')
         .single();
       if (createErr || !created) {
-        return NextResponse.json({
+        return apiResponse({
           error: '랜드사 자동 생성 실패',
           detail: createErr?.message,
         }, { status: 500 });
@@ -120,18 +122,18 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !pkg) {
-    return NextResponse.json({
+    return apiResponse({
       error: 'Stub 상품 생성 실패',
       detail: error?.message,
     }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, package: pkg });
-}
+  return apiResponse({ success: true, package: pkg });
+});
 
-export async function GET(request: NextRequest) {
+export const GET = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ stubs: [] });
+    return apiResponse({ stubs: [] });
   }
   const { searchParams } = request.nextUrl;
   const destination = searchParams.get('destination');
@@ -150,7 +152,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ stubs: data ?? [] });
-}
+  return apiResponse({ stubs: data ?? [] });
+});

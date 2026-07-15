@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Router로 Agent 결정
     const routerResult = await routeMessage(message, session?.context || {})
-    const agentType = routerResult.agent
+    const agentType = ctx.surface === 'customer' ? 'products' : routerResult.agent
     const specialistPick = resolveSpecialist(agentType, message, ctx)
     const decision = supervisorLite({
       message,

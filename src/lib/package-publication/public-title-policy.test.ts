@@ -17,7 +17,7 @@ describe('customer public title policy', () => {
       ].join('\n'),
     });
 
-    expect(title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(title).toBe('연길·백두산 노옵션 4박5일');
     expect(title).not.toContain('온천');
     expect(title).not.toContain('5성');
   });
@@ -45,7 +45,7 @@ describe('customer public title policy', () => {
       raw_text: '나트랑 시내 관광과 달랏 핵심 관광을 진행합니다.',
     });
 
-    expect(title).toBe('나트랑·달랏 5성호텔 핵심관광 3박5일');
+    expect(title).toBe('나트랑·달랏 5성호텔 3박5일');
   });
 
   it('does not promote a raw 5-star word into the title without hotel evidence', () => {
@@ -57,7 +57,7 @@ describe('customer public title policy', () => {
       raw_text: '나트랑 시내 관광과 달랏 핵심 관광을 진행합니다.',
     });
 
-    expect(title).toBe('나트랑·달랏 핵심관광 3박5일');
+    expect(title).toBe('나트랑·달랏 3박5일');
     expect(title).not.toContain('5성');
   });
 
@@ -100,7 +100,7 @@ describe('customer public title policy', () => {
       },
     });
 
-    expect(title).toBe('나트랑·달랏 핵심관광 3박5일');
+    expect(title).toBe('나트랑·달랏 3박5일');
     expect(title).not.toContain('온천');
   });
 
@@ -129,7 +129,7 @@ describe('customer public title policy', () => {
       ].join('\n'),
     });
 
-    expect(title).toBe('연길·백두산 노팁·노옵션 핵심관광 3박4일');
+    expect(title).toBe('연길·백두산 노팁·노옵션 3박4일');
     expect(title).not.toContain('온천');
   });
 
@@ -155,7 +155,7 @@ describe('customer public title policy', () => {
       raw_text: '노팁 노옵션. 청도 맥주박물관 핵심 관광 일정.',
     });
 
-    expect(title).toBe('청도 노팁·노옵션 핵심관광 2박3일');
+    expect(title).toBe('청도 노팁·노옵션 2박3일');
     expect(title).not.toContain('특급호텔');
     expect(title.match(/노팁·노옵션/g)).toHaveLength(1);
   });
@@ -182,7 +182,7 @@ describe('customer public title policy', () => {
       raw_text: '예약 가능 여부와 세부 조건은 상담 후 확인됩니다. 홍콩 자유일정과 항공 조건을 확인합니다.',
     });
 
-    expect(title).toBe('홍콩 자유일정 2박4일');
+    expect(title).toBe('홍콩 2박4일');
     expect(title).not.toContain('세부');
     expect(title).not.toContain('휴양관광');
   });
@@ -196,7 +196,7 @@ describe('customer public title policy', () => {
       raw_text: '란주 황하석림 바단지린 칠채산 핵심 관광 일정입니다.',
     });
 
-    expect(title).toBe('란주 핵심관광 4박6일');
+    expect(title).toBe('란주 4박6일');
   });
 
   it('sums segmented source nights before composing a public title duration', () => {
@@ -232,7 +232,7 @@ describe('customer public title policy', () => {
       ].join('\n'),
     });
 
-    expect(title).toBe('연길·백두산 핵심관광 2박3일');
+    expect(title).toBe('연길·백두산 2박3일');
     expect(title).not.toContain('6박14일');
   });
 
@@ -257,7 +257,7 @@ describe('customer public title policy', () => {
       },
     });
 
-    expect(title).toBe('쿠알라룸푸르·싱가포르·말라카 5성호텔 핵심관광 3박5일');
+    expect(title).toBe('쿠알라룸푸르·싱가포르·말라카 5성호텔 3박5일');
     expect(title).not.toContain('골프');
   });
 

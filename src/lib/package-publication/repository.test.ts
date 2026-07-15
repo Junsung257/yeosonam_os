@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createPublicPackageSnapshotAndDecision, fetchLatestPublicPackageSnapshot } from './repository';
+import { createPublicPackageSnapshotAndDecision, fetchPromotedPublicPackageSnapshot } from './repository';
 import { buildPublicPackageSnapshot } from './public-snapshot';
+import { buildCustomerPackageMobileProofInputHash } from './proof-input';
 
 type RpcResult = {
   rpcError?: Error | null;
@@ -21,6 +22,19 @@ function makeSupabaseMock(result: RpcResult = {}) {
       return Promise.resolve({ data: { ok: true }, error: result.rpcError ?? null });
     },
     from(table: string) {
+      if (table === 'quarantined_package_fields') {
+        let filterCount = 0;
+        const quarantineChain = {
+          select: () => quarantineChain,
+          eq: () => {
+            filterCount += 1;
+            return filterCount >= 2
+              ? Promise.resolve({ data: null, count: 0, error: null })
+              : quarantineChain;
+          },
+        };
+        return quarantineChain;
+      }
       if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
       const requestedIds = new Set<string>();
       const chain = {
@@ -65,7 +79,7 @@ function makeSnapshotFetchSupabaseMock(row: Record<string, unknown> | null, resu
   };
   return {
     from(table: string) {
-      if (table === 'public_package_snapshots') return snapshotChain;
+      if (table === 'published_public_package_details_v1') return snapshotChain;
       if (table !== 'attractions') throw new Error(`unexpected table ${table}`);
       const requestedIds = new Set<string>();
       const attractionChain = {
@@ -124,7 +138,8 @@ function publishablePackage(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mobileProofForSnapshot(snapshotHash: string) {
+function mobileProofForSnapshot(snapshotHash: string, pkg: Record<string, unknown>) {
+  const { snapshot } = buildPublicPackageSnapshot(pkg);
   return {
     ok: true,
     reason: 'actual /packages and /lp mobile browser proof passed',
@@ -134,6 +149,12 @@ function mobileProofForSnapshot(snapshotHash: string) {
       package_updated_at: '2026-07-07T00:00:00.000Z',
       package_revision: 3,
       public_snapshot_hash: snapshotHash,
+      proof_input_hash: buildCustomerPackageMobileProofInputHash({
+        publicSnapshotHash: snapshotHash,
+        sourceEvidenceDigest: snapshot.source_evidence_digest,
+        assetUrls: snapshot.images_public.map(image => image.url),
+        appBuildId: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
+      }),
       source: 'hwp-mobile-browser-proof',
       screen_hash: 'screen',
       customer_visible_hash: 'visible',
@@ -170,7 +191,7 @@ function mobileProofForSnapshot(snapshotHash: string) {
 
 describe('createPublicPackageSnapshotAndDecision', () => {
   it('does not return a latest public snapshot when customer title evidence is missing', async () => {
-    const snapshot = await fetchLatestPublicPackageSnapshot(
+    const snapshot = await fetchPromotedPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
         id: 'snap-1',
         package_id: 'pkg-1',
@@ -184,14 +205,13 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-1',
-      { expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
   });
 
   it('normalizes legacy snapshot packages to projection-approved customer copy', async () => {
-    const snapshot = await fetchLatestPublicPackageSnapshot(
+    const snapshot = await fetchPromotedPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
         id: 'snap-2',
         package_id: 'pkg-2',
@@ -225,7 +245,6 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-2',
-      { expectedPackageRevision: 3 },
     );
 
     expect(snapshot?.package.title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
@@ -235,7 +254,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
   });
 
   it('does not return legacy public snapshots that only contain a raw package price', async () => {
-    const snapshot = await fetchLatestPublicPackageSnapshot(
+    const snapshot = await fetchPromotedPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
         id: 'snap-raw-price',
         package_id: 'pkg-raw-price',
@@ -258,14 +277,13 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-raw-price',
-      { expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
   });
 
   it('does not return legacy public snapshots with risky customer promise copy', async () => {
-    const snapshot = await fetchLatestPublicPackageSnapshot(
+    const snapshot = await fetchPromotedPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
         id: 'snap-risky-copy',
         package_id: 'pkg-risky-copy',
@@ -290,7 +308,6 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         created_at: '2026-07-13T00:00:00.000Z',
       }) as never,
       'pkg-risky-copy',
-      { expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -298,7 +315,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
 
   it('does not return legacy public snapshots with non-customer-publishable attraction ids', async () => {
     const nonPublicAttractionId = '44444444-4444-4444-8444-444444444444';
-    const snapshot = await fetchLatestPublicPackageSnapshot(
+    const snapshot = await fetchPromotedPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
         id: 'snap-non-public-attraction',
         package_id: 'pkg-non-public-attraction',
@@ -335,7 +352,6 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         nonCustomerPublishableAttractionIds: [nonPublicAttractionId],
       }) as never,
       'pkg-non-public-attraction',
-      { expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -343,7 +359,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
 
   it('does not return legacy public snapshots when attraction approval lookup fails', async () => {
     const attractionId = '55555555-5555-4555-8555-555555555555';
-    const snapshot = await fetchLatestPublicPackageSnapshot(
+    const snapshot = await fetchPromotedPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
         id: 'snap-attraction-lookup-error',
         package_id: 'pkg-attraction-lookup-error',
@@ -371,7 +387,6 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         attractionLookupError: new Error('attractions unavailable'),
       }) as never,
       'pkg-attraction-lookup-error',
-      { expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -379,7 +394,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
 
   it('does not return legacy public snapshots with product-like customer-publishable attraction names', async () => {
     const productLikeAttractionId = '66666666-6666-4666-8666-666666666666';
-    const snapshot = await fetchLatestPublicPackageSnapshot(
+    const snapshot = await fetchPromotedPublicPackageSnapshot(
       makeSnapshotFetchSupabaseMock({
         id: 'snap-product-like-attraction',
         package_id: 'pkg-product-like-attraction',
@@ -410,7 +425,6 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         },
       }) as never,
       'pkg-product-like-attraction',
-      { expectedPackageRevision: 3 },
     );
 
     expect(snapshot).toBeNull();
@@ -426,7 +440,7 @@ describe('createPublicPackageSnapshotAndDecision', () => {
       pkg,
       {
         customerOpenContractOk: true,
-        mobileProof: mobileProofForSnapshot(snapshotHash),
+        mobileProof: mobileProofForSnapshot(snapshotHash, pkg),
       },
       {
         packagePatch: {
@@ -488,14 +502,14 @@ describe('createPublicPackageSnapshotAndDecision', () => {
       pkg,
       {
         customerOpenContractOk: true,
-        mobileProof: mobileProofForSnapshot(snapshotHash),
+        mobileProof: mobileProofForSnapshot(snapshotHash, pkg),
       },
     );
 
     expect(result.publishable).toBe(true);
     expect(calls[0].payload?.p_hard_blockers).toEqual([]);
     const snapshot = calls[0].payload?.p_snapshot_json as { public_title?: string; route_text_dump?: string[] };
-    expect(snapshot.public_title).toBe('연길·백두산 노옵션 핵심관광 4박5일');
+    expect(snapshot.public_title).toBe('연길·백두산 노옵션 4박5일');
     expect(snapshot.route_text_dump?.join('\n')).not.toMatch(/출발확정|온천|5성/);
   });
 

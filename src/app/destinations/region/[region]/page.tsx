@@ -18,7 +18,7 @@ import {
 } from '@/lib/public-destinations';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 0;
@@ -225,7 +225,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       if (pd.length === 0) return true;
       return pd.some(d => d.date && d.date >= today);
     });
-  const publicCardRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, alivePackageRows);
+  const publicCardRows = await getPublishedPackageCards(supabaseAdmin, alivePackageRows);
   const alivePkgs = publicCardRows
     .map(p => ({
       ...p,

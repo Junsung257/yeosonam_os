@@ -167,7 +167,7 @@ export async function prepareDispatch(input: DispatchInput): Promise<DispatchRes
   await applyRequestContext(input.ctx)
 
   const routerResult = await routeMessage(input.message, input.session?.context ?? {})
-  const agentType = routerResult.agent
+  const agentType: AgentType = input.ctx.surface === 'customer' ? 'products' : routerResult.agent
   const config = await buildConfig(agentType, input.ctx)
   const specialistPick = resolveSpecialist(agentType, input.message, input.ctx)
   return {

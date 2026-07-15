@@ -3,6 +3,7 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getPublishedPartnerPackages } from '@/lib/public-packages';
 
 function extractBearerKey(request: NextRequest): string | null {
   const authHeader = request.headers.get('authorization') ?? '';
@@ -77,23 +78,7 @@ export async function GET(
   }
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from('travel_packages')
-      .select(
-        `id, title, destination, duration_nights, duration_days,
-         status, product_summary, product_highlights,
-         display_title, hero_tagline,
-         price_dates, price_tiers,
-         itinerary_data,
-         created_at, updated_at`,
-      )
-      .eq('id', id)
-      .eq('status', 'approved')
-      .limit(1);
-
-    if (error) throw error;
-
-    const pkg = data?.[0] ?? null;
+    const pkg = (await getPublishedPartnerPackages(supabaseAdmin, [id]))[0] ?? null;
     if (!pkg) {
       return apiResponse({ error: '패키지를 찾을 수 없거나 미승인 상태입니다' }, { status: 404 });
     }

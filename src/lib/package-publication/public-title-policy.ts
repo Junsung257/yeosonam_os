@@ -1,3 +1,5 @@
+import { unsupportedTitleClaims } from './title-claim-registry';
+
 type AnyRecord = Record<string, unknown>;
 
 const RISKY_TITLE_WORDS =
@@ -229,5 +231,22 @@ export function composeCustomerPublicTitle(
 
   const condition = inferCondition(text, optionBadges);
   const theme = inferTheme(text, destination);
-  return uniqueParts([destination, condition, theme, duration]).join(' ');
+  const draft = uniqueParts([destination, condition, theme, duration]).join(' ');
+  const itinerary = asRecord(pkg.itinerary_data);
+  const days = Array.isArray(itinerary?.days) ? itinerary.days : [];
+  const attractionTokens = JSON.stringify(pkg.itinerary_data ?? {}).match(/attraction_(?:id|name)s?/g) ?? [];
+  const hasPaidOptionalTour = (Array.isArray(pkg.optional_tours) ? pkg.optional_tours : []).some(item => {
+    const record = asRecord(item);
+    const itemText = String(record?.name ?? record?.title ?? item ?? '');
+    return Number(record?.price ?? record?.amount) > 0 || /(?:USD|KRW|달러|원)/i.test(itemText);
+  });
+  const unsupportedTokens = new Set(unsupportedTitleClaims(draft, {
+    sourceText: text,
+    itineraryDayCount: days.length,
+    attractionCount: attractionTokens.length,
+    hasPaidOptionalTour,
+  }).map(claim => claim.token));
+  return uniqueParts([destination, condition, theme, duration])
+    .filter(part => !unsupportedTokens.has(part))
+    .join(' ');
 }

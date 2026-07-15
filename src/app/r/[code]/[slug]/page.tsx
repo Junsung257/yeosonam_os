@@ -14,7 +14,7 @@ import type { Metadata } from 'next';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
@@ -102,7 +102,7 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
         .maybeSingle();
       const packageRow = pkg as Record<string, unknown> | null;
       if (packageRow && isReferralPublicSnapshotCandidate(packageRow)) {
-        const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [packageRow]);
+        const publicRows = await getPublishedPackageCards(supabaseAdmin, [packageRow]);
         const p = publicRows[0] as { title?: string; destination?: string; product_summary?: string } | undefined;
         if (!p) return { title, description, robots: { index: false, follow: false } };
         const packageTitle = p.title || title;

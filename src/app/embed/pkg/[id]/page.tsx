@@ -19,7 +19,7 @@
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
@@ -94,7 +94,7 @@ export default async function EmbedWidget(props: Params) {
       ]);
       const pp = p as (PackageRow & Record<string, unknown>) | null;
       if (pp && isEmbedPublicSnapshotCandidate(pp)) {
-        const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [pp]);
+        const publicRows = await getPublishedPackageCards(supabaseAdmin, [pp]);
         pkg = (publicRows[0] as PackageRow | undefined) ?? null;
       }
       aff = (a as AffiliateRow) || null;
