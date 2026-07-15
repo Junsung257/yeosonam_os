@@ -158,6 +158,25 @@ function fieldStatuses(report: PublicSnapshotGenerationReport): Record<string, P
   return Object.fromEntries(report.diagnostics.map(diagnostic => [diagnostic.field, diagnostic.status]));
 }
 
+function fieldDiagnostics(report: PublicSnapshotGenerationReport) {
+  return Object.fromEntries(report.diagnostics.map(diagnostic => [
+    diagnostic.field,
+    {
+      status: diagnostic.status,
+      process_stage: diagnostic.process_stage ?? null,
+      evidence: diagnostic.evidence,
+      required_source_evidence: diagnostic.required_source_evidence ?? [],
+      repair_actions: diagnostic.repair_actions,
+    },
+  ]));
+}
+
+function fieldsByStatus(report: PublicSnapshotGenerationReport, status: PublicSnapshotGenerationStatus): string[] {
+  return report.diagnostics
+    .filter(diagnostic => diagnostic.status === status)
+    .map(diagnostic => diagnostic.field);
+}
+
 export function buildAuditItem(
   row: AnyRecord,
   snapshot: PublicPackageSnapshot,
@@ -220,6 +239,12 @@ export function buildAuditItem(
       route_text_sample: routeTextSample(snapshot),
     },
     fields: fieldStatuses(report),
+    field_diagnostics: fieldDiagnostics(report),
+    process_gap_summary: {
+      blocked_fields: fieldsByStatus(report, 'blocked'),
+      repairable_fields: fieldsByStatus(report, 'repairable'),
+      next_actions: report.repair_actions,
+    },
     repair_actions: report.repair_actions,
   };
 }
@@ -253,6 +278,37 @@ function summarizeFieldStatus(rows: ReturnType<typeof diagnosePublicSnapshotGene
     }
   }
   return fields;
+}
+
+function summarizeProcessGaps(rows: ReturnType<typeof diagnosePublicSnapshotGeneration>[]) {
+  const output: Record<string, {
+    blocked: number;
+    repairable: number;
+    process_stages: Record<string, number>;
+    required_source_evidence: Record<string, number>;
+    repair_actions: Record<string, number>;
+  }> = {};
+
+  for (const report of rows) {
+    for (const diagnostic of report.diagnostics) {
+      if (diagnostic.status === 'generated') continue;
+      const current = output[diagnostic.field] ?? {
+        blocked: 0,
+        repairable: 0,
+        process_stages: {},
+        required_source_evidence: {},
+        repair_actions: {},
+      };
+      if (diagnostic.status === 'blocked') current.blocked++;
+      if (diagnostic.status === 'repairable') current.repairable++;
+      if (diagnostic.process_stage) increment(current.process_stages, diagnostic.process_stage);
+      for (const evidence of diagnostic.required_source_evidence ?? []) increment(current.required_source_evidence, evidence);
+      for (const action of diagnostic.repair_actions) increment(current.repair_actions, action);
+      output[diagnostic.field] = current;
+    }
+  }
+
+  return output;
 }
 
 function auditRow(row: AnyRecord) {
@@ -402,6 +458,7 @@ async function main() {
   const totals: Record<PublicSnapshotGenerationStatus, number> = { generated: 0, repairable: 0, blocked: 0 };
   for (const report of reports) increment(totals, report.overall_status);
   const fieldStatus = summarizeFieldStatus(reports);
+  const processGaps = summarizeProcessGaps(reports);
   const report = {
     checked_at: new Date().toISOString(),
     scope: {
@@ -411,6 +468,7 @@ async function main() {
     },
     totals,
     field_status: fieldStatus,
+    process_gaps: processGaps,
     top_repair_actions: Object.entries(actionCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)

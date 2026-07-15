@@ -19,6 +19,8 @@ export type PublicSnapshotGenerationDiagnostic = {
   field: PublicSnapshotGenerationField;
   status: PublicSnapshotGenerationStatus;
   evidence: string[];
+  required_source_evidence?: string[];
+  process_stage?: string;
   repair_actions: string[];
 };
 
@@ -46,6 +48,8 @@ const ITINERARY_SOURCE_REPAIR_ACTION =
   'Re-split the source itinerary by DAY and exclude price table, inclusion, and exclusion fragments from itinerary rows.';
 const ITINERARY_SOURCE_MISSING_ACTION =
   'Source text is missing a usable DAY itinerary section. Do not invent itinerary rows from title or summary; re-upload supplier raw text with the day-by-day itinerary.';
+const OPTIONAL_TOUR_REPAIR_ACTION =
+  'Reclassify optional tour candidates by source section and rebuild optional_tours_public from validated paid options only.';
 const ITINERARY_SOURCE_CUE_RE =
   /DAY\s*\d|Day\s*\d|D\s*\+?\s*\d|\uC77C\uCC28|\uC77C\uC815\uD45C|\uC5EC\uD589\s*\uC77C\uC815|\uACF5\uD56D|\uD638\uD154|\uAD00\uAD11|\uC774\uB3D9|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD/u;
 
@@ -80,11 +84,17 @@ function addDiagnostic(
   status: PublicSnapshotGenerationStatus,
   evidence: string[],
   repairActions: string[],
+  options: {
+    requiredSourceEvidence?: string[];
+    processStage?: string;
+  } = {},
 ): void {
   diagnostics.push({
     field,
     status,
     evidence: evidence.filter(Boolean),
+    required_source_evidence: options.requiredSourceEvidence?.filter(Boolean),
+    process_stage: options.processStage,
     repair_actions: repairActions.filter(Boolean),
   });
 }
@@ -123,6 +133,21 @@ function summarizeBlockers(blockers: PublishFinding[], codes: string[]): string[
     .map(blocker => `${blocker.code}: ${blocker.message}`);
 }
 
+function pollutionBlockersForField(blockers: PublishFinding[], patterns: RegExp[]): PublishFinding[] {
+  return blockers.filter((blocker) => {
+    const code = String(blocker.code);
+    if (!['masked_data_pollution', 'inclusion_optional_mixup', 'price_fragment_display'].includes(code)) {
+      return false;
+    }
+    const fieldPath = String(blocker.fieldPath ?? '');
+    return patterns.some(pattern => pattern.test(fieldPath));
+  });
+}
+
+function summarizeFieldPollution(blockers: PublishFinding[]): string[] {
+  return blockers.map(blocker => `${blocker.code}: ${blocker.fieldPath ?? 'unknown'} ${blocker.message}`);
+}
+
 function customerCopyRepairActions(blockers: PublishFinding[], routeTextIsBad: boolean): string[] {
   const actions = new Set<string>();
   for (const blocker of blockers) {
@@ -148,7 +173,7 @@ function customerCopyRepairActions(blockers: PublishFinding[], routeTextIsBad: b
       continue;
     }
     if (blocker.code === 'masked_data_pollution' && fieldPath.includes('optional_tours')) {
-      actions.add('Reclassify optional tour candidates by source section; quarantine fragments and expose only validated paid options in optional_tours_public.');
+      actions.add(OPTIONAL_TOUR_REPAIR_ACTION);
       continue;
     }
     if ([
@@ -200,6 +225,10 @@ export function diagnosePublicSnapshotGeneration(input: {
     titleBlockers.length > 0 || !snapshot.public_title
       ? ['Regenerate public_title from source-backed destinations, verified favorable conditions, core trip nature, and duration.']
       : [],
+    {
+      processStage: 'public_title_policy',
+      requiredSourceEvidence: ['destination evidence', 'verified duration', 'source-backed favorable conditions only'],
+    },
   );
 
   const summary = text(asRecord(snapshot.lp_projection)?.summary ?? snapshot.package.product_summary);
@@ -213,6 +242,10 @@ export function diagnosePublicSnapshotGeneration(input: {
     summary && summaryBlockers.length === 0 && !RISKY_OR_INTERNAL_COPY_RE.test(summary) && !PLACEHOLDER_RE.test(summary)
       ? []
       : ['Regenerate the summary from approved customer copy templates and source-backed package facts only.'],
+    {
+      processStage: 'customer_copy_template',
+      requiredSourceEvidence: ['approved template', 'source-backed destination/duration/option-policy facts'],
+    },
   );
 
   const priceBlockers = byField.get('price_dates') ?? [];
@@ -237,25 +270,40 @@ export function diagnosePublicSnapshotGeneration(input: {
       sourceTextIsLongEnoughForFieldRepair(rawText) ? 'raw_text_sufficient_for_price_repair' : 'raw_text_insufficient_for_price_repair',
     ],
     priceRepairActions,
+    {
+      processStage: priceGenerated ? 'public_snapshot_price_projection' : 'price_table_recovery',
+      requiredSourceEvidence: ['departure date', 'adult selling price', 'currency', 'per-person basis'],
+    },
   );
 
   const publicItineraryDays = itineraryDays(snapshot.itinerary_public);
+  const itineraryPollutionBlockers = pollutionBlockersForField(hardBlockers, [
+    /^itinerary_data(?:\.|$)/,
+    /^itinerary_public(?:\.|$)/,
+  ]);
   const itineraryRepairable = itinerarySourceLooksRepairable(rawText);
-  const itineraryGenerated = hasArrayItems(publicItineraryDays);
+  const itineraryGenerated = hasArrayItems(publicItineraryDays) && itineraryPollutionBlockers.length === 0;
   const itineraryRepairActions = itineraryGenerated
     ? []
+    : itineraryPollutionBlockers.length > 0
+      ? ['Rebuild itinerary day rows from the source itinerary section and quarantine price, inclusion, exclusion, or notice fragments.']
     : itineraryRepairable
       ? [ITINERARY_SOURCE_REPAIR_ACTION]
       : [ITINERARY_SOURCE_MISSING_ACTION];
   addDiagnostic(
     diagnostics,
     'itinerary',
-    itineraryGenerated ? 'generated' : (itineraryRepairable ? 'repairable' : 'blocked'),
+    itineraryGenerated ? 'generated' : (itineraryPollutionBlockers.length > 0 && rawText ? 'repairable' : itineraryRepairable ? 'repairable' : 'blocked'),
     [
-      itineraryGenerated ? `days=${(publicItineraryDays as unknown[]).length}` : 'itinerary_days_missing',
+      hasArrayItems(publicItineraryDays) ? `days=${(publicItineraryDays as unknown[]).length}` : 'itinerary_days_missing',
       itineraryRepairable ? 'raw_itinerary_source_repairable' : 'raw_itinerary_source_insufficient',
+      ...summarizeFieldPollution(itineraryPollutionBlockers),
     ],
     itineraryRepairActions,
+    {
+      processStage: itineraryPollutionBlockers.length > 0 ? 'itinerary_quarantine_backfill' : 'day_section_split',
+      requiredSourceEvidence: ['DAY-by-DAY section', 'source-backed schedule rows', 'fragment quarantine result'],
+    },
   );
 
   addDiagnostic(
@@ -269,20 +317,38 @@ export function diagnosePublicSnapshotGeneration(input: {
     hasArrayItems(snapshot.inclusions_public) || hasArrayItems(snapshot.exclusions_public)
       ? []
       : ['Regenerate inclusions and exclusions from their source sections; quarantine headers, price fragments, and unrelated table rows.'],
+    {
+      processStage: 'terms_section_split',
+      requiredSourceEvidence: ['inclusion section', 'exclusion section', 'header/table-fragment quarantine result'],
+    },
   );
 
+  const optionalTourPollutionBlockers = pollutionBlockersForField(hardBlockers, [
+    /^optional_tours(?:\.|$)/,
+    /^optional_tours_public(?:\.|$)/,
+    /^option_policy(?:\.|$)/,
+  ]);
+  const optionalTourStatus: PublicSnapshotGenerationStatus =
+    snapshot.option_policy.status === 'polluted' || optionalTourPollutionBlockers.length > 0
+      ? rawText ? 'repairable' : 'blocked'
+      : 'generated';
   addDiagnostic(
     diagnostics,
     'optional_tours',
-    snapshot.option_policy.status === 'polluted' ? 'repairable' : 'generated',
+    optionalTourStatus,
     [
       `optional_tour_status=${snapshot.option_policy.status}`,
       `optional_tours_public=${snapshot.optional_tours_public.length}`,
       snapshot.option_policy.badges.length > 0 ? `badges=${snapshot.option_policy.badges.join(',')}` : '',
+      ...summarizeFieldPollution(optionalTourPollutionBlockers),
     ],
-    snapshot.option_policy.status === 'polluted'
-      ? ['Reclassify optional tour candidates by source section and rebuild optional_tours_public from validated paid options only.']
+    snapshot.option_policy.status === 'polluted' || optionalTourPollutionBlockers.length > 0
+      ? [OPTIONAL_TOUR_REPAIR_ACTION]
       : [],
+    {
+      processStage: optionalTourPollutionBlockers.length > 0 ? 'optional_tour_quarantine_backfill' : 'optional_tour_policy',
+      requiredSourceEvidence: ['explicit optional-tour source section', 'paid option name', 'price or source-backed local inquiry basis'],
+    },
   );
 
   const attractionIds = collectAttractionIds(snapshot.itinerary_public);
@@ -298,6 +364,10 @@ export function diagnosePublicSnapshotGeneration(input: {
     invalidAttractionIds.length > 0
       ? ['Quarantine invalid attraction IDs and rematch only to existing attractions with a valid UUID and sufficient confidence.']
       : [],
+    {
+      processStage: 'attraction_match_validation',
+      requiredSourceEvidence: ['raw attraction name', 'existing attraction UUID', 'match confidence'],
+    },
   );
 
   addDiagnostic(
@@ -308,6 +378,10 @@ export function diagnosePublicSnapshotGeneration(input: {
     hasArrayItems(snapshot.images_public)
       ? []
       : ['Select source-backed product, attraction, or destination images; use only safe generic fallbacks that do not imply unavailable experiences.'],
+    {
+      processStage: 'public_image_selection',
+      requiredSourceEvidence: ['approved product thumbnail, attraction photo, destination image, or safe generic fallback'],
+    },
   );
 
   const copyBlockers = summarizeBlockers(hardBlockers, [
@@ -325,6 +399,10 @@ export function diagnosePublicSnapshotGeneration(input: {
     badCopy || copyBlockers.length > 0 ? 'blocked' : 'generated',
     copyBlockers.length > 0 ? copyBlockers : ['customer_visible_text_lint_passed'],
     badCopy || copyBlockers.length > 0 ? customerCopyRepairActions(hardBlockers, badCopy) : [],
+    {
+      processStage: 'route_text_dump_lint',
+      requiredSourceEvidence: ['approved customer templates', 'public snapshot projections for package, LP, card, similar, sticky CTA'],
+    },
   );
 
   const priority: Record<PublicSnapshotGenerationStatus, number> = {

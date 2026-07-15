@@ -191,4 +191,55 @@ describe('public snapshot generation diagnostics', () => {
     expect(byField.get('terms')?.status).toBe('generated');
     expect(byField.get('optional_tours')?.status).toBe('generated');
   });
+
+  it('marks hidden optional tour source pollution as an optional-tour process repair', () => {
+    const pkg = samplePackage();
+    const { snapshot } = buildPublicPackageSnapshot(pkg);
+    const report = diagnosePublicSnapshotGeneration({
+      pkg,
+      snapshot,
+      hardBlockers: [
+        {
+          code: 'masked_data_pollution',
+          fieldPath: 'optional_tours.0',
+          message: 'optional_tours contains price-table or inclusion fragments hidden by renderer',
+          severity: 'critical',
+        },
+      ],
+    });
+    const optionalTours = diagnosticByField(report).get('optional_tours');
+
+    expect(report.overall_status).toBe('blocked');
+    expect(optionalTours?.status).toBe('repairable');
+    expect(optionalTours?.process_stage).toBe('optional_tour_quarantine_backfill');
+    expect(optionalTours?.required_source_evidence).toEqual(expect.arrayContaining([
+      'explicit optional-tour source section',
+      'paid option name',
+    ]));
+    expect(optionalTours?.repair_actions.join('\n')).toContain('Reclassify optional tour candidates by source section');
+  });
+
+  it('marks hidden itinerary source pollution as an itinerary rebuild instead of a clean generated itinerary', () => {
+    const pkg = samplePackage();
+    const { snapshot } = buildPublicPackageSnapshot(pkg);
+    const report = diagnosePublicSnapshotGeneration({
+      pkg,
+      snapshot,
+      hardBlockers: [
+        {
+          code: 'masked_data_pollution',
+          fieldPath: 'itinerary_data.days.1.schedule.2.activity',
+          message: 'itinerary_data contains a price-table fragment hidden by renderer',
+          severity: 'critical',
+        },
+      ],
+    });
+    const itinerary = diagnosticByField(report).get('itinerary');
+
+    expect(report.overall_status).toBe('blocked');
+    expect(itinerary?.status).toBe('repairable');
+    expect(itinerary?.process_stage).toBe('itinerary_quarantine_backfill');
+    expect(itinerary?.evidence.join('\n')).toContain('masked_data_pollution');
+    expect(itinerary?.repair_actions.join('\n')).toContain('Rebuild itinerary day rows from the source itinerary section');
+  });
 });
