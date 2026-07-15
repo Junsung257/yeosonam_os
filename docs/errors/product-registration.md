@@ -1739,3 +1739,16 @@ Last updated: 2026-06-21
 - **Verification**: `npx vitest run src/lib/customer-mobile-proof.test.ts src/lib/auto-mobile-qa.test.ts src/app/api/packages/[id]/approve/route.test.ts src/lib/product-registration/upload-route-boundary.test.ts` and `npx tsc --noEmit --pretty false`.
 - **Status**: FIXED IN ENGINE
 - **Prevention**: Do not call a product complete from source audit alone. Final completion requires actual `/packages/{id}` mobile proof plus A4 readiness.
+
+---
+
+## ERR-public-package-raw-egress@2026-07-15
+
+- **발견일**: 2026-07-15
+- **도메인**: 상품등록 / 고객 공개 경계
+- **원문 vs 결과**: 상품 상세과 LP는 공개 스냅샷을 사용했지만 블로그, 여행지, 광고, 파트너 API, A4, 후기/약관, 구형 자비스 등 다른 경로가 원본 상품 필드를 직접 읽거나 재사용할 수 있었다.
+- **근본 원인**: 공개 여부와 고객 표현값의 최종 판정자가 분산됐고, `status`, `audit_status`, latest snapshot, 렌더 sanitizer가 각각 부분적인 안전장치 역할을 했다. 목적별 공개 DTO와 고정 published pointer가 없어서 누락 필드를 raw 값으로 보충하기 쉬웠다.
+- **해결책**: `published_snapshot_id` 고정 포인터, 목적별 public projection, 중앙 read model, field evidence ledger, fragment quarantine, proof input hash, egress manifest/CI, 광고 provenance 검증, 고객 Jarvis 강제 concierge 라우팅을 도입한다.
+- **검증 규칙**: 외부 경로는 중앙 read model import가 필수이며 raw customer copy join/fallback을 금지한다. projection provenance가 없거나 stale이면 출력/발행하지 않는다. 연결 DB의 기존 상품은 신규 게이트로 재처리하기 전 공개 승인으로 간주하지 않는다.
+- **상태**: FIXED IN CODE / DB ROLLOUT PENDING
+- **재발 방지**: 새 고객·파트너·마케팅 export 경로를 추가할 때 `PUBLIC_EGRESS_MANIFEST`에 owner, projection, raw-read policy를 먼저 등록하고 경계 테스트를 통과시킨다.

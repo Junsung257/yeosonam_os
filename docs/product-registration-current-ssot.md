@@ -1,6 +1,6 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-07-13
+Last updated: 2026-07-15
 
 This is the current operating contract for supplier upload registration, customer mobile landing, and A4 poster readiness.
 
@@ -53,6 +53,35 @@ rg "keyword" docs AGENTS.md .claude --glob "!docs/audits/**"
 ```
 
 ## Current Direction
+
+### Public Package Egress Boundary
+
+`travel_packages` is an internal collection and decision table. Customer, partner, marketing, and public API surfaces must not treat it as presentation data.
+
+The mandatory publication path is:
+
+```text
+raw source
+  -> normalized package candidate
+  -> field evidence + deterministic quarantine
+  -> versioned public snapshot candidate
+  -> publish gate
+  -> travel_packages.published_snapshot_id
+  -> purpose-specific public projection
+  -> customer/partner/marketing consumer
+```
+
+The authoritative customer-open condition is an exact published pointer, not `status`, `audit_status`, or a latest-snapshot lookup. Public consumers use only `src/lib/public-packages/read-model.ts` and one of these projections: card, detail, public API, marketing, or partner. Missing projection or provenance means no output; raw fallback is forbidden.
+
+A failed new candidate does not overwrite or clear an already proven published snapshot. The candidate and its blocked decision remain auditable while the previous pointer continues to serve. Removing the previous snapshot requires an explicit revocation decision and reason; expired prices, cancelled inventory, or a proven defect in the published snapshot are revocation cases.
+
+Every newly generated customer field must have either source evidence or an approved deterministic derivation record. Active unresolved quarantine blocks publication. Historical repaired fragments remain auditable but do not block. Mobile render proof is keyed by snapshot hash, evidence digest, render contract, asset manifest, route, viewport, locale, and feature flags; a changed input invalidates the proof.
+
+Ads and generated content must persist `source_snapshot_id`, `source_snapshot_hash`, and projection version. External publication must compare those values with the current marketing projection and skip stale drafts. Customer Jarvis surfaces are always routed to the public concierge toolset, even when the domain router selects the internal products agent.
+
+The code boundary is enforced by `src/lib/public-packages/egress-manifest.ts` and its tests. Internal exceptions require an owner, no-export declaration, and expiry date. The database boundary is introduced by `20260715114704_public_package_published_pointer.sql`; deploy the migration before code that reads the pointer views.
+
+Do not call this rollout complete until the migration is applied, existing rows are reprocessed through the current gate, fresh route proofs exist, and representative mobile/desktop renders pass. Generation readiness alone is not publication approval.
 
 All supplier raw formats must converge into one registration object:
 
