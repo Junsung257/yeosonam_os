@@ -1764,7 +1764,13 @@ async function processQueueItem(
   item: any,
   eligibleByCardNewsId: Map<string, number>,
   options: { startedAtMs?: number } = {},
-): Promise<{ id: string; topic: string; status: string; reason?: string }> {
+): Promise<{
+  id: string;
+  topic: string;
+  status: string;
+  reason?: string;
+  atomicIndexing?: boolean;
+}> {
   // 동시성 방지 — generating 락
   const { error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
