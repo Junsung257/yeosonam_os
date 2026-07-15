@@ -103,14 +103,17 @@ import {
   type BlogInformationClaimLedgerEntry,
 } from '@/lib/blog-information-claim-ledger';
 import {
+  buildBlogInformationRepresentativeKey,
   readBlogInformationRepresentativeIdentity,
   type BlogInformationDuplicateDecision,
+  type BlogInformationRepresentativeIdentity,
 } from '@/lib/blog-information-representative';
 import {
-  activateBlogInformationRepresentative,
   attachBlogInformationRepresentativeDraft,
   reserveBlogInformationRepresentative,
 } from '@/lib/blog-information-representative-repository';
+import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -1254,7 +1257,13 @@ async function runBlogPublisher(request: NextRequest) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
-  const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
+  const results: Array<{
+    id: string;
+    topic: string;
+    status: string;
+    reason?: string;
+    atomicIndexing?: boolean;
+  }> = [];
   const errors: string[] = [];
   const candidateFailures: string[] = [];
   const startTime = Date.now();
@@ -1551,7 +1560,7 @@ async function runBlogPublisher(request: NextRequest) {
     // Indexing outbox + revalidatePath. External provider requests run in blog-indexing-worker.
     const indexingPromises: Promise<{ slug: string; ok: boolean; error?: string }>[] = [];
     for (const r of results) {
-      if (r.status === 'published' && r.reason) {
+      if (r.status === 'published' && r.reason && !r.atomicIndexing) {
         const slug = r.reason;
         const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
         indexingPromises.push((async () => {
@@ -2467,41 +2476,15 @@ async function processQueueItem(
     };
     const representativeOwner = `blog_topic_queue:${item.id}`;
     let representativeDecision: BlogInformationDuplicateDecision | null = null;
+    let representativeIdentity: BlogInformationRepresentativeIdentity | null = null;
     if (contentBoundary.lane === 'informational') {
-      const identity = readBlogInformationRepresentativeIdentity(generated.generation_meta);
-      if (!identity) throw new Error('blog_information_representative_identity_missing');
-      representativeDecision = await reserveBlogInformationRepresentative({
-        reservationOwner: representativeOwner,
-        candidate: {
-          ...identity,
-          slug: generated.slug,
-          title: generated.seo_title,
-          markdown: generated.blog_html,
-        },
-      });
+      representativeIdentity = readBlogInformationRepresentativeIdentity(generated.generation_meta);
+      if (!representativeIdentity) throw new Error('blog_information_representative_identity_missing');
       generationMeta.information_representative = {
-        representative_key: representativeDecision.representativeKey,
-        status: 'reserved',
-        canonical_slug: representativeDecision.canonicalSlug,
-        decision: representativeDecision.action,
+        representative_key: buildBlogInformationRepresentativeKey(representativeIdentity),
+        status: 'pending_publication',
+        canonical_slug: null,
       };
-      if (!['RESERVE_CREATE', 'RESUME_RESERVATION'].includes(representativeDecision.action)) {
-        await supabaseAdmin.from('blog_topic_queue').update({
-          status: 'skipped',
-          last_error: `information_representative:${representativeDecision.reason}`,
-          meta: {
-            ...(item.meta || {}),
-            information_representative: representativeDecision,
-            proposed_action: 'update_existing',
-          },
-        }).eq('id', item.id);
-        return {
-          id: item.id,
-          topic: item.topic,
-          status: 'skipped_duplicate',
-          reason: representativeDecision.canonicalSlug ?? representativeDecision.reason,
-        };
-      }
     }
     const writerClaimLedgerMeta = generated.generation_meta?.writer_claim_ledger;
     const writerClaimLedgerRecord = writerClaimLedgerMeta
@@ -2569,6 +2552,40 @@ async function processQueueItem(
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
         topic: item.topic ?? null,
       }));
+    if (representativeIdentity && requiresHumanReview) {
+      representativeDecision = await reserveBlogInformationRepresentative({
+        reservationOwner: representativeOwner,
+        candidate: {
+          ...representativeIdentity,
+          slug: generated.slug,
+          title: generated.seo_title,
+          markdown: generated.blog_html,
+        },
+      });
+      generationMeta.information_representative = {
+        representative_key: representativeDecision.representativeKey,
+        status: 'reserved',
+        canonical_slug: representativeDecision.canonicalSlug,
+        decision: representativeDecision.action,
+      };
+      if (!['RESERVE_CREATE', 'RESUME_RESERVATION'].includes(representativeDecision.action)) {
+        await supabaseAdmin.from('blog_topic_queue').update({
+          status: 'skipped',
+          last_error: `information_representative:${representativeDecision.reason}`,
+          meta: {
+            ...(item.meta || {}),
+            information_representative: representativeDecision,
+            proposed_action: 'update_existing',
+          },
+        }).eq('id', item.id);
+        return {
+          id: item.id,
+          topic: item.topic,
+          status: 'skipped_duplicate',
+          reason: representativeDecision.canonicalSlug ?? representativeDecision.reason,
+        };
+      }
+    }
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
@@ -2580,8 +2597,8 @@ async function processQueueItem(
       category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: normalizeAngleType(item.angle_type),
-      status: requiresHumanReview ? 'draft' : 'published',
-      published_at: requiresHumanReview ? null : now,
+      status: contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published',
+      published_at: contentBoundary.lane === 'informational' || requiresHumanReview ? null : now,
       review_status: requiresHumanReview ? 'pending_review' : null,
       quality_gate: publishQuality.readingTimeMinutes == null
         ? qa
@@ -2640,26 +2657,23 @@ async function processQueueItem(
       });
     }
 
-    if (representativeDecision && !requiresHumanReview) {
-      await activateBlogInformationRepresentative({
-        representativeKey: representativeDecision.representativeKey,
-        reservationOwner: representativeOwner,
+    if (representativeIdentity && !requiresHumanReview) {
+      await publishBlogInformationAtomically({
         creativeId,
-        canonicalSlug: generated.slug,
+        contentFingerprint: createBlogInformationContentFingerprint({
+          blogHtml: generated.blog_html,
+          seoTitle: generated.seo_title,
+          seoDescription: generated.seo_description,
+          slug: generated.slug,
+        }),
+        validationMeta: {
+          information_claim_validation: generationMeta.information_claim_validation as Record<string, unknown>,
+        },
+        qualityGate: rowPayload.quality_gate as Record<string, unknown>,
+        publishedAt: now,
+        identity: representativeIdentity,
+        reservationOwner: representativeOwner,
       });
-      generationMeta.information_representative = {
-        representative_key: representativeDecision.representativeKey,
-        status: 'active',
-        canonical_slug: generated.slug,
-        decision: representativeDecision.action,
-      };
-      const { error: representativeMetaError } = await supabaseAdmin
-        .from('content_creatives')
-        .update({ generation_meta: generationMeta })
-        .eq('id', creativeId);
-      if (representativeMetaError) {
-        throw new Error(`blog_information_representative_meta_update_failed:${representativeMetaError.message}`);
-      }
     }
     if (representativeDecision && requiresHumanReview) {
       await attachBlogInformationRepresentativeDraft({
@@ -2757,7 +2771,13 @@ async function processQueueItem(
 
     revalidatePublicBlogCache(generated.slug);
 
-    return { id: item.id, topic: item.topic, status: 'published', reason: generated.slug };
+    return {
+      id: item.id,
+      topic: item.topic,
+      status: 'published',
+      reason: generated.slug,
+      atomicIndexing: contentBoundary.lane === 'informational',
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
 

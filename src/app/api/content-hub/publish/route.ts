@@ -15,7 +15,13 @@ import {
   evaluateBlogInformationClaimPublishGate,
   toBlogInformationClaimValidationMeta,
 } from '@/lib/blog-information-claim-publish-gate';
-import { ensureBlogInformationRepresentativeForPublish } from '@/lib/blog-information-representative-repository';
+import {
+  buildBlogInformationRepresentativeKey,
+  readBlogInformationRepresentativeIdentity,
+  type BlogInformationRepresentativeIdentity,
+} from '@/lib/blog-information-representative';
+import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { isContentHubAction, resolveContentHubStatusTransition } from '@/lib/content-hub-status-transition';
 
@@ -79,6 +85,13 @@ export async function POST(request: NextRequest) {
 
     const status = transition.targetStatus;
     const updateData: Record<string, unknown> = { status };
+    let informationPublicationInput: {
+      identity: BlogInformationRepresentativeIdentity;
+      contentFingerprint: string;
+      validationMeta: Record<string, unknown>;
+      qualityGate: object;
+      publishedAt: string;
+    } | null = null;
 
     if (status === 'published' || status === 'manually_published') {
       if (!row?.blog_html || !row.slug) {
@@ -140,29 +153,44 @@ export async function POST(request: NextRequest) {
           claim_validation: claimReport,
         }, { status: 422 });
       }
-      const representative = await ensureBlogInformationRepresentativeForPublish({
-        creativeId: creative_id,
-        slug: row.slug,
-        title: row.seo_title ?? row.slug,
-        markdown: prepared.blogHtml,
-        productId: row.product_id ?? null,
-        generationMeta: row.generation_meta ?? null,
-      });
+      const identity = row.product_id
+        ? null
+        : readBlogInformationRepresentativeIdentity(row.generation_meta ?? null);
+      if (!row.product_id && !identity) {
+        throw new Error('blog_information_representative_identity_missing');
+      }
+      const claimValidationMeta = toBlogInformationClaimValidationMeta(claimReport);
       updateData.generation_meta = {
         ...(row.generation_meta || {}),
-        information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
-        ...(representative ? {
+        information_claim_validation: claimValidationMeta,
+        ...(identity ? {
           information_representative: {
-            representative_key: representative.representativeKey,
-            status: 'active',
-            canonical_slug: representative.canonicalSlug,
+            representative_key: buildBlogInformationRepresentativeKey(identity),
+            status: 'pending_publication',
+            canonical_slug: null,
           },
         } : {}),
       };
 
-      updateData.published_at = new Date().toISOString();
+      const publishedAt = new Date().toISOString();
+      updateData.status = row.product_id ? status : 'draft';
+      updateData.published_at = row.product_id ? publishedAt : null;
       updateData.blog_html = prepared.blogHtml;
       applyBlogPublishQualityToUpdate(updateData, qaReport);
+      if (identity) {
+        informationPublicationInput = {
+          identity,
+          contentFingerprint: createBlogInformationContentFingerprint({
+            blogHtml: prepared.blogHtml,
+            seoTitle: row.seo_title ?? null,
+            seoDescription: row.seo_description ?? null,
+            slug: row.slug,
+          }),
+          validationMeta: { information_claim_validation: claimValidationMeta },
+          qualityGate: qaReport.qualityGate,
+          publishedAt,
+        };
+      }
     }
 
     const { data: updated, error } = await supabaseAdmin
@@ -184,10 +212,17 @@ export async function POST(request: NextRequest) {
     if (status === 'published' || status === 'manually_published') {
       const slug = row?.slug;
       const destination = row ? resolveBlogDestination(row) : null;
+      if (informationPublicationInput) {
+        await publishBlogInformationAtomically({
+          creativeId: creative_id,
+          ...informationPublicationInput,
+          reservationOwner: `content_hub_publish:${creative_id}`,
+        });
+      }
       revalidatePublicBlogCache(slug ?? null, destination);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-      if (slug) {
+      if (slug && row.product_id) {
         void enqueueBlogIndexingJob({
           slug,
           baseUrl,
@@ -199,7 +234,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return apiResponse({ ok: true, status });
+    return apiResponse({ ok: true, status: informationPublicationInput ? 'published' : status });
   } catch (err) {
     console.error('[content-hub/publish] failed:', sanitizeDbError(err));
     return apiResponse({ error: sanitizeDbError(err, 'Publish failed') }, { status: 500 });

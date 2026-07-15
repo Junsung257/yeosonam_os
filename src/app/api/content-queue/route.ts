@@ -15,7 +15,12 @@ import {
   evaluateBlogInformationClaimPublishGate,
   toBlogInformationClaimValidationMeta,
 } from '@/lib/blog-information-claim-publish-gate';
-import { ensureBlogInformationRepresentativeForPublish } from '@/lib/blog-information-representative-repository';
+import {
+  buildBlogInformationRepresentativeKey,
+  readBlogInformationRepresentativeIdentity,
+} from '@/lib/blog-information-representative';
+import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
 
 const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, review_status, category, content_type, topic_source, generation_meta, travel_packages(id, title, destination)';
 
@@ -173,28 +178,28 @@ const postHandler = async (request: NextRequest) => {
           claim_validation: claimReport,
         }, { status: 422 });
       }
-      const representative = await ensureBlogInformationRepresentativeForPublish({
-        creativeId: creative_id,
-        slug,
-        title: seo_title ?? row.seo_title ?? slug,
-        markdown: prepared.blogHtml,
-        productId: row.product_id ?? null,
-        generationMeta: row.generation_meta ?? null,
-      });
+      const identity = row.product_id
+        ? null
+        : readBlogInformationRepresentativeIdentity(row.generation_meta ?? null);
+      if (!row.product_id && !identity) {
+        throw new Error('blog_information_representative_identity_missing');
+      }
+      const claimValidationMeta = toBlogInformationClaimValidationMeta(claimReport);
+      const publishedAt = new Date().toISOString();
 
       const updateData: Record<string, unknown> = {
-        status: 'published',
-        published_at: new Date().toISOString(),
+        status: row.product_id ? 'published' : 'draft',
+        published_at: row.product_id ? publishedAt : null,
         slug,
         blog_html: prepared.blogHtml,
         generation_meta: {
           ...(row.generation_meta || {}),
-          information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
-          ...(representative ? {
+          information_claim_validation: claimValidationMeta,
+          ...(identity ? {
             information_representative: {
-              representative_key: representative.representativeKey,
-              status: 'active',
-              canonical_slug: representative.canonicalSlug,
+              representative_key: buildBlogInformationRepresentativeKey(identity),
+              status: 'pending_publication',
+              canonical_slug: null,
             },
           } : {}),
         },
@@ -211,17 +216,36 @@ const postHandler = async (request: NextRequest) => {
 
       if (error) throw error;
 
+      if (identity) {
+        await publishBlogInformationAtomically({
+          creativeId: creative_id,
+          contentFingerprint: createBlogInformationContentFingerprint({
+            blogHtml: prepared.blogHtml,
+            seoTitle: finalTitle,
+            seoDescription: finalDescription,
+            slug,
+          }),
+          validationMeta: { information_claim_validation: claimValidationMeta },
+          qualityGate: qaReport.qualityGate,
+          publishedAt,
+          identity,
+          reservationOwner: `content_queue_approve:${creative_id}`,
+        });
+      }
+
       revalidatePublicBlogCache(slug, destination);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-      void enqueueBlogIndexingJob({
-        slug,
-        baseUrl,
-        contentCreativeId: creative_id,
-        source: 'content_queue_approve',
-      }).then((result) => {
-        if (!result.ok) console.warn('[content-queue approve] indexing enqueue failed:', result.error);
-      });
+      if (row.product_id) {
+        void enqueueBlogIndexingJob({
+          slug,
+          baseUrl,
+          contentCreativeId: creative_id,
+          source: 'content_queue_approve',
+        }).then((result) => {
+          if (!result.ok) console.warn('[content-queue approve] indexing enqueue failed:', result.error);
+        });
+      }
 
       return NextResponse.json({ ok: true, status: 'published', seo_score: qaReport.seoScore.score });
     }

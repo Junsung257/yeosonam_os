@@ -21,11 +21,15 @@ import {
 } from '@/lib/blog-information-claim-publish-gate';
 import { buildBlogContentBrief } from '@/lib/blog-content-brief';
 import {
-  activateBlogInformationRepresentative,
   ensureBlogInformationRepresentativeForPublish,
-  reserveBlogInformationRepresentative,
 } from '@/lib/blog-information-representative-repository';
-import type { BlogInformationDuplicateDecision } from '@/lib/blog-information-representative';
+import {
+  buildBlogInformationRepresentativeKey,
+  readBlogInformationRepresentativeIdentity,
+  type BlogInformationRepresentativeIdentity,
+} from '@/lib/blog-information-representative';
+import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 type AbortableQuery<T> = {
@@ -354,7 +358,7 @@ export async function POST(request: NextRequest) {
 
     let qaReport: BlogPublishQualityReport | null = null;
     let finalBlogHtml = blog_html;
-    let representativeDecision: BlogInformationDuplicateDecision | null = null;
+    let informationIdentity: BlogInformationRepresentativeIdentity | null = null;
     let claimValidationMeta: Record<string, unknown> | null = null;
     const representativeOwner = `api_blog_post:${cleanSlug}`;
     let informationGenerationMeta: Record<string, unknown> | null = null;
@@ -399,25 +403,12 @@ export async function POST(request: NextRequest) {
             issues: contentBrief.issues,
           }, { status: 422 });
         }
-        representativeDecision = await reserveBlogInformationRepresentative({
-          reservationOwner: representativeOwner,
-          candidate: {
-            destinationId: contentBrief.plan.destinationId ?? 'global',
-            intent: contentBrief.plan.intent,
-            audience: contentBrief.plan.audience,
-            locale: contentBrief.plan.locale,
-            slug: cleanSlug,
-            title: seo_title || cleanSlug,
-            markdown: finalBlogHtml,
-          },
-        });
-        if (!['RESERVE_CREATE', 'RESUME_RESERVATION'].includes(representativeDecision.action)) {
-          return apiResponse({
-            error: 'Informational representative already exists',
-            canonical_slug: representativeDecision.canonicalSlug,
-            proposed_action: 'update_existing',
-          }, { status: 409 });
-        }
+        informationIdentity = {
+          destinationId: contentBrief.plan.destinationId ?? 'global',
+          intent: contentBrief.plan.intent,
+          audience: contentBrief.plan.audience,
+          locale: contentBrief.plan.locale,
+        };
         informationGenerationMeta = {
           content_brief: {
             intent_type: contentBrief.plan.intent,
@@ -426,10 +417,8 @@ export async function POST(request: NextRequest) {
             locale: contentBrief.plan.locale,
           },
           information_representative: {
-            representative_key: representativeDecision.representativeKey,
-            status: 'reserved',
+            status: 'pending_publication',
             canonical_slug: null,
-            decision: representativeDecision.action,
           },
           information_claim_validation: claimValidationMeta,
         };
@@ -462,27 +451,36 @@ export async function POST(request: NextRequest) {
     if (status === 'published') {
       const contentCreativeId = (data?.[0] as { id?: string } | undefined)?.id ?? null;
       if (!contentCreativeId) throw new Error('Published draft insert did not return an id');
-      if (representativeDecision) {
-        await activateBlogInformationRepresentative({
-          representativeKey: representativeDecision.representativeKey,
-          reservationOwner: representativeOwner,
-          creativeId: contentCreativeId,
-          canonicalSlug: cleanSlug,
-        });
-        informationGenerationMeta = {
-          ...(informationGenerationMeta || {}),
-          information_representative: {
-            representative_key: representativeDecision.representativeKey,
-            status: 'active',
-            canonical_slug: cleanSlug,
-            decision: representativeDecision.action,
-          },
-        };
-      }
       if (informationGenerationMeta && claimValidationMeta) {
         informationGenerationMeta.information_claim_validation = claimValidationMeta;
       }
       const publishedAt = new Date().toISOString();
+      if (!product_id) {
+        if (!informationIdentity || !qaReport || !claimValidationMeta) {
+          throw new Error('Informational atomic publication inputs are incomplete');
+        }
+        const publication = await publishBlogInformationAtomically({
+          creativeId: contentCreativeId,
+          contentFingerprint: createBlogInformationContentFingerprint({
+            blogHtml: finalBlogHtml,
+            seoTitle: seo_title || null,
+            seoDescription: seo_description || null,
+            slug: cleanSlug,
+          }),
+          validationMeta: { information_claim_validation: claimValidationMeta },
+          qualityGate: qaReport.qualityGate,
+          publishedAt,
+          identity: informationIdentity,
+          reservationOwner: representativeOwner,
+        });
+        data[0] = {
+          ...(data[0] as Record<string, unknown>),
+          status: 'published',
+          published_at: publication.publishedAt,
+        };
+        revalidatePublicBlogCache(cleanSlug);
+        return apiResponse({ post: data[0], success: true }, { status: 201 });
+      }
       const { data: publishedRows, error: publishError } = await supabaseAdmin
         .from('content_creatives')
         .update({
@@ -616,9 +614,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     let qaReport: BlogPublishQualityReport | null = null;
+    let informationPublicationInput: {
+      identity: BlogInformationRepresentativeIdentity;
+      contentFingerprint: string;
+      validationMeta: Record<string, unknown>;
+      qualityGate: object;
+      publishedAt: string;
+    } | null = null;
+    let publishingProduct = false;
     if (reqStatus === 'published') {
-      updateData.status = 'published';
-      updateData.published_at = new Date().toISOString();
+      const requestedPublishedAt = new Date().toISOString();
 
       try {
         const { data: existing, error: existingError } = await supabaseAdmin
@@ -693,6 +698,9 @@ export async function PATCH(request: NextRequest) {
         qaReport = prepared.report;
         updateData.blog_html = prepared.blogHtml;
         applyBlogPublishQualityToUpdate(updateData, qaReport);
+        publishingProduct = Boolean(row?.product_id);
+        updateData.status = publishingProduct ? 'published' : 'draft';
+        updateData.published_at = publishingProduct ? requestedPublishedAt : null;
         const claimReport = await evaluateBlogInformationClaimPublishGate({
           creativeId: id,
           contentKey: finalSlug,
@@ -707,25 +715,38 @@ export async function PATCH(request: NextRequest) {
             claim_validation: claimReport,
           }, { status: 422 });
         }
-        const representative = await ensureBlogInformationRepresentativeForPublish({
-          creativeId: id,
-          slug: finalSlug,
-          title: finalTitle ?? finalSlug,
-          markdown: prepared.blogHtml,
-          productId: row?.product_id ?? null,
-          generationMeta: row?.generation_meta ?? null,
-        });
+        const identity = row?.product_id
+          ? null
+          : readBlogInformationRepresentativeIdentity(row?.generation_meta ?? null);
+        if (!row?.product_id && !identity) {
+          throw new Error('blog_information_representative_identity_missing');
+        }
+        const claimValidationMeta = toBlogInformationClaimValidationMeta(claimReport);
         updateData.generation_meta = {
           ...(row?.generation_meta || {}),
-          information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
-          ...(representative ? {
+          information_claim_validation: claimValidationMeta,
+          ...(identity ? {
             information_representative: {
-              representative_key: representative.representativeKey,
-              status: 'active',
-              canonical_slug: representative.canonicalSlug,
+              representative_key: buildBlogInformationRepresentativeKey(identity),
+              status: 'pending_publication',
+              canonical_slug: null,
             },
           } : {}),
         };
+        if (identity) {
+          informationPublicationInput = {
+            identity,
+            contentFingerprint: createBlogInformationContentFingerprint({
+              blogHtml: prepared.blogHtml,
+              seoTitle: finalTitle,
+              seoDescription: finalDescription,
+              slug: finalSlug,
+            }),
+            validationMeta: { information_claim_validation: claimValidationMeta },
+            qualityGate: qaReport.qualityGate,
+            publishedAt: requestedPublishedAt,
+          };
+        }
       } catch (qaErr) {
         console.warn('[blog PATCH] quality gate failed to run:', qaErr);
         return apiResponse({
@@ -751,9 +772,23 @@ export async function PATCH(request: NextRequest) {
 
     if (reqStatus === 'published') {
       const finalSlug = (updateData.slug as string) || (data?.[0] as Record<string, unknown>)?.slug as string;
+      if (informationPublicationInput) {
+        const publication = await publishBlogInformationAtomically({
+          creativeId: id,
+          ...informationPublicationInput,
+          reservationOwner: `api_blog_patch:${id}`,
+        });
+        if (data?.[0]) {
+          data[0] = {
+            ...(data[0] as Record<string, unknown>),
+            status: 'published',
+            published_at: publication.publishedAt,
+          } as typeof data[0];
+        }
+      }
       revalidatePublicBlogCache(finalSlug || null);
 
-      if (finalSlug) {
+      if (finalSlug && publishingProduct) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
         void enqueueBlogIndexingJob({
           slug: finalSlug,

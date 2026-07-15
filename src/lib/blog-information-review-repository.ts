@@ -13,6 +13,8 @@ import {
 } from './blog-information-review-workflow';
 import type { BlogInformationPlan } from './blog-information-planner';
 import { validateBlogInformationResearchBundle, type BlogInformationResearchBundle } from './blog-information-evidence';
+import { publishBlogInformationAtomically } from './blog-information-atomic-publication';
+import { readBlogInformationRepresentativeIdentity } from './blog-information-representative';
 
 interface InformationReviewCaseRow {
   id: string;
@@ -69,6 +71,7 @@ export function createBlogInformationEvidenceWorkflowStore(input: {
   creativeId: string;
   contentKey: string;
   tenantId?: string | null;
+  generationMeta?: Record<string, unknown> | null;
 }): BlogInformationEvidenceWorkflowStore {
   return {
     async save({ plan, research, report, state, contentFingerprint }) {
@@ -125,9 +128,20 @@ export function createBlogInformationEvidenceWorkflowStore(input: {
         });
       if (eventError) throw persistenceError('event_insert', eventError);
 
+      const generationMeta = {
+        ...(input.generationMeta ?? {}),
+        content_brief: {
+          destination_id: plan.destinationId,
+          intent_type: plan.intent,
+          audience: plan.audience,
+          locale: plan.locale,
+          risk_level: plan.riskLevel,
+          requires_human_review: plan.requiresHumanReview,
+        },
+      };
       const creativeUpdate = state === 'pending_review'
-        ? { status: 'draft', published_at: null, review_status: 'pending_review' }
-        : { status: 'draft', published_at: null };
+        ? { status: 'draft', published_at: null, review_status: 'pending_review', generation_meta: generationMeta }
+        : { status: 'draft', published_at: null, generation_meta: generationMeta };
       const { error: creativeError } = await supabaseAdmin
         .from('content_creatives')
         .update(creativeUpdate)
@@ -219,8 +233,15 @@ export async function submitBlogInformationReviewDecision(input: {
 export async function publishBlogInformationReviewedDraft(input: {
   creativeId: string;
   actorId?: string | null;
+  qualityGate: object;
   now?: Date;
-}): Promise<{ handled: boolean; slug?: string | null; report?: BlogInformationClaimValidationReport }> {
+}): Promise<{
+  handled: boolean;
+  slug?: string | null;
+  report?: BlogInformationClaimValidationReport;
+  indexingJobId?: string;
+  idempotent?: boolean;
+}> {
   const loaded = await loadReviewCase(input.creativeId);
   if (!loaded) return { handled: false };
   if (loaded.creative.product_id) throw new Error('blog_information_publish_product_content_forbidden');
@@ -250,17 +271,27 @@ export async function publishBlogInformationReviewedDraft(input: {
   if (!report.passed) {
     throw new Error(`blog_information_publish_revalidation_failed:${report.issues.map((issue) => issue.code).join(',')}`);
   }
+  const identity = readBlogInformationRepresentativeIdentity(loaded.creative.generation_meta);
+  if (!identity) throw new Error('blog_information_publish_identity_missing');
   const publishedAt = (input.now ?? new Date()).toISOString();
-  const { error } = await supabaseAdmin.rpc('publish_blog_information_reviewed_draft', {
-    p_case_id: loaded.reviewCase.id,
-    p_creative_id: input.creativeId,
-    p_actor_id: normalizedActorId(input.actorId),
-    p_content_fingerprint: fingerprint,
-    p_validation_meta: { information_claim_validation: toBlogInformationClaimValidationMeta(report) },
-    p_published_at: publishedAt,
+  const publication = await publishBlogInformationAtomically({
+    creativeId: input.creativeId,
+    reviewCaseId: loaded.reviewCase.id,
+    actorId: normalizedActorId(input.actorId),
+    contentFingerprint: fingerprint,
+    validationMeta: { information_claim_validation: toBlogInformationClaimValidationMeta(report) },
+    qualityGate: input.qualityGate,
+    publishedAt,
+    identity,
+    reservationOwner: `information-review:${loaded.reviewCase.id}`,
   });
-  if (error) throw persistenceError('publish_rpc', error);
-  return { handled: true, slug: loaded.creative.slug, report };
+  return {
+    handled: true,
+    slug: publication.slug,
+    report,
+    indexingJobId: publication.indexingJobId,
+    idempotent: publication.idempotent,
+  };
 }
 
 export interface BlogInformationReviewQueueDetail {

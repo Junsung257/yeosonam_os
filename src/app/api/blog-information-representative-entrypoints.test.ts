@@ -9,21 +9,21 @@ describe('informational representative enforcement across publish entrypoints', 
     'src/app/api/blog/route.ts',
     'src/app/api/content-hub/publish/route.ts',
     'src/app/api/content-queue/route.ts',
-  ])('enforces the representative registry before public state in %s', (path) => {
+  ])('uses atomic information publication instead of a split public transition in %s', (path) => {
     const route = source(path);
-    expect(route).toContain('ensureBlogInformationRepresentativeForPublish');
+    expect(route).toContain('publishBlogInformationAtomically');
     expect(route).toContain('information_representative');
-    expect(route).toContain("status: 'active'");
+    expect(route).toContain("status: 'pending_publication'");
   });
 
-  it('reserves before insert and activates only after the automatic creative exists', () => {
+  it('keeps automatic information private until the atomic publication RPC succeeds', () => {
     const route = source('src/app/api/cron/blog-publisher/route.ts');
-    const reserve = route.indexOf('await reserveBlogInformationRepresentative({');
-    const insert = route.indexOf('.insert(rowPayload)', reserve);
-    const activate = route.indexOf('await activateBlogInformationRepresentative({', insert);
-    expect(reserve).toBeGreaterThan(0);
-    expect(insert).toBeGreaterThan(reserve);
-    expect(activate).toBeGreaterThan(insert);
+    const insert = route.indexOf('.insert(rowPayload)');
+    const atomicPublish = route.indexOf('await publishBlogInformationAtomically({', insert);
+    expect(insert).toBeGreaterThan(0);
+    expect(atomicPublish).toBeGreaterThan(insert);
+    expect(route).toContain("contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published'");
+    expect(route).not.toContain('await activateBlogInformationRepresentative({');
     expect(route).toContain("status: 'skipped_duplicate'");
     expect(route).toContain("proposed_action: 'update_existing'");
   });

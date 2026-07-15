@@ -6,7 +6,6 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { prepareBlogForPublish } from '@/lib/blog-publish-quality';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
-import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import {
   executeBlogInformationEvidenceWorkflow,
 } from '@/lib/blog-information-review-workflow';
@@ -53,7 +52,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       if (!body.planner) return apiResponse({ error: 'planner is required' }, { status: 400 });
       const { data: creative, error } = await supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, blog_html, seo_title, seo_description, destination, tenant_id, product_id')
+        .select('id, slug, blog_html, seo_title, seo_description, destination, tenant_id, product_id, generation_meta')
         .eq('id', body.creative_id)
         .single();
       if (error || !creative) return apiResponse({ error: 'Draft not found' }, { status: 404 });
@@ -87,6 +86,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
           creativeId: creative.id,
           contentKey: creative.slug,
           tenantId: creative.tenant_id,
+          generationMeta: creative.generation_meta,
         }),
       });
       return apiResponse({ ok: true, workflow });
@@ -131,18 +131,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     if (prepared.blogHtml !== creative.blog_html) {
       return apiResponse({ error: 'Publish preparation changed reviewed content; save and review again' }, { status: 409 });
     }
-    const result = await publishBlogInformationReviewedDraft({ creativeId: creative.id, actorId });
+    const result = await publishBlogInformationReviewedDraft({
+      creativeId: creative.id,
+      actorId,
+      qualityGate: prepared.report.qualityGate,
+    });
     if (!result.handled) return apiResponse({ error: 'Information review case not found' }, { status: 404 });
     revalidatePublicBlogCache(result.slug ?? null, creative.destination);
-    if (result.slug) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-      void enqueueBlogIndexingJob({
-        slug: result.slug,
-        baseUrl,
-        contentCreativeId: creative.id,
-        source: 'information_review_publish',
-      });
-    }
     return apiResponse({ ok: true, status: 'published', ...result });
   } catch (error) {
     const detail = sanitizeDbError(error, 'Information review workflow failed');
