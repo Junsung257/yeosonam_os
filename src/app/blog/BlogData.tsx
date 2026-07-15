@@ -22,10 +22,11 @@ import {
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
+import { readPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PER_PAGE = 12;
-const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count';
+const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, quality_gate';
 
 // 콘텐츠 타입별 읽기 시간 추정 (분)
 const READING_TIME: Record<string, number> = {
@@ -55,6 +56,7 @@ interface BlogPost {
   featured: boolean | null;
   featured_order: number | null;
   view_count: number | null;
+  quality_gate?: Record<string, unknown> | null;
   travel_packages: {
     id: string; title: string; destination: string;
     price: number | null; duration: string | null; category: string | null;
@@ -66,6 +68,12 @@ interface DestinationStat {
   destination: string;
   package_count: number;
   min_price: number | null;
+}
+
+function getBlogReadingMinutes(post: BlogPost, fallback: number): number {
+  return readPersistedBlogReadingTime(post.quality_gate)
+    ?? READING_TIME[post.content_type || 'guide']
+    ?? fallback;
 }
 
 type ActiveDestinationRow = {
@@ -439,7 +447,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
 function HeroCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
-  const readMin = READING_TIME[ct] ?? 7;
+  const readMin = getBlogReadingMinutes(post, 7);
   const angleLabel = post.angle_type ? BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] : null;
   const imageUrl = getDisplayImageUrl(post);
 
@@ -496,7 +504,7 @@ function HeroCard({ post }: { post: BlogPost }) {
 function SideCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
-  const readMin = READING_TIME[ct] ?? 5;
+  const readMin = getBlogReadingMinutes(post, 5);
   const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 
@@ -558,7 +566,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const dest = post.destination || post.travel_packages?.destination;
   const price = post.travel_packages?.price;
   const ct = post.content_type || 'guide';
-  const readMin = READING_TIME[ct] ?? 5;
+  const readMin = getBlogReadingMinutes(post, 5);
   const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 

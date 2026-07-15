@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { prepareBlogForPublish } from '@/lib/blog-publish-quality';
+import { applyBlogPublishQualityToUpdate, prepareBlogForPublish } from '@/lib/blog-publish-quality';
 import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
@@ -276,16 +276,14 @@ async function runRegenerator(request: NextRequest) {
         }
 
         // 통과 — 본문 교체
+        const updateData: Record<string, unknown> = {
+          blog_html: prepared.blogHtml,
+          updated_at: new Date().toISOString(),
+        };
+        applyBlogPublishQualityToUpdate(updateData, qa);
         const { error: upErr } = await supabaseAdmin
           .from('content_creatives')
-          .update({
-            blog_html: prepared.blogHtml,
-            updated_at: new Date().toISOString(),
-            quality_gate: qa.qualityGate,
-            seo_score: qa.seoScore,
-            readability_score: qa.readability.score,
-            readability_issues: qa.readability.issues,
-          })
+          .update(updateData)
           .eq('id', post.id);
 
         if (upErr) {

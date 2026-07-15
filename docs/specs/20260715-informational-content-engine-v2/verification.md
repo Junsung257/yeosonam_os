@@ -65,6 +65,16 @@ Migration proof must run against local/test tooling only and must record apply o
 - The bottom CTA hub is mobile-first, keyboard accessible, and adds `target="_blank"` plus `rel="noopener noreferrer"` only to verified external links.
 - Dedicated anonymous events are `blog_cta_impression` and `blog_cta_click` with `article_id`, `slug`, `destination_id`, `intent`, `cta_key`, `placement`, and `locale`; no user, contact, booking, or product repository field is required.
 
+### M9 — final rendered informational SEO quality
+
+- The publish decision renders Markdown through the same renderer and public-body sanitizer used by `/blog/[slug]`; stored Markdown alone is not accepted as final proof.
+- The rendered gate checks one public H1, planned title/H1/description intent, raw Markdown and literal `\n`, empty headings/tables/cells, placeholders, representative canonical/index consistency, JSON-LD identity and reading-time consistency, answer-before-CTA, and duplicate CTA links.
+- Information publish evidence stores `quality_gate.rendered_reading_time_minutes`. Blog list and detail both prefer this value, while legacy and product rows retain their existing fallback behavior.
+- Automatic publishing, manual publishing, content queue approval, content hub publishing, MRT generation, and zero-click replacement persist the shared quality evidence through the same update helper or equivalent publisher payload.
+- Product-backed posts do not run the information-only rendered gate, and their writer, evidence, snapshot, parser, landing, and product-detail contracts are unchanged.
+- Component, integration, public-page, publisher, and product-boundary regression set: 13 files, 77 tests passed.
+- `npm run type-check`, changed-file ESLint, and `git diff --check`: passed.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

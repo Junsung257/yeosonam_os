@@ -56,6 +56,11 @@ import {
 } from '@/lib/blog-informational-cta';
 import { loadBlogInformationalCtaSettings } from '@/lib/blog-informational-cta-settings';
 import type { BlogInformationRiskLevel } from '@/lib/blog-information-planner';
+import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
+import {
+  calculateBlogReadingTimeFromHtml,
+  readPersistedBlogReadingTime,
+} from '@/lib/blog-reading-time';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -143,6 +148,7 @@ interface BlogPost {
   pillar_for?: string | null;
   target_audience?: string | null;
   generation_meta?: Record<string, unknown> | null;
+  quality_gate?: Record<string, unknown> | null;
   travel_packages: {
     id: string;
     title: string;
@@ -394,12 +400,6 @@ function extractTldrItems(post: BlogPost): string[] {
   });
 }
 
-function estimateReadingMinutes(html: string): number {
-  const text = html.replace(/<[^>]+>/g, '').trim();
-  // 한국어 기준 분당 500자. 최소 3분.
-  return Math.max(3, Math.round(text.length / 500));
-}
-
 async function withBlogRenderTimeout<T>(
   label: string,
   promise: Promise<T>,
@@ -420,21 +420,6 @@ async function withBlogRenderTimeout<T>(
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function sanitizeServerBlogHtml(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<\/?(del|s|strike)\b[^>]*>/gi, '')
-    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[^>]*\/?>/gi, '')
-    .replace(/\s(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s(href|src)\s*=\s*(["']?)\s*(javascript:|data:text\/html|vbscript:)[\s\S]*?\2/gi, '')
-    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '')
-    .replace(/<h1\b[^>]*>\s*(?:&nbsp;|\u00a0|<br\s*\/?>|\s)*<\/h1>/gi, '')
-    .replace(/<h1\b([^>]*)>/gi, '<h2$1>')
-    .replace(/<\/h1>/gi, '</h2>');
 }
 
 function normalizeHeadingTextForCompare(value: string): string {
@@ -479,7 +464,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
     )
     .eq('slug', dbSlug)
     .eq('status', 'published')
@@ -516,7 +501,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
     supabaseAdmin
       .from('content_creatives')
       .select(
-        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta',
+        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
       )
       .eq('slug', dbSlug)
       .eq('status', 'published')
@@ -1339,12 +1324,13 @@ async function renderBlogDetail({
     // blog_html은 "마크다운 + 일부 안전한 HTML(figcaption/aside)" 혼합 저장값이다.
     // figcaption 태그만 보고 전체를 raw HTML로 취급하면 이미지/표/링크 마크다운이 그대로 노출된다.
     const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
-    const sanitized = stripDuplicateBodyTitleHeading(sanitizeServerBlogHtml(rendered), abTestTitle);
+    const sanitized = stripDuplicateBodyTitleHeading(sanitizePublicBlogBodyHtml(rendered), abTestTitle);
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;
     showToc = shouldShowToc(sanitized, toc);
-    readingMinutes = estimateReadingMinutes(sanitized);
+    readingMinutes = readPersistedBlogReadingTime(post.quality_gate)
+      ?? calculateBlogReadingTimeFromHtml(sanitized);
   }
 
   const [curationSection, sidebarRelatedPosts, relatedPostsSection, prevNextSection] = await Promise.all([

@@ -30,6 +30,9 @@ Local code references:
 - Shared publish evaluator: `src/lib/blog-publish-quality.ts`
 - Customer-facing quality evaluator: `src/lib/blog-customer-quality.ts`
 - Final customer-surface repair: `src/lib/blog-final-customer-surface.ts`
+- Final rendered SEO gate: `src/lib/blog-rendered-seo-quality.ts`
+- Public render normalizer: `src/lib/blog-public-render-normalizer.ts`
+- Reading-time SSOT: `src/lib/blog-reading-time.ts`
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`
@@ -91,6 +94,8 @@ Before the first publish gate:
 14. Run `inspectBlogCustomerQuality()` through `evaluateBlogPublishQuality()` so customer-visible writing defects are scored with the same publish decision as render/SEO gates.
 15. Run `computeSeoScore()`.
 16. Run `computeReadability()` on the final post-gate body.
+17. Render information Markdown through the public renderer and sanitizer. Block publication unless the final surface has exactly one page H1, aligned title/H1/description intent, no raw Markdown or literal `\n`, valid non-empty headings and tables, no placeholder, self-consistent canonical/index state, valid JSON-LD, answer-first CTA placement, and no duplicate CTA.
+18. Persist `quality_gate.rendered_reading_time_minutes` from that final rendered body. Public list and detail views must read the same persisted value; legacy rows may use the existing fallback calculation.
 
 Entry/visa/immigration and travel-insurance information always require human review. Even after automated gates pass, the publisher must store these candidates as `content_creatives.status='draft'`, set `review_status='pending_review'`, enqueue a high-risk review with no timed auto-approval, and set `blog_topic_queue.status='pending_review'`. This branch must return before public cache revalidation, advertising mapping, publish logging, sitemap/indexing enqueue, or any public count increment. Human approval only unlocks a later explicit publish action; that action must rerun current publish QA.
 

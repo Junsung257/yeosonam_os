@@ -9,7 +9,7 @@
 - [x] M6: implement representative-key duplicate/upsert/canonical contract.
 - [x] M7: implement contextual related-link ranking.
 - [x] M8: implement central informational CTA config, selector, renderer, and events.
-- [ ] M9: enforce final-render SEO/reading-time/CTA QA.
+- [x] M9: enforce final-render SEO/reading-time/CTA QA.
 - [ ] M10: add named sample E2E evaluation fixtures and reports.
 - [ ] M11: add existing-post dry-run audit and owner handoff.
 - [ ] Run full typecheck, changed-file lint, build, migration dry-run, information tests, and product baselines.

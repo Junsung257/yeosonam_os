@@ -24,6 +24,7 @@ import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
+import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
@@ -2358,6 +2359,7 @@ async function processQueueItem(
       const finalReadinessRepair = repairPublishReadiness({
         markdown: generated.blog_html,
         blogType,
+        hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
         slug: generated.slug,
         destination: item.destination,
         topic: item.topic,
@@ -2538,7 +2540,9 @@ async function processQueueItem(
       status: requiresHumanReview ? 'draft' : 'published',
       published_at: requiresHumanReview ? null : now,
       review_status: requiresHumanReview ? 'pending_review' : null,
-      quality_gate: qa,
+      quality_gate: publishQuality.readingTimeMinutes == null
+        ? qa
+        : withPersistedBlogReadingTime(qa, publishQuality.readingTimeMinutes),
       seo_score: seoScore,
       topic_source: item.source,
       destination: item.destination ?? null,
