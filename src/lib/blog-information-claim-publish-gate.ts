@@ -12,6 +12,7 @@ import type {
   BlogInformationExtractedValue,
 } from './blog-information-evidence';
 import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
+import { createBlogInformationContentFingerprint } from './blog-information-review-workflow';
 
 export const BLOG_INFORMATION_CLAIM_AUTO_REGENERATION_LIMIT = 0;
 
@@ -26,6 +27,7 @@ export interface BlogInformationClaimPublishGateInput {
   claimLedger?: BlogInformationClaimLedgerEntry[];
   claimLedgerIssues?: string[];
   intentType?: string | null;
+  approvalValidation?: boolean;
   expectedScope?: Partial<Pick<BlogInformationEvidenceScope, 'country' | 'destination' | 'applicableTo' | 'locale'>>;
 }
 
@@ -49,6 +51,77 @@ export function toBlogInformationClaimValidationMeta(
     ...(result.lookupError ? { lookup_error: result.lookupError } : {}),
     ...(result.skipped ? { skipped: result.skipped } : {}),
   };
+}
+
+async function applyDurableReviewStateGate(input: {
+  creativeId?: string | null;
+  markdown: string;
+  contentKey: string;
+  reviewStatus?: string | null;
+  approvalValidation?: boolean;
+  report: BlogInformationClaimValidationReport;
+}): Promise<BlogInformationClaimValidationReport> {
+  if (!input.creativeId) return input.report;
+  const { data: reviewCase, error: caseError } = await supabaseAdmin
+    .from('blog_information_review_cases')
+    .select('status, risk_level, content_fingerprint')
+    .eq('creative_id', input.creativeId)
+    .maybeSingle();
+  if (caseError) throw new Error(`blog_information_review_case_lookup_failed:${caseError.message}`);
+
+  const needsDurableHumanReview = input.report.requiresHumanReview && input.reviewStatus === 'approved';
+  if (!reviewCase) {
+    if (!needsDurableHumanReview) return input.report;
+    return {
+      ...input.report,
+      passed: false,
+      issues: [...input.report.issues, {
+        code: 'review_state_required',
+        claimFingerprint: input.report.claims[0]?.claimFingerprint
+          ?? createBlogInformationContentFingerprint({ blogHtml: input.markdown, slug: input.contentKey }),
+        claimType: input.report.claims[0]?.claimType ?? 'factual',
+        message: '고위험 정보성 글은 본문 지문과 근거를 고정한 검토 케이스가 필요합니다.',
+      }],
+    };
+  }
+
+  const { data: creative, error: creativeError } = await supabaseAdmin
+    .from('content_creatives')
+    .select('seo_title, seo_description, slug')
+    .eq('id', input.creativeId)
+    .single();
+  if (creativeError || !creative) {
+    throw new Error(`blog_information_review_creative_lookup_failed:${creativeError?.message || 'not_found'}`);
+  }
+  const fingerprint = createBlogInformationContentFingerprint({
+    blogHtml: input.markdown,
+    seoTitle: creative.seo_title,
+    seoDescription: creative.seo_description,
+    slug: creative.slug,
+  });
+  const issues = [...input.report.issues];
+  const claim = input.report.claims[0];
+  if (fingerprint !== reviewCase.content_fingerprint) {
+    issues.push({
+      code: 'review_fingerprint_mismatch',
+      claimFingerprint: claim?.claimFingerprint ?? fingerprint,
+      claimType: claim?.claimType ?? 'factual',
+      message: '검토 후 본문 또는 공개 메타데이터가 변경되어 재승인이 필요합니다.',
+    });
+  }
+  if (!input.approvalValidation) {
+    const publishableState = reviewCase.status === 'ready' || reviewCase.status === 'approved';
+    const highRiskApproved = reviewCase.risk_level !== 'HIGH' || reviewCase.status === 'approved';
+    if (!publishableState || !highRiskApproved) {
+      issues.push({
+        code: 'review_state_required',
+        claimFingerprint: claim?.claimFingerprint ?? fingerprint,
+        claimType: claim?.claimType ?? 'factual',
+        message: `현재 정보 검토 상태로는 발행할 수 없습니다: ${reviewCase.status}`,
+      });
+    }
+  }
+  return { ...input.report, passed: issues.length === 0, issues };
 }
 
 async function loadPersistedClaimRecords(
@@ -180,9 +253,15 @@ export async function evaluateBlogInformationClaimPublishGate(
       reviewStatus: input.reviewStatus,
       now: input.now,
     });
-    return loaded.error
-      ? { ...report, passed: false, lookupError: loaded.error }
-      : report;
+    if (loaded.error) return { ...report, passed: false, lookupError: loaded.error };
+    return await applyDurableReviewStateGate({
+      creativeId: input.creativeId,
+      markdown: input.markdown,
+      contentKey: input.contentKey,
+      reviewStatus: input.reviewStatus,
+      approvalValidation: input.approvalValidation,
+      report,
+    });
   } catch (error) {
     const report = validateBlogInformationClaims({
       markdown: input.markdown,

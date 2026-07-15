@@ -8,6 +8,7 @@ import {
   getPendingReviews,
 } from '@/lib/content-review-workflow';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { submitBlogInformationReviewDecision } from '@/lib/blog-information-review-repository';
 
 // ─── POST: 검토 결정 제출 ───────────────────────────────────────────
 
@@ -58,6 +59,20 @@ export async function POST(request: NextRequest) {
       );
       const result = await verifySupabaseAccessToken(token);
       if (result.ok && result.payload?.sub) reviewerId = result.payload.sub;
+    }
+
+    const informationResult = await submitBlogInformationReviewDecision({
+      creativeId: creative_id,
+      actorId: reviewerId,
+      status: status as 'approved' | 'rejected' | 'changes_requested',
+      note: review_note,
+    });
+    if (informationResult.handled) {
+      return NextResponse.json({
+        review_id: informationResult.reviewCaseId,
+        information_review: true,
+        evidence_revalidated: status === 'approved',
+      }, { status: 200 });
     }
 
     const result = await submitReview({

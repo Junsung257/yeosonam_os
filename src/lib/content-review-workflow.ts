@@ -104,6 +104,7 @@ export interface ReviewDecision {
 
 export interface QueueItem {
   creativeId: string;
+  informationReviewCaseId?: string | null;
   priority?: number;
   reason?: QueueReason;
   dueAt?: string;
@@ -145,6 +146,7 @@ export async function queueForReview(item: QueueItem): Promise<{ queueId: string
     .from('content_review_queue')
     .insert({
       creative_id: item.creativeId,
+      information_review_case_id: item.informationReviewCaseId ?? null,
       priority: item.priority ?? 50,
       reason: item.reason ?? 'new_content',
       due_at: item.dueAt ?? null,

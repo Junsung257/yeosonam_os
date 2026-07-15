@@ -58,6 +58,8 @@ export interface BlogInformationClaimValidationIssue {
     | 'evidence_scope_mismatch'
     | 'evidence_semantic_mismatch'
     | 'source_version_required'
+    | 'review_state_required'
+    | 'review_fingerprint_mismatch'
     | 'human_approval_required'
     | 'unclassified_factual_candidate'
     | 'claim_ledger_body_mismatch'
