@@ -79,7 +79,7 @@ function storeSpy(saved: Array<Record<string, unknown>>): BlogInformationEvidenc
 
 async function run(input: {
   markdown: string;
-  intentType?: 'general' | 'entry_requirements';
+  intentType?: 'food_budget' | 'entry_requirements';
   research: BlogInformationResearchBundle | null;
 }) {
   const saved: Array<Record<string, unknown>> = [];
@@ -91,7 +91,7 @@ async function run(input: {
     seoDescription: 'Practical Tokyo information',
     slug: 'tokyo-guide',
     plannerInput: {
-      intentType: input.intentType ?? 'general',
+      intentType: input.intentType ?? 'food_budget',
       destination: 'Tokyo',
       topic: input.markdown,
       primaryKeyword: 'Tokyo travel',
@@ -108,7 +108,7 @@ async function run(input: {
 }
 
 describe('blog information evidence review workflow', () => {
-  it('moves a general claim with current scoped evidence to publish-ready', async () => {
+  it('moves a food-budget claim with current scoped evidence to publish-ready', async () => {
     const markdown = 'Estimated food cost: USD 50.';
     const { result, saved } = await run({ markdown, research: bundleFor({ markdown }) });
 

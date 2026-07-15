@@ -90,12 +90,22 @@ function buildDuplicateGroups(rows: BlogInformationExistingAuditInput[]): Map<st
   const members = new Map<string, BlogInformationExistingAuditInput[]>();
   for (const row of rows) {
     if (row.product_id || textLength(row.blog_html || '') < 120) continue;
-    const plan = buildBlogInformationPlan({
-      topic: row.seo_title || row.slug,
-      primaryKeyword: row.seo_title || row.slug,
+    const title = row.seo_title || row.slug;
+    const intentType = inferBlogInformationIntent({
+      topic: `${title} ${row.seo_description || title}`,
+      primaryKeyword: title,
       destination: row.destination,
     });
-    if (!plan.passed || !plan.destinationId) continue;
+    const plan = buildBlogInformationPlan({
+      intentType,
+      topic: title,
+      primaryKeyword: title,
+      destination: row.destination,
+    });
+    // The dry-run audit must still surface duplicate legacy `general` rows.
+    // They are not publishable, but hiding their representative collision would
+    // make reconciliation less safe.
+    if (!plan.destinationId) continue;
     const key = buildBlogInformationRepresentativeKey({
       destinationId: plan.destinationId,
       intent: plan.intent,
@@ -176,6 +186,7 @@ export async function auditBlogInformationPostsDryRun(
     });
     const destination = validateBlogDestinationEntity(row.destination);
     const plan = buildBlogInformationPlan({
+      intentType: inferredIntent,
       topic: title,
       primaryKeyword: title,
       destination: row.destination,
