@@ -67,7 +67,10 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('isHighRiskInformationalTopic({');
-    expect(source).toContain("status: requiresHumanReview ? 'draft' : 'published'");
+    expect(source).toContain("status: contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published'");
+    expect(source).toContain("review_status: requiresHumanReview ? 'pending_review' : null");
+    expect(source).toContain('representativeIdentity && !requiresHumanReview');
+    expect(source).toContain('publishBlogInformationAtomically({');
     expect(source).toContain("status: 'pending_review'");
     expect(source).toContain('humanReviewRequired: true');
     expect(source).toContain("riskLevel: 'high'");

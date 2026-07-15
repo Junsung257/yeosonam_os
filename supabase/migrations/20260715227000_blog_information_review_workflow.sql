@@ -53,9 +53,6 @@ CREATE INDEX IF NOT EXISTS idx_blog_information_review_cases_status
   ON public.blog_information_review_cases (status, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_blog_information_review_events_case
   ON public.blog_information_review_events (review_case_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_content_review_queue_information_case
-  ON public.content_review_queue (information_review_case_id)
-  WHERE information_review_case_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION public.reject_blog_information_review_event_mutation()
 RETURNS trigger

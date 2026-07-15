@@ -58,12 +58,12 @@ Migration proof must run against local/test tooling only and must record apply o
 
 ### M8 — central informational CTA/CRO
 
-- Typed CTA keys are `NAVER_CAFE`, `DEAL_ROOM`, `CONSULTATION`, and `RELATED_ARTICLES`; selection returns exactly one primary and at most one secondary CTA.
+- Typed CTA keys are `NAVER_CAFE`, `DEAL_ROOM`, `CONSULTATION`, `RELATED_ARTICLES`, and `OFFICIAL_SOURCE`; selection returns exactly one primary and at most one secondary CTA.
 - Missing, ambiguous, non-HTTPS, or disabled external settings are not rendered. The safe fallback is a contextual internal related-article route, and non-Korean locales also remain internal-only.
-- High-risk entry/visa and insurance content renders related information first and omits sales-oriented external CTAs.
+- High-risk entry/visa and insurance content renders its pinned official source first, a related information article second, and omits sales-oriented external CTAs.
 - The information writer no longer emits CTA sections or sales URLs. Publish repair strips package, group-inquiry, and Kakao links from informational body Markdown; product writer behavior is unchanged.
 - The bottom CTA hub is mobile-first, keyboard accessible, and adds `target="_blank"` plus `rel="noopener noreferrer"` only to verified external links.
-- Dedicated anonymous events are `blog_cta_impression` and `blog_cta_click` with `article_id`, `slug`, `destination_id`, `intent`, `cta_key`, `placement`, and `locale`; no user, contact, booking, or product repository field is required.
+- Dedicated information CTA events store only canonical creative ID, event type, CTA key, placement, locale, a one-way ephemeral deduplication hash, and receipt time. No user, session, visitor, URL, UTM, contact, booking, IP, user-agent, free-form metadata, or product field is accepted.
 
 ### M9 — final rendered informational SEO quality
 
@@ -75,12 +75,12 @@ Migration proof must run against local/test tooling only and must record apply o
 - Component, integration, public-page, publisher, and product-boundary regression set: 13 files, 77 tests passed.
 - `npm run type-check`, changed-file ESLint, and `git diff --check`: passed.
 
-### M10 — named fixture E2E evaluation
+### R14 remediation — real-path safety evaluation
 
-- `npm run eval:blog-info-v2` evaluates 11 named fixture/draft scenarios entirely in memory and writes `reports/m10-evaluation.json` plus `reports/m10-summary.md`.
-- Each applicable fixture records intent, required-section/fact coverage, evidence coverage, claim validation, duplicate decision, related-link relevance, CTA selection, final render quality, and publish-state decision.
-- Result: 11/11 scenarios passed. Entry/visa and insurance remained `pending_review`; invalid destination was `blocked_plan`; an existing destination+intent representative returned `update_existing` instead of a new public URL.
-- The evaluator records and asserts `externalCalls=0` and `publicMutations=0`; it does not call a model, API, database, publisher, cache revalidation, sitemap, or indexing path.
+- `npm run eval:blog-info-v2` evaluates the required 10 adversarial topics entirely in memory and writes `reports/r14-safety-evaluation.json` plus `reports/r14-safety-summary.md`.
+- Every case calls the real intent planner, structure contract, claim scanner, evidence validator, related-link ranker, CTA selector, renderer, and public-eligibility policy. Label-only variants and the same content with numeric claims but no evidence must be blocked.
+- Result: 10/10 scenarios passed. Entry/visa and insurance remained `pending_review` and were rejected by the public-eligibility policy until human approval; the other eight valid structured fixtures were publishable.
+- The evaluator records and asserts `externalCalls=0` and `publicMutations=0`; it does not call a model, API, database, publisher, cache revalidation, sitemap, or indexing path. Disposable Postgres verification remains a separate required gate.
 
 ### M11 — existing-post dry-run and owner handoff
 
@@ -92,14 +92,16 @@ Migration proof must run against local/test tooling only and must record apply o
 
 ### Final local verification
 
-- Information engine plus product-boundary regression set: 23 files, 143 tests passed.
+- Information-focused regression set: 24 files, 216 tests passed.
+- Full repository regression set: 511 files, 3,611 tests passed, 0 failed, 0 skipped/todo/only.
 - `npm run type-check`: passed.
 - `npm run lint`: passed with zero warnings.
-- `npm run build` with the existing `.next` cache retained after the first long-running attempt: passed in 535 seconds; 389 static pages generated and postbuild output verification passed.
-- Migration safety checker: 3 information migrations checked, 0 issues. `npx supabase status -o json` confirmed local apply remains unavailable because the Windows Docker engine is not running; no remote fallback was attempted.
-- `npm run eval:blog-info-v2`: 11/11 PASS, external calls 0, public mutations 0.
+- `npm run build`: passed in 422 seconds; 390 static pages generated and postbuild output verification passed. The build-time blog sitemap read could not see the not-yet-applied eligibility view and was handled by the existing fail-safe path; no write was attempted.
+- Migration safety checker: 11 remediation migrations checked, 0 issues. The three existing-table indexes use separate non-transactional `CREATE INDEX CONCURRENTLY` migrations.
+- Disposable Postgres apply, RLS role matrix, concurrent publish, and failure injection remain blocked because the Docker command is unavailable. A 20-assertion local-only pgTAP contract is staged for `npx supabase test db --local supabase/tests/blog_information_publication_contract.sql`; no remote DB fallback was attempted.
+- `npm run eval:blog-info-v2`: 10/10 PASS, external calls 0, public mutations 0.
 - `npm run audit:blog-info-v2`: 8 local fallback rows audited, DB reads 0, DB writes 0, external calls 0.
-- `git diff --check`: passed. No push, PR, deployment, remote DB access, public-row mutation, or secret output occurred.
+- `git diff --check`: passed. No push, PR, deployment, remote DB mutation/fallback, public-row mutation, or secret output occurred.
 
 ## Manual QA
 
@@ -117,7 +119,7 @@ Migration proof must run against local/test tooling only and must record apply o
 - Test output and counts for each milestone.
 - Typecheck, lint, build, and `git diff --check` results.
 - Local migration apply/dry-run evidence.
-- Machine-readable M10 evaluation report.
+- Machine-readable R14 safety evaluation report.
 - M11 existing-post dry-run summary.
 - Git log showing one commit per milestone and status showing unrelated files untouched.
 

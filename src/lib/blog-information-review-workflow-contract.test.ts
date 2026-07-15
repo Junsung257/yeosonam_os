@@ -8,9 +8,11 @@ function source(path: string): string {
 
 describe('blog information review workflow contract', () => {
   const migration = source('supabase/migrations/20260715227000_blog_information_review_workflow.sql');
+  const atomicMigration = source('supabase/migrations/20260715228000_blog_information_atomic_publication.sql');
   const adminRoute = source('src/app/api/admin/blog/information-review/route.ts');
   const sharedReviewRoute = source('src/app/api/content-review/route.ts');
   const repository = source('src/lib/blog-information-review-repository.ts');
+  const atomicPublisher = source('src/lib/blog-information-atomic-publication.ts');
 
   it('stores a durable case, an append-only audit trail, and an existing queue link', () => {
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS public.blog_information_review_cases');
@@ -21,12 +23,13 @@ describe('blog information review workflow contract', () => {
   });
 
   it('publishes through a locked atomic function that rejects product content and changed snapshots', () => {
-    expect(migration).toContain('publish_blog_information_reviewed_draft');
-    expect(migration).toContain('FOR UPDATE');
-    expect(migration).toContain('v_creative.product_id IS NOT NULL');
-    expect(migration).toContain('approved content changed; reapproval required');
-    expect(migration).toContain("v_case.risk_level = 'HIGH'");
-    expect(repository).toContain("rpc('publish_blog_information_reviewed_draft'");
+    expect(atomicMigration).toContain('publish_blog_information_atomically');
+    expect(atomicMigration).toContain('FOR UPDATE');
+    expect(atomicMigration).toContain('v_creative.product_id IS NOT NULL');
+    expect(atomicMigration).toContain('information publication content changed');
+    expect(atomicMigration).toContain("p_intent IN ('entry_requirements', 'travel_insurance')");
+    expect(repository).toContain('publishBlogInformationAtomically({');
+    expect(atomicPublisher).toContain("rpc('publish_blog_information_atomically'");
   });
 
   it('revalidates evidence at approval and again immediately before publish', () => {

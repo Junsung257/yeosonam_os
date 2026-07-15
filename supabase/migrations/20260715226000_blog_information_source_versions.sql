@@ -135,14 +135,6 @@ ALTER TABLE public.blog_information_evidence
 ALTER TABLE public.blog_information_evidence
   DROP CONSTRAINT IF EXISTS blog_information_evidence_content_logical_source_version_key;
 
-ALTER TABLE public.blog_information_evidence
-  ADD CONSTRAINT blog_information_evidence_content_logical_source_version_key
-  UNIQUE (content_key, logical_evidence_key, source_version_id);
-
-CREATE UNIQUE INDEX IF NOT EXISTS blog_information_evidence_legacy_logical_key
-  ON public.blog_information_evidence (content_key, logical_evidence_key)
-  WHERE source_version_id IS NULL;
-
 CREATE OR REPLACE FUNCTION public.reject_blog_information_source_version_mutation()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -9,8 +9,8 @@ const outputDirectory = resolve(
   process.cwd(),
   'docs/specs/20260715-informational-content-engine-v2/reports',
 );
-const jsonPath = resolve(outputDirectory, 'm10-evaluation.json');
-const summaryPath = resolve(outputDirectory, 'm10-summary.md');
+const jsonPath = resolve(outputDirectory, 'r14-safety-evaluation.json');
+const summaryPath = resolve(outputDirectory, 'r14-safety-summary.md');
 
 async function main(): Promise<void> {
   const report = await evaluateBlogInformationEngineV2Fixtures();

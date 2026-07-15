@@ -10,10 +10,6 @@ ALTER TABLE public.blog_information_representatives
 ALTER TABLE public.blog_indexing_jobs
   ADD COLUMN IF NOT EXISTS idempotency_key text NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_blog_indexing_jobs_idempotency_key
-  ON public.blog_indexing_jobs (idempotency_key)
-  WHERE idempotency_key IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS public.blog_information_publications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   idempotency_key text NOT NULL UNIQUE,

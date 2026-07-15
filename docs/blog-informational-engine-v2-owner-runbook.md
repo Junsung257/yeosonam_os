@@ -38,10 +38,10 @@ Last updated: 2026-07-15
 npm run eval:blog-info-v2
 ```
 
-정상 결과는 `PASS (11/11)`, 외부 API 호출 `0회`, 공개/운영 데이터 변경 `0건`이다. 결과 파일은 다음 두 곳에 생긴다.
+정상 결과는 `PASS (10/10)`, 외부 API 호출 `0회`, 공개/운영 데이터 변경 `0건`이다. 라벨만 채운 10개 문서는 모두 차단되고, 같은 10개 주제의 구조화 fixture는 실제 검증 모듈을 통과해야 한다. 결과 파일은 다음 두 곳에 생긴다.
 
-- `docs/specs/20260715-informational-content-engine-v2/reports/m10-evaluation.json`
-- `docs/specs/20260715-informational-content-engine-v2/reports/m10-summary.md`
+- `docs/specs/20260715-informational-content-engine-v2/reports/r14-safety-evaluation.json`
+- `docs/specs/20260715-informational-content-engine-v2/reports/r14-safety-summary.md`
 
 이 평가는 실제 모델 비용, 실제 발행, 캐시 갱신, sitemap, 색인 요청을 사용하지 않는다.
 
@@ -95,21 +95,49 @@ npm run audit:blog-info-v2 -- --input .tmp/blog-public-snapshot.json --output-di
 
 ## 8. migration 적용 순서
 
-원격 운영 DB에는 이 작업 중 적용하지 않았다. 승인된 staging 변경 창에서 저장소의 정상 migration 절차로 아래 타임스탬프 순서대로 적용한다.
+원격 운영 DB에는 이 작업 중 적용하지 않았다. 먼저 기존 기반 migration을 저장소의 정상 절차로 아래 타임스탬프 순서대로 적용한다.
 
 1. `20260715082549_blog_information_evidence_model.sql`
 2. `20260715084845_blog_information_representatives.sql`
 3. `20260715113000_blog_information_review_state.sql`
 
+그다음 이번 안전성 교정 migration을 타임스탬프 순서대로 적용한다.
+
+1. `20260715223000_public_blog_content_eligibility_view.sql`
+2. `20260715224000_blog_queue_content_lane.sql`
+3. `20260715225000_blog_information_evidence_scope.sql`
+4. `20260715226000_blog_information_source_versions.sql`
+5. `20260715226500_blog_information_evidence_concurrent_indexes.sql`
+6. `20260715227000_blog_information_review_workflow.sql`
+7. `20260715227500_blog_information_representative_intents.sql`
+8. `20260715227750_blog_information_review_queue_concurrent_index.sql`
+9. `20260715228000_blog_information_atomic_publication.sql`
+10. `20260715228500_blog_indexing_jobs_concurrent_index.sql`
+11. `20260715229000_blog_information_cta_events.sql`
+
+이름에 `concurrent_index` 또는 `concurrent_indexes`가 있는 3개 파일에는 명시적 `BEGIN/COMMIT`을 추가하지 않는다. 기존 테이블의 쓰기를 막지 않기 위한 `CREATE INDEX CONCURRENTLY` 파일이므로, 실제 적용 전에 disposable local Postgres에서 migration runner가 이를 트랜잭션으로 감싸지 않는지 반드시 확인한다.
+
 적용 전에는 migration 안전 검사와 staging 백업을 확인한다. Docker가 실행되는 로컬 환경에서는 먼저 로컬 Supabase를 시작해 전체 migration을 적용하고, 4개 evidence/claim 테이블·대표키 테이블·`pending_review` 상태를 확인한다. 이 개발 세션에서는 Docker 엔진이 꺼져 있어 로컬 적용 증거를 만들지 못했으며 원격 DB로 대체하지 않았다.
+
+Docker를 사용할 수 있게 된 뒤에는 저장소 루트에서 다음 명령을 순서대로 실행한다.
+
+```bash
+npx supabase start
+npx supabase db reset --local --no-seed
+npx supabase test db --local supabase/tests/blog_information_publication_contract.sql
+npm run eval:blog-info-v2
+npm test
+```
+
+`db reset` 또는 pgTAP 계약이 실패하면 staging migration과 배포를 진행하지 않는다. `--linked`나 원격 DB URL로 대체하지 않는다.
 
 ## 9. staging 배포 순서
 
 1. staging DB 백업과 현재 migration 버전을 기록한다.
-2. 위 3개 migration을 타임스탬프 순서로 적용한다.
+2. 위 기반 및 안전성 교정 migration을 타임스탬프 순서로 적용한다.
 3. 외부 CTA 환경 변수는 우선 미설정 상태로 둔다.
 4. 애플리케이션을 staging에 배포한다.
-5. M10 평가, 정보성 테스트, 상품 회귀 테스트, typecheck, lint, build를 실행한다.
+5. R14 실제 경로 평가, 정보성 테스트, 상품 회귀 테스트, typecheck, lint, build를 실행한다.
 6. 저위험 정보 글 1개를 초안으로 만들어 planner·evidence·claim·render 결과를 확인한다.
 7. 고위험 글 1개가 `pending_review` 비공개 상태인지 확인한다.
 8. 공식 URL이 확정된 CTA 하나만 설정하고 모바일/데스크톱 노출·클릭 이벤트를 확인한다.
@@ -117,9 +145,9 @@ npm run audit:blog-info-v2 -- --input .tmp/blog-public-snapshot.json --output-di
 
 ## 10. 운영 배포 전 체크리스트
 
-- [ ] M10 평가가 11/11 PASS다.
+- [ ] R14 실제 경로 평가가 10/10 PASS다.
 - [ ] M11 dry-run 보고서에 DB write와 외부 호출이 0이다.
-- [ ] migration 3개가 staging에서 순서대로 적용됐다.
+- [ ] 기반 및 안전성 교정 migration이 staging에서 순서대로 적용됐다.
 - [ ] 저위험 글의 필수 section/fact와 evidence coverage가 통과한다.
 - [ ] 고위험 글이 승인 전 공개·색인되지 않는다.
 - [ ] 같은 destination+intent+audience+locale 재생성이 새 URL을 만들지 않는다.

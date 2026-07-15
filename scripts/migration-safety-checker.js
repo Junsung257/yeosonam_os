@@ -91,17 +91,29 @@ class MigrationChecker {
 
   checkLockHeavyOps() {
     const lines = this.content.split('\n');
+    const createdTables = new Set(
+      [...this.normalizedContent.matchAll(
+        /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)\s*\(/gi
+      )].map((match) => match[1].toLowerCase())
+    );
 
     lines.forEach((line, idx) => {
       const cleanLine = line.replace(/--.*$/, '').trim();
 
       if (/CREATE\s+(?:UNIQUE\s+)?INDEX(?!\s+CONCURRENTLY)/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.HIGH,
-          'lock-heavy',
-          'CREATE INDEX without CONCURRENTLY blocks writes',
-          idx + 1
-        );
+        const statement = lines.slice(idx, idx + 8).join(' ').split(';')[0];
+        const indexedTable = statement.match(/\bON\s+(?:public\.)?(\w+)\s*\(/i)?.[1]?.toLowerCase();
+        // A regular index on a table created in this same migration cannot
+        // block pre-existing writers. Existing tables still require the
+        // separate CREATE INDEX CONCURRENTLY path.
+        if (!indexedTable || !createdTables.has(indexedTable)) {
+          this.addIssue(
+            SEVERITY.HIGH,
+            'lock-heavy',
+            'CREATE INDEX without CONCURRENTLY blocks writes',
+            idx + 1
+          );
+        }
       }
 
       if (/ALTER\s+TABLE[^;]+ADD\s+COLUMN[^;]+NOT\s+NULL(?!\s+DEFAULT)/i.test(cleanLine)) {
