@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 
@@ -21,6 +22,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isObviouslyInvalidDestinationRoute } from '../public-route';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -292,7 +294,9 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ dest?: string | string[] }> }): Promise<Metadata> {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
-  const destination = safeDecodePathSegment(dest).trim();
+  if (isObviouslyInvalidDestinationRoute(dest)) notFound();
+  const destination = await resolveDestinationRouteParam(dest);
+  if (isObviouslyInvalidDestinationRoute(destination)) notFound();
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
   return {
     title: `${destination} 여행 가이드`,
@@ -309,7 +313,9 @@ export async function generateMetadata({ params }: { params: Promise<{ dest?: st
 export default async function DestinationBlogPage({ params }: { params: Promise<{ dest?: string | string[] }> }) {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
+  if (isObviouslyInvalidDestinationRoute(dest)) notFound();
   const { destination, posts, packages, unavailable } = await getDestinationPageData(dest);
+  if (!unavailable && posts.length === 0) notFound();
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
 
   return (

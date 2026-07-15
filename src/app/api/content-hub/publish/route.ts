@@ -10,8 +10,9 @@ import {
 } from '@/lib/blog-publish-quality';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 
-const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)';
+const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, review_status, category, content_type, topic_source, travel_packages(destination)';
 
 type BlogPublishRow = {
   slug?: string | null;
@@ -21,6 +22,10 @@ type BlogPublishRow = {
   destination?: string | null;
   angle_type?: string | null;
   product_id?: string | null;
+  review_status?: string | null;
+  category?: string | null;
+  content_type?: string | null;
+  topic_source?: string | null;
   travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
 };
 
@@ -55,6 +60,21 @@ export async function POST(request: NextRequest) {
       row = (creative?.[0] ?? null) as BlogPublishRow | null;
       if (!row?.blog_html || !row.slug) {
         return apiResponse({ error: 'blog_html or slug is missing' }, { status: 400 });
+      }
+
+      const reviewBlock = getInformationalReviewBlockReason({
+        productId: row.product_id ?? null,
+        reviewStatus: row.review_status ?? null,
+        title: row.seo_title ?? null,
+        category: row.category ?? null,
+        contentType: row.content_type ?? null,
+        topic: row.topic_source ?? null,
+      });
+      if (reviewBlock) {
+        return apiResponse({
+          error: 'Human review approval is required before publishing this informational draft',
+          review_reason: reviewBlock,
+        }, { status: 409 });
       }
 
       const destination = resolveBlogDestination(row);

@@ -58,7 +58,6 @@ import {
 } from '@/lib/product-registration/customer-open-contract';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
-import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
@@ -90,6 +89,8 @@ import {
   sortPublisherQueueForTimeBudget,
 } from '@/lib/blog-publisher-time-budget';
 import { readBoundedIntEnv } from '@/lib/env-utils';
+import { queueForReview } from '@/lib/content-review-workflow';
+import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -1918,6 +1919,26 @@ async function processQueueItem(
       }
     }
 
+    // Deterministic fallback copy is only an operational recovery artifact. It is
+    // intentionally generic and therefore must never become a public/searchable
+    // article, even if downstream shape/SEO gates happen to pass.
+    if (
+      generated.generation_meta?.deterministic_info_fallback === true
+      || generated.generation_meta?.deterministic_fast_fallback === true
+    ) {
+      const reason = 'deterministic_info_fallback_not_publishable';
+      const failureStatus = await handleFailure(item, reason, null, false, {
+        deterministic_fallback_blocked: true,
+        deterministic_fallback_reason: generated.generation_meta?.deterministic_fallback_reason ?? null,
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: failureStatus === 'skipped' ? 'skipped' : 'gate_failed',
+        reason,
+      };
+    }
+
     const slugNormalized = normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
       await supabaseAdmin
@@ -2394,6 +2415,13 @@ async function processQueueItem(
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
     };
+    const requiresHumanReview = blogType === 'info'
+      && isHighRiskInformationalTopic({
+        title: generated.seo_title ?? item.topic ?? null,
+        category: item.category ?? null,
+        contentType: item.source === 'pillar' ? 'pillar' : 'guide',
+        topic: item.topic ?? null,
+      });
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
@@ -2405,8 +2433,9 @@ async function processQueueItem(
       category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: normalizeAngleType(item.angle_type),
-      status: 'published' as const,
-      published_at: now,
+      status: requiresHumanReview ? 'draft' : 'published',
+      published_at: requiresHumanReview ? null : now,
+      review_status: requiresHumanReview ? 'pending_review' : null,
       quality_gate: qa,
       seo_score: seoScore,
       topic_source: item.source,
@@ -2458,6 +2487,46 @@ async function processQueueItem(
         .from('card_news')
         .update({ linked_blog_id: creativeId, updated_at: now })
         .eq('id', item.card_news_id);
+    }
+
+    if (requiresHumanReview) {
+      try {
+        await queueForReview({
+          creativeId,
+          priority: 90,
+          reason: 'auto_generated',
+          humanReviewRequired: true,
+          riskLevel: 'high',
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        await supabaseAdmin.from('blog_topic_queue')
+          .update({
+            status: 'failed',
+            content_creative_id: creativeId,
+            last_error: `review_queue_failed:${reason}`,
+          })
+          .eq('id', item.id);
+        return { id: item.id, topic: item.topic, status: 'review_queue_failed', reason };
+      }
+
+      const { error: reviewStateError } = await supabaseAdmin.from('blog_topic_queue')
+        .update({
+          status: 'pending_review',
+          content_creative_id: creativeId,
+          last_error: null,
+          attempts: 0,
+        })
+        .eq('id', item.id);
+      if (reviewStateError) {
+        logWarning('[cron/blog-publisher] review state handoff failed', reviewStateError);
+      }
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'pending_review',
+        reason: 'high_risk_human_review_required',
+      };
     }
 
     try {
@@ -2911,11 +2980,6 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
       : '';
   const freshnessRisk = classifyBlogFreshnessRisk(`${item.topic} ${item.primary_keyword || ''} ${item.category || ''}`);
   const freshnessPromptBlock = buildFreshnessPromptBlock(freshnessRisk);
-  const originalitySignals = await fetchBlogOriginalitySignals({
-    destination: item.destination || extractDestination(item.topic),
-    productId: item.product_id,
-  });
-  const originalityPromptBlock = buildOriginalityPromptBlock(originalitySignals);
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
@@ -3037,7 +3101,6 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
 **부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
 
 ${reviewPromptBlock}
-${originalityPromptBlock}
 ${freshnessPromptBlock}
 ${intentPromptBlock}
 ${buildBlogContentBriefPromptBlock(contentBrief)}
@@ -3127,15 +3190,6 @@ ${serpGapBlock}
     },
     serp_analyzed: Boolean(serpData),
     freshness_risk: freshnessRisk,
-    originality_signals: {
-      destination: originalitySignals.destination,
-      package_count: originalitySignals.packageCount,
-      active_package_count: originalitySignals.activePackageCount,
-      booking_count: originalitySignals.bookingCount,
-      min_price: originalitySignals.minPrice,
-      max_price: originalitySignals.maxPrice,
-      latest_package_updated_at: originalitySignals.latestPackageUpdatedAt,
-    },
     ...(serpData ? {
       serp_analysis: {
         keyword: serpData.keyword,

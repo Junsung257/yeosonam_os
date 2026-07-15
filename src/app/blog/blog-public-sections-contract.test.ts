@@ -78,6 +78,16 @@ describe('blog public sections contract', () => {
     expect(source).not.toContain('const visibleAngleChips = BLOG_PUBLIC_ANGLES;');
   });
 
+  it('uses the database exact count for pagination instead of an offset approximation', () => {
+    const source = readSource('src/app/blog/BlogData.tsx');
+
+    expect(source).toContain(".select(BLOG_LIST_SELECT, { count: 'exact' })");
+    expect(source).toContain('.range(offset, offset + PER_PAGE - 1)');
+    expect(source).toContain('total: exactTotal');
+    expect(source).not.toContain('approximateTotal');
+    expect(source).not.toContain('offset + PER_PAGE + 1');
+  });
+
   it('keeps fallback-only sample posts out of public detail URLs', () => {
     const linkable = FALLBACK_BLOG_POSTS.filter((post) => post.detail_available);
     const samplesOnly = FALLBACK_BLOG_POSTS.filter((post) => !post.detail_available);

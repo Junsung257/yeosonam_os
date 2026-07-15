@@ -1,6 +1,14 @@
 # Blog Errors
 
-Last updated: 2026-07-03
+Last updated: 2026-07-15
+
+## ERR-BLOG-info-fallback-and-ops-signal-leak@2026-07-15
+
+- [x] **ERR-BLOG-info-fallback-and-ops-signal-leak@2026-07-15**: Information generation failures could be replaced by one broad deterministic travel template and still continue through publish gates. The same path also injected related-product counts, active-product counts, internal price ranges, and booking counts into information-writer prompts.
+- **Root cause**: Quota recovery was allowed to substitute shape-complete boilerplate for intent-complete research, and product/booking operational signals were treated as originality evidence for informational articles.
+- **Fix**: The publisher now hard-blocks deterministic fallback artifacts before any public write and no longer fetches or injects product/booking originality signals in `generateFromTopic()`. Customer quality also blocks explicit active-product and booking/consultation signal values.
+- **Prevention**: Information posts may publish only from an intent-specific, evidence-backed candidate. Fallback copy can be private repair evidence only. Product inventory and reservation operations are never informational prompt inputs. Regression coverage lives in `src/app/api/cron/blog-publisher/route.test.ts` and `src/lib/blog-customer-quality.test.ts`.
+- **Verification**: Run the focused Vitest files above, then `npm run type-check` and the standard blog quality/public customer audits.
 
 ## ERR-BLOG-legacy-surface-artifacts@2026-07-03
 

@@ -20,13 +20,32 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('candidateFailures.push');
   });
 
-  it('uses deterministic information fallback instead of stopping on repairable info failures', () => {
+  it('never lets deterministic information fallback become a public article', () => {
     const source = routeSource();
 
     expect(source).toContain('shouldUseFastDeterministicInfoFallback');
     expect(source).toContain('applyDeterministicInfoFallback');
     expect(source).toContain('deterministic_fast_fallback');
-    expect(source).toContain('deterministic info fallback before publish');
+    expect(source).toContain('deterministic_info_fallback_not_publishable');
+    expect(source).toContain('deterministic_fallback_blocked: true');
+  });
+
+  it('does not inject product counts, prices, or booking signals into informational prompts', () => {
+    const source = routeSource();
+
+    expect(source).not.toContain('fetchBlogOriginalitySignals');
+    expect(source).not.toContain('buildOriginalityPromptBlock');
+    expect(source).not.toContain('originality_signals:');
+  });
+
+  it('keeps high-risk informational drafts private until a human review is completed', () => {
+    const source = routeSource();
+
+    expect(source).toContain('isHighRiskInformationalTopic({');
+    expect(source).toContain("status: requiresHumanReview ? 'draft' : 'published'");
+    expect(source).toContain("status: 'pending_review'");
+    expect(source).toContain('humanReviewRequired: true');
+    expect(source).toContain("riskLevel: 'high'");
   });
 
   it('repairs common article-quality failures instead of treating them as terminal blockers', () => {

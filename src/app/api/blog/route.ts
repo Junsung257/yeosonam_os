@@ -15,6 +15,8 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -188,6 +190,8 @@ export async function GET(request: NextRequest) {
 
   try {
     if (id) {
+      const authError = await requireAdminRequest(request);
+      if (authError) return authError;
       if (!isValidContentCreativeId(id)) {
         return apiResponse({ error: 'Post not found' }, { status: 404 });
       }
@@ -206,6 +210,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (searchParams.get('admin') === '1') {
+      const authError = await requireAdminRequest(request);
+      if (authError) return authError;
       const adminStatus = searchParams.get('status');
       let adminQuery = supabaseAdmin
         .from('content_creatives')
@@ -248,24 +254,26 @@ export async function GET(request: NextRequest) {
 
     let query = supabaseAdmin
       .from('content_creatives')
-      .select(BLOG_LIST_SELECT)
+      .select(BLOG_LIST_SELECT, { count: 'exact' })
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false, nullsFirst: false })
-      .range(offset, offset + limit);
+      .range(offset, offset + limit - 1);
 
     if (destination) {
       query = query.eq('destination', destination);
     }
 
     const listResult = await runApiBlogQuery('list', query, 2500);
-    const { data, error } = listResult;
+    const { data, count, error } = listResult;
     if (error) throw error;
     const fetchedPosts = Array.isArray(data) ? data : [];
     const posts = fetchedPosts.slice(0, limit);
-    const hasNextPage = fetchedPosts.length > limit;
-    const total = hasNextPage ? offset + limit + 1 : offset + posts.length;
+    if (typeof count !== 'number' || !Number.isFinite(count)) {
+      throw new Error('Exact blog count unavailable');
+    }
+    const total = Math.max(0, Math.trunc(count));
     const payload: BlogListPayload = {
       posts,
       total,
@@ -337,6 +345,20 @@ export async function POST(request: NextRequest) {
 
     const cleanSlug = normalizeSlug(slug);
     const status = reqStatus === 'published' ? 'published' : 'draft';
+
+    if (status === 'published') {
+      const reviewBlock = getInformationalReviewBlockReason({
+        productId: product_id || null,
+        title: seo_title || cleanSlug,
+        category: category || null,
+      });
+      if (reviewBlock) {
+        return apiResponse({
+          error: 'Human review approval is required before publishing this informational draft',
+          review_reason: reviewBlock,
+        }, { status: 409 });
+      }
+    }
 
     let destinationForQa: string | null = null;
     if (product_id) {
@@ -425,13 +447,26 @@ export async function PATCH(request: NextRequest) {
     if (force_revalidate === true) {
       const { data: row, error: rowErr } = await supabaseAdmin
         .from('content_creatives')
-        .select('slug, status, channel')
+        .select('slug, status, channel, product_id, review_status, seo_title, category, content_type')
         .eq('id', id)
         .limit(1);
       if (rowErr) throw rowErr;
       const target = row?.[0];
       if (!target?.slug) {
         return apiResponse({ error: 'Post not found or slug missing' }, { status: 404 });
+      }
+      const reviewBlock = getInformationalReviewBlockReason({
+        productId: target.product_id ?? null,
+        reviewStatus: target.review_status ?? null,
+        title: target.seo_title ?? null,
+        category: target.category ?? null,
+        contentType: target.content_type ?? null,
+      });
+      if (target.status !== 'published' || reviewBlock) {
+        return apiResponse({
+          error: 'Only an approved published article can be reindexed',
+          review_reason: reviewBlock,
+        }, { status: 409 });
       }
       revalidatePublicBlogCache(target.slug);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -460,7 +495,7 @@ export async function PATCH(request: NextRequest) {
       try {
         const { data: existing, error: existingError } = await supabaseAdmin
           .from('content_creatives')
-          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id')
+          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id, review_status, topic_source, category, content_type')
           .eq('id', id)
           .limit(1);
         if (existingError) throw existingError;
@@ -472,12 +507,44 @@ export async function PATCH(request: NextRequest) {
           destination?: string | null;
           angle_type?: string | null;
           product_id?: string | null;
+          review_status?: string | null;
+          topic_source?: string | null;
+          category?: string | null;
+          content_type?: string | null;
         } | undefined;
         const finalHtml = (blog_html as string | undefined) ?? row?.blog_html ?? '';
         const finalSlug = (updateData.slug as string | undefined) ?? row?.slug ?? '';
         const finalTitle = (seo_title as string | undefined) ?? row?.seo_title ?? null;
         const finalDescription = (seo_description as string | undefined) ?? row?.seo_description ?? null;
         const destination = row ? resolveBlogDestination(row) : null;
+
+        const reviewBlock = getInformationalReviewBlockReason({
+          productId: row?.product_id ?? null,
+          reviewStatus: row?.review_status ?? null,
+          title: finalTitle,
+          category: category ?? row?.category ?? null,
+          contentType: row?.content_type ?? null,
+          topic: row?.topic_source ?? null,
+        });
+        const changesReviewedHighRiskContent = reviewBlock == null
+          && row?.product_id == null
+          && row?.review_status === 'approved'
+          && getInformationalReviewBlockReason({
+            productId: null,
+            reviewStatus: 'none',
+            title: finalTitle,
+            category: category ?? row?.category ?? null,
+            contentType: row?.content_type ?? null,
+            topic: row?.topic_source ?? null,
+          }) === 'high_risk_human_review_required'
+          && [blog_html, seo_title, seo_description].some((value) => value !== undefined);
+        if (reviewBlock || changesReviewedHighRiskContent) {
+          return apiResponse({
+            error: 'Human review approval is required before publishing this informational draft',
+            review_status: row?.review_status,
+            review_reason: reviewBlock ?? 'reviewed_content_changed',
+          }, { status: 409 });
+        }
 
         if (!finalHtml || !finalSlug) {
           return apiResponse({ error: 'Blog quality gate input missing' }, { status: 400 });

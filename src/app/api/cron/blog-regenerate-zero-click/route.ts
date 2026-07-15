@@ -27,6 +27,7 @@ import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -44,7 +45,7 @@ interface RankRow {
 
 interface RegenResult {
   slug: string;
-  status: 'replaced' | 'gate_failed' | 'cooldown' | 'no_post' | 'llm_failed' | 'error' | 'race_skipped' | 'log_failed';
+  status: 'replaced' | 'gate_failed' | 'cooldown' | 'no_post' | 'llm_failed' | 'error' | 'race_skipped' | 'log_failed' | 'high_risk_review';
   gateSummary?: string;
   reason?: string;
 }
@@ -149,7 +150,7 @@ async function runRegenerator(request: NextRequest) {
     // 3) content_creatives 매칭 — info 글(product_id NULL)만
     const { data: posts, error: postErr } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, travel_packages(destination)')
+      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, category, content_type, travel_packages(destination)')
       .in('slug', candidateSlugs)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
@@ -168,6 +169,18 @@ async function runRegenerator(request: NextRequest) {
       const post = postBySlug.get(slug);
       if (!post) {
         results.push({ slug, status: 'no_post', reason: 'published info 글 아님' });
+        continue;
+      }
+      if (isHighRiskInformationalTopic({
+        title: post.seo_title ?? null,
+        category: post.category ?? null,
+        contentType: post.content_type ?? null,
+      })) {
+        results.push({
+          slug,
+          status: 'high_risk_review',
+          reason: 'Published high-risk information must not be regenerated without a new human review',
+        });
         continue;
       }
 

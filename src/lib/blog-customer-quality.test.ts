@@ -516,4 +516,22 @@ describe('inspectBlogCustomerQuality', () => {
     expect(report.passed).toBe(false);
     expect(report.issues.map((issue) => issue.code)).toContain('placeholder_destination_copy');
   });
+
+  it('blocks internal active-product and booking-signal values from customer articles', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '푸꾸옥 가족여행',
+      destination: '푸꾸옥',
+      blogHtml: [
+        '# 푸꾸옥 가족여행',
+        '',
+        '푸꾸옥 가족여행은 아이 나이와 이동 시간을 먼저 정하면 일정을 고르기 쉽습니다.',
+        '',
+        '관련 상품 12개, 활성 상품 0개, 최근 예약 신호 0건입니다.',
+      ].join('\n'),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('unsupported_internal_data');
+  });
 });

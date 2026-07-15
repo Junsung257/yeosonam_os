@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
       const [creativeResult, history] = await Promise.all([
         supabaseAdmin
           .from('content_creatives')
-          .select('id, title, status, review_status, channel, blog_html')
+          .select('id, seo_title, status, review_status, channel, blog_html')
           .eq('id', creativeId)
           .maybeSingle(),
         getReviewHistory(creativeId),
@@ -129,7 +129,12 @@ export async function GET(request: NextRequest) {
       }
 
       return NextResponse.json({
-        creative: creativeResult.data,
+        creative: {
+          ...creativeResult.data,
+          // Preserve the existing review-panel response contract while reading
+          // the actual content_creatives column.
+          title: creativeResult.data.seo_title,
+        },
         history,
       }, { headers: cacheHeader(60) });
     }

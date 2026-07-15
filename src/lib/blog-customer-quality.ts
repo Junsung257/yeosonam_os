@@ -75,6 +75,9 @@ const CUSTOMER_PLACEHOLDERS = [
 const UNSUPPORTED_INTERNAL_DATA_RE =
   /여소남(?:의)?\s*(?:내부\s*)?(?:데이터|예약\s*데이터|상담\s*데이터)(?:로\s*보면|를\s*보면|에\s*따르면|상으로는)?/i;
 
+const INTERNAL_OPERATIONAL_VALUE_RE =
+  /(?:관련\s*상품|활성\s*상품|판매\s*가능\s*상품)\s*[:：]?\s*\d+\s*개|(?:최근\s*)?(?:예약|상담)\s*(?:신호|건수)\s*[:：]?\s*\d+\s*건/i;
+
 const READABLE_HARD_CTA_RE =
   /(?:지금|바로)\s*(?:예약|상담|문의|신청)|(?:예약|상담|문의)\s*(?:하기|신청|바로|마감)|(?:상품|패키지)\s*보기|카카오?톡\s*(?:상담|문의)|잔여\s*좌석|마감\s*임박/i;
 
@@ -501,7 +504,14 @@ function inspectCommon(input: BlogCustomerQualityInput, plain: string, issues: B
     );
   }
 
-  if (UNSUPPORTED_INTERNAL_DATA_RE.test(plain) && !/(집계\s*기준|표본|로그|기간|GSC|서치콘솔|예약\s*건수|상담\s*건수)/.test(plain)) {
+  if (INTERNAL_OPERATIONAL_VALUE_RE.test(plain)) {
+    addIssue(
+      issues,
+      'unsupported_internal_data',
+      'critical',
+      '활성 상품 수나 예약·상담 신호 같은 내부 운영값은 고객용 글에 노출할 수 없습니다.',
+    );
+  } else if (UNSUPPORTED_INTERNAL_DATA_RE.test(plain) && !/(집계\s*기준|표본|로그|기간|GSC|서치콘솔)/.test(plain)) {
     addIssue(
       issues,
       'unsupported_internal_data',

@@ -10,8 +10,9 @@ import {
 } from '@/lib/blog-publish-quality';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 
-const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, travel_packages(id, title, destination)';
+const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, review_status, category, content_type, topic_source, travel_packages(id, title, destination)';
 
 const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ queue: [] });
@@ -88,10 +89,40 @@ const postHandler = async (request: NextRequest) => {
         destination?: string | null;
         angle_type?: string | null;
         product_id?: string | null;
+        review_status?: string | null;
+        category?: string | null;
+        content_type?: string | null;
+        topic_source?: string | null;
         travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
       } | undefined;
       if (!row?.blog_html) {
         return NextResponse.json({ error: 'blog_html is missing' }, { status: 400 });
+      }
+
+      const reviewBlock = getInformationalReviewBlockReason({
+        productId: row.product_id ?? null,
+        reviewStatus: row.review_status ?? null,
+        title: seo_title ?? row.seo_title ?? null,
+        category: row.category ?? null,
+        contentType: row.content_type ?? null,
+        topic: row.topic_source ?? null,
+      });
+      const changesReviewedHighRiskContent = reviewBlock == null
+        && row.product_id == null
+        && row.review_status === 'approved'
+        && getInformationalReviewBlockReason({
+          reviewStatus: 'none',
+          title: row.seo_title ?? null,
+          category: row.category ?? null,
+          contentType: row.content_type ?? null,
+          topic: row.topic_source ?? null,
+        }) === 'high_risk_human_review_required'
+        && [seo_title, seo_description].some((value) => value !== undefined);
+      if (reviewBlock || changesReviewedHighRiskContent) {
+        return NextResponse.json({
+          error: 'Human review approval is required before publishing this informational draft',
+          review_reason: reviewBlock ?? 'reviewed_content_changed',
+        }, { status: 409 });
       }
 
       const finalTitle = seo_title ?? row.seo_title ?? null;
