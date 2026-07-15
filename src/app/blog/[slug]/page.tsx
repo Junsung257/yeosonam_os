@@ -25,6 +25,7 @@ import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
 import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
@@ -1391,39 +1392,39 @@ async function renderBlogDetail({
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.blogPosting) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.blogPosting) }}
       />
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.breadcrumbList) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.breadcrumbList) }}
       />
       {jsonLd.faqPage && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.faqPage) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.faqPage) }}
         />
       )}
       {jsonLd.howTo && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.howTo) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.howTo) }}
         />
       )}
       {jsonLd.touristTrip && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.touristTrip) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.touristTrip) }}
         />
       )}
       {jsonLd.product && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.product) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.product) }}
         />
       )}
 

@@ -23,6 +23,7 @@ import {
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { readPersistedBlogReadingTime } from '@/lib/blog-reading-time';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PER_PAGE = 12;
@@ -688,7 +689,7 @@ export default async function BlogData({ searchParams }: Props) {
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@graph': [
               {

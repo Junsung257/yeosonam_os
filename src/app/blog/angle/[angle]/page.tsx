@@ -17,6 +17,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -186,7 +187,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: `${meta.label} 여행 가이드`,

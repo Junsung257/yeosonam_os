@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import PrivateTourLandingClient from './PrivateTourLandingClient';
 import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const dynamic = 'force-static';
 export const revalidate = 86400;
@@ -154,7 +155,7 @@ export default function PrivateTourPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'Product',
             name: '여소남 단독맞춤여행',

@@ -23,6 +23,7 @@ import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isObviouslyInvalidDestinationRoute } from '../public-route';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -325,7 +326,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: `${destination} 여행 가이드`,

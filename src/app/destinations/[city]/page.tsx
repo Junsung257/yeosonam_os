@@ -26,6 +26,7 @@ import { isPublicPublicationState } from '@/lib/package-publication/types';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -784,7 +785,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@graph': [
               {
