@@ -3,10 +3,7 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { trackUserAction, type UserActionType } from '@/lib/user-actions';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 const ACTION_TYPES = new Set<UserActionType>([
   'page_view',
@@ -45,19 +42,12 @@ function normalizePackageCards(rows: unknown): Array<Record<string, unknown>> {
     : [];
 }
 
-function isUserActionPublicSnapshotCandidate(row: unknown): row is Record<string, unknown> {
-  if (!row || typeof row !== 'object') return false;
-  const item = row as Record<string, unknown>;
-  const publicationState = typeof item.publication_state === 'string' ? item.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(item);
-}
-
 async function toPublicPackageCards(
   rows: unknown,
   order?: Map<string, number>,
 ): Promise<Array<Record<string, unknown>>> {
   const candidates = Array.isArray(rows)
-    ? rows.filter(isUserActionPublicSnapshotCandidate)
+    ? rows.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'))
     : [];
   const merged = await getPublishedPackageCards(
     supabaseAdmin,
@@ -119,28 +109,26 @@ export async function GET(request: NextRequest) {
         .from('travel_packages')
         .select(USER_ACTION_PACKAGE_FIELDS)
         .eq('id', packageId)
-        .in('publication_state', ['approved', 'published'])
         .maybeSingle();
 
-      if (!isUserActionPublicSnapshotCandidate(pkg)) return NextResponse.json({ packages: [] });
+      if (!pkg) return NextResponse.json({ packages: [] });
       const publicSource = await getPublishedPackageCards(
         supabaseAdmin,
         [pkg],
       );
       if (publicSource.length === 0) return NextResponse.json({ packages: [] });
+      const publishedSource = publicSource[0];
 
       let query = supabaseAdmin
         .from('travel_packages')
         .select(USER_ACTION_PACKAGE_FIELDS)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
         .neq('id', packageId)
         .limit(limit);
 
-      if (typeof pkg.destination === 'string' && pkg.destination.trim()) {
-        query = query.eq('destination', pkg.destination);
-      } else if (typeof pkg.category === 'string' && pkg.category.trim()) {
-        query = query.eq('category', pkg.category);
+      if (typeof publishedSource.destination === 'string' && publishedSource.destination.trim()) {
+        query = query.eq('destination', publishedSource.destination);
+      } else if (typeof publishedSource.category === 'string' && publishedSource.category.trim()) {
+        query = query.eq('category', publishedSource.category);
       }
 
       const { data } = await query;
@@ -181,9 +169,7 @@ export async function GET(request: NextRequest) {
       const { data } = await supabaseAdmin
         .from('travel_packages')
         .select(USER_ACTION_PACKAGE_FIELDS)
-        .in('id', ids)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published']);
+        .in('id', ids);
 
       const order = new Map(ids.map((id, index) => [id, index]));
       return NextResponse.json({ packages: await toPublicPackageCards(data, order) });

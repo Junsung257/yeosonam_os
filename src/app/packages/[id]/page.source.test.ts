@@ -11,34 +11,30 @@ function pageSourceWithoutComments() {
 }
 
 describe('package customer detail page publication contract', () => {
-  it('checks the source package publication state before rendering a public snapshot', () => {
+  it('renders customer detail only from the promoted public detail projection', () => {
     const source = pageSourceWithoutComments();
-    const snapshotIndex = source.indexOf('const publicSnapshot = allowInternalProof');
-    const pkgIndex = source.indexOf('const pkg = allowInternalProof ? rawPkg : publicSnapshot?.package', snapshotIndex);
-    const stateIndex = source.indexOf('const publicationState = (rawPkg as', pkgIndex);
-    const nonPublicBlockIndex = source.indexOf('!isPublicPublicationState(publicationState)', stateIndex);
-    const renderStartIndex = source.indexOf('let matchQuery = sb.from', nonPublicBlockIndex);
+    const proofIndex = source.indexOf('const allowInternalProof = await isInternalRenderProofRequest()');
+    const snapshotIndex = source.indexOf('pkg = await getPublishedPackageDetail', proofIndex);
+    const notFoundIndex = source.indexOf('if (!pkg) notFound()', snapshotIndex);
 
+    expect(proofIndex).toBeGreaterThanOrEqual(0);
     expect(snapshotIndex).toBeGreaterThanOrEqual(0);
-    expect(pkgIndex).toBeGreaterThan(snapshotIndex);
-    expect(stateIndex).toBeGreaterThan(pkgIndex);
-    expect(nonPublicBlockIndex).toBeGreaterThan(stateIndex);
-    expect(renderStartIndex).toBeGreaterThan(nonPublicBlockIndex);
-    expect(source.slice(nonPublicBlockIndex, renderStartIndex)).toContain('notFound()');
-    expect(source.slice(stateIndex, renderStartIndex)).toContain('!publicSnapshot');
-    expect(source.slice(stateIndex, renderStartIndex)).not.toContain('publicationState &&');
+    expect(snapshotIndex).toBeGreaterThan(proofIndex);
+    expect(notFoundIndex).toBeGreaterThan(snapshotIndex);
+    expect(source).not.toContain('isPublicPublicationState');
+    expect(source).not.toContain("from('public_package_snapshots')");
   });
 
   it('does not fall back to raw sibling package titles for customer option cards', () => {
     const source = pageSourceWithoutComments();
-    const siblingIndex = source.indexOf('const siblingSnapshotByPackage');
-    const siblingMapIndex = source.indexOf('catalogSiblings = siblingRows', siblingIndex);
+    const siblingIndex = source.indexOf('const publicSiblings = await getPublishedPackageCards');
+    const siblingMapIndex = source.indexOf('catalogSiblings = publicSiblings', siblingIndex);
     const siblingEndIndex = source.indexOf('JSON-LD Product', siblingMapIndex);
     const siblingBlock = source.slice(siblingMapIndex, siblingEndIndex);
 
     expect(siblingIndex).toBeGreaterThanOrEqual(0);
     expect(siblingMapIndex).toBeGreaterThan(siblingIndex);
-    expect(siblingBlock).toContain('const publicTitle = getNonEmptyString(cardProjection?.title)');
+    expect(siblingBlock).toContain('const publicTitle = getNonEmptyString(publicSibling.title)');
     expect(siblingBlock).toContain('if (!publicTitle) return []');
     expect(siblingBlock).not.toContain('?? title');
     expect(siblingBlock).not.toContain('?? display_title');

@@ -16,10 +16,10 @@ describe('home public package data boundary', () => {
     const destinationMapIndex = source.indexOf('const destMap');
     const rankingItemsIndex = source.indexOf('const overseas: RankingItem[]');
 
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('function isHomePublicSnapshotCandidate');
+    expect(source).toContain('getPublishedPackageCards');
+    expect(source).not.toContain('isHomePublicSnapshotCandidate');
     expect(source).toContain('function fetchHomePublicSnapshotRows');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(source).not.toContain(".in('publication_state'");
     expect(aggregateMergeIndex).toBeGreaterThan(aggregateQueryIndex);
     expect(rankingMergeIndex).toBeGreaterThan(rankingQueryIndex);
     expect(destinationMapIndex).toBeGreaterThan(aggregateMergeIndex);

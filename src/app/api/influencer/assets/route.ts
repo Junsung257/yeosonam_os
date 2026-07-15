@@ -49,7 +49,6 @@ export async function GET(req: NextRequest) {
     let packagesQuery = supabaseAdmin
       .from('travel_packages')
       .select('id')
-      .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false })
       .limit(50);
 

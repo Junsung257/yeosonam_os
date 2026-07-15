@@ -4,10 +4,7 @@
  */
 
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export interface AnglePackage {
   id: string;
@@ -41,11 +38,6 @@ function matchesKeyword(pkg: AnglePackage, regex: RegExp): boolean {
     ...(pkg.product_highlights || []),
   ].join(' ');
   return regex.test(haystack);
-}
-
-function isAnglePublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
 type AbortableQuery<T> = {
@@ -90,8 +82,6 @@ export async function getPackagesByAngle(angle: string, limit = 6): Promise<Angl
       supabaseAdmin
         .from('travel_packages')
         .select(SELECT_FIELDS)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
         .not('price', 'is', null)
         .order('created_at', { ascending: false })
         .limit(120),
@@ -100,7 +90,7 @@ export async function getPackagesByAngle(angle: string, limit = 6): Promise<Angl
 
     const all = await getPublishedPackageCards(
       supabaseAdmin,
-      ((data || []) as unknown as Array<Record<string, unknown>>).filter(isAnglePublicSnapshotCandidate),
+      (data || []) as unknown as Array<Record<string, unknown>>,
     ) as unknown as AnglePackage[];
 
     switch (angle) {

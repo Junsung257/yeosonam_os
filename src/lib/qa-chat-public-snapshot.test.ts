@@ -6,9 +6,9 @@ describe('QA chat package context public snapshot gate', () => {
   it('loads package context through current public snapshots, not supplier raw fields', () => {
     const source = readFileSync(join(process.cwd(), 'src/lib/qa-chat-packages.ts'), 'utf8');
 
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('isPublicPublicationState');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(source).toContain('getPublishedPackageCards');
+    expect(source).not.toContain('isPublicPublicationState');
+    expect(source).not.toContain(".in('publication_state'");
     expect(source).toContain('toQaCustomerPackageRows');
     expect(source).toContain("typeof row.title === 'string'");
     expect(source).not.toContain('raw_text');

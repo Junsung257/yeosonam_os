@@ -8,10 +8,7 @@ import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/Sa
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 600;
@@ -89,16 +86,12 @@ async function getDestinations() {
     const { data: stats } = await supabaseAdmin
       .from('travel_packages')
       .select('id, destination, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .not('destination', 'is', null)
       .limit(2000);
 
     const publicStats = await getPublishedPackageCards(
       supabaseAdmin,
-      ((stats ?? []) as DestinationPackageStatsRow[])
-        .filter((pkg) => isPublicPublicationState(pkg.publication_state))
-        .filter((pkg) => isCustomerPubliclyOpenable(pkg as Record<string, unknown>)) as unknown as Array<Record<string, unknown>>,
+      (stats ?? []) as unknown as Array<Record<string, unknown>>,
     );
 
     const statsByDestination = new Map<string, {

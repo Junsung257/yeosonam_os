@@ -11,12 +11,12 @@ describe('user action package helper publication boundary', () => {
     const text = source();
     const helperIndex = text.indexOf('async function toPublicSimilarPackageCards');
     const similarIndex = text.indexOf('export async function getSimilarPackages');
-    const snapshotIndex = text.indexOf('fetchAndMergeCurrentPublicPackageCardSnapshots', similarIndex);
+    const snapshotIndex = text.indexOf('getPublishedPackageCards', similarIndex);
 
-    expect(text).toContain('function isUserActionPublicSnapshotCandidate');
-    expect(text).toContain('isCustomerPubliclyOpenable');
-    expect(text).toContain('isPublicPublicationState');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(text).not.toContain('isUserActionPublicSnapshotCandidate');
+    expect(text).not.toContain('isCustomerPubliclyOpenable');
+    expect(text).not.toContain('isPublicPublicationState');
+    expect(text).not.toContain(".in('publication_state'");
     expect(helperIndex).toBeGreaterThan(0);
     expect(snapshotIndex).toBeGreaterThan(similarIndex);
   });

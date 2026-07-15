@@ -17,10 +17,7 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -121,11 +118,6 @@ function getDisplayImageUrl(post: BlogPost): string | null {
   return toBlogImageDisplaySrc(post.og_image_url);
 }
 
-function isBlogDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
 async function mergeBlogDestinationPublicPackages<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
   if (rows.length === 0) return [];
   try {
@@ -224,8 +216,6 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
       .from('travel_packages')
       .select('id, title, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .ilike('destination', `%${destination}%`)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(6);
 
@@ -235,8 +225,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
       destination,
       posts,
       packages: await mergeBlogDestinationPublicPackages(
-        ((packagesResult.data || []) as unknown as Array<Record<string, unknown>>)
-          .filter(isBlogDestinationPublicSnapshotCandidate),
+        (packagesResult.data || []) as unknown as Array<Record<string, unknown>>,
       ) as unknown as DestinationPackage[],
       unavailable: false,
     };

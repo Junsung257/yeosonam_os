@@ -4,10 +4,7 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -71,11 +68,6 @@ function isAbortLikeError(err: unknown): boolean {
   return false;
 }
 
-function isSitemapPublicSnapshotCandidate(row: PublicPackageDestinationSitemapRow): boolean {
-  return isPublicPublicationState(row.publication_state)
-    && isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>);
-}
-
 async function fetchSitemapPublicSnapshotRows(rows: PublicPackageDestinationSitemapRow[]): Promise<PublicPackageDestinationSitemapRow[]> {
   if (rows.length === 0) return [];
   try {
@@ -133,8 +125,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       supabaseAdmin
         .from('travel_packages')
         .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
         .not('destination', 'is', null)
         .limit(PACKAGE_LIMIT)
         .abortSignal(signal),
@@ -162,7 +152,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     : getFallbackBlogPosts().filter((post) => post.detail_available);
 
   const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
-    packageDestinations.filter(isSitemapPublicSnapshotCandidate),
+    packageDestinations,
   );
   const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
   for (const pkg of snapshotDestinations) {

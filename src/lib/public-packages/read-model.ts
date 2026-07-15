@@ -2,6 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { fetchPromotedPublicPackageSnapshot } from '@/lib/package-publication/repository';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { getPublishedPackageMarketingClaims } from './marketing-read-model';
+
+export { getPublishedPackageMarketingClaims } from './marketing-read-model';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -42,7 +45,7 @@ export type PublishedMarketingPackage = {
   };
 };
 
-type ProjectionKind = 'public_api' | 'marketing' | 'partner';
+type ProjectionKind = 'public_api' | 'partner';
 
 type ProjectionRow = {
   package_id: string;
@@ -52,7 +55,6 @@ type ProjectionRow = {
   source_evidence_digest: string;
   published_at: string | null;
   public_api_projection?: AnyRecord | null;
-  marketing_projection?: AnyRecord | null;
   partner_projection?: AnyRecord | null;
 };
 
@@ -60,10 +62,6 @@ const PROJECTION_CONFIG: Record<ProjectionKind, { view: string; column: string }
   public_api: {
     view: 'published_public_package_api_v1',
     column: 'public_api_projection',
-  },
-  marketing: {
-    view: 'published_public_package_marketing_v1',
-    column: 'marketing_projection',
   },
   partner: {
     view: 'published_public_package_partner_v1',
@@ -95,11 +93,7 @@ function uniquePackageIds(ids: string[]): string[] {
 }
 
 function projectionPayload(row: ProjectionRow, kind: ProjectionKind): AnyRecord | null {
-  const value = kind === 'public_api'
-    ? row.public_api_projection
-    : kind === 'marketing'
-      ? row.marketing_projection
-      : row.partner_projection;
+  const value = kind === 'public_api' ? row.public_api_projection : row.partner_projection;
   const projection = asRecord(value);
   if (!projection || Object.keys(projection).length === 0) return null;
   if (!asNonEmptyString(row.published_snapshot_id)) return null;
@@ -168,13 +162,6 @@ export async function getPublishedPackagePublicApi(
   packageIds: string[],
 ): Promise<AnyRecord[]> {
   return getPublishedProjections(supabase, 'public_api', packageIds);
-}
-
-export async function getPublishedPackageMarketingClaims(
-  supabase: SupabaseClient,
-  packageIds: string[],
-): Promise<AnyRecord[]> {
-  return getPublishedProjections(supabase, 'marketing', packageIds);
 }
 
 export async function getPublishedMarketingPackage(

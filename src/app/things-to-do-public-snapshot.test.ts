@@ -10,12 +10,12 @@ describe('things-to-do public package data boundary', () => {
   it('renders recommended packages only after current public snapshot merge', () => {
     const text = source();
     const packageQueryIndex = text.indexOf(".from('travel_packages')");
-    const snapshotMergeIndex = text.indexOf('const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    const snapshotMergeIndex = text.indexOf('const publicPackages = await getPublishedPackageCards');
     const normalizeIndex = text.indexOf('packages: publicPackages');
 
-    expect(text).toContain('function isThingsToDoPublicSnapshotCandidate');
-    expect(text).toContain('isCustomerPubliclyOpenable');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(text).not.toContain('isThingsToDoPublicSnapshotCandidate');
+    expect(text).not.toContain('isCustomerPubliclyOpenable');
+    expect(text).not.toContain(".in('publication_state'");
     expect(snapshotMergeIndex).toBeGreaterThan(packageQueryIndex);
     expect(normalizeIndex).toBeGreaterThan(snapshotMergeIndex);
   });

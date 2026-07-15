@@ -1,8 +1,6 @@
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { extractQaDestinationHint } from '@/lib/qa-destination-hint';
 import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { getPublishedPackageCards } from '@/lib/public-packages';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
@@ -27,11 +25,6 @@ function asStringArray(value: unknown): string[] {
   return value.map((item) => String(item).trim()).filter(Boolean);
 }
 
-function isQaPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = asString(row.publication_state);
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
 function toQaCustomerPackageRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return rows
     .map((row) => ({
@@ -52,9 +45,8 @@ function toQaCustomerPackageRows(rows: Record<string, unknown>[]): Record<string
 }
 
 async function mergeQaPublicSnapshots(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
-  const candidates = rows.filter(isQaPublicSnapshotCandidate);
-  if (candidates.length === 0) return [];
-  const merged = await getPublishedPackageCards(supabaseAdmin, candidates);
+  if (rows.length === 0) return [];
+  const merged = await getPublishedPackageCards(supabaseAdmin, rows);
   return toQaCustomerPackageRows(merged);
 }
 
@@ -66,8 +58,6 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
-    .eq('status', 'approved')
-    .in('publication_state', ['approved', 'published'])
     .ilike('destination', `%${destinationHint}%`)
     .order('created_at', { ascending: false })
     .limit(120);
@@ -81,8 +71,6 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
   const { data, error } = await supabaseAdmin
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
-    .eq('status', 'approved')
-    .in('publication_state', ['approved', 'published'])
     .order('created_at', { ascending: false })
     .limit(150);
 

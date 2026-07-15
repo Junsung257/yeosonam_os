@@ -5,10 +5,7 @@
  * 최근 본 상품, 비슷한 상품 등을 조회합니다.
  */
 import { supabaseAdmin } from '@/lib/supabase';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export type UserActionType =
   | 'page_view'
@@ -40,16 +37,9 @@ const USER_ACTION_PACKAGE_FIELDS =
 
 type SimilarPackageCard = { id: string; title: string; destination: string; price: number };
 
-function isUserActionPublicSnapshotCandidate(row: unknown): row is Record<string, unknown> {
-  if (!row || typeof row !== 'object') return false;
-  const item = row as Record<string, unknown>;
-  const publicationState = typeof item.publication_state === 'string' ? item.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(item);
-}
-
 async function toPublicSimilarPackageCards(rows: unknown): Promise<SimilarPackageCard[]> {
   const candidates = Array.isArray(rows)
-    ? rows.filter(isUserActionPublicSnapshotCandidate)
+    ? rows.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'))
     : [];
   const publicRows = await getPublishedPackageCards(
     supabaseAdmin,
@@ -145,26 +135,24 @@ export async function getSimilarPackages(
     .from('travel_packages')
     .select(USER_ACTION_PACKAGE_FIELDS)
     .eq('id', packageId)
-    .in('publication_state', ['approved', 'published'])
     .single();
 
-  if (pkgErr || !isUserActionPublicSnapshotCandidate(pkg)) return [];
+  if (pkgErr || !pkg) return [];
   const publicSource = await getPublishedPackageCards(
     supabaseAdmin,
     [pkg],
   );
   if (publicSource.length === 0) return [];
 
-  const destination = typeof pkg.destination === 'string' ? pkg.destination.trim() : '';
-  const category = typeof pkg.category === 'string' ? pkg.category.trim() : '';
+  const publishedSource = publicSource[0];
+  const destination = typeof publishedSource.destination === 'string' ? publishedSource.destination.trim() : '';
+  const category = typeof publishedSource.category === 'string' ? publishedSource.category.trim() : '';
 
   if (!destination && !category) return [];
   if (!destination && category) {
     const { data: catSimilar } = await supabaseAdmin
       .from('travel_packages')
       .select(USER_ACTION_PACKAGE_FIELDS)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .neq('id', packageId)
       .eq('category', category)
       .limit(limit);
@@ -174,8 +162,6 @@ export async function getSimilarPackages(
   const { data: similar, error: simErr } = await supabaseAdmin
     .from('travel_packages')
     .select(USER_ACTION_PACKAGE_FIELDS)
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-    .in('publication_state', ['approved', 'published'])
     .neq('id', packageId)
     .eq('destination', destination)
     .limit(limit);
@@ -185,8 +171,6 @@ export async function getSimilarPackages(
     const { data: catSimilar } = await supabaseAdmin
       .from('travel_packages')
       .select(USER_ACTION_PACKAGE_FIELDS)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .neq('id', packageId)
       .eq('category', category)
       .limit(limit);

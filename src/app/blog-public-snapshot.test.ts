@@ -12,9 +12,10 @@ describe('blog public package data boundary', () => {
     const packageQueryIndex = text.indexOf("'postFastPackage'");
     const packageMergeIndex = text.indexOf('post.travel_packages = (publicRows[0]');
 
-    expect(text).toContain('function isBlogPublicSnapshotCandidate');
     expect(text).toContain('async function mergeBlogPublicPackageSnapshots');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(text).toContain('getPublishedPackageCards');
+    expect(text).not.toContain('isBlogPublicSnapshotCandidate');
+    expect(text).not.toContain(".in('publication_state'");
     expect(text).not.toContain('travel_packages(id, title');
     expect(packageMergeIndex).toBeGreaterThan(packageQueryIndex);
   });
@@ -26,11 +27,11 @@ describe('blog public package data boundary', () => {
     const relatedPostIndex = text.indexOf("'relatedPosts'");
     const relatedPostAttachIndex = text.indexOf('const posts = await attachRelatedPostPublicSnapshots');
     const curationIndex = text.indexOf("'curationProducts'");
-    const curationMergeIndex = text.indexOf('const publicAlive = await mergeBlogPublicPackageSnapshots');
+    const curationMergeIndex = text.indexOf('const published = await mergeBlogPublicPackageSnapshots');
 
     expect(text).not.toContain('travel_packages(destination, price, duration, nights)');
     expect(text).toContain('async function attachRelatedPostPublicSnapshots');
-    expect(text).toContain("'relatedPostPublicPackages'");
+    expect(text).toContain('const publicRows = await mergeBlogPublicPackageSnapshots');
     expect(scoredMergeIndex).toBeGreaterThan(scoredIndex);
     expect(relatedPostAttachIndex).toBeGreaterThan(relatedPostIndex);
     expect(curationMergeIndex).toBeGreaterThan(curationIndex);
@@ -56,10 +57,10 @@ describe('blog public package data boundary', () => {
   it('filters destination RSS posts with public snapshot destinations only', () => {
     const text = source('src/app/destinations/[city]/rss.xml/route.ts');
     const packageQueryIndex = text.indexOf(".from('travel_packages')");
-    const snapshotIndex = text.indexOf('const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots');
+    const snapshotIndex = text.indexOf('const publicPackages = await getPublishedPackageCards');
     const filterIndex = text.indexOf('publicPackageDestinationById.get');
 
-    expect(text).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(text).toContain('getPublishedPackageCards');
     expect(text).toContain('status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data');
     expect(text).not.toContain('travel_packages(destination)');
     expect(text).not.toContain('p.travel_packages?.destination');

@@ -12,7 +12,7 @@
 
 import type { AdCampaign, AdCreative, AdPerformanceSnapshot, CampaignStatus } from '@/types/meta-ads';
 import { getSupabaseAdmin } from '../supabase';
-import { getPublishedPackageMarketingClaims } from '../public-packages';
+import { getPublishedPackageMarketingClaims } from '../public-packages/marketing-read-model';
 
 // Server-only module. All 13 callers are in src/app/api/** (verified).
 // Uses service_role to bypass RLS so we can drop authenticated `*_all USING true` policies.

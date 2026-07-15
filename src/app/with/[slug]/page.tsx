@@ -8,10 +8,7 @@ import AffiliateTouchpointBeacon from '@/components/affiliate/AffiliateTouchpoin
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isSafeImageSrc } from '@/lib/image-url';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 function extractYoutubeEmbedUrl(input?: string | null): string | null {
   if (!input) return null;
@@ -50,11 +47,6 @@ function safeDecodePathSegment(value: string): string {
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
-}
-
-function isWithPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
 async function toPublicAffiliatePicks<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
@@ -191,12 +183,9 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
       const { data: picked } = await supabaseAdmin
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
-        .in('id', pickIds)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published']);
+        .in('id', pickIds);
       const order = new Map(pickIds.map((id, i) => [id, i]));
       const pickedRows = ((picked || []) as Array<Record<string, unknown>>)
-        .filter(isWithPublicSnapshotCandidate)
         .sort(
           (a, b) => {
             const aId = typeof a.id === 'string' ? a.id : '';
@@ -215,14 +204,10 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
       const { data: fallback } = await supabaseAdmin
         .from('travel_packages')
         .select(PKG_CARD_FIELDS)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
         .order('created_at', { ascending: false })
         .limit(100);
       picks = await toPublicAffiliatePicks(
-        ((fallback || []) as Array<Record<string, unknown>>)
-          .filter(isWithPublicSnapshotCandidate)
-          .slice(0, 6),
+        ((fallback || []) as Array<Record<string, unknown>>).slice(0, 6),
       ) as typeof picks;
     } catch {
       picks = [];

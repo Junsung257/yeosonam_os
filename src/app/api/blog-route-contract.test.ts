@@ -21,8 +21,9 @@ describe('blog API and editorial audit contracts', () => {
     const idBranch = route.slice(idBranchStart, adminBranchStart);
 
     expect(route).toContain('attachPublicPackageSnapshotToBlogPost');
-    expect(route).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(route).toContain('isBlogApiPublicSnapshotCandidate');
+    expect(route).toContain('getPublishedPackageCard');
+    expect(route).not.toContain('isBlogApiPublicSnapshotCandidate');
+    expect(route).not.toContain(".in('publication_state'");
     expect(idBranch).not.toContain('travel_packages(');
     expect(idBranch).toContain('product_id, destination');
     expect(idBranch).toContain('const post = await attachPublicPackageSnapshotToBlogPost');

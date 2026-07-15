@@ -60,7 +60,6 @@ export async function GET(request: NextRequest) {
       .from('travel_packages')
       .select('id')
       .eq('land_operator_id', operator.id)
-      .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false });
 
     if (pkgError) throw pkgError;

@@ -16,8 +16,6 @@ import {
   mergePublicDestinationStats,
   type ActiveDestinationLike,
 } from '@/lib/public-destinations';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
@@ -175,8 +173,6 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
           .from('travel_packages')
           .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
           .in('destination', queryNames)
-          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-          .in('publication_state', ['approved', 'published'])
           .order('price', { ascending: true })
           .limit(2000)
       : Promise.resolve(emptyResult),
@@ -193,8 +189,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       : Promise.resolve(emptyResult),
   ]);
   const attrs = attrsRes.data;
-  const pkgs = ((pkgsRes.data as unknown as Record<string, unknown>[] | null) ?? [])
-    .filter(isCustomerPubliclyOpenable);
+  const pkgs = (pkgsRes.data as unknown as Record<string, unknown>[] | null) ?? [];
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
@@ -219,14 +214,14 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
 
   // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
   const currentPublicPackageRows = pkgs
-  const alivePackageRows = pkgs
+  const publicCardRows = await getPublishedPackageCards(supabaseAdmin, pkgs);
+  const alivePackageRows = publicCardRows
     .filter(p => {
       const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some(d => d.date && d.date >= today);
     });
-  const publicCardRows = await getPublishedPackageCards(supabaseAdmin, alivePackageRows);
-  const alivePkgs = publicCardRows
+  const alivePkgs = alivePackageRows
     .map(p => ({
       ...p,
       products: Array.isArray(p.products) ? p.products[0] ?? null : p.products,
@@ -234,7 +229,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     .slice(0, 12) as PackageCardData[];
 
   const packageStatsByDestination = new Map<string, { count: number; minPrice: number | null }>();
-  for (const pkg of publicCardRows) {
+  for (const pkg of alivePackageRows) {
     const destination = typeof pkg.destination === 'string' ? aliasToDestination.get(pkg.destination) ?? pkg.destination : null;
     if (!destination) continue;
     const price = getPositiveNumber(pkg.price);

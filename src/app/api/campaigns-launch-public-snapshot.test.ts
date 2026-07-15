@@ -34,10 +34,10 @@ describe('campaign launch public package boundary', () => {
   it('keeps the campaign package snapshot gate in the shared campaign helper', () => {
     const helper = readFileSync(join(process.cwd(), 'src/lib/campaign-public-packages.ts'), 'utf8');
 
-    expect(helper).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(helper).toContain('isCampaignPublicSnapshotCandidate');
-    expect(helper).toContain('isCustomerPubliclyOpenable');
-    expect(helper).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(helper).toContain('getPublishedPackageCards');
+    expect(helper).not.toContain('isCampaignPublicSnapshotCandidate');
+    expect(helper).not.toContain('isCustomerPubliclyOpenable');
+    expect(helper).not.toContain(".in('publication_state'");
     expect(helper).toContain('travel_packages: publicPackagesById.get(productId) ?? null');
   });
 });

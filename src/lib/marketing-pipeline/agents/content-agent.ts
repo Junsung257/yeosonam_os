@@ -33,7 +33,6 @@ export class ContentAgent extends BaseMarketingAgent {
       .select('id')
       .eq('is_active', true)
       .eq('is_approved', true)
-      .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false })
       .limit(3);
 

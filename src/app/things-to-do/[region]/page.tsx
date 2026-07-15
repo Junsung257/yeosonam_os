@@ -18,11 +18,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -169,11 +166,6 @@ function normalizePackageRow(row: unknown): PackageRow | null {
   };
 }
 
-function isThingsToDoPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
-}
-
 function pickPackageCoverUrl(p: PackageRow): string | null {
   const fromPhotos = pickAttractionPhotoUrl(p.photos);
   if (fromPhotos) return fromPhotos;
@@ -220,8 +212,6 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
       .from('travel_packages')
       .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('destination', region)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(8),
   ]).catch(() => [{ data: null }, { data: null }]);
@@ -241,8 +231,7 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
 
   const publicPackages = await getPublishedPackageCards(
     supabaseAdmin,
-    ((packages as Array<Record<string, unknown>> | null) ?? [])
-      .filter(isThingsToDoPublicSnapshotCandidate),
+    (packages as Array<Record<string, unknown>> | null) ?? [],
   ).catch(() => []);
 
   return {

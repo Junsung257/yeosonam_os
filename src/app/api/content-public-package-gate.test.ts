@@ -39,10 +39,10 @@ describe('content generation public package gate', () => {
   it('loads product context only through current approved public snapshots', () => {
     const helper = source('src/lib/content-public-package.ts');
 
-    expect(helper).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(helper).toContain('isCustomerPubliclyOpenable');
-    expect(helper).toContain('isPublicPublicationState');
-    expect(helper).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(helper).toContain('getPublishedPackageCards');
+    expect(helper).not.toContain('isCustomerPubliclyOpenable');
+    expect(helper).not.toContain('isPublicPublicationState');
+    expect(helper).not.toContain(".in('publication_state'");
     expect(helper).toContain('price_dates: asPriceDates(row.price_dates)');
     expect(helper).toContain('if (!title) return null');
     expect(helper).not.toContain("select('id, title");
@@ -57,6 +57,7 @@ describe('content generation public package gate', () => {
 
       expect(
         text.includes('loadPublicContentPackageForGeneration') ||
+          text.includes('getPublishedMarketingPackage') ||
           text.includes('loadPublicSearchAdPackage') ||
           text.includes('buildAndSaveSearchAdPackagePlan'),
         path,

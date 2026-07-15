@@ -11,8 +11,6 @@ import { logError } from '@/lib/sentry-logger';
 import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
@@ -72,8 +70,6 @@ export async function GET(request: NextRequest) {
     let query = sb
       .from('travel_packages')
       .select(PACKAGE_FIELDS)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false })
       .limit(fetchLimit);
 
@@ -105,8 +101,13 @@ export async function GET(request: NextRequest) {
     if (pkgErr) throw pkgErr;
 
     const today = new Date().toISOString().slice(0, 10);
-    let aliveRaw = (rawPackages ?? []).filter((p: any) => {
-      if (!isCustomerPubliclyOpenable(p)) return false;
+    let aliveRaw = rawPackages ?? [];
+
+    if (aliveRaw.length > 0) {
+      aliveRaw = await getPublishedPackageCards(sb, aliveRaw as Array<Record<string, unknown>>) as any[];
+    }
+
+    aliveRaw = aliveRaw.filter((p: any) => {
       const pd = (p.price_dates || []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some(d => d?.date && d.date >= today);
@@ -117,10 +118,6 @@ export async function GET(request: NextRequest) {
     }
 
     aliveRaw = aliveRaw.slice(0, 50);
-
-    if (aliveRaw.length > 0) {
-      aliveRaw = await getPublishedPackageCards(sb, aliveRaw as Array<Record<string, unknown>>) as any[];
-    }
 
     const packages = aliveRaw.map((pkg: any) => ({
       ...pkg,

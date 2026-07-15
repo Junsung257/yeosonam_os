@@ -32,7 +32,6 @@ import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { classifyBlogIntent, inspectBlogIntentQuality } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
   BLOG_DETAIL_CACHE_TAG,
   createBlogDatabaseUnavailableError,
@@ -41,9 +40,7 @@ import {
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { getPublishedPackageCards, type PublishedPackageCard } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -133,11 +130,6 @@ interface BlogPost {
     itinerary_data?: unknown;
     hero_image_url?: string | null;
   } | null;
-}
-
-function isBlogPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
 async function mergeBlogPublicPackageSnapshots<T extends Record<string, unknown>>(
@@ -511,14 +503,12 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
         .from('travel_packages')
         .select('id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .eq('id', post.product_id)
-        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-        .in('publication_state', ['approved', 'published'])
         .limit(1),
       { data: null, error: null },
       4000,
     );
     const packageRow = ((packageRows || [])[0] as (BlogPost['travel_packages'] & Record<string, unknown>) | undefined) ?? null;
-    const publicRows = packageRow && isBlogPublicSnapshotCandidate(packageRow)
+    const publicRows = packageRow
       ? await mergeBlogPublicPackageSnapshots([packageRow])
       : [];
     post.travel_packages = (publicRows[0] as BlogPost['travel_packages'] | undefined) ?? null;
@@ -607,8 +597,6 @@ async function getRelatedProducts(
       .from('travel_packages')
       .select('id, package_revision')
       .eq('destination', destination)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .limit(50),
     { data: [] as Array<{ id: string; package_revision: number | null }>, error: null },
     1800,
@@ -690,8 +678,6 @@ async function getRelatedProducts(
     .from('travel_packages')
     .select('id, package_revision')
     .eq('destination', destination)
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-    .in('publication_state', ['approved', 'published'])
     .limit(20);
   if (currentProductId) query = query.neq('id', currentProductId);
   const result = await runBlogDetailQuery(
@@ -863,8 +849,6 @@ async function getCurationProductsForInfo(destination: string) {
       .from('travel_packages')
       .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('destination', destination)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(12),
     { data: [] as CurationPackage[], error: null },
@@ -874,17 +858,15 @@ async function getCurationProductsForInfo(destination: string) {
   const { data } = result;
 
   // 미래 출발일 있는 상품만 필터
-  const alive = (data as unknown as CurationPackage[])
-    .filter((p) => isBlogPublicSnapshotCandidate(p as unknown as Record<string, unknown>))
+  const published = await mergeBlogPublicPackageSnapshots(
+    data as unknown as Array<Record<string, unknown>>,
+  ) as unknown as CurationPackage[];
+  const publicAlive = published
     .filter((p) => {
       const pd = (p.price_dates || []) as Array<{ date?: string }>;
       if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
       return pd.some((d) => d.date && d.date >= today);
     });
-
-  const publicAlive = await mergeBlogPublicPackageSnapshots(
-    alive as unknown as Array<Record<string, unknown>>,
-  ) as unknown as CurationPackage[];
 
   if (publicAlive.length <= 3) return publicAlive;
 

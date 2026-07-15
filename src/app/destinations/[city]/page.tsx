@@ -19,10 +19,7 @@ import {
   slugMatchesPublicDestination,
   type ActiveDestinationLike,
 } from '@/lib/public-destinations';
-import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
-import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { getPublishedPackageCards } from '@/lib/public-packages';
-import { isPublicPublicationState } from '@/lib/package-publication/types';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
@@ -33,12 +30,6 @@ const DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
   0,
   Number(process.env.DESTINATION_STATIC_PRERENDER_LIMIT ?? '0') || 0,
 );
-
-function isDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
-  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
-  return isPublicPublicationState(publicationState)
-    && isCustomerPubliclyOpenable(row);
-}
 
 async function fetchDestinationPublicSnapshotRows<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
   if (rows.length === 0) return [];
@@ -63,12 +54,10 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
     const { data } = await supabaseAdmin
       .from('travel_packages')
       .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .not('destination', 'is', null)
       .limit(DESTINATION_STATIC_PRERENDER_LIMIT);
     const publicRows = await fetchDestinationPublicSnapshotRows(
-      ((data ?? []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
+      (data ?? []) as Array<Record<string, unknown>>,
     );
     const unique: string[] = [
       ...new Set(
@@ -182,12 +171,10 @@ async function destinationHasPublicInventory(city: string): Promise<boolean | nu
       .from('travel_packages')
       .select('id, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .in('destination', queryNames)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .limit(200);
     if (error) return null;
     const publicRows = await fetchDestinationPublicSnapshotRows(
-      ((data ?? []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
+      (data ?? []) as Array<Record<string, unknown>>,
     );
     return publicRows.length > 0;
   } catch {
@@ -226,13 +213,11 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
     const { data: packageRows, error } = await supabaseAdmin
       .from('travel_packages')
       .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .limit(2000);
     if (error) return decoded;
 
     const publicRows = await fetchDestinationPublicSnapshotRows(
-      ((packageRows ?? []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
+      (packageRows ?? []) as Array<Record<string, unknown>>,
     );
     const packageMatch = (publicRows as Array<{ destination: string | null }>)
       .map(row => row.destination?.trim() ?? '')
@@ -508,8 +493,6 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     .from('travel_packages')
     .select('id, departure_airport, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
     .in('destination', queryNames)
-    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-    .in('publication_state', ['approved', 'published'])
     .not('departure_airport', 'is', null);
 
   const [
@@ -534,8 +517,6 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .from('travel_packages')
       .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, avg_rating, review_count, price_dates, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
       .in('destination', queryNames)
-      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
-      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(100),
     supabaseAdmin
@@ -561,15 +542,17 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     departureQuery,
   ]);
 
-  const alivePackageRows = ((packages as unknown[] | null) ?? [])
-    .filter((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object' && !Array.isArray(p)))
-    .filter(isDestinationPublicSnapshotCandidate)
+  const publishedPackageRows = await fetchDestinationPublicSnapshotRows(
+    ((packages as unknown[] | null) ?? [])
+      .filter((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object' && !Array.isArray(p))),
+  );
+  const alivePackageRows = publishedPackageRows
     .filter((p) => {
       const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some((d) => d.date && d.date >= today);
     });
-  const alivePkgs = (await fetchDestinationPublicSnapshotRows(alivePackageRows))
+  const alivePkgs = alivePackageRows
     .map(normalizePackageRow)
     .filter((p): p is PillarData['packages'][number] => p !== null);
 
@@ -597,7 +580,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   const departureCities = [
     ...new Set(
       (await fetchDestinationPublicSnapshotRows(
-        ((departurePkgs || []) as Array<Record<string, unknown>>).filter(isDestinationPublicSnapshotCandidate),
+        (departurePkgs || []) as Array<Record<string, unknown>>,
       ) as Array<{ departure_airport: string | null }>)
         .map(p => p.departure_airport ? extractDepartureCity(p.departure_airport) : null)
         .filter((c): c is string => !!c && c.length > 0)

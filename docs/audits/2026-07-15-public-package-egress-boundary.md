@@ -73,7 +73,10 @@ Blocked rows must remain blocked when source evidence is absent. The target is z
 
 - TypeScript project check: passed.
 - ESLint over `src`: passed with zero warnings.
-- Public boundary, package publication, registration autopilot, approval, proof lifecycle, mixed API, review, and similar-package tests: 277 passed in the final consolidated run.
+- Full Vitest suite: 472 files passed; 3,225 tests passed and 1 intentionally skipped (3,226 total).
+- Public egress regression contracts: 15 files and 37 tests passed after replacing legacy current-row state filters with promoted-pointer assertions.
+- Circular dependency check: passed with zero errors and zero warnings.
+- Marketing automation readiness: 66 checks passed; zero blocked and zero failed.
 - `git diff --check`: passed.
 - Next production build: no compile error was reported, but the command did not finish within the five-minute local limit. Build completion remains unverified.
 - Live database actions: read-only; no package was edited.

@@ -13,11 +13,11 @@ describe('user action package recommendations publication boundary', () => {
     const helperIndex = source.indexOf('async function toPublicPackageCards');
     const responseIndex = source.indexOf('return NextResponse.json({ packages: await toPublicPackageCards');
 
-    expect(source).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(source).toContain('function isUserActionPublicSnapshotCandidate');
-    expect(source).toContain('isCustomerPubliclyOpenable');
-    expect(source).toContain('isPublicPublicationState');
-    expect(source).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(source).toContain('getPublishedPackageCards');
+    expect(source).not.toContain('isUserActionPublicSnapshotCandidate');
+    expect(source).not.toContain('isCustomerPubliclyOpenable');
+    expect(source).not.toContain('isPublicPublicationState');
+    expect(source).not.toContain(".in('publication_state'");
     expect(helperIndex).toBeGreaterThan(0);
     expect(responseIndex).toBeGreaterThan(queryIndex);
   });

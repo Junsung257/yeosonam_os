@@ -47,14 +47,19 @@ function queryResult(table: string) {
         updated_at: '2026-06-02T00:00:00.000Z',
       },
     ],
-    public_package_snapshots: [
+    published_public_package_cards_v1: [
       {
         package_id: 'pkg-osaka',
+        published_snapshot_id: 'snapshot-osaka',
         package_revision: 3,
-        status: 'published',
-        created_at: '2026-06-03T00:00:00.000Z',
+        snapshot_hash: 'snapshot-hash-osaka',
+        snapshot_schema_version: 'public_package_snapshot_v1',
+        publish_gate_version: 'publish_gate_v1',
+        source_evidence_digest: 'evidence-osaka',
+        snapshot_created_at: '2026-06-03T00:00:00.000Z',
+        published_at: '2026-06-03T00:00:00.000Z',
         card_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
-        lp_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
+        route_text_projection: [],
         snapshot_json: {
           images_public: [
             { url: 'https://cdn.yeosonam.com/public/osaka-hero.jpg', source: 'destination_metadata' },
@@ -77,13 +82,15 @@ function queryResult(table: string) {
 
   const chain = {
     select: vi.fn(() => chain),
-    in: vi.fn(() => chain),
+    in: vi.fn(() => (
+      table === 'published_public_package_cards_v1'
+        ? Promise.resolve({ data: dataByTable[table] ?? [], error: null })
+        : chain
+    )),
     eq: vi.fn(() => chain),
     not: vi.fn(() => chain),
     order: vi.fn(() => (
-      table === 'public_package_snapshots'
-        ? Promise.resolve({ data: dataByTable[table] ?? [], error: null })
-        : chain
+      chain
     )),
     limit: vi.fn(() => chain),
     abortSignal: vi.fn(() => Promise.resolve({ data: dataByTable[table] ?? [], error: null })),
@@ -122,6 +129,7 @@ describe('sitemap', () => {
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).toContain('travel_packages');
-    expect(queriedTables).toContain('public_package_snapshots');
+    expect(queriedTables).toContain('published_public_package_cards_v1');
+    expect(queriedTables).not.toContain('public_package_snapshots');
   });
 });

@@ -13,9 +13,9 @@ describe('blog list public package data boundary', () => {
 
     expect(anglePage).not.toContain('travel_packages(');
     expect(anglePage).not.toContain('isCustomerPubliclyOpenable');
-    expect(matcher).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
-    expect(matcher).toContain('function isAnglePublicSnapshotCandidate');
-    expect(matcher).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(matcher).toContain('getPublishedPackageCards');
+    expect(matcher).not.toContain('isAnglePublicSnapshotCandidate');
+    expect(matcher).not.toContain(".in('publication_state'");
   });
 
   it('keeps destination blog lists from joining raw packages and gates destination package cards', () => {
@@ -24,9 +24,10 @@ describe('blog list public package data boundary', () => {
     const snapshotIndex = text.indexOf('packages: await mergeBlogDestinationPublicPackages');
 
     expect(text).not.toContain('travel_packages(');
-    expect(text).toContain('function isBlogDestinationPublicSnapshotCandidate');
     expect(text).toContain('async function mergeBlogDestinationPublicPackages');
-    expect(text).toContain(".in('publication_state', ['approved', 'published'])");
+    expect(text).toContain('getPublishedPackageCards');
+    expect(text).not.toContain('isBlogDestinationPublicSnapshotCandidate');
+    expect(text).not.toContain(".in('publication_state'");
     expect(snapshotIndex).toBeGreaterThan(packageQueryIndex);
   });
 
