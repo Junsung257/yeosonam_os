@@ -34,6 +34,8 @@ Local code references:
 - Public render normalizer: `src/lib/blog-public-render-normalizer.ts`
 - Reading-time SSOT: `src/lib/blog-reading-time.ts`
 - Named fixture evaluator: `src/lib/blog-informational-engine-v2-eval.ts` (`npm run eval:blog-info-v2`)
+- Existing-post dry-run auditor: `src/lib/blog-informational-existing-audit.ts` (`npm run audit:blog-info-v2`)
+- Owner handoff: `docs/blog-informational-engine-v2-owner-runbook.md`
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`

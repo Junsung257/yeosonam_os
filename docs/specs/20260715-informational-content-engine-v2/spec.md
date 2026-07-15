@@ -12,20 +12,20 @@ Authoritative requirements:
 
 ## Success Criteria
 
-- [ ] Information generation has no product inventory, active-product, booking, consultation, or internal-price dependency.
-- [ ] Deterministic fallback cannot be published, indexed, revalidated, or counted as public.
-- [ ] A validated planner exists for each supported intent before the writer runs.
-- [ ] Source, evidence, and claims are durable and publish-time verifiable.
-- [ ] Numeric, time, percentage, climate, customs, visa, insurance, and policy claims fail closed without current evidence.
-- [ ] High-risk information requires official evidence and human approval.
-- [ ] The representative key `destination + intent + audience + locale` prevents new public duplicates and drives canonical selection.
-- [ ] Related links meet explicit destination/intent relevance.
-- [ ] Informational CTAs come from central typed settings, are hidden when invalid/disabled, and emit impression/click events without PII.
-- [ ] Final rendered output passes structure, metadata-intent, reading-time, canonical, indexability, and CTA-integrity QA.
-- [ ] Evaluation fixtures cover every named sample and emit machine-readable plus human-readable results.
-- [ ] Existing public posts are only audited in dry-run mode.
-- [ ] Product parsers, evidence, snapshots, product pages, product landing, and product prompts are unchanged.
-- [ ] No push, PR, deployment, or remote DB migration occurs.
+- [x] Information generation has no product inventory, active-product, booking, consultation, or internal-price dependency.
+- [x] Deterministic fallback cannot be published, indexed, revalidated, or counted as public.
+- [x] A validated planner exists for each supported intent before the writer runs.
+- [x] Source, evidence, and claims are durable and publish-time verifiable.
+- [x] Numeric, time, percentage, climate, customs, visa, insurance, and policy claims fail closed without current evidence.
+- [x] High-risk information requires official evidence and human approval.
+- [x] The representative key `destination + intent + audience + locale` prevents new public duplicates and drives canonical selection.
+- [x] Related links meet explicit destination/intent relevance.
+- [x] Informational CTAs come from central typed settings, are hidden when invalid/disabled, and emit impression/click events without PII.
+- [x] Final rendered output passes structure, metadata-intent, reading-time, canonical, indexability, and CTA-integrity QA.
+- [x] Evaluation fixtures cover every named sample and emit machine-readable plus human-readable results.
+- [x] Existing public posts are only audited in dry-run mode.
+- [x] Product parsers, evidence, snapshots, product pages, product landing, and product prompts are unchanged.
+- [x] No push, PR, deployment, or remote DB migration occurs.
 
 ## In Scope
 
@@ -52,4 +52,3 @@ Authoritative requirements:
 ## Open Questions
 
 - Official Naver Cafe and deal-room URLs are not yet proven. They must remain disabled until an operator supplies one unambiguous public URL.
-

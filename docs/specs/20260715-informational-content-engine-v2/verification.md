@@ -82,6 +82,25 @@ Migration proof must run against local/test tooling only and must record apply o
 - Result: 11/11 scenarios passed. Entry/visa and insurance remained `pending_review`; invalid destination was `blocked_plan`; an existing destination+intent representative returned `update_existing` instead of a new public URL.
 - The evaluator records and asserts `externalCalls=0` and `publicMutations=0`; it does not call a model, API, database, publisher, cache revalidation, sitemap, or indexing path.
 
+### M11 — existing-post dry-run and owner handoff
+
+- `npm run audit:blog-info-v2` has no apply mode. It reads the repository fallback snapshot by default or an explicitly supplied local JSON export and writes recommendation-only JSON/Markdown reports.
+- The report contains article ID/slug, inferred intent, destination validity, representative duplicate group, missing facts, unsupported claims, render issues, CTA state, one of `KEEP|REWRITE|MERGE|REMOVE|HIGH_RISK_REVIEW`, confidence, and reasons.
+- Default local snapshot result: 8 rows audited, 8 `REWRITE`, 0 DB reads, 0 DB writes, 0 external calls. This is an implementation proof, not an operating-database conclusion.
+- Classification tests cover all five actions and assert the read-only counters. `--apply` is explicitly rejected.
+- `docs/blog-informational-engine-v2-owner-runbook.md` documents CTA settings, sample evaluation, review/approval, tests, migration/staging order, production checklist, rollback, follow-up existing-post cleanup, and product-boundary verification in operator language.
+
+### Final local verification
+
+- Information engine plus product-boundary regression set: 23 files, 143 tests passed.
+- `npm run type-check`: passed.
+- `npm run lint`: passed with zero warnings.
+- `npm run build` with the existing `.next` cache retained after the first long-running attempt: passed in 535 seconds; 389 static pages generated and postbuild output verification passed.
+- Migration safety checker: 3 information migrations checked, 0 issues. `npx supabase status -o json` confirmed local apply remains unavailable because the Windows Docker engine is not running; no remote fallback was attempted.
+- `npm run eval:blog-info-v2`: 11/11 PASS, external calls 0, public mutations 0.
+- `npm run audit:blog-info-v2`: 8 local fallback rows audited, DB reads 0, DB writes 0, external calls 0.
+- `git diff --check`: passed. No push, PR, deployment, remote DB access, public-row mutation, or secret output occurred.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

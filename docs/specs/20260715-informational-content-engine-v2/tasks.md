@@ -11,9 +11,9 @@
 - [x] M8: implement central informational CTA config, selector, renderer, and events.
 - [x] M9: enforce final-render SEO/reading-time/CTA QA.
 - [x] M10: add named sample E2E evaluation fixtures and reports.
-- [ ] M11: add existing-post dry-run audit and owner handoff.
-- [ ] Run full typecheck, changed-file lint, build, migration dry-run, information tests, and product baselines.
-- [ ] Confirm no push, PR, deployment, remote DB mutation, secret output, or public-row mutation.
+- [x] M11: add existing-post dry-run audit and owner handoff.
+- [x] Run full typecheck, changed-file lint, build, migration static/dry-run checks, information tests, and product baselines (local migration apply remains staging-blocked because Docker is not running).
+- [x] Confirm no push, PR, deployment, remote DB mutation, secret output, or public-row mutation.
 
 ## Commit Boundary
 

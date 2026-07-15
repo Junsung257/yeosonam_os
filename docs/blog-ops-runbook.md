@@ -1,8 +1,10 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-08
+Last updated: 2026-07-15
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
+
+Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existing-post dry-run, staging order, and rollback are handed off in `docs/blog-informational-engine-v2-owner-runbook.md`.
 
 ## Daily Operating Standard
 
