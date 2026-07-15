@@ -812,6 +812,8 @@ export async function middleware(request: NextRequest) {
     || pathname === '/api/agent/prompt-optimizer'
     || pathname === '/api/blog'
     || pathname.startsWith('/api/blog/')
+    || pathname === '/api/content-hub'
+    || pathname.startsWith('/api/content-hub/')
   ) {
     const adminTokenHeader = request.headers.get('x-admin-token');
     if (adminTokenHeader) {
@@ -875,7 +877,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: 'token expired' }, { status: 401 });
   }
 
-  if (pathname === '/api/blog' || pathname.startsWith('/api/blog/')) {
+  if (
+    pathname === '/api/blog'
+    || pathname.startsWith('/api/blog/')
+    || pathname === '/api/content-hub'
+    || pathname.startsWith('/api/content-hub/')
+  ) {
     return NextResponse.json(
       { code: 'UNAUTHORIZED', error: '로그인이 필요합니다.' },
       { status: 401, headers: { 'Cache-Control': 'no-store' } },

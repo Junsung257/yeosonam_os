@@ -13,10 +13,13 @@ import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
 import { ensureBlogInformationRepresentativeForPublish } from '@/lib/blog-information-representative-repository';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { isContentHubAction, resolveContentHubStatusTransition } from '@/lib/content-hub-status-transition';
 
-const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, review_status, category, content_type, topic_source, generation_meta, travel_packages(destination)';
+const BLOG_SELECT = 'status, slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, review_status, category, content_type, topic_source, generation_meta, travel_packages(destination)';
 
 type BlogPublishRow = {
+  status: string;
   slug?: string | null;
   blog_html?: string | null;
   seo_title?: string | null;
@@ -33,6 +36,9 @@ type BlogPublishRow = {
 };
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'DB not configured' }, { status: 503 });
   }
@@ -44,23 +50,34 @@ export async function POST(request: NextRequest) {
     if (!creative_id) {
       return apiResponse({ error: 'creative_id required' }, { status: 400 });
     }
+    if (!isContentHubAction(action)) {
+      return apiResponse({ error: 'invalid content-hub action' }, { status: 400 });
+    }
 
-    const status =
-      action === 'archive' ? 'archived' :
-      action === 'manually_published' ? 'manually_published' :
-      'published';
+    const { data: creative, error: creativeError } = await supabaseAdmin
+      .from('content_creatives')
+      .select(BLOG_SELECT)
+      .eq('id', creative_id)
+      .limit(1);
+    if (creativeError) throw creativeError;
+    const row = (creative?.[0] ?? null) as BlogPublishRow | null;
+    if (!row) {
+      return apiResponse({ error: 'content creative not found' }, { status: 404 });
+    }
+
+    const transition = resolveContentHubStatusTransition(row.status, action);
+    if (!transition.ok) {
+      return apiResponse({
+        error: 'content-hub status transition is not allowed',
+        current_status: row.status,
+        action,
+      }, { status: 409 });
+    }
+
+    const status = transition.targetStatus;
     const updateData: Record<string, unknown> = { status };
 
-    let row: BlogPublishRow | null = null;
-
     if (status === 'published' || status === 'manually_published') {
-      const { data: creative, error: creativeError } = await supabaseAdmin
-        .from('content_creatives')
-        .select(BLOG_SELECT)
-        .eq('id', creative_id)
-        .limit(1);
-      if (creativeError) throw creativeError;
-      row = (creative?.[0] ?? null) as BlogPublishRow | null;
       if (!row?.blog_html || !row.slug) {
         return apiResponse({ error: 'blog_html or slug is missing' }, { status: 400 });
       }
@@ -143,12 +160,21 @@ export async function POST(request: NextRequest) {
       applyBlogPublishQualityToUpdate(updateData, qaReport);
     }
 
-    const { error } = await supabaseAdmin
+    const { data: updated, error } = await supabaseAdmin
       .from('content_creatives')
       .update(updateData)
-      .eq('id', creative_id);
+      .eq('id', creative_id)
+      .eq('status', row.status)
+      .select('id')
+      .limit(1);
 
     if (error) throw error;
+    if (!updated?.length) {
+      return apiResponse(
+        { error: 'content creative status changed during publish; retry with current state' },
+        { status: 409 },
+      );
+    }
 
     if (status === 'published' || status === 'manually_published') {
       const slug = row?.slug;

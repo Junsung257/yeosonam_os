@@ -109,3 +109,34 @@ describe('middleware blog API boundary', () => {
     expect(rejected.status).toBe(403);
   });
 });
+
+describe('middleware content-hub API boundary', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ['GET', '/api/content-hub'],
+    ['PATCH', '/api/content-hub'],
+    ['DELETE', '/api/content-hub?id=00000000-0000-4000-8000-000000000000'],
+    ['POST', '/api/content-hub/generate'],
+    ['POST', '/api/content-hub/publish'],
+  ])('returns 401 before anonymous %s %s', async (method, path) => {
+    const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`, { method }));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+
+  it('allows a valid admin API token to reach the content-hub route-local guard', async () => {
+    vi.stubEnv('ADMIN_API_TOKEN', 'test-admin-token');
+
+    const response = await middleware(new NextRequest('https://www.yeosonam.com/api/content-hub', {
+      method: 'PATCH',
+      headers: { 'x-admin-token': 'test-admin-token' },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+});
