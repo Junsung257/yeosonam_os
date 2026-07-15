@@ -39,6 +39,15 @@ Migration proof must run against local/test tooling only and must record apply o
 - Shared runtime gate is present in automatic publisher, blog POST/PATCH/force reindex, content-hub publish, content-queue approve, and zero-click replacement paths.
 - Product-content skip regression and product writer/brief baselines pass.
 
+### M6 — representative key, duplicate decision, and canonical sitemap
+
+- Stable key tests prove title/slug year changes do not create a new identity.
+- Active representative returns `UPDATE_EXISTING`; competing reservation returns `WAIT_FOR_EXISTING`; same-owner retry resumes idempotently.
+- Automatic and manual publish entrypoints enforce the registry before public cache/indexing work.
+- Direct POST first inserts a private draft, activates the canonical registry, and only then changes public state.
+- New informational sitemap rows require active self-canonical metadata; legacy and product rows remain compatible.
+- Existing duplicate analysis is dry-run only and proposes `MERGE_REVIEW` without redirects, merges, deletes, or row mutation.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

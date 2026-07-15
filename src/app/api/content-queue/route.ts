@@ -12,8 +12,9 @@ import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
+import { ensureBlogInformationRepresentativeForPublish } from '@/lib/blog-information-representative-repository';
 
-const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, review_status, category, content_type, topic_source, travel_packages(id, title, destination)';
+const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, review_status, category, content_type, topic_source, generation_meta, travel_packages(id, title, destination)';
 
 const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ queue: [] });
@@ -94,6 +95,7 @@ const postHandler = async (request: NextRequest) => {
         category?: string | null;
         content_type?: string | null;
         topic_source?: string | null;
+        generation_meta?: Record<string, unknown> | null;
         travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
       } | undefined;
       if (!row?.blog_html) {
@@ -167,12 +169,30 @@ const postHandler = async (request: NextRequest) => {
           claim_validation: claimReport,
         }, { status: 422 });
       }
+      const representative = await ensureBlogInformationRepresentativeForPublish({
+        creativeId: creative_id,
+        slug,
+        title: seo_title ?? row.seo_title ?? slug,
+        markdown: prepared.blogHtml,
+        productId: row.product_id ?? null,
+        generationMeta: row.generation_meta ?? null,
+      });
 
       const updateData: Record<string, unknown> = {
         status: 'published',
         published_at: new Date().toISOString(),
         slug,
         blog_html: prepared.blogHtml,
+        ...(representative ? {
+          generation_meta: {
+            ...(row.generation_meta || {}),
+            information_representative: {
+              representative_key: representative.representativeKey,
+              status: 'active',
+              canonical_slug: representative.canonicalSlug,
+            },
+          },
+        } : {}),
       };
       if (seo_title) updateData.seo_title = seo_title;
       if (seo_description) updateData.seo_description = seo_description;

@@ -8,6 +8,7 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isCanonicalInformationSitemapPost } from '@/lib/blog-information-representative';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -145,10 +146,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       angle_type: string | null;
       published_at: string | null;
       updated_at: string | null;
+      product_id: string | null;
+      generation_meta: Record<string, unknown> | null;
     }>('blog', (signal) =>
       supabaseAdmin
         .from('content_creatives')
-        .select('slug, destination, angle_type, published_at, updated_at')
+        .select('slug, destination, angle_type, published_at, updated_at, product_id, generation_meta')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
         .not('slug', 'is', null)
@@ -160,6 +163,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const posts = queriedPosts.length > 0
     ? queriedPosts
     : getFallbackBlogPosts().filter((post) => post.detail_available);
+  const canonicalPosts = posts.filter((post) => isCanonicalInformationSitemapPost({
+    slug: post.slug,
+    productId: 'product_id' in post ? post.product_id : null,
+    generationMeta: 'generation_meta' in post ? post.generation_meta : null,
+  }));
 
   const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
     packageDestinations.filter(isSitemapPublicSnapshotCandidate),
@@ -190,7 +198,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const destinations = new Set<string>();
   const anglesWithPosts = new Set<string>();
 
-  for (const post of posts) {
+  for (const post of canonicalPosts) {
     const destination = post.destination?.trim();
     if (destination) destinations.add(destination);
     if (post.angle_type && angles.has(post.angle_type)) {
@@ -216,7 +224,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
 
-  for (const post of posts) {
+  for (const post of canonicalPosts) {
     if (isSafeSitemapBlogSlug(post.slug)) {
       routes.push({
         url: `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`,

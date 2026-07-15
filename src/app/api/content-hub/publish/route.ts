@@ -12,8 +12,9 @@ import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
 import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
+import { ensureBlogInformationRepresentativeForPublish } from '@/lib/blog-information-representative-repository';
 
-const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, review_status, category, content_type, topic_source, travel_packages(destination)';
+const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, review_status, category, content_type, topic_source, generation_meta, travel_packages(destination)';
 
 type BlogPublishRow = {
   slug?: string | null;
@@ -27,6 +28,7 @@ type BlogPublishRow = {
   category?: string | null;
   content_type?: string | null;
   topic_source?: string | null;
+  generation_meta?: Record<string, unknown> | null;
   travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
 };
 
@@ -116,6 +118,24 @@ export async function POST(request: NextRequest) {
           error: 'Informational claim evidence gate failed',
           claim_validation: claimReport,
         }, { status: 422 });
+      }
+      const representative = await ensureBlogInformationRepresentativeForPublish({
+        creativeId: creative_id,
+        slug: row.slug,
+        title: row.seo_title ?? row.slug,
+        markdown: prepared.blogHtml,
+        productId: row.product_id ?? null,
+        generationMeta: row.generation_meta ?? null,
+      });
+      if (representative) {
+        updateData.generation_meta = {
+          ...(row.generation_meta || {}),
+          information_representative: {
+            representative_key: representative.representativeKey,
+            status: 'active',
+            canonical_slug: representative.canonicalSlug,
+          },
+        };
       }
 
       updateData.published_at = new Date().toISOString();
