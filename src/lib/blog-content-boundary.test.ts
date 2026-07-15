@@ -8,6 +8,36 @@ describe('blog information/product boundary', () => {
     expect(routeBlogContentLane({ source })).toEqual({ passed: true, lane: 'informational', source });
   });
 
+  it('routes the product auto-heal regression payload to the existing product lane', () => {
+    expect(routeBlogContentLane({
+      source: 'auto_heal',
+      productId: 'product-1',
+      declaredLane: 'product',
+    })).toEqual({ passed: true, lane: 'product', source: 'auto_heal' });
+  });
+
+  it('keeps information auto-heal in the information lane', () => {
+    expect(routeBlogContentLane({
+      source: 'auto_heal',
+      declaredLane: 'informational',
+    })).toEqual({ passed: true, lane: 'informational', source: 'auto_heal' });
+  });
+
+  it('rejects a persisted lane that disagrees with the queue identifiers', () => {
+    expect(routeBlogContentLane({
+      source: 'auto_heal',
+      productId: 'product-1',
+      declaredLane: 'informational',
+    })).toMatchObject({ passed: false, issue: 'declared_lane_mismatch' });
+  });
+
+  it('keeps the live gap-healer payload explicitly tied to a product', () => {
+    const producer = readFileSync(join(process.cwd(), 'src/lib/content-gap-auto-heal.ts'), 'utf8');
+
+    expect(producer).toContain("source: 'auto_heal'");
+    expect(producer).toContain('product_id: gap.id');
+  });
+
   it('requires the product source and product id to agree', () => {
     expect(routeBlogContentLane({ source: 'product', productId: 'product-1' }))
       .toMatchObject({ passed: true, lane: 'product' });

@@ -1769,6 +1769,7 @@ async function processQueueItem(
       source: item.source,
       productId: item.product_id ?? null,
       cardNewsId: item.card_news_id ?? null,
+      declaredLane: item.content_lane ?? null,
     });
     if (!contentBoundary.passed) {
       const reason = `content_boundary_failed:${contentBoundary.issue}`;

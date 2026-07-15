@@ -42,9 +42,11 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('routeBlogContentLane({');
+    expect(source).toContain('declaredLane: item.content_lane ?? null');
     expect(source).toContain('content_boundary_failed:');
     expect(source).toContain("contentBoundary.lane === 'card_news_bridge'");
     expect(source).toContain("contentBoundary.lane === 'product'");
+    expect(source).toContain("product_generation', () => generateFromProduct(item)");
   });
 
   it('blocks incomplete information plans before invoking the writer', () => {
