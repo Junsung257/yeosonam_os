@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { pathToFileURL } from 'node:url';
 
 import { buildPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
 import { diagnosePublicSnapshotGeneration } from '../src/lib/package-publication/public-snapshot-diagnostics';
@@ -10,18 +11,22 @@ dotenv.config({ path: '.env' });
 
 type AnyRecord = Record<string, unknown>;
 
-const GOLDEN_SET = [
-  { key: 'yanji_baekdu', pattern: /연길|백두산/ },
-  { key: 'zhangjiajie', pattern: /장가계/ },
-  { key: 'danang_hoian', pattern: /다낭|호이안/ },
-  { key: 'nhatrang_dalat', pattern: /나트랑|달랏/ },
-  { key: 'phuquoc', pattern: /푸꾸옥/ },
-  { key: 'fukuoka', pattern: /후쿠오카/ },
-  { key: 'hokkaido', pattern: /북해도|홋카이도/ },
-  { key: 'hanoi_halong', pattern: /하노이|하롱베이|하롱/ },
-  { key: 'tsushima', pattern: /대마도/ },
-  { key: 'cebu', pattern: /세부/ },
-];
+export const GOLDEN_SET = [
+  { key: 'yanji_baekdu', patterns: [/\uC5F0\uAE38/, /\uBC31\uB450\uC0B0/] },
+  { key: 'zhangjiajie', patterns: [/\uC7A5\uAC00\uACC4/] },
+  { key: 'danang_hoian', patterns: [/\uB2E4\uB0AD/, /\uD638\uC774\uC548/] },
+  { key: 'nhatrang_dalat', patterns: [/\uB098\uD2B8\uB791/, /\uB2EC\uB78F/] },
+  { key: 'phuquoc', patterns: [/\uD478\uAFB8\uC625/] },
+  {
+    key: 'fukuoka',
+    patterns: [/\uD6C4\uCFE0\uC624\uCE74/, /\uBD81\uD050\uC288/],
+    excludeIdentityPatterns: [/\uB098\uAC00\uC0AC\uD0A4/],
+  },
+  { key: 'hokkaido', patterns: [/\uBD81\uD574\uB3C4/, /\uD64B\uCE74\uC774\uB3C4/, /\uC0BF\uD3EC\uB85C/] },
+  { key: 'hanoi_halong', patterns: [/\uD558\uB178\uC774/, /\uD558\uB871(?:\uBCA0\uC774)?/, /\uC60C\uB728/] },
+  { key: 'tsushima', patterns: [/\uB300\uB9C8\uB3C4/, /\uC4F0\uC2DC\uB9C8/] },
+  { key: 'cebu', patterns: [/\uC138\uBD80/] },
+] as const;
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -45,7 +50,7 @@ function increment(map: Record<string, number>, key: string): void {
   map[key] = (map[key] ?? 0) + 1;
 }
 
-function rowText(row: AnyRecord): string {
+export function rowText(row: AnyRecord): string {
   return [
     row.title,
     row.display_title,
@@ -55,9 +60,29 @@ function rowText(row: AnyRecord): string {
   ].map(value => String(value ?? '')).join('\n');
 }
 
-function goldenKey(row: AnyRecord): string | null {
+function rowIdentityText(row: AnyRecord): string {
+  return [
+    row.title,
+    row.display_title,
+    row.destination,
+  ].map(value => String(value ?? '')).join('\n');
+}
+
+export function goldenKey(row: AnyRecord): string | null {
   const haystack = rowText(row);
-  return GOLDEN_SET.find(item => item.pattern.test(haystack))?.key ?? null;
+  const identity = rowIdentityText(row);
+  return GOLDEN_SET.find((item) => {
+    const matches = item.patterns.some(pattern => pattern.test(haystack));
+    if (!matches) return false;
+    if (
+      'excludeIdentityPatterns' in item
+      && item.excludeIdentityPatterns.some(pattern => pattern.test(identity))
+      && !item.patterns.some(pattern => pattern.test(identity))
+    ) {
+      return false;
+    }
+    return true;
+  })?.key ?? null;
 }
 
 function statusPriority(status: PublicSnapshotGenerationStatus): number {
@@ -250,7 +275,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(formatError(error));
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(formatError(error));
+    process.exit(1);
+  });
+}
