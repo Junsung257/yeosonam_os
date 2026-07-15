@@ -144,5 +144,9 @@ describe('public snapshot generation audit item detail', () => {
       title: 'generated',
       optional_tours: 'generated',
     });
+    expect(item.field_diagnostics.title.status).toBe('generated');
+    expect(item.field_diagnostics.optional_tours.status).toBe('generated');
+    expect(item.process_gap_summary.blocked_fields).toEqual([]);
+    expect(item.process_gap_summary.repairable_fields).toEqual([]);
   });
 });
