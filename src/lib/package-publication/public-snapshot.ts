@@ -86,7 +86,9 @@ const LOW_INFORMATION_RISK_RESIDUE_RE = /^(?:후|전)?\s*안내(?:드립니다|�
 const LOW_INFORMATION_PUBLIC_ROUTE_TEXT_RE =
   /^(?:x{2,}|n\/a|none|null|undefined|unknown|미정|없음|-|\.{1,3})$/i;
 const PUBLIC_ROUTE_TEXT_STATUS_COPY_RE =
-  /(?:\bUNKNOWN\b|출발일별\s*가격\s*등록|(?:포함사항|불포함사항)\s*\d+\s*개\s*등록|세부\s*일정은\s*상품\s*상담\s*시\s*안내|사진\s*준비\s*중|이미지\s*준비\s*중)/i;
+  /(?:\bUNKNOWN\b|^※|요금표|선착순|무료\s*증정|팀\s*한정|방당|옵션\s*사전\s*포함|출발일별\s*가격\s*등록|(?:포함사항|불포함사항)\s*\d+\s*개\s*등록|세부\s*일정은\s*상품\s*상담\s*시\s*안내|사진\s*준비\s*중|이미지\s*준비\s*중)/i;
+const PUBLIC_ROUTE_TEXT_FRAGMENT_RE =
+  /^(?:\d{1,2}:\d{2}|[A-Z0-9]{2}\d{2,4}|[월화수목금토일](?:요일)?|호텔|패키지|여소남|또는 동급|[1-5]성)$/;
 const PUBLIC_STRUCTURE_STRING_KEY_RE =
   /(?:^|_)(?:id|ids|hash|url|urls|src|slug|icon|date|day|count|status|source|type|currency)$/i;
 
@@ -162,6 +164,7 @@ function isCustomerRouteTextDisplayable(value: string): boolean {
   if (!text) return false;
   if (LOW_INFORMATION_PUBLIC_ROUTE_TEXT_RE.test(text)) return false;
   if (PUBLIC_ROUTE_TEXT_STATUS_COPY_RE.test(text)) return false;
+  if (PUBLIC_ROUTE_TEXT_FRAGMENT_RE.test(text)) return false;
   return true;
 }
 

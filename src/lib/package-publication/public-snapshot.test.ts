@@ -109,6 +109,12 @@ describe('public package snapshot gate', () => {
         '출발일별 가격 등록',
         '세부 일정은 상품 상담 시 안내',
         'xxx',
+        '18:00',
+        'LJ119',
+        '금요일',
+        '호텔',
+        '여소남',
+        '5성',
         '백두산 천지 관광',
       ],
       marketing_copies: {
@@ -120,6 +126,8 @@ describe('public package snapshot gate', () => {
           status: 'unknown',
           note: '사진 준비중',
           route: 'UNKNOWN → UNKNOWN',
+          rawTitle: '홍콩 인아웃 연합 패키지 6월~10월 요금표 홍콩익스프레스',
+          promo: '※~7/19일 출발 팀 한정 옵션 사전 포함시 $10/인 할인 및 쿠키 방당 한통 무료 증정!!',
         },
       },
     }));
@@ -132,6 +140,8 @@ describe('public package snapshot gate', () => {
     expect(routeText).not.toMatch(/(?:^|\n)(?:xxx|unknown)(?:\n|$)/i);
     expect(routeText).not.toContain('UNKNOWN → UNKNOWN');
     expect(routeText).not.toMatch(/사진\s*준비\s*중|이미지\s*준비\s*중/);
+    expect(routeText).not.toMatch(/(?:^|\n)(?:18:00|LJ119|금요일|호텔|여소남|5성)(?:\n|$)/);
+    expect(routeText).not.toMatch(/요금표|팀\s*한정|무료\s*증정/);
   });
 
   it('does not fall back to a raw supplier summary for the LP projection', () => {
