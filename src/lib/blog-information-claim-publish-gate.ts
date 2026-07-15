@@ -1,6 +1,5 @@
 import { supabaseAdmin } from './supabase';
 import {
-  extractBlogInformationClaims,
   validateBlogInformationClaims,
   type BlogInformationClaimEvidenceRecord,
   type BlogInformationClaimValidationReport,
@@ -10,6 +9,9 @@ import type {
   BlogInformationAuthorityLevel,
   BlogInformationClaimType,
 } from './blog-information-evidence';
+import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
+
+export const BLOG_INFORMATION_CLAIM_AUTO_REGENERATION_LIMIT = 0;
 
 export interface BlogInformationClaimPublishGateInput {
   creativeId?: string | null;
@@ -19,6 +21,8 @@ export interface BlogInformationClaimPublishGateInput {
   reviewStatus?: string | null;
   tenantId?: string | null;
   now?: Date;
+  claimLedger?: BlogInformationClaimLedgerEntry[];
+  claimLedgerIssues?: string[];
 }
 
 export interface BlogInformationClaimPublishGateResult extends BlogInformationClaimValidationReport {
@@ -35,6 +39,9 @@ export function toBlogInformationClaimValidationMeta(
     claim_count: result.claims.length,
     requires_human_review: result.requiresHumanReview,
     issues: result.issues.slice(0, 20),
+    ledger: result.ledger ?? null,
+    auto_regeneration_attempts: 0,
+    auto_regeneration_limit: BLOG_INFORMATION_CLAIM_AUTO_REGENERATION_LIMIT,
     ...(result.lookupError ? { lookup_error: result.lookupError } : {}),
     ...(result.skipped ? { skipped: result.skipped } : {}),
   };
@@ -45,7 +52,7 @@ async function loadPersistedClaimRecords(
 ): Promise<{ records: PersistedBlogInformationClaimRecord[]; error?: string }> {
   const { data: claims, error: claimsError } = await supabaseAdmin
     .from('blog_information_claims')
-    .select('id, claim_fingerprint, claim_type, validation_status')
+    .select('id, claim_fingerprint, claim_text, claim_type, validation_status')
     .eq('creative_id', creativeId);
   if (claimsError) return { records: [], error: claimsError.message };
   if (!claims || claims.length === 0) return { records: [] };
@@ -106,6 +113,7 @@ async function loadPersistedClaimRecords(
   return {
     records: claims.map((claim) => ({
       claimFingerprint: claim.claim_fingerprint,
+      claimText: claim.claim_text,
       claimType: claim.claim_type as BlogInformationClaimType,
       validationStatus: claim.validation_status,
       evidence: linksByClaim.get(claim.id) ?? [],
@@ -127,29 +135,32 @@ export async function evaluateBlogInformationClaimPublishGate(
     };
   }
 
-  const extracted = extractBlogInformationClaims(input.markdown);
-  if (extracted.length === 0) {
+  try {
+    const loaded = input.creativeId
+      ? await loadPersistedClaimRecords(input.creativeId)
+      : { records: [] as PersistedBlogInformationClaimRecord[] };
+    const report = validateBlogInformationClaims({
+      markdown: input.markdown,
+      persistedClaims: loaded.records,
+      claimLedger: input.claimLedger,
+      claimLedgerIssues: input.claimLedgerIssues,
+      reviewStatus: input.reviewStatus,
+      now: input.now,
+    });
+    return loaded.error
+      ? { ...report, passed: false, lookupError: loaded.error }
+      : report;
+  } catch (error) {
+    const report = validateBlogInformationClaims({
+      markdown: input.markdown,
+      persistedClaims: null as unknown as PersistedBlogInformationClaimRecord[],
+    });
     return {
-      passed: true,
-      claims: [],
-      issues: [],
-      coverage: 1,
-      requiresHumanReview: false,
+      ...report,
+      passed: false,
+      lookupError: error instanceof Error ? error.message : 'unknown_claim_validator_error',
     };
   }
-
-  const loaded = input.creativeId
-    ? await loadPersistedClaimRecords(input.creativeId)
-    : { records: [] as PersistedBlogInformationClaimRecord[] };
-  const report = validateBlogInformationClaims({
-    markdown: input.markdown,
-    persistedClaims: loaded.records,
-    reviewStatus: input.reviewStatus,
-    now: input.now,
-  });
-  return loaded.error
-    ? { ...report, passed: false, lookupError: loaded.error }
-    : report;
 }
 
 export async function persistBlogInformationClaimFindings(input: {

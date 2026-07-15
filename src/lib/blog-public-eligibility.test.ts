@@ -50,6 +50,12 @@ describe('evaluateBlogPublicEligibility', () => {
       issues,
       requiresHumanReview: true,
       lookupError: 'lookup failed',
+      ledger: {
+        declaredCount: 0,
+        candidateCount: 1,
+        unclassifiedCount: 1,
+        issues: ['claim_ledger_missing'],
+      },
     });
 
     expect(meta).toMatchObject({
@@ -57,6 +63,11 @@ describe('evaluateBlogPublicEligibility', () => {
       claim_count: 0,
       requires_human_review: true,
       lookup_error: 'lookup failed',
+      auto_regeneration_attempts: 0,
+      auto_regeneration_limit: 0,
+      ledger: {
+        unclassifiedCount: 1,
+      },
     });
     expect(meta.issues).toHaveLength(20);
   });

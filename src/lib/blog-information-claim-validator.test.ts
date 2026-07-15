@@ -4,8 +4,18 @@ import {
   validateBlogInformationClaims,
   type PersistedBlogInformationClaimRecord,
 } from './blog-information-claim-validator';
+import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
+
+function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {
+  return extractBlogInformationClaims(markdown).map((claim) => ({
+    claimFingerprint: claim.claimFingerprint,
+    claimText: claim.claimText,
+    claimType: claim.claimType,
+    riskLevel: claim.riskLevel,
+  }));
+}
 
 function supportedRecord(
   markdown: string,
@@ -53,13 +63,73 @@ describe('blog information claim validator', () => {
     ]);
   });
 
-  it('does not treat ordinary narrative as a verifiable claim', () => {
+  it('does not treat ordinary narrative, years, outline numbers, or itinerary ordinals as claims', () => {
     expect(extractBlogInformationClaims('골목을 천천히 걸으며 현지 분위기를 살펴보세요.')).toEqual([]);
     expect(extractBlogInformationClaims('3일 차에는 가장 먼저 시장을 둘러보세요.')).toEqual([]);
-    expect(extractBlogInformationClaims('여권 사본은 필수 준비물입니다.')).toEqual([]);
+    expect(extractBlogInformationClaims('2026년 여행 가이드')).toEqual([]);
+    expect(extractBlogInformationClaims('1. 준비\n2. 출발\n첫 번째로 동선을 정하세요.')).toEqual([]);
   });
 
-  it('blocks a numeric claim without evidence', () => {
+  it.each([
+    ['공항에서 시내까지 거리는 42km입니다.', 'distance'],
+    ['영업은 매일 09:00~18:00입니다.', 'time_schedule'],
+    ['현재 예약 가능합니다.', 'availability_status'],
+    ['택시비는 ₩50,000입니다.', 'money_price'],
+    ['여권 사본은 필수 준비물입니다.', 'regulated_policy'],
+    ['신고 한도는 2병입니다.', 'regulated_policy'],
+    ['체류 가능 기간은 90일입니다.', 'date_period'],
+    ['서비스 수수료는 최대 3.5%입니다.', 'percentage'],
+  ] as const)('conservatively scans %s as %s', (markdown, candidateKind) => {
+    expect(extractBlogInformationClaims(markdown)[0]).toMatchObject({ candidateKind });
+  });
+
+  it.each([
+    '매일 영업합니다.',
+    '주말에는 휴무입니다.',
+    '24시간 운영합니다.',
+    '체류 기간은 90일입니다.',
+    '평균 이동 거리는 12km입니다.',
+  ])('detects schedule, period, and qualified-unit adversarial text: %s', (markdown) => {
+    expect(extractBlogInformationClaims(markdown)).toHaveLength(1);
+  });
+
+  it.each([
+    '모바일 결제 비중은 90% 이상입니다.',
+    '공항 이동은 약 25분입니다.',
+    '리조트 조식은 20가지 이상 제공됩니다.',
+    '모기 기피제 효과는 약 4시간입니다.',
+    '공항~시내 Grab 요금은 150,000동입니다.',
+    '3일 유심 가격은 100,000동입니다.',
+    '특정 상품 가격대는 899,000원입니다.',
+    '여행 상품은 최소 2~3개월 전 예약을 권고합니다.',
+    '국내 입국 면세 한도는 600달러입니다.',
+  ])('detects the audit corpus sentence: %s', (markdown) => {
+    expect(extractBlogInformationClaims(markdown)).toHaveLength(1);
+  });
+
+  it.each(['JPY 1,000', 'KRW 10,000', 'USD 50', 'VND 150,000', 'SGD 20'])
+    ('detects ISO currency price %s', (amount) => {
+      expect(extractBlogInformationClaims(`예상 비용은 ${amount}입니다.`)[0])
+        .toMatchObject({ candidateKind: 'money_price' });
+    });
+
+  it('scans claims in tables, lists, body paragraphs, and FAQ answers', () => {
+    const markdown = [
+      '| 항목 | 값 |',
+      '| --- | --- |',
+      '| 택시비 | ₩50,000 |',
+      '- 신고 한도는 2병입니다.',
+      '공항 이동 거리는 42km입니다.',
+      '## FAQ',
+      '**Q. 예약할 수 있나요?**',
+      '현재 예약 가능합니다.',
+    ].join('\n');
+
+    expect(extractBlogInformationClaims(markdown).map((claim) => claim.candidateKind))
+      .toEqual(expect.arrayContaining(['money_price', 'regulated_policy', 'distance', 'availability_status']));
+  });
+
+  it('blocks a factual candidate that is missing from the ledger', () => {
     const report = validateBlogInformationClaims({
       markdown: '공항에서 시내까지 약 50분이 걸립니다.',
       persistedClaims: [],
@@ -67,7 +137,35 @@ describe('blog information claim validator', () => {
     });
     expect(report.passed).toBe(false);
     expect(report.coverage).toBe(0);
+    expect(report.issues[0]?.code).toBe('unclassified_factual_candidate');
+  });
+
+  it('blocks a ledgered factual claim without evidence', () => {
+    const markdown = '공항에서 시내까지 약 50분이 걸립니다.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [],
+      claimLedger: ledgerFor(markdown),
+      now: NOW,
+    });
+    expect(report.passed).toBe(false);
     expect(report.issues[0]?.code).toBe('missing_evidence');
+  });
+
+  it('blocks when the writer ledger no longer matches the final body', () => {
+    const ledger = ledgerFor('공항 이동은 약 25분입니다.');
+    const report = validateBlogInformationClaims({
+      markdown: '공항 이동은 약 40분입니다.',
+      persistedClaims: [],
+      claimLedger: ledger,
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining([
+      'claim_ledger_body_mismatch',
+      'unclassified_factual_candidate',
+    ]));
   });
 
   it('blocks evidence after its validity window', () => {
@@ -116,6 +214,17 @@ describe('blog information claim validator', () => {
     });
     expect(report.passed).toBe(true);
     expect(report.coverage).toBe(1);
+  });
+
+  it('fails closed when the validator itself receives an invalid runtime value', () => {
+    const report = validateBlogInformationClaims({
+      markdown: '공항 이동은 약 25분입니다.',
+      persistedClaims: null as unknown as PersistedBlogInformationClaimRecord[],
+      now: NOW,
+    });
+
+    expect(report).toMatchObject({ passed: false, coverage: 0, requiresHumanReview: true });
+    expect(report.issues[0]?.code).toBe('validator_error');
   });
 
   it('does not apply the information validator to product content at the runtime boundary', async () => {

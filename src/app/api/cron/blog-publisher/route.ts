@@ -99,6 +99,10 @@ import {
   persistBlogInformationClaimFindings,
 } from '@/lib/blog-information-claim-publish-gate';
 import {
+  parseBlogInformationWriterOutput,
+  type BlogInformationClaimLedgerEntry,
+} from '@/lib/blog-information-claim-ledger';
+import {
   readBlogInformationRepresentativeIdentity,
   type BlogInformationDuplicateDecision,
 } from '@/lib/blog-information-representative';
@@ -2499,12 +2503,26 @@ async function processQueueItem(
         };
       }
     }
+    const writerClaimLedgerMeta = generated.generation_meta?.writer_claim_ledger;
+    const writerClaimLedgerRecord = writerClaimLedgerMeta
+      && typeof writerClaimLedgerMeta === 'object'
+      && !Array.isArray(writerClaimLedgerMeta)
+      ? writerClaimLedgerMeta as Record<string, unknown>
+      : null;
+    const writerClaimLedger = Array.isArray(writerClaimLedgerRecord?.claims)
+      ? writerClaimLedgerRecord.claims as BlogInformationClaimLedgerEntry[]
+      : [];
+    const writerClaimLedgerIssues = Array.isArray(writerClaimLedgerRecord?.issues)
+      ? writerClaimLedgerRecord.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 20)
+      : (contentBoundary.lane === 'informational' ? ['claim_ledger_missing'] : []);
     const claimValidation = await evaluateBlogInformationClaimPublishGate({
       creativeId: promoteDraftId,
       contentKey: generated.slug,
       markdown: generated.blog_html,
       productId: item.product_id ?? null,
       tenantId: item.tenant_id ?? null,
+      claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
+      claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
     });
     generationMeta.information_claim_validation = {
       passed: claimValidation.passed,
@@ -2512,6 +2530,9 @@ async function processQueueItem(
       claim_count: claimValidation.claims.length,
       requires_human_review: claimValidation.requiresHumanReview,
       issues: claimValidation.issues.slice(0, 20),
+      ledger: claimValidation.ledger ?? null,
+      auto_regeneration_attempts: 0,
+      auto_regeneration_limit: 0,
       ...(claimValidation.lookupError ? { lookup_error: claimValidation.lookupError } : {}),
     };
     const generatedPlanBrief = generated.generation_meta?.content_brief;
@@ -3277,7 +3298,8 @@ ${serpGapBlock}
 - CTA 섹션과 CTA URL을 본문에 쓰지 말 것. 상품 보기, 카카오, 상담 신청, 예약하기, 카페, 딜방 링크는 공개 렌더러의 중앙 CTA 설정이 담당한다.`;
 
   const raw = await generatePublisherBlogText(prompt, { temperature: 0.7 });
-  let blog_html = raw
+  const writerOutput = parseBlogInformationWriterOutput(raw);
+  let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
@@ -3345,6 +3367,12 @@ ${serpGapBlock}
       forbidden_angles: contentBrief.forbiddenAngles,
       source_requirements: contentBrief.sourceRequirements,
       evidence: contentBrief.evidence,
+      claim_ledger_policy: contentBrief.claimLedgerPolicy,
+    },
+    writer_claim_ledger: {
+      version: 'v1',
+      claims: writerOutput.claimLedger,
+      issues: writerOutput.ledgerIssues,
     },
     serp_analyzed: Boolean(serpData),
     freshness_risk: freshnessRisk,

@@ -44,6 +44,8 @@ describe('blog content brief', () => {
       ]),
     );
     expect(buildBlogContentBriefPromptBlock(brief)).toContain('Required H2 sections');
+    expect(brief.claimLedgerPolicy.required).toBe(true);
+    expect(brief.claimLedgerPolicy.candidateKinds).toContain('money_price');
   });
 
   it('prioritizes transport cost intent over stale weather metadata', () => {

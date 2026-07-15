@@ -37,6 +37,11 @@ describe('blog editorial voice contracts', () => {
       sourceRequirements: [],
       titleCandidates: [],
       evidence: [],
+      claimLedgerPolicy: {
+        required: true,
+        maxEntries: 100,
+        candidateKinds: ['money_price'],
+      },
       passed: true,
       issues: [],
     };
@@ -51,6 +56,8 @@ describe('blog editorial voice contracts', () => {
     expect(prompt).toContain('first 120-180 Korean characters');
     expect(prompt).toContain('do not write CTA sections');
     expect(prompt).toContain('You are not a product salesperson');
+    expect(brief.claim_ledger_required).toBe(true);
+    expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_START');
     expect(prompt).toContain('완벽 가이드');
   });
 

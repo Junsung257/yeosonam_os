@@ -73,6 +73,17 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("riskLevel: 'high'");
   });
 
+  it('reconciles the final informational body with a bounded writer claim ledger', () => {
+    const source = routeSource();
+
+    expect(source).toContain('parseBlogInformationWriterOutput(raw)');
+    expect(source).toContain('writer_claim_ledger: {');
+    expect(source).toContain("claimLedger: contentBoundary.lane === 'informational'");
+    expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
+    expect(source).toContain('auto_regeneration_attempts: 0');
+    expect(source).toContain('auto_regeneration_limit: 0');
+  });
+
   it('repairs common article-quality failures instead of treating them as terminal blockers', () => {
     const source = routeSource();
 

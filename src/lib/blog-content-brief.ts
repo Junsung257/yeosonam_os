@@ -8,6 +8,11 @@ import {
   type BlogInformationAudience,
   type BlogInformationPlan,
 } from './blog-information-planner';
+import {
+  BLOG_INFORMATION_CLAIM_LEDGER_MAX_ENTRIES,
+  BLOG_INFORMATION_FACTUAL_CANDIDATE_KINDS,
+  type BlogInformationFactualCandidateKind,
+} from './blog-information-claim-ledger';
 
 type BlogBriefIntent =
   | 'weather'
@@ -47,6 +52,11 @@ export interface BlogContentBrief {
   sourceRequirements: string[];
   titleCandidates: string[];
   evidence: string[];
+  claimLedgerPolicy: {
+    required: true;
+    maxEntries: number;
+    candidateKinds: BlogInformationFactualCandidateKind[];
+  };
   passed: boolean;
   issues: string[];
 }
@@ -297,6 +307,11 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
     requiredSections: finalInformationContract.requiredSections,
     sourceRequirements: finalInformationContract.sourceRequirements,
     evidence,
+    claimLedgerPolicy: {
+      required: true,
+      maxEntries: BLOG_INFORMATION_CLAIM_LEDGER_MAX_ENTRIES,
+      candidateKinds: [...BLOG_INFORMATION_FACTUAL_CANDIDATE_KINDS],
+    },
     passed: finalInformationPlan.passed && issues.length === 0,
     issues,
   };
@@ -323,6 +338,9 @@ export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): strin
     `- Missing inputs: ${brief.plan.missingInputs.join(', ') || 'none'}`,
     `- Forbidden angles: ${brief.forbiddenAngles.join(' / ')}`,
     `- Source requirements: ${brief.sourceRequirements.join(' / ')}`,
+    `- Structured claim ledger required: ${brief.claimLedgerPolicy.required ? 'yes' : 'no'}`,
+    `- Claim ledger candidate kinds: ${brief.claimLedgerPolicy.candidateKinds.join(', ')}`,
+    `- Claim ledger maximum entries: ${brief.claimLedgerPolicy.maxEntries}`,
     '- Do not copy SERP articles. Use SERP only to understand intent, missing subtopics, and reader expectations.',
   ].join('\n');
 }

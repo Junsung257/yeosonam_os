@@ -1,5 +1,6 @@
 import type { BlogContentBrief } from './blog-content-brief';
 import type { ProductBlogBrief } from './blog-product-brief';
+import { buildBlogInformationClaimLedgerPromptContract } from './blog-information-claim-ledger';
 
 export type EditorialVoice = {
   role: 'consulting_editor';
@@ -15,6 +16,7 @@ export type InfoGuideBrief = {
   official_sources_required: boolean;
   destination_required: boolean;
   cta_policy: 'runtime_contextual';
+  claim_ledger_required: true;
 };
 
 export type ProductConsultBrief = {
@@ -78,6 +80,7 @@ export function buildInfoGuideBrief(brief: BlogContentBrief): InfoGuideBrief {
     official_sources_required: OFFICIAL_SOURCE_INTENTS.has(brief.searchIntent),
     destination_required: !/^(?:해외여행|여행|가족\s*여름|로밍|보험)/.test(brief.primaryKeyword),
     cta_policy: 'runtime_contextual',
+    claim_ledger_required: true,
   };
 }
 
@@ -96,6 +99,7 @@ export function buildInfoWriterPromptBlock(brief: InfoGuideBrief, voice: Editori
     '- For risky or changeable facts such as visa, fees, weather, airport, insurance, refund, ticketing, customs, or baggage rules, avoid hard certainty and explain that official/current conditions should be checked.',
     '- Keep mobile paragraphs short: usually 1-3 Korean sentences per paragraph, with lists/tables only where they help the reader save or compare.',
     '- CTA policy: do not write CTA sections, CTA URLs, package links, consultation links, or community links. The public renderer selects verified contextual CTAs after the article body.',
+    buildBlogInformationClaimLedgerPromptContract(),
     `- Banned repeated patterns: ${voice.banned_patterns.join(' / ')}`,
   ].join('\n');
 }
