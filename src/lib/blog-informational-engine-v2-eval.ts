@@ -103,16 +103,35 @@ function buildFixtureMarkdown(fixture: BlogInformationEngineV2EvalFixture): stri
   ].join('\n');
 }
 
-function buildPersistedClaims(markdown: string): PersistedBlogInformationClaimRecord[] {
+function buildPersistedClaims(
+  markdown: string,
+  plan: ReturnType<typeof buildBlogInformationPlan>,
+): PersistedBlogInformationClaimRecord[] {
   return extractBlogInformationClaims(markdown).map((claim, index) => ({
     claimFingerprint: claim.claimFingerprint,
+    claimText: claim.claimText,
     claimType: claim.claimType,
+    extractedValue: claim.extractedValue,
     validationStatus: 'supported',
     evidence: [{
       evidenceKey: `evidence-${index + 1}`,
       claimType: claim.claimType,
       observedAt: '2026-07-15T08:00:00.000Z',
       validUntil: '2026-08-15T00:00:00.000Z',
+      excerpt: `2026년 ${plan.destinationName ?? '대한민국'} ${plan.travelerNationality ?? plan.audience} 대상: ${claim.claimText}`,
+      scope: {
+        country: plan.destinationName ?? '대한민국',
+        destination: plan.destinationName ?? '해외여행',
+        applicableTo: plan.travelerNationality ?? plan.audience,
+        locale: plan.locale,
+        claimType: claim.claimType,
+        normalizedValue: claim.extractedValue.normalizedValue,
+        unit: claim.extractedValue.unit,
+        currency: claim.extractedValue.currency,
+        verifiedAt: '2026-07-15T08:00:00.000Z',
+        nextReviewAt: '2026-08-15T00:00:00.000Z',
+        conditions: ['fixture-only deterministic scope'],
+      },
       source: {
         authorityLevel: 'official_primary',
         retrievedAt: '2026-07-15T08:00:00.000Z',
@@ -177,7 +196,7 @@ async function evaluateFixture(
   }
 
   const contentReport = inspectBlogInformationMarkdown({ markdown, contract: plan.contract });
-  const persistedClaims = buildPersistedClaims(markdown);
+  const persistedClaims = buildPersistedClaims(markdown, plan);
   const extractedClaims = extractBlogInformationClaims(markdown);
   const researchValidation = validateBlogInformationResearchBundle({
     contentKey: fixture.slug,
@@ -189,7 +208,8 @@ async function evaluateFixture(
       publisher: 'Fixture Authority',
       retrievedAt: '2026-07-15T08:00:00.000Z',
       validUntil: '2026-08-15T00:00:00.000Z',
-      destination: plan.destinationName,
+      destination: plan.destinationName ?? '해외여행',
+      country: plan.destinationName ?? '대한민국',
       claimTypes: [...new Set(extractedClaims.map((claim) => claim.claimType))],
       riskLevel: plan.riskLevel,
     }],
@@ -197,17 +217,31 @@ async function evaluateFixture(
       evidenceKey: `evidence-${index + 1}`,
       sourceKey: 'fixture-source',
       sourceLocator: `fixture:${index + 1}`,
-      excerpt: claim.claimText,
+      excerpt: `2026년 ${plan.destinationName ?? '대한민국'} ${plan.travelerNationality ?? plan.audience} 대상: ${claim.claimText}`,
       claimType: claim.claimType,
       riskLevel: claim.riskLevel,
       observedAt: '2026-07-15T08:00:00.000Z',
       validUntil: '2026-08-15T00:00:00.000Z',
+      scope: {
+        country: plan.destinationName ?? '대한민국',
+        destination: plan.destinationName ?? '해외여행',
+        applicableTo: plan.travelerNationality ?? plan.audience,
+        locale: plan.locale,
+        claimType: claim.claimType,
+        normalizedValue: claim.extractedValue.normalizedValue,
+        unit: claim.extractedValue.unit,
+        currency: claim.extractedValue.currency,
+        verifiedAt: '2026-07-15T08:00:00.000Z',
+        nextReviewAt: '2026-08-15T00:00:00.000Z',
+        conditions: ['fixture-only deterministic scope'],
+      },
     })),
     claims: extractedClaims.map((claim, index) => ({
       claimFingerprint: claim.claimFingerprint,
       claimText: claim.claimText,
       claimType: claim.claimType,
       riskLevel: claim.riskLevel,
+      extractedValue: claim.extractedValue,
       requiresEvidence: true,
       evidenceKeys: [`evidence-${index + 1}`],
     })),
@@ -218,6 +252,13 @@ async function evaluateFixture(
   const claimReport = validateBlogInformationClaims({
     markdown,
     persistedClaims,
+    intentType: plan.intent,
+    expectedScope: {
+      country: plan.destinationName ?? '대한민국',
+      destination: plan.destinationName ?? '해외여행',
+      applicableTo: plan.travelerNationality ?? plan.audience,
+      locale: plan.locale,
+    },
     reviewStatus: plan.requiresHumanReview ? 'pending_review' : 'approved',
     now: EVAL_NOW,
   });

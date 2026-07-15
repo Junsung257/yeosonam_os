@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createBlogInformationClaimFingerprint,
   isOfficialInformationAuthority,
+  isPrimaryInformationAuthority,
   validateBlogInformationResearchBundle,
   type BlogInformationResearchBundle,
 } from './blog-information-evidence';
@@ -29,17 +30,31 @@ function validBundle(): BlogInformationResearchBundle {
       evidenceKey: 'airport-access-duration',
       sourceKey: 'kansai-airport-access',
       sourceLocator: 'Access > Train',
-      excerpt: 'Travel time depends on the destination and train service.',
+      excerpt: '2026년 일본 오사카 일반 여행자는 공항에서 시내까지 열차로 약 50분이 걸립니다.',
       claimType: 'duration',
       riskLevel: 'MEDIUM',
       observedAt: '2026-07-15T08:00:00.000Z',
       validUntil: '2026-08-15T08:00:00.000Z',
+      scope: {
+        country: '일본',
+        destination: '오사카',
+        applicableTo: '일반 여행자',
+        locale: 'ko-KR',
+        claimType: 'duration',
+        normalizedValue: '50',
+        unit: '분',
+        currency: null,
+        verifiedAt: '2026-07-15T08:00:00.000Z',
+        nextReviewAt: '2026-08-15T08:00:00.000Z',
+        conditions: ['열차 서비스와 도착역 기준'],
+      },
     }],
     claims: [{
       claimFingerprint: createBlogInformationClaimFingerprint(claimText),
       claimText,
       claimType: 'duration',
       riskLevel: 'MEDIUM',
+      extractedValue: { normalizedValue: '50', unit: '분', currency: null },
       requiresEvidence: true,
       evidenceKeys: ['airport-access-duration'],
     }],
@@ -84,11 +99,40 @@ describe('blog informational evidence contract', () => {
     );
   });
 
+  it('rejects source scope drift and excerpt value mismatch', () => {
+    const bundle = validBundle();
+    bundle.evidence[0].scope.destination = '베이징';
+    bundle.evidence[0].scope.normalizedValue = '60';
+
+    const issues = validateBlogInformationResearchBundle(bundle).issues;
+    expect(issues).toEqual(expect.arrayContaining([
+      'evidence:source_destination_mismatch:airport-access-duration',
+      'evidence:scope:excerpt_value_mismatch:airport-access-duration',
+      expect.stringContaining('claim:evidence_mismatch:normalized_value_mismatch:'),
+    ]));
+  });
+
   it('distinguishes official authority from editorial and internal references', () => {
     expect(isOfficialInformationAuthority('official_primary')).toBe(true);
     expect(isOfficialInformationAuthority('official_secondary')).toBe(true);
     expect(isOfficialInformationAuthority('editorial_secondary')).toBe(false);
     expect(isOfficialInformationAuthority('internal_reference')).toBe(false);
+    expect(isPrimaryInformationAuthority('official_primary')).toBe(true);
+    expect(isPrimaryInformationAuthority('official_secondary')).toBe(false);
+  });
+
+  it.each([
+    'https://localhost/source',
+    'https://127.0.0.1/source',
+    'https://10.0.0.1/source',
+    'https://169.254.169.254/latest/meta-data',
+    'https://metadata.google.internal/computeMetadata/v1/',
+    'ftp://example.com/source',
+  ])('rejects non-public or non-HTTPS source URL %s', (sourceUrl) => {
+    const bundle = validBundle();
+    bundle.sources[0].sourceUrl = sourceUrl;
+    expect(validateBlogInformationResearchBundle(bundle).issues)
+      .toContain('source:unsafe_url:kansai-airport-access');
   });
 
   it('keeps informational persistence isolated from product evidence', () => {
@@ -102,5 +146,6 @@ describe('blog informational evidence contract', () => {
     expect(repositorySource).toContain("from('blog_information_sources')");
     expect(repositorySource).toContain("from('blog_information_evidence')");
     expect(repositorySource).toContain("from('blog_information_claims')");
+    expect(repositorySource).toContain('scope: evidence.scope');
   });
 });

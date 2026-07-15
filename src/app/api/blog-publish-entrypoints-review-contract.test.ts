@@ -23,6 +23,7 @@ describe('informational review policy across publish-capable entrypoints', () =>
   ])('runs the informational claim evidence gate in %s', (path) => {
     const route = source(path);
     expect(route).toContain('evaluateBlogInformationClaimPublishGate');
+    expect(route).toContain('expectedScope:');
     expect(route).toContain('Informational claim evidence gate failed');
   });
 
@@ -30,6 +31,8 @@ describe('informational review policy across publish-capable entrypoints', () =>
     const route = source('src/app/api/cron/blog-publisher/route.ts');
     expect(route).toContain('evaluateBlogInformationClaimPublishGate({');
     expect(route).toContain('persistBlogInformationClaimFindings({');
+    expect(route).toContain('intentType:');
+    expect(route).toContain('expectedScope:');
     expect(route).toContain("reason: requiresClaimReview");
     expect(route).toContain("'informational_claim_review_required'");
   });
@@ -40,6 +43,7 @@ describe('informational review policy across publish-capable entrypoints', () =>
     expect(route).toContain("status: 'high_risk_review'");
     expect(route).toContain('must not be regenerated without a new human review');
     expect(route).toContain('evaluateBlogInformationClaimPublishGate({');
+    expect(route).toContain('expectedScope:');
     expect(route).toContain("status: 'claim_gate_failed'");
   });
 });

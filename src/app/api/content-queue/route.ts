@@ -165,6 +165,7 @@ const postHandler = async (request: NextRequest) => {
         markdown: prepared.blogHtml,
         productId: row.product_id ?? null,
         reviewStatus: row.review_status ?? null,
+        expectedScope: { destination: row.destination ?? undefined },
       });
       if (!claimReport.passed) {
         return NextResponse.json({

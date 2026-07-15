@@ -2515,6 +2515,12 @@ async function processQueueItem(
     const writerClaimLedgerIssues = Array.isArray(writerClaimLedgerRecord?.issues)
       ? writerClaimLedgerRecord.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 20)
       : (contentBoundary.lane === 'informational' ? ['claim_ledger_missing'] : []);
+    const generatedPlanBrief = generated.generation_meta?.content_brief;
+    const generatedPlanBriefRecord = generatedPlanBrief
+      && typeof generatedPlanBrief === 'object'
+      && !Array.isArray(generatedPlanBrief)
+      ? generatedPlanBrief as Record<string, unknown>
+      : null;
     const claimValidation = await evaluateBlogInformationClaimPublishGate({
       creativeId: promoteDraftId,
       contentKey: generated.slug,
@@ -2523,6 +2529,22 @@ async function processQueueItem(
       tenantId: item.tenant_id ?? null,
       claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
       claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
+      intentType: typeof generatedPlanBriefRecord?.intent_type === 'string'
+        ? generatedPlanBriefRecord.intent_type
+        : null,
+      expectedScope: contentBoundary.lane === 'informational'
+        ? {
+            destination: item.destination ?? undefined,
+            applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
+              ? generatedPlanBriefRecord.traveler_nationality
+              : typeof generatedPlanBriefRecord?.audience === 'string'
+                ? generatedPlanBriefRecord.audience
+                : undefined,
+            locale: typeof generatedPlanBriefRecord?.locale === 'string'
+              ? generatedPlanBriefRecord.locale
+              : undefined,
+          }
+        : undefined,
     });
     generationMeta.information_claim_validation = {
       passed: claimValidation.passed,
@@ -2535,7 +2557,6 @@ async function processQueueItem(
       auto_regeneration_limit: 0,
       ...(claimValidation.lookupError ? { lookup_error: claimValidation.lookupError } : {}),
     };
-    const generatedPlanBrief = generated.generation_meta?.content_brief;
     const plannedHumanReview = generatedPlanBrief
       && typeof generatedPlanBrief === 'object'
       && !Array.isArray(generatedPlanBrief)

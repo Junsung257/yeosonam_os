@@ -67,6 +67,7 @@ export async function persistBlogInformationResearch(
     observed_at: evidence.observedAt,
     valid_from: evidence.validFrom ?? null,
     valid_until: evidence.validUntil ?? null,
+    scope: evidence.scope,
     captured_by: evidence.capturedBy ?? 'information_researcher',
     metadata: evidence.metadata ?? {},
     updated_at: new Date().toISOString(),

@@ -5,10 +5,13 @@ import type {
 } from './blog-information-claim-ledger';
 import {
   createBlogInformationClaimFingerprint,
-  isOfficialInformationAuthority,
+  blogInformationEvidenceScopeSupportsClaim,
+  isPrimaryInformationAuthority,
   type BlogInformationAuthorityLevel,
   type BlogInformationClaimType,
+  type BlogInformationEvidenceScope,
   type BlogInformationEvidenceRiskLevel,
+  type BlogInformationExtractedValue,
 } from './blog-information-evidence';
 
 export interface ExtractedBlogInformationClaim {
@@ -17,6 +20,7 @@ export interface ExtractedBlogInformationClaim {
   claimType: BlogInformationClaimType;
   riskLevel: BlogInformationEvidenceRiskLevel;
   candidateKind: BlogInformationFactualCandidateKind;
+  extractedValue: BlogInformationExtractedValue;
 }
 
 export interface BlogInformationClaimEvidenceRecord {
@@ -24,6 +28,8 @@ export interface BlogInformationClaimEvidenceRecord {
   claimType: BlogInformationClaimType;
   observedAt: string;
   validUntil?: string | null;
+  excerpt: string | null;
+  scope: BlogInformationEvidenceScope;
   source: {
     authorityLevel: BlogInformationAuthorityLevel;
     retrievedAt: string;
@@ -36,6 +42,7 @@ export interface PersistedBlogInformationClaimRecord {
   claimFingerprint: string;
   claimText?: string;
   claimType: BlogInformationClaimType;
+  extractedValue?: BlogInformationExtractedValue;
   validationStatus: 'pending' | 'supported' | 'unsupported' | 'stale' | 'review_required' | 'approved' | 'rejected';
   evidence: BlogInformationClaimEvidenceRecord[];
 }
@@ -46,6 +53,9 @@ export interface BlogInformationClaimValidationIssue {
     | 'claim_not_supported'
     | 'stale_evidence'
     | 'official_source_required'
+    | 'official_primary_required'
+    | 'evidence_scope_mismatch'
+    | 'evidence_semantic_mismatch'
     | 'human_approval_required'
     | 'unclassified_factual_candidate'
     | 'claim_ledger_body_mismatch'
@@ -91,6 +101,8 @@ const POLICY_RE = /(?:규정|정책|법률|법정|의무|금지|허용|운영시
 const SUPERLATIVE_RE = /(?:가장\s*(?:저렴|비싸|빠르|느리|좋|많|적|높|낮|인기)|최고|최저|유일|1위|최대|최소|압도적)/i;
 const GENERAL_YEAR_ALLOWLIST_RE = /^\d{4}년(?:\s*(?:여행|가이드|목차|판|업데이트|기준))*$/;
 const ITINERARY_ORDINAL_ALLOWLIST_RE = /\d+\s*일\s*차/i;
+
+const HIGH_RISK_INTENTS = new Set(['entry_requirements', 'travel_insurance']);
 
 const HIGH_RISK_CLAIM_TYPES = new Set<BlogInformationClaimType>([
   'customs',
@@ -159,6 +171,57 @@ function classifyClaim(segment: string): Pick<ExtractedBlogInformationClaim, 'cl
   return null;
 }
 
+function normalizeNumericValue(value: string): string {
+  return value.replace(/,/g, '').replace(/^\+/, '').trim();
+}
+
+function readCurrency(segment: string): string | null {
+  const normalized = segment.normalize('NFKC');
+  const currencies: Array<[string, RegExp]> = [
+    ['KRW', /KRW|원|₩|￦/i],
+    ['JPY', /JPY|엔|¥|￥/i],
+    ['USD', /USD|달러|\$/i],
+    ['VND', /VND|동|₫/i],
+    ['SGD', /SGD|싱가포르\s*달러|S\$/i],
+    ['EUR', /EUR|유로|€/i],
+    ['CNY', /CNY|위안/i],
+    ['THB', /THB|바트/i],
+  ];
+  return currencies.find(([, pattern]) => pattern.test(normalized))?.[0] ?? null;
+}
+
+function extractClaimValue(segment: string, kind: BlogInformationFactualCandidateKind): BlogInformationExtractedValue {
+  const number = segment.match(/-?\d[\d,.]*/)?.[0];
+  const currency = readCurrency(segment);
+  const currencyAmount = segment.match(/(?:[₩￦¥￥$€₫]|\b(?:JPY|KRW|USD|VND|SGD|CNY|EUR|THB))\s*(-?\d[\d,.]*)|(-?\d[\d,.]*)\s*(?:원|엔|달러|위안|유로|바트|동|JPY|KRW|USD|VND|SGD|CNY|EUR|THB)/i);
+  const currencyNumber = currencyAmount?.[1] ?? currencyAmount?.[2];
+  if (currency && currencyNumber) {
+    return { normalizedValue: normalizeNumericValue(currencyNumber), unit: null, currency };
+  }
+  const percent = segment.match(/-?\d+(?:\.\d+)?\s*%/);
+  if (percent) return { normalizedValue: normalizeNumericValue(percent[0].replace('%', '')), unit: '%', currency: null };
+  const clock = segment.match(/(?:[01]?\d|2[0-3]):[0-5]\d(?:\s*(?:~|-|–)\s*(?:[01]?\d|2[0-3]):[0-5]\d)?/);
+  if (clock) return { normalizedValue: clock[0].replace(/\s+/g, ''), unit: 'time', currency: null };
+  const measured = segment.match(/(-?\d+(?:\.\d+)?)\s*(km|㎞|킬로미터|m|미터|분|시간|℃|°C|mm|병|개비|개|명|회|건|대|장|kg|g|㎏|L|ℓ|ml|mL|MB|GB)/i);
+  if (measured) return { normalizedValue: normalizeNumericValue(measured[1]), unit: measured[2], currency: null };
+  const period = segment.match(/(?<!\d)(\d{1,3})\s*(일|주|개월|년)/);
+  if (period && !ITINERARY_ORDINAL_ALLOWLIST_RE.test(segment)) {
+    return { normalizedValue: period[1], unit: period[2], currency: null };
+  }
+  if (kind === 'requirement_prohibition' || kind === 'regulated_policy') {
+    if (/불필요|필요하지|면제/.test(segment)) return { normalizedValue: 'not_required', unit: null, currency: null };
+    if (/금지|불가|할\s*수\s*없/.test(segment)) return { normalizedValue: 'prohibited', unit: null, currency: null };
+    if (/필수|의무|반드시|필요/.test(segment)) return { normalizedValue: 'required', unit: null, currency: null };
+    if (/보장/.test(segment)) return { normalizedValue: 'covered', unit: null, currency: null };
+  }
+  if (kind === 'availability_status') {
+    if (/불가|마감|매진|중단|종료|휴무/.test(segment)) return { normalizedValue: 'unavailable', unit: null, currency: null };
+    return { normalizedValue: 'available', unit: null, currency: null };
+  }
+  if (kind === 'superlative') return { normalizedValue: 'superlative', unit: null, currency: null };
+  return { normalizedValue: normalizeNumericValue(number ?? segment), unit: null, currency: null };
+}
+
 export function extractBlogInformationClaims(markdown: string): ExtractedBlogInformationClaim[] {
   return splitClaimSegments(markdown).flatMap((segment) => {
     const classification = classifyClaim(segment);
@@ -167,6 +230,7 @@ export function extractBlogInformationClaims(markdown: string): ExtractedBlogInf
       claimFingerprint: createBlogInformationClaimFingerprint(segment),
       claimText: segment,
       ...classification,
+      extractedValue: extractClaimValue(segment, classification.candidateKind),
     }];
   });
 }
@@ -178,9 +242,14 @@ function isEvidenceCurrent(
 ): boolean {
   if (evidence.source.status && evidence.source.status !== 'active') return false;
   const explicitExpiry = [evidence.validUntil, evidence.source.validUntil]
+    .concat([evidence.scope?.validUntil, evidence.scope?.nextReviewAt])
     .filter((value): value is string => Boolean(value))
     .map((value) => Date.parse(value));
   if (explicitExpiry.some((expiry) => Number.isNaN(expiry) || expiry < nowMs)) return false;
+  const explicitStarts = [evidence.scope?.validFrom, evidence.scope?.verifiedAt]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Date.parse(value));
+  if (explicitStarts.some((start) => Number.isNaN(start) || start > nowMs)) return false;
   const retrievedAt = Date.parse(evidence.source.retrievedAt);
   if (Number.isNaN(retrievedAt)) return false;
   const maxAgeMs = MAX_SOURCE_AGE_DAYS[claimType] * 24 * 60 * 60 * 1000;
@@ -192,6 +261,8 @@ export function validateBlogInformationClaims(input: {
   persistedClaims: PersistedBlogInformationClaimRecord[];
   claimLedger?: BlogInformationClaimLedgerEntry[];
   claimLedgerIssues?: string[];
+  intentType?: string | null;
+  expectedScope?: Partial<Pick<BlogInformationEvidenceScope, 'country' | 'destination' | 'applicableTo' | 'locale'>>;
   reviewStatus?: string | null;
   now?: Date;
 }): BlogInformationClaimValidationReport {
@@ -288,19 +359,40 @@ export function validateBlogInformationClaims(input: {
         });
         continue;
       }
-      if (
-        HIGH_RISK_CLAIM_TYPES.has(claim.claimType)
-        && !currentEvidence.some((evidence) => isOfficialInformationAuthority(evidence.source.authorityLevel))
-      ) {
+      const highRisk = HIGH_RISK_CLAIM_TYPES.has(claim.claimType)
+        || HIGH_RISK_INTENTS.has(String(input.intentType ?? ''));
+      if (highRisk && !currentEvidence.some((evidence) => isPrimaryInformationAuthority(evidence.source.authorityLevel))) {
         issues.push({
-          code: 'official_source_required',
+          code: 'official_primary_required',
           claimFingerprint: claim.claimFingerprint,
           claimType: claim.claimType,
-          message: '고위험·정책형 claim에는 공식 source가 필요합니다.',
+          message: '고위험 intent·정책형 claim에는 공식 1차 source가 필요합니다.',
         });
         continue;
       }
-      if (HIGH_RISK_CLAIM_TYPES.has(claim.claimType) && input.reviewStatus !== 'approved') {
+      const authorityEligibleEvidence = highRisk
+        ? currentEvidence.filter((evidence) => isPrimaryInformationAuthority(evidence.source.authorityLevel))
+        : currentEvidence;
+      const semanticReports = authorityEligibleEvidence.map((evidence) =>
+        blogInformationEvidenceScopeSupportsClaim({
+          evidence,
+          claimType: claim.claimType,
+          extractedValue: claim.extractedValue,
+          expectedScope: input.expectedScope,
+        }));
+      if (!semanticReports.some((report) => report.passed)) {
+        const mismatchCodes = semanticReports.flatMap((report) => report.issues);
+        const hasScopeMismatch = mismatchCodes.some((code) =>
+          /country|destination|applicable|locale|claim_type|scope_window|conditions/.test(code));
+        issues.push({
+          code: hasScopeMismatch ? 'evidence_scope_mismatch' : 'evidence_semantic_mismatch',
+          claimFingerprint: claim.claimFingerprint,
+          claimType: claim.claimType,
+          message: `evidence scope/excerpt가 최종 claim과 일치하지 않습니다: ${[...new Set(mismatchCodes)].join(',')}`,
+        });
+        continue;
+      }
+      if (highRisk && input.reviewStatus !== 'approved') {
         issues.push({
           code: 'human_approval_required',
           claimFingerprint: claim.claimFingerprint,
@@ -318,6 +410,7 @@ export function validateBlogInformationClaims(input: {
       issues,
       coverage: claims.length === 0 ? (issues.length === 0 ? 1 : 0) : supportedClaims / claims.length,
       requiresHumanReview: issues.length > 0
+        || HIGH_RISK_INTENTS.has(String(input.intentType ?? ''))
         || claims.some((claim) => HIGH_RISK_CLAIM_TYPES.has(claim.claimType)),
       ledger: {
         declaredCount: declaredClaims.length,

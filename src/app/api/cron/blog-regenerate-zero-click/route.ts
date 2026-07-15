@@ -266,6 +266,7 @@ async function runRegenerator(request: NextRequest) {
           contentKey: slug,
           markdown: prepared.blogHtml,
           reviewStatus: post.review_status ?? null,
+          expectedScope: { destination: post.destination ?? undefined },
         });
         if (!claimReport.passed) {
           const claimSummary = claimReport.issues.map((issue) => issue.code).join(',');

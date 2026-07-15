@@ -5,6 +5,7 @@ import {
   type PersistedBlogInformationClaimRecord,
 } from './blog-information-claim-validator';
 import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
+import type { BlogInformationEvidenceScope } from './blog-information-evidence';
 
 const NOW = new Date('2026-07-15T09:00:00.000Z');
 
@@ -20,23 +21,42 @@ function ledgerFor(markdown: string): BlogInformationClaimLedgerEntry[] {
 function supportedRecord(
   markdown: string,
   options: {
-    authorityLevel?: 'official_primary' | 'editorial_secondary';
+    authorityLevel?: 'official_primary' | 'official_secondary' | 'editorial_secondary';
     retrievedAt?: string;
     validUntil?: string | null;
     validationStatus?: PersistedBlogInformationClaimRecord['validationStatus'];
+    scope?: Partial<BlogInformationEvidenceScope>;
+    excerpt?: string;
   } = {},
 ): PersistedBlogInformationClaimRecord {
   const claim = extractBlogInformationClaims(markdown)[0];
   if (!claim) throw new Error('fixture did not produce a claim');
   return {
     claimFingerprint: claim.claimFingerprint,
+    claimText: claim.claimText,
     claimType: claim.claimType,
+    extractedValue: claim.extractedValue,
     validationStatus: options.validationStatus ?? 'supported',
     evidence: [{
       evidenceKey: 'evidence-1',
       claimType: claim.claimType,
       observedAt: '2026-07-15T08:00:00.000Z',
       validUntil: options.validUntil ?? '2026-08-15T00:00:00.000Z',
+      excerpt: options.excerpt ?? `2026년 일본 오사카 KR 대상: ${markdown}`,
+      scope: {
+        country: '일본',
+        destination: '오사카',
+        applicableTo: 'KR',
+        locale: 'ko-KR',
+        claimType: claim.claimType,
+        normalizedValue: claim.extractedValue.normalizedValue,
+        unit: claim.extractedValue.unit,
+        currency: claim.extractedValue.currency,
+        verifiedAt: '2026-07-15T08:00:00.000Z',
+        nextReviewAt: options.validUntil ?? '2026-08-15T00:00:00.000Z',
+        conditions: ['일반 여행자 기준'],
+        ...options.scope,
+      },
       source: {
         authorityLevel: options.authorityLevel ?? 'official_primary',
         retrievedAt: options.retrievedAt ?? '2026-07-15T08:00:00.000Z',
@@ -168,11 +188,11 @@ describe('blog information claim validator', () => {
     ]));
   });
 
-  it('blocks evidence after its validity window', () => {
+  it('does not reuse evidence that expired in 2024 for a 2026 claim', () => {
     const markdown = '공항에서 시내까지 약 50분이 걸립니다.';
     const report = validateBlogInformationClaims({
       markdown,
-      persistedClaims: [supportedRecord(markdown, { validUntil: '2026-07-14T00:00:00.000Z' })],
+      persistedClaims: [supportedRecord(markdown, { validUntil: '2024-12-31T00:00:00.000Z' })],
       now: NOW,
     });
     expect(report.passed).toBe(false);
@@ -188,7 +208,7 @@ describe('blog information claim validator', () => {
       now: NOW,
     });
     expect(report.passed).toBe(false);
-    expect(report.issues[0]?.code).toBe('official_source_required');
+    expect(report.issues[0]?.code).toBe('official_primary_required');
   });
 
   it('blocks an official high-risk claim until human approval exists', () => {
@@ -214,6 +234,93 @@ describe('blog information claim validator', () => {
     });
     expect(report.passed).toBe(true);
     expect(report.coverage).toBe(1);
+  });
+
+  it('does not reuse Japan policy evidence for a China claim', () => {
+    const markdown = '중국 입국에는 관광 비자가 필요합니다.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(markdown)],
+      reviewStatus: 'approved',
+      expectedScope: { destination: '중국', applicableTo: 'KR', locale: 'ko-KR' },
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues[0]?.code).toBe('evidence_scope_mismatch');
+  });
+
+  it('blocks a price when the evidence currency does not match', () => {
+    const markdown = '택시비는 50,000원입니다.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(markdown, {
+        scope: { currency: 'USD' },
+        excerpt: '2026년 일본 오사카 KR 대상 택시비는 USD 50,000입니다.',
+      })],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues[0]?.code).toBe('evidence_semantic_mismatch');
+  });
+
+  it('blocks an 800 USD claim when the excerpt says 600 USD', () => {
+    const markdown = '면세 한도는 800달러까지 허용됩니다.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(markdown, {
+        excerpt: '2026년 일본 오사카 KR 대상 면세 한도는 600 USD입니다.',
+      })],
+      reviewStatus: 'approved',
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues[0]?.code).toBe('evidence_semantic_mismatch');
+  });
+
+  it('treats official secondary as context only for a high-risk claim', () => {
+    const markdown = '한국인은 관광 비자가 필요하지 않습니다.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(markdown, { authorityLevel: 'official_secondary' })],
+      reviewStatus: 'approved',
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues[0]?.code).toBe('official_primary_required');
+  });
+
+  it('requires primary evidence for every claim inside a high-risk insurance intent', () => {
+    const markdown = '여행자 보험료는 50,000원입니다.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(markdown, { authorityLevel: 'official_secondary' })],
+      intentType: 'travel_insurance',
+      reviewStatus: 'approved',
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues[0]?.code).toBe('official_primary_required');
+  });
+
+  it('allows exact primary evidence to reach, but not bypass, human review', () => {
+    const markdown = '한국인은 관광 비자가 필요하지 않습니다.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(markdown)],
+      reviewStatus: 'pending_review',
+      expectedScope: { country: '일본', destination: '오사카', applicableTo: 'KR', locale: 'ko-KR' },
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toEqual([
+      expect.objectContaining({ code: 'human_approval_required' }),
+    ]);
   });
 
   it('fails closed when the validator itself receives an invalid runtime value', () => {

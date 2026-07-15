@@ -377,6 +377,7 @@ export async function POST(request: NextRequest) {
         contentKey: cleanSlug,
         markdown: prepared.blogHtml,
         productId: product_id || null,
+        expectedScope: { destination: destinationForQa || undefined },
       });
       if (!claimReport.passed) {
         return apiResponse({
@@ -527,7 +528,7 @@ export async function PATCH(request: NextRequest) {
     if (force_revalidate === true) {
       const { data: row, error: rowErr } = await supabaseAdmin
         .from('content_creatives')
-        .select('slug, status, channel, product_id, review_status, seo_title, category, content_type, blog_html, generation_meta')
+        .select('slug, status, channel, product_id, review_status, seo_title, category, content_type, blog_html, destination, generation_meta')
         .eq('id', id)
         .limit(1);
       if (rowErr) throw rowErr;
@@ -554,6 +555,7 @@ export async function PATCH(request: NextRequest) {
         markdown: target.blog_html ?? '',
         productId: target.product_id ?? null,
         reviewStatus: target.review_status ?? null,
+        expectedScope: { destination: target.destination ?? undefined },
       });
       if (!claimReport.passed) {
         return apiResponse({
@@ -697,6 +699,7 @@ export async function PATCH(request: NextRequest) {
           markdown: prepared.blogHtml,
           productId: row?.product_id ?? null,
           reviewStatus: row?.review_status ?? null,
+          expectedScope: { destination: destination || undefined },
         });
         if (!claimReport.passed) {
           return apiResponse({

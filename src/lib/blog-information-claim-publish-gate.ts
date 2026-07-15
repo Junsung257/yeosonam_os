@@ -8,6 +8,8 @@ import {
 import type {
   BlogInformationAuthorityLevel,
   BlogInformationClaimType,
+  BlogInformationEvidenceScope,
+  BlogInformationExtractedValue,
 } from './blog-information-evidence';
 import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
 
@@ -23,6 +25,8 @@ export interface BlogInformationClaimPublishGateInput {
   now?: Date;
   claimLedger?: BlogInformationClaimLedgerEntry[];
   claimLedgerIssues?: string[];
+  intentType?: string | null;
+  expectedScope?: Partial<Pick<BlogInformationEvidenceScope, 'country' | 'destination' | 'applicableTo' | 'locale'>>;
 }
 
 export interface BlogInformationClaimPublishGateResult extends BlogInformationClaimValidationReport {
@@ -52,7 +56,7 @@ async function loadPersistedClaimRecords(
 ): Promise<{ records: PersistedBlogInformationClaimRecord[]; error?: string }> {
   const { data: claims, error: claimsError } = await supabaseAdmin
     .from('blog_information_claims')
-    .select('id, claim_fingerprint, claim_text, claim_type, validation_status')
+    .select('id, claim_fingerprint, claim_text, claim_type, extracted_value, validation_status')
     .eq('creative_id', creativeId);
   if (claimsError) return { records: [], error: claimsError.message };
   if (!claims || claims.length === 0) return { records: [] };
@@ -69,7 +73,7 @@ async function loadPersistedClaimRecords(
   const { data: evidence, error: evidenceError } = evidenceIds.length > 0
     ? await supabaseAdmin
         .from('blog_information_evidence')
-        .select('id, evidence_key, source_id, claim_type, observed_at, valid_until')
+        .select('id, evidence_key, source_id, excerpt, scope, claim_type, observed_at, valid_until')
         .in('id', evidenceIds)
     : { data: [], error: null };
   if (evidenceError) return { records: [], error: evidenceError.message };
@@ -92,6 +96,8 @@ async function loadPersistedClaimRecords(
       claimType: item.claim_type as BlogInformationClaimType,
       observedAt: item.observed_at,
       validUntil: item.valid_until,
+      excerpt: item.excerpt,
+      scope: item.scope as BlogInformationEvidenceScope,
       source: {
         authorityLevel: source.authority_level as BlogInformationAuthorityLevel,
         retrievedAt: source.retrieved_at,
@@ -115,6 +121,7 @@ async function loadPersistedClaimRecords(
       claimFingerprint: claim.claim_fingerprint,
       claimText: claim.claim_text,
       claimType: claim.claim_type as BlogInformationClaimType,
+      extractedValue: claim.extracted_value as unknown as BlogInformationExtractedValue,
       validationStatus: claim.validation_status,
       evidence: linksByClaim.get(claim.id) ?? [],
     })),
@@ -139,11 +146,19 @@ export async function evaluateBlogInformationClaimPublishGate(
     const loaded = input.creativeId
       ? await loadPersistedClaimRecords(input.creativeId)
       : { records: [] as PersistedBlogInformationClaimRecord[] };
+    const inferredIntent = input.intentType
+      ?? (/여행자?\s*보험|보험\s*(?:보장|면책|가입|청구)/i.test(input.markdown)
+        ? 'travel_insurance'
+        : /입국|출입국|비자|여권|세관|면세|전자여행허가|ETA|ESTA/i.test(input.markdown)
+          ? 'entry_requirements'
+          : null);
     const report = validateBlogInformationClaims({
       markdown: input.markdown,
       persistedClaims: loaded.records,
       claimLedger: input.claimLedger,
       claimLedgerIssues: input.claimLedgerIssues,
+      intentType: inferredIntent,
+      expectedScope: input.expectedScope,
       reviewStatus: input.reviewStatus,
       now: input.now,
     });
@@ -184,6 +199,7 @@ export async function persistBlogInformationClaimFindings(input: {
       claim_text: claim.claimText,
       claim_type: claim.claimType,
       risk_level: claim.riskLevel,
+      extracted_value: claim.extractedValue,
       requires_evidence: true,
       validation_status: issue ? 'review_required' : 'supported',
       validation_reason: issue?.code ?? null,
