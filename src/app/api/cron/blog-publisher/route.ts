@@ -2426,13 +2426,18 @@ async function processQueueItem(
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
     };
+    const generatedPlanBrief = generated.generation_meta?.content_brief;
+    const plannedHumanReview = generatedPlanBrief
+      && typeof generatedPlanBrief === 'object'
+      && !Array.isArray(generatedPlanBrief)
+      && (generatedPlanBrief as Record<string, unknown>).requires_human_review === true;
     const requiresHumanReview = blogType === 'info'
-      && isHighRiskInformationalTopic({
+      && (plannedHumanReview || isHighRiskInformationalTopic({
         title: generated.seo_title ?? item.topic ?? null,
         category: item.category ?? null,
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
         topic: item.topic ?? null,
-      });
+      }));
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
@@ -2998,6 +3003,12 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     category: item.category,
     source: item.source,
     keywords: queuedKeywords,
+    microAngle: getQueueMicroAngle(item),
+    audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
+    locale: typeof item.meta?.locale === 'string' ? item.meta.locale : null,
+    travelerNationality: typeof item.meta?.traveler_nationality === 'string'
+      ? item.meta.traveler_nationality
+      : null,
   });
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
@@ -3190,7 +3201,19 @@ ${serpGapBlock}
       primary_keyword: contentBrief.primaryKeyword,
       secondary_keywords: contentBrief.secondaryKeywords,
       search_intent: contentBrief.searchIntent,
+      intent_type: contentBrief.plan.intent,
+      destination_id: contentBrief.plan.destinationId,
+      audience: contentBrief.plan.audience,
+      locale: contentBrief.plan.locale,
+      traveler_nationality: contentBrief.plan.travelerNationality,
+      risk_level: contentBrief.plan.riskLevel,
       required_sections: contentBrief.requiredSections,
+      required_facts: contentBrief.plan.requiredFacts,
+      planned_tables: contentBrief.plan.plannedTables,
+      faq_questions: contentBrief.plan.faqQuestions,
+      missing_inputs: contentBrief.plan.missingInputs,
+      requires_human_review: contentBrief.plan.requiresHumanReview,
+      source_policy: contentBrief.plan.sourcePolicy,
       forbidden_angles: contentBrief.forbiddenAngles,
       source_requirements: contentBrief.sourceRequirements,
       evidence: contentBrief.evidence,

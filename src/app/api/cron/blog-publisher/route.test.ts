@@ -47,6 +47,20 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("contentBoundary.lane === 'product'");
   });
 
+  it('blocks incomplete information plans before invoking the writer', () => {
+    const source = routeSource();
+    const generatorStart = source.indexOf('async function generateFromTopic');
+    const planner = source.indexOf('const contentBrief = buildBlogContentBrief', generatorStart);
+    const blocker = source.indexOf('if (!contentBrief.passed)', planner);
+    const writer = source.indexOf('const raw = await generatePublisherBlogText', blocker);
+
+    expect(generatorStart).toBeGreaterThanOrEqual(0);
+    expect(planner).toBeGreaterThan(generatorStart);
+    expect(blocker).toBeGreaterThan(planner);
+    expect(writer).toBeGreaterThan(blocker);
+    expect(source).toContain('missing_inputs: contentBrief.plan.missingInputs');
+  });
+
   it('keeps high-risk informational drafts private until a human review is completed', () => {
     const source = routeSource();
 

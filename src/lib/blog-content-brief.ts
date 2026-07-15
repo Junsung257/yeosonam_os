@@ -1,4 +1,13 @@
 import type { SerpAnalysis } from './serp-analyzer';
+import {
+  type BlogInformationIntent,
+  type BlogInformationSourcePolicy,
+} from './blog-information-contract';
+import {
+  buildBlogInformationPlan,
+  type BlogInformationAudience,
+  type BlogInformationPlan,
+} from './blog-information-planner';
 
 type BlogBriefIntent =
   | 'weather'
@@ -17,12 +26,20 @@ export interface BlogContentBriefInput {
   source?: string | null;
   keywords?: string[] | null;
   serp?: SerpAnalysis | null;
+  microAngle?: string | null;
+  audience?: BlogInformationAudience | null;
+  locale?: string | null;
+  travelerNationality?: string | null;
 }
 
 export interface BlogContentBrief {
   title: string;
   primaryKeyword: string;
   secondaryKeywords: string[];
+  intentType: BlogInformationIntent;
+  requiresHumanReview: boolean;
+  sourcePolicy: BlogInformationSourcePolicy;
+  plan: BlogInformationPlan;
   searchIntent: BlogBriefIntent;
   readerQuestion: string;
   requiredSections: string[];
@@ -37,10 +54,6 @@ export interface BlogContentBrief {
 const LODGING_TANGENT_RE = /에어컨|에어콘|숙소|호텔|리조트|숙박|air\s*con|aircon|a\/c|accommodation|hotel|resort/i;
 const WEATHER_RE = /날씨|옷차림|우기|건기|기온|강수|비\s*(?:예보|소식|가|는|와|올|내릴|많|적)|스콜|태풍|weather|clothing|rain|season/i;
 const PREPARATION_RE = /준비물|체크리스트|짐싸기|필수품|packing|checklist|preparation/i;
-const COST_RE = /비용|예산|경비|가격|환전|가성비|이동비|교통비|차량비|렌터카|택시|픽업|cost|budget|expense|price/i;
-const TRANSPORT_RE = /항공권|공항|교통|이동|비행|렌터카|택시|픽업|차량|flight|airport|transport|transfer/i;
-const ITINERARY_RE = /일정|코스|루트|day\s*\d+|itinerary|course|route/i;
-const COMPARISON_RE = /비교|추천|순위|best|top|vs|comparison|ranking/i;
 const MONTH_RE = /(?:^|\s)(1[0-2]|[1-9])\s*월(?:\s|$)|(?:^|\s)(1[0-2]|[1-9])\s*month(?:\s|$)/i;
 
 function clean(value?: string | null): string {
@@ -67,14 +80,23 @@ function inferMonth(text: string): string | null {
   return month ? `${Number(month)}월` : null;
 }
 
-function inferIntent(text: string): BlogBriefIntent {
-  if (WEATHER_RE.test(text)) return 'weather';
-  if (PREPARATION_RE.test(text)) return 'preparation';
-  if (COST_RE.test(text)) return 'cost';
-  if (TRANSPORT_RE.test(text)) return 'transport';
-  if (ITINERARY_RE.test(text)) return 'itinerary';
-  if (COMPARISON_RE.test(text)) return 'comparison';
-  return 'general';
+function toLegacyBriefIntent(intentType: BlogInformationIntent): BlogBriefIntent {
+  switch (intentType) {
+    case 'monthly_weather':
+      return 'weather';
+    case 'food_budget':
+    case 'family_budget':
+    case 'currency_payment':
+      return 'cost';
+    case 'airport_transport':
+      return 'transport';
+    case 'hotel_areas':
+      return 'comparison';
+    case 'family_itinerary':
+      return 'itinerary';
+    default:
+      return 'general';
+  }
 }
 
 function inferDestination(input: BlogContentBriefInput, text: string): string {
@@ -200,17 +222,46 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
   const month = inferMonth(text);
   const destination = inferDestination(input, text);
   const rawPrimary = clean(input.primaryKeyword) || clean(input.topic);
-  const coreIntent = inferIntent(coreText);
-  const rawIntent = coreIntent === 'general' ? inferIntent(text) : coreIntent;
+  const informationPlan = buildBlogInformationPlan({
+    destination,
+    topic: coreText,
+    primaryKeyword: rawPrimary,
+    category: input.category,
+    microAngle: input.microAngle,
+    audience: input.audience,
+    locale: input.locale,
+    travelerNationality: input.travelerNationality,
+  });
   const isDestinationMonth = Boolean(destination && month);
   const shouldForceWeather = Boolean(
     isDestinationMonth &&
-    (input.source === 'seasonal' || WEATHER_RE.test(text) || PREPARATION_RE.test(text) || LODGING_TANGENT_RE.test(text)),
+    (
+      informationPlan.intent === 'monthly_weather'
+      || input.source === 'seasonal'
+      || WEATHER_RE.test(text)
+      || PREPARATION_RE.test(text)
+      || LODGING_TANGENT_RE.test(text)
+    ),
   );
+
+  const finalInformationPlan = shouldForceWeather && informationPlan.intent !== 'monthly_weather'
+    ? buildBlogInformationPlan({
+        destination,
+        topic: `${coreText} 날씨 옷차림 월별 기온 강수`,
+        primaryKeyword: `${destination} ${month ?? ''} 날씨`,
+        category: 'weather',
+        microAngle: 'weather_packing',
+        audience: input.audience,
+        locale: input.locale,
+        travelerNationality: input.travelerNationality,
+      })
+    : informationPlan;
+  const finalInformationContract = finalInformationPlan.contract;
+  const finalIntent = toLegacyBriefIntent(finalInformationPlan.intent);
 
   const base = shouldForceWeather
     ? weatherBrief(destination, month as string)
-    : genericBrief(destination, rawPrimary, rawIntent, keywords);
+    : genericBrief(destination, rawPrimary, finalIntent, keywords);
 
   const serpEntities = input.serp?.recommended_entities_to_include || [];
   const secondaryKeywords = unique([
@@ -223,22 +274,30 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
     input.source ? `source:${input.source}` : null,
     month ? `month:${month}` : null,
     destination ? `destination:${destination}` : null,
+    `intent:${finalInformationContract.intentType}`,
     input.serp ? `serp:${input.serp.source}` : null,
   ]);
 
-  const issues: string[] = [];
+  const issues: string[] = finalInformationPlan.missingInputs.map((issue) => `information_plan:${issue}`);
   if (base.primaryKeyword.length < 2) issues.push('missing_primary_keyword');
   if (secondaryKeywords.length < 3) issues.push('not_enough_secondary_keywords');
-  if (base.requiredSections.length < 4) issues.push('not_enough_required_sections');
+  if (finalInformationContract.requiredSections.length < 4) issues.push('not_enough_required_sections');
   if (shouldForceWeather && LODGING_TANGENT_RE.test(base.title)) issues.push('seasonal_title_lodging_tangent');
   if (shouldForceWeather && !WEATHER_RE.test(`${base.title} ${base.primaryKeyword}`)) issues.push('seasonal_weather_intent_missing');
 
   return {
     ...base,
     secondaryKeywords,
-    searchIntent: shouldForceWeather ? 'weather' : rawIntent,
+    intentType: finalInformationContract.intentType,
+    requiresHumanReview: finalInformationContract.humanReview.required,
+    sourcePolicy: finalInformationContract.sourcePolicy,
+    plan: finalInformationPlan,
+    searchIntent: finalIntent,
+    readerQuestion: finalInformationPlan.primaryQuestion,
+    requiredSections: finalInformationContract.requiredSections,
+    sourceRequirements: finalInformationContract.sourceRequirements,
     evidence,
-    passed: issues.length === 0,
+    passed: finalInformationPlan.passed && issues.length === 0,
     issues,
   };
 }
@@ -250,8 +309,18 @@ export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): strin
     `- Primary keyword: ${brief.primaryKeyword}`,
     `- Secondary keywords: ${brief.secondaryKeywords.join(', ')}`,
     `- Search intent: ${brief.searchIntent}`,
+    `- Explicit intent type: ${brief.intentType}`,
+    `- Destination id: ${brief.plan.destinationId ?? 'missing'}`,
+    `- Audience: ${brief.plan.audience}`,
+    `- Locale: ${brief.plan.locale}`,
+    `- Risk level: ${brief.plan.riskLevel}`,
+    `- Human review required: ${brief.requiresHumanReview ? 'yes' : 'no'}`,
     `- Reader question: ${brief.readerQuestion}`,
     `- Required H2 sections: ${brief.requiredSections.join(' / ')}`,
+    `- Required facts: ${brief.plan.requiredFacts.map((fact) => fact.label).join(' / ')}`,
+    `- Planned tables: ${brief.plan.plannedTables.map((table) => table.purpose).join(' / ')}`,
+    `- FAQ questions: ${brief.plan.faqQuestions.join(' / ')}`,
+    `- Missing inputs: ${brief.plan.missingInputs.join(', ') || 'none'}`,
     `- Forbidden angles: ${brief.forbiddenAngles.join(' / ')}`,
     `- Source requirements: ${brief.sourceRequirements.join(' / ')}`,
     '- Do not copy SERP articles. Use SERP only to understand intent, missing subtopics, and reader expectations.',

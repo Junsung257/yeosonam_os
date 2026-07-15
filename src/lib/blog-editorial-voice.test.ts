@@ -7,6 +7,7 @@ import {
 } from './blog-editorial-voice';
 import { buildProductBlogBrief } from './blog-product-brief';
 import type { BlogContentBrief } from './blog-content-brief';
+import { buildBlogInformationPlan } from './blog-information-planner';
 
 describe('blog editorial voice contracts', () => {
   it('builds an answer-first info writer prompt', () => {
@@ -14,6 +15,21 @@ describe('blog editorial voice contracts', () => {
       title: '발리 가족 여행 경비',
       primaryKeyword: '발리 가족 여행 경비',
       secondaryKeywords: ['발리 3인 가족 경비'],
+      intentType: 'family_budget',
+      requiresHumanReview: false,
+      sourcePolicy: {
+        minimumClaimSourceCoverage: 0.9,
+        primarySourcesRequired: false,
+        exactNumbersRequireSource: true,
+        retrievedAtRequired: true,
+        sourceTypes: ['official'],
+      },
+      plan: buildBlogInformationPlan({
+        topic: '발리 가족 여행 경비',
+        destination: '발리',
+        primaryKeyword: '발리 가족 여행 경비',
+        audience: 'family',
+      }),
       searchIntent: 'cost',
       readerQuestion: '발리 가족 여행은 얼마를 준비해야 하나요?',
       requiredSections: ['항공/숙소 비용', '현지 지출'],
