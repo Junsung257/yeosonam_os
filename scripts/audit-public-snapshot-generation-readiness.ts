@@ -3,8 +3,13 @@ import { pathToFileURL } from 'node:url';
 
 import { buildPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
 import { diagnosePublicSnapshotGeneration } from '../src/lib/package-publication/public-snapshot-diagnostics';
-import type { PublicSnapshotGenerationField, PublicSnapshotGenerationStatus } from '../src/lib/package-publication/public-snapshot-diagnostics';
+import type {
+  PublicSnapshotGenerationField,
+  PublicSnapshotGenerationReport,
+  PublicSnapshotGenerationStatus,
+} from '../src/lib/package-publication/public-snapshot-diagnostics';
 import { evaluatePublicSnapshotPublishGate } from '../src/lib/package-publication/publish-gate';
+import type { PublicPackageSnapshot } from '../src/lib/package-publication/types';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config({ path: '.env' });
@@ -89,6 +94,120 @@ function statusPriority(status: PublicSnapshotGenerationStatus): number {
   if (status === 'blocked') return 2;
   if (status === 'repairable') return 1;
   return 0;
+}
+
+function asRecord(value: unknown): AnyRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null;
+}
+
+function compactText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function truncateText(value: unknown, maxLength = 180): string | null {
+  const text = compactText(value);
+  if (!text) return null;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function countArray(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function countItineraryDays(value: unknown): number {
+  if (Array.isArray(value)) return value.length;
+  const record = asRecord(value);
+  const days = record?.days;
+  return Array.isArray(days) ? days.length : 0;
+}
+
+function countProductThumbnails(value: unknown): number {
+  const products = Array.isArray(value) ? value : value ? [value] : [];
+  return products.reduce((count, product) => {
+    const record = asRecord(product);
+    return count + countArray(record?.thumbnail_urls);
+  }, 0);
+}
+
+function countRouteText(snapshot: PublicPackageSnapshot): number {
+  return snapshot.route_text_dump.filter(item => compactText(item)).length;
+}
+
+function routeTextSample(snapshot: PublicPackageSnapshot, limit = 30): string[] {
+  return snapshot.route_text_dump
+    .map(item => truncateText(item, 220))
+    .filter((item): item is string => Boolean(item))
+    .slice(0, limit);
+}
+
+function fieldStatuses(report: PublicSnapshotGenerationReport): Record<string, PublicSnapshotGenerationStatus> {
+  return Object.fromEntries(report.diagnostics.map(diagnostic => [diagnostic.field, diagnostic.status]));
+}
+
+export function buildAuditItem(
+  row: AnyRecord,
+  snapshot: PublicPackageSnapshot,
+  report: PublicSnapshotGenerationReport,
+) {
+  const snapshotPackage = asRecord(snapshot.package) ?? {};
+  const cardProjection = asRecord(snapshot.card_projection) ?? {};
+  const lpProjection = asRecord(snapshot.lp_projection) ?? {};
+  const rawText = compactText(row.raw_text);
+
+  return {
+    id: row.id,
+    destination: row.destination ?? null,
+    raw_title: row.title ?? null,
+    public_title: snapshot.public_title,
+    public_subtitle: snapshot.public_subtitle,
+    overall_status: report.overall_status,
+    source: {
+      raw_title: truncateText(row.title),
+      display_title: truncateText(row.display_title),
+      destination: truncateText(row.destination),
+      raw_text_chars: rawText.length,
+      raw_excerpt: rawText ? truncateText(rawText, 500) : null,
+      hero_tagline: truncateText(row.hero_tagline),
+      product_summary: truncateText(row.product_summary, 260),
+    },
+    extracted_fields: {
+      duration: row.duration ?? null,
+      nights: row.nights ?? null,
+      scalar_price: row.price ?? null,
+      price_dates_count: countArray(row.price_dates),
+      product_prices_count: countArray(row.product_prices),
+      inclusions_count: countArray(row.inclusions),
+      exclusions_count: countArray(row.excludes),
+      optional_tours_count: countArray(row.optional_tours),
+      itinerary_days_count: countItineraryDays(row.itinerary_data),
+      product_thumbnail_count: countProductThumbnails(row.products),
+    },
+    public_snapshot: {
+      package_revision: snapshot.package_revision,
+      public_title: snapshot.public_title,
+      public_subtitle: snapshot.public_subtitle,
+      duration: snapshot.duration,
+      destinations: snapshot.destinations,
+      price_display: snapshot.price_display,
+      option_policy: snapshot.option_policy,
+      inclusions_public_count: countArray(snapshot.inclusions_public),
+      exclusions_public_count: countArray(snapshot.exclusions_public),
+      optional_tours_public_count: countArray(snapshot.optional_tours_public),
+      itinerary_days_count: countItineraryDays(snapshot.itinerary_public),
+      images_public_count: countArray(snapshot.images_public),
+      cta_primary: snapshot.cta_copy.primary,
+      cta_helper: snapshot.cta_copy.helper,
+      card_title: truncateText(cardProjection.title),
+      card_summary: truncateText(cardProjection.summary),
+      lp_summary: truncateText(lpProjection.summary ?? snapshotPackage.product_summary, 260),
+      route_text_count: countRouteText(snapshot),
+    },
+    mobile_landing_text: {
+      route_text_sample: routeTextSample(snapshot),
+    },
+    fields: fieldStatuses(report),
+    repair_actions: report.repair_actions,
+  };
 }
 
 function formatError(error: unknown): string {
@@ -220,16 +339,7 @@ async function main() {
     reports.push(report);
     for (const action of report.repair_actions) increment(actionCounts, action);
 
-    const item = {
-      id: row.id,
-      destination: row.destination ?? null,
-      raw_title: row.title ?? null,
-      public_title: snapshot.public_title,
-      public_subtitle: snapshot.public_subtitle,
-      overall_status: report.overall_status,
-      fields: Object.fromEntries(report.diagnostics.map(diagnostic => [diagnostic.field, diagnostic.status])),
-      repair_actions: report.repair_actions,
-    };
+    const item = buildAuditItem(row, snapshot, report);
     if (samples.length < options.samples && report.overall_status !== 'generated') samples.push(item);
 
     const key = goldenKey(row);
