@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBlogInformationalCtaEvent,
   buildBlogInformationalCtaSettings,
+  readBlogInformationalOfficialSourceUrl,
   selectBlogInformationalCtas,
   stripBlogInformationalBodyCtas,
 } from './blog-informational-cta';
@@ -30,46 +31,52 @@ describe('blog informational CTA settings and selection', () => {
     const settings = buildBlogInformationalCtaSettings({
       destination: '삿포로',
       relatedArticlesHref: '/blog/sapporo-weather',
-      dealRoomUrl: 'https://example.com/travel-deals',
+      dealRoomUrl: 'https://open.kakao.com/o/travel-deals',
       naverCafeUrl: 'https://cafe.naver.com/example',
     });
     const result = selection({ settings });
-
     expect(result.map((cta) => [cta.key, cta.role])).toEqual([
       ['DEAL_ROOM', 'primary'],
       ['RELATED_ARTICLES', 'secondary'],
     ]);
+    expect(result.filter((cta) => cta.external)).toHaveLength(1);
   });
 
-  it('puts related information first and omits sales CTAs for high-risk intents', () => {
+  it('puts a pinned official source first and omits sales CTAs for high-risk intents', () => {
     const settings = buildBlogInformationalCtaSettings({
       relatedArticlesHref: '/blog/entry-checklist',
       consultationUrl: 'https://pf.kakao.com/_verified/chat',
+      officialSourceUrl: 'https://www.mofa.go.jp/entry/rules',
     });
-    const result = selection({
-      intent: 'entry_requirements',
-      riskLevel: 'HIGH',
-      settings,
-    });
-
-    expect(result.map((cta) => cta.key)).toEqual(['RELATED_ARTICLES']);
+    const result = selection({ intent: 'entry_requirements', riskLevel: 'HIGH', settings });
+    expect(result.map((cta) => cta.key)).toEqual(['OFFICIAL_SOURCE', 'RELATED_ARTICLES']);
+    expect(result.some((cta) => cta.key === 'CONSULTATION')).toBe(false);
   });
 
-  it('disables invalid or ambiguous external URLs instead of guessing', () => {
+  it('extracts only pinned official evidence URLs from generation metadata', () => {
+    expect(readBlogInformationalOfficialSourceUrl({
+      evidence_items: [{ kind: 'official_source', url: 'https://www.mofa.go.jp/entry' }],
+    })).toBe('https://www.mofa.go.jp/entry');
+    expect(readBlogInformationalOfficialSourceUrl({
+      evidence_items: [{ kind: 'internal_insight', url: 'https://www.mofa.go.jp/entry' }],
+    })).toBeNull();
+  });
+
+  it('disables invalid, unlisted, or ambiguous URLs instead of guessing', () => {
     const settings = buildBlogInformationalCtaSettings({
       relatedArticlesHref: '/packages',
       naverCafeUrl: 'http://cafe.naver.com/not-secure',
-      dealRoomUrl: 'javascript:alert(1)',
+      dealRoomUrl: 'https://evil.example/deals',
+      consultationUrl: 'javascript:alert(1)',
       kakaoChannelId: 'ambiguous',
     });
-
     expect(settings.every((cta) => cta.enabled === false)).toBe(true);
   });
 
   it('uses only an internal related CTA for non-Korean locales', () => {
     const settings = buildBlogInformationalCtaSettings({
       relatedArticlesHref: '/blog/sapporo-weather',
-      dealRoomUrl: 'https://example.com/deals',
+      dealRoomUrl: 'https://open.kakao.com/o/deals',
     });
     expect(selection({ locale: 'en-US', settings }).map((cta) => cta.key))
       .toEqual(['RELATED_ARTICLES']);
@@ -78,46 +85,38 @@ describe('blog informational CTA settings and selection', () => {
   it('limits a mid-article placement to one CTA', () => {
     const settings = buildBlogInformationalCtaSettings({
       relatedArticlesHref: '/blog/sapporo-weather',
-      dealRoomUrl: 'https://example.com/deals',
+      dealRoomUrl: 'https://open.kakao.com/o/deals',
     });
     expect(selection({ placement: 'mid', settings })).toHaveLength(1);
   });
 
-  it('builds dedicated anonymous event metadata without PII fields', () => {
-    const event = buildBlogInformationalCtaEvent('blog_cta_click', {
+  it('builds a minimal idempotent event without PII or arbitrary metadata', () => {
+    const event = buildBlogInformationalCtaEvent('click', {
       articleId: 'article-1',
-      slug: 'sapporo-food',
-      destinationId: 'sapporo',
-      destination: '삿포로',
-      intent: 'food_budget',
       ctaKey: 'RELATED_ARTICLES',
       placement: 'bottom',
-      locale: 'ko-KR',
     });
-
-    expect(event.event_type).toBe('blog_cta_click');
-    expect(event.metadata).toEqual({
+    expect(event).toMatchObject({
       article_id: 'article-1',
-      slug: 'sapporo-food',
-      destination_id: 'sapporo',
-      intent: 'food_budget',
+      event_type: 'click',
       cta_key: 'RELATED_ARTICLES',
       placement: 'bottom',
-      locale: 'ko-KR',
     });
-    expect(JSON.stringify(event)).not.toMatch(/email|phone|name|user_id/i);
+    expect(event.event_key).toMatch(/^[0-9a-f-]{36}:click:RELATED_ARTICLES:bottom$/);
+    expect(JSON.stringify(event)).not.toMatch(/email|phone|name|user_id|session|href|metadata|utm/i);
   });
 
-  it('removes generated sales URLs from informational body copy', () => {
+  it('removes generated sales links from markdown and rendered HTML', () => {
     const cleaned = stripBlogInformationalBodyCtas([
       '## 여행 준비',
       '[관련 글](/blog/sapporo-weather)',
-      '[상품 보기](/packages?destination=삿포로)',
+      '[상품 보기](/packages?destination=sapporo)',
       '[상담](https://pf.kakao.com/_legacy/chat)',
+      '<a data-blog-cta="true" href="/packages/legacy">legacy product CTA</a>',
     ].join('\n\n'));
-
     expect(cleaned).toContain('[관련 글](/blog/sapporo-weather)');
     expect(cleaned).not.toMatch(/\/packages|pf\.kakao\.com/);
     expect(cleaned).toContain('상품 보기');
+    expect(cleaned).toContain('legacy product CTA');
   });
 });

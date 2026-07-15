@@ -261,26 +261,26 @@ Candidates must be published, indexable, non-redirecting, self-canonical, locale
 
 ## Informational CTA Contract
 
-Informational writers must not generate CTA sections, package links, consultation links, community links, or external CTA URLs in article Markdown. The public renderer owns CTA selection through the typed keys `NAVER_CAFE`, `DEAL_ROOM`, `CONSULTATION`, and `RELATED_ARTICLES`.
+Informational writers must not generate CTA sections, package links, consultation links, community links, or external CTA URLs in article Markdown. Publish preparation and the public renderer both strip legacy sales CTA anchors. The public renderer owns CTA selection through the typed keys `NAVER_CAFE`, `DEAL_ROOM`, `CONSULTATION`, `RELATED_ARTICLES`, and `OFFICIAL_SOURCE`.
 
 - One primary CTA is allowed, with at most one secondary CTA. Bottom placement is the default; a mid-article placement, if explicitly selected later, is limited to one CTA.
-- Selection uses persisted intent, destination, risk level, and locale. Entry/visa and insurance content uses related information first and does not show sales-oriented external CTAs.
-- External URLs are disabled unless an operator supplies an unambiguous HTTPS setting. `NAVER_CAFE_ID` alone is not treated as a proven public CTA URL.
+- Selection uses persisted intent, destination, risk level, and locale. Entry/visa and insurance content puts a pinned official-source URL first when available, may show a related article second, and never shows a sales-oriented external CTA.
+- External URLs are disabled unless they are HTTPS and pass the centralized host/provenance allow policy. `NAVER_CAFE_ID` alone is not treated as a proven public CTA URL.
 - When every external URL is missing or invalid, only a contextual internal related-article CTA may render. If that route is also invalid, the CTA hub is absent.
 - External links open in a new tab with `noopener noreferrer`; all CTA links remain keyboard reachable and mobile-safe.
-- `blog_cta_impression` and `blog_cta_click` record only `article_id`, `slug`, `destination_id`, `intent`, `cta_key`, `placement`, and `locale` plus anonymous session telemetry. CTA events must not include names, phone numbers, email addresses, booking data, or product repository data.
+- Informational CTA `impression` and `click` events use a dedicated same-origin endpoint. The browser sends only an ephemeral idempotency key, `article_id`, `event_type`, `cta_key`, and `placement`; the database derives representative dimensions and stores only a hash of the key. No session/user/visitor ID, URL, UTM, free-form metadata, IP, user agent, booking data, or product repository data is stored. Events are deduplicated and rate-limited, and telemetry failure never blocks navigation.
 
 Runtime settings are `BLOG_NAVER_CAFE_URL`, `BLOG_DEAL_ROOM_URL`, and optional `BLOG_CONSULTATION_URL`; consultation may reuse a valid existing `KAKAO_CHANNEL_ID`. Missing settings mean disabled, never a guessed or hardcoded fallback.
 
 ## Indexing Contract
 
-Publishing and indexing must be treated as separate responsibilities.
+Publishing and external indexing submission remain separate responsibilities. For informational content, the durable indexing outbox row is created atomically with the public article state and representative activation.
 
 Correct sequence:
 
-1. Publish only after all gates pass.
+1. Publish only after all gates pass; for informational content, the article, canonical representative, publication audit, and indexing outbox commit in one transaction.
 2. Revalidate `/blog`, `/blog/[slug]`, and the blog list tag.
-3. Enqueue a durable `blog_indexing_jobs` row with `content_creative_id`, `slug`, `url`, and source.
+3. Product/legacy paths enqueue a durable `blog_indexing_jobs` row through their existing flow; informational atomic publication already guarantees this row before the public transaction commits.
 4. Blog indexing URLs must be canonical `https://www.yeosonam.com/blog/{slug}` URLs. `BLOG_CANONICAL_ORIGIN` is the first-choice origin, and queued job URLs are canonicalized again before provider submission.
 5. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
 6. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.

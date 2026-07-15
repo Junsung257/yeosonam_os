@@ -12,6 +12,7 @@ import {
   type BlogRenderedSeoQualityReport,
 } from './blog-rendered-seo-quality';
 import { withPersistedBlogReadingTime } from './blog-reading-time';
+import { stripBlogInformationalBodyCtas } from './blog-informational-cta';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -219,6 +220,13 @@ export async function prepareBlogForPublish(
   let blogHtml = input.blog_html;
   const primaryKeyword = input.primary_keyword || input.destination || input.seo_title || input.slug;
   const contentType = input.content_type ?? (input.product_id ? 'package_intro' : 'guide');
+  if (!input.product_id) {
+    const normalized = stripBlogInformationalBodyCtas(blogHtml);
+    if (normalized !== blogHtml) {
+      blogHtml = normalized;
+      changes.push('normalized_informational_body_cta');
+    }
+  }
 
   const editorialRepair = repairBlogEditorialQuality({
     title: input.seo_title ?? input.slug,
@@ -331,6 +339,11 @@ export async function prepareBlogForPublish(
     if (finalStructureRepair.changed) {
       blogHtml = finalStructureRepair.blogHtml;
       changes.push(...finalStructureRepair.changes);
+    }
+    const normalized = stripBlogInformationalBodyCtas(blogHtml);
+    if (normalized !== blogHtml) {
+      blogHtml = normalized;
+      changes.push('normalized_final_informational_body_cta');
     }
   }
 

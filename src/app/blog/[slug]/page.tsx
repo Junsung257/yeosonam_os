@@ -53,8 +53,12 @@ import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-informatio
 import { InformationalCtaHub } from '@/components/blog/InformationalCtaHub';
 import {
   selectBlogInformationalCtas,
+  stripBlogInformationalBodyCtas,
 } from '@/lib/blog-informational-cta';
-import { loadBlogInformationalCtaSettings } from '@/lib/blog-informational-cta-settings';
+import {
+  loadBlogInformationalCtaSettings,
+  loadBlogInformationalOfficialSourceUrl,
+} from '@/lib/blog-informational-cta-settings';
 import type { BlogInformationRiskLevel } from '@/lib/blog-information-planner';
 import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
 import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
@@ -1200,6 +1204,9 @@ async function renderBlogDetail({
   const informationalIdentity = isInfoBlog
     ? readBlogInformationRepresentativeIdentity(post.generation_meta)
     : null;
+  const informationalRiskLevel = informationalIdentity
+    ? readInformationalRiskLevel(post.generation_meta, informationalIdentity.intent)
+    : null;
 
   // ── A/B 테스트: headline 실험 ────────────────────────────
   // visitorId = post.id (고유 식별자, 결정론적 할당용)
@@ -1254,7 +1261,7 @@ async function renderBlogDetail({
 
   // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
   // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
-  const [dki, relatedPosts, relatedProducts] = await Promise.all([
+  const [dki, relatedPosts, relatedProducts, officialSourceUrl] = await Promise.all([
     isLanding
       ? withBlogRenderTimeout(
           'dki',
@@ -1271,6 +1278,12 @@ async function renderBlogDetail({
       : Promise.resolve(null),
     withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type, post), []),
     withBlogRenderTimeout('relatedProducts', getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent), []),
+    informationalIdentity && informationalRiskLevel === 'HIGH'
+      ? withBlogRenderTimeout('officialSourceCta', loadBlogInformationalOfficialSourceUrl({
+          creativeId: post.id,
+          generationMeta: post.generation_meta,
+        }), null, 1500)
+      : Promise.resolve(null),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -1285,12 +1298,13 @@ async function renderBlogDetail({
     ? selectBlogInformationalCtas({
         intent: informationalIdentity.intent,
         destination: effectiveDestination,
-        riskLevel: readInformationalRiskLevel(post.generation_meta, informationalIdentity.intent),
+        riskLevel: informationalRiskLevel ?? 'LOW',
         locale: informationalIdentity.locale,
         placement: 'bottom',
         settings: loadBlogInformationalCtaSettings({
           destination: effectiveDestination,
           relatedArticlesHref,
+          officialSourceUrl,
         }),
       })
     : [];
@@ -1305,7 +1319,8 @@ async function renderBlogDetail({
     // blog_html은 "마크다운 + 일부 안전한 HTML(figcaption/aside)" 혼합 저장값이다.
     // figcaption 태그만 보고 전체를 raw HTML로 취급하면 이미지/표/링크 마크다운이 그대로 노출된다.
     const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
-    const sanitized = stripDuplicateBodyTitleHeading(sanitizePublicBlogBodyHtml(rendered), abTestTitle);
+    const normalizedBody = isInfoBlog ? stripBlogInformationalBodyCtas(rendered) : rendered;
+    const sanitized = stripDuplicateBodyTitleHeading(sanitizePublicBlogBodyHtml(normalizedBody), abTestTitle);
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;
@@ -1618,11 +1633,6 @@ async function renderBlogDetail({
             {informationalIdentity && informationalCtas.length > 0 && (
               <InformationalCtaHub
                 articleId={post.id}
-                slug={post.slug}
-                destinationId={informationalIdentity.destinationId}
-                destination={effectiveDestination}
-                intent={informationalIdentity.intent}
-                locale={informationalIdentity.locale}
                 ctas={informationalCtas}
               />
             )}

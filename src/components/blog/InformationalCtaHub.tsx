@@ -1,30 +1,18 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { trackEngagement } from '@/lib/tracker';
 import {
-  buildBlogInformationalCtaEvent,
-  type BlogInformationalCtaEventContext,
+  trackBlogInformationalCtaEvent,
   type SelectedBlogInformationalCta,
 } from '@/lib/blog-informational-cta';
 
 interface Props {
   articleId: string;
-  slug: string;
-  destinationId: string;
-  destination?: string | null;
-  intent: BlogInformationalCtaEventContext['intent'];
-  locale: string;
   ctas: SelectedBlogInformationalCta[];
 }
 
 export function InformationalCtaHub({
   articleId,
-  slug,
-  destinationId,
-  destination,
-  intent,
-  locale,
   ctas,
 }: Props) {
   const rootRef = useRef<HTMLElement | null>(null);
@@ -41,16 +29,11 @@ export function InformationalCtaHub({
         const placement = link.dataset.ctaPlacement as SelectedBlogInformationalCta['placement'] | undefined;
         if (!ctaKey || !placement || seen.has(ctaKey)) continue;
         seen.add(ctaKey);
-        trackEngagement(buildBlogInformationalCtaEvent('blog_cta_impression', {
+        trackBlogInformationalCtaEvent('impression', {
           articleId,
-          slug,
-          destinationId,
-          destination,
-          intent,
           ctaKey,
           placement,
-          locale,
-        }));
+        });
         observer.unobserve(link);
       }
     }, { threshold: [0.25, 0.5] });
@@ -58,7 +41,7 @@ export function InformationalCtaHub({
     root.querySelectorAll<HTMLAnchorElement>('a[data-informational-cta="true"]')
       .forEach((link) => observer.observe(link));
     return () => observer.disconnect();
-  }, [articleId, ctas, destination, destinationId, intent, locale, slug]);
+  }, [articleId, ctas]);
 
   if (ctas.length === 0) return null;
   const placement = ctas[0]?.placement ?? 'bottom';
@@ -93,16 +76,11 @@ export function InformationalCtaHub({
               data-cta-key={cta.key}
               data-cta-placement={cta.placement}
               onClick={() => {
-                trackEngagement(buildBlogInformationalCtaEvent('blog_cta_click', {
+                trackBlogInformationalCtaEvent('click', {
                   articleId,
-                  slug,
-                  destinationId,
-                  destination,
-                  intent,
                   ctaKey: cta.key,
                   placement: cta.placement,
-                  locale,
-                }));
+                });
               }}
               aria-label={cta.external ? `${cta.label} (새 창)` : cta.label}
               className={cta.role === 'primary'

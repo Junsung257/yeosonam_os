@@ -135,6 +135,7 @@ const PUBLIC_EXACT = new Set([
   // 블로그
   '/api/rss',
   '/api/blog-engagement',
+  '/api/blog-information-cta-events',
   '/api/web-vitals',
   // ISR 캐시 무효화
   '/api/revalidate',

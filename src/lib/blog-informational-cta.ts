@@ -1,11 +1,16 @@
 import type { BlogInformationIntent } from './blog-information-contract';
 import type { BlogInformationRiskLevel } from './blog-information-planner';
+import {
+  normalizeBlogInformationExternalUrl,
+  normalizeBlogInformationInternalHref,
+} from './blog-information-url-policy';
 
 export const BLOG_INFORMATIONAL_CTA_KEYS = [
   'NAVER_CAFE',
   'DEAL_ROOM',
   'CONSULTATION',
   'RELATED_ARTICLES',
+  'OFFICIAL_SOURCE',
 ] as const;
 
 export type BlogInformationalCtaKey = (typeof BLOG_INFORMATIONAL_CTA_KEYS)[number];
@@ -36,6 +41,7 @@ export interface BlogInformationalCtaSettingsInput {
   dealRoomUrl?: string | null;
   consultationUrl?: string | null;
   kakaoChannelId?: string | null;
+  officialSourceUrl?: string | null;
 }
 
 export interface BlogInformationalCtaSelectionInput {
@@ -49,13 +55,8 @@ export interface BlogInformationalCtaSelectionInput {
 
 export interface BlogInformationalCtaEventContext {
   articleId: string;
-  slug: string;
-  destinationId: string;
-  destination?: string | null;
-  intent: BlogInformationIntent;
   ctaKey: BlogInformationalCtaKey;
   placement: BlogInformationalCtaPlacement;
-  locale: string;
 }
 
 const EXTERNAL_PREFERENCE: Record<BlogInformationIntent, BlogInformationalCtaKey[]> = {
@@ -75,25 +76,6 @@ const EXTERNAL_PREFERENCE: Record<BlogInformationIntent, BlogInformationalCtaKey
 function clean(value?: string | null): string | null {
   const normalized = value?.trim();
   return normalized || null;
-}
-
-function validExternalUrl(value?: string | null): string | null {
-  const raw = clean(value);
-  if (!raw) return null;
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol !== 'https:') return null;
-    if (!parsed.hostname || parsed.username || parsed.password) return null;
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-function validRelatedHref(value?: string | null): string | null {
-  const raw = clean(value);
-  if (!raw || !raw.startsWith('/blog') || raw.startsWith('//')) return null;
-  return raw;
 }
 
 function consultationFromChannelId(channelId?: string | null): string | null {
@@ -116,7 +98,10 @@ export function buildBlogInformationalCtaSettings(
   input: BlogInformationalCtaSettingsInput,
 ): BlogInformationalCtaDefinition[] {
   const destination = clean(input.destination);
-  const consultationUrl = validExternalUrl(input.consultationUrl)
+  const consultationUrl = normalizeBlogInformationExternalUrl({
+    kind: 'CONSULTATION',
+    value: input.consultationUrl,
+  })
     ?? consultationFromChannelId(input.kakaoChannelId);
 
   return [
@@ -124,14 +109,14 @@ export function buildBlogInformationalCtaSettings(
       'NAVER_CAFE',
       destination ? `${destination} 여행 팁 더 보기` : '여행 준비 팁 더 보기',
       '운영자가 확인한 커뮤니티 안내를 새 창에서 확인합니다.',
-      validExternalUrl(input.naverCafeUrl),
+      normalizeBlogInformationExternalUrl({ kind: 'NAVER_CAFE', value: input.naverCafeUrl }),
       true,
     ),
     definition(
       'DEAL_ROOM',
       destination ? `${destination} 여행 소식 확인` : '여행 소식 확인',
       '운영자가 확인한 공개 여행 소식 채널로 이동합니다.',
-      validExternalUrl(input.dealRoomUrl),
+      normalizeBlogInformationExternalUrl({ kind: 'DEAL_ROOM', value: input.dealRoomUrl }),
       true,
     ),
     definition(
@@ -145,8 +130,19 @@ export function buildBlogInformationalCtaSettings(
       'RELATED_ARTICLES',
       destination ? `${destination} 관련 가이드 이어보기` : '관련 여행 가이드 이어보기',
       '같은 목적지와 검색 의도에 가까운 정보성 글을 이어서 읽습니다.',
-      validRelatedHref(input.relatedArticlesHref),
+      normalizeBlogInformationInternalHref(input.relatedArticlesHref),
       false,
+    ),
+    definition(
+      'OFFICIAL_SOURCE',
+      '공식 출처에서 최신 조건 확인',
+      '검수에 사용된 공식 기관의 원문을 새 창에서 확인합니다.',
+      normalizeBlogInformationExternalUrl({
+        kind: 'OFFICIAL_SOURCE',
+        value: input.officialSourceUrl,
+        evidencePinnedOfficial: true,
+      }),
+      true,
     ),
   ];
 }
@@ -169,7 +165,17 @@ export function selectBlogInformationalCtas(
   }
 
   if (input.riskLevel === 'HIGH') {
-    return related ? [{ ...related, href: related.href!, enabled: true, role: 'primary', placement }] : [];
+    const official = enabled.get('OFFICIAL_SOURCE');
+    return [official, related]
+      .filter((item): item is BlogInformationalCtaDefinition => Boolean(item))
+      .slice(0, 2)
+      .map((item, index) => ({
+        ...item,
+        href: item.href!,
+        enabled: true,
+        role: index === 0 ? 'primary' : 'secondary',
+        placement,
+      }));
   }
 
   const external = EXTERNAL_PREFERENCE[input.intent]
@@ -179,13 +185,17 @@ export function selectBlogInformationalCtas(
     .filter((item): item is BlogInformationalCtaDefinition => Boolean(item));
   const maximum = placement === 'mid' ? 1 : 2;
 
-  return ordered.slice(0, maximum).map((item, index) => ({
-    ...item,
-    href: item.href!,
-    enabled: true,
-    role: index === 0 ? 'primary' : 'secondary',
-    placement,
-  }));
+  return ordered
+    .slice(0, maximum)
+    .filter((item, index, values) => values.findIndex((candidate) => candidate.href === item.href) === index)
+    .slice(0, 2)
+    .map((item, index) => ({
+      ...item,
+      href: item.href!,
+      enabled: true,
+      role: index === 0 ? 'primary' : 'secondary',
+      placement,
+    }));
 }
 
 export function stripBlogInformationalBodyCtas(markdown: string): string {
@@ -195,36 +205,78 @@ export function stripBlogInformationalBodyCtas(markdown: string): string {
       '$1',
     )
     .replace(
-      /\[([^\]]+)]\(https:\/\/pf\.kakao\.com\/[^)\s]+\)/gi,
+      /\[([^\]]+)]\(https:\/\/(?:(?:pf|open)\.kakao\.com|cafe\.naver\.com)\/[^)\s]+\)/gi,
+      '$1',
+    )
+    .replace(
+      /<a\b[^>]*(?:data-(?:blog|informational)-cta=["']true["']|href=["'](?:https?:\/\/(?:www\.)?yeosonam\.com)?\/(?:packages|group-inquiry)[^"']*|href=["']https:\/\/(?:(?:pf|open)\.kakao\.com|cafe\.naver\.com)\/[^"']*)[^>]*>([\s\S]*?)<\/a>/gi,
       '$1',
     )
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
+export function readBlogInformationalOfficialSourceUrl(
+  generationMeta?: Record<string, unknown> | null,
+): string | null {
+  const items = Array.isArray(generationMeta?.evidence_items) ? generationMeta.evidence_items : [];
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    if (record.kind !== 'official_source' || typeof record.url !== 'string') continue;
+    const normalized = normalizeBlogInformationExternalUrl({
+      kind: 'OFFICIAL_SOURCE',
+      value: record.url,
+      evidencePinnedOfficial: true,
+    });
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 export function buildBlogInformationalCtaEvent(
-  eventType: 'blog_cta_impression' | 'blog_cta_click',
+  eventType: 'impression' | 'click',
   context: BlogInformationalCtaEventContext,
 ): {
+  event_key: string;
+  article_id: string;
   event_type: typeof eventType;
-  event_source: 'blog_information_cta';
-  destination: string | null;
-  intent: BlogInformationIntent;
-  metadata: Record<string, string>;
+  cta_key: BlogInformationalCtaKey;
+  placement: BlogInformationalCtaPlacement;
 } {
+  const viewId = getBlogInformationalCtaViewId(context.articleId);
   return {
+    event_key: `${viewId}:${eventType}:${context.ctaKey}:${context.placement}`,
+    article_id: context.articleId,
     event_type: eventType,
-    event_source: 'blog_information_cta',
-    destination: clean(context.destination),
-    intent: context.intent,
-    metadata: {
-      article_id: context.articleId,
-      slug: context.slug,
-      destination_id: context.destinationId,
-      intent: context.intent,
-      cta_key: context.ctaKey,
-      placement: context.placement,
-      locale: context.locale,
-    },
+    cta_key: context.ctaKey,
+    placement: context.placement,
   };
+}
+
+const FALLBACK_VIEW_ID = '00000000-0000-4000-8000-000000000000';
+
+function getBlogInformationalCtaViewId(articleId: string): string {
+  if (typeof window === 'undefined') return FALLBACK_VIEW_ID;
+  const target = window as typeof window & {
+    __ysInfoCtaView?: { articleId: string; viewId: string };
+  };
+  if (!target.__ysInfoCtaView || target.__ysInfoCtaView.articleId !== articleId) {
+    target.__ysInfoCtaView = { articleId, viewId: crypto.randomUUID() };
+  }
+  return target.__ysInfoCtaView.viewId;
+}
+
+export function trackBlogInformationalCtaEvent(
+  eventType: 'impression' | 'click',
+  context: BlogInformationalCtaEventContext,
+): void {
+  if (typeof window === 'undefined') return;
+  fetch('/api/blog-information-cta-events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    keepalive: true,
+    body: JSON.stringify(buildBlogInformationalCtaEvent(eventType, context)),
+  }).catch(() => {});
 }

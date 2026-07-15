@@ -310,8 +310,9 @@ async function evaluateFixture(
     destination: plan.destinationName,
     relatedArticlesHref: `/blog/${plan.destinationId || 'travel'}-related-guide`,
     naverCafeUrl: fixture.ctaMode === 'configured' ? 'https://cafe.naver.com/yeosonam-fixture' : null,
-    dealRoomUrl: fixture.ctaMode === 'configured' ? 'https://example.com/deal-room-fixture' : null,
-    consultationUrl: fixture.ctaMode === 'configured' ? 'https://example.com/consult-fixture' : null,
+    dealRoomUrl: fixture.ctaMode === 'configured' ? 'https://open.kakao.com/o/deal-room-fixture' : null,
+    consultationUrl: fixture.ctaMode === 'configured' ? 'https://pf.kakao.com/_fixture/chat' : null,
+    officialSourceUrl: plan.riskLevel === 'HIGH' ? 'https://www.mofa.go.jp/entry-fixture' : null,
   });
   const ctas = selectBlogInformationalCtas({
     intent: plan.intent,
