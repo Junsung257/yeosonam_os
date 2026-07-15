@@ -251,6 +251,7 @@ export function diagnosePublicSnapshotGeneration(input: {
   const priceBlockers = byField.get('price_dates') ?? [];
   const snapshotPackage = asRecord(snapshot.package);
   const snapshotPriceDates = snapshotPackage?.price_dates ?? pkg.price_dates;
+  const snapshotPriceTiers = snapshotPackage?.price_tiers ?? pkg.price_tiers;
   const rawPricePatternPresent = PRICE_RE.test(rawText);
   const priceSourceRepairable = rawPricePatternPresent && sourceTextIsLongEnoughForFieldRepair(rawText);
   const priceGenerated = Boolean(snapshot.price_display && priceBlockers.length === 0);
@@ -266,6 +267,7 @@ export function diagnosePublicSnapshotGeneration(input: {
     [
       snapshot.price_display ? `price_display=${snapshot.price_display}` : 'price_display_missing',
       hasArrayItems(snapshotPriceDates) ? 'price_dates_present' : 'price_dates_missing',
+      hasArrayItems(snapshotPriceTiers) ? 'price_tiers_present' : 'price_tiers_missing',
       rawPricePatternPresent ? 'raw_price_pattern_present' : 'raw_price_pattern_missing',
       sourceTextIsLongEnoughForFieldRepair(rawText) ? 'raw_text_sufficient_for_price_repair' : 'raw_text_insufficient_for_price_repair',
     ],

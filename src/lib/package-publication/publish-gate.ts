@@ -65,6 +65,10 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function compactText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
 function addBlocker(blockers: PublishFinding[], code: string, message: string, fieldPath?: string) {
   blockers.push({ code, message, fieldPath, severity: 'critical' });
 }
@@ -138,10 +142,48 @@ function findMaskedCustomerCopyPollution(
   return pollution;
 }
 
-function sourceBackedPriceDateProblem(pkg: AnyRecord): string | null {
+function formatPriceEvidenceToken(price: number): string {
+  return price.toLocaleString('ko-KR');
+}
+
+function hasValidSourceBackedPriceTier(pkg: AnyRecord): boolean {
+  const tiers = Array.isArray(pkg.price_tiers) ? pkg.price_tiers : [];
+  if (tiers.length === 0) return false;
+
+  const sourcePkg = asRecord(pkg._source_price_evidence) ?? pkg;
+  const rawText = compactText(sourcePkg.raw_text ?? pkg.raw_text);
+  const departureDays = compactText(sourcePkg.departure_days ?? pkg.departure_days);
+  const sourceText = `${rawText}\n${departureDays}`;
+  if (!rawText) return false;
+
+  return tiers.some((item) => {
+    const tier = asRecord(item);
+    if (!tier) return false;
+    const price = asNumber(tier.adult_price ?? tier.adult_selling_price ?? tier.price);
+    if (!price || price <= 0) return false;
+
+    const departureDates = Array.isArray(tier.departure_dates)
+      ? tier.departure_dates.filter(date => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date))
+      : [];
+    if (departureDates.length > 0) return true;
+
+    const periodLabel = compactText(tier.period_label);
+    const priceToken = formatPriceEvidenceToken(price);
+    const rawHasPrice = sourceText.includes(priceToken) || sourceText.includes(String(price));
+    if (!rawHasPrice) return false;
+
+    const rawHasPeriodBasis = /전\s*출발일|출발\s*요일|매주|요일|기본/i.test(sourceText)
+      || (periodLabel.length > 1 && periodLabel !== '기본' && sourceText.includes(periodLabel));
+    const tierHasBasis = periodLabel.length > 0 || departureDays.length > 0 || compactText(tier.departure_day_of_week).length > 0;
+    return rawHasPeriodBasis && tierHasBasis;
+  });
+}
+
+function sourceBackedPriceProblem(pkg: AnyRecord): string | null {
   const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
   if (priceDates.length === 0) {
-    return 'public package snapshot requires source-backed price_dates before customer opening';
+    if (hasValidSourceBackedPriceTier(pkg)) return null;
+    return 'public package snapshot requires source-backed price_dates or source-backed period price_tiers before customer opening';
   }
 
   for (const [index, value] of priceDates.entries()) {
@@ -424,7 +466,10 @@ export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput
     addBlocker(hard, 'public_snapshot_missing', 'approved public package snapshot is missing');
   }
 
-  const priceDateProblem = sourceBackedPriceDateProblem(input.pkg);
+  const priceDateProblem = sourceBackedPriceProblem({
+    ...input.pkg,
+    _source_price_evidence: sourcePkg,
+  });
   if (priceDateProblem) {
     addBlocker(hard, 'price_source_missing', priceDateProblem, 'price_dates');
   }

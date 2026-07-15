@@ -652,7 +652,35 @@ function priceDisplay(pkg: AnyRecord): string | null {
   return `${price.toLocaleString('ko-KR')}원~`;
 }
 
-function representativeCustomerPrice(pkg: AnyRecord): number | null {
+function formatPriceEvidenceToken(price: number): string {
+  return price.toLocaleString('ko-KR');
+}
+
+function hasSourceBackedPriceTierEvidence(tier: AnyRecord, sourcePkg: AnyRecord): boolean {
+  const price = asNumber(tier.adult_price ?? tier.adult_selling_price ?? tier.price);
+  if (!price || price <= 0) return false;
+
+  const departureDates = Array.isArray(tier.departure_dates)
+    ? tier.departure_dates.filter(date => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date))
+    : [];
+  if (departureDates.length > 0) return true;
+
+  const rawText = normalizeText(sourcePkg.raw_text);
+  if (!rawText) return false;
+  const departureDays = normalizeText(sourcePkg.departure_days);
+  const sourceText = `${rawText}\n${departureDays}`;
+  const priceToken = formatPriceEvidenceToken(price);
+  const rawHasPrice = sourceText.includes(priceToken) || sourceText.includes(String(price));
+  if (!rawHasPrice) return false;
+
+  const periodLabel = normalizeText(tier.period_label);
+  const rawHasPeriodBasis = /전\s*출발일|출발\s*요일|매주|요일|기본/i.test(sourceText)
+    || (periodLabel.length > 1 && periodLabel !== '기본' && sourceText.includes(periodLabel));
+  const tierHasBasis = periodLabel.length > 0 || departureDays.length > 0 || normalizeText(tier.departure_day_of_week).length > 0;
+  return rawHasPeriodBasis && tierHasBasis;
+}
+
+function representativeCustomerPrice(pkg: AnyRecord, sourcePkg: AnyRecord = pkg): number | null {
   const productPrices = Array.isArray(pkg.product_prices) ? pkg.product_prices : [];
   const sellingPrices = productPrices
     .map(row => asNumber(asRecord(row)?.adult_selling_price))
@@ -667,6 +695,16 @@ function representativeCustomerPrice(pkg: AnyRecord): number | null {
     })
     .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
   if (datePrices.length > 0) return Math.min(...datePrices);
+
+  const priceTiers = Array.isArray(pkg.price_tiers) ? pkg.price_tiers : [];
+  const tierPrices = priceTiers
+    .map(row => {
+      const record = asRecord(row);
+      if (!record || !hasSourceBackedPriceTierEvidence(record, sourcePkg)) return null;
+      return asNumber(record?.adult_price ?? record?.adult_selling_price ?? record?.price);
+    })
+    .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price > 0);
+  if (tierPrices.length > 0) return Math.min(...tierPrices);
 
   return null;
 }
@@ -890,7 +928,7 @@ export function buildPublicPackageSnapshot(pkg: AnyRecord): {
     publicPackage.lp_hero_image_url = imageUrls[0];
     publicPackage.thumbnail_urls = imageUrls;
   }
-  const customerPrice = representativeCustomerPrice(publicPackage);
+  const customerPrice = representativeCustomerPrice(publicPackage, pkg);
   if (customerPrice !== null) {
     publicPackage.price = customerPrice;
   } else {
