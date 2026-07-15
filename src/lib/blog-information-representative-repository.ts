@@ -34,34 +34,56 @@ async function findRepresentative(
   return data?.[0] ? mapRecord(data[0] as Record<string, unknown>) : null;
 }
 
+export interface BlogInformationRepresentativeReservationStore {
+  find(representativeKey: string): Promise<BlogInformationRepresentativeRecord | null>;
+  insert(input: {
+    representativeKey: string;
+    candidate: BlogInformationDuplicateCandidate;
+    reservationOwner: string;
+  }): Promise<'inserted' | 'conflict'>;
+}
+
+const databaseReservationStore: BlogInformationRepresentativeReservationStore = {
+  find: findRepresentative,
+  async insert(input) {
+    const { error } = await supabaseAdmin.from('blog_information_representatives').insert({
+      representative_key: input.representativeKey,
+      destination_id: input.candidate.destinationId,
+      intent: input.candidate.intent,
+      audience: input.candidate.audience,
+      locale: input.candidate.locale,
+      status: 'reserved',
+      reservation_owner: input.reservationOwner,
+    });
+    if (!error) return 'inserted';
+    if ((error as { code?: string }).code === '23505') return 'conflict';
+    throw new Error(`blog_information_representative_reserve_failed:${error.message}`);
+  },
+};
+
+export async function reserveBlogInformationRepresentativeWithStore(input: {
+  candidate: BlogInformationDuplicateCandidate;
+  reservationOwner: string;
+}, store: BlogInformationRepresentativeReservationStore): Promise<BlogInformationDuplicateDecision> {
+  const representativeKey = buildBlogInformationRepresentativeKey(input.candidate);
+  const existing = await store.find(representativeKey);
+  if (existing) {
+    return decideBlogInformationDuplicate({ candidate: input.candidate, existing, reservationOwner: input.reservationOwner });
+  }
+  const inserted = await store.insert({ representativeKey, ...input });
+  if (inserted === 'inserted') {
+    return decideBlogInformationDuplicate({ candidate: input.candidate, existing: null, reservationOwner: input.reservationOwner });
+  }
+  const raced = await store.find(representativeKey);
+  if (!raced) throw new Error('blog_information_representative_race_lookup_failed');
+  return decideBlogInformationDuplicate({ candidate: input.candidate, existing: raced, reservationOwner: input.reservationOwner });
+}
+
 export async function reserveBlogInformationRepresentative(input: {
   candidate: BlogInformationDuplicateCandidate;
   reservationOwner: string;
 }): Promise<BlogInformationDuplicateDecision> {
-  const representativeKey = buildBlogInformationRepresentativeKey(input.candidate);
-  const existing = await findRepresentative(representativeKey);
-  if (existing) {
-    return decideBlogInformationDuplicate({ candidate: input.candidate, existing, reservationOwner: input.reservationOwner });
-  }
-
-  const { error } = await supabaseAdmin.from('blog_information_representatives').insert({
-    representative_key: representativeKey,
-    destination_id: input.candidate.destinationId,
-    intent: input.candidate.intent,
-    audience: input.candidate.audience,
-    locale: input.candidate.locale,
-    status: 'reserved',
-    reservation_owner: input.reservationOwner,
-  });
-  if (!error) {
-    return decideBlogInformationDuplicate({ candidate: input.candidate, existing: null, reservationOwner: input.reservationOwner });
-  }
-  if ((error as { code?: string }).code !== '23505') {
-    throw new Error(`blog_information_representative_reserve_failed:${error.message}`);
-  }
-  const raced = await findRepresentative(representativeKey);
-  if (!raced) throw new Error('blog_information_representative_race_lookup_failed');
-  return decideBlogInformationDuplicate({ candidate: input.candidate, existing: raced, reservationOwner: input.reservationOwner });
+  return reserveBlogInformationRepresentativeWithStore(input, databaseReservationStore);
 }
 
 export async function activateBlogInformationRepresentative(input: {
