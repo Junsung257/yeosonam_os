@@ -20,6 +20,7 @@ function validBundle(): BlogInformationResearchBundle {
       sourceUrl: 'https://www.kansai-airport.or.jp/en/access/',
       publisher: 'Kansai Airports',
       retrievedAt: '2026-07-15T08:00:00.000Z',
+      contentHash: 'a'.repeat(64),
       validUntil: '2026-08-15T08:00:00.000Z',
       destination: '오사카',
       country: '일본',

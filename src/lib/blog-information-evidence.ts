@@ -80,6 +80,7 @@ export interface BlogInformationSourceInput {
   internalIdentifier?: string | null;
   publisher: string;
   retrievedAt: string;
+  contentHash: string;
   validFrom?: string | null;
   validUntil?: string | null;
   destination?: string | null;
@@ -120,6 +121,7 @@ export interface BlogInformationResearchBundle {
   contentKey: string;
   creativeId?: string | null;
   tenantId?: string | null;
+  siteScope?: string | null;
   sources: BlogInformationSourceInput[];
   evidence: BlogInformationEvidenceInput[];
   claims: BlogInformationClaimInput[];
@@ -181,6 +183,30 @@ function isSafeSourceUrl(value?: string | null): boolean {
 export function createBlogInformationClaimFingerprint(claimText: string): string {
   const normalized = clean(claimText).normalize('NFKC').toLowerCase();
   return createHash('sha256').update(normalized, 'utf8').digest('hex');
+}
+
+export function createBlogInformationSourceIdentityScopeKey(input: {
+  tenantId?: string | null;
+  siteScope?: string | null;
+  sourceKey: string;
+}): string {
+  return [
+    clean(input.tenantId) || 'public',
+    clean(input.siteScope).toLowerCase() || 'www.yeosonam.com',
+    clean(input.sourceKey).toLowerCase(),
+  ].join(':');
+}
+
+export function createBlogInformationSourceVersionKey(
+  source: Pick<BlogInformationSourceInput, 'sourceKey' | 'sourceUrl' | 'internalIdentifier' | 'retrievedAt' | 'contentHash'>,
+): string {
+  const material = [
+    clean(source.sourceKey).toLowerCase(),
+    clean(source.sourceUrl) || clean(source.internalIdentifier),
+    clean(source.retrievedAt),
+    clean(source.contentHash).toLowerCase(),
+  ].join('\n');
+  return createHash('sha256').update(material, 'utf8').digest('hex');
 }
 
 export function isOfficialInformationAuthority(level: BlogInformationAuthorityLevel): boolean {
@@ -342,6 +368,7 @@ export function validateBlogInformationResearchBundle(
     }
     if (!clean(source.publisher)) issues.push(`source:missing_publisher:${key || 'unknown'}`);
     if (!isIsoDate(source.retrievedAt)) issues.push(`source:invalid_retrieved_at:${key || 'unknown'}`);
+    if (!/^[0-9a-f]{64}$/i.test(clean(source.contentHash))) issues.push(`source:invalid_content_hash:${key || 'unknown'}`);
     const hasUrl = Boolean(clean(source.sourceUrl));
     const hasInternalIdentifier = Boolean(clean(source.internalIdentifier));
     if (!hasUrl && !hasInternalIdentifier) issues.push(`source:missing_locator:${key || 'unknown'}`);

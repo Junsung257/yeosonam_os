@@ -25,6 +25,7 @@ export interface ExtractedBlogInformationClaim {
 
 export interface BlogInformationClaimEvidenceRecord {
   evidenceKey: string;
+  sourceVersionId: string | null;
   claimType: BlogInformationClaimType;
   observedAt: string;
   validUntil?: string | null;
@@ -56,6 +57,7 @@ export interface BlogInformationClaimValidationIssue {
     | 'official_primary_required'
     | 'evidence_scope_mismatch'
     | 'evidence_semantic_mismatch'
+    | 'source_version_required'
     | 'human_approval_required'
     | 'unclassified_factual_candidate'
     | 'claim_ledger_body_mismatch'
@@ -348,8 +350,18 @@ export function validateBlogInformationClaims(input: {
         });
         continue;
       }
-      const currentEvidence = persisted.evidence.filter((evidence) =>
-        evidence.claimType === claim.claimType && isEvidenceCurrent(evidence, claim.claimType, nowMs));
+      const claimTypeEvidence = persisted.evidence.filter((evidence) => evidence.claimType === claim.claimType);
+      if (claimTypeEvidence.length > 0 && claimTypeEvidence.every((evidence) => !evidence.sourceVersionId)) {
+        issues.push({
+          code: 'source_version_required',
+          claimFingerprint: claim.claimFingerprint,
+          claimType: claim.claimType,
+          message: 'claim evidence가 특정 불변 source version을 참조하지 않습니다.',
+        });
+        continue;
+      }
+      const currentEvidence = claimTypeEvidence.filter((evidence) =>
+        Boolean(evidence.sourceVersionId) && isEvidenceCurrent(evidence, claim.claimType, nowMs));
       if (currentEvidence.length === 0) {
         issues.push({
           code: 'stale_evidence',

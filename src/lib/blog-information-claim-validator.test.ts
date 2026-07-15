@@ -25,6 +25,7 @@ function supportedRecord(
     retrievedAt?: string;
     validUntil?: string | null;
     validationStatus?: PersistedBlogInformationClaimRecord['validationStatus'];
+    sourceVersionId?: string | null;
     scope?: Partial<BlogInformationEvidenceScope>;
     excerpt?: string;
   } = {},
@@ -39,6 +40,7 @@ function supportedRecord(
     validationStatus: options.validationStatus ?? 'supported',
     evidence: [{
       evidenceKey: 'evidence-1',
+      sourceVersionId: options.sourceVersionId === undefined ? 'source-version-1' : options.sourceVersionId,
       claimType: claim.claimType,
       observedAt: '2026-07-15T08:00:00.000Z',
       validUntil: options.validUntil ?? '2026-08-15T00:00:00.000Z',
@@ -197,6 +199,18 @@ describe('blog information claim validator', () => {
     });
     expect(report.passed).toBe(false);
     expect(report.issues[0]?.code).toBe('stale_evidence');
+  });
+
+  it('blocks legacy evidence that is not pinned to an immutable source version', () => {
+    const markdown = 'Estimated cost: USD 50.';
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(markdown, { sourceVersionId: null })],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues[0]?.code).toBe('source_version_required');
   });
 
   it('blocks policy claims backed only by a secondary editorial source', () => {

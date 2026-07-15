@@ -73,12 +73,24 @@ async function loadPersistedClaimRecords(
   const { data: evidence, error: evidenceError } = evidenceIds.length > 0
     ? await supabaseAdmin
         .from('blog_information_evidence')
-        .select('id, evidence_key, source_id, excerpt, scope, claim_type, observed_at, valid_until')
+        .select('id, evidence_key, source_id, source_version_id, excerpt, scope, claim_type, observed_at, valid_until')
         .in('id', evidenceIds)
     : { data: [], error: null };
   if (evidenceError) return { records: [], error: evidenceError.message };
 
   const sourceIds = [...new Set((evidence ?? []).map((item) => item.source_id))];
+  const sourceVersionIds = [...new Set(
+    (evidence ?? [])
+      .map((item) => item.source_version_id)
+      .filter((id): id is string => Boolean(id)),
+  )];
+  const { data: sourceVersions, error: sourceVersionsError } = sourceVersionIds.length > 0
+    ? await supabaseAdmin
+        .from('blog_information_source_versions')
+        .select('id, source_id, authority_level, retrieved_at, valid_until, status')
+        .in('id', sourceVersionIds)
+    : { data: [], error: null };
+  if (sourceVersionsError) return { records: [], error: sourceVersionsError.message };
   const { data: sources, error: sourcesError } = sourceIds.length > 0
     ? await supabaseAdmin
         .from('blog_information_sources')
@@ -88,11 +100,17 @@ async function loadPersistedClaimRecords(
   if (sourcesError) return { records: [], error: sourcesError.message };
 
   const sourceById = new Map((sources ?? []).map((source) => [source.id, source]));
+  const sourceVersionById = new Map((sourceVersions ?? []).map((version) => [version.id, version]));
   const evidenceById = new Map((evidence ?? []).map((item) => {
-    const source = sourceById.get(item.source_id);
+    const pinnedVersion = item.source_version_id
+      ? sourceVersionById.get(item.source_version_id)
+      : null;
+    if (pinnedVersion && pinnedVersion.source_id !== item.source_id) return [item.id, null] as const;
+    const source = pinnedVersion ?? sourceById.get(item.source_id);
     if (!source) return [item.id, null] as const;
     const record: BlogInformationClaimEvidenceRecord = {
       evidenceKey: item.evidence_key,
+      sourceVersionId: item.source_version_id,
       claimType: item.claim_type as BlogInformationClaimType,
       observedAt: item.observed_at,
       validUntil: item.valid_until,

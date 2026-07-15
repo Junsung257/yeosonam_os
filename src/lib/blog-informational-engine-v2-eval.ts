@@ -115,6 +115,7 @@ function buildPersistedClaims(
     validationStatus: 'supported',
     evidence: [{
       evidenceKey: `evidence-${index + 1}`,
+      sourceVersionId: `source-version-${index + 1}`,
       claimType: claim.claimType,
       observedAt: '2026-07-15T08:00:00.000Z',
       validUntil: '2026-08-15T00:00:00.000Z',
@@ -207,6 +208,7 @@ async function evaluateFixture(
       sourceUrl: 'https://example.gov/fixture-source',
       publisher: 'Fixture Authority',
       retrievedAt: '2026-07-15T08:00:00.000Z',
+      contentHash: 'b'.repeat(64),
       validUntil: '2026-08-15T00:00:00.000Z',
       destination: plan.destinationName ?? '해외여행',
       country: plan.destinationName ?? '대한민국',
