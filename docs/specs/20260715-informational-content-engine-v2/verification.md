@@ -22,6 +22,16 @@ npm run build
 
 Migration proof must run against local/test tooling only and must record apply order and rollback/forward-fix behavior.
 
+## Executed Milestone Evidence
+
+### M4 — informational evidence model
+
+- `npx supabase migration new blog_information_evidence_model` created `20260715082549_blog_information_evidence_model.sql` with Supabase CLI 2.109.1.
+- `node scripts/migration-safety-checker.js 20260715082549_blog_information_evidence_model.sql`: 1 file, 0 issues.
+- Information evidence, migration-contract, boundary, and product baseline tests: 5 files, 31 tests passed.
+- `npm run type-check`: passed.
+- Local apply was attempted with `npx supabase status -o json`, but the Windows Docker engine was not running (`//./pipe/docker_engine` absent). No remote database fallback is permitted in this goal. Staging must run the migration apply and rollback/forward-fix checks before deployment.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

@@ -112,6 +112,19 @@ Extra recovery claims must use the shared time-budget plan in `src/lib/blog-publ
 
 Information-writer prompts must not receive internal product inventory, active-product counts, booking counts, consultation signals, or internal price ranges. These operational values are neither research evidence nor customer-facing content. Product-backed writing remains governed by the separate product evidence contract and is outside this information-content rule.
 
+## Informational Source, Evidence, And Claim Contract
+
+Informational research uses the dedicated `blog_information_*` namespace. It must never write into or reinterpret product registration evidence, product snapshots, package parsers, or package publication tables.
+
+- `blog_information_sources` stores the source type, HTTPS URL or internal identifier, publisher, retrieval time, validity window, destination/country, supported claim types, risk, and optional paired reviewer/review time.
+- `blog_information_evidence` stores the captured source locator or excerpt for one information candidate. `content_key` allows research to exist before a `content_creatives` row is created; `creative_id` is attached when a draft exists.
+- `blog_information_claims` stores normalized customer-visible claims and their validation state.
+- `blog_information_claim_evidence` links each claim to supporting, contradicting, or contextual evidence.
+
+The four tables are server-only: RLS is enabled, browser roles have no grants, and only the service role policy may access them. Application inputs must pass `validateBlogInformationResearchBundle()` before `persistBlogInformationResearch()` writes anything. Source and evidence keys make retries idempotent.
+
+Migration order is additive: apply `20260715082549_blog_information_evidence_model.sql` before enabling the claim validator. Existing blog rows require no backfill and remain readable. Before production data exists, rollback may drop the four new tables in reverse dependency order. After any data exists, do not drop them; use a forward-only follow-up migration that disables the validator while preserving the audit trail. This goal creates and statically validates the migration only and does not apply it to the operating database.
+
 If the publisher claims queue rows but exits for time budget before attempting all of them, every unattempted row must be released back to `queued` with an immediate `target_publish_at`. A claimed-but-unattempted row must not remain stuck in `generating`, because that silently removes publishable inventory from the next recovery run and can cause the daily target to miss again.
 
 The final customer-surface pass must run after all structure, CTA, FAQ, and readability repairs. Both the live publisher and the backfill/audit tool must call the same `repairBlogFinalCustomerSurface()` implementation so a defect fixed in recent published rows cannot recur in new automatic posts. The same applies to `repairBlogEngineCategoryGaps()`: live publishing, shared publish preparation, and recent-post backfill/audit must use the category repair path so 100-point category weaknesses are fixed consistently before final evaluation. It must keep the H1 lead to one answer-first paragraph, split only true mobile paragraph walls, remove generated residue, deduplicate hashtags, repair broken Markdown URL fragments, convert destination placeholders such as `현지 날씨` to the concrete destination, and treat whitespace-only storage differences as audit-equivalent so fixed posts do not keep reappearing as changed.

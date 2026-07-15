@@ -1,10 +1,10 @@
 # Tasks: Informational Content Engine V2
 
 - [x] M0: inspect Git baseline, domain SSOT, current code paths, migrations, tests, and dirty files.
-- [ ] M1: complete informational publishing safeguards and review-state migration proof.
-- [ ] M2: add information/product boundary facade and dependency regression tests.
-- [ ] M3: implement complete validated planner output before writer execution.
-- [ ] M4: add informational source/evidence/claim registry and additive migration.
+- [x] M1: complete informational publishing safeguards and review-state migration proof.
+- [x] M2: add information/product boundary facade and dependency regression tests.
+- [x] M3: implement complete validated planner output before writer execution.
+- [x] M4: add informational source/evidence/claim registry and additive migration (SQL/static proof complete; local apply unavailable because Docker is not running).
 - [ ] M5: implement claim extraction and fail-closed publish validator.
 - [ ] M6: implement representative-key duplicate/upsert/canonical contract.
 - [ ] M7: implement contextual related-link ranking.
@@ -18,4 +18,3 @@
 ## Commit Boundary
 
 Each M0-M11 milestone is a separate atomic commit using only explicitly staged files. Shared files are staged by hunk when work from different milestones coexists.
-

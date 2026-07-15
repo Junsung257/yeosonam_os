@@ -2,6 +2,8 @@
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
 
+> **정보성 블로그 근거 모델 (2026-07-15, 로컬 migration only):** `blog_information_sources`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 DB에는 아직 적용하지 않았으며 `docs/blog-autopublish-contract.md`를 따른다.
+
 > **헌법 기준 (2026-06-28):** 최상위 제품 원칙과 MVP 경계는 `docs/yeosonam-os-constitution.md`를 우선 확인한다. 이 파일은 2026-05-28 기준 운영 스냅샷이므로 실제 기술 스택은 `package.json`, 최신 스키마는 `supabase/migrations/**`, 도메인별 최신 규칙은 `docs/*-current-ssot.md`와 함께 대조한다.
 
 > **최근 작업 (2026-05-28):** as any 전수조사/제거, 타입 안전성 대폭 개선, 마일리지 시스템 전면 구현 (적립/사용/소멸/개인화/알림/분석), 게이미피케이션(출석/도전과제) 추가
@@ -178,6 +180,7 @@
 |---|--------|-----------|------|
 | 32 | **card_news** | `id`, `package_id`(FK), `campaign_id`(FK), `title`, `status`(DRAFT/CONFIRMED/LAUNCHED/ARCHIVED), `slides`(JSONB), `meta_creative_id` | 카드뉴스 에디터 |
 | 33 | **content_creatives** | `id`, `tenant_id`(FK), `product_id`(FK), `angle_type`, `target_audience`, `channel`, `image_ratio`, `slides`(JSONB), `blog_html`, `tracking_id`(UNIQUE), `status` | 멀티채널 콘텐츠 |
+| 33a | **blog_information_sources / evidence / claims / claim_evidence** | `source_type`, `source_url/internal_identifier`, `publisher`, `retrieved_at`, `valid_from/until`, `destination/country`, `claim_type`, `risk_level`, `reviewer/reviewed_at`, `validation_status` | 정보성 블로그 전용 source→evidence→claim 감사 체인(상품 evidence와 분리, 서버 전용, 2026-07-15 로컬 migration) |
 | 34 | **content_performance** | `id`, `creative_id`(FK), `date`, `impressions`, `clicks`, `conversions`, `spend`, `ctr`, `cpa`, `roas`, UNIQUE(creative_id,date) | 콘텐츠 일일 성과 |
 | 35 | **content_insights** | `id`, `destination`, `angle_type`, `channel`, `avg_ctr`, `avg_conversions`, `confidence_score` | 콘텐츠 인사이트(자동집계) |
 | 36 | **winning_patterns** | `id`, `destination_type`, `channel`, `target_segment`, `hook_type`, `creative_type`, `avg_ctr`, `avg_roas`, `best_headline`, `best_body` | AI 학습 — 우승 패턴 |
