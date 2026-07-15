@@ -110,7 +110,7 @@ describe('rankBlogInformationalRelatedLinks', () => {
         slug: 'phu-quoc-family',
         destination: '푸꾸옥',
         destinationId: 'phu-quoc',
-        intent: 'family_itinerary',
+        intent: 'itinerary',
         audience: 'family',
       }),
       candidate({

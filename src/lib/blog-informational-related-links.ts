@@ -40,15 +40,16 @@ export interface RankedBlogInformationalLink {
 
 const INTENT_NEIGHBORS: Record<BlogInformationIntent, ReadonlySet<BlogInformationIntent>> = {
   food_budget: new Set(['currency_payment', 'family_budget', 'hotel_areas', 'general']),
-  monthly_weather: new Set(['family_itinerary', 'airport_transport', 'general']),
-  airport_transport: new Set(['hotel_areas', 'family_itinerary', 'monthly_weather', 'general']),
-  hotel_areas: new Set(['airport_transport', 'family_budget', 'family_itinerary', 'general']),
-  family_budget: new Set(['food_budget', 'hotel_areas', 'currency_payment', 'family_itinerary', 'general']),
-  family_itinerary: new Set(['family_budget', 'hotel_areas', 'airport_transport', 'monthly_weather', 'general']),
+  monthly_weather: new Set(['itinerary', 'airport_transport', 'general']),
+  airport_transport: new Set(['hotel_areas', 'itinerary', 'monthly_weather', 'general']),
+  hotel_areas: new Set(['airport_transport', 'family_budget', 'itinerary', 'general']),
+  family_budget: new Set(['food_budget', 'hotel_areas', 'currency_payment', 'itinerary', 'general']),
+  itinerary: new Set(['family_budget', 'hotel_areas', 'airport_transport', 'monthly_weather', 'general']),
+  shopping_souvenirs: new Set(['currency_payment', 'food_budget', 'entry_requirements', 'general']),
   entry_requirements: new Set(['travel_insurance', 'currency_payment', 'general']),
-  travel_insurance: new Set(['entry_requirements', 'family_itinerary', 'general']),
+  travel_insurance: new Set(['entry_requirements', 'itinerary', 'general']),
   currency_payment: new Set(['food_budget', 'family_budget', 'entry_requirements', 'general']),
-  general: new Set(BLOG_INFORMATION_INTENTS.filter((intent) => intent !== 'general')),
+  general: new Set(BLOG_INFORMATION_INTENTS),
 };
 
 const INTENT_LABELS: Record<BlogInformationIntent, string> = {
@@ -57,7 +58,8 @@ const INTENT_LABELS: Record<BlogInformationIntent, string> = {
   airport_transport: '공항 교통',
   hotel_areas: '숙소 지역',
   family_budget: '가족여행 예산',
-  family_itinerary: '가족여행 일정',
+  itinerary: '여행 일정',
+  shopping_souvenirs: '쇼핑·기념품',
   entry_requirements: '입국 준비',
   travel_insurance: '여행자보험',
   currency_payment: '환전·결제',

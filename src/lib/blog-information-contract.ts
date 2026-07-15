@@ -1,4 +1,5 @@
 import { stripMarkup } from './blog-text-utils';
+import { validateBlogInformationStructure } from './blog-information-structure';
 
 export const BLOG_INFORMATION_INTENTS = [
   'food_budget',
@@ -6,17 +7,18 @@ export const BLOG_INFORMATION_INTENTS = [
   'airport_transport',
   'hotel_areas',
   'family_budget',
-  'family_itinerary',
+  'itinerary',
+  'shopping_souvenirs',
+  'currency_payment',
   'entry_requirements',
   'travel_insurance',
-  'currency_payment',
-  'general',
 ] as const;
 
-export type BlogInformationIntent = (typeof BLOG_INFORMATION_INTENTS)[number];
+export type BlogInformationPublishableIntent = (typeof BLOG_INFORMATION_INTENTS)[number];
+export type BlogInformationIntent = BlogInformationPublishableIntent | 'general';
 
 export interface BlogInformationContractInput {
-  intentType?: BlogInformationIntent | null;
+  intentType?: BlogInformationIntent | 'family_itinerary' | null;
   destination?: string | null;
   topic?: string | null;
   primaryKeyword?: string | null;
@@ -71,11 +73,12 @@ export interface BlogInformationContract {
   requiredSections: string[];
   sourceRequirements: string[];
   passed: boolean;
-  issues: Array<BlogDestinationEntityIssueCode | 'missing_destination_for_intent'>;
+  issues: Array<BlogDestinationEntityIssueCode | 'missing_destination_for_intent' | 'unresolved_intent'>;
 }
 
 export type BlogInformationMarkdownIssueCode =
   | 'missing_required_slot'
+  | 'invalid_structured_content'
   | 'internal_operational_data_leak';
 
 export interface BlogInformationMarkdownIssue {
@@ -89,6 +92,7 @@ export interface BlogInformationMarkdownReport {
   intentType: BlogInformationIntent;
   coveredSlots: string[];
   missingSlots: string[];
+  structuredIssues: string[];
   operationalDataLeaks: string[];
   issues: BlogInformationMarkdownIssue[];
 }
@@ -135,8 +139,8 @@ const MICRO_ANGLE_INTENTS: Record<string, BlogInformationIntent> = {
   local_mobility: 'airport_transport',
   hotel_area: 'hotel_areas',
   budget_family: 'family_budget',
-  kid_friendly: 'family_itinerary',
-  shopping_budget: 'currency_payment',
+  kid_friendly: 'itinerary',
+  shopping_budget: 'shopping_souvenirs',
 };
 
 const CATEGORY_INTENTS: Array<[RegExp, BlogInformationIntent]> = [
@@ -145,9 +149,10 @@ const CATEGORY_INTENTS: Array<[RegExp, BlogInformationIntent]> = [
   [/weather|climate|날씨|기후/i, 'monthly_weather'],
   [/food|meal|dining|미식|식비|맛집/i, 'food_budget'],
   [/hotel|lodging|stay|숙소|호텔/i, 'hotel_areas'],
-  [/currency|payment|exchange|환율|환전|결제|쇼핑/i, 'currency_payment'],
+  [/shopping|souvenir|쇼핑|기념품|선물/i, 'shopping_souvenirs'],
+  [/currency|payment|exchange|환율|환전|결제/i, 'currency_payment'],
   [/transport|airport|교통|공항|이동/i, 'airport_transport'],
-  [/family|kid|가족|아이/i, 'family_itinerary'],
+  [/itinerary|route|일정|코스|동선|family|kid|가족|아이/i, 'itinerary'],
 ];
 
 const TEXT_INTENTS: Array<[RegExp, BlogInformationIntent]> = [
@@ -158,7 +163,8 @@ const TEXT_INTENTS: Array<[RegExp, BlogInformationIntent]> = [
   [/(?:숙소\s*지역|호텔\s*(?:지역|위치)|어디에\s*묵|hotel\s*areas?|where\s*to\s*stay)/i, 'hotel_areas'],
   [/(?:공항|픽업|공항철도|리무진|첫차|막차|airport\s*(?:transport|transfer)|transfer)/i, 'airport_transport'],
   [/(?:가족|아이|아동|부모님|family|kid).*(?:예산|비용|경비|budget)|(?:예산|비용|경비|budget).*(?:가족|아이|아동|부모님|family|kid)/i, 'family_budget'],
-  [/(?:가족|아이|아동|부모님|family|kid).*(?:일정|코스|동선|itinerary|route)|(?:일정|코스|동선|itinerary|route).*(?:가족|아이|아동|부모님|family|kid)/i, 'family_itinerary'],
+  [/(?:기념품|쇼핑|선물|souvenirs?|shopping).*(?:가격|구매|시장|매장|품목)?|(?:가격|구매|시장|매장|품목).*(?:기념품|쇼핑|선물|souvenirs?|shopping)/i, 'shopping_souvenirs'],
+  [/(?:일정|코스|동선|여정|itinerary|route)/i, 'itinerary'],
   [/(?:환율|환전|현금|카드\s*결제|모바일\s*결제|결제\s*수단|currency|exchange|payment)/i, 'currency_payment'],
 ];
 
@@ -213,7 +219,7 @@ const SLOTS: Record<BlogInformationIntent, BlogInformationRequiredSlot[]> = {
     slot('age_rules', '무료·유료 연령 구분', [['무료'], ['유료'], ['연령', '나이']]),
     slot('unexpected_costs', '예상 밖 추가비', [['추가비', '추가 비용', '예상 밖']]),
   ],
-  family_itinerary: [
+  itinerary: [
     slot('party_profile', '동행 구성과 연령', [['성인', '부모님'], ['아이', '아동'], ['나이', '연령']]),
     slot('day_by_day', '일차별 일정', [['1일 차', '1일차'], ['2일 차', '2일차']]),
     slot('movement_rest', '이동시간과 휴식 계획', [['이동시간', '이동 시간'], ['휴식', '낮잠']]),
@@ -221,6 +227,14 @@ const SLOTS: Record<BlogInformationIntent, BlogInformationRequiredSlot[]> = {
     slot('weather_alternative', '날씨 변수와 대안 일정', [['날씨', '비'], ['대안', '실내']]),
     slot('age_fit', '연령별 적합성', [['연령별', '나이별', '유아', '청소년']]),
     slot('reservation_checks', '예약·운영시간 확인', [['예약'], ['운영시간', '영업시간'], ['공식', '확인']]),
+  ],
+  shopping_souvenirs: [
+    slot('shopping_items', '실제 기념품·쇼핑 품목', [['기념품', '쇼핑', '선물'], ['품목', '제품']], true),
+    slot('item_prices', '품목별 실제 가격', [['가격', '금액'], ['통화', '원', '엔', '달러']], true),
+    slot('purchase_areas', '구매 지역과 매장', [['구매 지역', '시장', '매장', '백화점']], true),
+    slot('quality_checks', '정품·품질 확인 기준', [['정품', '품질', '유통기한', '원산지']]),
+    slot('customs_cautions', '반입·면세 주의', [['반입', '면세', '세관', '금지']]),
+    slot('shopping_sources', '가격·세관 근거', [['출처', '확인일', '기준일'], ['http', '공식 링크']]),
   ],
   entry_requirements: [
     slot('destination_country', '목적 국가', [['목적 국가', '입국 국가', '국가']]),
@@ -272,7 +286,8 @@ const SOURCE_POLICIES: Record<BlogInformationIntent, BlogInformationSourcePolicy
   airport_transport: sourcePolicy(0.9, true, ['airport', 'transport_operator', 'government']),
   hotel_areas: sourcePolicy(0.9, false, ['official_map', 'field_research', 'reputable_booking_data']),
   family_budget: sourcePolicy(0.9, false, ['official', 'field_research', 'reputable_price_source']),
-  family_itinerary: sourcePolicy(0.9, false, ['official_operator', 'official_map', 'field_research']),
+  itinerary: sourcePolicy(0.9, false, ['official_operator', 'official_map', 'field_research']),
+  shopping_souvenirs: sourcePolicy(0.9, false, ['official_tourism', 'field_research', 'reputable_price_source', 'customs']),
   entry_requirements: sourcePolicy(1, true, ['government', 'embassy', 'immigration', 'customs']),
   travel_insurance: sourcePolicy(1, true, ['insurer_policy', 'regulator', 'legal_review']),
   currency_payment: sourcePolicy(0.9, true, ['central_bank', 'bank', 'official_tourism']),
@@ -297,7 +312,8 @@ const HUMAN_REVIEW_POLICIES: Record<BlogInformationIntent, BlogInformationHumanR
   airport_transport: noHumanReview(),
   hotel_areas: noHumanReview(),
   family_budget: noHumanReview(),
-  family_itinerary: noHumanReview(),
+  itinerary: noHumanReview(),
+  shopping_souvenirs: noHumanReview(),
   general: noHumanReview(),
 };
 
@@ -391,7 +407,11 @@ export function validateBlogDestinationEntity(destination?: string | null): Blog
 }
 
 export function inferBlogInformationIntent(input: BlogInformationContractInput): BlogInformationIntent {
-  if (input.intentType && BLOG_INFORMATION_INTENTS.includes(input.intentType)) return input.intentType;
+  if (input.intentType === 'family_itinerary') return 'itinerary';
+  if (input.intentType === 'general') return 'general';
+  if (input.intentType && BLOG_INFORMATION_INTENTS.includes(input.intentType as BlogInformationPublishableIntent)) {
+    return input.intentType as BlogInformationPublishableIntent;
+  }
 
   const microAngle = clean(input.microAngle).toLowerCase();
   if (microAngle && MICRO_ANGLE_INTENTS[microAngle]) return MICRO_ANGLE_INTENTS[microAngle];
@@ -434,6 +454,7 @@ export function buildBlogInformationContract(input: BlogInformationContractInput
   const humanReview = HUMAN_REVIEW_POLICIES[intentType];
   const issues: BlogInformationContract['issues'] = destination.issues.map((issue) => issue.code);
 
+  if (intentType === 'general') issues.push('unresolved_intent');
   const destinationRequired = intentType !== 'general' && intentType !== 'travel_insurance';
   if (destinationRequired && !destination.destination) issues.push('missing_destination_for_intent');
 
@@ -503,6 +524,10 @@ export function inspectBlogInformationMarkdown(input: {
     .filter((slotDefinition) => !coveredSet.has(slotDefinition.id))
     .map((slotDefinition) => slotDefinition.id);
   const operationalDataLeaks = findOperationalDataLeaks(input.markdown);
+  const structureReport = validateBlogInformationStructure({
+    intent: input.contract.intentType,
+    markdown: input.markdown,
+  });
   const issues: BlogInformationMarkdownIssue[] = [];
 
   for (const missingSlot of missingSlots) {
@@ -520,12 +545,20 @@ export function inspectBlogInformationMarkdown(input: {
       evidence: { samples: operationalDataLeaks },
     });
   }
+  if (!structureReport.passed) {
+    issues.push({
+      code: 'invalid_structured_content',
+      message: '의도별 필수 값·행·고유 엔티티·근거 구조가 완성되지 않았습니다.',
+      evidence: { issues: structureReport.issues },
+    });
+  }
 
   return {
     passed: input.contract.passed && issues.length === 0,
     intentType: input.contract.intentType,
     coveredSlots,
     missingSlots,
+    structuredIssues: structureReport.issues,
     operationalDataLeaks,
     issues,
   };

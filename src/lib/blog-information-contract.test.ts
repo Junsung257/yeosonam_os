@@ -21,11 +21,11 @@ describe('blog information contract', () => {
     ['airport_transport', { destination: 'Osaka', topic: 'airport transfer transport' }],
     ['hotel_areas', { destination: 'Bangkok', topic: 'where to stay hotel areas' }],
     ['family_budget', { destination: 'Cebu', topic: 'family trip budget' }],
-    ['family_itinerary', { destination: 'Danang', topic: 'family itinerary and route' }],
+    ['itinerary', { destination: 'Danang', topic: 'family itinerary and route' }],
+    ['shopping_souvenirs', { destination: 'Cebu', topic: 'shopping souvenirs and prices' }],
     ['entry_requirements', { destination: 'Japan', topic: 'visa entry immigration rules' }],
     ['travel_insurance', { topic: 'travel insurance medical evacuation' }],
     ['currency_payment', { destination: 'Taipei', topic: 'currency exchange and payment' }],
-    ['general', { destination: 'Paris', topic: 'first trip practical guide' }],
   ] as const)('infers %s', (expected, input) => {
     expect(inferBlogInformationIntent(input)).toBe(expected);
   });
@@ -37,12 +37,20 @@ describe('blog information contract', () => {
       'airport_transport',
       'hotel_areas',
       'family_budget',
-      'family_itinerary',
+      'itinerary',
+      'shopping_souvenirs',
+      'currency_payment',
       'entry_requirements',
       'travel_insurance',
-      'currency_payment',
-      'general',
     ]);
+  });
+
+  it('keeps an uncertain classification private instead of treating general as publishable', () => {
+    expect(inferBlogInformationIntent({ destination: 'Paris', topic: 'first trip practical guide' })).toBe('general');
+    const contract = buildBlogInformationContract({ destination: 'Paris', topic: 'first trip practical guide' });
+    expect(contract.passed).toBe(false);
+    expect(contract.issues).toContain('unresolved_intent');
+    expect(BLOG_INFORMATION_INTENTS).not.toContain('general');
   });
 
   it('lets a structured micro angle override stale category metadata', () => {
@@ -115,15 +123,16 @@ describe('blog information contract', () => {
     expect(contract.sourceRequirements.join(' ')).toContain('관측 기간');
   });
 
-  it('passes markdown only when every required weather slot and a renderable table exist', () => {
+  it('does not pass weather content from required labels and a decorative table alone', () => {
     const contract = buildBlogInformationContract({ destination: 'Sapporo', topic: 'monthly weather' });
     const report = inspectBlogInformationMarkdown({
       contract,
       markdown: markdownCovering(contract, true),
     });
-    expect(report.passed).toBe(true);
+    expect(report.passed).toBe(false);
     expect(report.missingSlots).toEqual([]);
     expect(report.coveredSlots).toHaveLength(contract.requiredSlots.length);
+    expect(report.structuredIssues.length).toBeGreaterThan(0);
   });
 
   it('reports missing required slots', () => {

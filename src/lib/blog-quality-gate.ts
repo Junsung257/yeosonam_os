@@ -51,7 +51,7 @@ function getPlannedInformationIntent(
   const contentBrief = generationMeta?.content_brief;
   if (!contentBrief || typeof contentBrief !== 'object' || Array.isArray(contentBrief)) return null;
   const value = (contentBrief as Record<string, unknown>).intent_type;
-  return typeof value === 'string' && BLOG_INFORMATION_INTENTS.includes(value as BlogInformationIntent)
+  return typeof value === 'string' && (BLOG_INFORMATION_INTENTS as readonly string[]).includes(value)
     ? value as BlogInformationIntent
     : null;
 }
@@ -772,6 +772,7 @@ export function checkIntentQuality(input: CheckInput): GateResult {
         ? `information contract failed (${informationReport.intentType}): ${[
             ...informationContract!.issues,
             ...informationReport.missingSlots.map((slot) => `missing:${slot}`),
+            ...informationReport.structuredIssues.map((issue) => `structure:${issue}`),
             ...informationReport.operationalDataLeaks.map(() => 'internal_operational_data_leak'),
           ].slice(0, 8).join(', ')}`
         : `intent/design quality ${score}/100: ${issues
@@ -791,6 +792,7 @@ export function checkIntentQuality(input: CheckInput): GateResult {
           destinationIssues: informationContract.issues,
           coveredSlots: informationReport.coveredSlots,
           missingSlots: informationReport.missingSlots,
+          structuredIssues: informationReport.structuredIssues,
           operationalDataLeaks: informationReport.operationalDataLeaks,
           sourcePolicy: informationContract.sourcePolicy,
           requiresHumanReview: informationContract.humanReview.required,

@@ -200,7 +200,7 @@ export function readBlogInformationRepresentativeIdentity(
   const audience = typeof brief.audience === 'string' ? brief.audience : null;
   const locale = typeof brief.locale === 'string' ? brief.locale : null;
   if (!destinationId || !intent || !audience || !locale) return null;
-  if (!BLOG_INFORMATION_INTENTS.includes(intent as BlogInformationIntent)) return null;
+  if (!(BLOG_INFORMATION_INTENTS as readonly string[]).includes(intent)) return null;
   if (!BLOG_INFORMATION_AUDIENCES.includes(audience as BlogInformationAudience)) return null;
   if (!/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale)) return null;
   return {

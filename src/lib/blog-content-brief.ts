@@ -97,12 +97,13 @@ function toLegacyBriefIntent(intentType: BlogInformationIntent): BlogBriefIntent
     case 'food_budget':
     case 'family_budget':
     case 'currency_payment':
+    case 'shopping_souvenirs':
       return 'cost';
     case 'airport_transport':
       return 'transport';
     case 'hotel_areas':
       return 'comparison';
-    case 'family_itinerary':
+    case 'itinerary':
       return 'itinerary';
     default:
       return 'general';
