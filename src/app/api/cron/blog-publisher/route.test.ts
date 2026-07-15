@@ -38,6 +38,15 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).not.toContain('originality_signals:');
   });
 
+  it('routes queue rows through the explicit information/product boundary before generation', () => {
+    const source = routeSource();
+
+    expect(source).toContain('routeBlogContentLane({');
+    expect(source).toContain('content_boundary_failed:');
+    expect(source).toContain("contentBoundary.lane === 'card_news_bridge'");
+    expect(source).toContain("contentBoundary.lane === 'product'");
+  });
+
   it('keeps high-risk informational drafts private until a human review is completed', () => {
     const source = routeSource();
 

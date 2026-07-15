@@ -91,6 +91,7 @@ import {
 import { readBoundedIntEnv } from '@/lib/env-utils';
 import { queueForReview } from '@/lib/content-review-workflow';
 import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
+import { routeBlogContentLane } from '@/lib/blog-content-boundary';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -1749,6 +1750,16 @@ async function processQueueItem(
 
   try {
     const startedAtMs = options.startedAtMs ?? Date.now();
+    const contentBoundary = routeBlogContentLane({
+      source: item.source,
+      productId: item.product_id ?? null,
+      cardNewsId: item.card_news_id ?? null,
+    });
+    if (!contentBoundary.passed) {
+      const reason = `content_boundary_failed:${contentBoundary.issue}`;
+      await handleFailure(item, reason, null, true, { content_boundary: contentBoundary });
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
     if (item.card_news_id) {
       const cnid = item.card_news_id as string;
       const eligibleMs =
@@ -1819,7 +1830,7 @@ async function processQueueItem(
         return { id: item.id, topic: item.topic, status: 'error', reason };
       }
       generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item, pillarContext));
-    } else if (item.card_news_id) {
+    } else if (contentBoundary.lane === 'card_news_bridge') {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
         .from('card_news')
@@ -1873,7 +1884,7 @@ async function processQueueItem(
       } else {
         generated = await withGenerationBudget(startedAtMs, 'card_news_generation', () => generateFromCardNews(item, eligibleByCardNewsId));
       }
-    } else if (item.source === 'product' && item.product_id) {
+    } else if (contentBoundary.lane === 'product') {
       generated = await withGenerationBudget(startedAtMs, 'product_generation', () => generateFromProduct(item));
     } else {
       const remainingBeforeTopicGeneration = publisherRemainingMs(startedAtMs);
@@ -2571,7 +2582,7 @@ async function processQueueItem(
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
 
-    // 컨텍스트 부족(관광지+상품 0)은 재시도해도 동일 결과 → 즉시 permanently failed
+    // 정보성 컨텍스트 부족은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
     await handleFailure(item, msg, null, isUnrecoverable);
     return { id: item.id, topic: item.topic, status: 'error', reason: msg };
@@ -2671,9 +2682,6 @@ interface GeneratedBlog {
 
 interface BlogPillarContext {
   attractions: string[];
-  packageSummary: string;
-  priceRange: string;
-  airlines: string[];
   seasonHint: string;
 }
 
@@ -2756,7 +2764,7 @@ async function generatePillar(item: any, prebuiltContext?: BlogPillarContext | n
     const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
     ctx = await buildPillarContext(item.destination);
   }
-  if (!ctx) throw new Error(`${item.destination} 컨텍스트 부족 (관광지+상품 0)`);
+  if (!ctx) throw new Error(`${item.destination} 정보성 컨텍스트 부족 (관광지 0)`);
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
 
@@ -2795,8 +2803,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 (3박4일, 4박5일 두 가지 추천. Day 1~5 타임라인으로)
 
 ## 5. 예상 비용과 가성비 분석
-(항공 ${ctx.airlines.join(', ')} · 숙소 · 식비 · 현지 이동 · 전체 예산 가이드)
-여소남 엄선 패키지 ${ctx.packageSummary}
+(숙소 · 식비 · 현지 이동처럼 독자가 별도로 확인할 예산 항목과 비교 기준. 상품 수·내부 가격·예약 신호는 사용하지 말고, 확인 가능한 외부 근거가 없으면 정확한 금액을 쓰지 말 것)
 
 ## 6. 여행 준비 체크리스트
 (:::tip 블록으로 준비물·비자·환전 등 꿀팁)
