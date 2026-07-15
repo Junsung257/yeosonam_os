@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifyIndexing } from '@/lib/indexing';
 import { apiResponse } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * POST /api/blog/reindex
@@ -16,6 +17,9 @@ import { apiResponse } from '@/lib/api-response';
  *   { report: IndexingReport }
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }

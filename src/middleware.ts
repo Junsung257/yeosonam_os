@@ -275,7 +275,6 @@ const PUBLIC_PREFIXES = [
   '/packages/',
   '/lp/', // 광고·SNS 유입 마케팅 랜딩 (비로그인)
   '/blog/',
-  '/api/blog/',
   '/products/',
   '/concierge/',
   '/tenant/',
@@ -330,13 +329,18 @@ const PUBLIC_PREFIXES = [
 
 // 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)
 const PUBLIC_EXACT_SHORT = new Set([
-  '/blog', '/api/blog', '/products', '/concierge', '/tenant', '/share',
+  '/blog', '/products', '/concierge', '/tenant', '/share',
   '/api/share', '/api/attractions', '/group', '/rfq', '/api/rfq',
   '/api/tracking', '/api/og',   '/influencer', '/api/influencer',
   '/with', '/r', '/embed', '/partner-apply', '/api/partner-apply',
   '/api/recommendations', '/destinations', '/review', '/api/reviews',
   '/free-travel', '/api/free-travel', '/blog/destination',
   '/api/package-reviews', '/passport-assist',
+]);
+
+const BLOG_CRON_BRIDGE_PATHS = new Set([
+  '/api/blog/from-card-news',
+  '/api/blog/mrt-hotel-ranking',
 ]);
 
 // 미등록 공개 URL을 로그인 페이지(200)로 오인시키지 않기 위한 최상위 라우트 allow-list.
@@ -590,6 +594,19 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
 function isPublicPath(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Blog APIs are public only where the route is an intentional read surface.
+  // Every generation, mutation, queue, and indexing route must pass middleware auth
+  // and still enforce its own route-local admin/cron guard.
+  if (pathname === '/api/blog') {
+    return request.method === 'GET';
+  }
+  if (pathname === '/api/blog/image') {
+    return request.method === 'GET';
+  }
+  if (pathname.startsWith('/api/blog/')) {
+    return false;
+  }
+
   // /api/packages는 GET 요청만 PUBLIC 허용
   if (pathname === '/api/packages' || pathname.startsWith('/api/packages/')) {
     return request.method === 'GET';
@@ -775,10 +792,27 @@ export async function middleware(request: NextRequest) {
     );
   }
 
+  // These two generation routes are called by already guarded cron handlers.
+  // The route handler repeats this verification before any service-role access.
+  if (BLOG_CRON_BRIDGE_PATHS.has(pathname) && request.headers.get('authorization')) {
+    if (cronSecretAllowsRequest(request)) {
+      return response || NextResponse.next();
+    }
+    return NextResponse.json(
+      { code: 'FORBIDDEN', error: 'invalid blog cron token' },
+      { status: 403 },
+    );
+  }
+
   // ── 3-1. /api/admin/* — x-admin-token 헤더 검증 (서버-to-서버 호출용) ──────
   // 크론 작업 등이 Supabase 세션 없이 ADMIN_API_TOKEN으로 인증할 수 있게 함.
   // 토큰이 있으면 검증 후 통과/거부. 토큰이 없으면 아래 Supabase JWT 인증으로 fall through.
-  if (pathname.startsWith('/api/admin/') || pathname === '/api/agent/prompt-optimizer') {
+  if (
+    pathname.startsWith('/api/admin/')
+    || pathname === '/api/agent/prompt-optimizer'
+    || pathname === '/api/blog'
+    || pathname.startsWith('/api/blog/')
+  ) {
     const adminTokenHeader = request.headers.get('x-admin-token');
     if (adminTokenHeader) {
       const { isValidAdminApiToken } = await import('@/lib/api-auth');
@@ -839,6 +873,13 @@ export async function middleware(request: NextRequest) {
       return response || NextResponse.next();
     }
     return NextResponse.json({ error: 'token expired' }, { status: 401 });
+  }
+
+  if (pathname === '/api/blog' || pathname.startsWith('/api/blog/')) {
+    return NextResponse.json(
+      { code: 'UNAUTHORIZED', error: '로그인이 필요합니다.' },
+      { status: 401, headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 
   // 모바일 /m/admin 은 전용 로그인 페이지로 유도

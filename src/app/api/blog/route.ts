@@ -331,6 +331,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return apiResponse({ error: 'DB not configured' }, { status: 503 });
 
   try {
@@ -534,6 +537,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return apiResponse({ error: 'DB not configured' }, { status: 503 });
 
   try {

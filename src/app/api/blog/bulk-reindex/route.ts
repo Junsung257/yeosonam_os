@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { notifyIndexingBatch } from '@/lib/indexing';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -32,9 +32,9 @@ type BulkReindexResult = {
  * Normal blog URLs use Google Search Console sitemap submit plus IndexNow.
  */
 export async function POST(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return apiResponse({ error: 'admin 권한 필요' }, { status: 403 });
-  }
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
