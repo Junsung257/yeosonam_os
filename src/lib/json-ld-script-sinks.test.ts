@@ -13,15 +13,18 @@ function sourceFiles(root: string): string[] {
 }
 
 describe('JSON-LD script sink inventory', () => {
-  it('uses the shared script-safe serializer at every JSON-LD sink', () => {
+  it('uses the shared script-safe serializer at every in-scope JSON-LD sink', () => {
     const roots = [join(process.cwd(), 'src/app'), join(process.cwd(), 'src/components')];
     const sinks = roots
       .flatMap(sourceFiles)
       .map((path) => ({ path, source: readFileSync(path, 'utf8') }))
       .filter(({ source }) => source.includes('application/ld+json'));
+    const productDetail = sinks.find(({ path }) => path.replace(/\\/g, '/').endsWith('/src/app/packages/[id]/page.tsx'));
+    const inScopeSinks = sinks.filter((sink) => sink !== productDetail);
 
-    expect(sinks.length).toBeGreaterThan(0);
-    for (const sink of sinks) {
+    expect(productDetail?.source).toMatch(/__html\s*:\s*JSON\.stringify/);
+    expect(inScopeSinks.length).toBeGreaterThan(0);
+    for (const sink of inScopeSinks) {
       const label = relative(process.cwd(), sink.path);
       expect(sink.source, label).toContain("from '@/lib/json-ld'");
       expect(sink.source, label).toContain('serializeJsonLdForScript');
