@@ -17,20 +17,21 @@ dotenv.config({ path: '.env' });
 type AnyRecord = Record<string, unknown>;
 
 export const GOLDEN_SET = [
-  { key: 'yanji_baekdu', patterns: [/\uC5F0\uAE38/, /\uBC31\uB450\uC0B0/] },
-  { key: 'zhangjiajie', patterns: [/\uC7A5\uAC00\uACC4/] },
-  { key: 'danang_hoian', patterns: [/\uB2E4\uB0AD/, /\uD638\uC774\uC548/] },
-  { key: 'nhatrang_dalat', patterns: [/\uB098\uD2B8\uB791/, /\uB2EC\uB78F/] },
-  { key: 'phuquoc', patterns: [/\uD478\uAFB8\uC625/] },
+  { key: 'yanji_baekdu', patterns: [/\uC5F0\uAE38/, /\uBC31\uB450\uC0B0/], lookupTerms: ['연길', '백두산'] },
+  { key: 'zhangjiajie', patterns: [/\uC7A5\uAC00\uACC4/], lookupTerms: ['장가계'] },
+  { key: 'danang_hoian', patterns: [/\uB2E4\uB0AD/, /\uD638\uC774\uC548/], lookupTerms: ['다낭', '호이안'] },
+  { key: 'nhatrang_dalat', patterns: [/\uB098\uD2B8\uB791/, /\uB2EC\uB78F/], lookupTerms: ['나트랑', '달랏'] },
+  { key: 'phuquoc', patterns: [/\uD478\uAFB8\uC625/], lookupTerms: ['푸꾸옥'] },
   {
     key: 'fukuoka',
     patterns: [/\uD6C4\uCFE0\uC624\uCE74/, /\uBD81\uD050\uC288/],
+    lookupTerms: ['후쿠오카', '북큐슈', '규슈'],
     excludeIdentityPatterns: [/\uB098\uAC00\uC0AC\uD0A4/],
   },
-  { key: 'hokkaido', patterns: [/\uBD81\uD574\uB3C4/, /\uD64B\uCE74\uC774\uB3C4/, /\uC0BF\uD3EC\uB85C/] },
-  { key: 'hanoi_halong', patterns: [/\uD558\uB178\uC774/, /\uD558\uB871(?:\uBCA0\uC774)?/, /\uC60C\uB728/] },
-  { key: 'tsushima', patterns: [/\uB300\uB9C8\uB3C4/, /\uC4F0\uC2DC\uB9C8/] },
-  { key: 'cebu', patterns: [/\uC138\uBD80/] },
+  { key: 'hokkaido', patterns: [/\uBD81\uD574\uB3C4/, /\uD64B\uCE74\uC774\uB3C4/, /\uC0BF\uD3EC\uB85C/], lookupTerms: ['북해도', '홋카이도', '삿포로'] },
+  { key: 'hanoi_halong', patterns: [/\uD558\uB178\uC774/, /\uD558\uB871(?:\uBCA0\uC774)?/, /\uC60C\uB728/], lookupTerms: ['하노이', '하롱', '옌뜨'] },
+  { key: 'tsushima', patterns: [/\uB300\uB9C8\uB3C4/, /\uC4F0\uC2DC\uB9C8/], lookupTerms: ['대마도', '쓰시마'] },
+  { key: 'cebu', patterns: [/\uC138\uBD80/], lookupTerms: ['세부'] },
 ] as const;
 
 function parseArgs() {
@@ -88,6 +89,19 @@ export function goldenKey(row: AnyRecord): string | null {
     }
     return true;
   })?.key ?? null;
+}
+
+function safeLookupTerm(term: string): string {
+  return term.replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+export function goldenLookupFilter(item: (typeof GOLDEN_SET)[number]): string {
+  const fields = ['title', 'display_title', 'destination'];
+  return item.lookupTerms
+    .map(safeLookupTerm)
+    .filter(Boolean)
+    .flatMap(term => fields.map(field => `${field}.ilike.%${term}%`))
+    .join(',');
 }
 
 function statusPriority(status: PublicSnapshotGenerationStatus): number {
@@ -241,6 +255,56 @@ function summarizeFieldStatus(rows: ReturnType<typeof diagnosePublicSnapshotGene
   return fields;
 }
 
+function auditRow(row: AnyRecord) {
+  const { snapshot, snapshotHash } = buildPublicPackageSnapshot(row);
+  const snapshotPackage = snapshot.package && typeof snapshot.package === 'object' && !Array.isArray(snapshot.package)
+    ? snapshot.package as AnyRecord
+    : {};
+  const gate = evaluatePublicSnapshotPublishGate({
+    pkg: {
+      ...row,
+      title: snapshot.public_title,
+      display_title: snapshot.public_title,
+      hero_tagline: snapshot.public_subtitle ?? row.hero_tagline,
+      product_summary: snapshotPackage.product_summary ?? row.product_summary,
+      product_highlights: snapshotPackage.product_highlights ?? [],
+      marketing_copies: snapshotPackage.marketing_copies ?? [],
+      inclusions: snapshot.inclusions_public,
+      excludes: snapshot.exclusions_public,
+      optional_tours: snapshot.optional_tours_public,
+      customer_notes: snapshotPackage.customer_notes ?? null,
+      itinerary_data: snapshot.itinerary_public,
+      price: snapshotPackage.price ?? row.price,
+      price_dates: snapshotPackage.price_dates ?? row.price_dates,
+      product_prices: snapshotPackage.product_prices ?? row.product_prices,
+      images_public: snapshot.images_public,
+      hero_image_url: snapshotPackage.hero_image_url,
+      lp_hero_image_url: snapshotPackage.lp_hero_image_url,
+      thumbnail_urls: snapshotPackage.thumbnail_urls,
+      _public_notice_source_paths: snapshot.public_notice_source_paths,
+      _card_projection: snapshot.card_projection,
+      _lp_projection: snapshot.lp_projection,
+    },
+    sourcePkg: row,
+    publicSnapshotHash: snapshotHash,
+    publicSnapshotTitle: snapshot.public_title,
+    snapshotExists: true,
+    customerOpenContractOk: true,
+    routeTextDump: snapshot.route_text_dump,
+    publicNoticeSourcePaths: snapshot.public_notice_source_paths,
+  });
+  const report = diagnosePublicSnapshotGeneration({
+    pkg: row,
+    snapshot,
+    hardBlockers: gate.hard_blockers,
+  });
+
+  return {
+    item: buildAuditItem(row, snapshot, report),
+    report,
+  };
+}
+
 async function main() {
   const { isSupabaseConfigured, supabaseAdmin } = await import('../src/lib/supabase');
   const options = parseArgs();
@@ -294,56 +358,45 @@ async function main() {
   const golden: Record<string, unknown> = {};
 
   for (const row of ((data ?? []) as unknown as AnyRecord[])) {
-    const { snapshot, snapshotHash } = buildPublicPackageSnapshot(row);
-    const snapshotPackage = snapshot.package && typeof snapshot.package === 'object' && !Array.isArray(snapshot.package)
-      ? snapshot.package as AnyRecord
-      : {};
-    const gate = evaluatePublicSnapshotPublishGate({
-      pkg: {
-        ...row,
-        title: snapshot.public_title,
-        display_title: snapshot.public_title,
-        hero_tagline: snapshot.public_subtitle ?? row.hero_tagline,
-        product_summary: snapshotPackage.product_summary ?? row.product_summary,
-        product_highlights: snapshotPackage.product_highlights ?? [],
-        marketing_copies: snapshotPackage.marketing_copies ?? [],
-        inclusions: snapshot.inclusions_public,
-        excludes: snapshot.exclusions_public,
-        optional_tours: snapshot.optional_tours_public,
-        customer_notes: snapshotPackage.customer_notes ?? null,
-        itinerary_data: snapshot.itinerary_public,
-        price: snapshotPackage.price ?? row.price,
-        price_dates: snapshotPackage.price_dates ?? row.price_dates,
-        product_prices: snapshotPackage.product_prices ?? row.product_prices,
-        images_public: snapshot.images_public,
-        hero_image_url: snapshotPackage.hero_image_url,
-        lp_hero_image_url: snapshotPackage.lp_hero_image_url,
-        thumbnail_urls: snapshotPackage.thumbnail_urls,
-        _public_notice_source_paths: snapshot.public_notice_source_paths,
-        _card_projection: snapshot.card_projection,
-        _lp_projection: snapshot.lp_projection,
-      },
-      sourcePkg: row,
-      publicSnapshotHash: snapshotHash,
-      publicSnapshotTitle: snapshot.public_title,
-      snapshotExists: true,
-      customerOpenContractOk: true,
-      routeTextDump: snapshot.route_text_dump,
-      publicNoticeSourcePaths: snapshot.public_notice_source_paths,
-    });
-    const report = diagnosePublicSnapshotGeneration({
-      pkg: row,
-      snapshot,
-      hardBlockers: gate.hard_blockers,
-    });
+    const { item, report } = auditRow(row);
     reports.push(report);
     for (const action of report.repair_actions) increment(actionCounts, action);
 
-    const item = buildAuditItem(row, snapshot, report);
-    if (samples.length < options.samples && report.overall_status !== 'generated') samples.push(item);
+    const primaryItem = { ...item, audit_scope: 'primary_limit' };
+    if (samples.length < options.samples && report.overall_status !== 'generated') samples.push(primaryItem);
 
     const key = goldenKey(row);
-    if (key && !golden[key]) golden[key] = item;
+    if (key && !golden[key]) golden[key] = primaryItem;
+  }
+
+  for (const goldenItem of GOLDEN_SET) {
+    if (golden[goldenItem.key]) continue;
+    const filter = goldenLookupFilter(goldenItem);
+    if (!filter) continue;
+
+    let supplementalQuery = supabaseAdmin
+      .from('travel_packages')
+      .select(selectColumns)
+      .or(filter)
+      .limit(50);
+    if (!options.status.includes('all')) {
+      supplementalQuery = supplementalQuery.in('status', options.status);
+    }
+    const { data: supplementalRows, error: supplementalError } = await supplementalQuery;
+    if (supplementalError) {
+      golden[goldenItem.key] = {
+        audit_scope: 'golden_supplemental_lookup_failed',
+        error: formatError(supplementalError),
+      };
+      continue;
+    }
+
+    const matched = ((supplementalRows ?? []) as unknown as AnyRecord[])
+      .find(row => goldenKey(row) === goldenItem.key);
+    if (matched) {
+      const { item } = auditRow(matched);
+      golden[goldenItem.key] = { ...item, audit_scope: 'golden_supplemental_lookup' };
+    }
   }
 
   const totals: Record<PublicSnapshotGenerationStatus, number> = { generated: 0, repairable: 0, blocked: 0 };
