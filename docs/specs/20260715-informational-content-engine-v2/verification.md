@@ -56,6 +56,15 @@ Migration proof must run against local/test tooling only and must record apply o
 - Regression fixtures prove a Sapporo food article does not recommend Phu Quoc or Guangzhou and that repeated titles receive distinct anchor text.
 - Product-backed and legacy posts retain the existing related-post path because the new ranker requires a valid informational representative identity.
 
+### M8 — central informational CTA/CRO
+
+- Typed CTA keys are `NAVER_CAFE`, `DEAL_ROOM`, `CONSULTATION`, and `RELATED_ARTICLES`; selection returns exactly one primary and at most one secondary CTA.
+- Missing, ambiguous, non-HTTPS, or disabled external settings are not rendered. The safe fallback is a contextual internal related-article route, and non-Korean locales also remain internal-only.
+- High-risk entry/visa and insurance content renders related information first and omits sales-oriented external CTAs.
+- The information writer no longer emits CTA sections or sales URLs. Publish repair strips package, group-inquiry, and Kakao links from informational body Markdown; product writer behavior is unchanged.
+- The bottom CTA hub is mobile-first, keyboard accessible, and adds `target="_blank"` plus `rel="noopener noreferrer"` only to verified external links.
+- Dedicated anonymous events are `blog_cta_impression` and `blog_cta_click` with `article_id`, `slug`, `destination_id`, `intent`, `cta_key`, `placement`, and `locale`; no user, contact, booking, or product repository field is required.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

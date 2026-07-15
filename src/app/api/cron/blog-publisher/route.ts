@@ -32,6 +32,7 @@ import { repairBlogImageQuality } from '@/lib/blog-image-quality';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
+import { stripBlogInformationalBodyCtas } from '@/lib/blog-informational-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
 import {
   appendPublishReadinessSupport,
@@ -1974,6 +1975,10 @@ async function processQueueItem(
         .eq('id', promoteDraftId);
     }
 
+    if (contentBoundary.lane === 'informational') {
+      generated.blog_html = stripBlogInformationalBodyCtas(generated.blog_html);
+    }
+
     // 🆕 Topical Authority interlink 자동 주입 (본문 끝 "이 글과 함께 읽기" 섹션)
     try {
       generated.blog_html = await appendInterlinkSection(
@@ -1998,7 +2003,7 @@ async function processQueueItem(
       const decoded = decodeURIComponent(href);
       return /\/packages|utm_|kakao|consult|문의|예약/i.test(decoded);
     }).length;
-    if (internalLinkCount < 3 || ctaLinkCount < 2) {
+    if (contentBoundary.lane !== 'informational' && (internalLinkCount < 3 || ctaLinkCount < 2)) {
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
@@ -2120,6 +2125,7 @@ async function processQueueItem(
     const readinessRepair = repairPublishReadiness({
       markdown: generated.blog_html,
       blogType,
+      hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
       slug: generated.slug,
       destination: item.destination,
       topic: item.topic,
@@ -2226,6 +2232,7 @@ async function processQueueItem(
       secondaryKeywords: item.meta?.keywords ?? [],
       destination: item.destination,
       blogType,
+      hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
       imageCount: imgCount,
       imagesWithAlt: imgWithAlt,
       hasJsonLd: {
@@ -2253,7 +2260,10 @@ async function processQueueItem(
 
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
-    if (seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')) {
+    if (
+      contentBoundary.lane !== 'informational'
+      && seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')
+    ) {
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
@@ -2934,7 +2944,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 (Q&A 4~6개. **Q. 질문** 형식)
 
 ## 8. 내 일정 기준으로 확인할 것
-(CTA는 마지막에만 약하게. 카카오톡 상담·상품 리스트는 “출발일/인원 기준 가능 여부 확인” 톤으로 연결)
+(CTA와 판매·상담 URL은 본문에 넣지 않는다. 공개 렌더러가 검증된 중앙 설정으로 하단 CTA를 선택한다.)
 
 ## 작성 규칙
 - 총 2,200~3,000자. 필요한 내용만 남기고 공통 블록을 억지로 늘리지 말 것
@@ -3094,10 +3104,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   }
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
-  const baseForUtm = resolveBlogCanonicalOrigin();
   const queueSlug = buildQueueSlug(item);
-  const utmCamp = encodeURIComponent(queueSlug);
-  const utmSrc = 'naver_blog';
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
     destination: item.destination ?? null,
@@ -3262,8 +3269,7 @@ ${serpGapBlock}
 - 표는 반드시 GitHub Flavored Markdown 형식으로 작성: 헤더 행 바로 다음 줄에 | --- | --- | 구분선을 넣고, 표 행 사이에 빈 줄을 넣지 말 것
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
-- CTA는 본문 마지막에만 1회 사용. 도입부와 본문 중간에는 상품 보기, 카카오, 상담 신청, 예약하기 링크를 넣지 말 것
-- 마지막 CTA 문장 예시: [내 일정 기준으로 가능 여부 확인](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_soft_cta)`;
+- CTA 섹션과 CTA URL을 본문에 쓰지 말 것. 상품 보기, 카카오, 상담 신청, 예약하기, 카페, 딜방 링크는 공개 렌더러의 중앙 CTA 설정이 담당한다.`;
 
   const raw = await generatePublisherBlogText(prompt, { temperature: 0.7 });
   let blog_html = raw

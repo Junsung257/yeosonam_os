@@ -14,7 +14,7 @@ export type InfoGuideBrief = {
   search_intent: string;
   official_sources_required: boolean;
   destination_required: boolean;
-  cta_policy: 'bottom_soft';
+  cta_policy: 'runtime_contextual';
 };
 
 export type ProductConsultBrief = {
@@ -77,7 +77,7 @@ export function buildInfoGuideBrief(brief: BlogContentBrief): InfoGuideBrief {
     search_intent: brief.searchIntent,
     official_sources_required: OFFICIAL_SOURCE_INTENTS.has(brief.searchIntent),
     destination_required: !/^(?:해외여행|여행|가족\s*여름|로밍|보험)/.test(brief.primaryKeyword),
-    cta_policy: 'bottom_soft',
+    cta_policy: 'runtime_contextual',
   };
 }
 
@@ -91,11 +91,11 @@ export function buildInfoWriterPromptBlock(brief: InfoGuideBrief, voice: Editori
     `- Search intent: ${brief.search_intent}`,
     `- Official/primary source links required: ${brief.official_sources_required ? 'yes' : 'no'}`,
     `- Destination required unless intentionally generic: ${brief.destination_required ? 'yes' : 'no'}`,
-    '- Structure must be: answer first -> situation-based judgement -> checklist/table only when useful -> mistakes/risks -> official checks -> soft bottom CTA.',
+    '- Structure must be: answer first -> situation-based judgement -> checklist/table only when useful -> mistakes/risks -> official checks.',
     '- First paragraph must sound like a Korean travel editor answering a real question. Do not repeat the exact same opening pattern across posts.',
     '- For risky or changeable facts such as visa, fees, weather, airport, insurance, refund, ticketing, customs, or baggage rules, avoid hard certainty and explain that official/current conditions should be checked.',
     '- Keep mobile paragraphs short: usually 1-3 Korean sentences per paragraph, with lists/tables only where they help the reader save or compare.',
-    '- CTA policy: bottom only, soft wording such as "내 일정 기준으로 확인하기"; no hard sales CTA in the first 30% of the article.',
+    '- CTA policy: do not write CTA sections, CTA URLs, package links, consultation links, or community links. The public renderer selects verified contextual CTAs after the article body.',
     `- Banned repeated patterns: ${voice.banned_patterns.join(' / ')}`,
   ].join('\n');
 }

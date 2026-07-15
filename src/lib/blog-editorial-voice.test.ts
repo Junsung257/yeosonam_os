@@ -44,12 +44,12 @@ describe('blog editorial voice contracts', () => {
     const brief = buildInfoGuideBrief(contentBrief);
     const prompt = buildInfoWriterPromptBlock(brief);
 
-    expect(brief.cta_policy).toBe('bottom_soft');
+    expect(brief.cta_policy).toBe('runtime_contextual');
     expect(brief.official_sources_required).toBe(true);
     expect(brief.answer_first).toContain('먼저');
     expect(prompt).toContain('Writer: info_writer');
     expect(prompt).toContain('first 120-180 Korean characters');
-    expect(prompt).toContain('bottom only');
+    expect(prompt).toContain('do not write CTA sections');
     expect(prompt).toContain('You are not a product salesperson');
     expect(prompt).toContain('완벽 가이드');
   });

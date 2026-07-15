@@ -251,6 +251,19 @@ Ranking priority is:
 
 Candidates must be published, indexable, non-redirecting, self-canonical, locale-compatible, and different from the current URL. Duplicate slugs and repeated anchor text are removed. When no candidate meets the relevance threshold, the correct result is no related link; unrelated recent posts must not be used as filler. Product-backed and legacy posts retain their current link behavior unless they carry a valid informational representative identity.
 
+## Informational CTA Contract
+
+Informational writers must not generate CTA sections, package links, consultation links, community links, or external CTA URLs in article Markdown. The public renderer owns CTA selection through the typed keys `NAVER_CAFE`, `DEAL_ROOM`, `CONSULTATION`, and `RELATED_ARTICLES`.
+
+- One primary CTA is allowed, with at most one secondary CTA. Bottom placement is the default; a mid-article placement, if explicitly selected later, is limited to one CTA.
+- Selection uses persisted intent, destination, risk level, and locale. Entry/visa and insurance content uses related information first and does not show sales-oriented external CTAs.
+- External URLs are disabled unless an operator supplies an unambiguous HTTPS setting. `NAVER_CAFE_ID` alone is not treated as a proven public CTA URL.
+- When every external URL is missing or invalid, only a contextual internal related-article CTA may render. If that route is also invalid, the CTA hub is absent.
+- External links open in a new tab with `noopener noreferrer`; all CTA links remain keyboard reachable and mobile-safe.
+- `blog_cta_impression` and `blog_cta_click` record only `article_id`, `slug`, `destination_id`, `intent`, `cta_key`, `placement`, and `locale` plus anonymous session telemetry. CTA events must not include names, phone numbers, email addresses, booking data, or product repository data.
+
+Runtime settings are `BLOG_NAVER_CAFE_URL`, `BLOG_DEAL_ROOM_URL`, and optional `BLOG_CONSULTATION_URL`; consultation may reuse a valid existing `KAKAO_CHANNEL_ID`. Missing settings mean disabled, never a guessed or hardcoded fallback.
+
 ## Indexing Contract
 
 Publishing and indexing must be treated as separate responsibilities.

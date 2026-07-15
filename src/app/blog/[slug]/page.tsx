@@ -50,6 +50,12 @@ import {
   type BlogInformationalLinkContext,
 } from '@/lib/blog-informational-related-links';
 import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-information-representative';
+import { InformationalCtaHub } from '@/components/blog/InformationalCtaHub';
+import {
+  selectBlogInformationalCtas,
+} from '@/lib/blog-informational-cta';
+import { loadBlogInformationalCtaSettings } from '@/lib/blog-informational-cta-settings';
+import type { BlogInformationRiskLevel } from '@/lib/blog-information-planner';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -73,6 +79,22 @@ function isNextRedirectError(err: unknown): boolean {
     typeof (err as { digest?: unknown }).digest === 'string' &&
     (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')
   );
+}
+
+function readInformationalRiskLevel(
+  generationMeta: Record<string, unknown> | null | undefined,
+  intent: string,
+): BlogInformationRiskLevel {
+  const contentBrief = generationMeta?.content_brief;
+  if (contentBrief && typeof contentBrief === 'object' && !Array.isArray(contentBrief)) {
+    const risk = (contentBrief as Record<string, unknown>).risk_level;
+    if (risk === 'LOW' || risk === 'MEDIUM' || risk === 'HIGH') return risk;
+  }
+  if (intent === 'entry_requirements' || intent === 'travel_insurance') return 'HIGH';
+  if (intent === 'monthly_weather' || intent === 'airport_transport' || intent === 'currency_payment') {
+    return 'MEDIUM';
+  }
+  return 'LOW';
 }
 
 /**
@@ -1209,6 +1231,9 @@ async function renderBlogDetail({
     intentProfile.infoSubtype || intentProfile.productSubtype || intentProfile.readerIntent,
   ].filter(Boolean).join(':');
   const effectiveDestination = post.destination || pkg?.destination || undefined;
+  const informationalIdentity = isInfoBlog
+    ? readBlogInformationRepresentativeIdentity(post.generation_meta)
+    : null;
 
   // ── A/B 테스트: headline 실험 ────────────────────────────
   // visitorId = post.id (고유 식별자, 결정론적 할당용)
@@ -1285,6 +1310,24 @@ async function renderBlogDetail({
   const tldrItems = extractTldrItems(post);
   const angleLabel = ANGLE_LABELS[post.angle_type] || post.angle_type;
   const pageUrl = `${BASE_URL}/blog/${slug}`;
+  const relatedArticlesHref = relatedPosts[0]?.slug
+    ? `/blog/${relatedPosts[0].slug}`
+    : effectiveDestination
+      ? `/blog/destination/${encodeURIComponent(effectiveDestination)}`
+      : '/blog';
+  const informationalCtas = informationalIdentity
+    ? selectBlogInformationalCtas({
+        intent: informationalIdentity.intent,
+        destination: effectiveDestination,
+        riskLevel: readInformationalRiskLevel(post.generation_meta, informationalIdentity.intent),
+        locale: informationalIdentity.locale,
+        placement: 'bottom',
+        settings: loadBlogInformationalCtaSettings({
+          destination: effectiveDestination,
+          relatedArticlesHref,
+        }),
+      })
+    : [];
 
   // 본문 sanitize + TOC 추출
   let bodyHtml = '';
@@ -1603,6 +1646,18 @@ async function renderBlogDetail({
               })()
             ) : (
               <p className="py-10 text-center text-slate-400">본문이 준비 중입니다.</p>
+            )}
+
+            {informationalIdentity && informationalCtas.length > 0 && (
+              <InformationalCtaHub
+                articleId={post.id}
+                slug={post.slug}
+                destinationId={informationalIdentity.destinationId}
+                destination={effectiveDestination}
+                intent={informationalIdentity.intent}
+                locale={informationalIdentity.locale}
+                ctas={informationalCtas}
+              />
             )}
 
             {/* 상품 CTA 카드 — Jiwonnote 미니멀 스타일: 슬레이트 보더 + 흰배경 */}

@@ -54,4 +54,22 @@ describe('blog information/product boundary', () => {
       expect(segment).not.toContain(forbidden);
     }
   });
+
+  it('keeps informational CTA selection and rendering free of product repositories', () => {
+    const sources = [
+      'src/lib/blog-informational-cta.ts',
+      'src/lib/blog-informational-cta-settings.ts',
+      'src/components/blog/InformationalCtaHub.tsx',
+    ].map((path) => readFileSync(join(process.cwd(), path), 'utf8')).join('\n');
+
+    for (const forbidden of [
+      'travel_packages',
+      'product_id',
+      'package_id',
+      'blog-product',
+      'product repository',
+    ]) {
+      expect(sources.toLowerCase()).not.toContain(forbidden);
+    }
+  });
 });
