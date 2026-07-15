@@ -7,6 +7,7 @@ import {
   getReviewHistory,
   getPendingReviews,
 } from '@/lib/content-review-workflow';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 // ─── POST: 검토 결정 제출 ───────────────────────────────────────────
 
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
         | undefined,
       suggestedChanges: suggested_changes,
     });
+    revalidatePublicBlogCache();
 
     return NextResponse.json({ review_id: result.reviewId }, { status: 200 });
   } catch (error) {

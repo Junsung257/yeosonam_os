@@ -98,13 +98,14 @@ describe('blog public sections contract', () => {
     expect(getFallbackBlogPost('danang-family-package-checklist')).toBeNull();
   });
 
-  it('uses fallback detail availability for list JSON-LD and sitemap URLs', () => {
+  it('builds list JSON-LD and sitemap URLs only from canonical public rows', () => {
     const blogSource = readSource('src/app/blog/BlogData.tsx');
     const sitemapSource = readSource('src/app/sitemap.ts');
 
     expect(blogSource).toContain('getBlogPostHref(post)');
     expect(blogSource).toContain('jsonLdPosts.map');
-    expect(sitemapSource).toContain('getFallbackBlogPosts().filter((post) => post.detail_available)');
+    expect(sitemapSource).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(sitemapSource).not.toContain('getFallbackBlogPosts');
   });
 
   it('does not redirect legacy slugs to archived blog posts', () => {

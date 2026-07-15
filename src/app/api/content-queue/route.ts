@@ -11,7 +11,10 @@ import {
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
-import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  toBlogInformationClaimValidationMeta,
+} from '@/lib/blog-information-claim-publish-gate';
 import { ensureBlogInformationRepresentativeForPublish } from '@/lib/blog-information-representative-repository';
 
 const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, review_status, category, content_type, topic_source, generation_meta, travel_packages(id, title, destination)';
@@ -183,16 +186,17 @@ const postHandler = async (request: NextRequest) => {
         published_at: new Date().toISOString(),
         slug,
         blog_html: prepared.blogHtml,
-        ...(representative ? {
-          generation_meta: {
-            ...(row.generation_meta || {}),
+        generation_meta: {
+          ...(row.generation_meta || {}),
+          information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
+          ...(representative ? {
             information_representative: {
               representative_key: representative.representativeKey,
               status: 'active',
               canonical_slug: representative.canonicalSlug,
             },
-          },
-        } : {}),
+          } : {}),
+        },
       };
       if (seo_title) updateData.seo_title = seo_title;
       if (seo_description) updateData.seo_description = seo_description;

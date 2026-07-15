@@ -10,14 +10,15 @@ import {
 } from '@/lib/blog-publish-quality';
 import { apiResponse } from '@/lib/api-response';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
-import { getFallbackBlogPost, getFallbackBlogPosts } from '@/lib/blog-public-fallback';
-import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
-import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  toBlogInformationClaimValidationMeta,
+} from '@/lib/blog-information-claim-publish-gate';
 import { buildBlogContentBrief } from '@/lib/blog-content-brief';
 import {
   activateBlogInformationRepresentative,
@@ -25,13 +26,13 @@ import {
   reserveBlogInformationRepresentative,
 } from '@/lib/blog-information-representative-repository';
 import type { BlogInformationDuplicateDecision } from '@/lib/blog-information-representative';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
 };
 
 const BLOG_PUBLIC_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=86400';
-const BLOG_DEGRADED_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120, stale-if-error=600';
 const BLOG_STALE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=300, stale-if-error=86400';
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination';
 const CONTENT_CREATIVE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -149,34 +150,15 @@ function qualityGateFailedResponse(report: BlogPublishQualityReport) {
   }, { status: 422 });
 }
 
-function degradedBlogListResponse(reason: string, page: number, limit: number, destination?: string | null) {
-  const posts = getFallbackBlogPosts({ destination });
-  if (posts.length > 0) {
-    return apiResponse({
-      posts: posts.slice((page - 1) * limit, page * limit),
-      total: posts.length,
-      page,
-      totalPages: Math.max(1, Math.ceil(posts.length / limit)),
-      fallback: true,
-      reason,
-    }, {
-      headers: {
-        'Cache-Control': BLOG_STALE_CACHE_CONTROL,
-        'X-Data-State': 'fallback',
-      },
-    });
-  }
+function unavailableBlogResponse(reason: string) {
   return apiResponse({
-    posts: [],
-    total: 0,
-    page,
-    totalPages: 0,
-    degraded: true,
-    reason,
+    error: 'Public blog data is temporarily unavailable',
+    detail: reason,
   }, {
+    status: 503,
     headers: {
-      'Cache-Control': BLOG_DEGRADED_CACHE_CONTROL,
-      'X-Data-State': 'degraded',
+      'Cache-Control': 'no-store',
+      'X-Data-State': 'unavailable',
     },
   });
 }
@@ -191,9 +173,12 @@ export async function GET(request: NextRequest) {
 
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
     if (!id && !slug && searchParams.get('admin') !== '1') {
-      return degradedBlogListResponse('Blog database is not configured', page, limit, destination);
+      return unavailableBlogResponse('Blog database is not configured');
     }
-    return apiResponse({ error: 'Blog database is not configured' }, { status: 503 });
+    return apiResponse(
+      { error: 'Blog database is not configured' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 
   try {
@@ -237,7 +222,7 @@ export async function GET(request: NextRequest) {
 
     if (slug) {
       const { data, error } = await runApiBlogQuery('slug', supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('id, slug, seo_title, seo_description, og_image_url, angle_type, channel, published_at, created_at, product_id, tracking_id, destination')
         .eq('slug', slug)
         .eq('status', 'published')
@@ -261,7 +246,7 @@ export async function GET(request: NextRequest) {
     const cacheKey = blogListCacheKey(page, limit, destination);
 
     let query = supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select(BLOG_LIST_SELECT, { count: 'exact' })
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -295,37 +280,22 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     if (isAbortLikeError(err)) {
-      if (slug && !id && searchParams.get('admin') !== '1') {
-        const fallbackPost = getFallbackBlogPost(slug);
-        if (fallbackPost) {
-          return apiResponse({ post: fallbackPost, fallback: true, reason: 'Blog database request timed out' }, {
-            headers: {
-              'Cache-Control': BLOG_STALE_CACHE_CONTROL,
-              'X-Data-State': 'fallback',
-            },
-          });
-        }
-      }
       if (!id && !slug && searchParams.get('admin') !== '1') {
         const stale = staleBlogListResponse(blogListCacheKey(page, limit, destination), 'Blog database request timed out');
         if (stale) return stale;
-        return degradedBlogListResponse(
-          shouldSkipPublicDbReadsForResourceSaver()
-            ? 'Public blog DB reads are slow while resource saver mode is active'
-            : 'Blog database request timed out',
-          page,
-          limit,
-          destination,
-        );
+        return unavailableBlogResponse('Blog database request timed out');
       }
       return apiResponse(
         { error: 'Blog database request timed out' },
         { status: 503, headers: { 'Cache-Control': 'no-store' } },
       );
     }
+    if (!id && searchParams.get('admin') !== '1') {
+      return unavailableBlogResponse(err instanceof Error ? err.message : 'Public blog query failed');
+    }
     return apiResponse(
       { error: err instanceof Error ? err.message : 'Query failed' },
-      { status: 500 },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 }
@@ -385,6 +355,7 @@ export async function POST(request: NextRequest) {
     let qaReport: BlogPublishQualityReport | null = null;
     let finalBlogHtml = blog_html;
     let representativeDecision: BlogInformationDuplicateDecision | null = null;
+    let claimValidationMeta: Record<string, unknown> | null = null;
     const representativeOwner = `api_blog_post:${cleanSlug}`;
     let informationGenerationMeta: Record<string, unknown> | null = null;
     if (status === 'published') {
@@ -413,6 +384,7 @@ export async function POST(request: NextRequest) {
           claim_validation: claimReport,
         }, { status: 422 });
       }
+      claimValidationMeta = toBlogInformationClaimValidationMeta(claimReport);
       finalBlogHtml = prepared.blogHtml;
       if (!product_id) {
         const contentBrief = buildBlogContentBrief({
@@ -458,6 +430,7 @@ export async function POST(request: NextRequest) {
             canonical_slug: null,
             decision: representativeDecision.action,
           },
+          information_claim_validation: claimValidationMeta,
         };
       }
     }
@@ -504,6 +477,9 @@ export async function POST(request: NextRequest) {
             decision: representativeDecision.action,
           },
         };
+      }
+      if (informationGenerationMeta && claimValidationMeta) {
+        informationGenerationMeta.information_claim_validation = claimValidationMeta;
       }
       const publishedAt = new Date().toISOString();
       const { data: publishedRows, error: publishError } = await supabaseAdmin
@@ -593,22 +569,23 @@ export async function PATCH(request: NextRequest) {
         productId: target.product_id ?? null,
         generationMeta: target.generation_meta ?? null,
       });
-      if (representative) {
-        const { error: representativeMetaError } = await supabaseAdmin
-          .from('content_creatives')
-          .update({
-            generation_meta: {
-              ...(target.generation_meta || {}),
+      const { error: representativeMetaError } = await supabaseAdmin
+        .from('content_creatives')
+        .update({
+          generation_meta: {
+            ...(target.generation_meta || {}),
+            information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
+            ...(representative ? {
               information_representative: {
                 representative_key: representative.representativeKey,
                 status: 'active',
                 canonical_slug: representative.canonicalSlug,
               },
-            },
-          })
-          .eq('id', id);
-        if (representativeMetaError) throw representativeMetaError;
-      }
+            } : {}),
+          },
+        })
+        .eq('id', id);
+      if (representativeMetaError) throw representativeMetaError;
       revalidatePublicBlogCache(target.slug);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       const queued = await enqueueBlogIndexingJob({
@@ -627,6 +604,14 @@ export async function PATCH(request: NextRequest) {
     if (seo_description !== undefined) updateData.seo_description = seo_description;
     if (og_image_url !== undefined) updateData.og_image_url = og_image_url;
     if (category !== undefined) updateData.category = category;
+
+    const changesPublicContract = [blog_html, slug, seo_title, seo_description, category]
+      .some((value) => value !== undefined);
+    if (changesPublicContract && reqStatus !== 'published') {
+      updateData.status = 'draft';
+      updateData.published_at = null;
+      updateData.quality_gate = null;
+    }
 
     let qaReport: BlogPublishQualityReport | null = null;
     if (reqStatus === 'published') {
@@ -727,16 +712,17 @@ export async function PATCH(request: NextRequest) {
           productId: row?.product_id ?? null,
           generationMeta: row?.generation_meta ?? null,
         });
-        if (representative) {
-          updateData.generation_meta = {
-            ...(row?.generation_meta || {}),
+        updateData.generation_meta = {
+          ...(row?.generation_meta || {}),
+          information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
+          ...(representative ? {
             information_representative: {
               representative_key: representative.representativeKey,
               status: 'active',
               canonical_slug: representative.canonicalSlug,
             },
-          };
-        }
+          } : {}),
+        };
       } catch (qaErr) {
         console.warn('[blog PATCH] quality gate failed to run:', qaErr);
         return apiResponse({

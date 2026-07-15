@@ -58,10 +58,10 @@ vi.mock('@/lib/supabase', () => {
   };
 
   function queryResult(table: string, selected: string | undefined) {
-    if (table === 'content_creatives' && selected?.includes('blog_html')) {
+    if (table === 'public_blog_content_creatives' && selected?.includes('blog_html')) {
       return { data: [post], error: null };
     }
-    if (table === 'content_creatives') {
+    if (table === 'public_blog_content_creatives') {
       return { data: [], error: null };
     }
     if (table === 'ab_experiments') {

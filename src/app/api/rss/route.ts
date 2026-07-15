@@ -1,4 +1,5 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
@@ -26,7 +27,7 @@ export async function GET() {
 
   try {
     const { data: posts } = await supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('slug, seo_title, seo_description, published_at, og_image_url')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')

@@ -28,7 +28,10 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
-import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  toBlogInformationClaimValidationMeta,
+} from '@/lib/blog-information-claim-publish-gate';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -151,7 +154,7 @@ async function runRegenerator(request: NextRequest) {
     // 3) content_creatives 매칭 — info 글(product_id NULL)만
     const { data: posts, error: postErr } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, review_status, category, content_type, travel_packages(destination)')
+      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, review_status, category, content_type, generation_meta, travel_packages(destination)')
       .in('slug', candidateSlugs)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
@@ -279,6 +282,10 @@ async function runRegenerator(request: NextRequest) {
         const updateData: Record<string, unknown> = {
           blog_html: prepared.blogHtml,
           updated_at: new Date().toISOString(),
+          generation_meta: {
+            ...(post.generation_meta || {}),
+            information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
+          },
         };
         applyBlogPublishQualityToUpdate(updateData, qa);
         const { error: upErr } = await supabaseAdmin

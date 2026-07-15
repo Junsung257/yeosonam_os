@@ -14,6 +14,7 @@ import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-pu
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -146,7 +147,7 @@ async function getDestinations() {
         .not('photos', 'is', null)
         .limit(4000),
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('destination, og_image_url')
         .in('destination', queryNames)
         .eq('channel', 'naver_blog')

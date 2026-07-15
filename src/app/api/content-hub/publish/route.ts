@@ -11,7 +11,10 @@ import {
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
-import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  toBlogInformationClaimValidationMeta,
+} from '@/lib/blog-information-claim-publish-gate';
 import { ensureBlogInformationRepresentativeForPublish } from '@/lib/blog-information-representative-repository';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { isContentHubAction, resolveContentHubStatusTransition } from '@/lib/content-hub-status-transition';
@@ -144,16 +147,17 @@ export async function POST(request: NextRequest) {
         productId: row.product_id ?? null,
         generationMeta: row.generation_meta ?? null,
       });
-      if (representative) {
-        updateData.generation_meta = {
-          ...(row.generation_meta || {}),
+      updateData.generation_meta = {
+        ...(row.generation_meta || {}),
+        information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
+        ...(representative ? {
           information_representative: {
             representative_key: representative.representativeKey,
             status: 'active',
             canonical_slug: representative.canonicalSlug,
           },
-        };
-      }
+        } : {}),
+      };
 
       updateData.published_at = new Date().toISOString();
       updateData.blog_html = prepared.blogHtml;

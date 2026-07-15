@@ -21,9 +21,9 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { readPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PER_PAGE = 12;
@@ -193,7 +193,8 @@ type BlogListData = {
 };
 
 function unavailableBlogData(filter: { destination?: string; angle?: string } = {}): BlogListData {
-  const fallbackPosts = stripRawPackageDataFromBlogListPosts(getFallbackBlogPosts(filter));
+  void filter;
+  const fallbackPosts: BlogPost[] = [];
   if (fallbackPosts.length > 0) {
     const destinations = [...new Set(fallbackPosts.map((post) => post.destination).filter(Boolean))]
       .map((destination) => ({
@@ -312,7 +313,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const offset = (page - 1) * PER_PAGE;
 
   let listQuery = supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select(BLOG_LIST_SELECT, { count: 'exact' })
     .eq('status', 'published')
     .eq('channel', 'naver_blog')
@@ -348,7 +349,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const angleRes = await runBlogQuery(
     'angles',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('angle_type')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -365,7 +366,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const publishedDestinationRes = await runBlogQuery(
     'publishedDestinations',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -428,7 +429,7 @@ const getCachedBlogData = unstable_cache(
     }
     return data;
   },
-  ['blog-list-v2'],
+  ['blog-list-v3-public-eligibility'],
   { revalidate: 300, tags: [BLOG_LIST_CACHE_TAG] },
 );
 
@@ -439,7 +440,11 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     if (!data.unavailable && data.posts.length > 0) lastGoodBlogData.set(cacheKey, data);
     return data;
   } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) return lastGoodBlogData.get(cacheKey) ?? unavailableBlogData(filter);
+    if (isBlogDatabaseUnavailableError(err)) {
+      const lastGood = lastGoodBlogData.get(cacheKey);
+      if (lastGood) return lastGood;
+      throw err;
+    }
     throw err;
   }
 }

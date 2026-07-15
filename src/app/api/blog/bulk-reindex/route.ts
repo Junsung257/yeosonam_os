@@ -4,6 +4,7 @@ import { apiResponse } from '@/lib/api-response';
 import { notifyIndexingBatch } from '@/lib/indexing';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 type BulkReindexBody = {
   batchSize?: number;
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
 
   try {
     let query = supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, published_at')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')

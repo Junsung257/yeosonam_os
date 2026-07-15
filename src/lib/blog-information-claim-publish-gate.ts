@@ -26,6 +26,20 @@ export interface BlogInformationClaimPublishGateResult extends BlogInformationCl
   lookupError?: string;
 }
 
+export function toBlogInformationClaimValidationMeta(
+  result: BlogInformationClaimPublishGateResult,
+): Record<string, unknown> {
+  return {
+    passed: result.passed,
+    coverage: result.coverage,
+    claim_count: result.claims.length,
+    requires_human_review: result.requiresHumanReview,
+    issues: result.issues.slice(0, 20),
+    ...(result.lookupError ? { lookup_error: result.lookupError } : {}),
+    ...(result.skipped ? { skipped: result.skipped } : {}),
+  };
+}
+
 async function loadPersistedClaimRecords(
   creativeId: string,
 ): Promise<{ records: PersistedBlogInformationClaimRecord[]; error?: string }> {

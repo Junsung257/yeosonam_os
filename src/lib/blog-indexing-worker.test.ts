@@ -28,6 +28,18 @@ describe('blog indexing worker', () => {
     expect(source).toContain('Math.max(retryDelayMs(attempt), providerRetryAfterMs ?? 0)');
   });
 
+  it('rechecks the canonical public source before an update notification', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/blog-indexing-worker.ts'), 'utf8');
+    const eligibilityIndex = source.indexOf('isBlogIndexingJobPubliclyEligible(job)');
+    const notifyIndex = source.indexOf('notifyIndexing(canonicalUrl, baseUrl, {');
+
+    expect(source).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(source).toContain("job.type === 'URL_DELETED'");
+    expect(source).toContain("status: 'skipped'");
+    expect(eligibilityIndex).toBeGreaterThan(0);
+    expect(eligibilityIndex).toBeLessThan(notifyIndex);
+  });
+
   it('does not mark a configured IndexNow failure as complete just because sitemap succeeded', () => {
     expect(isIndexingReportSuccessful({
       url: 'https://www.yeosonam.com/blog/rate-limited',

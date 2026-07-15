@@ -40,7 +40,6 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
@@ -58,6 +57,7 @@ import {
 import { loadBlogInformationalCtaSettings } from '@/lib/blog-informational-cta-settings';
 import type { BlogInformationRiskLevel } from '@/lib/blog-information-planner';
 import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 import {
   calculateBlogReadingTimeFromHtml,
   readPersistedBlogReadingTime,
@@ -348,7 +348,7 @@ async function getDuplicateTitleSuffix(post: BlogPost): Promise<string> {
     const result = await runBlogDetailQuery(
       'duplicateTitleSuffix',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, published_at, created_at')
         .eq('channel', 'naver_blog')
         .eq('status', 'published')
@@ -460,7 +460,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   const dbSlug = safeDecodeSlug(slug);
 
   const { data, error } = await supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select(
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
@@ -482,7 +482,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
       hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
     });
-    return null;
+    throw createBlogDatabaseUnavailableError();
   }
   if (!data || data.length === 0) return null;
   return data[0] as unknown as BlogPost;
@@ -500,7 +500,7 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   const postResult = await runBlogDetailQuery(
     'postFast',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select(
         'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
       )
@@ -550,17 +550,8 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
 }
 
 const getCachedPostFast = unstable_cache(
-  async (slug: string) => {
-    try {
-      return await getPostFastUncached(slug);
-    } catch (error) {
-      if (isBlogDatabaseUnavailableError(error)) {
-        return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
-      }
-      throw error;
-    }
-  },
-  ['blog-detail-v2'],
+  async (slug: string) => getPostFastUncached(slug),
+  ['blog-detail-v3-public-eligibility'],
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
 
@@ -607,9 +598,6 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   } catch (error) {
     if (isNextCacheContextUnavailable(error)) {
       return getPostFastUncached(slug);
-    }
-    if (isBlogDatabaseUnavailableError(error)) {
-      return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
     }
     throw error;
   }
@@ -813,7 +801,7 @@ async function getRelatedPosts(
   const result = await runBlogDetailQuery(
     'relatedPosts',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select(
         'id, slug, seo_title, og_image_url, angle_type, published_at, product_id, destination, status, content_type, pillar_for, target_audience, generation_meta',
       )
@@ -982,7 +970,7 @@ async function getPrevNextPosts(
     runBlogDetailQuery(
       'prevPost',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, seo_title, og_image_url, destination')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -997,7 +985,7 @@ async function getPrevNextPosts(
     runBlogDetailQuery(
       'nextPost',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, seo_title, og_image_url, destination')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -1187,15 +1175,7 @@ async function renderBlogDetail({
     redirect('/blog');
   }
 
-  let post: BlogPost | null = null;
-  try {
-    post = await getPostFast(slug);
-  } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) {
-      return <BlogDatabaseUnavailableView slug={slug} />;
-    }
-    throw err;
-  }
+  const post = await getPostFast(slug);
   if (!post) notFound();
 
   const pkg = post.travel_packages;

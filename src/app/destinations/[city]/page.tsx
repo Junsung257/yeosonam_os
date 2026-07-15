@@ -27,6 +27,7 @@ import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -540,7 +541,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .order('price', { ascending: true })
       .limit(100),
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, seo_title, og_image_url, content_type, angle_type, published_at')
       .in('destination', queryNames)
       .eq('channel', 'naver_blog')
@@ -549,7 +550,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
       .order('published_at', { ascending: false })
       .limit(8),
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('blog_html, seo_title, seo_description, updated_at, published_at')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')

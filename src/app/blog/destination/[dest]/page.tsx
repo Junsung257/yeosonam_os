@@ -24,6 +24,7 @@ import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-pu
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isObviouslyInvalidDestinationRoute } from '../public-route';
 import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -199,7 +200,7 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
   try {
     // 블로그 글 (해당 목적지)
     const postsQuery = supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -250,20 +251,12 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
 
 const getCachedDestinationPageData = unstable_cache(
   async (dest: string) => getDestinationPageDataUncached(dest),
-  ['blog-destination-page-v1'],
+  ['blog-destination-page-v2-public-eligibility'],
   { revalidate: 300, tags: [BLOG_DESTINATION_CACHE_TAG] },
 );
 
 async function getDestinationPageData(dest: string): Promise<DestinationPageData> {
-  const fallbackDestination = safeDecodePathSegment(dest).trim();
-  try {
-    return await getCachedDestinationPageData(dest);
-  } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) {
-      return { destination: fallbackDestination, posts: [], packages: [], unavailable: true };
-    }
-    throw err;
-  }
+  return getCachedDestinationPageData(dest);
 }
 
 export async function generateStaticParams() {
@@ -273,7 +266,7 @@ export async function generateStaticParams() {
 
   try {
     const { data } = await supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')

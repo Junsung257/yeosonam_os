@@ -2,13 +2,12 @@ import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
-import { isCanonicalInformationSitemapPost } from '@/lib/blog-information-representative';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -150,7 +149,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       generation_meta: Record<string, unknown> | null;
     }>('blog', (signal) =>
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, destination, angle_type, published_at, updated_at, product_id, generation_meta')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -160,14 +159,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .abortSignal(signal),
     ),
   ]);
-  const posts = queriedPosts.length > 0
-    ? queriedPosts
-    : getFallbackBlogPosts().filter((post) => post.detail_available);
-  const canonicalPosts = posts.filter((post) => isCanonicalInformationSitemapPost({
-    slug: post.slug,
-    productId: 'product_id' in post ? post.product_id : null,
-    generationMeta: 'generation_meta' in post ? post.generation_meta : null,
-  }));
+  const canonicalPosts = queriedPosts;
 
   const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
     packageDestinations.filter(isSitemapPublicSnapshotCandidate),
