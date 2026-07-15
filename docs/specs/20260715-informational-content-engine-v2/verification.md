@@ -75,6 +75,13 @@ Migration proof must run against local/test tooling only and must record apply o
 - Component, integration, public-page, publisher, and product-boundary regression set: 13 files, 77 tests passed.
 - `npm run type-check`, changed-file ESLint, and `git diff --check`: passed.
 
+### M10 — named fixture E2E evaluation
+
+- `npm run eval:blog-info-v2` evaluates 11 named fixture/draft scenarios entirely in memory and writes `reports/m10-evaluation.json` plus `reports/m10-summary.md`.
+- Each applicable fixture records intent, required-section/fact coverage, evidence coverage, claim validation, duplicate decision, related-link relevance, CTA selection, final render quality, and publish-state decision.
+- Result: 11/11 scenarios passed. Entry/visa and insurance remained `pending_review`; invalid destination was `blocked_plan`; an existing destination+intent representative returned `update_existing` instead of a new public URL.
+- The evaluator records and asserts `externalCalls=0` and `publicMutations=0`; it does not call a model, API, database, publisher, cache revalidation, sitemap, or indexing path.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

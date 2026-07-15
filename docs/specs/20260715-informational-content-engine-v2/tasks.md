@@ -10,7 +10,7 @@
 - [x] M7: implement contextual related-link ranking.
 - [x] M8: implement central informational CTA config, selector, renderer, and events.
 - [x] M9: enforce final-render SEO/reading-time/CTA QA.
-- [ ] M10: add named sample E2E evaluation fixtures and reports.
+- [x] M10: add named sample E2E evaluation fixtures and reports.
 - [ ] M11: add existing-post dry-run audit and owner handoff.
 - [ ] Run full typecheck, changed-file lint, build, migration dry-run, information tests, and product baselines.
 - [ ] Confirm no push, PR, deployment, remote DB mutation, secret output, or public-row mutation.

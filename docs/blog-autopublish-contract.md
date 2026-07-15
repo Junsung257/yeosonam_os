@@ -33,6 +33,7 @@ Local code references:
 - Final rendered SEO gate: `src/lib/blog-rendered-seo-quality.ts`
 - Public render normalizer: `src/lib/blog-public-render-normalizer.ts`
 - Reading-time SSOT: `src/lib/blog-reading-time.ts`
+- Named fixture evaluator: `src/lib/blog-informational-engine-v2-eval.ts` (`npm run eval:blog-info-v2`)
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`

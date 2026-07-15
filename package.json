@@ -98,6 +98,7 @@
     "test:jarvis-v2": "node --test db/smoke_jarvis_v2.js",
     "eval:jarvis": "npx tsx scripts/eval-jarvis-golden.ts",
     "eval:jarvis:ci": "npx tsx scripts/eval-jarvis-golden.ts --strict",
+    "eval:blog-info-v2": "npx tsx scripts/eval-blog-informational-engine-v2.ts",
     "verify:customer-inquiry": "npx tsx scripts/verify-customer-inquiry-readiness.ts",
     "verify:customer-inquiry:ci": "npx tsx scripts/verify-customer-inquiry-readiness.ts --strict --require-db --require-external",
     "verify:marketing-automation": "node scripts/verify-marketing-automation-readiness.mjs",

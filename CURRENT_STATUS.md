@@ -12,6 +12,8 @@
 
 > **정보성 최종 렌더 SEO QA (2026-07-15, 로컬 코드):** 발행 게이트가 공개 페이지와 같은 렌더러·sanitizer로 H1, 메타 의도, 마크다운 잔여물, 표/빈 제목, placeholder, canonical/index, JSON-LD, CTA 중복을 검사한다. 새 정보성 글의 읽기 시간은 `quality_gate.rendered_reading_time_minutes`에 저장해 목록·상세가 같은 값을 사용한다. 상품성 발행 계약은 유지한다.
 
+> **정보성 V2 고정 평가 세트 (2026-07-15, 로컬 fixture):** `npm run eval:blog-info-v2`가 지정된 11개 샘플의 intent·필수 사실·근거/claim·중복·관련 글·CTA·렌더·발행 상태를 외부 호출과 공개 데이터 변경 없이 평가한다. 현재 생성 보고서는 11/11 PASS이며 고위험 글은 `pending_review`, 잘못된 목적지는 `blocked_plan`, 대표키 중복은 `update_existing`으로 확인됐다.
+
 > **헌법 기준 (2026-06-28):** 최상위 제품 원칙과 MVP 경계는 `docs/yeosonam-os-constitution.md`를 우선 확인한다. 이 파일은 2026-05-28 기준 운영 스냅샷이므로 실제 기술 스택은 `package.json`, 최신 스키마는 `supabase/migrations/**`, 도메인별 최신 규칙은 `docs/*-current-ssot.md`와 함께 대조한다.
 
 > **최근 작업 (2026-05-28):** as any 전수조사/제거, 타입 안전성 대폭 개선, 마일리지 시스템 전면 구현 (적립/사용/소멸/개인화/알림/분석), 게이미피케이션(출석/도전과제) 추가
