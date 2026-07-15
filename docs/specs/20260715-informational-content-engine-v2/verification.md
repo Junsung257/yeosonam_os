@@ -96,7 +96,7 @@ Migration proof must run against local/test tooling only and must record apply o
 - Full repository regression set: 511 files, 3,611 tests passed, 0 failed, 0 skipped/todo/only.
 - `npm run type-check`: passed.
 - `npm run lint`: passed with zero warnings.
-- `npm run build`: passed in 422 seconds; 390 static pages generated and postbuild output verification passed. The build-time blog sitemap read could not see the not-yet-applied eligibility view and was handled by the existing fail-safe path; no write was attempted.
+- Final no-environment `npm run build`: passed in 459 seconds; 390 static pages generated and postbuild output verification passed without a sitemap DB request. An earlier configured build attempted one sitemap read, which failed because the eligibility view is not applied; no write or remote verification fallback was attempted.
 - Migration safety checker: 11 remediation migrations checked, 0 issues. The three existing-table indexes use separate non-transactional `CREATE INDEX CONCURRENTLY` migrations.
 - Disposable Postgres apply, RLS role matrix, concurrent publish, and failure injection remain blocked because the Docker command is unavailable. A 20-assertion local-only pgTAP contract is staged for `npx supabase test db --local supabase/tests/blog_information_publication_contract.sql`; no remote DB fallback was attempted.
 - `npm run eval:blog-info-v2`: 10/10 PASS, external calls 0, public mutations 0.
