@@ -92,6 +92,10 @@ import { readBoundedIntEnv } from '@/lib/env-utils';
 import { queueForReview } from '@/lib/content-review-workflow';
 import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
 import { routeBlogContentLane } from '@/lib/blog-content-boundary';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  persistBlogInformationClaimFindings,
+} from '@/lib/blog-information-claim-publish-gate';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -2426,13 +2430,29 @@ async function processQueueItem(
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
     };
+    const claimValidation = await evaluateBlogInformationClaimPublishGate({
+      creativeId: promoteDraftId,
+      contentKey: generated.slug,
+      markdown: generated.blog_html,
+      productId: item.product_id ?? null,
+      tenantId: item.tenant_id ?? null,
+    });
+    generationMeta.information_claim_validation = {
+      passed: claimValidation.passed,
+      coverage: claimValidation.coverage,
+      claim_count: claimValidation.claims.length,
+      requires_human_review: claimValidation.requiresHumanReview,
+      issues: claimValidation.issues.slice(0, 20),
+      ...(claimValidation.lookupError ? { lookup_error: claimValidation.lookupError } : {}),
+    };
     const generatedPlanBrief = generated.generation_meta?.content_brief;
     const plannedHumanReview = generatedPlanBrief
       && typeof generatedPlanBrief === 'object'
       && !Array.isArray(generatedPlanBrief)
       && (generatedPlanBrief as Record<string, unknown>).requires_human_review === true;
+    const requiresClaimReview = blogType === 'info' && !claimValidation.passed;
     const requiresHumanReview = blogType === 'info'
-      && (plannedHumanReview || isHighRiskInformationalTopic({
+      && (requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
         title: generated.seo_title ?? item.topic ?? null,
         category: item.category ?? null,
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
@@ -2498,6 +2518,15 @@ async function processQueueItem(
       creativeId = inserted?.[0]?.id as string;
     }
 
+    if (blogType === 'info') {
+      await persistBlogInformationClaimFindings({
+        creativeId,
+        contentKey: generated.slug,
+        tenantId: item.tenant_id ?? null,
+        report: claimValidation,
+      });
+    }
+
     if (item.card_news_id && creativeId && !promoteDraftId) {
       await supabaseAdmin
         .from('card_news')
@@ -2541,7 +2570,9 @@ async function processQueueItem(
         id: item.id,
         topic: item.topic,
         status: 'pending_review',
-        reason: 'high_risk_human_review_required',
+        reason: requiresClaimReview
+          ? 'informational_claim_review_required'
+          : 'high_risk_human_review_required',
       };
     }
 

@@ -16,10 +16,30 @@ describe('informational review policy across publish-capable entrypoints', () =>
     expect(route).toContain('review_reason');
   });
 
+  it.each([
+    'src/app/api/blog/route.ts',
+    'src/app/api/content-hub/publish/route.ts',
+    'src/app/api/content-queue/route.ts',
+  ])('runs the informational claim evidence gate in %s', (path) => {
+    const route = source(path);
+    expect(route).toContain('evaluateBlogInformationClaimPublishGate');
+    expect(route).toContain('Informational claim evidence gate failed');
+  });
+
+  it('keeps claim failures private in the automatic publisher', () => {
+    const route = source('src/app/api/cron/blog-publisher/route.ts');
+    expect(route).toContain('evaluateBlogInformationClaimPublishGate({');
+    expect(route).toContain('persistBlogInformationClaimFindings({');
+    expect(route).toContain("reason: requiresClaimReview");
+    expect(route).toContain("'informational_claim_review_required'");
+  });
+
   it('prevents the zero-click cron from silently replacing high-risk public information', () => {
     const route = source('src/app/api/cron/blog-regenerate-zero-click/route.ts');
     expect(route).toContain('isHighRiskInformationalTopic');
     expect(route).toContain("status: 'high_risk_review'");
     expect(route).toContain('must not be regenerated without a new human review');
+    expect(route).toContain('evaluateBlogInformationClaimPublishGate({');
+    expect(route).toContain("status: 'claim_gate_failed'");
   });
 });

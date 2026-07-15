@@ -32,6 +32,13 @@ Migration proof must run against local/test tooling only and must record apply o
 - `npm run type-check`: passed.
 - Local apply was attempted with `npx supabase status -o json`, but the Windows Docker engine was not running (`//./pipe/docker_engine` absent). No remote database fallback is permitted in this goal. Staging must run the migration apply and rollback/forward-fix checks before deployment.
 
+### M5 — claim validator and publish gate
+
+- Claim extraction covers price/currency, movement time, percentage, climate, customs, entry/visa, insurance, policy, and measurable superlative claims while excluding ordinary narration, itinerary day labels, and generic checklist wording.
+- Missing evidence, expired evidence, non-official policy evidence, and absent high-risk human approval tests pass.
+- Shared runtime gate is present in automatic publisher, blog POST/PATCH/force reindex, content-hub publish, content-queue approve, and zero-click replacement paths.
+- Product-content skip regression and product writer/brief baselines pass.
+
 ## Manual QA
 
 - [ ] Invalid destination route returns a real 404.

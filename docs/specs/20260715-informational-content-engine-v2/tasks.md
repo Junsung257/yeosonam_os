@@ -5,7 +5,7 @@
 - [x] M2: add information/product boundary facade and dependency regression tests.
 - [x] M3: implement complete validated planner output before writer execution.
 - [x] M4: add informational source/evidence/claim registry and additive migration (SQL/static proof complete; local apply unavailable because Docker is not running).
-- [ ] M5: implement claim extraction and fail-closed publish validator.
+- [x] M5: implement claim extraction and fail-closed publish validator.
 - [ ] M6: implement representative-key duplicate/upsert/canonical contract.
 - [ ] M7: implement contextual related-link ranking.
 - [ ] M8: implement central informational CTA config, selector, renderer, and events.

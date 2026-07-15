@@ -17,6 +17,7 @@ import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
+import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -388,6 +389,17 @@ export async function POST(request: NextRequest) {
       if (!qaReport.passed) {
         return qualityGateFailedResponse(qaReport);
       }
+      const claimReport = await evaluateBlogInformationClaimPublishGate({
+        contentKey: cleanSlug,
+        markdown: prepared.blogHtml,
+        productId: product_id || null,
+      });
+      if (!claimReport.passed) {
+        return apiResponse({
+          error: 'Informational claim evidence gate failed',
+          claim_validation: claimReport,
+        }, { status: 422 });
+      }
       finalBlogHtml = prepared.blogHtml;
     }
 
@@ -447,7 +459,7 @@ export async function PATCH(request: NextRequest) {
     if (force_revalidate === true) {
       const { data: row, error: rowErr } = await supabaseAdmin
         .from('content_creatives')
-        .select('slug, status, channel, product_id, review_status, seo_title, category, content_type')
+        .select('slug, status, channel, product_id, review_status, seo_title, category, content_type, blog_html')
         .eq('id', id)
         .limit(1);
       if (rowErr) throw rowErr;
@@ -467,6 +479,19 @@ export async function PATCH(request: NextRequest) {
           error: 'Only an approved published article can be reindexed',
           review_reason: reviewBlock,
         }, { status: 409 });
+      }
+      const claimReport = await evaluateBlogInformationClaimPublishGate({
+        creativeId: id,
+        contentKey: target.slug,
+        markdown: target.blog_html ?? '',
+        productId: target.product_id ?? null,
+        reviewStatus: target.review_status ?? null,
+      });
+      if (!claimReport.passed) {
+        return apiResponse({
+          error: 'Informational claim evidence gate failed',
+          claim_validation: claimReport,
+        }, { status: 422 });
       }
       revalidatePublicBlogCache(target.slug);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -564,6 +589,19 @@ export async function PATCH(request: NextRequest) {
         qaReport = prepared.report;
         updateData.blog_html = prepared.blogHtml;
         applyBlogPublishQualityToUpdate(updateData, qaReport);
+        const claimReport = await evaluateBlogInformationClaimPublishGate({
+          creativeId: id,
+          contentKey: finalSlug,
+          markdown: prepared.blogHtml,
+          productId: row?.product_id ?? null,
+          reviewStatus: row?.review_status ?? null,
+        });
+        if (!claimReport.passed) {
+          return apiResponse({
+            error: 'Informational claim evidence gate failed',
+            claim_validation: claimReport,
+          }, { status: 422 });
+        }
       } catch (qaErr) {
         console.warn('[blog PATCH] quality gate failed to run:', qaErr);
         return apiResponse({

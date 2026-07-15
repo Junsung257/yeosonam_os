@@ -11,6 +11,7 @@ import {
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
+import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
 
 const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, review_status, category, content_type, topic_source, travel_packages(destination)';
 
@@ -100,6 +101,20 @@ export async function POST(request: NextRequest) {
           quality_gate: qaReport.qualityGate,
           seo_score: qaReport.seoScore,
           readability: qaReport.readability,
+        }, { status: 422 });
+      }
+
+      const claimReport = await evaluateBlogInformationClaimPublishGate({
+        creativeId: creative_id,
+        contentKey: row.slug,
+        markdown: prepared.blogHtml,
+        productId: row.product_id ?? null,
+        reviewStatus: row.review_status ?? null,
+      });
+      if (!claimReport.passed) {
+        return apiResponse({
+          error: 'Informational claim evidence gate failed',
+          claim_validation: claimReport,
         }, { status: 422 });
       }
 

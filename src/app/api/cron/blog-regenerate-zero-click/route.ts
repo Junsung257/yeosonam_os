@@ -28,6 +28,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
+import { evaluateBlogInformationClaimPublishGate } from '@/lib/blog-information-claim-publish-gate';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -45,7 +46,7 @@ interface RankRow {
 
 interface RegenResult {
   slug: string;
-  status: 'replaced' | 'gate_failed' | 'cooldown' | 'no_post' | 'llm_failed' | 'error' | 'race_skipped' | 'log_failed' | 'high_risk_review';
+  status: 'replaced' | 'gate_failed' | 'claim_gate_failed' | 'cooldown' | 'no_post' | 'llm_failed' | 'error' | 'race_skipped' | 'log_failed' | 'high_risk_review';
   gateSummary?: string;
   reason?: string;
 }
@@ -150,7 +151,7 @@ async function runRegenerator(request: NextRequest) {
     // 3) content_creatives 매칭 — info 글(product_id NULL)만
     const { data: posts, error: postErr } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, category, content_type, travel_packages(destination)')
+      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, review_status, category, content_type, travel_packages(destination)')
       .in('slug', candidateSlugs)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
@@ -254,6 +255,23 @@ async function runRegenerator(request: NextRequest) {
             gate_summary: qa.summary.slice(0, 1000),
           });
           results.push({ slug, status: 'gate_failed', gateSummary: qa.summary });
+          continue;
+        }
+
+        const claimReport = await evaluateBlogInformationClaimPublishGate({
+          creativeId: post.id,
+          contentKey: slug,
+          markdown: prepared.blogHtml,
+          reviewStatus: post.review_status ?? null,
+        });
+        if (!claimReport.passed) {
+          const claimSummary = claimReport.issues.map((issue) => issue.code).join(',');
+          await updateLog({
+            new_html_hash: newHash,
+            gate_passed: false,
+            gate_summary: `information_claim_gate:${claimSummary}`.slice(0, 1000),
+          });
+          results.push({ slug, status: 'claim_gate_failed', reason: claimSummary });
           continue;
         }
 
