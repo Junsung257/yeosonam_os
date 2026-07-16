@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260513000000.
 -- ────────────────────────────────────────────────────────────────────────────
 -- mv_destination_aggregates
 --   목적지별 패키지 집계 — 홈페이지 /api/packages?aggregate=destination 용

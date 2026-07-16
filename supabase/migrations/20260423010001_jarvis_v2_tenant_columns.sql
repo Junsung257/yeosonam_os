@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260423010000.
 -- V2 §B.2.1 — P0 테이블에 tenant_id 컬럼 추가 (nullable 로 시작)
 --
 -- 전략:

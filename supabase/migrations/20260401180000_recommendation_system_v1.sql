@@ -42,8 +42,8 @@ BEGIN
   RETURN QUERY
   SELECT
     tp.id,
-    tp.title,
-    tp.destination,
+    tp.title::TEXT,
+    tp.destination::TEXT,
     tp.price,
     (COALESCE(tp.view_count, 0)::NUMERIC / 100.0 +
      COUNT(DISTINCT b.id)::NUMERIC * 2) AS score,
@@ -104,8 +104,8 @@ BEGIN
     )
     SELECT
       p.id,
-      p.title,
-      p.destination,
+      p.title::TEXT,
+      p.destination::TEXT,
       p.price,
       (p.booking_count::NUMERIC / 10.0),
       '유사 고객이 선택한 상품'::TEXT
@@ -142,8 +142,8 @@ BEGIN
   RETURN QUERY
   SELECT
     tp.id,
-    tp.title,
-    tp.destination,
+    tp.title::TEXT,
+    tp.destination::TEXT,
     tp.price,
     (COALESCE(tp.view_count, 0)::NUMERIC / 50.0 +
      COUNT(DISTINCT b.id)::NUMERIC * 3) AS score,

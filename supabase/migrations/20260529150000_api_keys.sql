@@ -62,7 +62,8 @@ CREATE INDEX IF NOT EXISTS idx_api_key_usage_tenant ON api_key_usage(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_api_key_usage_created ON api_key_usage(created_at DESC);
 
 -- 파티셔닝 준비 (월별)
-CREATE INDEX IF NOT EXISTS idx_api_key_usage_month ON api_key_usage((date_trunc('month', created_at)));
+CREATE INDEX IF NOT EXISTS idx_api_key_usage_month
+  ON api_key_usage((date_trunc('month', created_at AT TIME ZONE 'Asia/Seoul')));
 
 -- RLS
 ALTER TABLE api_key_usage ENABLE ROW LEVEL SECURITY;

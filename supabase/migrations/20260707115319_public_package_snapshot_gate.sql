@@ -32,9 +32,10 @@ CREATE INDEX IF NOT EXISTS idx_travel_packages_package_revision
 
 UPDATE public.travel_packages
 SET publication_state = CASE
-  WHEN audit_status = 'blocked' OR status IN ('blocked', 'archived', 'expired') THEN 'blocked'
+  WHEN to_jsonb(travel_packages) ->> 'audit_status' = 'blocked'
+    OR status IN ('blocked', 'archived', 'expired') THEN 'blocked'
   WHEN status IN ('active', 'approved', 'selling', 'available') THEN 'published'
-  WHEN audit_status = 'warnings' THEN 'needs_review'
+  WHEN to_jsonb(travel_packages) ->> 'audit_status' = 'warnings' THEN 'needs_review'
   ELSE publication_state
 END
 WHERE publication_state = 'draft';
@@ -149,6 +150,18 @@ GRANT ALL ON TABLE public.public_package_snapshots TO service_role;
 GRANT ALL ON TABLE public.package_publish_decisions TO service_role;
 GRANT ALL ON TABLE public.quarantined_package_fields TO service_role;
 
+DO $$
+BEGIN
+  -- The product snapshot schema is managed by the product-registration project.
+  -- Only backfill when that pre-existing schema is complete; do not invent its
+  -- omitted columns as part of the informational-content remediation.
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'travel_packages'
+      AND column_name = 'audit_status'
+  ) THEN
 INSERT INTO public.public_package_snapshots (
   package_id,
   package_revision,
@@ -271,6 +284,9 @@ FROM public.travel_packages p
 LEFT JOIN public.products pr ON pr.internal_code = p.internal_code
 WHERE p.publication_state = 'published'
 ON CONFLICT (package_id, snapshot_hash) DO NOTHING;
+  END IF;
+END
+$$;
 
 INSERT INTO public.package_publish_decisions (
   package_id,

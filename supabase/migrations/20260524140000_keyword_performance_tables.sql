@@ -266,16 +266,16 @@ CREATE INDEX IF NOT EXISTS idx_ol_recent
 --    (seed data — 실제 키워드는 keyword-brain에서 관리)
 -- ══════════════════════════════════════════════════════════════
 
-INSERT INTO app_settings (key, value, description)
+INSERT INTO app_settings (key, value)
 VALUES
-  ('keyword_core_min_bid',    '500',   '핵심 키워드 최소 입찰가 (원)'),
-  ('keyword_mid_min_bid',     '300',   '중간 키워드 최소 입찰가 (원)'),
-  ('keyword_longtail_bid',    '200',   '롱테일 키워드 입찰가 (원)'),
-  ('keyword_micro_bid',       '100',   '마이크로 키워드 입찰가 (원)'),
-  ('keyword_optimization_interval_hours', '24', '최적화 루프 실행 간격 (시간)'),
-  ('keyword_min_ctr_to_keep', '0.5',   '키워드 유지 최소 CTR (%)'),
-  ('keyword_min_roas_to_keep','1.0',   '키워드 유지 최소 ROAS'),
-  ('search_terms_review_interval_days', '7', '검색어 검토 주기 (일)')
+  ('keyword_core_min_bid',    '500'),
+  ('keyword_mid_min_bid',     '300'),
+  ('keyword_longtail_bid',    '200'),
+  ('keyword_micro_bid',       '100'),
+  ('keyword_optimization_interval_hours', '24'),
+  ('keyword_min_ctr_to_keep', '0.5'),
+  ('keyword_min_roas_to_keep','1.0'),
+  ('search_terms_review_interval_days', '7')
 ON CONFLICT (key) DO NOTHING;
 
 

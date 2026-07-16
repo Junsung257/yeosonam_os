@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260423020000.
 -- V2 §B.2.4 — Row Level Security 정책 (Defense in Depth)
 --
 -- 이 마이그레이션은 **RLS 정책을 정의만** 하고 **바로 활성화하지 않는다**.

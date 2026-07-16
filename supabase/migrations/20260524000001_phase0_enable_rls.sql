@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260524000000.
 -- Phase 0 — RLS 정책 활성화 (Jarvis V2 멀티테넌트 격리)
 --
 -- 20260423020000 에서 정책을 등록만 하고 활성화하지 않았음.

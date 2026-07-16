@@ -1,4 +1,4 @@
-﻿-- Runtime AI provider policy table used by Jarvis/LLM gateway.
+-- Runtime AI provider policy table used by Jarvis/LLM gateway.
 -- Server routes access this with the service role; clients must not read or mutate it.
 
 create table if not exists public.system_ai_policies (

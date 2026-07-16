@@ -5,7 +5,7 @@
 -- 1. customer_events 테이블
 CREATE TABLE IF NOT EXISTS customer_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
   session_id TEXT,
   event_type TEXT NOT NULL CHECK (event_type IN (
     'chat', 'booking', 'payment', 'click', 'support', 'view', 'search', 'recommendation'
@@ -47,7 +47,7 @@ DO $$ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'platform_learning_events' AND column_name = 'customer_id'
   ) THEN
-    ALTER TABLE platform_learning_events ADD COLUMN customer_id UUID REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE platform_learning_events ADD COLUMN customer_id UUID REFERENCES customers(id) ON DELETE SET NULL;
   END IF;
 END $$;
 

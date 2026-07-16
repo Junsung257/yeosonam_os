@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260423000000.
 -- V2 §B.2.5 — Request Context RPC
 --
 -- 자비스 V2 의 매 요청마다 현재 요청의 테넌트·유저 컨텍스트를 세션 변수에 주입.

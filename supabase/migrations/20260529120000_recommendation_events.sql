@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS recommendation_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id TEXT,
-  customer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
   tenant_id UUID REFERENCES affiliates(id) ON DELETE SET NULL,
   recommended_ids UUID[] NOT NULL DEFAULT '{}',  -- LLM이 추천한 상품 ID들
   clicked_id UUID,                                 -- 사용자가 클릭한 상품

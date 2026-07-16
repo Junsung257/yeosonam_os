@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260513200000.
 -- ============================================================================
 -- PR-3: card_news_design_archetypes + ig_hashtag_pool
 -- ============================================================================

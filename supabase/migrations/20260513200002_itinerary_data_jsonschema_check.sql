@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260513200000.
 -- ────────────────────────────────────────────────────────────────────────────
 -- P1-2 — itinerary_data 구조 CHECK 제약 (pg_jsonschema)
 --

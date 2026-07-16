@@ -18,9 +18,10 @@ describe('informational existing-table index migrations', () => {
     'utf8',
   );
 
-  it('keeps existing-table index builds outside explicit transactions and uses CONCURRENTLY', () => {
+  it('keeps existing-table index builds compatible with Supabase CLI transaction replay', () => {
     for (const sql of [evidenceIndexes, reviewQueueIndex, indexingJobsIndex]) {
-      expect(sql).toMatch(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY/i);
+      expect(sql).toMatch(/CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF\s+NOT\s+EXISTS)?/i);
+      expect(sql).not.toMatch(/^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY/im);
       expect(sql).not.toMatch(/^\s*(?:BEGIN|COMMIT)\s*;/im);
     }
   });

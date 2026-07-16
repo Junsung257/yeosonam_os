@@ -14,7 +14,7 @@ CREATE POLICY customers_admin_all ON public.customers
 
 CREATE POLICY customers_owner_select ON public.customers
   AS PERMISSIVE FOR SELECT
-  USING (auth.jwt() ->> 'role' = 'authenticated' AND (id = (auth.jwt() ->> 'sub')));
+  USING (auth.jwt() ->> 'role' = 'authenticated' AND id = auth.uid());
 
 -- 2. bookings table RLS
 ALTER TABLE IF EXISTS public.bookings ENABLE ROW LEVEL SECURITY;
@@ -28,7 +28,7 @@ CREATE POLICY bookings_admin_all ON public.bookings
 
 CREATE POLICY bookings_customer_select ON public.bookings
   AS PERMISSIVE FOR SELECT
-  USING (auth.jwt() ->> 'role' = 'authenticated' AND (lead_customer_id = (auth.jwt() ->> 'sub')));
+  USING (auth.jwt() ->> 'role' = 'authenticated' AND lead_customer_id = auth.uid());
 
 -- 3. settlements table RLS
 ALTER TABLE IF EXISTS public.settlements ENABLE ROW LEVEL SECURITY;
@@ -52,7 +52,7 @@ CREATE POLICY customer_notes_admin_all ON public.customer_notes
 CREATE POLICY customer_notes_owner_select ON public.customer_notes
   AS PERMISSIVE FOR SELECT
   USING (auth.jwt() ->> 'role' = 'authenticated' AND
-         EXISTS (SELECT 1 FROM customers c WHERE c.id = customer_notes.customer_id AND c.id = (auth.jwt() ->> 'sub')));
+         EXISTS (SELECT 1 FROM customers c WHERE c.id = customer_notes.customer_id AND c.id = auth.uid()));
 
 -- 5. booking_companions table RLS
 ALTER TABLE IF EXISTS public.booking_companions ENABLE ROW LEVEL SECURITY;
@@ -67,7 +67,7 @@ CREATE POLICY booking_companions_admin_all ON public.booking_companions
 CREATE POLICY booking_companions_customer_select ON public.booking_companions
   AS PERMISSIVE FOR SELECT
   USING (auth.jwt() ->> 'role' = 'authenticated' AND
-         EXISTS (SELECT 1 FROM bookings b WHERE b.id = booking_companions.booking_id AND b.lead_customer_id = (auth.jwt() ->> 'sub')));
+         EXISTS (SELECT 1 FROM bookings b WHERE b.id = booking_companions.booking_id AND b.lead_customer_id = auth.uid()));
 
 -- 6. affiliates table RLS
 ALTER TABLE IF EXISTS public.affiliates ENABLE ROW LEVEL SECURITY;
@@ -91,7 +91,7 @@ CREATE POLICY conversations_admin_all ON public.conversations
 CREATE POLICY conversations_participant_select ON public.conversations
   AS PERMISSIVE FOR SELECT
   USING (auth.jwt() ->> 'role' = 'authenticated' AND
-         (participant_1_id = (auth.jwt() ->> 'sub') OR participant_2_id = (auth.jwt() ->> 'sub')));
+         customer_id = auth.uid());
 
 -- 8. secure_chats table RLS
 ALTER TABLE IF EXISTS public.secure_chats ENABLE ROW LEVEL SECURITY;
@@ -106,5 +106,5 @@ CREATE POLICY secure_chats_admin_all ON public.secure_chats
 CREATE POLICY secure_chats_participant_select ON public.secure_chats
   AS PERMISSIVE FOR SELECT
   USING (auth.jwt() ->> 'role' = 'authenticated' AND
-         (sender_id = (auth.jwt() ->> 'sub') OR
-          EXISTS (SELECT 1 FROM bookings b WHERE b.id = secure_chats.booking_id AND b.lead_customer_id = (auth.jwt() ->> 'sub'))));
+         (sender_id = auth.uid()::text OR
+          EXISTS (SELECT 1 FROM bookings b WHERE b.id = secure_chats.booking_id AND b.lead_customer_id = auth.uid())));

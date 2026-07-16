@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260510000000.
 -- Sprint 4-B: SaaS 빌링 — TossPayments 자동결제 연동
 
 CREATE TABLE IF NOT EXISTS tenant_subscriptions (

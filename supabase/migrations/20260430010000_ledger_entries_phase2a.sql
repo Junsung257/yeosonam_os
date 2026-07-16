@@ -182,18 +182,18 @@ DECLARE
   v_payout_idem TEXT;
 BEGIN
   -- [1] 원자적 UPDATE — Postgres row-lock 자동 적용
-  UPDATE bookings
+  UPDATE bookings AS b
   SET
-    paid_amount    = GREATEST(0, COALESCE(paid_amount, 0)    + p_paid_delta),
-    total_paid_out = GREATEST(0, COALESCE(total_paid_out, 0) + p_payout_delta),
+    paid_amount    = GREATEST(0, COALESCE(b.paid_amount, 0)    + p_paid_delta),
+    total_paid_out = GREATEST(0, COALESCE(b.total_paid_out, 0) + p_payout_delta),
     updated_at     = NOW()
-  WHERE id = p_booking_id
+  WHERE b.id = p_booking_id
   RETURNING
-    COALESCE(total_price, 0),
-    COALESCE(total_cost, 0),
-    paid_amount,
-    total_paid_out,
-    status
+    COALESCE(b.total_price, 0),
+    COALESCE(b.total_cost, 0),
+    b.paid_amount,
+    b.total_paid_out,
+    b.status
   INTO
     v_total_price,
     v_total_cost,

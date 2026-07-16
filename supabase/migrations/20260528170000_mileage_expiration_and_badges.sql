@@ -159,9 +159,15 @@ CREATE POLICY "customer_badges_select_own"
 
 CREATE POLICY "customer_badges_select_admin"
   ON customer_badges FOR SELECT
-  USING (EXISTS (SELECT 1 FROM admins WHERE id = auth.uid()));
+  USING (EXISTS (
+    SELECT 1 FROM admin_users
+    WHERE user_id = (SELECT auth.uid())
+  ));
 
 -- 참고: INSERT는 admin 전용 또는 시스템에서만
 CREATE POLICY "customer_badges_insert_admin"
   ON customer_badges FOR INSERT
-  WITH CHECK (EXISTS (SELECT 1 FROM admins WHERE id = auth.uid()));
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM admin_users
+    WHERE user_id = (SELECT auth.uid())
+  ));

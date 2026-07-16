@@ -12,10 +12,10 @@ UPDATE content_creatives
 SET slug = regexp_replace(slug, '[\s\-–—]*재작성-v\d+', '', 'g')
 WHERE slug ~ '재작성-v\d';
 
--- 2) content_creatives — title (seo_title)에서도 제거
+-- 2) content_creatives — seo_title에서도 제거
 UPDATE content_creatives
-SET title = regexp_replace(title, '[\s\-–—]*재작성\s*v\d+', '', 'g')
-WHERE title ~ '재작성\s*v\d';
+SET seo_title = regexp_replace(seo_title, '[\s\-–—]*재작성\s*v\d+', '', 'g')
+WHERE seo_title ~ '재작성\s*v\d';
 
 -- 3) blog_topic_queue — 이미 queued 상태인 topic에서도 제거 (queue에 아직 있는 항목)
 UPDATE blog_topic_queue

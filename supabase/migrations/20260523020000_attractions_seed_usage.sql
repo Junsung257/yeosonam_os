@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.attractions_seed_usage (
   called_at   timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_seed_usage_called_at ON public.attractions_seed_usage(called_at DESC);
+CREATE INDEX IF NOT EXISTS idx_seed_usage_called_at ON public.attractions_seed_usage(called_at DESC);
 
 ALTER TABLE public.attractions_seed_usage ENABLE ROW LEVEL SECURITY;
 

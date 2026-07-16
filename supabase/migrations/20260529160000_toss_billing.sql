@@ -71,6 +71,28 @@ CREATE TABLE IF NOT EXISTS billing_history (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 20260510000001 already introduced billing_history with the original
+-- payment-attempt contract. Keep that contract and add the event-ledger fields
+-- used by this phase so a full migration replay produces the compatible superset.
+ALTER TABLE billing_history
+  ADD COLUMN IF NOT EXISTS event_type TEXT,
+  ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES billing_invoices(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS amount NUMERIC NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'KRW',
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS toss_transaction_key TEXT,
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS toss_payment_key TEXT,
+  ADD COLUMN IF NOT EXISTS amount_krw INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'done',
+  ADD COLUMN IF NOT EXISTS failure_message TEXT,
+  ADD COLUMN IF NOT EXISTS billed_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+ALTER TABLE billing_history
+  ALTER COLUMN amount_krw SET DEFAULT 0,
+  ALTER COLUMN status SET DEFAULT 'done';
+
 CREATE INDEX IF NOT EXISTS idx_billing_history_tenant ON billing_history(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_billing_history_created ON billing_history(created_at DESC);
 

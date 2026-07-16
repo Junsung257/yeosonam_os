@@ -123,6 +123,21 @@ alter policy "service_role_serp_rank_snapshots" on public.serp_rank_snapshots
   using ((select auth.role()) = 'service_role'::text)
   with check ((select auth.role()) = 'service_role'::text);
 
-alter policy "upload_jobs service role all" on public.upload_jobs
-  using ((select auth.role()) = 'service_role'::text)
-  with check ((select auth.role()) = 'service_role'::text);
+DO $$
+BEGIN
+  IF to_regclass('public.upload_jobs') IS NOT NULL
+     AND EXISTS (
+       SELECT 1
+       FROM pg_policies
+       WHERE schemaname = 'public'
+         AND tablename = 'upload_jobs'
+         AND policyname = 'upload_jobs service role all'
+     ) THEN
+    EXECUTE $policy$
+      ALTER POLICY "upload_jobs service role all" ON public.upload_jobs
+        USING ((SELECT auth.role()) = 'service_role'::text)
+        WITH CHECK ((SELECT auth.role()) = 'service_role'::text)
+    $policy$;
+  END IF;
+END
+$$;

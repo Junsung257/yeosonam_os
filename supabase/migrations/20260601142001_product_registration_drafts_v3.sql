@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260601142000.
 -- Product registration V3 draft ledger sidecar.
 -- Keeps raw source immutable and stores a reviewable ledger next to the current upload pipeline.
 

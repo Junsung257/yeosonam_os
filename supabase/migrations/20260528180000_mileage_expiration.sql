@@ -23,11 +23,11 @@ CREATE INDEX IF NOT EXISTS idx_mileage_tx_user_expires
   WHERE expired_at IS NULL;
 
 -- 4. 소멸 정책 기본값 설정 (app_settings)
-INSERT INTO app_settings (key, value, description)
+INSERT INTO app_settings (key, value)
 VALUES
-  ('mileage_expiration_months', '24', '마일리지 적립 후 유효 개월 (기본 2년)'),
-  ('mileage_expiration_notify_days', '[30,7]', '소멸 예정 알림 발송 시점 (D-30, D-7)'),
-  ('mileage_expiration_auto_extend_days', '365', '최근 활동 시 자동 연장 기간 (1년)')
+  ('mileage_expiration_months', '24'),
+  ('mileage_expiration_notify_days', '[30,7]'),
+  ('mileage_expiration_auto_extend_days', '365')
 ON CONFLICT (key) DO NOTHING;
 
 -- 5. 만료 처리 함수 (PostgreSQL RPC)

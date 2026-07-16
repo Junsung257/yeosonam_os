@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260519100000.
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 2026-05-19 박제 (P2-A): travel_packages.catalog_id 컴럼 추가
 --

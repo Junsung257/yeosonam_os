@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260504250000.
 -- keyword_pool: 트렌드·DataLab 등에서 수집한 키워드 원장 (큐 승격 전 단계)
 CREATE TABLE IF NOT EXISTS keyword_pool (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -30,12 +30,19 @@ ALTER TABLE public.agent_approvals
   ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 
 UPDATE public.agent_approvals
-SET requested_at = COALESCE(requested_at, created_at, now())
+SET requested_at = COALESCE(
+  requested_at,
+  NULLIF(to_jsonb(agent_approvals) ->> 'created_at', '')::timestamptz,
+  now()
+)
 WHERE requested_at IS NULL;
 
 UPDATE public.agent_approvals
-SET reviewed_by = COALESCE(reviewed_by, decided_by),
-    reviewed_at = COALESCE(reviewed_at, decided_at)
+SET reviewed_by = COALESCE(reviewed_by, to_jsonb(agent_approvals) ->> 'decided_by'),
+    reviewed_at = COALESCE(
+      reviewed_at,
+      NULLIF(to_jsonb(agent_approvals) ->> 'decided_at', '')::timestamptz
+    )
 WHERE reviewed_by IS NULL
    OR reviewed_at IS NULL;
 

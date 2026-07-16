@@ -33,23 +33,27 @@ SELECT
   cn.id,
   'threads_post',
   jsonb_build_object(
-    'main', cn.threads_text,
-    'image_urls', cn.threads_media_urls
+    'main', to_jsonb(cn) ->> 'threads_text',
+    'image_urls', to_jsonb(cn) -> 'threads_media_urls'
   ),
   CASE
-    WHEN cn.threads_publish_status = 'published' THEN 'published'
-    WHEN cn.threads_publish_status IN ('queued', 'publishing') THEN 'scheduled'
-    WHEN cn.threads_publish_status = 'failed' THEN 'failed'
+    WHEN to_jsonb(cn) ->> 'threads_publish_status' = 'published' THEN 'published'
+    WHEN to_jsonb(cn) ->> 'threads_publish_status' IN ('queued', 'publishing') THEN 'scheduled'
+    WHEN to_jsonb(cn) ->> 'threads_publish_status' = 'failed' THEN 'failed'
     ELSE 'draft'
   END,
-  cn.threads_scheduled_for,
-  cn.threads_published_at,
-  cn.threads_post_id,
-  COALESCE(cn.threads_published_at, cn.threads_scheduled_for, now()),
+  NULLIF(to_jsonb(cn) ->> 'threads_scheduled_for', '')::timestamptz,
+  NULLIF(to_jsonb(cn) ->> 'threads_published_at', '')::timestamptz,
+  to_jsonb(cn) ->> 'threads_post_id',
+  COALESCE(
+    NULLIF(to_jsonb(cn) ->> 'threads_published_at', '')::timestamptz,
+    NULLIF(to_jsonb(cn) ->> 'threads_scheduled_for', '')::timestamptz,
+    now()
+  ),
   now()
 FROM card_news cn
-WHERE cn.threads_publish_status IS NOT NULL
-  AND cn.threads_text IS NOT NULL;
+WHERE to_jsonb(cn) ->> 'threads_publish_status' IS NOT NULL
+  AND to_jsonb(cn) ->> 'threads_text' IS NOT NULL;
 
 -- ── 2. posting_hour_kst 컬럼 제거 ──────────────────────────────────
 ALTER TABLE card_news

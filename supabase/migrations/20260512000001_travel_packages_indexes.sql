@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260512000000.
 -- travel_packages 조회 성능 인덱스 (실제 스키마 정합)
 -- 실제 컬럼: status, destination, price, duration (no is_active / no destination_code)
 -- 적용일: 2026-05-10 (v2 — Supabase MCP)

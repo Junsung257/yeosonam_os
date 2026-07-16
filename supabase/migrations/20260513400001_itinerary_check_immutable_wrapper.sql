@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260513400000.
 -- ────────────────────────────────────────────────────────────────────────────
 -- B-3 (코드리뷰 fix 2026-05-10): pg_jsonschema CHECK IMMUTABLE wrapper
 --

@@ -1,3 +1,4 @@
+-- Migration sequence normalized from duplicate version 20260513100000.
 -- ────────────────────────────────────────────────────────────────────────────
 -- llm_semantic_cache (P1-1, GPTCache 패턴, arXiv:2306.13782)
 --   동일 의미 LLM 쿼리 → cosine ≥ threshold 일 때 LLM 호출 없이 캐시 응답.

@@ -37,15 +37,28 @@
 --   These will be evaluated in follow-up PRs after wider caller analysis.
 -- ============================================================================
 
-REVOKE EXECUTE ON FUNCTION public.get_admin_badge_counts()                              FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.get_unmatched_summary(integer)                        FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.merge_customer_tags(uuid[], text)                     FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.refresh_mv_destination_aggregates()                   FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.resync_paid_amounts()                                 FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.cleanup_expired_semantic_cache()                      FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.calculate_rfm_scores()                                FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.track_price_changes()                                 FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.bump_customer_facts_access(uuid[])                    FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.jarvis_hybrid_search(vector, text, uuid, text[], integer) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.set_jarvis_request_context(uuid, text, uuid)          FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.increment_semantic_cache_hit(uuid)                    FROM PUBLIC;
+DO $$
+DECLARE
+  signature TEXT;
+  internal_functions TEXT[] := ARRAY[
+    'public.get_admin_badge_counts()',
+    'public.get_unmatched_summary(integer)',
+    'public.merge_customer_tags(uuid[],text)',
+    'public.refresh_mv_destination_aggregates()',
+    'public.resync_paid_amounts()',
+    'public.cleanup_expired_semantic_cache()',
+    'public.calculate_rfm_scores()',
+    'public.track_price_changes()',
+    'public.bump_customer_facts_access(uuid[])',
+    'public.jarvis_hybrid_search(vector,text,uuid,text[],integer)',
+    'public.set_jarvis_request_context(uuid,text,uuid)',
+    'public.increment_semantic_cache_hit(uuid)'
+  ];
+BEGIN
+  FOREACH signature IN ARRAY internal_functions LOOP
+    IF to_regprocedure(signature) IS NOT NULL THEN
+      EXECUTE 'REVOKE EXECUTE ON FUNCTION ' || signature || ' FROM PUBLIC';
+    END IF;
+  END LOOP;
+END;
+$$;
