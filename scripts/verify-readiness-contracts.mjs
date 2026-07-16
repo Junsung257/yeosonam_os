@@ -62,6 +62,11 @@ const checksToRun = [
     args: ['scripts/verify-public-egress-contracts.mjs', '--json'],
   },
   {
+    id: 'public-package-security-contracts',
+    command: process.execPath,
+    args: ['scripts/verify-public-package-security-contracts.mjs', '--json'],
+  },
+  {
     id: 'marketing-release-smoke',
     command: process.execPath,
     args: [
