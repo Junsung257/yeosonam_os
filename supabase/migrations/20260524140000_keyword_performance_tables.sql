@@ -266,6 +266,9 @@ CREATE INDEX IF NOT EXISTS idx_ol_recent
 --    (seed data — 실제 키워드는 keyword-brain에서 관리)
 -- ══════════════════════════════════════════════════════════════
 
+ALTER TABLE app_settings
+  ADD COLUMN IF NOT EXISTS description TEXT;
+
 INSERT INTO app_settings (key, value, description)
 VALUES
   ('keyword_core_min_bid',    '500',   '핵심 키워드 최소 입찰가 (원)'),

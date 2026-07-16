@@ -18,38 +18,50 @@ BEGIN;
 -- ── 1. 기존 threads 데이터를 content_distributions 으로 이전 ──────────
 -- 조건: threads_publish_status NOT NULL AND threads_text NOT NULL
 -- (status가 있으면서 본문이 있는 것만 실제 발행 대상)
-INSERT INTO content_distributions (
-  card_news_id,
-  platform,
-  payload,
-  status,
-  scheduled_for,
-  published_at,
-  external_id,
-  created_at,
-  updated_at
-)
-SELECT
-  cn.id,
-  'threads_post',
-  jsonb_build_object(
-    'main', cn.threads_text,
-    'image_urls', cn.threads_media_urls
-  ),
-  CASE
-    WHEN cn.threads_publish_status = 'published' THEN 'published'
-    WHEN cn.threads_publish_status IN ('queued', 'publishing') THEN 'scheduled'
-    WHEN cn.threads_publish_status = 'failed' THEN 'failed'
-    ELSE 'draft'
-  END,
-  cn.threads_scheduled_for,
-  cn.threads_published_at,
-  cn.threads_post_id,
-  COALESCE(cn.threads_published_at, cn.threads_scheduled_for, now()),
-  now()
-FROM card_news cn
-WHERE cn.threads_publish_status IS NOT NULL
-  AND cn.threads_text IS NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'card_news'
+      AND column_name = 'threads_text'
+  ) THEN
+    INSERT INTO content_distributions (
+      card_news_id,
+      platform,
+      payload,
+      status,
+      scheduled_for,
+      published_at,
+      external_id,
+      created_at,
+      updated_at
+    )
+    SELECT
+      cn.id,
+      'threads_post',
+      jsonb_build_object(
+        'main', cn.threads_text,
+        'image_urls', cn.threads_media_urls
+      ),
+      CASE
+        WHEN cn.threads_publish_status = 'published' THEN 'published'
+        WHEN cn.threads_publish_status IN ('queued', 'publishing') THEN 'scheduled'
+        WHEN cn.threads_publish_status = 'failed' THEN 'failed'
+        ELSE 'draft'
+      END,
+      cn.threads_scheduled_for,
+      cn.threads_published_at,
+      cn.threads_post_id,
+      COALESCE(cn.threads_published_at, cn.threads_scheduled_for, now()),
+      now()
+    FROM card_news cn
+    WHERE cn.threads_publish_status IS NOT NULL
+      AND cn.threads_text IS NOT NULL;
+  END IF;
+END
+$$;
 
 -- ── 2. posting_hour_kst 컬럼 제거 ──────────────────────────────────
 ALTER TABLE card_news

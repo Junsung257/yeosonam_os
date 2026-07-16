@@ -1,33 +1,33 @@
-﻿-- Runtime AI provider policy table used by Jarvis/LLM gateway.
+-- Runtime AI provider policy table used by Jarvis/LLM gateway.
 -- Server routes access this with the service role; clients must not read or mutate it.
 
-create table if not exists public.system_ai_policies (
-  task text primary key,
-  provider text not null check (provider in ('deepseek', 'claude', 'gemini')),
-  model text,
-  fallback_provider text check (fallback_provider is null or fallback_provider in ('deepseek', 'claude', 'gemini')),
-  fallback_model text,
-  timeout_ms integer check (timeout_ms is null or timeout_ms > 0),
-  enabled boolean not null default true,
-  note text,
-  created_by text,
-  updated_by text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.system_ai_policies (
+  task TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('deepseek', 'claude', 'gemini')),
+  model TEXT,
+  fallback_provider TEXT CHECK (fallback_provider IS NULL OR fallback_provider IN ('deepseek', 'claude', 'gemini')),
+  fallback_model TEXT,
+  timeout_ms INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0),
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  note TEXT,
+  created_by TEXT,
+  updated_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-create index if not exists idx_system_ai_policies_enabled_updated
-  on public.system_ai_policies (enabled, updated_at desc);
+CREATE INDEX IF NOT EXISTS idx_system_ai_policies_enabled_updated
+  ON public.system_ai_policies (enabled, updated_at DESC);
 
-alter table public.system_ai_policies enable row level security;
+ALTER TABLE public.system_ai_policies ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "system_ai_policies_service_role_all" on public.system_ai_policies;
-create policy "system_ai_policies_service_role_all"
-  on public.system_ai_policies
-  for all
-  to service_role
-  using (true)
-  with check (true);
+DROP POLICY IF EXISTS "system_ai_policies_service_role_all" ON public.system_ai_policies;
+CREATE POLICY "system_ai_policies_service_role_all"
+  ON public.system_ai_policies
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
-revoke all on table public.system_ai_policies from anon, authenticated;
-grant all on table public.system_ai_policies to service_role;
+REVOKE ALL ON TABLE public.system_ai_policies FROM anon, authenticated;
+GRANT ALL ON TABLE public.system_ai_policies TO service_role;

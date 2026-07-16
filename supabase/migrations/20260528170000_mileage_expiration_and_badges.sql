@@ -27,6 +27,29 @@ ON CONFLICT DO NOTHING;
 ALTER TABLE mileage_transactions
 ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS user_id UUID;
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS booking_id UUID;
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS ref_transaction_id UUID;
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'EARNED';
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS memo TEXT;
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS margin_impact NUMERIC;
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS base_net_profit NUMERIC;
+ALTER TABLE mileage_transactions ADD COLUMN IF NOT EXISTS mileage_rate NUMERIC;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'mileage_transactions'
+      AND column_name = 'customer_id'
+  ) THEN
+    EXECUTE 'UPDATE mileage_transactions SET user_id = COALESCE(user_id, customer_id) WHERE user_id IS NULL';
+  END IF;
+END
+$$;
+
 -- 기존 EARNED 트랜잭션에 만료일 채우기 (적립일 + 24개월)
 UPDATE mileage_transactions
 SET expires_at = created_at + INTERVAL '24 months'
@@ -159,9 +182,9 @@ CREATE POLICY "customer_badges_select_own"
 
 CREATE POLICY "customer_badges_select_admin"
   ON customer_badges FOR SELECT
-  USING (EXISTS (SELECT 1 FROM admins WHERE id = auth.uid()));
+  USING (EXISTS (SELECT 1 FROM admin_users WHERE user_id = auth.uid()));
 
 -- 참고: INSERT는 admin 전용 또는 시스템에서만
 CREATE POLICY "customer_badges_insert_admin"
   ON customer_badges FOR INSERT
-  WITH CHECK (EXISTS (SELECT 1 FROM admins WHERE id = auth.uid()));
+  WITH CHECK (EXISTS (SELECT 1 FROM admin_users WHERE user_id = auth.uid()));

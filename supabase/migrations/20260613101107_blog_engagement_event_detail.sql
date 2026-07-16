@@ -3,6 +3,12 @@
 
 ALTER TABLE public.blog_engagement_logs
   ADD COLUMN IF NOT EXISTS event_type text NOT NULL DEFAULT 'summary',
+  ADD COLUMN IF NOT EXISTS content_creative_id uuid REFERENCES public.content_creatives(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS session_id text,
+  ADD COLUMN IF NOT EXISTS user_id text,
+  ADD COLUMN IF NOT EXISTS time_on_page_seconds integer,
+  ADD COLUMN IF NOT EXISTS max_scroll_depth_pct integer,
+  ADD COLUMN IF NOT EXISTS cta_clicked boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS cta_visible boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS cta_placement text,
   ADD COLUMN IF NOT EXISTS cta_href text,

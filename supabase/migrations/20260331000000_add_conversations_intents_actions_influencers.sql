@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS conversations (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+ALTER TABLE conversations
+  ADD COLUMN IF NOT EXISTS participant_1_id uuid,
+  ADD COLUMN IF NOT EXISTS participant_2_id uuid;
+
 CREATE INDEX IF NOT EXISTS idx_conversations_customer ON conversations(customer_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_created ON conversations(created_at);
 

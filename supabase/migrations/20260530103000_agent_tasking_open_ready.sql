@@ -27,11 +27,23 @@ WHERE status IN ('done', 'failed', 'expired', 'cancelled')
 ALTER TABLE public.agent_approvals
   ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-  ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS decided_by TEXT,
+  ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 
 UPDATE public.agent_approvals
 SET requested_at = COALESCE(requested_at, created_at, now())
 WHERE requested_at IS NULL;
+
+UPDATE public.agent_approvals
+SET created_at = COALESCE(created_at, requested_at, now())
+WHERE created_at IS NULL;
+
+UPDATE public.agent_approvals
+SET updated_at = COALESCE(updated_at, reviewed_at, requested_at, now())
+WHERE updated_at IS NULL;
 
 UPDATE public.agent_approvals
 SET reviewed_by = COALESCE(reviewed_by, decided_by),

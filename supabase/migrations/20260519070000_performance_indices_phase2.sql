@@ -119,7 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_free_travel_plans_user_created
 
 -- 15. llm_prompts 테이블 — 프롬프트 조회 최적화
 CREATE INDEX IF NOT EXISTS idx_llm_prompts_category_active
-  ON llm_prompts(category, is_active)
+  ON llm_prompts(task_type, is_active)
   WHERE is_active = true;
 
 -- Analytics: 인덱스 상태 확인용 쿼리

@@ -71,6 +71,23 @@ CREATE TABLE IF NOT EXISTS billing_history (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE billing_history
+  ADD COLUMN IF NOT EXISTS event_type TEXT,
+  ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES billing_invoices(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS amount NUMERIC,
+  ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'KRW',
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS toss_transaction_key TEXT,
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ;
+
+UPDATE billing_history
+SET created_at = COALESCE(created_at, billed_at, now())
+WHERE created_at IS NULL;
+
+ALTER TABLE billing_history
+  ALTER COLUMN created_at SET DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_billing_history_tenant ON billing_history(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_billing_history_created ON billing_history(created_at DESC);
 

@@ -1,63 +1,43 @@
 -- ============================================================================
 -- Drop authenticated-wide `admin_all_*` policies on ad_* / creative_* tables.
 -- ============================================================================
--- Context:
---   `admin_all_<table>` policies were applied to {authenticated} with
---   USING (true) and WITH CHECK (true). Since PERMISSIVE policies OR together,
---   any logged-in user (not just admins) could read/write these tables.
---
---   Server code that touches these tables is in src/lib/db/ads.ts and
---   src/lib/db/dashboard.ts. Both modules were switched to service_role
---   (supabaseAdmin) in the same PR. service_role has BYPASSRLS=true, so the
---   server-side path is unaffected.
---
---   All callers verified to be in src/app/api/** (server-only). No client
---   component imports these helpers, so no anon access is needed.
---
--- Action:
---   Drop the broad `admin_all_*` policies. Add a service_role-only
---   replacement so future migrations don't accidentally re-introduce anon
---   access. RLS stays ENABLED on every table.
--- ============================================================================
+-- The original policy cleanup assumed every ad/creative legacy table existed.
+-- Make the security cleanup replay-safe: apply it when the table exists, and
+-- skip retired tables in clean environments.
 
--- ad_campaigns
-DROP POLICY IF EXISTS "admin_all_ad_campaigns" ON public.ad_campaigns;
-DROP POLICY IF EXISTS "ad_campaigns_service_all" ON public.ad_campaigns;
-CREATE POLICY "ad_campaigns_service_all"
-  ON public.ad_campaigns AS PERMISSIVE FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
+CREATE OR REPLACE FUNCTION public.replace_with_service_role_policy_if_table_exists(
+  p_table_name text,
+  p_legacy_policy_name text,
+  p_service_policy_name text
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF to_regclass(format('public.%I', p_table_name)) IS NULL THEN
+    RAISE NOTICE 'Skipping policy cleanup for %.% because table does not exist', 'public', p_table_name;
+    RETURN;
+  END IF;
 
--- ad_creatives
-DROP POLICY IF EXISTS "admin_all_ad_creatives" ON public.ad_creatives;
-DROP POLICY IF EXISTS "ad_creatives_service_all" ON public.ad_creatives;
-CREATE POLICY "ad_creatives_service_all"
-  ON public.ad_creatives AS PERMISSIVE FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
+  EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', p_legacy_policy_name, p_table_name);
+  EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', p_service_policy_name, p_table_name);
+  EXECUTE format(
+    'CREATE POLICY %I ON public.%I AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true)',
+    p_service_policy_name,
+    p_table_name
+  );
+END;
+$$;
 
--- ad_performance_snapshots
-DROP POLICY IF EXISTS "admin_all_ad_perf_snapshots" ON public.ad_performance_snapshots;
-DROP POLICY IF EXISTS "ad_performance_snapshots_service_all" ON public.ad_performance_snapshots;
-CREATE POLICY "ad_performance_snapshots_service_all"
-  ON public.ad_performance_snapshots AS PERMISSIVE FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
+SELECT public.replace_with_service_role_policy_if_table_exists(table_name, legacy_policy, service_policy)
+FROM (
+  VALUES
+    ('ad_campaigns', 'admin_all_ad_campaigns', 'ad_campaigns_service_all'),
+    ('ad_creatives', 'admin_all_ad_creatives', 'ad_creatives_service_all'),
+    ('ad_performance_snapshots', 'admin_all_ad_perf_snapshots', 'ad_performance_snapshots_service_all'),
+    ('creative_performance', 'admin_all_creative_performance', 'creative_performance_service_all'),
+    ('creative_edits', 'admin_all_creative_edits', 'creative_edits_service_all'),
+    ('winning_patterns', 'admin_all_winning_patterns', 'winning_patterns_service_all')
+) AS planned(table_name, legacy_policy, service_policy);
 
--- creative_performance
-DROP POLICY IF EXISTS "admin_all_creative_performance" ON public.creative_performance;
-DROP POLICY IF EXISTS "creative_performance_service_all" ON public.creative_performance;
-CREATE POLICY "creative_performance_service_all"
-  ON public.creative_performance AS PERMISSIVE FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
-
--- creative_edits
-DROP POLICY IF EXISTS "admin_all_creative_edits" ON public.creative_edits;
-DROP POLICY IF EXISTS "creative_edits_service_all" ON public.creative_edits;
-CREATE POLICY "creative_edits_service_all"
-  ON public.creative_edits AS PERMISSIVE FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
-
--- winning_patterns
-DROP POLICY IF EXISTS "admin_all_winning_patterns" ON public.winning_patterns;
-DROP POLICY IF EXISTS "winning_patterns_service_all" ON public.winning_patterns;
-CREATE POLICY "winning_patterns_service_all"
-  ON public.winning_patterns AS PERMISSIVE FOR ALL TO service_role
-  USING (true) WITH CHECK (true);
+DROP FUNCTION public.replace_with_service_role_policy_if_table_exists(text, text, text);

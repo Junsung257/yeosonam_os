@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS post_engagement_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Linkage (둘 중 최소 하나는 non-null)
+  tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
   distribution_id UUID REFERENCES content_distributions(id) ON DELETE CASCADE,
   card_news_id UUID REFERENCES card_news(id) ON DELETE CASCADE,
 

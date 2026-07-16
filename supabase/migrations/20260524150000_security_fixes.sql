@@ -13,6 +13,7 @@ BEGIN;
 ALTER TABLE content_distributions ENABLE ROW LEVEL SECURITY;
 
 -- service_role만 모든 접근 가능 (내부 파이프라인 전용)
+DROP POLICY IF EXISTS "content_distributions_service_role_all" ON content_distributions;
 CREATE POLICY "content_distributions_service_role_all"
   ON content_distributions
   FOR ALL
@@ -21,6 +22,7 @@ CREATE POLICY "content_distributions_service_role_all"
   WITH CHECK (true);
 
 -- authenticated 사용자는 읽기만 가능 (모니터링/대시보드)
+DROP POLICY IF EXISTS "content_distributions_auth_select" ON content_distributions;
 CREATE POLICY "content_distributions_auth_select"
   ON content_distributions
   FOR SELECT
@@ -32,6 +34,7 @@ CREATE POLICY "content_distributions_auth_select"
 ALTER TABLE social_platform_configs ENABLE ROW LEVEL SECURITY;
 
 -- service_role만 모든 접근 가능 (토큰 보호)
+DROP POLICY IF EXISTS "social_platform_configs_service_role_all" ON social_platform_configs;
 CREATE POLICY "social_platform_configs_service_role_all"
   ON social_platform_configs
   FOR ALL
@@ -40,6 +43,7 @@ CREATE POLICY "social_platform_configs_service_role_all"
   WITH CHECK (true);
 
 -- authenticated 사용자는 민감 정보 제외한 읽기만
+DROP POLICY IF EXISTS "social_platform_configs_auth_select_safe" ON social_platform_configs;
 CREATE POLICY "social_platform_configs_auth_select_safe"
   ON social_platform_configs
   FOR SELECT
@@ -54,6 +58,7 @@ CREATE POLICY "social_platform_configs_auth_select_safe"
 
 ALTER TABLE competitor_ad_snapshots ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "competitor_ad_snapshots_service_role_all" ON competitor_ad_snapshots;
 CREATE POLICY "competitor_ad_snapshots_service_role_all"
   ON competitor_ad_snapshots
   FOR ALL
@@ -61,6 +66,7 @@ CREATE POLICY "competitor_ad_snapshots_service_role_all"
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "competitor_ad_snapshots_auth_select" ON competitor_ad_snapshots;
 CREATE POLICY "competitor_ad_snapshots_auth_select"
   ON competitor_ad_snapshots
   FOR SELECT
@@ -71,6 +77,7 @@ CREATE POLICY "competitor_ad_snapshots_auth_select"
 
 ALTER TABLE bandit_arms ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "bandit_arms_service_role_all" ON bandit_arms;
 CREATE POLICY "bandit_arms_service_role_all"
   ON bandit_arms
   FOR ALL
@@ -78,6 +85,7 @@ CREATE POLICY "bandit_arms_service_role_all"
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "bandit_arms_auth_select" ON bandit_arms;
 CREATE POLICY "bandit_arms_auth_select"
   ON bandit_arms
   FOR SELECT
@@ -88,6 +96,7 @@ CREATE POLICY "bandit_arms_auth_select"
 
 ALTER TABLE customer_segments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "customer_segments_service_role_all" ON customer_segments;
 CREATE POLICY "customer_segments_service_role_all"
   ON customer_segments
   FOR ALL
@@ -95,6 +104,7 @@ CREATE POLICY "customer_segments_service_role_all"
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "customer_segments_auth_select" ON customer_segments;
 CREATE POLICY "customer_segments_auth_select"
   ON customer_segments
   FOR SELECT
@@ -105,6 +115,7 @@ CREATE POLICY "customer_segments_auth_select"
 
 ALTER TABLE customer_rfm ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "customer_rfm_service_role_all" ON customer_rfm;
 CREATE POLICY "customer_rfm_service_role_all"
   ON customer_rfm
   FOR ALL
@@ -112,6 +123,7 @@ CREATE POLICY "customer_rfm_service_role_all"
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "customer_rfm_auth_select" ON customer_rfm;
 CREATE POLICY "customer_rfm_auth_select"
   ON customer_rfm
   FOR SELECT
@@ -144,6 +156,7 @@ $$;
 
 ALTER TABLE IF EXISTS segment_campaign_logs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "segment_campaign_logs_service_role_all" ON segment_campaign_logs;
 CREATE POLICY "segment_campaign_logs_service_role_all"
   ON segment_campaign_logs
   FOR ALL
@@ -151,6 +164,7 @@ CREATE POLICY "segment_campaign_logs_service_role_all"
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "segment_campaign_logs_auth_select" ON segment_campaign_logs;
 CREATE POLICY "segment_campaign_logs_auth_select"
   ON segment_campaign_logs
   FOR SELECT

@@ -291,7 +291,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION update_booking_ledger IS
+COMMENT ON FUNCTION update_booking_ledger(uuid, integer, integer, text, text, text, text, text) IS
   'Phase 2a v2 — atomic UPDATE + ledger INSERT 이중쓰기. p_idempotency_key 가 있으면 :paid / :payout 접미로 분할 멱등 보장. 기존 호출부(p_paid_delta, p_payout_delta 만 전달)는 그대로 동작.';
 
 -- ─── [4] confirm_payment_match v2 — 이중쓰기 추가 ────────────

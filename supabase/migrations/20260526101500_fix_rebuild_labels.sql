@@ -15,9 +15,9 @@ WHERE slug ~ '재작성-v\d';
 -- 3) content_creatives (혹시 누락된 경우)
 UPDATE content_creatives
 SET slug = regexp_replace(slug, '[\s\-–—]*재작성-v\d+', '', 'g'),
-    title = regexp_replace(title, '[\s\-–—]*재작성\s*v\d+', '', 'g')
+    seo_title = regexp_replace(seo_title, '[\s\-–—]*재작성\s*v\d+', '', 'g')
 WHERE slug ~ '재작성-v\d'
-   OR title ~ '재작성\s*v\d';
+   OR seo_title ~ '재작성\s*v\d';
 
 -- 4) blog_topic_queue (처리 대기 중인 항목)
 UPDATE blog_topic_queue

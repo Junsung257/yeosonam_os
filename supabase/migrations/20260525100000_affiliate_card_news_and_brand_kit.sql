@@ -32,8 +32,23 @@ CREATE TABLE IF NOT EXISTS brand_kits (
   UNIQUE (owner_type, owner_id)
 );
 
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS owner_type TEXT;
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#001f3f';
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS accent_color TEXT DEFAULT '#005d90';
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS background_color TEXT DEFAULT '#f8f9fb';
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS font_family TEXT DEFAULT 'Pretendard';
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS logo_light_url TEXT;
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS brand_name TEXT DEFAULT '';
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS brand_tagline TEXT;
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS watermark_text TEXT;
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS watermark_enabled BOOLEAN DEFAULT true;
+ALTER TABLE brand_kits ADD COLUMN IF NOT EXISTS social_links JSONB DEFAULT '{}'::jsonb;
+
 -- brand_kits RLS (service_role 전용)
 ALTER TABLE brand_kits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS brand_kits_service_only ON brand_kits;
 CREATE POLICY brand_kits_service_only ON brand_kits
   FOR ALL USING (auth.role() = 'service_role');
 
@@ -79,6 +94,7 @@ CREATE TABLE IF NOT EXISTS affiliate_monthly_usage (
 );
 
 ALTER TABLE affiliate_monthly_usage ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS affiliate_monthly_usage_service_only ON affiliate_monthly_usage;
 CREATE POLICY affiliate_monthly_usage_service_only ON affiliate_monthly_usage
   FOR ALL USING (auth.role() = 'service_role');
 

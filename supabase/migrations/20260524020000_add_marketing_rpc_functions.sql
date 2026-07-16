@@ -443,7 +443,7 @@ RETURNS TABLE(
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS \$\$
+AS $$
 DECLARE
   v_scanned INT := 0;
   v_gaps_found INT := 0;
@@ -510,7 +510,7 @@ BEGIN
 
   RETURN QUERY SELECT v_scanned, v_gaps_found, v_already_covered, v_queued, v_skipped;
 END;
-\$\$;
+$$;
 
 -- ============================================================
 -- 4. auto_finalize_ab_experiments()
@@ -524,7 +524,7 @@ RETURNS TABLE(finalized INT)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS \$\$
+AS $$
 DECLARE
   v_finalized INT := 0;
   v_exp RECORD;
@@ -622,7 +622,7 @@ BEGIN
 
   RETURN QUERY SELECT v_finalized;
 END;
-\$\$;
+$$;
 
 -- ============================================================
 -- 5. generate_predictive_insights()
@@ -636,7 +636,7 @@ RETURNS TABLE(insights_generated INT)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS \$\$
+AS $$
 DECLARE
   v_insights_generated INT := 0;
   v_kw RECORD;
@@ -756,7 +756,7 @@ BEGIN
 
   RETURN QUERY SELECT v_insights_generated;
 END;
-\$\$;
+$$;
 
 -- ============================================================
 -- 종료
