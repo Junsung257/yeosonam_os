@@ -21,6 +21,7 @@ export const BLOG_INFORMATION_FACTUAL_CANDIDATE_KINDS = [
   'regulated_policy',
   'climate_measurement',
   'superlative',
+  'unknown_statement',
 ] as const;
 
 export type BlogInformationFactualCandidateKind =

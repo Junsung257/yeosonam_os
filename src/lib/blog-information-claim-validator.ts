@@ -175,6 +175,41 @@ function classifyClaim(segment: string): Pick<ExtractedBlogInformationClaim, 'cl
   return null;
 }
 
+export type BlogInformationStatementCategory =
+  | 'verified_factual'
+  | 'subjective_editorial'
+  | 'navigation_boilerplate'
+  | 'unknown_unclassified';
+
+const NAVIGATION_OR_BOILERPLATE_RE = /(?:^|\s)(?:목차|FAQ|가이드|체크리스트|요약|마무리|공식 사이트|자세히 보기)(?:$|\s)|(?:비교|확인|참고|선택|살펴|알아|둘러|정)해?\s*보세요|(?:확인|참고)하세요/i;
+const SUBJECTIVE_EDITORIAL_RE = /(?:저는|개인적으로|제 생각|느낌|취향|여행 스타일|선호).*(?:생각|느끼|좋|달라|추천)|(?:매력적|인상적|낭만적|즐겁|좋다고 생각)/i;
+const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
+
+export function classifyBlogInformationStatement(segment: string): {
+  category: BlogInformationStatementCategory;
+  factualClassification: Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null;
+} {
+  const factualClassification = classifyClaim(segment);
+  if (factualClassification) return { category: 'verified_factual', factualClassification };
+  if (SUBJECTIVE_EDITORIAL_RE.test(segment)) {
+    return { category: 'subjective_editorial', factualClassification: null };
+  }
+  if (NAVIGATION_OR_BOILERPLATE_RE.test(segment)) {
+    return { category: 'navigation_boilerplate', factualClassification: null };
+  }
+  if (!ASSERTIVE_STATEMENT_RE.test(segment)) {
+    return { category: 'navigation_boilerplate', factualClassification: null };
+  }
+  return {
+    category: 'unknown_unclassified',
+    factualClassification: {
+      claimType: 'factual',
+      riskLevel: 'MEDIUM',
+      candidateKind: 'unknown_statement',
+    },
+  };
+}
+
 function normalizeNumericValue(value: string): string {
   return value.replace(/,/g, '').replace(/^\+/, '').trim();
 }
@@ -228,7 +263,7 @@ function extractClaimValue(segment: string, kind: BlogInformationFactualCandidat
 
 export function extractBlogInformationClaims(markdown: string): ExtractedBlogInformationClaim[] {
   return splitClaimSegments(markdown).flatMap((segment) => {
-    const classification = classifyClaim(segment);
+    const classification = classifyBlogInformationStatement(segment).factualClassification;
     if (!classification) return [];
     return [{
       claimFingerprint: createBlogInformationClaimFingerprint(segment),

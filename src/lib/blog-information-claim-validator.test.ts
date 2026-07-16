@@ -71,6 +71,49 @@ function supportedRecord(
 
 describe('blog information claim validator', () => {
   it.each([
+    '오사카 지하철은 자정 무렵 운행을 마칩니다.',
+    '주말에는 운행하지 않습니다.',
+    '공항철도가 택시보다 빠릅니다.',
+    '성수기에는 예약이 필요합니다.',
+    '재고가 없으면 조기 종료됩니다.',
+    '이 지역은 밤에도 안전합니다.',
+    '현재 이 서비스를 사용할 수 없습니다.',
+    '대기 시간이 길지 않습니다.',
+    '현금만 사용할 수 있습니다.',
+  ])('fails closed for an unledgered factual statement: %s', (markdown) => {
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [],
+      claimLedger: [],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'unclassified_factual_candidate' }),
+    ]));
+  });
+
+  it.each([
+    '여행 스타일에 따라 선택이 달라질 수 있습니다.',
+    '아래 표에서 선택지를 비교해 보세요.',
+    '# 오사카 이동 가이드',
+    '## 목차',
+    '[공식 사이트에서 자세히 보기](https://example.com)',
+    '저는 골목을 천천히 걷는 일정이 더 좋다고 생각합니다.',
+  ])('allows clearly non-factual editorial or navigation text: %s', (markdown) => {
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [],
+      claimLedger: [],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.claims).toEqual([]);
+  });
+
+  it.each([
     ['식비는 하루 8,000엔입니다.', 'price'],
     ['공항에서 시내까지 약 50분이 걸립니다.', 'duration'],
     ['서비스 수수료는 3.5%입니다.', 'percentage'],
