@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { CAT_LABELS, VALID_CATEGORIES } from '@/lib/blog-categories';
 import type { BlogCategory } from '@/lib/blog-categories';
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages';
 
 const STATUS_BADGE: Record<string, string> = {
   published: 'bg-emerald-50 text-emerald-700',
@@ -34,7 +35,7 @@ interface BlogPost {
   created_at: string;
   view_count: number | null;
   topic_source: string | null;
-  travel_packages: { title: string; destination: string } | { title: string; destination: string }[] | null;
+  product_id: string | null;
 }
 
 interface SearchStatus {
@@ -80,7 +81,7 @@ export default async function BlogDataFetcher({
   let query = supabaseAdmin
     .from('content_creatives')
     .select(
-      'id, slug, seo_title, status, category, published_at, created_at, view_count, topic_source, travel_packages(title, destination)',
+      'id, slug, seo_title, status, category, published_at, created_at, view_count, topic_source, product_id',
       { count: 'exact' }
     )
     .eq('channel', 'naver_blog')
@@ -105,6 +106,13 @@ export default async function BlogDataFetcher({
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const statusQS = status !== 'all' ? `&status=${status}` : '';
   const typedPosts = (posts || []) as BlogPost[];
+  const productIds = [...new Set(typedPosts
+    .map(post => typeof post.product_id === 'string' ? post.product_id : null)
+    .filter((id): id is string => Boolean(id)))];
+  const publicPackageById = new Map(
+    (await getPublishedPackageMarketingClaims(supabaseAdmin, productIds))
+      .map(row => [String(row.package_id), row] as const),
+  );
   const slugs = typedPosts.map((post) => post.slug).filter((slug): slug is string => Boolean(slug));
   const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
 
@@ -217,11 +225,18 @@ export default async function BlogDataFetcher({
           <tbody>
             {typedPosts.map(post => {
               const searchStatus = post.slug ? searchStatusBySlug.get(post.slug) : null;
+              const publicPackage = post.product_id ? publicPackageById.get(post.product_id) : null;
+              const displayTitle = post.seo_title
+                || (publicPackage?.title ? String(publicPackage.title) : '')
+                || '(제목 없음)';
+              const displayCategory = CAT_LABELS[post.category || '']
+                || (publicPackage?.destination ? String(publicPackage.destination) : '')
+                || '—';
               return (
               <tr key={post.id}>
                 <td>
                   <p className="text-admin-sm font-medium text-admin-text truncate max-w-md">
-                    {post.seo_title || (Array.isArray(post.travel_packages) ? post.travel_packages[0]?.title : post.travel_packages?.title) || '(제목 없음)'}
+                    {displayTitle}
                   </p>
                   {post.slug && (
                     <p className="text-admin-xs text-admin-muted-2 mt-0.5 font-mono">/blog/{post.slug}</p>
@@ -229,7 +244,7 @@ export default async function BlogDataFetcher({
                 </td>
                 <td>
                   <span className="text-admin-2xs text-admin-muted">
-                    {CAT_LABELS[post.category || ''] || (Array.isArray(post.travel_packages) ? post.travel_packages[0]?.destination : post.travel_packages?.destination) || '—'}
+                    {displayCategory}
                   {post.category && !CAT_LABELS[post.category] && (
                     <span className="ml-1 px-1 py-0.5 text-[9px] bg-red-100 text-red-600 rounded-admin-xs font-semibold" title="정의되지 않은 카테고리">
                       !{post.category}

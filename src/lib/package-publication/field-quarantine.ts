@@ -55,9 +55,9 @@ function optionalTourReason(value: unknown): QuarantineReasonCode | null {
   const text = compactText(value);
   const record = asRecord(value);
   if (!text) return 'fragmentary_route_text';
-  if (/노\s*옵션|선택\s*관광\s*없음|옵션\s*없음/i.test(text)) return 'condition_badge_in_optional_tours';
-  if (/^(?:\d{1,3}|\d+월\s*\d+일?|\d{1,3}(?:,\d{3})*원\/?인)$/i.test(text)) return 'fragmentary_route_text';
-  if (/포\s*함\s*내\s*역|불\s*포\s*함|차량|가이드|유류할증료|예약금|상품가/i.test(text)) {
+  if (/노옵션|선택\s*관광\s*(?:없음|없습니다|노옵션)/i.test(text)) return 'condition_badge_in_optional_tours';
+  if (/^(?:\d{1,3}|\d+\s*월\s*\d+일?|\d{1,3}(?:,\d{3})*\s*원\s*\/?\s*인)$/i.test(text)) return 'fragmentary_route_text';
+  if (/포\s*함\s*내\s*역|포함내역|불포함내역|차량|가이드|기사|유류할증료|예약금|상품가/i.test(text)) {
     return 'inclusion_fragment_in_optional_tours';
   }
   const hasName = Boolean(String(record?.name ?? record?.title ?? record?.label ?? '').trim());
@@ -71,8 +71,8 @@ function optionalTourReason(value: unknown): QuarantineReasonCode | null {
 function itineraryReason(value: unknown): QuarantineReasonCode | null {
   const text = compactText(value);
   if (!text) return null;
-  if (/^(?:\d{1,3}|\d+월\s*\d+일?|\d{1,3}(?:,\d{3})*원\/?인)$/i.test(text)) return 'price_fragment_in_itinerary';
-  if (/포\s*함\s*내\s*역|불\s*포\s*함|차량|가이드|유류할증료|예약금|상품가/i.test(text)) return 'inclusion_fragment_in_itinerary';
+  if (/^(?:\d{1,3}|\d+\s*월\s*\d+일?|\d{1,3}(?:,\d{3})*\s*원\s*\/?\s*인)$/i.test(text)) return 'price_fragment_in_itinerary';
+  if (/포\s*함\s*내\s*역|포함내역|불포함내역|차량|가이드|기사|유류할증료|예약금|상품가/i.test(text)) return 'inclusion_fragment_in_itinerary';
   if (/교환|환불|취소\s*규정|수수료|유의\s*사항/i.test(text)) return 'notice_fragment_in_itinerary';
   if (/사진\s*준비\s*중|이미지\s*준비\s*중|Decision\s+guide/i.test(text)) return 'placeholder_or_internal_copy';
   return null;

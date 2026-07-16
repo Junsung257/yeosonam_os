@@ -22,6 +22,11 @@ ALTER TABLE public.ad_creatives
   ADD COLUMN IF NOT EXISTS source_snapshot_hash text,
   ADD COLUMN IF NOT EXISTS marketing_projection_version text;
 
+ALTER TABLE public.content_creatives
+  ADD COLUMN IF NOT EXISTS source_snapshot_id uuid,
+  ADD COLUMN IF NOT EXISTS source_snapshot_hash text,
+  ADD COLUMN IF NOT EXISTS marketing_projection_version text;
+
 ALTER TABLE public.ad_creatives
   DROP CONSTRAINT IF EXISTS ad_creatives_source_snapshot_id_fkey;
 
@@ -33,6 +38,19 @@ ALTER TABLE public.ad_creatives
 
 CREATE INDEX IF NOT EXISTS idx_ad_creatives_source_snapshot
   ON public.ad_creatives(source_snapshot_id)
+  WHERE source_snapshot_id IS NOT NULL;
+
+ALTER TABLE public.content_creatives
+  DROP CONSTRAINT IF EXISTS content_creatives_source_snapshot_id_fkey;
+
+ALTER TABLE public.content_creatives
+  ADD CONSTRAINT content_creatives_source_snapshot_id_fkey
+    FOREIGN KEY (source_snapshot_id)
+    REFERENCES public.public_package_snapshots(id)
+    ON DELETE RESTRICT;
+
+CREATE INDEX IF NOT EXISTS idx_content_creatives_source_snapshot
+  ON public.content_creatives(source_snapshot_id)
   WHERE source_snapshot_id IS NOT NULL;
 
 ALTER TABLE public.travel_packages

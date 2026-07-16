@@ -1060,7 +1060,7 @@ describe('public package snapshot gate', () => {
     expect(snapshot.public_notices).toEqual(expect.arrayContaining([
       expect.objectContaining({
         template_key: 'reservation_availability_check',
-        text: '항공 좌석과 요금은 상담 후 최종 확인됩니다.',
+        text: '항공 좌석과 객실 가능 여부는 상담 후 최종 확인됩니다.',
       }),
       expect.objectContaining({
         template_key: 'cancellation_policy_check',
@@ -1162,7 +1162,7 @@ describe('public package snapshot gate', () => {
     ].join('\n');
     expect(publicSnapshotText).not.toContain(riskyItineraryCopy);
     expect(publicSnapshotText).not.toMatch(/숙박\s*확정/);
-    expect(snapshot.route_text_dump).toEqual(expect.arrayContaining(['예약 가능 여부는 담당자 확인 후 안내됩니다.']));
+    expect(snapshot.route_text_dump).toEqual(expect.arrayContaining(['예약 가능 여부는 담당자 확인 후 안내드립니다.']));
     expect(gate.publishable).toBe(false);
     expect(gate.hard_blockers).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'masked_data_pollution', fieldPath: 'itinerary_data.days.0.schedule.0.activity' }),

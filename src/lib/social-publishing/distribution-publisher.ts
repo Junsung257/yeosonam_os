@@ -10,6 +10,7 @@ import {
   resolveBlogDestination,
 } from '@/lib/blog-publish-quality';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
+import { getPublishedMarketingPackage } from '@/lib/public-packages';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getThreadsConfig, publishToThreads } from '@/lib/threads-publisher';
 
@@ -41,6 +42,42 @@ export interface DistributionPublishResult {
 export interface PublishDistributionOptions {
   precomputedGate?: ThreadsGateResult;
   skipStatusUpdate?: boolean;
+}
+
+type BlogDistributionRow = {
+  id: string;
+  slug: string | null;
+  status: string | null;
+  blog_html: string | null;
+  seo_title: string | null;
+  seo_description: string | null;
+  destination: string | null;
+  angle_type: string | null;
+  product_id: string | null;
+  source_snapshot_id?: string | null;
+  source_snapshot_hash?: string | null;
+  marketing_projection_version?: string | null;
+};
+
+async function currentMarketingProjectionForBlog(row: BlogDistributionRow) {
+  if (!row.product_id) return null;
+  return getPublishedMarketingPackage(supabaseAdmin, row.product_id);
+}
+
+async function assertProductBackedBlogIsPublishable(row: BlogDistributionRow): Promise<DistributionPublishResult | null> {
+  const projection = await currentMarketingProjectionForBlog(row);
+  if (!row.product_id) return null;
+  if (!projection) {
+    return { status: 'failed', error: 'Blog publish blocked: current marketing projection snapshot is missing' };
+  }
+  const snapshot = projection._public_snapshot;
+  if (!row.source_snapshot_id || !row.source_snapshot_hash) {
+    return { status: 'failed', error: 'Blog publish blocked: product-backed draft has no source snapshot id/hash and must be regenerated' };
+  }
+  if (row.source_snapshot_id !== snapshot.id || row.source_snapshot_hash !== snapshot.hash) {
+    return { status: 'failed', error: 'Blog publish blocked: product-backed draft source snapshot is stale' };
+  }
+  return null;
 }
 
 export async function publishDistribution(
@@ -228,13 +265,16 @@ async function publishDistributionProvider(
     if (row.blog_post_id) {
       const { data: existing } = await supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, status, blog_html, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)')
+        .select('id, slug, status, blog_html, seo_title, seo_description, destination, angle_type, product_id, source_snapshot_id, source_snapshot_hash, marketing_projection_version')
         .eq('id', row.blog_post_id)
         .limit(1);
-      const existingRow = existing?.[0];
+      const existingRow = existing?.[0] as BlogDistributionRow | undefined;
       if (existingRow) {
+        const productBlock = await assertProductBackedBlogIsPublishable(existingRow);
+        if (productBlock) return productBlock;
         if (existingRow.status !== 'published') {
-          const destination = resolveBlogDestination(existingRow);
+          const projection = await currentMarketingProjectionForBlog(existingRow);
+          const destination = projection?.destination ?? resolveBlogDestination(existingRow);
           const prepared = await prepareBlogForPublish({
             id: row.blog_post_id,
             blog_html: existingRow.blog_html ?? '',
@@ -255,6 +295,11 @@ async function publishDistributionProvider(
             status: 'published',
             published_at: new Date().toISOString(),
             blog_html: prepared.blogHtml,
+            ...(projection ? {
+              source_snapshot_id: projection._public_snapshot.id,
+              source_snapshot_hash: projection._public_snapshot.hash,
+              marketing_projection_version: projection._public_snapshot.schema_version,
+            } : {}),
           };
           applyBlogPublishQualityToUpdate(updateData, qaReport);
           await supabaseAdmin
@@ -281,6 +326,12 @@ async function publishDistributionProvider(
 
     try {
       const queuePayload = (row.payload ?? {}) as Record<string, unknown>;
+      const projection = row.product_id
+        ? await getPublishedMarketingPackage(supabaseAdmin, row.product_id)
+        : null;
+      if (row.product_id && !projection) {
+        return { status: 'failed', error: 'Blog queue blocked: current marketing projection snapshot is missing' };
+      }
       await supabaseAdmin.from('blog_topic_queue').insert({
         tenant_id: row.tenant_id,
         topic: (queuePayload.topic as string) ?? '자동 생성 블로그',
@@ -293,7 +344,15 @@ async function publishDistributionProvider(
         status: 'queued',
         priority: 80,
         target_publish_at: new Date().toISOString(),
-        meta: { from_distribution_id: row.id, ...queuePayload },
+        meta: {
+          from_distribution_id: row.id,
+          ...queuePayload,
+          ...(projection ? {
+            source_snapshot_id: projection._public_snapshot.id,
+            source_snapshot_hash: projection._public_snapshot.hash,
+            marketing_projection_version: projection._public_snapshot.schema_version,
+          } : {}),
+        },
       });
       return { status: 'published', external_id: 'queued_to_blog_publisher' };
     } catch (e) {

@@ -46,17 +46,17 @@ const BRAND_FALLBACK_IMAGE = '/logo.png';
 
 const OPTIONAL_TOUR_FRAGMENT_PATTERNS = [
   /노옵션/,
-  /포\s*함\s*내\s*역/,
-  /불\s*포\s*함\s*내\s*역/,
+  /선택\s*관광\s*(?:없음|없습니다|노옵션)/i,
+  /포\s*함\s*내\s*역|포함내역|불포함내역/,
   /^(?:차량|가이드|기사|상품가|출발일|예약금|유류할증료|포함|불포함)$/,
   /^\d{1,3}$/,
   /^\d{1,2}\s*월\s*\d{1,2}/,
-  /^\d{1,3}(?:,\d{3})*\s*원\s*\/?\s*인?$/,
-  /^000\s*원\s*\/?\s*인?$/,
+  /^\d{1,3}(?:,\d{3})*\s*원\s*\/?\s*인$/,
+  /^000\s*원\s*\/?\s*인$/,
 ];
 
 const RISKY_COPY_PATTERNS = [
-  /예약\s*즉시\s*항공\s*[·ㆍ,]\s*숙박\s*확보/,
+  /예약\s*즉시\s*(?:항공|좌석|숙박)\s*[·ㆍ,]?\s*(?:확보|확정)/,
   /즉시\s*확정/,
   /무조건\s*출발/,
   /최저가\s*보장/,
@@ -76,23 +76,24 @@ const PUBLIC_TEXT_BLOCKING_ISSUES = new Set([
 ]);
 
 const HIGH_RISK_OPERATIONAL_COPY_RE =
-  /환불\s*(?:은|이)?\s*절대\s*불가|환불\s*불가|취소\s*수수료.{0,12}100%|100%\s*차지|예약금|입금.{0,18}(?:좌석|예약|자동\s*취소|확정)|항공\s*요금.{0,12}입금|좌석.{0,12}(?:확정|확보|보장)|발권\s*마감|Decision\s*guide/i;
-const LOW_INFORMATION_RISK_RESIDUE_RE = /^(?:후|전)?\s*안내(?:드립니다|합니다)?\.?$/;
+  /환불\s*(?:불가|안내|규정)|취소\s*수수료.{0,12}100%|100%\s*차지|예약금\s*입금.{0,18}(?:좌석|예약|자동\s*취소|확정)|항공\s*요금.{0,12}입금|좌석.{0,12}(?:확정|확보|보장)|발권\s*마감|Decision\s*guide/i;
+const LOW_INFORMATION_RISK_RESIDUE_RE =
+  /^(?:예약\s*안내(?:드립니다|입니다)?\.?|안내|후\s*안내(?:드립니다|합니다)?\.?)$/;
 const LOW_INFORMATION_PUBLIC_ROUTE_TEXT_RE =
   /^(?:x{2,}|n\/a|none|null|undefined|unknown|미정|없음|-|\.{1,3})$/i;
 const PUBLIC_ROUTE_TEXT_STATUS_COPY_RE =
-  /(?:\bUNKNOWN\b|^※|요금표|선착순|무료\s*증정|팀\s*한정|방당|옵션\s*사전\s*포함|출발일별\s*가격\s*등록|(?:포함사항|불포함사항)\s*\d+\s*개\s*등록|세부\s*일정은\s*상품\s*상담\s*시\s*안내|사진\s*준비\s*중|이미지\s*준비\s*중)/i;
+  /(?:\bUNKNOWN\b|무료\s*증정|방당|옵션\s*사전\s*포함|출발일별\s*가격\s*등록|세부\s*일정은\s*상품\s*상담\s*시\s*안내|포함사항|불포함사항|사진\s*준비\s*중|이미지\s*준비\s*중)/i;
 const PUBLIC_ROUTE_TEXT_FRAGMENT_RE =
-  /^(?:\d{1,2}:\d{2}|[A-Z0-9]{2}\d{2,4}|[월화수목금토일](?:요일)?|호텔|패키지|여소남|또는 동급|[1-5]성)$/;
+  /^(?:\d{1,2}:\d{2}|[A-Z0-9]{2}\d{2,4}|[월화수목금토일](?:요일)?|호텔|패키지|여소남|동급|[1-5]성)$/;
 const PUBLIC_STRUCTURE_STRING_KEY_RE =
   /(?:^|_)(?:id|ids|hash|url|urls|src|slug|icon|date|day|count|status|source|type|currency)$/i;
 
-const SAFE_RESERVATION_NOTICE = '예약 가능 여부는 담당자 확인 후 안내됩니다.';
+const SAFE_RESERVATION_NOTICE = '예약 가능 여부는 담당자 확인 후 안내드립니다.';
 const APPROVED_OPERATIONAL_NOTICE_TEMPLATES: Record<PublicNoticeTemplateKey, PublicNoticeCandidate> = {
   reservation_availability_check: {
     type: 'INFO',
-    title: '예약 전 확인',
-    text: '항공 좌석과 요금은 상담 후 최종 확인됩니다.',
+    title: '예약 가능 여부 확인',
+    text: '항공 좌석과 객실 가능 여부는 상담 후 최종 확인됩니다.',
     category: 'reservation',
     values: {},
     template_key: 'reservation_availability_check',
@@ -112,7 +113,7 @@ const APPROVED_OPERATIONAL_NOTICE_TEMPLATES: Record<PublicNoticeTemplateKey, Pub
   shopping_disclosure_check: {
     type: 'INFO',
     title: '쇼핑 일정 안내',
-    text: '쇼핑 일정이 포함될 수 있습니다. 방문 횟수와 품목은 상담 시 확인해 주세요.',
+    text: '쇼핑 일정이 포함될 수 있습니다. 방문 횟수와 품목은 상담 후 확인해 주세요.',
     category: 'shopping',
     values: {},
     template_key: 'shopping_disclosure_check',
@@ -272,18 +273,6 @@ function noticeTemplatesForSourceText(text: string, path: string): PublicNoticeT
     keys.push('passport_validity_check');
   }
 
-  if (/예약\s*즉시|즉시\s*확정|출발\s*확정|좌석\s*(?:확보|확정|보장)|항공\s*요금|발권|예약금|입금/i.test(text)) {
-    keys.push('reservation_availability_check');
-  }
-  if (/취소|환불|수수료|차지|위약/i.test(text)) {
-    keys.push('cancellation_policy_check');
-  }
-  if (/쇼핑|라텍스|침향|보이차|보석|잡화|농산물|휴게소/i.test(text)) {
-    keys.push('shopping_disclosure_check');
-  }
-  if (/여권|비자|입국|출국/i.test(text)) {
-    keys.push('passport_validity_check');
-  }
   return keys;
 }
 
@@ -618,7 +607,7 @@ export function classifyOptionalTours(input: {
 } {
   const rawText = input.rawText ?? '';
   const tours = Array.isArray(input.optionalTours) ? input.optionalTours : [];
-  const noOptionExplicit = /(?:선택\s*관광|선택옵션|옵션)\s*[:：]?\s*노옵션|노옵션\s*상품|노팁\s*[·ㆍ/&]?\s*노옵션/.test(rawText);
+  const noOptionExplicit = /(?:선택\s*관광|선택\s*옵션|옵션)\s*[:：]?\s*노옵션|노옵션\s*상품|노팁\s*[·ㆍ&]?\s*노옵션/.test(rawText);
   const pollutedTours = tours.filter(isOptionalTourFragment);
   const publicTours = tours.filter(tour => !isOptionalTourFragment(tour) && hasOptionalTourPrice(tour));
 
@@ -634,11 +623,10 @@ export function classifyOptionalTours(input: {
   if (publicTours.length > 0) return { status: 'paid_options', publicTours, pollutedTours: [], badges: [] };
   return { status: 'unknown', publicTours: [], pollutedTours: [], badges: [] };
 }
-
 function destinations(pkg: AnyRecord): string[] {
   const destination = asString(pkg.destination);
   if (!destination) return [];
-  return destination.split(/[\/,·&]+/).map(part => part.trim()).filter(Boolean);
+  return destination.split(/[\\/,·&]+/).map(part => part.trim()).filter(Boolean);
 }
 
 function priceDisplay(pkg: AnyRecord): string | null {
@@ -813,18 +801,21 @@ function sourceBundle(pkg: AnyRecord): string {
   ].map(normalizeText).filter(Boolean).join(' ');
 }
 
-function titleDestination(pkg: AnyRecord, sourceText: string): string | null {
-  const destination = firstNonEmpty(pkg.destination);
-  const cleanDestination = destination
-    ?.replace(/\s*\/\s*/g, '·')
-    .replace(/\s+/g, ' ')
-    .trim() ?? '';
+function titleDestination(pkg: AnyRecord): string | null {
+  const cleanDestination = normalizeText(pkg.destination).replace(/\s*\/\s*/g, '·').replace(/\s+/g, ' ').trim();
+  const sourceText = normalizeText([
+    pkg.title,
+    pkg.display_title,
+    pkg.destination,
+    pkg.raw_text,
+    JSON.stringify(pkg.itinerary_data ?? {}),
+  ].join(' '));
 
-  if (/연길|백두산|장백산/.test(cleanDestination + sourceText)) return '연길·백두산';
-  if (/하노이|하롱|하롱베이/.test(cleanDestination + sourceText)) return '하노이·하롱베이';
+  if (/연길|백두산/.test(cleanDestination + sourceText)) return '연길·백두산';
+  if (/하노이|하롱/.test(cleanDestination + sourceText)) return '하노이·하롱베이';
   if (/나트랑|달랏/.test(cleanDestination + sourceText)) return '나트랑·달랏';
   if (/다낭|호이안/.test(cleanDestination + sourceText)) return '다낭·호이안';
-  if (/후쿠오카|유후인|벳부|규슈|큐슈/.test(cleanDestination + sourceText)) return /규슈|큐슈/.test(cleanDestination) ? '규슈' : '후쿠오카·규슈';
+  if (/규슈|후쿠오카|벳부|유후인/.test(cleanDestination + sourceText)) return /규슈|후쿠오카/.test(cleanDestination) ? cleanDestination : '후쿠오카·규슈';
   if (/북해도|홋카이도|삿포로/.test(cleanDestination + sourceText)) return '북해도';
   if (/보홀/.test(cleanDestination + sourceText)) return '보홀';
   if (/세부/.test(cleanDestination + sourceText)) return '세부';
@@ -840,19 +831,18 @@ function titleCondition(sourceText: string, optionBadges: string[]): string | nu
 
 function titleTheme(sourceText: string, destination: string): string {
   const onsenCount = (sourceText.match(/온천/g) ?? []).length;
-  const hasStrongOnsen = onsenCount >= 2 && /온천(?:호텔|료칸|숙박|마을|지구|대표|테마)/.test(sourceText);
+  const hasStrongOnsen = onsenCount >= 2 && /온천(?:호텔|료칸|숙박|마을|지구|테마)/.test(sourceText);
   if (hasStrongOnsen && !/연길·백두산/.test(destination)) return '온천·관광';
   if (/골프|CC|라운딩/.test(sourceText)) return '골프';
-  if (/호핑|스노클|해변|리조트|자유일정|자유시간/.test(sourceText)) return '휴양관광';
+  if (/호핑|스노클링|리조트|자유일정|자유시간/.test(sourceText)) return '휴양관광';
   return '핵심관광';
 }
-
 function composePublicTitle(pkg: AnyRecord, optionBadges: string[]): string {
   const policyTitle = composeCustomerPublicTitle(pkg, optionBadges);
   if (policyTitle) return policyTitle;
 
   const sourceText = sourceBundle(pkg);
-  const destination = titleDestination(pkg, sourceText);
+  const destination = titleDestination(pkg);
   const duration = formatDuration(pkg);
   if (!destination || !duration) return '';
   const condition = titleCondition(sourceText, optionBadges);

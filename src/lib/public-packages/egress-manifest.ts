@@ -1,5 +1,11 @@
 export type PublicEgressAudience = 'customer' | 'partner' | 'marketing' | 'internal';
 export type PublicProjection = 'card' | 'detail' | 'public_api' | 'marketing' | 'partner' | 'none';
+export type PublicEgressClassification =
+  | 'direct_external'
+  | 'indirect_external'
+  | 'internal_admin'
+  | 'internal_analytics'
+  | 'ingestion_or_audit';
 
 export type PublicEgressEntry = {
   file: string;
@@ -7,7 +13,11 @@ export type PublicEgressEntry = {
   projection: PublicProjection;
   rawRead: 'forbidden' | 'selection_only' | 'internal';
   canExport: boolean;
+  classification?: PublicEgressClassification;
   owner: string;
+  reason?: string;
+  allowedFields?: string[];
+  reviewBy?: string;
   lastVerifiedCommit: string;
   screenshotProof: string | null;
   expiresAt?: string;
@@ -66,6 +76,11 @@ export const PUBLIC_EGRESS_MANIFEST: PublicEgressEntry[] = [
   { file: 'src/app/api/cron/trend-topic-miner/route.ts', audience: 'marketing', projection: 'card', rawRead: 'selection_only', canExport: true, owner: 'content-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },
   { file: 'src/app/api/cron/threads-trend-miner/route.ts', audience: 'marketing', projection: 'card', rawRead: 'selection_only', canExport: true, owner: 'content-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },
   { file: 'src/app/api/cron/blog-publisher/route.ts', audience: 'marketing', projection: 'marketing', rawRead: 'selection_only', canExport: true, owner: 'content-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },
+  { file: 'src/app/api/content-analytics/route.ts', audience: 'internal', projection: 'marketing', rawRead: 'forbidden', canExport: false, classification: 'internal_analytics', owner: 'content-platform', reason: 'Internal reporting API may show only blog metrics plus public package projection labels; it must not feed external copy generation.', allowedFields: ['content_creatives.id', 'slug', 'seo_title', 'angle_type', 'product_id', 'published_at', 'published_public_package_marketing_v1.marketing_projection'], reviewBy: '2026-09-30', lastVerifiedCommit: '170dd1b4', screenshotProof: null, expiresAt: '2026-09-30' },
+  { file: 'src/app/api/cron/blog-regenerate-zero-click/route.ts', audience: 'marketing', projection: 'none', rawRead: 'forbidden', canExport: true, classification: 'indirect_external', owner: 'content-platform', reason: 'Zero-click regeneration handles destination-only info posts and must not join raw package copy.', allowedFields: ['content_creatives.id', 'slug', 'seo_title', 'seo_description', 'blog_html', 'destination', 'angle_type', 'product_id'], reviewBy: '2026-09-30', lastVerifiedCommit: '170dd1b4', screenshotProof: null },
+  { file: 'src/app/api/cron/blog-lifecycle/route.ts', audience: 'marketing', projection: 'public_api', rawRead: 'forbidden', canExport: true, classification: 'indirect_external', owner: 'content-platform', reason: 'Product-backed blog lifecycle decisions must use published public snapshot projections, never raw travel_packages fields.', allowedFields: ['content_creatives.id', 'slug', 'product_id', 'published_public_package_api_v1.public_api_projection'], reviewBy: '2026-09-30', lastVerifiedCommit: '170dd1b4', screenshotProof: null },
+  { file: 'src/lib/social-publishing/distribution-publisher.ts', audience: 'marketing', projection: 'marketing', rawRead: 'forbidden', canExport: true, classification: 'direct_external', owner: 'social-publishing', reason: 'Social/blog distribution is an external publisher and must require current marketing projection snapshot id/hash before publishing product-backed content.', allowedFields: ['content_creatives.id', 'slug', 'status', 'blog_html', 'seo_title', 'seo_description', 'destination', 'angle_type', 'product_id', 'source_snapshot_id', 'source_snapshot_hash', 'marketing_projection_version', 'published_public_package_marketing_v1.marketing_projection'], reviewBy: '2026-09-30', lastVerifiedCommit: '170dd1b4', screenshotProof: null },
+  { file: 'src/app/admin/blog/BlogDataFetcher.tsx', audience: 'internal', projection: 'marketing', rawRead: 'forbidden', canExport: false, classification: 'internal_admin', owner: 'content-platform', reason: 'Admin blog list may inspect internal blog rows, but customer preview labels must come from public package projections.', allowedFields: ['content_creatives.id', 'slug', 'seo_title', 'status', 'category', 'published_at', 'created_at', 'view_count', 'topic_source', 'product_id', 'published_public_package_marketing_v1.marketing_projection'], reviewBy: '2026-09-30', lastVerifiedCommit: '170dd1b4', screenshotProof: null, expiresAt: '2026-09-30' },
   { file: 'src/app/api/products/stub/route.ts', audience: 'internal', projection: 'none', rawRead: 'internal', canExport: false, owner: 'package-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null, expiresAt: '2026-09-30' },
   { file: 'src/lib/jarvis/agents/products.ts', audience: 'internal', projection: 'none', rawRead: 'internal', canExport: false, owner: 'ai-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null, expiresAt: '2026-09-30' },
   { file: 'src/app/api/content-queue/route.ts', audience: 'marketing', projection: 'card', rawRead: 'forbidden', canExport: true, owner: 'content-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },

@@ -149,7 +149,7 @@ async function runRegenerator(request: NextRequest) {
     // 3) content_creatives 매칭 — info 글(product_id NULL)만
     const { data: posts, error: postErr } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, travel_packages(destination)')
+      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id')
       .in('slug', candidateSlugs)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
@@ -215,9 +215,13 @@ async function runRegenerator(request: NextRequest) {
           continue;
         }
 
-        const dest = (Array.isArray(post.travel_packages)
-          ? post.travel_packages[0]?.destination
-          : post.travel_packages?.destination) ?? post.destination ?? null;
+        if (post.product_id) {
+          await updateLog({ gate_summary: 'product_linked_post_requires_public_snapshot_regeneration' });
+          results.push({ slug, status: 'gate_failed', reason: 'product-linked posts must be regenerated from a current public package projection' });
+          continue;
+        }
+
+        const dest = post.destination ?? null;
 
         const prepared = await prepareBlogForPublish({
           id: post.id,

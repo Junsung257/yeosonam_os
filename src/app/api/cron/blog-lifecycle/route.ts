@@ -5,6 +5,7 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { logError } from '@/lib/sentry-logger';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { getPublishedPackagePublicApi } from '@/lib/public-packages';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ const getHandler = async (request: NextRequest) => {
   try {
     const { data: posts, error } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, product_id, travel_packages(id, status, ticketing_deadline, price_dates)')
+      .select('id, slug, product_id')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .not('product_id', 'is', null);
@@ -34,25 +35,28 @@ const getHandler = async (request: NextRequest) => {
       return { archivedCount: 0, message: 'No product-linked posts' };
     }
 
+    const productIds = [...new Set((posts as Array<{ product_id?: string | null }>)
+      .map(post => post.product_id)
+      .filter((id): id is string => Boolean(id)))];
+    const publicPackages = new Map(
+      (await getPublishedPackagePublicApi(supabaseAdmin, productIds))
+        .map(pkg => [String(pkg.package_id), pkg] as const),
+    );
+
     const toArchive: Array<{ id: string; slug: string; reason: string }> = [];
 
     for (const post of posts) {
-      const pkg = Array.isArray(post.travel_packages) ? post.travel_packages[0] : post.travel_packages;
+      const productId = typeof post.product_id === 'string' ? post.product_id : null;
+      const pkg = productId ? publicPackages.get(productId) : null;
       if (!pkg) {
-        toArchive.push({ id: post.id, slug: post.slug, reason: 'linked_product_missing' });
-        continue;
-      }
-
-      if (pkg.status === 'archived' || pkg.status === 'rejected') {
-        toArchive.push({ id: post.id, slug: post.slug, reason: `product_${pkg.status}` });
+        toArchive.push({ id: post.id, slug: post.slug, reason: 'published_public_snapshot_missing' });
         continue;
       }
 
       const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates as Array<{ date?: string }> : [];
       const futureDates = priceDates.filter((priceDate) => priceDate.date && priceDate.date >= today);
-      const deadlineAlive = pkg.ticketing_deadline && pkg.ticketing_deadline >= today;
 
-      if (futureDates.length === 0 && !deadlineAlive && priceDates.length > 0) {
+      if (futureDates.length === 0 && priceDates.length > 0) {
         toArchive.push({ id: post.id, slug: post.slug, reason: 'all_dates_past' });
       }
     }

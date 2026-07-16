@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getPublishedPackageMarketingClaims } from '@/lib/public-packages';
 
 /**
  * 콘텐츠 성과 분석 API
@@ -49,12 +50,20 @@ export async function GET(request: NextRequest) {
     // 뷰 실패 시 fallback: 기본 콘텐츠 목록만 반환
     const { data: creatives } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, angle_type, product_id, published_at, travel_packages(title, destination)')
+      .select('id, slug, seo_title, angle_type, product_id, published_at')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
       .limit(limit);
+
+    const productIds = [...new Set((creatives || [])
+      .map((creative: Record<string, unknown>) => typeof creative.product_id === 'string' ? creative.product_id : null)
+      .filter((id): id is string => Boolean(id)))];
+    const publicPackages = new Map(
+      (await getPublishedPackageMarketingClaims(supabaseAdmin, productIds))
+        .map(row => [String(row.package_id), row] as const),
+    );
 
     return NextResponse.json({
       analytics: (creatives || []).map((c: Record<string, unknown>) => ({
@@ -63,8 +72,8 @@ export async function GET(request: NextRequest) {
         seo_title: c.seo_title,
         angle_type: c.angle_type,
         product_id: c.product_id,
-        package_title: c.travel_packages ? (c.travel_packages as Record<string, unknown>).title : null,
-        destination: c.travel_packages ? (c.travel_packages as Record<string, unknown>).destination : null,
+        package_title: typeof c.product_id === 'string' ? publicPackages.get(c.product_id)?.title ?? null : null,
+        destination: typeof c.product_id === 'string' ? publicPackages.get(c.product_id)?.destination ?? null : null,
         published_at: c.published_at,
         traffic_count: 0,
         first_touch_conversions: 0,

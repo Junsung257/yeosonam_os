@@ -14,6 +14,11 @@ const PUBLICATION_EGRESS_PREFIXES = [
   'src/app/api/cron/trend-topic-miner/',
   'src/app/api/cron/threads-trend-miner/',
   'src/app/api/cron/blog-publisher/',
+  'src/app/api/cron/blog-regenerate-zero-click/',
+  'src/app/api/cron/blog-lifecycle/',
+  'src/app/api/content-analytics/',
+  'src/app/admin/blog/',
+  'src/lib/social-publishing/',
 ];
 
 function toPosixPath(value: string): string {
@@ -51,6 +56,11 @@ describe('public package egress boundary', () => {
       expect(fs.existsSync(path.join(ROOT, entry.file)), `missing file: ${entry.file}`).toBe(true);
       expect(entry.owner.trim()).not.toBe('');
       expect(entry.lastVerifiedCommit.trim()).not.toBe('');
+      if (entry.classification) {
+        expect(entry.reason?.trim(), `${entry.file} must explain its egress classification`).toBeTruthy();
+        expect(entry.reviewBy, `${entry.file} must have a review date`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(entry.allowedFields?.length, `${entry.file} must declare allowed raw/projection fields`).toBeGreaterThan(0);
+      }
       if (entry.rawRead === 'internal') {
         expect(entry.audience).toBe('internal');
         expect(entry.canExport).toBe(false);
@@ -65,9 +75,6 @@ describe('public package egress boundary', () => {
       expect(source, `${entry.file} must use the central public read model`).toMatch(
         /(?:@\/lib\/public-packages|\.\/public-packages|\.\.\/public-packages|@\/lib\/content-public-package|buildAndSaveSearchAdPackagePlan)/,
       );
-      expect(source, `${entry.file} must not join raw customer copy`).not.toMatch(
-        /travel_packages(?:!inner|:package_id)?\s*\([^)]*(?:title|product_summary|price|optional_tours|itinerary_data)/s,
-      );
       expect(source, `${entry.file} must not fall back from a projection to raw package copy`).not.toMatch(
         /(?:card_projection|marketing_projection|partner_projection|public_api_projection)[^\n]*\?\?[^\n]*(?:travelPackage|travel_packages|rawPackage)/,
       );
@@ -75,7 +82,11 @@ describe('public package egress boundary', () => {
         ".from('public_package_snapshots')",
       );
       if (entry.rawRead === 'forbidden') {
+        expect(source, `${entry.file} must not join raw customer copy`).not.toMatch(
+          /travel_packages(?:!inner|:package_id)?\s*\([^)]*(?:title|destination|product_summary|price|price_dates|ticketing_deadline|optional_tours|itinerary_data|status)/s,
+        );
         expect(source, `${entry.file} must not read travel_packages`).not.toContain(".from('travel_packages')");
+        expect(source, `${entry.file} must not embed travel_packages joins`).not.toContain('travel_packages(');
       }
     }
   });

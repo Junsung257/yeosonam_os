@@ -45,7 +45,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const PUBLIC_TITLE_DURATION_RE = /\d+\s*박\s*\d+\s*일|\d+\s*일/;
 const INTERNAL_ENGLISH_RE = /\bDecision\s*guide\b|\boperator\b|\binternal\b|\bpublish_gate\b/i;
 const RAW_OPERATIONAL_POLLUTION_RE =
-  /환불\s*(?:은|이)?\s*절대\s*불가|환불\s*불가|취소\s*수수료.{0,12}100%|100%\s*차지|예약금|입금.{0,18}(?:좌석|예약|자동\s*취소|확정)|항공\s*요금.{0,12}입금|좌석.{0,12}(?:확정|확보|보장)|발권\s*마감|Decision\s*guide/i;
+  /환불\s*(?:불가|안내|규정)|취소\s*수수료.{0,12}100%|100%\s*차지|예약금\s*입금.{0,18}(?:좌석|예약|자동\s*취소|확정)|항공\s*요금.{0,12}입금|좌석.{0,12}(?:확정|확보|보장)|발권\s*마감|Decision\s*guide/i;
 const RAW_CUSTOMER_COPY_ROOTS = [
   'itinerary_data',
   'marketing_copies',
@@ -255,13 +255,13 @@ function unsupportedClaimInSurface(surface: CustomerClaimSurface, sourceText: st
   const onsenEvidenceCount = (sourceText.match(/온천/g) ?? []).length;
   const strongOnsenEvidence = onsenEvidenceCount >= 2
     && (/(?:온천\s*1박|온천욕)/.test(sourceText)
-      || /온천\s*(?:호텔|료칸|숙박|마을|지구|대표|테마|리조트|여행|관광|도시|욕)|(?:벳부|유후인|쿠로가와|노보리베츠|죠잔케이|료칸)/.test(sourceText));
+      || /온천\s*(?:호텔|료칸|숙박|마을|지구|테마|리조트|여행|관광)/.test(sourceText));
   if (hasOnsen && !strongOnsenEvidence) {
     return `${surface.label} claims onsen as a theme without strong source evidence`;
   }
-  const hasHotelGrade = /(?:준\s*5성|정\s*5성|5성|오성|특급\s*호텔|특급호텔)/.test(text);
+  const hasHotelGrade = /(?:준\s*5성|특\s*5성|5성|오성|특급\s*호텔|특급호텔)/.test(text);
   const hotelGradeEvidence =
-    /(?:호텔|리조트|숙박|동급).{0,16}(?:준\s*5성|정\s*5성|5성|오성)|(?:준\s*5성|정\s*5성|5성|오성).{0,16}(?:호텔|리조트|숙박|동급|월드체인)|특급\s*호텔|특급호텔/.test(sourceText);
+    /(?:호텔|리조트|숙박|동급).{0,16}(?:준\s*5성|특\s*5성|5성|오성)|(?:준\s*5성|특\s*5성|5성|오성).{0,16}(?:호텔|리조트|숙박|동급|월드체인)|특급\s*호텔|특급호텔/.test(sourceText);
   if (hasHotelGrade && !hotelGradeEvidence) {
     return `${surface.label} claims 5-star or premium hotel grade without hotel-grade evidence`;
   }
@@ -270,7 +270,6 @@ function unsupportedClaimInSurface(surface: CustomerClaimSurface, sourceText: st
   }
   return null;
 }
-
 function customerClaimSurfaces(input: PublicSnapshotGateInput): CustomerClaimSurface[] {
   const pkg = input.pkg;
   const card = asRecord(pkg._card_projection);
@@ -332,7 +331,7 @@ function findUnsupportedCustomerClaim(input: PublicSnapshotGateInput): { message
   const hasPaidOptionalTour = (Array.isArray(pkg.optional_tours) ? pkg.optional_tours : []).some(item => {
     const record = asRecord(item);
     const itemText = String(record?.name ?? record?.title ?? item ?? '');
-    return Number(record?.price ?? record?.amount) > 0 || /(?:USD|KRW|달러|원)/i.test(itemText);
+    return Number(record?.price ?? record?.amount) > 0 || /(?:USD|KRW|달러|원|현지\s*별도\s*문의)/i.test(itemText);
   });
   const publicTitle = String(input.publicSnapshotTitle ?? input.pkg.display_title ?? input.pkg.title ?? '');
   const [unsupportedRegisteredClaim] = unsupportedTitleClaims(publicTitle, {
@@ -433,16 +432,16 @@ function requiredActionsForBlockers(blockers: PublishFinding[]): string[] {
     switch (blocker.code) {
       case 'price_source_missing':
       case 'price_fragment_display':
-        add('원문 가격표에서 출발일·성인 판매가·1인 기준을 재추출해 price_dates/product_prices를 source-backed 값으로 재생성하세요.');
+        add('원문 가격표에서 출발일·성인 판매가·1인 기준을 source-backed 값으로 다시 추출해 price_dates/product_prices를 재생성하세요.');
         break;
       case 'optional_tour_display_pollution':
       case 'masked_data_pollution':
       case 'inclusion_optional_mixup':
-        add('선택관광/포함/불포함 섹션을 다시 분리하고 노옵션·가격표·헤더 조각은 quarantine한 뒤 public optional/terms 필드를 재생성하세요.');
+        add('선택관광·포함·불포함 섹션을 다시 분리하고 노옵션·가격표·헤더 조각은 quarantine한 뒤 public optional/terms 필드를 재생성하세요.');
         break;
       case 'unsupported_title_claim':
       case 'public_title_missing':
-        add('목적지·검증된 유리한 조건·핵심 여행 성격·기간만 사용해 public_title을 정책 기반으로 재생성하세요.');
+        add('목적지, 검증된 유리한 조건, 핵심 여행 성격, 기간만 사용해 public_title을 정책 기반으로 재생성하세요.');
         break;
       case 'unsupported_customer_claim':
       case 'risky_reservation_claim':
@@ -450,16 +449,16 @@ function requiredActionsForBlockers(blockers: PublishFinding[]): string[] {
       case 'placeholder_or_mojibake':
       case 'customer_forbidden_internal_terms':
       case 'internal_source_copy':
-        add('CTA/설명/배지/route_text_dump를 승인된 고객용 템플릿으로 다시 만들고 확정·보장·내부·placeholder 문구를 제거하세요.');
+        add('CTA, 설명, 배지, route_text_dump를 승인된 고객용 템플릿으로 다시 만들고 확정·보장·내부·placeholder 문구를 제거하세요.');
         break;
       case 'broken_attraction_id':
-        add('깨진 attraction_id를 quarantine하고 원문 관광지명을 기존 attractions DB에 재매칭하세요. 불확실하면 고객 이미지/설명에 쓰지 마세요.');
+        add('깨진 attraction_id를 quarantine하고 원문 관광지명을 기존 attractions DB에 재매칭하세요. 불확실하면 고객 이미지/설명에 연결하지 마세요.');
         break;
       case 'public_image_missing':
         add('상품 대표 관광지, 목적지 metadata, 상품 썸네일 중 실제 포함 경험을 암시하지 않는 승인 이미지를 연결하세요.');
         break;
       case 'itinerary_duration_mismatch':
-        add('원문 일정 섹션을 DAY 단위로 재분리하고 상품 기간과 일정 일수를 맞춘 itinerary_public을 재생성하세요.');
+        add('원문 일정 섹션을 DAY 단위로 재분리하고 상품 기간과 일정 일수를 맞춰 itinerary_public을 재생성하세요.');
         break;
       case 'audit_query_failed':
         add('감사 쿼리 실패 원인을 먼저 복구하세요. 감사가 실패하면 public snapshot은 fail-closed 상태를 유지합니다.');
@@ -479,7 +478,6 @@ function requiredActionsForBlockers(blockers: PublishFinding[]): string[] {
   if (actions.length > 0) add('수정 후 publish gate를 다시 실행하세요.');
   return actions;
 }
-
 export function evaluatePublicSnapshotPublishGate(input: PublicSnapshotGateInput): PublicSnapshotGateResult {
   const hard: PublishFinding[] = [];
   const soft: PublishFinding[] = [];
