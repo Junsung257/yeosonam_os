@@ -4,6 +4,10 @@ import {
   validateBlogInformationResearchBundle,
   type BlogInformationResearchBundle,
 } from './blog-information-evidence';
+import {
+  resolveBlogInformationOfficialSourceTrust,
+  type BlogInformationOfficialSourceRegistryEntry,
+} from './blog-information-official-source';
 
 export interface PersistedBlogInformationResearch {
   sourceIds: Record<string, string>;
@@ -24,6 +28,34 @@ export async function persistBlogInformationResearch(
     throw new Error(`blog_information_evidence_invalid:${validation.issues.join(',')}`);
   }
 
+  const officialSources = bundle.sources.filter((source) =>
+    source.authorityLevel === 'official_primary' || source.authorityLevel === 'official_secondary');
+  const { data: registryRows, error: registryError } = officialSources.length > 0
+    ? await supabaseAdmin
+        .from('blog_information_official_source_registry')
+        .select('id, hostname, source_type, authority_level, allow_subdomains')
+        .eq('status', 'active')
+    : { data: [], error: null };
+  if (registryError) throwPersistenceError('official_registry', registryError);
+  const registry = (registryRows ?? []).map((row) => ({
+    id: String(row.id),
+    hostname: String(row.hostname),
+    sourceType: row.source_type,
+    authorityLevel: row.authority_level,
+    allowSubdomains: Boolean(row.allow_subdomains),
+  })) as BlogInformationOfficialSourceRegistryEntry[];
+  const officialTrustBySourceKey = new Map(officialSources.map((source) => {
+    const trust = resolveBlogInformationOfficialSourceTrust({
+      sourceUrl: source.sourceUrl,
+      sourceType: source.sourceType,
+      registry,
+    });
+    if (!trust) {
+      throw new Error(`blog_information_official_source_untrusted:${source.sourceKey}`);
+    }
+    return [source.sourceKey, trust] as const;
+  }));
+
   const common = {
     tenant_id: bundle.tenantId ?? null,
   };
@@ -34,6 +66,7 @@ export async function persistBlogInformationResearch(
     site_scope: siteScope,
     source_type: source.sourceType,
     authority_level: source.authorityLevel,
+    official_source_registry_id: officialTrustBySourceKey.get(source.sourceKey)?.registryId ?? null,
     source_url: source.sourceUrl ?? null,
     internal_identifier: source.internalIdentifier ?? null,
     publisher: source.publisher,
@@ -81,6 +114,7 @@ export async function persistBlogInformationResearch(
     content_hash: source.contentHash.toLowerCase(),
     source_type: source.sourceType,
     authority_level: source.authorityLevel,
+    official_source_registry_id: officialTrustBySourceKey.get(source.sourceKey)?.registryId ?? null,
     source_url: source.sourceUrl ?? null,
     internal_identifier: source.internalIdentifier ?? null,
     publisher: source.publisher,

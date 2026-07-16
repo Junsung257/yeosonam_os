@@ -18,15 +18,25 @@ describe('blog information URL policy', () => {
     })).toBe('https://pf.kakao.com/_verified/chat');
   });
 
-  it('requires pinned provenance and a public HTTPS host for official sources', () => {
+  it('requires an exact reviewed registry host for official sources', () => {
     expect(normalizeBlogInformationExternalUrl({
-      kind: 'OFFICIAL_SOURCE', value: 'https://www.mofa.go.jp/entry', evidencePinnedOfficial: true,
+      kind: 'OFFICIAL_SOURCE', value: 'https://www.mofa.go.jp/entry',
+      officialRegistryHostname: 'www.mofa.go.jp',
     })).toBe('https://www.mofa.go.jp/entry');
     expect(normalizeBlogInformationExternalUrl({
-      kind: 'OFFICIAL_SOURCE', value: 'https://www.mofa.go.jp/entry', evidencePinnedOfficial: false,
+      kind: 'OFFICIAL_SOURCE', value: 'https://www.mofa.go.jp/entry', evidencePinnedOfficial: true,
     })).toBeNull();
     expect(normalizeBlogInformationExternalUrl({
-      kind: 'OFFICIAL_SOURCE', value: 'https://127.0.0.1/private', evidencePinnedOfficial: true,
+      kind: 'OFFICIAL_SOURCE', value: 'https://government.example.evil.com/path',
+      officialRegistryHostname: 'government.example',
+    })).toBeNull();
+    expect(normalizeBlogInformationExternalUrl({
+      kind: 'OFFICIAL_SOURCE', value: 'https://user@www.mofa.go.jp/entry',
+      officialRegistryHostname: 'www.mofa.go.jp',
+    })).toBeNull();
+    expect(normalizeBlogInformationExternalUrl({
+      kind: 'OFFICIAL_SOURCE', value: 'https://127.0.0.1/private',
+      officialRegistryHostname: '127.0.0.1',
     })).toBeNull();
   });
 

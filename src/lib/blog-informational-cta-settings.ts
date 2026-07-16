@@ -11,6 +11,8 @@ export function loadBlogInformationalCtaSettings(input: {
   destination?: string | null;
   relatedArticlesHref?: string | null;
   officialSourceUrl?: string | null;
+  officialSourceRegistryHostname?: string | null;
+  officialSourceAllowSubdomains?: boolean;
 }): BlogInformationalCtaDefinition[] {
   return buildBlogInformationalCtaSettings({
     ...input,
@@ -25,9 +27,12 @@ export function loadBlogInformationalCtaSettings(input: {
 export async function loadBlogInformationalOfficialSourceUrl(input: {
   creativeId: string;
   generationMeta?: Record<string, unknown> | null;
-}): Promise<string | null> {
-  const fromMeta = readBlogInformationalOfficialSourceUrl(input.generationMeta);
-  if (fromMeta) return fromMeta;
+}): Promise<{
+  url: string;
+  registryHostname: string;
+  allowSubdomains: boolean;
+} | null> {
+  void readBlogInformationalOfficialSourceUrl(input.generationMeta);
   try {
     const { data: claims, error: claimsError } = await supabaseAdmin
       .from('blog_information_claims')
@@ -52,20 +57,38 @@ export async function loadBlogInformationalOfficialSourceUrl(input: {
     if (!versionIds.length) return null;
     const { data: versions, error: versionsError } = await supabaseAdmin
       .from('blog_information_source_versions')
-      .select('source_url, authority_level, status, retrieved_at')
+      .select('source_url, authority_level, status, retrieved_at, official_source_registry_id')
       .in('id', versionIds)
       .eq('authority_level', 'official_primary')
       .eq('status', 'active')
       .order('retrieved_at', { ascending: false })
       .limit(10);
     if (versionsError) return null;
+    const registryIds = [...new Set((versions ?? [])
+      .map((version) => version.official_source_registry_id)
+      .filter((id): id is string => Boolean(id)))];
+    if (!registryIds.length) return null;
+    const { data: registry, error: registryError } = await supabaseAdmin
+      .from('blog_information_official_source_registry')
+      .select('id, hostname, allow_subdomains')
+      .in('id', registryIds)
+      .eq('status', 'active');
+    if (registryError) return null;
+    const registryById = new Map((registry ?? []).map((entry) => [entry.id, entry]));
     for (const version of versions ?? []) {
+      const registryEntry = registryById.get(version.official_source_registry_id);
+      if (!registryEntry) continue;
       const url = normalizeBlogInformationExternalUrl({
         kind: 'OFFICIAL_SOURCE',
         value: version.source_url,
-        evidencePinnedOfficial: true,
+        officialRegistryHostname: registryEntry.hostname,
+        allowOfficialSubdomains: registryEntry.allow_subdomains,
       });
-      if (url) return url;
+      if (url) return {
+        url,
+        registryHostname: registryEntry.hostname,
+        allowSubdomains: registryEntry.allow_subdomains,
+      };
     }
     return null;
   } catch {

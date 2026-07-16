@@ -42,6 +42,8 @@ export interface BlogInformationalCtaSettingsInput {
   consultationUrl?: string | null;
   kakaoChannelId?: string | null;
   officialSourceUrl?: string | null;
+  officialSourceRegistryHostname?: string | null;
+  officialSourceAllowSubdomains?: boolean;
 }
 
 export interface BlogInformationalCtaSelectionInput {
@@ -140,7 +142,8 @@ export function buildBlogInformationalCtaSettings(
       normalizeBlogInformationExternalUrl({
         kind: 'OFFICIAL_SOURCE',
         value: input.officialSourceUrl,
-        evidencePinnedOfficial: true,
+        officialRegistryHostname: input.officialSourceRegistryHostname,
+        allowOfficialSubdomains: input.officialSourceAllowSubdomains,
       }),
       true,
     ),
@@ -219,18 +222,7 @@ export function stripBlogInformationalBodyCtas(markdown: string): string {
 export function readBlogInformationalOfficialSourceUrl(
   generationMeta?: Record<string, unknown> | null,
 ): string | null {
-  const items = Array.isArray(generationMeta?.evidence_items) ? generationMeta.evidence_items : [];
-  for (const item of items) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const record = item as Record<string, unknown>;
-    if (record.kind !== 'official_source' || typeof record.url !== 'string') continue;
-    const normalized = normalizeBlogInformationExternalUrl({
-      kind: 'OFFICIAL_SOURCE',
-      value: record.url,
-      evidencePinnedOfficial: true,
-    });
-    if (normalized) return normalized;
-  }
+  void generationMeta;
   return null;
 }
 

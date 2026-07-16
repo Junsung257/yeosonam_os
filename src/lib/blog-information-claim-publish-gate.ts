@@ -11,6 +11,7 @@ import type {
   BlogInformationEvidenceScope,
   BlogInformationExtractedValue,
 } from './blog-information-evidence';
+import { isOfficialInformationAuthority } from './blog-information-evidence';
 import type { BlogInformationClaimLedgerEntry } from './blog-information-claim-ledger';
 import { createBlogInformationContentFingerprint } from './blog-information-review-workflow';
 
@@ -160,10 +161,22 @@ async function loadPersistedClaimRecords(
   const { data: sourceVersions, error: sourceVersionsError } = sourceVersionIds.length > 0
     ? await supabaseAdmin
         .from('blog_information_source_versions')
-        .select('id, source_id, authority_level, retrieved_at, valid_until, status')
+        .select('id, source_id, authority_level, retrieved_at, valid_until, status, official_source_registry_id')
         .in('id', sourceVersionIds)
     : { data: [], error: null };
   if (sourceVersionsError) return { records: [], error: sourceVersionsError.message };
+  const officialRegistryIds = [...new Set((sourceVersions ?? [])
+    .map((version) => version.official_source_registry_id)
+    .filter((id): id is string => Boolean(id)))];
+  const { data: activeOfficialRegistry, error: officialRegistryError } = officialRegistryIds.length > 0
+    ? await supabaseAdmin
+        .from('blog_information_official_source_registry')
+        .select('id')
+        .in('id', officialRegistryIds)
+        .eq('status', 'active')
+    : { data: [], error: null };
+  if (officialRegistryError) return { records: [], error: officialRegistryError.message };
+  const activeOfficialRegistryIds = new Set((activeOfficialRegistry ?? []).map((entry) => entry.id));
   const { data: sources, error: sourcesError } = sourceIds.length > 0
     ? await supabaseAdmin
         .from('blog_information_sources')
@@ -181,6 +194,12 @@ async function loadPersistedClaimRecords(
     if (pinnedVersion && pinnedVersion.source_id !== item.source_id) return [item.id, null] as const;
     const source = pinnedVersion ?? sourceById.get(item.source_id);
     if (!source) return [item.id, null] as const;
+    const claimedAuthority = source.authority_level as BlogInformationAuthorityLevel;
+    const authorityLevel = isOfficialInformationAuthority(claimedAuthority)
+      && (!pinnedVersion?.official_source_registry_id
+        || !activeOfficialRegistryIds.has(pinnedVersion.official_source_registry_id))
+      ? 'editorial_secondary'
+      : claimedAuthority;
     const record: BlogInformationClaimEvidenceRecord = {
       evidenceKey: item.evidence_key,
       sourceVersionId: item.source_version_id,
@@ -190,7 +209,7 @@ async function loadPersistedClaimRecords(
       excerpt: item.excerpt,
       scope: item.scope as BlogInformationEvidenceScope,
       source: {
-        authorityLevel: source.authority_level as BlogInformationAuthorityLevel,
+        authorityLevel,
         retrievedAt: source.retrieved_at,
         validUntil: source.valid_until,
         status: source.status,

@@ -47,16 +47,17 @@ describe('blog informational CTA settings and selection', () => {
       relatedArticlesHref: '/blog/entry-checklist',
       consultationUrl: 'https://pf.kakao.com/_verified/chat',
       officialSourceUrl: 'https://www.mofa.go.jp/entry/rules',
+      officialSourceRegistryHostname: 'www.mofa.go.jp',
     });
     const result = selection({ intent: 'entry_requirements', riskLevel: 'HIGH', settings });
     expect(result.map((cta) => cta.key)).toEqual(['OFFICIAL_SOURCE', 'RELATED_ARTICLES']);
     expect(result.some((cta) => cta.key === 'CONSULTATION')).toBe(false);
   });
 
-  it('extracts only pinned official evidence URLs from generation metadata', () => {
+  it('does not trust caller-controlled official URLs in generation metadata', () => {
     expect(readBlogInformationalOfficialSourceUrl({
       evidence_items: [{ kind: 'official_source', url: 'https://www.mofa.go.jp/entry' }],
-    })).toBe('https://www.mofa.go.jp/entry');
+    })).toBeNull();
     expect(readBlogInformationalOfficialSourceUrl({
       evidence_items: [{ kind: 'internal_insight', url: 'https://www.mofa.go.jp/entry' }],
     })).toBeNull();

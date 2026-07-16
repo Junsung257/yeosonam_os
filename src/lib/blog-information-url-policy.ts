@@ -33,7 +33,10 @@ function isPrivateOrLocalHostname(hostname: string): boolean {
 export function normalizeBlogInformationExternalUrl(input: {
   kind: BlogInformationExternalUrlKind;
   value?: string | null;
+  /** @deprecated Caller-provided provenance is never sufficient for official trust. */
   evidencePinnedOfficial?: boolean;
+  officialRegistryHostname?: string | null;
+  allowOfficialSubdomains?: boolean;
 }): string | null {
   const raw = input.value?.trim();
   if (!raw) return null;
@@ -43,7 +46,12 @@ export function normalizeBlogInformationExternalUrl(input: {
     if (parsed.protocol !== 'https:' || !hostname || parsed.username || parsed.password || parsed.port) return null;
     if (isPrivateOrLocalHostname(hostname)) return null;
     if (input.kind === 'OFFICIAL_SOURCE') {
-      if (!input.evidencePinnedOfficial) return null;
+      const registryHostname = input.officialRegistryHostname?.toLowerCase().replace(/\.$/, '');
+      if (!registryHostname) return null;
+      const exact = hostname === registryHostname;
+      const controlledSubdomain = input.allowOfficialSubdomains
+        && hostname.endsWith(`.${registryHostname}`);
+      if (!exact && !controlledSubdomain) return null;
     } else if (!HOST_ALLOWLIST[input.kind].has(hostname)) {
       return null;
     }

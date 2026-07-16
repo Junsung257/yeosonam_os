@@ -1261,7 +1261,7 @@ async function renderBlogDetail({
 
   // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
   // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
-  const [dki, relatedPosts, relatedProducts, officialSourceUrl] = await Promise.all([
+  const [dki, relatedPosts, relatedProducts, officialSourceTarget] = await Promise.all([
     isLanding
       ? withBlogRenderTimeout(
           'dki',
@@ -1304,7 +1304,9 @@ async function renderBlogDetail({
         settings: loadBlogInformationalCtaSettings({
           destination: effectiveDestination,
           relatedArticlesHref,
-          officialSourceUrl,
+          officialSourceUrl: officialSourceTarget?.url,
+          officialSourceRegistryHostname: officialSourceTarget?.registryHostname,
+          officialSourceAllowSubdomains: officialSourceTarget?.allowSubdomains,
         }),
       })
     : [];
