@@ -82,11 +82,11 @@ export default function BandImportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ preview, rawText }),
       });
-      const json = await res.json() as { productId?: string; error?: string };
+      const json = await res.json() as { productInternalCode?: string; error?: string };
       if (!res.ok) {
         setMessage({ type: 'err', text: json.error ?? '저장 실패' });
       } else {
-        setMessage({ type: 'ok', text: `✅ 상품 등록 완료 (ID: ${json.productId})` });
+        setMessage({ type: 'ok', text: `✅ 상품 등록 완료 (코드: ${json.productInternalCode})` });
         setRawText('');
         setBandPostUrl('');
         setPreview(null);
