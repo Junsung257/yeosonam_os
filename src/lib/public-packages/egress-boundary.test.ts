@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { PUBLIC_EGRESS_MANIFEST } from './egress-manifest';
+import {
+  PUBLIC_EGRESS_MANIFEST,
+  SELECTION_ONLY_ALLOWED_FIELDS,
+} from './egress-manifest';
 
 const ROOT = process.cwd();
 const PUBLICATION_EGRESS_PREFIXES = [
@@ -19,6 +22,16 @@ const PUBLICATION_EGRESS_PREFIXES = [
   'src/app/api/content-analytics/',
   'src/app/admin/blog/',
   'src/lib/social-publishing/',
+];
+const RAW_CUSTOMER_COPY_FIELDS = [
+  'travel_packages.title',
+  'travel_packages.product_summary',
+  'travel_packages.price',
+  'travel_packages.price_dates',
+  'travel_packages.optional_tours',
+  'travel_packages.itinerary_data',
+  'travel_packages.customer_notes',
+  'travel_packages.marketing_copies',
 ];
 
 function toPosixPath(value: string): string {
@@ -65,6 +78,27 @@ describe('public package egress boundary', () => {
         expect(entry.audience).toBe('internal');
         expect(entry.canExport).toBe(false);
         expect(entry.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    }
+  });
+
+  it('keeps selection_only exceptions documented, scoped, and projection-backed', () => {
+    const allowedSelectionFields = new Set<string>(SELECTION_ONLY_ALLOWED_FIELDS);
+    const exceptions = PUBLIC_EGRESS_MANIFEST.filter(entry => entry.rawRead === 'selection_only');
+    expect(exceptions.length).toBeGreaterThan(0);
+
+    for (const entry of exceptions) {
+      expect(entry.owner.trim(), `${entry.file} must have an owner`).not.toBe('');
+      expect(entry.classification, `${entry.file} must declare external classification`).toMatch(/^(direct_external|indirect_external)$/);
+      expect(entry.reason, `${entry.file} must explain why raw selection is allowed`).toContain('rehydrated');
+      expect(entry.reviewBy, `${entry.file} must have a review date`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(entry.allowedFields?.length, `${entry.file} must declare allowed selection fields`).toBeGreaterThan(0);
+      expect(entry.projection, `${entry.file} must rehydrate a public projection`).not.toBe('none');
+      for (const field of entry.allowedFields ?? []) {
+        expect(allowedSelectionFields.has(field), `${entry.file} has undeclared selection field ${field}`).toBe(true);
+      }
+      for (const rawCopyField of RAW_CUSTOMER_COPY_FIELDS) {
+        expect(entry.allowedFields, `${entry.file} must not allow raw copy field ${rawCopyField}`).not.toContain(rawCopyField);
       }
     }
   });

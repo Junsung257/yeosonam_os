@@ -57,6 +57,11 @@ const checksToRun = [
     args: ['scripts/verify-staging-identity-gate.mjs', '--self-test', '--json'],
   },
   {
+    id: 'public-egress-contracts',
+    command: process.execPath,
+    args: ['scripts/verify-public-egress-contracts.mjs', '--json'],
+  },
+  {
     id: 'marketing-release-smoke',
     command: process.execPath,
     args: [

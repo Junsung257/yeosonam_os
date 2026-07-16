@@ -110,6 +110,7 @@
     "verify:operational-inputs": "node scripts/verify-operational-readiness-inputs.mjs",
     "verify:operational-apply-scripts": "node scripts/verify-operational-apply-scripts.mjs",
     "verify:staging-identity": "node scripts/verify-staging-identity-gate.mjs",
+    "verify:public-egress": "node scripts/verify-public-egress-contracts.mjs",
     "verify:project-automation-wiring": "node scripts/verify-project-automation-wiring.mjs",
     "verify:runtime-env-wiring": "node scripts/verify-runtime-env-workflow-wiring.mjs",
     "verify:runtime-env-docs": "node scripts/verify-runtime-env-docs.mjs",

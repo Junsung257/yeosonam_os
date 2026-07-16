@@ -23,7 +23,48 @@ export type PublicEgressEntry = {
   expiresAt?: string;
 };
 
-export const PUBLIC_EGRESS_MANIFEST: PublicEgressEntry[] = [
+const PUBLIC_EGRESS_REVIEW_BY = '2026-09-30';
+
+export const SELECTION_ONLY_ALLOWED_FIELDS = [
+  'travel_packages.id',
+  'travel_packages.destination',
+  'travel_packages.status',
+  'travel_packages.publication_state',
+  'travel_packages.published_snapshot_id',
+  'travel_packages.created_at',
+  'travel_packages.updated_at',
+  'published_public_package_cards_v1.card_projection',
+  'published_public_package_details_v1.detail_projection',
+  'published_public_package_api_v1.public_api_projection',
+  'published_public_package_marketing_v1.marketing_projection',
+  'published_public_package_partner_v1.partner_projection',
+  'published_public_packages_v1.snapshot_hash',
+  'published_public_packages_v1.published_snapshot_id',
+] as const;
+
+const SELECTION_ONLY_REASON =
+  'May use raw package rows only to choose candidate ids, rank/filter records, or join a promoted snapshot pointer; any customer/export copy must be rehydrated from an immutable public projection.';
+
+function defaultClassification(entry: PublicEgressEntry): PublicEgressClassification {
+  if (entry.classification) return entry.classification;
+  if (!entry.canExport) return entry.audience === 'internal' ? 'internal_admin' : 'internal_analytics';
+  if (entry.audience === 'customer' || entry.audience === 'partner') return 'direct_external';
+  if (entry.audience === 'marketing') return 'indirect_external';
+  return 'internal_admin';
+}
+
+function withManifestDefaults(entry: PublicEgressEntry): PublicEgressEntry {
+  if (entry.rawRead !== 'selection_only') return entry;
+  return {
+    ...entry,
+    classification: defaultClassification(entry),
+    reason: entry.reason ?? SELECTION_ONLY_REASON,
+    allowedFields: entry.allowedFields ?? [...SELECTION_ONLY_ALLOWED_FIELDS],
+    reviewBy: entry.reviewBy ?? PUBLIC_EGRESS_REVIEW_BY,
+  };
+}
+
+const PUBLIC_EGRESS_MANIFEST_ENTRIES: PublicEgressEntry[] = [
   { file: 'src/app/packages/[id]/page.tsx', audience: 'customer', projection: 'detail', rawRead: 'selection_only', canExport: true, owner: 'package-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },
   { file: 'src/lib/load-lp-package.ts', audience: 'customer', projection: 'detail', rawRead: 'selection_only', canExport: true, owner: 'package-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },
   { file: 'src/app/itinerary/[id]/print/page.tsx', audience: 'customer', projection: 'detail', rawRead: 'forbidden', canExport: true, owner: 'package-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },
@@ -85,3 +126,6 @@ export const PUBLIC_EGRESS_MANIFEST: PublicEgressEntry[] = [
   { file: 'src/lib/jarvis/agents/products.ts', audience: 'internal', projection: 'none', rawRead: 'internal', canExport: false, owner: 'ai-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null, expiresAt: '2026-09-30' },
   { file: 'src/app/api/content-queue/route.ts', audience: 'marketing', projection: 'card', rawRead: 'forbidden', canExport: true, owner: 'content-platform', lastVerifiedCommit: 'ba690147', screenshotProof: null },
 ];
+
+export const PUBLIC_EGRESS_MANIFEST: PublicEgressEntry[] =
+  PUBLIC_EGRESS_MANIFEST_ENTRIES.map(withManifestDefaults);
