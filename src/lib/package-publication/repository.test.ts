@@ -12,6 +12,11 @@ type RpcResult = {
   nonCustomerPublishableAttractionIds?: string[];
   attractionNames?: Record<string, string>;
   attractionLookupError?: Error | null;
+  activeQuarantineRows?: Array<{
+    field_path: string;
+    original_value_hash: string;
+    detector_rule_version: string;
+  }>;
 };
 
 function makeSupabaseMock(result: RpcResult = {}) {
@@ -29,7 +34,7 @@ function makeSupabaseMock(result: RpcResult = {}) {
           eq: () => {
             filterCount += 1;
             return filterCount >= 2
-              ? Promise.resolve({ data: null, count: 0, error: null })
+              ? Promise.resolve({ data: result.activeQuarantineRows ?? null, count: result.activeQuarantineRows?.length ?? 0, error: null })
               : quarantineChain;
           },
         };
@@ -469,6 +474,71 @@ describe('createPublicPackageSnapshotAndDecision', () => {
         audit_status: 'clean',
       }),
     });
+  });
+
+  it('blocks publication when unresolved active quarantine pollution remains outside this repair run', async () => {
+    const { supabase, calls } = makeSupabaseMock({
+      activeQuarantineRows: [{
+        field_path: 'optional_tours.0',
+        original_value_hash: 'previous-active-pollution',
+        detector_rule_version: 'package-field-quarantine-v1',
+      }],
+    });
+    const pkg = publishablePackage();
+    const { snapshotHash } = buildPublicPackageSnapshot(pkg);
+
+    const result = await createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      pkg,
+      {
+        customerOpenContractOk: true,
+        mobileProof: mobileProofForSnapshot(snapshotHash, pkg),
+      },
+    );
+
+    expect(result.publishable).toBe(false);
+    expect(result.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'masked_data_pollution' }),
+    ]));
+    expect(calls[0].payload).toMatchObject({
+      p_snapshot_status: 'blocked',
+      p_publication_state: 'blocked',
+      p_publishable: false,
+    });
+  });
+
+  it('records deterministic quarantine candidates as historical without treating the same repair as active unresolved pollution', async () => {
+    const { supabase, calls } = makeSupabaseMock();
+    const pkg = publishablePackage({
+      optional_tours: ['노옵션'],
+    });
+    const repairedPkg = publishablePackage({
+      optional_tours: [],
+    });
+    const { snapshotHash } = buildPublicPackageSnapshot(repairedPkg);
+
+    const result = await createPublicPackageSnapshotAndDecision(
+      supabase as never,
+      pkg,
+      {
+        customerOpenContractOk: true,
+        mobileProof: mobileProofForSnapshot(snapshotHash, repairedPkg),
+      },
+    );
+
+    expect(result.publishable).toBe(true);
+    expect(calls[0].payload).toMatchObject({
+      p_snapshot_status: 'published',
+      p_publication_state: 'published',
+      p_publishable: true,
+    });
+    expect(calls[0].payload?.p_quarantine_candidates).toEqual([
+      expect.objectContaining({
+        field_path: 'optional_tours.0',
+        old_value: '노옵션',
+        resolution_status: 'historical_quarantined',
+      }),
+    ]);
   });
 
   it('evaluates customer title claims from the public snapshot title, not the raw supplier title', async () => {

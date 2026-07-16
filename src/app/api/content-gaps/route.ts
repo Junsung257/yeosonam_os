@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheHeader } from '@/lib/api-response';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
@@ -11,14 +12,23 @@ export async function GET(request: NextRequest) {
 
   try {
     // 1. active 상품 목록 (예약 건수 포함)
-    const { data: packages } = await supabaseAdmin
+    const { data: packageCandidates } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, price, status, seats_held, seats_confirmed')
+      .select('id, status, seats_held, seats_confirmed')
       .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .order('created_at', { ascending: false })
       .limit(200);
 
-    if (!packages?.length) return NextResponse.json({ gaps: [], stats: { total: 0, withContent: 0, withoutContent: 0, highPriority: 0 } });
+    if (!packageCandidates?.length) return NextResponse.json({ gaps: [], stats: { total: 0, withContent: 0, withoutContent: 0, highPriority: 0 } });
+    const packages = await getPublishedPackageCards(
+      supabaseAdmin,
+      ((packageCandidates || []) as Array<Record<string, unknown>>).map(row => ({ id: String(row.id) })),
+    );
+    if (!packages.length) return NextResponse.json({ gaps: [], stats: { total: 0, withContent: 0, withoutContent: 0, highPriority: 0 } });
+    const statusById = new Map(
+      ((packageCandidates || []) as Array<Record<string, unknown>>)
+        .map(row => [String(row.id), String(row.status || '')]),
+    );
 
     // 2. 각 상품별 발행된 콘텐츠 수 조회
     const pkgIds = packages.map((p: Record<string, unknown>) => p.id as string);
@@ -59,7 +69,7 @@ export async function GET(request: NextRequest) {
         destination: (pkg.destination as string) || null,
         duration: (pkg.duration as number) || null,
         price: (pkg.price as number) || null,
-        status: pkg.status as string,
+        status: statusById.get(id) || 'published',
         bookings,
         has_blog: channels.has('naver_blog'),
         has_card_news: channels.has('instagram_card'),

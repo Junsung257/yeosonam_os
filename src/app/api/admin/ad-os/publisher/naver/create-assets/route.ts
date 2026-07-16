@@ -7,6 +7,7 @@ import {
   fetchNaverCampaigns,
   getNaverAdsConfigStatus,
 } from '@/lib/search-ads-api';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -61,7 +62,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .limit(500),
     supabaseAdmin
       .from('travel_packages')
-      .select('id,title,destination')
+      .select('id')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -91,7 +92,17 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     allowed_platforms?: string[] | null;
     risk_status?: string | null;
   } | null;
-  const pkg = packageRes.data as { id?: string; title?: string | null; destination?: string | null } | null;
+  const selectedPackageId = (packageRes.data as { id?: string } | null)?.id ?? null;
+  const [publicPkg] = selectedPackageId
+    ? await getPublishedPackageCards(supabaseAdmin, [{ id: selectedPackageId }])
+    : [];
+  const pkg = publicPkg
+    ? {
+      id: publicPkg.id,
+      title: typeof publicPkg.title === 'string' ? publicPkg.title : null,
+      destination: typeof publicPkg.destination === 'string' ? publicPkg.destination : null,
+    }
+    : null;
   const baseName = slugPart(pkg?.destination || pkg?.title || 'travel');
   const plan = buildNaverExternalAssetPlan({
     campaignName: `YSN_${baseName}_${String(pkg?.id || 'ad_os').slice(0, 8)}`,

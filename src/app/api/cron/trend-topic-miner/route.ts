@@ -6,6 +6,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 import { filterTopicFitPassed } from '@/lib/blog-topic-fit-gate';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /**
@@ -55,10 +56,14 @@ async function runTrendMiner(request: NextRequest) {
   // 2) 활성 destination 화이트리스트 (있는 destination만 큐에 넣음)
   const { data: pkgs } = await supabaseAdmin
     .from('travel_packages')
-    .select('destination')
+    .select('id')
     .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
+  const publicPackages = await getPublishedPackageCards(
+    supabaseAdmin,
+    ((pkgs || []) as Array<{ id: string }>).map(pkg => ({ id: pkg.id })),
+  );
   const activeDestinations = new Set(
-    ((pkgs || []) as Array<{ destination: string | null }>)
+    ((publicPackages || []) as Array<{ destination?: string | null }>)
       .map(p => p.destination)
       .filter((d): d is string => Boolean(d))
   );

@@ -40,6 +40,9 @@ describe('public package database boundary', () => {
     expect(sql).toContain('idx_public_package_snapshots_package_revision_hash');
     expect(sql).toMatch(/ON CONFLICT \(package_id, package_revision, snapshot_hash\)/);
     expect(sql).toContain('THEN v_previous_published_snapshot_id');
+    expect(sql).toContain("WHEN v_previous_published_snapshot_id IS NOT NULL AND NOT COALESCE(p_revoke_previous, false)");
+    expect(sql).toContain('AND COALESCE(p_revoke_previous, false)');
+    expect(sql).toContain("revocation_reason = COALESCE(NULLIF(p_revocation_reason, ''), 'explicit_candidate_rejection')");
     expect(publicViewSql).not.toContain('AND s.package_revision = p.package_revision');
     expect(publicViewSql).toContain('AND d.package_revision = s.package_revision');
     expect(publicViewSql).not.toContain("WHERE p.publication_state IN ('approved', 'published')");
@@ -51,5 +54,7 @@ describe('public package database boundary', () => {
     expect(source).toContain('proof_input_hash: result.proof_input_hash');
     expect(source).toContain("viewport_profile_version: 'mobile-v1'");
     expect(source).toContain("copy_template_version: 'customer-copy-v1'");
+    expect(source).toContain("type SurfaceName = 'packages' | 'lp'");
+    expect(source).toContain("checkedSurfaces: checkLp ? ['packages', 'lp'] : ['packages']");
   });
 });

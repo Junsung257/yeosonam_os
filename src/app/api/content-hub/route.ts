@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheHeader } from '@/lib/api-response';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 // GET: 콘텐츠 목록 조회
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     let query = supabaseAdmin
       .from('content_creatives')
-      .select('*, travel_packages(title, destination)')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -24,7 +25,25 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ creatives: data || [] }, { headers: cacheHeader(60) });
+    const creatives = (data || []) as Array<Record<string, unknown>>;
+    const productIds = [...new Set(
+      creatives
+        .map(row => typeof row.product_id === 'string' ? row.product_id : null)
+        .filter((id): id is string => Boolean(id)),
+    )];
+    const publicPackages = await getPublishedPackageCards(
+      supabaseAdmin,
+      productIds.map(id => ({ id })),
+    );
+    const publicPackageById = new Map(publicPackages.map(pkg => [pkg.id, pkg]));
+    const safeCreatives = creatives.map(row => ({
+      ...row,
+      travel_packages: typeof row.product_id === 'string'
+        ? publicPackageById.get(row.product_id) ?? null
+        : null,
+    }));
+
+    return NextResponse.json({ creatives: safeCreatives }, { headers: cacheHeader(60) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }

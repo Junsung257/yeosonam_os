@@ -23,6 +23,13 @@ describe('proof input hash', () => {
     expect(buildProofInputHash(base)).not.toBe(buildProofInputHash({ ...base, renderContractHash: 'changed' }));
   });
 
+  it('invalidates when route, viewport, locale, or feature flag proof inputs change', () => {
+    expect(buildProofInputHash(base)).not.toBe(buildProofInputHash({ ...base, routeConfigHash: 'changed' }));
+    expect(buildProofInputHash(base)).not.toBe(buildProofInputHash({ ...base, viewportProfileVersion: 'desktop-v1' }));
+    expect(buildProofInputHash(base)).not.toBe(buildProofInputHash({ ...base, locale: 'en-US' }));
+    expect(buildProofInputHash(base)).not.toBe(buildProofInputHash({ ...base, featureFlagDigest: 'changed' }));
+  });
+
   it('normalizes asset order and duplicates', () => {
     expect(hashAssetManifest(['b', 'a', 'a'])).toBe(hashAssetManifest(['a', 'b']));
   });

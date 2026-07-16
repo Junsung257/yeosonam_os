@@ -13,6 +13,7 @@ import {
   type SearchTermGrowthPackage,
 } from '@/lib/ad-os-search-term-growth';
 import type { PaidKeywordPlatform } from '@/lib/ad-os-seo-keyword-bridge';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 
 export const dynamic = 'force-dynamic';
 
@@ -234,7 +235,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .limit(limit * 3),
       supabaseAdmin
         .from('travel_packages')
-        .select('id,title,destination,short_code')
+        .select('id')
         .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'confirmed', 'published'])
         .limit(1000),
       supabaseAdmin
@@ -251,7 +252,15 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     const firstError = candidateRes.error || packageRes.error || existingRes.error || budgetRes.error;
     if (firstError) throw firstError;
 
-    const packages = ((packageRes.data || []) as PackageRow[]).map(packageSignal);
+    const packages = (await getPublishedPackageCards(
+      supabaseAdmin,
+      ((packageRes.data || []) as Array<{ id: string }>).map(row => ({ id: row.id })),
+    )).map((pkg) => packageSignal({
+      id: pkg.id,
+      title: typeof pkg.title === 'string' ? pkg.title : null,
+      destination: typeof pkg.destination === 'string' ? pkg.destination : null,
+      short_code: null,
+    }));
     const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
     const existingPlans = ((existingRes.data || []) as ExistingPlanRow[]).map(existingSignal);
     const maxCpcByPlatform = Object.fromEntries(

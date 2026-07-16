@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file src/app/api/cron/card-news-seasonal/route.ts
  *
  * 매주 월요일 09:00 KST — 시즈널 카드뉴스 자동 변형 풀 생성.
@@ -25,9 +25,9 @@ import { isCronOrVercelAuthorized, cronUnauthorizedResponse, withCronGuard } fro
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSeasonalContext } from '@/lib/card-news-html/seasonal';
-import { getPackageRawText } from '@/lib/packages/raw-text';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { getPublishedMarketingPackage } from '@/lib/public-packages';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -60,7 +60,7 @@ const getHandler = async (request: NextRequest) => {
 
   const { data: candidates, error: candErr } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, duration, nights, departure_dates, products(selling_price)')
+    .select('id, departure_dates')
     .or('status.eq.approved,status.eq.active')
     .not('departure_dates', 'is', null)  // 출발일 없는 상품 DB 단계 제외
     .order('created_at', { ascending: false })
@@ -85,12 +85,7 @@ const getHandler = async (request: NextRequest) => {
   // 3. 출발일 윈도우 + 중복 제외
   type Candidate = {
     id: string;
-    title: string;
-    destination: string | null;
-    duration: number | null;
-    nights: number | null;
     departure_dates: string[] | null;
-    products?: { selling_price?: number | null } | null;
   };
   const fitsSeason = (c: Candidate): boolean => {
     if (recentPackageIds.has(c.id)) return false;
@@ -124,16 +119,28 @@ const getHandler = async (request: NextRequest) => {
   for (const pkg of selected) {
     try {
       // raw-text 직접 호출 (self-fetch 제거)
-      const rawResult = await getPackageRawText(pkg.id);
-      if (!rawResult.ok) {
+      const publicPackage = await getPublishedMarketingPackage(supabaseAdmin, pkg.id);
+      if (!publicPackage) {
         generated.push({
           package_id: pkg.id,
-          title: pkg.title,
-          error: sanitizeDbError(rawResult.error),
+          title: 'unpublished package',
+          error: 'published marketing projection missing',
         });
         continue;
       }
-      const { rawText, productMeta } = rawResult.data;
+      const rawText = [
+        publicPackage.title,
+        publicPackage.destination,
+        publicPackage.price_display,
+        publicPackage.product_summary,
+        ...(publicPackage.product_highlights ?? []),
+      ].filter(Boolean).join('\n');
+      const productMeta = {
+        title: publicPackage.title,
+        destination: publicPackage.destination,
+        duration: publicPackage.duration,
+        price: publicPackage.price,
+      };
 
       // generate-variants 는 DB INSERT 부수효과가 있어 별도 라우트 호출 유지.
       // 추후 동일 패턴으로 lib 함수 분리 가능.
@@ -144,7 +151,7 @@ const getHandler = async (request: NextRequest) => {
           rawText,
           productMeta,
           package_id: pkg.id,
-          title: `[${ctx.month}월 시즌] ${pkg.title}`,
+          title: `[${ctx.month}월 시즌] ${publicPackage.title}`,
           angles: ctx.preferredAngles,
           count: ctx.preferredAngles.length,
           toneHint: ctx.toneHint,
@@ -156,14 +163,14 @@ const getHandler = async (request: NextRequest) => {
       if (!variantsRes.ok) {
         generated.push({
           package_id: pkg.id,
-          title: pkg.title,
+          title: publicPackage.title,
           error: sanitizeDbError(variantsData?.error ?? `HTTP ${variantsRes.status}`),
         });
         continue;
       }
       generated.push({
         package_id: pkg.id,
-        title: pkg.title,
+        title: publicPackage.title,
         variant_group_id: variantsData.variant_group_id,
         success_count: variantsData.success_count,
         totalCostUsd: variantsData.totalCostUsd,
@@ -171,7 +178,7 @@ const getHandler = async (request: NextRequest) => {
     } catch (e) {
       generated.push({
         package_id: pkg.id,
-        title: pkg.title,
+        title: 'unknown package',
         error: sanitizeDbError(e),
       });
     }

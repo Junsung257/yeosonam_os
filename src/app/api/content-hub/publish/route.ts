@@ -1,6 +1,7 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { getPublishedPackageCard } from '@/lib/public-packages';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   applyBlogPublishQualityToUpdate,
@@ -11,7 +12,7 @@ import {
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
-const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)';
+const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id';
 
 type BlogPublishRow = {
   slug?: string | null;
@@ -21,7 +22,6 @@ type BlogPublishRow = {
   destination?: string | null;
   angle_type?: string | null;
   product_id?: string | null;
-  travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
 };
 
 export async function POST(request: NextRequest) {
@@ -55,6 +55,13 @@ export async function POST(request: NextRequest) {
       row = (creative?.[0] ?? null) as BlogPublishRow | null;
       if (!row?.blog_html || !row.slug) {
         return apiResponse({ error: 'blog_html or slug is missing' }, { status: 400 });
+      }
+      if (row.product_id) {
+        const publicPackage = await getPublishedPackageCard(supabaseAdmin, row.product_id);
+        if (!publicPackage) {
+          return apiResponse({ error: 'Published public package projection is required before product-backed blog publish' }, { status: 409 });
+        }
+        row.destination = publicPackage.destination ?? row.destination ?? null;
       }
 
       const destination = resolveBlogDestination(row);

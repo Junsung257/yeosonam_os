@@ -56,6 +56,7 @@ import {
   isCustomerOpenContractBlogPublishable,
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
+import { getPublishedMarketingPackage, type PublishedMarketingPackage } from '@/lib/public-packages/read-model';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
@@ -2782,18 +2783,36 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 
 // romanize()와 slugifyTopic()은 src/lib/slug-utils.ts로 이관 (SSOT 통합)
 
-async function generateFromProduct(item: any): Promise<GeneratedBlog> {
-  const { data: pkg, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select('*')
-    .eq('id', item.product_id)
-    .limit(1);
+function buildSafeProductForBlog(publicPackage: PublishedMarketingPackage) {
+  return {
+    id: publicPackage.id,
+    title: publicPackage.title,
+    destination: publicPackage.destination,
+    duration: publicPackage.duration,
+    nights: publicPackage.nights,
+    price: publicPackage.price,
+    departure_airport: publicPackage.departure_airport,
+    airline: publicPackage.airline,
+    product_type: publicPackage.product_type,
+    product_highlights: publicPackage.product_highlights ?? [],
+    inclusions: publicPackage.cta_helper ? [publicPackage.cta_helper] : [],
+    excludes: [],
+    itinerary: publicPackage.product_summary ? [publicPackage.product_summary] : [],
+    optional_tours: [],
+    hero_image_url: publicPackage.hero_image_url,
+    thumbnail_urls: publicPackage.hero_image_url ? [publicPackage.hero_image_url] : [],
+    supplier_code: 'public-snapshot',
+  };
+}
 
-  if (error || !pkg || pkg.length === 0) {
-    throw new Error(`상품 조회 실패: ${item.product_id}`);
+async function generateFromProduct(item: any): Promise<GeneratedBlog> {
+  const publicPackage = await getPublishedMarketingPackage(supabaseAdmin, item.product_id);
+
+  if (!publicPackage) {
+    throw new Error(`published_marketing_projection_missing:${item.product_id}`);
   }
 
-  const product = pkg[0];
+  const product = buildSafeProductForBlog(publicPackage);
   const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, item.product_id);
   if (!isCustomerOpenContractBlogPublishable(openContract)) {
     throw new Error(`product_customer_open_contract_failed:${customerOpenContractBlogBlockReason(openContract)}`);

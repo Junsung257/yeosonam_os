@@ -9,6 +9,7 @@ import {
   type PaidKeywordCandidate,
   type PaidKeywordPlatform,
 } from '@/lib/ad-os-seo-keyword-bridge';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
@@ -202,7 +203,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .limit(2000),
       supabaseAdmin
         .from('travel_packages')
-        .select('id, title, destination, short_code')
+        .select('id')
         .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'confirmed', 'published'])
         .limit(1000),
       supabaseAdmin
@@ -224,7 +225,15 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .filter((row) => row.slug)
         .map((row) => [String(row.slug), row]),
     );
-    const packages = (packageRes.data || []) as PackageRow[];
+    const packages = (await getPublishedPackageCards(
+      supabaseAdmin,
+      ((packageRes.data || []) as Array<{ id: string }>).map(row => ({ id: row.id })),
+    )).map((pkg) => ({
+      id: pkg.id,
+      title: typeof pkg.title === 'string' ? pkg.title : null,
+      destination: typeof pkg.destination === 'string' ? pkg.destination : null,
+      short_code: null,
+    })) as PackageRow[];
     const maxCpcByPlatform = new Map(
       ((budgetRes.data || []) as Array<{ platform: PaidKeywordPlatform; max_cpc_krw: number | null }>)
         .map((row) => [row.platform, Number(row.max_cpc_krw || 1200)]),

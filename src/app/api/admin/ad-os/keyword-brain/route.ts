@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildEnterpriseKeywordBrain } from '@/lib/ad-os-v19-v25';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { getPublishedPackageCard } from '@/lib/public-packages';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
@@ -58,7 +59,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   let packageQuery = supabaseAdmin
     .from('travel_packages')
-    .select('id,title,destination,departure_airport,airline,price,ticketing_deadline,commission_fixed_amount,commission_rate,short_code,status,created_at')
+    .select('id,departure_airport,airline,ticketing_deadline,commission_fixed_amount,commission_rate,short_code,status,created_at')
     .order('created_at', { ascending: false })
     .limit(1);
 
@@ -68,11 +69,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const { data: packages, error: packageError } = await packageQuery;
   const pkg = packages?.[0] as {
     id: string;
-    title?: string | null;
-    destination?: string | null;
     departure_airport?: string | null;
     airline?: string | null;
-    price?: number | null;
     ticketing_deadline?: string | null;
     commission_fixed_amount?: number | null;
     commission_rate?: number | null;
@@ -86,6 +84,16 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       summary: { apply, error: packageError?.message || 'No eligible package found.' },
     }).eq('id', run.id);
     return NextResponse.json({ ok: false, error: packageError?.message || 'No eligible package found.' }, { status: 404 });
+  }
+
+  const publicPackage = await getPublishedPackageCard(supabaseAdmin, pkg.id);
+  if (!publicPackage) {
+    await supabaseAdmin.from('ad_os_automation_runs').update({
+      status: 'failed',
+      finished_at: new Date().toISOString(),
+      summary: { apply, error: 'Published public package card projection is required.' },
+    }).eq('id', run.id);
+    return NextResponse.json({ ok: false, error: 'Published public package card projection is required.' }, { status: 409 });
   }
 
   const [existingRes, termsRes, budgetRes] = await Promise.all([
@@ -119,11 +127,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const candidates = buildEnterpriseKeywordBrain({
     product: {
       id: pkg.id,
-      title: pkg.title,
-      destination: pkg.destination,
+      title: publicPackage.title,
+      destination: publicPackage.destination,
       departureAirport: pkg.departure_airport,
-      airline: pkg.airline,
-      priceKrw: pkg.price,
+      airline: publicPackage.airline ?? pkg.airline,
+      priceKrw: publicPackage.price,
       ticketDeadline: pkg.ticketing_deadline,
       marginKrw: Number(pkg.commission_fixed_amount || 0),
     },
@@ -140,7 +148,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     const clusterRows = candidates.map((candidate) => ({
       product_id: pkg.id,
       platform: candidate.platform,
-      cluster_key: `${slugPart(pkg.destination || pkg.title)}:${candidate.intent}`,
+      cluster_key: `${slugPart(publicPackage.destination || publicPackage.title)}:${candidate.intent}`,
       keyword_text: candidate.keyword,
       match_type: candidate.matchType,
       tier: candidate.tier,
@@ -164,14 +172,14 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     insertedClusters = clusterData?.length || 0;
 
     const landingUrl = `${appUrl()}/packages/${pkg.id}`;
-    const campaignSlug = `pkg_${slugPart(pkg.destination || pkg.short_code || pkg.id.slice(0, 8))}_${pkg.id.slice(0, 8)}`;
+    const campaignSlug = `pkg_${slugPart(publicPackage.destination || pkg.short_code || pkg.id.slice(0, 8))}_${pkg.id.slice(0, 8)}`;
     const planRows = candidates.map((candidate) => ({
       package_id: pkg.id,
       platform: candidate.platform,
       plan_status: 'draft',
       autopilot_status: candidate.tier === 'negative' ? 'negative' : 'candidate',
       automation_level: 1,
-      campaign_name: `YSN_${slugPart(pkg.destination || pkg.title)}_${pkg.id.slice(0, 8)}`,
+      campaign_name: `YSN_${slugPart(publicPackage.destination || publicPackage.title)}_${pkg.id.slice(0, 8)}`,
       campaign_slug: campaignSlug,
       ad_group_name: `${campaignSlug}_${candidate.intent}`.slice(0, 80),
       tier: candidate.tier === 'negative' ? 'negative' : candidate.tier,
@@ -221,8 +229,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     run_id: run.id,
     package: {
       id: pkg.id,
-      title: pkg.title,
-      destination: pkg.destination,
+      title: publicPackage.title,
+      destination: publicPackage.destination,
     },
     summary: {
       candidates: candidates.length,

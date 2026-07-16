@@ -12,15 +12,13 @@ import {
 import { riskForChangeRequest, titleForChangeRequest, type AdOsChangeRequestType } from '@/lib/ad-os-change-request';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { getPublishedPackageCard } from '@/lib/public-packages';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 type PackageRow = {
   id: string;
-  title: string | null;
-  destination: string | null;
-  price: number | null;
   departure_airport?: string | null;
   airline?: string | null;
   tenant_id?: string | null;
@@ -102,7 +100,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const packageQuery = supabaseAdmin
     .from('travel_packages')
-    .select('id,title,destination,price,departure_airport,airline,tenant_id')
+    .select('id,departure_airport,airline,tenant_id')
     .order('created_at', { ascending: false })
     .limit(1);
   const packageRes = packageId ? await packageQuery.eq('id', packageId).maybeSingle() : await packageQuery.maybeSingle();
@@ -159,6 +157,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (firstError) return apiResponse({ ok: false, error: sanitizeDbError(firstError) }, { status: 500 });
 
   const pkg = packageRes.data as PackageRow | null;
+  const publicPkg = pkg ? await getPublishedPackageCard(supabaseAdmin, pkg.id) : null;
   const keywords = (keywordRes.data || []) as KeywordRow[];
   const budgets = (budgetRes.data || []) as BudgetRow[];
   const workspace = (workspaceRes.data || null) as Record<string, unknown> | null;
@@ -203,15 +202,15 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const winningTerms = searchTerms.filter((row) => row.action === 'add_keyword').map((row) => row.search_term);
   const wasteTerms = searchTerms.filter((row) => row.action === 'add_negative').map((row) => row.search_term);
-  const minedKeywords = pkg
+  const minedKeywords = pkg && publicPkg
     ? mineLongtailKeywords({
         product: {
           productId: pkg.id,
-          title: pkg.title,
-          destination: pkg.destination,
+          title: publicPkg.title,
+          destination: publicPkg.destination,
           departureAirport: pkg.departure_airport,
-          airline: pkg.airline,
-          priceKrw: pkg.price,
+          airline: publicPkg.airline ?? pkg.airline,
+          priceKrw: publicPkg.price,
         },
         winningSearchTerms: winningTerms,
         wasteSearchTerms: wasteTerms,
@@ -220,7 +219,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       })
     : [];
 
-  const sameDestinationProducts = scenarios.filter((row) => pkg && row.package_id !== pkg.id && row.primary_keyword.includes(pkg.destination || '')).length;
+  const sameDestinationProducts = scenarios.filter((row) => pkg && publicPkg?.destination && row.package_id !== pkg.id && row.primary_keyword.includes(publicPkg.destination || '')).length;
   const duplicateAction = decideDuplicateContentAction({
     sameDestinationActiveProducts: sameDestinationProducts,
     sameScenarioExistingPosts: scenarios.filter((row) => pkg && row.package_id === pkg.id).length,
@@ -252,7 +251,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     }),
   );
 
-  const creativeDrafts = pkg ? buildCreativeFactoryDrafts({ destination: pkg.destination || '', productTitle: pkg.title }) : [];
+  const creativeDrafts = pkg && publicPkg ? buildCreativeFactoryDrafts({ destination: publicPkg.destination || '', productTitle: publicPkg.title }) : [];
   const tenantPackaging = buildTenantSaasPackaging({
     monthlyBudgetCapKrw: Number(workspace?.monthly_budget_cap_krw || budgets.reduce((sum, row) => sum + row.monthly_budget_krw, 0)),
     dailyBudgetCapKrw: Number(workspace?.daily_budget_cap_krw || budgets.reduce((sum, row) => sum + row.daily_budget_cap_krw, 0)),

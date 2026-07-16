@@ -6,6 +6,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { detectDestination } from '@/lib/keyword-research';
 import { refreshThreadsTrendLearning } from '@/lib/threads-trend-learner';
+import { getPublishedPackageCards } from '@/lib/public-packages';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /**
@@ -49,11 +50,15 @@ async function runThreadsTrendMiner(request: NextRequest) {
   // 1) 키워드 셋 결정: active destinations top + seasonal base
   const { data: pkgs } = await supabaseAdmin
     .from('travel_packages')
-    .select('destination')
+    .select('id')
     .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
+  const publicPackages = await getPublishedPackageCards(
+    supabaseAdmin,
+    ((pkgs ?? []) as Array<{ id: string }>).map(pkg => ({ id: pkg.id })),
+  );
 
   const destCounts = new Map<string, number>();
-  for (const p of (pkgs ?? []) as Array<{ destination: string | null }>) {
+  for (const p of publicPackages as Array<{ destination?: string | null }>) {
     if (!p.destination) continue;
     destCounts.set(p.destination, (destCounts.get(p.destination) ?? 0) + 1);
   }
