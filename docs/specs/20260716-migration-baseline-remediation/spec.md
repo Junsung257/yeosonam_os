@@ -6,7 +6,7 @@ Last updated: 2026-07-16
 
 An empty local Supabase database could not apply the repository migration chain. The first migration, `20260331000000_add_conversations_intents_actions_influencers.sql`, referenced `public.customers`, but no earlier tracked migration created that table. After the baseline was restored, additional historical contract defects and duplicate migration versions also had to be corrected before the chain became replayable.
 
-This defect predates informational-content remediation commit `7f94ab20`, but it blocks R15 verification of the eleven informational-content migrations.
+This defect predates informational-content remediation commit `7f94ab20`, but it blocked R15 verification of the fourteen informational-content migrations.
 
 ## Objective
 

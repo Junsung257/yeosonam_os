@@ -1,0 +1,24 @@
+# Tasks: Migration Baseline Remediation
+
+- [x] Record DB-01 reproduction and baseline ownership.
+- [x] Inventory all objects assumed before first creation.
+- [x] Identify authoritative archive definitions.
+- [x] Create backfilled foundational migration through CLI workflow.
+- [x] Remove demo/operating DML from baseline.
+- [x] Normalize all duplicate migration versions.
+- [x] Repair replay-invalid historical DB contracts.
+- [x] Pass empty `supabase start`.
+- [x] Pass two consecutive empty/local resets.
+- [x] Verify 374-row migration history and final schema.
+- [x] Run database lint with zero errors.
+- [x] Pass isolated legacy upgrade simulation with row preservation.
+- [x] Pass pgTAP 77/77 with zero skip.
+- [x] Pass RLS role matrix.
+- [x] Pass atomic publication/idempotency.
+- [x] Pass real two-session concurrency.
+- [x] Pass nine failure injection/rollback modes.
+- [x] Pass legacy representative reconciliation dry-run contracts.
+- [x] Pass informational eval and product boundary.
+- [x] Pass full tests/typecheck/lint/build.
+- [x] Update R15 Markdown and JSON reports.
+- [x] Commit implementation and PASS report separately.
