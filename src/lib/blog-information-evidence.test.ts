@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   createBlogInformationClaimFingerprint,
+  createBlogInformationSourceContentHash,
   isOfficialInformationAuthority,
   isPrimaryInformationAuthority,
   validateBlogInformationResearchBundle,
@@ -11,6 +12,8 @@ import {
 
 function validBundle(): BlogInformationResearchBundle {
   const claimText = '오사카 공항에서 시내까지 열차로 약 50분이 걸립니다.';
+  const excerpt = '2026년 일본 오사카 일반 여행자는 공항에서 시내까지 열차로 약 50분이 걸립니다.';
+  const snapshotContent = `간사이공항 교통 안내\n${excerpt}\n문의처`;
   return {
     contentKey: 'osaka:airport_transport:general:ko-KR',
     sources: [{
@@ -20,7 +23,8 @@ function validBundle(): BlogInformationResearchBundle {
       sourceUrl: 'https://www.kansai-airport.or.jp/en/access/',
       publisher: 'Kansai Airports',
       retrievedAt: '2026-07-15T08:00:00.000Z',
-      contentHash: 'a'.repeat(64),
+      snapshotContent,
+      contentHash: createBlogInformationSourceContentHash(snapshotContent),
       validUntil: '2026-08-15T08:00:00.000Z',
       destination: '오사카',
       country: '일본',
@@ -31,7 +35,9 @@ function validBundle(): BlogInformationResearchBundle {
       evidenceKey: 'airport-access-duration',
       sourceKey: 'kansai-airport-access',
       sourceLocator: 'Access > Train',
-      excerpt: '2026년 일본 오사카 일반 여행자는 공항에서 시내까지 열차로 약 50분이 걸립니다.',
+      excerpt,
+      spanStart: snapshotContent.indexOf(excerpt),
+      spanEnd: snapshotContent.indexOf(excerpt) + excerpt.length,
       claimType: 'duration',
       riskLevel: 'MEDIUM',
       observedAt: '2026-07-15T08:00:00.000Z',
@@ -98,6 +104,34 @@ describe('blog informational evidence contract', () => {
     expect(validateBlogInformationResearchBundle(bundle).issues).toContain(
       'source:incomplete_review:kansai-airport-access',
     );
+  });
+
+  it('rejects a caller hash, fabricated excerpt, invalid span, and future timestamps', () => {
+    const bundle = validBundle();
+    bundle.sources[0].contentHash = 'f'.repeat(64);
+    bundle.sources[0].retrievedAt = '2099-01-01T00:00:00.000Z';
+    bundle.evidence[0].excerpt = '2026 Australia US travelers can use this fabricated rule.';
+    bundle.evidence[0].spanStart = 0;
+    bundle.evidence[0].spanEnd = bundle.evidence[0].excerpt.length;
+    bundle.evidence[0].observedAt = '2099-01-01T00:00:00.000Z';
+    bundle.evidence[0].scope.applicableTo = 'US';
+    bundle.evidence[0].scope.verifiedAt = '2099-01-01T00:00:00.000Z';
+
+    expect(validateBlogInformationResearchBundle(bundle).issues).toEqual(expect.arrayContaining([
+      'source:content_hash_mismatch:kansai-airport-access',
+      'source:future_retrieved_at:kansai-airport-access',
+      'evidence:snapshot_span_mismatch:airport-access-duration',
+      'evidence:future_observed_at:airport-access-duration',
+      'evidence:scope:future_verified_at:airport-access-duration',
+    ]));
+  });
+
+  it('matches short ASCII scope tokens as whole tokens, not substrings', () => {
+    const bundle = validBundle();
+    bundle.evidence[0].scope.applicableTo = 'US';
+    bundle.evidence[0].excerpt = '2026 Australia travelers can use this service.';
+    expect(validateBlogInformationResearchBundle(bundle).issues)
+      .toContain('evidence:scope:excerpt_applicable_to_mismatch:airport-access-duration');
   });
 
   it('rejects source scope drift and excerpt value mismatch', () => {

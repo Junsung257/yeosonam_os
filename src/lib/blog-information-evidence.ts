@@ -80,6 +80,7 @@ export interface BlogInformationSourceInput {
   internalIdentifier?: string | null;
   publisher: string;
   retrievedAt: string;
+  snapshotContent: string;
   contentHash: string;
   validFrom?: string | null;
   validUntil?: string | null;
@@ -97,6 +98,8 @@ export interface BlogInformationEvidenceInput {
   sourceKey: string;
   sourceLocator?: string | null;
   excerpt?: string | null;
+  spanStart: number;
+  spanEnd: number;
   claimType: BlogInformationClaimType;
   riskLevel: BlogInformationEvidenceRiskLevel;
   observedAt: string;
@@ -185,6 +188,16 @@ export function createBlogInformationClaimFingerprint(claimText: string): string
   return createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
+export function normalizeBlogInformationSourceSnapshot(content: string): string {
+  return content.normalize('NFKC').replace(/\r\n?/g, '\n').replace(/\0/g, '').trim();
+}
+
+export function createBlogInformationSourceContentHash(content: string): string {
+  return createHash('sha256')
+    .update(normalizeBlogInformationSourceSnapshot(content), 'utf8')
+    .digest('hex');
+}
+
 export function createBlogInformationSourceIdentityScopeKey(input: {
   tenantId?: string | null;
   siteScope?: string | null;
@@ -198,7 +211,7 @@ export function createBlogInformationSourceIdentityScopeKey(input: {
 }
 
 export function createBlogInformationSourceVersionKey(
-  source: Pick<BlogInformationSourceInput, 'sourceKey' | 'sourceUrl' | 'internalIdentifier' | 'retrievedAt' | 'contentHash'>,
+  source: Pick<BlogInformationSourceInput, 'sourceKey' | 'sourceUrl' | 'internalIdentifier' | 'retrievedAt' | 'contentHash' | 'snapshotContent'>,
 ): string {
   const material = [
     clean(source.sourceKey).toLowerCase(),
@@ -224,6 +237,17 @@ function normalizeMeaning(value: unknown): string {
     .replace(/,/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function containsSemanticToken(haystack: string, needle: string): boolean {
+  const normalizedHaystack = normalizeMeaning(haystack);
+  const normalizedNeedle = normalizeMeaning(needle);
+  if (!normalizedNeedle) return false;
+  if (!/^[a-z0-9][a-z0-9 ._-]*$/i.test(normalizedNeedle)) {
+    return normalizedHaystack.includes(normalizedNeedle);
+  }
+  const escaped = normalizedNeedle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?=$|[^a-z0-9])`, 'i').test(normalizedHaystack);
 }
 
 function equivalentCurrencyTokens(currency: string): string[] {
@@ -300,6 +324,10 @@ export function validateBlogInformationEvidenceScope(
     issues.push('missing_conditions');
   }
   if (!hasValidScopeWindow(scope)) issues.push('invalid_scope_window');
+  const futureToleranceMs = 5 * 60 * 1000;
+  if (scope.verifiedAt && Date.parse(scope.verifiedAt) > Date.now() + futureToleranceMs) {
+    issues.push('future_verified_at');
+  }
 
   const excerpt = normalizeMeaning(evidence.excerpt);
   if (!excerpt) return [...issues, 'missing_excerpt'];
@@ -316,7 +344,7 @@ export function validateBlogInformationEvidenceScope(
     .map(normalizeMeaning)
     .filter(Boolean);
   if (!locations.some((target) => excerpt.includes(target))) issues.push('excerpt_location_mismatch');
-  if (!excerpt.includes(normalizeMeaning(scope.applicableTo))) issues.push('excerpt_applicable_to_mismatch');
+  if (!containsSemanticToken(excerpt, scope.applicableTo)) issues.push('excerpt_applicable_to_mismatch');
   const years = scopeDateYears(scope);
   if (years.length === 0 || !years.some((year) => excerpt.includes(year))) issues.push('excerpt_date_mismatch');
   return [...new Set(issues)];
@@ -368,7 +396,15 @@ export function validateBlogInformationResearchBundle(
     }
     if (!clean(source.publisher)) issues.push(`source:missing_publisher:${key || 'unknown'}`);
     if (!isIsoDate(source.retrievedAt)) issues.push(`source:invalid_retrieved_at:${key || 'unknown'}`);
+    else if (Date.parse(source.retrievedAt) > Date.now() + 5 * 60 * 1000) {
+      issues.push(`source:future_retrieved_at:${key || 'unknown'}`);
+    }
+    const normalizedSnapshot = normalizeBlogInformationSourceSnapshot(source.snapshotContent ?? '');
+    if (!normalizedSnapshot) issues.push(`source:missing_snapshot:${key || 'unknown'}`);
     if (!/^[0-9a-f]{64}$/i.test(clean(source.contentHash))) issues.push(`source:invalid_content_hash:${key || 'unknown'}`);
+    else if (source.contentHash.toLowerCase() !== createBlogInformationSourceContentHash(normalizedSnapshot)) {
+      issues.push(`source:content_hash_mismatch:${key || 'unknown'}`);
+    }
     const hasUrl = Boolean(clean(source.sourceUrl));
     const hasInternalIdentifier = Boolean(clean(source.internalIdentifier));
     if (!hasUrl && !hasInternalIdentifier) issues.push(`source:missing_locator:${key || 'unknown'}`);
@@ -391,11 +427,27 @@ export function validateBlogInformationResearchBundle(
     }
     if (!sourceKeys.has(clean(evidence.sourceKey))) issues.push(`evidence:unknown_source:${key || 'unknown'}`);
     if (!isIsoDate(evidence.observedAt)) issues.push(`evidence:invalid_observed_at:${key || 'unknown'}`);
+    else if (Date.parse(evidence.observedAt) > Date.now() + 5 * 60 * 1000) {
+      issues.push(`evidence:future_observed_at:${key || 'unknown'}`);
+    }
     if (!validWindow(evidence.validFrom, evidence.validUntil)) issues.push(`evidence:invalid_valid_window:${key || 'unknown'}`);
     for (const scopeIssue of validateBlogInformationEvidenceScope(evidence)) {
       issues.push(`evidence:scope:${scopeIssue}:${key || 'unknown'}`);
     }
     const source = sourceByKey.get(clean(evidence.sourceKey));
+    if (source) {
+      const snapshot = normalizeBlogInformationSourceSnapshot(source.snapshotContent ?? '');
+      const snapshotCharacters = Array.from(snapshot);
+      const validSpan = Number.isInteger(evidence.spanStart)
+        && Number.isInteger(evidence.spanEnd)
+        && evidence.spanStart >= 0
+        && evidence.spanEnd > evidence.spanStart
+        && evidence.spanEnd <= snapshotCharacters.length;
+      if (!validSpan
+        || snapshotCharacters.slice(evidence.spanStart, evidence.spanEnd).join('') !== evidence.excerpt) {
+        issues.push(`evidence:snapshot_span_mismatch:${key || 'unknown'}`);
+      }
+    }
     if (source?.country && normalizeMeaning(source.country) !== normalizeMeaning(evidence.scope?.country)) {
       issues.push(`evidence:source_country_mismatch:${key || 'unknown'}`);
     }

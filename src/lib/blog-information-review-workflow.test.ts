@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createBlogInformationClaimFingerprint, type BlogInformationResearchBundle } from './blog-information-evidence';
+import {
+  createBlogInformationClaimFingerprint,
+  createBlogInformationSourceContentHash,
+  type BlogInformationResearchBundle,
+} from './blog-information-evidence';
 import { extractBlogInformationClaims } from './blog-information-claim-validator';
 import {
   createBlogInformationContentFingerprint,
@@ -18,6 +22,7 @@ function bundleFor(input: {
   const claim = extractBlogInformationClaims(input.markdown)[0];
   if (!claim) throw new Error(`fixture did not produce a claim: ${input.markdown}`);
   const validUntil = input.validUntil ?? '2026-08-15T00:00:00.000Z';
+  const excerpt = `Japan Tokyo KR 2026 ${input.markdown}`;
   return {
     contentKey: 'untrusted-caller-key',
     sources: [{
@@ -27,7 +32,8 @@ function bundleFor(input: {
       sourceUrl: 'https://www.example.go.jp/travel',
       publisher: 'Official Travel Authority',
       retrievedAt: '2026-07-15T08:00:00.000Z',
-      contentHash: 'a'.repeat(64),
+      snapshotContent: excerpt,
+      contentHash: createBlogInformationSourceContentHash(excerpt),
       validUntil,
       destination: 'Tokyo',
       country: 'Japan',
@@ -37,7 +43,9 @@ function bundleFor(input: {
     evidence: [{
       evidenceKey: 'evidence-1',
       sourceKey: 'official-source',
-      excerpt: `Japan Tokyo KR 2026 ${input.markdown}`,
+      excerpt,
+      spanStart: 0,
+      spanEnd: excerpt.length,
       claimType: claim.claimType,
       riskLevel: claim.riskLevel,
       observedAt: '2026-07-15T08:00:00.000Z',

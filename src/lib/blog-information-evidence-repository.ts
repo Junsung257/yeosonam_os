@@ -1,6 +1,8 @@
 import { supabaseAdmin } from './supabase';
 import {
+  createBlogInformationSourceContentHash,
   createBlogInformationSourceVersionKey,
+  normalizeBlogInformationSourceSnapshot,
   validateBlogInformationResearchBundle,
   type BlogInformationResearchBundle,
 } from './blog-information-evidence';
@@ -28,7 +30,18 @@ export async function persistBlogInformationResearch(
     throw new Error(`blog_information_evidence_invalid:${validation.issues.join(',')}`);
   }
 
-  const officialSources = bundle.sources.filter((source) =>
+  const capturedAt = new Date().toISOString();
+  const capturedSources = bundle.sources.map((source) => {
+    const snapshotContent = normalizeBlogInformationSourceSnapshot(source.snapshotContent);
+    return {
+      ...source,
+      snapshotContent,
+      contentHash: createBlogInformationSourceContentHash(snapshotContent),
+      retrievedAt: capturedAt,
+    };
+  });
+
+  const officialSources = capturedSources.filter((source) =>
     source.authorityLevel === 'official_primary' || source.authorityLevel === 'official_secondary');
   const { data: registryRows, error: registryError } = officialSources.length > 0
     ? await supabaseAdmin
@@ -60,7 +73,7 @@ export async function persistBlogInformationResearch(
     tenant_id: bundle.tenantId ?? null,
   };
   const siteScope = bundle.siteScope?.trim().toLowerCase() || 'www.yeosonam.com';
-  const sourceRows = bundle.sources.map((source) => ({
+  const sourceRows = capturedSources.map((source) => ({
     ...common,
     source_key: source.sourceKey,
     site_scope: siteScope,
@@ -93,7 +106,7 @@ export async function persistBlogInformationResearch(
     .from('blog_information_sources')
     .select('id, source_key')
     .eq('site_scope', siteScope)
-    .in('source_key', bundle.sources.map((source) => source.sourceKey));
+    .in('source_key', capturedSources.map((source) => source.sourceKey));
   sourceLookup = bundle.tenantId
     ? sourceLookup.eq('tenant_id', bundle.tenantId)
     : sourceLookup.is('tenant_id', null);
@@ -102,16 +115,17 @@ export async function persistBlogInformationResearch(
   const sourceIds = Object.fromEntries(
     persistedSources.map((source) => [String(source.source_key), String(source.id)]),
   );
-  if (Object.keys(sourceIds).length !== bundle.sources.length) {
+  if (Object.keys(sourceIds).length !== capturedSources.length) {
     throwPersistenceError('source_identity_lookup', { message: 'source_identity_count_mismatch' });
   }
 
-  const sourceVersionRows = bundle.sources.map((source) => ({
+  const sourceVersionRows = capturedSources.map((source) => ({
     ...common,
     source_id: sourceIds[source.sourceKey],
     site_scope: siteScope,
     version_key: createBlogInformationSourceVersionKey(source),
     content_hash: source.contentHash.toLowerCase(),
+    snapshot_content: source.snapshotContent,
     source_type: source.sourceType,
     authority_level: source.authorityLevel,
     official_source_registry_id: officialTrustBySourceKey.get(source.sourceKey)?.registryId ?? null,
@@ -150,7 +164,7 @@ export async function persistBlogInformationResearch(
       String(version.id),
     ]),
   );
-  const sourceVersionIds = Object.fromEntries(bundle.sources.map((source) => {
+  const sourceVersionIds = Object.fromEntries(capturedSources.map((source) => {
     const identity = `${sourceIds[source.sourceKey]}:${createBlogInformationSourceVersionKey(source)}`;
     return [source.sourceKey, versionIdByIdentity.get(identity) ?? ''];
   }));
@@ -168,6 +182,8 @@ export async function persistBlogInformationResearch(
     logical_evidence_key: evidence.evidenceKey,
     source_locator: evidence.sourceLocator ?? null,
     excerpt: evidence.excerpt ?? null,
+    span_start: evidence.spanStart,
+    span_end: evidence.spanEnd,
     claim_type: evidence.claimType,
     risk_level: evidence.riskLevel,
     observed_at: evidence.observedAt,

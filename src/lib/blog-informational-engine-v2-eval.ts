@@ -12,7 +12,11 @@ import {
   inspectBlogInformationMarkdown,
   type BlogInformationIntent,
 } from './blog-information-contract';
-import { validateBlogInformationResearchBundle } from './blog-information-evidence';
+import {
+  createBlogInformationSourceContentHash,
+  normalizeBlogInformationSourceSnapshot,
+  validateBlogInformationResearchBundle,
+} from './blog-information-evidence';
 import { buildBlogInformationPlan, type BlogInformationPlan } from './blog-information-planner';
 import { evaluateBlogPublicEligibility } from './blog-public-eligibility';
 import { validateBlogInformationStructure } from './blog-information-structure';
@@ -292,6 +296,10 @@ async function evaluateFixture(
   const labelOnlyReport = inspectBlogInformationMarkdown({ markdown: labelOnly, contract: plan.contract });
   const claims = extractBlogInformationClaims(markdown);
   const savedClaims = persistedClaims(markdown, plan);
+  const researchExcerpts = claims.map((claim) => normalizeBlogInformationSourceSnapshot(
+    `2026 ${plan.destinationName ?? '해외여행'} ${plan.travelerNationality ?? plan.audience}: ${claim.claimText}`,
+  ));
+  const researchSnapshot = researchExcerpts.join('\n');
   const research = validateBlogInformationResearchBundle({
     contentKey: fixture.slug,
     sources: [{
@@ -301,7 +309,8 @@ async function evaluateFixture(
       sourceUrl: 'https://evidence.gov.example/r14-source',
       publisher: 'R14 Official Fixture Authority',
       retrievedAt: '2026-07-15T08:00:00.000Z',
-      contentHash: 'b'.repeat(64),
+      snapshotContent: researchSnapshot,
+      contentHash: createBlogInformationSourceContentHash(researchSnapshot),
       validUntil: '2026-08-15T00:00:00.000Z',
       destination: plan.destinationName ?? '해외여행',
       country: plan.destinationName ?? '대한민국',
@@ -312,7 +321,12 @@ async function evaluateFixture(
       evidenceKey: `evidence-${index + 1}`,
       sourceKey: 'r14-official-source',
       sourceLocator: `r14:${index + 1}`,
-      excerpt: `2026 ${plan.destinationName ?? '해외여행'} ${plan.travelerNationality ?? plan.audience}: ${claim.claimText}`,
+      excerpt: researchExcerpts[index],
+      spanStart: researchExcerpts.slice(0, index)
+        .reduce((length, item) => length + Array.from(item).length + 1, 0),
+      spanEnd: researchExcerpts.slice(0, index)
+        .reduce((length, item) => length + Array.from(item).length + 1, 0)
+        + Array.from(researchExcerpts[index]).length,
       claimType: claim.claimType,
       riskLevel: claim.riskLevel,
       observedAt: '2026-07-15T08:00:00.000Z',
@@ -407,6 +421,7 @@ async function evaluateFixture(
     dealRoomUrl: 'https://open.kakao.com/o/gAbCdEf1',
     consultationUrl: 'https://pf.kakao.com/_AbCdEf/chat',
     officialSourceUrl: 'https://immigration.gov.example/r14-source',
+    officialSourceRegistryHostname: 'immigration.gov.example',
   });
   const ctas = selectBlogInformationalCtas({
     intent: plan.intent,

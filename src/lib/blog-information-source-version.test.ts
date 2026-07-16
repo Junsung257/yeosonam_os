@@ -14,6 +14,7 @@ const source = (overrides: Partial<BlogInformationSourceInput> = {}): BlogInform
   sourceUrl: 'https://example.go.jp/entry',
   publisher: 'Japan Immigration',
   retrievedAt: '2026-07-15T08:00:00.000Z',
+  snapshotContent: 'Japan entry policy snapshot',
   contentHash: 'a'.repeat(64),
   destination: '일본',
   country: '일본',
