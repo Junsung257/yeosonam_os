@@ -52,6 +52,11 @@ const checksToRun = [
     args: ['scripts/verify-operational-apply-scripts.mjs', '--json'],
   },
   {
+    id: 'staging-identity-gate-self-test',
+    command: process.execPath,
+    args: ['scripts/verify-staging-identity-gate.mjs', '--self-test', '--json'],
+  },
+  {
     id: 'marketing-release-smoke',
     command: process.execPath,
     args: [

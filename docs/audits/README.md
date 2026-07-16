@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -38,6 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-17 | `2026-07-17-pr749-staging-identity-gate.md` | PR #749 staging identity hard-gate evidence, current block reason, and required non-production write guard inputs. |
 | 2026-07-15 | `2026-07-15-public-package-egress-boundary.md` | Public package pointer/read-model/evidence/quarantine/proof implementation audit, 917-row dry-run results, and remaining rollout gates. |
 | 2026-07-06 | `2026-07-06-mobile-landing-copy-audit-smoke/` | Mobile landing copy audit smoke output for shared customer-facing package title/summary logic. |
 | 2026-06-24 | `2026-06-24-upload-function-timeout-queue-first.md` | Queue-first upload timeout prevention and replay-source preservation evidence. |
