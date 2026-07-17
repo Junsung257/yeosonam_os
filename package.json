@@ -113,6 +113,7 @@
     "verify:public-egress": "node scripts/verify-public-egress-contracts.mjs",
     "verify:public-package-security": "node scripts/verify-public-package-security-contracts.mjs",
     "verify:public-package-rollout-mode": "node scripts/verify-public-package-rollout-mode.mjs",
+    "verify:pr749-staging-data-gate": "node scripts/verify-pr749-staging-data-gate.mjs",
     "verify:project-automation-wiring": "node scripts/verify-project-automation-wiring.mjs",
     "verify:runtime-env-wiring": "node scripts/verify-runtime-env-workflow-wiring.mjs",
     "verify:runtime-env-docs": "node scripts/verify-runtime-env-docs.mjs",

@@ -1,0 +1,146 @@
+{
+  "status": "blocked",
+  "executiveVerdict": "STAGING IDENTITY NOT VERIFIED",
+  "generatedAt": "2026-07-17T03:07:04.106Z",
+  "mode": "no-write",
+  "envFile": ".env.prod",
+  "productionMutationPerformed": false,
+  "stagingMutationPerformed": false,
+  "readyForReviewRecommended": false,
+  "github": {
+    "pr": 749,
+    "branch": "codex/public-egress-boundary-v1",
+    "note": "Use gh pr checks 749 for live GitHub/Vercel status; this report intentionally avoids changing PR state."
+  },
+  "stagingIdentity": {
+    "verdict": "STAGING_IDENTITY_NOT_VERIFIED",
+    "writeAllowed": false,
+    "identity": {
+      "organization": null,
+      "projectName": null,
+      "projectRef": "ixaxnvbmhzjvupissmly",
+      "apiHost": "ixaxnvbmhzjvupissmly.supabase.co",
+      "dbHost": null,
+      "databaseName": null,
+      "environmentLabel": "production",
+      "branchOrLink": null
+    },
+    "productionDenyEvidence": {
+      "productionProjectRef": null,
+      "productionApiHost": null,
+      "productionDbHost": null,
+      "projectDenylist": [],
+      "dbHostDenylist": []
+    },
+    "blockedChecks": [
+      "explicit-non-prod-opt-in",
+      "staging-db-host-present",
+      "environment-label-non-production",
+      "project-ref-allowlisted",
+      "production-project-ref-denylisted",
+      "production-db-host-denylisted",
+      "db-host-separated-from-production"
+    ]
+  },
+  "staticGates": [
+    {
+      "id": "public-egress",
+      "status": "pass",
+      "exitCode": 0,
+      "passed": 1,
+      "failed": 0,
+      "blocked": null
+    },
+    {
+      "id": "public-package-security",
+      "status": "pass",
+      "exitCode": 0,
+      "passed": 51,
+      "failed": 0,
+      "blocked": null
+    },
+    {
+      "id": "public-package-rollout-mode",
+      "status": "pass",
+      "exitCode": 0,
+      "passed": 2,
+      "failed": 0,
+      "blocked": 0
+    }
+  ],
+  "stagingMetrics": {
+    "packages": null,
+    "snapshots": null,
+    "gatePassSnapshots": null,
+    "publishedPointers": null,
+    "projectionCoverage": null,
+    "proofs": {
+      "fresh": null,
+      "stale": null,
+      "missing": null,
+      "failed": null
+    },
+    "activePollution": null,
+    "historicalQuarantine": null,
+    "rawFallback": null,
+    "blockedExposure": null,
+    "selectionOnlyExceptions": null,
+    "skippedReason": "staging identity is not verified; no staging migration, seed, backfill, proof write, promotion, route smoke, admin smoke, or 500-package audit was executed"
+  },
+  "positivePathEvidence": {
+    "samples": [],
+    "skippedReason": "staging identity is not verified; no staging migration, seed, backfill, proof write, promotion, route smoke, admin smoke, or 500-package audit was executed"
+  },
+  "negativePathEvidence": {
+    "fixtures": [],
+    "skippedReason": "staging identity is not verified; no staging migration, seed, backfill, proof write, promotion, route smoke, admin smoke, or 500-package audit was executed"
+  },
+  "adminSmoke": {
+    "samples": [],
+    "screenshots": [],
+    "skippedReason": "staging identity is not verified; no staging migration, seed, backfill, proof write, promotion, route smoke, admin smoke, or 500-package audit was executed"
+  },
+  "regressionAudit": {
+    "command": "npm run audit:public-snapshot-generation -- --json --limit=500 --samples=80",
+    "generated": null,
+    "repairable": null,
+    "blocked": null,
+    "falseGenerated": null,
+    "wrongPriceExposure": null,
+    "blockedExternalExposure": null,
+    "skippedReason": "staging identity is not verified; no staging migration, seed, backfill, proof write, promotion, route smoke, admin smoke, or 500-package audit was executed"
+  },
+  "requiredActionsBeforeReadyForReview": [
+    "provide verified non-production staging identity values",
+    "run staging pre-inventory and migration apply after identity passes",
+    "generate source-backed public snapshots and exact fresh proofs in staging",
+    "verify atomic promotion, projection coverage, positive routes, negative blockers, and admin public-review smoke",
+    "run the 500-package public snapshot regression audit against staging or an approved non-production environment"
+  ],
+  "checks": [
+    {
+      "id": "staging-identity",
+      "status": "blocked",
+      "exitCode": 1,
+      "stderr": ""
+    },
+    {
+      "id": "public-egress",
+      "status": "pass",
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "id": "public-package-security",
+      "status": "pass",
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "id": "public-package-rollout-mode",
+      "status": "pass",
+      "exitCode": 0,
+      "stderr": ""
+    }
+  ]
+}
