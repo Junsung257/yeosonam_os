@@ -1,0 +1,210 @@
+name: PR 749 Staging Data Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_head_sha:
+        description: "Exact PR #749 HEAD SHA to verify"
+        required: true
+      action:
+        description: "Gate stage to run"
+        required: true
+        default: "identity"
+        type: choice
+        options:
+          - identity
+          - inventory
+          - migrate
+          - seed
+          - verify
+          - cleanup-fixtures
+          - full-gate
+      allow_mutation:
+        description: "Allow non-production staging writes after identity passes"
+        required: true
+        default: false
+        type: boolean
+      use_existing_staging_data:
+        description: "Use existing protected staging data instead of fixtures"
+        required: true
+        default: false
+        type: boolean
+      run_full_500_audit:
+        description: "Run the 500-package public snapshot audit"
+        required: true
+        default: false
+        type: boolean
+      retain_fixtures:
+        description: "Retain staging fixtures for manual review"
+        required: true
+        default: false
+        type: boolean
+      expected_project_ref:
+        description: "Optional expected staging Supabase project ref"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pr749-staging-data-gate-${{ github.event.inputs.expected_head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  staging-gate:
+    name: Protected staging gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: staging
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify dispatched HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_head="$(git rev-parse HEAD)"
+          echo "actual_head=$actual_head" >> "$GITHUB_OUTPUT"
+          if [ "$actual_head" != "${{ github.event.inputs.expected_head_sha }}" ]; then
+            echo "Expected HEAD does not match checked out HEAD." >&2
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create evidence directory
+        run: mkdir -p .tmp/pr749-staging-gate
+
+      - name: Static no-write gate report
+        shell: bash
+        run: |
+          set +e
+          npm run verify:pr749-staging-data-gate -- --json --expected-head "${{ github.event.inputs.expected_head_sha }}" --out=.tmp/pr749-staging-gate/no-write-report.json > .tmp/pr749-staging-gate/no-write-report.stdout
+          echo "$?" > .tmp/pr749-staging-gate/no-write-report.exit
+          exit 0
+
+      - name: Protected staging identity gate
+        shell: bash
+        env:
+          ALLOW_NON_PROD_DB_MUTATION: ${{ github.event.inputs.allow_mutation == 'true' && vars.ALLOW_NON_PROD_DB_MUTATION || 'false' }}
+          ENVIRONMENT_LABEL: staging
+          STAGING_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+          EXPECTED_STAGING_PROJECT_REF: ${{ github.event.inputs.expected_project_ref || vars.STAGING_SUPABASE_PROJECT_REF }}
+          EXPECTED_STAGING_DB_HOST: ${{ vars.STAGING_DATABASE_HOST }}
+          STAGING_PROJECT_REF_ALLOWLIST: ${{ vars.STAGING_SUPABASE_PROJECT_REF }}
+          PRODUCTION_PROJECT_REF_DENYLIST: ${{ vars.PRODUCTION_SUPABASE_PROJECT_REF }}
+          PRODUCTION_DB_HOST_DENYLIST: ${{ vars.PRODUCTION_DATABASE_HOST }}
+          EXPECTED_PR_NUMBER: "749"
+          PR_NUMBER: "749"
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          HEAD_SHA: ${{ github.sha }}
+          REQUIRE_PROTECTED_STAGING_ENVIRONMENT: "true"
+          PROTECTED_ENVIRONMENT_NAME: staging
+          REQUIRE_STAGING_PROTECTION_ACK: "true"
+          STAGING_ENVIRONMENT_PROTECTION_ACK: ${{ vars.STAGING_ENVIRONMENT_PROTECTION_ACK }}
+          REQUIRE_STAGING_SERVICE_ROLE: "true"
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCTION_SERVICE_ROLE_KEY_FINGERPRINT_DENYLIST: ${{ vars.PRODUCTION_SERVICE_ROLE_KEY_FINGERPRINT_DENYLIST }}
+        run: |
+          set +e
+          npm run verify:staging-identity -- --json > .tmp/pr749-staging-gate/staging-identity.json
+          echo "$?" > .tmp/pr749-staging-gate/staging-identity.exit
+          exit 0
+
+      - name: Aggregate non-passing evidence
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+
+          function readJson(path) {
+            try { return JSON.parse(fs.readFileSync(path, 'utf8')); }
+            catch { return null; }
+          }
+          function hash(value) {
+            const text = String(value || '').trim().toLowerCase();
+            return text ? crypto.createHash('sha256').update(text).digest('hex').slice(0, 12) : null;
+          }
+
+          const identity = readJson('.tmp/pr749-staging-gate/staging-identity.json');
+          const now = new Date();
+          const evidence = {
+            schema_version: 1,
+            pr_number: 749,
+            head_sha: process.env.GITHUB_SHA,
+            base_sha: process.env.GITHUB_BASE_SHA || null,
+            generated_at: now.toISOString(),
+            expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+            activation_eligible: false,
+            environment: {
+              kind: identity?.status === 'pass' ? 'staging' : 'unknown',
+              project_ref_hash: hash(identity?.identity?.projectRef),
+              api_host: identity?.identity?.apiHost || null,
+              db_host_hash: identity?.identity?.dbHostHash || hash(identity?.identity?.dbHost),
+              db_host_suffix: identity?.identity?.dbHostSuffix || null,
+              production_identity_mismatch: identity?.status === 'pass',
+              mutation_opt_in: identity?.writeAllowed === true,
+              protected_environment: identity?.protectedRuntime?.protectedEnvironment || null
+            },
+            migration: { status: 'not_run', reason: 'No staging write stage runs until activation evidence generation scripts are enabled and identity passes.' },
+            security: { blockers: null },
+            snapshots: { rows: 0, gate_pass: 0 },
+            proofs: { fresh: 0 },
+            pollution: { active_unresolved_public: null, quarantined_but_active: null },
+            projections: { required_coverage: null },
+            egress: { raw_fallback: null, blocked_exposure: null, stale_outbound_publication: null },
+            selection_only: { invalid: null, raw_copy_in_dto: null },
+            admin_smoke: { status: 'not_run' },
+            audit_500: { status: 'not_run' },
+            build: { vercel: { status: 'not_run' } },
+            identity_report: {
+              verdict: identity?.verdict || 'STAGING_IDENTITY_NOT_VERIFIED',
+              blocked_checks: identity?.blockedChecks || []
+            },
+            verdict: identity?.status === 'pass'
+              ? 'STAGING_PROVISIONING_READY'
+              : 'STAGING_IDENTITY_NOT_VERIFIED'
+          };
+          fs.writeFileSync('.tmp/pr749-staging-gate/pr749-staging-gate-evidence.json', `${JSON.stringify(evidence, null, 2)}\n`);
+          NODE
+
+      - name: Validate blocked evidence shape
+        run: npm run verify:pr749-staging-evidence -- --json --allow-blocked --file .tmp/pr749-staging-gate/pr749-staging-gate-evidence.json --expected-head "${{ github.sha }}"
+
+      - name: Require complete evidence for write/full gate actions
+        if: ${{ github.event.inputs.allow_mutation == 'true' && github.event.inputs.action != 'identity' }}
+        run: npm run verify:pr749-staging-evidence -- --json --require-pass --file .tmp/pr749-staging-gate/pr749-staging-gate-evidence.json --expected-head "${{ github.sha }}"
+
+      - name: Upload staging gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr749-staging-gate-evidence
+          path: |
+            .tmp/pr749-staging-gate/*.json
+            .tmp/pr749-staging-gate/*.stdout
+            .tmp/pr749-staging-gate/*.exit
+          retention-days: 14
+
+      - name: Fail closed when identity is not verified
+        shell: bash
+        run: |
+          identity_exit="$(cat .tmp/pr749-staging-gate/staging-identity.exit 2>/dev/null || echo 1)"
+          if [ "$identity_exit" != "0" ]; then
+            echo "STAGING IDENTITY NOT VERIFIED. No staging write, migration, fixture, proof, or promotion step was executed." >&2
+            exit 1
+          fi

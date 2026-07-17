@@ -53,8 +53,23 @@ function pass(check) {
   return check.exitCode === 0 && ['pass', 'blocked', 'warn'].includes(check.status);
 }
 
+function runGit(args) {
+  const result = spawnSync('git', args, {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  return result.status === 0 ? String(result.stdout || '').trim() : '';
+}
+
 const envFile = argValue('--env-file', '');
 const outPath = argValue('--out', '');
+const expectedHead = argValue('--expected-head', process.env.EXPECTED_HEAD_SHA || '');
+const currentHead = runGit(['rev-parse', 'HEAD']);
+const currentBranch = runGit(['branch', '--show-current']);
+const workingTreeStatus = runGit(['status', '--short']);
+const baseSha = runGit(['merge-base', 'HEAD', 'origin/main']) || null;
 const checks = [];
 
 const stagingIdentityArgs = ['--json'];
@@ -73,15 +88,19 @@ checks.push(runNode('public-package-rollout-mode', 'scripts/verify-public-packag
 const stagingIdentity = checks.find(check => check.id === 'staging-identity')?.report;
 const identityVerified = stagingIdentity?.status === 'pass' && stagingIdentity?.writeAllowed === true;
 const staticGateFailures = checks.filter(check => check.id !== 'staging-identity' && !pass(check));
+const preflightBlockers = [];
+if (expectedHead && currentHead && expectedHead !== currentHead) {
+  preflightBlockers.push('expected HEAD does not match current HEAD');
+}
 
 const skippedReason = identityVerified
   ? null
   : 'staging identity is not verified; no staging migration, seed, backfill, proof write, promotion, route smoke, admin smoke, or 500-package audit was executed';
 
 const report = {
-  status: identityVerified && staticGateFailures.length === 0 ? 'pass' : 'blocked',
+  status: identityVerified && staticGateFailures.length === 0 && preflightBlockers.length === 0 ? 'pass' : 'blocked',
   executiveVerdict: identityVerified
-    ? staticGateFailures.length === 0
+    ? staticGateFailures.length === 0 && preflightBlockers.length === 0
       ? 'STAGING IDENTITY VERIFIED - DATA GATES NOT EXECUTED BY THIS NO-WRITE REPORTER'
       : 'STAGING IDENTITY VERIFIED - STATIC GATES FAILED'
     : 'STAGING IDENTITY NOT VERIFIED',
@@ -91,6 +110,18 @@ const report = {
   productionMutationPerformed: false,
   stagingMutationPerformed: false,
   readyForReviewRecommended: false,
+  preflight: {
+    repositoryRoot: process.cwd(),
+    currentBranch,
+    currentHead,
+    expectedHead: expectedHead || null,
+    expectedHeadMatches: expectedHead ? expectedHead === currentHead : null,
+    baseSha,
+    workingTreeClean: workingTreeStatus.length === 0,
+    productionMutationPerformed: false,
+    stagingMutationPerformed: false,
+    blockers: preflightBlockers,
+  },
   github: {
     pr: 749,
     branch: 'codex/public-egress-boundary-v1',

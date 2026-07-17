@@ -57,6 +57,16 @@ const checksToRun = [
     args: ['scripts/verify-staging-identity-gate.mjs', '--self-test', '--json'],
   },
   {
+    id: 'pr749-staging-evidence-self-test',
+    command: process.execPath,
+    args: ['scripts/verify-pr749-staging-gate-evidence.mjs', '--self-test', '--json'],
+  },
+  {
+    id: 'pr749-staging-workflow-contract',
+    command: process.execPath,
+    args: ['scripts/verify-pr749-staging-workflow-contract.mjs', '--json'],
+  },
+  {
     id: 'public-egress-contracts',
     command: process.execPath,
     args: ['scripts/verify-public-egress-contracts.mjs', '--json'],

@@ -39,6 +39,9 @@ These audits contain recent evidence for the current product-registration engine
 | Date | File | Use |
 |---|---|---|
 | 2026-07-17 | `2026-07-17-pr749-rollout-mode-activation-guard.md` | PR #749 default-off rollout mode and enforced activation evidence guard; production unchanged. |
+| 2026-07-17 | `2026-07-17-pr749-review-map.md` | PR #749 scope-by-scope review map for database, proof, egress, rollout, admin, security, staging, build, and runbook gates. |
+| 2026-07-17 | `2026-07-17-pr749-staging-provisioning-manifest.md` | Protected staging environment variable/secret manifest and provisioning runbook for PR #749. |
+| 2026-07-17 | `2026-07-17-pr749-staging-gate-evidence.json` | Blocked no-write machine-readable evidence; activation requires a fresh protected workflow artifact for the exact current HEAD. |
 | 2026-07-17 | `2026-07-17-pr749-staging-data-gate-report.md` | PR #749 no-write staging data gate report; current verdict is staging identity not verified, with JSON evidence and skipped gate list. |
 | 2026-07-17 | `2026-07-17-pr749-public-surface-security-contract.md` | PR #749 static security contract for new public package surfaces; staging security inventory still blocked by unverified staging identity. |
 | 2026-07-17 | `2026-07-17-pr749-production-rollout-runbook.md` | PR #749 production rollout and rollback hard gates; runbook only, no production change evidence. |

@@ -49,6 +49,7 @@ describe('public package egress rollout mode', () => {
 
     expect(result.status).toBe('block');
     expect(result.blockers).toContain('PUBLIC_PACKAGE_EGRESS_ACTIVATION_READY must be true');
+    expect(result.blockers).toContain('PUBLIC_PACKAGE_EGRESS_STAGING_GATE_EVIDENCE is required');
     expect(result.blockers).toContain('snapshot rows must be greater than 0');
     expect(result.blockers).toContain('external raw fallback must be 0');
   });
@@ -58,6 +59,7 @@ describe('public package egress rollout mode', () => {
       PUBLIC_PACKAGE_EGRESS_MODE: 'enforced',
       PUBLIC_PACKAGE_EGRESS_ACTIVATION_READY: 'true',
       PUBLIC_PACKAGE_EGRESS_STAGING_GATE_ID: 'staging-gate-2026-07-17',
+      PUBLIC_PACKAGE_EGRESS_STAGING_GATE_EVIDENCE: 'docs/audits/2026-07-17-pr749-staging-gate-evidence.json',
       PUBLIC_PACKAGE_EGRESS_SNAPSHOT_ROWS: '3',
       PUBLIC_PACKAGE_EGRESS_GATE_PASS_SNAPSHOTS: '3',
       PUBLIC_PACKAGE_EGRESS_FRESH_PROOFS: '6',

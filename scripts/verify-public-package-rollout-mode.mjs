@@ -64,6 +64,9 @@ function evaluate(env = process.env) {
     if (numberValue(env, 'PUBLIC_PACKAGE_EGRESS_BLOCKED_EXPOSURE') !== 0) {
       blockers.push('blocked external exposure must be 0');
     }
+    if (!String(env.PUBLIC_PACKAGE_EGRESS_STAGING_GATE_EVIDENCE || '').trim()) {
+      blockers.push('PUBLIC_PACKAGE_EGRESS_STAGING_GATE_EVIDENCE is required');
+    }
   }
 
   return {
@@ -87,6 +90,39 @@ const test = spawnSync(process.execPath, [
 });
 
 const activation = evaluate();
+const evidenceFile = String(process.env.PUBLIC_PACKAGE_EGRESS_STAGING_GATE_EVIDENCE || '').trim();
+let evidenceCheck = null;
+if (activation.mode === 'enforced' && evidenceFile) {
+  const evidenceArgs = [
+    'scripts/verify-pr749-staging-gate-evidence.mjs',
+    '--json',
+    '--require-pass',
+    '--file',
+    evidenceFile,
+  ];
+  const expectedHead = String(process.env.PUBLIC_PACKAGE_EGRESS_STAGING_GATE_HEAD_SHA || process.env.GITHUB_SHA || process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
+  if (expectedHead) evidenceArgs.push('--expected-head', expectedHead);
+  const evidence = spawnSync(process.execPath, evidenceArgs, {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  let parsed = null;
+  try {
+    parsed = JSON.parse(String(evidence.stdout || '').trim());
+  } catch {
+    parsed = null;
+  }
+  evidenceCheck = {
+    id: 'staging-gate-evidence',
+    status: evidence.status === 0 && parsed?.status === 'pass' ? 'pass' : 'block',
+    exitCode: evidence.status,
+    reportStatus: parsed?.status || 'unknown',
+    blockers: parsed?.blockers?.map(item => item.code || item.message) || [],
+    stderr: String(evidence.stderr || evidence.error?.message || '').trim().slice(0, 1200),
+  };
+}
 const checks = [
   {
     id: 'rollout-mode-unit-contract',
@@ -101,6 +137,7 @@ const checks = [
     ...activation,
   },
 ];
+if (evidenceCheck) checks.push(evidenceCheck);
 
 const failed = checks.filter(check => check.status === 'fail');
 const blocked = checks.filter(check => check.status === 'block');

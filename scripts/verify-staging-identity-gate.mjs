@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const rawArgs = process.argv.slice(2);
 const args = new Set(rawArgs);
@@ -102,6 +103,49 @@ function safeProjectRef(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeSha(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function shortSha(value) {
+  const sha = normalizeSha(value);
+  return sha ? sha.slice(0, 12) : null;
+}
+
+function fingerprint(value) {
+  const text = String(value || '').trim();
+  return text ? createHash('sha256').update(text).digest('hex').slice(0, 16) : null;
+}
+
+function hashHost(value) {
+  const text = String(value || '').trim().toLowerCase();
+  return text ? createHash('sha256').update(text).digest('hex').slice(0, 12) : null;
+}
+
+function hostSuffix(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return null;
+  const parts = text.split('.').filter(Boolean);
+  return parts.length <= 2 ? text : parts.slice(-3).join('.');
+}
+
+function looksLikePlaceholder(value) {
+  const text = String(value || '').trim();
+  if (!text) return true;
+  if (text.length < 24) return true;
+  return /^(placeholder|changeme|dummy|example|test|todo|your_|xxx|replace_me|service_role_key)/i.test(text) ||
+    /placeholder|changeme|dummy|example|replace[_-]?me/i.test(text);
+}
+
+function protectedEnvironmentName(env) {
+  return String(pick(
+    env.GITHUB_DEPLOYMENT_ENVIRONMENT,
+    env.PROTECTED_ENVIRONMENT_NAME,
+    env.GITHUB_ENVIRONMENT,
+    env.ENVIRONMENT_NAME,
+  )).trim().toLowerCase();
+}
+
 function evaluate(inputEnv = process.env, options = {}) {
   const env = { ...inputEnv };
   const envFileDiagnostics = loadEnvFile(options.envFile || '', env);
@@ -168,6 +212,26 @@ function evaluate(inputEnv = process.env, options = {}) {
     env.VERCEL_ENV,
     env.NODE_ENV,
   )).trim().toLowerCase();
+  const expectedPrNumber = String(pick(env.EXPECTED_PR_NUMBER, env.INPUT_EXPECTED_PR_NUMBER)).trim();
+  const runtimePrNumber = String(pick(
+    env.PR_NUMBER,
+    env.GITHUB_PR_NUMBER,
+    env.GITHUB_EVENT_PULL_REQUEST_NUMBER,
+    env.INPUT_PR_NUMBER,
+  )).trim();
+  const expectedHeadSha = normalizeSha(pick(env.EXPECTED_HEAD_SHA, env.INPUT_EXPECTED_HEAD_SHA));
+  const runtimeHeadSha = normalizeSha(pick(env.HEAD_SHA, env.GITHUB_SHA, env.VERCEL_GIT_COMMIT_SHA));
+  const requireProtectedEnvironment = boolEnv(env.REQUIRE_PROTECTED_STAGING_ENVIRONMENT);
+  const protectedEnvName = protectedEnvironmentName(env);
+  const requireProtectionAck = boolEnv(env.REQUIRE_STAGING_PROTECTION_ACK);
+  const protectionAck = String(env.STAGING_ENVIRONMENT_PROTECTION_ACK || '').trim();
+  const requireCredential = boolEnv(env.REQUIRE_STAGING_SERVICE_ROLE);
+  const stagingCredential = pick(env.STAGING_SUPABASE_SERVICE_ROLE_KEY, env.STAGING_SERVICE_ROLE_KEY, env.SUPABASE_SERVICE_ROLE_KEY);
+  const stagingCredentialFingerprint = fingerprint(stagingCredential);
+  const credentialFingerprintDenylist = listFromEnv(pick(
+    env.PRODUCTION_SERVICE_ROLE_KEY_FINGERPRINT_DENYLIST,
+    env.PRODUCTION_CREDENTIAL_FINGERPRINT_DENYLIST,
+  ));
 
   const checks = [];
   const add = (id, pass, message, details = {}) => {
@@ -235,6 +299,43 @@ function evaluate(inputEnv = process.env, options = {}) {
       !dbHostDenylist.includes(stagingDbHost),
     'Staging DB host must differ from production DB host and must not be denylisted.',
   );
+  add(
+    'expected-pr-number',
+    !expectedPrNumber || (expectedPrNumber === '749' && (!runtimePrNumber || runtimePrNumber === expectedPrNumber)),
+    'Expected PR number must be 749 and must match the workflow PR number when provided.',
+    { expectedPrNumber: expectedPrNumber || null, runtimePrNumber: runtimePrNumber || null },
+  );
+  add(
+    'expected-head-sha',
+    !expectedHeadSha || (!runtimeHeadSha || runtimeHeadSha === expectedHeadSha),
+    'Expected HEAD SHA must match the workflow/runtime HEAD SHA when provided.',
+    { expectedHeadSha: shortSha(expectedHeadSha), runtimeHeadSha: shortSha(runtimeHeadSha) },
+  );
+  add(
+    'protected-github-environment',
+    !requireProtectedEnvironment || protectedEnvName === 'staging',
+    'Protected GitHub environment must be staging when protected-environment enforcement is enabled.',
+    { protectedEnvironment: protectedEnvName || null },
+  );
+  add(
+    'protected-environment-ack',
+    !requireProtectionAck || protectionAck === 'protected-staging-reviewed',
+    'Protected staging environment must provide STAGING_ENVIRONMENT_PROTECTION_ACK=protected-staging-reviewed.',
+  );
+  add(
+    'staging-credential-not-placeholder',
+    !requireCredential || (!looksLikePlaceholder(stagingCredential) && Boolean(stagingCredentialFingerprint)),
+    'Staging service credential must be present and must not be a placeholder when credential enforcement is enabled.',
+    { credentialFingerprint: stagingCredentialFingerprint },
+  );
+  add(
+    'staging-credential-not-production',
+    !requireCredential ||
+      !stagingCredentialFingerprint ||
+      !credentialFingerprintDenylist.includes(stagingCredentialFingerprint),
+    'Staging credential fingerprint must not match the production credential denylist.',
+    { credentialFingerprint: stagingCredentialFingerprint },
+  );
 
   const blocked = checks.filter((check) => check.status !== 'pass');
   const summary = {
@@ -253,9 +354,21 @@ function evaluate(inputEnv = process.env, options = {}) {
       projectRef: stagingProjectRef || null,
       apiHost: stagingApiHost || null,
       dbHost: stagingDbHost || null,
+      dbHostHash: hashHost(stagingDbHost),
+      dbHostSuffix: hostSuffix(stagingDbHost),
       databaseName: env.STAGING_DATABASE_NAME || env.PGDATABASE || null,
       environmentLabel: environmentLabel || null,
       branchOrLink: env.STAGING_BRANCH || env.SUPABASE_BRANCH || env.VERCEL_GIT_COMMIT_REF || null,
+    },
+    protectedRuntime: {
+      expectedPrNumber: expectedPrNumber || null,
+      runtimePrNumber: runtimePrNumber || null,
+      expectedHeadSha: shortSha(expectedHeadSha),
+      runtimeHeadSha: shortSha(runtimeHeadSha),
+      protectedEnvironment: protectedEnvName || null,
+      protectionAckPresent: protectionAck ? true : false,
+      credentialFingerprint: stagingCredentialFingerprint,
+      credentialFingerprintDenylistCount: credentialFingerprintDenylist.length,
     },
     productionDenyEvidence: {
       productionProjectRef: productionProjectRef || null,
@@ -283,6 +396,10 @@ function printHuman(report) {
 }
 
 function runSelfTest() {
+  const fakeStagingCredential = 'staging-service-role-key-for-pr749-self-test';
+  const fakeProductionCredential = 'production-service-role-key-for-pr749-self-test';
+  const fakeProductionFingerprint = fingerprint(fakeProductionCredential);
+
   const prodLike = evaluate({
     VERCEL_ENV: 'production',
     NEXT_PUBLIC_SUPABASE_URL: 'https://prodref.supabase.co',
@@ -316,14 +433,117 @@ function runSelfTest() {
     PRODUCTION_DB_HOST_DENYLIST: 'db.prodref.supabase.co',
     STAGING_PROJECT_REF_ALLOWLIST: 'stageref',
     ALLOW_NON_PROD_DB_MUTATION: 'true',
+    EXPECTED_PR_NUMBER: '749',
+    PR_NUMBER: '749',
+    EXPECTED_HEAD_SHA: '475975d10d624f98f100b6bccd9979d8bb4a40e9',
+    HEAD_SHA: '475975d10d624f98f100b6bccd9979d8bb4a40e9',
+    REQUIRE_PROTECTED_STAGING_ENVIRONMENT: 'true',
+    PROTECTED_ENVIRONMENT_NAME: 'staging',
+    REQUIRE_STAGING_PROTECTION_ACK: 'true',
+    STAGING_ENVIRONMENT_PROTECTION_ACK: 'protected-staging-reviewed',
+    REQUIRE_STAGING_SERVICE_ROLE: 'true',
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeStagingCredential,
+    PRODUCTION_SERVICE_ROLE_KEY_FINGERPRINT_DENYLIST: fakeProductionFingerprint,
   });
   if (valid.status !== 'pass') {
     throw new Error(`valid staging env should pass: ${valid.blockedChecks.join(',')}`);
   }
 
+  const wrongHead = evaluate({
+    ENVIRONMENT_LABEL: 'staging',
+    STAGING_SUPABASE_URL: 'https://stageref.supabase.co',
+    PRODUCTION_SUPABASE_URL: 'https://prodref.supabase.co',
+    EXPECTED_STAGING_PROJECT_REF: 'stageref',
+    EXPECTED_STAGING_DB_HOST: 'db.stageref.supabase.co',
+    PRODUCTION_PROJECT_REF_DENYLIST: 'prodref',
+    PRODUCTION_DB_HOST_DENYLIST: 'db.prodref.supabase.co',
+    STAGING_PROJECT_REF_ALLOWLIST: 'stageref',
+    ALLOW_NON_PROD_DB_MUTATION: 'true',
+    EXPECTED_PR_NUMBER: '749',
+    PR_NUMBER: '749',
+    EXPECTED_HEAD_SHA: '475975d10d624f98f100b6bccd9979d8bb4a40e9',
+    HEAD_SHA: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    REQUIRE_PROTECTED_STAGING_ENVIRONMENT: 'true',
+    PROTECTED_ENVIRONMENT_NAME: 'staging',
+    REQUIRE_STAGING_PROTECTION_ACK: 'true',
+    STAGING_ENVIRONMENT_PROTECTION_ACK: 'protected-staging-reviewed',
+    REQUIRE_STAGING_SERVICE_ROLE: 'true',
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeStagingCredential,
+    PRODUCTION_SERVICE_ROLE_KEY_FINGERPRINT_DENYLIST: fakeProductionFingerprint,
+  });
+  if (wrongHead.status !== 'blocked' || !wrongHead.blockedChecks.includes('expected-head-sha')) {
+    throw new Error('wrong HEAD SHA must be blocked');
+  }
+
+  const unprotected = evaluate({
+    ENVIRONMENT_LABEL: 'staging',
+    STAGING_SUPABASE_URL: 'https://stageref.supabase.co',
+    PRODUCTION_SUPABASE_URL: 'https://prodref.supabase.co',
+    EXPECTED_STAGING_PROJECT_REF: 'stageref',
+    EXPECTED_STAGING_DB_HOST: 'db.stageref.supabase.co',
+    PRODUCTION_PROJECT_REF_DENYLIST: 'prodref',
+    PRODUCTION_DB_HOST_DENYLIST: 'db.prodref.supabase.co',
+    STAGING_PROJECT_REF_ALLOWLIST: 'stageref',
+    ALLOW_NON_PROD_DB_MUTATION: 'true',
+    REQUIRE_PROTECTED_STAGING_ENVIRONMENT: 'true',
+    PROTECTED_ENVIRONMENT_NAME: 'production',
+    REQUIRE_STAGING_PROTECTION_ACK: 'true',
+    STAGING_ENVIRONMENT_PROTECTION_ACK: 'protected-staging-reviewed',
+    REQUIRE_STAGING_SERVICE_ROLE: 'true',
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeStagingCredential,
+  });
+  if (unprotected.status !== 'blocked' || !unprotected.blockedChecks.includes('protected-github-environment')) {
+    throw new Error('non-staging protected environment must be blocked');
+  }
+
+  const missingProtectionAck = evaluate({
+    ENVIRONMENT_LABEL: 'staging',
+    STAGING_SUPABASE_URL: 'https://stageref.supabase.co',
+    PRODUCTION_SUPABASE_URL: 'https://prodref.supabase.co',
+    EXPECTED_STAGING_PROJECT_REF: 'stageref',
+    EXPECTED_STAGING_DB_HOST: 'db.stageref.supabase.co',
+    PRODUCTION_PROJECT_REF_DENYLIST: 'prodref',
+    PRODUCTION_DB_HOST_DENYLIST: 'db.prodref.supabase.co',
+    STAGING_PROJECT_REF_ALLOWLIST: 'stageref',
+    ALLOW_NON_PROD_DB_MUTATION: 'true',
+    REQUIRE_PROTECTED_STAGING_ENVIRONMENT: 'true',
+    PROTECTED_ENVIRONMENT_NAME: 'staging',
+    REQUIRE_STAGING_PROTECTION_ACK: 'true',
+    REQUIRE_STAGING_SERVICE_ROLE: 'true',
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeStagingCredential,
+  });
+  if (
+    missingProtectionAck.status !== 'blocked' ||
+    !missingProtectionAck.blockedChecks.includes('protected-environment-ack')
+  ) {
+    throw new Error('missing protected environment ack must be blocked');
+  }
+
+  const placeholderCredential = evaluate({
+    ENVIRONMENT_LABEL: 'staging',
+    STAGING_SUPABASE_URL: 'https://stageref.supabase.co',
+    PRODUCTION_SUPABASE_URL: 'https://prodref.supabase.co',
+    EXPECTED_STAGING_PROJECT_REF: 'stageref',
+    EXPECTED_STAGING_DB_HOST: 'db.stageref.supabase.co',
+    PRODUCTION_PROJECT_REF_DENYLIST: 'prodref',
+    PRODUCTION_DB_HOST_DENYLIST: 'db.prodref.supabase.co',
+    STAGING_PROJECT_REF_ALLOWLIST: 'stageref',
+    ALLOW_NON_PROD_DB_MUTATION: 'true',
+    REQUIRE_STAGING_SERVICE_ROLE: 'true',
+    REQUIRE_STAGING_PROTECTION_ACK: 'true',
+    STAGING_ENVIRONMENT_PROTECTION_ACK: 'protected-staging-reviewed',
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: 'placeholder',
+  });
+  if (
+    placeholderCredential.status !== 'blocked' ||
+    !placeholderCredential.blockedChecks.includes('staging-credential-not-placeholder')
+  ) {
+    throw new Error('placeholder staging credential must be blocked');
+  }
+
   const serialized = JSON.stringify(valid);
-  if (/service|secret|token|password/i.test(serialized)) {
-    throw new Error('self-test report should not expose secret-like key names or values');
+  if (serialized.includes(fakeStagingCredential) || serialized.includes(fakeProductionCredential)) {
+    throw new Error('self-test report should not expose credential values');
   }
 }
 

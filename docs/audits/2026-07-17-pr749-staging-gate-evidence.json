@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "pr_number": 749,
+  "head_sha": "475975d10d624f98f100b6bccd9979d8bb4a40e9",
+  "base_sha": "170dd1b4",
+  "generated_at": "2026-07-17T00:00:00.000Z",
+  "expires_at": "2026-07-19T00:00:00.000Z",
+  "activation_eligible": false,
+  "environment": {
+    "kind": "unknown",
+    "project_ref_hash": null,
+    "api_host": null,
+    "db_host_hash": null,
+    "production_identity_mismatch": false,
+    "mutation_opt_in": false
+  },
+  "migration": {
+    "status": "not_run",
+    "reason": "Staging identity is not verified."
+  },
+  "security": {
+    "blockers": null,
+    "reason": "Live staging security inventory was not executed."
+  },
+  "snapshots": {
+    "rows": 0,
+    "gate_pass": 0
+  },
+  "proofs": {
+    "fresh": 0
+  },
+  "pollution": {
+    "active_unresolved_public": null,
+    "quarantined_but_active": null
+  },
+  "projections": {
+    "required_coverage": null
+  },
+  "egress": {
+    "raw_fallback": null,
+    "blocked_exposure": null,
+    "stale_outbound_publication": null
+  },
+  "selection_only": {
+    "invalid": null,
+    "raw_copy_in_dto": null
+  },
+  "admin_smoke": {
+    "status": "not_run"
+  },
+  "audit_500": {
+    "status": "not_run"
+  },
+  "build": {
+    "vercel": {
+      "status": "not_run"
+    }
+  },
+  "verdict": "STAGING_IDENTITY_NOT_VERIFIED",
+  "note": "This committed file is blocked no-write evidence. The protected workflow uploads a fresh pr749-staging-gate-evidence artifact for the exact workflow HEAD; only a non-expired artifact that passes --require-pass can activate enforced rollout."
+}

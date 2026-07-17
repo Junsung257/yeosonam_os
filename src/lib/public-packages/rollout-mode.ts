@@ -105,6 +105,9 @@ export function evaluatePublicPackageActivationReadiness(
     if (!env.PUBLIC_PACKAGE_EGRESS_STAGING_GATE_ID?.trim()) {
       blockers.push('PUBLIC_PACKAGE_EGRESS_STAGING_GATE_ID is required');
     }
+    if (!env.PUBLIC_PACKAGE_EGRESS_STAGING_GATE_EVIDENCE?.trim()) {
+      blockers.push('PUBLIC_PACKAGE_EGRESS_STAGING_GATE_EVIDENCE is required');
+    }
     if (positiveInteger(env.PUBLIC_PACKAGE_EGRESS_SNAPSHOT_ROWS) === 0) {
       blockers.push('snapshot rows must be greater than 0');
     }
