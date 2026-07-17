@@ -38,7 +38,8 @@ async function postHandler(request: NextRequest) {
     if (!preview?.internal_code) {
       return apiResponse({ error: 'preview 데이터 누락' }, { status: 400 });
     }
-    if (!Number.isFinite(preview.net_price) || (preview.net_price ?? 0) <= 0) {
+    const netPrice = preview.net_price;
+    if (typeof netPrice !== 'number' || !Number.isFinite(netPrice) || netPrice <= 0) {
       return apiResponse({ error: '상품 원가가 필요합니다.' }, { status: 400 });
     }
 
@@ -48,7 +49,7 @@ async function postHandler(request: NextRequest) {
       departureRegion: preview.departure_region,
       supplierCode: BAND_SUPPLIER_CODE,
       departureDate: preview.departure_date,
-      netPrice: preview.net_price,
+      netPrice,
       marginRate: DEFAULT_MARGIN_RATE,
       aiTags: preview.ai_tags,
       sourceFilename: preview.source,
