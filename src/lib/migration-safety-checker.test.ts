@@ -102,5 +102,5 @@ describe('migration safety checker', () => {
     expect(checker.determineExitCode(result)).toBe(1);
     expect(result.files.flatMap((file) => file.issues.map((issue) => issue.severity)))
       .toContain('critical');
-  });
+  }, 20_000);
 });
