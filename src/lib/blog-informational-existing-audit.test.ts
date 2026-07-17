@@ -4,6 +4,7 @@ import {
   formatBlogInformationExistingAuditSummary,
   type BlogInformationExistingAuditInput,
 } from './blog-informational-existing-audit';
+import { extractBlogInformationClaims } from './blog-information-claim-validator';
 
 const completeGeneral = [
   '# 도쿄 여행 판단 가이드',
@@ -50,7 +51,12 @@ function row(overrides: Partial<BlogInformationExistingAuditInput>): BlogInforma
 describe('informational existing-post audit dry run', () => {
   it('classifies keep, rewrite, merge, remove, and high-risk review without mutation', async () => {
     const report = await auditBlogInformationPostsDryRun([
-      row({ id: 'keep', slug: 'tokyo-guide' }),
+      row({
+        id: 'keep',
+        slug: 'tokyo-guide',
+        validated_claim_fingerprints: extractBlogInformationClaims(completeGeneral)
+          .map((claim) => claim.claimFingerprint),
+      }),
       row({ id: 'duplicate', slug: 'tokyo-guide-copy', published_at: '2026-02-01T00:00:00.000Z' }),
       row({ id: 'rewrite', slug: 'invalid-destination', destination: '대학생' }),
       row({ id: 'remove', slug: 'empty-body', blog_html: '준비 중' }),
@@ -72,6 +78,18 @@ describe('informational existing-post audit dry run', () => {
       risk: 'HIGH_RISK_REVIEW',
     });
     expect(report.counts).toEqual({ KEEP: 1, REWRITE: 1, MERGE: 1, REMOVE: 1, HIGH_RISK_REVIEW: 1 });
+  });
+
+  it('rewrites an otherwise complete legacy post when factual candidates are unvalidated', async () => {
+    const report = await auditBlogInformationPostsDryRun([
+      row({ id: 'unvalidated', slug: 'tokyo-unvalidated-guide' }),
+    ]);
+
+    expect(report.items[0]).toMatchObject({
+      recommendedAction: 'REWRITE',
+      reasons: ['unsupported_claims'],
+    });
+    expect(report.items[0]?.unsupportedClaims.length).toBeGreaterThan(0);
   });
 
   it('emits a human summary that explicitly denies writes', async () => {
