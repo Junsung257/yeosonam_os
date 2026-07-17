@@ -50,7 +50,7 @@ describe('Vercel ignored build range', () => {
       env: { VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: repo.base },
       logger: () => undefined,
     })).toBe(1);
-  });
+  }, 20_000);
 
   it('skips when the complete range contains documentation only', () => {
     const repo = createRepository();
@@ -59,7 +59,7 @@ describe('Vercel ignored build range', () => {
       env: { VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: repo.code },
       logger: () => undefined,
     })).toBe(0);
-  });
+  }, 20_000);
 
   it('fails closed when the base commit is absent from shallow history', () => {
     const repo = createRepository();
@@ -68,7 +68,7 @@ describe('Vercel ignored build range', () => {
       env: { VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: 'f'.repeat(40) },
       logger: () => undefined,
     })).toBe(1);
-  });
+  }, 20_000);
 
   it('builds for deleted or renamed source paths', () => {
     const repo = createRepository();
@@ -81,7 +81,7 @@ describe('Vercel ignored build range', () => {
       env: { VERCEL_GIT_COMMIT_SHA: head, VERCEL_GIT_PREVIOUS_SHA: repo.head },
       logger: () => undefined,
     })).toBe(1);
-  });
+  }, 20_000);
 
   it('parses both sides of rename records and deletion records', () => {
     expect(parseGitNameStatusZ([

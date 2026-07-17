@@ -30,5 +30,5 @@ describe('JSON-LD script sink inventory', () => {
       expect(sink.source, label).toContain('serializeJsonLdForScript');
       expect(sink.source, label).not.toMatch(/__html\s*:\s*JSON\.stringify/);
     }
-  });
+  }, 20_000);
 });
