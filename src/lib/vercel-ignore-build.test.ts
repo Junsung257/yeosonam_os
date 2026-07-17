@@ -47,7 +47,7 @@ describe('Vercel ignored build range', () => {
     const repo = createRepository();
     expect(evaluateVercelIgnoreBuild({
       cwd: repo.cwd,
-      env: { VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: repo.base },
+      env: { NODE_ENV: 'test', VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: repo.base },
       logger: () => undefined,
     })).toBe(1);
   }, 20_000);
@@ -56,7 +56,7 @@ describe('Vercel ignored build range', () => {
     const repo = createRepository();
     expect(evaluateVercelIgnoreBuild({
       cwd: repo.cwd,
-      env: { VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: repo.code },
+      env: { NODE_ENV: 'test', VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: repo.code },
       logger: () => undefined,
     })).toBe(0);
   }, 20_000);
@@ -65,7 +65,7 @@ describe('Vercel ignored build range', () => {
     const repo = createRepository();
     expect(evaluateVercelIgnoreBuild({
       cwd: repo.cwd,
-      env: { VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: 'f'.repeat(40) },
+      env: { NODE_ENV: 'test', VERCEL_GIT_COMMIT_SHA: repo.head, VERCEL_GIT_PREVIOUS_SHA: 'f'.repeat(40) },
       logger: () => undefined,
     })).toBe(1);
   }, 20_000);
@@ -78,7 +78,7 @@ describe('Vercel ignored build range', () => {
     const head = git(repo.cwd, ['rev-parse', 'HEAD']);
     expect(evaluateVercelIgnoreBuild({
       cwd: repo.cwd,
-      env: { VERCEL_GIT_COMMIT_SHA: head, VERCEL_GIT_PREVIOUS_SHA: repo.head },
+      env: { NODE_ENV: 'test', VERCEL_GIT_COMMIT_SHA: head, VERCEL_GIT_PREVIOUS_SHA: repo.head },
       logger: () => undefined,
     })).toBe(1);
   }, 20_000);
