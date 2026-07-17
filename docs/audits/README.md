@@ -38,6 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-17 | `2026-07-17-pr749-rollout-mode-activation-guard.md` | PR #749 default-off rollout mode and enforced activation evidence guard; production unchanged. |
 | 2026-07-17 | `2026-07-17-pr749-public-surface-security-contract.md` | PR #749 static security contract for new public package surfaces; staging security inventory still blocked by unverified staging identity. |
 | 2026-07-17 | `2026-07-17-pr749-production-rollout-runbook.md` | PR #749 production rollout and rollback hard gates; runbook only, no production change evidence. |
 | 2026-07-17 | `2026-07-17-pr749-staging-identity-gate.md` | PR #749 staging identity hard-gate evidence, current block reason, and required non-production write guard inputs. |

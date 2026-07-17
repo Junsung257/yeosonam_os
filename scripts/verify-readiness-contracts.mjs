@@ -67,6 +67,11 @@ const checksToRun = [
     args: ['scripts/verify-public-package-security-contracts.mjs', '--json'],
   },
   {
+    id: 'public-package-rollout-mode',
+    command: process.execPath,
+    args: ['scripts/verify-public-package-rollout-mode.mjs', '--json'],
+  },
+  {
     id: 'marketing-release-smoke',
     command: process.execPath,
     args: [
