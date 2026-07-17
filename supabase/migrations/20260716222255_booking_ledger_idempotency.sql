@@ -43,6 +43,9 @@ CREATE TABLE public.booking_ledger_idempotency (
   )
 );
 
+CREATE INDEX booking_ledger_idempotency_booking_id_idx
+  ON public.booking_ledger_idempotency(booking_id);
+
 ALTER TABLE public.booking_ledger_idempotency ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.booking_ledger_idempotency FROM public, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.booking_ledger_idempotency TO service_role;

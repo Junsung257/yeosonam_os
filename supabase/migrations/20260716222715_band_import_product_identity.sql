@@ -13,10 +13,6 @@ ALTER TABLE public.band_import_log
     NOT (product_id IS NOT NULL AND product_internal_code IS NOT NULL)
   );
 
-CREATE INDEX idx_band_import_log_product_internal_code
-  ON public.band_import_log(product_internal_code)
-  WHERE product_internal_code IS NOT NULL;
-
 CREATE OR REPLACE FUNCTION public.import_band_product_atomically(
   p_product jsonb,
   p_log jsonb DEFAULT '{}'::jsonb
