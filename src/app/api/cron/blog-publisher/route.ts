@@ -118,6 +118,11 @@ import {
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
 import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
+import {
+  hasPrivateBlogRegenerationIntent,
+  isEligiblePrivateBlogRegenerationTarget,
+  readPrivateBlogRegenerationRequest,
+} from '@/lib/blog-private-regeneration';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -1856,6 +1861,36 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
 
+    const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
+    const privateRegenerationRequest = readPrivateBlogRegenerationRequest(item);
+    let privateReplacementDraftId: string | null = null;
+    if (privateRegenerationIntent && !privateRegenerationRequest) {
+      const reason = 'private_regeneration_request_invalid';
+      await handleFailure(item, reason, null, true, {
+        private_regeneration_blocked: true,
+      });
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
+    if (privateRegenerationRequest) {
+      const { data: replacementTarget, error: replacementTargetError } = await supabaseAdmin
+        .from('content_creatives')
+        .select('id,channel,status,generation_meta')
+        .eq('id', privateRegenerationRequest.contentCreativeId)
+        .maybeSingle();
+      if (
+        replacementTargetError
+        || !isEligiblePrivateBlogRegenerationTarget(replacementTarget, privateRegenerationRequest)
+      ) {
+        const reason = 'private_regeneration_target_not_eligible';
+        await handleFailure(item, reason, null, true, {
+          private_regeneration_blocked: true,
+          target_error: replacementTargetError?.message ?? null,
+        });
+        return { id: item.id, topic: item.topic, status: 'skipped', reason };
+      }
+      privateReplacementDraftId = privateRegenerationRequest.contentCreativeId;
+    }
+
     if (await isRecentInfoDuplicateCandidate(item)) {
       const reason = `recent_info_duplicate_before_generation: 최근 14일 내 ${item.destination ?? '동일 목적지'} + ${item.angle_type ?? 'value'} 정보성 글 이미 발행됨`;
       await handleFailure(item, reason, null, false, {
@@ -1867,6 +1902,7 @@ async function processQueueItem(
     let generated: GeneratedBlog;
     /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
     let promoteDraftId: string | null = null;
+    promoteDraftId = privateReplacementDraftId;
 
     if (item.source === 'pillar' && item.destination) {
       const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
@@ -2564,12 +2600,20 @@ async function processQueueItem(
       && (generatedPlanBrief as Record<string, unknown>).requires_human_review === true;
     const requiresClaimReview = blogType === 'info' && !claimValidation.passed;
     const requiresHumanReview = blogType === 'info'
-      && (requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
+      && (privateRegenerationRequest !== null || requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
         title: generated.seo_title ?? item.topic ?? null,
         category: item.category ?? null,
         contentType: item.source === 'pillar' ? 'pillar' : 'guide',
         topic: item.topic ?? null,
       }));
+    if (privateRegenerationRequest) {
+      generationMeta.private_regeneration = {
+        mode: privateRegenerationRequest.mode,
+        replaced_creative_id: privateRegenerationRequest.contentCreativeId,
+        forced_private_review: true,
+        regenerated_at: now,
+      };
+    }
     if (representativeIdentity && requiresHumanReview) {
       representativeDecision = await reserveBlogInformationRepresentative({
         reservationOwner: representativeOwner,
