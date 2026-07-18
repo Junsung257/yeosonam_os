@@ -2,17 +2,13 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  getSafeLoginRedirect,
+  tenantIdFromLoginRedirect,
+} from '@/lib/login-redirect';
 import { PromiseTimeoutError, withTimeout } from '@/lib/promise-timeout';
 
 const LOGIN_TIMEOUT_MS = 12000;
-
-function getSafeRedirect(value: string | null): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
-    return '/admin';
-  }
-
-  return value;
-}
 
 function LoginFormInner() {
   const router = useRouter();
@@ -21,11 +17,12 @@ function LoginFormInner() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const redirect = getSafeLoginRedirect(searchParams?.get('redirect') ?? null);
 
   useEffect(() => {
     const token = document.cookie.split('; ').find(r => r.startsWith('sb-access-token='));
-    if (token) router.replace('/admin');
-  }, [router]);
+    if (token) router.replace(redirect);
+  }, [redirect, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,21 +63,26 @@ function LoginFormInner() {
         return;
       }
 
+      const tenantId = tenantIdFromLoginRedirect(redirect);
+      const confirmationUrl = tenantId
+        ? `/api/tenants/${encodeURIComponent(tenantId)}`
+        : '/api/admin/session';
       const confirmRes = await withTimeout(
-        fetch('/api/admin/session', {
+        fetch(confirmationUrl, {
           method: 'GET',
           credentials: 'same-origin',
           cache: 'no-store',
         }),
         LOGIN_TIMEOUT_MS,
-        'admin session confirm',
+        tenantId ? 'tenant session confirm' : 'admin session confirm',
       );
       if (!confirmRes.ok) {
-        setError('로그인은 되었지만 관리자 세션 저장 확인에 실패했습니다. 새로고침 후 다시 로그인해 주세요.');
+        setError(tenantId
+          ? '로그인은 되었지만 이 테넌트에 접근할 권한이 없습니다.'
+          : '로그인은 되었지만 관리자 세션 저장 확인에 실패했습니다. 새로고침 후 다시 로그인해 주세요.');
         return;
       }
 
-      const redirect = getSafeRedirect(searchParams?.get('redirect') ?? null);
       window.location.href = redirect;
     } catch (err) {
       if (err instanceof PromiseTimeoutError) {

@@ -140,3 +140,31 @@ describe('middleware content-hub API boundary', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 });
+
+describe('middleware tenant portal boundary', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    '/tenant/00000000-0000-4000-8000-00000000000a/products',
+    '/api/tenant/rfqs?tenant_id=00000000-0000-4000-8000-00000000000a',
+  ])('does not let an anonymous request enter %s', async (path) => {
+    const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toContain('/login');
+  });
+
+  it('allows the explicit development admin preview cookie to reach route-local tenant authorization', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/api/tenant/products?tenant_id=00000000-0000-4000-8000-00000000000a',
+      { headers: { cookie: 'ys-dev-admin=1' } },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+});

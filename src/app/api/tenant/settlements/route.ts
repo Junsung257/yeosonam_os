@@ -1,18 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getTenantSettlements, isSupabaseConfigured } from '@/lib/supabase';
-import { requireAdminRequest } from '@/lib/admin-guard';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { getTenantSettlements, isSupabaseAdminConfigured } from '@/lib/supabase';
+import {
+  isTenantPortalAuthError,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
 
 // GET /api/tenant/settlements?tenant_id=&month=YYYY-MM
 export async function GET(request: NextRequest) {
-  const authError = await requireAdminRequest(request);
-  if (authError) return authError;
+  const requestedTenantId = request.nextUrl.searchParams.get('tenant_id') ?? '';
+  const authorization = await requireTenantPortalRequest(request, requestedTenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse({ error: '테넌트 저장소를 사용할 수 없습니다.' }, { status: 503 });
+  }
 
-  if (!isSupabaseConfigured) return NextResponse.json({ rows: [], total_cost: 0 });
-  const tenantId = request.nextUrl.searchParams.get('tenant_id');
-  const month    = request.nextUrl.searchParams.get('month') ?? new Date().toISOString().slice(0, 7);
-  if (!tenantId) return NextResponse.json({ error: 'tenant_id 필수' }, { status: 400 });
+  const month = request.nextUrl.searchParams.get('month') ?? new Date().toISOString().slice(0, 7);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return apiResponse({ error: 'month는 YYYY-MM 형식이어야 합니다.' }, { status: 400 });
+  }
 
-  // 원가(cost)만 반환 — 판매가/마진/플랫폼 수수료는 절대 포함하지 않음
-  const { rows, total_cost } = await getTenantSettlements(tenantId, month);
-  return NextResponse.json({ rows, total_cost, month });
+  const { rows, total_cost } = await getTenantSettlements(authorization.tenantId, month);
+  return apiResponse(
+    { rows, total_cost, month },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  );
 }

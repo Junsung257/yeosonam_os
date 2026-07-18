@@ -1,0 +1,182 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  requireTenantPortalRequest: vi.fn(),
+  getTenantProducts: vi.fn(),
+  upsertTenantProduct: vi.fn(),
+  tenantProductBelongsToTenant: vi.fn(),
+  getTenantInventoryBlocks: vi.fn(),
+  getInventoryByTenant: vi.fn(),
+  upsertInventoryBlock: vi.fn(),
+  getTenantSettlements: vi.fn(),
+  getTenantPortalTenant: vi.fn(),
+  listTenantPortalRfqs: vi.fn(),
+  getTenantPortalRfq: vi.fn(),
+  getTenantPortalBid: vi.fn(),
+}));
+
+vi.mock('@/lib/tenant-portal-auth', () => ({
+  requireTenantPortalRequest: mocks.requireTenantPortalRequest,
+  isTenantPortalAuthError: (value: unknown) => value instanceof NextResponse,
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  isSupabaseAdminConfigured: true,
+  getTenantProducts: mocks.getTenantProducts,
+  upsertTenantProduct: mocks.upsertTenantProduct,
+  tenantProductBelongsToTenant: mocks.tenantProductBelongsToTenant,
+  getTenantInventoryBlocks: mocks.getTenantInventoryBlocks,
+  getInventoryByTenant: mocks.getInventoryByTenant,
+  upsertInventoryBlock: mocks.upsertInventoryBlock,
+  getTenantSettlements: mocks.getTenantSettlements,
+}));
+
+vi.mock('@/lib/tenant-portal-rfq', () => ({
+  getTenantPortalTenant: mocks.getTenantPortalTenant,
+  listTenantPortalRfqs: mocks.listTenantPortalRfqs,
+  getTenantPortalRfq: mocks.getTenantPortalRfq,
+  getTenantPortalBid: mocks.getTenantPortalBid,
+}));
+
+import { GET as getProducts, PUT as putProduct } from '@/app/api/tenant/products/route';
+import { POST as postInventory, PUT as putInventory } from '@/app/api/tenant/inventory/route';
+import { GET as getSettlements } from '@/app/api/tenant/settlements/route';
+import { GET as getTenantRfqs } from '@/app/api/tenant/rfqs/route';
+
+const TENANT_A = '00000000-0000-4000-8000-00000000000a';
+const TENANT_B = '00000000-0000-4000-8000-00000000000b';
+const PRODUCT_A = '10000000-0000-4000-8000-00000000000a';
+const PRODUCT_B = '10000000-0000-4000-8000-00000000000b';
+
+const actorA = {
+  tenantId: TENANT_A,
+  userId: '00000000-0000-4000-8000-0000000000aa',
+  role: 'tenant_staff' as const,
+  isPlatformAdmin: false,
+};
+
+function jsonRequest(path: string, method: string, body: unknown) {
+  return new NextRequest(`https://www.yeosonam.com${path}`, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+describe('tenant portal route authorization', () => {
+  beforeEach(() => {
+    mocks.requireTenantPortalRequest.mockResolvedValue(actorA);
+    mocks.getTenantProducts.mockResolvedValue([]);
+    mocks.upsertTenantProduct.mockResolvedValue({ id: PRODUCT_A, tenant_id: TENANT_A });
+    mocks.tenantProductBelongsToTenant.mockImplementation(
+      async (productId: string, tenantId: string) => productId === PRODUCT_A && tenantId === TENANT_A,
+    );
+    mocks.upsertInventoryBlock.mockResolvedValue({ id: 'block-a' });
+    mocks.getTenantSettlements.mockResolvedValue({ rows: [], total_cost: 0 });
+    mocks.getTenantPortalTenant.mockResolvedValue({
+      id: TENANT_A,
+      name: 'Tenant A',
+      status: 'active',
+      tier: 'BRONZE',
+    });
+    mocks.listTenantPortalRfqs.mockResolvedValue([]);
+    mocks.getTenantPortalBid.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('stops a denied products request before data access', async () => {
+    mocks.requireTenantPortalRequest.mockResolvedValue(
+      NextResponse.json({ code: 'FORBIDDEN' }, { status: 403 }),
+    );
+
+    const response = await getProducts(new NextRequest(
+      `https://www.yeosonam.com/api/tenant/products?tenant_id=${TENANT_B}`,
+    ));
+
+    expect(response.status).toBe(403);
+    expect(mocks.getTenantProducts).not.toHaveBeenCalled();
+  });
+
+  it('overwrites a product mutation tenant with the authorized tenant scope', async () => {
+    const response = await putProduct(jsonRequest('/api/tenant/products', 'PUT', {
+      id: PRODUCT_A,
+      tenant_id: TENANT_B,
+      title: 'Scoped product',
+      cost_price: 100,
+      price: 120,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.upsertTenantProduct).toHaveBeenCalledWith(expect.objectContaining({
+      id: PRODUCT_A,
+      tenant_id: TENANT_A,
+    }));
+  });
+
+  it('rejects a foreign product ID before an inventory write', async () => {
+    const response = await postInventory(jsonRequest('/api/tenant/inventory', 'POST', {
+      tenant_id: TENANT_A,
+      product_id: PRODUCT_B,
+      date: '2026-08-01',
+      total_seats: 10,
+    }));
+
+    expect(response.status).toBe(404);
+    expect(mocks.upsertInventoryBlock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a mixed-tenant bulk inventory payload atomically', async () => {
+    const response = await putInventory(jsonRequest('/api/tenant/inventory', 'PUT', {
+      tenant_id: TENANT_A,
+      blocks: [
+        { product_id: PRODUCT_A, date: '2026-08-01', total_seats: 10 },
+        { product_id: PRODUCT_B, date: '2026-08-02', total_seats: 10 },
+      ],
+    }));
+
+    expect(response.status).toBe(403);
+    expect(mocks.upsertInventoryBlock).not.toHaveBeenCalled();
+  });
+
+  it('queries settlements with the authorized tenant, not the spoofed query value', async () => {
+    const response = await getSettlements(new NextRequest(
+      `https://www.yeosonam.com/api/tenant/settlements?tenant_id=${TENANT_B}&month=2026-07`,
+    ));
+
+    expect(response.status).toBe(200);
+    expect(mocks.getTenantSettlements).toHaveBeenCalledWith(TENANT_A, '2026-07');
+  });
+
+  it('loads tenant RFQ bid state only for the authorized tenant', async () => {
+    mocks.listTenantPortalRfqs.mockResolvedValue([{
+      id: '20000000-0000-4000-8000-000000000001',
+      status: 'published',
+      share_token: 'must-not-leak',
+      customer_name: 'real customer',
+      customer_phone: '010-1234-5678',
+      ai_interview_log: [{ answer: 'sensitive transcript' }],
+      created_at: '2026-07-19T00:00:00.000Z',
+      updated_at: '2026-07-19T00:00:00.000Z',
+    }]);
+
+    const response = await getTenantRfqs(new NextRequest(
+      `https://www.yeosonam.com/api/tenant/rfqs?tenant_id=${TENANT_B}`,
+    ));
+
+    expect(response.status).toBe(200);
+    expect(mocks.getTenantPortalTenant).toHaveBeenCalledWith(TENANT_A);
+    expect(mocks.getTenantPortalBid).toHaveBeenCalledWith(
+      '20000000-0000-4000-8000-000000000001',
+      TENANT_A,
+    );
+    const payload = await response.json();
+    expect(payload.rfqs[0]).toMatchObject({ customer_name: '고객 (익명)' });
+    expect(payload.rfqs[0]).not.toHaveProperty('share_token');
+    expect(payload.rfqs[0]).not.toHaveProperty('customer_phone');
+    expect(payload.rfqs[0]).not.toHaveProperty('ai_interview_log');
+  });
+});

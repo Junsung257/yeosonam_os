@@ -228,7 +228,6 @@ const PUBLIC_EXACT = new Set([
   '/api/concierge/cart',
   '/api/concierge/checkout',
   // 기타
-  '/api/tenant/rfqs',
   '/api/tracking/recommendation',
   // 랜드사 파트너 포털 (Bearer 토큰 자체 인증)
   '/api/partner/packages',
@@ -279,7 +278,6 @@ const PUBLIC_PREFIXES = [
   '/blog/',
   '/products/',
   '/concierge/',
-  '/tenant/',
   '/share/',
   '/api/share/',
   '/api/attractions/',
@@ -331,7 +329,7 @@ const PUBLIC_PREFIXES = [
 
 // 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)
 const PUBLIC_EXACT_SHORT = new Set([
-  '/blog', '/products', '/concierge', '/tenant', '/share',
+  '/blog', '/products', '/concierge', '/share',
   '/api/share', '/api/attractions', '/group', '/rfq', '/api/rfq',
   '/api/tracking', '/api/og',   '/influencer', '/api/influencer',
   '/with', '/r', '/embed', '/partner-apply', '/api/partner-apply',

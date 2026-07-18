@@ -386,8 +386,8 @@ export type {
 // 본문은 ./db/tenant.ts 로 분리 (god 모듈 분할 2026-04-27).
 export {
   listTenants, getTenant, createTenant, updateTenant,
-  getTenantProducts, upsertTenantProduct,
-  getInventoryBlocks, getInventoryByTenant, upsertInventoryBlock, deductInventory,
+  getTenantProducts, upsertTenantProduct, tenantProductBelongsToTenant,
+  getInventoryBlocks, getTenantInventoryBlocks, getInventoryByTenant, upsertInventoryBlock, deductInventory,
   searchTenantProducts,
   getMasterLedger,
   getTenantSettlements,

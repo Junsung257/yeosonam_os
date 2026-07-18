@@ -5,7 +5,7 @@
  * 호출자는 기존 그대로 `@/lib/supabase` 에서 import 가능 (re-export 유지).
  */
 
-import { getSupabase } from '../supabase';
+import { getSupabase, getSupabaseAdmin } from '../supabase';
 
 // ─── 타입 ────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ export interface TenantSettlementRow {
 // ── Tenant CRUD ─────────────────────────────────────────────
 
 export async function listTenants(): Promise<Tenant[]> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return [];
   const { data } = await sb
     .from('tenants')
@@ -115,7 +115,7 @@ export async function getTenant(id: string): Promise<Tenant | null> {
 }
 
 export async function createTenant(data: Omit<Tenant, 'id' | 'created_at' | 'updated_at'>): Promise<Tenant | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
   const { data: row, error } = await sb
     .from('tenants')
@@ -127,7 +127,7 @@ export async function createTenant(data: Omit<Tenant, 'id' | 'created_at' | 'upd
 }
 
 export async function updateTenant(id: string, data: Partial<Omit<Tenant, 'id' | 'created_at'>>): Promise<void> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return;
   await sb.from('tenants').update({ ...data, updated_at: new Date().toISOString() } as never).eq('id', id);
 }
@@ -135,7 +135,7 @@ export async function updateTenant(id: string, data: Partial<Omit<Tenant, 'id' |
 // ── Tenant Products ─────────────────────────────────────────
 
 export async function getTenantProducts(tenantId: string): Promise<TenantProduct[]> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return [];
   const { data } = await sb
     .from('travel_packages')
@@ -157,18 +157,40 @@ export async function upsertTenantProduct(data: {
   min_participants?: number;
   notes?: string;
 }): Promise<TenantProduct | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
   const payload = { ...data, status: 'approved', updated_at: new Date().toISOString() };
   let query;
   if (data.id) {
-    query = sb.from('travel_packages').update(payload as never).eq('id', data.id).select().single();
+    query = sb
+      .from('travel_packages')
+      .update(payload as never)
+      .eq('id', data.id)
+      .eq('tenant_id', data.tenant_id)
+      .select()
+      .single();
   } else {
     query = sb.from('travel_packages').insert(payload as never).select().single();
   }
   const { data: row, error } = await query;
   if (error) { console.error('테넌트 상품 저장 실패:', error); return null; }
   return row as TenantProduct;
+}
+
+export async function tenantProductBelongsToTenant(
+  productId: string,
+  tenantId: string,
+): Promise<boolean> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return false;
+  const { data, error } = await sb
+    .from('travel_packages')
+    .select('id')
+    .eq('id', productId)
+    .eq('tenant_id', tenantId)
+    .limit(1);
+  if (error) return false;
+  return Boolean(data?.[0]);
 }
 
 // ── Inventory Blocks ─────────────────────────────────────────
@@ -178,11 +200,33 @@ export async function getInventoryBlocks(
   from: string,
   to: string
 ): Promise<InventoryBlock[]> {
-  const sb = getSupabase();
+  // Public availability is exposed through a server route with a filtered
+  // response. Use the server client so enabling RLS does not silently empty
+  // that customer-facing route.
+  const sb = getSupabaseAdmin();
   if (!sb) return [];
   const { data } = await sb
     .from('inventory_blocks')
     .select('*')
+    .eq('product_id', productId)
+    .gte('date', from)
+    .lte('date', to)
+    .order('date');
+  return (data ?? []) as InventoryBlock[];
+}
+
+export async function getTenantInventoryBlocks(
+  tenantId: string,
+  productId: string,
+  from: string,
+  to: string,
+): Promise<InventoryBlock[]> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return [];
+  const { data } = await sb
+    .from('inventory_blocks')
+    .select('*')
+    .eq('tenant_id', tenantId)
     .eq('product_id', productId)
     .gte('date', from)
     .lte('date', to)
@@ -195,7 +239,7 @@ export async function getInventoryByTenant(
   from: string,
   to: string
 ): Promise<InventoryBlock[]> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return [];
   const { data } = await sb
     .from('inventory_blocks')
@@ -216,7 +260,7 @@ export async function upsertInventoryBlock(data: {
   price_override?: number;
   status?:        'OPEN' | 'CLOSED' | 'SOLDOUT';
 }): Promise<InventoryBlock | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
   const payload = {
     ...data,
@@ -444,7 +488,7 @@ export async function getTenantSettlements(
   tenantId: string,
   month: string
 ): Promise<{ rows: TenantSettlementRow[]; total_cost: number }> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return { rows: [], total_cost: 0 };
 
   const [y, m] = month.split('-').map(Number);

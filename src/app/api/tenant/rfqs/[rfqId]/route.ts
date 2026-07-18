@@ -1,101 +1,72 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { isSupabaseAdminConfigured, type GroupRfq } from '@/lib/supabase';
 import {
-  isSupabaseConfigured,
-  getGroupRfq,
-  getTenant,
-  getRfqBids,
-  GroupRfq,
-} from '@/lib/supabase';
+  isTenantPortalAuthError,
+  requireTenantPortalRequest,
+} from '@/lib/tenant-portal-auth';
+import {
+  getTenantPortalBid,
+  getTenantPortalRfq,
+  getTenantPortalTenant,
+} from '@/lib/tenant-portal-rfq';
 
-export async function GET(request: NextRequest, props: { params: Promise<{ rfqId: string }> }) {
-  const params = await props.params;
-  const { rfqId } = params;
-  const { searchParams } = new URL(request.url);
-  const tenantId = searchParams.get('tenant_id');
+function tierUnlockAt(rfq: GroupRfq, tier: string): string | undefined {
+  const normalized = tier.toLowerCase();
+  if (normalized === 'gold') return rfq.gold_unlock_at ?? undefined;
+  if (normalized === 'silver') return rfq.silver_unlock_at ?? undefined;
+  return rfq.bronze_unlock_at ?? undefined;
+}
 
-  if (!tenantId) {
-    return NextResponse.json({ error: 'tenant_id가 필요합니다.' }, { status: 400 });
-  }
-
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({
-      rfq: {
-        id: rfqId,
-        rfq_code: 'GRP-1001',
-        destination: '일본 도쿄',
-        adult_count: 20,
-        child_count: 5,
-        budget_per_person: 1200000,
-        total_budget: 30000000,
-        hotel_grade: '4성',
-        meal_plan: '전식포함',
-        transportation: '전세버스',
-        duration_nights: 4,
-        special_requests: '어린이 동반, 유아 카시트 필요',
-        status: 'published',
-        bid_deadline: new Date(Date.now() + 22 * 60 * 60 * 1000).toISOString(),
-        // 고객 개인정보 마스킹
-        customer_name: '고객 (익명)',
-        customer_phone: undefined,
-      },
-      is_unlocked: true,
-      my_bid: null,
-      mock: true,
-    });
+export async function GET(
+  request: NextRequest,
+  props: { params: Promise<{ rfqId: string }> },
+) {
+  const requestedTenantId = request.nextUrl.searchParams.get('tenant_id') ?? '';
+  const authorization = await requireTenantPortalRequest(request, requestedTenantId);
+  if (isTenantPortalAuthError(authorization)) return authorization;
+  if (!isSupabaseAdminConfigured) {
+    return apiResponse({ error: '테넌트 저장소를 사용할 수 없습니다.' }, { status: 503 });
   }
 
   try {
-    const [rfq, tenant] = await Promise.all([
-      getGroupRfq(rfqId),
-      getTenant(tenantId),
+    const { rfqId } = await props.params;
+    const [rfq, tenant, myBid] = await Promise.all([
+      getTenantPortalRfq(rfqId),
+      getTenantPortalTenant(authorization.tenantId),
+      getTenantPortalBid(rfqId, authorization.tenantId),
     ]);
-
-    if (!rfq) {
-      return NextResponse.json({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
-    }
-    if (!tenant) {
-      return NextResponse.json({ error: '테넌트를 찾을 수 없습니다.' }, { status: 404 });
+    if (!rfq) return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
+    if (!tenant) return apiResponse({ error: '테넌트를 찾을 수 없습니다.' }, { status: 404 });
+    if (tenant.status !== 'active') {
+      return apiResponse({ error: '비활성 테넌트는 RFQ에 접근할 수 없습니다.' }, { status: 403 });
     }
 
-    const tier = (tenant as unknown as { tier?: string }).tier ?? 'bronze';
-    const now = new Date();
-
-    let unlockAt: string | undefined;
-    if (tier === 'gold')        unlockAt = rfq.gold_unlock_at   ?? undefined;
-    else if (tier === 'silver') unlockAt = rfq.silver_unlock_at ?? undefined;
-    else                        unlockAt = rfq.bronze_unlock_at ?? undefined;
-
-    const isUnlocked = !unlockAt || new Date(unlockAt) <= now;
-
-    const bids = await getRfqBids(rfqId);
-    const myBid = bids.find(b => b.tenant_id === tenantId) ?? null;
-
-    // 고객 개인정보 마스킹
+    const unlockAt = tierUnlockAt(rfq, tenant.tier ?? 'bronze');
+    const isUnlocked = !unlockAt || new Date(unlockAt) <= new Date();
     const sanitized: Partial<GroupRfq> & { customer_name: string } = {
       ...rfq,
+      share_token: undefined,
       customer_name: '고객 (익명)',
       customer_phone: undefined,
       customer_id: undefined,
+      ai_interview_log: undefined,
     };
 
-    return NextResponse.json({
+    return apiResponse({
       rfq: sanitized,
       is_unlocked: isUnlocked,
-      my_bid: myBid
-        ? {
-            id: myBid.id,
-            status: myBid.status,
-            locked_at: myBid.locked_at,
-            submit_deadline: myBid.submit_deadline,
-            submitted_at: myBid.submitted_at,
-          }
-        : null,
-    });
+      my_bid: myBid ? {
+        id: myBid.id,
+        status: myBid.status,
+        locked_at: myBid.locked_at,
+        submit_deadline: myBid.submit_deadline,
+        submitted_at: myBid.submitted_at,
+      } : null,
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
-    console.error('테넌트 RFQ 상세 조회 오류:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'RFQ 조회에 실패했습니다.' },
-      { status: 500 }
-    );
+    console.error('[tenant/rfqs] detail failed', sanitizeDbError(error));
+    return apiResponse({ error: 'RFQ 조회에 실패했습니다.' }, { status: 500 });
   }
 }
