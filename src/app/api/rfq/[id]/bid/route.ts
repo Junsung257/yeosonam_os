@@ -3,13 +3,9 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   isSupabaseConfigured,
-  getGroupRfq,
-  getRfqBids,
-  claimRfqBid,
-  updateGroupRfq,
   type RfqBid,
 } from '@/lib/supabase';
-import { getRfqTenantForAuthorizedRequest } from '@/lib/db/rfq';
+import { claimRfqBid, getGroupRfq, getRfqBids, getRfqTenantForAuthorizedRequest, updateGroupRfq } from '@/lib/db/rfq-server';
 import {
   resolveRfqActor,
   rfqForbiddenResponse,
@@ -97,9 +93,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const tier = tenant.tier;
     let unlockAt: string | undefined;
-    if (tier === 'gold') {
+    if (tier === 'GOLD') {
       unlockAt = rfq.gold_unlock_at ?? undefined;
-    } else if (tier === 'silver') {
+    } else if (tier === 'SILVER') {
       unlockAt = rfq.silver_unlock_at ?? undefined;
     } else {
       unlockAt = rfq.bronze_unlock_at ?? undefined;

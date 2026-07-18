@@ -3,9 +3,9 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   isSupabaseConfigured,
-  getRfqProposals,
   type RfqProposal,
 } from '@/lib/supabase';
+import { getRfqProposals } from '@/lib/db/rfq-server';
 import {
   resolveRfqActor,
   rfqUnauthorizedResponse,

@@ -9,7 +9,8 @@ Close the launch-blocking RFQ API authorization and stored-HTML boundaries witho
 - `POST /api/rfq` remains public because `/group`, `/group-inquiry`, and `/private-tour` use it to create a customer RFQ.
 - Administrators can still list and manage RFQs, bids, proposals, analysis, messages, and contracts.
 - A tenant can claim an eligible RFQ and read/write only the bid and proposal owned by the tenant bound to its verified JWT.
-- A customer/group can use the RFQ share token for customer-visible messages, proposal selection, and a completed contract.
+- A customer/group can use the RFQ share token for customer-visible message reads, reactions, and a completed contract.
+- Proposal selection is administrator-only until a separate, revocable owner-action token SSOT is designed and shipped. A share token is deliberately not an owner-action credential.
 - Stored message text remains text; the existing PII processing path remains in place.
 
 ## Security invariants
@@ -18,9 +19,11 @@ Close the launch-blocking RFQ API authorization and stored-HTML boundaries witho
 2. Tenant authority comes only from a cryptographically verified Supabase JWT `app_metadata.tenant_id`. User-editable `user_metadata` is never trusted for tenancy.
 3. A bid/proposal operation must match both the path RFQ and the verified tenant's actual bid/proposal ownership.
 4. Full proposal collections, bid collections, and AI analysis are administrator-only. The public share page continues to use its existing redacted server-rendered projection.
-5. Customer message access requires the RFQ's non-empty share token. The server derives customer/tenant/admin visibility and sender identity.
+5. Customer message reads require the RFQ's non-empty share token. Message writes require an authenticated administrator or verified tenant; share-token writes fail closed.
 6. Contract HTML must encode every stored string before interpolation.
 7. Sensitive responses use private/no-store cache semantics.
+8. Authorized RFQ route CRUD uses the explicit service-role repository; the anonymous/browser repository is never a privileged route fallback.
+9. Public creation requires exact boolean consent, strict bounded input, rate limiting, and recent-duplicate rejection before the server insert.
 
 ## Proven vulnerable paths before the patch
 
@@ -32,9 +35,17 @@ Close the launch-blocking RFQ API authorization and stored-HTML boundaries witho
 
 ## Remaining release blockers outside this patch ownership
 
-### Tenant RFQ route binding
+### Paired tenant RFQ prerequisite
 
-`src/app/api/tenant/rfqs/**` still accepts a query `tenant_id` and does not prove it equals the verified JWT tenant. That route can expose the same RFQ/customer data and must be fixed before launch.
+The tenant ownership/RLS lane is paired through commit `9d3df38c`. That commit owns `src/app/api/tenant/rfqs/**`, verified tenant membership, and the RLS migration; it must be included and verified together with this RFQ route commit before release.
+
+### Owner-action token rebuild gate
+
+The share UI historically used the read/share token to select a winning proposal. That capability is closed at `/api/rfq/:id/select`. Customer self-selection must not be re-enabled until a dedicated owner-action token has expiration, revocation, action scope, replay protection, and audit logging. Until then, selection is an administrator operation.
+
+### Atomic mutation gate (P1)
+
+Bid-capacity checks and the multi-row winner selection transition are currently separate reads/writes. A forward-only database RPC/transaction is required to make capacity enforcement and winner/loser state changes atomic under concurrency. No remote database mutation was performed in this lane; this remains a P1 pre-scale gate and must be exercised through the approved Supabase release path.
 
 ### Database/RLS boundary
 
@@ -49,8 +60,8 @@ Any authenticated browser client can therefore bypass the Next.js route checks. 
 
 The safe forward-only sequence is:
 
-1. Fix `/api/tenant/rfqs/**` to derive tenancy from verified `app_metadata` and the tenant-membership SSOT, never query/body values.
-2. Make public creation, share, administrator, and cron RFQ operations use server-only access after route-local authorization; do not expose service-role credentials or service-only helpers to clients.
+1. Include and verify paired tenant commit `9d3df38c`, which derives tenancy from verified identity/membership rather than query/body values.
+2. Keep public creation, share, administrator, and cron RFQ operations on server-only access after route-local authorization; never expose service-role credentials or service-only helpers to clients.
 3. Add control tests for public RFQ creation, tenant marketplace reads, share reads/reactions, cron, and administrator flows.
 4. Add a new migration that drops the four broad `authenticated_access` policies. Default-deny direct authenticated access to `group_rfqs` and `rfq_messages`; scope any required direct `rfq_bids`/`rfq_proposals` access to the verified tenant-membership row and matching `tenant_id`; keep server-only operations behind explicit service-role policies and grants.
 5. Apply through the normal approved Supabase release path, verify policy/grant state remotely, and run production smoke tests.

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  isSupabaseConfigured,
-  getGroupRfq,
-  getRfqProposals,
-} from '@/lib/supabase';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { getGroupRfq, getRfqProposals } from '@/lib/db/rfq-server';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { hasValidRfqShareToken } from '@/lib/rfq-request-auth';
 
@@ -178,7 +175,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       exclusions:         ['개인 음료', '쇼핑'],
       contract_date:      new Date().toISOString().slice(0, 10),
     });
-    return NextResponse.json({ contract_html: mockHtml, mock: true });
+    return NextResponse.json({ contract_html: mockHtml, mock: true }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
 
   try {
@@ -222,7 +219,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       contract_date:      new Date().toISOString().slice(0, 10),
     });
 
-    return NextResponse.json({ contract_html: contractHtml });
+    return NextResponse.json({ contract_html: contractHtml }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('계약서 생성 오류:', error);
     return NextResponse.json(

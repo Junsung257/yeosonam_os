@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
-  const single = vi.fn();
-  const eqStatus = vi.fn(() => ({ single }));
+  const maybeSingle = vi.fn();
+  const eqStatus = vi.fn(() => ({ maybeSingle }));
   const eqId = vi.fn(() => ({ eq: eqStatus }));
   const select = vi.fn(() => ({ eq: eqId }));
   const from = vi.fn(() => ({ select }));
   const getSupabase = vi.fn();
   const getSupabaseAdmin = vi.fn(() => ({ from }));
-  return { single, eqStatus, eqId, select, from, getSupabase, getSupabaseAdmin };
+  return { maybeSingle, eqStatus, eqId, select, from, getSupabase, getSupabaseAdmin };
 });
 
 vi.mock('../supabase', () => ({
@@ -16,19 +16,19 @@ vi.mock('../supabase', () => ({
   getSupabaseAdmin: mocks.getSupabaseAdmin,
 }));
 
-import { getRfqTenantForAuthorizedRequest } from './rfq';
+import { getRfqTenantForAuthorizedRequest } from './rfq-server';
 
 describe('RFQ server tenant lookup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSupabaseAdmin.mockReturnValue({ from: mocks.from });
-    mocks.single.mockResolvedValue({ data: { id: 'tenant-a', tier: 'gold' } });
+    mocks.maybeSingle.mockResolvedValue({ data: { id: 'tenant-a', tier: 'GOLD' }, error: null });
   });
 
   it('uses only the service-role client and requires an active tenant', async () => {
     await expect(getRfqTenantForAuthorizedRequest('tenant-a')).resolves.toEqual({
       id: 'tenant-a',
-      tier: 'gold',
+      tier: 'GOLD',
     });
 
     expect(mocks.getSupabaseAdmin).toHaveBeenCalledOnce();
@@ -42,7 +42,7 @@ describe('RFQ server tenant lookup', () => {
   it('fails closed when the service-role client is unavailable', async () => {
     mocks.getSupabaseAdmin.mockReturnValueOnce(null as never);
 
-    await expect(getRfqTenantForAuthorizedRequest('tenant-a')).resolves.toBeNull();
+    await expect(getRfqTenantForAuthorizedRequest('tenant-a')).rejects.toThrow('service-role');
     expect(mocks.getSupabase).not.toHaveBeenCalled();
     expect(mocks.from).not.toHaveBeenCalled();
   });

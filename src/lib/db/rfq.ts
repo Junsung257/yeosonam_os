@@ -116,7 +116,7 @@ export interface RfqMessage {
 
 export interface AuthorizedRfqTenant {
   id: string;
-  tier: 'gold' | 'silver' | 'bronze';
+  tier: 'GOLD' | 'SILVER' | 'BRONZE';
 }
 
 /**

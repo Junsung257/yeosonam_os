@@ -73,3 +73,14 @@ Earlier 60-second and 180-second attempts ended without diagnostics during share
 ## Security outcome
 
 The scoped Next.js RFQ route and contract-HTML boundaries are covered by regression tests. The end-to-end RFQ security finding is **not fully closed for launch** until the out-of-scope tenant RFQ routes and broad authenticated RLS policies are remediated and verified.
+
+## Post-review hardening verification
+
+- Focused regression: **PASS — 3 files, 18 tests**.
+- Changed-file ESLint: **PASS — 0 warnings/errors**.
+- Full type-check: **PASS — exit 0, 150.8 seconds**.
+- Diff integrity: **PASS**.
+
+The added controls cover exact boolean consent, public-input/rate/duplicate defenses, an explicit service-role RFQ repository, uppercase tenant tiers, share-token reaction validation, admin-only selection, authenticated-only message writes, null message-insert failure, and private/no-store sensitive GET responses. Legitimate public RFQ creation, share reads/reactions, authenticated message writes, tenant ownership checks, and administrator operations remain covered.
+
+Release pairing/gates: tenant ownership and RLS commit `9d3df38c` must be included and verified; bid capacity and winner selection need an atomic RPC (P1); customer self-selection stays disabled until a dedicated expiring/revocable owner-action token SSOT exists. No remote Supabase mutation was performed in this lane.

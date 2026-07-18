@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   isSupabaseConfigured,
-  getGroupRfq,
-  getRfqProposals,
-  updateRfqProposal,
-  updateGroupRfq,
   RfqProposal,
 } from '@/lib/supabase';
+import { getGroupRfq, getRfqProposals, updateGroupRfq, updateRfqProposal } from '@/lib/db/rfq-server';
 import { generateFactBombingReport } from '@/lib/rfq-ai';
 import { requireAdminRequest } from '@/lib/admin-guard';
 
@@ -31,7 +28,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const ranked = proposals
       .filter(p => p.rank != null)
       .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
-    return NextResponse.json({ ranked, count: ranked.length });
+    return NextResponse.json({ ranked, count: ranked.length }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('분석 결과 조회 오류:', error);
     return NextResponse.json(

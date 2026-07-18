@@ -3,12 +3,9 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   isSupabaseConfigured,
-  getGroupRfq,
-  getRfqMessages,
-  getRfqProposals,
-  createRfqMessage,
   type RfqMessage,
 } from '@/lib/supabase';
+import { createRfqMessage, getGroupRfq, getRfqMessages, getRfqProposals } from '@/lib/db/rfq-server';
 import { processCustomerMessage, processTenantMessage } from '@/lib/rfq-ai';
 import {
   hasValidRfqShareToken,
@@ -106,17 +103,12 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     const actor = await resolveRfqActor(request);
-    if (!actor && !presentedRfqShareToken(request, body.share_token)) {
-      return rfqUnauthorizedResponse();
-    }
+    if (!actor) return rfqUnauthorizedResponse();
 
     const rfq = await getGroupRfq(rfqId);
     if (!rfq) {
       return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
     }
-
-    const shareAccess = !actor && hasValidRfqShareToken(request, rfq.share_token, body.share_token);
-    if (!actor && !shareAccess) return rfqUnauthorizedResponse();
 
     const proposalId = typeof body.proposal_id === 'string' && body.proposal_id.trim()
       ? body.proposal_id.trim()
@@ -193,6 +185,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       is_visible_to_customer: isVisibleToCustomer,
       is_visible_to_tenant: isVisibleToTenant,
     });
+    if (!message) {
+      return apiResponse({ error: 'Message persistence failed' }, { status: 500 });
+    }
 
     if (processResult.processed !== rawContent) {
       const translationNote = piiBlocked

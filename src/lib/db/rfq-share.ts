@@ -5,7 +5,7 @@
  * 공유 페이지에서는 견적 상세 + 반응(좋아요/투표) + 링크 복사 기능 제공.
  */
 
-import { getSupabase } from '../supabase';
+import { getSupabaseAdmin } from '../supabase';
 
 export interface RfqShareReaction {
   id: string;
@@ -41,7 +41,7 @@ export interface SharedRfqData {
  * share_token으로 RFQ 조회 (공유용, 민감 정보 제외)
  */
 export async function getSharedRfq(token: string): Promise<SharedRfqData | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
 
   const { data: rawData } = await sb
@@ -110,7 +110,7 @@ export async function addRfqReaction(
   reactionType: RfqShareReaction['reaction_type'],
   comment?: string,
 ): Promise<boolean> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return false;
 
   const { error } = await (sb.from('rfq_share_reactions') as unknown as { upsert: (rows: unknown, opts?: unknown) => Promise<{ error: unknown }> })
@@ -130,7 +130,7 @@ export async function addRfqReaction(
  * RFQ의 반응 현황 조회
  */
 export async function getRfqReactions(rfqId: string): Promise<RfqShareReaction[]> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return [];
 
   const { data } = await sb

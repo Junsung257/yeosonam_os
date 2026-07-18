@@ -122,9 +122,10 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
         visitorToken,
         reactionType: type,
         comment,
+        shareToken,
       }),
     });
-  }, [myReactions, rfq.id, visitorToken, commentMap]);
+  }, [myReactions, rfq.id, visitorToken, commentMap, shareToken]);
 
   const selectProposal = useCallback(async (proposalId: string) => {
     if (selectedProposalId || selectingProposalId) return;

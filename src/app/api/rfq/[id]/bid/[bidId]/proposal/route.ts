@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   isSupabaseConfigured,
-  getGroupRfq,
-  getRfqBids,
-  getRfqProposals,
-  createRfqProposal,
-  updateRfqProposal,
-  updateRfqBid,
-  updateGroupRfq,
   ProposalChecklist,
   RfqProposal,
 } from '@/lib/supabase';
+import { createRfqProposal, getGroupRfq, getRfqBids, getRfqProposals, updateGroupRfq, updateRfqBid, updateRfqProposal } from '@/lib/db/rfq-server';
 import { reviewProposal, generateFactBombingReport } from '@/lib/rfq-ai';
 import {
   resolveRfqActor,
@@ -69,7 +63,7 @@ export async function GET(
     if (!proposal) {
       return NextResponse.json({ error: '제안서를 찾을 수 없습니다.' }, { status: 404 });
     }
-    return NextResponse.json({ proposal });
+    return NextResponse.json({ proposal }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('제안서 조회 오류:', error);
     return NextResponse.json(

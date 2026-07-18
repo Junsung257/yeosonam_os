@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  isSupabaseConfigured,
-  getGroupRfq,
-  updateGroupRfq,
-} from '@/lib/supabase';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { getGroupRfq, updateGroupRfq } from '@/lib/db/rfq-server';
 import { isAdminRequest } from '@/lib/admin-guard';
 
 const TIER_DELAY_MS = parseInt(process.env.RFQ_TIER_DELAY_MINUTES ?? '10') * 60 * 1000;

@@ -6,3 +6,5 @@
 4. Encode all stored strings in generated contract HTML.
 5. Re-run focused tests, changed-file ESLint, full type-check, and diff check.
 6. Record the out-of-scope tenant route and database/RLS release blockers without mutating Supabase.
+7. Move route CRUD to the explicit service-role repository, harden public creation, and close share-token owner writes.
+8. Pair release with tenant/RLS commit `9d3df38c`; defer atomic RPC and owner-action-token work behind explicit gates.

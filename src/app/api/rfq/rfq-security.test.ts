@@ -16,10 +16,14 @@ vi.mock('@/lib/admin-guard', () => ({
 
 vi.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: true,
+  findOrCreateCustomerByPhone: vi.fn(),
+}));
+
+vi.mock('@/lib/db/rfq-server', () => ({
   getGroupRfq: vi.fn(),
   createGroupRfq: vi.fn(),
   listGroupRfqs: vi.fn(),
-  findOrCreateCustomerByPhone: vi.fn(),
+  findRecentDuplicateGroupRfq: vi.fn(),
   getRfqBids: vi.fn(),
   claimRfqBid: vi.fn(),
   updateGroupRfq: vi.fn(),
@@ -29,7 +33,11 @@ vi.mock('@/lib/supabase', () => ({
   updateRfqBid: vi.fn(),
   getRfqMessages: vi.fn(),
   createRfqMessage: vi.fn(),
+  getRfqTenantForAuthorizedRequest: vi.fn(),
+  addRfqReaction: vi.fn(),
 }));
+
+vi.mock('@/lib/rate-limiter', () => ({ rateLimit: vi.fn(async () => null) }));
 
 vi.mock('@/lib/rfq-ai', () => ({
   processCustomerMessage: vi.fn(async (content: string) => ({ processed: content, pii_detected: false })),
@@ -38,16 +46,11 @@ vi.mock('@/lib/rfq-ai', () => ({
   generateFactBombingReport: vi.fn(),
 }));
 
-vi.mock('@/lib/db/rfq', () => ({
-  getRfqTenantForAuthorizedRequest: vi.fn(),
-}));
-
 vi.mock('@/lib/push-dispatcher', () => ({
   dispatchPush: vi.fn(async () => undefined),
 }));
 
 import { requireAdminRequest } from '@/lib/admin-guard';
-import { getRfqTenantForAuthorizedRequest } from '@/lib/db/rfq';
 import {
   hasValidRfqShareToken,
   resolveRfqActor,
@@ -62,7 +65,10 @@ import {
   getRfqMessages,
   getRfqProposals,
   updateGroupRfq,
-} from '@/lib/supabase';
+  getRfqTenantForAuthorizedRequest,
+  findRecentDuplicateGroupRfq,
+  addRfqReaction,
+} from '@/lib/db/rfq-server';
 import { GET as getProposals } from './[id]/proposals/route';
 import { GET as getMessages, POST as postMessage } from './[id]/messages/route';
 import { GET as getBids, POST as postBid } from './[id]/bid/route';
@@ -70,6 +76,8 @@ import { GET as getAnalysis, POST as postAnalysis } from './[id]/analyze/route';
 import { GET as getContract } from './[id]/contract/route';
 import { GET as getProposal, POST as postProposal } from './[id]/bid/[bidId]/proposal/route';
 import { POST as createPublicRfq } from './route';
+import { POST as selectProposal } from './[id]/select/route';
+import { POST as postReaction } from './share/reaction/route';
 
 const mockedActor = vi.mocked(resolveRfqActor);
 const mockedShare = vi.mocked(hasValidRfqShareToken);
@@ -84,6 +92,8 @@ const mockedCreateGroupRfq = vi.mocked(createGroupRfq);
 const mockedCreateProposal = vi.mocked(createRfqProposal);
 const mockedGetRfqTenant = vi.mocked(getRfqTenantForAuthorizedRequest);
 const mockedUpdateRfq = vi.mocked(updateGroupRfq);
+const mockedDuplicateRfq = vi.mocked(findRecentDuplicateGroupRfq);
+const mockedAddReaction = vi.mocked(addRfqReaction);
 
 const params = { params: Promise.resolve({ id: 'rfq-1' }) };
 const proposalParams = { params: Promise.resolve({ id: 'rfq-1', bidId: 'bid-1' }) };
@@ -115,8 +125,10 @@ describe('RFQ API security boundaries', () => {
     mockedGetBids.mockResolvedValue([]);
     mockedGetProposals.mockResolvedValue([]);
     mockedGetMessages.mockResolvedValue([]);
-    mockedGetRfqTenant.mockResolvedValue({ id: 'tenant-a', tier: 'gold' });
+    mockedGetRfqTenant.mockResolvedValue({ id: 'tenant-a', tier: 'GOLD' });
     mockedUpdateRfq.mockResolvedValue({ ...baseRfq, status: 'bidding' });
+    mockedDuplicateRfq.mockResolvedValue(false);
+    mockedAddReaction.mockResolvedValue(true);
   });
 
   it('blocks anonymous proposal and bid-list disclosure', async () => {
@@ -137,18 +149,55 @@ describe('RFQ API security boundaries', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         customer_name: 'Customer',
+        customer_phone: '01012345678',
         destination: 'Tokyo',
         adult_count: 2,
+        custom_requirements: { privacy_consent: true },
       }),
     }));
 
     expect(response.status).toBe(201);
     expect(mockedCreateGroupRfq).toHaveBeenCalledWith(expect.objectContaining({
       customer_name: 'Customer',
+      customer_phone: '010-1234-5678',
       destination: 'Tokyo',
       adult_count: 2,
       status: 'draft',
     }));
+  });
+
+  it('rejects non-boolean consent, malformed ranges, and recent duplicates', async () => {
+    const invalidConsent = await createPublicRfq(request('/api/rfq', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        customer_name: 'Customer', customer_phone: '01012345678', destination: 'Tokyo',
+        adult_count: 2, custom_requirements: { privacy_consent: 'true' },
+      }),
+    }));
+    expect(invalidConsent.status).toBe(400);
+
+    const invalidCount = await createPublicRfq(request('/api/rfq', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        customer_name: 'Customer', customer_phone: '01012345678', destination: 'Tokyo',
+        adult_count: 501, custom_requirements: { privacy_consent: true },
+      }),
+    }));
+    expect(invalidCount.status).toBe(400);
+
+    mockedDuplicateRfq.mockResolvedValue(true);
+    const duplicate = await createPublicRfq(request('/api/rfq', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        customer_name: 'Customer', customer_phone: '01012345678', destination: 'Tokyo',
+        adult_count: 2, custom_requirements: { privacy_consent: true },
+      }),
+    }));
+    expect(duplicate.status).toBe(409);
+    expect(mockedCreateGroupRfq).not.toHaveBeenCalled();
   });
 
   it('derives customer message visibility from a valid share token, not viewAs=admin', async () => {
@@ -196,11 +245,62 @@ describe('RFQ API security boundaries', () => {
       params,
     );
 
-    expect(response.status).toBe(201);
-    expect(mockedCreateMessage).toHaveBeenCalledWith(expect.objectContaining({
-      sender_type: 'customer',
-      sender_id: undefined,
+    expect(response.status).toBe(401);
+    expect(mockedCreateMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns 5xx on a null message insert and preserves an authenticated admin send', async () => {
+    mockedActor.mockResolvedValue({ kind: 'admin' });
+    mockedCreateMessage.mockResolvedValue(null);
+    const failed = await postMessage(request('/api/rfq/rfq-1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ raw_content: 'hello' }),
+    }), params);
+    expect(failed.status).toBe(500);
+
+    mockedCreateMessage.mockResolvedValue({
+      id: 'message-1', rfq_id: 'rfq-1', sender_type: 'customer', raw_content: 'hello',
+      processed_content: 'hello', pii_detected: false, pii_blocked: false,
+      recipient_type: 'tenant', is_visible_to_customer: true, is_visible_to_tenant: true,
+      created_at: '2026-07-19T00:00:00.000Z',
+    });
+    const accepted = await postMessage(request('/api/rfq/rfq-1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ raw_content: 'hello' }),
+    }), params);
+    expect(accepted.status).toBe(201);
+  });
+
+  it('keeps owner selection admin-only even when a valid share token is supplied', async () => {
+    mockedShare.mockReturnValue(true);
+    const response = await selectProposal(request('/api/rfq/rfq-1/select', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-rfq-share-token': 'share-1' },
+      body: JSON.stringify({ proposal_id: 'proposal-1', share_token: 'share-1' }),
+    }), params);
+
+    expect(response.status).toBe(401);
+    expect(mockedGetRfq).not.toHaveBeenCalled();
+  });
+
+  it('validates the RFQ share token before persisting a reaction', async () => {
+    const denied = await postReaction(request('/api/rfq/share/reaction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rfqId: 'rfq-1', visitorToken: 'visitor-123', reactionType: 'like', shareToken: 'wrong' }),
     }));
+    expect(denied.status).toBe(403);
+    expect(mockedAddReaction).not.toHaveBeenCalled();
+
+    const accepted = await postReaction(request('/api/rfq/share/reaction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rfqId: 'rfq-1', visitorToken: 'visitor-123', reactionType: 'like', shareToken: 'share-1' }),
+    }));
+    expect(accepted.status).toBe(200);
+    expect(mockedAddReaction).toHaveBeenCalledWith('rfq-1', 'visitor-123', 'like', undefined);
   });
 
   it('rejects body tenant_id spoofing and uses the verified tenant binding', async () => {

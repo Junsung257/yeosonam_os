@@ -1,14 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  isSupabaseConfigured,
-  createGroupRfq,
-  listGroupRfqs,
-  GroupRfq,
-} from '@/lib/supabase';
+import { isSupabaseConfigured, GroupRfq } from '@/lib/supabase';
+import { createGroupRfq, findRecentDuplicateGroupRfq, listGroupRfqs } from '@/lib/db/rfq-server';
 import { findOrCreateCustomerByPhone } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { maskPhoneForLog, redactNameForLog } from '@/lib/pii-mask';
+import { rateLimit } from '@/lib/rate-limiter';
+
+interface RfqSubmission {
+  customer_name?: string;
+  customer_phone?: string;
+  destination?: string;
+  departure_date_from?: string;
+  departure_date_to?: string;
+  duration_nights?: number;
+  adult_count?: number;
+  child_count?: number;
+  budget_per_person?: number;
+  total_budget?: number;
+  hotel_grade?: string;
+  meal_plan?: string;
+  transportation?: string;
+  special_requests?: string;
+  custom_requirements?: Record<string, unknown>;
+  ai_interview_log?: unknown[];
+  privacy_consent?: unknown;
+}
+
+const textWithin = (value: unknown, max: number) => value === undefined || (typeof value === 'string' && value.trim().length <= max);
+const boundedInteger = (value: unknown, min: number, max: number) => Number.isInteger(value) && Number(value) >= min && Number(value) <= max;
+const boundedMoney = (value: unknown) => value === undefined || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1_000_000_000_000);
 
 const MOCK_RFQS: GroupRfq[] = [
   {
@@ -89,8 +110,56 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const limited = await rateLimit(request, { limit: 5, window: 60, prefix: 'rl-rfq-create', failClosed: true });
+  if (limited) return limited;
+
+  let body: RfqSubmission;
+  try {
+    body = await request.json() as RfqSubmission;
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const customRequirements = body.custom_requirements;
+  const validCustomRequirements = customRequirements === undefined
+    || (customRequirements !== null && typeof customRequirements === 'object' && !Array.isArray(customRequirements));
+  const consent = body.privacy_consent === true
+    || (customRequirements !== null && typeof customRequirements === 'object'
+      && (customRequirements as Record<string, unknown>).privacy_consent === true);
+  const customerName = typeof body.customer_name === 'string' ? body.customer_name.trim() : '';
+  const destinationValue = typeof body.destination === 'string' ? body.destination.trim() : '';
+  const phoneDigits = typeof body.customer_phone === 'string' ? body.customer_phone.replace(/\D/g, '') : '';
+  const normalizedPhone = phoneDigits.length === 11
+    ? `${phoneDigits.slice(0, 3)}-${phoneDigits.slice(3, 7)}-${phoneDigits.slice(7)}`
+    : '';
+  const childCount = body.child_count ?? 0;
+  const customSize = validCustomRequirements && customRequirements !== undefined ? JSON.stringify(customRequirements).length : 0;
+  const interviewLog = body.ai_interview_log;
+
+  if (!validCustomRequirements) return NextResponse.json({ error: 'Invalid custom requirements' }, { status: 400 });
+  if (!consent) return NextResponse.json({ error: 'Privacy consent is required' }, { status: 400 });
+  if (customerName.length < 2 || customerName.length > 50 || destinationValue.length < 1 || destinationValue.length > 100) {
+    return NextResponse.json({ error: 'Invalid customer name or destination' }, { status: 400 });
+  }
+  if (!normalizedPhone) return NextResponse.json({ error: 'Invalid customer phone' }, { status: 400 });
+  if (!boundedInteger(body.adult_count, 1, 500) || !boundedInteger(childCount, 0, 500) || Number(body.adult_count) + Number(childCount) > 500) {
+    return NextResponse.json({ error: 'Invalid passenger count' }, { status: 400 });
+  }
+  if ((body.duration_nights !== undefined && !boundedInteger(body.duration_nights, 1, 365))
+    || !boundedMoney(body.budget_per_person) || !boundedMoney(body.total_budget)) {
+    return NextResponse.json({ error: 'Invalid numeric range' }, { status: 400 });
+  }
+  if (![body.departure_date_from, body.departure_date_to].every(value => textWithin(value, 10))
+    || ![body.hotel_grade, body.meal_plan, body.transportation].every(value => textWithin(value, 100))
+    || !textWithin(body.special_requests, 3000)
+    || customSize > 20_000
+    || (interviewLog !== undefined && (!Array.isArray(interviewLog) || interviewLog.length > 50 || JSON.stringify(interviewLog).length > 50_000))) {
+    return NextResponse.json({ error: 'RFQ payload is too large or malformed' }, { status: 400 });
+  }
+
+  body = { ...body, customer_name: customerName, customer_phone: normalizedPhone, destination: destinationValue, child_count: childCount };
+
   if (!isSupabaseConfigured) {
-    const body = await request.json();
     const mockRfq: GroupRfq = {
       id: `mock-rfq-${Date.now()}`,
       rfq_code: `GRP-${Math.floor(Math.random() * 9000) + 1000}`,
@@ -116,7 +185,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
     const {
       customer_name,
       customer_phone,
@@ -135,6 +203,15 @@ export async function POST(request: NextRequest) {
       custom_requirements,
       ai_interview_log,
     } = body;
+
+    const duplicate = await findRecentDuplicateGroupRfq(
+      normalizedPhone,
+      destinationValue,
+      new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    );
+    if (duplicate) {
+      return NextResponse.json({ error: 'Duplicate RFQ submission' }, { status: 409 });
+    }
 
     if (!customer_name || !destination || !adult_count) {
       return NextResponse.json(
