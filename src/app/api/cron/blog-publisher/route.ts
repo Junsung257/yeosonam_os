@@ -27,7 +27,7 @@ import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
-import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
+import { ensureBlogInlineImages, findRelevantBlogPexelsImage } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { repairBlogImageQuality } from '@/lib/blog-image-quality';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
@@ -58,7 +58,10 @@ import {
   isCustomerOpenContractBlogPublishable,
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
-import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
+import { isPexelsConfigured } from '@/lib/pexels';
+import { BLOG_PROMPT_VERSION } from '@/lib/prompt-version';
+import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
+import { selectActiveBlogPrompt, type SelectedBlogPrompt } from '@/lib/blog-prompt-selection';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
@@ -287,7 +290,7 @@ async function getTodayBlogPublishCount(): Promise<{ count: number; dayKey: stri
 }
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
-let blogStyleGuideCache: { content: string; version: string } | null = null;
+let blogStyleGuideCache: SelectedBlogPrompt | null = null;
 
 const NEUTRAL_CLICHE_REPLACEMENTS: Record<string, string> = {
   '아름다운': '경관이 좋은',
@@ -800,7 +803,7 @@ async function applyDeterministicInfoFallback(
       maxImages: 4,
     });
     if (imageResult.inserted > 0) generated.blog_html = imageResult.markdown;
-  } catch { /* fallback remains publishable without blocking image fetch errors */ }
+  } catch { /* private fallback diagnostics do not depend on image fetch success */ }
   generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
   generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
     destination: item.destination,
@@ -1034,7 +1037,7 @@ async function repairFailedQualityGates(
   return qa;
 }
 
-async function getActiveBlogStyleGuide(): Promise<{ content: string; version: string }> {
+async function getActiveBlogStyleGuide(): Promise<SelectedBlogPrompt> {
   if (blogStyleGuideCache) return blogStyleGuideCache;
   const { data: promptRow } = await supabaseAdmin
     .from('prompt_versions')
@@ -1042,10 +1045,12 @@ async function getActiveBlogStyleGuide(): Promise<{ content: string; version: st
     .eq('domain', 'blog_style_guide')
     .eq('is_active', true)
     .limit(1);
-  blogStyleGuideCache = {
-    content: promptRow?.[0]?.content || '',
-    version: promptRow?.[0]?.version || 'v1.0',
-  };
+  blogStyleGuideCache = selectActiveBlogPrompt({
+    databaseContent: promptRow?.[0]?.content,
+    databaseVersion: promptRow?.[0]?.version,
+    repositoryContent: BLOG_STYLE_GUIDE,
+    repositoryVersion: BLOG_PROMPT_VERSION,
+  });
   return blogStyleGuideCache;
 }
 
@@ -3048,14 +3053,16 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
   const seoTitle = `${destDisplay} 여행 준비 가이드 | 관광지·일정·비용`.substring(0, 60);
   const seoDescription = `${destDisplay} 여행 전 확인할 관광지, 일정, 예상 비용, 계절별 준비 기준을 정리했습니다.`.substring(0, 160);
 
-  // OG 이미지: Pexels에서 destination 기반 이미지 할당
+  // OG 이미지: 목적지와 글 의도에 맞는 Pexels 상위 후보만 사용
   let og_image_url: string | null = null;
   try {
     const destForOg = item.destination || extractDestination(item.topic);
     if (destForOg && isPexelsConfigured()) {
-      const kw = destToEnKeyword(destForOg);
-      const photo = await getRandomPexelsPhoto(kw);
-      if (photo?.src?.medium) og_image_url = photo.src.medium;
+      og_image_url = await findRelevantBlogPexelsImage({
+        destination: destForOg,
+        primaryKeyword: seoTitle,
+        sectionTitle: '관광지 일정 비용 여행 준비',
+      });
     }
   } catch { /* OG 이미지 실패는 발행을 막지 않음 */ }
 
@@ -3183,7 +3190,11 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     throw new Error('AI API 키 미설정 — 정보성 블로그 생성 불가');
   }
 
-  const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
+  const {
+    content: styleGuide,
+    version: promptVersion,
+    source: promptSource,
+  } = await getActiveBlogStyleGuide();
   const queueSlug = buildQueueSlug(item);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
@@ -3383,20 +3394,22 @@ ${serpGapBlock}
   }
   const seo_description = descTemplate.substring(0, 160);
 
-  // og_image_url 자동 할당 — Pexels에서 destination 관련 이미지 검색
+  // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
   const destForImage = item.destination || extractDestination(item.topic);
   if (destForImage && isPexelsConfigured()) {
     try {
-      const keyword = destToEnKeyword(destForImage);
-      const photo = await getRandomPexelsPhoto(keyword);
-      if (photo?.src?.large2x) og_image_url = photo.src.large2x;
-      else if (photo?.src?.large) og_image_url = photo.src.large;
+      og_image_url = await findRelevantBlogPexelsImage({
+        destination: destForImage,
+        primaryKeyword: contentBrief.primaryKeyword,
+        sectionTitle: contentBrief.title,
+      });
     } catch { /* silent — og_image_url은 null로 유지 */ }
   }
 
   const generation_meta: Record<string, unknown> = {
     prompt_version: promptVersion,
+    prompt_source: promptSource,
     writer: 'info_writer',
     editorial_voice: BLOG_EDITORIAL_VOICE,
     info_guide_brief: infoGuideBrief,

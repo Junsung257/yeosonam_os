@@ -56,4 +56,65 @@ describe('blog quality gate information contract', () => {
       passed: false,
     });
   });
+
+  it('blocks a generic Sapporo food-budget fallback without meal prices or a daily budget', () => {
+    const result = checkIntentQuality({
+      blog_html: [
+        '# 삿포로 식비 가이드',
+        '',
+        '삿포로에서는 여행 동선과 취향에 따라 식당을 고르면 좋습니다.',
+        '',
+        '## 식사 준비',
+        '아침, 점심, 저녁 식당을 미리 살펴보세요.',
+        '',
+        '## 확인 사항',
+        '영업시간과 결제 수단은 방문 전에 확인하세요.',
+      ].join('\n'),
+      slug: 'sapporo-food-budget',
+      blog_type: 'info',
+      destination: '삿포로',
+      primary_keyword: '삿포로 식비',
+      category: 'food',
+      content_type: 'guide',
+      micro_angle: 'food_budget',
+      generation_meta: { content_brief: { intent_type: 'food_budget' } },
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.evidence?.informationContract).toMatchObject({
+      intentType: 'food_budget',
+      passed: false,
+    });
+  });
+
+  it('blocks a generic Guangzhou weather fallback without a 12-month climate table', () => {
+    const result = checkIntentQuality({
+      blog_html: [
+        '# 광저우 월별 날씨',
+        '',
+        '광저우 여행은 계절에 맞는 옷차림과 우산을 준비하면 좋습니다.',
+        '',
+        '## 날씨 준비',
+        '- 더운 날에는 얇은 옷을 챙기세요.',
+        '- 비가 오면 우산을 준비하세요.',
+        '',
+        '## 출발 전 확인',
+        '최신 예보를 확인하세요.',
+      ].join('\n'),
+      slug: 'guangzhou-weather',
+      blog_type: 'info',
+      destination: '광저우',
+      primary_keyword: '광저우 월별 날씨',
+      category: 'weather',
+      content_type: 'guide',
+      micro_angle: 'weather_packing',
+      generation_meta: { content_brief: { intent_type: 'monthly_weather' } },
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.evidence?.informationContract).toMatchObject({
+      intentType: 'monthly_weather',
+      passed: false,
+    });
+  });
 });
