@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-15
 
-This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
+This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
 ## Evidence Base
 
