@@ -2,6 +2,20 @@
 
 ## Automated evidence
 
+### Independent-review remediation
+
+- `npx vitest run src/lib/admin-guard.test.ts src/lib/db/dashboard.test.ts src/app/api/dashboard/dashboard-routes.security.test.ts --reporter=verbose --pool=forks --maxWorkers=1`
+  - PASS: 3 files, 19 tests.
+  - Covers non-admin JWT 403 boundaries before KPI calls, private/no-store responses, settlement error status, KST chart cutoff, shared browser month keys, and DB error propagation.
+- Changed-file ESLint and `git diff --check`
+  - PASS.
+- Ordered full type-check
+  - PASS after the tenant lane completed (`tsc --noEmit --pretty false`, 174.1s).
+- Migration safety and prefix collision checks
+  - PASS again after remediation: 1 file/0 issues; 379 files, 16 known historical collisions, 0 new/unbaselined collisions.
+
+### Initial KPI correction
+
 - `npx vitest run src/lib/db/dashboard.test.ts --reporter=verbose --pool=forks --maxWorkers=1`
   - PASS: 1 file, 4 tests.
   - Covers KST month rollover while UTC is still the prior day, closed recognized-date range, future operational booking separation, per-booking outstanding floor, new-booking upper bound, cancelled-booking cash/refund inclusion, and RPC JSON contract keys.

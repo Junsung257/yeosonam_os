@@ -6,6 +6,7 @@ import nextDynamic from 'next/dynamic';
 import { fmtNum as fmtComma } from '@/lib/admin-utils';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
+import { getKstCurrentAndPreviousMonthKeys } from '@/lib/admin-dashboard-kpi-basis';
 const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
 const AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
 
@@ -79,6 +80,7 @@ interface SettlementBalances {
   payable: { total: number; aging: { bucket: string; amount: number }[] };
   receivable: { total: number; aging: { bucket: string; amount: number }[] };
 }
+type SettlementLoadStatus = 'loading' | 'ok' | 'error' | 'timeout' | 'unconfigured';
 interface OperatorTakeRate {
   operator_id: string | null;
   operator_name: string;
@@ -142,10 +144,7 @@ function TwoTrackKPI({
   newBookings: NewBookingsMonth[];
   periodLabel: string;
 }) {
-  const now = new Date();
-  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+  const { current: thisMonthKey, previous: prevMonthKey } = getKstCurrentAndPreviousMonthKeys();
 
   const thisRecognized = recognized.find(r => r.month === thisMonthKey);
   const thisBookings = newBookings.find(r => r.month === thisMonthKey);
@@ -220,7 +219,7 @@ function CashflowChart({ chartData, periodLabel }: { chartData: MonthlyChartData
     <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary">캐시플로우 ({periodLabel})</h2>
-        <span className="text-[10px] text-admin-muted-2">출발일 기준 / 직접·제휴 합산</span>
+        <span className="text-[10px] text-admin-muted-2">출발일 기준 · KST 오늘까지 / 직접·제휴 합산</span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -376,6 +375,7 @@ function FinanceTile({
 function OwnerFinanceCommandCenter({
   stats,
   settlement,
+  settlementStatus,
   capitalTotal,
   unmatchedCount,
   pendingActionsCount,
@@ -383,16 +383,23 @@ function OwnerFinanceCommandCenter({
 }: {
   stats: DashboardStats | null;
   settlement: SettlementBalances | null;
+  settlementStatus: SettlementLoadStatus;
   capitalTotal: number | null;
   unmatchedCount: number | null;
   pendingActionsCount: number;
   pendingPackagesCount: number;
 }) {
-  const receivable = settlement?.receivable.total ?? stats?.totalOutstanding ?? 0;
-  const landPayable = settlement?.payable.total ?? 0;
+  const receivable = settlement?.receivable.total ?? null;
+  const landPayable = settlement?.payable.total ?? null;
   const preTaxMargin = stats?.margin ?? 0;
   const cashLeft = settlement?.cash.balance ?? null;
   const cashIsNegative = cashLeft != null && cashLeft < 0;
+  const settlementUnavailable = ['error', 'timeout', 'unconfigured'].includes(settlementStatus);
+  const settlementStatusLabel = settlementUnavailable
+    ? '조회 실패 · 확인 필요'
+    : settlementStatus === 'loading'
+      ? '조회 중'
+      : '전체 기간 · 고객입금 - 송금/환불 · 자본 별도';
   const totalTodo = (stats?.unpaidD7 ?? 0) + (unmatchedCount ?? 0) + pendingActionsCount + pendingPackagesCount;
 
   return (
@@ -440,8 +447,8 @@ function OwnerFinanceCommandCenter({
               <p className="mt-1 font-bold tabular-nums">{capitalTotal != null ? fmt만KRW(capitalTotal) : '-'}</p>
             </div>
           </div>
-          <p className={`mt-3 text-[10px] ${cashIsNegative ? 'text-red-600/70' : 'text-slate-400'}`}>
-            전체 기간 · 고객입금 - 송금/환불 · 자본 별도
+          <p className={`mt-3 text-[10px] ${settlementUnavailable || cashIsNegative ? 'text-red-600/80' : 'text-slate-400'}`}>
+            {settlementStatusLabel}
           </p>
         </Link>
 
@@ -456,17 +463,17 @@ function OwnerFinanceCommandCenter({
         <FinanceTile
           href="/admin/payments?filter=outstanding"
           label="아직 받을 돈"
-          value={fmt만KRW(receivable)}
-          caption={`${stats?.unpaidD7 ?? 0}건은 D-7 이내`}
-          tone={receivable > 0 ? 'danger' : 'good'}
+          value={receivable != null ? fmt만KRW(receivable) : '—'}
+          caption={settlementUnavailable ? '조회 실패 · 확인 필요' : `${stats?.unpaidD7 ?? 0}건은 D-7 이내`}
+          tone={receivable == null ? 'neutral' : receivable > 0 ? 'danger' : 'good'}
           className="xl:col-span-2"
         />
         <FinanceTile
           href="/admin/land-settlements"
           label="랜드사 보낼 돈"
-          value={fmt만KRW(landPayable)}
-          caption="출발 완료 후 미송금"
-          tone={landPayable > 0 ? 'warn' : 'good'}
+          value={landPayable != null ? fmt만KRW(landPayable) : '—'}
+          caption={settlementUnavailable ? '조회 실패 · 확인 필요' : '출발 완료 후 미송금'}
+          tone={landPayable == null ? 'neutral' : landPayable > 0 ? 'warn' : 'good'}
           className="xl:col-span-2"
         />
         <FinanceTile
@@ -490,8 +497,8 @@ function OwnerFinanceCommandCenter({
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {[
           { href: '/admin/payments?filter=unmatched', label: '입금 자동매칭', value: `${unmatchedCount ?? 0}건` },
-          { href: '/admin/payments?filter=outstanding', label: '잔금 미수', value: fmt만KRW(receivable) },
-          { href: '/admin/land-settlements', label: '랜드사 정산', value: fmt만KRW(landPayable) },
+          { href: '/admin/payments?filter=outstanding', label: '잔금 미수', value: receivable != null ? fmt만KRW(receivable) : '확인 필요' },
+          { href: '/admin/land-settlements', label: '랜드사 정산', value: landPayable != null ? fmt만KRW(landPayable) : '확인 필요' },
           { href: '/admin/bookings?status=pending,confirmed', label: '진행 예약', value: `${stats?.activeBookings ?? 0}건` },
         ].map(item => (
           <Link
@@ -614,10 +621,11 @@ function TodayWorkQueue({
 }
 
 function OperationsKPI({
-  aiUsage, settlement, aiCredits,
+  aiUsage, settlement, settlementStatus, aiCredits,
 }: {
   aiUsage: AIUsageStats | null;
   settlement: SettlementBalances | null;
+  settlementStatus: SettlementLoadStatus;
   aiCredits: AICredits | null;
 }) {
   const aiSpark = aiUsage?.daily.map(d => d.cost_usd) ?? [];
@@ -636,6 +644,7 @@ function OperationsKPI({
   // 90d+ 비중 (위험 신호)
   const recvOverdue = settlement?.receivable.aging.find(a => a.bucket === '90d+')?.amount ?? 0;
   const payOverdue = settlement?.payable.aging.find(a => a.bucket === '90d+')?.amount ?? 0;
+  const settlementUnavailable = ['error', 'timeout', 'unconfigured'].includes(settlementStatus);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -646,7 +655,7 @@ function OperationsKPI({
           <span className="text-[10px] text-admin-muted-2">payable</span>
         </div>
         <p className="text-[24px] font-bold text-amber-700 tabular-nums leading-none">
-          {settlement ? fmt만KRW(payable) : '—'}
+          {settlement ? fmt만KRW(payable) : settlementUnavailable ? '확인 필요' : '—'}
         </p>
         <div className="mt-2 flex gap-1 text-[10px]">
           {(settlement?.payable.aging ?? []).map(a => (
@@ -663,6 +672,9 @@ function OperationsKPI({
         {payOverdue > 0 && (
           <p className="text-[10px] text-red-600 mt-1.5">⚠ 90일+ 미지급 {fmt만KRW(payOverdue)}</p>
         )}
+        {settlementUnavailable && (
+          <p className="text-[10px] text-red-600 mt-1.5">정산 데이터 조회 실패 · 원장 확인 필요</p>
+        )}
       </Link>
 
       {/* 정산 잔여 — Receivable (고객 미입금) */}
@@ -672,7 +684,7 @@ function OperationsKPI({
           <span className="text-[10px] text-admin-muted-2">receivable</span>
         </div>
         <p className="text-[24px] font-bold text-red-600 tabular-nums leading-none">
-          {settlement ? fmt만KRW(receivable) : '—'}
+          {settlement ? fmt만KRW(receivable) : settlementUnavailable ? '확인 필요' : '—'}
         </p>
         <div className="mt-2 flex gap-1 text-[10px]">
           {(settlement?.receivable.aging ?? []).map(a => (
@@ -688,6 +700,9 @@ function OperationsKPI({
         </div>
         {recvOverdue > 0 && (
           <p className="text-[10px] text-red-600 mt-1.5">⚠ 90일+ 미입금 {fmt만KRW(recvOverdue)}</p>
+        )}
+        {settlementUnavailable && (
+          <p className="text-[10px] text-red-600 mt-1.5">정산 데이터 조회 실패 · 원장 확인 필요</p>
         )}
       </Link>
 
@@ -1398,6 +1413,7 @@ interface RevenueRecognitionResponse {
 interface OperationsResponse {
   aiUsage?: AIUsageStats;
   settlement?: SettlementBalances;
+  settlementStatus?: Exclude<SettlementLoadStatus, 'loading'>;
   takeRates?: OperatorTakeRate[];
   repeat?: RepeatBookingStats;
   dataQuality?: DataQualityReport;
@@ -1463,6 +1479,7 @@ export default function AdminPage({
   const [aiUsage, setAiUsage] = useState<AIUsageStats | null>(null);
   const [aiCredits, setAiCredits] = useState<AICredits | null>(null);
   const [settlement, setSettlement] = useState<SettlementBalances | null>(null);
+  const [settlementStatus, setSettlementStatus] = useState<SettlementLoadStatus>('loading');
   const [takeRates, setTakeRates] = useState<OperatorTakeRate[]>([]);
   const [repeat, setRepeat] = useState<RepeatBookingStats | null>(null);
   const [dataQuality, setDataQuality] = useState<DataQualityReport | null>(null);
@@ -1489,6 +1506,7 @@ export default function AdminPage({
 
   const loadAll = async (months = 6) => {
     setFetchErrors([]);
+    setSettlementStatus('loading');
     try {
       // 서버 pre-fetch 패키지가 있으면 packages 2개 fetch 스킵 — stats/capital만 병렬 조회
       const skipPkg = _skipPackageFetch.current;
@@ -1552,9 +1570,16 @@ export default function AdminPage({
       // V4: 운영 KPI — BUG-3: 에러 응답 방어 추가
       fetchDashboardJson<OperationsResponse>('/api/dashboard/operations?mode=dashboard')
         .then(r => {
-          if (!r.ok || r.data.error) { addFetchError('운영KPI', r); return; }
+          if (!r.ok || r.data.error) {
+            setSettlement(null);
+            setSettlementStatus('error');
+            addFetchError('운영KPI', r);
+            return;
+          }
           if (r.data.aiUsage) setAiUsage(r.data.aiUsage);
-          if (r.data.settlement) setSettlement(r.data.settlement);
+          const nextSettlementStatus = r.data.settlementStatus ?? (r.data.settlement ? 'ok' : 'error');
+          setSettlementStatus(nextSettlementStatus);
+          setSettlement(nextSettlementStatus === 'ok' ? r.data.settlement ?? null : null);
           if (r.data.takeRates) setTakeRates(r.data.takeRates);
           if (r.data.repeat) setRepeat(r.data.repeat);
           if (r.data.dataQuality) setDataQuality(r.data.dataQuality);
@@ -1725,6 +1750,7 @@ export default function AdminPage({
       <OwnerFinanceCommandCenter
         stats={stats}
         settlement={settlement}
+        settlementStatus={settlementStatus}
         capitalTotal={capitalTotal}
         unmatchedCount={unmatchedCount}
         pendingActionsCount={pendingActions.length}
@@ -1899,7 +1925,12 @@ export default function AdminPage({
       <CashflowChart chartData={chartData} periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'} />
 
       {/* 운영 KPI — 정산 잔여(payable/receivable) + AI 비용 */}
-      <OperationsKPI aiUsage={aiUsage} settlement={settlement} aiCredits={aiCredits} />
+      <OperationsKPI
+        aiUsage={aiUsage}
+        settlement={settlement}
+        settlementStatus={settlementStatus}
+        aiCredits={aiCredits}
+      />
 
       {/* ── Zone 3: 분석 ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-1 mt-2">

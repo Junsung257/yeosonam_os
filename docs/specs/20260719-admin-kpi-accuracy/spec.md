@@ -14,6 +14,9 @@ Make the `/admin` owner dashboard safe to use at launch by removing three known 
 - Monthly new-booking data groups `created_at` in KST and excludes timestamps after the request time.
 - The owner card is named **booking cash balance** and uses one all-time basis: for every non-deleted booking, including cancelled bookings, `sum(paid_amount) - sum(total_paid_out)`. It is not a bank balance and does not include capital or unrelated expenses.
 - Settlement receivable/payable definitions remain separate from booking cash: receivable is the non-negative unpaid customer amount on non-cancelled bookings; payable is the non-negative unpaid land cost after departure.
+- Dashboard financial sub-routes require platform-admin authorization and return only `private, no-store` responses.
+- The cashflow chart is historical recognized activity through KST today. Future departures and future ad snapshots do not enter sales, margin, commission, or ad-spend bars.
+- A settlement query error, timeout, or unconfigured DB is not a zero balance. The API returns an explicit load status and the UI shows `조회 실패 · 확인 필요`.
 
 ## Source of truth
 
@@ -32,6 +35,8 @@ The fast RPC and application fallback must return the same current-month recogni
 4. KST midnight/month boundaries do not depend on the Vercel process timezone.
 5. The cash card uses all-time received and all-time paid-out amounts from the same row scope and explains that basis in the UI.
 6. Direct boundary tests and type/lint checks pass.
+7. Authenticated non-admin JWTs receive 403 from every dashboard financial sub-route before KPI work runs.
+8. Browser current/previous month keys and server query boundaries use the same shared KST helper.
 
 ## Out of scope
 

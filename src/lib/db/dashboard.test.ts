@@ -13,10 +13,12 @@ vi.mock('../supabase', () => ({
 
 const {
   getDashboardStats,
+  getDashboardStatsV3,
   getNewBookingsMonthly,
   getRecognizedRevenueMonthly,
   getSettlementBalances,
 } = await import('./dashboard');
+const { getKstCurrentAndPreviousMonthKeys } = await import('../admin-dashboard-kpi-basis');
 
 type QueryResult = { data?: unknown[] | null; count?: number | null; error?: unknown };
 
@@ -125,6 +127,37 @@ describe('admin dashboard KPI boundaries', () => {
     expect(createdRows.map(row => row.month)).toEqual(['2026-05', '2026-06', '2026-07']);
   });
 
+  it('bounds the cashflow chart at KST today and keeps browser month keys on the same calendar', async () => {
+    const bookings = baseQuery();
+    bookings.or.mockResolvedValue({
+      data: [{
+        departure_date: '2026-07-01',
+        total_price: 1_000,
+        margin: 200,
+        influencer_commission: 0,
+        booking_type: 'DIRECT',
+      }],
+      error: null,
+    } satisfies QueryResult);
+    const snapshots = baseQuery();
+    snapshots.lte.mockResolvedValue({ data: [], error: null } satisfies QueryResult);
+    const client = { from: vi.fn().mockReturnValueOnce(bookings).mockReturnValueOnce(snapshots) };
+    mocks.getSupabaseAdmin.mockReturnValueOnce(client);
+
+    const result = await getDashboardStatsV3(3);
+
+    expect(bookings.gte).toHaveBeenCalledWith('departure_date', '2026-05-01');
+    expect(bookings.lte).toHaveBeenCalledWith('departure_date', '2026-07-01');
+    expect(bookings.or).toHaveBeenCalledWith('is_deleted.is.null,is_deleted.eq.false');
+    expect(snapshots.lte).toHaveBeenCalledWith('snapshot_date', '2026-07-01');
+    expect(result.map(row => row.month)).toEqual(['2026-05', '2026-06', '2026-07']);
+    expect(result.at(-1)).toMatchObject({ direct_sales: 1_000, net_margin: 200 });
+    expect(getKstCurrentAndPreviousMonthKeys()).toEqual({
+      current: '2026-07',
+      previous: '2026-06',
+    });
+  });
+
   it('uses one all-time non-deleted basis for booking cash and excludes cancellations only from settlement balances', async () => {
     const query = baseQuery();
     query.or.mockResolvedValue({
@@ -151,6 +184,19 @@ describe('admin dashboard KPI boundaries', () => {
     expect(result.payable.total).toBe(500);
   });
 
+  it('propagates settlement DB failures instead of returning an all-zero balance', async () => {
+    const query = baseQuery();
+    const dbError = new Error('settlement db unavailable');
+    query.or.mockResolvedValue({ data: null, error: dbError } satisfies QueryResult);
+    const client = { from: vi.fn(() => query) };
+    mocks.getSupabaseAdmin.mockReturnValueOnce(client);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await expect(getSettlementBalances()).rejects.toBe(dbError);
+
+    consoleError.mockRestore();
+  });
+
   it('keeps the fast RPC on the same KST closed-range contract', () => {
     const sql = readFileSync(
       new URL('../../../supabase/migrations/20260719172000_admin_dashboard_kpi_kst_bounds.sql', import.meta.url),
@@ -170,5 +216,16 @@ describe('admin dashboard KPI boundaries', () => {
     ]) {
       expect(sql).toContain(`'${key}'`);
     }
+  });
+
+  it('renders an explicit review state when settlement data is unavailable', () => {
+    const client = readFileSync(
+      new URL('../../app/admin/AdminPageClient.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(client).toContain("type SettlementLoadStatus = 'loading' | 'ok' | 'error' | 'timeout' | 'unconfigured'");
+    expect(client).toContain('조회 실패 · 확인 필요');
+    expect(client).toContain("setSettlementStatus('error')");
   });
 });

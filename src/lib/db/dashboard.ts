@@ -15,22 +15,19 @@
  */
 
 import { getSupabaseAdmin, supabaseAdmin } from '../supabase';
+import {
+  KST_OFFSET_MS,
+  addCalendarDays,
+  kstMonthKeysFor,
+  kstMonthStart,
+  nonNegativeOutstanding,
+  toKstCalendar,
+  toKstDate,
+} from '../admin-dashboard-kpi-basis';
 
 // Server-only module. All callers in src/app/api/** routes and admin server pages.
 // Uses service_role to bypass RLS so we can drop authenticated `*_all USING true` policies.
 const getSupabase = getSupabaseAdmin;
-
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-const formatUtcDate = (date: Date): string =>
-  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
-const toKstCalendar = (date: Date): Date => new Date(date.getTime() + KST_OFFSET_MS);
-const toKstDate = (date: Date): string => formatUtcDate(toKstCalendar(date));
-const kstMonthStart = (date: Date, monthOffset = 0): string => {
-  const kst = toKstCalendar(date);
-  return formatUtcDate(new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth() + monthOffset, 1)));
-};
-const addCalendarDays = (date: string, days: number): string =>
-  formatUtcDate(new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86400000));
 
 // ─── V1: 이번 달 KPI ─────────────────────────────────────────
 
@@ -90,7 +87,7 @@ export async function getDashboardStats() {
     const totalPaid = recognizedBookings.reduce((sum, booking) => sum + (booking.paid_amount || 0), 0);
     // 미수금은 예약별 0 하한을 합산한다. 한 예약의 초과입금이 다른 예약의 미수를 상쇄하면 안 된다.
     const totalOutstanding = recognizedBookings.reduce(
-      (sum, booking) => sum + Math.max(0, (booking.total_price || 0) - (booking.paid_amount || 0)),
+      (sum, booking) => sum + nonNegativeOutstanding(booking.total_price, booking.paid_amount),
       0,
     );
     // 마진: margin 컬럼 기준 (DB 트리거가 자동 계산, completed 한정 아님)
@@ -139,12 +136,10 @@ export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV
   if (!supabase) return [];
 
   try {
-    // 전체 기간 계산 (단 2개 쿼리로 통합)
     const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-    const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const fromStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-01`;
-    const toStr = `${endMonth.getFullYear()}-${String(endMonth.getMonth() + 1).padStart(2, '0')}-${endMonth.getDate()}`;
+    const monthKeys = kstMonthKeysFor(months, now);
+    const fromStr = `${monthKeys[0]}-01`;
+    const toStr = toKstDate(now);
 
     // 2개 쿼리 병렬 실행 (기존 12개 → 2개)
     const [{ data: bookings }, { data: snapshots }] = await Promise.all([
@@ -154,7 +149,7 @@ export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV
         .gte('departure_date', fromStr)
         .lte('departure_date', toStr)
         .neq('status', 'cancelled')
-        .eq('is_deleted', false),
+        .or('is_deleted.is.null,is_deleted.eq.false'),
       supabase
         .from('ad_performance_snapshots')
         .select('snapshot_date, spend_krw')
@@ -167,10 +162,7 @@ export async function getDashboardStatsV3(months = 6): Promise<MonthlyChartDataV
     const snapshotList = snapshots ?? [];
 
     const result: MonthlyChartDataV3[] = [];
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthLabel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-
+    for (const monthLabel of monthKeys) {
       const monthBookings = bookingList.filter((b: any) => (b.departure_date ?? '').slice(0, 7) === monthLabel);
       const direct = monthBookings.filter((b: any) => b.booking_type !== 'AFFILIATE');
       const affiliate = monthBookings.filter((b: any) => b.booking_type === 'AFFILIATE');
@@ -241,16 +233,6 @@ const toKstMonth = (iso: string | null): string | null => {
   return `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
-const monthKeysFor = (months: number): string[] => {
-  const now = toKstCalendar(new Date());
-  const keys: string[] = [];
-  for (let i = months - 1; i >= 0; i--) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-    keys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
-  }
-  return keys;
-};
-
 /**
  * 월별 확정매출 (출발일 기준, IFRS 15/ASC 606 매출 인식).
  * 출발일 ≤ 오늘 & status ≠ 'cancelled' 만 집계.
@@ -274,7 +256,7 @@ export async function getRecognizedRevenueMonthly(months = 6): Promise<Recognize
     if (error) throw error;
 
     const buckets = new Map<string, RecognizedRevenueMonth>();
-    for (const m of monthKeysFor(months)) {
+    for (const m of kstMonthKeysFor(months)) {
       buckets.set(m, { month: m, recognized_bookings: 0, gmv: 0, margin: 0, paid: 0, outstanding: 0, commission: 0 });
     }
     for (const b of (data ?? []) as Array<Record<string, unknown>>) {
@@ -320,7 +302,7 @@ export async function getNewBookingsMonthly(months = 6): Promise<NewBookingsMont
     if (error) throw error;
 
     const buckets = new Map<string, NewBookingsMonth & { _leadSum: number; _leadN: number }>();
-    for (const m of monthKeysFor(months)) {
+    for (const m of kstMonthKeysFor(months)) {
       buckets.set(m, {
         month: m, total_bookings: 0, live_bookings: 0, cancelled_bookings: 0,
         gmv_live: 0, gmv_total: 0, avg_lead_time: null, cancellation_rate: 0,
@@ -604,12 +586,7 @@ export async function getSettlementBalances(): Promise<SettlementBalances> {
     { bucket: '0-30d', amount: 0 }, { bucket: '30-60d', amount: 0 },
     { bucket: '60-90d', amount: 0 }, { bucket: '90d+', amount: 0 },
   ];
-  const empty: SettlementBalances = {
-    cash: { received: 0, paid_out: 0, balance: 0, basis: 'all_time_non_deleted_bookings' },
-    payable: { total: 0, aging: emptyAging() },
-    receivable: { total: 0, aging: emptyAging() },
-  };
-  if (!supabase) return empty;
+  if (!supabase) throw new Error('정산 DB 연결을 사용할 수 없습니다.');
 
   try {
     const todayStr = toKstDate(new Date());
@@ -673,7 +650,7 @@ export async function getSettlementBalances(): Promise<SettlementBalances> {
     return out;
   } catch (err) {
     console.error('정산 잔여 조회 실패:', err);
-    return empty;
+    throw err;
   }
 }
 

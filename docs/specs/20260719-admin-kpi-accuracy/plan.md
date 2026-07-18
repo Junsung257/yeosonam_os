@@ -6,3 +6,4 @@
 4. Return an all-time booking cash summary from the existing settlement query and consume it in the owner card without a mixed-period fallback.
 5. Add deterministic KST, future-departure, outstanding, active-booking, and cash-scope tests.
 6. Run focused tests, lint, type-check, migration safety checks, and diff validation.
+7. Close independent-review blockers: guard every financial sub-route, bound the cashflow chart at KST today, and expose settlement load failures rather than zeroes.
