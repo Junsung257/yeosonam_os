@@ -27,6 +27,8 @@ Repeated failures belong in `docs/errors/settlement.md`.
 | Affiliate settlement math | `src/lib/affiliate/settlement-calc.ts` |
 | Payment/settlement APIs | `/api/payments/**`, `/api/settlements/**`, `/api/tenant/settlements` |
 | Bank allocation evidence | `bank_transaction_allocations`, `ops_events`, `match_bank_transaction_allocations` |
+| Manual bank memo keys | `booking_settlement_keys`, `src/lib/settlement-import/**` |
+| Clobe bank sync | `/api/bank-transactions/sync-clobe`, `src/lib/settlement-import/clobe-bank-sync.ts` |
 | Admin surfaces | `/admin/payments`, `/admin/ledger`, `/admin/settlements`, `/admin/land-settlements` |
 | Drift monitor | `/api/cron/ledger-reconcile` |
 | Error memory | `docs/errors/settlement.md` |
@@ -44,6 +46,14 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - A bank transaction may be allocated to multiple bookings, but the allocated total may not exceed the transaction amount. Under-allocation is only tolerated up to 500 KRW unless a future schema explicitly accounts for the remainder.
 - Overpayment converted to mileage must separate `allocated_amount` from `ledger_delta`: the bank transaction evidence keeps the full amount, while the booking ledger receives only the outstanding booking balance and the remainder is recorded as mileage.
 - Matched transactions with active allocation evidence must not be soft-deleted or hard-deleted. Reverse the allocation first, then exclude if needed.
+- Manual bank-statement imports must treat memo keys such as `260715_정지해_투어폰` as the booking binding key. Counterparty/depositor name is supporting evidence only because companions can pay separately.
+- Bulk bank import may auto-allocate deposits only after a valid travel memo key resolves to one booking. Outflows must remain review/manual-confirmed even when the memo key resolves.
+- Non-travel pasted bank rows without a valid travel memo key should be skipped by default instead of becoming unmatched finance evidence.
+- Clobe bank sync must normalize provider rows into the same bank import contract before touching `bank_transactions`.
+- Clobe sync dedupe order is provider transaction id first (`external_provider`, `external_transaction_id`), then local `transaction_fingerprint`.
+- Clobe-sourced outflows must stay review/manual-confirmed. Do not auto-confirm land operator payouts from provider sync.
+- If Clobe memo changes after a transaction is financially matched, do not move ledger allocation automatically. Record an open `ops_events` warning for manual review.
+- If Clobe memo changes before financial matching, update the stored bank transaction memo and re-run memo-key resolution through the same import path.
 
 ## State Boundary
 
