@@ -185,6 +185,10 @@
 |---|---|
 | `PEXELS_API_KEY` | 이미지 fallback (블로그·카드뉴스) |
 | `ANTHROPIC_API_KEY` | Claude API (IR 파이프라인용) |
+| `CLOBE_MCP_BEARER_TOKEN` | Clobe MCP 은행거래 동기화 Bearer 토큰. `CLOBE_API_TOKEN`을 호환용 fallback으로 사용 |
+| `CLOBE_API_TOKEN` | Clobe API 레거시/호환 토큰. `CLOBE_MCP_BEARER_TOKEN`이 있으면 사용하지 않음 |
+| `CLOBE_MCP_URL` | Clobe MCP 엔드포인트. 미설정 시 `https://api.clobe.ai/mcp` |
+| `CLOBE_MCP_TRANSACTIONS_TOOL` | 거래 조회 도구 이름을 자동 탐색할 수 없을 때 지정하는 선택값 |
 
 ## 🔍 미매칭 관광지 큐·크론 (선택)
 

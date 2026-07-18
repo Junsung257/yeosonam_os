@@ -1,3 +1,5 @@
+import { getSecret } from '@/lib/secret-registry';
+
 import type { BankTransactionImportRow } from './bank-transaction-importer';
 
 export interface ClobeNormalizeResult {
@@ -293,13 +295,13 @@ function buildToolArguments(options: ClobeMcpFetchOptions): Record<string, unkno
 }
 
 export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOptions = {}): Promise<ClobeMcpFetchResult> {
-  const token = process.env.CLOBE_MCP_BEARER_TOKEN || process.env.CLOBE_API_TOKEN;
+  const token = getSecret('CLOBE_MCP_BEARER_TOKEN') || getSecret('CLOBE_API_TOKEN');
   if (!token) {
     throw new Error('CLOBE_MCP_BEARER_TOKEN or CLOBE_API_TOKEN is required');
   }
 
   const ctx: McpCallContext = {
-    url: process.env.CLOBE_MCP_URL || DEFAULT_CLOBE_MCP_URL,
+    url: getSecret('CLOBE_MCP_URL') || DEFAULT_CLOBE_MCP_URL,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
@@ -313,7 +315,7 @@ export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOption
   const toolsResult = asRecord(await mcpCall(ctx, 'tools/list'));
   const tools = (Array.isArray(toolsResult.tools) ? toolsResult.tools : []) as McpTool[];
   const toolNames = tools.map(tool => tool.name);
-  const toolName = chooseTransactionTool(tools, process.env.CLOBE_MCP_TRANSACTIONS_TOOL);
+  const toolName = chooseTransactionTool(tools, getSecret('CLOBE_MCP_TRANSACTIONS_TOOL') ?? undefined);
   if (!toolName) {
     throw new Error(`No Clobe MCP transaction tool found. Available tools: ${toolNames.join(', ') || 'none'}`);
   }
