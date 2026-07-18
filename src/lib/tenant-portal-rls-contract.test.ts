@@ -41,6 +41,7 @@ describe('tenant portal RLS migration contract', () => {
   ])('defers the broad authenticated_access replacement for %s to Phase C', (table) => {
     const dropPolicy = `DROP POLICY IF EXISTS authenticated_access ON public.${table};`;
     expect(sql).not.toContain(dropPolicy);
+    expect(sql).not.toContain(`ALTER TABLE public.${table}`);
     expect(phaseCProposal).toContain(dropPolicy);
   });
 
@@ -52,12 +53,22 @@ describe('tenant portal RLS migration contract', () => {
 
     expect(phaseCProposal).toContain('ALTER TABLE public.group_rfqs ENABLE ROW LEVEL SECURITY');
     expect(phaseCProposal).toContain('ALTER TABLE public.rfq_messages ENABLE ROW LEVEL SECURITY');
-    expect(phaseCProposal).toContain('CREATE POLICY tenant_members_manage_rfq_bids');
-    expect(phaseCProposal).toContain('membership.tenant_id = rfq_bids.tenant_id');
-    expect(phaseCProposal).toContain('CREATE POLICY tenant_members_manage_rfq_proposals');
-    expect(phaseCProposal).toContain('membership.tenant_id = rfq_proposals.tenant_id');
+  });
+
+  it('keeps every RFQ table route-only and direct authenticated access default-denied', () => {
+    expect(phaseCProposal).toContain('DROP POLICY IF EXISTS tenant_members_manage_rfq_bids');
+    expect(phaseCProposal).toContain('DROP POLICY IF EXISTS tenant_members_manage_rfq_proposals');
+    expect(phaseCProposal).toContain(
+      'DROP POLICY IF EXISTS jarvis_v2_tenant_isolation ON public.rfq_proposals',
+    );
+    expect(phaseCProposal).not.toContain('CREATE POLICY tenant_members_manage_rfq_bids');
+    expect(phaseCProposal).not.toContain('CREATE POLICY tenant_members_manage_rfq_proposals');
+    expect(phaseCProposal).not.toContain('membership.tenant_id = rfq_bids.tenant_id');
+    expect(phaseCProposal).not.toContain('membership.tenant_id = rfq_proposals.tenant_id');
     expect(phaseCProposal).not.toMatch(/CREATE POLICY tenant_members_[^\n]*group_rfqs/);
     expect(phaseCProposal).not.toMatch(/CREATE POLICY tenant_members_[^\n]*rfq_messages/);
+    expect(phaseCProposal).toContain('Every RFQ route and cron persistence path uses service_role');
+    expect(phaseCProposal).toContain('active membership + active tenant');
   });
 
   it('requires an active tenant as well as an active membership in Phase C', () => {
@@ -66,10 +77,14 @@ describe('tenant portal RLS migration contract', () => {
     expect(phaseCProposal).toContain("authorized_tenant.status = 'active'");
   });
 
-  it('revokes the caller-controlled Jarvis tenant context from untrusted roles', () => {
-    expect(sql).toContain("to_regprocedure('public.set_jarvis_request_context(uuid,text,uuid)')");
-    expect(sql).toContain('FROM PUBLIC, anon, authenticated;');
-    expect(sql).toContain('TO service_role;');
+  it('defers the Jarvis function privilege change so Phase A is purely additive', () => {
+    expect(sql).not.toContain("to_regprocedure('public.set_jarvis_request_context(uuid,text,uuid)')");
+    expect(sql).not.toContain('REVOKE EXECUTE ON FUNCTION');
+    expect(sql).not.toContain('GRANT EXECUTE ON FUNCTION');
+
+    expect(phaseCProposal).toContain("to_regprocedure('public.set_jarvis_request_context(uuid,text,uuid)')");
+    expect(phaseCProposal).toContain('FROM PUBLIC, anon, authenticated;');
+    expect(phaseCProposal).toContain('TO service_role;');
     expect(sql).not.toContain('DROP POLICY IF EXISTS jarvis_v2_tenant_or_shared');
   });
 });

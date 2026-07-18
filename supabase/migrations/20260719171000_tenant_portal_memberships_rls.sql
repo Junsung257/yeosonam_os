@@ -38,24 +38,8 @@ CREATE POLICY tenant_memberships_select_own
     AND is_active
   );
 
--- Untrusted roles must not be able to assign arbitrary request context. Jarvis
--- continues to call this function through service_role. Keep the existing
--- Jarvis policies: after this privilege boundary, browser roles cannot choose
--- app.tenant_id, while the shared (tenant_id IS NULL) package catalog remains
--- readable under its existing policy.
-DO $migration$
-BEGIN
-  IF to_regprocedure('public.set_jarvis_request_context(uuid,text,uuid)') IS NOT NULL THEN
-    REVOKE EXECUTE ON FUNCTION public.set_jarvis_request_context(uuid, text, uuid)
-      FROM PUBLIC, anon, authenticated;
-    GRANT EXECUTE ON FUNCTION public.set_jarvis_request_context(uuid, text, uuid)
-      TO service_role;
-  END IF;
-END
-$migration$;
-
--- Phase A is intentionally additive. Existing tenant/RFQ policy replacement
--- is held outside executable migrations until membership provisioning and the
--- service-role RFQ companion deployment are verified.
+-- Phase A is intentionally additive. Existing functions, grants, tenant/RFQ
+-- policies, and existing-table RLS settings are unchanged until the staged
+-- rollout gates and service-role companions are verified.
 
 COMMIT;

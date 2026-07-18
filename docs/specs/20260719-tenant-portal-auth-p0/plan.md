@@ -31,4 +31,5 @@ The browser sends its HttpOnly `sb-access-token`. The route verifies the JWT, re
 - Stale JWT metadata: authorization does not use `user_metadata` or tenant claims; current DB membership is checked per request.
 - Foreign record ID: product and inventory repository updates include tenant ownership predicates; `/api/rfq/**` route ownership is verified by the parallel RFQ lane.
 - RLS policy composition: the Phase-C proposal removes permissive `authenticated_access` policies before adding ownership policies, but it must not become an executable migration until the RFQ service-role companion is deployed and verified.
+- RFQ route-only boundary: Phase C creates no authenticated policies for `group_rfqs`, `rfq_bids`, `rfq_proposals`, or `rfq_messages`. Routes and cron must use a service-role repository; tenant-originated actions additionally require active membership and an active tenant before repository access.
 - Production mutation: Phase A is additive and no migration or proposal is applied remotely from this worktree.
