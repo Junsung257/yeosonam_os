@@ -51,7 +51,7 @@ const SALES_TOOLS_RAW = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        status: { type: 'string', description: 'open/in_progress/closed/cancelled' },
+        status: { type: 'string', description: 'draft/published/bidding/analyzing/awaiting_selection/contracted/completed/cancelled' },
         limit: { type: 'number' }
       }
     }
@@ -202,8 +202,8 @@ async function executeTool(toolName: string, args: any): Promise<any> {
     }
     case 'list_rfqs': {
       let query = supabaseAdmin
-        .from('rfqs')
-        .select('id, title, status, group_size, destination, travel_date, budget, created_at')
+        .from('group_rfqs')
+        .select('id, rfq_code, status, customer_name, destination, departure_date_from, adult_count, child_count, budget_per_person, total_budget, created_at')
         .order('created_at', { ascending: false })
         .limit(args.limit || 10)
       if (args.status) query = query.eq('status', args.status)
@@ -259,9 +259,15 @@ async function executeTool(toolName: string, args: any): Promise<any> {
       return data ?? []
     }
     case 'get_rfq_detail': {
-      const { data, error } = await supabaseAdmin.from('rfqs').select('*, rfq_proposals(*)').eq('id', args.rfq_id).limit(1)
-      if (error) throw error
-      return data?.[0] ?? null
+      const [{ data: rfq, error: rfqError }, { data: proposals, error: proposalsError }, { data: bids, error: bidsError }] = await Promise.all([
+        supabaseAdmin.from('group_rfqs').select('*').eq('id', args.rfq_id).limit(1),
+        supabaseAdmin.from('rfq_proposals').select('id, rfq_id, tenant_id, proposal_title, itinerary_summary, total_selling_price, status, rank, created_at').eq('rfq_id', args.rfq_id).order('rank', { ascending: true, nullsFirst: false }),
+        supabaseAdmin.from('rfq_bids').select('id, rfq_id, tenant_id, status, locked_at, submitted_at').eq('rfq_id', args.rfq_id).order('locked_at', { ascending: true }),
+      ])
+      if (rfqError) throw rfqError
+      if (proposalsError) throw proposalsError
+      if (bidsError) throw bidsError
+      return rfq?.[0] ? { ...rfq[0], proposals: proposals ?? [], bids: bids ?? [] } : null
     }
     case 'create_rfq_proposal': {
       const summary = `[RFQ 제안] ${args.rfq_id} — ${args.estimated_cost?.toLocaleString()}원 | ${args.proposal_text?.slice(0, 50)}...`

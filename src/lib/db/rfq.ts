@@ -12,6 +12,7 @@ import { getSupabase } from '../supabase';
 export interface GroupRfq {
   id:                   string;
   rfq_code:             string;
+  share_token?:         string;
   customer_id?:         string;
   customer_name:        string;
   customer_phone?:      string;

@@ -175,16 +175,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'RFQ 생성에 실패했습니다.' }, { status: 500 });
     }
 
-    // 🔔 단체/단독맞춤 랜딩 문의 → 내부 Slack 알림 (best-effort, 실패해도 응답엔 영향 없음)
+    // 🔔 단체/단독맞춤 문의 → 내부 Slack 알림 (best-effort, 실패해도 응답엔 영향 없음)
     const cr = (custom_requirements ?? {}) as Record<string, unknown>;
     const source = cr.source as string | undefined;
-    if (source === 'group_landing' || source === 'private_tour_landing') {
+    if (source === 'group_landing' || source === 'group_inquiry_ai' || source === 'private_tour_landing') {
       try {
         const slackUrl = getSecret('SLACK_GROUP_RFQ_WEBHOOK_URL');
         if (slackUrl) {
           const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com';
-          const emoji = source === 'private_tour_landing' ? '✈️' : '🎯';
-          const title = source === 'private_tour_landing' ? '단독맞춤여행 신규 문의' : '단체여행 신규 문의';
+          const emoji = source === 'private_tour_landing' ? '✈️' : source === 'group_inquiry_ai' ? '🤖' : '🎯';
+          const title = source === 'private_tour_landing'
+            ? '단독맞춤여행 신규 문의'
+            : source === 'group_inquiry_ai'
+              ? 'AI 단체여행 신규 문의'
+              : '단체여행 신규 문의';
           const customerEmail = cr.customer_email as string | undefined;
           const shareToken = (rfq as unknown as Record<string, unknown>).share_token as string | undefined;
           const shareUrl = shareToken ? `${baseUrl}/share/rfq/${shareToken}` : null;
@@ -192,7 +196,7 @@ export async function POST(request: NextRequest) {
             `${emoji} *${title}*`,
             `• 신청자: ${customer_name} (${customer_phone ?? '-'})`,
             customerEmail ? `• 이메일: ${customerEmail}` : null,
-            `• 유형: ${cr.group_type ?? cr.group_name ?? '-'}`,
+            `• 유형: ${cr.group_type ?? cr.group_name ?? cr.party_type ?? cr.intent ?? '-'}`,
             `• 목적지: ${destination} / ${adult_count}명 / ${cr.budget_range_label ?? '-'}`,
             `• 희망 출발: ${departure_date_from ?? '-'}`,
             `• 호텔: ${hotel_grade ?? '-'}`,

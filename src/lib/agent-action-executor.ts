@@ -280,11 +280,10 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
   },
 
   update_rfq_status: async (args) => {
-    const { rfq_id, status, reason } = args
-    const updateData: any = { status }
-    if (reason) updateData.status_reason = reason
+    const { rfq_id, status } = args
+    const updateData: any = { status, updated_at: new Date().toISOString() }
     const { error } = await supabaseAdmin
-      .from('rfqs')
+      .from('group_rfqs')
       .update(updateData)
       .eq('id', rfq_id)
     if (error) throw error

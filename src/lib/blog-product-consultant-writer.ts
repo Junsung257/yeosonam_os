@@ -49,7 +49,7 @@ function packageUrl(productId: string): string {
 
 function inquiryUrl(productId: string): string {
   const baseUrl = resolveBlogCanonicalOrigin();
-  return `${baseUrl}/group-inquiry?utm_source=naver_blog&utm_medium=organic&utm_campaign=product_consultant&utm_content=${encodeURIComponent(productId)}`;
+  return `${baseUrl}/group?utm_source=naver_blog&utm_medium=organic&utm_campaign=product_consultant&utm_content=${encodeURIComponent(productId)}`;
 }
 
 function firstSentence(input: {
