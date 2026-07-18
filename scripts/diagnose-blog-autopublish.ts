@@ -9,7 +9,11 @@ import { buildBlogDestinationlessInfoWorkReport } from '../src/lib/blog-destinat
 import { summarizeBlogIndexingCoverage } from '../src/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '../src/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '../src/lib/blog-canary-preflight';
+import { evaluateBlogGeneratedQualityCanaryReport } from '../src/lib/blog-canary-generated-quality';
+import { buildProductGeneratedCanaryRows } from '../src/lib/blog-product-generated-canary';
 import { evaluateCurrentDayPublisherHealth } from '../src/lib/blog-current-day-publisher-health';
+import { classifyBlogAutopublishDiagnosisBuckets } from '../src/lib/blog-autopublish-diagnosis';
+import { inspectBlogFleetPhraseDrift } from '../src/lib/blog-fleet-phrase-drift';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -30,6 +34,9 @@ type BucketCode =
   | 'indexing_outbox_missing'
   | 'publish_preflight_blocked'
   | 'canary_candidates_unavailable'
+  | 'generated_canary_quality_incomplete'
+  | 'generated_canary_quality_failed'
+  | 'fleet_phrase_drift'
   | 'current_day_publisher_failure';
 
 type Bucket = {
@@ -44,6 +51,7 @@ const jsonMode = args.includes('--json');
 const dateArg = args.find((arg) => arg.startsWith('--date='))?.split('=')[1];
 const limitArg = Number(args.find((arg) => arg.startsWith('--limit='))?.split('=')[1] ?? 20);
 const limit = Number.isFinite(limitArg) && limitArg > 0 ? Math.min(limitArg, 100) : 20;
+const recentPublishedLimit = Math.max(limit, 100);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -94,6 +102,10 @@ function numberFrom(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function numberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function summaryObject(row: any): Record<string, any> {
   return row?.summary && typeof row.summary === 'object' ? row.summary : {};
 }
@@ -132,6 +144,57 @@ function isRecoveredPublisherRun(row: any): boolean {
       summary.reason === 'daily_publish_quota_reached'
     )
   );
+}
+
+function publishedFromDailySummary(cronHealth: Record<string, any>, dayKey: string): number | null {
+  const summaryRow = lastSummaryObject(cronHealth['blog-daily-summary']);
+  const summary = summaryRow.summary && typeof summaryRow.summary === 'object'
+    ? summaryRow.summary as Record<string, unknown>
+    : null;
+  if (!summary || summary.date !== dayKey) return null;
+  return numberOrNull(summary.published);
+}
+
+function publisherQuotaPublishedFromSummary(summary: Record<string, any>, dayKey: string): number | null {
+  const dailyQuota = summary.dailyQuota && typeof summary.dailyQuota === 'object'
+    ? summary.dailyQuota as Record<string, unknown>
+    : null;
+  if (!dailyQuota || dailyQuota.day !== dayKey) return null;
+
+  const alreadyPublished = numberOrNull(dailyQuota.alreadyPublished);
+  if (alreadyPublished !== null) return alreadyPublished;
+
+  const alreadyBefore = numberOrNull(dailyQuota.alreadyPublishedBeforeRun);
+  const published = numberOrNull(summary.published);
+  if (alreadyBefore !== null && published !== null) return alreadyBefore + published;
+
+  const target = numberOrNull(dailyQuota.target);
+  const remaining = numberOrNull(dailyQuota.remaining);
+  if (target !== null && remaining === 0) return target;
+
+  return null;
+}
+
+function reconcileSelectedDayPublished(input: {
+  rawPublished: number;
+  dailySummaryPublished: number | null;
+  publisherQuotaPublished: number | null;
+}): { published: number; source: string; evidence: Record<string, number | null> } {
+  const candidates = [
+    { source: 'content_creatives_raw', value: input.rawPublished },
+    { source: 'blog_daily_summary', value: input.dailySummaryPublished },
+    { source: 'publisher_daily_quota', value: input.publisherQuotaPublished },
+  ].filter((item): item is { source: string; value: number } => typeof item.value === 'number');
+  const winner = candidates.reduce((best, item) => item.value > best.value ? item : best, candidates[0]);
+  return {
+    published: winner?.value ?? input.rawPublished,
+    source: winner?.source ?? 'content_creatives_raw',
+    evidence: {
+      raw: input.rawPublished,
+      daily_summary: input.dailySummaryPublished,
+      publisher_daily_quota: input.publisherQuotaPublished,
+    },
+  };
 }
 
 async function countByStatus(table: string, statuses: string[]) {
@@ -190,11 +253,11 @@ async function main() {
       .lt('published_at', currentDay.end.toISOString()),
     supabase
       .from('content_creatives')
-      .select('id, slug, seo_title, category, content_type, product_id, destination, published_at, generation_meta, quality_gate, seo_score, readability_score')
+      .select('id, slug, seo_title, category, content_type, product_id, destination, blog_html, published_at, generation_meta, quality_gate, seo_score, readability_score')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
-      .limit(limit),
+      .limit(recentPublishedLimit),
     countByStatus('blog_topic_queue', ['queued', 'generating', 'failed', 'skipped', 'deferred']),
     countByStatus('blog_indexing_jobs', ['pending', 'retry', 'processing', 'succeeded', 'failed']),
     supabase
@@ -255,6 +318,7 @@ async function main() {
 
   const policy = policyRes.data?.[0] ?? null;
   const dailyTarget = numberFrom(policy?.posts_per_day) || 4;
+  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
   const cronHealth = Object.fromEntries((cronHealthRes.data ?? []).map((row: any) => [row.cron_name, row]));
   const publisherHealth = cronHealth['blog-publisher'];
   const publisherLogs = publisherLogsRes.data ?? [];
@@ -277,7 +341,7 @@ async function main() {
   if (productEvidenceProductIds.length > 0) {
     const { data: products, error: productsError } = await supabase
       .from('travel_packages')
-      .select('id, title, status, destination, updated_at')
+      .select('*')
       .in('id', productEvidenceProductIds.slice(0, 200));
     if (productsError) throw productsError;
     for (const product of products ?? []) {
@@ -345,6 +409,25 @@ async function main() {
     recentPublished: recentPublishedRes.data ?? [],
     requested: 3,
   });
+  const productGeneratedCanaryRows = buildProductGeneratedCanaryRows({
+    queueRows: activeQueueRes.data ?? [],
+    products: [...productsById.values()],
+    limit: Math.min(3, Math.max(2, generatedCanaryRequested - 2)),
+  });
+  const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
+    posts: [...(recentPublishedRes.data ?? []), ...productGeneratedCanaryRows],
+    requested: generatedCanaryRequested,
+    writerMixRequired: productGeneratedCanaryRows.length > 0,
+  });
+  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(
+    (recentPublishedRes.data ?? []).slice(0, recentPublishedLimit).map((row: any) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      blog_html: row.blog_html,
+      writer_type: row.generation_meta?.writer ?? null,
+    })),
+  );
   const latestPublisherLog = publisherLogs[0] ?? null;
   const latestPublisherSummary = summaryObject(latestPublisherLog);
   const healthPublisherSummary = lastSummaryObject(publisherHealth);
@@ -358,7 +441,22 @@ async function main() {
   });
 
   const buckets: Bucket[] = [];
-  const selectedDayPublished = publishedTodayRes.count ?? 0;
+  const selectedDayRawPublished = publishedTodayRes.count ?? 0;
+  const dailySummaryPublished = publishedFromDailySummary(cronHealth, day.dayKey);
+  const publisherQuotaPublished = Math.max(
+    ...[
+      publisherQuotaPublishedFromSummary(latestPublisherSummary, day.dayKey),
+      publisherQuotaPublishedFromSummary(healthPublisherSummary, day.dayKey),
+      publisherQuotaPublishedFromSummary(combinedPublisherSummary, day.dayKey),
+    ].filter((value): value is number => typeof value === 'number'),
+    0,
+  ) || null;
+  const selectedDayPublishedEvidence = reconcileSelectedDayPublished({
+    rawPublished: selectedDayRawPublished,
+    dailySummaryPublished,
+    publisherQuotaPublished,
+  });
+  const selectedDayPublished = selectedDayPublishedEvidence.published;
   const selectedDayUnderTarget = selectedDayPublished < dailyTarget;
   const publisherRanToday = publisherLogs.length > 0 || (
     publisherHealth?.last_run_at &&
@@ -375,6 +473,8 @@ async function main() {
         report_day: day.dayKey,
         published: selectedDayPublished,
         daily_target: dailyTarget,
+        reconciliation_source: selectedDayPublishedEvidence.source,
+        reconciliation_evidence: selectedDayPublishedEvidence.evidence,
         report_period_closed: day.closed,
         used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
         latest_publisher_failure_breakdown: combinedPublisherSummary.failure_breakdown ?? null,
@@ -382,7 +482,7 @@ async function main() {
     });
   }
 
-  if (!publisherRanToday) {
+  if (!publisherRanToday && selectedDayUnderTarget) {
     buckets.push({
       code: 'publisher_cron_not_observed',
       severity: 'critical',
@@ -543,6 +643,35 @@ async function main() {
       evidence: canaryPreflight,
     });
   }
+  if (generatedCanaryQuality.status === 'block') {
+    const fleetPhraseDrift = generatedCanaryQuality.fleet_phrase_drift;
+    const detail = generatedCanaryQuality.fail_count > 0
+      ? `${generatedCanaryQuality.fail_count}/${generatedCanaryQuality.checked_count} generated canary sample(s) failed engine/customer/render checks.`
+      : fleetPhraseDrift.status === 'block'
+        ? fleetPhraseDrift.summary
+        : 'Generated canary quality failed.';
+    buckets.push({
+      code: 'generated_canary_quality_failed',
+      severity: 'high',
+      detail,
+      evidence: generatedCanaryQuality,
+    });
+  } else if (generatedCanaryQuality.status === 'warn') {
+    buckets.push({
+      code: 'generated_canary_quality_incomplete',
+      severity: 'warning',
+      detail: generatedCanaryQuality.next_action,
+      evidence: generatedCanaryQuality,
+    });
+  }
+  if (fleetPhraseDrift.status !== 'pass') {
+    buckets.push({
+      code: 'fleet_phrase_drift',
+      severity: fleetPhraseDrift.status === 'block' ? 'high' : 'warning',
+      detail: fleetPhraseDrift.summary,
+      evidence: fleetPhraseDrift,
+    });
+  }
   if (currentDayPublisherHealth.status === 'risk') {
     buckets.push({
       code: 'current_day_publisher_failure',
@@ -552,6 +681,16 @@ async function main() {
     });
   }
 
+  const classifiedBuckets = classifyBlogAutopublishDiagnosisBuckets(buckets, {
+    reportDay: day.dayKey,
+    currentDay: currentDay.dayKey,
+    currentDayPublished: publishedCurrentDayRes.count ?? 0,
+    dailyTarget,
+    currentDayPublisherHealthy: currentDayPublisherHealth.status === 'healthy',
+    publishPreflightBlocked: publishPreflight.status === 'block' || publishPreflight.blockers.length > 0,
+    candidateShortage: publishabilitySnapshot.candidate_shortage,
+  });
+
   const report = {
     date: day.dayKey,
     timezone: 'Asia/Seoul',
@@ -560,7 +699,10 @@ async function main() {
     used_previous_day_for_pre_close_run: day.usedPreviousDayForPreCloseRun,
     close_minute_kst: day.closeMinuteKst,
     published: {
-      selected_day: publishedTodayRes.count ?? 0,
+      selected_day: selectedDayPublished,
+      selected_day_raw: selectedDayRawPublished,
+      selected_day_reconciliation_source: selectedDayPublishedEvidence.source,
+      selected_day_reconciliation_evidence: selectedDayPublishedEvidence.evidence,
       previous_day: publishedYesterdayRes.count ?? 0,
       current_day: publishedCurrentDayRes.count ?? 0,
       current_day_key: currentDay.dayKey,
@@ -568,6 +710,27 @@ async function main() {
       yesterday: publishedYesterdayRes.count ?? 0,
       daily_target: dailyTarget,
       under_target: selectedDayUnderTarget,
+      closed_day: {
+        key: day.dayKey,
+        published: selectedDayPublished,
+        raw_published: selectedDayRawPublished,
+        target: dailyTarget,
+        remaining: Math.max(0, dailyTarget - selectedDayPublished),
+        under_target: selectedDayUnderTarget,
+        reconciliation_source: selectedDayPublishedEvidence.source,
+        selected_because: day.usedPreviousDayForPreCloseRun
+          ? 'pre_close_previous_day'
+          : 'closed_current_day',
+      },
+      current_day_status: {
+        key: currentDay.dayKey,
+        published: publishedCurrentDayRes.count ?? 0,
+        target: dailyTarget,
+        remaining: Math.max(0, dailyTarget - (publishedCurrentDayRes.count ?? 0)),
+        quota_met: (publishedCurrentDayRes.count ?? 0) >= dailyTarget,
+        publisher_health: currentDayPublisherHealth.status,
+        operating_status: classifiedBuckets.operating_status,
+      },
     },
     queue: queueCounts,
     queue_operational_health: queueOperationalHealth,
@@ -578,11 +741,16 @@ async function main() {
     publishability: publishabilitySnapshot,
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
+    generated_canary_quality: generatedCanaryQuality,
+    fleet_phrase_drift: fleetPhraseDrift,
     current_day_publisher_health: currentDayPublisherHealth,
     indexing_outbox_coverage: indexingOutboxCoverage,
     indexing_jobs: indexingCounts,
     cron_health: cronHealth,
     latest_publisher_runs: publisherLogs,
+    operating_status: classifiedBuckets.operating_status,
+    active_buckets: classifiedBuckets.active_buckets,
+    historical_buckets: classifiedBuckets.historical_buckets,
     buckets,
   };
 
@@ -592,16 +760,26 @@ async function main() {
   }
 
   console.log(`Blog autopublish diagnosis (${report.date} KST)`);
-  console.log(`Published: ${report.published.today}/${dailyTarget} selected day, ${report.published.yesterday} previous day`);
+  console.log(`Closed day: ${selectedDayPublished}/${dailyTarget} (${day.dayKey}, under target: ${selectedDayUnderTarget ? 'yes' : 'no'})`);
+  console.log(`Current day: ${report.published.current_day}/${dailyTarget} (${currentDay.dayKey}, quota met: ${report.published.current_day_status.quota_met ? 'yes' : 'no'})`);
   console.log(`Queue: ${JSON.stringify(queueCounts)}`);
   console.log(`Publish preflight: ${publishPreflight.status} (${publishPreflight.score}/100)`);
   console.log(`Canary preflight: ${canaryPreflight.status} (${canaryPreflight.ready_count}/${canaryPreflight.requested})`);
+  console.log(`Generated canary quality: ${generatedCanaryQuality.status} (${generatedCanaryQuality.pass_count}/${generatedCanaryQuality.checked_count})`);
+  console.log(`Fleet phrase drift: ${fleetPhraseDrift.status} (${fleetPhraseDrift.checked_count} checked, ${fleetPhraseDrift.issue_count} issues)`);
   console.log(`Current-day publisher: ${currentDayPublisherHealth.status}`);
   console.log(`Indexing jobs: ${JSON.stringify(indexingCounts)}`);
   console.log(`Indexing outbox coverage: ${indexingOutboxCoverage.coverage_rate ?? '-'}% (${indexingOutboxCoverage.missing_count} missing)`);
-  console.log('Buckets:');
-  for (const bucket of buckets) {
+  console.log(`Operating status: ${classifiedBuckets.operating_status} (active ${classifiedBuckets.active_buckets.length}, historical ${classifiedBuckets.historical_buckets.length})`);
+  console.log('Active buckets:');
+  if (classifiedBuckets.active_buckets.length === 0) {
+    console.log('- none');
+  }
+  for (const bucket of classifiedBuckets.active_buckets) {
     console.log(`- [${bucket.severity}] ${bucket.code}: ${bucket.detail}`);
+  }
+  if (classifiedBuckets.historical_buckets.length > 0) {
+    console.log(`Historical evidence retained: ${classifiedBuckets.historical_buckets.map((bucket) => bucket.code).join(', ')}`);
   }
 }
 

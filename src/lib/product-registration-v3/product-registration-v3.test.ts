@@ -277,6 +277,104 @@ ZE982
     expect(titleHints.some(title => /\b4/.test(title))).toBe(true);
   });
 
+  it('keeps shared PKG price tables attached to the itinerary product instead of splitting fake products', async () => {
+    const raw = [
+      '부산-연길/백두산(남파+북파) 3박4일 품격 일정표',
+      '출발인원',
+      '성인 8명 이상 / 인솔자 미동행',
+      '포    함',
+      '왕복항공료, 유류할증료, 호텔, 식사, 전용차량, 기사/현지가이드, 관광지 입장료, 여행자보험, 기사/가이드팁',
+      '불 포 함',
+      '유류할증료 변동분, 싱글차지, 개인경비 및 매너팁',
+      '쇼핑센터',
+      '침향+콜라겐, 라텍스, 한약방 중 2회',
+      '날 짜',
+      '지 역',
+      '교통편',
+      '시 간',
+      '주 요 일 정',
+      '식  사',
+      '제1일',
+      '부산',
+      '연길',
+      'BX337',
+      '09:40',
+      '11:30',
+      '부산 김해공항 출발',
+      '연길 국제공항 도착',
+      '가이드 미팅 후 도문으로 이동',
+      '중:냉면',
+      '석:불고기전골',
+      'HOTEL: 퍼스완 호텔 또는 동급',
+      '제2일',
+      '송강하',
+      '전용차량',
+      '전일',
+      '호텔 조식 후 남파로 이동',
+      '백두산 천지 관광',
+      '조:호텔식',
+      '중:현지식',
+      '석:샤브샤브',
+      'HOTEL: 현지 호텔 또는 동급',
+      '제3일',
+      '이도백하',
+      '전용차량',
+      '전일',
+      '호텔 조식 후 북파로 이동',
+      '장백폭포 관광',
+      '조:호텔식',
+      '중:현지식',
+      '석:현지식',
+      'HOTEL: 연길 호텔 또는 동급',
+      '제4일',
+      '연길',
+      '부산',
+      'BX338',
+      '12:30',
+      '16:20',
+      '호텔 조식 후 체크아웃',
+      '연길 국제공항 출발',
+      '부산 김해공항 도착',
+      '조:호텔식',
+      '중:김밥',
+      '[공통 가격표 원문 근거]',
+      '부산-연길/백두산(남파+북파) 3박4일 품격PKG',
+      '백산수공장+온천욕+특식+마사지+노팁+노옵션',
+      '***07/31까지 발권조건***',
+      '항공',
+      '스케줄',
+      '부산-연길 BX337 09:35-11:30',
+      '연길-부산 BX338 12:30-16:30',
+      '출 발 일',
+      '품격(노팁+노옵션)',
+      '7/1-17',
+      '월',
+      '3박4일',
+      '1,169,000',
+      '금',
+      '1,099,000',
+      '*8/29 제외 (2박3일)',
+      '월',
+      '화',
+      '수',
+      '1,199,000',
+    ].join('\n');
+
+    const plan = planProductRegistrationV3(createSourceLineIndex(raw));
+    const result = await runProductRegistrationV3(raw);
+
+    expect(plan.document_type).toBe('single_package');
+    expect(plan.expected_products).toBe(1);
+    expect(plan.product_boundaries).toHaveLength(1);
+    expect(result.ledger.variants).toHaveLength(1);
+    expect(result.ledger.variants[0].days.map(day => day.day)).toEqual([1, 2, 3, 4]);
+    expect(result.ledger.variants[0].price_calendar.length).toBeGreaterThan(0);
+    expect(result.ledger.variants[0].flight_segments).toHaveLength(2);
+    expect(result.ledger.variants[0].days.flatMap(day => day.events).map(event => event.raw_text)).not.toContain('항공');
+    expect(result.ledger.variants[0].days.flatMap(day => day.events).map(event => event.raw_text)).not.toContain('스케줄');
+    expect(result.gate_result.checks.some(check => check.id.startsWith('v2.'))).toBe(false);
+  });
+
   it('keeps airport meeting time as meeting, not flight departure', async () => {
     const result = await runProductRegistrationV3(buildBaekduEightVariantFixture());
     const variant = result.ledger.variants[0];
@@ -709,6 +807,141 @@ ZE982
     expect(result.match_summary.unmatched.map(item => item.raw_text)).toContain(
       '베트남의 베네치아! 복합 엔터테이먼트 단지 그랜드월드 나이트투어',
     );
+  });
+
+  it('uses an explicit city prefix to match an existing attraction without widening globally', async () => {
+    const raw = [
+      '상품: 다낭 호이안 3박5일',
+      '가격: 599,000원',
+      'DAY 1 다낭 도착',
+      'DAY 2 호이안 구시가지',
+      '포함: 호텔 식사',
+      '불포함: 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '다낭',
+      attractions: [
+        { id: 'hoian-old-town', name: '구시가지', aliases: ['호이안 구시가지'], region: '호이안/바나힐' },
+        { id: 'bohol-night', name: '나이트투어', region: '보홀' },
+      ],
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(events.some(event => event.canonical_id === 'hoian-old-town')).toBe(true);
+    expect(events.some(event => event.canonical_id === 'bohol-night')).toBe(false);
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).not.toContain('호이안 구시가지');
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+  });
+
+  it('uses day city headings as scoped attraction context and ignores structural itinerary labels', async () => {
+    const raw = [
+      '상품: 나트랑 판랑 달랏 3박5일',
+      '가격: 599,000원',
+      'DAY 1 나트랑 도착',
+      'DAY 2 판랑',
+      'DAY 2 ▶ 베트남 독립을 기념하는 416광장',
+      'DAY 2 또는',
+      'DAY 2 정식',
+      'DAY 3 달랏',
+      'DAY 3 ▶ 아담하고 아름다운 기차역 달랏 기차역',
+      'DAY 3 ★특전1★ 망고도시락 제공 1인1개',
+      '포함: 호텔 식사',
+      '불포함: 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '나트랑',
+      attractions: [
+        { id: 'phan-rang-square', name: '416광장', region: '판랑' },
+        { id: 'dalat-station', name: '달랏기차역', aliases: ['달랏 기차역'], region: '달랏' },
+      ],
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(events.some(event => event.canonical_id === 'phan-rang-square')).toBe(true);
+    expect(events.some(event => event.canonical_id === 'dalat-station')).toBe(true);
+    expect(events.find(event => event.raw_text === '판랑')?.match_status).toBe('ignored');
+    expect(events.find(event => event.raw_text === '또는')?.match_status).toBe('ignored');
+    expect(events.find(event => event.raw_text === '정식')?.match_status).toBe('ignored');
+    expect(result.match_summary.unmatched.map(item => item.raw_text)).toEqual([]);
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+  });
+
+  it('recognizes Korean 제N일차 itinerary headers as customer itinerary days', async () => {
+    const raw = [
+      '상품: 방콕 파타야 노팁 노옵션 3박5일',
+      '비행기 스케줄 안내 : LJ021 19:05 - 22:40 // LJ022 23:40 - 07:00+1',
+      '최소 출발인원 성인 4명 이상 출발가능',
+      '포함 호텔, 차량, 전일정 식사, 관광지 입장료',
+      '제1일차',
+      '김해 국제공항 출발',
+      '방콕 수완나폼 국제공항 도착 후 가이드 미팅',
+      '호텔 CHECK-IN 및 휴식',
+      '제2일차',
+      '호텔 조식 후 체크아웃',
+      '무앙보란 관광',
+      '제3일차',
+      '파타야 수산시장 플로팅마켓 관광',
+      '제4일차',
+      '아시아티크 관광',
+      '제5일차',
+      '부산 김해 국제공항 도착',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '방콕',
+      attractions: [
+        { id: 'muang-boran', name: '무앙보란', region: '방콕' },
+        { id: 'floating-market', name: '플로팅마켓', region: '파타야' },
+        { id: 'asiatique', name: '아시아티크', region: '방콕' },
+      ],
+    });
+    const variant = result.ledger.variants[0];
+
+    expect(variant.days.map(day => day.day)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('days'))?.status).toBe('pass');
+  });
+
+  it('does not split a package at duration-shaped surcharge notice lines', async () => {
+    const raw = [
+      '베트남 나트랑/달랏 3박5일 노팁 노옵션 PKG',
+      '스마트',
+      '출발인원 성인 4명이상',
+      '포함내역',
+      '국제선항공료, 호텔, 일정표상의 식사, 차량, 가이드',
+      '불포함내역',
+      '개인경비, 매너팁',
+      '비고',
+      '▶싱글 차지 전일정 1인/3박5일-12만원',
+      '▶패키지 일정 미 참여시 1인/100 패널티 발생합니다.',
+      '날짜',
+      '제1일',
+      'BX781',
+      '부산 김해국제공항 출발',
+      '나트랑 깜란 국제공항 도착',
+      '제2일',
+      '나트랑 시내관광',
+      '제3일',
+      '달랏 기차역 관광',
+      '제4일',
+      'BX782',
+      '나트랑 깜란 국제 공항 출발',
+      '제5일',
+      '부산 김해 국제 공항 도착 후 해산',
+    ].join('\n');
+
+    const plan = planProductRegistrationV3(createSourceLineIndex(raw));
+    const result = await runProductRegistrationV3(raw, {
+      destination: '나트랑',
+      attractions: [{ id: 'dalat-station', name: '달랏 기차역', region: '달랏' }],
+    });
+
+    expect(plan.expected_products).toBe(1);
+    expect(plan.product_boundaries).toHaveLength(1);
+    expect(result.ledger.variants[0].days.map(day => day.day)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.ledger.variants[0].standard_notices.some(notice => notice.category === 'single_room_surcharge')).toBe(true);
   });
 
   it('keeps golf cart fees out of customer optional tours', async () => {
@@ -1528,6 +1761,68 @@ ZE982
     expect(preview.itinerary_data?.highlights?.shopping).toContain('2회+농산물');
   });
 
+  it('auto-structures recommendation options with trailing-dollar prices', async () => {
+    const raw = [
+      '상품: 방콕 파타야 선택관광 3박5일',
+      '가격: 899,000원 / 최소출발 4명',
+      'DAY 1 LJ001 부산 출발 09:00 방콕 도착 13:00',
+      'DAY 2 파타야 자유시간',
+      'DAY 2 해변 자유시간 및 해양스포츠 선택 관광',
+      'DAY 3 산호섬 자유시간',
+      'DAY 5 LJ002 방콕 출발 01:00 부산 도착 08:00',
+      '포함 호텔 식사',
+      '불포함 개인경비',
+      '※추천옵션: 바나나보트(20$), 패러세일링($30), 제트스키($30), 씨워킹($80) 등',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '방콕' });
+    const preview = result.render_contract_preview[0];
+
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
+    expect((preview.optional_tours ?? []).map(tour => tour.name)).toEqual(expect.arrayContaining([
+      '바나나보트',
+      '패러세일링',
+      '제트스키',
+      '씨워킹',
+    ]));
+    expect((preview.optional_tours ?? []).map(tour => tour.price_usd)).toEqual(expect.arrayContaining([
+      20,
+      30,
+      80,
+    ]));
+  });
+
+  it('auto-structures slash-separated recommendation option bundles', async () => {
+    const raw = [
+      '상품: 방콕 파타야 해양스포츠 3박5일',
+      '가격: 899,000원 / 최소출발 4명',
+      'DAY 1 LJ001 부산 출발 09:00 방콕 도착 13:00',
+      'DAY 2 파타야 자유시간',
+      'DAY 3 산호섬 자유시간',
+      'DAY 5 LJ002 방콕 출발 01:00 부산 도착 08:00',
+      '포함 호텔 식사',
+      '불포함 개인경비',
+      '추천해양스포츠 : 바나나보트$20/파라셀링$30/제트스키$30/씨워킹$80',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '방콕' });
+    const preview = result.render_contract_preview[0];
+
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
+    expect((preview.optional_tours ?? []).map(tour => tour.name)).toEqual(expect.arrayContaining([
+      '바나나보트',
+      '파라셀링',
+      '제트스키',
+      '씨워킹',
+    ]));
+    expect((preview.optional_tours ?? []).map(tour => tour.name)).not.toContain('해변 자유시간 및 해양스포츠 선택 관광');
+    expect((preview.optional_tours ?? []).map(tour => tour.price_usd)).toEqual(expect.arrayContaining([
+      20,
+      30,
+      80,
+    ]));
+  });
+
   it('accepts only strict AI structure-plan schema, not extracted customer values', () => {
     const plan = parseV3AiStructurePlan({
       document_type: 'single_package',
@@ -1689,9 +1984,29 @@ DAY 3 KE124 출발 13:00 도착 15:00
       'DAY 1',
       '달랏 언덕에 위치한 아름다운 핑크빛 건축물 수녀원 도멘 드 마리 성당',
       '베트남에서 가장 유명한 다딴라 폭포 (레일바이크 탑승)',
+      '아담하고 아름다운 기차역 달랏 기차역',
+      '분홍빛 외관이 아름다운 달랏 대표 성당 도멘드 드 마리 성당',
+      '달랏의 경치를 한눈에 내려다볼수있는 천국의계단 (음료제공)',
+      '압록강대협곡',
+      '연길에서 느껴보는 우리의 전통 한옥 마을 중국 조선족 민속원',
       '삼겹구이',
       '(무제한)',
       '8/4-15',
+      '수목금',
+      '(8/28제외)',
+      '☞ 사원 관람시 민소매, 반바지, 끈없는 신발 입장불가',
+      '(뷰말레레스토랑)',
+      '돈까스',
+      '넘능세트',
+      '(왕새우/민물가재/오징어볶음/가리비구이/문어구이/소고기안심구이/샐러드',
+      '치킨윙등 16종의 요리)',
+      '올유캔잇',
+      '우렁이찜+핫팟',
+      '소고기모듬',
+      '닭구이',
+      '대통밥정식',
+      '파타야에서 최고로 핫한 럭셔리 카페 “3 머메이드 카페”(수박쥬스 1잔제공)',
+      '미식',
       '전용',
       'DAY 2',
       '▷약1만여점의 오르골이 화려하게 장식되어있는 오르골당',
@@ -1701,6 +2016,10 @@ DAY 3 KE124 출발 13:00 도착 15:00
       attractions: [
         { id: 'domaine', name: '도멘 드 마리 성당', aliases: [], region: '달랏', country: 'VN' },
         { id: 'datanla', name: '다딴라 폭포', aliases: [], region: '달랏', country: 'VN' },
+        { id: 'dalat-station', name: '달랏기차역', aliases: ['달랏 기차역'], region: '달랏', country: 'VN' },
+        { id: 'heaven-stair', name: '천국의계단', aliases: ['천국의 계단'], region: '달랏', country: 'VN' },
+        { id: 'yalu-canyon', name: '압록강대협곡', aliases: ['압록강 대협곡'], region: '백두산', country: 'CN' },
+        { id: 'yanji-folk', name: '연길민속촌', aliases: ['연길 민속촌'], region: '연길/백두산', country: 'CN' },
         { id: 'music-box', name: '오르골당', aliases: [], region: '오타루', country: 'JP' },
         { id: 'blue-pond', name: '아오이이케', aliases: [], region: '비에이', country: 'JP' },
       ],
@@ -1713,6 +2032,10 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(unresolved).toEqual([]);
     expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('삼겹구이');
     expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('8/4-15');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('수목금');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('돈까스');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('뷰말레레스토랑');
+    expect(JSON.stringify(result.match_summary.entity_summary.review_items)).not.toContain('3 머메이드 카페');
   });
 
   it('treats explicit shopping-center and duty-free visit notices as customer-safe disclosure', async () => {

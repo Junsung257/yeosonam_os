@@ -36,6 +36,7 @@ import { generateKakaoChannelMessage } from '@/lib/content-pipeline/agents/kakao
 import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import { logError } from '@/lib/sentry-logger';
 import type { ContentBrief } from '@/lib/validators/content-brief';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -76,16 +77,11 @@ export async function POST(request: NextRequest) {
     ];
 
     // 1. Product 조회
-    const { data: pkg, error: pkgErr } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, product_highlights, inclusions, itinerary')
-      .eq('id', body.product_id)
-      .single();
-    if (pkgErr || !pkg) {
-      return NextResponse.json({ error: '상품 조회 실패' }, { status: 404 });
+    const publicProduct = await loadPublicContentPackageForGeneration(body.product_id);
+    if (!publicProduct) {
+      return NextResponse.json({ error: '고객 공개 승인된 상품만 콘텐츠를 만들 수 있습니다.' }, { status: 404 });
     }
-    const product = pkg as never;
-
+    const product = publicProduct as never;
     // 2. Brief 1회만 생성 (모든 에이전트 공유)
     const brief: ContentBrief = await generateContentBrief({
       mode: 'product',

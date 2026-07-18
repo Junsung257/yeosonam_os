@@ -81,7 +81,7 @@ export async function parseUploadDocumentForRegistration(input: {
     : shouldBypassLegacyParserForRawText
       ? {
           filename: input.fileName,
-          fileType: 'hwp' as const,
+          fileType: 'text' as const,
           rawText: rawTextForParser ?? '',
           extractedData: { rawText: rawTextForParser ?? '' },
           parsedAt: new Date(),

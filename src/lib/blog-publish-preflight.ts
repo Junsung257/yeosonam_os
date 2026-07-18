@@ -149,7 +149,7 @@ export function evaluateBlogPublishPreflight(input: BlogPublishPreflightInput): 
       detail: `${input.actionableFailedCount} actionable failed row(s), ${input.staleGeneratingCount} stale generating row(s).`,
       next_action: 'Resolve queue failures before relying on the next publisher run.',
     });
-  } else if (manualReviewCount > 0 || (overdueQueuedCount > 0 && input.publishableCandidateCount < dailyTarget * 2)) {
+  } else if ((remainingToday > 0 && manualReviewCount > 0) || (overdueQueuedCount > 0 && input.publishableCandidateCount < dailyTarget * 2)) {
     checks.push({
       id: 'queue_health',
       status: 'warn',
@@ -164,6 +164,8 @@ export function evaluateBlogPublishPreflight(input: BlogPublishPreflightInput): 
       severity: 'info',
       detail: overdueQueuedCount > 0
         ? `${overdueQueuedCount} overdue queued row(s) exist, but publishable inventory is sufficient and publisher preflight can reschedule them.`
+        : manualReviewCount > 0
+          ? `${manualReviewCount} manual review row(s) exist, but today's quota is already met and no actionable queue rows are blocking publishing.`
         : 'No actionable failed or stale generating queue rows.',
       next_action: 'Keep normal queue preflight enabled.',
     });

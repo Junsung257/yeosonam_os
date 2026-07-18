@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "approvals": {
+    "20260715226500_blog_information_evidence_concurrent_indexes.sql": {
+      "sha256": "c4b5d61755f666ec07fde0565d4c0161ef6a6ff76396f1e2396eaaf54280e106",
+      "status": "A",
+      "rationale": "These two replay-safe uniqueness indexes were already applied and verified on production before the repository safety gate was introduced. Fresh databases contain no production traffic while this migration runs.",
+      "evidence": "docs/specs/20260715-informational-content-engine-v2/reports/r16-blocker-remediation.md",
+      "approvedIssues": [
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        },
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        }
+      ]
+    },
+    "20260715227750_blog_information_review_queue_concurrent_index.sql": {
+      "sha256": "d546afe8f3d8cd4a00c7c7f05b2a151420713b276b6b834056f7fe2e18ceb16a",
+      "status": "A",
+      "rationale": "This replay-safe partial index was already applied and verified on production before the repository safety gate was introduced. Fresh databases contain no production traffic while this migration runs.",
+      "evidence": "docs/specs/20260715-informational-content-engine-v2/reports/r16-blocker-remediation.md",
+      "approvedIssues": [
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        }
+      ]
+    },
+    "20260715228500_blog_indexing_jobs_concurrent_index.sql": {
+      "sha256": "169a72547c51f503ed1fa3df697ed1a44d6d47c2a96696271e0fd0376c6deaed",
+      "status": "A",
+      "rationale": "This replay-safe partial uniqueness index was already applied and verified on production before the repository safety gate was introduced. Fresh databases contain no production traffic while this migration runs.",
+      "evidence": "docs/specs/20260715-informational-content-engine-v2/reports/r16-blocker-remediation.md",
+      "approvedIssues": [
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        }
+      ]
+    }
+  }
+}

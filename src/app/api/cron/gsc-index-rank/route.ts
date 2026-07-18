@@ -18,6 +18,7 @@ import {
   readUrlInspectionQuotaConfig,
   type UrlInspectionQuotaState,
 } from '@/lib/gsc-url-inspection-quota';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /**
  * GSC 색인/순위 추적 — 발행된 블로그 글의 page-level aggregate + URL Inspection
@@ -308,7 +309,7 @@ async function runGscIndexRank(request: NextRequest) {
   );
 
   const { data: published, error: pErr } = await supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select('id, slug, published_at')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')

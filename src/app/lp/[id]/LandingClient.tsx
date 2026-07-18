@@ -72,7 +72,7 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
       <div className="flex flex-col items-center gap-1">
         <ShieldCheck className="w-6 h-6 text-[var(--brand)]" />
         <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight whitespace-pre-line">
-          {guaranteed ? '일정 확정\n출발 표시' : '출발 확정\n일정 확인'}
+          {guaranteed ? '일정 조건\n상담 확인' : '출발일\n상담 확인'}
         </span>
       </div>
       <div className="flex flex-col items-center gap-1">
@@ -178,7 +178,7 @@ function DepartureDatesSummary({ priceDates }: { priceDates?: LandingProductData
           <div key={`${row.date}-${row.price}`} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
             <p className="text-sm font-bold text-gray-900">{formatShortDate(row.date)}</p>
             <p className="mt-0.5 text-xs font-semibold text-gray-500">
-              {fmt(row.price)}원부터 {row.confirmed ? '출발 확정' : '상담 가능'}
+              {fmt(row.price)}원부터 {row.confirmed ? '조건 확인' : '상담 가능'}
             </p>
           </div>
         ))}

@@ -3,6 +3,7 @@ import { generateGoogleAdsRSA } from '@/lib/content-pipeline/agents/google-ads-r
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,7 +116,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     return NextResponse.json({ ok: false, error: runError?.message || 'run create failed' }, { status: 500 });
   }
 
-  let packageQuery = supabaseAdmin.from('travel_packages').select('*').order('created_at', { ascending: false }).limit(limit);
+  let packageQuery = supabaseAdmin
+    .from('travel_packages')
+    .select('id')
+    .in('publication_state', ['approved', 'published'])
+    .order('created_at', { ascending: false })
+    .limit(limit);
   if (productId) packageQuery = packageQuery.eq('id', productId);
   const { data: packages, error: packageError } = await packageQuery;
 
@@ -149,7 +155,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   }
 
   const generated = [];
-  for (const pkg of packages as Record<string, any>[]) {
+  for (const candidate of packages as Array<{ id: string }>) {
+    const pkg = await loadPublicContentPackageForGeneration(candidate.id);
+    if (!pkg?.destination) continue;
+
     const planRows = (keywordPlans || []).filter((row: any) => row.package_id === pkg.id);
     const targetKeywords = Array.from(new Set([
       ...((Array.isArray(body.target_keywords) ? body.target_keywords : []) as unknown[]).map((value) => cleanText(value)).filter(Boolean),
@@ -163,10 +172,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       product: {
         title: cleanText(pkg.title, '여행 상품'),
         destination: cleanText(pkg.destination) || undefined,
-        duration: intValue(pkg.duration_days || pkg.duration),
+        duration: intValue(pkg.duration),
         nights: intValue(pkg.nights),
-        price: intValue(pkg.price || pkg.adult_price || pkg.base_price),
-        product_summary: cleanText(pkg.description || pkg.summary || pkg.short_description) || undefined,
+        price: intValue(pkg.price),
+        product_summary: cleanText(pkg.product_summary) || undefined,
         product_highlights: targetKeywords.slice(0, 5),
       },
       target_keywords: targetKeywords,

@@ -10,6 +10,9 @@ import { buildBlogEditorialBacklogWorkReport } from '@/lib/blog-editorial-backlo
 import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
+import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
+import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
+import { inspectBlogFleetPhraseDrift } from '@/lib/blog-fleet-phrase-drift';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거.
@@ -130,7 +133,19 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
-  if (summary.publisher_cron && summary.publisher_cron.ran_today === false) {
+  const remainingDailyPosts = Math.max(0, Number(summary.min_daily_target ?? 0) - Number(summary.published ?? 0));
+  const publishableCandidateCount = Number(summary.publishability?.publishable_candidate_count ?? 0);
+  if (summary.under_daily_target && remainingDailyPosts > 0 && publishableCandidateCount >= remainingDailyPosts) {
+    issues.push({
+      code: 'catchup_publishable_candidates_available',
+      severity: 'critical',
+      title: 'Blog target missed while publishable candidates were available',
+      detail: `${publishableCandidateCount} publishable candidate(s) were available for ${remainingDailyPosts} remaining slot(s).`,
+      recommendation: 'Treat this as publisher recovery failure: force blog-scheduler, then run blog-publisher until remainingAfterRun is 0 or a concrete blocker appears.',
+    });
+  }
+
+  if (summary.publisher_cron && summary.publisher_cron.ran_today === false && summary.under_daily_target) {
     issues.push({
       code: 'publisher_cron_not_observed',
       severity: 'critical',
@@ -201,6 +216,40 @@ function buildBlogOpsWatcherReport(summary: any, sourceErrors: string[]): {
     });
   }
 
+  if (summary.generated_canary_quality?.status === 'block') {
+    const fleetPhraseDrift = summary.generated_canary_quality.fleet_phrase_drift;
+    const detail = summary.generated_canary_quality.fail_count > 0
+      ? `${summary.generated_canary_quality.fail_count}/${summary.generated_canary_quality.checked_count} generated sample(s) failed engine/customer/render checks.`
+      : fleetPhraseDrift?.status === 'block'
+        ? fleetPhraseDrift.summary
+        : 'Generated blog canary quality failed.';
+    issues.push({
+      code: 'generated_canary_quality_failed',
+      severity: 'high',
+      title: 'Generated blog canary quality failed',
+      detail,
+      recommendation: summary.generated_canary_quality.next_action ?? 'Repair generated canary failures before expanding automatic publishing.',
+    });
+  } else if (summary.generated_canary_quality?.status === 'warn') {
+    issues.push({
+      code: 'generated_canary_quality_incomplete',
+      severity: 'warning',
+      title: 'Generated blog canary proof is incomplete',
+      detail: summary.generated_canary_quality.next_action ?? 'Generated canary proof needs more body samples.',
+      recommendation: 'Publish or dry-run mixed info/product samples before calling the full blog engine 100점.',
+    });
+  }
+
+  if (summary.fleet_phrase_drift?.status && summary.fleet_phrase_drift.status !== 'pass') {
+    issues.push({
+      code: 'fleet_phrase_drift',
+      severity: summary.fleet_phrase_drift.status === 'block' ? 'high' : 'warning',
+      title: 'Blog fleet phrase drift detected',
+      detail: summary.fleet_phrase_drift.summary ?? 'Recent published posts share repeated openings, heading orders, or CTA wording.',
+      recommendation: summary.fleet_phrase_drift.next_action ?? 'Rotate reader scenarios, openings, section order, and CTA wording before expanding automatic publishing.',
+    });
+  }
+
   const hasCritical = issues.some((issue) => issue.severity === 'critical');
   const hasHigh = issues.some((issue) => issue.severity === 'high');
   const hasWarning = issues.some((issue) => issue.severity === 'warning');
@@ -242,9 +291,10 @@ async function runDailySummary(request: NextRequest) {
   );
   const policy = policyRow?.[0];
   const dailyTarget = normalizeDailyPostTarget(policy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
+  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
 
   // Report the latest closed KST publishing day. If the route is delayed past
-  // midnight or called manually before 22:12 KST, it must not evaluate the new
+  // midnight or called manually before 22:45 KST, it must not evaluate the new
   // in-progress day as an SLA failure.
   const reportDay = getClosedKstDailySummaryRange();
   const recentSearchStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -263,7 +313,7 @@ async function runDailySummary(request: NextRequest) {
     { data: [], count: 0 },
   ] as any;
   const summaryResults = await withTimeout(Promise.all([
-    supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
+    supabaseAdmin.from('content_creatives').select('id, slug, seo_title, content_type, product_id, destination, blog_html, readability_score, seo_score, quality_gate, generation_meta', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', reportDay.start.toISOString()).lt('published_at', reportDay.end.toISOString()),
     supabaseAdmin.from('blog_topic_queue').select('id, status, product_id, destination, angle_type, topic, source, priority, primary_keyword, category, attempts, last_error, created_at, updated_at, target_publish_at, meta', { count: 'exact' })
@@ -281,10 +331,11 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('cron_health').select('cron_name, last_status, last_run_at, last_error_count, last_summary')
       .eq('cron_name', 'blog-publisher')
       .limit(1),
-    supabaseAdmin.from('content_creatives').select('destination, angle_type, slug, product_id, generation_meta')
+    supabaseAdmin.from('content_creatives').select('id, destination, angle_type, slug, seo_title, blog_html, product_id, generation_meta')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .gte('published_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+      .order('published_at', { ascending: false })
       .limit(300),
     supabaseAdmin.from('blog_indexing_jobs').select('content_creative_id, slug, url, status')
       .order('updated_at', { ascending: false })
@@ -407,6 +458,37 @@ async function runDailySummary(request: NextRequest) {
     recentPublished: recentPublishedRes.data || [],
     requested: 3,
   });
+  const productCanaryIds = Array.from(new Set(
+    (queueRes.data || [])
+      .filter((row: any) => (row.status === 'queued' || row.status === 'generating') && row.product_id)
+      .map((row: any) => String(row.product_id)),
+  )).slice(0, 12);
+  const productCanaryProducts = productCanaryIds.length > 0
+    ? await withTimeout(
+      supabaseAdmin.from('travel_packages').select('*').in('id', productCanaryIds),
+      8_000,
+      { data: [], count: 0 } as any,
+    )
+    : { data: [] };
+  const productGeneratedCanaryRows = buildProductGeneratedCanaryRows({
+    queueRows: (queueRes.data || []).filter((row: any) => row.status === 'queued' || row.status === 'generating'),
+    products: productCanaryProducts.data || [],
+    limit: Math.min(3, Math.max(2, generatedCanaryRequested - 2)),
+  });
+  const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
+    posts: [...(published as any[]), ...productGeneratedCanaryRows],
+    requested: generatedCanaryRequested,
+    writerMixRequired: productGeneratedCanaryRows.length > 0,
+  });
+  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(
+    (recentPublishedRes.data || []).slice(0, 100).map((row: any) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      blog_html: row.blog_html,
+      writer_type: row.generation_meta?.writer ?? row.generation_meta?.writer_type ?? null,
+    })),
+  );
 
   // destination별 발행 분포
   const destDist: Record<string, number> = {};
@@ -457,6 +539,8 @@ async function runDailySummary(request: NextRequest) {
     publishability,
     publish_preflight: publishPreflight,
     canary_preflight: canaryPreflight,
+    generated_canary_quality: generatedCanaryQuality,
+    fleet_phrase_drift: fleetPhraseDrift,
     rank_alerts_open: alertRes.count || 0,
     indexing_success_rate: +indexRate.toFixed(1),
     search_standard: {

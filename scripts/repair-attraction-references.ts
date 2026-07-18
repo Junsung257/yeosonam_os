@@ -3,7 +3,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
-import type { AttractionData } from '@/lib/attraction-matcher';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) {
   const fullPath = path.join(process.cwd(), file);
@@ -11,6 +11,7 @@ for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) 
 }
 
 const apply = process.argv.includes('--apply');
+const onlyAdditions = process.argv.includes('--only-additions') || process.argv.includes('--safe-additive-only');
 const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
   .split(',')
   .map(code => code.trim())
@@ -19,6 +20,7 @@ const statusFilter = (process.argv.find(arg => arg.startsWith('--status='))?.spl
   .split(',')
   .map(status => status.trim())
   .filter(Boolean);
+const limit = Number(process.argv.find(arg => arg.startsWith('--limit='))?.split('=')[1] ?? '0');
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -53,6 +55,38 @@ function diffIds(before: Set<string>, after: Set<string>): string[] {
   return [...after].filter(id => !before.has(id));
 }
 
+function scheduleItemAttractionIds(itineraryData: ItineraryDataLike | null): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  itineraryData?.days?.forEach((day, dayIndex) => {
+    day.schedule?.forEach((item, itemIndex) => {
+      const ids = new Set<string>();
+      const itemIds = Array.isArray(item.attraction_ids) ? item.attraction_ids : [];
+      for (const id of itemIds) if (typeof id === 'string' && id) ids.add(id);
+      out.set(`${dayIndex}:${itemIndex}`, ids);
+    });
+  });
+  return out;
+}
+
+function scheduleItemReferenceDelta(before: ItineraryDataLike | null, after: ItineraryDataLike | null) {
+  const beforeItems = scheduleItemAttractionIds(before);
+  const afterItems = scheduleItemAttractionIds(after);
+  const keys = new Set([...beforeItems.keys(), ...afterItems.keys()]);
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const key of keys) {
+    const beforeIds = beforeItems.get(key) ?? new Set<string>();
+    const afterIds = afterItems.get(key) ?? new Set<string>();
+    for (const id of afterIds) {
+      if (!beforeIds.has(id)) added.push(`${key}:${id}`);
+    }
+    for (const id of beforeIds) {
+      if (!afterIds.has(id)) removed.push(`${key}:${id}`);
+    }
+  }
+  return { added, removed };
+}
+
 function canonicalJson(value: unknown): string {
   return JSON.stringify(value, (_key, inner) => {
     if (!inner || typeof inner !== 'object' || Array.isArray(inner)) return inner;
@@ -65,11 +99,12 @@ async function fetchAllActiveAttractions(): Promise<AttractionData[]> {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id,name,aliases,region,country,short_desc,badge_type,emoji,category,mrt_gid')
+      .select('id,name,aliases,region,country,short_desc,badge_type,emoji,category,mrt_gid,is_active,customer_publishable')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .range(from, from + 999);
     if (error) throw error;
-    out.push(...((data ?? []) as AttractionData[]));
+    out.push(...((data ?? []) as AttractionData[]).filter(isCustomerRenderableAttraction));
     if (!data || data.length < 1000) break;
   }
   return out;
@@ -91,6 +126,8 @@ async function fetchPackages(): Promise<PackageRow[]> {
       .or('title.ilike.%백두%,title.ilike.%연길%,destination.ilike.%백두%,destination.ilike.%연길%');
   }
 
+  if (Number.isFinite(limit) && limit > 0) query = query.limit(Math.min(limit, 1000));
+
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as PackageRow[];
@@ -106,6 +143,20 @@ async function main() {
     status: string | null;
     added_ids: string[];
     removed_ids: string[];
+    item_added_refs: string[];
+    item_removed_refs: string[];
+    matched_names: string[];
+  }> = [];
+  const skipped: Array<{
+    id: string;
+    code: string | null;
+    title: string | null;
+    status: string | null;
+    reason: string;
+    added_ids: string[];
+    removed_ids: string[];
+    item_added_refs: string[];
+    item_removed_refs: string[];
     matched_names: string[];
   }> = [];
 
@@ -115,7 +166,23 @@ async function main() {
     const after = attractionIdSet(enriched.itineraryData);
     const added = diffIds(before, after);
     const removed = diffIds(after, before);
+    const itemDelta = scheduleItemReferenceDelta(row.itinerary_data, enriched.itineraryData);
     if (added.length === 0 && removed.length === 0 && canonicalJson(row.itinerary_data) === canonicalJson(enriched.itineraryData)) continue;
+    if (onlyAdditions && (removed.length > 0 || itemDelta.removed.length > 0 || itemDelta.added.length === 0)) {
+      skipped.push({
+        id: row.id,
+        code: row.internal_code,
+        title: row.title,
+        status: row.status,
+        reason: removed.length > 0 || itemDelta.removed.length > 0 ? 'requires_removal_review' : 'metadata_only_change',
+        added_ids: added,
+        removed_ids: removed,
+        item_added_refs: itemDelta.added,
+        item_removed_refs: itemDelta.removed,
+        matched_names: enriched.matchedCanonicalNames,
+      });
+      continue;
+    }
     changed.push({
       id: row.id,
       code: row.internal_code,
@@ -123,6 +190,8 @@ async function main() {
       status: row.status,
       added_ids: added,
       removed_ids: removed,
+      item_added_refs: itemDelta.added,
+      item_removed_refs: itemDelta.removed,
       matched_names: enriched.matchedCanonicalNames,
     });
     if (apply) {
@@ -136,12 +205,16 @@ async function main() {
 
   console.log(JSON.stringify({
     apply,
+    only_additions: onlyAdditions,
     active_attractions: attractions.length,
     code_filter: codeFilter,
     status_filter: statusFilter,
+    limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : null,
     scanned: rows.length,
     changed: changed.length,
+    skipped: skipped.length,
     rows: changed,
+    skipped_rows: skipped,
   }, null, 2));
 }
 

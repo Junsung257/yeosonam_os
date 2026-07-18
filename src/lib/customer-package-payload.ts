@@ -35,6 +35,7 @@ const INTERNAL_PACKAGE_KEYS = new Set([
   'commission_currency',
   'data_completeness',
   'field_confidences',
+  'internal_code',
   'price_markup_rate',
   'hard_block_quota',
   'dp_reason',
@@ -48,6 +49,29 @@ const INTERNAL_PACKAGE_KEYS = new Set([
   'seats_ticketed',
   'is_stub',
   'stub_source',
+]);
+
+const INTERNAL_NESTED_KEYS = new Set([
+  'raw_text',
+  'raw_extracted_text',
+  'raw_text_hash',
+  'internal_notes',
+  'internal_note',
+  'land_operator_id',
+  'net_price',
+  'cost_price',
+  'usd_cost',
+  'margin_rate',
+  'selling_price',
+  'commission_rate',
+  'affiliate_commission_rate',
+  'commission_fixed_amount',
+  'commission_currency',
+  'price_markup_rate',
+  'supplier_code',
+  'supplier_note',
+  'operator_note',
+  'internal_code',
 ]);
 
 type AnyRecord = Record<string, unknown>;
@@ -66,6 +90,7 @@ function sanitizeProductPrices(value: unknown): CustomerProductPriceRow[] {
 
 function sanitizeNestedProductRecord(value: AnyRecord): AnyRecord {
   const product = { ...value };
+  delete product.internal_code;
   delete product.net_price;
   delete product.cost_price;
   delete product.margin_rate;
@@ -85,6 +110,20 @@ function sanitizeNestedProduct(value: unknown): unknown {
   return sanitizeNestedProductRecord(value as AnyRecord);
 }
 
+function sanitizePublicNestedValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => sanitizePublicNestedValue(item));
+  }
+  if (!value || typeof value !== 'object') return value;
+
+  const sanitized: AnyRecord = {};
+  for (const [key, item] of Object.entries(value as AnyRecord)) {
+    if (INTERNAL_NESTED_KEYS.has(key)) continue;
+    sanitized[key] = sanitizePublicNestedValue(item);
+  }
+  return sanitized;
+}
+
 export function sanitizeCustomerPackageForClient<T extends AnyRecord>(pkg: T | null | undefined): AnyRecord | null {
   if (!pkg) return null;
 
@@ -99,7 +138,7 @@ export function sanitizeCustomerPackageForClient<T extends AnyRecord>(pkg: T | n
       publicPackage.products = sanitizeNestedProduct(value);
       continue;
     }
-    publicPackage[key] = value;
+    publicPackage[key] = sanitizePublicNestedValue(value);
   }
 
   return publicPackage;

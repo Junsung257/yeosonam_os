@@ -13,15 +13,17 @@ export interface AttractionData {
   name: string;
   short_desc?: string | null;
   long_desc?: string | null;
-  badge_type?: string;
+  badge_type?: string | null;
   emoji?: string | null;
   country?: string | null;
   region?: string | null;
   category?: string | null;
-  aliases?: string[];
+  aliases?: string[] | null;
   photos?: { src_medium: string; src_large: string; photographer: string; pexels_id: number }[];
   /** MRT canonical 여부 — 동일 fuzzy 후보 중 우선 선택 (2026-05-14) */
   mrt_gid?: string | null;
+  is_active?: boolean | null;
+  customer_publishable?: boolean | null;
 }
 
 // 매칭 제외 키워드 (일반 이동/휴식 활동)
@@ -131,6 +133,25 @@ export interface AttractionIndex {
   degraded: boolean;
 }
 
+export interface BuildAttractionIndexOptions {
+  /**
+   * Customer-facing pages must not render polluted attraction masters such as
+   * package titles, hotels, TNA products, or private/internal candidates.
+   * Internal registration matching can keep the legacy broader behavior.
+   */
+  customerFacing?: boolean;
+}
+
+export type CustomerAttractionRenderBlocker =
+  | 'missing_name'
+  | 'inactive'
+  | 'not_customer_publishable'
+  | 'non_customer_category'
+  | 'non_customer_badge_type'
+  | 'generic_name'
+  | 'product_like_name'
+  | 'long_fragment_name';
+
 /**
  * 매칭 대상에서 제외할 카테고리 (2026-05-15 박제, 나트랑/달랏 호텔 오매칭 사고).
  *   accommodation = 호텔/리조트/빌라 — 활동 매칭 대상 아님
@@ -138,6 +159,73 @@ export interface AttractionIndex {
  *   호출 측이 호텔 매칭을 원하면 별도 hotel-matcher 사용 (향후).
  */
 const NON_ATTRACTION_CATEGORIES = new Set(['accommodation', 'mrt_product']);
+const NON_CUSTOMER_ATTRACTION_CATEGORIES = new Set([...NON_ATTRACTION_CATEGORIES, 'hotel', 'meal', 'restaurant', 'service']);
+const NON_CUSTOMER_ATTRACTION_BADGE_TYPES = new Set(['hotel', 'restaurant', 'meal', 'golf', 'optional']);
+const CUSTOMER_ATTRACTION_GENERIC_NAMES = new Set([
+  '관광',
+  '시내관광',
+  '쇼핑',
+  '쇼핑센터',
+  '면세점',
+  '자유시간',
+  '호텔',
+  '리조트',
+  '조식',
+  '중식',
+  '석식',
+  '특식',
+  '마사지',
+  '전신마사지',
+  '온천욕',
+  '\uC528\uD074\uB85C',
+  '\uC704\uC990\uCEE4\uD53C',
+  '\uC720\uB9AC\uC794\uB3C4',
+  '\uBAA8\uB178\uB808\uC77C',
+  '\uBC15\uBB3C\uAD00',
+  '\uC7AC\uB798\uC2DC\uC7A5',
+  '\uD14C\uB9C8\uD30C\uD06C',
+]);
+const CUSTOMER_ATTRACTION_PRODUCT_NAME_RE =
+  /(?:^\s*[\[【].+[\]】])|(?:특가|즉시확정|당일\s*사용|입장권|티켓|투어|패키지|패스트트랙|픽업|샌딩|단독차량|가이드|포켓와이파이|와이파이도시락|유심|데이터|공항|호텔|리조트|스파|마사지|뷔페|할인|예약|출발|항공|골프|뮤지컬|스냅|렌트|렌터카)/i;
+
+const CUSTOMER_ATTRACTION_READABLE_PRODUCT_NAME_RE =
+  /(?:QR\s*티켓|입장권|패스트\s*패스|패스트트랙|공항\s*패스트트랙|당일\s*사용|즉시\s*확정|와우\s*패스|콤보|쿠폰|예약|특가|할인|뷔페|패키지|상품|eSIM|유심)/i;
+
+function hasOwn(object: AttractionData, key: keyof AttractionData): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+export function getCustomerAttractionRenderBlockers(
+  attraction: AttractionData | null | undefined,
+): CustomerAttractionRenderBlocker[] {
+  const blockers: CustomerAttractionRenderBlocker[] = [];
+  if (!attraction?.name?.trim()) return ['missing_name'];
+  if (hasOwn(attraction, 'is_active') && attraction.is_active === false) blockers.push('inactive');
+  if (hasOwn(attraction, 'customer_publishable') && attraction.customer_publishable !== true) {
+    blockers.push('not_customer_publishable');
+  }
+
+  const category = String(attraction.category ?? '').toLowerCase();
+  if (category && NON_CUSTOMER_ATTRACTION_CATEGORIES.has(category)) blockers.push('non_customer_category');
+
+  const badgeType = String(attraction.badge_type ?? '').toLowerCase();
+  if (badgeType && NON_CUSTOMER_ATTRACTION_BADGE_TYPES.has(badgeType)) blockers.push('non_customer_badge_type');
+
+  const name = attraction.name.replace(/\s+/g, ' ').trim();
+  if (CUSTOMER_ATTRACTION_GENERIC_NAMES.has(name)) blockers.push('generic_name');
+  if (CUSTOMER_ATTRACTION_PRODUCT_NAME_RE.test(name) || CUSTOMER_ATTRACTION_READABLE_PRODUCT_NAME_RE.test(name)) {
+    blockers.push('product_like_name');
+  }
+  if (name.length > 45 && /[\[\]()（）【】]|상품|일정|관광|차량|가이드|입장권|티켓|투어|호텔|리조트|패키지/.test(name)) {
+    blockers.push('long_fragment_name');
+  }
+
+  return blockers;
+}
+
+export function isCustomerRenderableAttraction(attraction: AttractionData | null | undefined): boolean {
+  return getCustomerAttractionRenderBlockers(attraction).length === 0;
+}
 
 function normalizeScope(value: string | null | undefined): string {
   return (value ?? '').toLowerCase().replace(/\s+/g, '').trim();
@@ -151,6 +239,11 @@ const GENERIC_ALIAS_TERMS = new Set([
   '\uD50C\uB77C\uC6CC\uAC00\uB4E0',
   '\uC57C\uACBD',
   '\uB9E5\uC8FC',
+  '\uC720\uB9AC\uC794\uB3C4',
+  '\uBAA8\uB178\uB808\uC77C',
+  '\uBC15\uBB3C\uAD00',
+  '\uC7AC\uB798\uC2DC\uC7A5',
+  '\uD14C\uB9C8\uD30C\uD06C',
   '\uBB34\uC81C\uD55C',
   '(\uBB34\uC81C\uD55C',
   '\uC8FC\uB958\uBB34\uC81C\uD55C)',
@@ -163,7 +256,7 @@ const GENERIC_ALIAS_TERMS = new Set([
 ]);
 
 const ALIAS_NOISE_RE =
-  /(?:\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i;
+  /(?:\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC138\uD2B8\uBA54\uB274|\uC815\uADDC|\uC99D\uD3B8|\uBD84\uC9DC|\uBC18\uC384\uC624|\uBC18\uC138\uC624|\uBBFC\uC18C\uB9E4|\uBC18\uBC14\uC9C0|\uC0E4\uC6CC\uC6A9\uD488|\uC18D\uC637|^\uC870\s*[-:]|^\uC911\s*[-:]|^\uC11D\s*[-:]|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i;
 
 export function isMatchableAttractionAlias(term: string | null | undefined, attraction: AttractionData): boolean {
   const clean = (term ?? '').replace(/\s+/g, ' ').trim();
@@ -234,6 +327,7 @@ export function destinationAllowsAttractionScope(
 export function buildAttractionIndex(
   attractions: AttractionData[],
   destination?: string,
+  options: BuildAttractionIndexOptions = {},
 ): AttractionIndex {
   const destTrim = destination?.trim() || '';
   const degraded = destTrim.length === 0;
@@ -242,7 +336,9 @@ export function buildAttractionIndex(
     ? attractions.filter(a => destinationAllowsAttractionScope(a, destTrim))
     : attractions;
   // 2차: 호텔/MRT 상품 제외 (활동 매칭 대상 아님)
-  const filtered = destFiltered.filter(a => !a.category || !NON_ATTRACTION_CATEGORIES.has(a.category));
+  const filtered = destFiltered
+    .filter(a => !a.category || !NON_ATTRACTION_CATEGORIES.has(a.category))
+    .filter(a => !options.customerFacing || isCustomerRenderableAttraction(a));
 
   const byLowerName = new Map<string, AttractionData>();
   const byLowerAlias = new Map<string, AttractionData>();
@@ -394,16 +490,20 @@ function scheduleAliasRecord(canonical: string, alias: string): void {
 // destination이 다르면 다른 캐시 엔트리 사용.
 const indexCache = new WeakMap<AttractionData[], Map<string, AttractionIndex>>();
 
-function getOrBuildIndex(attractions: AttractionData[], destination?: string): AttractionIndex {
+function getOrBuildIndex(
+  attractions: AttractionData[],
+  destination?: string,
+  options: BuildAttractionIndexOptions = {},
+): AttractionIndex {
   let destMap = indexCache.get(attractions);
   if (!destMap) {
     destMap = new Map();
     indexCache.set(attractions, destMap);
   }
-  const key = destination || '__no_dest__';
+  const key = `${destination || '__no_dest__'}::${options.customerFacing ? 'customer' : 'internal'}`;
   let idx = destMap.get(key);
   if (!idx) {
-    idx = buildAttractionIndex(attractions, destination);
+    idx = buildAttractionIndex(attractions, destination, options);
     destMap.set(key, idx);
   }
   return idx;
@@ -419,10 +519,11 @@ export function matchAttraction(
   activity: string,
   attractions: AttractionData[],
   destination?: string,
+  options: BuildAttractionIndexOptions = {},
 ): AttractionData | null {
   if (!attractions?.length || !activity) return null;
   if (SKIP_PATTERN.test(activity)) return null;
-  const index = getOrBuildIndex(attractions, destination);
+  const index = getOrBuildIndex(attractions, destination, options);
   return matchAttractionIndexed(activity, index);
 }
 
@@ -435,13 +536,14 @@ export function matchAttraction(
 export function matchAttractions(
   activity: string,
   attractions: AttractionData[],
-  destination?: string
+  destination?: string,
+  options: BuildAttractionIndexOptions = {},
 ): AttractionData[] {
   if (!attractions?.length || !activity) return [];
   if (SKIP_PATTERN.test(activity)) return [];
 
   // 동일 attractions/destination에 대해 한 번만 인덱스 빌드
-  const index = getOrBuildIndex(attractions, destination);
+  const index = getOrBuildIndex(attractions, destination, options);
 
   // 1) 전체 문자열로 단일 매칭 시도
   const single = matchAttractionIndexed(activity, index);

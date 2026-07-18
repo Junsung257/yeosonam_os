@@ -78,6 +78,16 @@ describe('blog public sections contract', () => {
     expect(source).not.toContain('const visibleAngleChips = BLOG_PUBLIC_ANGLES;');
   });
 
+  it('uses the database exact count for pagination instead of an offset approximation', () => {
+    const source = readSource('src/app/blog/BlogData.tsx');
+
+    expect(source).toContain(".select(BLOG_LIST_SELECT, { count: 'exact' })");
+    expect(source).toContain('.range(offset, offset + PER_PAGE - 1)');
+    expect(source).toContain('total: exactTotal');
+    expect(source).not.toContain('approximateTotal');
+    expect(source).not.toContain('offset + PER_PAGE + 1');
+  });
+
   it('keeps fallback-only sample posts out of public detail URLs', () => {
     const linkable = FALLBACK_BLOG_POSTS.filter((post) => post.detail_available);
     const samplesOnly = FALLBACK_BLOG_POSTS.filter((post) => !post.detail_available);
@@ -88,13 +98,14 @@ describe('blog public sections contract', () => {
     expect(getFallbackBlogPost('danang-family-package-checklist')).toBeNull();
   });
 
-  it('uses fallback detail availability for list JSON-LD and sitemap URLs', () => {
+  it('builds list JSON-LD and sitemap URLs only from canonical public rows', () => {
     const blogSource = readSource('src/app/blog/BlogData.tsx');
     const sitemapSource = readSource('src/app/sitemap.ts');
 
     expect(blogSource).toContain('getBlogPostHref(post)');
     expect(blogSource).toContain('jsonLdPosts.map');
-    expect(sitemapSource).toContain('getFallbackBlogPosts().filter((post) => post.detail_available)');
+    expect(sitemapSource).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(sitemapSource).not.toContain('getFallbackBlogPosts');
   });
 
   it('does not redirect legacy slugs to archived blog posts', () => {

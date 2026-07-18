@@ -48,7 +48,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 
 2. **Vercel Cron 로그**
    - Vercel Dashboard > Project > Crons 탭
-   - `blog-publisher` 는 `vercel.json` 기준 **UTC 03:05, 06:05, 09:05, 12:05** 실행 (KST 12:05, 15:05, 18:05, 21:05)
+   - `blog-publisher` 는 `vercel.json` 기준 **UTC 03:05, 06:05, 09:05, 12:05, 13:05** 실행 (KST 12:05, 15:05, 18:05, 21:05, 22:05 catch-up)
    - `blog-scheduler` 는 `vercel.json` 기준 **UTC 일요일 15:00** 실행 (KST 월요일 00:00)
    - `blog-lifecycle` 이 매일 KST 01:30 실행 확인
 

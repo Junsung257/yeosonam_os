@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { AttractionData } from '@/lib/attraction-matcher';
+import { isCustomerRenderableAttraction, matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import { runAutoMobileQA } from '@/lib/auto-mobile-qa';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
@@ -8,8 +8,10 @@ import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
 import { isCustomerOptionalTourCandidate } from '@/lib/customer-option-classifier';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { normalizeOptionalTours } from '@/lib/package-acl';
+import { sanitizeOptionalToursForPublicEligibility } from '@/lib/package-public-eligibility';
 import type { PriceDate } from '@/lib/price-dates';
 import { compareKstDate, formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
+import { createPublicPackageSnapshotAndDecision } from '@/lib/package-publication/repository';
 import {
   evaluateV3CustomerNoticeGate,
   getV3DraftGateStatus,
@@ -36,9 +38,10 @@ import {
 } from '@/lib/source-price-date-repair';
 import { buildSourceBackedTermsRepair } from '@/lib/source-terms-repair';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
-import { runUploadVerify, evaluateVerifyChecks } from '@/lib/upload-verify';
+import { runUploadVerify, evaluateVerifyChecks, type VerifyResult } from '@/lib/upload-verify';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { sanitizeBrokenAttractionIdsForPublicEligibility } from '@/lib/package-public-eligibility';
 import { buildCustomerSourceRawText } from './source-evidence-raw-text';
 import { replaceProductPricesForProduct } from './product-price-replacement';
 import {
@@ -57,15 +60,20 @@ import {
 } from './repair-first-openability';
 import { hashSourceText } from './improvement-ledger';
 
+const FULL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type UploadToOpenAutopilotPackage = {
   id: string;
   title: string | null;
   internal_code: string | null;
   destination: string | null;
   status: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
   audit_status: string | null;
   audit_report: unknown;
   updated_at: string | null;
+  raw_text_hash?: string | null;
   raw_text: string | null;
   airline: string | null;
   duration: number | null;
@@ -189,8 +197,9 @@ async function loadActiveAttractionsForV3(supabase: SupabaseClient): Promise<Att
   for (let offset = 0; offset < 20_000; offset += pageSize) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id,name,short_desc,long_desc,badge_type,emoji,country,region,category,aliases,photos,mrt_gid')
+      .select('id,name,short_desc,long_desc,badge_type,emoji,country,region,category,aliases,photos,mrt_gid,is_active,customer_publishable')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .order('updated_at', { ascending: false, nullsFirst: false })
       .range(offset, offset + pageSize - 1);
     if (error) return rows;
@@ -423,9 +432,12 @@ const UPLOAD_TO_OPEN_PACKAGE_SELECT = [
   'internal_code',
   'destination',
   'status',
+  'publication_state',
+  'package_revision',
   'audit_status',
   'audit_report',
   'updated_at',
+  'raw_text_hash',
   'raw_text',
   'airline',
   'duration',
@@ -650,8 +662,15 @@ function isPolicyOnlyScheduleActivity(activity: string): boolean {
   const text = activity.replace(/\s+/g, ' ').trim();
   if (!text) return false;
   if (/^X$/i.test(text)) return true;
+  if (/^준비물\s*:/.test(text) || /(?:수영복|선크림|아쿠아슈즈|여벌\s*옷)/.test(text)) return true;
+  if (/^\d[\d,]*\s*\uC6D0\s*\/?\s*\uC778$/.test(text)) return true;
+  if (/^\d{1,2}\s*\uC6D4$/.test(text)) return true;
+  if (/^\d{1,2}\s*\/\s*\d{1,2}(?:[\s,~\-\uC77C\uCD94\uC11D()]*\d{0,2})*,?$/.test(text)) return true;
+  if (/^(?:\uC608\uC57D\s*\uD6C4\s*\d+\s*\uC77C\s*\uB0B4\s*\uBC1C\uAD8C|\d{1,2}\s*\/\s*\d{1,2}\s*\uAE4C\uC9C0|\uD2B9\uAC00[♥★]?\s*\d{1,2}\s*\/\s*\d{1,2}(?:,\s*\d{1,2})*|\uCD9C\uD655[★]?\s*\d{1,2}\s*\/\s*\d{1,2})$/.test(text)) return true;
+  if (/(?:\uD488\uACA9|BA\uD329|PKG|pack|package).*\d+\s*\uBC15\s*\d+\s*\uC77C/i.test(text)) return true;
   return /\uC0C1\uAE30\s*\uC77C\uC815.*(?:\uBCC0\uACBD|\uBCC0\uB3D9).*?\uC218/.test(text)
     || /(?:\uD604\uC9C0\s*\uC0AC\uC815|\uD56D\uACF5\s*\uC0AC\uC815|\uCC9C\uC7AC\uC9C0\uBCC0).*?\uBCC0\uACBD/.test(text)
+    || /(?:\uAE30\uC0C1\s*\uC5EC\uAC74|\uAE30\uC0C1\s*\uC545\uD654|\uD604\uC9C0\s*\uC0AC\uC815).*?(?:\uBCC0\uB3D9|\uBCC0\uACBD|\uCDE8\uC18C|\uC9C4\uD589)/.test(text)
     || /(?:\uCDE8\uC18C\s*\uADDC\uC815|\uD604\uAE08\uC601\uC218\uC99D|\uC608\uC57D\uAE08|\uC218\uC218\uB8CC|300,000)/.test(text)
     || /(?:\uCD94\uAC00\uAE08\s*\uBC1C\uC0DD|\uCD94\uAC00\s*\uC694\uAE08|\uC120\s*\uD3EC\uD568\s*\uC2DC).*?(?:\d+\s*\uB9CC|\$|\uC6D0|\uB80C\uD0C8\uD53C|\uC7A5\uBE44)/.test(text);
 }
@@ -781,6 +800,332 @@ function combinedSourceHotelName(names: string[]): string | null {
   return clean.join(' / ');
 }
 
+function hotelNameKey(value: string): string {
+  return decodeBasicHtmlEntities(value)
+    .replace(/\s+/g, '')
+    .replace(/[()[\]{}"'`.,:;|]/g, '')
+    .toLowerCase();
+}
+
+function uniqueHotelEvidenceNames(values: string[]): string[] {
+  const names: string[] = [];
+  for (const value of values) {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (!normalized) continue;
+    const key = hotelNameKey(normalized);
+    if (!key || names.some(name => hotelNameKey(name) === key)) continue;
+    names.push(normalized);
+  }
+  return names;
+}
+
+function hasPollutedHotelDisplayMarker(value: string): boolean {
+  const decoded = decodeBasicHtmlEntities(value).replace(/\s+/g, ' ').trim();
+  return /\bHOTEL\s*:/i.test(decoded)
+    || /\/\s*(?:\d+\s*)?\uAE09\s*\uD638\uD154\s*\//.test(decoded)
+    || /\uD638\uD154\s*\/\s*HOTEL\s*:/i.test(decoded);
+}
+
+function sanitizePollutedHotelDisplayName(value: string, evidenceNames: string[]): string | null {
+  const decoded = decodeBasicHtmlEntities(value).replace(/\s+/g, ' ').trim();
+  if (!decoded || !hasPollutedHotelDisplayMarker(decoded)) return null;
+
+  const decodedKey = hotelNameKey(decoded);
+  const evidenceMatch = evidenceNames.find(name => {
+    if (hasPollutedHotelDisplayMarker(name)) return false;
+    const key = hotelNameKey(name);
+    return key.length >= 3 && decodedKey.includes(key);
+  });
+  if (evidenceMatch) return evidenceMatch;
+
+  const afterHotelMarker = decoded.split(/\bHOTEL\s*:\s*/i).pop()?.trim();
+  if (afterHotelMarker) {
+    const normalized = normalizeSourceHotelLine(afterHotelMarker);
+    if (normalized) return normalized;
+  }
+
+  const beforeGradeMarker = decoded
+    .split(/\/\s*(?:\d+\s*)?\uAE09\s*\uD638\uD154\s*\//)[0]
+    ?.trim();
+  if (beforeGradeMarker) {
+    const normalized = normalizeSourceHotelLine(beforeGradeMarker);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+export function repairPollutedSourceBackedHotelNamesInItinerary(input: {
+  itineraryData: unknown;
+  rawText?: string | null;
+  accommodations?: unknown;
+}): {
+  itineraryData: unknown;
+  accommodations?: string[];
+  repaired: boolean;
+  replacements: Array<{ day: number | null; before: string; after: string }>;
+} {
+  const root = asRecord(input.itineraryData);
+  const days = Array.isArray(root.days) ? root.days : [];
+  const existingAccommodationNames = Array.isArray(input.accommodations)
+    ? input.accommodations.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const sourceNames = extractSourceBackedHotelNames(input.rawText);
+  const evidenceNames = uniqueHotelEvidenceNames([...existingAccommodationNames, ...sourceNames]);
+
+  if (days.length === 0 && existingAccommodationNames.length === 0) {
+    return { itineraryData: input.itineraryData, repaired: false, replacements: [] };
+  }
+
+  let accommodations: string[] | undefined;
+  if (existingAccommodationNames.length > 0) {
+    const nextAccommodations = uniqueHotelEvidenceNames(
+      existingAccommodationNames.map(name => sanitizePollutedHotelDisplayName(name, evidenceNames) ?? name),
+    );
+    if (
+      nextAccommodations.length !== existingAccommodationNames.length
+      || nextAccommodations.some((name, index) => name !== existingAccommodationNames[index])
+    ) {
+      accommodations = nextAccommodations;
+    }
+  }
+
+  if (days.length === 0) {
+    return {
+      itineraryData: input.itineraryData,
+      accommodations,
+      repaired: Boolean(accommodations),
+      replacements: [],
+    };
+  }
+
+  const next = cloneJson(root);
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+  const replacements: Array<{ day: number | null; before: string; after: string }> = [];
+
+  for (const day of nextDays) {
+    const dayNumber = typeof day?.day === 'number' ? day.day : null;
+    const hotel = asRecord(day?.hotel);
+    const hotelName = typeof hotel?.name === 'string' ? hotel.name.trim() : '';
+    if (!hotelName) continue;
+    const cleaned = sanitizePollutedHotelDisplayName(hotelName, evidenceNames);
+    if (!cleaned || cleaned === hotelName) continue;
+    day.hotel = { ...hotel, name: cleaned };
+    replacements.push({ day: dayNumber, before: hotelName, after: cleaned });
+  }
+
+  const repaired = replacements.length > 0 || Boolean(accommodations);
+  return {
+    itineraryData: replacements.length > 0 ? next : input.itineraryData,
+    accommodations,
+    repaired,
+    replacements,
+  };
+}
+
+function isCustomerPublishableAttraction(attraction: AttractionData | null | undefined): attraction is AttractionData {
+  return Boolean(
+    attraction?.id
+    && FULL_UUID_RE.test(attraction.id)
+    && isCustomerRenderableAttraction(attraction),
+  );
+}
+
+function attractionNameKey(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, '').trim().toLowerCase() : '';
+}
+
+function normalizeAttractionMatchCandidate(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function savedItineraryAttractionMatchCandidates(record: Record<string, unknown>, activity: string): string[] {
+  const candidates = [
+    firstSourceBackedAttractionQuery(record),
+    inferAttractionNameFromActivity(record.activity),
+    normalizeAttractionMatchCandidate(record.landing_sentence),
+    normalizeAttractionMatchCandidate(record.a4_sentence),
+    normalizeAttractionMatchCandidate(record.title),
+    normalizeAttractionMatchCandidate(record.description),
+    normalizeAttractionMatchCandidate(activity),
+  ];
+  const unique: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeAttractionMatchCandidate(candidate);
+    if (!normalized) continue;
+    const key = normalized.replace(/\s+/g, '').toLowerCase();
+    if (unique.some(value => value.replace(/\s+/g, '').toLowerCase() === key)) continue;
+    unique.push(normalized);
+  }
+  return unique;
+}
+
+function matchCustomerPublishableAttraction(
+  candidate: unknown,
+  publicAttractions: AttractionData[],
+  destination?: string | null,
+): AttractionData | null {
+  const normalized = normalizeAttractionMatchCandidate(candidate);
+  if (!normalized) return null;
+  return matchAttraction(normalized, publicAttractions, destination ?? undefined)
+    ?? matchAttraction(normalized, publicAttractions, undefined);
+}
+
+function isNonCustomerAttractionName(value: string, activity: string, accommodations: string[]): boolean {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  const compact = normalized.replace(/\s+/g, '');
+  if (!normalized) return true;
+  if (normalized.length > 48) return true;
+  if (/[.!?。]\s/.test(normalized) || /[.!?。]$/.test(normalized)) return true;
+  if (/(?:QR|ticket|fast\s*pass|package|hotel|resort)/i.test(normalized)) return true;
+  if (/(?:\uC785\uC7A5\uAD8C|\uD2F0\uCF13|\uD328\uC2A4\uD2B8\uD328\uC2A4|\uD328\uD0A4\uC9C0|\uCF64\uBCF4|\uD638\uD154|\uB9AC\uC870\uD2B8|\uB3D9\uAE09)/.test(compact)) {
+    return true;
+  }
+  if (/(?:\uAC10\uC0C1|\uC774\uC6A9|\uBB34\uC81C\uD55C|\uC0AC\uC6A9|\uD3EC\uD568)/.test(compact) && compact.length > 16) {
+    return true;
+  }
+  const valueKey = hotelNameKey(normalized);
+  if (accommodations.some(name => {
+    const accommodationKey = hotelNameKey(name);
+    return accommodationKey && (valueKey.includes(accommodationKey) || accommodationKey.includes(valueKey));
+  })) {
+    return true;
+  }
+  const activityCompact = activity.replace(/\s+/g, '');
+  if (/(?:\uD638\uD154|\uB9AC\uC870\uD2B8|\uC219\uBC15|\uAC1D\uC2E4)/.test(activityCompact)) return true;
+  return false;
+}
+
+export function repairSavedItineraryAttractionIdsFromExistingAttractions(input: {
+  itineraryData: unknown;
+  attractions: AttractionData[];
+  destination?: string | null;
+  accommodations?: unknown;
+}): {
+  itineraryData: unknown;
+  repaired: boolean;
+  matched: number;
+  removedNoise: number;
+  remainingUnmatched: number;
+} {
+  const root = asRecord(input.itineraryData);
+  const days = Array.isArray(root.days) ? root.days : [];
+  if (days.length === 0 || input.attractions.length === 0) {
+    return { itineraryData: input.itineraryData, repaired: false, matched: 0, removedNoise: 0, remainingUnmatched: 0 };
+  }
+
+  const publicAttractions = input.attractions.filter(isCustomerPublishableAttraction);
+  const unsafeAttractionNameKeys = new Set<string>();
+  for (const attraction of input.attractions) {
+    if (isCustomerPublishableAttraction(attraction as AttractionData | null | undefined)) continue;
+    const key = attractionNameKey(attraction.name);
+    if (key) unsafeAttractionNameKeys.add(key);
+  }
+  const publicAttractionIds = new Set(publicAttractions.map(attraction => attraction.id));
+
+  const accommodations = Array.isArray(input.accommodations)
+    ? input.accommodations.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const next = cloneJson(root);
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+  let matched = 0;
+  let removedNoise = 0;
+  let remainingUnmatched = 0;
+  let changed = false;
+
+  for (const day of nextDays) {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    for (const item of schedule) {
+      const record = asRecord(item);
+      const attractionNames = asStringArray(record.attraction_names);
+      if (attractionNames.length === 0) continue;
+      const existingIds = asStringArray(record.attraction_ids);
+      const activity = firstText(record.activity, record.title, record.description) ?? '';
+      const nextNames: string[] = [];
+      const nextIds: string[] = [];
+      const fallbackCandidates = savedItineraryAttractionMatchCandidates(record, activity);
+
+      const appendMatchedAttraction = (match: AttractionData): boolean => {
+        let appended = false;
+        if (!nextNames.includes(match.name)) {
+          nextNames.push(match.name);
+          appended = true;
+        }
+        if (match.id && !nextIds.includes(match.id)) {
+          nextIds.push(match.id);
+          appended = true;
+        }
+        return appended;
+      };
+
+      for (const name of attractionNames) {
+        const nameKey = attractionNameKey(name);
+        if (unsafeAttractionNameKeys.has(nameKey)) {
+          removedNoise++;
+          changed = true;
+          continue;
+        }
+        if (isNonCustomerAttractionName(name, activity, accommodations)) {
+          removedNoise++;
+          changed = true;
+          continue;
+        }
+        const match = matchCustomerPublishableAttraction(name, publicAttractions, input.destination);
+        if (isCustomerPublishableAttraction(match)) {
+          if (appendMatchedAttraction(match)) matched++;
+          changed = true;
+          continue;
+        }
+        const fallbackMatch = fallbackCandidates
+          .filter(candidate => attractionNameKey(candidate) !== nameKey)
+          .map(candidate => matchCustomerPublishableAttraction(candidate, publicAttractions, input.destination))
+          .find(isCustomerPublishableAttraction);
+        if (isCustomerPublishableAttraction(fallbackMatch)) {
+          if (appendMatchedAttraction(fallbackMatch)) matched++;
+          changed = true;
+          continue;
+        }
+        if (!nextNames.includes(name)) nextNames.push(name);
+        remainingUnmatched++;
+      }
+
+      for (const id of existingIds) {
+        if (!FULL_UUID_RE.test(id)) {
+          changed = true;
+          continue;
+        }
+        if (!publicAttractionIds.has(id)) {
+          changed = true;
+          continue;
+        }
+        if (!nextIds.includes(id)) nextIds.push(id);
+      }
+
+      if (
+        nextNames.length !== attractionNames.length
+        || nextIds.length !== existingIds.length
+        || nextNames.some((name, index) => name !== attractionNames[index])
+        || nextIds.some((id, index) => id !== existingIds[index])
+      ) {
+        record.attraction_names = nextNames;
+        record.attraction_ids = nextIds;
+        if (nextNames.length === 0) {
+          record.entity_kind = record.entity_kind === 'attraction visit' ? 'unknown' : record.entity_kind;
+        }
+        changed = true;
+      }
+    }
+  }
+
+  return {
+    itineraryData: changed ? next : input.itineraryData,
+    repaired: changed,
+    matched,
+    removedNoise,
+    remainingUnmatched,
+  };
+}
+
 export function repairMissingSourceBackedHotelsInItinerary(input: {
   itineraryData: unknown;
   rawText?: string | null;
@@ -820,18 +1165,23 @@ export function repairMissingSourceBackedHotelsInItinerary(input: {
   const next = cloneJson(root);
   const nextDays = Array.isArray(next.days) ? next.days : [];
   const filledDays: number[] = [];
+  let occupiedNights = 0;
   for (const day of nextDays) {
-    if (filledDays.length >= expectedNights) break;
+    if (occupiedNights >= expectedNights) break;
     const dayNumber = typeof day?.day === 'number' ? day.day : filledDays.length + 1;
     const hotel = asRecord(day?.hotel);
     const currentName = typeof hotel?.name === 'string' ? hotel.name.trim() : '';
-    if (currentName && !isNonLodgingHotelName(currentName)) continue;
+    if (currentName && !isNonLodgingHotelName(currentName)) {
+      occupiedNights += 1;
+      continue;
+    }
     day.hotel = {
       ...(hotel ?? {}),
       name: sourceHotelName,
       note: typeof hotel?.note === 'string' ? hotel.note : null,
     };
     filledDays.push(dayNumber);
+    occupiedNights += 1;
   }
 
   return {
@@ -881,6 +1231,63 @@ export function repairNonLodgingHotelNamesInItinerary(itineraryData: unknown): {
   };
 }
 
+function cleanCustomerHotelName(value: string): string {
+  return decodeBasicHtmlEntities(value)
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function repairHotelNightsForCustomerItinerary(input: {
+  itineraryData: unknown;
+  nights?: number | null;
+}): {
+  itineraryData: unknown;
+  repaired: boolean;
+  cleaned: Array<{ day: number | null; before: string; after: string }>;
+  removed: Array<{ day: number | null; before: string }>;
+} {
+  const root = asRecord(input.itineraryData);
+  const days = Array.isArray(root.days) ? root.days : [];
+  if (days.length === 0) return { itineraryData: input.itineraryData, repaired: false, cleaned: [], removed: [] };
+
+  const expectedNights = typeof input.nights === 'number' && input.nights >= 0
+    ? Math.min(input.nights, Math.max(0, days.length - 1))
+    : Math.max(0, days.length - 1);
+
+  const next = cloneJson(root);
+  const nextDays = Array.isArray(next.days) ? next.days : [];
+  const cleaned: Array<{ day: number | null; before: string; after: string }> = [];
+  const removed: Array<{ day: number | null; before: string }> = [];
+
+  nextDays.forEach((day, index) => {
+    const dayNumber = typeof day?.day === 'number' ? day.day : null;
+    const hotel = asRecord(day?.hotel);
+    const hotelName = typeof hotel?.name === 'string' ? hotel.name.trim() : '';
+    if (!hotelName) return;
+
+    if (index >= expectedNights) {
+      day.hotel = null;
+      removed.push({ day: dayNumber, before: hotelName });
+      return;
+    }
+
+    const cleanName = cleanCustomerHotelName(hotelName);
+    if (cleanName && cleanName !== hotelName) {
+      day.hotel = { ...hotel, name: cleanName };
+      cleaned.push({ day: dayNumber, before: hotelName, after: cleanName });
+    }
+  });
+
+  const repaired = cleaned.length > 0 || removed.length > 0;
+  return {
+    itineraryData: repaired ? next : input.itineraryData,
+    repaired,
+    cleaned,
+    removed,
+  };
+}
+
 function isOptionalTourScheduleDuplicate(item: unknown): boolean {
   const record = asRecord(item);
   if (!record) return false;
@@ -918,6 +1325,21 @@ function isShoppingOptionalTour(value: unknown): boolean {
   return /(?:\uC1FC\uD551|\uAE30\uB150\uD488|\uD1A0\uC0B0\uD488)/u.test(text);
 }
 
+function hasOptionalTourPrice(value: unknown): boolean {
+  const record = asRecord(value);
+  return ['price', 'price_usd', 'price_krw', 'price_jpy', 'amount'].some((key) => {
+    const candidate = record[key];
+    if (typeof candidate === 'number') return candidate > 0;
+    return typeof candidate === 'string' && /\d/.test(candidate);
+  });
+}
+
+function isNoOptionPolicyTour(value: unknown): boolean {
+  const text = optionalTourText(value);
+  if (!text || hasOptionalTourPrice(value)) return false;
+  return /(?:\uB178\s*\uD301|\uB178\s*\uC635\uC158|\uB178\s*\uC1FC\uD551|no\s*(?:tip|option|shopping))/iu.test(text);
+}
+
 function normalizeOptionalTourPrice(value: unknown): unknown {
   return typeof value === 'string'
     ? value.replace(/^\$\$+/, '$').replace(/\s+/g, ' ').trim()
@@ -938,11 +1360,16 @@ export function repairOptionalToursForCustomerDisplay(optionalTours: unknown): {
   const seen = new Set<string>();
   const removed: string[] = [];
   const renamed: Array<{ before: string; after: string }> = [];
+  const publicEligibilityRepair = sanitizeOptionalToursForPublicEligibility(optionalTours);
+  for (const finding of publicEligibilityRepair.removed) {
+    if (finding.text) removed.push(finding.text);
+  }
+  const sourceTours = publicEligibilityRepair.repaired ? publicEligibilityRepair.optionalTours : optionalTours;
 
-  for (const tour of optionalTours) {
+  for (const tour of sourceTours) {
     const record = asRecord(tour);
     const label = optionalTourText(tour);
-    if (isShoppingOptionalTour(tour)) {
+    if (isShoppingOptionalTour(tour) || isNoOptionPolicyTour(tour)) {
       removed.push(label);
       continue;
     }
@@ -1549,7 +1976,7 @@ export function classifyUploadToOpenReviewReason(reason: string): UploadToOpenRe
       nextAction: 'Regenerate V3 customer payload from saved package facts and source evidence, then replay readiness until ready_to_publish or a precise blocker remains.',
     };
   }
-  if (/source_verify|publish_gate|publish_warning/i.test(reason)) {
+  if (/source_verify|upload_verify|publish_gate|publish_warning/i.test(reason)) {
     return {
       reason,
       category: 'publish_gate_required',
@@ -1641,6 +2068,70 @@ export function filterResolvedUploadToOpenReasons(input: {
   });
 }
 
+export function evaluateUploadVerifyAutopilotGate(results: Array<VerifyResult | null>): {
+  ok: boolean;
+  status: VerifyResult['status'] | 'missing';
+  blockers: string[];
+  snapshots: Array<{
+    status: VerifyResult['status'] | 'missing';
+    passCount?: number;
+    warnCount?: number;
+    failCount?: number;
+    failedChecks?: string[];
+  }>;
+} {
+  const snapshots = results.map(result => {
+    if (!result) return { status: 'missing' as const };
+    return {
+      status: result.status,
+      passCount: result.passCount,
+      warnCount: result.warnCount,
+      failCount: result.failCount,
+      failedChecks: result.checks
+        .filter(check => check.status === 'warn' || check.status === 'fail')
+        .map(check => check.id)
+        .slice(0, 12),
+    };
+  });
+  if (snapshots.length === 0 || snapshots.some(snapshot => snapshot.status === 'missing')) {
+    return {
+      ok: false,
+      status: 'missing',
+      blockers: ['upload_verify:missing_result'],
+      snapshots,
+    };
+  }
+  if (snapshots.some(snapshot => snapshot.status === 'blocked')) {
+    const failedChecks = snapshots
+      .flatMap(snapshot => snapshot.failedChecks ?? [])
+      .filter(Boolean)
+      .slice(0, 8);
+    const blocker = failedChecks.length > 0
+      ? `upload_verify:blocked:${failedChecks.join(',')}`
+      : 'upload_verify:blocked';
+    return {
+      ok: false,
+      status: 'blocked',
+      blockers: [blocker],
+      snapshots,
+    };
+  }
+  if (snapshots.some(snapshot => snapshot.status === 'skipped')) {
+    return {
+      ok: false,
+      status: 'skipped',
+      blockers: ['upload_verify:skipped'],
+      snapshots,
+    };
+  }
+  return {
+    ok: true,
+    status: snapshots.some(snapshot => snapshot.status === 'warnings') ? 'warnings' : 'clean',
+    blockers: [],
+    snapshots,
+  };
+}
+
 function validPriceDates(priceDates: PriceDate[]): PriceDate[] {
   return priceDates
     .filter(row =>
@@ -1661,6 +2152,8 @@ export function sanitizeCustomerVisibleTitle(value: string | null | undefined): 
   const original = String(value ?? '').trim();
   if (!original) return null;
   const text = original
+    .replace(/[♡♥★☆]+/g, ' ')
+    .replace(/\bSPECIAL\s*PRICE\b/gi, ' ')
     .replace(/^[\s▶▷►\[\](){}<>/_|-]+/g, '')
     .replace(/^\d{3,}[^\]]*\]\s*/g, '')
     .replace(/\[[^\]]*(?:\uBC1C\uAD8C|\uCEF4\s*\d+%|\uC218\uC218\uB8CC|commission|comm|com|^\d{3,})[^\]]*\]/gi, ' ')
@@ -1674,6 +2167,7 @@ export function sanitizeCustomerVisibleTitle(value: string | null | undefined): 
     .replace(/\s+/g, ' ')
     .trim();
   if (text.length < 4) return null;
+  if (!/[가-힣]/.test(text) && /^(?:special|price|sale|hot|pick|best|\W)+$/i.test(text)) return null;
   return text === original ? original : text;
 }
 
@@ -1682,6 +2176,7 @@ function isGenericCustomerVisibleTitle(value: string | null | undefined): boolea
   if (!text) return true;
   const compact = text.replace(/\s+/g, ' ');
   return /^(?:20\d{2}\s*)?(?:package|pkg)$/i.test(compact)
+    || /^(?:[♡♥★☆\s]*)?(?:special\s*price|sale|hot\s*deal|best|pick)(?:[♡♥★☆\s]*)?$/i.test(compact)
     || /^(?:20\d{2}\s*)?(?:\uC0C1\uD488|\uC5EC\uD589\uC0C1\uD488|\uC77C\uC815\uD45C)(?:\s*\d+)?$/i.test(compact);
 }
 
@@ -1722,6 +2217,9 @@ function customerVisibleTitleRepair(pkg: UploadToOpenAutopilotPackage): {
   }
   if (repairedDisplayTitle && repairedDisplayTitle !== pkg.display_title) {
     updates.displayTitle = repairedDisplayTitle;
+  }
+  if (!repairedDisplayTitle && pkg.display_title && repairedTitle) {
+    updates.displayTitle = repairedTitle;
   }
   if (repairedTitle && isGenericCustomerVisibleTitle(pkg.display_title)) {
     updates.displayTitle = repairedTitle;
@@ -2624,6 +3122,26 @@ async function applyScorecardDrivenRepairs(input: {
   return { pkg: data as unknown as UploadToOpenAutopilotPackage, repairs, blockedReasons };
 }
 
+export function buildAutopilotStageAuditReport(
+  existingAuditReport: unknown,
+  stage: string,
+  checkedAt: string,
+  patch: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const existing = asRecord(existingAuditReport);
+  const customerOpenContract = asRecord(patch.customer_open_contract);
+  return {
+    ...existing,
+    ...(customerOpenContract ? { customer_open_contract: customerOpenContract } : {}),
+    upload_to_open_autopilot: {
+      ...asRecord(existing.upload_to_open_autopilot),
+      stage,
+      checked_at: checkedAt,
+      ...patch,
+    },
+  };
+}
+
 async function markAutopilotStage(
   supabase: SupabaseClient,
   packageId: string,
@@ -2645,15 +3163,7 @@ async function markAutopilotStage(
     .from('travel_packages')
     .update({
       ...(readyAuditStatus ? { audit_status: readyAuditStatus } : {}),
-      audit_report: {
-        ...existing,
-        upload_to_open_autopilot: {
-          ...asRecord(existing.upload_to_open_autopilot),
-          stage,
-          checked_at: checkedAt,
-          ...patch,
-        },
-      },
+      audit_report: buildAutopilotStageAuditReport(existing, stage, checkedAt, patch),
       audit_checked_at: checkedAt,
     })
     .eq('id', packageId);
@@ -2915,6 +3425,35 @@ async function applySourceBackedRepairs(
     repairs.push('itinerary_data:non_lodging_hotel_names_repaired');
   }
 
+  const hotelNightRepair = repairHotelNightsForCustomerItinerary({
+    itineraryData: workingPkg.itinerary_data,
+    nights: workingPkg.nights,
+  });
+  if (hotelNightRepair.repaired) {
+    updates.itinerary_data = hotelNightRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: hotelNightRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:hotel_nights_repaired:${hotelNightRepair.cleaned.length}/${hotelNightRepair.removed.length}`);
+  }
+
+  const pollutedHotelNameRepair = repairPollutedSourceBackedHotelNamesInItinerary({
+    itineraryData: workingPkg.itinerary_data,
+    rawText: workingPkg.raw_text,
+    accommodations: workingPkg.accommodations,
+  });
+  if (pollutedHotelNameRepair.repaired) {
+    updates.itinerary_data = pollutedHotelNameRepair.itineraryData;
+    if (pollutedHotelNameRepair.accommodations) updates.accommodations = pollutedHotelNameRepair.accommodations;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: pollutedHotelNameRepair.itineraryData,
+      ...(pollutedHotelNameRepair.accommodations ? { accommodations: pollutedHotelNameRepair.accommodations } : {}),
+    };
+    repairs.push('itinerary_data:polluted_hotel_names_repaired');
+  }
+
   const sourceBackedHotelRepair = repairMissingSourceBackedHotelsInItinerary({
     itineraryData: workingPkg.itinerary_data,
     rawText: workingPkg.raw_text,
@@ -2930,6 +3469,38 @@ async function applySourceBackedRepairs(
       ...(sourceBackedHotelRepair.accommodations ? { accommodations: sourceBackedHotelRepair.accommodations } : {}),
     };
     repairs.push('itinerary_data:source_backed_missing_hotels_repaired');
+  }
+
+  const publicAttractions = await loadActiveAttractionsForV3(supabase);
+  const validPublicAttractionIds = publicAttractions.length > 0
+    ? new Set(publicAttractions.map(attraction => attraction.id).filter((id): id is string => typeof id === 'string' && FULL_UUID_RE.test(id)))
+    : undefined;
+  const initialAttractionIdRepair = sanitizeBrokenAttractionIdsForPublicEligibility(
+    workingPkg.itinerary_data,
+    validPublicAttractionIds,
+  );
+  if (initialAttractionIdRepair.repaired) {
+    updates.itinerary_data = initialAttractionIdRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: initialAttractionIdRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:invalid_attraction_ids_removed:${initialAttractionIdRepair.removed.length}`);
+  }
+
+  const attractionRepair = repairSavedItineraryAttractionIdsFromExistingAttractions({
+    itineraryData: workingPkg.itinerary_data,
+    attractions: publicAttractions,
+    destination: workingPkg.destination,
+    accommodations: workingPkg.accommodations,
+  });
+  if (attractionRepair.repaired) {
+    updates.itinerary_data = attractionRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: attractionRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:existing_public_attractions_repaired:${attractionRepair.matched}/${attractionRepair.remainingUnmatched}`);
   }
 
   const optionalToursRepair = repairOptionalToursForCustomerDisplay(workingPkg.optional_tours);
@@ -3073,6 +3644,34 @@ async function applySourceBackedRepairs(
       itinerary_data: emptyDayScheduleRepair.itineraryData,
     };
     repairs.push(`itinerary_data:empty_day_schedules_filled:${emptyDayScheduleRepair.filledDays.join(',')}`);
+  }
+
+  const finalAttractionRepair = repairSavedItineraryAttractionIdsFromExistingAttractions({
+    itineraryData: workingPkg.itinerary_data,
+    attractions: publicAttractions,
+    destination: workingPkg.destination,
+    accommodations: workingPkg.accommodations,
+  });
+  if (finalAttractionRepair.repaired) {
+    updates.itinerary_data = finalAttractionRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: finalAttractionRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:final_public_attractions_repaired:${finalAttractionRepair.matched}/${finalAttractionRepair.remainingUnmatched}`);
+  }
+
+  const finalAttractionIdRepair = sanitizeBrokenAttractionIdsForPublicEligibility(
+    workingPkg.itinerary_data,
+    validPublicAttractionIds,
+  );
+  if (finalAttractionIdRepair.repaired) {
+    updates.itinerary_data = finalAttractionIdRepair.itineraryData;
+    workingPkg = {
+      ...workingPkg,
+      itinerary_data: finalAttractionIdRepair.itineraryData,
+    };
+    repairs.push(`itinerary_data:final_invalid_attraction_ids_removed:${finalAttractionIdRepair.removed.length}`);
   }
 
   if (Object.keys(updates).length === 0) {
@@ -3283,6 +3882,9 @@ function isObviousNonAttractionQueueNoise(row: Record<string, unknown>): boolean
   const label = entityQueueLabel(row);
   if (!label) return false;
   const compact = label.replace(/\s+/g, '');
+  if (/^\d[\d,]*\uC6D0\/?\uC778$/i.test(compact)) return true;
+  if (/(?:\uAE30\uC0C1\uC5EC\uAC74|\uAE30\uC0C1\uC545\uD654|\uD604\uC9C0\uC0AC\uC815).*?(?:\uBCC0\uB3D9|\uBCC0\uACBD|\uCDE8\uC18C|\uC9C4\uD589)/i.test(compact)) return true;
+  if (/^(?:준비물:?)?(?:수영복|모자|선크림|여벌옷|아쿠아슈즈|방수팩|수건|샌들|래쉬가드)[\p{Script=Hangul},:ㆍ·/()\-+]*$/iu.test(compact)) return true;
   return [
     /^(?:일정표|확인|비운항일|상동|:상동)$/i,
     /^(?:월|화|수|목|금|토|일|월화수목금|토일|수목금|토일월화)+$/i,
@@ -3714,7 +4316,8 @@ async function evaluateAndMaybeOpenPackage(input: {
     allRepairs.push(`entity_queue_resolved_from_latest_v3:${resolvedStaleEntityQueueRows}`);
   }
 
-  await runUploadVerify(pkg.id);
+  const uploadVerifyResults: Array<VerifyResult | null> = [];
+  uploadVerifyResults.push(await runUploadVerify(pkg.id));
   pkg = await reloadPackage(input.supabase, pkg.id);
   const preMobileProductPrices = await loadProductPriceRows(input.supabase, pkg.internal_code);
   const preMobileScorecard = evaluateRegistrationQualityScorecard({
@@ -3736,7 +4339,7 @@ async function evaluateAndMaybeOpenPackage(input: {
   if (scorecardRepairs.repairs.length > 0) {
     allRepairs.push(...scorecardRepairs.repairs);
     pkg = scorecardRepairs.pkg;
-    await runUploadVerify(pkg.id);
+    uploadVerifyResults.push(await runUploadVerify(pkg.id));
   }
   reasons.push(...scorecardRepairs.blockedReasons);
   const baseUrl = input.baseUrl || process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -3830,6 +4433,11 @@ async function evaluateAndMaybeOpenPackage(input: {
   });
   if (!customerOpenContract.ok) reasons.push(...customerOpenContract.blockers);
 
+  const uploadVerifyGate = evaluateUploadVerifyAutopilotGate(uploadVerifyResults);
+  if (!uploadVerifyGate.ok) {
+    reasons.push(...uploadVerifyGate.blockers);
+  }
+
   const deliveryContext = await loadDeliveryContext(input.supabase, pkg.id);
   const deliveryFailedChecks = customerOpenContract.ok ? [] : deliveryContext.failedChecks;
   const delivery = evaluateCustomerDeliveryReadiness({
@@ -3889,6 +4497,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       repair_first_summary: summary,
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
       mobile_proof: mobileProof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
@@ -3914,6 +4523,7 @@ async function evaluateAndMaybeOpenPackage(input: {
       repair_first_summary: summary,
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
       mobile_proof: mobileProof.proof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
@@ -3936,9 +4546,10 @@ async function evaluateAndMaybeOpenPackage(input: {
   const openedMobileProof = mobileProof.proof
     ? { ...mobileProof.proof, package_updated_at: openedAt }
     : null;
-  const auditReport = {
+  const openedAuditReport = {
     ...asRecord(pkg.audit_report),
     ...(openedMobileProof ? { mobile_browser_proof: openedMobileProof } : {}),
+    customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
     upload_to_open_autopilot: {
       stage: 'opened',
       opened_at: openedAt,
@@ -3946,27 +4557,112 @@ async function evaluateAndMaybeOpenPackage(input: {
       repair_first_summary: repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] }),
       source_verify: sourceVerify.status,
       publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
+      mobile_browser_proof: openedMobileProof,
+      quality_scorecard: finalQualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    },
+  };
+  const blockedPublicSnapshotAuditReport = {
+    ...asRecord(pkg.audit_report),
+    ...(openedMobileProof ? { mobile_browser_proof: openedMobileProof } : {}),
+    customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+    upload_to_open_autopilot: {
+      stage: 'blocked_after_public_snapshot',
+      checked_at: openedAt,
+      repairs: allRepairs,
+      repair_first_summary: repairFirstSummary({ reasons: [], repairs: allRepairs, reviewActions: [] }),
+      source_verify: sourceVerify.status,
+      publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
       mobile_browser_proof: openedMobileProof,
       quality_scorecard: finalQualityScorecard,
       customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
     },
   };
 
-  const { error } = await input.supabase
-    .from('travel_packages')
-    .update({
-      status: 'active',
-      ...(v3Gate.payload ? {
-        notices_parsed: v3Gate.payload.notices_parsed,
-        customer_notes: v3Gate.payload.customer_notes,
-      } : {}),
-      audit_status: 'clean',
-      audit_report: auditReport,
-      audit_checked_at: openedAt,
-      updated_at: openedAt,
-    })
-    .eq('id', pkg.id);
-  if (error) throw error;
+  const publicationPackage = {
+    ...(pkg as unknown as Record<string, unknown>),
+    ...(v3Gate.payload ? {
+      notices_parsed: v3Gate.payload.notices_parsed,
+      customer_notes: v3Gate.payload.customer_notes,
+    } : {}),
+    audit_status: 'clean',
+    audit_report: openedAuditReport,
+    audit_checked_at: openedAt,
+    updated_at: openedAt,
+  };
+  const publicSnapshotDecision = await createPublicPackageSnapshotAndDecision(
+    input.supabase,
+    publicationPackage,
+    {
+      customerOpenContractOk: customerOpenContract.ok,
+      customerOpenContractBlockers: customerOpenContract.blockers,
+      mobileProof: openedMobileProof ? { ...mobileProof, proof: openedMobileProof } : mobileProof,
+    },
+    {
+      packagePatch: {
+        ...(v3Gate.payload ? {
+          notices_parsed: v3Gate.payload.notices_parsed,
+          customer_notes: v3Gate.payload.customer_notes,
+        } : {}),
+        audit_status: 'clean',
+        audit_report: openedAuditReport,
+        audit_checked_at: openedAt,
+        updated_at: openedAt,
+      },
+      blockedPackagePatch: {
+        ...(v3Gate.payload ? {
+          notices_parsed: v3Gate.payload.notices_parsed,
+          customer_notes: v3Gate.payload.customer_notes,
+        } : {}),
+        audit_status: 'blocked',
+        audit_report: blockedPublicSnapshotAuditReport,
+        audit_checked_at: openedAt,
+        updated_at: openedAt,
+      },
+    },
+  );
+
+  if (!publicSnapshotDecision.publishable) {
+    const snapshotReasons = publicSnapshotDecision.blockers
+      .map(blocker => {
+        const record = asRecord(blocker);
+        return String(record.message ?? record.code ?? blocker).trim();
+      })
+      .filter(Boolean);
+    const uniqueReasons = uniqueIds(snapshotReasons.map(reason => `public_snapshot:${reason}`));
+    const reviewActions = uniqueReasons.map(classifyUploadToOpenReviewReason);
+    const summary = repairFirstSummary({ reasons: uniqueReasons, repairs: allRepairs, reviewActions });
+    await markAutopilotStage(input.supabase, pkg.id, 'blocked_after_public_snapshot', {
+      reasons: uniqueReasons,
+      repairs: allRepairs,
+      repair_first_summary: summary,
+      source_verify: sourceVerify.status,
+      publish_gate: delivery.publishGate.decision,
+      upload_verify: uploadVerifyGate,
+      mobile_browser_proof: openedMobileProof,
+      quality_scorecard: finalQualityScorecard,
+      customer_open_contract: customerOpenContractAuditPayload(customerOpenContract),
+      public_snapshot: {
+        snapshot_hash: publicSnapshotDecision.snapshotHash,
+        publication_state: publicSnapshotDecision.publicationState,
+        blockers: publicSnapshotDecision.blockers,
+      },
+    });
+    return {
+      id: pkg.id,
+      title: pkg.title,
+      code: pkg.internal_code,
+      status: 'blocked',
+      openabilityState: summary.state,
+      stage: 'blocked_after_public_snapshot',
+      reasons: uniqueReasons,
+      repairs: allRepairs,
+      repairFirstSummary: summary,
+      reviewActions,
+    };
+  }
 
   if (pkg.internal_code) {
     await input.supabase

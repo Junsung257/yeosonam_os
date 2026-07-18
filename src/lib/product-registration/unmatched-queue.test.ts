@@ -84,4 +84,52 @@ describe('queueUploadAttractionReviewCandidates', () => {
       p_segment_kind_guess: 'attraction',
     });
   });
+
+  it('does not queue a long extracted candidate when it contains an existing attraction', async () => {
+    const rpcCalls: Array<{ name: string; payload: Record<string, unknown> }> = [];
+    const upserts: unknown[] = [];
+    const fakeSupabase = {
+      rpc: async (name: string, payload: Record<string, unknown>) => {
+        rpcCalls.push({ name, payload });
+        return { error: null };
+      },
+      from: (table: string) => ({
+        upsert: async (payload: unknown, options: unknown) => {
+          upserts.push({ table, payload, options });
+          return { error: null };
+        },
+      }),
+    };
+
+    const result = await queueUploadAttractionReviewCandidates({
+      supabaseAdmin: fakeSupabase as never,
+      unmatchedRows: [],
+      extractedCandidateRows: [
+        {
+          activity: '\uD604\uC9C0\uC778\uB4E4\uC758 \uC0B6\uC774 \uACE0\uC2A4\uB780\uD788 \uB179\uC544\uC788\uB294 \uD55C\uC2DC\uC7A5 \uBC29\uBB38',
+          destination: '\uB2E4\uB0AD',
+        },
+      ],
+      matchedCanonicalNames: [],
+      activeAttractions: [{
+        id: '00000000-0000-4000-8000-000000000123',
+        name: '\uD55C\uC2DC\uC7A5',
+        region: '\uB2E4\uB0AD',
+        customer_publishable: true,
+        is_active: true,
+      } as never],
+      fallbackPackageId: '00000000-0000-0000-0000-000000000001',
+      fallbackPackageTitle: 'Da Nang package',
+    });
+
+    expect(result.newCandidateQueued).toBe(0);
+    expect(result.mentionCounted).toBe(1);
+    expect(upserts).toEqual([]);
+    expect(rpcCalls).toEqual([
+      {
+        name: 'increment_mention_count',
+        payload: { attraction_name: '\uD55C\uC2DC\uC7A5' },
+      },
+    ]);
+  });
 });

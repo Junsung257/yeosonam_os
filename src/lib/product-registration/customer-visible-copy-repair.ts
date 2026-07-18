@@ -2,6 +2,11 @@ import {
   customerCopyQualityIssues,
   normalizeCustomerVisibleCopy,
 } from '@/lib/customer-copy-quality';
+import {
+  hasRiskyCustomerPromiseCopy,
+  stripRiskyCustomerPromiseCopy,
+} from '@/lib/customer-risky-copy';
+import { sanitizeOptionalToursForPublicEligibility } from '@/lib/package-public-eligibility';
 
 export type CustomerVisibleCopyRepairChange = {
   fieldPath: string;
@@ -20,9 +25,23 @@ const UNSAFE_CODES = new Set([
   'placeholder_or_mojibake',
   'internal_source_copy',
   'customer_forbidden_internal_terms',
+  'risky_customer_promise_copy',
 ]);
 
 const CUSTOMER_COPY_REPAIR_SKIP_KEYS = new Set([
+  'id',
+  'package_id',
+  'product_id',
+  'internal_code',
+  'short_code',
+  'attraction_id',
+  'attraction_ids',
+  'resolved_attraction_id',
+  'entity_id',
+  'entity_kind',
+  'source_id',
+  'source_ids',
+  'raw_text_hash',
   'raw_text',
   'sourceText',
   'source',
@@ -52,6 +71,12 @@ function hasUnsafeIssue(codes: string[]): boolean {
   return codes.some(code => UNSAFE_CODES.has(code));
 }
 
+function customerVisibleRepairCodes(value: string): string[] {
+  const codes = customerCopyQualityIssues(value).map(issue => issue.code);
+  if (hasRiskyCustomerPromiseCopy(value)) codes.push('risky_customer_promise_copy');
+  return Array.from(new Set(codes));
+}
+
 function stripForbiddenOperationalCopy(value: string): string | null {
   const parts = value
     .split(/\r?\n|[;|]|(?:\s+[-–—]\s+)/)
@@ -68,14 +93,14 @@ function stripForbiddenOperationalCopy(value: string): string | null {
   );
 
   if (candidate.length <= 4 || /^(확인|요청|메모|기준|기준으로|확인 후)$/.test(candidate)) return null;
-  const remainingCodes = customerCopyQualityIssues(candidate).map(issue => issue.code);
+  const remainingCodes = customerVisibleRepairCodes(candidate);
   return hasUnsafeIssue(remainingCodes) ? null : candidate;
 }
 
 function repairString(value: string, fieldPath: string): { value: string | null; changes: CustomerVisibleCopyRepairChange[] } {
   const normalized = normalizeCustomerVisibleCopy(value);
   const normalizedIssues = customerCopyQualityIssues(normalized);
-  const codes = normalizedIssues.map(issue => issue.code);
+  const codes = customerVisibleRepairCodes(normalized);
   const changes: CustomerVisibleCopyRepairChange[] = [];
 
   if (normalized !== value) {
@@ -88,11 +113,14 @@ function repairString(value: string, fieldPath: string): { value: string | null;
     });
   }
 
-  if (normalizedIssues.length === 0) return { value: normalized, changes };
+  if (normalizedIssues.length === 0 && codes.length === 0) return { value: normalized, changes };
 
   if (!hasUnsafeIssue(codes)) return { value: normalized, changes };
 
-  const stripped = stripForbiddenOperationalCopy(normalized);
+  const promiseStripped = hasRiskyCustomerPromiseCopy(normalized)
+    ? stripRiskyCustomerPromiseCopy(normalized)
+    : normalized;
+  const stripped = promiseStripped ? stripForbiddenOperationalCopy(promiseStripped) : null;
   changes.push({
     fieldPath,
     action: 'removed',
@@ -376,6 +404,21 @@ function repairValue(value: unknown, pathParts: string[]): { value: unknown; cha
       }
       next.push(repaired.value);
     });
+    if (pathParts.at(-1) === 'optional_tours') {
+      const publicRepair = sanitizeOptionalToursForPublicEligibility(next);
+      if (publicRepair.repaired) {
+        for (const finding of publicRepair.removed) {
+          changes.push({
+            fieldPath: pathParts.join('.'),
+            action: 'removed',
+            codes: [`optional_tour_${finding.classification}`],
+            before: finding.text || JSON.stringify(finding.item),
+            after: null,
+          });
+        }
+        return { value: publicRepair.optionalTours, changes };
+      }
+    }
     return { value: next, changes };
   }
 

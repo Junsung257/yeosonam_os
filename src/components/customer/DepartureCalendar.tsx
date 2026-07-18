@@ -214,7 +214,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
               )}
               {isConfirmed && !isSelected && !isPast && (
                 <span className="absolute -top-1 -left-1 bg-emerald-500 text-white text-[8px] font-bold px-1 py-px rounded-full leading-none">
-                  확정
+                  가능
                 </span>
               )}
             </button>
@@ -224,7 +224,7 @@ export default function DepartureCalendar({ priceDates, selectedDate, onSelect, 
 
       {/* 범례 */}
       <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 border border-emerald-300 inline-block" /> 출발확정</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-50 border border-emerald-300 inline-block" /> 예약 가능일</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-brand-light border border-brand/30 inline-block" /> 선택가능</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500 inline-block" /> 최저가</span>
       </div>

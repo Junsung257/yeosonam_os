@@ -23,6 +23,75 @@ describe('postProcessItineraryData', () => {
     });
     expect(out?.flight_segments?.[0]?.arr_time).toBe('23:50');
   });
+
+  it('does not re-promote minimum-departure condition rows through flight segment normalization', () => {
+    const out = postProcessItineraryData({
+      days: [{
+        day: 5,
+        schedule: [
+          {
+            time: '01:15',
+            activity: '\uC131\uC778 8\uBA85 \uC774\uC0C1 \uCD9C\uBC1C\uAC00\uB2A5',
+            type: 'flight',
+            entity_kind: 'unknown',
+            transport: 'VN428',
+          },
+        ],
+      }],
+      meta: {
+        flight_in: 'VN428',
+        flight_in_time: '01:15',
+      },
+      flight_segments: [] as FlightSegment[],
+    });
+
+    expect(out?.days?.[0]?.schedule?.[0]).toMatchObject({
+      activity: '\uC131\uC778 8\uBA85 \uC774\uC0C1 \uCD9C\uBC1C\uAC00\uB2A5',
+      type: 'normal',
+      entity_kind: 'unknown',
+      transport: 'VN428',
+    });
+    expect(out?.flight_segments ?? []).toEqual([]);
+  });
+
+  it('removes optional-tour fragments from saved schedule rows before public snapshot generation', () => {
+    const out = postProcessItineraryData({
+      days: [{
+        day: 2,
+        schedule: [
+          { activity: '\uD638\uD154 \uC870\uC2DD \uD6C4' },
+          { activity: '[\uC120\uD0DD\uC635\uC158] \uBC1C+\uC804\uC2E0\uB9C8\uC0AC\uC9C0 90\uBD84 : $??' },
+          { activity: '\uD314\uB300\uAD00 \uAD00\uAD11' },
+        ],
+      }],
+    });
+
+    expect(out?.days?.[0]?.schedule?.map(item => item.activity)).toEqual([
+      '\uD638\uD154 \uC870\uC2DD \uD6C4',
+      '\uD314\uB300\uAD00 \uAD00\uAD11',
+    ]);
+  });
+
+  it('repairs mojibake attraction names only from source-backed schedule context', () => {
+    const out = postProcessItineraryData({
+      days: [{
+        day: 2,
+        schedule: [
+          {
+            activity: '\uBC14\uB2E4\uC640 \uBC14\uC704\uAC00 \uC808\uACBD\uC744 \uC774\uB8E8\uB294 \uD63C\uCD1D\uACEF \uC790\uC720\uC77C\uC815',
+            attraction_names: ['????? ?????'],
+          },
+          {
+            activity: '\uD604\uC9C0 \uC0AC\uC815\uC5D0 \uB530\uB77C \uC77C\uC815\uC774 \uBCC0\uACBD\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
+            attraction_names: ['????'],
+          },
+        ],
+      }],
+    });
+
+    expect(out?.days?.[0]?.schedule?.[0]?.attraction_names).toEqual(['\uD63C\uCD1D\uACEF']);
+    expect(out?.days?.[0]?.schedule?.[1]).not.toHaveProperty('attraction_names');
+  });
 });
 
 describe('postProcessCatalogFields', () => {

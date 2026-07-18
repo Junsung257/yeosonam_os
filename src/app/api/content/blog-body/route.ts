@@ -12,6 +12,7 @@ import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { logError } from '@/lib/sentry-logger';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -32,16 +33,12 @@ export async function POST(request: NextRequest) {
 
     let product: Parameters<typeof generateBlogBody>[0]['productContext'] | undefined = undefined;
     if (body.product_id) {
-      const { data: pkg, error } = await supabaseAdmin
-        .from('travel_packages')
-        .select('title, destination, duration, nights, price, airline, departure_airport, inclusions, itinerary')
-        .eq('id', body.product_id)
-        .single();
-      if (error || !pkg) {
-        return NextResponse.json({ error: '상품 조회 실패' }, { status: 404 });
+      const publicProduct = await loadPublicContentPackageForGeneration(body.product_id);
+      if (!publicProduct) {
+        return NextResponse.json({ error: '고객 공개 승인된 상품만 콘텐츠를 만들 수 있습니다.' }, { status: 404 });
       }
       product = {
-        ...(pkg as Record<string, unknown>),
+        ...(publicProduct as Record<string, unknown>),
         product_id: body.product_id,
       } as never;
     }

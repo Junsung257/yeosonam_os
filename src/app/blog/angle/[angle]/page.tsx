@@ -11,12 +11,13 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import {
   BLOG_ANGLE_CACHE_TAG,
   createBlogDatabaseUnavailableError,
-  isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -26,7 +27,6 @@ const BASE_URL = resolveBlogCanonicalOrigin();
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
   og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
-  travel_packages: { id: string; title: string; destination: string; price: number | null } | null;
 }
 
 type AnglePageData = {
@@ -103,8 +103,8 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
     const postsResult = await runBlogAngleQuery(
       'posts',
       supabaseAdmin
-      .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price)')
+      .from(PUBLIC_BLOG_READ_SOURCE)
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('angle_type', angle)
@@ -135,19 +135,12 @@ const getCachedAnglePageData = unstable_cache(
   async (angle: string) => {
     return getAnglePageDataUncached(angle);
   },
-  ['blog-angle-page-v1'],
+  ['blog-angle-page-v2-public-eligibility'],
   { revalidate: 300, tags: [BLOG_ANGLE_CACHE_TAG] },
 );
 
 async function getAnglePageData(angle: string): Promise<AnglePageData> {
-  try {
-    return await getCachedAnglePageData(angle);
-  } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) {
-      return { posts: [], recommendedPackages: [], unavailable: true };
-    }
-    throw err;
-  }
+  return getCachedAnglePageData(angle);
 }
 
 export function generateStaticParams() {
@@ -187,7 +180,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: `${meta.label} 여행 가이드`,
@@ -308,9 +301,9 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                       />
                     </div>
                     <div className="p-5">
-                      {post.travel_packages?.destination && (
+                      {post.destination && (
                         <span className="rounded-full bg-brand-light px-2.5 py-1 text-xs font-medium text-brand mb-3 inline-block">
-                          {post.travel_packages.destination}
+                          {post.destination}
                         </span>
                       )}
                       <h2 className="line-clamp-2 text-base md:text-[19px] font-bold text-slate-900 group-hover:text-brand tracking-tight leading-snug">

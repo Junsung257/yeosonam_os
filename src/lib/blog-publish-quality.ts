@@ -3,7 +3,16 @@ import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-q
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
 import { repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } from './blog-editorial-repair';
+import { repairBlogEngineCategoryGaps } from './blog-engine-category-repair';
 import { repairPublishReadiness } from './blog-publish-readiness-repair';
+import { inspectBlogCustomerQuality, type BlogCustomerQualityReport } from './blog-customer-quality';
+import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
+import {
+  inspectBlogRenderedSeoQuality,
+  type BlogRenderedSeoQualityReport,
+} from './blog-rendered-seo-quality';
+import { withPersistedBlogReadingTime } from './blog-reading-time';
+import { stripBlogInformationalBodyCtas } from './blog-informational-cta';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -34,6 +43,9 @@ export interface BlogPublishQualityReport {
   qualityGate: QualityGateReport;
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
+  customerQuality: BlogCustomerQualityReport;
+  renderedSeoQuality: BlogRenderedSeoQualityReport | null;
+  readingTimeMinutes: number | null;
   blogQualityScore: BlogQualityScoreReport;
   summary: string;
 }
@@ -80,7 +92,7 @@ function extractImages(markdownOrHtml: string): Array<{ alt: string; src: string
 }
 
 function hasFaqBlock(markdownOrHtml: string): boolean {
-  return /(^|\n)#{2,3}\s*(FAQ|자주 묻는 질문|Q\s*&\s*A)|(^|\n)\s*(Q\.|Q:|질문[:.]?)/i.test(markdownOrHtml);
+  return /(^|\n)#{2,3}\s*(FAQ|자주\s*묻는\s*질문|Q\s*&\s*A)|(^|\n)\s*(?:#{2,4}\s*)?(?:\*\*)?\s*(Q\d{0,2}[.:]|Q\s*&\s*A|질문[:.]?)/i.test(markdownOrHtml);
 }
 
 function hasHowToBlock(markdownOrHtml: string): boolean {
@@ -92,6 +104,7 @@ function buildSummary(report: {
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
   blogQualityScore: BlogQualityScoreReport;
+  renderedSeoQuality?: BlogRenderedSeoQualityReport | null;
 }): string {
   const parts: string[] = [];
   if (!report.blogQualityScore.passed) parts.push(`[score] ${report.blogQualityScore.summary}`);
@@ -99,6 +112,9 @@ function buildSummary(report: {
   if (!report.seoScore.passed) parts.push(`[seo] ${report.seoScore.summary}`);
   if (report.readability.issues.length > 0) {
     parts.push(`[readability] ${report.readability.score}/100 ${report.readability.issues.slice(0, 3).join(' / ')}`);
+  }
+  if (report.renderedSeoQuality && !report.renderedSeoQuality.passed) {
+    parts.push(`[rendered-seo] ${report.renderedSeoQuality.issues.map((issue) => issue.code).slice(0, 5).join(', ')}`);
   }
   return parts.length > 0
     ? parts.join(' | ')
@@ -143,10 +159,52 @@ export async function evaluateBlogPublishQuality(
       faqPage: hasFaqBlock(input.blog_html),
       howTo: hasHowToBlock(input.blog_html),
     },
+    hasRuntimeInformationalCta: blogType === 'info',
   });
   const readability = computeReadability(input.blog_html);
-  const blogQualityScore = calculateBlogQualityScore({ qualityGate, seoScore, readability });
-  const report = { qualityGate, seoScore, readability, blogQualityScore };
+  const customerQuality = inspectBlogCustomerQuality({
+    blogHtml: input.blog_html,
+    blogType,
+    title: input.seo_title,
+    primaryKeyword,
+    destination,
+    productId: input.product_id ?? null,
+    generationMeta: input.generation_meta ?? null,
+  });
+  const renderedSeoQuality = blogType === 'info'
+    ? await inspectBlogRenderedSeoQuality({
+        markdown: input.blog_html,
+        slug: input.slug,
+        title: input.seo_title || input.slug,
+        description: input.seo_description || input.seo_title || input.slug,
+        destination,
+        generationMeta: input.generation_meta ?? null,
+      })
+    : null;
+  const blogQualityScore = calculateBlogQualityScore({
+    qualityGate,
+    seoScore,
+    readability,
+    customerQuality,
+    renderedAudit: renderedSeoQuality
+      ? {
+          failed: !renderedSeoQuality.passed,
+          error: renderedSeoQuality.passed
+            ? null
+            : renderedSeoQuality.issues.map((issue) => `${issue.code}: ${issue.message}`).join(' / '),
+          score: renderedSeoQuality.passed ? 100 : 0,
+        }
+      : null,
+  });
+  const report = {
+    qualityGate,
+    seoScore,
+    readability,
+    customerQuality,
+    renderedSeoQuality,
+    readingTimeMinutes: renderedSeoQuality?.readingTimeMinutes ?? null,
+    blogQualityScore,
+  };
 
   return {
     ...report,
@@ -162,6 +220,13 @@ export async function prepareBlogForPublish(
   let blogHtml = input.blog_html;
   const primaryKeyword = input.primary_keyword || input.destination || input.seo_title || input.slug;
   const contentType = input.content_type ?? (input.product_id ? 'package_intro' : 'guide');
+  if (!input.product_id) {
+    const normalized = stripBlogInformationalBodyCtas(blogHtml);
+    if (normalized !== blogHtml) {
+      blogHtml = normalized;
+      changes.push('normalized_informational_body_cta');
+    }
+  }
 
   const editorialRepair = repairBlogEditorialQuality({
     title: input.seo_title ?? input.slug,
@@ -206,10 +271,80 @@ export async function prepareBlogForPublish(
     destination: input.destination ?? null,
     topic: input.seo_title ?? input.slug,
     primaryKeyword,
+    hasRuntimeInformationalCta: !input.product_id,
   });
   if (readinessRepair.changed) {
     blogHtml = readinessRepair.markdown;
     changes.push(...readinessRepair.changes);
+  }
+
+  const categoryRepair = repairBlogEngineCategoryGaps({
+    markdown: blogHtml,
+    blogType: input.product_id ? 'product' : 'info',
+    title: input.seo_title ?? input.slug,
+    slug: input.slug,
+    destination: input.destination ?? null,
+    primaryKeyword,
+    angleType: input.angle_type ?? null,
+    category: input.category ?? null,
+    contentType,
+    productId: input.product_id ?? null,
+    generationMeta: input.generation_meta ?? null,
+  });
+  if (categoryRepair.changed) {
+    blogHtml = categoryRepair.markdown;
+    changes.push(...categoryRepair.changes);
+  }
+
+  const finalReadinessRepair = repairPublishReadiness({
+    markdown: blogHtml,
+    blogType: input.product_id ? 'product' : 'info',
+    slug: input.slug,
+    destination: input.destination ?? null,
+    topic: input.seo_title ?? input.slug,
+    primaryKeyword,
+    hasRuntimeInformationalCta: !input.product_id,
+  });
+  if (finalReadinessRepair.changed) {
+    blogHtml = finalReadinessRepair.markdown;
+    changes.push(...finalReadinessRepair.changes);
+  }
+
+  if (!input.product_id) {
+    const finalCustomerSurface = repairBlogFinalCustomerSurface({
+      markdown: blogHtml,
+      destination: input.destination ?? null,
+      primaryKeyword,
+      slug: input.slug,
+      title: input.seo_title ?? input.slug,
+    });
+    if (finalCustomerSurface.changed) {
+      blogHtml = finalCustomerSurface.markdown;
+      changes.push(...finalCustomerSurface.changes);
+    }
+
+    // The final customer-surface pass can split paragraphs, remove headings,
+    // or normalize tables. Re-run structure repair on the final information
+    // article body that customers will receive.
+    const finalStructureRepair = repairBlogStructureQuality({
+      title: input.seo_title ?? input.slug,
+      slug: input.slug,
+      primaryKeyword,
+      angleType: input.angle_type ?? null,
+      category: input.category ?? null,
+      contentType,
+      productId: null,
+      blogHtml,
+    });
+    if (finalStructureRepair.changed) {
+      blogHtml = finalStructureRepair.blogHtml;
+      changes.push(...finalStructureRepair.changes);
+    }
+    const normalized = stripBlogInformationalBodyCtas(blogHtml);
+    if (normalized !== blogHtml) {
+      blogHtml = normalized;
+      changes.push('normalized_final_informational_body_cta');
+    }
   }
 
   const report = await evaluateBlogPublishQuality({
@@ -237,8 +372,13 @@ export function blogPublishQualityWarnings(report: BlogPublishQualityReport | nu
       .filter((detail) => detail.status === 'fail')
       .map((detail) => ({ type: 'seo', gate: detail.name, reason: detail.message })),
     ...report.blogQualityScore.issues
-      .filter((issue) => issue.source !== 'quality_gate' && issue.source !== 'seo')
+      .filter((issue) => !['quality_gate', 'seo', 'render'].includes(issue.source))
       .map((issue) => ({ type: issue.source, gate: issue.code, reason: issue.message })),
+    ...(report.renderedSeoQuality?.issues ?? []).map((issue) => ({
+      type: 'rendered_seo',
+      gate: issue.code,
+      reason: issue.message,
+    })),
   ];
 }
 
@@ -246,7 +386,9 @@ export function applyBlogPublishQualityToUpdate(
   updateData: Record<string, unknown>,
   report: BlogPublishQualityReport,
 ): void {
-  updateData.quality_gate = report.qualityGate;
+  updateData.quality_gate = report.readingTimeMinutes == null
+    ? report.qualityGate
+    : withPersistedBlogReadingTime(report.qualityGate, report.readingTimeMinutes);
   updateData.seo_score = report.seoScore;
   updateData.readability_score = report.readability.score;
   updateData.readability_issues = report.readability.issues;

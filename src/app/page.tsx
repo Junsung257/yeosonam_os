@@ -16,6 +16,13 @@ import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 import { getDestinationUrl } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -57,14 +64,27 @@ interface AttractionRow {
   country: string | null;
   region: string | null;
   mention_count: number | null;
+  category?: string | null;
+  badge_type?: string | null;
+  is_active?: boolean | null;
+  customer_publishable?: boolean | null;
 }
 
 interface AggPkgRow {
+  id?: string | null;
   destination: string | null;
   price: number | null;
   price_tiers: Array<{ adult_price?: number }> | null;
   price_dates: Array<{ date?: string; price?: number }> | null;
   country: string | null;
+  status?: string | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
+  publication_state?: string | null;
+  package_revision?: number | null;
 }
 interface RankingPkg extends AggPkgRow {
   id: string;
@@ -88,6 +108,21 @@ function computeRankingMinPrice(p: RankingPkg, today: string): number {
   const tierPrices = (p.price_tiers ?? []).map((t) => t.adult_price).filter((v): v is number => v != null);
   const fallback = [p.price, ...tierPrices].filter((v): v is number => v != null);
   return fallback.length > 0 ? Math.min(...fallback) : 0;
+}
+
+function isHomePublicSnapshotCandidate(row: AggPkgRow | RankingPkg): boolean {
+  return isPublicPublicationState(row.publication_state)
+    && isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>);
+}
+
+async function fetchHomePublicSnapshotRows<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
+  if (rows.length === 0) return [];
+  try {
+    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+  } catch (error) {
+    console.warn('[home] public snapshot merge failed; hiding package-derived sections', error);
+    return [];
+  }
 }
 
 /** 랭킹 카드: 동일 이미지 URL이 여러 상품에 반복되지 않게 할당 */
@@ -157,8 +192,9 @@ export default async function HomePage() {
   const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
     runOptionalSupabaseQuery(
       sb.from('travel_packages')
-        .select('destination, price, price_tiers, price_dates, country')
-        .in('status', ['active', 'approved'])
+        .select('id, destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published'])
         .order('updated_at', { ascending: false })
         .limit(200),
       emptyResult,
@@ -166,7 +202,9 @@ export default async function HomePage() {
     ),
     runOptionalSupabaseQuery(
       sb.from('attractions')
-        .select('name, photos, country, region, mention_count')
+        .select('name, photos, country, region, mention_count, category, badge_type, is_active, customer_publishable')
+        .eq('is_active', true)
+        .eq('customer_publishable', true)
         .not('photos', 'is', null)
         .limit(60),
       emptyResult,
@@ -174,8 +212,9 @@ export default async function HomePage() {
     ),
     runOptionalSupabaseQuery(
       sb.from('travel_packages')
-        .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
-        .in('status', ['active', 'approved'])
+        .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published'])
         .order('created_at', { ascending: false })
         .limit(30),
       emptyResult,
@@ -201,9 +240,20 @@ export default async function HomePage() {
     ),
   ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
-  const allPkgs = (pkgResult.data ?? []) as AggPkgRow[];
-  const attractions = (attrResult.data ?? []) as AttractionRow[];
-  const rankingPkgs = (rankingResult.data ?? []) as RankingPkg[];
+  const allPkgs = (isSupabaseConfigured && !skipPublicDbReads
+    ? await fetchHomePublicSnapshotRows(
+      ((pkgResult.data ?? []) as AggPkgRow[])
+        .filter(isHomePublicSnapshotCandidate) as unknown as Array<Record<string, unknown>>,
+    )
+    : []) as unknown as AggPkgRow[];
+  const attractions = ((attrResult.data ?? []) as AttractionRow[])
+    .filter((row): row is AttractionRow => isCustomerRenderableAttraction(row as unknown as AttractionData));
+  const rankingPkgs = (isSupabaseConfigured && !skipPublicDbReads
+    ? await fetchHomePublicSnapshotRows(
+      ((rankingResult.data ?? []) as RankingPkg[])
+        .filter(isHomePublicSnapshotCandidate) as unknown as Array<Record<string, unknown>>,
+    )
+    : []) as unknown as RankingPkg[];
 
   /** 홈 검색 시트 하단 — 마감 임박·특가 상품 최대 3개(랭킹 풀에서 추림) */
   const cutoffTeaser = new Date();
@@ -316,7 +366,7 @@ export default async function HomePage() {
   const topDestNames = topDestsRaw.map(d => d.destination);
   const { data: pillarExists } = topDestNames.length > 0
     ? await runOptionalSupabaseQuery(
-        sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
+        sb.from(PUBLIC_BLOG_READ_SOURCE).select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
         { data: null },
         { label: 'home.pillar.exists', timeoutMs: 1200 },
       )
@@ -537,7 +587,7 @@ export default async function HomePage() {
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@graph': [
               {

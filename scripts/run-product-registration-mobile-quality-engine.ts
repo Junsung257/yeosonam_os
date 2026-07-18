@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { config as loadEnv } from 'dotenv';
 
+import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
+
 loadEnv({ path: '.env.local' });
 loadEnv();
 
@@ -11,15 +13,18 @@ const apply = args.has('--apply');
 const status = argValue('--status', 'active');
 const limit = Number(argValue('--limit', '500'));
 const verifyLimit = Number(argValue('--verify-limit', '50'));
+const entityReviewLimit = Number(argValue('--entity-review-limit', String(Math.max(limit, 2000))));
 const promoteLimit = Number(argValue('--promote-limit', '50'));
 const photoLimit = Number(argValue('--photo-limit', '50'));
 const minScore = Number(argValue('--min-score', '0.3'));
 const destination = argValue('--destination', '');
 const publicOnly = !args.has('--all-products');
 const skipVerify = args.has('--skip-verify');
+const skipEntityReviewAudit = args.has('--skip-entity-review-audit');
 const skipPromote = args.has('--skip-promote');
 const skipPhotoFill = args.has('--skip-photo-fill');
 const skipCandidateRepair = args.has('--skip-candidate-repair');
+const CUSTOMER_VISIBLE_STATUS_ARG = CUSTOMER_VISIBLE_STATUSES.join(',');
 
 type Step = {
   label: string;
@@ -77,7 +82,7 @@ const steps: Step[] = [
     args: [
       'tsx',
       'scripts/repair-product-mobile-readiness-candidates.ts',
-      `--status=${publicOnly ? 'active,approved' : status}`,
+      `--status=${publicOnly ? CUSTOMER_VISIBLE_STATUS_ARG : status}`,
       `--limit=${limit}`,
       '--days=365',
       ...(apply ? ['--apply'] : []),
@@ -97,6 +102,20 @@ const steps: Step[] = [
     ],
   },
 ];
+
+if (!skipEntityReviewAudit) {
+  steps.push({
+    label: 'Auto-audit entity review candidates before customer readiness',
+    command: bin('npx'),
+    args: [
+      'tsx',
+      'scripts/auto-audit-entity-review-candidates.ts',
+      `--limit=${entityReviewLimit}`,
+      '--json',
+      ...(apply ? ['--apply'] : []),
+    ],
+  });
+}
 
 if (!skipVerify) {
   steps.push({

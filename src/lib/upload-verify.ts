@@ -21,7 +21,10 @@ import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
 import { resolvePriceRecoveryYear } from '@/lib/product-registration/price-year';
 import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
-import { selectSourceBackedPriceRows } from '@/lib/source-price-date-repair';
+import {
+  filterSourceBackedPriceRowsForPublicEvidence,
+  selectSourceBackedPriceRows,
+} from '@/lib/source-price-date-repair';
 import {
   auditCustomerVisibleProductText,
 } from '@/lib/customer-visible-text-audit';
@@ -713,8 +716,10 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
       accommodations: pkg.accommodations ?? [],
     });
     const today = todayKstDateKey();
-    const expectedRows = selectSourceBackedPriceRows(pkg, expected.rows)
-      .filter(row => row.date >= today);
+    const expectedRows = filterSourceBackedPriceRowsForPublicEvidence(
+      pkg,
+      selectSourceBackedPriceRows(pkg, expected.rows),
+    ).filter(row => row.date >= today);
     const dbPriceDates = Array.isArray(pkg.price_dates)
       ? pkg.price_dates.filter(row => typeof row.date === 'string' && row.date >= today)
       : [];

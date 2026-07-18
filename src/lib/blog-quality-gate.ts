@@ -18,6 +18,12 @@ import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-re
 import { inspectBlogImageQuality } from './blog-image-quality';
 import { inspectBlogStructure } from './blog-structure-audit';
 import { inspectBlogIntentQuality } from './blog-content-intent';
+import {
+  BLOG_INFORMATION_INTENTS,
+  buildBlogInformationContract,
+  inspectBlogInformationMarkdown,
+  type BlogInformationIntent,
+} from './blog-information-contract';
 import { evaluateBlogEngineV2 } from './blog-engine-v2';
 import { evaluateBlogEditorialQuality, evaluateBlogTopicFit } from './blog-topic-fit-gate';
 import { normalizeBlogCtaDestination } from './blog-cta';
@@ -39,6 +45,17 @@ export const BANNED_CLICHES = [
   '완전히 새로운', '놀라운', '생각지도 못한',
 ];
 
+function getPlannedInformationIntent(
+  generationMeta?: Record<string, unknown> | null,
+): BlogInformationIntent | null {
+  const contentBrief = generationMeta?.content_brief;
+  if (!contentBrief || typeof contentBrief !== 'object' || Array.isArray(contentBrief)) return null;
+  const value = (contentBrief as Record<string, unknown>).intent_type;
+  return typeof value === 'string' && (BLOG_INFORMATION_INTENTS as readonly string[]).includes(value)
+    ? value as BlogInformationIntent
+    : null;
+}
+
 // Blog 유형별 임계값 (product = 랜딩페이지 / info = 장문 SEO)
 const THRESHOLDS = {
   product: { minLen: 1200, maxCliche: 2, maxKeywordDensity: 2.5 },
@@ -58,7 +75,7 @@ const GENERIC_SLUG_PREFIXES = new Set([
 ]);
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'engine_v2' | 'editorial_quality' | 'image_quality' | 'accent_density';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'cta_destination_integrity' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'table_integrity' | 'topic_fit' | 'intent_quality' | 'engine_v2' | 'editorial_quality' | 'image_quality' | 'accent_density' | 'article_quality_v2';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -217,7 +234,7 @@ export function checkHook(blog_html: string): GateResult {
   const hasQuestion = /[?？]/.test(intro);
   const hasPriceHook = /(만원|원|만\s|절약|저렴|차이|할인|특가)/.test(intro);
   const hasTimeHook = /(\d+분|\d+시간|즉시|당일|바로)/.test(intro);
-  const hasCompare = /(시중가|단품|직접|비교|보다)/.test(intro);
+  const hasCompare = /(시중가|단품|직접|비교|보다|나눠|분리|따로|포함\/불포함)/.test(intro);
 
   const triggers = [hasQuestion, hasPriceHook, hasTimeHook, hasCompare].filter(Boolean).length;
   // 숫자 + 트리거 1개 이상 OR 트리거 2개 이상
@@ -370,6 +387,86 @@ export function checkMarkdownTableIntegrity(blog_html: string): GateResult {
     passed: issues.length === 0,
     reason: issues.length > 0 ? `markdown table integrity failed: ${issues.map((issue) => issue.reason).join(', ')}` : undefined,
     evidence: { issues: issues.slice(0, 10) },
+  };
+}
+
+function extractMarkdownHeadings(markdown: string): string[] {
+  return markdown
+    .split(/\r?\n/)
+    .map((line) => line.trim().match(/^#{2,3}\s+(.+)$/)?.[1]?.replace(/\s+/g, ' ').trim())
+    .filter((value): value is string => Boolean(value));
+}
+
+function hasRecentInternalEvidence(meta: Record<string, unknown> | null | undefined): boolean {
+  const serialized = JSON.stringify(meta || {});
+  return /internal_(?:insight|data|evidence)|reservation_stats|booking_stats/i.test(serialized);
+}
+
+function staleConfirmationDateIssue(markdown: string, now = new Date()): string | null {
+  const match = markdown.match(/(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일\s*확인\s*기준/);
+  if (!match) return null;
+
+  const checkedAt = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(checkedAt.getTime())) return null;
+  const ageDays = Math.floor((now.getTime() - checkedAt.getTime()) / 86_400_000);
+  return ageDays > 90 ? `stale_confirmation_date:${match[0]}` : null;
+}
+
+export function checkArticleQualityV2(input: CheckInput): GateResult {
+  const markdown = input.blog_html || '';
+  const plain = stripMarkup(markdown).replace(/\s+/g, ' ').trim();
+  const blogType = input.blog_type ?? (input.product_id ? 'product' : 'info');
+  const issues: string[] = [];
+
+  const headings = extractMarkdownHeadings(markdown);
+  const seen = new Set<string>();
+  for (const heading of headings) {
+    const key = heading.toLowerCase();
+    if (seen.has(key)) {
+      issues.push(`duplicate_heading:${heading}`);
+      break;
+    }
+    seen.add(key);
+  }
+
+  if (/(^|\n)\s*>?\s*\*\*\s*(?=\n|$)/.test(markdown)) issues.push('standalone_markdown_bold');
+  if (/==[^=\n]{1,180}==/.test(markdown)) issues.push('legacy_highlight_markup');
+  if (/(날씨은|비용은은|일정은은|여행을 즐길 수 있는하기)/.test(plain)) issues.push('broken_korean_surface');
+  if (/여소남\s*내부\s*(?:상품|예약|데이터)/.test(plain) && !hasRecentInternalEvidence(input.generation_meta)) {
+    issues.push('unsupported_internal_data_claim');
+  }
+  const staleDate = staleConfirmationDateIssue(markdown);
+  if (staleDate) issues.push(staleDate);
+
+  if (blogType === 'info') {
+    const upper = plain.slice(0, Math.max(240, Math.floor(plain.length * 0.3)));
+    if (/(카톡|무료\s*상담|관련\s*패키지|상품\s*보기|예약하세요|문의하세요)/.test(upper)) {
+      issues.push('info_top_sales_cta');
+    }
+    const first = plain.slice(0, 220);
+    if (/(비용|가격|예약|결제|상담)/.test(first) && /(날씨|옷차림|준비물|체크리스트)/.test(input.primary_keyword || plain.slice(0, 120))) {
+      issues.push('info_intro_intent_mismatch');
+    }
+  } else {
+    const requiredProductSignals = [
+      /포함/,
+      /불포함|미포함|별도/,
+      /맞는\s*사람|추천\s*대상|fit_for/i,
+      /안\s*맞는\s*사람|비추천|not_fit_for/i,
+      /주의|변동|확인\s*변수|risk/i,
+    ];
+    const missing = requiredProductSignals.filter((pattern) => !pattern.test(plain)).length;
+    if (missing >= 3) issues.push('product_decision_structure_missing');
+  }
+
+  return {
+    gate: 'article_quality_v2',
+    passed: issues.length === 0,
+    reason: issues.length > 0 ? `article quality v2 failed: ${issues.join(', ')}` : undefined,
+    evidence: {
+      blogType,
+      issues: issues.slice(0, 10),
+    },
   };
 }
 
@@ -616,11 +713,17 @@ export function checkImageQuality(input: CheckInput): GateResult {
   };
 }
 
+function hasConcreteCostEvidenceForGate(markdownOrHtml: string): boolean {
+  const text = stripMarkup(markdownOrHtml).replace(/\s+/g, ' ').trim();
+  return /(\d[\d,]*\s*(?:원|만원|달러|엔|위안|페소|바트)|\d+\s*만?\s*[~–-]\s*\d+\s*만?\s*원?|예산|경비|식비|이동비|선택\s*관광|카드\s*수수료|환율|상품가|개인경비|추가비)/.test(text);
+}
+
 export function checkIntentQuality(input: CheckInput): GateResult {
   const report = inspectBlogIntentQuality({
     title: input.primary_keyword,
     slug: input.slug,
     primaryKeyword: input.primary_keyword,
+    destination: input.destination,
     angleType: input.angle_type,
     category: input.category,
     contentType: input.content_type,
@@ -628,25 +731,73 @@ export function checkIntentQuality(input: CheckInput): GateResult {
     blogHtml: input.blog_html,
   });
 
-  const criticalCount = report.issues.filter((issue) => issue.severity === 'critical').length;
-  const warningCount = report.issues.filter((issue) => issue.severity === 'warning').length;
-  const passed = report.passed || (criticalCount === 0 && report.score >= 90);
+  const issues = report.issues.filter((issue) => {
+    if (issue.code !== 'missing_required_block') return true;
+    if (!/Cost\/currency posts need concrete amounts/i.test(issue.message)) return true;
+    return !hasConcreteCostEvidenceForGate(input.blog_html);
+  });
+  const criticalCount = issues.filter((issue) => issue.severity === 'critical').length;
+  const warningCount = issues.filter((issue) => issue.severity === 'warning').length;
+  const score = issues.length === report.issues.length
+    ? report.score
+    : Math.max(0, 100 - criticalCount * 18 - warningCount * 6);
+  const legacyPassed = issues.length === 0 || report.passed || (criticalCount === 0 && score >= 90);
+  const shouldInspectInformationContract = !input.product_id
+    && input.blog_type !== 'product'
+    && input.content_type !== 'pillar';
+  const informationContract = shouldInspectInformationContract
+    ? buildBlogInformationContract({
+        intentType: getPlannedInformationIntent(input.generation_meta),
+        destination: input.destination,
+        topic: input.primary_keyword,
+        primaryKeyword: input.primary_keyword,
+        category: input.category,
+        microAngle: input.micro_angle,
+      })
+    : null;
+  const informationReport = informationContract
+    ? inspectBlogInformationMarkdown({
+        markdown: input.blog_html,
+        contract: informationContract,
+      })
+    : null;
+  const passed = legacyPassed && (informationReport?.passed ?? true);
 
   return {
     gate: 'intent_quality',
     passed,
     reason: passed
       ? undefined
-      : `intent/design quality ${report.score}/100: ${report.issues
-          .slice(0, 5)
-          .map((issue) => issue.code)
-          .join(', ')}`,
+      : informationReport && !informationReport.passed
+        ? `information contract failed (${informationReport.intentType}): ${[
+            ...informationContract!.issues,
+            ...informationReport.missingSlots.map((slot) => `missing:${slot}`),
+            ...informationReport.structuredIssues.map((issue) => `structure:${issue}`),
+            ...informationReport.operationalDataLeaks.map(() => 'internal_operational_data_leak'),
+          ].slice(0, 8).join(', ')}`
+        : `intent/design quality ${score}/100: ${issues
+            .slice(0, 5)
+            .map((issue) => issue.code)
+            .join(', ')}`,
     evidence: {
-      score: report.score,
+      score,
       intent: report.intent,
       criticalCount,
       warningCount,
-      issues: report.issues.slice(0, 12),
+      issues: issues.slice(0, 12),
+      ...(informationContract && informationReport ? {
+        informationContract: {
+          intentType: informationContract.intentType,
+          passed: informationReport.passed,
+          destinationIssues: informationContract.issues,
+          coveredSlots: informationReport.coveredSlots,
+          missingSlots: informationReport.missingSlots,
+          structuredIssues: informationReport.structuredIssues,
+          operationalDataLeaks: informationReport.operationalDataLeaks,
+          sourcePolicy: informationContract.sourcePolicy,
+          requiresHumanReview: informationContract.humanReview.required,
+        },
+      } : {}),
     },
   };
 }
@@ -669,21 +820,25 @@ export function checkBlogEngineV2(input: CheckInput): GateResult {
     generationMeta: input.generation_meta,
   });
 
-  const passed = evaluation.passed
-    || (evaluation.score >= 90 && evaluation.failure_bucket === 'ai_naturalness')
-    || (evaluation.score >= 85 && evaluation.failure_bucket === 'sales_pressure');
+  const belowPerfectCategories = evaluation.category_scores
+    .filter((category) => category.score < 100 || !category.passed)
+    .map((category) => `${category.id}:${category.score}`);
+  const passed = evaluation.passed && belowPerfectCategories.length === 0 && evaluation.score === 100;
 
   return {
     gate: 'engine_v2',
     passed,
     reason: passed
       ? undefined
-      : `engine v2 ${evaluation.score}/100: ${evaluation.failure_bucket}`,
+      : `engine v2 ${evaluation.score}/100: ${evaluation.failure_bucket}${
+          belowPerfectCategories.length > 0 ? ` (${belowPerfectCategories.join(', ')})` : ''
+        }`,
     evidence: {
       evaluation,
       failure_bucket: evaluation.failure_bucket,
       score: evaluation.score,
       metrics: evaluation.metrics,
+      category_scores: evaluation.category_scores,
       evidence_count: evaluation.brief.evidence_items.length,
       writer: evaluation.brief.writer_type,
     },
@@ -927,6 +1082,7 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단
   gates.push(await checkStructureIntegrity(input));
   gates.push(checkMarkdownTableIntegrity(input.blog_html));
+  gates.push(checkArticleQualityV2(input));
   gates.push(await checkAccentDensity(input.blog_html));
   gates.push(checkTopicFit(input));
   // 글 의도 계약 검증 — 정보/상품/날씨/준비물/일정별 필수 블록과 읽기 디자인 차단

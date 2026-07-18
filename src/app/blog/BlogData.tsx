@@ -21,11 +21,13 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
+import { readPersistedBlogReadingTime } from '@/lib/blog-reading-time';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PER_PAGE = 12;
-const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count';
+const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, quality_gate';
 
 // 콘텐츠 타입별 읽기 시간 추정 (분)
 const READING_TIME: Record<string, number> = {
@@ -37,7 +39,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   tip: '꿀팁',
   review: '리뷰',
   package_intro: '상품',
-  pillar: '완벽 가이드',
+  pillar: '목적지 가이드',
 };
 
 interface BlogPost {
@@ -55,6 +57,7 @@ interface BlogPost {
   featured: boolean | null;
   featured_order: number | null;
   view_count: number | null;
+  quality_gate?: Record<string, unknown> | null;
   travel_packages: {
     id: string; title: string; destination: string;
     price: number | null; duration: string | null; category: string | null;
@@ -66,6 +69,12 @@ interface DestinationStat {
   destination: string;
   package_count: number;
   min_price: number | null;
+}
+
+function getBlogReadingMinutes(post: BlogPost, fallback: number): number {
+  return readPersistedBlogReadingTime(post.quality_gate)
+    ?? READING_TIME[post.content_type || 'guide']
+    ?? fallback;
 }
 
 type ActiveDestinationRow = {
@@ -184,7 +193,8 @@ type BlogListData = {
 };
 
 function unavailableBlogData(filter: { destination?: string; angle?: string } = {}): BlogListData {
-  const fallbackPosts = getFallbackBlogPosts(filter);
+  void filter;
+  const fallbackPosts: BlogPost[] = [];
   if (fallbackPosts.length > 0) {
     const destinations = [...new Set(fallbackPosts.map((post) => post.destination).filter(Boolean))]
       .map((destination) => ({
@@ -211,6 +221,13 @@ function unavailableBlogData(filter: { destination?: string; angle?: string } = 
 }
 
 const lastGoodBlogData = new Map<string, BlogListData>();
+
+function stripRawPackageDataFromBlogListPosts(posts: BlogPost[]): BlogPost[] {
+  return posts.map(post => ({
+    ...post,
+    travel_packages: null,
+  }));
+}
 
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -296,13 +313,13 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const offset = (page - 1) * PER_PAGE;
 
   let listQuery = supabaseAdmin
-    .from('content_creatives')
-    .select(BLOG_LIST_SELECT)
+    .from(PUBLIC_BLOG_READ_SOURCE)
+    .select(BLOG_LIST_SELECT, { count: 'exact' })
     .eq('status', 'published')
     .eq('channel', 'naver_blog')
     .not('slug', 'is', null)
     .order('published_at', { ascending: false, nullsFirst: false })
-    .range(offset, offset + PER_PAGE);
+    .range(offset, offset + PER_PAGE - 1);
 
   if (filter.angle) {
     listQuery = listQuery.eq('angle_type', filter.angle);
@@ -318,8 +335,13 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
     return unavailableBlogData(filter);
   }
 
-  const fetchedPosts = (listRes.data as unknown as BlogPost[]) || [];
-  const hasNextPage = fetchedPosts.length > PER_PAGE;
+  const fetchedPosts = stripRawPackageDataFromBlogListPosts((listRes.data as unknown as BlogPost[]) || []);
+  const exactTotal = typeof listRes.count === 'number' && Number.isFinite(listRes.count)
+    ? Math.max(0, Math.trunc(listRes.count))
+    : null;
+  if (exactTotal == null) {
+    return unavailableBlogData(filter);
+  }
   const posts = fetchedPosts.slice(0, PER_PAGE);
 
   const pageAngleCounts = countAnglesFromPosts(posts);
@@ -327,7 +349,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const angleRes = await runBlogQuery(
     'angles',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('angle_type')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -344,7 +366,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const publishedDestinationRes = await runBlogQuery(
     'publishedDestinations',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -386,12 +408,10 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const filteredPosts = page === 1 && !filter.destination && !filter.angle
     ? posts.filter(p => !featured.some(featuredPost => featuredPost.id === p.id))
     : posts;
-  const approximateTotal = hasNextPage ? offset + PER_PAGE + 1 : offset + posts.length;
-
   return {
     featured: page === 1 && !filter.destination && !filter.angle ? featured : [],
     posts: filteredPosts,
-    total: approximateTotal,
+    total: exactTotal,
     destinations,
     angleCounts,
     unavailable: false,
@@ -409,7 +429,7 @@ const getCachedBlogData = unstable_cache(
     }
     return data;
   },
-  ['blog-list-v2'],
+  ['blog-list-v3-public-eligibility'],
   { revalidate: 300, tags: [BLOG_LIST_CACHE_TAG] },
 );
 
@@ -420,7 +440,11 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     if (!data.unavailable && data.posts.length > 0) lastGoodBlogData.set(cacheKey, data);
     return data;
   } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) return lastGoodBlogData.get(cacheKey) ?? unavailableBlogData(filter);
+    if (isBlogDatabaseUnavailableError(err)) {
+      const lastGood = lastGoodBlogData.get(cacheKey);
+      if (lastGood) return lastGood;
+      throw err;
+    }
     throw err;
   }
 }
@@ -429,7 +453,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
 function HeroCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
-  const readMin = READING_TIME[ct] ?? 7;
+  const readMin = getBlogReadingMinutes(post, 7);
   const angleLabel = post.angle_type ? BLOG_PUBLIC_ANGLE_LABELS_WITH_ICON[post.angle_type] : null;
   const imageUrl = getDisplayImageUrl(post);
 
@@ -486,7 +510,7 @@ function HeroCard({ post }: { post: BlogPost }) {
 function SideCard({ post }: { post: BlogPost }) {
   const dest = post.destination || post.travel_packages?.destination;
   const ct = post.content_type || 'guide';
-  const readMin = READING_TIME[ct] ?? 5;
+  const readMin = getBlogReadingMinutes(post, 5);
   const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 
@@ -548,7 +572,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const dest = post.destination || post.travel_packages?.destination;
   const price = post.travel_packages?.price;
   const ct = post.content_type || 'guide';
-  const readMin = READING_TIME[ct] ?? 5;
+  const readMin = getBlogReadingMinutes(post, 5);
   const angleChipStyle = post.angle_type ? (BLOG_PUBLIC_ANGLE_CHIP_CLASSES[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
   const imageUrl = getDisplayImageUrl(post);
 
@@ -670,7 +694,7 @@ export default async function BlogData({ searchParams }: Props) {
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@graph': [
               {
@@ -686,7 +710,7 @@ export default async function BlogData({ searchParams }: Props) {
               {
                 '@type': 'CollectionPage',
                 name: '여행 매거진',
-                description: '여소남 운영팀이 직접 검증한 여행지 가이드와 엄선 패키지.',
+                description: '여행 준비에 필요한 목적지 가이드와 판매 중인 패키지 정보.',
                 url: `${BASE_URL}/blog`,
                 inLanguage: 'ko-KR',
                 mainEntity: {
@@ -721,7 +745,7 @@ export default async function BlogData({ searchParams }: Props) {
               여행 매거진
             </h1>
             <p className="mt-2 text-body md:text-[15px] text-text-secondary">
-              운영팀이 직접 검증한 가이드와 엄선 패키지
+              목적지별 여행 가이드와 판매 중인 패키지 정보
               <span className="mx-2 text-[#E5E7EB]">·</span>
               <b className="text-text-primary font-semibold">{totalLabel}</b>{unavailable ? '' : '편'}
             </p>
@@ -785,7 +809,7 @@ export default async function BlogData({ searchParams }: Props) {
             <div className="mb-5 flex items-baseline justify-between">
               <div>
                 <h2 className="text-h2 font-bold text-text-primary tracking-[-0.02em]">에디터 픽</h2>
-                <p className="text-[13px] text-text-secondary mt-0.5">운영팀이 이번 주 추천하는 여행 가이드</p>
+                <p className="text-[13px] text-text-secondary mt-0.5">이번 주 읽어볼 여행 가이드</p>
               </div>
             </div>
 
@@ -808,17 +832,17 @@ export default async function BlogData({ searchParams }: Props) {
           </section>
         )}
 
-        {/* ── 목적지별 완벽 가이드 ── */}
+        {/* ── 목적지별 여행 가이드 ── */}
         {destinations.length > 0 && (
           <section className="mx-auto max-w-6xl px-4 py-6 border-b border-admin-border">
             <div className="bg-[#F8F9FA] rounded-2xl px-5 py-5 md:px-7 md:py-6">
               <div className="mb-2 flex items-baseline justify-between">
-                <h2 className="text-[15px] font-bold text-text-primary tracking-[-0.01em]">목적지별 완벽 가이드</h2>
+                <h2 className="text-[15px] font-bold text-text-primary tracking-[-0.01em]">목적지별 여행 가이드</h2>
                 <Link href="/destinations" className="text-micro text-brand font-medium hover:underline">
                   모든 여행지 →
                 </Link>
               </div>
-              <p className="text-micro text-text-secondary mb-4">지역 Pillar 가이드 · 관광지 · 일정 · 준비물 총정리</p>
+              <p className="text-micro text-text-secondary mb-4">지역 가이드 · 관광지 · 일정 · 준비 정보</p>
               <div className="divide-y divide-[#EAEAEA]">
                 {destinations.slice(0, 8).map(d => (
                   <Link

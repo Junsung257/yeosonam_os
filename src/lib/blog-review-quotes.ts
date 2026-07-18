@@ -4,6 +4,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status'
 
 export interface ReviewSnippet {
   /** 인용에 쓸 한 줄 (원문 일부) */
@@ -41,7 +42,7 @@ export async function fetchApprovedReviewSnippets(opts: {
       .from('travel_packages')
       .select('id')
       .eq('destination', opts.destination.trim())
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
       .limit(40)
     for (const r of pkgs ?? []) {
       const id = (r as { id?: string }).id

@@ -39,7 +39,6 @@ import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 import { requiresApproval } from '@/lib/jarvis/risk-scorer'
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { hasResilientLlmConfig } from '@/lib/secret-registry'
-import { safeRawTextExcerpt } from '@/lib/raw-text-privacy'
 
 const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9)
 const QA_SYSTEM_FALLBACK = [
@@ -361,10 +360,11 @@ export async function createV1QaChatStream(params: {
 목적지: ${p.destination ?? '미지정'}
 기간: ${p.duration ? p.duration + '일' : '미지정'}
 기본가: ${p.price ? p.price.toLocaleString() + '원' : '미지정'} / 판매가(커미션${COMMISSION_RATE}% 포함): ${p.price ? applyCommission(p.price).toLocaleString() + '원' : '미지정'}
+요약: ${p.product_summary ?? '미지정'}
+핵심 포인트: ${(p.product_highlights ?? []).join(', ') || '미지정'}
 포함사항: ${(p.inclusions ?? []).join(', ') || '없음'}
 불포함: ${(p.excludes ?? []).join(', ') || '없음'}
-일정: ${(p.itinerary ?? []).join(' | ') || '없음'}
-상세내용: ${safeRawTextExcerpt(p.raw_text, 800) ?? ''}`
+일정: ${(p.itinerary ?? []).join(' | ') || '없음'}`
             ).join('\n\n---\n\n')
           : '현재 등록된 상품이 없습니다.'
 

@@ -1,0 +1,108 @@
+{
+  "schema_version": 2,
+  "report_id": "r15-local-db-verification",
+  "executed_date": "2026-07-16",
+  "final_status": "PASS_LOCAL_DB_VERIFIED",
+  "baseline": {
+    "worktree": "C:\\dev\\yeosonam-os-info-v2-remediation",
+    "branch": "codex/informational-content-engine-v2-remediation",
+    "commit": "7f94ab202d7150806ca263d11a9fab2c30769e5c",
+    "dedicated_worktree": true
+  },
+  "safety": {
+    "remote_supabase_access_count": 0,
+    "remote_database_mutation_count": 0,
+    "seed_execution_count": 0,
+    "attraction_auto_seed_count": 0,
+    "push_count": 0,
+    "pr_count": 0,
+    "deployment_count": 0,
+    "secrets_recorded": false
+  },
+  "environment": {
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "node": "v24.14.0",
+    "npm": "11.9.0",
+    "docker_client": "29.6.1",
+    "docker_server": "29.6.1",
+    "supabase_cli": "2.109.1",
+    "postgres_runtime_version": "17.6"
+  },
+  "migrations": {
+    "final_count": 374,
+    "latest_version": "20260716101000",
+    "duplicate_version_groups": 0,
+    "fresh_start": "PASS",
+    "local_reset_runs": 2,
+    "local_reset_passes": 2,
+    "informational_v2_count": 14,
+    "remediation_migrations": [
+      "20260330000000_foundational_schema_baseline.sql",
+      "20260426000002_post_engagement_snapshots_tenant_baseline.sql",
+      "20260430000001_drop_legacy_update_booking_ledger_overload.sql",
+      "20260519125000_restore_legacy_manual_schema.sql",
+      "20260531105000_restore_ad_landing_mappings.sql",
+      "20260601194000_restore_affiliate_content_insights.sql",
+      "20260603064700_restore_pin_attempts.sql",
+      "20260716100000_guard_optional_product_rpcs.sql",
+      "20260716101000_correct_legacy_database_contracts.sql"
+    ]
+  },
+  "database_checks": {
+    "pgtap": {
+      "status": "PASS",
+      "files": 4,
+      "tests": 77,
+      "fail": 0,
+      "skip": 0
+    },
+    "lint": {
+      "status": "PASS",
+      "errors": 0,
+      "warnings": 14,
+      "warning_scope": "pre-existing unused or shadowed PL/pgSQL variables"
+    },
+    "rls_role_matrix": "PASS",
+    "atomic_publication": "PASS",
+    "idempotent_retry": "PASS",
+    "two_session_concurrency": "PASS",
+    "failure_rollback_modes": 9,
+    "failure_rollback": "PASS",
+    "legacy_upgrade_simulation": {
+      "status": "PASS",
+      "fixtures_before": 5,
+      "fixtures_after": 5,
+      "product_fixture_preserved": true,
+      "silent_representative_backfill": false
+    }
+  },
+  "application_checks": {
+    "focused_vitest": "24 files, 216 tests PASS",
+    "informational_eval": "10/10 PASS",
+    "full_tests": "511 files, 3611 tests PASS",
+    "typecheck": "PASS",
+    "eslint": "PASS, 0 warnings",
+    "production_build": "PASS, 390/390 pages"
+  },
+  "boundaries": {
+    "product_parser_changed": false,
+    "product_snapshot_changed": false,
+    "product_landing_changed": false,
+    "product_runtime_logic_changed": false,
+    "attraction_seeded": false
+  },
+  "findings": [],
+  "non_blocking_observations": [
+    "Database lint reports 14 unused/shadowed-variable warnings in legacy functions.",
+    "Historical migration version normalization requires remote migration-history reconciliation before staging db push.",
+    "Production build requires an 8 GB Node heap in this local environment."
+  ],
+  "gates": {
+    "local_db_verified": "GO",
+    "local_commit": "GO",
+    "push": "NOT_PERFORMED",
+    "draft_pr": "NOT_PERFORMED",
+    "staging": "NO_GO_UNTIL_REMOTE_HISTORY_RECONCILIATION",
+    "production": "NO_GO_UNTIL_STAGING_SMOKE_TEST"
+  }
+}

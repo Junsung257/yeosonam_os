@@ -1,8 +1,10 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-03
+Last updated: 2026-07-15
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
+
+Information Engine V2 CTA setup, high-risk approval, fixture evaluation, existing-post dry-run, staging order, and rollback are handed off in `docs/blog-informational-engine-v2-owner-runbook.md`.
 
 ## Daily Operating Standard
 
@@ -53,6 +55,7 @@ Run these after code changes that affect blog generation, rendering, indexing, o
 npm run type-check
 npx vitest run src/lib/blog-editorial-repair.test.ts src/lib/blog-seo-scorer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-topic-fit-gate.test.ts
 npm run audit:blog-quality -- --limit=50
+npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --strict
 npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
 npm run audit:blog-search-daily:strict
 ```
@@ -79,6 +82,80 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Queue failures are grouped into `slug_failures`, `non_slug_failures`, `indexing_failures`, and `stuck_queue_rows`.
 - Indexing health exposes `outbox_missing`, `provider_failures`, `active_jobs`, and `google_unknown_urls` as separate buckets.
 - `/admin/blog/system` and the sticky blog ops strip now surface this breakdown so operators can distinguish publish, queue, quality, indexing, and cron failures without reading raw DB rows.
+
+## 2026-07-08 Daily Publish Count Reconciliation
+
+- `diagnose:blog-autopublish` now reports both the raw `content_creatives` selected-day count and the reconciled operating count.
+- If the closed-day `blog-daily-summary` and latest `blog-publisher.dailyQuota` agree that the daily target was reached, the diagnosis uses that evidence for `published.selected_day` and exposes the raw count under `published.selected_day_raw`.
+- Do not open a `daily_publish_sla_miss` or `publisher_timeout` bucket from stale raw-count drift when the same-day daily summary and publisher quota show quota reached, preflight passes, and current-day publisher health is healthy.
+- Treat this reconciliation as an operating-report correction only. If raw `content_creatives` drift persists, inspect the source query/date boundary separately instead of marking publishing broken.
+
+## 2026-07-08 Customer Language Quality Hardening
+
+- Recent 16-post backfill now targets `changed=0`, not merely `qualityGateFailed=0`. This prevents fixed posts from being rewritten repeatedly because of harmless storage formatting or non-idempotent repairs.
+- Customer quality now blocks product DB evidence omissions, internal supplier/settlement term leaks, unsupported source-sensitive info guides, generated placeholder residue, duplicate hashtags, broken Markdown URL fragments, repeated answer-first hooks, and mobile paragraph walls.
+- Final repair must normalize the H1 lead to one answer-first paragraph, preserve short answer leads, split only true long paragraphs, and run destination placeholder repair after CTA/FAQ/readability repairs.
+- `src/lib/blog-final-customer-surface.ts` is the shared final customer-surface repair used by both `blog-publisher` and `backfill-blog-quality`; do not add a one-off published-row repair unless the live publisher also calls the same rule.
+- `engine_v2.category_scores` is the operator-facing 100-point scorecard: reader task completion, customer language, naturalness, evidence/faithfulness, sales pressure, and product decision helpfulness for product posts. `engine_score` without per-category pass evidence is not enough to call a post 100점.
+- Live publishing now uses the same scorecard as repair input. `repairBlogEngineCategoryGaps()` re-evaluates and repairs up to three rounds, then writes `generation_meta.engine_category_repair` with before/after score, repaired categories, `repair_rounds`, and repair actions so operators can see whether weak customer-facing categories were fixed before publish instead of only blocked.
+- The final publish gate has no near-pass exception for `ai_naturalness` or `sales_pressure`. If any engine category remains below 100 after repair rounds, the candidate must be repaired, regenerated, or replaced by another publishable candidate rather than published as a weaker article.
+- `evaluateBlogEngineV2()` now follows the same rule directly: 80-99 is not pass, it is repairable evidence. `engine_v2` failures are self-heal eligible when the cause is reader-task completion, customer language, naturalness, sales-pressure control, or product decision helpfulness. Do not self-heal evidence-insufficient, product open-contract, topic-fit, or candidate pre-publish contract blockers.
+- Shared publish preparation and `backfill-blog-quality` also call `repairBlogEngineCategoryGaps()`. If a recent-post dry run shows `changed>0`, run the write audit and indexing worker, then rerun dry-run until `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`.
+- `audit:blog-quality -- --json` exposes `engineCategoryScorecard` with checked count, perfect count, below-100 count, average score, weak category buckets, and samples. Recent-post stabilization now requires `engineCategoryScorecard.below100Count=0` in addition to the existing changed/gate/publish checks.
+- `/admin/blog/system` recomputes and displays the recent-post engine category scorecard, including average category score, 100점 post count, below-100 count, and top weak categories. This keeps the scorecard visible even for older posts whose stored `generation_meta` predates the field.
+- Public render integrity is the final source of truth for tables. If a cost/weather/checklist-style information post only contains pseudo-table prose, the editorial repair path must add a real Markdown decision table and the structure repair path must normalize it before publish or backfill write.
+- Public customer-quality is the final source of truth for reader-facing copy. If public pages contain generated residue, duplicate headings/sections, broken table surfaces, early hard CTA in information posts, unsupported internal claims, or AI-cliche tone, the system is not healthy even when internal DB audits and URL surface checks are green.
+- Verification on 2026-07-08:
+  - `npm run audit:blog-quality -- --limit=16 --json --write` updated affected recent posts and queued indexing jobs.
+  - `npm run run:blog-indexing-worker -- --json --limit=15` processed the queued jobs with `failed=0`.
+  - Final `npm run audit:blog-quality -- --limit=16 --json` returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`.
+  - `npm run type-check` passed.
+  - `npx vitest run src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 68 tests.
+  - `npm run diagnose:blog-autopublish -- --json` reported selected-day `4/4`, publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
+  - After wiring the shared final customer-surface repair into live publishing, `npx vitest run src/lib/blog-final-customer-surface.test.ts src/lib/blog-customer-quality.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-editorial-voice.test.ts` passed 72 tests; `npm run audit:blog-quality -- --limit=16 --json` returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`; `npm run diagnose:blog-autopublish -- --json` remained at publish preflight score `100`, publishable candidates `49`, indexing outbox coverage `100`, and `buckets=[]`.
+  - `npm run audit:blog-quality -- --slug=clark-food --json --write` repaired the pseudo-table public render failure and queued indexing; the follow-up dry run returned `changed=0`, `qualityGateFailed=0`, and `publishBlocked=0`.
+  - `npm run audit:blog-render:browser -- --base=https://www.yeosonam.com --json --timeout-ms=15000 --hard-timeout-ms=90000 --limit=30` passed with `score=100`, including `/blog/clark-food` where `tableExpected=true` and `tableCount=1`.
+  - `npm run audit:blog-search-daily:strict` passed with `strict=100/100`, `fleet=100/100`, and all required checks passed.
+
+## 2026-07-08 Quota Recovery and Generated Canary Evidence
+
+- Daily target recovery must not stop at "blocked". If a candidate fails for deterministic quality issues that the shared repair path can fix, the publisher should retry it immediately and the external cron retry loop can pick it up in the same publishing window.
+- Self-heal quality failures include `length`, `links`, `keyword_density`, `structure_integrity`, `table_integrity`, `render_integrity`, `intent_quality`, `seo_score`, and `engine_v2`. These are repair backlog when they exceed attempts, not hidden terminal noise.
+- Unsafe seeds remain blocked until their source data is fixed: duplicate content, missing context, insufficient evidence, product open-contract failure, topic-fit failure, candidate pre-publish contract failure, and invalid linked drafts.
+- `src/lib/blog-canary-preflight.ts` now labels every selected canary with `quality_contract='customer_surface_100'` and writer-specific expectations, so operators can see whether the canary proves info-guide quality or product-consult quality.
+- `src/lib/blog-canary-generated-quality.ts` checks an actual generated sample across engine score, customer quality, and rendered Markdown integrity. This is the canary to run after changing prompts, product writer structure, final repair, or renderer behavior.
+- Product generated canary must not rely only on recently published rows. If recent rows are all information posts, `src/lib/blog-product-generated-canary.ts` builds a non-publishing dry-run article from the queued `product_id` and the registered `travel_packages` row, then sends it through the same engine/customer/render checks.
+- Generated canary volume follows the daily publish target, capped at five samples per run. With the current 4/day policy, the operating proof should show four generated samples, not only the old three-sample minimum.
+- Product commercial copy is now `product-template-v4`: price/from-city/duration opening, included/excluded, fit/not-fit, risk notes, consult questions, official checks, and bottom CTA. It must use product DB facts only and must not invent hotel names, benefits, scarcity, or confirmed schedules.
+- Customer quality now fails visible mojibake/encoding residue. A body containing broken Korean such as `�`, `媛`, `諛`, or `留` cannot pass as a "near 100" post.
+- Verification on 2026-07-08:
+  - `npx vitest run src/lib/blog-canary-generated-quality.test.ts src/lib/blog-canary-preflight.test.ts` passed 10 tests.
+  - `npx vitest run src/lib/blog-product-generated-canary.test.ts src/lib/blog-canary-generated-quality.test.ts src/lib/blog-product-brief.test.ts src/lib/blog-product-consultant-writer.test.ts src/lib/blog-ops-summary.test.ts src/app/api/cron/blog-daily-summary/route.test.ts src/lib/blog-publish-preflight.test.ts` passed 25 tests.
+  - `npm run diagnose:blog-autopublish -- --json` reported `generated_canary_quality.status=pass` with mixed proof: recent info sample plus product dry-run sample from the active queue and registered package data.
+
+## 2026-07-09 Active vs Historical Failure Evidence
+
+- `diagnose:blog-autopublish` now separates `active_buckets` from `historical_buckets`.
+- Do not hide historical failures such as a missed prior KST day or old publisher timeout evidence. Keep them in `historical_buckets` so the incident remains auditable.
+- Current operations should be judged from `operating_status`, `active_buckets`, today's published count, current-day publisher health, publish preflight blockers, and publishable candidate count.
+- A prior-day `daily_publish_sla_miss` or old `publisher_timeout` becomes historical only when the current KST day has already met the daily target, current-day publisher health is healthy, preflight has no blockers, and candidate shortage is false.
+- Low-time quota recovery now has a fast information fallback path. When a normal AI generation item cannot safely start under `BLOG_PUBLISHER_MIN_ITEM_START_MS`, an information-only candidate may still start down to `BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS` and bypass AI generation with the deterministic info fallback. Product, card-news, and pillar candidates are excluded from this shortcut because they need source-specific evidence.
+- Low-time claim ordering now prioritizes fallback-eligible information rows when the remaining window is below the normal item-start threshold but above the deterministic fallback threshold. This prevents a product/card/pillar claim from consuming the final viable slot when a safe information fallback could still publish and help meet the daily target.
+- If the publisher already claimed rows but stopped before attempting them, `timeBudgetClaimRelease` must return those rows to `queued` with an immediate publish time. Treat stale `generating` rows after a low-time publisher exit as a recovery defect, because they reduce the next run's publishable inventory.
+- Daily summary now escalates `catchup_publishable_candidates_available` when the daily target was missed even though enough publishable candidates were available for the remaining slots. This is a publisher recovery failure, not a topic shortage: force scheduler, then rerun publisher until `remainingAfterRun=0` or a concrete blocker is reported.
+- Product-backed blog eligibility now treats `source_verify_status='blocked'` as a customer-open blocker. A product post must not publish just because mobile proof and scorecard look pass-like when upload/source verification is still blocked.
+- Generated canary quality now includes fleet phrase-drift detection. If individual generated samples pass but repeat the same opening formula, H2 order, or bottom CTA across recent posts, the diagnosis should report a phrase-drift warning/block instead of claiming the prompt set is fully healthy.
+- Verification on 2026-07-09:
+  - `npx vitest run src/lib/blog-autopublish-diagnosis.test.ts src/app/api/cron/blog-daily-summary/route.test.ts` passed.
+  - `npm run type-check` passed.
+  - `npm run diagnose:blog-autopublish -- --json` reported current day `4/4`, publishable candidates `15`, `operating_status=healthy`, `active_buckets=[]`, and historical evidence retained for the 2026-07-08 miss/timeout incident.
+  - `npx vitest run src/lib/blog-publisher-time-budget.test.ts src/lib/product-registration/customer-open-contract.test.ts src/lib/blog-product-evidence-recheck.test.ts` passed.
+  - `npx vitest run src/lib/blog-fleet-phrase-drift.test.ts src/lib/blog-canary-generated-quality.test.ts` passed after adding fleet phrase-drift to generated canary quality.
+  - Follow-up `npm run diagnose:blog-autopublish -- --json` reported `generated_canary_quality.status=pass` with `requested=4`, `checked_count=4`, `pass_count=4`, and `fleet_phrase_drift.status=pass`.
+  - `npm run audit:blog-quality -- --limit=16 --json` returned `changed=0`, `qualityGateFailed=0`, `publishBlocked=0`, and `engineCategoryScorecard.averageScore=100`.
+  - `npx vitest run src/lib/blog-publisher-time-budget.test.ts src/lib/blog-autopublish-diagnosis.test.ts src/app/api/cron/blog-daily-summary/route.test.ts` passed after low-time fallback queue ordering was added.
+  - `npm run recheck:blog-editorial-backlog -- --json` returned `scanned=0`, `requeue=0`, and no schema errors.
+  - `npm run recheck:blog-product-evidence -- --json` returned `scanned=34`, `keep_blocked=34`, `write_recommended=false`; every blocker was `product_status_not_customer_visible:pending_review`.
 
 ## 2026-06-16 Live Ops Evidence
 
@@ -157,9 +234,9 @@ The blog system is complete only when the admin UI can answer these questions wi
 
 ## 2026-06-23 Daily Summary Timing Evidence
 
-- The live `blog-publisher` schedule runs at 12:05, 15:05, 18:05, and 21:05 KST.
+- The live `blog-publisher` schedule runs at 12:05, 15:05, 18:05, 21:05, and 22:05 KST. The 22:05 slot is a same-day catch-up run before the 22:45 daily summary.
 - `blog-daily-summary` previously ran at 09:10 KST, before the daily publish windows, so it was not a true post-publish operating report.
-- The daily summary cron now runs at 22:12 KST (`12 13 * * *` UTC) and summarizes the current KST day after the final publisher slot.
+- The daily summary cron now runs at 22:45 KST (`45 13 * * *` UTC) and summarizes the current KST day after the final 22:05 catch-up publisher slot, the external 22:07 publisher retry window, the normal 22:27 indexing-worker backup, and the final 22:40 indexing drain. The GitHub daily-summary workflow also triggers `blog-publisher?force=true` with the same quota-fill retry contract immediately before the indexing drain, then triggers `blog-indexing-worker?force=true` before calling `blog-daily-summary`. This makes daily summary the last automatic recovery line, not just a passive report.
 - The daily summary uses the global publishing policy target instead of a hardcoded minimum, and duplicate unresolved `admin_alerts` for the same report date/type are suppressed.
 - 2026-06-23 live checks found the public `/blog` page reachable. Supabase REST later recovered enough to verify that 2026-06-23 KST had `published=0`, while `blog_topic_queue` still had due queued rows.
 - Vercel logs showed `blog-publisher` requests reaching the protected `*.vercel.app` deployment URL with HTTP 200 from Deployment Protection instead of the app route. A protection-bypass query reached the app route and returned JSON 401, which confirms the publisher function itself is behind the protection layer.
@@ -170,7 +247,8 @@ The blog system is complete only when the admin UI can answer these questions wi
 ## 2026-07-01 Daily Diagnosis Window Evidence
 
 - `blog-daily-summary` and `scripts/diagnose-blog-autopublish.ts` must use the same closed-day rule.
-- If the current KST time is before 22:12, both tools report the previous KST publishing day. This prevents a midnight or early manual run from flagging the new in-progress day as `publisher_cron_not_observed`.
+- If the current KST time is before 22:45, both tools report the previous KST publishing day. This prevents a midnight or early manual run from flagging the new in-progress day as `publisher_cron_not_observed`.
+- `publisher_cron_not_observed` is only actionable when the selected report day is under the daily target. If the target was already met, a later KST-day cron-health row must not turn a healthy summary into a blocked one.
 - If `--date=YYYY-MM-DD` is passed to `diagnose:blog-autopublish`, the script audits that explicit KST date instead of applying the closed-day default.
 - The diagnosis JSON exposes `report_period_closed`, `used_previous_day_for_pre_close_run`, and `close_minute_kst` so admin/operator tooling can show why a previous day was selected.
 
@@ -185,19 +263,24 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Use `--write` when `write_recommended=true`, especially when `write_reasons` includes `requeue_recovered_product_rows` or `skip_duplicate_product_rows`. Passing product rows are requeued; duplicate product candidates are moved to `skipped` so they stop inflating failed evidence work.
 - If `write_recommended=false` but `metadata_refresh_available=true`, the remaining rows are still blocked by current product evidence. Do not keep rewriting them just to refresh timestamps; fix the linked package proof, then rerun the dry-run.
 - Do not requeue these rows until the linked package has fresh customer mobile proof and its customer-open contract passes.
+- `Blog Product Proof Refresh` (`.github/workflows/blog-mobile-proof-refresh.yml`) runs daily at 10:30 KST, at least 60 minutes before the 11:50 scheduler. It refreshes stale/missing `/packages` + `/lp` mobile proof for active products, then runs `recheck:blog-product-evidence -- --write` so recovered product-backed blog candidates can publish instead of staying blocked.
+- If published product-backed blog posts fail `product_customer_open_contract_failed:mobile_proof stale`, run the same workflow manually or run `npm run prove:hwp-mobile -- --package-ids=... --base=https://www.yeosonam.com --apply-pass-only --continue-on-fail --json`, then rerun `npm run audit:blog-quality -- --limit=300`. Do not archive the posts before attempting proof refresh when the linked product is still active.
 
 ## Vercel Cron Bypass Fallback
 
 - `.github/workflows/blog-external-cron.yml` is the Vercel-Cron-independent scheduler.
 - It calls the custom domain, not the protected `*.vercel.app` deployment URL:
   - `https://www.yeosonam.com/api/cron/blog-scheduler?force=true` at 11:50 KST to replenish publishable queue candidates.
-  - `https://www.yeosonam.com/api/cron/blog-publisher` at 12:07, 15:07, 18:07, and 21:07 KST.
-  - `https://www.yeosonam.com/api/cron/blog-indexing-worker?force=true` at 12:27, 15:27, 18:27, and 21:27 KST to drain pending indexing jobs even when publisher quality gates fail.
-  - `https://www.yeosonam.com/api/cron/blog-daily-summary` at 22:12 KST.
+  - `https://www.yeosonam.com/api/cron/blog-publisher` at 12:07, 15:07, 18:07, 21:07, and 22:07 KST.
+  - `https://www.yeosonam.com/api/cron/blog-indexing-worker?force=true` at 12:27, 15:27, 18:27, 21:27, 22:27, and 22:40 KST to drain pending indexing jobs even when publisher quality gates fail or late publisher retries finish after 22:27.
+  - `https://www.yeosonam.com/api/cron/blog-daily-summary` at 22:45 KST.
 - The workflow requires a GitHub Actions repository secret named `CRON_SECRET`, with the same value as the production Vercel `CRON_SECRET`.
 - Scheduled workflow calls include `force=true`, because blog publishing, scheduling, and daily reporting are critical cron jobs and must not be silently skipped by `DB_RESOURCE_SAVER_MODE`.
 - The workflow treats `blog-publisher` as failed when `remainingBeforeRun > 0` and `published=0`. HTTP 200 is not enough; the run must either publish or surface a concrete failure bucket.
+- The workflow now attempts `blog-publisher` up to four total times when `dailyQuota.remainingAfterRun > 0`, calling `blog-scheduler?force=true` before each retry. After those retries, any remaining daily quota is a failed run, not a healthy partial success.
 - The workflow treats `blog-indexing-worker` as failed when the response reports `failed > 0` or non-empty `errors`. `processed=0` is allowed because no due jobs is a healthy no-op.
+- Before the daily summary endpoint is called, the workflow performs a pre-summary publisher catch-up. It calls `blog-publisher?force=true`, refills with `blog-scheduler?force=true`, and retries up to the same four-attempt contract. It then drains indexing before checking final publisher underfill, publisher/scheduler hard failures, or malformed publisher JSON, so partially recovered posts still enter the indexing worker even when the quota ultimately remains short. If `remainingAfterRun > 0` or the catch-up hard-failed, the summary job fails instead of closing the day as healthy.
+- Before the daily summary endpoint is called, the workflow performs a pre-summary indexing drain. If this drain returns a non-2xx response, `failed > 0`, or a non-empty `errors` array, the summary job fails instead of reporting stale indexing coverage.
 - This bypasses the Vercel Cron delivery problem, but it still depends on the Vercel-hosted app route being reachable through `www.yeosonam.com`.
 - If Vercel hosting/functions are fully down, move the publisher worker itself to an external runtime such as a small VPS, Cloudflare Worker plus queue, or Supabase Edge Function; do not rely on HTTP calls into the Vercel app in that failure mode.
 - `vercel.json` is also aligned to the same daily blog-scheduler and four publisher slots as a redundant path; keep GitHub Actions as the custom-domain fallback when Deployment Protection or Vercel Cron delivery is unreliable.
@@ -234,6 +317,7 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - Daily summary now records the publisher `failure_breakdown` and a reader-facing `next_action`, so repeated duplicate, structure, render, or candidate-shortage failures can be tracked without retrying the same skipped topics.
 - As of 2026-07-02, `diagnose:blog-autopublish`, `blog-daily-summary`, and `/api/admin/blog/ops-summary` expose `editorial_backlog_work`. This groups quarantined quality backlog rows by reader intent, structure/table, keyword use, engine contract, topic fit, SEO metadata, and image evidence so operators can fix the generator contract instead of blindly requeueing old failed rows.
 - As of 2026-07-02, repaired editorial backlog rows can be checked with `npm run recheck:blog-editorial-backlog -- --json`. If the dry-run reports `write_recommended=true`, run `npm run recheck:blog-editorial-backlog -- --json --write` to requeue only rows whose failure signatures are covered by the current repair contract and skip active duplicates before they can consume publisher claims.
+- As of 2026-07-07, `render_integrity` failures caused only by residual Markdown bold markers (`literal_markdown_bold` / `standalone_markdown_bold`) are recoverable after the current editorial repair contract strips decorative bold markers before render checks. Recheck should requeue those rows instead of leaving them in manual review.
 - As of 2026-07-04, image backlog recheck distinguishes image shortage from unsafe image evidence. Rows that failed only with `image_count_below_minimum` may be requeued because the publisher now inserts inline images before quality gates. Rows with missing alt text, malformed URLs, duplicate URLs, or no contextual alt/caption remain blocked until the image selection or metadata source is fixed.
 - As of 2026-07-02, the same backlog recheck also includes product-backed rows when the blocker is a generator contract issue such as `keyword_density` or `engine_v2`. It still keeps product proof failures such as `product_open_contract`, customer-open contract failures, and registration evidence failures blocked until the linked package proof is repaired.
 - As of 2026-07-02, editorial backlog recheck parses named runtime failures instead of collapsing them into `other`. `blog_content_brief_failed:missing_primary_keyword` and stale generation quarantines are recoverable after the current generator contract is deployed. Legacy broad `source='pillar'` rows blocked by `context_missing` are retired to `skipped` instead of being requeued into daily commercial/info publish slots.
@@ -276,7 +360,7 @@ npm run run:blog-indexing-worker -- --json --limit=15
 
 ## 2026-07-03 Current-Day Publisher Failure Evidence
 
-- Closed-day diagnosis intentionally reports the previous KST day before 22:12. This must not hide an active same-day publisher failure.
+- Closed-day diagnosis intentionally reports the previous KST day before 22:45. This must not hide an active same-day publisher failure.
 - `src/lib/blog-current-day-publisher-health.ts` evaluates the latest `blog-publisher` `cron_health` row separately from the closed-day SLA window.
 - If the latest current-day publisher run had remaining quota and published `0`, `diagnose:blog-autopublish` reports `current_day_publisher_failure` and `/admin/blog` marks the contract as failed.
 - A quota-reached no-op with `remaining=0` remains healthy.

@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { createClient } from '@supabase/supabase-js';
 import { extractPriceIR } from '../src/lib/parser/deterministic/price-ir/index.ts';
+import { evaluateEntityMasterCandidatePublicGate } from '../src/lib/entity-master-candidate-public-gate.ts';
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -41,15 +42,27 @@ const repairEmptyItineraryDays = process.argv.includes('--repair-empty-itinerary
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const verifyPublicHtml = process.argv.includes('--verify-public-html');
+const persistReadinessResult = process.argv.includes('--persist-readiness-result');
 const baseArg = process.argv.find(arg => arg.startsWith('--base='))?.split('=')[1]?.trim();
 const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
   .split(',')
   .map(code => code.trim())
   .filter(Boolean);
+const statusFilter = (process.argv.find(arg => arg.startsWith('--status='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(status => status.trim())
+  .filter(Boolean);
 const packageIdFilter = (process.argv.find(arg => arg.startsWith('--package-ids='))?.split('=')[1] ?? '')
   .split(',')
   .map(id => id.trim())
   .filter(Boolean);
+const packageIdAliasFilter = (process.argv.find(arg => arg.startsWith('--ids='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(id => id.trim())
+  .filter(Boolean);
+for (const id of packageIdAliasFilter) {
+  if (!packageIdFilter.includes(id)) packageIdFilter.push(id);
+}
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 function isLocalBaseUrl(value) {
   return /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(String(value || '').trim());
@@ -104,6 +117,7 @@ const supabase = createClient(url, serviceKey, { auth: { persistSession: false }
 
 const PUBLIC_STATUSES = new Set(['approved', 'active', 'published']);
 const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function replaceProductPricesForProduct(productId, rows) {
   const payload = rows.map(row => ({
@@ -306,6 +320,7 @@ function trustScore(row) {
   add(row.hotel_field_semantic_mismatch, 'itinerary.hotel_field_semantic_mismatch', 'critical', 80);
   add(row.exclude_fragment_corruption, 'catalog.exclude_fragment_corruption', 'critical', 70);
   add(row.optional_tour_surcharge_pollution, 'catalog.optional_tour_surcharge_pollution', 'critical', 70);
+  add(row.optional_tour_display_pollution, 'catalog.optional_tour_display_pollution', 'critical', 80);
   add(row.render_failure, 'render.blocked', 'critical', 80);
   add(row.public_html_failure, 'render.public_html_failure', 'critical', 100);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
@@ -316,6 +331,7 @@ function trustScore(row) {
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
   add(row.standard_notices === 0 && row.structured_facts === 0, 'v3.facts_missing', 'medium', 15);
   add(row.entity_attraction_unresolved > 0, 'entity.attraction_unresolved', 'high', Math.min(30, 10 + row.entity_attraction_unresolved * 5));
+  add(row.entity_master_candidate_unresolved > 0, 'entity.master_candidate_unresolved', 'high', Math.min(30, 10 + row.entity_master_candidate_unresolved * 5));
   add(row.entity_shopping_review_needed > 0, 'entity.shopping_review_needed', 'high', Math.min(20, 8 + row.entity_shopping_review_needed * 3));
   add(row.entity_option_review_needed > 0, 'entity.option_review_needed', 'high', Math.min(20, 8 + row.entity_option_review_needed * 3));
   add(row.entity_unknown_customer_visible > 0, 'entity.unknown_customer_visible', 'high', Math.min(25, 10 + row.entity_unknown_customer_visible * 5));
@@ -477,6 +493,28 @@ function optionalTourSurchargePollution(pkg) {
     const text = [tour?.name, tour?.note].filter(Boolean).join(' ');
     if (/(\uCE74\uD2B8\uBE44|\uC2F1\uAE00\s*\uCE74\uD2B8|\uCD94\uAC00\s*(?:\uB429\uB2C8\uB2E4|\uC694\uAE08|\uBE44\uC6A9|\uAE08)|\uB77C\uC6B4\uB529\uC2DC|2B|3B|single\s*cart|cart\s*fee)/i.test(text)) {
       return `optional_tours contains surcharge/fee text: ${text}`;
+    }
+  }
+  return null;
+}
+
+function optionalTourDisplayPollution(pkg) {
+  const tours = Array.isArray(pkg.optional_tours) ? pkg.optional_tours : [];
+  for (const tour of tours) {
+    const text = [tour?.name, tour?.price, tour?.note].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    const compact = text.replace(/\s+/g, '');
+    if (!text) continue;
+    if (/^(?:포\s*함\s*내\s*역|불\s*포\s*함\s*내\s*역|차량|가이드|식사|관광지\s*입장료|여행자\s*보험|특식\s*\d+\s*회|선택\s*관광|노\s*옵션)$/i.test(text)) {
+      return `optional_tours contains supplier table fragment: ${text}`;
+    }
+    if (/^(?:(?:\d{1,2}\s*월\s*)?\d{1,2}(?:\s*,\s*\d{1,2})?\s*일?(?:\s*\[[^\]]+\])?\s*출발|\d{1,2}\s*월\s*\d{1,2})$/i.test(text)) {
+      return `optional_tours contains departure-date fragment: ${text}`;
+    }
+    if (/^\d{1,3}$/.test(compact) || /^\d[\d,]*원?(?:\/?인)?$/.test(compact)) {
+      return `optional_tours contains price fragment: ${text}`;
+    }
+    if (/^(?:왕복\s*)?항공료|유류\s*할증료|현지\s*공항세/i.test(text)) {
+      return `optional_tours contains inclusion fragment: ${text}`;
     }
   }
   return null;
@@ -1157,7 +1195,14 @@ function normalizeTerm(value) {
 }
 
 function isMatchableAttractionRow(attraction) {
-  return !attraction?.category || !['accommodation', 'hotel', 'mrt_product'].includes(String(attraction.category));
+  if (!attraction?.name) return false;
+  if (attraction.is_active === false) return false;
+  if (attraction.customer_publishable !== true) return false;
+  const category = String(attraction.category ?? '').toLowerCase();
+  if (['accommodation', 'hotel', 'mrt_product', 'meal', 'restaurant', 'service'].includes(category)) return false;
+  const badgeType = String(attraction.badge_type ?? '').toLowerCase();
+  if (['hotel', 'restaurant', 'meal', 'golf', 'optional'].includes(badgeType)) return false;
+  return !isBadRegisteredAttractionTermV2(attraction.name);
 }
 
 function isBadRegisteredAttractionTerm(term) {
@@ -1182,6 +1227,7 @@ function isBadRegisteredAttractionTerm(term) {
     '\uC99D\uD3B8',
     '\uAC00\uC774\uB4DC\uBBF8\uD305',
   ]).has(normalized)) return true;
+  if (/(?:\uC138\uD2B8\uBA54\uB274|\uBD84\uC9DC|\uBC18\uC384\uC624|\uBC18\uC138\uC624|\uBBFC\uC18C\uB9E4|\uBC18\uBC14\uC9C0|\uC0E4\uC6CC\uC6A9\uD488|\uC18D\uC637|\uC528\uD074\uB85C|\uC704\uC990\uCEE4\uD53C)/.test(normalized)) return true;
   return /(?:마사지|오일마사지|전통마사지|전신마사지|발마사지|쇼핑센터|\uC808\uB300\uAE08\uC5F0|\uC804\uC790\uB2F4\uBC30|\uC218\uC601\uBCF5|\uC900\uBE44|\uC81C\uACF5|\uAD6C\uC785|\uAC00\uB2A5|\uC774\uC6A9\uAC00\uB2A5|\uBB34\uC81C\uD55C|\uC2DC\uC74C|\uC74C\uB8CC|\uCEE4\uD53C|\uB9E5\uC8FC|\uC815\uADDC|\uC99D\uD3B8|\uD558\uC774\uB514\uB77C\uC624|\uD558\uC774\uB2E4\uB77C\uC624|\uB78D\uC2A4\uD130|\uC81C\uC721\uC30C\uBC25|^or$|\bor\b)/i.test(normalized);
 }
 
@@ -1198,6 +1244,7 @@ function isUnsafeRegisteredAttractionAlias(term, attraction) {
   const normalized = normalizeTerm(term);
   const canonical = normalizeTerm(attraction?.name);
   if (canonical && normalized === canonical) return false;
+  if (/^(?:\uBC15\uBB3C\uAD00|\uC0AC\uC6D0|\uC131\uB2F9|\uC57C\uC2DC\uC7A5|\uC2DC\uC7A5|\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uD574\uBCC0)$/.test(normalized)) return true;
   if (canonical && (normalized.includes(canonical) || canonical.includes(normalized))) return false;
   const hasScope = Boolean(normalizeTerm(attraction?.region) || normalizeTerm(attraction?.country));
   if (!hasScope && normalized.length < 5) return true;
@@ -1235,13 +1282,38 @@ function directTermOccursInSchedule(text, term) {
 
 function hasCustomerVisibleAttractionHint(text) {
   const compact = normalizeTerm(text);
-  return /(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uCCB4\uD5D8|\uC21C\uB840|\uC870\uB9DD|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uAD11\uC7A5|\uC0DD\uAC00|\uAD50\uD68C)/.test(compact);
+  return /(?:\uAD00\uAD11|\uAD00\uB78C|\uBC29\uBB38|\uCCB4\uD5D8|\uB4F1\uC815|\uAC10\uC0C1|\uD22C\uC5B4|\uC1FC|\uC0B0\uCC45|\uC21C\uB840|\uC870\uB9DD|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uAD11\uC7A5|\uC0DD\uAC00|\uAD50\uD68C|\uC131\uB2F9|\uC0AC\uC6D0)/.test(compact);
+}
+
+function isServiceOrMealCenteredAttractionContext(text) {
+  const compact = normalizeTerm(text);
+  if (/(?:\uC911\uC2DD|\uC11D\uC2DD|\uC870\uC2DD|\uCEE4\uD53C|\uC74C\uB8CC|\uC81C\uACF5|\uB808\uC2A4\uD1A0\uB791|\uC2A4\uB178\uD074\uB9C1|\uB0DA\uC2DC|\uC120\uCC29\uC7A5|\uC120\uC0C1)/.test(compact)) {
+    return !/(?:\uAD00\uAD11|\uAD00\uB78C|\uBC29\uBB38|\uD22C\uC5B4|\uC1FC|\uC0AC\uC6D0|\uC131\uB2F9)/.test(compact);
+  }
+  return false;
 }
 
 function isTransferOnlyAttractionContext(text) {
   const compact = normalizeTerm(text);
   if (!/(?:\uB85C\uC774\uB3D9|\uC73C\uB85C\uC774\uB3D9|\uC774\uB3D9|\uC18C\uC694)/.test(compact)) return false;
   return !hasCustomerVisibleAttractionHint(text);
+}
+
+function isNonAttractionScheduleKind(item) {
+  const values = [item?.type, item?.entity_kind]
+    .map(value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, '_'))
+    .filter(Boolean);
+  return values.some(value => [
+    'flight',
+    'hotel',
+    'meal',
+    'transfer',
+    'shopping',
+    'optional_tour',
+    'notice',
+    'free_time',
+    'price_noise',
+  ].includes(value));
 }
 
 function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
@@ -1256,10 +1328,11 @@ function unlinkedRegisteredAttractionTerm(pkg, attractionTerms) {
       if (!activity) continue;
       if (/^\d{1,2}[./-]\d{1,2}(?:\s*\([^)]+\))?$/.test(activity)) continue;
       if (/(?:추천옵션|선택\s*관광|\$\s*\d+|USD\s*\d+|\/\s*인)/i.test(activity)) continue;
-      const type = String(item?.type ?? item?.entity_kind ?? '').toLowerCase();
-      if (['flight', 'hotel', 'meal', 'transfer', 'shopping', 'optional_tour', 'notice', 'free_time', 'price_noise'].includes(type)) continue;
+      if (isNonAttractionScheduleKind(item)) continue;
       const itemText = [activity, item?.note].filter(Boolean).join(' ');
       const context = [itemText, dayContext].filter(Boolean).join(' ');
+      if (!hasCustomerVisibleAttractionHint(context)) continue;
+      if (isServiceOrMealCenteredAttractionContext(context)) continue;
       if (isTransferOnlyAttractionContext(context)) continue;
       for (const term of attractionTerms) {
         if (!destinationAllowsAttraction(pkg.destination, term.attraction, context)) continue;
@@ -1384,6 +1457,43 @@ function gateStatus(draft, lookupFailed = false) {
   return draft?.gate_result?.status ?? draft?.status ?? 'none';
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+const STALE_RESOLVABLE_V3_CHECK_IDS = new Set([
+  'attraction_unmatched_queue_clear',
+  'option_review_queue_clear',
+  'entity_attraction_unresolved_clear',
+  'entity_shopping_review_clear',
+  'entity_option_review_clear',
+  'entity_unknown_customer_visible_clear',
+]);
+
+function isFailedV3GateCheck(check) {
+  return check?.status === 'fail' || check?.passed === false;
+}
+
+function draftGateFailedCheckCount(draft) {
+  return asArray(draft?.gate_result?.checks).filter(isFailedV3GateCheck).length;
+}
+
+function draftGateBlockingFailedCheckCount(draft) {
+  return asArray(draft?.gate_result?.checks).filter(check =>
+    isFailedV3GateCheck(check) && !STALE_RESOLVABLE_V3_CHECK_IDS.has(String(check?.id ?? ''))
+  ).length;
+}
+
+function draftGateReasonCount(draft) {
+  const gate = draft?.gate_result;
+  if (!gate || typeof gate !== 'object') return 0;
+  return asArray(gate.reasons).length
+    + asArray(gate.failedChecks).length
+    + asArray(gate.failed_checks).length
+    + asArray(gate.blockers).length
+    + asArray(gate.errors).length;
+}
+
 function draftAttractionUnmatchedCount(draft) {
   const entityCount = Number(draft?.match_summary?.entity_summary?.attraction_unresolved_count);
   if (Number.isFinite(entityCount) && entityCount >= 0) return entityCount;
@@ -1480,14 +1590,23 @@ async function verifyPublicHtmlSurface(row) {
   return failures.length > 0 ? failures.join(' | ') : null;
 }
 
-function hasNeedsHumanSourceReview(row) {
+function uploadToOpenAutopilot(row) {
   const report = row.audit_report && typeof row.audit_report === 'object' ? row.audit_report : {};
-  const autopilot = report.upload_to_open_autopilot && typeof report.upload_to_open_autopilot === 'object'
+  return report.upload_to_open_autopilot && typeof report.upload_to_open_autopilot === 'object'
     ? report.upload_to_open_autopilot
     : {};
-  const repairFirstSummary = autopilot.repair_first_summary && typeof autopilot.repair_first_summary === 'object'
+}
+
+function repairFirstSummaryFor(row) {
+  const autopilot = uploadToOpenAutopilot(row);
+  return autopilot.repair_first_summary && typeof autopilot.repair_first_summary === 'object'
     ? autopilot.repair_first_summary
     : {};
+}
+
+function hasNeedsReviewState(row) {
+  const autopilot = uploadToOpenAutopilot(row);
+  const repairFirstSummary = repairFirstSummaryFor(row);
   return autopilot.final_state === 'needs_human_source_review'
     || autopilot.status === 'needs_human_source_review'
     || autopilot.openabilityState === 'needs_human_source_review'
@@ -1495,16 +1614,102 @@ function hasNeedsHumanSourceReview(row) {
     || row.audit === 'needs_human_source_review';
 }
 
+function repairSummaryList(repairFirstSummary, key) {
+  return Array.isArray(repairFirstSummary?.[key]) ? repairFirstSummary[key] : [];
+}
+
+function isExpiredSourceOffer(row) {
+  const repairFirstSummary = repairFirstSummaryFor(row);
+  const unresolvedReasons = repairSummaryList(repairFirstSummary, 'unresolved_reasons');
+  const unresolvedCategories = repairSummaryList(repairFirstSummary, 'unresolved_categories');
+  const repairsApplied = repairSummaryList(repairFirstSummary, 'repairs_applied');
+  return unresolvedReasons.some(reason => /ticketing_deadline_expired/i.test(String(reason)))
+    || unresolvedCategories.includes('possibly_unusable_source')
+    || repairsApplied.some(repair => /ticketing_deadline:expired_source_offer_archived/i.test(String(repair)));
+}
+
+function hasNeedsHumanSourceReview(row) {
+  if (!hasNeedsReviewState(row) || isExpiredSourceOffer(row)) return false;
+  const repairFirstSummary = repairFirstSummaryFor(row);
+  return repairFirstSummary.human_source_review_required !== false;
+}
+
+function hasNonHumanRepairReview(row) {
+  return hasNeedsReviewState(row)
+    && !isExpiredSourceOffer(row)
+    && !hasNeedsHumanSourceReview(row);
+}
+
+function hasNonPublicReviewHold(row) {
+  return !row.public && (
+    hasNeedsHumanSourceReview(row)
+    || hasNonHumanRepairReview(row)
+    || isExpiredSourceOffer(row)
+  );
+}
+
+function reviewHoldWarning(row) {
+  if (isExpiredSourceOffer(row)) return 'source_offer_expired_nonblocking';
+  if (hasNonHumanRepairReview(row)) return 'nonpublic_repair_review_required';
+  return 'needs_human_source_review';
+}
+
 function isBlockingV3NeedsReview(row) {
-  return row.v3 === 'needs_review' && (row.public || !hasNeedsHumanSourceReview(row));
+  return row.v3 === 'needs_review'
+    && !isStaleResolvedV3NeedsReview(row)
+    && (row.public || !hasNonPublicReviewHold(row));
+}
+
+function hasCurrentReadinessBlocker(row) {
+  return Boolean(row.raw_notice_leak_risk)
+    || Boolean(row.code_unk)
+    || (row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0)
+    || Boolean(row.price_storage_mismatch)
+    || Boolean(row.customer_price_option_mismatch)
+    || Boolean(row.product_ledger_price_mismatch)
+    || Boolean(row.price_tiers_mismatch)
+    || Boolean(row.price_source_evidence_mismatch)
+    || Boolean(row.attraction_context_mismatch)
+    || Boolean(row.attraction_unlinked_registered)
+    || Boolean(row.attraction_description_missing)
+    || Boolean(row.itinerary_semantic_mismatch)
+    || Boolean(row.duration_trip_style_mismatch)
+    || Boolean(row.hotel_field_semantic_mismatch)
+    || Boolean(row.exclude_fragment_corruption)
+    || Boolean(row.optional_tour_surcharge_pollution)
+    || Boolean(row.optional_tour_display_pollution)
+    || Boolean(row.render_failure)
+    || Boolean(row.public_html_failure)
+    || Boolean(row.itinerary_policy_leak)
+    || row.itinerary_days === 0
+    || row.v3 === 'lookup_failed'
+    || row.v3 === 'blocked';
+}
+
+function isStaleResolvedV3NeedsReview(row) {
+  return row.v3 === 'needs_review'
+    && !row.public
+    && !hasNonPublicReviewHold(row)
+    && !row.draft_lookup_failed
+    && !row.unmatched_lookup_failed
+    && row.v3_gate_blocking_failed_check_count === 0
+    && row.v3_gate_reason_count === 0
+    && row.unmatched_activities === 0
+    && row.entity_attraction_unresolved === 0
+    && row.entity_master_candidate_unresolved === 0
+    && row.entity_shopping_review_needed === 0
+    && row.entity_option_review_needed === 0
+    && row.entity_unknown_customer_visible === 0
+    && !hasCurrentReadinessBlocker(row);
 }
 
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
-  const nonPublicSourceReview = !row.public && hasNeedsHumanSourceReview(row);
-  const addHumanReviewWarning = () => {
-    if (!warnings.includes('needs_human_source_review')) warnings.push('needs_human_source_review');
+  const nonPublicReviewHold = hasNonPublicReviewHold(row);
+  const addReviewHoldWarning = () => {
+    const warning = reviewHoldWarning(row);
+    if (!warnings.includes(warning)) warnings.push(warning);
   };
   const hardV3Blocked = row.v3 === 'blocked' && (
     row.entity_attraction_unresolved > 0
@@ -1521,7 +1726,7 @@ function readinessFor(row) {
   if (row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
   if (row.price_tiers_mismatch) failures.push('price_tiers_mismatch');
   if (row.price_source_evidence_mismatch) {
-    if (nonPublicSourceReview) warnings.push('needs_human_source_review');
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('price_source_evidence_mismatch');
   }
   if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
@@ -1532,33 +1737,39 @@ function readinessFor(row) {
   if (row.hotel_field_semantic_mismatch) failures.push('hotel_field_semantic_mismatch');
   if (row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
   if (row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
+  if (row.optional_tour_display_pollution) failures.push('optional_tour_display_pollution');
   if (row.render_failure) failures.push('render_blocked');
   if (row.public_html_failure) failures.push('public_html_failure');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
   if (hardV3Blocked) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('v3_blocked');
   }
   if (row.entity_attraction_unresolved > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_attraction_unresolved');
   }
+  if (row.entity_master_candidate_unresolved > 0) {
+    if (nonPublicReviewHold) addReviewHoldWarning();
+    else failures.push('entity_master_candidate_unresolved');
+  }
   if (row.entity_shopping_review_needed > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_shopping_review_needed');
   }
   if (row.entity_option_review_needed > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_option_review_needed');
   }
   if (row.entity_unknown_customer_visible > 0) {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
     else failures.push('entity_unknown_customer_visible');
   }
   if (row.v3 === 'needs_review') {
-    if (nonPublicSourceReview) addHumanReviewWarning();
+    if (nonPublicReviewHold) addReviewHoldWarning();
+    else if (isStaleResolvedV3NeedsReview(row)) warnings.push('v3_stale_needs_review_nonblocking');
     else warnings.push('v3_needs_review');
   }
   if (row.v3 === 'blocked' && !hardV3Blocked) warnings.push('v3_blocked_nonblocking');
@@ -1581,6 +1792,9 @@ let packageQuery = supabase
 
 if (codeFilter.length > 0) {
   packageQuery = packageQuery.in('internal_code', codeFilter);
+}
+if (statusFilter.length > 0) {
+  packageQuery = packageQuery.in('status', statusFilter);
 }
 if (packageIdFilter.length > 0) {
   packageQuery = packageQuery.in('id', packageIdFilter);
@@ -1607,17 +1821,24 @@ const scopedPackageRows = allPackageRows
   .filter(pkg => includeArchived || !isArchivedStatus(pkg.status))
   .filter(pkg => !publicOnly || isPublicStatus(pkg.status));
 const scopedPackageIds = new Set(scopedPackageRows.map(pkg => pkg.id));
-const packageIds = allPackageRows.map(pkg => pkg.id);
-const internalCodes = allPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
+const packageIds = scopedPackageRows.map(pkg => pkg.id);
+const internalCodes = scopedPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
 const auditDataErrors = [];
 const attractionIds = new Set();
-for (const pkg of allPackageRows) {
+const malformedAttractionIds = new Set();
+for (const pkg of scopedPackageRows) {
   const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
   for (const day of days) {
     const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
     for (const item of schedule) {
       const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids : [];
-      for (const id of ids) if (typeof id === 'string' && id) attractionIds.add(id);
+      for (const id of ids) {
+        if (typeof id !== 'string') continue;
+        const trimmed = id.trim();
+        if (!trimmed) continue;
+        if (UUID_RE.test(trimmed)) attractionIds.add(trimmed);
+        else malformedAttractionIds.add(trimmed);
+      }
     }
   }
 }
@@ -1648,8 +1869,9 @@ for (let from = 0; ; from += 1000) {
     `active attractions ${from}`,
     () => supabase
       .from('attractions')
-      .select('id,name,aliases,region,country,category')
+      .select('id,name,aliases,region,country,category,badge_type,is_active,customer_publishable,mrt_gid')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .range(from, from + 999),
   );
   if (activeAttractionError) {
@@ -1676,8 +1898,10 @@ const productPriceRowsByCode = new Map();
 const productRowsByCode = new Map();
 const unmatchedCountMap = new Map();
 const unmatchedEntityMap = new Map();
+const entityCandidateUnresolvedMap = new Map();
 const priceRowsLookupFailedCodes = new Set();
 const draftLookupFailedPackageIds = new Set();
+const unmatchedLookupFailedPackageIds = new Set();
 let unmatchedScopeReady = false;
 let unmatchedScopeError = null;
 
@@ -1769,7 +1993,48 @@ if (packageIds.length > 0) {
         if (kind === 'unknown') current.unknown_customer_visible++;
         unmatchedEntityMap.set(item.package_id, current);
       }
+    } else {
+      const message = unmatchedError.message ?? String(unmatchedError);
+      for (const packageId of chunk) unmatchedLookupFailedPackageIds.add(packageId);
+      auditDataErrors.push({ scope: 'unmatched_activities', package_ids: chunk, message });
     }
+  }
+
+  const scopedPackageIdSet = new Set(packageIds);
+  for (let from = 0; ; from += 1000) {
+    const { data: candidateRows, error: candidateError } = await runSupabaseQuery(
+      `entity master candidates ${from}`,
+      () => supabase
+        .from('entity_master_candidates')
+        .select('candidate_key, category, promotion_status, auto_action, auto_verification_status, source_context')
+        .range(from, from + 999),
+    );
+    if (candidateError) {
+      auditDataErrors.push({ scope: 'entity_master_candidates', message: candidateError.message ?? String(candidateError) });
+      break;
+    }
+    for (const candidate of candidateRows ?? []) {
+      const gateDecision = evaluateEntityMasterCandidatePublicGate(candidate);
+      if (!gateDecision.unresolved) continue;
+      const packageIdsFromCandidate = Array.isArray(candidate.source_context?.package_ids)
+        ? [...new Set(candidate.source_context.package_ids)]
+        : [];
+      for (const packageId of packageIdsFromCandidate) {
+        if (!scopedPackageIdSet.has(packageId)) continue;
+        const current = entityCandidateUnresolvedMap.get(packageId) ?? {
+          total: 0,
+          attraction: 0,
+          needs_review: 0,
+          hard: 0,
+        };
+        current.total++;
+        if (gateDecision.warning && candidate.category === 'attraction') current.attraction++;
+        if (candidate.promotion_status === 'needs_review') current.needs_review++;
+        if (gateDecision.hardBlocker) current.hard++;
+        entityCandidateUnresolvedMap.set(packageId, current);
+      }
+    }
+    if (!candidateRows || candidateRows.length < 1000) break;
   }
 }
 
@@ -2273,8 +2538,10 @@ let rows = allPackageRows
   .map(pkg => {
     const draft = draftMap.get(pkg.id);
     const draftLookupFailed = draftLookupFailedPackageIds.has(pkg.id);
+    const unmatchedLookupFailed = unmatchedLookupFailedPackageIds.has(pkg.id);
     const draftEntities = draftEntitySummary(draft);
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
+    const entityCandidateEntities = entityCandidateUnresolvedMap.get(pkg.id) ?? {};
     const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
     const row = {
       id: pkg.id,
@@ -2288,13 +2555,22 @@ let rows = allPackageRows
       v3: gateStatus(draft, draftLookupFailed),
       draft_id: draft?.id ?? null,
       draft_lookup_failed: draftLookupFailed,
+      unmatched_lookup_failed: unmatchedLookupFailed,
+      v3_gate_failed_check_count: draftGateFailedCheckCount(draft),
+      v3_gate_blocking_failed_check_count: draftGateBlockingFailedCheckCount(draft),
+      v3_gate_reason_count: draftGateReasonCount(draft),
       price_dates: Array.isArray(pkg.price_dates) ? pkg.price_dates.length : 0,
       price_tiers: Array.isArray(pkg.price_tiers) ? pkg.price_tiers.length : 0,
       product_prices: priceRowsLookupFailed ? null : priceCountMap.get(pkg.internal_code) ?? 0,
       itinerary_days: countItineraryDays(pkg),
       standard_notices: countLedgerRows(draft, 'standard_notices'),
       structured_facts: countLedgerRows(draft, 'structured_facts'),
-      unmatched_activities: unmatchedCountMap.get(pkg.id) ?? draftAttractionUnmatchedCount(draft) ?? 0,
+      // Live unmatched_activities is the authoritative current queue. Older V3
+      // drafts can keep stale unmatched counts after the queue has been resolved,
+      // so only fall back to draft counts when the live queue lookup itself failed.
+      unmatched_activities: unmatchedLookupFailed
+        ? (draftAttractionUnmatchedCount(draft) ?? 0)
+        : (unmatchedCountMap.get(pkg.id) ?? 0),
       // The live unmatched queue is the canonical customer-open blocker after
       // deterministic repairs. Older V3 drafts can keep stale review counts after the
       // queue has already resolved rows, so use the current pending queue for blockers.
@@ -2304,6 +2580,9 @@ let rows = allPackageRows
       entity_shopping_review_needed: queueEntities.shopping_review_needed || 0,
       entity_option_review_needed: queueEntities.option_review_needed || 0,
       entity_unknown_customer_visible: draft && !draftLookupFailed ? draftEntities.unknown_customer_visible : queueEntities.unknown_customer_visible || 0,
+      entity_master_candidate_unresolved: entityCandidateEntities.hard || 0,
+      entity_master_candidate_attraction_unresolved: entityCandidateEntities.attraction || 0,
+      entity_master_candidate_needs_review: entityCandidateEntities.needs_review || 0,
       entity_noise_removed: draftEntities.noise_removed,
       entity_meal_structured: draftEntities.meal_structured,
       entity_transfer_structured: draftEntities.transfer_structured,
@@ -2323,6 +2602,7 @@ let rows = allPackageRows
       hotel_field_semantic_mismatch: hotelFieldSemanticMismatch(pkg),
       exclude_fragment_corruption: excludeFragmentCorruption(pkg),
       optional_tour_surcharge_pollution: optionalTourSurchargePollution(pkg),
+      optional_tour_display_pollution: optionalTourDisplayPollution(pkg),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
     };
@@ -2337,6 +2617,51 @@ if (verifyPublicHtml) {
     verifiedRows.push({ ...nextRow, readiness: readinessFor(nextRow), trust_score: trustScore(nextRow) });
   }
   rows = verifiedRows;
+}
+
+const readinessPersistence = [];
+if (persistReadinessResult) {
+  const checkedAt = new Date().toISOString();
+  for (const row of rows) {
+    const previousReport = row.audit_report && typeof row.audit_report === 'object' && !Array.isArray(row.audit_report)
+      ? row.audit_report
+      : {};
+    const nextAuditReport = {
+      ...previousReport,
+      mobile_landing_readiness: {
+        source: 'audit-product-mobile-landing-readiness',
+        checked_at: checkedAt,
+        status: row.readiness.status,
+        failures: row.readiness.failures,
+        warnings: row.readiness.warnings,
+        trust_score: row.trust_score,
+        public_html_failure: row.public_html_failure,
+        entity_counts: {
+          unmatched_activities: row.unmatched_activities,
+          attraction_unresolved: row.entity_attraction_unresolved,
+          shopping_review_needed: row.entity_shopping_review_needed,
+          option_review_needed: row.entity_option_review_needed,
+          unknown_customer_visible: row.entity_unknown_customer_visible,
+        },
+        malformed_attraction_ids_skipped: malformedAttractionIds.size,
+      },
+    };
+    const { error } = await supabase
+      .from('travel_packages')
+      .update({
+        audit_report: nextAuditReport,
+        audit_checked_at: checkedAt,
+      })
+      .eq('id', row.id);
+    readinessPersistence.push({
+      id: row.id,
+      code: row.code,
+      status: row.readiness.status,
+      ok: !error,
+      error: error?.message ?? null,
+    });
+    if (!error) row.audit_report = nextAuditReport;
+  }
 }
 
 const publicRows = rows.filter(row => row.public);
@@ -2502,10 +2827,17 @@ const summary = {
     row.readiness.failures.includes('price_source_evidence_mismatch')).length,
   needs_human_source_review: rows.filter(row =>
     row.readiness.warnings.includes('needs_human_source_review')).length,
+  nonpublic_repair_review_required: rows.filter(row =>
+    row.readiness.warnings.includes('nonpublic_repair_review_required')).length,
+  source_offer_expired_nonblocking: rows.filter(row =>
+    row.readiness.warnings.includes('source_offer_expired_nonblocking')).length,
   attraction_context_mismatch: rows.filter(row => row.attraction_context_mismatch).length,
   attraction_unlinked_registered: rows.filter(row => row.attraction_unlinked_registered).length,
   attraction_description_missing: rows.filter(row => row.attraction_description_missing).length,
   itinerary_semantic_mismatch: rows.filter(row => row.itinerary_semantic_mismatch).length,
+  exclude_fragment_corruption: rows.filter(row => row.exclude_fragment_corruption).length,
+  optional_tour_surcharge_pollution: rows.filter(row => row.optional_tour_surcharge_pollution).length,
+  optional_tour_display_pollution: rows.filter(row => row.optional_tour_display_pollution).length,
   render_blocked: rows.filter(row => row.render_failure).length,
   public_html_failure: rows.filter(row => row.public_html_failure).length,
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
@@ -2514,9 +2846,11 @@ const summary = {
   v3_blocked: rows.filter(row => row.readiness.failures.includes('v3_blocked')).length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   v3_needs_review_blocking: rows.filter(row => isBlockingV3NeedsReview(row)).length,
+  v3_stale_resolved_needs_review: rows.filter(row => isStaleResolvedV3NeedsReview(row)).length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
   entity_attraction_unresolved_packages: rows.filter(row => row.entity_attraction_unresolved > 0).length,
+  entity_master_candidate_unresolved_packages: rows.filter(row => row.entity_master_candidate_unresolved > 0).length,
   entity_shopping_review_packages: rows.filter(row => row.entity_shopping_review_needed > 0).length,
   entity_option_review_packages: rows.filter(row => row.entity_option_review_needed > 0).length,
   entity_unknown_customer_visible_packages: rows.filter(row => row.entity_unknown_customer_visible > 0).length,
@@ -2528,6 +2862,10 @@ const summary = {
   schema_failures: unmatchedScopeReady ? 0 : 1,
   data_query_failures: blockingAuditDataErrors.length,
   nonblocking_data_query_failures: auditDataErrors.length - blockingAuditDataErrors.length,
+  malformed_attraction_ids_skipped: malformedAttractionIds.size,
+  persist_readiness_result: persistReadinessResult,
+  persisted_readiness_results: readinessPersistence.filter(row => row.ok).length,
+  readiness_persistence_errors: readinessPersistence.filter(row => !row.ok).length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
   repaired_price_source_evidence: priceSourceEvidenceRepairs.filter(repair => repair.ok).length,
   repaired_price_tiers: priceTierRepairs.filter(repair => repair.ok).length,
@@ -2560,6 +2898,7 @@ const report = {
     ...excludeFragmentRepairs.map(repair => ({ ...repair, type: 'exclude_fragments' })),
     ...durationTripStyleRepairs.map(repair => ({ ...repair, type: 'duration_trip_style' })),
   ],
+  readiness_persistence: readinessPersistence,
   demotions,
   archives,
   failed: failedRows.map(row => ({
@@ -2581,7 +2920,16 @@ const report = {
     render_failure: row.render_failure,
     public_html_failure: row.public_html_failure,
   })),
-  warnings: warnedRows.slice(0, 50).map(row => ({ id: row.id, code: row.code, title: row.title, status: row.status, warnings: row.readiness.warnings })),
+  warnings: warnedRows.slice(0, 50).map(row => ({
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    status: row.status,
+    warnings: row.readiness.warnings,
+    v3_gate_failed_check_count: row.v3_gate_failed_check_count,
+    v3_gate_blocking_failed_check_count: row.v3_gate_blocking_failed_check_count,
+    v3_gate_reason_count: row.v3_gate_reason_count,
+  })),
   rows,
 };
 

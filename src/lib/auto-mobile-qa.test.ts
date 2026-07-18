@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { analyzeMobileHtml, buildMobileQaImprovementEvent, type ExpectedRender } from './auto-mobile-qa';
+import {
+  analyzeMobileHtml,
+  buildAttractionMatchLowMessage,
+  buildMobileBrowserProofPayload,
+  buildMobileQaImprovementEvent,
+  type ExpectedRender,
+} from './auto-mobile-qa';
+import { evaluateCustomerMobileProof } from './customer-mobile-proof';
 import { hashSourceText } from './product-registration/improvement-ledger';
 
 const expectedRender: ExpectedRender = {
@@ -17,12 +24,57 @@ const expectedRender: ExpectedRender = {
   internalCode: 'PUS-ETC-FSZ-03-0016',
   rawText: null,
   updatedAt: '2026-06-22T00:00:00.000Z',
+  currentPackageRevision: 7,
+  proofPackageRevision: 8,
+  proofPublicSnapshotHash: 'snapshot-hash',
+  proofAppBuildId: 'build-id',
   lastDayNumber: 3,
   lastDayArrivalCity: '부산',
   homeCity: '부산',
 };
 
 describe('auto mobile QA learning ledger bridge', () => {
+  it('stores proof revision and snapshot hash on both the proof and each surface result', () => {
+    const proof = buildMobileBrowserProofPayload({
+      status: 'pass',
+      checkedAt: '2026-07-10T00:00:00.000Z',
+      packageUpdatedAt: '2026-07-09T00:00:00.000Z',
+      packageRevision: 8,
+      publicSnapshotHash: 'snapshot-hash',
+      appBuildId: 'build-id',
+      surfaces: [{ surface: 'packages' }, { surface: 'lp' }],
+      surfaceProofResults: [
+        {
+          surface: 'packages',
+          status: 'pass',
+          page_url: 'https://example.com/packages/pkg',
+          screen_hash: 'packages-screen',
+          customer_visible_hash: 'packages-visible',
+        },
+        {
+          surface: 'lp',
+          status: 'pass',
+          page_url: 'https://example.com/lp/pkg',
+          screen_hash: 'lp-screen',
+          customer_visible_hash: 'lp-visible',
+        },
+      ],
+    });
+
+    expect(proof).toEqual(expect.objectContaining({
+      source: 'auto-mobile-fetch-proof',
+      package_revision: 8,
+      public_snapshot_hash: 'snapshot-hash',
+      app_build_id: 'build-id',
+    }));
+    expect(proof.surface_results).toEqual([
+      expect.objectContaining({ surface: 'packages', public_snapshot_hash: 'snapshot-hash' }),
+      expect.objectContaining({ surface: 'lp', public_snapshot_hash: 'snapshot-hash' }),
+    ]);
+    expect(evaluateCustomerMobileProof({ auditReport: { mobile_browser_proof: proof } }).reason)
+      .toBe('actual customer mobile browser proof source is auto-mobile-fetch-proof');
+  });
+
   it('blocks an actual customer package page application error from becoming mobile proof', () => {
     const incidents = analyzeMobileHtml(
       '<html><body>Application error: a client-side exception has occurred while loading www.yeosonam.com</body></html>',
@@ -75,6 +127,30 @@ describe('auto mobile QA learning ledger bridge', () => {
     }));
   });
 
+  it('does not fail final arrival proof when a later CTA repeats the departure airport', () => {
+    const incidents = analyzeMobileHtml(
+      [
+        '<html><body>',
+        '\uD310\uB9E4\uAC00 \uC5EC\uD589 \uC77C\uC815 \uC608\uC57D \uBB38\uC758',
+        'DAY 3 \uCCAD\uB3C4 \uAD6D\uC81C\uACF5\uD56D \uCD9C\uBC1C \uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uB3C4\uCC29',
+        '\uBD80\uC0B0/\uAE40\uD574 \uCD9C\uBC1C \uC0C1\uB2F4 CTA',
+        '<img src="https://images.pexels.com/photo.jpg" />',
+        '</body></html>',
+      ].join(' '),
+      {
+        ...expectedRender,
+        lastDayNumber: 3,
+        lastDayArrivalCity: '\uAE40\uD574',
+        homeCity: '\uBD80\uC0B0/\uAE40\uD574',
+      },
+      'packages',
+    );
+
+    expect(incidents).not.toContainEqual(expect.objectContaining({
+      id: 'mobile_final_arrival_rendered_as_departure',
+    }));
+  });
+
   it('does not treat hidden UUID fragments as customer-visible phone leaks', () => {
     const incidents = analyzeMobileHtml(
       '<html><head><script>{"attraction_id":"8c01-4561-9921-abcdef"}</script></head><body><h1>고객 화면</h1></body></html>',
@@ -97,6 +173,25 @@ describe('auto mobile QA learning ledger bridge', () => {
     expect(incidents).not.toContainEqual(expect.objectContaining({
       id: 'mobile_flight_card_missing',
     }));
+  });
+
+  it('explains attraction blockers as publish-approval work when masters already exist', () => {
+    const message = buildAttractionMatchLowMessage({
+      matchedCount: 0,
+      denom: 5,
+      unmatchedNames: ['단하산', '동천선경', '소선령', '대불사', '망산'],
+      attractionMasters: [
+        { name: '단하산', is_active: true, customer_publishable: false },
+        { name: '동천선경', is_active: true, customer_publishable: false },
+        { name: '소선령', is_active: true, customer_publishable: false },
+        { name: '대불사', is_active: true, customer_publishable: false },
+        { name: '망산', is_active: true, customer_publishable: false },
+      ],
+    });
+
+    expect(message).toContain('고객 공개 승인 전');
+    expect(message).toContain('공개 승인/사진/설명 검수 필요');
+    expect(message).not.toContain('시드');
   });
 
   it('accepts rendered hotel alternatives when the full combined source string is split on screen', () => {
@@ -140,6 +235,10 @@ describe('auto mobile QA learning ledger bridge', () => {
         shortCode: 'TWN-001',
         internalCode: 'PUS-BA-TPE-05-0001',
         rawText: '원문 가격표와 일정표',
+        currentPackageRevision: 7,
+        proofPackageRevision: 8,
+        proofPublicSnapshotHash: 'snapshot-hash',
+        proofAppBuildId: 'build-id',
         lastDayNumber: 4,
         lastDayArrivalCity: '부산',
         homeCity: '부산',

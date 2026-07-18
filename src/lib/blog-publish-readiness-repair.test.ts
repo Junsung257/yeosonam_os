@@ -3,7 +3,7 @@ import { checkLength, checkLinks } from './blog-quality-gate';
 import { repairPublishReadiness } from './blog-publish-readiness-repair';
 
 describe('blog publish readiness repair', () => {
-  it('adds support and internal CTA to thin info posts before publish gates', () => {
+  it('adds neutral support without body CTA when the renderer owns informational CTA', () => {
     const source = [
       '# 세부 쇼핑 예산 선물 리스트와 면세점 체크',
       '',
@@ -29,19 +29,17 @@ describe('blog publish readiness repair', () => {
     const result = repairPublishReadiness({
       markdown: source,
       blogType: 'info',
+      hasRuntimeInformationalCta: true,
       slug: 'cebu-shopping-budget-checklist',
       destination: '세부',
       topic: '세부 쇼핑 예산 선물 리스트와 면세점 체크',
       primaryKeyword: '세부 쇼핑 예산',
     });
 
-    expect(result.changes).toEqual(expect.arrayContaining([
-      'appended_publish_readiness_support',
-      'appended_standard_internal_cta',
-    ]));
+    expect(result.changes).toEqual(['appended_publish_readiness_support']);
     expect(checkLength(result.markdown, 'info').passed).toBe(true);
-    expect(checkLinks(result.markdown).passed).toBe(true);
-    expect(result.markdown).toContain('## 문의 전 최종 확인');
-    expect(result.markdown).toContain('/packages?');
+    expect(checkLinks(result.markdown).passed).toBe(false);
+    expect(result.markdown).toContain('## 출발 전 다시 확인할 기준');
+    expect(result.markdown).not.toContain('/packages?');
   });
 });

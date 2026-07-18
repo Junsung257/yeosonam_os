@@ -11,6 +11,17 @@ import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import {
+  getPublicDestinationQueryNames,
+  mergePublicDestinationStats,
+  type ActiveDestinationLike,
+} from '@/lib/public-destinations';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -52,36 +63,11 @@ function getPositiveNumber(value: unknown): number | null {
   return number != null && number > 0 ? number : null;
 }
 
-function getNonNegativeInteger(value: unknown): number {
-  const number = getFiniteNumber(value);
-  return number != null ? Math.max(0, Math.round(number)) : 0;
-}
-
-function getNullableNonNegativeInteger(value: unknown): number | null {
-  if (value == null) return null;
-  return getNonNegativeInteger(value);
-}
-
-function normalizeActiveDestination(row: unknown): RegionDestination | null {
-  if (!row || typeof row !== 'object') return null;
-
-  const record = row as Record<string, unknown>;
-  const destination = typeof record.destination === 'string' ? record.destination.trim() : '';
-  if (!destination) return null;
-
-  return {
-    destination,
-    package_count: getNonNegativeInteger(record.package_count),
-    min_price: getPositiveNumber(record.min_price),
-    avg_rating: getPositiveNumber(record.avg_rating),
-    total_reviews: getNullableNonNegativeInteger(record.total_reviews),
-  };
-}
-
 function normalizeAttractionImageSample(row: unknown): AttractionImageSample | null {
   if (!row || typeof row !== 'object') return null;
 
   const record = row as Record<string, unknown>;
+  if (!isCustomerRenderableAttraction(record as unknown as AttractionData)) return null;
   const region = typeof record.region === 'string' ? record.region.trim() : '';
   if (!region) return null;
 
@@ -158,34 +144,49 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     .limit(500);
 
   // 이 region 에 속하는 도시만 필터 — 토큰화 매칭(cityInRegion)으로 멀티시티 "북경/홍콩" false-positive 방지.
-  const regionDests = ((allDests as unknown[] | null) ?? [])
-    .map(normalizeActiveDestination)
-    .filter((d): d is RegionDestination => d != null && cityInRegion(d.destination, slug));
+  const regionDests = mergePublicDestinationStats((allDests as ActiveDestinationLike[] | null) ?? [])
+    .filter((d) => cityInRegion(d.destination, slug));
 
   const dests = regionDests.map(d => d.destination);
+  const queryNames = [...new Set(dests.flatMap(getPublicDestinationQueryNames))];
+  const aliasToDestination = new Map<string, string>();
+  regionDests.forEach((dest) => {
+    getPublicDestinationQueryNames(dest.destination).forEach((name) => aliasToDestination.set(name, dest.destination));
+  });
 
   // 도시·패키지·블로그 3종을 병렬 — 각자 dests 만 의존하므로 round-trip 1회로 합침.
   const today = new Date().toISOString().slice(0, 10);
   const emptyResult = { data: null } as { data: null };
-  const [attrsRes, pkgsRes, blogRes] = await Promise.all([
-    dests.length > 0
-      ? supabaseAdmin.from('attractions').select('region, photos').in('region', dests).not('photos', 'is', null).limit(2000)
+  const [metaRes, attrsRes, pkgsRes, blogRes] = await Promise.all([
+    queryNames.length > 0
+      ? supabaseAdmin.from('destination_metadata').select('destination, hero_image_url, photo_approved').in('destination', queryNames).eq('photo_approved', true)
       : Promise.resolve(emptyResult),
-    dests.length > 0
+    queryNames.length > 0
+      ? supabaseAdmin
+          .from('attractions')
+          .select('region, photos, name, category, badge_type, is_active, customer_publishable')
+          .in('region', queryNames)
+          .eq('is_active', true)
+          .eq('customer_publishable', true)
+          .not('photos', 'is', null)
+          .limit(2000)
+      : Promise.resolve(emptyResult),
+    queryNames.length > 0
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null
       ? supabaseAdmin
           .from('travel_packages')
-          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, products(display_name, internal_code)')
-          .in('destination', dests)
-          .in('status', ['active', 'approved'])
+          .select('id, title, display_title, hero_tagline, destination, duration, nights, price, price_dates, price_tiers, product_type, airline, departure_airport, product_highlights, is_airtel, avg_rating, review_count, seats_held, seats_confirmed, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data, products(display_name, internal_code, thumbnail_urls)')
+          .in('destination', queryNames)
+          .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+          .in('publication_state', ['approved', 'published'])
           .order('price', { ascending: true })
-          .limit(24)
+          .limit(2000)
       : Promise.resolve(emptyResult),
-    dests.length > 0
+    queryNames.length > 0
       ? supabaseAdmin
-          .from('content_creatives')
+          .from(PUBLIC_BLOG_READ_SOURCE)
           .select('id, slug, seo_title, og_image_url, content_type, destination')
-          .in('destination', dests)
+          .in('destination', queryNames)
           .eq('channel', 'naver_blog')
           .eq('status', 'published')
           .not('slug', 'is', null)
@@ -194,37 +195,64 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       : Promise.resolve(emptyResult),
   ]);
   const attrs = attrsRes.data;
-  const pkgs = pkgsRes.data;
+  const pkgs = ((pkgsRes.data as unknown as Record<string, unknown>[] | null) ?? [])
+    .filter(isCustomerPubliclyOpenable);
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
+  ((metaRes.data as Array<{ destination?: string | null; hero_image_url?: string | null; photo_approved?: boolean }> | null) ?? []).forEach((row) => {
+    const dest = row.destination ? aliasToDestination.get(row.destination) : null;
+    if (dest && row.photo_approved && row.hero_image_url && !imgByDest[dest]) imgByDest[dest] = row.hero_image_url;
+  });
+
   ((attrs as unknown[] | null) ?? []).forEach((row) => {
     const sample = normalizeAttractionImageSample(row);
-    if (sample && !imgByDest[sample.region]) {
+    const dest = sample ? aliasToDestination.get(sample.region) : null;
+    if (sample && dest && !imgByDest[dest]) {
       const u = pickAttractionPhotoUrl(sample.photos);
-      if (u) imgByDest[sample.region] = u;
+      if (u) imgByDest[dest] = u;
     }
   });
 
+  ((blogPosts as unknown as Array<{ destination?: string | null; og_image_url?: string | null }> | null) ?? []).forEach((row) => {
+    const dest = row.destination ? aliasToDestination.get(row.destination) : null;
+    if (dest && row.og_image_url && !imgByDest[dest]) imgByDest[dest] = row.og_image_url;
+  });
+
   // 출발일 살아있는 상품만 + Supabase 의 products 배열을 단일 객체로 정규화
-  const alivePkgs = ((pkgs as unknown as Record<string, unknown>[] | null) ?? [])
+  const currentPublicPackageRows = pkgs
+  const alivePackageRows = pkgs
     .filter(p => {
       const pd = (p.price_dates ?? []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some(d => d.date && d.date >= today);
-    })
+    });
+  const publicCardRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, alivePackageRows);
+  const alivePkgs = publicCardRows
     .map(p => ({
       ...p,
       products: Array.isArray(p.products) ? p.products[0] ?? null : p.products,
     }))
     .slice(0, 12) as PackageCardData[];
 
+  const packageStatsByDestination = new Map<string, { count: number; minPrice: number | null }>();
+  for (const pkg of publicCardRows) {
+    const destination = typeof pkg.destination === 'string' ? aliasToDestination.get(pkg.destination) ?? pkg.destination : null;
+    if (!destination) continue;
+    const price = getPositiveNumber(pkg.price);
+    const current = packageStatsByDestination.get(destination) ?? { count: 0, minPrice: null };
+    current.count += 1;
+    if (price != null && (current.minPrice == null || price < current.minPrice)) current.minPrice = price;
+    packageStatsByDestination.set(destination, current);
+  }
+
   const cities: CityCard[] = regionDests
-    .sort((a, b) => (b.package_count ?? 0) - (a.package_count ?? 0))
+    .filter((d) => packageStatsByDestination.has(d.destination))
+    .sort((a, b) => (packageStatsByDestination.get(b.destination)?.count ?? 0) - (packageStatsByDestination.get(a.destination)?.count ?? 0))
     .map(d => ({
       destination: d.destination,
-      package_count: d.package_count,
-      min_price: d.min_price,
+      package_count: packageStatsByDestination.get(d.destination)?.count ?? 0,
+      min_price: packageStatsByDestination.get(d.destination)?.minPrice ?? null,
       avg_rating: d.avg_rating,
       total_reviews: d.total_reviews,
       image: imgByDest[d.destination] ?? null,
@@ -271,7 +299,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@graph': [
               {

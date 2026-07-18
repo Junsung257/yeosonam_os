@@ -11,6 +11,10 @@ import { generateGoogleHistoricalMetrics } from '@/lib/search-ads-api';
 import { getSecret } from '@/lib/secret-registry';
 import { applyUtmToUrl, buildUtm, normalizeUtmValue } from '@/lib/utm-builder';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import {
+  loadPublicContentPackageForGeneration,
+  type PublicContentPackage,
+} from '@/lib/content-public-package';
 
 type PlanStatus = 'draft' | 'approved' | 'published' | 'failed' | 'archived';
 
@@ -146,6 +150,37 @@ function normalizePackage(pkg: TravelPackageForSearchAds): TravelPackageForSearc
     inclusions: pkg.inclusions ?? parsedInclusions.filter((v): v is string => typeof v === 'string'),
     itinerary: pkg.itinerary ?? parsedItinerary.filter((v): v is string => typeof v === 'string'),
   };
+}
+
+function publicContentPackageToSearchAdPackage(pkg: PublicContentPackage): TravelPackageForSearchAds {
+  return {
+    id: pkg.id,
+    title: pkg.title,
+    destination: pkg.destination ?? null,
+    duration: pkg.duration ?? null,
+    nights: pkg.nights ?? null,
+    price: pkg.price ?? null,
+    departure_airport: pkg.departure_airport ?? null,
+    airline: pkg.airline ?? null,
+    product_type: pkg.product_type ?? null,
+    display_name: pkg.title,
+    price_tiers: pkg.price_tiers ?? [],
+    inclusions: pkg.inclusions ?? [],
+    itinerary: pkg.itinerary ?? [],
+    parsed_data: null,
+    short_code: null,
+  };
+}
+
+export async function loadPublicSearchAdPackage(packageId: string): Promise<TravelPackageForSearchAds> {
+  const publicPackage = await loadPublicContentPackageForGeneration(packageId);
+  if (!publicPackage) {
+    throw new Error('고객 공개 승인된 상품만 검색광고 자동 생성에 사용할 수 있습니다.');
+  }
+  if (!publicPackage.destination || typeof publicPackage.price !== 'number' || !Number.isFinite(publicPackage.price)) {
+    throw new Error('검색광고 자동 생성에 필요한 공개 목적지 또는 가격 정보가 없습니다.');
+  }
+  return publicContentPackageToSearchAdPackage(publicPackage);
 }
 
 function buildCampaignSlug(pkg: TravelPackageForSearchAds): string {
@@ -457,15 +492,7 @@ export async function buildAndSaveSearchAdPackagePlan(packageId: string): Promis
     };
   }
 
-  const { data: pkg, error } = await db
-    .from('travel_packages')
-    .select('id,title,destination,country,duration,nights,price,departure_airport,airline,product_type,price_tiers,inclusions,itinerary,parsed_data,short_code')
-    .eq('id', packageId)
-    .single();
-
-  if (error || !pkg) {
-    throw new Error(error?.message ?? '상품을 찾을 수 없습니다.');
-  }
+  const pkg = await loadPublicSearchAdPackage(packageId);
 
   const plan = await buildSearchAdPackagePlan(pkg);
   const saved = await saveSearchAdPackagePlan(plan);

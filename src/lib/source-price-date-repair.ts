@@ -48,7 +48,7 @@ export type SourceBackedPriceDateRepair =
       excludedPriceCandidates?: ExcludedPriceCandidate[];
     };
 
-type SourcePriceIRRow = {
+export type SourcePriceIRRow = {
   date: string;
   adult_price: number;
   child_price?: number | null;
@@ -122,6 +122,41 @@ function isIsoDate(value: unknown): value is string {
 
 function isUpcomingSourceDate(date: string, today: string = formatKstDate()): boolean {
   return isUpcomingKstDate(date, today);
+}
+
+function hasShortYearPriceTableCue(rawText: string, year: number | undefined): boolean {
+  if (!year || year < 2000) return false;
+  const yy = String(year).slice(-2);
+  const re = new RegExp(`(?:^|[^\\d])${yy}\\s*\\uB144\\s*\\d{1,2}\\s*\\uC6D4`, 'u');
+  if (!re.test(rawText)) return false;
+  const index = rawText.search(re);
+  const lineStart = rawText.lastIndexOf('\n', index) + 1;
+  const lineEnd = rawText.indexOf('\n', index);
+  const context = rawText.slice(lineStart, Math.min(rawText.length, (lineEnd >= 0 ? lineEnd : index) + 180));
+  return /(?:\uC0C1\uD488|\uD328\uD0A4\uC9C0|\uC815\uADDC\s*\uC694\uAE08|\uC815\uADDC\uC694\uAE08|\uC694\uAE08|\uCD9C\uBC1C|\uCD9C\uBC1C\uC77C|\uD2B9\uAC00|PKG)/iu.test(context)
+    && !/(?:\uC368\uCC28\uC9C0|\uAC08\uB77C\uB514\uB108|\uC785\uAD6D|\uC5EC\uAD8C|\uBE44\uC790|\uC8FC\uC758|\uACF5\uC9C0)/iu.test(context);
+}
+
+function sourceShortYearMonthWindow(rawText: string, year: number | undefined): { start: string; end: string } | null {
+  if (!year || year < 2000) return null;
+  const yy = String(year).slice(-2);
+  const re = new RegExp(`(?:^|[^\\d])${yy}\\s*\\uB144\\s*(\\d{1,2})\\s*\\uC6D4\\s*[~\\-]\\s*(\\d{1,2})\\s*\\uC6D4`, 'u');
+  const match = rawText.match(re);
+  if (!match) return null;
+  const index = match.index ?? 0;
+  const lineStart = rawText.lastIndexOf('\n', index) + 1;
+  const lineEnd = rawText.indexOf('\n', index);
+  const context = rawText.slice(lineStart, Math.min(rawText.length, (lineEnd >= 0 ? lineEnd : index) + 180));
+  if (!/(?:\uC0C1\uD488|\uD328\uD0A4\uC9C0|\uC815\uADDC\s*\uC694\uAE08|\uC815\uADDC\uC694\uAE08|\uC694\uAE08|\uCD9C\uBC1C|\uCD9C\uBC1C\uC77C|\uD2B9\uAC00|PKG)/iu.test(context)) return null;
+  if (/(?:\uC368\uCC28\uC9C0|\uAC08\uB77C\uB514\uB108|\uC785\uAD6D|\uC5EC\uAD8C|\uBE44\uC790|\uC8FC\uC758|\uACF5\uC9C0)/iu.test(context)) return null;
+  const startMonth = Number(match[1]);
+  const endMonth = Number(match[2]);
+  if (!Number.isInteger(startMonth) || !Number.isInteger(endMonth) || startMonth < 1 || endMonth > 12 || startMonth > endMonth) return null;
+  const lastDay = new Date(Date.UTC(year, endMonth, 0)).getUTCDate();
+  return {
+    start: `${year}-${String(startMonth).padStart(2, '0')}-01`,
+    end: `${year}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+  };
 }
 
 function priceValue(row: SourcePriceRepairPackage['price_dates'] extends Array<infer R> | null | undefined ? R : never): number | null {
@@ -275,6 +310,22 @@ export function selectSourceBackedPriceRowsWithExclusions(
   return { selected, excludedPriceCandidates };
 }
 
+export function filterSourceBackedPriceRowsForPublicEvidence(
+  pkg: SourcePriceRepairPackage,
+  rows: SourcePriceIRRow[],
+): SourcePriceIRRow[] {
+  const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
+  const strictSourceYear = resolvePriceRecoveryYear({ rawText });
+  const requireStrictSourceYear = hasShortYearPriceTableCue(rawText, strictSourceYear);
+  const strictMonthWindow = sourceShortYearMonthWindow(rawText, strictSourceYear);
+  return rows.filter((row) => {
+    if (!isIsoDate(row.date)) return false;
+    if (requireStrictSourceYear && !row.date.startsWith(`${strictSourceYear}-`)) return false;
+    if (strictMonthWindow && (row.date < strictMonthWindow.start || row.date > strictMonthWindow.end)) return false;
+    return isUpcomingSourceDate(row.date);
+  });
+}
+
 function inferPriceYear(pkg: SourcePriceRepairPackage, rawText: string): number {
   const sourceYear = resolvePriceRecoveryYear({ rawText });
   const dbYear = (pkg.price_dates ?? [])
@@ -299,6 +350,9 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
   excludedPriceCandidates: ExcludedPriceCandidate[];
 } {
   const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
+  const strictSourceYear = resolvePriceRecoveryYear({ rawText });
+  const requireStrictSourceYear = hasShortYearPriceTableCue(rawText, strictSourceYear);
+  const strictMonthWindow = sourceShortYearMonthWindow(rawText, strictSourceYear);
   const rawExcludedPriceCandidates = extractExcludedPriceCandidatesFromRawText(rawText);
   if (rawText.length < 50) return { source: 'none', rows: [], excludedPriceCandidates: rawExcludedPriceCandidates };
 
@@ -316,9 +370,8 @@ function expectedPriceDatesByDate(pkg: SourcePriceRepairPackage): {
 
   const byDate = new Map<string, PriceDate>();
   const selection = selectSourceBackedPriceRowsWithExclusions(pkg, ir.rows);
-  for (const row of selection.selected) {
+  for (const row of filterSourceBackedPriceRowsForPublicEvidence(pkg, selection.selected)) {
     if (!isIsoDate(row.date) || !Number.isFinite(row.adult_price) || row.adult_price <= 0) continue;
-    if (!isUpcomingSourceDate(row.date)) continue;
     const current = byDate.get(row.date);
     if (current && current.price <= row.adult_price) continue;
     byDate.set(row.date, {

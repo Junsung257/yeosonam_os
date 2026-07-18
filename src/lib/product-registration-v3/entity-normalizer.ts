@@ -44,7 +44,7 @@ function regionalFoodTerm(rawText: string): string | null {
 }
 
 const STANDALONE_MEAL_LABEL_RE =
-  /^(?:\uC804\uD1B5\uC2DD|BBQ|\uBC14\uBCA0\uD050|\uD604\uC9C0\uC2DD|\uD2B9\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uD638\uD154\uC2DD|\uD55C\uC2DD|\uC591\uC2DD|\uC77C\uC2DD|\uD558\uC774\uB514\uB77C\uC624|\uBC31\uC219|\uB204\uB8FD\uC9C0|\uC0B0\uCC44\uBE44\uBE54\uBC25|\uC18C\uACE0\uAE30\uBAA8\uB4EC\uAD6C\uC774|\uD6E0\uAD88|\uC0DD\uC218|\uB9E5\uC8FC\d*\uBCD1?)$/i;
+  /^(?:\uC804\uD1B5\uC2DD|BBQ|\uBC14\uBCA0\uD050|\uD604\uC9C0\uC2DD|\uD2B9\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uD638\uD154\uC2DD|\uD55C\uC2DD|\uC591\uC2DD|\uC77C\uC2DD|\uD558\uC774\uB514\uB77C\uC624|\uBC31\uC219|\uB204\uB8FD\uC9C0|\uC0B0\uCC44\uBE44\uBE54\uBC25|\uC18C\uACE0\uAE30\uBAA8\uB4EC\uAD6C\uC774|\uD6E0\uAD88|\uC0DD\uC218|\uB9E5\uC8FC\d*\uBCD1?|\uC300\uAD6D\uC218|\uBC18\uC138\uC624|\uBE44\uC5B4\uD50C\uB77C\uC790|\uBDD4\uD398\uC2DD|\uC528\uD478\uB4DC|\uB78D\uC2A4\uD130(?:\u00BD)?|\uC138\uD2B8)$/i;
 
 function isStandaloneMealLabel(rawText: string): boolean {
   return STANDALONE_MEAL_LABEL_RE.test(rawText
@@ -66,10 +66,16 @@ function normalizeOptionDisclosureText(rawText: string): string {
     .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b()]+/, '')
     .replace(/[()]+$/g, '')
     .replace(/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uad00\uad11|\ub9c8\uc0ac\uc9c0|\uc2dd\uc0ac)\s*[:：]\s*/i, '')
-    .replace(/\$\s*\d+(?:\.\d+)?/g, '')
+    .replace(/(?:USD|US\$|\$)\s*\d+(?:\.\d+)?/gi, '')
+    .replace(/\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/gi, '')
     .replace(/\s*\/\s*\uc778/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function hasExplicitCurrencyAmount(rawText: string): boolean {
+  return /(?:USD|US\$|\$)\s*\d+(?:\.\d+)?/i.test(rawText)
+    || /\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/i.test(rawText);
 }
 
 function optionalEventHasCustomerSafeDisclosure(rawText: string): boolean {
@@ -79,12 +85,13 @@ function optionalEventHasCustomerSafeDisclosure(rawText: string): boolean {
     .replace(/\s+/g, '');
   if (/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158)$/.test(compact)) return true;
   if (/^(?:\uc120\ud0dd\uad00\uad11\ube44\uc6a9|\uc720\ub958\ubcc0\ub3d9\ubd84|\ub9e4\ub108\ud301\ubc0f\uac1c\uc778\uacbd\ube44|\uac1c\uc778\uacbd\ube44)$/.test(compact)) return true;
-  if (/^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)\$?\d+/i.test(compact)) return true;
+  if (/^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)(?:\$?\d+|\d+\$)/i.test(compact)) return true;
   if (/(?:\uc120\ud0dd\s*\uad00\uad11|\uc120\ud0dd\uad00\uad11).*(?:\uc870\uc778|\uc2e0\uccad\s*\ud6c4)/.test(rawText)) return true;
-  return /\$\s*\d+(?:\.\d+)?/.test(rawText) && normalizeOptionDisclosureText(rawText).length >= 2;
+  return hasExplicitCurrencyAmount(rawText) && normalizeOptionDisclosureText(rawText).length >= 2;
 }
 
 function hasExplicitShoppingCountDisclosure(text: string): boolean {
+  if (/(?:\ub178\ub2c8|\uce68\ud5a5|\uc7a1\ud654|\ucee4\ud53c).*\d+\s*(?:\uacf3|\ud68c).*(?:\ubc29\ubb38|\uc608\uc815)/.test(text)) return true;
   return /(?:\uc1fc\ud551|\uc1fc\ud551\uc13c\ud130|\uba74\uc138\uc810|\uba74\uc138).*\d+\s*(?:\uacf3|\ud68c).*(?:\ubc29\ubb38|\uc608\uc815)|\d+\s*(?:\uacf3|\ud68c).*(?:\uc1fc\ud551|\uc1fc\ud551\uc13c\ud130|\uba74\uc138\uc810|\uba74\uc138)|(?:\uc1fc\ud551\uc13c\ud130|\uba74\uc138\uc810|\uba74\uc138)\s*\ubc29\ubb38|(?:\uc790\uc728|\uc790\uc720)\s*\uc1fc\ud551/.test(text);
 }
 
@@ -198,6 +205,7 @@ function normalizeAttractionReviewText(rawText: string): string | null {
 
   const withoutTrailingParen = cleaned.replace(/\s*\([^)]*\)\s*$/, '').trim();
   const compact = withoutTrailingParen.replace(/\s+/g, '');
+  if (/^(?:\uc815\uaddc|\uc99d\ud3b8)$/.test(cleaned.replace(/^[()\s]+|[()\s]+$/g, '').trim())) return null;
   if (/^\d{1,2}[.\/-]\d{1,2}(?:\([^)]+\))?$/.test(compact)) return null;
   if (NORMAL_ATTRACTION_REVIEW_NOISE_RE.test(withoutTrailingParen) || NORMAL_ATTRACTION_REVIEW_NOISE_RE.test(compact)) return null;
 

@@ -4,8 +4,12 @@ import { summarizeBlogIndexingCoverage } from '@/lib/blog-indexing-coverage';
 import { evaluateBlogPublishPreflight } from '@/lib/blog-publish-preflight';
 import { countPublishableQueueCandidates } from '@/lib/blog-scheduler';
 import { buildBlogCanaryPreflight } from '@/lib/blog-canary-preflight';
+import { evaluateBlogGeneratedQualityCanaryReport } from '@/lib/blog-canary-generated-quality';
+import { buildProductGeneratedCanaryRows } from '@/lib/blog-product-generated-canary';
 import { evaluateCurrentDayPublisherHealth } from '@/lib/blog-current-day-publisher-health';
 import { classifyDestinationlessInfoCandidate } from '@/lib/blog-destinationless-info';
+import { evaluateBlogEngineV2 } from '@/lib/blog-engine-v2';
+import { inspectBlogFleetPhraseDrift } from '@/lib/blog-fleet-phrase-drift';
 
 export type BlogOpsLevel = 'healthy' | 'watch' | 'risk' | 'blocked';
 
@@ -317,6 +321,63 @@ export function summarizePublishedBlogQuality(rows: PostRow[], limit = 30) {
   };
 }
 
+function summarizeEngineCategoryScorecard(rows: PostRow[], limit = 30) {
+  const checkedRows = rows.slice(0, Math.max(1, limit));
+  const failedCategoryBuckets: Record<string, number> = {};
+  const samples: Array<{
+    id: string;
+    slug: string | null;
+    title: string | null;
+    writer: string;
+    score: number;
+    failed_categories: string[];
+  }> = [];
+  let perfectCount = 0;
+  let scoreTotal = 0;
+
+  for (const row of checkedRows) {
+    const evaluation = evaluateBlogEngineV2({
+      blogHtml: row.blog_html ?? '',
+      primaryKeyword: row.primary_keyword ?? row.destination ?? row.seo_title ?? row.slug,
+      destination: row.destination,
+      contentType: row.content_type ?? (row.product_id ? 'package_intro' : 'guide'),
+      productId: row.product_id ?? null,
+      generationMeta: row.generation_meta ?? null,
+    });
+    scoreTotal += evaluation.score;
+    const failedCategories = evaluation.category_scores
+      .filter((category) => !category.passed || category.score < 100)
+      .map((category) => category.id);
+
+    if (evaluation.passed && failedCategories.length === 0 && evaluation.score === 100) {
+      perfectCount += 1;
+      continue;
+    }
+
+    for (const category of failedCategories) {
+      failedCategoryBuckets[category] = (failedCategoryBuckets[category] ?? 0) + 1;
+    }
+    samples.push({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      writer: evaluation.brief.writer_type,
+      score: evaluation.score,
+      failed_categories: failedCategories,
+    });
+  }
+
+  const checkedCount = checkedRows.length;
+  return {
+    checked_count: checkedCount,
+    perfect_count: perfectCount,
+    below_100_count: checkedCount - perfectCount,
+    average_score: checkedCount > 0 ? Math.round(scoreTotal / checkedCount) : 0,
+    failed_category_buckets: failedCategoryBuckets,
+    samples: samples.slice(0, 8),
+  };
+}
+
 function sumBuckets(buckets: Record<string, number>, matcher: (bucket: string) => boolean): number {
   return Object.entries(buckets).reduce((sum, [bucket, count]) => sum + (matcher(bucket) ? count : 0), 0);
 }
@@ -388,7 +449,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       'content_creatives',
       supabase
         .from('content_creatives')
-        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, status, published_at, readability_score, seo_score, quality_gate, generation_meta, destination, product_id, angle_type, category, content_type, primary_keyword')
+        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, status, published_at, readability_score, seo_score, quality_gate, generation_meta, destination, product_id, angle_type, category, content_type')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(500),
       warnings,
@@ -456,7 +517,9 @@ export async function buildBlogOpsSummary(supabase: any) {
   const publishedYesterday = publishedRows.filter((row) => row.published_at && new Date(row.published_at) >= yesterdayStart && new Date(row.published_at) < todayStart).length;
   const policy = policyRows[0] || {};
   const dailyTarget = Math.max(1, Math.round(asNumber(policy.posts_per_day) || 3));
+  const generatedCanaryRequested = Math.min(5, Math.max(3, dailyTarget));
   const qualitySummary = summarizePublishedBlogQuality(publishedRows, 30);
+  const engineCategoryScorecard = summarizeEngineCategoryScorecard(publishedRows, 30);
   const lowQualityRecent = qualitySummary.non_slug_failure_count;
 
   const indexingCounts = countBy(indexingJobs, (row) => row.status);
@@ -568,9 +631,42 @@ export async function buildBlogOpsSummary(supabase: any) {
     recentPublished: publishedRows.slice(0, 100),
     requested: 3,
   });
+  const canaryProductIds = Array.from(new Set(
+    queueRows
+      .filter((row) => (row.status === 'queued' || row.status === 'generating') && row.product_id)
+      .map((row) => String(row.product_id)),
+  )).slice(0, 12);
+  const productCanaryPackages = canaryProductIds.length > 0
+    ? await settle<any>(
+      'travel_packages_canary',
+      supabase.from('travel_packages').select('*').in('id', canaryProductIds),
+      warnings,
+    )
+    : [];
+  const productGeneratedCanaryRows = buildProductGeneratedCanaryRows({
+    queueRows: queueRows.filter((row) => row.status === 'queued' || row.status === 'generating'),
+    products: productCanaryPackages,
+    limit: Math.min(3, Math.max(2, generatedCanaryRequested - 2)),
+  });
+  const generatedCanaryQuality = await evaluateBlogGeneratedQualityCanaryReport({
+    posts: [...publishedRows.slice(0, 8), ...productGeneratedCanaryRows],
+    requested: generatedCanaryRequested,
+    writerMixRequired: productGeneratedCanaryRows.length > 0,
+  });
+  const fleetPhraseDrift = inspectBlogFleetPhraseDrift(
+    publishedRows.slice(0, 100).map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.seo_title,
+      blog_html: row.blog_html,
+      writer_type: row.generation_meta?.writer as string | null | undefined,
+    })),
+  );
   const canaryLevel: BlogOpsLevel = canaryPreflight.status === 'block' ? 'risk' : canaryPreflight.status === 'warn' ? 'watch' : 'healthy';
+  const generatedCanaryLevel: BlogOpsLevel = generatedCanaryQuality.status === 'block' ? 'risk' : generatedCanaryQuality.status === 'warn' ? 'watch' : 'healthy';
+  const fleetPhraseLevel: BlogOpsLevel = fleetPhraseDrift.status === 'block' ? 'risk' : fleetPhraseDrift.status === 'warn' ? 'watch' : 'healthy';
   const candidateContractLevel: BlogOpsLevel = candidateContractBlocked > 0 ? 'watch' : 'healthy';
-  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, currentDayPublisherLevel, candidateContractLevel);
+  const overallLevel = maxLevel(dailyLevel, queueLevel, indexingLevel, cronLevel, qualityLevel, preflightLevel, canaryLevel, generatedCanaryLevel, fleetPhraseLevel, currentDayPublisherLevel, candidateContractLevel);
 
   const nextActions: Array<{ severity: BlogOpsLevel; title: string; detail: string; href: string; action?: string }> = [];
   if (publishedToday < dailyTarget) {
@@ -621,6 +717,36 @@ export async function buildBlogOpsSummary(supabase: any) {
       detail: `${currentDayPublisherHealth.detail} 시스템 탭에서 최신 실패 원인을 확인하세요.`,
       href: '/admin/blog/system',
       action: 'run_publisher',
+    });
+  }
+  if (generatedCanaryQuality.status === 'block') {
+    nextActions.unshift({
+      severity: generatedCanaryLevel,
+      title: '생성 글 샘플 품질 실패',
+      detail: `${generatedCanaryQuality.fail_count}/${generatedCanaryQuality.checked_count}개 샘플이 엔진·고객문구·렌더링 통합 검사를 통과하지 못했습니다.`,
+      href: '/admin/blog/system',
+    });
+  } else if (generatedCanaryQuality.status === 'warn') {
+    nextActions.push({
+      severity: generatedCanaryLevel,
+      title: '상품/정보성 생성 샘플 검증 보강',
+      detail: generatedCanaryQuality.next_action,
+      href: '/admin/blog/system',
+    });
+  }
+  if (fleetPhraseDrift.status === 'block') {
+    nextActions.unshift({
+      severity: fleetPhraseLevel,
+      title: '최근 글 말투 반복 차단',
+      detail: fleetPhraseDrift.summary,
+      href: '/admin/blog/system',
+    });
+  } else if (fleetPhraseDrift.status === 'warn') {
+    nextActions.push({
+      severity: fleetPhraseLevel,
+      title: '최근 글 말투 반복 주의',
+      detail: fleetPhraseDrift.next_action,
+      href: '/admin/blog/system',
     });
   }
   if (qualitySummary.non_slug_failure_count > 0) {
@@ -713,6 +839,8 @@ export async function buildBlogOpsSummary(supabase: any) {
         ...(indexingCoverage.missing_count > 0 ? ['indexing_outbox_missing'] : []),
         ...(preflight.status === 'block' ? ['publish_preflight_blocked'] : []),
         ...(canaryPreflight.status === 'block' ? ['canary_candidates_unavailable'] : []),
+        ...(generatedCanaryQuality.status === 'block' ? ['generated_canary_quality_failed'] : []),
+        ...(fleetPhraseDrift.status === 'block' ? ['fleet_phrase_drift'] : []),
         ...(currentDayPublisherHealth.status === 'risk' ? ['current_day_publisher_failure'] : []),
         ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
       ],
@@ -734,9 +862,13 @@ export async function buildBlogOpsSummary(supabase: any) {
         ],
       },
       quality: {
-        level: qualityLevel,
-        failed: qualitySummary.non_slug_failure_count > 0,
-        checks: Object.keys(qualitySummary.buckets),
+        level: maxLevel(qualityLevel, generatedCanaryLevel, fleetPhraseLevel),
+        failed: qualitySummary.non_slug_failure_count > 0 || generatedCanaryQuality.status === 'block' || fleetPhraseDrift.status === 'block',
+        checks: [
+          ...Object.keys(qualitySummary.buckets),
+          ...(generatedCanaryQuality.status === 'block' ? ['generated_canary_quality_failed'] : []),
+          ...(fleetPhraseDrift.status === 'block' ? ['fleet_phrase_drift'] : []),
+        ],
       },
       indexing: {
         level: indexingLevel,
@@ -797,6 +929,8 @@ export async function buildBlogOpsSummary(supabase: any) {
       recent_checked: Math.min(30, publishedRows.length),
       low_quality_recent: lowQualityRecent,
       summary: qualitySummary,
+      engine_category_scorecard: engineCategoryScorecard,
+      fleet_phrase_drift: fleetPhraseDrift,
       failure_buckets: qualitySummary.buckets,
       non_slug_failures: qualitySummary.non_slug_failure_count,
       slug_only_failures: qualitySummary.slug_only_failure_count,
@@ -819,6 +953,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     },
     preflight,
     canary_preflight: canaryPreflight,
+    generated_canary_quality: generatedCanaryQuality,
     indexing: {
       job_counts: indexingCounts,
       active_jobs: indexingActive,

@@ -5,17 +5,72 @@ const queriedTables: string[] = [];
 
 function queryResult(table: string) {
   const dataByTable: Record<string, unknown[]> = {
-    active_destinations: [
-      { destination: '오사카', package_count: 2 },
-      { destination: '석가장', package_count: 0 },
+    travel_packages: [
+      {
+        id: 'pkg-osaka',
+        destination: 'osaka',
+        status: 'approved',
+        publication_state: 'published',
+        package_revision: 3,
+        audit_status: 'warnings',
+        audit_report: {
+          customer_open_contract: {
+            ok: true,
+            status: 'pass',
+            mobile_browser_proof: { ok: true },
+          },
+        },
+      },
+      {
+        id: 'pkg-hidden',
+        destination: 'hidden',
+        status: 'pending',
+        publication_state: 'needs_review',
+        package_revision: 1,
+        audit_status: 'blocked',
+        audit_report: {
+          customer_open_contract: {
+            ok: false,
+            status: 'blocked',
+            blockers: ['not public'],
+            mobile_browser_proof: { ok: false },
+          },
+        },
+      },
     ],
-    content_creatives: [
+    public_blog_content_creatives: [
       {
         slug: 'osaka-weather',
-        destination: '오사카',
+        destination: 'osaka',
         angle_type: 'value',
         published_at: '2026-06-01T00:00:00.000Z',
         updated_at: '2026-06-02T00:00:00.000Z',
+      },
+    ],
+    public_package_snapshots: [
+      {
+        package_id: 'pkg-osaka',
+        package_revision: 3,
+        status: 'published',
+        created_at: '2026-06-03T00:00:00.000Z',
+        card_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
+        lp_projection: { id: 'pkg-osaka', title: 'Osaka public title', destination: 'osaka' },
+        snapshot_json: {
+          images_public: [
+            { url: 'https://cdn.yeosonam.com/public/osaka-hero.jpg', source: 'destination_metadata' },
+          ],
+          package: {
+            id: 'pkg-osaka',
+            title: 'Osaka public title',
+            display_title: 'Osaka public title',
+            destination: 'osaka',
+            hero_image_url: 'https://cdn.yeosonam.com/public/osaka-hero.jpg',
+            publication_state: 'published',
+            package_revision: 3,
+            price_dates: [{ date: '2026-07-12', price: 599000 }],
+          },
+          canonical_view: {},
+        },
       },
     ],
   };
@@ -25,7 +80,11 @@ function queryResult(table: string) {
     in: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     not: vi.fn(() => chain),
-    order: vi.fn(() => chain),
+    order: vi.fn(() => (
+      table === 'public_package_snapshots'
+        ? Promise.resolve({ data: dataByTable[table] ?? [], error: null })
+        : chain
+    )),
     limit: vi.fn(() => chain),
     abortSignal: vi.fn(() => Promise.resolve({ data: dataByTable[table] ?? [], error: null })),
   };
@@ -58,10 +117,12 @@ describe('sitemap', () => {
     const expectedBaseUrl = resolveBlogCanonicalOrigin();
 
     expect(urls).toContain(`${expectedBaseUrl}/packages`);
-    expect(urls).toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('오사카')}`);
-    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/${encodeURIComponent('석가장')}`);
+    expect(urls).toContain(`${expectedBaseUrl}/destinations/osaka`);
+    expect(urls).not.toContain(`${expectedBaseUrl}/destinations/hidden`);
     expect(urls).toContain(`${expectedBaseUrl}/blog/osaka-weather`);
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
-    expect(queriedTables).not.toContain('travel_packages');
+    expect(queriedTables).toContain('travel_packages');
+    expect(queriedTables).toContain('public_package_snapshots');
+    expect(queriedTables).toContain('public_blog_content_creatives');
   });
 });

@@ -14,6 +14,8 @@ describe('blog admin ops UI contract', () => {
     expect(source).toContain('운영 건강도 분해');
     expect(source).toContain('ops.queue.failure_groups');
     expect(source).toContain('ops.quality?.failure_buckets');
+    expect(source).toContain('ops.quality?.engine_category_scorecard');
+    expect(source).toContain('카테고리 평균');
     expect(source).toContain('ops.indexing.failure_buckets');
     expect(source).toContain('발행·색인 연결');
     expect(source).toContain('ops.indexing.outbox_coverage');

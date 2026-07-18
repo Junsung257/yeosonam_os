@@ -62,6 +62,8 @@ describe('buildUploadPersistenceRows', () => {
         note: 'Solea',
       },
     ]);
+    expect(rows.travelPackageRow.departure_airport).toBeNull();
+    expect(rows.travelPackageRow.min_participants).toBeNull();
   });
 
   it('persists nights from trip_style before falling back to duration minus one', () => {

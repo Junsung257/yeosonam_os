@@ -25,6 +25,7 @@ import {
   type ImprovementLedgerEvent,
 } from '@/lib/product-registration/improvement-ledger';
 import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
+import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
 
 export interface QAIncident {
   id: string;
@@ -56,11 +57,16 @@ export type ExpectedRender = {
   internalCode: string | null;
   rawText: string | null;
   updatedAt?: string | null;
+  currentPackageRevision: number | null;
+  proofPackageRevision: number | null;
+  proofPublicSnapshotHash: string | null;
+  proofAppBuildId: string | null;
   lastDayNumber: number | null;
   lastDayArrivalCity: string | null;
   homeCity: string | null;
   currentAttractionMatchedCount?: number;
   currentAttractionUnmatchedCount?: number;
+  currentAttractionUnmatchedNames?: string[];
 };
 
 const AUTO_QA_CHECK_PREFIXES = [
@@ -68,6 +74,12 @@ const AUTO_QA_CHECK_PREFIXES = [
   'lp_',
   'mobile_attraction_',
 ];
+
+function isSupplierPromoDisplayTitle(value: string | null | undefined): boolean {
+  const text = String(value ?? '').replace(/[♡♥★☆]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  return /^(?:special\s*price|sale|hot\s*deal|best|pick)$/i.test(text);
+}
 
 function isAutoQACheck(check: unknown): boolean {
   const id = typeof check === 'object' && check !== null && 'id' in check
@@ -91,28 +103,36 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     internalCode: null,
     rawText: null,
     updatedAt: null,
+    currentPackageRevision: null,
+    proofPackageRevision: null,
+    proofPublicSnapshotHash: null,
+    proofAppBuildId: null,
     lastDayNumber: null,
     lastDayArrivalCity: null,
     homeCity: null,
     currentAttractionMatchedCount: 0,
     currentAttractionUnmatchedCount: 0,
+    currentAttractionUnmatchedNames: [],
   };
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, destination, duration, nights, trip_style, product_type, airline, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code, raw_text, updated_at')
+      .select('*')
       .eq('id', packageId)
       .maybeSingle();
     if (!data) {
       return empty;
     }
+    const row = data as Record<string, unknown>;
 
-    const title = (data as { display_title?: string | null; title?: string | null }).display_title
-      || (data as { title?: string | null }).title
+    const rowTitle = (row as { title?: string | null }).title || null;
+    const displayTitle = (row as { display_title?: string | null }).display_title || null;
+    const title = (displayTitle && !isSupplierPromoDisplayTitle(displayTitle) ? displayTitle : null)
+      || rowTitle
       || null;
 
-    const days: ItineraryDay[] = Array.isArray((data as { itinerary_data?: { days?: ItineraryDay[] } }).itinerary_data?.days)
-      ? ((data as { itinerary_data: { days: ItineraryDay[] } }).itinerary_data.days)
+    const days: ItineraryDay[] = Array.isArray((row as { itinerary_data?: { days?: ItineraryDay[] } }).itinerary_data?.days)
+      ? ((row as { itinerary_data: { days: ItineraryDay[] } }).itinerary_data.days)
       : [];
     const lastDay = days.at(-1) as (ItineraryDay & { day?: number; schedule?: Array<{ activity?: string | null; type?: string | null }> }) | undefined;
     const lastArrival = lastDay?.schedule?.find(item =>
@@ -121,7 +141,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       && !/출발|향발/.test(String(item.activity ?? '')),
     );
     const lastDayArrivalCity = extractCityFromArrival(String(lastArrival?.activity ?? ''));
-    const homeCity = String((data as { departure_airport?: string | null }).departure_airport ?? '')
+    const homeCity = String((row as { departure_airport?: string | null }).departure_airport ?? '')
       .replace(/\s*(국제)?공항.*$/, '')
       .trim() || lastDayArrivalCity;
     // 마지막 날은 hotel.name null 정상 (귀국일). 0..N-2 만 검사 대상.
@@ -130,17 +150,18 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       .map(d => (d?.hotel?.name ?? '').trim())
       .filter(n => n.length >= 2);
 
-    const tours = (data as { optional_tours?: unknown[] }).optional_tours;
+    const tours = (row as { optional_tours?: unknown[] }).optional_tours;
     const hasOptionalTours = Array.isArray(tours) && tours.length > 0;
-    const itineraryData = (data as { itinerary_data?: { flight_segments?: unknown[] } }).itinerary_data;
+    const itineraryData = (row as { itinerary_data?: { flight_segments?: unknown[] } }).itinerary_data;
     const requiresFlightCard = shouldRequireFlightCard({
-      rawText: (data as { raw_text?: string | null }).raw_text ?? null,
-      airline: (data as { airline?: string | null }).airline ?? null,
-      productType: (data as { product_type?: string | null }).product_type ?? null,
+      rawText: (row as { raw_text?: string | null }).raw_text ?? null,
+      airline: (row as { airline?: string | null }).airline ?? null,
+      productType: (row as { product_type?: string | null }).product_type ?? null,
       flightSegments: Array.isArray(itineraryData?.flight_segments) ? itineraryData.flight_segments : [],
     });
     let currentAttractionMatchedCount = 0;
     let currentAttractionUnmatchedCount = 0;
+    const currentAttractionUnmatchedNames: string[] = [];
     for (const day of days) {
       for (const item of day.schedule ?? []) {
         const names = Array.isArray(item?.attraction_names) ? item.attraction_names.filter(Boolean) : [];
@@ -148,32 +169,88 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
         const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids.filter(Boolean) : [];
         currentAttractionMatchedCount += Math.min(names.length, ids.length);
         currentAttractionUnmatchedCount += Math.max(0, names.length - ids.length);
+        if (ids.length < names.length) {
+          for (const name of names.slice(ids.length)) {
+            const text = String(name ?? '').trim();
+            if (text && !currentAttractionUnmatchedNames.includes(text)) currentAttractionUnmatchedNames.push(text);
+          }
+        }
       }
     }
 
+    const currentPackageRevision = Number((row as { package_revision?: unknown }).package_revision ?? 1);
+    const safeCurrentRevision = Number.isFinite(currentPackageRevision) && currentPackageRevision > 0
+      ? currentPackageRevision
+      : 1;
+    const proofPackageRevision = isCustomerVisibleStatus((row as { status?: string | null }).status)
+      ? safeCurrentRevision
+      : safeCurrentRevision + 1;
+    const proofSnapshotPkg = {
+      ...row,
+      status: isCustomerVisibleStatus((row as { status?: string | null }).status)
+        ? (row as { status?: string | null }).status
+        : 'active',
+      package_revision: proofPackageRevision,
+    };
+    const proofPublicSnapshotHash = buildPublicPackageSnapshot(proofSnapshotPkg).snapshotHash;
+    const proofAppBuildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null;
+
     return {
       title,
-      destination: (data as { destination?: string | null }).destination ?? null,
-      tripStyle: (data as { trip_style?: string | null }).trip_style ?? null,
-      duration: typeof (data as { duration?: unknown }).duration === 'number' ? (data as { duration: number }).duration : null,
-      nights: typeof (data as { nights?: unknown }).nights === 'number' ? (data as { nights: number }).nights : null,
+      destination: (row as { destination?: string | null }).destination ?? null,
+      tripStyle: (row as { trip_style?: string | null }).trip_style ?? null,
+      duration: typeof (row as { duration?: unknown }).duration === 'number' ? (row as { duration: number }).duration : null,
+      nights: typeof (row as { nights?: unknown }).nights === 'number' ? (row as { nights: number }).nights : null,
       requiresFlightCard,
       hotelNames,
       hasOptionalTours,
-      status: (data as { status?: string | null }).status ?? null,
-      shortCode: (data as { short_code?: string | null }).short_code ?? null,
-      internalCode: (data as { internal_code?: string | null }).internal_code ?? null,
-      rawText: (data as { raw_text?: string | null }).raw_text ?? null,
-      updatedAt: (data as { updated_at?: string | null }).updated_at ?? null,
+      status: (row as { status?: string | null }).status ?? null,
+      shortCode: (row as { short_code?: string | null }).short_code ?? null,
+      internalCode: (row as { internal_code?: string | null }).internal_code ?? null,
+      rawText: (row as { raw_text?: string | null }).raw_text ?? null,
+      updatedAt: (row as { updated_at?: string | null }).updated_at ?? null,
+      currentPackageRevision: safeCurrentRevision,
+      proofPackageRevision,
+      proofPublicSnapshotHash,
+      proofAppBuildId,
       lastDayNumber: typeof lastDay?.day === 'number' ? lastDay.day : days.length || null,
       lastDayArrivalCity,
       homeCity,
       currentAttractionMatchedCount,
       currentAttractionUnmatchedCount,
+      currentAttractionUnmatchedNames,
     };
   } catch {
     return empty;
   }
+}
+
+export type AttractionMasterHint = {
+  name?: string | null;
+  is_active?: boolean | null;
+  customer_publishable?: boolean | null;
+};
+
+export function buildAttractionMatchLowMessage(input: {
+  matchedCount: number;
+  denom: number;
+  unmatchedNames?: string[];
+  attractionMasters?: AttractionMasterHint[];
+}): string {
+  const rate = input.denom > 0 ? input.matchedCount / input.denom : 1;
+  const base = `관광지 매칭률 ${(rate * 100).toFixed(0)}% (${input.matchedCount}/${input.denom})`;
+  const names = [...new Set((input.unmatchedNames ?? []).map(name => name.trim()).filter(Boolean))];
+  const masters = input.attractionMasters ?? [];
+  const nonPublicNames = names.filter(name => masters.some(master =>
+    master.name === name
+    && master.is_active !== false
+    && master.customer_publishable === false
+  ));
+  if (names.length > 0 && nonPublicNames.length >= Math.ceil(names.length * 0.6)) {
+    const sample = nonPublicNames.slice(0, 5).join(', ');
+    return `${base} - 기존 관광지 마스터가 고객 공개 승인 전입니다. 공개 승인/사진/설명 검수 필요: ${sample}`;
+  }
+  return `${base} - 60% 미달, attraction 공개 마스터 / aliases 점검 필요`;
 }
 
 const AIR_TRANSPORT_RE = /\b(?:[A-Z][A-Z0-9]|[0-9][A-Z])\s*\d{3,4}\b|flight|airline|airport|\uD56D\uACF5|\uBE44\uD589|\uD3B8\uBA85|\uCD9C\uBC1C\uD3B8|\uADC0\uAD6D\uD3B8|\uACF5\uD56D|\uAD6D\uC81C\uACF5\uD56D/i;
@@ -282,6 +359,13 @@ function includesDeparturePhrase(text: string, city: string): boolean {
   return new RegExp(`${escapedCity}\\s*\\uCD9C\\uBC1C`).test(text);
 }
 
+function includesArrivalPhrase(text: string, city: string): boolean {
+  const escapedCity = city
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\s+/g, '\\s*');
+  return new RegExp(`${escapedCity}(?:\\s*(?:\\uAD6D\\uC81C)?\\uACF5\\uD56D)?\\s*\\uB3C4\\uCC29`).test(text);
+}
+
 function clearStaleMobileQaFailures(report: Record<string, unknown> | null | undefined): Record<string, unknown> {
   const clean = report && typeof report === 'object' && !Array.isArray(report) ? { ...report } : {};
   delete clean.incidents;
@@ -334,10 +418,13 @@ function isHotelVisibleInHtml(hotelName: string, html: string, text: string): bo
   return tokens.length === 1 ? matched === 1 : matched >= Math.min(2, tokens.length);
 }
 
-function buildMobileBrowserProofPayload(input: {
+export function buildMobileBrowserProofPayload(input: {
   status: 'pass' | 'fail';
   checkedAt: string;
   packageUpdatedAt: string | null | undefined;
+  packageRevision: number | string | null | undefined;
+  publicSnapshotHash: string | null | undefined;
+  appBuildId: string | null | undefined;
   surfaces: Array<{ surface: 'packages' | 'lp' }>;
   surfaceProofResults: Array<{
     surface: 'packages' | 'lp';
@@ -348,14 +435,20 @@ function buildMobileBrowserProofPayload(input: {
   }>;
 }) {
   return {
-    source: 'hwp-mobile-browser-proof',
+    source: 'auto-mobile-fetch-proof',
     status: input.status,
     checked_at: input.checkedAt,
     package_updated_at: input.packageUpdatedAt,
+    package_revision: input.packageRevision ?? null,
+    public_snapshot_hash: input.publicSnapshotHash ?? null,
+    app_build_id: input.appBuildId ?? null,
     surfaces: input.surfaces.map(item => item.surface),
     screen_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.screen_hash}`).join('|')),
     customer_visible_hash: hashSourceText(input.surfaceProofResults.map(item => `${item.surface}:${item.customer_visible_hash}`).join('|')),
-    surface_results: input.surfaceProofResults,
+    surface_results: input.surfaceProofResults.map(result => ({
+      ...result,
+      public_snapshot_hash: input.publicSnapshotHash ?? null,
+    })),
   };
 }
 
@@ -502,7 +595,9 @@ export function analyzeMobileHtml(
 
   if (expected.lastDayNumber && expected.homeCity && expected.lastDayArrivalCity) {
     const dayText = finalDayTextWindow(text, expected.lastDayNumber);
-    if (includesDeparturePhrase(dayText, expected.homeCity) || includesDeparturePhrase(dayText, expected.lastDayArrivalCity)) {
+    const arrivalRendered = includesArrivalPhrase(dayText, expected.lastDayArrivalCity)
+      || includesArrivalPhrase(dayText, expected.homeCity);
+    if (!arrivalRendered && (includesDeparturePhrase(dayText, expected.homeCity) || includesDeparturePhrase(dayText, expected.lastDayArrivalCity))) {
       incidents.push({
         id: `${prefix}final_arrival_rendered_as_departure`,
         severity: 'critical',
@@ -710,10 +805,24 @@ export async function runAutoMobileQA(
         const denom = matchedCount + unmatchedCount;
         matchRate = denom > 0 ? matchedCount / denom : 1;
         if (denom >= 3 && matchRate < 0.6) {
+          let attractionMasters: AttractionMasterHint[] = [];
+          const unmatchedNames = [...new Set((expected.currentAttractionUnmatchedNames ?? []).filter(Boolean))].slice(0, 50);
+          if (unmatchedNames.length > 0) {
+            const { data: masters } = await supabaseAdmin
+              .from('attractions')
+              .select('name, is_active, customer_publishable')
+              .in('name', unmatchedNames);
+            attractionMasters = Array.isArray(masters) ? masters as AttractionMasterHint[] : [];
+          }
           incidents.push({
             id: 'mobile_attraction_match_low',
             severity: 'high',
-            message: `관광지 매칭률 ${(matchRate * 100).toFixed(0)}% (${matchedCount}/${denom}) — 60% 미달, attraction 시드 / aliases 점검 필요`,
+            message: buildAttractionMatchLowMessage({
+              matchedCount,
+              denom,
+              unmatchedNames,
+              attractionMasters,
+            }),
           });
         }
       }
@@ -776,10 +885,13 @@ export async function runAutoMobileQA(
                 source: 'auto_mobile_qa',
                 incidents,
                 checked_at: checkedAt,
-                mobile_browser_proof: buildMobileBrowserProofPayload({
+                auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
                   status: 'pass',
                   checkedAt,
                   packageUpdatedAt: expected.updatedAt,
+                  packageRevision: expected.proofPackageRevision,
+                  publicSnapshotHash: expected.proofPublicSnapshotHash,
+                  appBuildId: expected.proofAppBuildId,
                   surfaces,
                   surfaceProofResults,
                 }),
@@ -816,10 +928,13 @@ export async function runAutoMobileQA(
                 source: 'auto_mobile_qa',
                 incidents: hiSev,
                 checked_at: checkedAt,
-                mobile_browser_proof: buildMobileBrowserProofPayload({
+                auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
                   status: 'fail',
                   checkedAt,
                   packageUpdatedAt: expected.updatedAt,
+                  packageRevision: expected.proofPackageRevision,
+                  publicSnapshotHash: expected.proofPublicSnapshotHash,
+                  appBuildId: expected.proofAppBuildId,
                   surfaces,
                   surfaceProofResults,
                 }),
@@ -874,10 +989,13 @@ export async function runAutoMobileQA(
           .update({
             audit_report: {
               ...clearStaleMobileQaFailures(existingReport),
-              mobile_browser_proof: buildMobileBrowserProofPayload({
+              auto_mobile_fetch_proof: buildMobileBrowserProofPayload({
                 status: 'pass',
                 checkedAt,
                 packageUpdatedAt: expected.updatedAt,
+                packageRevision: expected.proofPackageRevision,
+                publicSnapshotHash: expected.proofPublicSnapshotHash,
+                appBuildId: expected.proofAppBuildId,
                 surfaces,
                 surfaceProofResults,
               }),

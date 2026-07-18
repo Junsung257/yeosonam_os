@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * POST /api/blog/report-error
@@ -8,6 +9,9 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * Server Components render 에러의 digest와 stack을 admin_alerts에 기록.
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ ok: false }, { status: 503 });
 
   try {

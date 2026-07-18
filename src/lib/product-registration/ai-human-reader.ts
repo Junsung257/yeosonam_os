@@ -612,13 +612,14 @@ function buildPricePairs(input: HumanReaderInput, rawTextHash: string): {
   const pairs: HumanReaderPricePair[] = [];
   const spans: SourceEvidenceSpan[] = [];
   const seen = new Set<string>();
+  const golfWeekdayRows = extractGolfWeekdayRangePriceRows(input);
 
   const candidateRows = [
-    ...ir.rows,
+    ...(golfWeekdayRows.length > 0 ? [] : ir.rows),
+    ...golfWeekdayRows,
     ...extractAdjacentDatePriceRows(input),
     ...extractBrokenKoreanMonthDayPriceRows(input),
     ...extractNearbyKoreanTravelDayPriceRows(input),
-    ...extractGolfWeekdayRangePriceRows(input),
     ...extractMonthlyWeekdayGridRows(input),
   ];
   const sortedCandidateRows = [...candidateRows].sort((a, b) => a.date.localeCompare(b.date));

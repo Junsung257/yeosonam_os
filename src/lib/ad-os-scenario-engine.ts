@@ -38,7 +38,7 @@ export type AdOsProductScenario = {
 const DEPARTURE_CITIES = ['부산', '인천', '김포', '청주', '대구', '무안', '제주'];
 const FAMILY_SIGNALS = ['가족', '아이', '키즈', '어린이', '부모님', '효도', '어버이'];
 const PREMIUM_SIGNALS = ['프리미엄', '럭셔리', '고급', '5성', '직항', '리조트', '노쇼핑'];
-const URGENCY_SIGNALS = ['마감', '특가', '출발확정', '조기예약', '발권', '잔여석'];
+const URGENCY_SIGNALS = ['마감', '특가', '조기예약', '발권', '잔여석'];
 const DIFFERENTIATOR_SIGNALS = ['노쇼핑', '노옵션', '자유시간', '가이드', '마사지', '호이안', '바나힐', '리조트'];
 const COMMON_COMPARISONS: Record<string, string[]> = {
   다낭: ['나트랑', '푸꾸옥', '세부'],
@@ -268,13 +268,13 @@ export function deriveAdOsProductScenarios(pkg: TravelPackageForSearchAds): AdOs
       packageId: pkg.id,
       scenarioType: 'urgency',
       funnelStage: 'conversion',
-      targetSegment: '출발확정/마감임박/발권기한이 가까운 고객',
-      primaryKeyword: `${destination} 출발확정 패키지`,
+      targetSegment: '출발일과 요금 조건을 빠르게 확인하려는 고객',
+      primaryKeyword: `${destination} 출발일 확인 패키지`,
       keywordVariants: uniq([
-        `${destination} 출발확정`,
-        `${destination} 마감임박`,
+        `${destination} 출발일 확인`,
+        `${destination} 예약 가능 여부`,
         duration ? `${destination} ${duration} 특가` : null,
-        `${destination} 지금 예약`,
+        `${destination} 상담 예약`,
       ]),
       landingStrategy: 'product_page',
       recommendedChannel: 'naver',
@@ -282,7 +282,7 @@ export function deriveAdOsProductScenarios(pkg: TravelPackageForSearchAds): AdOs
       opportunityScore: 80,
       riskFlags: { expiry_sensitive: true, requires_ticketing_deadline_check: true },
       learningContext: { source: 'urgency_signal', duration },
-      decisionReason: '마감/출발확정 의도는 상품 만료와 직접 연결되므로 상품 랜딩과 만료 정리 루프를 함께 건다.',
+      decisionReason: '출발일 확인 의도는 상품 만료와 직접 연결되므로 확정·보장 표현 없이 상품 랜딩과 만료 정리 루프를 함께 건다.',
     }));
   }
 

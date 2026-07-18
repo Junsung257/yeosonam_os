@@ -27,7 +27,11 @@ import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
-import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -65,9 +69,61 @@ function stripPublicPackageFields(row: Record<string, unknown>): Record<string, 
   return sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row)) ?? {};
 }
 
+function isCustomerPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  return isPublicPublicationState(typeof row.publication_state === 'string' ? row.publication_state : null)
+    && isCustomerPubliclyOpenable(row);
+}
+
 function includesCustomerNoticeFields(input: Record<string, unknown>): boolean {
   return Object.prototype.hasOwnProperty.call(input, 'notices_parsed')
     || Object.prototype.hasOwnProperty.call(input, 'customer_notes');
+}
+
+const CUSTOMER_PUBLIC_REAUDIT_FIELDS = new Set([
+  'title',
+  'display_title',
+  'hero_tagline',
+  'destination',
+  'country',
+  'duration',
+  'nights',
+  'price',
+  'price_tiers',
+  'price_dates',
+  'price_list',
+  'surcharges',
+  'excluded_dates',
+  'category',
+  'product_type',
+  'trip_style',
+  'departure_days',
+  'departure_airport',
+  'airline',
+  'min_participants',
+  'ticketing_deadline',
+  'guide_tip',
+  'single_supplement',
+  'small_group_surcharge',
+  'optional_tours',
+  'cancellation_policy',
+  'category_attrs',
+  'inclusions',
+  'excludes',
+  'customer_notes',
+  'notices_parsed',
+  'itinerary',
+  'itinerary_data',
+  'product_tags',
+  'product_highlights',
+  'product_summary',
+  'marketing_copies',
+  'raw_text',
+  'accommodations',
+  'status',
+]);
+
+function customerPublicReauditKeys(patch: Record<string, unknown>): string[] {
+  return Object.keys(patch).filter(key => CUSTOMER_PUBLIC_REAUDIT_FIELDS.has(key));
 }
 
 async function assertPackageV3NoticePatchAllowed(packageId: string, input: Record<string, unknown>) {
@@ -347,6 +403,7 @@ const PACKAGE_LIST_FIELDS = `
   seats_held, seats_confirmed, nights, accommodations, cancellation_policy,
   avg_rating, review_count, view_count, inquiry_count,
   audit_status, audit_report, audit_checked_at,
+  publication_state, package_revision,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
@@ -357,7 +414,9 @@ const PACKAGE_LIST_FIELDS_LITE = `
   land_operator, commission_rate, product_tags, product_highlights, product_summary,
   itinerary,
   internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
-  audit_status, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
+  audit_status, audit_report, updated_at, optional_tours, itinerary_data,
+  publication_state, package_revision,
+  products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
 
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
@@ -388,8 +447,10 @@ export async function GET(request: NextRequest) {
       // 1. mv_destination_aggregates → RPC 우선 (사전 집계, O(distinct destinations))
       //    마이그레이션: supabase/migrations/20260513000000_destination_aggregate_mv.sql
       //    nightly cron (KST 09:10) 으로 갱신. 즉시성 필요 시 SELECT public.refresh_mv_destination_aggregates();
-      const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc('get_destinations_aggregate');
-      if (!rpcErr && Array.isArray(rpcData)) {
+      const { data: rpcData, error: rpcErr } = isAdmin
+        ? await supabaseAdmin.rpc('get_destinations_aggregate')
+        : { data: null, error: null };
+      if (isAdmin && !rpcErr && Array.isArray(rpcData)) {
         return successResponse({ destinations: rpcData });
       }
 
@@ -398,11 +459,17 @@ export async function GET(request: NextRequest) {
       logWarning('[api/packages] GET aggregate=destination RPC failed, using fallback', rpcErr);
       const { data: allPkgs } = await supabaseAdmin
         .from('travel_packages')
-        .select('destination, price, price_tiers, price_dates, country')
-        .in('status', ['active', 'approved']);
+        .select('id, destination, price, price_tiers, price_dates, country, status, audit_status, audit_report, updated_at, optional_tours, itinerary_data, publication_state, package_revision')
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
       const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
-      (allPkgs ?? []).forEach((p: any) => {
+      const aggregateRows = isAdmin
+        ? (allPkgs ?? [])
+        : await fetchAndMergeCurrentPublicPackageCardSnapshots(
+          supabaseAdmin,
+          (allPkgs ?? []).filter((p: any) => isCustomerPublicSnapshotCandidate(p)),
+        );
+      aggregateRows.forEach((p: any) => {
         const dest = p.destination;
         if (!dest) return;
         if (!destMap[dest]) destMap[dest] = { count: 0, minPrice: Infinity, country: p.country || '' };
@@ -438,25 +505,42 @@ export async function GET(request: NextRequest) {
         .eq(col, id)
         .single();
       if (pkgErr || !pkg) return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+      const publicSnapshot = !isAdmin
+        ? await fetchLatestPublicPackageSnapshot(supabaseAdmin, String(pkg.id), {
+          expectedPackageRevision: Number(pkg.package_revision ?? 1),
+        })
+        : null;
+      if (!isAdmin && (!isCustomerPublicSnapshotCandidate(pkg as Record<string, unknown>) || !publicSnapshot)) {
+        return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+      }
+
+      const publicSnapshotPackage = publicSnapshot?.package ?? null;
+      if (!isAdmin && !publicSnapshotPackage) {
+        return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+      }
+      const responsePkg: Record<string, unknown> = isAdmin
+        ? pkg as Record<string, unknown>
+        : { ...publicSnapshotPackage, id: pkg.id };
 
       let lp_hero_image_url: string | null = null;
       if (supabaseAdmin) {
         try {
-          lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
+          lp_hero_image_url = await resolveLpHeroPhotoUrl(supabaseAdmin, responsePkg);
         } catch (e) {
           logWarning('[api/packages] GET lp hero resolve failed', e);
         }
       }
 
-      const attraction_ids = collectAttractionIds(pkg.itinerary_data);
+      const itineraryData = responsePkg.itinerary_data;
+      const attraction_ids = collectAttractionIds(itineraryData);
       return successResponse(
         {
           package: isAdmin
-            ? stripSupplierRemarkFields(pkg as Record<string, unknown>)
-            : stripPublicPackageFields(pkg as Record<string, unknown>),
+            ? stripSupplierRemarkFields(responsePkg)
+            : stripPublicPackageFields(responsePkg),
           lp_hero_image_url,
           attraction_ids,
-          attraction_preview_names: getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 8),
+          attraction_preview_names: getAttractionPreviewNamesFromItinerary(itineraryData, 8),
         },
         200,
         300,
@@ -497,7 +581,7 @@ export async function GET(request: NextRequest) {
     if (status && status !== 'all') {
       // 관리자 탭 상태(semantic) 호환
       if (status === 'selling') {
-        query = query.in('status', ['approved', 'active']);
+        query = query.in('status', [...CUSTOMER_VISIBLE_STATUSES]);
       } else if (status === 'pending') {
         query = query.in('status', ['pending', 'pending_review', 'draft']);
       } else if (status === 'archived') {
@@ -523,7 +607,13 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const enrichedData = (data ?? []).map((row: any) => {
+    const visibleRows = isAdmin
+      ? (data ?? [])
+      : await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        supabaseAdmin,
+        (data ?? []).filter((row: any) => isCustomerPublicSnapshotCandidate(row)),
+      );
+    const enrichedData = visibleRows.map((row: any) => {
       const safeRow = isAdmin
         ? stripSupplierRemarkFields(row)
         : stripPublicPackageFields(row);
@@ -539,7 +629,7 @@ export async function GET(request: NextRequest) {
     // Edge CDN cache 5분 + SWR 10분 (이전: 1분/2분).
     //   상품 목록은 매분 바뀌지 않으므로 적극 캐시. 등록/승인 시 revalidatePath('/packages') 로 무효화.
     return listResponse(enrichedData, {
-      total: count ?? 0,
+      total: isAdmin ? (count ?? 0) : enrichedData.length,
       page,
       limit,
       cacheSeconds: 300,
@@ -865,6 +955,7 @@ export async function PATCH(request: NextRequest) {
         .from('travel_packages')
         .update({
           status: 'approved',
+          publication_state: 'blocked',
           updated_at: now,
           // Option B: 승인 시 자동으로 visual baseline 재생성 큐 등록
           baseline_requested_at: now,
@@ -1039,6 +1130,7 @@ export async function PATCH(request: NextRequest) {
     if (sanitized.price_tiers && !sanitized.price_dates) {
       sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as unknown as import('@/lib/parser').PriceTier[]);
     }
+    const publicReauditKeys = customerPublicReauditKeys(sanitized);
     if (typeof sanitized.status === 'string' && isCustomerVisibleStatus(sanitized.status)) {
       const sourceAuditBlock = await assertPackageSourceAuditAllowsPublication(packageId);
       if (sourceAuditBlock) return sourceAuditBlock;
@@ -1062,10 +1154,18 @@ export async function PATCH(request: NextRequest) {
     );
     let beforeSnapshot: Record<string, unknown> | null = null;
     let beforePkgMeta: { land_operator_id: string | null; destination: string | null; raw_text: string | null } | null = null;
-    if (trackedKeysChanged.length > 0) {
+    if (trackedKeysChanged.length > 0 || publicReauditKeys.length > 0) {
+      const selectFields = Array.from(new Set([
+        'id',
+        'land_operator_id',
+        'destination',
+        'raw_text',
+        'package_revision',
+        ...trackedKeysChanged,
+      ]));
       const { data: beforeRow } = await supabaseAdmin
         .from('travel_packages')
-        .select(`id, land_operator_id, destination, raw_text, ${trackedKeysChanged.join(', ')}`)
+        .select(selectFields.join(', '))
         .eq('id', packageId)
         .single();
       if (beforeRow) {
@@ -1076,6 +1176,15 @@ export async function PATCH(request: NextRequest) {
           raw_text: (beforeRow as unknown as { raw_text?: string | null }).raw_text ?? null,
         };
       }
+    }
+    if (publicReauditKeys.length > 0) {
+      const nextRevision = Number(beforeSnapshot?.package_revision ?? 1) + 1;
+      const nextStatus = typeof sanitized.status === 'string' ? sanitized.status : null;
+      sanitized.package_revision = nextRevision;
+      sanitized.audit_status = 'blocked';
+      sanitized.publication_state = nextStatus && !isCustomerVisibleStatus(nextStatus)
+        ? 'blocked'
+        : 'needs_reaudit';
     }
 
     const { data: result, error: updateErr } = await supabaseAdmin

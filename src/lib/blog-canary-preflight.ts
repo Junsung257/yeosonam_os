@@ -25,6 +25,8 @@ export type BlogCanaryCandidate = {
   topic: string;
   destination: string | null;
   writer_type: 'info_writer' | 'product_consultant_writer';
+  quality_contract: 'customer_surface_100';
+  contract_expectations: string[];
   risk_level: 'low' | 'medium';
   reason: string;
   dedup_key: string;
@@ -100,6 +102,32 @@ function candidateSortValue(row: BlogCanaryCandidateRow): number {
   const duePenalty = row.target_publish_at && new Date(row.target_publish_at).getTime() > Date.now() ? -5 : 0;
   const productBonus = row.product_id ? 1 : 0;
   return priority + duePenalty + productBonus;
+}
+
+function contractExpectationsForWriter(
+  writerType: BlogCanaryCandidate['writer_type'],
+): string[] {
+  if (writerType === 'product_consultant_writer') {
+    return [
+      'product_db_only',
+      'price_departure_duration_opening',
+      'included_excluded_blocks',
+      'fit_and_not_fit_blocks',
+      'risk_notes_and_consult_questions',
+      'no_hard_booking_pressure',
+      'render_clean_tables',
+    ];
+  }
+
+  return [
+    'answer_first_120_200_chars',
+    'korean_search_intent_not_raw_micro_angle',
+    'official_source_if_changeable',
+    'valid_table_or_checklist',
+    'runtime_contextual_cta_only',
+    'no_ai_cliche_opening',
+    'render_clean_tables',
+  ];
 }
 
 export function buildBlogCanaryPreflight(input: {
@@ -192,6 +220,8 @@ export function buildBlogCanaryPreflight(input: {
       topic,
       destination: row.destination ?? null,
       writer_type: writerType,
+      quality_contract: 'customer_surface_100',
+      contract_expectations: contractExpectationsForWriter(writerType),
       risk_level: writerType === 'product_consultant_writer' ? 'medium' : 'low',
       reason: writerType === 'product_consultant_writer'
         ? 'product-backed canary candidate with no evidence blocker'

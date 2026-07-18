@@ -19,6 +19,27 @@ function planRequiresAirTransport(plan: V3StructurePlan): boolean {
   return plan.flight_pattern.outbound_codes.length > 0 || plan.flight_pattern.inbound_codes.length > 0;
 }
 
+function inclusionValues(variant: V3DraftLedger['variants'][number]): string[] {
+  return variant.inclusions.map(inclusion => String(inclusion.value ?? '').trim()).filter(Boolean);
+}
+
+function hasIncludedMealEvidence(variant: V3DraftLedger['variants'][number]): boolean {
+  return inclusionValues(variant).some(value =>
+    /\bmeal\b/i.test(value)
+    || value.includes('\uc2dd\uc0ac')
+    || value.includes('\uc77c\uc815\ud45c\uc0c1\uc758 \uc2dd\uc0ac')
+  );
+}
+
+function hasIncludedHotelEvidence(variant: V3DraftLedger['variants'][number]): boolean {
+  return inclusionValues(variant).some(value =>
+    /\bhotel\b/i.test(value)
+    || value.includes('\ud638\ud154')
+    || value.includes('\uc219\ubc15')
+    || value.includes('\ub9ac\uc870\ud2b8')
+  );
+}
+
 export function evaluateProductRegistrationV3Gate(
   plan: V3StructurePlan,
   ledger: V3DraftLedger,
@@ -36,9 +57,11 @@ export function evaluateProductRegistrationV3Gate(
   for (const variant of ledger.variants) {
     const requiresAirTransport = planRequiresAirTransport(plan);
     const hasMealEvidence = variant.days.some(day => Object.values(day.meals).some(value => Object.keys(value).length > 0))
+      || hasIncludedMealEvidence(variant)
       || variant.standard_notices.some(notice => notice.category === 'meal_plan' && notice.review_status !== 'rejected')
       || (variant.structured_facts ?? []).some(fact => fact.category === 'meal_plan' && fact.review_status !== 'rejected');
     const hasHotelEvidence = variant.days.some(day => Object.keys(day.hotel).length > 0)
+      || hasIncludedHotelEvidence(variant)
       || variant.standard_notices.some(notice => notice.category === 'hotel_notice' && notice.review_status !== 'rejected')
       || (variant.structured_facts ?? []).some(fact =>
         (fact.category === 'hotel_grade' || fact.category === 'room_policy')

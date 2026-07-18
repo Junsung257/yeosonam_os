@@ -6,6 +6,7 @@ export type BlogPublishReadinessType = 'product' | 'info';
 export interface BlogPublishReadinessInput {
   markdown: string;
   blogType: BlogPublishReadinessType;
+  hasRuntimeInformationalCta?: boolean;
   slug: string;
   destination?: string | null;
   topic?: string | null;
@@ -34,7 +35,10 @@ function markdownLinkUrls(markdown: string): string[] {
 export function appendPublishReadinessSupport(input: BlogPublishReadinessInput): BlogPublishReadinessRepairResult {
   const trimmed = input.markdown.trimEnd();
   const minLength = input.blogType === 'info' ? 2550 : 1300;
-  if (plainLength(trimmed) >= minLength || /##\s+문의 전 최종 확인/.test(trimmed)) {
+  if (
+    plainLength(trimmed) >= minLength
+    || /##\s+(?:문의 전 최종 확인|출발 전 다시 확인할 기준)/.test(trimmed)
+  ) {
     return { markdown: input.markdown, changed: false, changes: [] };
   }
 
@@ -53,9 +57,9 @@ export function appendPublishReadinessSupport(input: BlogPublishReadinessInput):
         '| 변경 가능성 | 항공, 호텔, 현지 일정은 확정 전까지 조건이 달라질 수 있습니다. |',
       ].join('\n')
     : [
-        '## 문의 전 최종 확인',
+        '## 출발 전 다시 확인할 기준',
         '',
-        `${destination} 일정은 계절, 항공 시간, 숙소 위치, 동행 구성에 따라 같은 키워드라도 실제 선택지가 달라집니다. 이 글의 기준으로 먼저 큰 방향을 정하고, 출발일과 인원, 예산 범위를 함께 확인하면 불필요한 비교 시간을 줄일 수 있습니다.`,
+        `${destination} 일정은 계절, 항공 시간, 숙소 위치, 동행 구성에 따라 같은 키워드라도 실제 선택지가 달라집니다. 이 글의 기준으로 먼저 큰 방향을 정하고, 출발일과 인원, 예산 범위를 함께 적어 두면 불필요한 비교 시간을 줄일 수 있습니다.`,
         '',
         '| 확인 항목 | 체크 기준 |',
         '| --- | --- |',
@@ -72,6 +76,9 @@ export function appendPublishReadinessSupport(input: BlogPublishReadinessInput):
 }
 
 export function ensurePublisherInternalLinks(input: BlogPublishReadinessInput): BlogPublishReadinessRepairResult {
+  if (input.blogType === 'info' && input.hasRuntimeInformationalCta) {
+    return { markdown: input.markdown, changed: false, changes: [] };
+  }
   const linkUrls = markdownLinkUrls(input.markdown);
   const internalCount = linkUrls.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href)).length;
   if (internalCount >= 1) return { markdown: input.markdown, changed: false, changes: [] };

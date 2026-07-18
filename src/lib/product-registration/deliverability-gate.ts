@@ -101,6 +101,44 @@ function sortedUniqueNumbers(values: number[]): number[] {
   return [...new Set(values)].sort((a, b) => a - b);
 }
 
+function normalizePriceRowVariant(row: ProductPriceRowInput): string {
+  return String(row.note ?? row.day_of_week ?? 'default')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function customerComparablePrice(row: ProductPriceRowInput): number | null {
+  const adultSellingPrice = row.adult_selling_price;
+  if (typeof adultSellingPrice === 'number' && Number.isFinite(adultSellingPrice) && adultSellingPrice > 0) {
+    return adultSellingPrice;
+  }
+  return typeof row.net_price === 'number' && Number.isFinite(row.net_price) && row.net_price > 0
+    ? row.net_price
+    : null;
+}
+
+function findSameVariantDatePriceConflict(rows: ProductPriceRowInput[]): string | null {
+  const pricesByDateAndVariant = new Map<string, Set<number>>();
+  for (const row of rows) {
+    const price = customerComparablePrice(row);
+    if (!row.target_date || price == null) continue;
+    const key = `${row.target_date}|${normalizePriceRowVariant(row)}`;
+    const prices = pricesByDateAndVariant.get(key) ?? new Set<number>();
+    prices.add(price);
+    pricesByDateAndVariant.set(key, prices);
+  }
+
+  for (const [key, prices] of pricesByDateAndVariant) {
+    if (prices.size <= 1) continue;
+    const [date, variant] = key.split('|');
+    const formatted = [...prices].sort((a, b) => a - b).map(price => price.toLocaleString()).join(', ');
+    return `product_prices conflicting prices for same date ${date} (${variant || 'default'}): ${formatted}`;
+  }
+
+  return null;
+}
+
 function findPriceStorageMismatch(input: UploadDeliverabilityInput): string | null {
   if (input.priceDates.length === 0) return null;
 
@@ -164,6 +202,9 @@ function findPriceShapeError(input: UploadDeliverabilityInput): string | null {
       return `product_prices invalid child_price ${row.target_date ?? row.day_of_week ?? 'undated'}: ${String(row.child_price)}`;
     }
   }
+
+  const sameVariantConflict = findSameVariantDatePriceConflict(input.priceRows);
+  if (sameVariantConflict) return sameVariantConflict;
 
   return null;
 }

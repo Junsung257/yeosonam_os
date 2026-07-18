@@ -11,6 +11,7 @@
  */
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
+import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
 import {
   parseDaysWithTransport,
   isTransportSegment,
@@ -157,7 +158,7 @@ async function runTests() {
       .from('travel_packages')
       .select('title, itinerary_data')
       .ilike('title', `%${tc.titleQuery}%`)
-      .in('status', ['active', 'approved', 'pending'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'pending'])
       .limit(1);
 
     if (!data || data.length === 0) {

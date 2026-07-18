@@ -4,12 +4,14 @@ on:
   schedule:
     # KST 11:50, replenish publishable micro-angle queue before publisher slots.
     - cron: '50 2 * * *'
-    # KST 12:07, 15:07, 18:07, 21:07.
-    - cron: '7 3,6,9,12 * * *'
-    # KST 12:27, 15:27, 18:27, 21:27, decouple indexing from publisher success.
-    - cron: '27 3,6,9,12 * * *'
-    # KST 22:12, after the final daily publisher slot.
-    - cron: '12 13 * * *'
+    # KST 12:07, 15:07, 18:07, 21:07, 22:07 catch-up.
+    - cron: '7 3,6,9,12,13 * * *'
+    # KST 12:27, 15:27, 18:27, 21:27, 22:27, decouple indexing from publisher success.
+    - cron: '27 3,6,9,12,13 * * *'
+    # KST 22:40, final indexing drain after late publisher retries.
+    - cron: '40 13 * * *'
+    # KST 22:45, after the final publisher retries and indexing worker slots.
+    - cron: '45 13 * * *'
   workflow_dispatch:
     inputs:
       endpoint:
@@ -38,10 +40,11 @@ concurrency:
 jobs:
   trigger:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     env:
       BASE_URL: https://www.yeosonam.com
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      MAX_PUBLISHER_ATTEMPTS: 4
 
     steps:
       - name: Select endpoint
@@ -58,10 +61,10 @@ jobs:
               "50 2 * * *")
                 endpoint="blog-scheduler"
                 ;;
-              "27 3,6,9,12 * * *")
+              "27 3,6,9,12,13 * * *"|"40 13 * * *")
                 endpoint="blog-indexing-worker"
                 ;;
-              "12 13 * * *")
+              "45 13 * * *")
                 endpoint="blog-daily-summary"
                 ;;
               *)
@@ -89,7 +92,9 @@ jobs:
             exit 1
           fi
 
-          http_code="$(
+          trigger_url() {
+            local url="$1"
+            local output="$2"
             curl \
               --silent \
               --show-error \
@@ -97,11 +102,104 @@ jobs:
               --retry 3 \
               --retry-delay 10 \
               --max-time 540 \
-              --output response.json \
+              --output "${output}" \
               --write-out "%{http_code}" \
               --header "Authorization: Bearer ${CRON_SECRET}" \
-              "${{ steps.select.outputs.url }}"
-          )"
+              "${url}"
+          }
+
+          endpoint="${{ steps.select.outputs.endpoint }}"
+          if [ "$endpoint" = "blog-daily-summary" ]; then
+            echo "Running pre-summary publisher catch-up before daily summary."
+            pre_summary_publisher_output="pre-summary-publisher-response.json"
+            pre_summary_publisher_hard_failed=0
+            publisher_code="$(trigger_url "${BASE_URL}/api/cron/blog-publisher?force=true" "${pre_summary_publisher_output}")"
+            echo "Pre-summary publisher HTTP status: ${publisher_code}"
+            cat "${pre_summary_publisher_output}"
+            if [ "$publisher_code" -lt 200 ] || [ "$publisher_code" -ge 300 ]; then
+              pre_summary_publisher_hard_failed=1
+            else
+              attempt=1
+              while [ "$attempt" -lt "${MAX_PUBLISHER_ATTEMPTS}" ]; do
+                remaining_after="$(
+                  node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('${pre_summary_publisher_output}','utf8')); console.log(Number(data?.dailyQuota?.remainingAfterRun ?? 0));" || echo "__parse_error__"
+                )"
+                if [ "${remaining_after}" = "__parse_error__" ]; then
+                  echo "Pre-summary publisher response JSON could not be parsed; indexing drain will still run before failing." >&2
+                  pre_summary_publisher_hard_failed=1
+                  break
+                fi
+                if [ "${remaining_after}" -le 0 ]; then
+                  break
+                fi
+
+                echo "Pre-summary publisher still has ${remaining_after} post(s) remaining after attempt ${attempt}; refilling queue and retrying."
+                scheduler_code="$(trigger_url "${BASE_URL}/api/cron/blog-scheduler?force=true" "pre-summary-scheduler-response-${attempt}.json")"
+                echo "Pre-summary scheduler HTTP status: ${scheduler_code}"
+                cat "pre-summary-scheduler-response-${attempt}.json"
+                if [ "$scheduler_code" -lt 200 ] || [ "$scheduler_code" -ge 300 ]; then
+                  pre_summary_publisher_hard_failed=1
+                  break
+                fi
+
+                sleep 5
+                attempt=$((attempt + 1))
+                publisher_code="$(trigger_url "${BASE_URL}/api/cron/blog-publisher?force=true" "${pre_summary_publisher_output}")"
+                echo "Pre-summary publisher retry attempt: ${attempt}"
+                echo "HTTP status: ${publisher_code}"
+                cat "${pre_summary_publisher_output}"
+                if [ "$publisher_code" -lt 200 ] || [ "$publisher_code" -ge 300 ]; then
+                  pre_summary_publisher_hard_failed=1
+                  break
+                fi
+              done
+            fi
+
+            echo "Running pre-summary indexing drain before daily summary."
+            indexing_code="$(trigger_url "${BASE_URL}/api/cron/blog-indexing-worker?force=true" "pre-summary-indexing-response.json")"
+            echo "Pre-summary indexing HTTP status: ${indexing_code}"
+            cat pre-summary-indexing-response.json
+            if [ "$indexing_code" -lt 200 ] || [ "$indexing_code" -ge 300 ]; then
+              exit 1
+            fi
+            node <<'NODE'
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('pre-summary-indexing-response.json', 'utf8'));
+            const failed = Number(data?.failed ?? 0);
+            const errors = Array.isArray(data?.errors) ? data.errors : [];
+            if (failed > 0 || errors.length > 0) {
+              console.error(`Pre-summary indexing drain reported failures. failed=${failed}, errors=${JSON.stringify(errors)}`);
+              process.exit(1);
+            }
+          NODE
+            if [ "$pre_summary_publisher_hard_failed" -ne 0 ]; then
+              echo "Pre-summary publisher or scheduler hard-failed after possible partial publish; indexing drain already ran." >&2
+              exit 1
+            fi
+            node <<'NODE'
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('pre-summary-publisher-response.json', 'utf8'));
+            const remainingBeforeRun = Number(data?.dailyQuota?.remainingBeforeRun ?? data?.dailyQuota?.remaining ?? 0);
+            const remainingAfterRun = Number(data?.dailyQuota?.remainingAfterRun ?? 0);
+            const published = Number(data?.published ?? 0);
+            if (data?.ok === false) {
+              console.error('Pre-summary publisher returned ok=false');
+              process.exit(1);
+            }
+            if (remainingBeforeRun > 0 && published === 0) {
+              console.error(`Pre-summary publisher produced zero posts with remaining quota (${remainingBeforeRun}).`);
+              console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
+              process.exit(1);
+            }
+            if (remainingAfterRun > 0) {
+              console.error(`Pre-summary publisher underfilled the daily quota after retries. remainingAfterRun=${remainingAfterRun}`);
+              console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
+              process.exit(1);
+            }
+          NODE
+          fi
+
+          http_code="$(trigger_url "${{ steps.select.outputs.url }}" response.json)"
 
           echo "Endpoint: ${{ steps.select.outputs.endpoint }}"
           echo "HTTP status: ${http_code}"
@@ -109,6 +207,37 @@ jobs:
 
           if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
             exit 1
+          fi
+
+          if [ "$endpoint" = "blog-publisher" ]; then
+            attempt=1
+            while [ "$attempt" -lt "${MAX_PUBLISHER_ATTEMPTS}" ]; do
+              remaining_after="$(
+                node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('response.json','utf8')); console.log(Number(data?.dailyQuota?.remainingAfterRun ?? 0));"
+              )"
+              if [ "${remaining_after}" -le 0 ]; then
+                break
+              fi
+
+              echo "Publisher still has ${remaining_after} post(s) remaining after attempt ${attempt}; refilling queue and retrying."
+
+              scheduler_code="$(trigger_url "${BASE_URL}/api/cron/blog-scheduler?force=true" "scheduler-response-${attempt}.json")"
+              echo "Scheduler HTTP status: ${scheduler_code}"
+              cat "scheduler-response-${attempt}.json"
+              if [ "$scheduler_code" -lt 200 ] || [ "$scheduler_code" -ge 300 ]; then
+                exit 1
+              fi
+
+              sleep 5
+              attempt=$((attempt + 1))
+              http_code="$(trigger_url "${{ steps.select.outputs.url }}" response.json)"
+              echo "Publisher retry attempt: ${attempt}"
+              echo "HTTP status: ${http_code}"
+              cat response.json
+              if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+                exit 1
+              fi
+            done
           fi
 
           node <<'NODE'
@@ -126,9 +255,15 @@ jobs:
           }
           if (endpoint === 'blog-publisher') {
             const remainingBeforeRun = Number(data?.dailyQuota?.remainingBeforeRun ?? data?.dailyQuota?.remaining ?? 0);
+            const remainingAfterRun = Number(data?.dailyQuota?.remainingAfterRun ?? 0);
             const published = Number(data?.published ?? 0);
             if (remainingBeforeRun > 0 && published === 0) {
               console.error(`Publisher produced zero posts with remaining quota (${remainingBeforeRun}).`);
+              console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
+              process.exit(1);
+            }
+            if (remainingAfterRun > 0) {
+              console.error(`Publisher underfilled the daily quota after retries. remainingAfterRun=${remainingAfterRun}`);
               console.error(`Failure breakdown: ${JSON.stringify(data?.failure_breakdown ?? {})}`);
               process.exit(1);
             }
