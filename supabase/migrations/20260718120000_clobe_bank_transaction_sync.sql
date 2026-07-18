@@ -24,12 +24,12 @@ ALTER TABLE public.bank_transactions
     'clobe_api'
   ));
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_bank_transactions_external_provider_tx
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_bank_transactions_external_provider_tx
   ON public.bank_transactions (external_provider, external_transaction_id)
   WHERE external_provider IS NOT NULL
     AND external_transaction_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_bank_transactions_clobe_sync_lookup
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bank_transactions_clobe_sync_lookup
   ON public.bank_transactions (source, received_at DESC)
   WHERE source IN ('clobe_mcp', 'clobe_api');
 

@@ -1,7 +1,7 @@
 -- Yeosonam OS - settlement memo keys
 --
 -- Operators paste bank rows manually and use a memo such as
--- 260715_정지해_투어폰 to identify one travel booking. Payer names can differ
+-- 260715_<customer>_<land_operator> to identify one travel booking. Payer names can differ
 -- by companion, so this key is stored separately from bank counterparty names.
 
 CREATE TABLE IF NOT EXISTS public.booking_settlement_keys (
@@ -32,6 +32,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_settlement_keys_active
 CREATE INDEX IF NOT EXISTS idx_booking_settlement_keys_booking
   ON public.booking_settlement_keys (booking_id, status);
 
+CREATE INDEX IF NOT EXISTS idx_booking_settlement_keys_land_operator
+  ON public.booking_settlement_keys (land_operator_id)
+  WHERE land_operator_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_booking_settlement_keys_lookup
   ON public.booking_settlement_keys (departure_date, customer_name_snapshot, land_operator_name_snapshot)
   WHERE status = 'active';
@@ -50,7 +54,7 @@ REVOKE ALL ON public.booking_settlement_keys FROM anon, authenticated;
 GRANT ALL ON public.booking_settlement_keys TO service_role;
 
 COMMENT ON TABLE public.booking_settlement_keys IS
-  'Manual bank-statement memo key to booking binding, e.g. 260715_정지해_투어폰. Counterparty names are evidence only, not the matching key.';
+  'Manual bank-statement memo key to booking binding, e.g. 260715_<customer>_<land_operator>. Counterparty names are evidence only, not the matching key.';
 
 COMMENT ON COLUMN public.booking_settlement_keys.normalized_key IS
   'Normalized memo key. One active key maps to one booking per tenant/platform.';
