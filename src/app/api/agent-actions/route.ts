@@ -1,11 +1,10 @@
 import { NextRequest } from 'next/server';
-import { apiResponse } from '@/lib/api-response';
-import { resolveAdminActorLabel, withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse as baseApiResponse } from '@/lib/api-response';
+import { requireAdminRequest, resolveAdminActorLabel, withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isValidTransition } from '@/lib/agent-action-machine';
 import { executeAction } from '@/lib/agent-action-executor';
-import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import {
   persistDecisionPacketForAction,
   recordDecisionPacketOutcome,
@@ -13,9 +12,21 @@ import {
 
 const VALID_AGENT_TYPES = ['operations', 'sales', 'marketing', 'finance', 'products', 'system'] as const;
 const VALID_PRIORITIES = ['low', 'normal', 'high', 'critical'] as const;
-const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' } as const;
+const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' } as const;
+
+function apiResponse<T>(
+  body: T,
+  init?: ResponseInit & { cacheSeconds?: number },
+) {
+  const headers = new Headers(init?.headers);
+  headers.set('Cache-Control', NO_STORE_HEADERS['Cache-Control']);
+  return baseApiResponse(body, { ...init, headers });
+}
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ actions: [], total: 0 });
   }
@@ -69,14 +80,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const token = request.cookies.get('sb-access-token')?.value;
-  if (!token) {
-    return apiResponse({ error: 'Authentication required.' }, { status: 401 });
-  }
-  const verified = await verifySupabaseAccessToken(token);
-  if (!verified.ok) {
-    return apiResponse({ error: 'Session is not valid.' }, { status: 401 });
-  }
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'Supabase is not configured.' }, { status: 500 });

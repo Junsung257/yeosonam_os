@@ -2396,7 +2396,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             )}
           </div>
 
-          {/* 카톡 — secondary, 빠른 채팅 (리드 저장 + 카카오 채널 오픈) */}
+          {/* 카톡 — secondary, 분석 기록 후 카카오 채널 오픈 (리드는 명시 동의 폼에서만 생성) */}
           <button
             type="button"
             aria-label="카카오톡으로 문의"
@@ -2423,17 +2423,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ package_id: id, outcome: 'inquiry' }),
-              }).catch(() => {});
-              fetch('/api/leads', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  productId: id,
-                  channel: 'kakao_channel',
-                  form: { name: '카카오문의', phone: '-', desiredDate: selectedTier?.departure_dates?.[0] || null, adults: 1, children: 0, privacyConsent: true },
-                  tracking: { landingUrl: window.location.href, utmSource: new URLSearchParams(window.location.search).get('utm_source'), utmMedium: new URLSearchParams(window.location.search).get('utm_medium'), utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') },
-                  submittedAt: new Date().toISOString(),
-                }),
               }).catch(() => {});
               const copied = await openKakaoChannel({
                 internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
