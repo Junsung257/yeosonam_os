@@ -196,6 +196,9 @@
 | 키 | 용도 |
 |---|---|
 | `PEXELS_API_KEY` | 이미지 fallback (블로그·카드뉴스) |
+| `GEMINI_API_KEY` | 블로그 AI 참고 이미지 생성 (서버 전용) |
+| `AI_IMAGE_GEN_ENABLED` | `false`이면 AI 생성만 끄고 Pexels fallback은 유지 |
+| `BLOG_IMAGE_MODEL` | 블로그 이미지 모델 override (기본 `gemini-3.1-flash-image`) |
 | `ANTHROPIC_API_KEY` | Claude API (IR 파이프라인용) |
 | `CLOBE_MCP_BEARER_TOKEN` | Clobe MCP 은행거래 동기화 Bearer 토큰. `CLOBE_API_TOKEN`을 호환용 fallback으로 사용 |
 | `CLOBE_API_TOKEN` | Clobe API 레거시/호환 토큰. `CLOBE_MCP_BEARER_TOKEN`이 있으면 사용하지 않음 |
@@ -284,6 +287,9 @@ KAKAO_TEMPLATE_REVIEW_REQUEST=TEMPLATE_ID_FROM_SOLAPI
 
 # 외부 API
 PEXELS_API_KEY=your_pexels_key
+GEMINI_API_KEY=your_gemini_key
+# AI_IMAGE_GEN_ENABLED=false
+# BLOG_IMAGE_MODEL=gemini-3.1-flash-image
 ANTHROPIC_API_KEY=your_claude_key
 
 # 선택
