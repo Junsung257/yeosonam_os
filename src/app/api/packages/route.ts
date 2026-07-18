@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import {
   saveTravelPackage,
@@ -25,7 +25,7 @@ import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attracti
 import { getSecret } from '@/lib/secret-registry';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { isAdminRequest, requireAdminRequest } from '@/lib/admin-guard';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
@@ -38,6 +38,7 @@ import {
   hasUnsafeCustomerNoticeMutation,
   loadLatestV3DraftForPackage,
 } from '@/lib/product-registration-v3/customer-payload';
+
 import { evaluateVerifyChecks } from '@/lib/upload-verify';
 import { buildSourceBackedPriceDateRepair } from '@/lib/source-price-date-repair';
 import { evaluateCustomerMobileProof, extractCustomerMobileProof } from '@/lib/customer-mobile-proof';
@@ -46,6 +47,18 @@ import {
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
 import { summarizeEvidencePackForApi } from '@/lib/product-registration/registration-evidence-pack';
+
+const ADMIN_PACKAGE_CACHE_CONTROL = 'private, no-store';
+const PUBLIC_PACKAGE_CACHE_CONTROL = 'public, s-maxage=300, stale-while-revalidate=150';
+
+function applyPackageCache(response: NextResponse, isAdmin: boolean): NextResponse {
+  if (isAdmin) {
+    response.headers.set('Cache-Control', ADMIN_PACKAGE_CACHE_CONTROL);
+  } else if (response.ok && !response.headers.has('Cache-Control')) {
+    response.headers.set('Cache-Control', PUBLIC_PACKAGE_CACHE_CONTROL);
+  }
+  return response;
+}
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -421,8 +434,10 @@ const PACKAGE_LIST_FIELDS_LITE = `
 
 // GET /api/packages?status=&category=&destination=&q=&page=&limit=&id=
 export async function GET(request: NextRequest) {
+  const isAdmin = await isAdminRequest(request).catch(() => false);
+
   if (!isSupabaseConfigured) {
-    return listResponse([], { total: 0 });
+    return applyPackageCache(listResponse([], { total: 0 }), isAdmin);
   }
 
   const { searchParams } = new URL(request.url);
@@ -439,8 +454,6 @@ export async function GET(request: NextRequest) {
   const from     = (page - 1) * limit;
 
   try {
-    const isAdmin = await isAdminRequest(request).catch(() => false);
-
     // 목적지별 집계 — 홈페이지용
     const aggregate = searchParams.get('aggregate');
     if (aggregate === 'destination') {
@@ -451,7 +464,7 @@ export async function GET(request: NextRequest) {
         ? await supabaseAdmin.rpc('get_destinations_aggregate')
         : { data: null, error: null };
       if (isAdmin && !rpcErr && Array.isArray(rpcData)) {
-        return successResponse({ destinations: rpcData });
+        return applyPackageCache(successResponse({ destinations: rpcData }), isAdmin);
       }
 
       // 2. Fallback (RPC 미설치 또는 일시 장애 시) — 인메모리 집계.
@@ -492,7 +505,7 @@ export async function GET(request: NextRequest) {
         .map(([dest, info]) => ({ destination: dest, ...info, minPrice: info.minPrice === Infinity ? 0 : info.minPrice }))
         .sort((a, b) => b.count - a.count);
 
-      return successResponse({ destinations });
+      return applyPackageCache(successResponse({ destinations }), isAdmin);
     }
 
     // 단건 조회 — UUID 또는 short_code로 조회
@@ -504,14 +517,14 @@ export async function GET(request: NextRequest) {
         .select('*, products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)')
         .eq(col, id)
         .single();
-      if (pkgErr || !pkg) return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+      if (pkgErr || !pkg) return applyPackageCache(ApiErrors.notFound('패키지를 찾을 수 없습니다.'), isAdmin);
       const publicSnapshot = !isAdmin
         ? await fetchLatestPublicPackageSnapshot(supabaseAdmin, String(pkg.id), {
           expectedPackageRevision: Number(pkg.package_revision ?? 1),
         })
         : null;
       if (!isAdmin && (!isCustomerPublicSnapshotCandidate(pkg as Record<string, unknown>) || !publicSnapshot)) {
-        return ApiErrors.notFound('패키지를 찾을 수 없습니다.');
+        return applyPackageCache(ApiErrors.notFound('패키지를 찾을 수 없습니다.'), isAdmin);
       }
 
       const publicSnapshotPackage = publicSnapshot?.package ?? null;
@@ -533,7 +546,7 @@ export async function GET(request: NextRequest) {
 
       const itineraryData = responsePkg.itinerary_data;
       const attraction_ids = collectAttractionIds(itineraryData);
-      return successResponse(
+      return applyPackageCache(successResponse(
         {
           package: isAdmin
             ? stripSupplierRemarkFields(responsePkg)
@@ -544,7 +557,7 @@ export async function GET(request: NextRequest) {
         },
         200,
         300,
-      );
+      ), isAdmin);
     }
 
     // 목록 조회 — products JOIN 포함
@@ -628,20 +641,26 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil((count ?? 0) / limit);
     // Edge CDN cache 5분 + SWR 10분 (이전: 1분/2분).
     //   상품 목록은 매분 바뀌지 않으므로 적극 캐시. 등록/승인 시 revalidatePath('/packages') 로 무효화.
-    return listResponse(enrichedData, {
+    return applyPackageCache(listResponse(enrichedData, {
       total: isAdmin ? (count ?? 0) : enrichedData.length,
       page,
       limit,
       cacheSeconds: 300,
-    });
+    }), isAdmin);
   } catch (error) {
     logError('[api/packages] GET query failed', error);
-    return ApiErrors.internalError(error instanceof Error ? error.message : '조회 실패');
+    return applyPackageCache(
+      ApiErrors.internalError(error instanceof Error ? error.message : '조회 실패'),
+      isAdmin,
+    );
   }
 }
 
 // POST /api/packages - 새 상품 저장
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
   }
@@ -878,6 +897,9 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/packages - 상품 수정 또는 상태 변경
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
   }
@@ -1323,6 +1345,9 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE /api/packages?id=
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.internalError('Supabase가 설정되지 않았습니다.');
   }
