@@ -7,7 +7,7 @@ import { pickBlogVariations } from '@/prompts/blog/variations';
 import { getPrompt } from '@/lib/prompt-loader';
 import { SerpAnalysis, buildSerpPromptBlock } from '@/lib/serp-analyzer';
 import { analyzeSerpGap, type SerpGapResult } from '@/lib/serp-gap-analyzer';
-import { generateSectionImage } from '@/lib/blog-image-gen';
+import { generateSectionImage, isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { selectTemplate, applyTemplateToBrief } from '@/lib/content-pipeline/templates';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 
@@ -123,7 +123,7 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
     : null;
 
   // 섹션별 이미지 — 카드뉴스/pexels 우선, 부족하면 AI 생성
-  let sectionImageMap: { position: number; h2: string; image_url: string | null }[] = brief.sections.map((s, index) => {
+  let sectionImageMap: { position: number; h2: string; image_url: string | null; ai_generated: boolean }[] = brief.sections.map((s, index) => {
     // 1번은 표지, 마지막은 CTA이므로, 본문 H2는 2번부터 (index + 2) 순차 할당
     const imgPos = index + 2;
     // imgPos가 lastKey(CTA)와 겹치거나 초과하면 카드뉴스 이미지가 소진된 것으로 간주
@@ -136,6 +136,7 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
       image_url: (cardImgUrl && cardImgUrl !== h1Image)
         ? cardImgUrl
         : (pexelsImageMapLocal[s.position] || null),
+      ai_generated: false,
     };
   });
 
@@ -149,7 +150,7 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
           productContext?.destination || brief.h1,
           productContext?.destination || '',
         );
-        return { ...sec, image_url: url };
+        return { ...sec, image_url: url, ai_generated: isGeneratedBlogImageUrl(url) };
       }),
     );
   }
@@ -242,7 +243,7 @@ ${h1Image ? `![${productContext?.destination || brief.h1.slice(0, 20)}](${h1Imag
 ### 각 H2 바로 아래:
 ${sectionImageMap.map(s => `
 ${s.position}. H2 "${s.h2}" 아래:
-   ${s.image_url ? `![${s.h2}](${s.image_url})` : '(이미지 없음 — 이 섹션은 이미지 생략)'}
+   ${s.image_url ? `![${s.h2}${s.ai_generated ? ' AI 생성 참고 이미지' : ''}](${s.image_url})` : '(이미지 없음 — 이 섹션은 이미지 생략)'}
 `).join('')}
 
 ### 마지막 CTA 섹션 아래:

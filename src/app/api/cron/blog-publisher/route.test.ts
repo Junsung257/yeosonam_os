@@ -83,6 +83,19 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("riskLevel: 'high'");
   });
 
+  it('replaces quarantined fallback posts in place and always sends them to private review', () => {
+    const source = routeSource();
+
+    expect(source).toContain('readPrivateBlogRegenerationRequest(item)');
+    expect(source).toContain('hasPrivateBlogRegenerationIntent(item)');
+    expect(source).toContain('isEligiblePrivateBlogRegenerationTarget');
+    expect(source).toContain("const reason = 'private_regeneration_request_invalid'");
+    expect(source).toContain("const reason = 'private_regeneration_target_not_eligible'");
+    expect(source).toContain('privateReplacementDraftId = privateRegenerationRequest.contentCreativeId');
+    expect(source).toContain('privateRegenerationRequest !== null || requiresClaimReview');
+    expect(source).toContain('forced_private_review: true');
+  });
+
   it('reconciles the final informational body with a bounded writer claim ledger', () => {
     const source = routeSource();
 

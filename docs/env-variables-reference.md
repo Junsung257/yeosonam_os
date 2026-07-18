@@ -46,6 +46,7 @@
 | `KAKAO_TEMPLATE_AFFILIATE_CELEBRATION` | 제휴 축하 | 🟢 |
 | `KAKAO_CHANNEL_ID` | 서버용 채널 ID (`NEXT_PUBLIC_KAKAO_CHANNEL_ID` 와 같은 값) | 🟡 |
 | `NEXT_PUBLIC_KAKAO_CHANNEL_ID` | 고객면 카카오 채널 pfId (`openKakaoChannel`, QA 에스컬레이션). 미설정 시 기본 `_xcFxkBG` | 🟡 |
+| `KAKAO_CHANNEL_SECRET` | 카카오 챗봇 스킬 관리자센터의 정적 `x-api-key` 헤더값. 운영 스킬 URL과 Test URL 모두 같은 방식으로 설정 | 🔴 |
 
 **승인 소요**: 각 템플릿 1~2일. 병렬로 여러 개 신청 가능.
 
@@ -132,6 +133,7 @@
 | `GSC_URL_INSPECTION_RETRY_AFTER_MINUTES` | Google 쿼터·속도 제한 감지 시 재시도 안내 분. 기본 `15` |
 | `GOOGLE_INDEXING_API_FOR_BLOGS` | `true`일 때만 일반 블로그에도 Google Indexing API 직접 호출을 허용. 기본은 미사용(공식 지원 범위가 JobPosting/BroadcastEvent 중심) |
 | `SLACK_WEBHOOK_URL` | Slack 범용 웹훅 (폴백·운영 알림 등) |
+| `SLACK_SIGNING_SECRET` | Slack 앱의 Signing Secret. `/api/slack-webhook` raw-body HMAC 검증에 필수 |
 | `SLACK_ALERT_WEBHOOK_URL` | 운영 경고 (`slack-alert`, payment-heartbeat 등) |
 | `SLACK_ALERTS_WEBHOOK` | 어드민 알림 큐 critical/warning 푸시 (`admin-alerts`) |
 | `SLACK_PAYMENTS_WEBHOOK_URL` | 결제·정산 전용 (`slack-notifier`, 우선순위) |
@@ -194,6 +196,9 @@
 | 키 | 용도 |
 |---|---|
 | `PEXELS_API_KEY` | 이미지 fallback (블로그·카드뉴스) |
+| `GEMINI_API_KEY` | 블로그 AI 참고 이미지 생성 (서버 전용) |
+| `AI_IMAGE_GEN_ENABLED` | `false`이면 AI 생성만 끄고 Pexels fallback은 유지 |
+| `BLOG_IMAGE_MODEL` | 블로그 이미지 모델 override (기본 `gemini-3.1-flash-image`) |
 | `ANTHROPIC_API_KEY` | Claude API (IR 파이프라인용) |
 | `CLOBE_MCP_BEARER_TOKEN` | Clobe MCP 은행거래 동기화 Bearer 토큰. `CLOBE_API_TOKEN`을 호환용 fallback으로 사용 |
 | `CLOBE_API_TOKEN` | Clobe API 레거시/호환 토큰. `CLOBE_MCP_BEARER_TOKEN`이 있으면 사용하지 않음 |
@@ -282,6 +287,9 @@ KAKAO_TEMPLATE_REVIEW_REQUEST=TEMPLATE_ID_FROM_SOLAPI
 
 # 외부 API
 PEXELS_API_KEY=your_pexels_key
+GEMINI_API_KEY=your_gemini_key
+# AI_IMAGE_GEN_ENABLED=false
+# BLOG_IMAGE_MODEL=gemini-3.1-flash-image
 ANTHROPIC_API_KEY=your_claude_key
 
 # 선택

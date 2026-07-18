@@ -7,21 +7,10 @@
  */
 
 import { destToEnKeyword, isPexelsConfigured, searchPexelsPhotos } from '@/lib/pexels';
+import { buildBlogImageSearchQuery, selectRelevantPexelsPhoto } from '@/lib/blog-image-relevance';
 
 const IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 const H2_RE = /^##\s+(.+)$/;
-
-const SECTION_QUERY_HINTS: Array<[RegExp, string]> = [
-  [/날씨|계절|우기|건기|기온|옷차림/, 'weather season travel'],
-  [/맛집|식사|음식|레스토랑|미식/, 'local food restaurant'],
-  [/호텔|숙소|리조트|객실|투숙/, 'hotel resort accommodation'],
-  [/교통|이동|공항|항공|비행|픽업/, 'transport airport travel'],
-  [/비용|가격|예산|환전|경비|가성비/, 'travel budget money'],
-  [/일정|코스|동선|Day|일차/, 'itinerary sightseeing landmark'],
-  [/쇼핑|시장|기념품|면세/, 'shopping market travel'],
-  [/준비|체크리스트|준비물|팁|주의/, 'travel preparation checklist'],
-  [/관광|명소|투어|액티비티|체험/, 'sightseeing attraction landmark'],
-];
 
 interface BlogInlineImageOptions {
   markdown: string;
@@ -62,13 +51,6 @@ function buildAlt(destination: string | null | undefined, heading: string, fallb
   return alt.replace(/\s+/g, ' ').slice(0, 44).trim();
 }
 
-function buildPexelsQuery(destination: string | null | undefined, primaryKeyword: string | null | undefined, heading: string): string {
-  const base = destination ? destToEnKeyword(destination) : (primaryKeyword || 'travel destination');
-  const clean = cleanHeading(heading);
-  const hint = SECTION_QUERY_HINTS.find(([re]) => re.test(clean))?.[1] ?? 'travel destination landscape';
-  return `${base} ${hint}`.trim();
-}
-
 function sectionAlreadyHasImage(lines: string[], headingIndex: number): boolean {
   for (let i = headingIndex + 1; i < Math.min(lines.length, headingIndex + 5); i += 1) {
     const line = lines[i]?.trim() ?? '';
@@ -82,33 +64,35 @@ function sectionAlreadyHasImage(lines: string[], headingIndex: number): boolean 
   return false;
 }
 
-async function pickPexelsImage(query: string, usedUrls: Set<string>, seed = query): Promise<string | null> {
+export async function findRelevantBlogPexelsImage(input: {
+  destination?: string | null;
+  primaryKeyword?: string | null;
+  sectionTitle?: string | null;
+  usedUrls?: Set<string>;
+}): Promise<string | null> {
   if (!isPexelsConfigured()) return null;
   try {
-    const page = 1 + (stableHash(seed) % 5);
-    const photos = await searchPexelsPhotos(query, 10, page);
-    const startIndex = stableHash(`${seed}:image`) % Math.max(1, photos.length);
-    const rotated = photos.slice(startIndex).concat(photos.slice(0, startIndex));
-    const picked = photos
-      .length > 0
-      ? rotated
-      : photos;
-    const url = picked
-      .map((photo) => photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original)
-      .find((url) => url && !usedUrls.has(url));
-    return url ?? null;
+    const destinationQuery = input.destination
+      ? destToEnKeyword(input.destination)
+      : (input.primaryKeyword || 'travel destination');
+    const query = buildBlogImageSearchQuery({
+      destinationQuery,
+      primaryKeyword: input.primaryKeyword,
+      sectionTitle: cleanHeading(input.sectionTitle ?? ''),
+    });
+    const photos = await searchPexelsPhotos(query, 18, 1);
+    const photo = selectRelevantPexelsPhoto(photos, {
+      destinationQuery,
+      primaryKeyword: input.primaryKeyword,
+      sectionTitle: input.sectionTitle,
+      usedUrls: input.usedUrls,
+    });
+    return photo
+      ? photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original
+      : null;
   } catch {
     return null;
   }
-}
-
-function stableHash(value: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
 }
 
 export async function ensureBlogInlineImages(options: BlogInlineImageOptions): Promise<BlogInlineImageResult> {
@@ -134,14 +118,14 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
 
     const heading = h2.match[1] ?? '';
     let url: string | null = null;
-    if (options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
+    url = await findRelevantBlogPexelsImage({
+      destination: options.destination,
+      primaryKeyword: options.primaryKeyword,
+      sectionTitle: heading,
+      usedUrls,
+    });
+    if (!url && options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
       url = options.ogImageUrl;
-    } else {
-      url = await pickPexelsImage(
-        buildPexelsQuery(options.destination, options.primaryKeyword, heading),
-        usedUrls,
-        `${options.destination || ''}|${options.primaryKeyword || ''}|${heading}`,
-      );
     }
 
     if (!url) continue;
