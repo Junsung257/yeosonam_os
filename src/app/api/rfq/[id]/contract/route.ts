@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { getGroupRfq, getRfqProposals } from '@/lib/db/rfq-server';
+import { getGroupRfq, getRfqProposals, getRfqShareIdentity } from '@/lib/db/rfq-server';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { hasValidRfqShareToken } from '@/lib/rfq-request-auth';
 
@@ -160,6 +160,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   const adminError = await requireAdminRequest(request);
 
   if (!isSupabaseConfigured) {
+    if (adminError) return adminError;
     const mockHtml = generateContractHtml({
       rfq_code:           'GRP-1001',
       destination:        '일본 도쿄',
@@ -179,13 +180,16 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   }
 
   try {
+    if (adminError) {
+      const identity = await getRfqShareIdentity(rfqId);
+      if (!identity || !hasValidRfqShareToken(request, identity.share_token)) {
+        return adminError;
+      }
+    }
+
     const rfq = await getGroupRfq(rfqId);
     if (!rfq) {
       return NextResponse.json({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
-    }
-
-    if (adminError && !hasValidRfqShareToken(request, rfq.share_token)) {
-      return adminError;
     }
 
     if (rfq.status !== 'contracted' && rfq.status !== 'completed') {

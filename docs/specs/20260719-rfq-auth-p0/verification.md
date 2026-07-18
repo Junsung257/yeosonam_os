@@ -1,5 +1,7 @@
 # RFQ authentication P0 verification
 
+> Release verdict: **DRAFT / MERGE-BLOCKED** pending the coordinated JWT trust-root and tenant membership rollout prerequisites.
+
 ## Before implementation (expected RED)
 
 Command:
@@ -84,3 +86,9 @@ The scoped Next.js RFQ route and contract-HTML boundaries are covered by regress
 The added controls cover exact boolean consent, public-input/rate/duplicate defenses, an explicit service-role RFQ repository, uppercase tenant tiers, share-token reaction validation, admin-only selection, authenticated-only message writes, null message-insert failure, and private/no-store sensitive GET responses. Legitimate public RFQ creation, share reads/reactions, authenticated message writes, tenant ownership checks, and administrator operations remain covered.
 
 Release pairing/gates: tenant ownership and RLS commit `9d3df38c` must be included and verified; bid capacity and winner selection need an atomic RPC (P1); customer self-selection stays disabled until a dedicated expiring/revocable owner-action token SSOT exists. No remote Supabase mutation was performed in this lane.
+
+The follow-up customer regression closes the private-tour consent UI/payload gap, removes the share-page selection CTA/call, marks the PII detail response private/no-store, and validates share capability with an `id, share_token` projection before any necessary full-row read. Consent evidence persistence, atomic duplicate prevention, and mandatory distributed rate limiting remain documented P1 schema/infrastructure gates; no migration or remote mutation was created here.
+
+The Phase-B integration follow-up replaces JWT metadata authority with verified-subject membership resolution, covering revoked, suspended, unmapped, stale-metadata, ambiguous, and cross-tenant controls. The RFQ timeout cron now uses the explicit service-role repository for expired bids, bid state, tenant reliability, and system messages. This does not make the branch independently mergeable: the separate fixed JWT trust root and the approved/provisioned membership schema must land first, followed by coordinated Phase-B smoke tests.
+
+Phase-B focused verification: **PASS — 7 files, 31 tests**. Changed-file ESLint and diff integrity: **PASS**. Final serialized full type-check: **PASS — exit 0**. The first attempt found only an integration-test fetch mock tuple type and the corrected rerun passed cleanly.

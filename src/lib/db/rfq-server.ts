@@ -26,6 +26,44 @@ export interface AuthorizedRfqTenant {
   tier: 'GOLD' | 'SILVER' | 'BRONZE';
 }
 
+export interface ActiveRfqTenantMembership {
+  tenantId: string;
+  userId: string;
+  role: 'tenant_admin' | 'tenant_staff';
+}
+
+export async function getActiveRfqTenantMembership(
+  userId: string,
+  metadataTenantId?: string | null,
+): Promise<ActiveRfqTenantMembership | null> {
+  let query = db()
+    .from('tenant_memberships')
+    .select('tenant_id, user_id, role, is_active, tenants!inner(status)')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .eq('tenants.status', 'active');
+  if (metadataTenantId) query = query.eq('tenant_id', metadataTenantId);
+  const { data, error } = await query.limit(2);
+  assertNoError(error, 'RFQ tenant membership lookup');
+
+  const rows = (data ?? []) as Array<{
+    tenant_id: string;
+    user_id: string;
+    role: string;
+    is_active: boolean;
+    tenants: { status: string } | null;
+  }>;
+  if (rows.length !== 1) return null;
+  const membership = rows[0];
+  if (!membership || membership.user_id !== userId || !membership.is_active
+    || membership.tenants?.status !== 'active'
+    || (metadataTenantId && membership.tenant_id !== metadataTenantId)
+    || (membership.role !== 'tenant_admin' && membership.role !== 'tenant_staff')) {
+    return null;
+  }
+  return { tenantId: membership.tenant_id, userId, role: membership.role };
+}
+
 export async function getRfqTenantForAuthorizedRequest(tenantId: string): Promise<AuthorizedRfqTenant | null> {
   const { data, error } = await db().from('tenants').select('id, tier').eq('id', tenantId).eq('status', 'active').maybeSingle();
   assertNoError(error, 'RFQ tenant lookup');
@@ -42,6 +80,18 @@ export async function getGroupRfq(id: string): Promise<GroupRfq | null> {
   const { data, error } = await db().from('group_rfqs').select('*').eq('id', id).maybeSingle();
   assertNoError(error, 'RFQ lookup');
   return data as GroupRfq | null;
+}
+
+export interface RfqShareIdentity {
+  id: string;
+  share_token: string | null;
+}
+
+/** Minimal capability lookup used before any share-token path reads an RFQ row. */
+export async function getRfqShareIdentity(id: string): Promise<RfqShareIdentity | null> {
+  const { data, error } = await db().from('group_rfqs').select('id, share_token').eq('id', id).maybeSingle();
+  assertNoError(error, 'RFQ share identity lookup');
+  return data as RfqShareIdentity | null;
 }
 
 export async function listGroupRfqs(status?: string, limit = 200): Promise<GroupRfq[]> {
@@ -84,6 +134,23 @@ export async function getRfqBids(rfqId: string): Promise<RfqBid[]> {
 export async function updateRfqBid(id: string, patch: Partial<RfqBid>): Promise<void> {
   const { error } = await db().from('rfq_bids').update(patch as never).eq('id', id);
   assertNoError(error, 'RFQ bid update');
+}
+
+export async function getExpiredBids(): Promise<RfqBid[]> {
+  const { data, error } = await db().from('rfq_bids').select('*').eq('status', 'locked').lt('submit_deadline', new Date().toISOString());
+  assertNoError(error, 'Expired RFQ bids lookup');
+  return (data ?? []) as RfqBid[];
+}
+
+export async function updateTenantReliability(tenantId: string, delta: number): Promise<void> {
+  const client = db();
+  const { data, error } = await client.from('tenants').select('reliability_score').eq('id', tenantId).maybeSingle();
+  assertNoError(error, 'Tenant reliability lookup');
+  if (!data) throw new Error('Tenant reliability lookup failed');
+  const current = (data as { reliability_score: number }).reliability_score;
+  const reliabilityScore = Math.max(0, Math.min(100, current + delta));
+  const { error: updateError } = await client.from('tenants').update({ reliability_score: reliabilityScore } as never).eq('id', tenantId);
+  assertNoError(updateError, 'Tenant reliability update');
 }
 
 export async function createRfqProposal(data: Omit<RfqProposal, 'id' | 'created_at' | 'updated_at'>): Promise<RfqProposal | null> {

@@ -1,8 +1,8 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import { addRfqReaction, getGroupRfq } from '@/lib/db/rfq-server';
-import { safeEqualString } from '@/lib/timing-safe';
+import { addRfqReaction, getRfqShareIdentity } from '@/lib/db/rfq-server';
+import { hasValidRfqShareToken } from '@/lib/rfq-request-auth';
 
 const REACTION_TYPES = new Set(['like', 'curious', 'vote_a', 'vote_b', 'vote_c']);
 
@@ -18,9 +18,9 @@ export async function POST(req: NextRequest) {
       return apiResponse({ error: '필수 파라미터 누락' }, { status: 400 });
     }
 
-    const rfq = await getGroupRfq(rfqId);
-    if (!rfq) return apiResponse({ error: 'RFQ not found' }, { status: 404 });
-    if (!safeEqualString(shareToken, rfq.share_token)) {
+    const identity = await getRfqShareIdentity(rfqId);
+    if (!identity) return apiResponse({ error: 'RFQ not found' }, { status: 404 });
+    if (!hasValidRfqShareToken(req, identity.share_token, shareToken)) {
       return apiResponse({ error: 'Invalid share token' }, { status: 403 });
     }
 

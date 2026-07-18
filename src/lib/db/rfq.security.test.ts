@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const maybeSingle = vi.fn();
+  const shareMaybeSingle = vi.fn();
+  const shareEq = vi.fn(() => ({ maybeSingle: shareMaybeSingle }));
   const eqStatus = vi.fn(() => ({ maybeSingle }));
   const eqId = vi.fn(() => ({ eq: eqStatus }));
-  const select = vi.fn(() => ({ eq: eqId }));
+  const select = vi.fn((columns: string) => columns === 'id, share_token' ? { eq: shareEq } : { eq: eqId });
   const from = vi.fn(() => ({ select }));
   const getSupabase = vi.fn();
   const getSupabaseAdmin = vi.fn(() => ({ from }));
-  return { maybeSingle, eqStatus, eqId, select, from, getSupabase, getSupabaseAdmin };
+  return { maybeSingle, shareMaybeSingle, shareEq, eqStatus, eqId, select, from, getSupabase, getSupabaseAdmin };
 });
 
 vi.mock('../supabase', () => ({
@@ -16,7 +18,7 @@ vi.mock('../supabase', () => ({
   getSupabaseAdmin: mocks.getSupabaseAdmin,
 }));
 
-import { getRfqTenantForAuthorizedRequest } from './rfq-server';
+import { getRfqShareIdentity, getRfqTenantForAuthorizedRequest } from './rfq-server';
 
 describe('RFQ server tenant lookup', () => {
   beforeEach(() => {
@@ -45,5 +47,15 @@ describe('RFQ server tenant lookup', () => {
     await expect(getRfqTenantForAuthorizedRequest('tenant-a')).rejects.toThrow('service-role');
     expect(mocks.getSupabase).not.toHaveBeenCalled();
     expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it('uses only the minimal id and share-token projection for capability validation', async () => {
+    mocks.shareMaybeSingle.mockResolvedValue({ data: { id: 'rfq-1', share_token: 'share-1' }, error: null });
+
+    await expect(getRfqShareIdentity('rfq-1')).resolves.toEqual({ id: 'rfq-1', share_token: 'share-1' });
+    expect(mocks.getSupabaseAdmin).toHaveBeenCalledOnce();
+    expect(mocks.getSupabase).not.toHaveBeenCalled();
+    expect(mocks.select).toHaveBeenCalledWith('id, share_token');
+    expect(mocks.shareEq).toHaveBeenCalledWith('id', 'rfq-1');
   });
 });

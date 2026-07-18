@@ -4,11 +4,12 @@ import { getGroupRfq, updateGroupRfq } from '@/lib/db/rfq-server';
 import { isAdminRequest } from '@/lib/admin-guard';
 
 const TIER_DELAY_MS = parseInt(process.env.RFQ_TIER_DELAY_MINUTES ?? '10') * 60 * 1000;
+const PRIVATE_NO_STORE = { 'Cache-Control': 'private, no-store' };
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   // Admin 전용
   if (!(await isAdminRequest(_request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: PRIVATE_NO_STORE });
   }
   const params = await props.params;
   const { id } = params;
@@ -16,21 +17,21 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500 }
+      { status: 500, headers: PRIVATE_NO_STORE }
     );
   }
 
   try {
     const rfq = await getGroupRfq(id);
     if (!rfq) {
-      return NextResponse.json({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
+      return NextResponse.json({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404, headers: PRIVATE_NO_STORE });
     }
-    return NextResponse.json({ rfq });
+    return NextResponse.json({ rfq }, { headers: PRIVATE_NO_STORE });
   } catch (error) {
     console.error('RFQ 조회 오류:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'RFQ 조회에 실패했습니다.' },
-      { status: 500 }
+      { status: 500, headers: PRIVATE_NO_STORE }
     );
   }
 }

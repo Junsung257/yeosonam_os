@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { trackLead } from '@/components/MetaPixel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { safeOpenNewWindow } from '@/lib/safe-window-open';
@@ -212,6 +213,7 @@ export default function PrivateTourLandingClient() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [privacyConsent, setPrivacyConsent] = useState(false);
   const [doneData, setDoneData] = useState<{ rfqId: string; shareUrl: string | null } | null>(null);
 
   // URL searchParams preset 오토필 (예: /private-tour?preset=가족여행)
@@ -285,6 +287,11 @@ export default function PrivateTourLandingClient() {
       return;
     }
 
+    if (!privacyConsent) {
+      setError('견적 상담과 연락을 위해 개인정보 안내에 동의해주세요.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -316,6 +323,7 @@ export default function PrivateTourLandingClient() {
           duration_range: form.duration_days,
           pax_range: form.pax,
           budget_range_label: form.budget_label,
+          privacy_consent: privacyConsent,
           customer_email: form.contact_email || undefined,
           type_details: getGroupTypeFold(form),
           utm,
@@ -879,6 +887,26 @@ export default function PrivateTourLandingClient() {
                 rows={4}
                 className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition resize-none"
               />
+            </div>
+
+            <div>
+              <label className="flex items-start gap-2 rounded-xl bg-white p-4 text-sm text-slate-600 border border-gray-200">
+                <input
+                  type="checkbox"
+                  checked={privacyConsent}
+                  onChange={(event) => {
+                    setPrivacyConsent(event.target.checked);
+                    if (event.target.checked) setError(null);
+                  }}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
+                />
+                <span>
+                  견적 상담과 연락을 위해 입력한 정보를 여소남이 확인하는 데 동의합니다.
+                  <Link href="/privacy" className="ml-1 font-bold text-brand underline underline-offset-2">
+                    개인정보 안내
+                  </Link>
+                </span>
+              </label>
             </div>
 
             {error && (

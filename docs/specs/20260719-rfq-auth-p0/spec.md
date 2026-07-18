@@ -1,5 +1,7 @@
 # RFQ authentication P0 specification
 
+> Status: **DRAFT / MERGE-BLOCKED**. Ship only in the coordinated Phase-B release after the fixed JWT trust root and tenant membership Phase-A prerequisites are verified.
+
 ## Objective
 
 Close the launch-blocking RFQ API authorization and stored-HTML boundaries without removing the public customer inquiry entry point.
@@ -24,6 +26,8 @@ Close the launch-blocking RFQ API authorization and stored-HTML boundaries witho
 7. Sensitive responses use private/no-store cache semantics.
 8. Authorized RFQ route CRUD uses the explicit service-role repository; the anonymous/browser repository is never a privileged route fallback.
 9. Public creation requires exact boolean consent, strict bounded input, rate limiting, and recent-duplicate rejection before the server insert.
+10. Tenant authority requires the verified JWT `sub` to resolve through service-role `tenant_memberships` to exactly one active membership and an active tenant. `app_metadata.tenant_id` is only a consistency hint.
+11. RFQ timeout cron persistence uses the explicit service-role repository, never the legacy anonymous RFQ helpers.
 
 ## Proven vulnerable paths before the patch
 
@@ -39,6 +43,8 @@ Close the launch-blocking RFQ API authorization and stored-HTML boundaries witho
 
 The tenant ownership/RLS lane is paired through commit `9d3df38c`. That commit owns `src/app/api/tenant/rfqs/**`, verified tenant membership, and the RLS migration; it must be included and verified together with this RFQ route commit before release.
 
+This branch remains merge-blocked until the separate configured issuer/JWKS/audience trust-root fix is merged and the tenant membership schema is verified/provisioned. Deploying this code before `tenant_memberships` exists would fail closed but make tenant RFQ operations unavailable.
+
 ### Owner-action token rebuild gate
 
 The share UI historically used the read/share token to select a winning proposal. That capability is closed at `/api/rfq/:id/select`. Customer self-selection must not be re-enabled until a dedicated owner-action token has expiration, revocation, action scope, replay protection, and audit logging. Until then, selection is an administrator operation.
@@ -46,6 +52,8 @@ The share UI historically used the read/share token to select a winning proposal
 ### Atomic mutation gate (P1)
 
 Bid-capacity checks and the multi-row winner selection transition are currently separate reads/writes. A forward-only database RPC/transaction is required to make capacity enforcement and winner/loser state changes atomic under concurrency. No remote database mutation was performed in this lane; this remains a P1 pre-scale gate and must be exercised through the approved Supabase release path.
+
+Public-ingress hardening also has three explicit P1 infrastructure gates. Consent evidence needs immutable policy/version/timestamp persistence rather than only the submitted JSON snapshot. Duplicate prevention needs a database-backed idempotency key or atomic uniqueness/RPC instead of a pre-insert recent-row check. Production rate limiting needs a required shared Redis/edge backend and monitoring rather than any per-instance fallback. This lane adds no migration and performs no remote mutation.
 
 ### Database/RLS boundary
 

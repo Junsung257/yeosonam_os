@@ -21,6 +21,7 @@ vi.mock('@/lib/supabase', () => ({
 
 vi.mock('@/lib/db/rfq-server', () => ({
   getGroupRfq: vi.fn(),
+  getRfqShareIdentity: vi.fn(),
   createGroupRfq: vi.fn(),
   listGroupRfqs: vi.fn(),
   findRecentDuplicateGroupRfq: vi.fn(),
@@ -50,7 +51,7 @@ vi.mock('@/lib/push-dispatcher', () => ({
   dispatchPush: vi.fn(async () => undefined),
 }));
 
-import { requireAdminRequest } from '@/lib/admin-guard';
+import { isAdminRequest, requireAdminRequest } from '@/lib/admin-guard';
 import {
   hasValidRfqShareToken,
   resolveRfqActor,
@@ -68,6 +69,7 @@ import {
   getRfqTenantForAuthorizedRequest,
   findRecentDuplicateGroupRfq,
   addRfqReaction,
+  getRfqShareIdentity,
 } from '@/lib/db/rfq-server';
 import { GET as getProposals } from './[id]/proposals/route';
 import { GET as getMessages, POST as postMessage } from './[id]/messages/route';
@@ -78,10 +80,12 @@ import { GET as getProposal, POST as postProposal } from './[id]/bid/[bidId]/pro
 import { POST as createPublicRfq } from './route';
 import { POST as selectProposal } from './[id]/select/route';
 import { POST as postReaction } from './share/reaction/route';
+import { GET as getRfqDetail } from './[id]/route';
 
 const mockedActor = vi.mocked(resolveRfqActor);
 const mockedShare = vi.mocked(hasValidRfqShareToken);
 const mockedAdminGuard = vi.mocked(requireAdminRequest);
+const mockedIsAdmin = vi.mocked(isAdminRequest);
 const mockedGetRfq = vi.mocked(getGroupRfq);
 const mockedGetBids = vi.mocked(getRfqBids);
 const mockedGetProposals = vi.mocked(getRfqProposals);
@@ -94,6 +98,7 @@ const mockedGetRfqTenant = vi.mocked(getRfqTenantForAuthorizedRequest);
 const mockedUpdateRfq = vi.mocked(updateGroupRfq);
 const mockedDuplicateRfq = vi.mocked(findRecentDuplicateGroupRfq);
 const mockedAddReaction = vi.mocked(addRfqReaction);
+const mockedShareIdentity = vi.mocked(getRfqShareIdentity);
 
 const params = { params: Promise.resolve({ id: 'rfq-1' }) };
 const proposalParams = { params: Promise.resolve({ id: 'rfq-1', bidId: 'bid-1' }) };
@@ -121,6 +126,7 @@ describe('RFQ API security boundaries', () => {
     mockedActor.mockResolvedValue(null);
     mockedShare.mockReturnValue(false);
     mockedAdminGuard.mockResolvedValue(Response.json({ error: 'Unauthorized' }, { status: 401 }) as never);
+    mockedIsAdmin.mockResolvedValue(false);
     mockedGetRfq.mockResolvedValue(baseRfq);
     mockedGetBids.mockResolvedValue([]);
     mockedGetProposals.mockResolvedValue([]);
@@ -129,6 +135,7 @@ describe('RFQ API security boundaries', () => {
     mockedUpdateRfq.mockResolvedValue({ ...baseRfq, status: 'bidding' });
     mockedDuplicateRfq.mockResolvedValue(false);
     mockedAddReaction.mockResolvedValue(true);
+    mockedShareIdentity.mockResolvedValue({ id: 'rfq-1', share_token: 'share-1' });
   });
 
   it('blocks anonymous proposal and bid-list disclosure', async () => {
@@ -294,6 +301,7 @@ describe('RFQ API security boundaries', () => {
     expect(denied.status).toBe(403);
     expect(mockedAddReaction).not.toHaveBeenCalled();
 
+    mockedShare.mockReturnValue(true);
     const accepted = await postReaction(request('/api/rfq/share/reaction', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -301,6 +309,35 @@ describe('RFQ API security boundaries', () => {
     }));
     expect(accepted.status).toBe(200);
     expect(mockedAddReaction).toHaveBeenCalledWith('rfq-1', 'visitor-123', 'like', undefined);
+  });
+
+  it('validates share identity before any full RFQ row read and marks PII detail private', async () => {
+    mockedShare.mockReturnValue(false);
+    const denied = await getMessages(
+      request('/api/rfq/rfq-1/messages?share_token=wrong'),
+      params,
+    );
+    expect(denied.status).toBe(401);
+    expect(mockedShareIdentity).toHaveBeenCalledWith('rfq-1');
+    expect(mockedGetRfq).not.toHaveBeenCalled();
+
+    mockedAdminGuard.mockResolvedValue(null);
+    mockedIsAdmin.mockResolvedValue(true);
+    const detail = await getRfqDetail(request('/api/rfq/rfq-1'), params);
+    expect(detail.status).toBe(200);
+    expect(detail.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('rejects a contract share token before reading the full RFQ row', async () => {
+    mockedShare.mockReturnValue(false);
+    const response = await getContract(
+      request('/api/rfq/rfq-1/contract?share_token=wrong'),
+      params,
+    );
+
+    expect(response.status).toBe(401);
+    expect(mockedShareIdentity).toHaveBeenCalledWith('rfq-1');
+    expect(mockedGetRfq).not.toHaveBeenCalled();
   });
 
   it('rejects body tenant_id spoofing and uses the verified tenant binding', async () => {

@@ -3,6 +3,8 @@ import { apiResponse } from '@/lib/api-response';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { safeEqualString } from '@/lib/timing-safe';
+import { isUuid } from '@/lib/uuid';
+import { getActiveRfqTenantMembership } from '@/lib/db/rfq-server';
 
 export type RfqRequestActor =
   | { kind: 'admin' }
@@ -18,8 +20,8 @@ function trustedTenantId(payload: Record<string, unknown>): string | null {
 
 /**
  * Resolve an RFQ actor only from an administrator check or a verified Supabase
- * JWT app_metadata tenant binding. user_metadata is intentionally ignored
- * because a user can edit it and must not be allowed to choose a tenant.
+ * JWT subject plus an active tenant_memberships row joined to an active tenant.
+ * app_metadata is only an optional consistency hint and never grants access.
  */
 export async function resolveRfqActor(request: NextRequest): Promise<RfqRequestActor | null> {
   if (await isAdminRequest(request)) return { kind: 'admin' };
@@ -31,14 +33,21 @@ export async function resolveRfqActor(request: NextRequest): Promise<RfqRequestA
   if (!verified.ok) return null;
 
   const payload = verified.payload as Record<string, unknown>;
-  const tenantId = trustedTenantId(payload);
-  if (!tenantId) return null;
+  const userId = typeof payload.sub === 'string' ? payload.sub : '';
+  if (!isUuid(userId)) return null;
 
-  return {
-    kind: 'tenant',
-    tenantId,
-    userId: typeof payload.sub === 'string' && payload.sub ? payload.sub : undefined,
-  };
+  try {
+    const metadataTenantId = trustedTenantId(payload);
+    const membership = await getActiveRfqTenantMembership(userId, metadataTenantId);
+    if (!membership) return null;
+    if (metadataTenantId && membership.tenantId !== metadataTenantId) return null;
+    return { kind: 'tenant', tenantId: membership.tenantId, userId };
+  } catch (error) {
+    console.error('[rfq-request-auth] membership lookup failed', {
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+    return null;
+  }
 }
 
 export function presentedRfqShareToken(request: NextRequest, explicitToken?: unknown): string | null {

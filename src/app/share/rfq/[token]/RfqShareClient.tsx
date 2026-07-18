@@ -70,9 +70,7 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
   const [myReactions, setMyReactions] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [commentMap, setCommentMap] = useState<Record<string, string>>({});
-  const [selectedProposalId, setSelectedProposalId] = useState(rfq.selected_proposal_id ?? '');
-  const [selectingProposalId, setSelectingProposalId] = useState('');
-  const [selectionError, setSelectionError] = useState('');
+  const selectedProposalId = rfq.selected_proposal_id ?? '';
   const visitorToken = getVisitorToken();
 
   // 현재 페이지 URL
@@ -87,7 +85,7 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
   ].filter(Boolean) as Array<{ key: string; id: string; title: string; summary: string; price: number; ai_score?: number; tenant_name?: string }>;
 
   const hasProposals = proposals.length > 0;
-  const canSelectProposal = rfq.status === 'awaiting_selection' || rfq.status === 'bidding';
+  const awaitingAdminReview = rfq.status === 'awaiting_selection' || rfq.status === 'bidding';
 
   useEffect(() => {
     trackEngagement({
@@ -126,43 +124,6 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
       }),
     });
   }, [myReactions, rfq.id, visitorToken, commentMap, shareToken]);
-
-  const selectProposal = useCallback(async (proposalId: string) => {
-    if (selectedProposalId || selectingProposalId) return;
-    setSelectionError('');
-    setSelectingProposalId(proposalId);
-
-    try {
-      const res = await fetch(`/api/rfq/${rfq.id}/select`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: proposalId, share_token: shareToken }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(typeof data?.error === 'string' ? data.error : '제안 선택에 실패했습니다.');
-      }
-
-      setSelectedProposalId(proposalId);
-      trackEngagement({
-        event_type: ANALYTICS_EVENTS.rfqSelected,
-        page_url: window.location.pathname,
-        destination: rfq.destination,
-        party_type: 'rfq_share',
-        metadata: {
-          source: 'rfq_share_page',
-          rfq_id: rfq.id,
-          proposal_id: proposalId,
-          share_token: shareToken,
-        },
-      });
-    } catch (error) {
-      setSelectionError(error instanceof Error ? error.message : '제안 선택에 실패했습니다.');
-    } finally {
-      setSelectingProposalId('');
-    }
-  }, [rfq.destination, rfq.id, selectedProposalId, selectingProposalId, shareToken]);
 
   const handleCopyLink = async () => {
     try {
@@ -271,9 +232,9 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
         {hasProposals && (
           <div className="space-y-3">
             <h2 className="font-semibold text-gray-900 text-sm px-1">🏆 제안 비교</h2>
-            {selectionError && (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
-                {selectionError}
+            {awaitingAdminReview && !selectedProposalId && (
+              <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700" role="status">
+                관리자 확인 중입니다. 최종 제안이 확정되면 이 화면에 반영됩니다.
               </p>
             )}
             {proposals.map((p) => {
@@ -321,24 +282,6 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
                       </div>
                     )}
                   </div>
-                  {canSelectProposal && (
-                    <button
-                      type="button"
-                      onClick={() => void selectProposal(p.id)}
-                      disabled={Boolean(selectedProposalId) || selectingProposalId === p.id}
-                      className={`mt-4 w-full rounded-lg px-4 py-3 text-sm font-extrabold transition ${
-                        isSelected
-                          ? 'bg-green-600 text-white'
-                          : 'bg-brand text-white hover:bg-[#1B64DA] disabled:bg-gray-300'
-                      }`}
-                    >
-                      {isSelected
-                        ? '선택 완료'
-                        : selectingProposalId === p.id
-                          ? '선택 처리 중...'
-                          : '이 제안으로 진행'}
-                    </button>
-                  )}
                 </div>
               );
             })}

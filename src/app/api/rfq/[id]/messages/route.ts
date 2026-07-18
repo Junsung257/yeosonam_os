@@ -5,7 +5,7 @@ import {
   isSupabaseConfigured,
   type RfqMessage,
 } from '@/lib/supabase';
-import { createRfqMessage, getGroupRfq, getRfqMessages, getRfqProposals } from '@/lib/db/rfq-server';
+import { createRfqMessage, getGroupRfq, getRfqMessages, getRfqProposals, getRfqShareIdentity } from '@/lib/db/rfq-server';
 import { processCustomerMessage, processTenantMessage } from '@/lib/rfq-ai';
 import {
   hasValidRfqShareToken,
@@ -39,8 +39,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     if (!ownsProposal) return rfqForbiddenResponse();
     viewAs = 'tenant';
   } else {
-    const rfq = await getGroupRfq(rfqId);
-    if (!rfq || !hasValidRfqShareToken(request, rfq.share_token)) {
+    const identity = await getRfqShareIdentity(rfqId);
+    if (!identity || !hasValidRfqShareToken(request, identity.share_token)) {
       return rfqUnauthorizedResponse();
     }
     viewAs = 'customer';

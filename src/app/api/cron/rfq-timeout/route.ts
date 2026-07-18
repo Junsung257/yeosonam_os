@@ -2,11 +2,13 @@ import { NextRequest } from 'next/server';
 import { withCronGuard } from '@/lib/cron-auth';
 import {
   isSupabaseConfigured,
+} from '@/lib/supabase';
+import {
   getExpiredBids,
   updateRfqBid,
   updateTenantReliability,
   createRfqMessage,
-} from '@/lib/supabase';
+} from '@/lib/db/rfq-server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 
