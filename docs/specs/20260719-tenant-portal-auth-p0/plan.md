@@ -7,7 +7,7 @@ Authenticate the Supabase access token server-side, allow an explicit platform-a
 ## Impact Areas
 
 - Code: tenant portal middleware, APIs/pages, `src/lib/tenant-portal-auth.ts`, and tenant DB helpers.
-- Data/API: new `tenant_memberships` table; restrictive policies for tenant-owned records; no remote apply.
+- Data/API: additive `tenant_memberships` table in Phase A; restrictive existing-table policies are retained only in the Phase-C proposal; no remote apply.
 - UI: portal fetches consistently include the current route tenant ID; the shared login confirms a tenant redirect against DB membership instead of the admin-only session endpoint; unauthorized users are redirected or receive 401/403.
 - Docs/tests: this packet plus unit/route/middleware security tests.
 
@@ -30,5 +30,5 @@ The browser sends its HttpOnly `sb-access-token`. The route verifies the JWT, re
 - Missing membership migration or service key: fail closed with 503; never fall back to caller input or `user_metadata`.
 - Stale JWT metadata: authorization does not use `user_metadata` or tenant claims; current DB membership is checked per request.
 - Foreign record ID: product and inventory repository updates include tenant ownership predicates; `/api/rfq/**` route ownership is verified by the parallel RFQ lane.
-- RLS policy composition: remove the known permissive `authenticated_access` policies before adding ownership policies.
-- Production mutation: migration is committed only as a forward-only proposal and is not applied remotely.
+- RLS policy composition: the Phase-C proposal removes permissive `authenticated_access` policies before adding ownership policies, but it must not become an executable migration until the RFQ service-role companion is deployed and verified.
+- Production mutation: Phase A is additive and no migration or proposal is applied remotely from this worktree.

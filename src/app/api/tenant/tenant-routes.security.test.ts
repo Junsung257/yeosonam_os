@@ -43,6 +43,7 @@ import { GET as getProducts, PUT as putProduct } from '@/app/api/tenant/products
 import { POST as postInventory, PUT as putInventory } from '@/app/api/tenant/inventory/route';
 import { GET as getSettlements } from '@/app/api/tenant/settlements/route';
 import { GET as getTenantRfqs } from '@/app/api/tenant/rfqs/route';
+import { GET as getTenantRfqDetail } from '@/app/api/tenant/rfqs/[rfqId]/route';
 
 const TENANT_A = '00000000-0000-4000-8000-00000000000a';
 const TENANT_B = '00000000-0000-4000-8000-00000000000b';
@@ -178,5 +179,66 @@ describe('tenant portal route authorization', () => {
     expect(payload.rfqs[0]).not.toHaveProperty('share_token');
     expect(payload.rfqs[0]).not.toHaveProperty('customer_phone');
     expect(payload.rfqs[0]).not.toHaveProperty('ai_interview_log');
+  });
+
+  it.each(['draft', 'cancelled'] as const)(
+    'does not reveal a %s RFQ by guessed UUID without this tenant bid ownership',
+    async (status) => {
+      const rfqId = '20000000-0000-4000-8000-000000000001';
+      mocks.getTenantPortalRfq.mockResolvedValue({
+        id: rfqId,
+        status,
+        customer_name: 'real customer',
+        created_at: '2026-07-19T00:00:00.000Z',
+        updated_at: '2026-07-19T00:00:00.000Z',
+      });
+      mocks.getTenantPortalBid.mockResolvedValue(null);
+
+      const response = await getTenantRfqDetail(
+        new NextRequest(
+          `https://www.yeosonam.com/api/tenant/rfqs/${rfqId}?tenant_id=${TENANT_A}`,
+        ),
+        { params: Promise.resolve({ rfqId }) },
+      );
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'RFQ를 찾을 수 없습니다.',
+      });
+    },
+  );
+
+  it('allows a non-public RFQ detail only when this tenant already owns a bid', async () => {
+    const rfqId = '20000000-0000-4000-8000-000000000001';
+    mocks.getTenantPortalRfq.mockResolvedValue({
+      id: rfqId,
+      status: 'draft',
+      customer_name: 'real customer',
+      created_at: '2026-07-19T00:00:00.000Z',
+      updated_at: '2026-07-19T00:00:00.000Z',
+    });
+    mocks.getTenantPortalBid.mockResolvedValue({
+      id: '30000000-0000-4000-8000-000000000001',
+      rfq_id: rfqId,
+      tenant_id: TENANT_A,
+      status: 'locked',
+      locked_at: '2026-07-19T00:00:00.000Z',
+      submit_deadline: '2026-07-20T00:00:00.000Z',
+    });
+
+    const response = await getTenantRfqDetail(
+      new NextRequest(
+        `https://www.yeosonam.com/api/tenant/rfqs/${rfqId}?tenant_id=${TENANT_A}`,
+      ),
+      { params: Promise.resolve({ rfqId }) },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      rfq: { id: rfqId, customer_name: '고객 (익명)' },
+      my_bid: { id: '30000000-0000-4000-8000-000000000001' },
+    });
+    expect(payload.my_bid).not.toHaveProperty('tenant_id');
   });
 });

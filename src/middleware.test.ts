@@ -167,4 +167,56 @@ describe('middleware tenant portal boundary', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
+
+  const tenantS2sPaths = [
+    '/api/tenant/products?tenant_id=00000000-0000-4000-8000-00000000000a',
+    '/api/tenant/inventory?tenant_id=00000000-0000-4000-8000-00000000000a',
+    '/api/tenant/settlements?tenant_id=00000000-0000-4000-8000-00000000000a',
+    '/api/tenant/rfqs?tenant_id=00000000-0000-4000-8000-00000000000a',
+    '/api/tenants',
+    '/api/tenants/00000000-0000-4000-8000-00000000000a',
+  ];
+
+  it.each(tenantS2sPaths)(
+    'lets a valid S2S platform-admin token reach the route-local guard: %s',
+    async (path) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('ADMIN_API_TOKEN', 'tenant-s2s-token');
+
+      const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`, {
+        headers: { 'x-admin-token': 'tenant-s2s-token' },
+      }));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-middleware-next')).toBe('1');
+    },
+  );
+
+  it.each(tenantS2sPaths)(
+    'rejects an invalid S2S platform-admin token before the tenant route: %s',
+    async (path) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('ADMIN_API_TOKEN', 'tenant-s2s-token');
+
+      const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`, {
+        headers: { 'x-admin-token': 'wrong-token' },
+      }));
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({ code: 'FORBIDDEN' });
+    },
+  );
+
+  it.each(tenantS2sPaths)(
+    'keeps the normal login boundary when the S2S token is missing: %s',
+    async (path) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('ADMIN_API_TOKEN', 'tenant-s2s-token');
+
+      const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`));
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).toContain('/login');
+    },
+  );
 });

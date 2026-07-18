@@ -809,6 +809,10 @@ export async function middleware(request: NextRequest) {
   // 토큰이 있으면 검증 후 통과/거부. 토큰이 없으면 아래 Supabase JWT 인증으로 fall through.
   if (
     pathname.startsWith('/api/admin/')
+    || pathname === '/api/tenant'
+    || pathname.startsWith('/api/tenant/')
+    || pathname === '/api/tenants'
+    || pathname.startsWith('/api/tenants/')
     || pathname === '/api/agent/prompt-optimizer'
     || pathname === '/api/blog'
     || pathname.startsWith('/api/blog/')

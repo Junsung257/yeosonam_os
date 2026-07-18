@@ -9,6 +9,12 @@
 - [x] Generate and review a forward-only membership/RLS migration without remote apply.
 - [x] Run focused tests, lint, type-check, migration-list, and diff checks.
 - [x] Record verification and approval-gated rollout steps.
+- [x] Pin JWT signature verification to the configured Supabase issuer/JWKS and validate issuer, audience, algorithm, role, expiry, and subject.
+- [x] Allow valid tenant S2S admin tokens through middleware while rejecting invalid/missing credentials at the existing boundary.
+- [x] Move existing-table RLS replacement into a non-executable Phase-C proposal.
+- [x] Record RFQ service-role companion commits `03e16701` and `653eba11`.
+- [ ] Clear draft/merge-blocked status only after the integration owner verifies the tenant/RFQ commit pair together.
+- [x] Rerun the repository-wide type-check after the RFQ follow-up checker releases the single-checker slot.
 
 ## Parallel Candidates
 
@@ -16,4 +22,4 @@
 
 ## Commit Boundary
 
-- Commit group: security backend + DB proposal + tests/docs.
+- Commit group: security backend + additive Phase-A DB migration + held Phase-C proposal + tests/docs.

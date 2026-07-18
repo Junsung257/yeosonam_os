@@ -8,9 +8,17 @@ const migrationName = fs.readdirSync(migrationsDir).find((name) => (
 ));
 if (!migrationName) throw new Error('tenant portal membership migration is missing');
 const migrationPath = path.join(migrationsDir, migrationName);
+const phaseCProposalPath = path.join(
+  process.cwd(),
+  'docs',
+  'specs',
+  '20260719-tenant-portal-auth-p0',
+  'phase-c-rls-hardening-proposal.sql',
+);
 
 describe('tenant portal RLS migration contract', () => {
   const sql = fs.readFileSync(migrationPath, 'utf8');
+  const phaseCProposal = fs.readFileSync(phaseCProposalPath, 'utf8');
 
   it('creates a canonical auth user to tenant membership table with RLS', () => {
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS public.tenant_memberships');
@@ -30,25 +38,32 @@ describe('tenant portal RLS migration contract', () => {
     'rfq_bids',
     'rfq_proposals',
     'rfq_messages',
-  ])('removes the broad authenticated_access policy from %s', (table) => {
-    expect(sql).toContain(`DROP POLICY IF EXISTS authenticated_access ON public.${table};`);
+  ])('defers the broad authenticated_access replacement for %s to Phase C', (table) => {
+    const dropPolicy = `DROP POLICY IF EXISTS authenticated_access ON public.${table};`;
+    expect(sql).not.toContain(dropPolicy);
+    expect(phaseCProposal).toContain(dropPolicy);
   });
 
-  it('default-denies direct group RFQ/message access and scopes tenant-owned bid/proposal rows', () => {
-    expect(sql).toContain('ALTER TABLE public.group_rfqs ENABLE ROW LEVEL SECURITY');
-    expect(sql).toContain('ALTER TABLE public.rfq_messages ENABLE ROW LEVEL SECURITY');
-    expect(sql).toContain('CREATE POLICY tenant_members_manage_rfq_bids');
-    expect(sql).toContain('membership.tenant_id = rfq_bids.tenant_id');
-    expect(sql).toContain('CREATE POLICY tenant_members_manage_rfq_proposals');
-    expect(sql).toContain('membership.tenant_id = rfq_proposals.tenant_id');
-    expect(sql).not.toMatch(/CREATE POLICY tenant_members_[^\n]*group_rfqs/);
-    expect(sql).not.toMatch(/CREATE POLICY tenant_members_[^\n]*rfq_messages/);
+  it('keeps existing tenant/RFQ table policy changes out of executable migrations', () => {
+    expect(sql).not.toContain('ALTER TABLE public.group_rfqs ENABLE ROW LEVEL SECURITY');
+    expect(sql).not.toContain('ALTER TABLE public.rfq_messages ENABLE ROW LEVEL SECURITY');
+    expect(sql).not.toContain('CREATE POLICY tenant_members_manage_rfq_bids');
+    expect(sql).not.toContain('CREATE POLICY tenant_members_manage_rfq_proposals');
+
+    expect(phaseCProposal).toContain('ALTER TABLE public.group_rfqs ENABLE ROW LEVEL SECURITY');
+    expect(phaseCProposal).toContain('ALTER TABLE public.rfq_messages ENABLE ROW LEVEL SECURITY');
+    expect(phaseCProposal).toContain('CREATE POLICY tenant_members_manage_rfq_bids');
+    expect(phaseCProposal).toContain('membership.tenant_id = rfq_bids.tenant_id');
+    expect(phaseCProposal).toContain('CREATE POLICY tenant_members_manage_rfq_proposals');
+    expect(phaseCProposal).toContain('membership.tenant_id = rfq_proposals.tenant_id');
+    expect(phaseCProposal).not.toMatch(/CREATE POLICY tenant_members_[^\n]*group_rfqs/);
+    expect(phaseCProposal).not.toMatch(/CREATE POLICY tenant_members_[^\n]*rfq_messages/);
   });
 
-  it('requires an active tenant as well as an active membership', () => {
-    expect(sql).toContain("tenants.status = 'active'");
-    expect(sql).toContain('JOIN public.tenants authorized_tenant');
-    expect(sql).toContain("authorized_tenant.status = 'active'");
+  it('requires an active tenant as well as an active membership in Phase C', () => {
+    expect(phaseCProposal).toContain("tenants.status = 'active'");
+    expect(phaseCProposal).toContain('JOIN public.tenants authorized_tenant');
+    expect(phaseCProposal).toContain("authorized_tenant.status = 'active'");
   });
 
   it('revokes the caller-controlled Jarvis tenant context from untrusted roles', () => {

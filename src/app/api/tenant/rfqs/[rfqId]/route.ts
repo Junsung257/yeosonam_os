@@ -42,6 +42,12 @@ export async function GET(
     if (tenant.status !== 'active') {
       return apiResponse({ error: '비활성 테넌트는 RFQ에 접근할 수 없습니다.' }, { status: 403 });
     }
+    const isPublishedForTenantBidding = rfq.status === 'published' || rfq.status === 'bidding';
+    if (!isPublishedForTenantBidding && !myBid) {
+      // Do not reveal draft/cancelled/completed RFQ existence through a guessed UUID.
+      // A tenant may still reopen an RFQ it already owns a bid for.
+      return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
+    }
 
     const unlockAt = tierUnlockAt(rfq, tenant.tier ?? 'bronze');
     const isUnlocked = !unlockAt || new Date(unlockAt) <= new Date();
