@@ -74,9 +74,8 @@ function appendNodeOption(current, option) {
 function buildMaxOldSpaceSizeMb() {
   const configured = Number(process.env.NEXT_BUILD_MAX_OLD_SPACE_SIZE);
   if (Number.isFinite(configured) && configured >= 1024) return Math.floor(configured);
-  // Vercel's standard builder has 8 GB available and recommends a 6 GB Node
-  // heap for SIGKILL/OOM builds. The former 2 GB cap killed this large app
-  // before Next.js could finish compiling.
+  // Vercel's standard builder has 8 GB available and this large Next app needs
+  // a larger heap to avoid SIGKILL/OOM before compilation finishes.
   return 6144;
 }
 

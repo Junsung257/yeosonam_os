@@ -7,6 +7,7 @@ import { isUuid } from '@/lib/uuid';
 import { isBlogSlugRedirectTombstone, resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import { safeEqualString } from '@/lib/timing-safe';
 import { maybeSkipCronForResourceSaver } from '@/lib/cron-resource-saver';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -843,6 +844,26 @@ export async function middleware(request: NextRequest) {
   // (admin 페이지 클라이언트 fetch가 /api/* 로 가기 때문)
   if (isDev && request.cookies.get('ys-dev-admin')?.value === '1') {
     return response || NextResponse.next();
+  }
+
+  if (isAdminPath) {
+    const adminError = await requireAdminRequest(request);
+    if (!adminError) {
+      return response || NextResponse.next();
+    }
+
+    if (adminError.status === 403) {
+      adminError.headers.set('Cache-Control', 'private, no-store');
+      return adminError;
+    }
+
+    const loginPath = pathname.startsWith('/m/admin') ? '/m/admin/login' : '/login';
+    const loginUrl = new URL(loginPath, request.url);
+    loginUrl.searchParams.set('redirect', pathname);
+    const loginResponse = NextResponse.redirect(loginUrl);
+    loginResponse.headers.set('Cache-Control', 'private, no-store');
+    loginResponse.cookies.set('sb-access-token', '', { path: '/', maxAge: 0 });
+    return loginResponse;
   }
 
   // ── 3-1. 정산 PDF GET — 라우트에서 어드민 세션 또는 파트너 PIN 헤더로 검증 (비로그인 파트너용)

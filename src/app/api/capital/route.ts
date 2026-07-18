@@ -7,20 +7,26 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
+const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' } as const;
+
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured)
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500, headers: NO_STORE_HEADERS });
 
   const { searchParams } = new URL(request.url);
   const summaryOnly = searchParams.get('summary') === '1';
   if (summaryOnly) {
     const { data, error } = await supabaseAdmin.rpc('get_capital_total');
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: NO_STORE_HEADERS });
 
-    return NextResponse.json(data ?? { entries: [], total: 0 }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(data ?? { entries: [], total: 0 }, { headers: NO_STORE_HEADERS });
   }
 
   const { data, error } = await supabaseAdmin
@@ -28,21 +34,24 @@ export async function GET(request: NextRequest) {
     .select('*')
     .order('entry_date', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: NO_STORE_HEADERS });
 
   const total = (data || []).reduce((s: number, e: any) => s + (e.amount ?? 0), 0);
-  return NextResponse.json({ entries: data || [], total }, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ entries: data || [], total }, { headers: NO_STORE_HEADERS });
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured)
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500, headers: NO_STORE_HEADERS });
 
   const body = await request.json();
   const { amount, note, entry_date } = body;
 
   if (!amount || amount <= 0)
-    return NextResponse.json({ error: 'amount는 양수여야 합니다.' }, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ error: 'amount는 양수여야 합니다.' }, { status: 400, headers: NO_STORE_HEADERS });
 
   const { data, error } = await supabaseAdmin
     .from('capital_entries')
@@ -54,22 +63,28 @@ export async function POST(request: NextRequest) {
     .select('*')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ entry: data });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: NO_STORE_HEADERS });
+  return NextResponse.json({ entry: data }, { headers: NO_STORE_HEADERS });
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isSupabaseConfigured)
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
-  const { id } = await request.json();
-  if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
+  if (!isSupabaseConfigured)
+    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500, headers: NO_STORE_HEADERS });
+
+  const { searchParams } = new URL(request.url);
+  const queryId = searchParams.get('id');
+  const body = queryId ? null : await request.json();
+  const id = queryId ?? body?.id;
+  if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400, headers: NO_STORE_HEADERS });
 
   const { error } = await supabaseAdmin
     .from('capital_entries')
     .delete()
     .eq('id', id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: NO_STORE_HEADERS });
+  return NextResponse.json({ success: true }, { headers: NO_STORE_HEADERS });
 }

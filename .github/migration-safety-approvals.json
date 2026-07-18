@@ -1,6 +1,24 @@
 {
   "version": 1,
   "approvals": {
+    "20260718131027_clobe_bank_transaction_sync_allow_existing_sms.sql": {
+      "sha256": "781e1533b3621b219aaf7416a724ec57618045a721680a4f96c6ff99d203254e",
+      "status": "A",
+      "rationale": "This exact migration version and both indexes are already recorded and verified on production. The repository copy reconciles that applied history; a fresh database has no production traffic while the bootstrap migration runs.",
+      "evidence": "docs/specs/20260719-clobe-settlement-migration-reconciliation/verification.md",
+      "approvedIssues": [
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        },
+        {
+          "severity": "high",
+          "type": "lock-heavy",
+          "description": "CREATE INDEX on an existing table must use CONCURRENTLY"
+        }
+      ]
+    },
     "20260715226500_blog_information_evidence_concurrent_indexes.sql": {
       "sha256": "c4b5d61755f666ec07fde0565d4c0161ef6a6ff76396f1e2396eaaf54280e106",
       "status": "A",

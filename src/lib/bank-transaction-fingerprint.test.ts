@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bankTransactionMinuteBucket,
+  bankTransactionSecondBucket,
   buildBankTransactionFingerprint,
   normalizeBankTransactionText,
   scoreBankTransactionSimilarity,
@@ -11,23 +11,25 @@ describe('bank transaction fingerprint', () => {
     expect(normalizeBankTransactionText(' Hong Gil-Dong Bank (Ltd.) ')).toBe('honggildongbankltd');
   });
 
-  it('uses the same fingerprint for the same tenant transaction across import sources', () => {
-    const sms = buildBankTransactionFingerprint({
+  it('uses statement memo and second precision so separate same-minute rows stay separate', () => {
+    const first = buildBankTransactionFingerprint({
       tenantId: 'tenant-a',
       receivedAt: '2026-06-06T10:23:44+09:00',
       txType: 'deposit',
       amount: 200000,
       counterpartyName: 'Hong Gil Dong',
+      memo: '260715_정지해_투어폰',
     });
-    const bankStatement = buildBankTransactionFingerprint({
+    const second = buildBankTransactionFingerprint({
       tenantId: 'tenant-a',
       receivedAt: '2026-06-06T10:23:04+09:00',
       txType: 'deposit',
       amount: 200000,
       counterpartyName: 'Hong-Gil-Dong',
+      memo: '260715_정지해_투어폰',
     });
 
-    expect(sms).toBe(bankStatement);
+    expect(first).not.toBe(second);
   });
 
   it('keeps tenant ledgers isolated even for visually identical transactions', () => {
@@ -42,26 +44,28 @@ describe('bank transaction fingerprint', () => {
       .not.toBe(buildBankTransactionFingerprint({ ...common, tenantId: 'tenant-b' }));
   });
 
-  it('buckets timestamps by minute', () => {
-    expect(bankTransactionMinuteBucket('2026-06-06T10:23:59+09:00')).toBe('2026-06-06T01:23');
+  it('buckets timestamps by second', () => {
+    expect(bankTransactionSecondBucket('2026-06-06T10:23:59+09:00')).toBe('2026-06-06T01:23:59');
   });
 
-  it('scores same-name same-amount nearby transactions as probable duplicates', () => {
+  it('keeps nearby same-name same-amount rows below automatic merge confidence', () => {
     const score = scoreBankTransactionSimilarity(
       {
         transaction_type: 'deposit',
         amount: 200000,
         counterparty_name: 'Hong Gil Dong',
         received_at: '2026-06-06T10:20:00+09:00',
+        memo: '260715_정지해_투어폰',
       },
       {
         txType: 'deposit',
         amount: 200000,
         counterpartyName: 'Hong-Gil-Dong',
         receivedAt: '2026-06-06T10:23:00+09:00',
+        memo: '260715_정지해_투어폰',
       },
     );
 
-    expect(score).toBeGreaterThanOrEqual(0.9);
+    expect(score).toBeLessThan(0.9);
   });
 });

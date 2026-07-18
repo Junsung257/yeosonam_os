@@ -88,7 +88,7 @@ export async function createBooking(data: {
   packageId?: string; packageTitle?: string; leadCustomerId: string;
   adultCount: number; childCount: number; adultCost: number; adultPrice: number;
   childCost: number; childPrice: number; infantCount?: number; infantCost?: number; fuelSurcharge: number;
-  departureDate?: string; departureRegion?: string; landOperator?: string;
+  departureDate?: string; departureRegion?: string; landOperator?: string; landOperatorId?: string;
   bookingDate?: string; notes?: string; passengerIds?: string[];
   status?: string;
   paidAmount?: number;
@@ -164,6 +164,7 @@ export async function createBooking(data: {
       departure_date: data.departureDate || null,
       departure_region: data.departureRegion || null,
       land_operator: data.landOperator || null,
+      land_operator_id: data.landOperatorId || null,
       booking_date: data.bookingDate || new Date().toISOString().split('T')[0],
       notes: data.notes,
       status: data.status || 'pending',
