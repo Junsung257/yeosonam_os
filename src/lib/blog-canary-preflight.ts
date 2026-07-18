@@ -124,7 +124,7 @@ function contractExpectationsForWriter(
     'korean_search_intent_not_raw_micro_angle',
     'official_source_if_changeable',
     'valid_table_or_checklist',
-    'bottom_soft_cta_only',
+    'runtime_contextual_cta_only',
     'no_ai_cliche_opening',
     'render_clean_tables',
   ];

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 86400;
 
@@ -59,7 +60,7 @@ export default function AboutPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd) }}
       />
       <main className="min-h-screen bg-white">
         {/* 히어로 */}

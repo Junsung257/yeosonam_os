@@ -4,6 +4,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
 
   const [contentRes, snapshotRes, rankRes] = await Promise.all([
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, seo_title, destination, published_at, updated_at')
       .eq('channel', 'naver_blog')
       .eq('status', 'published')

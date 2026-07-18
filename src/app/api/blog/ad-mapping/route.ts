@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { buildUtm, applyUtmToUrl } from '@/lib/utm-builder';
 import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * 블로그 ↔ 광고 캠페인 매핑 관리
@@ -17,6 +18,9 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
 const LIVE_MAPPING_STATUSES = ['active', 'winning', 'scaled'];
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
 
   const { searchParams } = request.nextUrl;
@@ -53,6 +57,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -156,6 +163,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -190,6 +200,9 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });

@@ -17,6 +17,7 @@ import { safeEqualString } from '@/lib/timing-safe';
 import { filterReachableImageUrls } from '@/lib/card-news-slide-urls';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
 export const maxDuration = 240;
@@ -46,7 +47,12 @@ function isPublisherBridge(request: NextRequest, body: { publisher_bridge?: bool
  *   6. card_news.linked_blog_id 업데이트 — publisher_bridge 시 생략
  */
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  const cronBridgeAuthorized = Boolean(request.headers.get('authorization'))
+    && isPublisherBridge(request, { publisher_bridge: true });
+  if (!cronBridgeAuthorized) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+  }
 
   try {
     const body = await request.json();
@@ -56,12 +62,14 @@ export async function POST(request: NextRequest) {
       publisher_bridge?: boolean;
     };
 
-    if (publisher_bridge && !isPublisherBridge(request, body)) {
+    if (Boolean(publisher_bridge) !== cronBridgeAuthorized) {
       return NextResponse.json(
-        { error: 'publisher_bridge는 CRON_SECRET Bearer 인증이 있을 때만 허용됩니다.' },
+        { error: 'publisher_bridge는 CRON_SECRET Bearer 인증과 함께만 사용할 수 있습니다.' },
         { status: 403 },
       );
     }
+
+    if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
     if (!card_news_id) {
       return NextResponse.json({ error: 'card_news_id 필수' }, { status: 400 });

@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "dryRun": true,
+  "databaseReads": 0,
+  "databaseWrites": 0,
+  "externalCalls": 0,
+  "source": "repository_fallback_snapshot",
+  "auditedAt": "2026-07-15T09:00:00.000Z",
+  "total": 8,
+  "counts": {
+    "KEEP": 0,
+    "REWRITE": 8,
+    "MERGE": 0,
+    "REMOVE": 0,
+    "HIGH_RISK_REVIEW": 0
+  },
+  "items": [
+    {
+      "articleId": "fallback-zhangjiajie-weather",
+      "slug": "zhangjiajie-weather",
+      "inferredIntent": "monthly_weather",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "장가계",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|장가계|monthly_weather|general|ko-KR",
+        "canonicalSlug": "zhangjiajie-weather",
+        "memberSlugs": [
+          "zhangjiajie-weather"
+        ]
+      },
+      "missingFacts": [
+        "monthly_temperature",
+        "precipitation",
+        "humidity_wind",
+        "season_risk",
+        "best_time",
+        "forecast_link",
+        "climate_period_source"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims"
+      ]
+    },
+    {
+      "articleId": "fallback-danang-family-package-checklist",
+      "slug": "danang-family-package-checklist",
+      "inferredIntent": "hotel_areas",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "다낭",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|다낭|general|family|ko-KR",
+        "canonicalSlug": "danang-family-package-checklist",
+        "memberSlugs": [
+          "danang-family-package-checklist"
+        ]
+      },
+      "missingFacts": [
+        "decision_criteria",
+        "risks"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [
+        "metadata_intent_mismatch"
+      ],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims",
+        "render_quality_issues"
+      ]
+    },
+    {
+      "articleId": "fallback-nha-trang-resort-vacation-guide",
+      "slug": "nha-trang-resort-vacation-guide",
+      "inferredIntent": "general",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "나트랑",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|나트랑|general|general|ko-KR",
+        "canonicalSlug": "nha-trang-resort-vacation-guide",
+        "memberSlugs": [
+          "nha-trang-resort-vacation-guide"
+        ]
+      },
+      "missingFacts": [
+        "decision_criteria",
+        "risks"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims"
+      ]
+    },
+    {
+      "articleId": "fallback-taipei-short-trip-food-route",
+      "slug": "taipei-short-trip-food-route",
+      "inferredIntent": "general",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "타이베이",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|타이베이|general|general|ko-KR",
+        "canonicalSlug": "taipei-short-trip-food-route",
+        "memberSlugs": [
+          "taipei-short-trip-food-route"
+        ]
+      },
+      "missingFacts": [
+        "decision_criteria",
+        "risks"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims"
+      ]
+    },
+    {
+      "articleId": "fallback-osaka-first-trip-route",
+      "slug": "osaka-first-trip-route",
+      "inferredIntent": "general",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "오사카",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|오사카|general|general|ko-KR",
+        "canonicalSlug": "osaka-first-trip-route",
+        "memberSlugs": [
+          "osaka-first-trip-route"
+        ]
+      },
+      "missingFacts": [
+        "decision_criteria",
+        "risks"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims"
+      ]
+    },
+    {
+      "articleId": "fallback-bangkok-parent-friendly-itinerary",
+      "slug": "bangkok-parent-friendly-itinerary",
+      "inferredIntent": "monthly_weather",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "방콕",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|방콕|family_itinerary|family|ko-KR",
+        "canonicalSlug": "bangkok-parent-friendly-itinerary",
+        "memberSlugs": [
+          "bangkok-parent-friendly-itinerary"
+        ]
+      },
+      "missingFacts": [
+        "party_profile",
+        "day_by_day",
+        "meal_access",
+        "weather_alternative",
+        "age_fit",
+        "reservation_checks"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [
+        "metadata_intent_mismatch"
+      ],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims",
+        "render_quality_issues"
+      ]
+    },
+    {
+      "articleId": "fallback-cebu-water-activity-safety",
+      "slug": "cebu-water-activity-safety",
+      "inferredIntent": "general",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "세부",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|세부|general|general|ko-KR",
+        "canonicalSlug": "cebu-water-activity-safety",
+        "memberSlugs": [
+          "cebu-water-activity-safety"
+        ]
+      },
+      "missingFacts": [
+        "decision_criteria",
+        "risks"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims"
+      ]
+    },
+    {
+      "articleId": "fallback-fukuoka-onsen-short-trip",
+      "slug": "fukuoka-onsen-short-trip",
+      "inferredIntent": "general",
+      "destinationValidity": {
+        "valid": true,
+        "destination": "후쿠오카",
+        "issues": []
+      },
+      "duplicateGroup": {
+        "representativeKey": "v1|후쿠오카|general|general|ko-KR",
+        "canonicalSlug": "fukuoka-onsen-short-trip",
+        "memberSlugs": [
+          "fukuoka-onsen-short-trip"
+        ]
+      },
+      "missingFacts": [
+        "decision_criteria",
+        "risks"
+      ],
+      "unsupportedClaims": [
+        {
+          "fingerprint": "8f7deb08ed3ca4c23004a1a49187e0d4c8ad5b69be507bfeba527a02aaaa5f73",
+          "type": "entry_visa",
+          "text": "여소남 추천 체크 출발 전에는 여권 만료일, 현지 날씨, 수하물 규정, 여행자보험, 환전 또는 카드 사용 가능 여부를 한 번 더 확인하세요."
+        }
+      ],
+      "renderIssues": [],
+      "ctaStatus": "LEGACY_UNCONFIGURED",
+      "recommendedAction": "REWRITE",
+      "confidence": 0.88,
+      "reasons": [
+        "missing_required_facts",
+        "unsupported_claims"
+      ]
+    }
+  ]
+}

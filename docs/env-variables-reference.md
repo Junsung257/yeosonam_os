@@ -49,6 +49,16 @@
 
 **승인 소요**: 각 템플릿 1~2일. 병렬로 여러 개 신청 가능.
 
+## 🧭 정보성 블로그 CTA (선택, 미설정 시 안전하게 숨김)
+
+| 키 | 용도 | 기본 동작 |
+|---|---|---|
+| `BLOG_NAVER_CAFE_URL` | 운영자가 확인한 공개 네이버 카페 CTA의 전체 HTTPS URL | 미설정·비HTTPS면 `NAVER_CAFE` 비활성 |
+| `BLOG_DEAL_ROOM_URL` | 운영자가 확인한 공개 딜방/여행 소식 CTA의 전체 HTTPS URL | 미설정·비HTTPS면 `DEAL_ROOM` 비활성 |
+| `BLOG_CONSULTATION_URL` | 정보성 글 전용 상담 CTA의 전체 HTTPS URL(선택) | 미설정 시 유효한 `KAKAO_CHANNEL_ID`를 재사용하고, 둘 다 없으면 비활성 |
+
+`NAVER_CAFE_ID`는 마케팅 채널 운영용 식별자이며 공개 CTA URL로 자동 변환하지 않습니다. 외부 CTA가 모두 비활성인 경우 정보성 글은 관련 글 CTA만 표시합니다.
+
 ## 🤖 자기학습 (Self-Learning) — 블로그 프롬프트 자동 개선
 
 | 키 | 용도 | 기본값 |

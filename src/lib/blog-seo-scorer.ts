@@ -99,6 +99,7 @@ export interface ScorerInput {
   secondaryKeywords?: string[];
   destination?: string | null;
   blogType: 'product' | 'info';
+  hasRuntimeInformationalCta?: boolean;
   imageCount?: number;
   imagesWithAlt?: number;
   hasJsonLd?: {
@@ -356,10 +357,24 @@ function scoreImages(input: ScorerInput, keyword: string, dest: string): SeoScor
   return detail('image_seo', score, 8, 7, 4, `images ${imageCount}, alt ${altCount}`);
 }
 
-function scoreInternalLinks(blogHtml: string, blogType: 'product' | 'info'): SeoScoreDetail {
+function scoreInternalLinks(
+  blogHtml: string,
+  blogType: 'product' | 'info',
+  hasRuntimeInformationalCta = false,
+): SeoScoreDetail {
   const links = extractLinks(blogHtml);
   const internal = links.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href));
   const cta = internal.filter((href) => /\/packages|utm_|kakao|consult|문의|예약|상담|확인/i.test(href));
+  if (blogType === 'info' && hasRuntimeInformationalCta) {
+    return detail(
+      'internal_links_cta',
+      7,
+      7,
+      6,
+      3,
+      `runtime informational CTA, body internal ${internal.length}`,
+    );
+  }
   let score = 0;
 
   if (internal.length >= 3) score += 4;
@@ -506,7 +521,7 @@ export function computeSeoScore(input: ScorerInput): SeoScoreResult {
     scorePrimaryKeyword(plainText, keyword, input.blogType),
     scoreSemanticCoverage(plainText, input.secondaryKeywords),
     scoreImages(input, keyword, dest),
-    scoreInternalLinks(input.blogHtml, input.blogType),
+    scoreInternalLinks(input.blogHtml, input.blogType, input.hasRuntimeInformationalCta),
     scoreExternalLinks(input.blogHtml),
     scorePublicLinkIntegrity(input.blogHtml),
     scoreReadability(input.blogHtml, plainText),

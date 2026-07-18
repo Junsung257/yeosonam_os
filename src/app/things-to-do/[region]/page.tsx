@@ -23,6 +23,7 @@ import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attra
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -415,7 +416,7 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'ItemList',
             name: `${data.region} 가볼만한 곳`,

@@ -28,7 +28,7 @@ export interface BlogEngineV2Brief {
   primary_keyword: string | null;
   destination: string | null;
   evidence_items: BlogEngineEvidenceItem[];
-  cta_policy: 'bottom_soft' | 'product_consult';
+  cta_policy: 'runtime_contextual' | 'bottom_soft' | 'product_consult';
   forbidden_claims: string[];
   answer_first?: string | null;
   official_sources_required?: boolean;
@@ -236,7 +236,7 @@ export function buildBlogEngineV2Brief(input: BuildBriefInput): BlogEngineV2Brie
     primary_keyword: primaryKeyword,
     destination,
     evidence_items: evidence,
-    cta_policy: 'bottom_soft',
+    cta_policy: 'runtime_contextual',
     forbidden_claims: FORBIDDEN_CLAIMS,
     answer_first: typeof infoGuide.answer_first === 'string' ? infoGuide.answer_first : null,
     official_sources_required: Boolean(infoGuide.official_sources_required),

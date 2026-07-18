@@ -11,6 +11,7 @@ import { calculateSeoScore } from '@/lib/seo-scorer';
 import { BLOG_PROMPT_VERSION, BLOG_AI_MODEL, BLOG_AI_TEMPERATURE } from '@/lib/prompt-version';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /** slug 중복 방지: 동일 slug 존재 시 -2, -3 접미사 자동 부여 */
 async function ensureUniqueSlug(baseSlug: string): Promise<string> {
@@ -29,6 +30,9 @@ async function ensureUniqueSlug(baseSlug: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {

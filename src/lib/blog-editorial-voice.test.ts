@@ -7,6 +7,7 @@ import {
 } from './blog-editorial-voice';
 import { buildProductBlogBrief } from './blog-product-brief';
 import type { BlogContentBrief } from './blog-content-brief';
+import { buildBlogInformationPlan } from './blog-information-planner';
 
 describe('blog editorial voice contracts', () => {
   it('builds an answer-first info writer prompt', () => {
@@ -14,6 +15,21 @@ describe('blog editorial voice contracts', () => {
       title: '발리 가족 여행 경비',
       primaryKeyword: '발리 가족 여행 경비',
       secondaryKeywords: ['발리 3인 가족 경비'],
+      intentType: 'family_budget',
+      requiresHumanReview: false,
+      sourcePolicy: {
+        minimumClaimSourceCoverage: 0.9,
+        primarySourcesRequired: false,
+        exactNumbersRequireSource: true,
+        retrievedAtRequired: true,
+        sourceTypes: ['official'],
+      },
+      plan: buildBlogInformationPlan({
+        topic: '발리 가족 여행 경비',
+        destination: '발리',
+        primaryKeyword: '발리 가족 여행 경비',
+        audience: 'family',
+      }),
       searchIntent: 'cost',
       readerQuestion: '발리 가족 여행은 얼마를 준비해야 하나요?',
       requiredSections: ['항공/숙소 비용', '현지 지출'],
@@ -21,6 +37,11 @@ describe('blog editorial voice contracts', () => {
       sourceRequirements: [],
       titleCandidates: [],
       evidence: [],
+      claimLedgerPolicy: {
+        required: true,
+        maxEntries: 100,
+        candidateKinds: ['money_price'],
+      },
       passed: true,
       issues: [],
     };
@@ -28,13 +49,15 @@ describe('blog editorial voice contracts', () => {
     const brief = buildInfoGuideBrief(contentBrief);
     const prompt = buildInfoWriterPromptBlock(brief);
 
-    expect(brief.cta_policy).toBe('bottom_soft');
+    expect(brief.cta_policy).toBe('runtime_contextual');
     expect(brief.official_sources_required).toBe(true);
     expect(brief.answer_first).toContain('먼저');
     expect(prompt).toContain('Writer: info_writer');
     expect(prompt).toContain('first 120-180 Korean characters');
-    expect(prompt).toContain('bottom only');
+    expect(prompt).toContain('do not write CTA sections');
     expect(prompt).toContain('You are not a product salesperson');
+    expect(brief.claim_ledger_required).toBe(true);
+    expect(prompt).toContain('INFORMATION_CLAIM_LEDGER_START');
     expect(prompt).toContain('완벽 가이드');
   });
 

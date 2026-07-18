@@ -35,4 +35,21 @@ describe('blog API and editorial audit contracts', () => {
     expect(audit).toContain("$('article, .prose-blog, .prose, [data-blog-body], main')");
     expect(audit).toContain('articleElement && textLength($, articleElement) >= 200');
   });
+
+  it('does not publish an informational review draft before human approval', () => {
+    const route = source('src/app/api/blog/route.ts');
+
+    expect(route).toContain('Human review approval is required before publishing this informational draft');
+    expect(route).toContain('getInformationalReviewBlockReason');
+    expect(route).toContain('{ status: 409 }');
+  });
+
+  it('uses exact list counts and does not index a draft through force revalidation', () => {
+    const route = source('src/app/api/blog/route.ts');
+
+    expect(route).toContain(".select(BLOG_LIST_SELECT, { count: 'exact' })");
+    expect(route).toContain('.range(offset, offset + limit - 1)');
+    expect(route).toContain("target.status !== 'published' || reviewBlock");
+    expect(route).toContain('Only an approved published article can be reindexed');
+  });
 });
