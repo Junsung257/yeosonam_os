@@ -13,6 +13,10 @@ type ToolLike = { name: string };
 const DEFAULT_TOOL_CATALOG: ToolLike[] = [
   { name: 'search_packages' },
   { name: 'get_bookings' },
+  { name: 'get_booking_detail' },
+  { name: 'search_customers' },
+  { name: 'list_guest_names' },
+  { name: 'get_customer_mileage' },
   { name: 'create_booking' },
   { name: 'match_payment' },
   { name: 'process_gdpr_request' },

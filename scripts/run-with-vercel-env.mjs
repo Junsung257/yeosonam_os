@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
@@ -34,6 +34,7 @@ function run(commandArgs, options = {}) {
 
 const args = process.argv.slice(2);
 let environment = 'production';
+let vercelCwd = process.env.VERCEL_LINK_CWD || '';
 let separatorIndex = args.indexOf('--');
 
 for (let i = 0; i < args.length; i += 1) {
@@ -53,6 +54,17 @@ for (let i = 0; i < args.length; i += 1) {
 
   if (arg.startsWith('--env=')) {
     environment = arg.split('=')[1] || environment;
+    continue;
+  }
+
+  if (arg === '--vercel-cwd') {
+    vercelCwd = args[i + 1] || vercelCwd;
+    i += 1;
+    continue;
+  }
+
+  if (arg.startsWith('--vercel-cwd=')) {
+    vercelCwd = arg.slice('--vercel-cwd='.length) || vercelCwd;
   }
 }
 
@@ -71,8 +83,40 @@ const tmpDir = mkdtempSync(join(tmpdir(), 'yeosonam-vercel-env-'));
 const envPath = join(tmpDir, `${environment}.env`);
 let exitCode = 0;
 
+function readGitWorktreePaths() {
+  const result = run(['git', 'worktree', 'list', '--porcelain'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (result.status !== 0 || !result.stdout) return [];
+  return result.stdout
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length).trim())
+    .filter(Boolean);
+}
+
+function resolveVercelCwd() {
+  if (vercelCwd && existsSync(join(vercelCwd, '.vercel', 'project.json'))) {
+    return vercelCwd;
+  }
+  if (existsSync(join(process.cwd(), '.vercel', 'project.json'))) {
+    return process.cwd();
+  }
+  return readGitWorktreePaths().find((worktreePath) =>
+    existsSync(join(worktreePath, '.vercel', 'project.json')),
+  ) || process.cwd();
+}
+
 try {
-  const pull = run(['vercel', 'env', 'pull', envPath, '--environment', environment, '--yes'], {
+  const resolvedVercelCwd = resolveVercelCwd();
+  const pullArgs = ['vercel'];
+  if (resolvedVercelCwd !== process.cwd()) {
+    pullArgs.push('--cwd', resolvedVercelCwd);
+  }
+  pullArgs.push('env', 'pull', envPath, '--environment', environment, '--yes');
+
+  const pull = run(pullArgs, {
     encoding: 'utf8',
     stdio: ['ignore', 'inherit', 'inherit'],
   });

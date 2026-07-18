@@ -128,6 +128,7 @@
     "verify:jarvis-readiness:vercel": "node scripts/run-with-vercel-env.mjs --environment=production -- node node_modules/tsx/dist/cli.mjs scripts/verify-jarvis-readiness.ts --json",
     "verify:free-travel-100-scenarios": "npx tsx scripts/verify-free-travel-100-scenarios.ts",
     "verify:jarvis-all-scenarios": "npx tsx scripts/verify-jarvis-all-scenarios.ts",
+    "verify:jarvis-all-scenarios:vercel": "node scripts/run-with-vercel-env.mjs --environment=production -- node node_modules/tsx/dist/cli.mjs scripts/verify-jarvis-all-scenarios.ts",
     "verify:blog-bridge": "node scripts/verify-blog-publisher-bridge.mjs",
     "verify:blog-bridge:dry": "node scripts/verify-blog-publisher-bridge.mjs --dry-run",
     "diagnose:blog-autopublish": "npx tsx scripts/diagnose-blog-autopublish.ts",

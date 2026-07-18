@@ -14,6 +14,8 @@ function passingJarvisSummary() {
     jarvisReadinessStatus: 'pass',
     customerInquiryScore: 100,
     customerInquiryStatus: 'pass',
+    featureCoverageScore: 100,
+    featureCoverageStatus: 'pass',
     autopilotHitlPassed: true,
     freeTravelScore: 100,
     freeTravelStatus: 'pass',
