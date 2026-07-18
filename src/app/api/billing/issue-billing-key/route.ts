@@ -7,6 +7,7 @@
  */
 
 import { type NextRequest } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { encrypt } from '@/lib/encryption';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -22,6 +23,9 @@ interface IssueBillingKeyBody {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'DB가 설정되지 않았습니다.' }, { status: 503 });
   }

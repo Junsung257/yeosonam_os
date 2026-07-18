@@ -46,6 +46,7 @@
 | `KAKAO_TEMPLATE_AFFILIATE_CELEBRATION` | 제휴 축하 | 🟢 |
 | `KAKAO_CHANNEL_ID` | 서버용 채널 ID (`NEXT_PUBLIC_KAKAO_CHANNEL_ID` 와 같은 값) | 🟡 |
 | `NEXT_PUBLIC_KAKAO_CHANNEL_ID` | 고객면 카카오 채널 pfId (`openKakaoChannel`, QA 에스컬레이션). 미설정 시 기본 `_xcFxkBG` | 🟡 |
+| `KAKAO_CHANNEL_SECRET` | 카카오 챗봇 스킬 관리자센터의 정적 `x-api-key` 헤더값. 운영 스킬 URL과 Test URL 모두 같은 방식으로 설정 | 🔴 |
 
 **승인 소요**: 각 템플릿 1~2일. 병렬로 여러 개 신청 가능.
 
@@ -132,6 +133,7 @@
 | `GSC_URL_INSPECTION_RETRY_AFTER_MINUTES` | Google 쿼터·속도 제한 감지 시 재시도 안내 분. 기본 `15` |
 | `GOOGLE_INDEXING_API_FOR_BLOGS` | `true`일 때만 일반 블로그에도 Google Indexing API 직접 호출을 허용. 기본은 미사용(공식 지원 범위가 JobPosting/BroadcastEvent 중심) |
 | `SLACK_WEBHOOK_URL` | Slack 범용 웹훅 (폴백·운영 알림 등) |
+| `SLACK_SIGNING_SECRET` | Slack 앱의 Signing Secret. `/api/slack-webhook` raw-body HMAC 검증에 필수 |
 | `SLACK_ALERT_WEBHOOK_URL` | 운영 경고 (`slack-alert`, payment-heartbeat 등) |
 | `SLACK_ALERTS_WEBHOOK` | 어드민 알림 큐 critical/warning 푸시 (`admin-alerts`) |
 | `SLACK_PAYMENTS_WEBHOOK_URL` | 결제·정산 전용 (`slack-notifier`, 우선순위) |

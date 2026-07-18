@@ -230,6 +230,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
   if (!isSupabaseConfigured) {
