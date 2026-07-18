@@ -90,7 +90,7 @@ describe('blog publish quality', () => {
     ]);
   });
 
-  it('stores the four required evidence fields on updates', async () => {
+  it('stores publish evidence and the rendered reading-time SSOT on updates', async () => {
     const report = await evaluateBlogPublishQuality({
       blog_html: '# Title\n\n본문입니다.',
       slug: 'test-post',
@@ -102,7 +102,10 @@ describe('blog publish quality', () => {
     applyBlogPublishQualityToUpdate(updateData, report);
 
     expect(updateData).toMatchObject({
-      quality_gate: report.qualityGate,
+      quality_gate: {
+        ...report.qualityGate,
+        rendered_reading_time_minutes: report.readingTimeMinutes,
+      },
       seo_score: report.seoScore,
       readability_score: 88,
       readability_issues: [],
@@ -137,7 +140,7 @@ describe('blog publish quality', () => {
     })).toBe('장가계');
   });
 
-  it('prepares thin info posts with readiness support and internal CTA evidence', async () => {
+  it('prepares thin info posts while leaving CTA delivery to the runtime hub', async () => {
     const result = await prepareBlogForPublish({
       blog_html: [
         '# 세부 쇼핑 예산 선물 리스트와 면세점 체크',
@@ -165,8 +168,8 @@ describe('blog publish quality', () => {
       primary_keyword: '세부 쇼핑 예산',
     });
 
-    expect(result.changes).toContain('appended_standard_internal_cta');
-    expect(result.blogHtml).toContain('/packages?');
+    expect(result.changes).not.toContain('appended_standard_internal_cta');
+    expect(result.blogHtml).not.toContain('/packages?');
   });
 
   it('prepares weak product posts with customer decision blocks before final evaluation', async () => {

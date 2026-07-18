@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /**
  * llms.txt — AI 모델(GPTBot, ClaudeBot, PerplexityBot, Gemini)을 위한
@@ -44,7 +45,7 @@ export async function GET() {
   if (isSupabaseConfigured && !shouldSkipPublicDbReadsForResourceSaver()) {
     try {
       const { data: recentPosts } = await supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, seo_title, destination')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')

@@ -11,12 +11,13 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import {
   BLOG_ANGLE_CACHE_TAG,
   createBlogDatabaseUnavailableError,
-  isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLES, BLOG_PUBLIC_ANGLE_META } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -102,7 +103,7 @@ async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
     const postsResult = await runBlogAngleQuery(
       'posts',
       supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -134,19 +135,12 @@ const getCachedAnglePageData = unstable_cache(
   async (angle: string) => {
     return getAnglePageDataUncached(angle);
   },
-  ['blog-angle-page-v1'],
+  ['blog-angle-page-v2-public-eligibility'],
   { revalidate: 300, tags: [BLOG_ANGLE_CACHE_TAG] },
 );
 
 async function getAnglePageData(angle: string): Promise<AnglePageData> {
-  try {
-    return await getCachedAnglePageData(angle);
-  } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) {
-      return { posts: [], recommendedPackages: [], unavailable: true };
-    }
-    throw err;
-  }
+  return getCachedAnglePageData(angle);
 }
 
 export function generateStaticParams() {
@@ -186,7 +180,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: `${meta.label} 여행 가이드`,

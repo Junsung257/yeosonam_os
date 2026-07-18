@@ -18,6 +18,12 @@ import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-re
 import { inspectBlogImageQuality } from './blog-image-quality';
 import { inspectBlogStructure } from './blog-structure-audit';
 import { inspectBlogIntentQuality } from './blog-content-intent';
+import {
+  BLOG_INFORMATION_INTENTS,
+  buildBlogInformationContract,
+  inspectBlogInformationMarkdown,
+  type BlogInformationIntent,
+} from './blog-information-contract';
 import { evaluateBlogEngineV2 } from './blog-engine-v2';
 import { evaluateBlogEditorialQuality, evaluateBlogTopicFit } from './blog-topic-fit-gate';
 import { normalizeBlogCtaDestination } from './blog-cta';
@@ -38,6 +44,17 @@ export const BANNED_CLICHES = [
   '여행의 묘미', '색다른 경험', '잊을 수 없는 추억',
   '완전히 새로운', '놀라운', '생각지도 못한',
 ];
+
+function getPlannedInformationIntent(
+  generationMeta?: Record<string, unknown> | null,
+): BlogInformationIntent | null {
+  const contentBrief = generationMeta?.content_brief;
+  if (!contentBrief || typeof contentBrief !== 'object' || Array.isArray(contentBrief)) return null;
+  const value = (contentBrief as Record<string, unknown>).intent_type;
+  return typeof value === 'string' && (BLOG_INFORMATION_INTENTS as readonly string[]).includes(value)
+    ? value as BlogInformationIntent
+    : null;
+}
 
 // Blog 유형별 임계값 (product = 랜딩페이지 / info = 장문 SEO)
 const THRESHOLDS = {
@@ -706,6 +723,7 @@ export function checkIntentQuality(input: CheckInput): GateResult {
     title: input.primary_keyword,
     slug: input.slug,
     primaryKeyword: input.primary_keyword,
+    destination: input.destination,
     angleType: input.angle_type,
     category: input.category,
     contentType: input.content_type,
@@ -723,23 +741,63 @@ export function checkIntentQuality(input: CheckInput): GateResult {
   const score = issues.length === report.issues.length
     ? report.score
     : Math.max(0, 100 - criticalCount * 18 - warningCount * 6);
-  const passed = issues.length === 0 || report.passed || (criticalCount === 0 && score >= 90);
+  const legacyPassed = issues.length === 0 || report.passed || (criticalCount === 0 && score >= 90);
+  const shouldInspectInformationContract = !input.product_id
+    && input.blog_type !== 'product'
+    && input.content_type !== 'pillar';
+  const informationContract = shouldInspectInformationContract
+    ? buildBlogInformationContract({
+        intentType: getPlannedInformationIntent(input.generation_meta),
+        destination: input.destination,
+        topic: input.primary_keyword,
+        primaryKeyword: input.primary_keyword,
+        category: input.category,
+        microAngle: input.micro_angle,
+      })
+    : null;
+  const informationReport = informationContract
+    ? inspectBlogInformationMarkdown({
+        markdown: input.blog_html,
+        contract: informationContract,
+      })
+    : null;
+  const passed = legacyPassed && (informationReport?.passed ?? true);
 
   return {
     gate: 'intent_quality',
     passed,
     reason: passed
       ? undefined
-      : `intent/design quality ${score}/100: ${issues
-          .slice(0, 5)
-          .map((issue) => issue.code)
-          .join(', ')}`,
+      : informationReport && !informationReport.passed
+        ? `information contract failed (${informationReport.intentType}): ${[
+            ...informationContract!.issues,
+            ...informationReport.missingSlots.map((slot) => `missing:${slot}`),
+            ...informationReport.structuredIssues.map((issue) => `structure:${issue}`),
+            ...informationReport.operationalDataLeaks.map(() => 'internal_operational_data_leak'),
+          ].slice(0, 8).join(', ')}`
+        : `intent/design quality ${score}/100: ${issues
+            .slice(0, 5)
+            .map((issue) => issue.code)
+            .join(', ')}`,
     evidence: {
       score,
       intent: report.intent,
       criticalCount,
       warningCount,
       issues: issues.slice(0, 12),
+      ...(informationContract && informationReport ? {
+        informationContract: {
+          intentType: informationContract.intentType,
+          passed: informationReport.passed,
+          destinationIssues: informationContract.issues,
+          coveredSlots: informationReport.coveredSlots,
+          missingSlots: informationReport.missingSlots,
+          structuredIssues: informationReport.structuredIssues,
+          operationalDataLeaks: informationReport.operationalDataLeaks,
+          sourcePolicy: informationContract.sourcePolicy,
+          requiresHumanReview: informationContract.humanReview.required,
+        },
+      } : {}),
     },
   };
 }

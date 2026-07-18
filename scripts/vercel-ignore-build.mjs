@@ -1,23 +1,16 @@
 #!/usr/bin/env node
 /**
- * Vercel ignoreCommand — exit 0 = skip build, exit 1 = proceed
+ * Vercel ignoreCommand: exit 0 skips, exit 1 builds.
  *
- * 빌드 비용 절감: 코드/설정 변경 없이 문서/메모리/감사 로그만 바뀐 커밋은 빌드 스킵.
- * SOP: .github/workflows/README.md §Vercel ignoreCommand
- *
- * 변경 감지 path: HEAD^..HEAD (Vercel 은 단일 commit deploy 단위).
- * 룰: ignored 패턴 외 파일이 한 개라도 바뀌면 빌드 진행 (exit 1).
- *     전부 ignored 패턴이면 빌드 스킵 (exit 0).
- *
- * VERCEL_GIT_COMMIT_REF=main 이면서 force-skip 위험을 줄이기 위해,
- * production(main) 의 경우 보수적으로 진행 — vercel.json/package.json/src/ 어떤 것이라도
- * 바뀌면 빌드.
+ * Compare the deployed head with the last successful deployment (or an
+ * explicitly supplied PR base), never only HEAD^..HEAD. Unknown or shallow
+ * history fails closed by proceeding with the build.
  */
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 const DISABLED_VERCEL_PROJECT_IDS = new Set([
-  // Duplicate preview project without production Supabase env.
-  // The canonical project is "os" (prj_QTQa2iUwEkBON4QczULxG1HPYLSE).
   'prj_EnrqNIHGZfirnL0Nggv360ZuUZ5q',
 ]);
 
@@ -38,63 +31,124 @@ const IGNORED_PATTERNS = [
   /^\.gitattributes$/,
 ];
 
-function isIgnored(filePath) {
-  return IGNORED_PATTERNS.some((re) => re.test(filePath));
+export function isIgnoredBuildPath(filePath) {
+  return IGNORED_PATTERNS.some((pattern) => pattern.test(filePath));
 }
 
-function main() {
-  if (DISABLED_VERCEL_PROJECT_IDS.has(process.env.VERCEL_PROJECT_ID || '')) {
-    console.log(`[ignore-build] disabled duplicate Vercel project ${process.env.VERCEL_PROJECT_ID} — skipping build`);
-    process.exit(0);
-  }
+function git(args, cwd) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
 
-  let changedFiles;
+function resolveCommit(revision, cwd) {
+  if (!revision || /^0+$/.test(revision)) return null;
   try {
-    // HEAD^ 가 없는 첫 커밋 등 edge case 는 보수적으로 빌드 진행.
-    changedFiles = execSync('git diff --name-only HEAD~1 HEAD', {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    git(['cat-file', '-e', `${revision}^{commit}`], cwd);
+    return git(['rev-parse', `${revision}^{commit}`], cwd);
   } catch {
-    try {
-      changedFiles = execSync('git diff-tree --root --no-commit-id --name-only -r HEAD', {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      console.log('[ignore-build] HEAD^ unavailable; using HEAD file list');
-    } catch {
-      console.log('[ignore-build] cannot inspect changed files; proceeding with build');
-      process.exit(1);
+    return null;
+  }
+}
+
+function resolveTargetRef(targetRef, cwd) {
+  if (!targetRef) return null;
+  for (const candidate of [`origin/${targetRef}`, targetRef]) {
+    const commit = resolveCommit(candidate, cwd);
+    if (commit) return commit;
+  }
+  return null;
+}
+
+export function parseGitNameStatusZ(output) {
+  const tokens = output.split('\0').filter(Boolean);
+  const paths = [];
+  for (let index = 0; index < tokens.length;) {
+    const status = tokens[index++];
+    if (status.startsWith('R') || status.startsWith('C')) {
+      paths.push(tokens[index++], tokens[index++]);
+    } else {
+      paths.push(tokens[index++]);
     }
   }
-
-  if (changedFiles.length === 0) {
-    console.log('[ignore-build] no changed files — skipping build');
-    process.exit(0);
-  }
-
-  const significantFiles = changedFiles.filter((f) => !isIgnored(f));
-
-  if (significantFiles.length === 0) {
-    console.log(
-      `[ignore-build] all ${changedFiles.length} changed files match ignored patterns — skipping build`,
-    );
-    for (const f of changedFiles) console.log(`  - ${f}`);
-    process.exit(0);
-  }
-
-  console.log(
-    `[ignore-build] ${significantFiles.length} significant file(s) changed — proceeding with build`,
-  );
-  for (const f of significantFiles.slice(0, 10)) console.log(`  + ${f}`);
-  if (significantFiles.length > 10) console.log(`  ... (+${significantFiles.length - 10} more)`);
-  process.exit(1);
+  return [...new Set(paths.filter(Boolean))];
 }
 
-main();
+export function resolveVercelComparisonRange({ env = process.env, cwd = process.cwd() } = {}) {
+  const head = resolveCommit(env.VERCEL_GIT_COMMIT_SHA, cwd)
+    || resolveCommit('HEAD', cwd);
+  if (!head) return { ok: false, reason: 'deployment head commit is unavailable' };
+
+  const explicitBase = env.VERCEL_GIT_BASE_SHA || env.VERCEL_GIT_PREVIOUS_SHA;
+  const base = resolveCommit(explicitBase, cwd)
+    || (!explicitBase
+      ? resolveTargetRef(env.VERCEL_GIT_TARGET_REF || env.GITHUB_BASE_REF, cwd)
+      : null);
+  if (!base) {
+    return {
+      ok: false,
+      reason: explicitBase
+        ? 'comparison base is outside the available shallow history'
+        : 'comparison base was not provided',
+      head,
+    };
+  }
+
+  try {
+    const mergeBase = git(['merge-base', base, head], cwd);
+    if (!mergeBase) return { ok: false, reason: 'merge base is unavailable', base, head };
+    return { ok: true, base, head, mergeBase };
+  } catch {
+    return { ok: false, reason: 'comparison commits do not share available history', base, head };
+  }
+}
+
+export function evaluateVercelIgnoreBuild({
+  env = process.env,
+  cwd = process.cwd(),
+  logger = console.log,
+} = {}) {
+  if (DISABLED_VERCEL_PROJECT_IDS.has(env.VERCEL_PROJECT_ID || '')) {
+    logger(`[ignore-build] disabled duplicate Vercel project ${env.VERCEL_PROJECT_ID} — skipping build`);
+    return 0;
+  }
+
+  const range = resolveVercelComparisonRange({ env, cwd });
+  if (!range.ok) {
+    logger(`[ignore-build] ${range.reason}; proceeding with build`);
+    return 1;
+  }
+
+  let changedPaths;
+  try {
+    const manifest = execFileSync('git', [
+      'diff', '--name-status', '-z', '--find-renames', range.mergeBase, range.head,
+    ], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    changedPaths = parseGitNameStatusZ(manifest);
+  } catch {
+    logger('[ignore-build] cannot inspect the complete deployment range; proceeding with build');
+    return 1;
+  }
+
+  if (changedPaths.length === 0) {
+    logger(`[ignore-build] no changes in ${range.mergeBase}..${range.head} — skipping build`);
+    return 0;
+  }
+  const significantPaths = changedPaths.filter((filePath) => !isIgnoredBuildPath(filePath));
+  if (significantPaths.length === 0) {
+    logger(`[ignore-build] all ${changedPaths.length} files in the complete deployment range are ignored — skipping build`);
+    return 0;
+  }
+
+  logger(`[ignore-build] ${significantPaths.length} significant file(s) changed in the complete deployment range — proceeding with build`);
+  for (const filePath of significantPaths.slice(0, 10)) logger(`  + ${filePath}`);
+  if (significantPaths.length > 10) logger(`  ... (+${significantPaths.length - 10} more)`);
+  return 1;
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+if (invokedPath === path.resolve(fileURLToPath(import.meta.url))) {
+  process.exitCode = evaluateVercelIgnoreBuild();
+}

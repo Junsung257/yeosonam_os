@@ -38,7 +38,7 @@ function queryResult(table: string) {
         },
       },
     ],
-    content_creatives: [
+    public_blog_content_creatives: [
       {
         slug: 'osaka-weather',
         destination: 'osaka',
@@ -123,5 +123,6 @@ describe('sitemap', () => {
     expect(urls.some((url) => /\/packages\/[^/]+$/.test(url))).toBe(false);
     expect(queriedTables).toContain('travel_packages');
     expect(queriedTables).toContain('public_package_snapshots');
+    expect(queriedTables).toContain('public_blog_content_creatives');
   });
 });

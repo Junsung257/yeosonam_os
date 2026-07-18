@@ -2,6 +2,7 @@ import { ImageResponse } from 'next/og';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { safeDecodeSlug } from '@/lib/decode-slug';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const runtime = 'nodejs';
 export const alt = '여소남 여행 블로그';
@@ -25,7 +26,7 @@ export default async function OgImage({ params }: { params: { slug: string } }) 
 
   if (isSupabaseConfigured && !shouldSkipPublicDbReadsForResourceSaver()) {
     const { data } = await supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('seo_title, angle_type, og_image_url, destination')
       .eq('slug', safeDecodeSlug(params.slug))
       .eq('status', 'published')

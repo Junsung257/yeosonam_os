@@ -1,0 +1,1121 @@
+{
+  "schemaVersion": 1,
+  "evaluatedAt": "2026-07-15T09:00:00.000Z",
+  "fixtureOnly": true,
+  "externalCalls": 0,
+  "publicMutations": 0,
+  "total": 11,
+  "passed": 11,
+  "failed": 0,
+  "ok": true,
+  "cases": [
+    {
+      "id": "sapporo_food_budget",
+      "label": "삿포로 식비",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "food_budget",
+            "expected": "food_budget",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "quick_answer",
+              "daily_budget",
+              "meal_ranges",
+              "representative_menus",
+              "area_price_difference",
+              "trip_total",
+              "party_scenarios",
+              "currency_basis",
+              "fees_and_booking",
+              "food_sources"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "삿포로-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "guangzhou_monthly_weather",
+      "label": "광저우 월별 날씨",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "monthly_weather",
+            "expected": "monthly_weather",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "monthly_temperature",
+              "precipitation",
+              "humidity_wind",
+              "season_risk",
+              "monthly_clothing",
+              "best_time",
+              "forecast_link",
+              "climate_period_source"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "광저우-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "osaka_airport_transport",
+      "label": "오사카 공항 이동",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "airport_transport",
+            "expected": "airport_transport",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "airport_distance",
+              "mode_comparison",
+              "fare_breakdown",
+              "schedule",
+              "ticket_purchase",
+              "late_arrival",
+              "traveler_fit",
+              "operator_source"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "오사카-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "taiwan_hotel_areas",
+      "label": "대만 숙소 지역",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "hotel_areas",
+            "expected": "hotel_areas",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "four_areas",
+              "pros_cons_fit",
+              "nightly_price",
+              "access",
+              "night_accessibility",
+              "location_relationship",
+              "itinerary_combinations"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "대만-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "singapore_family_budget",
+      "label": "싱가포르 가족 예산",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "family_budget",
+            "expected": "family_budget",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "family_scenario",
+              "trip_length_scope",
+              "budget_categories",
+              "budget_tiers",
+              "child_fares",
+              "age_rules",
+              "unexpected_costs"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "싱가포르-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent",
+              "same_specific_audience"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "entry_visa_high_risk",
+      "label": "입국·비자 고위험",
+      "expectedPublishState": "pending_review",
+      "actualPublishState": "pending_review",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "entry_requirements",
+            "expected": "entry_requirements",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "destination_country",
+              "traveler_nationality",
+              "purpose_stay",
+              "checked_at",
+              "passport_validity",
+              "visa_authorization",
+              "supporting_documents",
+              "customs_allowance",
+              "primary_sources",
+              "exact_official_item"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "passed": false,
+            "coverage": 0,
+            "issues": [
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required"
+            ]
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "일본-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "pending_review",
+            "expected": "pending_review"
+          }
+        }
+      }
+    },
+    {
+      "id": "insurance_high_risk",
+      "label": "보험 고위험",
+      "expectedPublishState": "pending_review",
+      "actualPublishState": "pending_review",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "travel_insurance",
+            "expected": "travel_insurance",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "medical",
+              "injury_evacuation",
+              "flight_disruption",
+              "baggage",
+              "belongings",
+              "liability",
+              "deductible",
+              "exclusions",
+              "card_overlap",
+              "claim_documents",
+              "age_conditions",
+              "expert_review"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "passed": false,
+            "coverage": 0,
+            "issues": [
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required"
+            ]
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "global-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "pending_review",
+            "expected": "pending_review"
+          }
+        }
+      }
+    },
+    {
+      "id": "invalid_destination_slug",
+      "label": "잘못된 목적지 slug",
+      "expectedPublishState": "blocked_plan",
+      "actualPublishState": "blocked_plan",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "airport_transport",
+            "expected": "airport_transport",
+            "missingInputs": [
+              "contract:audience_destination"
+            ]
+          }
+        },
+        "requiredContent": {
+          "status": "SKIPPED",
+          "passed": true,
+          "evidence": "planner_blocked"
+        },
+        "evidenceCoverage": {
+          "status": "SKIPPED",
+          "passed": true,
+          "evidence": "planner_blocked"
+        },
+        "claimValidation": {
+          "status": "SKIPPED",
+          "passed": true,
+          "evidence": "planner_blocked"
+        },
+        "duplicateBehavior": {
+          "status": "SKIPPED",
+          "passed": true,
+          "evidence": "planner_blocked"
+        },
+        "relatedLinks": {
+          "status": "SKIPPED",
+          "passed": true,
+          "evidence": "planner_blocked"
+        },
+        "ctaSelection": {
+          "status": "SKIPPED",
+          "passed": true,
+          "evidence": "planner_blocked"
+        },
+        "renderQuality": {
+          "status": "SKIPPED",
+          "passed": true,
+          "evidence": "planner_blocked"
+        },
+        "publishState": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "blocked_plan",
+            "expected": "blocked_plan"
+          }
+        }
+      }
+    },
+    {
+      "id": "duplicate_destination_intent",
+      "label": "동일 destination+intent 중복 생성",
+      "expectedPublishState": "update_existing",
+      "actualPublishState": "update_existing",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "food_budget",
+            "expected": "food_budget",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "quick_answer",
+              "daily_budget",
+              "meal_ranges",
+              "representative_menus",
+              "area_price_difference",
+              "trip_total",
+              "party_scenarios",
+              "currency_basis",
+              "fees_and_booking",
+              "food_sources"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "UPDATE_EXISTING",
+            "expected": "UPDATE_EXISTING",
+            "canonicalSlug": "sapporo-food-budget-canonical"
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "삿포로-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "update_existing",
+            "expected": "update_existing"
+          }
+        }
+      }
+    },
+    {
+      "id": "cta_url_unset",
+      "label": "URL 미설정 CTA",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "food_budget",
+            "expected": "food_budget",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "quick_answer",
+              "daily_budget",
+              "meal_ranges",
+              "representative_menus",
+              "area_price_difference",
+              "trip_total",
+              "party_scenarios",
+              "currency_basis",
+              "fees_and_booking",
+              "food_sources"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "삿포로-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "cta_url_configured",
+      "label": "URL 설정 CTA",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "food_budget",
+            "expected": "food_budget",
+            "missingInputs": []
+          }
+        },
+        "requiredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "covered": [
+              "quick_answer",
+              "daily_budget",
+              "meal_ranges",
+              "representative_menus",
+              "area_price_difference",
+              "trip_total",
+              "party_scenarios",
+              "currency_basis",
+              "fees_and_booking",
+              "food_sources"
+            ],
+            "missing": []
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "linkedCoverage": 1,
+            "researchIssues": []
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "passed": true,
+            "coverage": 1,
+            "issues": []
+          }
+        },
+        "duplicateBehavior": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "RESERVE_CREATE",
+            "expected": "RESERVE_CREATE",
+            "canonicalSlug": null
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "삿포로-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "readingTimeMinutes": 3,
+            "issues": []
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    }
+  ]
+}

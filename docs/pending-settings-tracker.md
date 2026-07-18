@@ -35,6 +35,11 @@
 - 🔑 `SLACK_WEBHOOK_URL` — 어드민 에러 알림
 - 🔑 `NEXT_PUBLIC_CONSULT_PHONE` — QA 채팅 전화 상담 버튼 (없으면 카톡만)
 
+### 정보성 블로그 CTA — 전체 공개 HTTPS URL 확인 후 입력
+- 🔑 `BLOG_NAVER_CAFE_URL` — 공식 네이버 카페 공개 URL (미확인 상태에서는 CTA 숨김)
+- 🔑 `BLOG_DEAL_ROOM_URL` — 공식 딜방/여행 소식 공개 URL (미확인 상태에서는 CTA 숨김)
+- 🔑 `BLOG_CONSULTATION_URL` — 정보성 글 전용 상담 URL (선택, `KAKAO_CHANNEL_ID` 재사용 가능)
+
 ### Meta 광고 (미확인 — 이미 설정됐으면 삭제)
 - 🔑 `META_ACCESS_TOKEN` — Meta Ads API 토큰
 - 🔑 `META_AD_ACCOUNT_ID` — Meta 광고 계정 ID
