@@ -25,6 +25,7 @@ import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
 import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
@@ -39,11 +40,32 @@ import {
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
+import {
+  rankBlogInformationalRelatedLinks,
+  readBlogInformationalLinkCandidate,
+  type BlogInformationalLinkContext,
+} from '@/lib/blog-informational-related-links';
+import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-information-representative';
+import { InformationalCtaHub } from '@/components/blog/InformationalCtaHub';
+import {
+  selectBlogInformationalCtas,
+  stripBlogInformationalBodyCtas,
+} from '@/lib/blog-informational-cta';
+import {
+  loadBlogInformationalCtaSettings,
+  loadBlogInformationalOfficialSourceUrl,
+} from '@/lib/blog-informational-cta-settings';
+import type { BlogInformationRiskLevel } from '@/lib/blog-information-planner';
+import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  calculateBlogReadingTimeFromHtml,
+  readPersistedBlogReadingTime,
+} from '@/lib/blog-reading-time';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -67,6 +89,22 @@ function isNextRedirectError(err: unknown): boolean {
     typeof (err as { digest?: unknown }).digest === 'string' &&
     (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')
   );
+}
+
+function readInformationalRiskLevel(
+  generationMeta: Record<string, unknown> | null | undefined,
+  intent: string,
+): BlogInformationRiskLevel {
+  const contentBrief = generationMeta?.content_brief;
+  if (contentBrief && typeof contentBrief === 'object' && !Array.isArray(contentBrief)) {
+    const risk = (contentBrief as Record<string, unknown>).risk_level;
+    if (risk === 'LOW' || risk === 'MEDIUM' || risk === 'HIGH') return risk;
+  }
+  if (intent === 'entry_requirements' || intent === 'travel_insurance') return 'HIGH';
+  if (intent === 'monthly_weather' || intent === 'airport_transport' || intent === 'currency_payment') {
+    return 'MEDIUM';
+  }
+  return 'LOW';
 }
 
 /**
@@ -111,6 +149,11 @@ interface BlogPost {
   landing_enabled: boolean | null;
   landing_headline: string | null;
   landing_subtitle: string | null;
+  content_type?: string | null;
+  pillar_for?: string | null;
+  target_audience?: string | null;
+  generation_meta?: Record<string, unknown> | null;
+  quality_gate?: Record<string, unknown> | null;
   travel_packages: {
     id: string;
     title: string;
@@ -159,6 +202,12 @@ interface RelatedPost {
   published_at: string;
   product_id: string | null;
   destination: string | null;
+  status?: string | null;
+  content_type?: string | null;
+  pillar_for?: string | null;
+  target_audience?: string | null;
+  generation_meta?: Record<string, unknown> | null;
+  related_anchor?: string;
   travel_packages: {
     id?: string;
     destination: string;
@@ -303,7 +352,7 @@ async function getDuplicateTitleSuffix(post: BlogPost): Promise<string> {
     const result = await runBlogDetailQuery(
       'duplicateTitleSuffix',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, published_at, created_at')
         .eq('channel', 'naver_blog')
         .eq('status', 'published')
@@ -356,12 +405,6 @@ function extractTldrItems(post: BlogPost): string[] {
   });
 }
 
-function estimateReadingMinutes(html: string): number {
-  const text = html.replace(/<[^>]+>/g, '').trim();
-  // 한국어 기준 분당 500자. 최소 3분.
-  return Math.max(3, Math.round(text.length / 500));
-}
-
 async function withBlogRenderTimeout<T>(
   label: string,
   promise: Promise<T>,
@@ -382,21 +425,6 @@ async function withBlogRenderTimeout<T>(
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function sanitizeServerBlogHtml(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<\/?(del|s|strike)\b[^>]*>/gi, '')
-    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[^>]*\/?>/gi, '')
-    .replace(/\s(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s(href|src)\s*=\s*(["']?)\s*(javascript:|data:text\/html|vbscript:)[\s\S]*?\2/gi, '')
-    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '')
-    .replace(/<h1\b[^>]*>\s*(?:&nbsp;|\u00a0|<br\s*\/?>|\s)*<\/h1>/gi, '')
-    .replace(/<h1\b([^>]*)>/gi, '<h2$1>')
-    .replace(/<\/h1>/gi, '</h2>');
 }
 
 function normalizeHeadingTextForCompare(value: string): string {
@@ -436,12 +464,12 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   const dbSlug = safeDecodeSlug(slug);
 
   const { data, error } = await supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select(
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
     )
     .eq('slug', dbSlug)
     .eq('status', 'published')
@@ -458,7 +486,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
       hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
     });
-    return null;
+    throw createBlogDatabaseUnavailableError();
   }
   if (!data || data.length === 0) return null;
   return data[0] as unknown as BlogPost;
@@ -476,9 +504,9 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   const postResult = await runBlogDetailQuery(
     'postFast',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select(
-        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle',
+        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
       )
       .eq('slug', dbSlug)
       .eq('status', 'published')
@@ -526,17 +554,8 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
 }
 
 const getCachedPostFast = unstable_cache(
-  async (slug: string) => {
-    try {
-      return await getPostFastUncached(slug);
-    } catch (error) {
-      if (isBlogDatabaseUnavailableError(error)) {
-        return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
-      }
-      throw error;
-    }
-  },
-  ['blog-detail-v2'],
+  async (slug: string) => getPostFastUncached(slug),
+  ['blog-detail-v3-public-eligibility'],
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
 
@@ -583,9 +602,6 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   } catch (error) {
     if (isNextCacheContextUnavailable(error)) {
       return getPostFastUncached(slug);
-    }
-    if (isBlogDatabaseUnavailableError(error)) {
-      return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
     }
     throw error;
   }
@@ -779,15 +795,19 @@ async function getRelatedPosts(
   currentSlug: string,
   destination: string | undefined,
   angleType: string | undefined,
+  sourcePost?: Pick<
+    BlogPost,
+    'product_id' | 'content_type' | 'pillar_for' | 'target_audience' | 'generation_meta'
+  >,
 ): Promise<RelatedPost[]> {
   if (!isSupabaseConfigured) return [];
 
   const result = await runBlogDetailQuery(
     'relatedPosts',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select(
-        'id, slug, seo_title, og_image_url, angle_type, published_at, product_id, destination',
+        'id, slug, seo_title, og_image_url, angle_type, published_at, product_id, destination, status, content_type, pillar_for, target_audience, generation_meta',
       )
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -801,6 +821,49 @@ async function getRelatedPosts(
   if (isBlogDetailQueryUnavailable(result) || result.error || !result.data) return [];
   const { data } = result;
   const posts = await attachRelatedPostPublicSnapshots(data as unknown as RelatedPost[]);
+
+  const informationIdentity = sourcePost?.product_id
+    ? null
+    : readBlogInformationRepresentativeIdentity(sourcePost?.generation_meta);
+  if (informationIdentity) {
+    const sourceMeta = sourcePost?.generation_meta || {};
+    const source: BlogInformationalLinkContext = {
+      slug: currentSlug,
+      destination: destination ?? null,
+      destinationId: informationIdentity.destinationId,
+      intent: informationIdentity.intent,
+      audience: informationIdentity.audience,
+      locale: informationIdentity.locale,
+      contentType: sourcePost?.content_type,
+      pillarFor: sourcePost?.pillar_for,
+      clusterId: typeof sourceMeta.editorial_cluster_id === 'string'
+        ? sourceMeta.editorial_cluster_id
+        : null,
+    };
+    const postBySlug = new Map(posts.map((post) => [post.slug, post]));
+    return rankBlogInformationalRelatedLinks(
+      source,
+      posts.flatMap((post) => {
+        const candidate = readBlogInformationalLinkCandidate({
+          id: post.id,
+          slug: post.slug,
+          title: post.seo_title,
+          destination: relatedPostDestination(post),
+          status: post.status,
+          contentType: post.content_type,
+          pillarFor: post.pillar_for,
+          targetAudience: post.target_audience,
+          publishedAt: post.published_at,
+          generationMeta: post.generation_meta,
+        });
+        return candidate ? [candidate] : [];
+      }),
+      6,
+    ).flatMap((entry) => {
+      const post = postBySlug.get(entry.candidate.slug);
+      return post ? [{ ...post, related_anchor: entry.anchorText }] : [];
+    });
+  }
 
   // 우선순위: 같은 destination + 같은 angle → 같은 destination → 같은 angle → 최신
   const sameDestSameAngle = posts.filter(
@@ -911,7 +974,7 @@ async function getPrevNextPosts(
     runBlogDetailQuery(
       'prevPost',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, seo_title, og_image_url, destination')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -926,7 +989,7 @@ async function getPrevNextPosts(
     runBlogDetailQuery(
       'nextPost',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, seo_title, og_image_url, destination')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -1116,15 +1179,7 @@ async function renderBlogDetail({
     redirect('/blog');
   }
 
-  let post: BlogPost | null = null;
-  try {
-    post = await getPostFast(slug);
-  } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) {
-      return <BlogDatabaseUnavailableView slug={slug} />;
-    }
-    throw err;
-  }
+  const post = await getPostFast(slug);
   if (!post) notFound();
 
   const pkg = post.travel_packages;
@@ -1146,6 +1201,12 @@ async function renderBlogDetail({
     intentProfile.infoSubtype || intentProfile.productSubtype || intentProfile.readerIntent,
   ].filter(Boolean).join(':');
   const effectiveDestination = post.destination || pkg?.destination || undefined;
+  const informationalIdentity = isInfoBlog
+    ? readBlogInformationRepresentativeIdentity(post.generation_meta)
+    : null;
+  const informationalRiskLevel = informationalIdentity
+    ? readInformationalRiskLevel(post.generation_meta, informationalIdentity.intent)
+    : null;
 
   // ── A/B 테스트: headline 실험 ────────────────────────────
   // visitorId = post.id (고유 식별자, 결정론적 할당용)
@@ -1200,7 +1261,7 @@ async function renderBlogDetail({
 
   // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
   // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
-  const [dki, relatedPosts, relatedProducts] = await Promise.all([
+  const [dki, relatedPosts, relatedProducts, officialSourceTarget] = await Promise.all([
     isLanding
       ? withBlogRenderTimeout(
           'dki',
@@ -1215,13 +1276,40 @@ async function renderBlogDetail({
           null,
         )
       : Promise.resolve(null),
-    withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type), []),
+    withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type, post), []),
     withBlogRenderTimeout('relatedProducts', getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent), []),
+    informationalIdentity && informationalRiskLevel === 'HIGH'
+      ? withBlogRenderTimeout('officialSourceCta', loadBlogInformationalOfficialSourceUrl({
+          creativeId: post.id,
+          generationMeta: post.generation_meta,
+        }), null, 1500)
+      : Promise.resolve(null),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
   const angleLabel = ANGLE_LABELS[post.angle_type] || post.angle_type;
   const pageUrl = `${BASE_URL}/blog/${slug}`;
+  const relatedArticlesHref = relatedPosts[0]?.slug
+    ? `/blog/${relatedPosts[0].slug}`
+    : effectiveDestination
+      ? `/blog/destination/${encodeURIComponent(effectiveDestination)}`
+      : '/blog';
+  const informationalCtas = informationalIdentity
+    ? selectBlogInformationalCtas({
+        intent: informationalIdentity.intent,
+        destination: effectiveDestination,
+        riskLevel: informationalRiskLevel ?? 'LOW',
+        locale: informationalIdentity.locale,
+        placement: 'bottom',
+        settings: loadBlogInformationalCtaSettings({
+          destination: effectiveDestination,
+          relatedArticlesHref,
+          officialSourceUrl: officialSourceTarget?.url,
+          officialSourceRegistryHostname: officialSourceTarget?.registryHostname,
+          officialSourceAllowSubdomains: officialSourceTarget?.allowSubdomains,
+        }),
+      })
+    : [];
 
   // 본문 sanitize + TOC 추출
   let bodyHtml = '';
@@ -1233,12 +1321,14 @@ async function renderBlogDetail({
     // blog_html은 "마크다운 + 일부 안전한 HTML(figcaption/aside)" 혼합 저장값이다.
     // figcaption 태그만 보고 전체를 raw HTML로 취급하면 이미지/표/링크 마크다운이 그대로 노출된다.
     const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
-    const sanitized = stripDuplicateBodyTitleHeading(sanitizeServerBlogHtml(rendered), abTestTitle);
+    const normalizedBody = isInfoBlog ? stripBlogInformationalBodyCtas(rendered) : rendered;
+    const sanitized = stripDuplicateBodyTitleHeading(sanitizePublicBlogBodyHtml(normalizedBody), abTestTitle);
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;
     showToc = shouldShowToc(sanitized, toc);
-    readingMinutes = estimateReadingMinutes(sanitized);
+    readingMinutes = readPersistedBlogReadingTime(post.quality_gate)
+      ?? calculateBlogReadingTimeFromHtml(sanitized);
   }
 
   const [curationSection, sidebarRelatedPosts, relatedPostsSection, prevNextSection] = await Promise.all([
@@ -1252,11 +1342,13 @@ async function renderBlogDetail({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
+      sourcePost: post,
     }), null),
     withBlogRenderTimeout('relatedPostsSection', RelatedPostsSection({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
+      sourcePost: post,
     }), null),
     withBlogRenderTimeout('prevNextSection', PrevNextSection({ slug, publishedAt: post.published_at }), null),
   ]);
@@ -1297,39 +1389,39 @@ async function renderBlogDetail({
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.blogPosting) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.blogPosting) }}
       />
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.breadcrumbList) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.breadcrumbList) }}
       />
       {jsonLd.faqPage && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.faqPage) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.faqPage) }}
         />
       )}
       {jsonLd.howTo && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.howTo) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.howTo) }}
         />
       )}
       {jsonLd.touristTrip && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.touristTrip) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.touristTrip) }}
         />
       )}
       {jsonLd.product && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.product) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.product) }}
         />
       )}
 
@@ -1502,7 +1594,7 @@ async function renderBlogDetail({
                   .slice(0, 2)
                   .map((rp) => ({
                     slug: rp.slug,
-                    seo_title: rp.seo_title,
+                    seo_title: rp.related_anchor || rp.seo_title,
                     destination: relatedPostDestination(rp) ?? undefined,
                   }));
                 const canInject =
@@ -1538,6 +1630,13 @@ async function renderBlogDetail({
               })()
             ) : (
               <p className="py-10 text-center text-slate-400">본문이 준비 중입니다.</p>
+            )}
+
+            {informationalIdentity && informationalCtas.length > 0 && (
+              <InformationalCtaHub
+                articleId={post.id}
+                ctas={informationalCtas}
+              />
             )}
 
             {/* 상품 CTA 카드 — Jiwonnote 미니멀 스타일: 슬레이트 보더 + 흰배경 */}
@@ -1645,12 +1744,14 @@ async function RelatedPostsSection({
   currentSlug,
   destination,
   angleType,
+  sourcePost,
 }: {
   currentSlug: string;
   destination: string | undefined;
   angleType: string | undefined;
+  sourcePost?: BlogPost;
 }) {
-  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType);
+  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType, sourcePost);
   if (relatedPosts.length === 0) return null;
 
   return (
@@ -1674,7 +1775,7 @@ async function RelatedPostsSection({
         </div>
         <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {relatedPosts.slice(0, 6).map((rp) => {
-            const rpTitle = (rp.seo_title || '여행 가이드')
+            const rpTitle = (rp.related_anchor || rp.seo_title || '여행 가이드')
               .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
               .trim();
             const rpDur = formatDuration(rp.travel_packages?.duration, rp.travel_packages?.nights);
@@ -1733,12 +1834,14 @@ async function SidebarRelatedPosts({
   currentSlug,
   destination,
   angleType,
+  sourcePost,
 }: {
   currentSlug: string;
   destination: string | undefined;
   angleType: string | undefined;
+  sourcePost?: BlogPost;
 }) {
-  const posts = await getRelatedPosts(currentSlug, destination, angleType);
+  const posts = await getRelatedPosts(currentSlug, destination, angleType, sourcePost);
   if (posts.length === 0) return null;
 
   return (
@@ -1746,7 +1849,7 @@ async function SidebarRelatedPosts({
       <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">추천 포스팅</p>
       <ul className="space-y-3">
         {posts.slice(0, 4).map((rp) => {
-          const rpTitle = (rp.seo_title || '여행 가이드')
+          const rpTitle = (rp.related_anchor || rp.seo_title || '여행 가이드')
             .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
             .trim();
           return (

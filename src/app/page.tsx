@@ -21,6 +21,8 @@ import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -364,7 +366,7 @@ export default async function HomePage() {
   const topDestNames = topDestsRaw.map(d => d.destination);
   const { data: pillarExists } = topDestNames.length > 0
     ? await runOptionalSupabaseQuery(
-        sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
+        sb.from(PUBLIC_BLOG_READ_SOURCE).select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
         { data: null },
         { label: 'home.pillar.exists', timeoutMs: 1200 },
       )
@@ -585,7 +587,7 @@ export default async function HomePage() {
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@graph': [
               {

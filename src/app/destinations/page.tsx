@@ -13,6 +13,8 @@ import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -145,7 +147,7 @@ async function getDestinations() {
         .not('photos', 'is', null)
         .limit(4000),
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('destination, og_image_url')
         .in('destination', queryNames)
         .eq('channel', 'naver_blog')
@@ -195,7 +197,7 @@ export default async function DestinationsIndexPage() {
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: '여행지 완벽 가이드',

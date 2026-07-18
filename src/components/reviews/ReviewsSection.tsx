@@ -1,6 +1,7 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 import Stars from './Stars';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 /**
  * 상품 상세 페이지 고객 후기 섹션
@@ -146,7 +147,7 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'Product',
             name: publicTitle,

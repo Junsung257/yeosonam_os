@@ -13,12 +13,11 @@ describe('Booking State Machine', () => {
       expect(allowedStates).toContain('deposit_paid');
     });
 
-    // cancelled 전이는 ALLOWED_TRANSITIONS 외부에서 처리됨 (취소 API 별도 경로)
-    it.skip('should allow transition from any state to cancelled', () => {
+    it('should keep cancelled transitions outside the standard transition table', () => {
       Object.keys(ALLOWED_TRANSITIONS).forEach(state => {
         if (state !== 'cancelled') {
           const allowedStates = ALLOWED_TRANSITIONS[state].map(t => t.to);
-          expect(allowedStates).toContain('cancelled');
+          expect(allowedStates).not.toContain('cancelled');
         }
       });
     });

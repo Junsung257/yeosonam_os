@@ -24,6 +24,7 @@ import type {
   TouristTrip,
   Product,
 } from 'schema-dts';
+import { normalizeJsonLdText, normalizeJsonLdUrl } from '@/lib/json-ld';
 
 export interface FaqItem { q: string; a: string }
 
@@ -56,20 +57,29 @@ export function extractFaqItems(blogHtml: string): FaqItem[] {
   const re1 = /\*\*Q\d{0,2}[.:]\s*(.+?)\*\*\s*\n+\s*A[.:]\s*([\s\S]+?)(?=\n\n\*\*Q\d{0,2}[.:]|\n\n##|\n\n###|$)/g
   let m
   while ((m = re1.exec(blogHtml)) !== null) {
-    items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
+    items.push({
+      q: normalizeJsonLdText(m[1], 240),
+      a: normalizeJsonLdText(m[2], 800),
+    })
   }
 
   if (items.length === 0) {
     const re2 = /^###\s+Q\d{0,2}[.:]?\s*(.+?)$\n+([\s\S]+?)(?=^###|^##|$)/gm
     while ((m = re2.exec(blogHtml)) !== null) {
-      items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
+      items.push({
+        q: normalizeJsonLdText(m[1], 240),
+        a: normalizeJsonLdText(m[2], 800),
+      })
     }
   }
 
   if (items.length === 0) {
     const re3 = /^Q\d{0,2}[.:]?\s+(.+?)$\n+\s*A[.:]?\s+([\s\S]+?)(?=\n\nQ\d{0,2}[.:]|\n##|$)/gm
     while ((m = re3.exec(blogHtml)) !== null) {
-      items.push({ q: m[1].trim(), a: m[2].trim().slice(0, 800) })
+      items.push({
+        q: normalizeJsonLdText(m[1], 240),
+        a: normalizeJsonLdText(m[2], 800),
+      })
     }
   }
 
@@ -91,8 +101,8 @@ export function extractHowToSteps(blogHtml: string): HowToStep[] {
     const title = m[3].trim()
     const content = m[4].trim().slice(0, 500)
     steps.push({
-      name: `Day ${dayNum}: ${title}`,
-      text: content,
+      name: normalizeJsonLdText(`Day ${dayNum}: ${title}`, 160),
+      text: normalizeJsonLdText(content, 500),
     })
     if (steps.length >= 14) break
   }
@@ -170,7 +180,7 @@ function buildStandaloneTouristTripSchema(
     offers: opts.price
       ? {
           '@type': 'Offer',
-          url: `${opts.baseUrl}/packages/${opts.productId}`,
+          url: `${opts.baseUrl}/packages/${encodeURIComponent(opts.productId)}`,
           priceCurrency: 'KRW',
           price: opts.price,
           availability: 'https://schema.org/InStock',
@@ -217,21 +227,53 @@ export interface BlogPostPageJsonLdBundle {
 
 export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPostPageJsonLdBundle {
   const {
-    baseUrl,
-    pageUrl,
-    title,
-    description,
-    publishedAt,
-    modifiedAt,
-    ogImageUrl,
+    baseUrl: rawBaseUrl,
+    pageUrl: rawPageUrl,
+    title: rawTitle,
+    description: rawDescription,
+    publishedAt: rawPublishedAt,
+    modifiedAt: rawModifiedAt,
+    ogImageUrl: rawOgImageUrl,
     blogHtmlMarkdown,
     bodyHtmlForWordCount,
-    readingMinutes,
-    angleLabel,
-    pkg,
-    durationStr,
+    readingMinutes: rawReadingMinutes,
+    angleLabel: rawAngleLabel,
+    pkg: rawPkg,
+    durationStr: rawDurationStr,
     productDurationDays,
   } = input
+
+  const safeBaseUrl = normalizeJsonLdUrl(rawBaseUrl, {
+    fallback: 'https://www.yeosonam.com',
+  }) ?? 'https://www.yeosonam.com'
+  const baseUrl = new URL(safeBaseUrl).origin
+  const pageUrl = normalizeJsonLdUrl(rawPageUrl, {
+    fallback: `${baseUrl}/blog`,
+    allowedOrigin: baseUrl,
+  }) ?? `${baseUrl}/blog`
+  const title = normalizeJsonLdText(rawTitle, 110, '여소남 여행 가이드')
+  const description = normalizeJsonLdText(rawDescription, 500, title)
+  const publishedAt = normalizeJsonLdText(rawPublishedAt, 64, '1970-01-01T00:00:00.000Z')
+  const modifiedAt = rawModifiedAt
+    ? normalizeJsonLdText(rawModifiedAt, 64, publishedAt)
+    : null
+  const ogImageUrl = normalizeJsonLdUrl(rawOgImageUrl, { fallback: null })
+  const readingMinutes = Number.isFinite(rawReadingMinutes)
+    ? Math.min(999, Math.max(1, Math.round(rawReadingMinutes)))
+    : 1
+  const angleLabel = normalizeJsonLdText(rawAngleLabel, 80, '여행 정보')
+  const durationStr = normalizeJsonLdText(rawDurationStr, 40)
+  const pkg: BlogJsonLdPackageLite | null = rawPkg
+    ? {
+        id: normalizeJsonLdText(rawPkg.id, 128),
+        title: normalizeJsonLdText(rawPkg.title, 200, title),
+        destination: normalizeJsonLdText(rawPkg.destination, 120),
+        price:
+          typeof rawPkg.price === 'number' && Number.isFinite(rawPkg.price) && rawPkg.price >= 0
+            ? Math.min(rawPkg.price, 1_000_000_000)
+            : null,
+      }
+    : null
 
   const wordCount = bodyHtmlForWordCount.replace(/<[^>]+>/g, '').length
   const faqItems = extractFaqItems(blogHtmlMarkdown)
@@ -339,7 +381,7 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
             price: pkg.price,
             priceCurrency: 'KRW',
             availability: 'https://schema.org/InStock',
-            url: `${baseUrl}/packages/${pkg.id}`,
+            url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
             validThrough: new Date(new Date().getFullYear(), 11, 31).toISOString().slice(0, 10),
           },
         }),
@@ -392,7 +434,7 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
           price: pkg.price ?? 0,
           priceCurrency: 'KRW',
           availability: 'https://schema.org/InStock',
-          url: `${baseUrl}/packages/${pkg.id}`,
+          url: `${baseUrl}/packages/${encodeURIComponent(pkg.id)}`,
           seller: { '@type': 'Organization', name: '여소남' },
         },
         aggregateRating: {

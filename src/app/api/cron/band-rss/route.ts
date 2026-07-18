@@ -10,7 +10,7 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchBandRSS } from '@/lib/band-rss-fetcher';
 import { analyzeFromText, BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/band-ai-analyzer';
-import { triggerContentGeneration } from '@/lib/auto-content-trigger';
+import { persistBandImportedProduct } from '@/lib/band-import-persistence';
 import { getSecret } from '@/lib/secret-registry';
 import { withCronLogging } from '@/lib/cron-observability';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
@@ -73,10 +73,16 @@ const handleBandRss = async (request: NextRequest) => {
       const analysis = analysisResults[i];
 
       if (analysis.status === 'rejected' || analysis.value === null) {
-        await supabaseAdmin.from('band_import_log').insert({
+        const { error: skippedLogError } = await supabaseAdmin.from('band_import_log').insert({
           post_url: post.url, post_title: post.title, status: 'skipped',
         });
-        results.skipped++;
+        if (skippedLogError) {
+          const message = sanitizeDbError(skippedLogError, 'Band skipped audit failed');
+          results.failed++;
+          results.errors.push(message);
+        } else {
+          results.skipped++;
+        }
         continue;
       }
 
@@ -84,53 +90,36 @@ const handleBandRss = async (request: NextRequest) => {
       try {
         const code = await getNextCode(ai.departure_region_code, ai.destination_code, ai.duration_days);
 
-        const { data: product, error } = await supabaseAdmin
-          .from('products')
-          .insert({
-            internal_code:         code,
-            display_name:          ai.display_name || post.title,
-            departure_region:      ai.departure_region,
-            departure_region_code: ai.departure_region_code,
-            supplier_code:         BAND_SUPPLIER_CODE,
-            destination:           ai.destination,
-            destination_code:      ai.destination_code,
-            duration_days:         ai.duration_days,
-            departure_date:        ai.departure_date,
-            net_price:             ai.net_price ?? 0,
-            margin_rate:           DEFAULT_MARGIN_RATE,
-            discount_amount:       0,
-            ai_tags:               ai.ai_tags,
-            status:                'DRAFT',
-            source_filename:       'band_rss_auto',
-          })
-          .select('id')
-          .single();
-
-        if (error) {
-          if (error.code === '23505') { results.skipped++; continue; }
-          throw error;
-        }
-
-        const productId = (product as { id: string }).id;
-        await supabaseAdmin.from('band_import_log').insert({
-          post_url: post.url, post_title: post.title,
-          raw_text: safeRawTextExcerpt(post.content, 2000),
-          product_id: productId, status: 'imported',
-        });
-
-        void triggerContentGeneration({
-          productId, displayName: ai.display_name || post.title,
-          destination: ai.destination, destinationCode: ai.destination_code,
+        await persistBandImportedProduct({
+          internalCode: code,
+          displayName: ai.display_name || post.title,
+          departureRegion: ai.departure_region,
+          supplierCode: BAND_SUPPLIER_CODE,
+          departureDate: ai.departure_date,
+          netPrice: ai.net_price ?? 0,
+          marginRate: DEFAULT_MARGIN_RATE,
+          aiTags: ai.ai_tags,
+          sourceFilename: 'band_rss_auto',
+          postUrl: post.url,
+          postTitle: post.title,
+          rawText: safeRawTextExcerpt(post.content, 2000),
         });
         results.imported++;
       } catch (err) {
+        if (err && typeof err === 'object' && 'code' in err && err.code === '23505') {
+          results.skipped++;
+          continue;
+        }
         const message = sanitizeDbError(err, 'Band post import failed');
-        await supabaseAdmin.from('band_import_log').insert({
+        const { error: failedLogError } = await supabaseAdmin.from('band_import_log').insert({
           post_url: post.url, post_title: post.title,
           status: 'failed', error_msg: message,
         });
         results.failed++;
         results.errors.push(message);
+        if (failedLogError) {
+          results.errors.push(sanitizeDbError(failedLogError, 'Band failure audit failed'));
+        }
       }
     }
   } catch (err) {

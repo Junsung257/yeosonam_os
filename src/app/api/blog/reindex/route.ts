@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifyIndexing } from '@/lib/indexing';
 import { apiResponse } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /**
  * POST /api/blog/reindex
@@ -16,6 +18,9 @@ import { apiResponse } from '@/lib/api-response';
  *   { report: IndexingReport }
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -30,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // 블로그 조회 (slug 확인 + 발행 상태 검증)
     let query = supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('id, slug, status')
       .eq('channel', 'naver_blog');
     query = id ? query.eq('id', id) : query.eq('slug', slug as string);

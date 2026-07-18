@@ -1,251 +1,185 @@
 #!/usr/bin/env node
-/**
- * Migration Safety Checker
- *
- * Validates Supabase migrations for production safety:
- * - Destructive operations (DROP TABLE/COLUMN, TRUNCATE)
- * - Lock-heavy operations (ALTER TABLE without CONCURRENTLY)
- * - Missing indexes on foreign keys
- * - Large table mutations without batch
- * - Missing RLS policies on new tables
- * - Non-transactional DDL
- * - Production-blocking operations (UNIQUE on populated columns)
- */
+/* eslint-disable no-console */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
-const MIGRATIONS_DIR = 'supabase/migrations';
-
-const SEVERITY = {
+const MIGRATIONS_PREFIX = 'supabase/migrations/';
+const SEVERITY = Object.freeze({
   BLOCKING: 'blocking',
   CRITICAL: 'critical',
   HIGH: 'high',
   MEDIUM: 'medium',
-  LOW: 'low'
-};
+  LOW: 'low',
+});
+const BLOCKING_SEVERITIES = new Set([SEVERITY.BLOCKING, SEVERITY.CRITICAL, SEVERITY.HIGH]);
+
+function normalizeSql(content) {
+  return content
+    .replace(/--[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function sha256(content) {
+  return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+function parseNameStatusZ(output) {
+  const tokens = output.split('\0').filter(Boolean);
+  const changes = [];
+  for (let index = 0; index < tokens.length;) {
+    const statusToken = tokens[index++];
+    const status = statusToken[0];
+    if (status === 'R' || status === 'C') {
+      changes.push({ status, score: statusToken.slice(1), oldPath: tokens[index++], path: tokens[index++] });
+    } else {
+      changes.push({ status, path: tokens[index++] });
+    }
+  }
+  return changes.filter((change) => change.path?.startsWith(MIGRATIONS_PREFIX)
+    || change.oldPath?.startsWith(MIGRATIONS_PREFIX));
+}
+
+function git(args, cwd, encoding = 'utf8') {
+  return execFileSync('git', args, { cwd, encoding, stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
+function readGitFile(revision, filePath, cwd) {
+  try {
+    return git(['show', `${revision}:${filePath}`], cwd);
+  } catch {
+    return null;
+  }
+}
+
+function collectMigrationChanges({ base, head, cwd = process.cwd() }) {
+  const output = git([
+    'diff', '--name-status', '-z', '--find-renames', base, head, '--', 'supabase/migrations/*.sql',
+  ], cwd);
+  return parseNameStatusZ(output).map((change) => ({
+    ...change,
+    oldContent: change.oldPath
+      ? readGitFile(base, change.oldPath, cwd)
+      : change.status === 'M' || change.status === 'D'
+        ? readGitFile(base, change.path, cwd)
+        : null,
+    content: change.status === 'D' ? null : readGitFile(head, change.path, cwd),
+  }));
+}
 
 class MigrationChecker {
-  constructor(filePath, content) {
+  constructor(filePath, content, options = {}) {
     this.filePath = filePath;
     this.fileName = path.basename(filePath);
     this.content = content;
-    this.normalizedContent = content.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    this.normalizedContent = normalizeSql(content);
+    this.indexCorpus = normalizeSql(options.indexCorpus || content);
     this.issues = [];
   }
 
   addIssue(severity, type, description, lineNumber = null) {
-    this.issues.push({
-      severity,
-      type,
-      description,
-      lineNumber,
-      file: this.fileName
-    });
+    this.issues.push({ severity, type, description, lineNumber, file: this.fileName });
   }
 
   checkDestructiveOps() {
-    const lines = this.content.split('\n');
-    lines.forEach((line, idx) => {
+    this.content.split('\n').forEach((line, index) => {
       const cleanLine = line.replace(/--.*$/, '').trim();
-      if (cleanLine.length === 0) return;
-
-      if (/DROP\s+TABLE(?!\s+IF\s+EXISTS\s+\w+_(?:old|backup|temp))/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.BLOCKING,
-          'destructive',
-          'DROP TABLE without backup naming convention',
-          idx + 1
-        );
-      }
-
-      if (/ALTER\s+TABLE[^;]+DROP\s+COLUMN/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.CRITICAL,
-          'destructive',
-          'DROP COLUMN causes data loss',
-          idx + 1
-        );
-      }
-
-      if (/TRUNCATE\s+TABLE/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.BLOCKING,
-          'destructive',
-          'TRUNCATE TABLE removes all data',
-          idx + 1
-        );
-      }
-
-      if (/DELETE\s+FROM\s+\w+\s*(?:;|--|$)/i.test(cleanLine) &&
-          !/WHERE/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.BLOCKING,
-          'destructive',
-          'Unbounded DELETE without WHERE clause',
-          idx + 1
-        );
+      if (!cleanLine) return;
+      if (/DROP\s+TABLE/i.test(cleanLine)) this.addIssue(SEVERITY.BLOCKING, 'destructive', 'DROP TABLE can remove production data', index + 1);
+      if (/ALTER\s+TABLE[^;]+DROP\s+COLUMN/i.test(cleanLine)) this.addIssue(SEVERITY.CRITICAL, 'destructive', 'DROP COLUMN causes data loss', index + 1);
+      if (/TRUNCATE\s+(?:TABLE\s+)?/i.test(cleanLine)) this.addIssue(SEVERITY.BLOCKING, 'destructive', 'TRUNCATE removes all rows', index + 1);
+      if (/DELETE\s+FROM\s+[\w.]+\s*(?:;|$)/i.test(cleanLine) && !/\bWHERE\b/i.test(cleanLine)) {
+        this.addIssue(SEVERITY.BLOCKING, 'destructive', 'Unbounded DELETE without WHERE', index + 1);
       }
     });
   }
 
   checkLockHeavyOps() {
-    const lines = this.content.split('\n');
-
-    lines.forEach((line, idx) => {
+    const createdTables = new Set([...this.normalizedContent.matchAll(
+      /create table (?:if not exists )?(?:public\.)?(\w+)\s*\(/g,
+    )].map((match) => match[1]));
+    this.content.split('\n').forEach((line, index, lines) => {
       const cleanLine = line.replace(/--.*$/, '').trim();
-
       if (/CREATE\s+(?:UNIQUE\s+)?INDEX(?!\s+CONCURRENTLY)/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.HIGH,
-          'lock-heavy',
-          'CREATE INDEX without CONCURRENTLY blocks writes',
-          idx + 1
-        );
+        const statement = lines.slice(index, index + 8).join(' ').split(';')[0];
+        const table = statement.match(/\bON\s+(?:public\.)?(\w+)\s*\(/i)?.[1]?.toLowerCase();
+        if (!table || !createdTables.has(table)) this.addIssue(SEVERITY.HIGH, 'lock-heavy', 'CREATE INDEX on an existing table must use CONCURRENTLY', index + 1);
       }
-
-      if (/ALTER\s+TABLE[^;]+ADD\s+COLUMN[^;]+NOT\s+NULL(?!\s+DEFAULT)/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.CRITICAL,
-          'lock-heavy',
-          'ADD COLUMN NOT NULL without DEFAULT rewrites entire table',
-          idx + 1
-        );
+      if (/ALTER\s+TABLE[^;]+ADD\s+COLUMN[^;]+NOT\s+NULL(?![^;]*\bDEFAULT\b)/i.test(cleanLine)) {
+        this.addIssue(SEVERITY.CRITICAL, 'lock-heavy', 'ADD COLUMN NOT NULL without a staged backfill', index + 1);
       }
-
-      if (/ALTER\s+TABLE[^;]+ALTER\s+COLUMN[^;]+TYPE/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.HIGH,
-          'lock-heavy',
-          'ALTER COLUMN TYPE rewrites entire table',
-          idx + 1
-        );
-      }
-
-      if (/ALTER\s+TABLE[^;]+ADD\s+CONSTRAINT[^;]+UNIQUE/i.test(cleanLine)) {
-        this.addIssue(
-          SEVERITY.HIGH,
-          'lock-heavy',
-          'ADD UNIQUE constraint requires full table scan',
-          idx + 1
-        );
-      }
+      if (/ALTER\s+TABLE[^;]+ALTER\s+COLUMN[^;]+TYPE/i.test(cleanLine)) this.addIssue(SEVERITY.HIGH, 'lock-heavy', 'ALTER COLUMN TYPE may rewrite the table', index + 1);
+      if (/ALTER\s+TABLE[^;]+ADD\s+CONSTRAINT[^;]+UNIQUE/i.test(cleanLine)) this.addIssue(SEVERITY.HIGH, 'lock-heavy', 'ADD UNIQUE scans and locks the table', index + 1);
     });
   }
 
-  checkNewTablesRLS() {
-    const createTableMatches = this.normalizedContent.matchAll(
-      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)\s*\(/gi
-    );
-
-    for (const match of createTableMatches) {
-      const tableName = match[1];
-
-      if (/^(_|migration|schema_)/.test(tableName)) continue;
-
-      const enableRlsPattern = new RegExp(
-        `ALTER\\s+TABLE\\s+(?:public\\.)?${tableName}\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY`,
-        'i'
-      );
-
-      if (!enableRlsPattern.test(this.normalizedContent)) {
-        this.addIssue(
-          SEVERITY.CRITICAL,
-          'security',
-          `New table '${tableName}' missing ENABLE ROW LEVEL SECURITY`
-        );
+  checkNewTablesRls() {
+    for (const match of this.normalizedContent.matchAll(/create table (?:if not exists )?(?:public\.)?(\w+)\s*\(/g)) {
+      const table = match[1];
+      if (/^(_|migration|schema_)/.test(table)) continue;
+      if (!new RegExp(`alter table (?:public\\.)?${table} enable row level security`).test(this.normalizedContent)) {
+        this.addIssue(SEVERITY.CRITICAL, 'security', `New table '${table}' is missing ENABLE ROW LEVEL SECURITY`);
       }
-
-      const policyPattern = new RegExp(
-        `CREATE\\s+POLICY[^;]+ON\\s+(?:public\\.)?${tableName}`,
-        'i'
-      );
-
-      if (!policyPattern.test(this.normalizedContent)) {
-        this.addIssue(
-          SEVERITY.HIGH,
-          'security',
-          `Table '${tableName}' has no RLS policies defined`
-        );
+      if (!new RegExp(`create policy [^;]+ on (?:public\\.)?${table}`).test(this.normalizedContent)) {
+        this.addIssue(SEVERITY.HIGH, 'security', `New table '${table}' has no RLS policy`);
       }
     }
   }
 
   checkForeignKeyIndexes() {
-    const fkMatches = this.normalizedContent.matchAll(
-      /REFERENCES\s+(?:public\.)?(\w+)\s*\((\w+)\)/gi
-    );
+    const foreignKeys = [];
+    for (const match of this.normalizedContent.matchAll(
+      /alter table (?:public\.)?(\w+)[\s\S]*?foreign key\s*\((\w+)\)\s*references\s+(?:public\.)?(\w+)\s*\((\w+)\)/g,
+    )) foreignKeys.push({ table: match[1], column: match[2] });
 
-    const fkColumns = new Set();
-    for (const match of fkMatches) {
-      fkColumns.add(`${match[1]}.${match[2]}`);
+    for (const tableMatch of this.normalizedContent.matchAll(
+      /create table (?:if not exists )?(?:public\.)?(\w+)\s*\(([\s\S]*?)\)\s*;/g,
+    )) {
+      const table = tableMatch[1];
+      const body = tableMatch[2];
+      for (const match of body.matchAll(/(?:^|,)\s*(\w+)\s+[^,]*?references\s+(?:public\.)?\w+\s*\(\w+\)/g)) {
+        foreignKeys.push({ table, column: match[1] });
+      }
+      for (const match of body.matchAll(/foreign key\s*\((\w+)\)\s*references/g)) {
+        foreignKeys.push({ table, column: match[1] });
+      }
     }
 
-    fkColumns.forEach(fk => {
-      const [table, column] = fk.split('.');
-      const indexPattern = new RegExp(
-        `CREATE\\s+INDEX[^;]+ON\\s+(?:public\\.)?${table}\\s*\\([^)]*\\b${column}\\b[^)]*\\)`,
-        'i'
-      );
-
-      if (!indexPattern.test(this.normalizedContent)) {
+    for (const { table, column } of foreignKeys) {
+      const index = new RegExp(`create (?:unique )?index[^;]* on (?:public\\.)?${table}\\s*\\([^)]*\\b${column}\\b`);
+      const uniqueOrPrimary = new RegExp(`(?:primary key|unique)\\s*\\([^)]*\\b${column}\\b`);
+      if (!index.test(this.indexCorpus) && !uniqueOrPrimary.test(this.normalizedContent)) {
+        this.addIssue(SEVERITY.HIGH, 'foreign-key-index', `Foreign key '${table}.${column}' has no supporting index in the change set`);
       }
-    });
+    }
   }
 
   checkTransactionSafety() {
-    const hasBegin = /BEGIN\s*;|BEGIN\s+TRANSACTION/i.test(this.content);
-    const hasCommit = /COMMIT\s*;/i.test(this.content);
-
-    const dangerousStatements = (this.normalizedContent.match(/CREATE\s+INDEX\s+CONCURRENTLY/gi) || []).length;
-
-    if (dangerousStatements > 0 && hasBegin) {
-      this.addIssue(
-        SEVERITY.HIGH,
-        'transaction',
-        'CREATE INDEX CONCURRENTLY cannot run inside transaction'
-      );
+    if (/create index concurrently/.test(this.normalizedContent) && /\bbegin\s*;/.test(this.normalizedContent)) {
+      this.addIssue(SEVERITY.HIGH, 'transaction', 'CREATE INDEX CONCURRENTLY cannot run inside a transaction');
     }
   }
 
   checkBatchOperations() {
-    const updateAllPattern = /UPDATE\s+\w+\s+SET[^;]+(?:;|$)/gi;
-    const matches = this.normalizedContent.matchAll(updateAllPattern);
-
-    for (const match of matches) {
-      const stmt = match[0];
-      if (!/WHERE/i.test(stmt)) {
-        this.addIssue(
-          SEVERITY.CRITICAL,
-          'lock-heavy',
-          'Unbounded UPDATE without WHERE clause'
-        );
-      }
+    for (const match of this.normalizedContent.matchAll(/update\s+[\w.]+\s+set[^;]+(?:;|$)/g)) {
+      if (!/\bwhere\b/.test(match[0])) this.addIssue(SEVERITY.CRITICAL, 'lock-heavy', 'Unbounded UPDATE without WHERE');
     }
   }
 
   checkNamingConventions() {
-    if (!/^\d{14}_/.test(this.fileName)) {
-      this.addIssue(
-        SEVERITY.LOW,
-        'convention',
-        'Migration filename should start with timestamp (YYYYMMDDHHMMSS_)'
-      );
-    }
-
-    if (this.content.length < 50) {
-      this.addIssue(
-        SEVERITY.MEDIUM,
-        'convention',
-        'Migration appears empty or too short'
-      );
-    }
+    if (!/^\d{14}_/.test(this.fileName)) this.addIssue(SEVERITY.LOW, 'convention', 'Migration filename must start with YYYYMMDDHHMMSS_');
+    if (this.content.length < 50) this.addIssue(SEVERITY.MEDIUM, 'convention', 'Migration appears empty or too short');
   }
 
   run() {
     this.checkDestructiveOps();
     this.checkLockHeavyOps();
-    this.checkNewTablesRLS();
+    this.checkNewTablesRls();
     this.checkForeignKeyIndexes();
     this.checkTransactionSafety();
     this.checkBatchOperations();
@@ -254,127 +188,101 @@ class MigrationChecker {
   }
 }
 
-function analyzeMigrations(targetFiles = null) {
-  if (!fs.existsSync(MIGRATIONS_DIR)) {
-    console.log('No migrations directory found');
-    return { files: [], totalIssues: 0 };
-  }
-
-  const allFiles = fs.readdirSync(MIGRATIONS_DIR)
-    .filter(f => f.endsWith('.sql'))
-    .sort();
-
-  const filesToCheck = targetFiles && targetFiles.length > 0
-    ? allFiles.filter(f => targetFiles.includes(f))
-    : allFiles;
-
-  const results = [];
+function analyzeChangeSet(changes) {
+  const indexCorpus = changes.filter((change) => change.content).map((change) => change.content).join('\n');
+  const files = [];
   let totalIssues = 0;
-
-  filesToCheck.forEach(file => {
-    const filePath = path.join(MIGRATIONS_DIR, file);
-    const content = fs.readFileSync(filePath, 'utf8');
-    const checker = new MigrationChecker(filePath, content);
-    const issues = checker.run();
-
-    if (issues.length > 0) {
-      results.push({ file, issues });
+  for (const change of changes) {
+    const issues = [];
+    const file = path.basename(change.path || change.oldPath);
+    if (change.status === 'D') {
+      issues.push({ severity: SEVERITY.CRITICAL, type: 'migration-history', description: 'Applied migration file was deleted', file });
+    } else {
+      if (change.status === 'R') {
+        issues.push({ severity: SEVERITY.CRITICAL, type: 'migration-history', description: `Applied migration was renamed from ${path.basename(change.oldPath)}`, file });
+      }
+      if (change.status === 'M') {
+        const semanticChanged = normalizeSql(change.oldContent || '') !== normalizeSql(change.content || '');
+        issues.push({
+          severity: SEVERITY.CRITICAL,
+          type: 'migration-history',
+          description: semanticChanged
+            ? `Applied migration SQL changed (old ${sha256(change.oldContent || '').slice(0, 12)}, new ${sha256(change.content || '').slice(0, 12)})`
+            : 'Applied migration checksum changed even though normalized SQL is equivalent',
+          file,
+        });
+      }
+      if (change.content) issues.push(...new MigrationChecker(change.path, change.content, { indexCorpus }).run());
+    }
+    if (issues.length) {
+      files.push({ file, status: change.status, oldPath: change.oldPath || null, issues });
       totalIssues += issues.length;
     }
-  });
+  }
+  return { files, totalIssues, totalChecked: changes.length, changes };
+}
 
-  return { files: results, totalIssues, totalChecked: filesToCheck.length };
+function determineExitCode(result) {
+  return result.files.some(({ issues }) => issues.some(({ severity }) => BLOCKING_SEVERITIES.has(severity))) ? 1 : 0;
 }
 
 function printReport(result) {
-  const { files, totalIssues, totalChecked } = result;
-
-  console.log('🔍 Migration Safety Analysis\n');
-  console.log('='.repeat(60));
-  console.log(`Files checked: ${totalChecked}`);
-  console.log(`Files with issues: ${files.length}`);
-  console.log(`Total issues: ${totalIssues}\n`);
-
-  const severityCounts = {};
-
-  if (files.length === 0) {
-    console.log('✅ All migrations passed safety checks\n');
-    return { exitCode: 0, severityCounts };
+  console.log('Migration Safety Analysis');
+  console.log(`Files checked: ${result.totalChecked}`);
+  console.log(`Files with issues: ${result.files.length}`);
+  console.log(`Total issues: ${result.totalIssues}`);
+  for (const { file, status, issues } of result.files) {
+    console.log(`\n${status} ${file}`);
+    for (const issue of issues) console.log(`  [${issue.severity.toUpperCase()}] ${issue.type}: ${issue.description}`);
   }
+}
 
-  files.forEach(({ file, issues }) => {
-    console.log(`\n📄 ${file}`);
-    console.log('─'.repeat(60));
+function parseArgs(args) {
+  const options = { files: [] };
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === '--base') options.base = args[++index];
+    else if (args[index] === '--head') options.head = args[++index];
+    else if (args[index] === '--report') options.report = args[++index];
+    else options.files.push(args[index]);
+  }
+  return options;
+}
 
-    issues
-      .sort((a, b) => {
-        const order = [SEVERITY.BLOCKING, SEVERITY.CRITICAL, SEVERITY.HIGH, SEVERITY.MEDIUM, SEVERITY.LOW];
-        return order.indexOf(a.severity) - order.indexOf(b.severity);
-      })
-      .forEach(issue => {
-        const icon = {
-          [SEVERITY.BLOCKING]: '🛑',
-          [SEVERITY.CRITICAL]: '🔴',
-          [SEVERITY.HIGH]: '🟠',
-          [SEVERITY.MEDIUM]: '🟡',
-          [SEVERITY.LOW]: '🔵'
-        }[issue.severity];
-
-        console.log(`  ${icon} [${issue.severity.toUpperCase()}] ${issue.type}`);
-        console.log(`     ${issue.description}`);
-        if (issue.lineNumber) {
-          console.log(`     Line: ${issue.lineNumber}`);
-        }
-
-        severityCounts[issue.severity] = (severityCounts[issue.severity] || 0) + 1;
-      });
-  });
-
-  console.log('\n' + '='.repeat(60));
-  console.log('📊 Severity Summary:\n');
-  Object.entries(severityCounts).forEach(([severity, count]) => {
-    const icon = {
-      [SEVERITY.BLOCKING]: '🛑',
-      [SEVERITY.CRITICAL]: '🔴',
-      [SEVERITY.HIGH]: '🟠',
-      [SEVERITY.MEDIUM]: '🟡',
-      [SEVERITY.LOW]: '🔵'
-    }[severity];
-    console.log(`  ${icon} ${severity.toUpperCase()}: ${count}`);
-  });
-
-  const blockingCount = severityCounts[SEVERITY.BLOCKING] || 0;
-  const criticalCount = severityCounts[SEVERITY.CRITICAL] || 0;
-
-  let exitCode = 0;
-  if (blockingCount > 0) {
-    console.log('\n🛑 BLOCKING: Migration cannot be safely applied');
-    console.log('   These operations require explicit override or migration rewrite');
-    exitCode = 2;
-  } else if (criticalCount > 0) {
-    console.log('\n🔴 CRITICAL: Migration requires review before applying');
-    exitCode = 1;
+function runCli(args = process.argv.slice(2), cwd = process.cwd()) {
+  const options = parseArgs(args);
+  let changes;
+  if (options.base && options.head) {
+    changes = collectMigrationChanges({ base: options.base, head: options.head, cwd });
   } else {
-    console.log('\n⚠️  Issues detected — review recommended');
+    changes = options.files.map((file) => {
+      const relativePath = file.startsWith(MIGRATIONS_PREFIX) ? file : `${MIGRATIONS_PREFIX}${path.basename(file)}`;
+      const absolutePath = path.join(cwd, relativePath);
+      return { status: 'A', path: relativePath, content: fs.readFileSync(absolutePath, 'utf8'), oldContent: null };
+    });
   }
-
-  return { exitCode, severityCounts };
+  const result = analyzeChangeSet(changes);
+  printReport(result);
+  const reportPath = path.resolve(cwd, options.report || 'migration-safety-report.json');
+  fs.writeFileSync(reportPath, JSON.stringify({ timestamp: new Date().toISOString(), ...result }, null, 2));
+  return determineExitCode(result);
 }
 
-function saveReport(result) {
-  const report = {
-    timestamp: new Date().toISOString(),
-    ...result
-  };
-  fs.writeFileSync('migration-safety-report.json', JSON.stringify(report, null, 2));
-  console.log('\n📄 Detailed report: migration-safety-report.json');
+module.exports = {
+  SEVERITY,
+  MigrationChecker,
+  analyzeChangeSet,
+  collectMigrationChanges,
+  determineExitCode,
+  normalizeSql,
+  parseNameStatusZ,
+  runCli,
+};
+
+if (require.main === module) {
+  try {
+    process.exitCode = runCli();
+  } catch (error) {
+    console.error(`Migration safety checker failed closed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
 }
-
-const args = process.argv.slice(2);
-const targetFiles = args.length > 0 ? args : null;
-
-const result = analyzeMigrations(targetFiles);
-const { exitCode } = printReport(result);
-saveReport(result);
-
-process.exit(exitCode > 1 ? 1 : 0);

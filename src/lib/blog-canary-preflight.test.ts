@@ -21,7 +21,7 @@ describe('buildBlogCanaryPreflight', () => {
     expect(result.candidates[0].contract_expectations).toEqual(
       expect.arrayContaining([
         'answer_first_120_200_chars',
-        'bottom_soft_cta_only',
+        'runtime_contextual_cta_only',
         'render_clean_tables',
       ]),
     );

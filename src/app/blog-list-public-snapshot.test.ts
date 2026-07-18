@@ -36,7 +36,8 @@ describe('blog list public package data boundary', () => {
 
     expect(text).toContain('function stripRawPackageDataFromBlogListPosts');
     expect(text).toContain('travel_packages: null');
-    expect(text).toContain('const fallbackPosts = stripRawPackageDataFromBlogListPosts(getFallbackBlogPosts(filter))');
+    expect(text).toContain('.from(PUBLIC_BLOG_READ_SOURCE)');
+    expect(text).not.toContain('getFallbackBlogPosts');
     expect(fetchIndex).toBeGreaterThan(text.indexOf("runBlogQuery('posts'"));
     expect(text).not.toContain('travel_packages(');
   });

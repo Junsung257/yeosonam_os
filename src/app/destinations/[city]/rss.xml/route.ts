@@ -4,6 +4,7 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { canonicalizePublicDestination, getPublicDestinationQueryNames, slugMatchesPublicDestination } from '@/lib/public-destinations';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /**
  * 목적지별 RSS 피드 — /destinations/[city]/rss.xml
@@ -105,7 +106,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
     try {
       const queryNames = getPublicDestinationQueryNames(decoded);
       const directResult = await supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, product_id')
         .in('destination', queryNames)
         .eq('channel', 'naver_blog')
@@ -114,7 +115,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
         .order('published_at', { ascending: false })
         .limit(50);
       const linkedResult = await supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, product_id')
         .eq('channel', 'naver_blog')
         .eq('status', 'published')

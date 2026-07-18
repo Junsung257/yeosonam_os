@@ -1,8 +1,8 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-08
+Last updated: 2026-07-15
 
-This document defines the required contract for automatic blog generation, publishing, and indexing. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
+This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
 ## Evidence Base
 
@@ -23,10 +23,19 @@ Local code references:
 - Live publisher: `src/app/api/cron/blog-publisher/route.ts`
 - Topic fit gate: `src/lib/blog-topic-fit-gate.ts`
 - Content brief gate: `src/lib/blog-content-brief.ts`
+- Information intent/required-slot contract: `src/lib/blog-information-contract.ts`
+- Information planner: `src/lib/blog-information-planner.ts`
+- Human review workflow: `src/lib/content-review-workflow.ts`
 - SERP/free intent analyzer: `src/lib/serp-analyzer.ts`
 - Shared publish evaluator: `src/lib/blog-publish-quality.ts`
 - Customer-facing quality evaluator: `src/lib/blog-customer-quality.ts`
 - Final customer-surface repair: `src/lib/blog-final-customer-surface.ts`
+- Final rendered SEO gate: `src/lib/blog-rendered-seo-quality.ts`
+- Public render normalizer: `src/lib/blog-public-render-normalizer.ts`
+- Reading-time SSOT: `src/lib/blog-reading-time.ts`
+- Named fixture evaluator: `src/lib/blog-informational-engine-v2-eval.ts` (`npm run eval:blog-info-v2`)
+- Existing-post dry-run auditor: `src/lib/blog-informational-existing-audit.ts` (`npm run audit:blog-info-v2`)
+- Owner handoff: `docs/blog-informational-engine-v2-owner-runbook.md`
 - Editorial/structure repair: `src/lib/blog-editorial-repair.ts`
 - SEO scorer: `src/lib/blog-seo-scorer.ts`
 - Indexing client: `src/lib/indexing.ts`
@@ -51,7 +60,7 @@ Every automatic blog must follow this state machine:
 3. `generated_draft`
 4. `prepared_for_publish`
 5. `quality_checked`
-6. `published` or `gate_failed`
+6. low-risk: `published` or `gate_failed`; human-review-required information: private `draft` + queue `pending_review`
 7. `indexing_queued`
 8. `indexing_submitted`
 9. `visibility_observed`
@@ -73,20 +82,25 @@ No path may write `status='published'` unless it has current evidence for:
 Before the first publish gate:
 
 1. Run `evaluateBlogTopicFit()` before inserting any automatic topic into `blog_topic_queue`.
-2. Build `generation_meta.content_brief` with `buildBlogContentBrief()` before LLM writing.
-3. Treat raw queue topics as seeds only. The brief is the source of truth for final title, primary keyword, secondary keywords, search intent, required sections, forbidden angles, and source requirements.
-4. Run `analyzeSerp()` for eligible keywords. If Naver keys are missing or no results are returned, use the free Google Suggest fallback only as keyword/search-intent guidance.
-5. Build the LLM prompt from the same visual/content contract used by gates: no `==...==`, no `<mark>`, no highlight-style emphasis, and tables must be valid GitHub Flavored Markdown with a separator row and no blank lines inside table rows.
-6. Normalize or reject the slug.
-7. Ensure internal CTA links.
-8. Ensure official reference links.
-9. Insert or verify inline images.
-10. Run `repairBlogEditorialQuality()`.
-11. Run `repairBlogStructureQuality()`.
-12. Run `runQualityGates()`, including `topic_fit`, `editorial_quality`, `accent_density`, `table_integrity`, and `cta_destination_integrity`.
-13. Run `inspectBlogCustomerQuality()` through `evaluateBlogPublishQuality()` so customer-visible writing defects are scored with the same publish decision as render/SEO gates.
-14. Run `computeSeoScore()`.
-15. Run `computeReadability()` on the final post-gate body.
+2. Build `generation_meta.content_brief` with `buildBlogContentBrief()` before LLM writing. The information planner must resolve `intent`, `destinationId`, `audience`, `locale`, `primaryQuestion`, `requiredSections`, `requiredFacts`, `plannedTables`, `faqQuestions`, `riskLevel`, and `missingInputs` before the writer is called. Any non-empty `missingInputs` list blocks generation.
+3. For information posts, build the explicit intent contract (`food_budget`, `monthly_weather`, `airport_transport`, `hotel_areas`, `family_budget`, `family_itinerary`, `entry_requirements`, `travel_insurance`, `currency_payment`, or `general`). Persist the planner-selected intent and reuse it at the final required-slot gate so title repair cannot silently change the contract.
+4. Treat raw queue topics as seeds only. The brief is the source of truth for final title, primary keyword, secondary keywords, search intent, required sections, forbidden angles, source policy, and human-review policy.
+5. Run `analyzeSerp()` for eligible keywords. If Naver keys are missing or no results are returned, use the free Google Suggest fallback only as keyword/search-intent guidance.
+6. Build the LLM prompt from the same visual/content contract used by gates: no `==...==`, no `<mark>`, no highlight-style emphasis, and tables must be valid GitHub Flavored Markdown with a separator row and no blank lines inside table rows.
+7. Normalize or reject the slug.
+8. Ensure internal CTA links.
+9. Ensure official reference links.
+10. Insert or verify inline images.
+11. Run `repairBlogEditorialQuality()`.
+12. Run `repairBlogStructureQuality()`.
+13. Run `runQualityGates()`, including `topic_fit`, `editorial_quality`, `accent_density`, `table_integrity`, and `cta_destination_integrity`.
+14. Run `inspectBlogCustomerQuality()` through `evaluateBlogPublishQuality()` so customer-visible writing defects are scored with the same publish decision as render/SEO gates.
+15. Run `computeSeoScore()`.
+16. Run `computeReadability()` on the final post-gate body.
+17. Render information Markdown through the public renderer and sanitizer. Block publication unless the final surface has exactly one page H1, aligned title/H1/description intent, no raw Markdown or literal `\n`, valid non-empty headings and tables, no placeholder, self-consistent canonical/index state, valid JSON-LD, answer-first CTA placement, and no duplicate CTA.
+18. Persist `quality_gate.rendered_reading_time_minutes` from that final rendered body. Public list and detail views must read the same persisted value; legacy rows may use the existing fallback calculation.
+
+Entry/visa/immigration and travel-insurance information always require human review. Even after automated gates pass, the publisher must store these candidates as `content_creatives.status='draft'`, set `review_status='pending_review'`, enqueue a high-risk review with no timed auto-approval, and set `blog_topic_queue.status='pending_review'`. This branch must return before public cache revalidation, advertising mapping, publish logging, sitemap/indexing enqueue, or any public count increment. Human approval only unlocks a later explicit publish action; that action must rerun current publish QA.
 
 If a repair mutates body content after any gate failure, `repairBlogStructureQuality()` must run again before the next gate check.
 
@@ -100,9 +114,36 @@ Daily quota recovery must distinguish repairable post defects from unsafe seeds.
 
 Product-open blockers must not reduce the daily publish target. If product-backed rows are blocked by `pending_review`, customer-open contract failure, stale mobile proof, or missing product evidence, the scheduler/publisher must exclude them from `publishable_candidate_count` and refill or claim information candidates instead. Commercial posts may wait for source repair; the day still needs enough safe information candidates to meet the target without inventing product facts.
 
-When the publisher has enough remaining time for deterministic information fallback but not enough for full AI/product/card generation, claimed queue rows must be ordered so fallback-eligible information posts are attempted before product, card-news, or pillar rows. The day should not miss quota merely because a slow source-specific candidate was claimed ahead of a safe information fallback candidate.
+Deterministic information fallback is an operational recovery artifact, not publishable content. It may be used to diagnose missing slots or prepare a private repair draft, but it must never be written as `published`, revalidated as public, added to sitemap, or enqueued for indexing. A quota miss is preferable to publishing a generic fallback that does not satisfy the promised intent.
 
-Extra recovery claims must use the shared time-budget plan in `src/lib/blog-publisher-time-budget.ts`. When normal generation time remains, the publisher may claim the mixed publishable pool. When only deterministic fallback time remains, it must pull and claim fallback-eligible information candidates first. It should stop claiming only when even deterministic fallback cannot safely finish, or when the daily quota is already filled.
+Extra recovery claims must use the shared time-budget plan in `src/lib/blog-publisher-time-budget.ts`. When normal generation time remains, the publisher may claim the mixed publishable pool. When there is not enough time to complete research, generation, repair, and all gates, it must stop claiming publish candidates or keep the result private for later repair. Time pressure must not downgrade the information-content contract.
+
+Information-writer prompts must not receive internal product inventory, active-product counts, booking counts, consultation signals, or internal price ranges. These operational values are neither research evidence nor customer-facing content. Product-backed writing remains governed by the separate product evidence contract and is outside this information-content rule.
+
+## Informational Source, Evidence, And Claim Contract
+
+Informational research uses the dedicated `blog_information_*` namespace. It must never write into or reinterpret product registration evidence, product snapshots, package parsers, or package publication tables.
+
+- `blog_information_sources` stores the source type, HTTPS URL or internal identifier, publisher, retrieval time, validity window, destination/country, supported claim types, risk, and optional paired reviewer/review time.
+- `blog_information_evidence` stores the captured source locator or excerpt for one information candidate. `content_key` allows research to exist before a `content_creatives` row is created; `creative_id` is attached when a draft exists.
+- `blog_information_claims` stores normalized customer-visible claims and their validation state.
+- `blog_information_claim_evidence` links each claim to supporting, contradicting, or contextual evidence.
+
+The four tables are server-only: RLS is enabled, browser roles have no grants, and only the service role policy may access them. Application inputs must pass `validateBlogInformationResearchBundle()` before `persistBlogInformationResearch()` writes anything. Source and evidence keys make retries idempotent.
+
+Migration order is additive: apply `20260715082549_blog_information_evidence_model.sql` before enabling the claim validator. Existing blog rows require no backfill and remain readable. Before production data exists, rollback may drop the four new tables in reverse dependency order. After any data exists, do not drop them; use a forward-only follow-up migration that disables the validator while preserving the audit trail. This goal creates and statically validates the migration only and does not apply it to the operating database.
+
+`extractBlogInformationClaims()` distinguishes ordinary travel narration from publish-verifiable claims. It extracts currency/price, movement time, percentages, climate values, customs/duty-free limits, entry/visa rules, insurance coverage/exclusions, policy statements, and measurable superlatives. Every extracted fingerprint must have a persisted claim row in `supported` or `approved` state and at least one current, same-type evidence link. Explicit `valid_until` is authoritative; otherwise the claim-type freshness window applies to the source retrieval time.
+
+Customs, entry/visa, insurance, and policy claims require both an official source authority and `review_status='approved'`. Missing evidence, unsupported status, expired/revoked evidence, non-official high-risk sources, or missing human approval keeps the article private in draft/review. The same `evaluateBlogInformationClaimPublishGate()` runs for automatic publishing, direct blog POST/PATCH, content-hub publication, content-queue approval, force reindexing, and zero-click body replacement. Product-backed content exits this information-only gate unchanged.
+
+## Informational Representative And Canonical Contract
+
+Every new information article has one stable representative key: `destination_id + intent + audience + locale`. Title year, slug year, campaign wording, and publication date are deliberately absent from the key. `blog_information_representatives` owns the unique reservation and canonical creative/slug for that key.
+
+Automatic publishing reserves the key before creating a `content_creatives` row. An existing active representative returns `UPDATE_EXISTING`; a reservation owned by another candidate returns `WAIT_FOR_EXISTING`; neither path creates another public URL. A private review draft keeps its reservation and attaches the draft creative ID. The registry becomes `active` only when the corresponding creative passes every gate and is explicitly published. Direct POST uses a private insert then activates the representative before changing the row to `published`; manual approval routes enforce the same registry.
+
+New information rows persist `generation_meta.information_representative`. Sitemap inclusion requires that metadata to be `active` and its `canonical_slug` to equal the stored slug. Legacy rows without representative metadata and product-backed rows remain compatible. Existing duplicates are never redirected, merged, deleted, or rewritten automatically; `buildBlogInformationDuplicateDryRun()` only proposes the earliest published member as canonical and labels the others `MERGE_REVIEW` for M11 operator review.
 
 If the publisher claims queue rows but exits for time budget before attempting all of them, every unattempted row must be released back to `queued` with an immediate `target_publish_at`. A claimed-but-unattempted row must not remain stuck in `generating`, because that silently removes publishable inventory from the next recovery run and can cause the daily target to miss again.
 
@@ -158,6 +199,8 @@ The post must not be published when any of these are true:
 - The quality gate fails after repair rounds.
 - `customer_quality` fails because the post still has AI-like generic openings, weak answer-first paragraphs, duplicated product price suffixes such as `원부터부터`, repeated consultation placeholders, placeholder destination copy, unsupported internal data claims, early hard CTA in information posts, or table render risk.
 - `generation_meta.content_brief` is missing, failed, or contradicts the raw topic/search intent.
+- The information intent contract has an invalid destination entity, a missing required slot, or customer-visible internal operational data.
+- `generation_meta.content_brief.requires_human_review=true` and the item has not completed human review and a fresh explicit publish action.
 - SERP/free-intent evidence is presented as ranking proof when it came from autocomplete fallback.
 - `topic_fit` fails because the topic is a machine slug, placeholder, weak travel intent, or bad destination/intent combination.
 - `editorial_quality` fails because the article contains placeholder text, visible prompt/writing-rule residue such as `규칙 A (감각 디테일)`, broken Korean particles, excessive highlights, generic image context, or machine-looking slug/title.
@@ -172,6 +215,8 @@ The post must not be published when any of these are true:
 - Readability has repeated phrase spam that cannot be repaired.
 - The article has no usable image path or missing image alt evidence.
 - The article has no internal CTA and no official external reference.
+- The candidate was produced by deterministic information fallback.
+- Customer-visible copy contains active-product counts, product inventory counts, booking/consultation signals, or other internal operating values.
 - Canonical URL, sitemap URL, and stored slug disagree.
 - Public article links contain localhost, 127.0.0.1, 0.0.0.0, or any non-public HTTP origin. Product CTA links must use the blog canonical public origin.
 
@@ -201,15 +246,41 @@ Backfill and live publishing must use the same customer contract. `scripts/backf
 
 For recent-post stabilization, the stronger target is `changed=0`, `qualityGateFailed=0`, `publishBlocked=0`, indexing worker success for every changed row in write mode, and diagnostics that still report publish preflight pass, publishable candidate inventory, and indexing outbox coverage.
 
+## Informational Related-Link Contract
+
+New informational-engine articles use their persisted destination, intent, audience, locale, and editorial-cluster metadata for both publish-time interlinks and public related-post surfaces.
+
+Ranking priority is:
+
+1. same destination with the same or an adjacent intent;
+2. same country, then same region, with the same intent;
+3. the same non-general audience;
+4. an explicit editorial pillar/cluster relationship.
+
+Candidates must be published, indexable, non-redirecting, self-canonical, locale-compatible, and different from the current URL. Duplicate slugs and repeated anchor text are removed. When no candidate meets the relevance threshold, the correct result is no related link; unrelated recent posts must not be used as filler. Product-backed and legacy posts retain their current link behavior unless they carry a valid informational representative identity.
+
+## Informational CTA Contract
+
+Informational writers must not generate CTA sections, package links, consultation links, community links, or external CTA URLs in article Markdown. Publish preparation and the public renderer both strip legacy sales CTA anchors. The public renderer owns CTA selection through the typed keys `NAVER_CAFE`, `DEAL_ROOM`, `CONSULTATION`, `RELATED_ARTICLES`, and `OFFICIAL_SOURCE`.
+
+- One primary CTA is allowed, with at most one secondary CTA. Bottom placement is the default; a mid-article placement, if explicitly selected later, is limited to one CTA.
+- Selection uses persisted intent, destination, risk level, and locale. Entry/visa and insurance content puts a pinned official-source URL first when available, may show a related article second, and never shows a sales-oriented external CTA.
+- External URLs are disabled unless they are HTTPS and pass the centralized host/provenance allow policy. `NAVER_CAFE_ID` alone is not treated as a proven public CTA URL.
+- When every external URL is missing or invalid, only a contextual internal related-article CTA may render. If that route is also invalid, the CTA hub is absent.
+- External links open in a new tab with `noopener noreferrer`; all CTA links remain keyboard reachable and mobile-safe.
+- Informational CTA `impression` and `click` events use a dedicated same-origin endpoint. The browser sends only an ephemeral idempotency key, `article_id`, `event_type`, `cta_key`, and `placement`; the database derives representative dimensions and stores only a hash of the key. No session/user/visitor ID, URL, UTM, free-form metadata, IP, user agent, booking data, or product repository data is stored. Events are deduplicated and rate-limited, and telemetry failure never blocks navigation.
+
+Runtime settings are `BLOG_NAVER_CAFE_URL`, `BLOG_DEAL_ROOM_URL`, and optional `BLOG_CONSULTATION_URL`; consultation may reuse a valid existing `KAKAO_CHANNEL_ID`. Missing settings mean disabled, never a guessed or hardcoded fallback.
+
 ## Indexing Contract
 
-Publishing and indexing must be treated as separate responsibilities.
+Publishing and external indexing submission remain separate responsibilities. For informational content, the durable indexing outbox row is created atomically with the public article state and representative activation.
 
 Correct sequence:
 
-1. Publish only after all gates pass.
+1. Publish only after all gates pass; for informational content, the article, canonical representative, publication audit, and indexing outbox commit in one transaction.
 2. Revalidate `/blog`, `/blog/[slug]`, and the blog list tag.
-3. Enqueue a durable `blog_indexing_jobs` row with `content_creative_id`, `slug`, `url`, and source.
+3. Product/legacy paths enqueue a durable `blog_indexing_jobs` row through their existing flow; informational atomic publication already guarantees this row before the public transaction commits.
 4. Blog indexing URLs must be canonical `https://www.yeosonam.com/blog/{slug}` URLs. `BLOG_CANONICAL_ORIGIN` is the first-choice origin, and queued job URLs are canonicalized again before provider submission.
 5. The existing `/api/cron/blog-publisher` schedule drains due indexing jobs through `processDueBlogIndexingJobs()`, and the GitHub external cron fallback calls `/api/cron/blog-indexing-worker` independently after publisher slots. Indexing must not depend on a successful publish run.
 6. The worker submits sitemap through Google Search Console API or keeps it discoverable in `robots.txt`.

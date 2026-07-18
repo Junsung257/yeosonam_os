@@ -20,6 +20,8 @@ import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
@@ -182,7 +184,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
       : Promise.resolve(emptyResult),
     queryNames.length > 0
       ? supabaseAdmin
-          .from('content_creatives')
+          .from(PUBLIC_BLOG_READ_SOURCE)
           .select('id, slug, seo_title, og_image_url, content_type, destination')
           .in('destination', queryNames)
           .eq('channel', 'naver_blog')
@@ -297,7 +299,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@graph': [
               {

@@ -24,6 +24,7 @@ import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
+import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
@@ -32,6 +33,7 @@ import { repairBlogImageQuality } from '@/lib/blog-image-quality';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
+import { stripBlogInformationalBodyCtas } from '@/lib/blog-informational-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
 import {
   appendPublishReadinessSupport,
@@ -58,7 +60,6 @@ import {
 } from '@/lib/product-registration/customer-open-contract';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
-import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
@@ -90,6 +91,29 @@ import {
   sortPublisherQueueForTimeBudget,
 } from '@/lib/blog-publisher-time-budget';
 import { readBoundedIntEnv } from '@/lib/env-utils';
+import { queueForReview } from '@/lib/content-review-workflow';
+import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
+import { routeBlogContentLane } from '@/lib/blog-content-boundary';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  persistBlogInformationClaimFindings,
+} from '@/lib/blog-information-claim-publish-gate';
+import {
+  parseBlogInformationWriterOutput,
+  type BlogInformationClaimLedgerEntry,
+} from '@/lib/blog-information-claim-ledger';
+import {
+  buildBlogInformationRepresentativeKey,
+  readBlogInformationRepresentativeIdentity,
+  type BlogInformationDuplicateDecision,
+  type BlogInformationRepresentativeIdentity,
+} from '@/lib/blog-information-representative';
+import {
+  attachBlogInformationRepresentativeDraft,
+  reserveBlogInformationRepresentative,
+} from '@/lib/blog-information-representative-repository';
+import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -1233,7 +1257,13 @@ async function runBlogPublisher(request: NextRequest) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
-  const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
+  const results: Array<{
+    id: string;
+    topic: string;
+    status: string;
+    reason?: string;
+    atomicIndexing?: boolean;
+  }> = [];
   const errors: string[] = [];
   const candidateFailures: string[] = [];
   const startTime = Date.now();
@@ -1530,7 +1560,7 @@ async function runBlogPublisher(request: NextRequest) {
     // Indexing outbox + revalidatePath. External provider requests run in blog-indexing-worker.
     const indexingPromises: Promise<{ slug: string; ok: boolean; error?: string }>[] = [];
     for (const r of results) {
-      if (r.status === 'published' && r.reason) {
+      if (r.status === 'published' && r.reason && !r.atomicIndexing) {
         const slug = r.reason;
         const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
         indexingPromises.push((async () => {
@@ -1734,7 +1764,13 @@ async function processQueueItem(
   item: any,
   eligibleByCardNewsId: Map<string, number>,
   options: { startedAtMs?: number } = {},
-): Promise<{ id: string; topic: string; status: string; reason?: string }> {
+): Promise<{
+  id: string;
+  topic: string;
+  status: string;
+  reason?: string;
+  atomicIndexing?: boolean;
+}> {
   // 동시성 방지 — generating 락
   const { error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -1748,6 +1784,17 @@ async function processQueueItem(
 
   try {
     const startedAtMs = options.startedAtMs ?? Date.now();
+    const contentBoundary = routeBlogContentLane({
+      source: item.source,
+      productId: item.product_id ?? null,
+      cardNewsId: item.card_news_id ?? null,
+      declaredLane: item.content_lane ?? null,
+    });
+    if (!contentBoundary.passed) {
+      const reason = `content_boundary_failed:${contentBoundary.issue}`;
+      await handleFailure(item, reason, null, true, { content_boundary: contentBoundary });
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
     if (item.card_news_id) {
       const cnid = item.card_news_id as string;
       const eligibleMs =
@@ -1818,7 +1865,7 @@ async function processQueueItem(
         return { id: item.id, topic: item.topic, status: 'error', reason };
       }
       generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item, pillarContext));
-    } else if (item.card_news_id) {
+    } else if (contentBoundary.lane === 'card_news_bridge') {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
         .from('card_news')
@@ -1872,7 +1919,7 @@ async function processQueueItem(
       } else {
         generated = await withGenerationBudget(startedAtMs, 'card_news_generation', () => generateFromCardNews(item, eligibleByCardNewsId));
       }
-    } else if (item.source === 'product' && item.product_id) {
+    } else if (contentBoundary.lane === 'product') {
       generated = await withGenerationBudget(startedAtMs, 'product_generation', () => generateFromProduct(item));
     } else {
       const remainingBeforeTopicGeneration = publisherRemainingMs(startedAtMs);
@@ -1918,6 +1965,26 @@ async function processQueueItem(
       }
     }
 
+    // Deterministic fallback copy is only an operational recovery artifact. It is
+    // intentionally generic and therefore must never become a public/searchable
+    // article, even if downstream shape/SEO gates happen to pass.
+    if (
+      generated.generation_meta?.deterministic_info_fallback === true
+      || generated.generation_meta?.deterministic_fast_fallback === true
+    ) {
+      const reason = 'deterministic_info_fallback_not_publishable';
+      const failureStatus = await handleFailure(item, reason, null, false, {
+        deterministic_fallback_blocked: true,
+        deterministic_fallback_reason: generated.generation_meta?.deterministic_fallback_reason ?? null,
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: failureStatus === 'skipped' ? 'skipped' : 'gate_failed',
+        reason,
+      };
+    }
+
     const slugNormalized = normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
       await supabaseAdmin
@@ -1929,9 +1996,22 @@ async function processQueueItem(
         .eq('id', promoteDraftId);
     }
 
+    if (contentBoundary.lane === 'informational') {
+      generated.blog_html = stripBlogInformationalBodyCtas(generated.blog_html);
+    }
+
     // 🆕 Topical Authority interlink 자동 주입 (본문 끝 "이 글과 함께 읽기" 섹션)
     try {
-      generated.blog_html = await appendInterlinkSection(generated.blog_html, generated.slug, item.destination);
+      generated.blog_html = await appendInterlinkSection(
+        generated.blog_html,
+        generated.slug,
+        item.destination,
+        {
+          generationMeta: generated.generation_meta,
+          contentType: item.source === 'pillar' ? 'pillar' : 'blog',
+          pillarFor: item.source === 'pillar' ? item.destination : null,
+        },
+      );
     } catch { /* interlink 실패는 발행을 막지 않음 */ }
 
     // Cold-start safety: AI가 internal link / CTA를 빠뜨렸을 때 표준 CTA 블록을 주입
@@ -1944,7 +2024,7 @@ async function processQueueItem(
       const decoded = decodeURIComponent(href);
       return /\/packages|utm_|kakao|consult|문의|예약/i.test(decoded);
     }).length;
-    if (internalLinkCount < 3 || ctaLinkCount < 2) {
+    if (contentBoundary.lane !== 'informational' && (internalLinkCount < 3 || ctaLinkCount < 2)) {
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
@@ -2066,6 +2146,7 @@ async function processQueueItem(
     const readinessRepair = repairPublishReadiness({
       markdown: generated.blog_html,
       blogType,
+      hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
       slug: generated.slug,
       destination: item.destination,
       topic: item.topic,
@@ -2172,6 +2253,7 @@ async function processQueueItem(
       secondaryKeywords: item.meta?.keywords ?? [],
       destination: item.destination,
       blogType,
+      hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
       imageCount: imgCount,
       imagesWithAlt: imgWithAlt,
       hasJsonLd: {
@@ -2199,7 +2281,10 @@ async function processQueueItem(
 
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
-    if (seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')) {
+    if (
+      contentBoundary.lane !== 'informational'
+      && seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')
+    ) {
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
@@ -2294,6 +2379,7 @@ async function processQueueItem(
       const finalReadinessRepair = repairPublishReadiness({
         markdown: generated.blog_html,
         blogType,
+        hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
         slug: generated.slug,
         destination: item.destination,
         topic: item.topic,
@@ -2394,6 +2480,118 @@ async function processQueueItem(
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
     };
+    const representativeOwner = `blog_topic_queue:${item.id}`;
+    let representativeDecision: BlogInformationDuplicateDecision | null = null;
+    let representativeIdentity: BlogInformationRepresentativeIdentity | null = null;
+    if (contentBoundary.lane === 'informational') {
+      representativeIdentity = readBlogInformationRepresentativeIdentity(generated.generation_meta);
+      if (!representativeIdentity) throw new Error('blog_information_representative_identity_missing');
+      generationMeta.information_representative = {
+        representative_key: buildBlogInformationRepresentativeKey(representativeIdentity),
+        status: 'pending_publication',
+        canonical_slug: null,
+      };
+    }
+    const writerClaimLedgerMeta = generated.generation_meta?.writer_claim_ledger;
+    const writerClaimLedgerRecord = writerClaimLedgerMeta
+      && typeof writerClaimLedgerMeta === 'object'
+      && !Array.isArray(writerClaimLedgerMeta)
+      ? writerClaimLedgerMeta as Record<string, unknown>
+      : null;
+    const writerClaimLedger = Array.isArray(writerClaimLedgerRecord?.claims)
+      ? writerClaimLedgerRecord.claims as BlogInformationClaimLedgerEntry[]
+      : [];
+    const writerClaimLedgerIssues = Array.isArray(writerClaimLedgerRecord?.issues)
+      ? writerClaimLedgerRecord.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 20)
+      : (contentBoundary.lane === 'informational' ? ['claim_ledger_missing'] : []);
+    const generatedPlanBrief = generated.generation_meta?.content_brief;
+    const generatedPlanBriefRecord = generatedPlanBrief
+      && typeof generatedPlanBrief === 'object'
+      && !Array.isArray(generatedPlanBrief)
+      ? generatedPlanBrief as Record<string, unknown>
+      : null;
+    const claimValidation = await evaluateBlogInformationClaimPublishGate({
+      creativeId: promoteDraftId,
+      contentKey: generated.slug,
+      markdown: generated.blog_html,
+      productId: item.product_id ?? null,
+      tenantId: item.tenant_id ?? null,
+      claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
+      claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
+      intentType: typeof generatedPlanBriefRecord?.intent_type === 'string'
+        ? generatedPlanBriefRecord.intent_type
+        : null,
+      expectedScope: contentBoundary.lane === 'informational'
+        ? {
+            destination: item.destination ?? undefined,
+            applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
+              ? generatedPlanBriefRecord.traveler_nationality
+              : typeof generatedPlanBriefRecord?.audience === 'string'
+                ? generatedPlanBriefRecord.audience
+                : undefined,
+            locale: typeof generatedPlanBriefRecord?.locale === 'string'
+              ? generatedPlanBriefRecord.locale
+              : undefined,
+          }
+        : undefined,
+    });
+    generationMeta.information_claim_validation = {
+      passed: claimValidation.passed,
+      coverage: claimValidation.coverage,
+      claim_count: claimValidation.claims.length,
+      requires_human_review: claimValidation.requiresHumanReview,
+      issues: claimValidation.issues.slice(0, 20),
+      ledger: claimValidation.ledger ?? null,
+      auto_regeneration_attempts: 0,
+      auto_regeneration_limit: 0,
+      ...(claimValidation.lookupError ? { lookup_error: claimValidation.lookupError } : {}),
+    };
+    const plannedHumanReview = generatedPlanBrief
+      && typeof generatedPlanBrief === 'object'
+      && !Array.isArray(generatedPlanBrief)
+      && (generatedPlanBrief as Record<string, unknown>).requires_human_review === true;
+    const requiresClaimReview = blogType === 'info' && !claimValidation.passed;
+    const requiresHumanReview = blogType === 'info'
+      && (requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
+        title: generated.seo_title ?? item.topic ?? null,
+        category: item.category ?? null,
+        contentType: item.source === 'pillar' ? 'pillar' : 'guide',
+        topic: item.topic ?? null,
+      }));
+    if (representativeIdentity && requiresHumanReview) {
+      representativeDecision = await reserveBlogInformationRepresentative({
+        reservationOwner: representativeOwner,
+        candidate: {
+          ...representativeIdentity,
+          slug: generated.slug,
+          title: generated.seo_title,
+          markdown: generated.blog_html,
+        },
+      });
+      generationMeta.information_representative = {
+        representative_key: representativeDecision.representativeKey,
+        status: 'reserved',
+        canonical_slug: representativeDecision.canonicalSlug,
+        decision: representativeDecision.action,
+      };
+      if (!['RESERVE_CREATE', 'RESUME_RESERVATION'].includes(representativeDecision.action)) {
+        await supabaseAdmin.from('blog_topic_queue').update({
+          status: 'skipped',
+          last_error: `information_representative:${representativeDecision.reason}`,
+          meta: {
+            ...(item.meta || {}),
+            information_representative: representativeDecision,
+            proposed_action: 'update_existing',
+          },
+        }).eq('id', item.id);
+        return {
+          id: item.id,
+          topic: item.topic,
+          status: 'skipped_duplicate',
+          reason: representativeDecision.canonicalSlug ?? representativeDecision.reason,
+        };
+      }
+    }
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
@@ -2405,9 +2603,12 @@ async function processQueueItem(
       category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: normalizeAngleType(item.angle_type),
-      status: 'published' as const,
-      published_at: now,
-      quality_gate: qa,
+      status: contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published',
+      published_at: contentBoundary.lane === 'informational' || requiresHumanReview ? null : now,
+      review_status: requiresHumanReview ? 'pending_review' : null,
+      quality_gate: publishQuality.readingTimeMinutes == null
+        ? qa
+        : withPersistedBlogReadingTime(qa, publishQuality.readingTimeMinutes),
       seo_score: seoScore,
       topic_source: item.source,
       destination: item.destination ?? null,
@@ -2453,11 +2654,89 @@ async function processQueueItem(
       creativeId = inserted?.[0]?.id as string;
     }
 
+    if (blogType === 'info') {
+      await persistBlogInformationClaimFindings({
+        creativeId,
+        contentKey: generated.slug,
+        tenantId: item.tenant_id ?? null,
+        report: claimValidation,
+      });
+    }
+
+    if (representativeIdentity && !requiresHumanReview) {
+      await publishBlogInformationAtomically({
+        creativeId,
+        contentFingerprint: createBlogInformationContentFingerprint({
+          blogHtml: generated.blog_html,
+          seoTitle: generated.seo_title,
+          seoDescription: generated.seo_description,
+          slug: generated.slug,
+        }),
+        validationMeta: {
+          information_claim_validation: generationMeta.information_claim_validation as Record<string, unknown>,
+        },
+        qualityGate: rowPayload.quality_gate as Record<string, unknown>,
+        publishedAt: now,
+        identity: representativeIdentity,
+        reservationOwner: representativeOwner,
+      });
+    }
+    if (representativeDecision && requiresHumanReview) {
+      await attachBlogInformationRepresentativeDraft({
+        representativeKey: representativeDecision.representativeKey,
+        reservationOwner: representativeOwner,
+        creativeId,
+        canonicalSlug: generated.slug,
+      });
+    }
+
     if (item.card_news_id && creativeId && !promoteDraftId) {
       await supabaseAdmin
         .from('card_news')
         .update({ linked_blog_id: creativeId, updated_at: now })
         .eq('id', item.card_news_id);
+    }
+
+    if (requiresHumanReview) {
+      try {
+        await queueForReview({
+          creativeId,
+          priority: 90,
+          reason: 'auto_generated',
+          humanReviewRequired: true,
+          riskLevel: 'high',
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        await supabaseAdmin.from('blog_topic_queue')
+          .update({
+            status: 'failed',
+            content_creative_id: creativeId,
+            last_error: `review_queue_failed:${reason}`,
+          })
+          .eq('id', item.id);
+        return { id: item.id, topic: item.topic, status: 'review_queue_failed', reason };
+      }
+
+      const { error: reviewStateError } = await supabaseAdmin.from('blog_topic_queue')
+        .update({
+          status: 'pending_review',
+          content_creative_id: creativeId,
+          last_error: null,
+          attempts: 0,
+        })
+        .eq('id', item.id);
+      if (reviewStateError) {
+        logWarning('[cron/blog-publisher] review state handoff failed', reviewStateError);
+      }
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'pending_review',
+        reason: requiresClaimReview
+          ? 'informational_claim_review_required'
+          : 'high_risk_human_review_required',
+      };
     }
 
     try {
@@ -2498,11 +2777,17 @@ async function processQueueItem(
 
     revalidatePublicBlogCache(generated.slug);
 
-    return { id: item.id, topic: item.topic, status: 'published', reason: generated.slug };
+    return {
+      id: item.id,
+      topic: item.topic,
+      status: 'published',
+      reason: generated.slug,
+      atomicIndexing: contentBoundary.lane === 'informational',
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
 
-    // 컨텍스트 부족(관광지+상품 0)은 재시도해도 동일 결과 → 즉시 permanently failed
+    // 정보성 컨텍스트 부족은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
     await handleFailure(item, msg, null, isUnrecoverable);
     return { id: item.id, topic: item.topic, status: 'error', reason: msg };
@@ -2602,9 +2887,6 @@ interface GeneratedBlog {
 
 interface BlogPillarContext {
   attractions: string[];
-  packageSummary: string;
-  priceRange: string;
-  airlines: string[];
   seasonHint: string;
 }
 
@@ -2687,7 +2969,7 @@ async function generatePillar(item: any, prebuiltContext?: BlogPillarContext | n
     const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
     ctx = await buildPillarContext(item.destination);
   }
-  if (!ctx) throw new Error(`${item.destination} 컨텍스트 부족 (관광지+상품 0)`);
+  if (!ctx) throw new Error(`${item.destination} 정보성 컨텍스트 부족 (관광지 0)`);
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
 
@@ -2726,8 +3008,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 (3박4일, 4박5일 두 가지 추천. Day 1~5 타임라인으로)
 
 ## 5. 예상 비용과 가성비 분석
-(항공 ${ctx.airlines.join(', ')} · 숙소 · 식비 · 현지 이동 · 전체 예산 가이드)
-여소남 엄선 패키지 ${ctx.packageSummary}
+(숙소 · 식비 · 현지 이동처럼 독자가 별도로 확인할 예산 항목과 비교 기준. 상품 수·내부 가격·예약 신호는 사용하지 말고, 확인 가능한 외부 근거가 없으면 정확한 금액을 쓰지 말 것)
 
 ## 6. 여행 준비 체크리스트
 (:::tip 블록으로 준비물·비자·환전 등 꿀팁)
@@ -2736,7 +3017,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 (Q&A 4~6개. **Q. 질문** 형식)
 
 ## 8. 내 일정 기준으로 확인할 것
-(CTA는 마지막에만 약하게. 카카오톡 상담·상품 리스트는 “출발일/인원 기준 가능 여부 확인” 톤으로 연결)
+(CTA와 판매·상담 URL은 본문에 넣지 않는다. 공개 렌더러가 검증된 중앙 설정으로 하단 CTA를 선택한다.)
 
 ## 작성 규칙
 - 총 2,200~3,000자. 필요한 내용만 남기고 공통 블록을 억지로 늘리지 말 것
@@ -2896,10 +3177,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   }
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
-  const baseForUtm = resolveBlogCanonicalOrigin();
   const queueSlug = buildQueueSlug(item);
-  const utmCamp = encodeURIComponent(queueSlug);
-  const utmSrc = 'naver_blog';
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
     destination: item.destination ?? null,
@@ -2911,11 +3189,6 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
       : '';
   const freshnessRisk = classifyBlogFreshnessRisk(`${item.topic} ${item.primary_keyword || ''} ${item.category || ''}`);
   const freshnessPromptBlock = buildFreshnessPromptBlock(freshnessRisk);
-  const originalitySignals = await fetchBlogOriginalitySignals({
-    destination: item.destination || extractDestination(item.topic),
-    productId: item.product_id,
-  });
-  const originalityPromptBlock = buildOriginalityPromptBlock(originalitySignals);
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
@@ -2927,6 +3200,12 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     category: item.category,
     source: item.source,
     keywords: queuedKeywords,
+    microAngle: getQueueMicroAngle(item),
+    audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
+    locale: typeof item.meta?.locale === 'string' ? item.meta.locale : null,
+    travelerNationality: typeof item.meta?.traveler_nationality === 'string'
+      ? item.meta.traveler_nationality
+      : null,
   });
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
@@ -3037,7 +3316,6 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
 **부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
 
 ${reviewPromptBlock}
-${originalityPromptBlock}
 ${freshnessPromptBlock}
 ${intentPromptBlock}
 ${buildBlogContentBriefPromptBlock(contentBrief)}
@@ -3064,11 +3342,11 @@ ${serpGapBlock}
 - 표는 반드시 GitHub Flavored Markdown 형식으로 작성: 헤더 행 바로 다음 줄에 | --- | --- | 구분선을 넣고, 표 행 사이에 빈 줄을 넣지 말 것
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
-- CTA는 본문 마지막에만 1회 사용. 도입부와 본문 중간에는 상품 보기, 카카오, 상담 신청, 예약하기 링크를 넣지 말 것
-- 마지막 CTA 문장 예시: [내 일정 기준으로 가능 여부 확인](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_soft_cta)`;
+- CTA 섹션과 CTA URL을 본문에 쓰지 말 것. 상품 보기, 카카오, 상담 신청, 예약하기, 카페, 딜방 링크는 공개 렌더러의 중앙 CTA 설정이 담당한다.`;
 
   const raw = await generatePublisherBlogText(prompt, { temperature: 0.7 });
-  let blog_html = raw
+  const writerOutput = parseBlogInformationWriterOutput(raw);
+  let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
@@ -3120,22 +3398,31 @@ ${serpGapBlock}
       primary_keyword: contentBrief.primaryKeyword,
       secondary_keywords: contentBrief.secondaryKeywords,
       search_intent: contentBrief.searchIntent,
+      intent_type: contentBrief.plan.intent,
+      destination_id: contentBrief.plan.destinationId,
+      audience: contentBrief.plan.audience,
+      locale: contentBrief.plan.locale,
+      traveler_nationality: contentBrief.plan.travelerNationality,
+      risk_level: contentBrief.plan.riskLevel,
       required_sections: contentBrief.requiredSections,
+      required_facts: contentBrief.plan.requiredFacts,
+      planned_tables: contentBrief.plan.plannedTables,
+      faq_questions: contentBrief.plan.faqQuestions,
+      missing_inputs: contentBrief.plan.missingInputs,
+      requires_human_review: contentBrief.plan.requiresHumanReview,
+      source_policy: contentBrief.plan.sourcePolicy,
       forbidden_angles: contentBrief.forbiddenAngles,
       source_requirements: contentBrief.sourceRequirements,
       evidence: contentBrief.evidence,
+      claim_ledger_policy: contentBrief.claimLedgerPolicy,
+    },
+    writer_claim_ledger: {
+      version: 'v1',
+      claims: writerOutput.claimLedger,
+      issues: writerOutput.ledgerIssues,
     },
     serp_analyzed: Boolean(serpData),
     freshness_risk: freshnessRisk,
-    originality_signals: {
-      destination: originalitySignals.destination,
-      package_count: originalitySignals.packageCount,
-      active_package_count: originalitySignals.activePackageCount,
-      booking_count: originalitySignals.bookingCount,
-      min_price: originalitySignals.minPrice,
-      max_price: originalitySignals.maxPrice,
-      latest_package_updated_at: originalitySignals.latestPackageUpdatedAt,
-    },
     ...(serpData ? {
       serp_analysis: {
         keyword: serpData.keyword,

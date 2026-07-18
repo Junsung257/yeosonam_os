@@ -14,6 +14,9 @@ describe('blog content brief', () => {
     expect(brief.passed).toBe(true);
     expect(brief.title).toBe('보라카이 7월 날씨 옷차림 여행 준비물 체크리스트');
     expect(brief.primaryKeyword).toBe('보라카이 7월 날씨');
+    expect(brief.intentType).toBe('monthly_weather');
+    expect(brief.requiresHumanReview).toBe(false);
+    expect(brief.requiredSections).toContain('1~12월 평균 기온');
     expect(brief.secondaryKeywords).toEqual(
       expect.arrayContaining(['보라카이 7월 옷차림', '보라카이 여행 준비물', '보라카이 7월 우기']),
     );
@@ -30,16 +33,19 @@ describe('blog content brief', () => {
     });
 
     expect(brief.searchIntent).toBe('weather');
+    expect(brief.intentType).toBe('monthly_weather');
     expect(brief.primaryKeyword).toBe('다낭 7월 날씨');
     expect(brief.requiredSections).toEqual(
       expect.arrayContaining([
-        '다낭 7월 날씨 한눈에 보기',
-        '7월 기온/강수/습도 표',
-        '다낭 7월 옷차림',
-        '다낭 여행 준비물 체크리스트',
+        '1~12월 평균 기온',
+        '강수량 또는 강수일',
+        '월별 옷차림',
+        '기후 평년값 관측 기간과 출처',
       ]),
     );
     expect(buildBlogContentBriefPromptBlock(brief)).toContain('Required H2 sections');
+    expect(brief.claimLedgerPolicy.required).toBe(true);
+    expect(brief.claimLedgerPolicy.candidateKinds).toContain('money_price');
   });
 
   it('prioritizes transport cost intent over stale weather metadata', () => {
@@ -52,13 +58,45 @@ describe('blog content brief', () => {
       keywords: ['몽골 렌터카 비용', '몽골 택시 요금', '몽골 공항 픽업'],
     });
 
-    expect(brief.searchIntent).toBe('cost');
+    expect(brief.searchIntent).toBe('transport');
+    expect(brief.intentType).toBe('airport_transport');
     expect(brief.title).toBe('몽골 공항 픽업 이동비');
     expect(brief.requiredSections).toEqual(
-      expect.arrayContaining(['비용 핵심 요약', '항목별 예산 표', '추가 비용']),
+      expect.arrayContaining(['이동수단 비교', '성인·아동·수하물 요금', '공식 운영사 링크와 확인일']),
     );
     expect(brief.requiredSections).not.toEqual(
       expect.arrayContaining(['월별/시즌별 표', '옷차림']),
     );
+  });
+
+  it('exposes human-review and source policy for regulated information intent', () => {
+    const brief = buildBlogContentBrief({
+      topic: '일본 비자 입국 신고와 세관 조건',
+      destination: '일본',
+      primaryKeyword: '일본 입국 조건',
+      category: 'entry',
+      keywords: ['일본 비자', '일본 입국 신고', '일본 세관'],
+      travelerNationality: 'KR',
+    });
+
+    expect(brief.intentType).toBe('entry_requirements');
+    expect(brief.requiresHumanReview).toBe(true);
+    expect(brief.sourcePolicy.minimumClaimSourceCoverage).toBe(1);
+    expect(brief.sourcePolicy.primarySourcesRequired).toBe(true);
+    expect(buildBlogContentBriefPromptBlock(brief)).toContain('Human review required: yes');
+    expect(brief.requiredSections).toContain('정부·대사관·공항·세관 1차 출처');
+  });
+
+  it('fails closed before writing when a regulated plan is missing traveler nationality', () => {
+    const brief = buildBlogContentBrief({
+      topic: '일본 비자 입국 신고와 세관 조건',
+      destination: '일본',
+      primaryKeyword: '일본 입국 조건',
+      category: 'entry',
+    });
+
+    expect(brief.passed).toBe(false);
+    expect(brief.plan.missingInputs).toContain('traveler_nationality');
+    expect(brief.issues).toContain('information_plan:traveler_nationality');
   });
 });

@@ -16,6 +16,7 @@ import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '@/lib/pexels';
 import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export const maxDuration = 60;
 
@@ -26,6 +27,9 @@ export const maxDuration = 60;
  * - 최대 5개 (6개 이상은 SEO 페널티 리스크)
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
