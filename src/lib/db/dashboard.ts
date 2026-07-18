@@ -20,63 +20,90 @@ import { getSupabaseAdmin, supabaseAdmin } from '../supabase';
 // Uses service_role to bypass RLS so we can drop authenticated `*_all USING true` policies.
 const getSupabase = getSupabaseAdmin;
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const formatUtcDate = (date: Date): string =>
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+const toKstCalendar = (date: Date): Date => new Date(date.getTime() + KST_OFFSET_MS);
+const toKstDate = (date: Date): string => formatUtcDate(toKstCalendar(date));
+const kstMonthStart = (date: Date, monthOffset = 0): string => {
+  const kst = toKstCalendar(date);
+  return formatUtcDate(new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth() + monthOffset, 1)));
+};
+const addCalendarDays = (date: string, days: number): string =>
+  formatUtcDate(new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86400000));
+
 // ─── V1: 이번 달 KPI ─────────────────────────────────────────
 
 export async function getDashboardStats() {
   try {
-    const thisMonthStart = new Date();
-    thisMonthStart.setDate(1); thisMonthStart.setHours(0, 0, 0, 0);
-    const thisMonthStartStr = thisMonthStart.toISOString().split('T')[0];
-
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const now = new Date();
+    const thisMonthStartStr = kstMonthStart(now);
+    const todayStr = toKstDate(now);
     // D-7 잔금미납: 7일 내 출발 예정 & pending/confirmed & 미수금 있음
-    const d7 = new Date(today.getTime() + 7 * 86400000);
-    const d7Str = d7.toISOString().split('T')[0];
-    const passportCutoffStr = new Date(today.getTime() + 180 * 86400000).toISOString().split('T')[0];
+    const d7Str = addCalendarDays(todayStr, 7);
+    const passportCutoffStr = addCalendarDays(todayStr, 180);
 
-    const [allBookingsRes, expiringPassportsRes] = await Promise.all([
-      // 이번 달 출발일 기준 전체 예약 (삭제 안 된 것)
+    const [recognizedBookingsRes, activeBookingsRes, unpaidD7Res, expiringPassportsRes] = await Promise.all([
+      // 이번 달 KST 출발 완료 기준 확정 예약 (삭제/취소 제외)
       supabaseAdmin
         .from('bookings')
-        .select('departure_date, total_cost, total_price, paid_amount, margin, status')
+        .select('departure_date, total_cost, total_price, paid_amount, margin')
         .or('is_deleted.is.null,is_deleted.eq.false')
         .neq('status', 'cancelled')
-        .gte('departure_date', thisMonthStartStr),
+        .gte('departure_date', thisMonthStartStr)
+        .lte('departure_date', todayStr),
+      // 운영 중 예약은 매출 인식과 분리해 미래 출발도 유지한다.
+      supabaseAdmin
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .in('status', ['pending', 'confirmed']),
+      supabaseAdmin
+        .from('bookings')
+        .select('total_price, paid_amount')
+        .or('is_deleted.is.null,is_deleted.eq.false')
+        .in('status', ['pending', 'confirmed'])
+        .gte('departure_date', todayStr)
+        .lte('departure_date', d7Str),
       supabaseAdmin
         .from('customers')
         .select('id', { count: 'exact', head: true })
         .not('passport_expiry', 'is', null)
         .lte('passport_expiry', passportCutoffStr),
-      // D-7 잔금미납: 7일 이내 출발, 미완료, paid_amount < total_price
     ]);
 
-    const allBookings = allBookingsRes.data || [];
+    const queryError = recognizedBookingsRes.error || activeBookingsRes.error || unpaidD7Res.error || expiringPassportsRes.error;
+    if (queryError) throw queryError;
+
+    interface DashboardBookingAmount {
+      total_cost?: number | null;
+      total_price?: number | null;
+      paid_amount?: number | null;
+      margin?: number | null;
+    }
+    const recognizedBookings = (recognizedBookingsRes.data || []) as DashboardBookingAmount[];
     // 이번 달 총 판매가 (출발일 기준)
-    const totalSales = allBookings.reduce((s: number, b: any) => s + (b.total_price || 0), 0);
+    const totalSales = recognizedBookings.reduce((sum, booking) => sum + (booking.total_price || 0), 0);
     // 원가: 전체 비취소 예약 합산
-    const totalCost = allBookings.reduce((s: number, b: any) => s + (b.total_cost || 0), 0);
+    const totalCost = recognizedBookings.reduce((sum, booking) => sum + (booking.total_cost || 0), 0);
     // 이번 달 총 입금액
-    const totalPaid = allBookings.reduce((s: number, b: any) => s + (b.paid_amount || 0), 0);
-    // 미수금 (잔금) = 총 판매가 - 입금액
-    const totalOutstanding = Math.max(0, totalSales - totalPaid);
+    const totalPaid = recognizedBookings.reduce((sum, booking) => sum + (booking.paid_amount || 0), 0);
+    // 미수금은 예약별 0 하한을 합산한다. 한 예약의 초과입금이 다른 예약의 미수를 상쇄하면 안 된다.
+    const totalOutstanding = recognizedBookings.reduce(
+      (sum, booking) => sum + Math.max(0, (booking.total_price || 0) - (booking.paid_amount || 0)),
+      0,
+    );
     // 마진: margin 컬럼 기준 (DB 트리거가 자동 계산, completed 한정 아님)
-    const margin = allBookings.reduce((s: number, b: any) => s + (b.margin || 0), 0);
+    const margin = recognizedBookings.reduce((sum, booking) => sum + (booking.margin || 0), 0);
 
     const totalMileage = 0;
     // 여권 만료: 여행업 실무 기준 6개월 이내 (90일 → 6개월 = 국제 기준)
     const expiringPassports = expiringPassportsRes.count || 0;
 
     // D-7 잔금미납: 실제 미납(paid < price)인 건만
-    const activeBookings = allBookings.filter((b: any) =>
-      ['pending', 'confirmed'].includes(b.status),
-    ).length;
-    const unpaidD7 = allBookings.filter(
-      (b: any) =>
-        ['pending', 'confirmed'].includes(b.status) &&
-        b.departure_date >= todayStr &&
-        b.departure_date <= d7Str &&
-        (b.paid_amount || 0) < (b.total_price || 0),
+    const activeBookings = activeBookingsRes.count || 0;
+    const unpaidD7 = ((unpaidD7Res.data || []) as DashboardBookingAmount[]).filter(
+      booking => (booking.paid_amount || 0) < (booking.total_price || 0),
     ).length;
 
     return {
@@ -87,7 +114,7 @@ export async function getDashboardStats() {
       margin,
       activeBookings,
       unpaidD7,          // ← 신규: D-7 잔금미납 실제 건수
-      totalMonthBookings: allBookings.length,
+      totalMonthBookings: recognizedBookings.length,
       totalMileage,
       expiringPassports,
     };
@@ -206,7 +233,6 @@ export interface NewBookingsMonth {
   cancellation_rate: number; // 0~1
 }
 
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const toKstMonth = (iso: string | null): string | null => {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -216,11 +242,11 @@ const toKstMonth = (iso: string | null): string | null => {
 };
 
 const monthKeysFor = (months: number): string[] => {
-  const now = new Date();
+  const now = toKstCalendar(new Date());
   const keys: string[] = [];
   for (let i = months - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    keys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
   }
   return keys;
 };
@@ -233,10 +259,9 @@ export async function getRecognizedRevenueMonthly(months = 6): Promise<Recognize
   const supabase = getSupabase();
   if (!supabase) return [];
   try {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const startDate = new Date(today.getFullYear(), today.getMonth() - (months - 1), 1);
-    const fromStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-01`;
+    const now = new Date();
+    const todayStr = toKstDate(now);
+    const fromStr = kstMonthStart(now, -(months - 1));
 
     const { data, error } = await supabase
       .from('bookings')
@@ -280,14 +305,16 @@ export async function getNewBookingsMonthly(months = 6): Promise<NewBookingsMont
   if (!supabase) return [];
   try {
     const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-    // KST 새벽 0시는 UTC 전날 15시 — 안전하게 1일 buffer
-    const fromUtcIso = new Date(startDate.getTime() - KST_OFFSET_MS).toISOString();
+    const kstNow = toKstCalendar(now);
+    const fromUtcIso = new Date(
+      Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() - (months - 1), 1) - KST_OFFSET_MS,
+    ).toISOString();
 
     const { data, error } = await supabase
       .from('bookings')
       .select('created_at, departure_date, total_price, status')
       .gte('created_at', fromUtcIso)
+      .lte('created_at', now.toISOString())
       .or('is_deleted.is.null,is_deleted.eq.false');
 
     if (error) throw error;
@@ -555,6 +582,12 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
 // Aging: 출발일 기준 30/60/90일 버킷 (오버듀일수록 위험)
 
 export interface SettlementBalances {
+  cash: {
+    received: number;
+    paid_out: number;
+    balance: number;
+    basis: 'all_time_non_deleted_bookings';
+  };
   payable: {
     total: number;
     aging: { bucket: '0-30d' | '30-60d' | '60-90d' | '90d+'; amount: number }[];
@@ -572,26 +605,26 @@ export async function getSettlementBalances(): Promise<SettlementBalances> {
     { bucket: '60-90d', amount: 0 }, { bucket: '90d+', amount: 0 },
   ];
   const empty: SettlementBalances = {
+    cash: { received: 0, paid_out: 0, balance: 0, basis: 'all_time_non_deleted_bookings' },
     payable: { total: 0, aging: emptyAging() },
     receivable: { total: 0, aging: emptyAging() },
   };
   if (!supabase) return empty;
 
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayMs = today.getTime();
+    const todayStr = toKstDate(new Date());
+    const todayMs = Date.parse(`${todayStr}T00:00:00.000Z`);
 
     const { data, error } = await supabase
       .from('bookings')
       .select('total_price, total_cost, paid_amount, total_paid_out, departure_date, status')
-      .neq('status', 'cancelled')
       .or('is_deleted.is.null,is_deleted.eq.false');
     if (error) throw error;
 
     interface CashflowBooking { total_price: number | null; total_cost: number | null; paid_amount: number | null; total_paid_out: number | null; departure_date: string | null; status: string | null }
 
     const out: SettlementBalances = {
+      cash: { received: 0, paid_out: 0, balance: 0, basis: 'all_time_non_deleted_bookings' },
       payable: { total: 0, aging: emptyAging() },
       receivable: { total: 0, aging: emptyAging() },
     };
@@ -608,8 +641,15 @@ export async function getSettlementBalances(): Promise<SettlementBalances> {
       const paid = b.paid_amount || 0;
       const totalCost = b.total_cost || 0;
       const paidOut = b.total_paid_out || 0;
+      out.cash.received += paid;
+      out.cash.paid_out += paidOut;
+      out.cash.balance += paid - paidOut;
+
+      // 취소 예약도 실제 입금/환불 현금에는 포함하되 미수·랜드 미지급에서는 제외한다.
+      if (b.status === 'cancelled') continue;
+
       const depMs = b.departure_date ? new Date(b.departure_date).getTime() : null;
-      const departed = depMs != null && depMs <= todayMs;
+      const departed = b.departure_date != null && b.departure_date <= todayStr;
       // 경과일: 출발 완료 건은 출발일 기준, 출발 전 건은 0 (아직 부채 미확정)
       const overdueDays = departed && depMs != null ? Math.floor((todayMs - depMs) / 86400000) : 0;
       const idx = bucketIdx(overdueDays);

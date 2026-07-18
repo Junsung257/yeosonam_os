@@ -70,6 +70,12 @@ interface AICredits {
   updated_at: string;
 }
 interface SettlementBalances {
+  cash: {
+    received: number;
+    paid_out: number;
+    balance: number;
+    basis: 'all_time_non_deleted_bookings';
+  };
   payable: { total: number; aging: { bucket: string; amount: number }[] };
   receivable: { total: number; aging: { bucket: string; amount: number }[] };
 }
@@ -382,11 +388,11 @@ function OwnerFinanceCommandCenter({
   pendingActionsCount: number;
   pendingPackagesCount: number;
 }) {
-  const customerPaid = stats?.totalPaid ?? 0;
   const receivable = settlement?.receivable.total ?? stats?.totalOutstanding ?? 0;
   const landPayable = settlement?.payable.total ?? 0;
   const preTaxMargin = stats?.margin ?? 0;
-  const cashLeft = customerPaid - landPayable;
+  const cashLeft = settlement?.cash.balance ?? null;
+  const cashIsNegative = cashLeft != null && cashLeft < 0;
   const totalTodo = (stats?.unpaidD7 ?? 0) + (unmatchedCount ?? 0) + pendingActionsCount + pendingPackagesCount;
 
   return (
@@ -405,14 +411,14 @@ function OwnerFinanceCommandCenter({
         <Link
           href="/admin/ledger"
           className={`col-span-2 block min-h-[186px] rounded-admin-md border p-5 shadow-admin-xs transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm xl:col-span-4 ${
-            cashLeft < 0 ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-950 text-white'
+            cashIsNegative ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-950 text-white'
           }`}
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className={`text-[11px] font-semibold ${cashLeft < 0 ? 'text-red-600' : 'text-slate-300'}`}>현금 기준 남은 돈</p>
-              <p className={`mt-3 text-[34px] font-black leading-none tabular-nums ${cashLeft < 0 ? 'text-red-700' : 'text-white'}`}>
-                {fmt만KRW(cashLeft)}
+              <p className={`text-[11px] font-semibold ${cashIsNegative ? 'text-red-600' : 'text-slate-300'}`}>예약 현금 잔액</p>
+              <p className={`mt-3 text-[34px] font-black leading-none tabular-nums ${cashIsNegative ? 'text-red-700' : 'text-white'}`}>
+                {cashLeft != null ? fmt만KRW(cashLeft) : '—'}
               </p>
             </div>
             <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${totalTodo > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
@@ -420,20 +426,23 @@ function OwnerFinanceCommandCenter({
             </span>
           </div>
 
-          <div className={`mt-5 grid grid-cols-3 gap-2 text-[11px] ${cashLeft < 0 ? 'text-red-700' : 'text-slate-300'}`}>
+          <div className={`mt-5 grid grid-cols-3 gap-2 text-[11px] ${cashIsNegative ? 'text-red-700' : 'text-slate-300'}`}>
             <div>
-              <p className="text-current/60">받은 돈</p>
-              <p className="mt-1 font-bold tabular-nums">{fmt만KRW(customerPaid)}</p>
+              <p className="text-current/60">누적 고객입금</p>
+              <p className="mt-1 font-bold tabular-nums">{settlement ? fmt만KRW(settlement.cash.received) : '—'}</p>
             </div>
             <div>
-              <p className="text-current/60">보낼 돈</p>
-              <p className="mt-1 font-bold tabular-nums">{fmt만KRW(landPayable)}</p>
+              <p className="text-current/60">누적 송금·환불</p>
+              <p className="mt-1 font-bold tabular-nums">{settlement ? fmt만KRW(settlement.cash.paid_out) : '—'}</p>
             </div>
             <div>
               <p className="text-current/60">자본</p>
               <p className="mt-1 font-bold tabular-nums">{capitalTotal != null ? fmt만KRW(capitalTotal) : '-'}</p>
             </div>
           </div>
+          <p className={`mt-3 text-[10px] ${cashIsNegative ? 'text-red-600/70' : 'text-slate-400'}`}>
+            전체 기간 · 고객입금 - 송금/환불 · 자본 별도
+          </p>
         </Link>
 
         <FinanceTile
