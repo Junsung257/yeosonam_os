@@ -22,6 +22,7 @@
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,7 +48,7 @@ async function run() {
     .from('travel_packages')
     .select('id, destination, price, cost_price, seats_held, seats_confirmed, seats_ticketed, status, departure_date, departing_location_id, is_active')
     .eq('is_active', true)
-    .in('status', ['approved', 'active', 'live'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'live'])
     .limit(2000);
 
   if (!pkgs || pkgs.length === 0) {

@@ -406,6 +406,12 @@ export async function PATCH(request: NextRequest) {
       const normCountry = isISO2(rawCountry) ? rawCountry : (inferCountryFromDestination(rawCountry) ?? inferCountryFromDestination(rawRegion));
       const normRegion = rawRegion ?? (isISO2(rawCountry) ? null : rawCountry);
 
+      if (!canCreateAttractionViaReconcileAction()) {
+        return NextResponse.json({
+          error: '추천 카드에서 신규 관광지를 바로 만들 수 없습니다. 기존 관광지 별칭 연결 또는 마스터 후보 검수를 사용하세요.',
+        }, { status: 403 });
+      }
+
       // 신규 INSERT
       const { data: created, error: insErr } = await supabaseAdmin.from('attractions').insert({
         name,

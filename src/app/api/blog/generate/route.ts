@@ -10,6 +10,7 @@ import {
   destToEnKeyword,
   isPexelsConfigured,
 } from '@/lib/pexels';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * Pexels 자동 hook — 정보성 블로그용 cover image.
@@ -36,6 +37,9 @@ async function fetchAutoCoverImage(topic: string): Promise<string | null> {
  * - 정보성 글: topic + category → Gemini로 직접 생성
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const { topic, category } = body;

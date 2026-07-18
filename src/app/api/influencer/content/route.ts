@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -78,19 +79,14 @@ export async function POST(request: NextRequest) {
     };
 
     // 2. 상품 검증 (approved만)
-    const { data: pkg } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, inclusions, itinerary, status')
-      .eq('id', body.product_id)
-      .maybeSingle();
-
-    if (!pkg || (pkg as { status?: string }).status !== 'approved') {
-      return NextResponse.json({ error: '승인된 상품만 콘텐츠 생성 가능' }, { status: 404 });
+    const publicPackage = await loadPublicContentPackageForGeneration(body.product_id);
+    if (!publicPackage) {
+      return NextResponse.json({ error: '고객 공개 승인된 상품만 인플루언서 콘텐츠를 만들 수 있습니다.' }, { status: 404 });
     }
 
     // 3. brief + 플랫폼별 콘텐츠 생성
     const { generateContentBrief } = await import('@/lib/content-pipeline/content-brief');
-    const product = { ...(pkg as Record<string, unknown>), product_id: body.product_id };
+    const product = { ...(publicPackage as Record<string, unknown>), product_id: body.product_id };
     const brief = await generateContentBrief({
       mode: 'product',
       slideCount: 6,

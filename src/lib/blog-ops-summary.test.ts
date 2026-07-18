@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   buildBlogOpsSummary,
   classifyPublishedBlogQualityIssues,
@@ -161,5 +163,14 @@ describe('blog ops quality summary', () => {
     expect(summary.indexing.failure_buckets.outbox_missing).toBe(1);
     expect(summary.contract.failed_checks).toContain('recent_quality_gate');
     expect(summary.contract.failed_checks).toContain('indexing_outbox_missing');
+  });
+
+  it('exposes fleet phrase drift as a quality signal in the admin summary', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/blog-ops-summary.ts'), 'utf8');
+
+    expect(source).toContain('inspectBlogFleetPhraseDrift');
+    expect(source).toContain('fleet_phrase_drift: fleetPhraseDrift');
+    expect(source).toContain("title: '최근 글 말투 반복");
+    expect(source).toContain("['fleet_phrase_drift']");
   });
 });

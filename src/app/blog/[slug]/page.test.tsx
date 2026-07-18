@@ -58,10 +58,10 @@ vi.mock('@/lib/supabase', () => {
   };
 
   function queryResult(table: string, selected: string | undefined) {
-    if (table === 'content_creatives' && selected?.includes('blog_html')) {
+    if (table === 'public_blog_content_creatives' && selected?.includes('blog_html')) {
       return { data: [post], error: null };
     }
-    if (table === 'content_creatives') {
+    if (table === 'public_blog_content_creatives') {
       return { data: [], error: null };
     }
     if (table === 'ab_experiments') {
@@ -144,10 +144,12 @@ describe('/blog/[slug] page smoke', () => {
 
   it('guards public blog articles against duplicate body h1 headings', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/blog/[slug]/page.tsx'), 'utf8');
+    const normalizer = readFileSync(join(process.cwd(), 'src/lib/blog-public-render-normalizer.ts'), 'utf8');
 
-    expect(source).toContain('<h2$1>');
-    expect(source).toContain('</h2>');
-    expect(source).toContain('<h1\\b[^>]*>\\s*(?:&nbsp;|\\u00a0|<br\\s*\\/?>|\\s)*<\\/h1>');
+    expect(source).toContain('sanitizePublicBlogBodyHtml');
+    expect(normalizer).toContain('<h2$1>');
+    expect(normalizer).toContain('</h2>');
+    expect(normalizer).toContain('<h1\\b[^>]*>\\s*(?:&nbsp;|\\u00a0|<br\\s*\\/?>|\\s)*<\\/h1>');
   });
 
   it('renders a published blog detail without falling through to the global 404', async () => {

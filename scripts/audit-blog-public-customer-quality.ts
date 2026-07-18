@@ -1,0 +1,283 @@
+#!/usr/bin/env tsx
+
+import * as cheerio from 'cheerio';
+import {
+  inspectPublicBlogCustomerQuality,
+  type PublicBlogCustomerQualityReport,
+} from '@/lib/blog-public-customer-quality';
+
+const args = process.argv.slice(2);
+
+function argValue(name: string, fallback: string | null = null): string | null {
+  const inline = args.find((arg) => arg.startsWith(`${name}=`));
+  if (inline) return inline.slice(name.length + 1);
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] ?? fallback : fallback;
+}
+
+function hasFlag(name: string): boolean {
+  return args.includes(name);
+}
+
+type BlogApiPost = {
+  slug?: string | null;
+  title?: string | null;
+  destination?: string | null;
+  blog_type?: string | null;
+  content_type?: string | null;
+  product_id?: string | null;
+};
+
+interface PublicBlogTarget {
+  path: string;
+  slug: string;
+  title?: string | null;
+  destination?: string | null;
+  expectedType?: 'info' | 'product' | 'unknown';
+}
+
+interface AuditedPublicBlogTarget extends PublicBlogTarget {
+  url: string;
+  ok: boolean;
+  status?: number;
+  report?: PublicBlogCustomerQualityReport;
+  error?: string;
+}
+
+const baseUrl = (argValue('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '')
+  .replace(/\/+$/, '');
+const limit = Math.max(1, Number(argValue('--limit', '10')) || 10);
+const timeoutMs = Math.max(3000, Number(argValue('--timeout-ms', '15000')) || 15000);
+const strict = hasFlag('--strict');
+const outputJson = hasFlag('--json');
+const minScore = Math.max(0, Math.min(100, Number(argValue('--min-score', '88')) || 88));
+
+function absolutize(path: string): string {
+  return /^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+function slugToPath(slug: string): string {
+  return `/blog/${slug.replace(/^\/?blog\//, '').replace(/^\/+/, '')}`;
+}
+
+function normalizeBlogPath(href: string | null | undefined): string | null {
+  if (!href) return null;
+  try {
+    const url = /^https?:\/\//i.test(href) ? new URL(href) : new URL(href, baseUrl);
+    if (url.origin !== new URL(baseUrl).origin) return null;
+    if (!/^\/blog\/[^/]+/.test(url.pathname)) return null;
+    if (/\/blog\/(?:angle|destination)\//.test(url.pathname)) return null;
+    if (/\/opengraph-image(?:$|[/?#])/.test(url.pathname)) return null;
+    return url.pathname.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+async function fetchText(url: string, accept = 'text/html,application/xhtml+xml'): Promise<{ status: number; text: string }> {
+  const response = await fetch(url, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      accept,
+      'cache-control': 'no-cache',
+      pragma: 'no-cache',
+      'user-agent': 'yeosonam-public-customer-quality-audit/1.0',
+    },
+  });
+  return { status: response.status, text: await response.text() };
+}
+
+function inferExpectedType(post: BlogApiPost): 'info' | 'product' | 'unknown' {
+  if (post.product_id) return 'product';
+  const type = `${post.blog_type ?? ''} ${post.content_type ?? ''}`.toLowerCase();
+  if (/product|package|commercial|sales/.test(type)) return 'product';
+  if (/info|guide|editorial/.test(type)) return 'info';
+  return 'unknown';
+}
+
+async function collectFromApi(): Promise<PublicBlogTarget[]> {
+  try {
+    const { status, text } = await fetchText(`${baseUrl}/api/blog?limit=${Math.max(limit, 20)}`, 'application/json');
+    if (status < 200 || status >= 300) return [];
+    const payload = JSON.parse(text) as { posts?: BlogApiPost[] };
+    const posts = Array.isArray(payload.posts) ? payload.posts : [];
+    const targets: PublicBlogTarget[] = [];
+    for (const post of posts) {
+      const slug = post.slug?.trim();
+      if (!slug) continue;
+      targets.push({
+        path: slugToPath(slug),
+        slug,
+        title: post.title ?? null,
+        destination: post.destination ?? null,
+        expectedType: inferExpectedType(post),
+      });
+    }
+    return targets;
+  } catch {
+    return [];
+  }
+}
+
+async function collectFromBlogList(): Promise<PublicBlogTarget[]> {
+  try {
+    const { status, text } = await fetchText(`${baseUrl}/blog`);
+    if (status < 200 || status >= 300) return [];
+    const $ = cheerio.load(text);
+    const paths = new Set<string>();
+    $('a[href]').each((_index, element) => {
+      const path = normalizeBlogPath($(element).attr('href'));
+      if (path) paths.add(path);
+    });
+    return [...paths].map((path) => ({
+      path,
+      slug: path.replace(/^\/blog\//, ''),
+      expectedType: 'unknown',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function collectFromSitemap(): Promise<PublicBlogTarget[]> {
+  try {
+    const { status, text } = await fetchText(`${baseUrl}/sitemap.xml`, 'application/xml,text/xml,text/plain');
+    if (status < 200 || status >= 300) return [];
+    const paths = new Set<string>();
+    for (const match of text.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi)) {
+      const path = normalizeBlogPath(match[1]);
+      if (path) paths.add(path);
+    }
+    return [...paths].map((path) => ({
+      path,
+      slug: path.replace(/^\/blog\//, ''),
+      expectedType: 'unknown',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function mergeTargets(groups: PublicBlogTarget[][]): PublicBlogTarget[] {
+  const byPath = new Map<string, PublicBlogTarget>();
+  for (const group of groups) {
+    for (const target of group) {
+      const existing = byPath.get(target.path);
+      byPath.set(target.path, {
+        ...existing,
+        ...target,
+        expectedType: existing?.expectedType && existing.expectedType !== 'unknown'
+          ? existing.expectedType
+          : target.expectedType,
+        title: existing?.title || target.title,
+        destination: existing?.destination || target.destination,
+      });
+    }
+  }
+  return [...byPath.values()].slice(0, limit);
+}
+
+async function collectTargets(): Promise<PublicBlogTarget[]> {
+  const explicitSlug = argValue('--slug', null);
+  if (explicitSlug) {
+    const slug = explicitSlug.replace(/^\/?blog\//, '').replace(/^\/+/, '').trim();
+    return [{
+      path: slugToPath(slug),
+      slug,
+      expectedType: (argValue('--type', 'unknown') as PublicBlogTarget['expectedType']) || 'unknown',
+      destination: argValue('--destination', null),
+    }];
+  }
+
+  const [api, list, sitemap] = await Promise.all([
+    collectFromApi(),
+    collectFromBlogList(),
+    collectFromSitemap(),
+  ]);
+  return mergeTargets([api, list, sitemap]);
+}
+
+async function auditTarget(target: PublicBlogTarget): Promise<AuditedPublicBlogTarget> {
+  const url = absolutize(target.path);
+  try {
+    const { status, text } = await fetchText(url);
+    if (status < 200 || status >= 300) {
+      return { ...target, url, ok: false, status, error: `HTTP ${status}` };
+    }
+    const report = inspectPublicBlogCustomerQuality({
+      html: text,
+      url,
+      path: target.path,
+      title: target.title,
+      expectedType: target.expectedType,
+      expectedDestination: target.destination,
+    });
+    return {
+      ...target,
+      url,
+      status,
+      ok: report.passed && report.score >= minScore,
+      report,
+    };
+  } catch (error) {
+    return {
+      ...target,
+      url,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function main() {
+  if (!baseUrl) {
+    console.error('--base is required');
+    process.exit(1);
+  }
+
+  const targets = await collectTargets();
+  const rows: AuditedPublicBlogTarget[] = [];
+  for (const target of targets) {
+    rows.push(await auditTarget(target));
+  }
+
+  const failed = rows.filter((row) => !row.ok);
+  const issueCounts = rows.reduce<Record<string, number>>((acc, row) => {
+    for (const issue of row.report?.issues ?? []) {
+      acc[issue.code] = (acc[issue.code] || 0) + 1;
+    }
+    if (row.error) acc.fetch_error = (acc.fetch_error || 0) + 1;
+    return acc;
+  }, {});
+  const averageScore = rows.length > 0
+    ? Math.round(rows.reduce((sum, row) => sum + (row.report?.score ?? 0), 0) / rows.length)
+    : 0;
+  const summary = {
+    baseUrl,
+    checked: rows.length,
+    passed: rows.length - failed.length,
+    failed: failed.length,
+    averageScore,
+    minScore,
+    issueCounts,
+  };
+
+  if (outputJson) {
+    console.log(JSON.stringify({ summary, failedExamples: failed.slice(0, 10), rows }, null, 2));
+  } else {
+    console.log(`Blog public customer quality: ${averageScore}/100 (${summary.passed}/${summary.checked} passed)`);
+    console.log(`Issues=${JSON.stringify(issueCounts)}`);
+    for (const row of failed.slice(0, 10)) {
+      const issues = row.report?.issues.map((issue) => `${issue.code}:${issue.severity}`).join(', ') || row.error;
+      console.log(`- ${row.path} ${row.report?.score ?? 'ERR'}: ${issues}`);
+    }
+  }
+
+  if (strict && failed.length > 0) process.exitCode = 1;
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
+  process.exit(1);
+});

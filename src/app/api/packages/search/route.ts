@@ -11,6 +11,9 @@ import { logError } from '@/lib/sentry-logger';
 import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -20,12 +23,13 @@ import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/s
 const PACKAGE_FIELDS = `
   id, title, destination, country, category, product_type, trip_style,
   departure_days, departure_airport, airline, min_participants, ticketing_deadline,
-  price, price_tiers, price_list, price_dates, status, created_at,
+  price, price_tiers, price_list, price_dates, status, audit_status, audit_report, created_at, updated_at,
+  publication_state, package_revision,
   product_tags, product_highlights, product_summary,
   internal_code, is_airtel, display_title, hero_tagline, duration, nights,
   avg_rating, review_count,
   seats_held, seats_confirmed,
-  catalog_id,
+  catalog_id, optional_tours, itinerary_data,
   products(internal_code, display_name)
 `;
 
@@ -68,8 +72,8 @@ export async function GET(request: NextRequest) {
     let query = sb
       .from('travel_packages')
       .select(PACKAGE_FIELDS)
-      .in('status', ['active', 'approved'])
-      .or('audit_status.is.null,audit_status.neq.blocked')
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false })
       .limit(fetchLimit);
 
@@ -102,6 +106,7 @@ export async function GET(request: NextRequest) {
 
     const today = new Date().toISOString().slice(0, 10);
     let aliveRaw = (rawPackages ?? []).filter((p: any) => {
+      if (!isCustomerPubliclyOpenable(p)) return false;
       const pd = (p.price_dates || []) as Array<{ date?: string }>;
       if (pd.length === 0) return true;
       return pd.some(d => d?.date && d.date >= today);
@@ -112,6 +117,10 @@ export async function GET(request: NextRequest) {
     }
 
     aliveRaw = aliveRaw.slice(0, 50);
+
+    if (aliveRaw.length > 0) {
+      aliveRaw = await fetchAndMergeCurrentPublicPackageCardSnapshots(sb, aliveRaw as Array<Record<string, unknown>>) as any[];
+    }
 
     const packages = aliveRaw.map((pkg: any) => ({
       ...pkg,

@@ -63,7 +63,10 @@ export default function DestinationCuration({
   const maxP = Math.max(...prices, 0);
 
   return (
-    <section className="my-10 p-5 md:p-6 bg-gradient-to-br from-slate-50 to-brand-light/40 border border-slate-200 rounded-2xl">
+    <section
+      data-related-posts="destination-curation"
+      className="my-10 p-5 md:p-6 bg-gradient-to-br from-slate-50 to-brand-light/40 border border-slate-200 rounded-2xl"
+    >
       <BlogProductRecommendationTracker
         contentCreativeId={contentCreativeId}
         intent={intent}

@@ -7,6 +7,8 @@ import {
   getReviewHistory,
   getPendingReviews,
 } from '@/lib/content-review-workflow';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { submitBlogInformationReviewDecision } from '@/lib/blog-information-review-repository';
 
 // ─── POST: 검토 결정 제출 ───────────────────────────────────────────
 
@@ -59,6 +61,20 @@ export async function POST(request: NextRequest) {
       if (result.ok && result.payload?.sub) reviewerId = result.payload.sub;
     }
 
+    const informationResult = await submitBlogInformationReviewDecision({
+      creativeId: creative_id,
+      actorId: reviewerId,
+      status: status as 'approved' | 'rejected' | 'changes_requested',
+      note: review_note,
+    });
+    if (informationResult.handled) {
+      return NextResponse.json({
+        review_id: informationResult.reviewCaseId,
+        information_review: true,
+        evidence_revalidated: status === 'approved',
+      }, { status: 200 });
+    }
+
     const result = await submitReview({
       creativeId: creative_id,
       reviewerId,
@@ -77,6 +93,7 @@ export async function POST(request: NextRequest) {
         | undefined,
       suggestedChanges: suggested_changes,
     });
+    revalidatePublicBlogCache();
 
     return NextResponse.json({ review_id: result.reviewId }, { status: 200 });
   } catch (error) {
@@ -115,7 +132,7 @@ export async function GET(request: NextRequest) {
       const [creativeResult, history] = await Promise.all([
         supabaseAdmin
           .from('content_creatives')
-          .select('id, title, status, review_status, channel, blog_html')
+          .select('id, seo_title, status, review_status, channel, blog_html')
           .eq('id', creativeId)
           .maybeSingle(),
         getReviewHistory(creativeId),
@@ -129,7 +146,12 @@ export async function GET(request: NextRequest) {
       }
 
       return NextResponse.json({
-        creative: creativeResult.data,
+        creative: {
+          ...creativeResult.data,
+          // Preserve the existing review-panel response contract while reading
+          // the actual content_creatives column.
+          title: creativeResult.data.seo_title,
+        },
         history,
       }, { headers: cacheHeader(60) });
     }

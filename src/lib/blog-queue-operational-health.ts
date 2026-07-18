@@ -175,7 +175,8 @@ export function getBlogQueueOperationalState(
       };
     }
 
-    const retryable = !nonRetryableIssue && decision.retryable && !hasQuarantine && attempts < maxAttempts;
+    const repairableAfterAttemptLimit = !nonRetryableIssue && decision.retryable && decision.selfHealAllowed;
+    const retryable = repairableAfterAttemptLimit && !hasQuarantine && attempts < maxAttempts;
     const productEvidence =
       issue === 'product_open_contract' ||
       issue === 'evidence_insufficient' ||
@@ -186,7 +187,7 @@ export function getBlogQueueOperationalState(
       ? 'retry_failed'
       : productEvidence
         ? 'collect_product_evidence'
-        : hasQuarantine
+        : hasQuarantine || repairableAfterAttemptLimit
           ? 'editorial_backlog'
           : 'hidden_terminal';
 

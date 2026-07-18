@@ -17,6 +17,7 @@ describe('blog product evidence work', () => {
   it('categorizes the blocker into operator-friendly groups', () => {
     expect(categorizeProductEvidenceBlocker('mobile_proof:actual customer mobile browser proof hashes are missing')).toBe('mobile_proof');
     expect(categorizeProductEvidenceBlocker('quality_scorecard:price_missing')).toBe('quality_scorecard');
+    expect(categorizeProductEvidenceBlocker('product_status_not_customer_visible:pending_review')).toBe('product_status');
     expect(categorizeProductEvidenceBlocker('v3_payload:supplier remark leaked')).toBe('v3_customer_payload');
     expect(categorizeProductEvidenceBlocker('archived_product')).toBe('archived_product');
   });
@@ -85,6 +86,36 @@ describe('blog product evidence work', () => {
       product_status: 'archived',
       blocker_categories: ['archived_product'],
       next_action: 'skip_archived_product_candidate',
+    });
+  });
+
+  it('separates pending product review from generic evidence work', () => {
+    const report = buildBlogProductEvidenceWorkReport({
+      productsById: new Map([
+        ['pkg-review', { id: 'pkg-review', title: '나트랑 3박5일 패키지', status: 'pending_review' }],
+      ]),
+      rows: [
+        {
+          id: 'queue-review',
+          status: 'failed',
+          product_id: 'pkg-review',
+          topic: '나트랑 3박5일 패키지 가성비 리뷰',
+          attempts: 0,
+          updated_at: '2026-07-09T00:00:00Z',
+          meta: {
+            failure_code: 'product_open_contract',
+            product_open_contract_blockers: ['product_status_not_customer_visible:pending_review'],
+          },
+        },
+      ],
+    });
+
+    expect(report.category_counts).toEqual({ product_status: 1 });
+    expect(report.next_actions).toEqual(['상품을 고객 공개 상태로 검수/승인한 뒤 재큐잉']);
+    expect(report.samples[0]).toMatchObject({
+      product_status: 'pending_review',
+      blocker_categories: ['product_status'],
+      blockers: ['product_status_not_customer_visible:pending_review'],
     });
   });
 });

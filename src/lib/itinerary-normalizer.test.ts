@@ -23,6 +23,91 @@ describe('sanitizeFlightScheduleTimes (via normalizeItinerary)', () => {
 });
 
 describe('coerceAirportScheduleTypes (via normalizeItinerary + flight_segments)', () => {
+  it('downgrades unsupported flight rows before they can become customer-visible flight facts', () => {
+    const itin = normalizeItinerary({
+      days: [{
+        day: 5,
+        schedule: [
+          { time: '08:00', activity: '\uC5F0\uAE38 \uD575\uC2EC\uAD00\uAD11', type: 'flight', entity_kind: 'flight' },
+          { time: '12:00', activity: '\uC5F0\uAE38 \uACF5\uD56D \uCD9C\uBC1C', type: 'flight', transport: 'BX3185' },
+        ],
+      }],
+    });
+
+    const schedule = itin?.days?.[0]?.schedule ?? [];
+    expect(schedule[0]).toMatchObject({
+      activity: '\uC5F0\uAE38 \uD575\uC2EC\uAD00\uAD11',
+      type: 'normal',
+      entity_kind: 'unknown',
+    });
+    expect(schedule[1]).toMatchObject({
+      activity: '\uC5F0\uAE38 \uACF5\uD56D \uCD9C\uBC1C',
+      type: 'flight',
+      transport: 'BX3185',
+    });
+  });
+
+  it('keeps airport and flight-code evidence as flight while leaving airport transfer rows normal', () => {
+    const itin = normalizeItinerary({
+      days: [{
+        day: 1,
+        schedule: [
+          { time: '18:00', activity: '\uACF5\uD56D\uC73C\uB85C \uC774\uB3D9', type: 'flight' },
+          { time: '20:50', activity: '\uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uCD9C\uBC1C', type: 'normal', transport: 'BX773' },
+          { time: '23:50', activity: 'BX773 \uB2E4\uB0AD \uB3C4\uCC29', type: 'normal' },
+        ],
+      }],
+    });
+
+    const schedule = itin?.days?.[0]?.schedule ?? [];
+    expect(schedule[0]).toMatchObject({ activity: '\uACF5\uD56D\uC73C\uB85C \uC774\uB3D9', type: 'normal' });
+    expect(schedule[1]).toMatchObject({ activity: '\uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uCD9C\uBC1C', type: 'flight' });
+    expect(schedule[2]).toMatchObject({ activity: 'BX773 \uB2E4\uB0AD \uB3C4\uCC29', type: 'flight' });
+  });
+
+  it('does not treat minimum-departure conditions as flights even when entity_kind was polluted', () => {
+    const itin = normalizeItinerary({
+      days: [{
+        day: 5,
+        schedule: [
+          { activity: '\uC131\uC778 8\uBA85 \uC774\uC0C1 \uCD9C\uBC1C\uAC00\uB2A5', type: 'flight', entity_kind: 'flight', transport: 'VN428' },
+        ],
+      }],
+      meta: {
+        flight_in: 'VN428',
+        flight_in_time: '01:15',
+      },
+    });
+
+    expect(itin?.days?.[0]?.schedule?.[0]).toMatchObject({
+      activity: '\uC131\uC778 8\uBA85 \uC774\uC0C1 \uCD9C\uBC1C\uAC00\uB2A5',
+      type: 'normal',
+      entity_kind: 'unknown',
+      transport: 'VN428',
+    });
+  });
+
+  it('trims customer courtesy tails from arrival rows while keeping the flight fact', () => {
+    const itin = normalizeItinerary({
+      days: [{
+        day: 5,
+        schedule: [
+          {
+            activity: '\uBD80\uC0B0 \uB3C4\uCC29 \u263A\u263A \uC990\uAC70\uC6B4 \uC5EC\uD589\uC774 \uB418\uC168\uAE30\uB97C \uBC14\uB78D\uB2C8\uB2E4',
+            type: 'flight',
+            transport: 'LJ002',
+          },
+        ],
+      }],
+    });
+
+    expect(itin?.days?.[0]?.schedule?.[0]).toMatchObject({
+      activity: '\uBD80\uC0B0 \uB3C4\uCC29',
+      type: 'flight',
+      transport: 'LJ002',
+    });
+  });
+
   it('도착 행이 type normal → flight_segments arr_time 채움 (다낭 BX773)', () => {
     const itin = enrichItineraryForDisplay(
       {

@@ -7,6 +7,14 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { getPublicDestinationQueryNames } from '@/lib/public-destinations';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -34,14 +42,6 @@ export const metadata: Metadata = {
   },
 };
 
-interface DestinationStat {
-  destination: string;
-  package_count: number;
-  avg_rating: number | null;
-  total_reviews: number | null;
-  min_price: number | null;
-}
-
 type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
 
 interface AttractionSample {
@@ -50,31 +50,24 @@ interface AttractionSample {
   photos: GalleryPhoto[] | null;
 }
 
-function toFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function normalizeDestinationStat(row: Partial<DestinationStat> | null | undefined): DestinationStat | null {
-  const destination = typeof row?.destination === 'string' ? row.destination.trim() : '';
-  if (!destination) return null;
-
-  return {
-    destination,
-    package_count: Math.max(0, Math.trunc(toFiniteNumber(row?.package_count) ?? 0)),
-    avg_rating: toFiniteNumber(row?.avg_rating),
-    total_reviews: Math.max(0, Math.trunc(toFiniteNumber(row?.total_reviews) ?? 0)),
-    min_price: toFiniteNumber(row?.min_price),
-  };
-}
+type DestinationPackageStatsRow = {
+  id?: string | null;
+  destination: string | null;
+  price?: number | null;
+  status?: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
+};
 
 function normalizeAttractionSample(row: unknown): AttractionSample | null {
   if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, unknown>;
+  if (!isCustomerRenderableAttraction(record as unknown as AttractionData)) return null;
   const destination = typeof record.region === 'string' ? record.region.trim() : '';
   const name = typeof record.name === 'string' ? record.name.trim() : '';
   if (!destination || !name) return null;
@@ -91,43 +84,112 @@ function normalizeAttractionSample(row: unknown): AttractionSample | null {
 }
 
 async function getDestinations() {
-  if (!isSupabaseConfigured) return { stats: [], attractionsByDest: {} };
-  if (shouldSkipPublicDbReadsForResourceSaver()) return { stats: [], attractionsByDest: {} };
+  if (!isSupabaseConfigured) return { stats: [], imagesByDest: {} };
+  if (shouldSkipPublicDbReadsForResourceSaver()) return { stats: [], imagesByDest: {} };
 
   try {
     const { data: stats } = await supabaseAdmin
-      .from('active_destinations')
-      .select('*')
-      .order('package_count', { ascending: false });
+      .from('travel_packages')
+      .select('id, destination, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
+      .not('destination', 'is', null)
+      .limit(2000);
 
-    // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
-    const normalizedStats = ((stats as Array<Partial<DestinationStat>> | null) ?? [])
-      .map(normalizeDestinationStat)
-      .filter((stat): stat is DestinationStat => stat !== null);
+    const publicStats = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      supabaseAdmin,
+      ((stats ?? []) as DestinationPackageStatsRow[])
+        .filter((pkg) => isPublicPublicationState(pkg.publication_state))
+        .filter((pkg) => isCustomerPubliclyOpenable(pkg as Record<string, unknown>)) as unknown as Array<Record<string, unknown>>,
+    );
+
+    const statsByDestination = new Map<string, {
+      destination: string;
+      package_count: number;
+      min_price: number | null;
+      avg_rating: number | null;
+      total_reviews: number | null;
+    }>();
+    (publicStats as unknown as Array<{ destination: string | null; price?: number | null }>)
+      .forEach((pkg) => {
+        const destination = pkg.destination?.trim();
+        if (!destination) return;
+        const current = statsByDestination.get(destination) ?? {
+          destination,
+          package_count: 0,
+          min_price: null,
+          avg_rating: null,
+          total_reviews: null,
+        };
+        current.package_count += 1;
+        if (typeof pkg.price === 'number' && pkg.price > 0 && (current.min_price == null || pkg.price < current.min_price)) {
+          current.min_price = pkg.price;
+        }
+        statsByDestination.set(destination, current);
+      });
+
+    const normalizedStats = [...statsByDestination.values()]
+      .sort((a, b) => b.package_count - a.package_count);
     const destinations = normalizedStats.map(s => s.destination);
-    const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
-      .from('attractions')
-      .select('region, name, photos')
-      .in('region', destinations)
-      .not('photos', 'is', null)
-      .limit(4000) : { data: null };
+    const queryNames = [...new Set(destinations.flatMap(getPublicDestinationQueryNames))];
+    const [{ data: metadata }, { data: attractions }, { data: posts }] = queryNames.length > 0 ? await Promise.all([
+      supabaseAdmin
+        .from('destination_metadata')
+        .select('destination, hero_image_url, photo_approved')
+        .in('destination', queryNames)
+        .eq('photo_approved', true),
+      supabaseAdmin
+        .from('attractions')
+        .select('region, name, photos, category, badge_type, is_active, customer_publishable')
+        .in('region', queryNames)
+        .eq('is_active', true)
+        .eq('customer_publishable', true)
+        .not('photos', 'is', null)
+        .limit(4000),
+      supabaseAdmin
+        .from(PUBLIC_BLOG_READ_SOURCE)
+        .select('destination, og_image_url')
+        .in('destination', queryNames)
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .not('og_image_url', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(300),
+    ]) : [{ data: null }, { data: null }, { data: null }];
 
-    const attractionsByDest: Record<string, AttractionSample> = {};
+    const imagesByDest: Record<string, string> = {};
+    const aliasToDestination = new Map<string, string>();
+    normalizedStats.forEach((stat) => {
+      getPublicDestinationQueryNames(stat.destination).forEach((name) => aliasToDestination.set(name, stat.destination));
+    });
+
+    ((metadata as Array<{ destination?: string | null; hero_image_url?: string | null; photo_approved?: boolean }> | null) ?? []).forEach((row) => {
+      const dest = row.destination ? aliasToDestination.get(row.destination) : null;
+      if (dest && !imagesByDest[dest] && row.photo_approved && row.hero_image_url) imagesByDest[dest] = row.hero_image_url;
+    });
+
     ((attractions as unknown[] | null) ?? []).forEach((row) => {
       const sample = normalizeAttractionSample(row);
-      if (sample && !attractionsByDest[sample.destination]) {
-        attractionsByDest[sample.destination] = sample;
+      if (sample) {
+        const dest = aliasToDestination.get(sample.destination);
+        const image = pickAttractionPhotoUrl(sample.photos);
+        if (dest && image && !imagesByDest[dest]) imagesByDest[dest] = image;
       }
     });
 
-    return { stats: normalizedStats, attractionsByDest };
+    ((posts as Array<{ destination?: string | null; og_image_url?: string | null }> | null) ?? []).forEach((row) => {
+      const dest = row.destination ? aliasToDestination.get(row.destination) : null;
+      if (dest && row.og_image_url && !imagesByDest[dest]) imagesByDest[dest] = row.og_image_url;
+    });
+
+    return { stats: normalizedStats, imagesByDest };
   } catch {
-    return { stats: [], attractionsByDest: {} };
+    return { stats: [], imagesByDest: {} };
   }
 }
 
 export default async function DestinationsIndexPage() {
-  const { stats, attractionsByDest } = await getDestinations();
+  const { stats, imagesByDest } = await getDestinations();
 
   return (
     <>
@@ -135,7 +197,7 @@ export default async function DestinationsIndexPage() {
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: '여행지 완벽 가이드',
@@ -186,8 +248,7 @@ export default async function DestinationsIndexPage() {
               <SectionHeader title="전체 여행지" subtitle="패키지가 많은 순으로 정렬" />
               <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {stats.map(d => {
-                  const attr = attractionsByDest[d.destination];
-                  const img = pickAttractionPhotoUrl(attr?.photos ?? undefined);
+                  const img = imagesByDest[d.destination] ?? null;
                   return (
                     <Link
                       key={d.destination}

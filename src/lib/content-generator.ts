@@ -845,6 +845,16 @@ const ANGLE_SLUG: Record<AngleType, string> = {
   luxury: 'luxury', urgency: 'deal', activity: 'activity', food: 'food',
 };
 
+const BLOG_SEO_ANGLE_LABEL: Record<AngleType, string> = {
+  value: '가격 조건',
+  emotional: '휴양 포인트',
+  filial: '부모님 동반',
+  luxury: '프리미엄',
+  urgency: '출발일 조건',
+  activity: '액티비티',
+  food: '식사 조건',
+};
+
 export interface BlogSeo {
   slug: string;
   seoTitle: string;
@@ -866,7 +876,7 @@ export function generateBlogSeo(
   const dest = product.destination || '여행';
   const nights = product.nights ?? (product.duration ? product.duration - 1 : 0);
   const dur = product.duration ? `${nights}박${product.duration}일` : '';
-  const angleLabel = ANGLE_PRESETS[angle].label;
+  const angleLabel = BLOG_SEO_ANGLE_LABEL[angle] ?? ANGLE_PRESETS[angle].label;
   const price = getLowestPrice(product);
   const priceStr = price > 0 ? `${price.toLocaleString()}원` : '';
   const year = new Date().getFullYear();
@@ -917,7 +927,7 @@ export function generateBlogSeo(
     `${dest} ${dur} ${angleLabel} 패키지`,
     priceStr ? `${priceStr}~` : '',
     highlightsRaw || inclKey,
-    '여소남에서 비교하고 안심 예약하세요.',
+    '포함/불포함과 일정 조건을 확인하세요.',
   ].filter(Boolean);
   const seoDescription = descParts.join('. ').substring(0, 160);
 

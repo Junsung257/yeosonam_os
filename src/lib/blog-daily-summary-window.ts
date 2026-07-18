@@ -1,4 +1,4 @@
-export const DAILY_SUMMARY_CLOSE_MINUTE_KST = (22 * 60) + 12;
+export const DAILY_SUMMARY_CLOSE_MINUTE_KST = (22 * 60) + 45;
 
 export function getKstDayRange(offsetDays = 0, now = new Date()): { start: Date; end: Date; dayKey: string } {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);

@@ -3,7 +3,7 @@ const withSerwist = require('@serwist/next').default({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   cacheOnNavigation: true,
-  disable: process.env.NODE_ENV !== 'production',
+  disable: process.env.NODE_ENV !== 'production' || process.env.VERCEL_ENV === 'preview',
 });
 
 const fs = require('fs');

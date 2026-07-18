@@ -73,6 +73,12 @@ function hasAirportSignal(activity: string | null | undefined): boolean {
   return /공항|국제공항|airport/i.test(activity);
 }
 
+const FLIGHT_INFERENCE_BLOCK_RE = /출발\s*가능|최소\s*\d*\s*명|성인\s*\d+\s*명|모객|관광|체험|등정|산책|조망|호텔|식사|조식|중식|석식|자유일정|휴식|마사지|온천|차량|가이드|쇼핑|선택\s*관광|요금|상품가/;
+
+function blocksFlightInference(activity: string | null | undefined): boolean {
+  return FLIGHT_INFERENCE_BLOCK_RE.test(String(activity ?? ''));
+}
+
 /** activity 안의 도시명 추출 (e.g. "부산 국제공항 출발" → "부산")
  *
  * 2026-05-19 박제 (사고 발견 — FIX-3 fixture 에서): 기존 regex `[\w가-힣]+?` 가
@@ -120,6 +126,7 @@ export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefin
     schedule: (day.schedule ?? []).map((s) => {
       if (s.type === 'flight') return s;
       const kind = classifyActivity(s.activity);
+      if (blocksFlightInference(s.activity)) return s;
       if (kind === 'other' || !s.time || (!hasMetaFlight && !hasAirportSignal(s.activity))) return s;
       const inferredFlightNo = kind === 'depart'
         ? (metaFlightOut || s.transport || null)

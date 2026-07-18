@@ -5,6 +5,7 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { getSecret } from '@/lib/secret-registry';
 import { logWarning } from '@/lib/sentry-logger';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /**
  * INP 모니터링 — 매일 1회 실행 (PR-D)
@@ -110,7 +111,7 @@ async function pickTargetUrls(baseUrl: string): Promise<string[]> {
       const { data: pkgs } = await supabaseAdmin
         .from('travel_packages')
         .select('id, view_count')
-        .in('status', ['approved', 'active'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
         .order('view_count', { ascending: false, nullsFirst: false })
         .limit(MAX_URLS_PER_RUN - urls.size);
       for (const p of (pkgs || []) as Array<{ id: string }>) {

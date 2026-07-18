@@ -10,7 +10,7 @@ import {
 const FLIGHT_CODE_RE = /\b(?:[A-Z][A-Z0-9]|[0-9][A-Z])\s*\d{3,4}\b/g;
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(?:\uc6d0|KRW|USD|\$)?/i;
-const DAY_HEADER_RE = /^(?:day\s*\d{1,2}(?:\b|\s|$)|\uc81c\s*\d{1,2}\s*\uc77c(?:\s|$)|\d{1,2}\s*\uc77c\ucc28(?:\s|$))/i;
+const DAY_HEADER_RE = /^(?:day\s*\d{1,2}(?:\b|\s|$)|\uc81c\s*\d{1,2}\s*\uc77c(?:\uCC28)?(?:\s|$)|\d{1,2}\s*\uc77c(?:\uCC28)?(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
 const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\ud604\uc9c0\s*\uc9c0\ubd88\s*\uc635\uc158|\uac15\ub825\s*\ucd94\ucc9c\s*\uc635\uc158|\ucd94\ucc9c\s*\uc120\ud0dd\s*\uad00\uad11/i;
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
@@ -53,9 +53,37 @@ function collectCatalogBoundaryStarts(raw: string): number[] {
   return [...new Set(starts)].sort((a, b) => a - b);
 }
 
+function sectionHasItineraryDayEvidence(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  return lines
+    .slice(startLine - 1, endLine)
+    .some(line => DAY_HEADER_RE.test(line.quote.trim()));
+}
+
+function filterCatalogStartsBySectionEvidence(lines: V3SourceLine[], starts: number[]): number[] {
+  if (starts.length < 2) return starts;
+
+  const filtered = starts.filter((start, index) => {
+    const startLine = lineNumberForCharOffset(lines, start);
+    const nextStart = starts[index + 1];
+    const endLine = nextStart == null
+      ? lines.length
+      : Math.max(startLine, lineNumberForCharOffset(lines, nextStart) - 1);
+    return sectionHasItineraryDayEvidence(lines, startLine, endLine);
+  });
+
+  return filtered.length >= 2 ? filtered : [];
+}
+
 function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boundaries'] {
   const raw = lines.map(line => line.quote).join('\n');
-  const catalogStarts = collectCatalogBoundaryStarts(raw);
+  const hasExplicitCatalogStarts =
+    collectPkgBlockStarts(raw).length >= 2
+    || collectTransportVariantDetailBlockStarts(raw).length >= 2
+    || collectVariantCatalogBlockStarts(raw).length >= 2;
+  const rawCatalogStarts = collectCatalogBoundaryStarts(raw);
+  const catalogStarts = hasExplicitCatalogStarts
+    ? rawCatalogStarts
+    : filterCatalogStartsBySectionEvidence(lines, rawCatalogStarts);
   if (catalogStarts.length >= 2) {
     return catalogStarts.map((start, index) => {
       const startLine = lineNumberForCharOffset(lines, start);

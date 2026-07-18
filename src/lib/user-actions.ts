@@ -5,6 +5,10 @@
  * 최근 본 상품, 비슷한 상품 등을 조회합니다.
  */
 import { supabaseAdmin } from '@/lib/supabase';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export type UserActionType =
   | 'page_view'
@@ -29,6 +33,34 @@ export interface UserActionRow {
   target_id: string | null;
   context: Record<string, unknown> | null;
   created_at: string;
+}
+
+const USER_ACTION_PACKAGE_FIELDS =
+  'id, title, destination, category, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data';
+
+type SimilarPackageCard = { id: string; title: string; destination: string; price: number };
+
+function isUserActionPublicSnapshotCandidate(row: unknown): row is Record<string, unknown> {
+  if (!row || typeof row !== 'object') return false;
+  const item = row as Record<string, unknown>;
+  const publicationState = typeof item.publication_state === 'string' ? item.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(item);
+}
+
+async function toPublicSimilarPackageCards(rows: unknown): Promise<SimilarPackageCard[]> {
+  const candidates = Array.isArray(rows)
+    ? rows.filter(isUserActionPublicSnapshotCandidate)
+    : [];
+  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    supabaseAdmin,
+    candidates,
+  );
+  return publicRows.map((row) => ({
+    id: String(row.id ?? ''),
+    title: typeof row.title === 'string' ? row.title : '',
+    destination: typeof row.destination === 'string' ? row.destination : '',
+    price: typeof row.price === 'number' ? row.price : Number(row.price ?? 0),
+  })).filter(row => row.id && row.title);
 }
 
 /**
@@ -105,40 +137,63 @@ export async function getRecentViews(
 export async function getSimilarPackages(
   packageId: string,
   options?: { limit?: number },
-): Promise<Array<{ id: string; title: string; destination: string; price: number }>> {
+): Promise<SimilarPackageCard[]> {
   const limit = options?.limit ?? 6;
 
   // 먼저 해당 패키지의 destination/category 조회
   const { data: pkg, error: pkgErr } = await supabaseAdmin
     .from('travel_packages')
-    .select('destination, category, id')
+    .select(USER_ACTION_PACKAGE_FIELDS)
     .eq('id', packageId)
+    .in('publication_state', ['approved', 'published'])
     .single();
 
-  if (pkgErr || !pkg) return [];
+  if (pkgErr || !isUserActionPublicSnapshotCandidate(pkg)) return [];
+  const publicSource = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    supabaseAdmin,
+    [pkg],
+  );
+  if (publicSource.length === 0) return [];
+
+  const destination = typeof pkg.destination === 'string' ? pkg.destination.trim() : '';
+  const category = typeof pkg.category === 'string' ? pkg.category.trim() : '';
+
+  if (!destination && !category) return [];
+  if (!destination && category) {
+    const { data: catSimilar } = await supabaseAdmin
+      .from('travel_packages')
+      .select(USER_ACTION_PACKAGE_FIELDS)
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
+      .neq('id', packageId)
+      .eq('category', category)
+      .limit(limit);
+    return toPublicSimilarPackageCards(catSimilar);
+  }
 
   const { data: similar, error: simErr } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, price')
-    .in('status', ['active', 'approved'])
+    .select(USER_ACTION_PACKAGE_FIELDS)
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+    .in('publication_state', ['approved', 'published'])
     .neq('id', packageId)
-    .eq('destination', pkg.destination)
+    .eq('destination', destination)
     .limit(limit);
 
-  if (simErr || !similar) {
+  if ((simErr || !similar || similar.length === 0) && category) {
     // fallback: category로 검색
-    if (pkg.category) {
-      const { data: catSimilar } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, price')
-        .in('status', ['active', 'approved'])
-        .neq('id', packageId)
-        .eq('category', pkg.category)
-        .limit(limit);
-      return (catSimilar ?? []) as Array<{ id: string; title: string; destination: string; price: number }>;
-    }
-    return [];
+    const { data: catSimilar } = await supabaseAdmin
+      .from('travel_packages')
+      .select(USER_ACTION_PACKAGE_FIELDS)
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
+      .neq('id', packageId)
+      .eq('category', category)
+      .limit(limit);
+    return toPublicSimilarPackageCards(catSimilar);
   }
 
-  return similar as Array<{ id: string; title: string; destination: string; price: number }>;
+  if (simErr || !similar) return [];
+
+  return toPublicSimilarPackageCards(similar);
 }

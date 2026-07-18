@@ -108,4 +108,25 @@ describe('evaluateBlogPublishPreflight', () => {
     expect(result.status).toBe('pass');
     expect(result.checks.find((check) => check.id === 'queue_health')?.status).toBe('pass');
   });
+
+  it('does not downgrade publish preflight after the daily target is already met by safe candidates', () => {
+    const result = evaluateBlogPublishPreflight({
+      dailyTarget: 4,
+      publishedToday: 4,
+      publishableCandidateCount: 15,
+      duplicateCandidateCount: 0,
+      evidenceInsufficientCount: 0,
+      candidateShortage: false,
+      actionableFailedCount: 0,
+      staleGeneratingCount: 0,
+      manualReviewCount: 34,
+      indexingOutboxMissingCount: 0,
+      indexingOutboxCoverageRate: 100,
+      recentPosts: [goodPost('a'), goodPost('b'), goodPost('c')],
+    });
+
+    expect(result.status).toBe('pass');
+    expect(result.checks.find((check) => check.id === 'queue_health')?.status).toBe('pass');
+    expect(result.checks.find((check) => check.id === 'queue_health')?.detail).toContain('quota is already met');
+  });
 });

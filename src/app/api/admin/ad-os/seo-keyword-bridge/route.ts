@@ -10,6 +10,7 @@ import {
   type PaidKeywordPlatform,
 } from '@/lib/ad-os-seo-keyword-bridge';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -202,7 +203,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       supabaseAdmin
         .from('travel_packages')
         .select('id, title, destination, short_code')
-        .in('status', ['active', 'approved', 'confirmed', 'published'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'confirmed', 'published'])
         .limit(1000),
       supabaseAdmin
         .from('ad_os_channel_budgets')

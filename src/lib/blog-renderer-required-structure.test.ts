@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 
 describe('blog renderer required structure', () => {
-  it('renders required decision tables for stored weather posts that lack tables', async () => {
+  it('does not add decision tables to stored weather posts at render time', async () => {
     const source = [
       '## 오사카 7월 날씨',
       '',
@@ -12,13 +12,13 @@ describe('blog renderer required structure', () => {
     const html = await renderBlogContentToHtml(source);
     const report = inspectRenderedBlogIntegrity(source, html);
 
-    expect(html).toContain('<table>');
-    expect(html).toContain('빠른 판단표');
+    expect(html).not.toContain('<table>');
+    expect(html).not.toContain('빠른 판단표');
     expect(html).toContain('기온');
     expect(report.passed).toBe(true);
   });
 
-  it('adds required decision tables to legacy stored HTML posts', async () => {
+  it('does not add decision tables to legacy stored HTML posts at render time', async () => {
     const source = [
       '<h2>보라카이 7월 날씨</h2>',
       '<p>보라카이 7월 날씨는 기온, 강수량, 습도 차이를 같이 보고 옷차림과 준비물을 정해야 합니다.</p>',
@@ -27,8 +27,8 @@ describe('blog renderer required structure', () => {
     const html = await renderBlogContentToHtml(source);
     const report = inspectRenderedBlogIntegrity(source, html);
 
-    expect(html).toContain('<table>');
-    expect(html).toContain('빠른 판단표');
+    expect(html).not.toContain('<table>');
+    expect(html).not.toContain('빠른 판단표');
     expect(html).toContain('강수량');
     expect(report.passed).toBe(true);
   });

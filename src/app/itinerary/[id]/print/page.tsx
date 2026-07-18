@@ -5,6 +5,7 @@ import { renderPackage } from '@/lib/render-contract';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isValidUuid } from '@/lib/supabase-filter-safe';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 import {
   PosterHeader,
   PosterPrice,
@@ -24,10 +25,16 @@ async function loadPackage(id: string) {
   if (!isSupabaseConfigured || !isValidUuid(normalizedId)) return null;
   const { data } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_dates, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions, min_participants')
+    .select('id, package_revision')
     .eq('id', normalizedId)
     .single();
-  return data as {
+  const row = data as { id?: string | null; package_revision?: number | null } | null;
+  if (!row?.id) return null;
+
+  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, row.id, {
+    expectedPackageRevision: row.package_revision,
+  });
+  return publicSnapshot?.package as {
     id: string;
     title: string;
     destination: string | null;
@@ -55,8 +62,6 @@ async function loadPackage(id: string) {
       price_krw?: number | null;
       note?: string | null;
     }[] | null;
-    customer_notes: string | null;
-    internal_notes: string | null;
     inclusions: string[] | null;
     min_participants: number | null;
   } | null;

@@ -314,7 +314,7 @@ function buildSafePatch(row: TravelPackageRow, issues: TextIssue[]): Record<stri
     const hasRepairChange = [...repairChangePaths].some(path => path === field || path.startsWith(`${field}.`));
     if (!hasIssue && !hasRepairChange) continue;
     const before = row[field as keyof TravelPackageRow];
-    const after = repaired[field];
+    const after = Object.prototype.hasOwnProperty.call(repaired, field) ? repaired[field] : null;
     if (JSON.stringify(after) !== JSON.stringify(before)) patch[field] = after;
   }
 

@@ -9,6 +9,7 @@
 import { withCronGuard } from '@/lib/cron-auth';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { getSecret } from '@/lib/secret-registry';
 
 const TOP_CITIES = [
   '다낭', '나트랑', '방콕', '도쿄', '오사카',
@@ -21,6 +22,7 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 const getHandler = async (request: Request) => {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? new URL(request.url).origin;
+  const cronSecret = getSecret('CRON_SECRET');
   const results: { city: string; tier: string; ok: boolean; slug?: string; error?: string }[] = [];
 
   for (const city of TOP_CITIES) {
@@ -28,8 +30,11 @@ const getHandler = async (request: Request) => {
       try {
         const res = await fetch(`${baseUrl}/api/blog/mrt-hotel-ranking`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ city, tier, count: 5, publish: true }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
+          },
+          body: JSON.stringify({ city, tier, count: 5, publish: false }),
         });
         const json = await res.json() as { ok?: boolean; slug?: string; error?: string };
         results.push({

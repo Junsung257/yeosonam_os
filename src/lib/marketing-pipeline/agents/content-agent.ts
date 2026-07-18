@@ -1,15 +1,13 @@
-/**
- * ContentAgent — 활성 패키지 → 인스타그램 캡션 생성 → content_distributions 저장
- *
- * ContentBrief 전체 구조 생성 없이 llmCall로 직접 캡션 생성 (파이프라인 단순화).
- * 재사용: src/lib/llm-gateway.ts (llmCall)
- */
 import { z } from 'zod';
 import { BaseMarketingAgent, type MarketingContext, type AgentResult } from '../base-agent';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { getSecret } from '@/lib/secret-registry';
 import { loadCustomerOpenContractForPackage } from '@/lib/product-registration/customer-open-contract';
+import {
+  loadPublicContentPackageForGeneration,
+  type PublicContentPackage,
+} from '@/lib/content-public-package';
 
 const CaptionSchema = z.object({
   caption: z.string().min(50).max(2200),
@@ -18,56 +16,56 @@ const CaptionSchema = z.object({
   cta_type: z.enum(['dm_keyword', 'save', 'share', 'link_click', 'comment_question']),
 });
 
-interface PackageRow {
-  id: string;
-  title: string;
-  destination: string | null;
-  nights: number | null;
-  duration: number | null;
-  min_price: number | null;
-  product_summary: string | null;
-  product_highlights: string[] | null;
-}
+type PackageCandidateRow = { id: string };
+type MarketingContentPackage = PublicContentPackage & {
+  destination: string;
+  price: number;
+};
 
 export class ContentAgent extends BaseMarketingAgent {
   readonly name = 'content';
 
   async run(ctx: MarketingContext): Promise<Omit<AgentResult, 'elapsed_ms'>> {
-    if (!isSupabaseConfigured) return this.skip('Supabase 미설정');
+    if (!isSupabaseConfigured) return this.skip('Supabase is not configured');
     if (!getSecret('DEEPSEEK_API_KEY') && !getSecret('GEMINI_API_KEY') && !getSecret('GOOGLE_AI_API_KEY')) {
-      return this.skip('LLM API 키 미설정');
+      return this.skip('LLM API key is not configured');
     }
 
-    const { data: packages, error } = await supabaseAdmin
+    const { data: packageCandidates, error } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, nights, duration, min_price, product_summary, product_highlights')
+      .select('id')
       .eq('is_active', true)
       .eq('is_approved', true)
+      .in('publication_state', ['approved', 'published'])
       .order('created_at', { ascending: false })
       .limit(3);
 
     if (error) throw error;
-    if (!packages?.length) return this.skip('활성 패키지 없음');
+    if (!packageCandidates?.length) return this.skip('No public package candidates');
 
     let generated = 0;
     let blockedByCustomerOpenContract = 0;
 
-    for (const pkg of packages as PackageRow[]) {
-      const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, pkg.id);
+    for (const candidate of packageCandidates as PackageCandidateRow[]) {
+      const publicPackage = await loadPublicContentPackageForGeneration(candidate.id);
+      if (!publicPackage || !isMarketingContentPackage(publicPackage)) {
+        blockedByCustomerOpenContract++;
+        continue;
+      }
+
+      const openContract = await loadCustomerOpenContractForPackage(supabaseAdmin, publicPackage.id);
       if (!openContract.ok) {
         blockedByCustomerOpenContract++;
         continue;
       }
 
-      const systemPrompt = `당신은 여행 마케터입니다. 인스타그램 캡션을 JSON으로 생성하세요.`;
-      const userPrompt = buildCaptionPrompt(pkg);
-
       const result = await llmCall<z.infer<typeof CaptionSchema>>({
         task: 'card-news',
-        systemPrompt,
-        userPrompt,
+        systemPrompt:
+          '너는 여소남 여행 콘텐츠 에디터다. 승인된 공개 스냅샷에 있는 사실만 사용해 인스타그램 캡션을 JSON으로 작성한다. 확정, 보장, 확보처럼 재고를 약속하는 표현은 쓰지 않는다.',
+        userPrompt: buildCaptionPrompt(publicPackage),
         maxTokens: 800,
-        temperature: 0.85,
+        temperature: 0.75,
         enableCaching: false,
         autoEscalate: false,
         jsonSchema: {
@@ -82,10 +80,10 @@ export class ContentAgent extends BaseMarketingAgent {
         },
       });
 
-      const caption = result.success && result.data ? result.data : buildFallbackCaption(pkg);
+      const caption = result.success && result.data ? result.data : buildFallbackCaption(publicPackage);
 
-      const { error: insErr } = await supabaseAdmin.from('content_distributions').insert({
-        product_id: pkg.id,
+      const { error: insertError } = await supabaseAdmin.from('content_distributions').insert({
+        product_id: publicPackage.id,
         platform: 'instagram_caption',
         status: 'draft',
         payload: {
@@ -94,7 +92,7 @@ export class ContentAgent extends BaseMarketingAgent {
           pipeline_run_date: ctx.runDate,
         },
       });
-      if (insErr) throw insErr;
+      if (insertError) throw insertError;
 
       generated++;
     }
@@ -103,43 +101,77 @@ export class ContentAgent extends BaseMarketingAgent {
       return this.skip('customer_open_contract blocked every candidate package');
     }
 
-    return { ok: true, data: { generated, packages: packages.length, blocked_by_customer_open_contract: blockedByCustomerOpenContract } };
+    return {
+      ok: true,
+      data: {
+        generated,
+        packages: packageCandidates.length,
+        blocked_by_customer_open_contract: blockedByCustomerOpenContract,
+      },
+    };
   }
 }
 
-function buildCaptionPrompt(pkg: PackageRow): string {
-  const dest = pkg.destination ?? '여행지';
-  const priceText = pkg.min_price ? formatPrice(pkg.min_price) : '특가';
-  const duration = pkg.nights ? `${pkg.nights}박${(pkg.nights + 1)}일` : '';
-  const highlights = pkg.product_highlights?.slice(0, 3).join(', ') ?? '';
+function isMarketingContentPackage(pkg: PublicContentPackage): pkg is MarketingContentPackage {
+  return Boolean(pkg.destination && typeof pkg.price === 'number' && Number.isFinite(pkg.price));
+}
 
-  return `다음 여행 상품으로 인스타그램 캡션을 작성하세요.
+function buildCaptionPrompt(pkg: MarketingContentPackage): string {
+  const duration = formatDuration(pkg);
+  const highlights = pkg.product_highlights?.slice(0, 3).join(', ') || '승인된 공개 상품 조건';
+  const summary = pkg.product_summary || '승인된 공개 스냅샷 기준으로 소개';
+
+  return `아래 승인된 공개 상품 정보만 사용해 인스타그램 캡션을 작성하세요.
 
 상품명: ${pkg.title}
-목적지: ${dest}
+목적지: ${pkg.destination}
 기간: ${duration}
-가격: ${priceText}
-하이라이트: ${highlights}
-설명: ${pkg.product_summary ?? ''}
+가격: ${formatPrice(pkg.price)}
+핵심 조건: ${highlights}
+설명: ${summary}
+
+작성 규칙:
+- 고객이 바로 이해하는 쉬운 한국어로 작성
+- 출발확정, 즉시확정, 좌석확보, 최저가보장, 숙박확정 표현 금지
+- 없는 포함 사항이나 상품 조건을 추정하지 않기
+- 상담 전 확인이 필요한 조건은 "예약 가능 여부는 상담 후 확인"처럼 표현
 
 JSON 형식으로 반환:
 {
-  "caption": "전체 캡션 (500~1500자, 이모지 포함)",
-  "preview_hook": "첫 125자 프리뷰 (125자 이하)",
-  "hashtags": ["#여행", "#${dest}", "#여소남"],
+  "caption": "전체 캡션",
+  "preview_hook": "첫 줄 미리보기",
+  "hashtags": ["#여행", "#${pkg.destination}", "#여소남"],
   "cta_type": "dm_keyword"
 }`;
 }
 
-function buildFallbackCaption(pkg: PackageRow) {
-  const dest = pkg.destination ?? '여행지';
-  const priceText = pkg.min_price ? formatPrice(pkg.min_price) : '특가';
+function buildFallbackCaption(pkg: MarketingContentPackage) {
+  const duration = formatDuration(pkg);
+  const facts = [
+    pkg.product_highlights?.[0],
+    pkg.product_highlights?.[1],
+    duration,
+  ].filter(Boolean);
+
   return {
-    caption: `${priceText} ${dest} 여행, 여소남이 엄선한 패키지입니다.\n\n✅ ${pkg.product_highlights?.[0] ?? '노팁·노옵션'}\n✅ ${pkg.product_highlights?.[1] ?? '왕복 항공 포함'}\n\n댓글에 "${dest.slice(0, 2)}" 남겨주세요!`,
-    preview_hook: `${priceText} ${dest} 여행 — 여소남 엄선 패키지`.slice(0, 125),
-    hashtags: ['#여행', '#해외여행', `#${dest}`, '#여소남', '#패키지여행'],
+    caption: `${pkg.destination} ${duration} 여행을 ${formatPrice(pkg.price)}부터 상담할 수 있어요.\n\n${facts.map((fact) => `- ${fact}`).join('\n')}\n\n예약 가능 여부와 세부 조건은 상담 후 확인됩니다.`,
+    preview_hook: `${pkg.destination} ${duration} 여행, 조건 먼저 확인해보세요`.slice(0, 125),
+    hashtags: ['#여행', '#해외여행', `#${pkg.destination}`, '#여소남', '#패키지여행'],
     cta_type: 'dm_keyword' as const,
   };
+}
+
+function formatDuration(pkg: Pick<PublicContentPackage, 'duration' | 'nights'>): string {
+  if (typeof pkg.duration === 'number' && Number.isFinite(pkg.duration)) {
+    const nights = typeof pkg.nights === 'number' && Number.isFinite(pkg.nights)
+      ? pkg.nights
+      : Math.max(pkg.duration - 1, 0);
+    return `${nights}박${pkg.duration}일`;
+  }
+  if (typeof pkg.nights === 'number' && Number.isFinite(pkg.nights)) {
+    return `${pkg.nights}박${pkg.nights + 1}일`;
+  }
+  return '';
 }
 
 function formatPrice(price: number): string {

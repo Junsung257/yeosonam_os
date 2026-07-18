@@ -6,6 +6,7 @@ import {
   persistBlogIndexingReport,
   type BlogIndexingJobRow,
 } from '@/lib/blog-indexing-outbox';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 const TABLE = 'blog_indexing_jobs';
 const DEFAULT_BATCH_SIZE = 10;
@@ -20,6 +21,7 @@ export interface BlogIndexingWorkerSummary {
   succeeded?: number;
   retry?: number;
   failed?: number;
+  ineligible?: number;
   stale_reset: number;
   results: Array<{ id: string; slug: string; status: string; error?: string }>;
   errors: string[];
@@ -45,6 +47,21 @@ function errorMessage(error: unknown): string {
     return String((error as { message?: unknown }).message);
   }
   return String(error);
+}
+
+async function isBlogIndexingJobPubliclyEligible(job: BlogIndexingJobRow): Promise<boolean> {
+  if (job.type === 'URL_DELETED') return true;
+
+  let query = supabaseAdmin
+    .from(PUBLIC_BLOG_READ_SOURCE)
+    .select('id, slug')
+    .eq('slug', job.slug);
+  if (job.content_creative_id) {
+    query = query.eq('id', job.content_creative_id);
+  }
+  const { data, error } = await query.limit(1);
+  if (error) throw new Error(`public eligibility check failed:${error.message}`);
+  return Array.isArray(data) && data.length === 1;
 }
 
 class BlogIndexingProviderError extends Error {
@@ -179,6 +196,23 @@ export async function processDueBlogIndexingJobs(options: {
         baseUrl: options.baseUrl,
       });
       const baseUrl = resolveBlogIndexingBaseUrl(canonicalUrl, options.baseUrl);
+      const publiclyEligible = await isBlogIndexingJobPubliclyEligible(job);
+      if (!publiclyEligible) {
+        const skippedAt = new Date().toISOString();
+        const { error: skipError } = await supabaseAdmin
+          .from(TABLE)
+          .update({
+            status: 'skipped',
+            locked_at: null,
+            locked_by: null,
+            last_error: 'public eligibility check failed closed',
+            updated_at: skippedAt,
+          })
+          .eq('id', job.id);
+        if (skipError) throw new Error(`ineligible job update failed:${skipError.message}`);
+        results.push({ id: job.id, slug: job.slug, status: 'skipped_ineligible' });
+        continue;
+      }
       const report = await notifyIndexing(canonicalUrl, baseUrl, {
         type: job.type,
         pingSitemap: false,
@@ -234,10 +268,11 @@ export async function processDueBlogIndexingJobs(options: {
   }
 
   return {
-    processed: results.filter((result) => ['succeeded', 'retry', 'failed'].includes(result.status)).length,
+    processed: results.filter((result) => ['succeeded', 'retry', 'failed', 'skipped_ineligible'].includes(result.status)).length,
     succeeded: results.filter((result) => result.status === 'succeeded').length,
     retry: results.filter((result) => result.status === 'retry').length,
     failed: results.filter((result) => result.status === 'failed').length,
+    ineligible: results.filter((result) => result.status === 'skipped_ineligible').length,
     stale_reset: staleReset,
     results,
     errors,

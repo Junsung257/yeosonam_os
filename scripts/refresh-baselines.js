@@ -19,6 +19,7 @@ const args = new Set(process.argv.slice(2));
 const DRY_RUN = args.has('--dry-run');
 const PREFLIGHT_ONLY = args.has('--preflight');
 const BASE_URL = process.env.BASE_URL || process.env.VISUAL_TEST_URL || 'http://localhost:3000';
+const CUSTOMER_VISIBLE_STATUSES = ['active', 'approved', 'selling', 'available'];
 
 function stripQuotes(value) {
   return value.trim().replace(/^["']|["']$/g, '');
@@ -113,7 +114,7 @@ async function fetchPendingBaselinePackages(sb) {
     .from('travel_packages')
     .select('id, title, short_code, status, baseline_requested_at, baseline_created_at')
     .not('baseline_requested_at', 'is', null)
-    .in('status', ['approved', 'active'])
+    .in('status', CUSTOMER_VISIBLE_STATUSES)
     .order('baseline_requested_at', { ascending: true });
 
   if (error) {

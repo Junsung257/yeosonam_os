@@ -22,15 +22,18 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
-import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
+import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
+import { repairBlogImageQuality } from '@/lib/blog-image-quality';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
+import { stripBlogInformationalBodyCtas } from '@/lib/blog-informational-cta';
 import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
 import {
   appendPublishReadinessSupport,
@@ -57,7 +60,6 @@ import {
 } from '@/lib/product-registration/customer-open-contract';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
-import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
@@ -66,22 +68,53 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
+import { repairBlogFinalCustomerSurface } from '@/lib/blog-final-customer-surface';
+import { repairBlogEngineCategoryGaps } from '@/lib/blog-engine-category-repair';
+import { repairArticleQualityV2Specifics } from '@/lib/blog-article-quality-v2-repair';
 import { ensureDailyPublishableQueue, getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 import {
   quarantineNonRetryableBlogQueueItems,
+  recoverRequeueableFailedBlogQueueItems,
   rescheduleOverdueQueuedBlogQueueItems,
 } from '@/lib/blog-queue-lifecycle';
 import { choosePublisherPrimaryKeyword } from '@/lib/blog-publisher-primary-keyword';
 import {
   canRunOptionalPublisherWork,
-  canStartPublisherItem,
+  canStartPublisherItemWithFallback,
+  getPublisherExtraClaimRecoveryPlan,
   getPublisherGenerationTimeoutMs,
   getPublisherRemainingMs,
+  getUnattemptedClaimReleaseIds,
+  sortPublisherQueueForTimeBudget,
 } from '@/lib/blog-publisher-time-budget';
 import { readBoundedIntEnv } from '@/lib/env-utils';
+import { queueForReview } from '@/lib/content-review-workflow';
+import { isHighRiskInformationalTopic } from '@/lib/blog-publication-review-policy';
+import { routeBlogContentLane } from '@/lib/blog-content-boundary';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  persistBlogInformationClaimFindings,
+} from '@/lib/blog-information-claim-publish-gate';
+import {
+  parseBlogInformationWriterOutput,
+  type BlogInformationClaimLedgerEntry,
+} from '@/lib/blog-information-claim-ledger';
+import {
+  buildBlogInformationRepresentativeKey,
+  readBlogInformationRepresentativeIdentity,
+  type BlogInformationDuplicateDecision,
+  type BlogInformationRepresentativeIdentity,
+} from '@/lib/blog-information-representative';
+import {
+  attachBlogInformationRepresentativeDraft,
+  reserveBlogInformationRepresentative,
+} from '@/lib/blog-information-representative-repository';
+import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
+import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -113,12 +146,13 @@ export const dynamic = 'force-dynamic';
 const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
 const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
 const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 12, MAX_BATCH, 20);
-const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 0, 4);
+const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
 const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
 const BLOG_PUBLISHER_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_MIN_ITEM_START_MS', 75_000, 30_000, 180_000);
+const BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS = readBoundedIntEnv('BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS', 30_000, 15_000, 90_000);
 const BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS = readBoundedIntEnv('BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS', 45_000, 15_000, 90_000);
 const BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS = readBoundedIntEnv('BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS', 45_000, 10_000, 120_000);
 const MAX_ATTEMPTS = 2;
@@ -141,6 +175,7 @@ function classifyPublisherFailure(reason?: string): string {
   if (text.includes('structure_integrity') || text.includes('structure')) return 'structure_integrity';
   if (text.includes('keyword_density')) return 'keyword_density';
   if (text.includes('table_integrity') || text.includes('table')) return 'table_integrity';
+  if (text.includes('article_quality_v2') || text.includes('standalone_markdown') || text.includes('literal_markdown')) return 'article_quality_v2';
   if (text.includes('render_integrity') || text.includes('render')) return 'render_integrity';
   if (text.includes('intent_quality') || text.includes('intent')) return 'intent_quality';
   if (text.includes('editorial_quality') || text.includes('editorial')) return 'editorial_quality';
@@ -183,6 +218,25 @@ function generatePublisherBlogText(
 
 function publisherRemainingMs(startedAtMs: number): number {
   return getPublisherRemainingMs(startedAtMs, MAX_EXEC_MS);
+}
+
+function isFastFallbackEligibleInfoItem(item: any): boolean {
+  return !item?.product_id && !item?.card_news_id && item?.source !== 'pillar';
+}
+
+function canStartPublisherQueueItem(item: any, remainingMs: number): boolean {
+  return canStartPublisherItemWithFallback({
+    remainingMs,
+    minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+    fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+    fallbackEligible: isFastFallbackEligibleInfoItem(item),
+  });
+}
+
+function shouldUseFastDeterministicInfoFallback(item: any, remainingMs: number): boolean {
+  return isFastFallbackEligibleInfoItem(item)
+    && remainingMs < BLOG_PUBLISHER_MIN_ITEM_START_MS
+    && remainingMs >= BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS;
 }
 
 async function withGenerationBudget<T>(
@@ -482,6 +536,287 @@ async function runGeneratedQualityGates(
   return runQualityGates(buildQualityGateInput(generated, item, blogType, primaryKeyword));
 }
 
+async function runGeneratedPublishQuality(
+  generated: GeneratedBlog,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): Promise<BlogPublishQualityReport> {
+  const qualityInput = buildQualityGateInput(generated, item, blogType, primaryKeyword);
+  return evaluateBlogPublishQuality({
+    ...qualityInput,
+    seo_title: generated.seo_title,
+    seo_description: generated.seo_description,
+    secondary_keywords: Array.isArray(item.meta?.keywords) ? item.meta.keywords : [],
+  });
+}
+
+function applyFinalCustomerSurfaceRepair(
+  generated: GeneratedBlog,
+  item: any,
+  primaryKeyword?: string | null,
+): string[] {
+  const surfaceRepair = repairBlogFinalCustomerSurface({
+    markdown: generated.blog_html,
+    destination: item.destination ?? null,
+    primaryKeyword,
+    slug: generated.slug,
+    title: generated.seo_title || item.topic,
+  });
+  if (!surfaceRepair.changed) return [];
+  generated.blog_html = surfaceRepair.markdown;
+  return surfaceRepair.changes;
+}
+
+function applyEngineCategoryRepair(
+  generated: GeneratedBlog,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): string[] {
+  const categoryRepair = repairBlogEngineCategoryGaps({
+    markdown: generated.blog_html,
+    blogType,
+    title: generated.seo_title || item.topic || primaryKeyword || generated.slug,
+    slug: generated.slug,
+    destination: item.destination ?? null,
+    primaryKeyword,
+    angleType: normalizeAngleType(item.angle_type),
+    category: item.category ?? null,
+    contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+    productId: item.product_id ?? null,
+    generationMeta: generated.generation_meta ?? null,
+  });
+  if (!categoryRepair.changed) return [];
+  generated.blog_html = categoryRepair.markdown;
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    engine_category_repair: {
+      before_score: categoryRepair.beforeScore,
+      after_score: categoryRepair.afterScore,
+      repaired_categories: categoryRepair.repairedCategories,
+      repair_rounds: categoryRepair.repairRounds,
+      changes: categoryRepair.changes,
+    },
+  };
+  return categoryRepair.changes;
+}
+
+function buildDeterministicInfoFallbackMarkdown(item: any, primaryKeyword?: string | null): string {
+  const keyword = String(primaryKeyword || item.primary_keyword || item.topic || item.destination || '여행 준비');
+  const destination = item.destination || extractDestination(String(item.topic || keyword)) || keyword.split(/\s+/)[0] || '여행지';
+  const subject = destination && destination !== keyword ? destination : '이 여행';
+  const seed = `${item.id || ''}|${item.topic || ''}|${primaryKeyword || ''}|${destination || ''}`;
+  const pick = (variants: string[]) => {
+    let hash = 0;
+    for (const char of seed) hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
+    return variants[hash % variants.length] ?? variants[0] ?? '';
+  };
+  const keywordParticle = (() => {
+    const chars = Array.from(keyword.trim()).reverse();
+    const lastHangul = chars.find((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 0xac00 && code <= 0xd7a3;
+    });
+    return lastHangul && ((lastHangul.charCodeAt(0) - 0xac00) % 28) > 0 ? '은' : '는';
+  })();
+  const context = `${item.topic || ''} ${keyword} ${item.category || ''}`;
+  const currentYear = new Date().getFullYear();
+  const shortLabel = /보험|보장|병원|수하물|상해|질병|분실/.test(context)
+    ? '여행자 보험'
+    : /로밍|유심|이심|eSIM|데이터|통신|전화/.test(context)
+      ? '통신 준비'
+      : /비자|입국|서류|여권|세관|면세/.test(context)
+        ? '입국 서류'
+        : /공항|픽업|택시|렌터카|교통|이동|동선|시내/.test(context)
+          ? '공항 이동'
+          : /아이|가족|일정|코스/.test(context)
+            ? '가족 일정'
+            : /예산|비용|식비|경비|쇼핑/.test(context)
+              ? '여행 경비'
+              : '여행 준비';
+  const lead = /보험|보장|병원|수하물|상해|질병|분실/.test(context)
+    ? pick([
+      `${keyword}${keywordParticle} 1차로 항공 지연, 병원 이용, 수하물 분실, 현지 결제 가능 범위를 비교하면 필요 여부를 판단하기 쉽습니다. 여행 기간, 동행자 나이, 기존 카드 보험을 확인한 뒤 부족한 보장만 추가하세요.`,
+      `${keyword}${keywordParticle} 보장 이름보다 실제로 쓸 상황을 먼저 보는 편이 안전합니다. 항공 지연, 병원비, 수하물 분실, 동행자 나이를 나누면 과한 보장과 부족한 보장을 구분할 수 있습니다.`,
+    ])
+    : /로밍|유심|이심|eSIM|데이터|통신|전화/.test(context)
+      ? pick([
+        `${keyword}${keywordParticle} 가격만 보지 말고 개통 방식, 데이터 용량, 통화 필요 여부, 현지 앱 인증 가능성을 함께 확인해야 합니다. 짧은 일정은 로밍, 장기·가족 일정은 유심이나 eSIM 비교가 유리한 경우가 많습니다.`,
+        `${keyword}${keywordParticle} 공항에서 시간을 줄이려면 구매 가격보다 개통 난이도를 먼저 봐야 합니다. 동행자가 많으면 공유 방식, 혼자라면 인증과 통화 가능 여부를 기준으로 고르세요.`,
+      ])
+      : /비자|입국|서류|여권|세관|면세/.test(context)
+        ? pick([
+          `${keyword}${keywordParticle} 출발 2주 전 무비자 가능 여부, 체류 가능 일수, 여권 6개월 기준, 항공사 요구 서류를 공식 안내로 다시 확인해야 합니다. 여권·항공권·숙소 정보·입국 신고 조건을 나누면 공항에서 빠뜨릴 항목을 줄일 수 있습니다.`,
+          `${keyword}${keywordParticle} 후기보다 공식 조건을 먼저 확인해야 하는 항목입니다. 여권 유효기간, 체류 가능 일수, 항공사 서류 요구를 따로 보면 공항에서 다시 줄 서는 일을 줄일 수 있습니다.`,
+        ])
+        : /공항|픽업|택시|렌터카|교통|이동|동선|시내/.test(context)
+          ? pick([
+            `${keyword}${keywordParticle} 도착 시간, 숙소 위치, 결제 수단, 이동 앱 사용 가능 여부를 함께 봐야 첫날 1~2시간 손실을 줄일 수 있습니다. 짐이 많거나 밤 도착이면 택시·픽업, 낮 도착이면 앱 호출과 셔틀을 비교하세요.`,
+            `${keyword}${keywordParticle} 첫날 피로를 줄이려면 가장 싼 이동수단보다 실패 가능성이 낮은 방법을 먼저 고르는 편이 좋습니다. 도착 시간, 짐 개수, 숙소 위치, 결제 수단을 함께 확인하세요.`,
+          ])
+          : /아이|가족|일정|코스/.test(context)
+            ? pick([
+              `${destination} 가족여행은 하루 코스를 많이 넣기보다 이동 1회당 시간, 숙소 위치, 식사·휴식 시간을 먼저 맞추는 편이 좋습니다. 첫날은 이동과 휴식, 둘째 날 이후는 투어·리조트·시내 일정을 나눠 잡으세요.`,
+              `${destination} 가족 일정은 관광지 개수보다 컨디션 관리가 먼저입니다. 공항 이동, 낮잠이나 휴식 시간, 식사 간격을 잡아 두면 아이와 부모님 모두 일정이 편해집니다.`,
+            ])
+            : /예산|비용|식비|경비|쇼핑/.test(context)
+              ? pick([
+                `${keyword}${keywordParticle} 항공·숙소 결제액과 현지 식비, 교통비, 선택 관광, 팁을 따로 봐야 실제 총액이 잡힙니다. 먼저 1인 비용과 가족 총액, 현지 추가비 가능 항목을 나누면 과소예산을 줄일 수 있습니다.`,
+                `${keyword}${keywordParticle} 표시 가격만 보면 저렴해 보여도 현지에서 다시 쓰는 돈이 생길 수 있습니다. 결제 완료 금액, 식비, 이동비, 선택 관광, 카드 수수료 5가지를 나눠 계산하세요.`,
+                `${keyword}${keywordParticle} 예산표를 만들 때는 “이미 낸 돈”과 “현장에서 낼 돈”을 분리해야 합니다. 가족이나 단체 일정은 1인 금액보다 전체 총액으로 비교하는 편이 정확합니다.`,
+              ])
+              : pick([
+                `${keyword}${keywordParticle} 일정, 비용, 이동 시간, 현지 확인 조건을 먼저 나누면 판단이 쉽습니다. 출발일 기준으로 바뀔 수 있는 항목을 다시 확인하고, 표와 체크리스트에서 필요한 부분만 빠르게 비교하세요.`,
+                `${keyword}${keywordParticle} 처음부터 모든 정보를 읽기보다 바뀔 수 있는 항목을 먼저 보는 편이 좋습니다. 출발일, 인원, 이동 시간, 현지 결제 조건을 나누면 준비 기준이 선명해집니다.`,
+                `${keyword}${keywordParticle} 준비 순서를 잡으면 불필요한 검색 시간을 줄일 수 있습니다. 공식 확인이 필요한 항목과 개인 취향으로 고를 항목을 나눠 보고 마지막에 체크리스트로 정리하세요.`,
+              ]);
+
+  return [
+    `# ${keyword}`,
+    '',
+    lead,
+    '',
+    '## 먼저 볼 4가지',
+    '',
+    `- ${subject}은 출발일, 인원, 숙소 위치, 항공 시간에 따라 준비 기준이 달라집니다.`,
+    '- 정책, 항공, 현지 교통, 날씨처럼 바뀔 수 있는 항목은 출발 7일 전과 24시간 전에 다시 확인합니다.',
+    '- 비용은 결제 완료 금액과 현지 추가 비용을 분리해서 봐야 예산 오차를 줄일 수 있습니다.',
+    '- 아이·부모님 동반 일정은 이동 시간 30분 차이도 체감 피로가 커질 수 있습니다.',
+    '',
+    '## 빠른 판단표',
+    '',
+    '| 상황 | 먼저 볼 것 | 문의 전 확인할 점 |',
+    '| --- | --- | --- |',
+    `| 처음 가는 일정 | 입국, 이동, 결제, 통신 | 여권 정보와 항공권 영문 이름 일치 여부 |`,
+    '| 가족 여행 | 이동 시간, 숙소 위치, 식사 간격 | 아이 연령, 침대 조건, 차량 탑승 시간 |',
+    '| 예산 중심 | 총액, 현지 추가비, 취소 규정 | 포함/불포함 항목과 환율 변동 가능성 |',
+    '| 짧은 일정 | 공항 동선, 첫날 피로도 | 늦은 도착이면 야간 일정을 줄일지 여부 |',
+    '',
+    '## 준비 순서',
+    '',
+    `1. 출발 2주 전에는 여권, 항공권, 숙소 예약, 입국 조건을 먼저 확인합니다.`,
+    '2. 출발 7일 전에는 날씨, 현지 결제 수단, 통신 준비, 이동 앱 사용 가능 여부를 다시 봅니다.',
+    '3. 출발 전날에는 바우처, 보험, 비상 연락처, 공항 이동 시간을 동행자와 공유합니다.',
+    '4. 현지에서는 일정 변경 가능성이 있으니 첫날과 마지막 날은 여유 시간을 남겨둡니다.',
+    '',
+    '## 실수하기 쉬운 부분',
+    '',
+    `같은 지역 일정이라도 항공 도착 시간과 숙소 위치에 따라 체감 난이도가 크게 달라집니다. 낮 도착이면 이동 후 가벼운 식사와 산책이 가능하지만, 밤 도착이면 숙소 이동과 체크인만 해도 피로가 쌓일 수 있습니다.`,
+    '',
+    '비용도 상품가나 항공권만 보면 부족합니다. 현지 교통비, 식비, 선택 관광, 팁, 카드 수수료, 환율 변동까지 따로 봐야 실제 총액이 잡힙니다. 특히 가족 여행은 1인 금액보다 가족 총액으로 비교하는 편이 안전합니다.',
+    '',
+    '## 상황별 선택 기준',
+    '',
+    '아이와 함께라면 이동 시간을 가장 먼저 줄이는 편이 좋습니다. 숙소가 조금 비싸더라도 공항, 식당, 주요 일정과 가까우면 대기 시간이 줄고 컨디션 관리가 쉬워집니다. 부모님과 함께라면 계단, 차량 탑승 시간, 식사 간격, 화장실 접근성을 같이 봐야 합니다.',
+    '',
+    '친구나 커플 일정이라면 비용과 자유 시간을 더 세밀하게 비교할 수 있습니다. 다만 첫날부터 빡빡한 일정을 넣으면 항공 지연이나 입국 대기 시간이 생겼을 때 전체 계획이 밀릴 수 있습니다. 첫날은 체크인과 주변 동선 확인, 둘째 날부터 핵심 일정을 배치하는 구성이 안정적입니다.',
+    '',
+    '예산을 아끼고 싶다면 가장 싼 선택지만 고르기보다 포함 항목을 먼저 나눠야 합니다. 공항 이동, 식사, 선택 관광, 보험, 통신, 현지 팁이 빠져 있으면 처음에는 저렴해 보여도 총액은 올라갈 수 있습니다. 반대로 이미 포함된 항목이 많다면 표시 가격이 조금 높아도 실제 지출은 더 안정적일 수 있습니다.',
+    '',
+    '## 출발 전 최종 체크',
+    '',
+    '- 여권 유효기간, 항공권 영문 이름, 숙소 예약자 이름을 서로 맞춰 봅니다.',
+    '- 항공 도착 시간이 늦다면 첫날 일정은 식사와 체크인 중심으로 줄입니다.',
+    '- 카드 결제 가능 여부와 소액 현금 준비를 나눠 확인합니다.',
+    '- 현지 통신은 로밍, 유심, eSIM 중 개통 난이도와 동행자 수를 기준으로 고릅니다.',
+    '- 비상 연락처, 보험 증권, 예약 번호는 휴대폰과 종이 메모에 나눠 보관합니다.',
+    '',
+    '## 고객이 많이 헷갈리는 부분',
+    '',
+    '예약 전에는 “가능하다”와 “확정됐다”를 구분해야 합니다. 항공 좌석, 객실 가능 여부, 차량 배정, 현지 행사 일정은 조회 시점에 따라 달라질 수 있습니다. 그래서 상담이나 예약 전 확인에서는 금액만 묻기보다 출발일, 인원, 아이 나이, 원하는 객실, 피하고 싶은 이동 시간을 함께 알려주는 편이 빠릅니다.',
+    '',
+    '또 하나는 공식 정보와 후기 정보를 섞어 보는 문제입니다. 후기는 실제 체감 난이도를 이해하는 데 도움이 되지만, 비자, 입국, 항공, 안전, 날씨 경보처럼 바뀔 수 있는 정보는 공식 안내를 기준으로 마지막에 다시 확인해야 합니다. 이 글의 숫자와 예시는 판단 기준이고, 최종 조건은 출발 시점 안내가 기준입니다.',
+    '',
+    '## 공식 확인 링크',
+    '',
+    '- [외교부 해외안전여행](https://www.0404.go.kr/)',
+    '- [외교부](https://www.mofa.go.kr/)',
+    '',
+    '## 문의 전 질문',
+    '',
+    'Q. 언제 확인하면 좋나요?',
+    `A. ${currentYear}년 기준으로는 출발 2주 전 1차 확인, 출발 7일 전 재확인, 출발 24시간 전 최종 확인 순서가 가장 안전합니다.`,
+    '',
+    'Q. 현지에서 바로 바꿔도 되나요?',
+    'A. 가능한 항목도 있지만 공항, 호텔, 현지 업체 조건이 다를 수 있습니다. 비용과 시간 손실을 줄이려면 출발 전에 큰 항목을 정리해 두는 편이 좋습니다.',
+    '',
+    '**내 일정 기준으로 확인하기**',
+    '',
+    `[내 일정 기준으로 가능 여부 확인](${resolveBlogCanonicalOrigin()}/?utm_source=naver_blog&utm_medium=organic&utm_campaign=${encodeURIComponent(buildQueueSlug(item))}&utm_content=bottom_soft_cta)`,
+    '',
+    `[관련 여행 가이드 더 보기](${resolveBlogCanonicalOrigin()}/blog?utm_source=naver_blog&utm_medium=organic&utm_campaign=${encodeURIComponent(buildQueueSlug(item))}&utm_content=related_blog)`,
+    '',
+    `[여행 상품 조건 확인](${resolveBlogCanonicalOrigin()}/packages?utm_source=naver_blog&utm_medium=organic&utm_campaign=${encodeURIComponent(buildQueueSlug(item))}&utm_content=package_check)`,
+  ].join('\n');
+}
+
+async function applyDeterministicInfoFallback(
+  generated: GeneratedBlog,
+  item: any,
+  primaryKeyword?: string | null,
+  reason?: string,
+): Promise<string[]> {
+  if (item.product_id) return [];
+  const changes = ['deterministic_info_fallback'];
+  generated.blog_html = buildDeterministicInfoFallbackMarkdown(item, primaryKeyword);
+  generated.seo_title = repairBlogSeoMetadata({
+    seoTitle: `${primaryKeyword || item.topic} 체크리스트와 비교 기준 2026`,
+    seoDescription: '',
+    topic: item.topic,
+    primaryKeyword,
+    destination: item.destination,
+    category: item.category,
+  }).seoTitle;
+  const fallbackContext = `${item.topic || ''} ${primaryKeyword || ''} ${item.category || ''}`;
+  const fallbackShortLabel = /보험|보장|병원|수하물|상해|질병|분실/.test(fallbackContext)
+    ? '여행자 보험'
+    : /로밍|유심|이심|eSIM|데이터|통신|전화/.test(fallbackContext)
+      ? '통신 준비'
+      : /비자|입국|서류|여권|세관|면세/.test(fallbackContext)
+        ? '입국 서류'
+        : /공항|픽업|택시|렌터카|교통|이동|동선|시내/.test(fallbackContext)
+          ? '공항 이동'
+          : /아이|가족|일정|코스/.test(fallbackContext)
+            ? '가족 일정'
+            : /예산|비용|식비|경비|쇼핑/.test(fallbackContext)
+              ? '여행 경비'
+              : '여행 준비';
+  const fallbackKeyword = String(primaryKeyword || item.topic || fallbackShortLabel);
+  generated.seo_description = `${fallbackKeyword} 기준으로 일정, 비용, 이동, 준비물, 공식 확인 링크, 예약 전 체크 포인트를 한 번에 정리했습니다.`.slice(0, 155);
+  generated.generation_meta = {
+    ...(generated.generation_meta || {}),
+    deterministic_info_fallback: true,
+    deterministic_fallback_reason: reason || null,
+    writer: 'info_writer',
+  };
+  try {
+    const imageResult = await ensureBlogInlineImages({
+      markdown: generated.blog_html,
+      destination: item.destination,
+      primaryKeyword,
+      ogImageUrl: generated.og_image_url,
+      minImages: 3,
+      maxImages: 4,
+    });
+    if (imageResult.inserted > 0) generated.blog_html = imageResult.markdown;
+  } catch { /* fallback remains publishable without blocking image fetch errors */ }
+  generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+  generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+    destination: item.destination,
+    slug: generated.slug,
+    utmSource: 'naver_blog',
+  });
+  const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+  changes.push(...surfaceChanges);
+  const densityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, 'info');
+  if (densityRepair.changed) {
+    generated.blog_html = densityRepair.blogHtml;
+    changes.push('deterministic_keyword_density_repair');
+  }
+  return changes;
+}
+
 function failedGateSet(qa: QualityGateReport): Set<string> {
   return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
 }
@@ -498,7 +833,16 @@ async function repairFailedQualityGates(
     const changes: string[] = [];
     let changed = false;
 
-    if (failed.has('intent_quality') || failed.has('engine_v2')) {
+    if (failed.has('article_quality_v2')) {
+      const articleRepair = repairArticleQualityV2Specifics(generated.blog_html, blogType);
+      if (articleRepair.changes.length > 0) {
+        generated.blog_html = articleRepair.markdown;
+        changes.push(...articleRepair.changes);
+        changed = true;
+      }
+    }
+
+    if (failed.has('intent_quality') || failed.has('engine_v2') || failed.has('article_quality_v2') || failed.has('editorial_quality')) {
       const editorialRepair = repairBlogEditorialQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -517,7 +861,15 @@ async function repairFailedQualityGates(
       }
     }
 
-    if (failed.has('structure_integrity') || failed.has('table_integrity') || failed.has('intent_quality') || failed.has('engine_v2') || failed.has('render_integrity')) {
+    if (
+      failed.has('structure_integrity')
+      || failed.has('table_integrity')
+      || failed.has('intent_quality')
+      || failed.has('engine_v2')
+      || failed.has('render_integrity')
+      || failed.has('article_quality_v2')
+      || failed.has('editorial_quality')
+    ) {
       const structureRepair = repairBlogStructureQuality({
         title: generated.seo_title,
         slug: generated.slug,
@@ -568,6 +920,19 @@ async function repairFailedQualityGates(
       }
     }
 
+    if (failed.has('image_quality')) {
+      const imageRepair = repairBlogImageQuality(generated.blog_html, {
+        destination: item.destination ?? null,
+        primaryKeyword,
+        blogType,
+      });
+      if (imageRepair.changed) {
+        generated.blog_html = imageRepair.markdown;
+        changes.push(...imageRepair.changes);
+        changed = true;
+      }
+    }
+
     if (failed.has('length')) {
       const support = appendPublishReadinessSupport({
         markdown: generated.blog_html,
@@ -585,6 +950,11 @@ async function repairFailedQualityGates(
     }
 
     if (failed.has('engine_v2')) {
+      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
+      if (categoryChanges.length > 0) {
+        changes.push(...categoryChanges);
+        changed = true;
+      }
       const before = generated.blog_html;
       generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
       if (generated.blog_html !== before) {
@@ -651,6 +1021,12 @@ async function repairFailedQualityGates(
       slug: generated.slug,
       utmSource: 'naver_blog',
     });
+    {
+      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (surfaceChanges.length > 0) {
+        changes.push(...surfaceChanges);
+      }
+    }
     qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     console.log(`[blog-publisher] quality repair round ${round}: ${changes.join(', ')} -> passed=${qa.passed}`);
   }
@@ -738,18 +1114,25 @@ async function recoverStaleGeneratingQueueItems(): Promise<{ recovered: number; 
   return { recovered, failed };
 }
 
-async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> = new Set()): Promise<number> {
+async function pullForwardQueuedBacklog(
+  limit: number,
+  excludeIds: Set<string> = new Set(),
+  opts?: {
+    fallbackEligibleOnly?: boolean;
+    priority?: number;
+  },
+): Promise<number> {
   if (limit <= 0) return 0;
 
   const now = new Date().toISOString();
   const { data: candidates, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id')
+    .select('id,product_id,card_news_id,source')
     .eq('status', 'queued')
     .gt('target_publish_at', now)
     .order('priority', { ascending: false })
     .order('target_publish_at', { ascending: true })
-    .limit(limit);
+    .limit(opts?.fallbackEligibleOnly ? Math.max(limit * 3, 12) : limit);
 
   if (error || !candidates || candidates.length === 0) {
     if (error) logWarning('[cron/blog-publisher] backlog pull-forward scan failed', error);
@@ -757,17 +1140,25 @@ async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> =
   }
 
   const ids = candidates
+    .filter((row: { id?: string | null; product_id?: string | null; card_news_id?: string | null; source?: string | null }) =>
+      !opts?.fallbackEligibleOnly || isFastFallbackEligibleInfoItem(row),
+    )
     .map((row: { id?: string | null }) => row.id)
     .filter((id): id is string => typeof id === 'string' && id.length > 0 && !excludeIds.has(id));
   if (ids.length === 0) return 0;
 
+  const updatePayload: Record<string, unknown> = {
+    target_publish_at: now,
+    updated_at: now,
+  };
+  if (typeof opts?.priority === 'number') {
+    updatePayload.priority = opts.priority;
+  }
+
   const { error: updateError } = await supabaseAdmin
     .from('blog_topic_queue')
-    .update({
-      target_publish_at: now,
-      updated_at: now,
-    } as never)
-    .in('id', ids)
+    .update(updatePayload as never)
+    .in('id', ids.slice(0, limit))
     .eq('status', 'queued');
 
   if (updateError) {
@@ -775,7 +1166,45 @@ async function pullForwardQueuedBacklog(limit: number, excludeIds: Set<string> =
     return 0;
   }
 
-  return ids.length;
+  return Math.min(ids.length, limit);
+}
+
+async function releaseUnattemptedClaimedQueueItems(
+  claimedRows: Array<{ id?: string | null; meta?: unknown }>,
+  attemptedIds: Set<string>,
+): Promise<{ released: number; errors: string[] }> {
+  const now = new Date().toISOString();
+  const releaseIds = new Set(getUnattemptedClaimReleaseIds(claimedRows, attemptedIds));
+  let released = 0;
+  const errors: string[] = [];
+
+  for (const row of claimedRows) {
+    const id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : null;
+    if (!id || !releaseIds.has(id)) continue;
+    releaseIds.delete(id);
+    const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+      ? row.meta as Record<string, unknown>
+      : {};
+    const { error } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update({
+        status: 'queued',
+        target_publish_at: now,
+        updated_at: now,
+        last_error: 'publisher_released_unattempted_time_budget_claim',
+        meta: {
+          ...meta,
+          time_budget_claim_released_at: now,
+          time_budget_claim_release_reason: 'not_attempted_before_publisher_exit',
+        },
+      } as never)
+      .eq('id', id)
+      .eq('status', 'generating');
+    if (error) errors.push(`${id}: ${error.message}`);
+    else released += 1;
+  }
+
+  return { released, errors };
 }
 
 async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
@@ -829,7 +1258,13 @@ async function runBlogPublisher(request: NextRequest) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
-  const results: Array<{ id: string; topic: string; status: string; reason?: string }> = [];
+  const results: Array<{
+    id: string;
+    topic: string;
+    status: string;
+    reason?: string;
+    atomicIndexing?: boolean;
+  }> = [];
   const errors: string[] = [];
   const candidateFailures: string[] = [];
   const startTime = Date.now();
@@ -838,6 +1273,14 @@ async function runBlogPublisher(request: NextRequest) {
   try {
     blogStyleGuideCache = null;
     const staleRecovery = await recoverStaleGeneratingQueueItems();
+    const recoverableBacklogRecovery = await recoverRequeueableFailedBlogQueueItems({
+      limit: MAX_CANDIDATE_POOL * 3,
+      recoveredBy: 'blog-publisher-preflight',
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`recoverable_backlog_recovery_failed: ${message}`);
+      return { scanned: 0, requeued: 0, skipped: 0, kept_blocked: 0, errors: [message] };
+    });
     const queueHealthCleanup = await rescheduleOverdueQueuedBlogQueueItems({
       limit: MAX_CANDIDATE_POOL * 3,
       rescheduledBy: 'blog-publisher-preflight',
@@ -868,6 +1311,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        recoverableBacklogRecovery,
         queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
@@ -889,9 +1333,11 @@ async function runBlogPublisher(request: NextRequest) {
       MAX_CANDIDATE_POOL,
       Math.max(MAX_BATCH, remainingToday * CLAIM_POOL_MULTIPLIER),
     );
+    const claimedQueueRows: any[] = [];
     let { data: queue } = await supabaseAdmin.rpc('claim_queue_items', {
       limit_rows: claimLimit,
     });
+    if (Array.isArray(queue)) claimedQueueRows.push(...queue);
 
     if (!queue || queue.length === 0) {
       const pulled = await pullForwardQueuedBacklog(claimLimit, attemptedQueueIds);
@@ -900,6 +1346,7 @@ async function runBlogPublisher(request: NextRequest) {
           limit_rows: claimLimit,
         });
         queue = retryClaim.data;
+        if (Array.isArray(queue)) claimedQueueRows.push(...queue);
         if (retryClaim.error) {
           errors.push(`claim_queue_items retry failed: ${retryClaim.error.message}`);
         }
@@ -918,6 +1365,7 @@ async function runBlogPublisher(request: NextRequest) {
           remaining: remainingToday,
         },
         staleRecovery,
+        recoverableBacklogRecovery,
         queueHealthCleanup,
         preflightQuarantine,
         pillarDeferral,
@@ -938,22 +1386,28 @@ async function runBlogPublisher(request: NextRequest) {
     let emergencyRefillRounds = 0;
     let stoppedForTimeBudget = false;
     const emergencyRefills: Array<Awaited<ReturnType<typeof ensureDailyPublishableQueue>> | null> = [];
-    for (const item of queue) {
+    const orderedInitialQueue = sortPublisherQueueForTimeBudget(queue, {
+      remainingMs: publisherRemainingMs(startTime),
+      minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+      fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+      isFallbackEligible: isFastFallbackEligibleInfoItem,
+    });
+    for (const item of orderedInitialQueue) {
       if (attemptedQueueIds.has(item.id)) {
         results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
         continue;
       }
-      attemptedQueueIds.add(item.id);
       if (publishedThisRun >= remainingToday) {
         break;
       }
       // 남은 시간 체크 — 30초 미만이면 중단
       const remaining = publisherRemainingMs(startTime);
-      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+      if (!canStartPublisherQueueItem(item, remaining)) {
         stoppedForTimeBudget = true;
         console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next item`);
         break;
       }
+      attemptedQueueIds.add(item.id);
       try {
         const r = await processQueueItem(item, eligibleByCardNewsId, { startedAtMs: startTime });
         results.push(r);
@@ -970,23 +1424,38 @@ async function runBlogPublisher(request: NextRequest) {
 
     while (publishedThisRun < remainingToday && extraClaimRounds < MAX_EXTRA_CLAIM_ROUNDS) {
       const remaining = publisherRemainingMs(startTime);
-      if (!canStartPublisherItem(remaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+      const extraClaimPlan = getPublisherExtraClaimRecoveryPlan({
+        remainingMs: remaining,
+        minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+        remainingQuota: remainingToday - publishedThisRun,
+        maxBatch: MAX_BATCH,
+        claimPoolMultiplier: CLAIM_POOL_MULTIPLIER,
+        maxCandidatePool: MAX_CANDIDATE_POOL,
+      });
+      if (!extraClaimPlan.canClaim) {
         stoppedForTimeBudget = true;
-        console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next claim`);
+        console.log(`[blog-publisher] remaining ${Math.round(remaining / 1000)}s - stopping before next claim: ${extraClaimPlan.reason}`);
         break;
       }
 
-      const remainingQuota = remainingToday - publishedThisRun;
-      const extraClaimLimit = Math.min(
-        MAX_CANDIDATE_POOL,
-        Math.max(MAX_BATCH, remainingQuota * CLAIM_POOL_MULTIPLIER),
-      );
+      const remainingQuota = extraClaimPlan.remainingQuota;
+      const extraClaimLimit = extraClaimPlan.claimLimit;
       extraClaimRounds += 1;
+      const lowTimeFallbackOnly = extraClaimPlan.fallbackEligibleOnly;
+      if (lowTimeFallbackOnly) {
+        const pulledFallback = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds, {
+          fallbackEligibleOnly: true,
+          priority: 95,
+        });
+        pullForwarded += pulledFallback;
+      }
 
       const nextClaimResult = await supabaseAdmin.rpc('claim_queue_items', {
         limit_rows: extraClaimLimit,
       });
       let nextQueue = nextClaimResult.data;
+      if (Array.isArray(nextQueue)) claimedQueueRows.push(...nextQueue);
       const nextClaimError = nextClaimResult.error;
       if (nextClaimError) {
         errors.push(`claim_queue_items extra failed: ${nextClaimError.message}`);
@@ -1005,7 +1474,9 @@ async function runBlogPublisher(request: NextRequest) {
         });
         emergencyRefills.push(emergencyRefill);
 
-        const pulled = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds);
+        const pulled = await pullForwardQueuedBacklog(extraClaimLimit, attemptedQueueIds, lowTimeFallbackOnly
+          ? { fallbackEligibleOnly: true, priority: 95 }
+          : undefined);
         pullForwarded += pulled;
         if (pulled <= 0 && !emergencyRefill?.added) break;
 
@@ -1013,6 +1484,7 @@ async function runBlogPublisher(request: NextRequest) {
           limit_rows: extraClaimLimit,
         });
         nextQueue = retryClaim.data;
+        if (Array.isArray(nextQueue)) claimedQueueRows.push(...nextQueue);
         if (retryClaim.error) {
           errors.push(`claim_queue_items extra retry failed: ${retryClaim.error.message}`);
           break;
@@ -1027,20 +1499,27 @@ async function runBlogPublisher(request: NextRequest) {
       const nextEligibleByCardNewsId =
         nextCardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(nextCardNewsIds) : new Map<string, number>();
 
-      for (const item of nextQueue) {
+      const orderedNextQueue = sortPublisherQueueForTimeBudget(nextQueue, {
+        remainingMs: publisherRemainingMs(startTime),
+        minItemStartMs: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
+        isFallbackEligible: isFastFallbackEligibleInfoItem,
+      });
+
+      for (const item of orderedNextQueue) {
         if (attemptedQueueIds.has(item.id)) {
           results.push({ id: item.id, topic: item.topic, status: 'skipped', reason: 'already_attempted_this_run' });
           continue;
         }
-        attemptedQueueIds.add(item.id);
         if (publishedThisRun >= remainingToday) break;
 
         const itemRemaining = publisherRemainingMs(startTime);
-        if (!canStartPublisherItem(itemRemaining, BLOG_PUBLISHER_MIN_ITEM_START_MS)) {
+        if (!canStartPublisherQueueItem(item, itemRemaining)) {
           stoppedForTimeBudget = true;
           console.log(`[blog-publisher] remaining ${Math.round(itemRemaining / 1000)}s - stopping before next item`);
           break;
         }
+        attemptedQueueIds.add(item.id);
 
         try {
           const r = await processQueueItem(item, nextEligibleByCardNewsId, { startedAtMs: startTime });
@@ -1055,6 +1534,11 @@ async function runBlogPublisher(request: NextRequest) {
           candidateFailures.push(`${item.id} fatal: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
+    }
+
+    const timeBudgetClaimRelease = await releaseUnattemptedClaimedQueueItems(claimedQueueRows, attemptedQueueIds);
+    if (timeBudgetClaimRelease.errors.length > 0) {
+      errors.push(...timeBudgetClaimRelease.errors.map((error) => `time_budget_claim_release_failed:${error}`));
     }
 
     const baseUrl = resolveBlogCanonicalOrigin();
@@ -1077,7 +1561,7 @@ async function runBlogPublisher(request: NextRequest) {
     // Indexing outbox + revalidatePath. External provider requests run in blog-indexing-worker.
     const indexingPromises: Promise<{ slug: string; ok: boolean; error?: string }>[] = [];
     for (const r of results) {
-      if (r.status === 'published' && r.reason) {
+      if (r.status === 'published' && r.reason && !r.atomicIndexing) {
         const slug = r.reason;
         const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
         indexingPromises.push((async () => {
@@ -1203,6 +1687,7 @@ async function runBlogPublisher(request: NextRequest) {
         attempted_candidates: attemptedQueueIds.size,
       },
       staleRecovery,
+      recoverableBacklogRecovery,
       queueHealthCleanup,
       preflightQuarantine,
       pillarDeferral,
@@ -1218,9 +1703,11 @@ async function runBlogPublisher(request: NextRequest) {
       emergencyRefillRounds,
       emergencyRefills,
       pullForwarded,
+      timeBudgetClaimRelease,
       time_budget: {
         max_exec_ms: MAX_EXEC_MS,
         min_item_start_ms: BLOG_PUBLISHER_MIN_ITEM_START_MS,
+        fast_fallback_min_item_start_ms: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
         item_finish_reserve_ms: BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS,
         optional_work_min_ms: BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS,
         remaining_ms: publisherRemainingMs(startTime),
@@ -1242,11 +1729,55 @@ export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
   sideEffectTimeoutMs: 5_000,
 });
 
+async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
+  const scope = buildRecentInfoDuplicateScope(item);
+  if (!scope) return false;
+  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  let query = supabaseAdmin
+    .from('content_creatives')
+    .select('id', { count: 'exact', head: true })
+    .eq('channel', 'naver_blog')
+    .eq('status', 'published')
+    .eq('destination', scope.destination)
+    .eq('angle_type', scope.angleType)
+    .is('product_id', null)
+    .gte('published_at', cutoff);
+
+  // Refill candidates under the broad `value` angle are intentionally
+  // distinct when their micro angles differ. Legacy rows without a micro
+  // angle keep the conservative destination+angle duplicate rule.
+  if (scope.microAngle) {
+    query = query.contains('generation_meta', { micro_angle: scope.microAngle });
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    logWarning('[cron/blog-publisher] recent duplicate precheck failed', {
+      id: item.id,
+      destination: scope.destination,
+      angleType: scope.angleType,
+      microAngle: scope.microAngle,
+      error: error.message,
+    });
+    return false;
+  }
+
+  return Number(count ?? 0) > 0;
+}
+
 async function processQueueItem(
   item: any,
   eligibleByCardNewsId: Map<string, number>,
   options: { startedAtMs?: number } = {},
-): Promise<{ id: string; topic: string; status: string; reason?: string }> {
+): Promise<{
+  id: string;
+  topic: string;
+  status: string;
+  reason?: string;
+  atomicIndexing?: boolean;
+}> {
   // 동시성 방지 — generating 락
   const { error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -1260,6 +1791,17 @@ async function processQueueItem(
 
   try {
     const startedAtMs = options.startedAtMs ?? Date.now();
+    const contentBoundary = routeBlogContentLane({
+      source: item.source,
+      productId: item.product_id ?? null,
+      cardNewsId: item.card_news_id ?? null,
+      declaredLane: item.content_lane ?? null,
+    });
+    if (!contentBoundary.passed) {
+      const reason = `content_boundary_failed:${contentBoundary.issue}`;
+      await handleFailure(item, reason, null, true, { content_boundary: contentBoundary });
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
     if (item.card_news_id) {
       const cnid = item.card_news_id as string;
       const eligibleMs =
@@ -1309,6 +1851,14 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'skipped', reason };
     }
 
+    if (await isRecentInfoDuplicateCandidate(item)) {
+      const reason = `recent_info_duplicate_before_generation: 최근 14일 내 ${item.destination ?? '동일 목적지'} + ${item.angle_type ?? 'value'} 정보성 글 이미 발행됨`;
+      await handleFailure(item, reason, null, false, {
+        pre_generation_duplicate_check: true,
+      });
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
+
     let generated: GeneratedBlog;
     /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
     let promoteDraftId: string | null = null;
@@ -1322,7 +1872,7 @@ async function processQueueItem(
         return { id: item.id, topic: item.topic, status: 'error', reason };
       }
       generated = await withGenerationBudget(startedAtMs, 'pillar_generation', () => generatePillar(item, pillarContext));
-    } else if (item.card_news_id) {
+    } else if (contentBoundary.lane === 'card_news_bridge') {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
         .from('card_news')
@@ -1376,10 +1926,70 @@ async function processQueueItem(
       } else {
         generated = await withGenerationBudget(startedAtMs, 'card_news_generation', () => generateFromCardNews(item, eligibleByCardNewsId));
       }
-    } else if (item.source === 'product' && item.product_id) {
+    } else if (contentBoundary.lane === 'product') {
       generated = await withGenerationBudget(startedAtMs, 'product_generation', () => generateFromProduct(item));
     } else {
-      generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
+      const remainingBeforeTopicGeneration = publisherRemainingMs(startedAtMs);
+      if (shouldUseFastDeterministicInfoFallback(item, remainingBeforeTopicGeneration)) {
+        generated = {
+          blog_html: '',
+          slug: buildQueueSlug(item),
+          seo_title: item.topic || item.primary_keyword || '여행 준비 가이드',
+          seo_description: '',
+          generation_meta: {
+            writer: 'info_writer',
+            deterministic_fast_fallback: true,
+            deterministic_fast_fallback_remaining_ms: remainingBeforeTopicGeneration,
+          },
+        };
+        await applyDeterministicInfoFallback(
+          generated,
+          item,
+          item.primary_keyword ?? item.destination ?? item.topic,
+          `low_time_budget:${remainingBeforeTopicGeneration}ms`,
+        );
+      } else {
+        try {
+          generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
+        } catch (error) {
+          generated = {
+            blog_html: '',
+            slug: buildQueueSlug(item),
+            seo_title: item.topic || item.primary_keyword || '여행 준비 가이드',
+            seo_description: '',
+            generation_meta: {
+              writer: 'info_writer',
+              topic_generation_error: error instanceof Error ? error.message : String(error),
+            },
+          };
+          await applyDeterministicInfoFallback(
+            generated,
+            item,
+            item.primary_keyword ?? item.destination ?? item.topic,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
+    }
+
+    // Deterministic fallback copy is only an operational recovery artifact. It is
+    // intentionally generic and therefore must never become a public/searchable
+    // article, even if downstream shape/SEO gates happen to pass.
+    if (
+      generated.generation_meta?.deterministic_info_fallback === true
+      || generated.generation_meta?.deterministic_fast_fallback === true
+    ) {
+      const reason = 'deterministic_info_fallback_not_publishable';
+      const failureStatus = await handleFailure(item, reason, null, false, {
+        deterministic_fallback_blocked: true,
+        deterministic_fallback_reason: generated.generation_meta?.deterministic_fallback_reason ?? null,
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: failureStatus === 'skipped' ? 'skipped' : 'gate_failed',
+        reason,
+      };
     }
 
     const slugNormalized = normalizeGeneratedSlug(generated, item);
@@ -1393,9 +2003,22 @@ async function processQueueItem(
         .eq('id', promoteDraftId);
     }
 
+    if (contentBoundary.lane === 'informational') {
+      generated.blog_html = stripBlogInformationalBodyCtas(generated.blog_html);
+    }
+
     // 🆕 Topical Authority interlink 자동 주입 (본문 끝 "이 글과 함께 읽기" 섹션)
     try {
-      generated.blog_html = await appendInterlinkSection(generated.blog_html, generated.slug, item.destination);
+      generated.blog_html = await appendInterlinkSection(
+        generated.blog_html,
+        generated.slug,
+        item.destination,
+        {
+          generationMeta: generated.generation_meta,
+          contentType: item.source === 'pillar' ? 'pillar' : 'blog',
+          pillarFor: item.source === 'pillar' ? item.destination : null,
+        },
+      );
     } catch { /* interlink 실패는 발행을 막지 않음 */ }
 
     // Cold-start safety: AI가 internal link / CTA를 빠뜨렸을 때 표준 CTA 블록을 주입
@@ -1408,7 +2031,7 @@ async function processQueueItem(
       const decoded = decodeURIComponent(href);
       return /\/packages|utm_|kakao|consult|문의|예약/i.test(decoded);
     }).length;
-    if (internalLinkCount < 3 || ctaLinkCount < 2) {
+    if (contentBoundary.lane !== 'informational' && (internalLinkCount < 3 || ctaLinkCount < 2)) {
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
@@ -1530,6 +2153,7 @@ async function processQueueItem(
     const readinessRepair = repairPublishReadiness({
       markdown: generated.blog_html,
       blogType,
+      hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
       slug: generated.slug,
       destination: item.destination,
       topic: item.topic,
@@ -1538,6 +2162,20 @@ async function processQueueItem(
     if (readinessRepair.changed) {
       generated.blog_html = readinessRepair.markdown;
       console.log(`[blog-publisher] publish readiness repair: ${readinessRepair.changes.join(', ')}`);
+    }
+
+    {
+      const categoryChanges = applyEngineCategoryRepair(generated, item, blogType, primaryKeyword);
+      if (categoryChanges.length > 0) {
+        console.log(`[blog-publisher] engine category repair: ${categoryChanges.join(', ')}`);
+      }
+    }
+
+    {
+      const surfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (surfaceChanges.length > 0) {
+        console.log(`[blog-publisher] final customer surface repair: ${surfaceChanges.join(', ')}`);
+      }
     }
 
     let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
@@ -1560,6 +2198,14 @@ async function processQueueItem(
 
     if (!qa.passed) {
       qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);
+    }
+
+    if (!qa.passed && blogType === 'info') {
+      const fallbackChanges = await applyDeterministicInfoFallback(generated, item, primaryKeyword, qa.summary);
+      if (fallbackChanges.length > 0) {
+        console.log(`[blog-publisher] deterministic info fallback: ${fallbackChanges.join(', ')}`);
+        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      }
     }
 
     if (!qa.passed) {
@@ -1614,6 +2260,7 @@ async function processQueueItem(
       secondaryKeywords: item.meta?.keywords ?? [],
       destination: item.destination,
       blogType,
+      hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
       imageCount: imgCount,
       imagesWithAlt: imgWithAlt,
       hasJsonLd: {
@@ -1641,7 +2288,10 @@ async function processQueueItem(
 
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
-    if (seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')) {
+    if (
+      contentBoundary.lane !== 'informational'
+      && seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')
+    ) {
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
@@ -1680,7 +2330,132 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
     }
 
-    const readability = computeReadability(generated.blog_html);
+    let publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+    if (!publishQuality.passed) {
+      const finalRepairChanges: string[] = [];
+      let finalRepairChanged = false;
+
+      const finalArticleRepair = repairArticleQualityV2Specifics(generated.blog_html, blogType);
+      if (finalArticleRepair.changes.length > 0) {
+        generated.blog_html = finalArticleRepair.markdown;
+        finalRepairChanges.push(...finalArticleRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalEditorialRepair = repairBlogEditorialQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        destination: item.destination ?? null,
+        angleType: normalizeAngleType(item.angle_type),
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (finalEditorialRepair.changed) {
+        generated.blog_html = finalEditorialRepair.blogHtml;
+        finalRepairChanges.push(...finalEditorialRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalStructureRepair = repairBlogStructureQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        destination: item.destination ?? null,
+        angleType: normalizeAngleType(item.angle_type),
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (finalStructureRepair.changed) {
+        generated.blog_html = finalStructureRepair.blogHtml;
+        finalRepairChanges.push(...finalStructureRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalDensityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, blogType);
+      if (finalDensityRepair.changed) {
+        generated.blog_html = finalDensityRepair.blogHtml;
+        finalRepairChanges.push('final_keyword_density_repair');
+        finalRepairChanged = true;
+      }
+
+      const finalReadinessRepair = repairPublishReadiness({
+        markdown: generated.blog_html,
+        blogType,
+        hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
+        slug: generated.slug,
+        destination: item.destination,
+        topic: item.topic,
+        primaryKeyword,
+      });
+      if (finalReadinessRepair.changed) {
+        generated.blog_html = finalReadinessRepair.markdown;
+        finalRepairChanges.push(...finalReadinessRepair.changes);
+        finalRepairChanged = true;
+      }
+
+      const finalSurfaceChanges = applyFinalCustomerSurfaceRepair(generated, item, primaryKeyword);
+      if (finalSurfaceChanges.length > 0) {
+        finalRepairChanges.push(...finalSurfaceChanges);
+        finalRepairChanged = true;
+      }
+
+      if (finalRepairChanged) {
+        generated.generation_meta = {
+          ...(generated.generation_meta || {}),
+          repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0) + 1,
+        };
+        generated.blog_html = sanitizeBlogCtaLinks(generated.blog_html, {
+          destination: item.destination,
+          slug: generated.slug,
+          utmSource: 'naver_blog',
+        });
+        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+        seoScore = computeSeoScore(buildSeoScoreInput());
+        publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+        console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ')} -> passed=${publishQuality.passed}`);
+      }
+    }
+
+    if (!publishQuality.passed && blogType === 'info') {
+      const fallbackChanges = await applyDeterministicInfoFallback(generated, item, primaryKeyword, publishQuality.summary);
+      if (fallbackChanges.length > 0) {
+        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+        seoScore = computeSeoScore(buildSeoScoreInput());
+        publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+        console.log(`[blog-publisher] deterministic info fallback before publish: ${fallbackChanges.join(', ')} -> passed=${publishQuality.passed}`);
+      }
+    }
+
+    if (!publishQuality.passed) {
+      console.log(`[blog-publisher] publish quality blocked (${publishQuality.summary})`);
+      const failureStatus = await handleFailure(item, publishQuality.summary, publishQuality.qualityGate, false, {
+        last_publish_quality: {
+          score: publishQuality.blogQualityScore.score,
+          issues: publishQuality.blogQualityScore.issues.slice(0, 8),
+          components: publishQuality.blogQualityScore.components.map((component) => ({
+            id: component.id,
+            passed: component.passed,
+            score: component.score,
+            issue_codes: component.issues.map((issue) => issue.code).slice(0, 5),
+          })),
+        },
+      });
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: failureStatus === 'skipped' ? 'skipped' : 'publish_quality_failed',
+        reason: publishQuality.summary,
+      };
+    }
+
+    qa = publishQuality.qualityGate;
+    seoScore = publishQuality.seoScore;
+    const readability = publishQuality.readability;
     const now = new Date().toISOString();
     const engineGate = qa.gates.find(gate => gate.gate === 'engine_v2');
     const engineEvaluation = engineGate?.evidence && typeof engineGate.evidence === 'object'
@@ -1689,6 +2464,9 @@ async function processQueueItem(
     const engineMetrics = engineEvaluation?.metrics && typeof engineEvaluation.metrics === 'object'
       ? engineEvaluation.metrics as Record<string, unknown>
       : {};
+    const engineCategoryScores = Array.isArray(engineEvaluation?.category_scores)
+      ? engineEvaluation.category_scores
+      : [];
     const engineBrief = engineEvaluation?.brief && typeof engineEvaluation.brief === 'object'
       ? engineEvaluation.brief as Record<string, unknown>
       : {};
@@ -1704,10 +2482,123 @@ async function processQueueItem(
       brief_score: typeof engineMetrics.task_completion === 'number' ? engineMetrics.task_completion : null,
       evidence_score: typeof engineMetrics.source_support === 'number' ? engineMetrics.source_support : null,
       engine_score: typeof engineEvaluation?.score === 'number' ? engineEvaluation.score : null,
+      engine_category_scores: engineCategoryScores,
       failure_bucket: engineEvaluation?.failure_bucket ?? null,
       repair_attempts: Number(generated.generation_meta?.repair_attempts ?? 0),
       evidence_items: Array.isArray(engineBrief.evidence_items) ? engineBrief.evidence_items : [],
     };
+    const representativeOwner = `blog_topic_queue:${item.id}`;
+    let representativeDecision: BlogInformationDuplicateDecision | null = null;
+    let representativeIdentity: BlogInformationRepresentativeIdentity | null = null;
+    if (contentBoundary.lane === 'informational') {
+      representativeIdentity = readBlogInformationRepresentativeIdentity(generated.generation_meta);
+      if (!representativeIdentity) throw new Error('blog_information_representative_identity_missing');
+      generationMeta.information_representative = {
+        representative_key: buildBlogInformationRepresentativeKey(representativeIdentity),
+        status: 'pending_publication',
+        canonical_slug: null,
+      };
+    }
+    const writerClaimLedgerMeta = generated.generation_meta?.writer_claim_ledger;
+    const writerClaimLedgerRecord = writerClaimLedgerMeta
+      && typeof writerClaimLedgerMeta === 'object'
+      && !Array.isArray(writerClaimLedgerMeta)
+      ? writerClaimLedgerMeta as Record<string, unknown>
+      : null;
+    const writerClaimLedger = Array.isArray(writerClaimLedgerRecord?.claims)
+      ? writerClaimLedgerRecord.claims as BlogInformationClaimLedgerEntry[]
+      : [];
+    const writerClaimLedgerIssues = Array.isArray(writerClaimLedgerRecord?.issues)
+      ? writerClaimLedgerRecord.issues.filter((issue): issue is string => typeof issue === 'string').slice(0, 20)
+      : (contentBoundary.lane === 'informational' ? ['claim_ledger_missing'] : []);
+    const generatedPlanBrief = generated.generation_meta?.content_brief;
+    const generatedPlanBriefRecord = generatedPlanBrief
+      && typeof generatedPlanBrief === 'object'
+      && !Array.isArray(generatedPlanBrief)
+      ? generatedPlanBrief as Record<string, unknown>
+      : null;
+    const claimValidation = await evaluateBlogInformationClaimPublishGate({
+      creativeId: promoteDraftId,
+      contentKey: generated.slug,
+      markdown: generated.blog_html,
+      productId: item.product_id ?? null,
+      tenantId: item.tenant_id ?? null,
+      claimLedger: contentBoundary.lane === 'informational' ? writerClaimLedger : undefined,
+      claimLedgerIssues: contentBoundary.lane === 'informational' ? writerClaimLedgerIssues : undefined,
+      intentType: typeof generatedPlanBriefRecord?.intent_type === 'string'
+        ? generatedPlanBriefRecord.intent_type
+        : null,
+      expectedScope: contentBoundary.lane === 'informational'
+        ? {
+            destination: item.destination ?? undefined,
+            applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
+              ? generatedPlanBriefRecord.traveler_nationality
+              : typeof generatedPlanBriefRecord?.audience === 'string'
+                ? generatedPlanBriefRecord.audience
+                : undefined,
+            locale: typeof generatedPlanBriefRecord?.locale === 'string'
+              ? generatedPlanBriefRecord.locale
+              : undefined,
+          }
+        : undefined,
+    });
+    generationMeta.information_claim_validation = {
+      passed: claimValidation.passed,
+      coverage: claimValidation.coverage,
+      claim_count: claimValidation.claims.length,
+      requires_human_review: claimValidation.requiresHumanReview,
+      issues: claimValidation.issues.slice(0, 20),
+      ledger: claimValidation.ledger ?? null,
+      auto_regeneration_attempts: 0,
+      auto_regeneration_limit: 0,
+      ...(claimValidation.lookupError ? { lookup_error: claimValidation.lookupError } : {}),
+    };
+    const plannedHumanReview = generatedPlanBrief
+      && typeof generatedPlanBrief === 'object'
+      && !Array.isArray(generatedPlanBrief)
+      && (generatedPlanBrief as Record<string, unknown>).requires_human_review === true;
+    const requiresClaimReview = blogType === 'info' && !claimValidation.passed;
+    const requiresHumanReview = blogType === 'info'
+      && (requiresClaimReview || plannedHumanReview || isHighRiskInformationalTopic({
+        title: generated.seo_title ?? item.topic ?? null,
+        category: item.category ?? null,
+        contentType: item.source === 'pillar' ? 'pillar' : 'guide',
+        topic: item.topic ?? null,
+      }));
+    if (representativeIdentity && requiresHumanReview) {
+      representativeDecision = await reserveBlogInformationRepresentative({
+        reservationOwner: representativeOwner,
+        candidate: {
+          ...representativeIdentity,
+          slug: generated.slug,
+          title: generated.seo_title,
+          markdown: generated.blog_html,
+        },
+      });
+      generationMeta.information_representative = {
+        representative_key: representativeDecision.representativeKey,
+        status: 'reserved',
+        canonical_slug: representativeDecision.canonicalSlug,
+        decision: representativeDecision.action,
+      };
+      if (!['RESERVE_CREATE', 'RESUME_RESERVATION'].includes(representativeDecision.action)) {
+        await supabaseAdmin.from('blog_topic_queue').update({
+          status: 'skipped',
+          last_error: `information_representative:${representativeDecision.reason}`,
+          meta: {
+            ...(item.meta || {}),
+            information_representative: representativeDecision,
+            proposed_action: 'update_existing',
+          },
+        }).eq('id', item.id);
+        return {
+          id: item.id,
+          topic: item.topic,
+          status: 'skipped_duplicate',
+          reason: representativeDecision.canonicalSlug ?? representativeDecision.reason,
+        };
+      }
+    }
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
@@ -1719,9 +2610,12 @@ async function processQueueItem(
       category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: normalizeAngleType(item.angle_type),
-      status: 'published' as const,
-      published_at: now,
-      quality_gate: qa,
+      status: contentBoundary.lane === 'informational' || requiresHumanReview ? 'draft' : 'published',
+      published_at: contentBoundary.lane === 'informational' || requiresHumanReview ? null : now,
+      review_status: requiresHumanReview ? 'pending_review' : null,
+      quality_gate: publishQuality.readingTimeMinutes == null
+        ? qa
+        : withPersistedBlogReadingTime(qa, publishQuality.readingTimeMinutes),
       seo_score: seoScore,
       topic_source: item.source,
       destination: item.destination ?? null,
@@ -1767,11 +2661,89 @@ async function processQueueItem(
       creativeId = inserted?.[0]?.id as string;
     }
 
+    if (blogType === 'info') {
+      await persistBlogInformationClaimFindings({
+        creativeId,
+        contentKey: generated.slug,
+        tenantId: item.tenant_id ?? null,
+        report: claimValidation,
+      });
+    }
+
+    if (representativeIdentity && !requiresHumanReview) {
+      await publishBlogInformationAtomically({
+        creativeId,
+        contentFingerprint: createBlogInformationContentFingerprint({
+          blogHtml: generated.blog_html,
+          seoTitle: generated.seo_title,
+          seoDescription: generated.seo_description,
+          slug: generated.slug,
+        }),
+        validationMeta: {
+          information_claim_validation: generationMeta.information_claim_validation as Record<string, unknown>,
+        },
+        qualityGate: rowPayload.quality_gate as Record<string, unknown>,
+        publishedAt: now,
+        identity: representativeIdentity,
+        reservationOwner: representativeOwner,
+      });
+    }
+    if (representativeDecision && requiresHumanReview) {
+      await attachBlogInformationRepresentativeDraft({
+        representativeKey: representativeDecision.representativeKey,
+        reservationOwner: representativeOwner,
+        creativeId,
+        canonicalSlug: generated.slug,
+      });
+    }
+
     if (item.card_news_id && creativeId && !promoteDraftId) {
       await supabaseAdmin
         .from('card_news')
         .update({ linked_blog_id: creativeId, updated_at: now })
         .eq('id', item.card_news_id);
+    }
+
+    if (requiresHumanReview) {
+      try {
+        await queueForReview({
+          creativeId,
+          priority: 90,
+          reason: 'auto_generated',
+          humanReviewRequired: true,
+          riskLevel: 'high',
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        await supabaseAdmin.from('blog_topic_queue')
+          .update({
+            status: 'failed',
+            content_creative_id: creativeId,
+            last_error: `review_queue_failed:${reason}`,
+          })
+          .eq('id', item.id);
+        return { id: item.id, topic: item.topic, status: 'review_queue_failed', reason };
+      }
+
+      const { error: reviewStateError } = await supabaseAdmin.from('blog_topic_queue')
+        .update({
+          status: 'pending_review',
+          content_creative_id: creativeId,
+          last_error: null,
+          attempts: 0,
+        })
+        .eq('id', item.id);
+      if (reviewStateError) {
+        logWarning('[cron/blog-publisher] review state handoff failed', reviewStateError);
+      }
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: 'pending_review',
+        reason: requiresClaimReview
+          ? 'informational_claim_review_required'
+          : 'high_risk_human_review_required',
+      };
     }
 
     try {
@@ -1812,36 +2784,58 @@ async function processQueueItem(
 
     revalidatePublicBlogCache(generated.slug);
 
-    return { id: item.id, topic: item.topic, status: 'published', reason: generated.slug };
+    return {
+      id: item.id,
+      topic: item.topic,
+      status: 'published',
+      reason: generated.slug,
+      atomicIndexing: contentBoundary.lane === 'informational',
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : '알수없음';
 
-    // 컨텍스트 부족(관광지+상품 0)은 재시도해도 동일 결과 → 즉시 permanently failed
+    // 정보성 컨텍스트 부족은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
     await handleFailure(item, msg, null, isUnrecoverable);
     return { id: item.id, topic: item.topic, status: 'error', reason: msg };
   }
 }
 
-async function handleFailure(item: any, reason: string, qa: any, forceFailure = false): Promise<'queued' | 'failed' | 'skipped'> {
+async function handleFailure(
+  item: any,
+  reason: string,
+  qa: any,
+  forceFailure = false,
+  extraMeta?: Record<string, unknown>,
+): Promise<'queued' | 'failed' | 'skipped'> {
   const attempts = (item.attempts || 0) + 1;
-  const duplicateFailure = /동일 slug|유사 slug|이미 발행됨|최근 \d+일 내/i.test(reason);
+  const duplicateFailure = /동일\s*slug|유사\s*slug|이미\s*발행|최근\s*\d+\s*일\s*내|중복/i.test(reason);
   const duplicateTaggedFailure = /\[duplicate\]|duplicate|slug already|slug .*exists/i.test(reason);
   const decision = classifyBlogQueueFailure(reason, qa);
   const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure || decision.code === 'duplicate_content';
   const shouldForceFailure = forceFailure || !decision.retryable;
+  const retryDelayMs = decision.selfHealAllowed ? 0 : 2 * 3600 * 1000;
+  const currentSelfHealRetries = Number((item.meta || {}).self_heal_retry_count ?? 0);
+  const keepSelfHealCandidateLive =
+    decision.selfHealAllowed
+    && !shouldForceFailure
+    && !isDuplicateFailure
+    && item.source !== 'manual'
+    && currentSelfHealRetries < 4;
   const finalStatus = (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
     ? 'skipped'
-    : shouldForceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
+    : shouldForceFailure || (attempts >= MAX_ATTEMPTS && !keepSelfHealCandidateLive) ? 'failed' : 'queued';
+  const storedAttempts = keepSelfHealCandidateLive && finalStatus === 'queued'
+    ? Math.min(attempts, Math.max(0, MAX_ATTEMPTS - 1))
+    : attempts;
 
   const { error: queueUpdateError } = await supabaseAdmin.from('blog_topic_queue')
     .update({
       status: finalStatus,
-      attempts,
+      attempts: storedAttempts,
       last_error: reason,
-      // 재시도 시 2시간 뒤로 미룸
       target_publish_at: finalStatus === 'queued'
-        ? new Date(Date.now() + 2 * 3600 * 1000).toISOString()
+        ? new Date(Date.now() + retryDelayMs).toISOString()
         : item.target_publish_at,
       meta: {
         ...(item.meta || {}),
@@ -1849,6 +2843,13 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
         failure_code: decision.code,
         failure_retryable: decision.retryable,
         self_heal_blocked: !decision.selfHealAllowed,
+        ...(keepSelfHealCandidateLive
+          ? {
+              self_heal_retry_count: currentSelfHealRetries + 1,
+              self_heal_last_kept_live_at: new Date().toISOString(),
+            }
+          : {}),
+        ...(extraMeta || {}),
         ...(decision.selfHealAllowed ? {} : { quarantine_reason: 'non_retryable_failure' }),
         last_failed_at: new Date().toISOString(),
         ...(isDuplicateFailure ? { skipped_duplicate: true } : {}),
@@ -1893,9 +2894,6 @@ interface GeneratedBlog {
 
 interface BlogPillarContext {
   attractions: string[];
-  packageSummary: string;
-  priceRange: string;
-  airlines: string[];
   seasonHint: string;
 }
 
@@ -1978,7 +2976,7 @@ async function generatePillar(item: any, prebuiltContext?: BlogPillarContext | n
     const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
     ctx = await buildPillarContext(item.destination);
   }
-  if (!ctx) throw new Error(`${item.destination} 컨텍스트 부족 (관광지+상품 0)`);
+  if (!ctx) throw new Error(`${item.destination} 정보성 컨텍스트 부족 (관광지 0)`);
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
 
@@ -2002,13 +3000,13 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 **목적지**: ${item.destination}
 **섹션 구조** (반드시 아래 H2 순서 지켜라):
 
-# ${item.destination} 여행 완벽 가이드
+# ${item.destination} 여행 준비 가이드
 
 ## 1. ${item.destination}는 어디인가요?
-(위치·역사·문화적 특징 3~4문단, 여소남 큐레이터 관점)
+(위치·계절·이동 난이도 중심으로 2~3문단. 광고 문구보다 독자가 출발 전 판단할 정보를 우선)
 
-## 2. ${item.destination}의 매력 포인트
-(여기서 ==핵심 문장== 하이라이트 2개 필수. 주요 관광지 3~5개 언급: ${ctx.attractions.slice(0, 6).join(', ')})
+## 2. 먼저 볼 여행 포인트
+(형광펜 문법 금지. 주요 관광지 3~5개를 나열하되, 왜 가는지보다 이동 시간·체류 시간·피로도 기준으로 설명: ${ctx.attractions.slice(0, 6).join(', ')})
 
 ## 3. 언제 가면 좋을까요?
 (월별/계절별 날씨·옷차림·추천시기 표 형태 권장. 현재 ${ctx.seasonHint})
@@ -2017,8 +3015,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 (3박4일, 4박5일 두 가지 추천. Day 1~5 타임라인으로)
 
 ## 5. 예상 비용과 가성비 분석
-(항공 ${ctx.airlines.join(', ')} · 숙소 · 식비 · 현지 이동 · 전체 예산 가이드)
-여소남 엄선 패키지 ${ctx.packageSummary}
+(숙소 · 식비 · 현지 이동처럼 독자가 별도로 확인할 예산 항목과 비교 기준. 상품 수·내부 가격·예약 신호는 사용하지 말고, 확인 가능한 외부 근거가 없으면 정확한 금액을 쓰지 말 것)
 
 ## 6. 여행 준비 체크리스트
 (:::tip 블록으로 준비물·비자·환전 등 꿀팁)
@@ -2026,13 +3023,13 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 ## 7. 자주 묻는 질문
 (Q&A 4~6개. **Q. 질문** 형식)
 
-## 8. 여소남과 함께 떠나는 ${item.destination}
-(CTA: 카카오톡 상담 + 상품 리스트 링크)
+## 8. 내 일정 기준으로 확인할 것
+(CTA와 판매·상담 URL은 본문에 넣지 않는다. 공개 렌더러가 검증된 중앙 설정으로 하단 CTA를 선택한다.)
 
 ## 작성 규칙
-- 총 2,500~3,500자 (장문 Pillar)
-- 마크다운만, H1 1개, H2 8개 고정
-- 운영팀 직접 답사 톤 ("여소남이 검토한 결과", "운영팀이 확인한 일정")
+- 총 2,200~3,000자. 필요한 내용만 남기고 공통 블록을 억지로 늘리지 말 것
+- 마크다운만, H1 1개, H2는 6~8개 범위. 고정 개수 채우기 금지
+- 운영팀 직접 답사처럼 보이는 허위 경험 톤 금지. 상품/공식 자료 기준으로 확인 가능한 표현만 사용
 - 체크 가능한 구체 수치 (기온·시간·거리·가격)
 - 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
 - 마크다운 코드블록으로 감싸지 말 것`;
@@ -2048,8 +3045,8 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
   const destEn = romanize(dest) || slugifyTopic(dest);
   const slug = `${destEn}-complete-guide`;
   const destDisplay = item.destination || dest;
-  const seoTitle = `${destDisplay} 여행 완벽 가이드 | 관광지·일정·비용`.substring(0, 60);
-  const seoDescription = `${destDisplay} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지 정리한 완벽 가이드.`.substring(0, 160);
+  const seoTitle = `${destDisplay} 여행 준비 가이드 | 관광지·일정·비용`.substring(0, 60);
+  const seoDescription = `${destDisplay} 여행 전 확인할 관광지, 일정, 예상 비용, 계절별 준비 기준을 정리했습니다.`.substring(0, 160);
 
   // OG 이미지: Pexels에서 destination 기반 이미지 할당
   let og_image_url: string | null = null;
@@ -2187,10 +3184,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   }
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
-  const baseForUtm = resolveBlogCanonicalOrigin();
   const queueSlug = buildQueueSlug(item);
-  const utmCamp = encodeURIComponent(queueSlug);
-  const utmSrc = 'naver_blog';
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
     destination: item.destination ?? null,
@@ -2202,11 +3196,6 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
       : '';
   const freshnessRisk = classifyBlogFreshnessRisk(`${item.topic} ${item.primary_keyword || ''} ${item.category || ''}`);
   const freshnessPromptBlock = buildFreshnessPromptBlock(freshnessRisk);
-  const originalitySignals = await fetchBlogOriginalitySignals({
-    destination: item.destination || extractDestination(item.topic),
-    productId: item.product_id,
-  });
-  const originalityPromptBlock = buildOriginalityPromptBlock(originalitySignals);
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
@@ -2218,6 +3207,12 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     category: item.category,
     source: item.source,
     keywords: queuedKeywords,
+    microAngle: getQueueMicroAngle(item),
+    audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
+    locale: typeof item.meta?.locale === 'string' ? item.meta.locale : null,
+    travelerNationality: typeof item.meta?.traveler_nationality === 'string'
+      ? item.meta.traveler_nationality
+      : null,
   });
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
@@ -2240,25 +3235,25 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   const tierGuidance: Record<string, string> = {
     head: `
 ## SEO Tier: HEAD (고경쟁 · 검색량 ${volume ?? '?'})
-- 본문 2,500~3,500자 (Pillar 수준 장문)
-- H2 7~9개 (목차로 구조화 — TOC 자동 생성됨)
+- 본문 2,200~3,000자. 필요한 정보가 없으면 길이를 억지로 늘리지 말 것
+- H2 6~8개. 목차를 채우기 위한 제목 추가 금지
 - 첫 H2 안에 ${primaryKw} 정의/위치/한 줄 요약
 - 내부링크 ≥3 (관련 longtail 글로 분산)
-- E-E-A-T 강화: "여소남이 직접 검토한", "운영팀이 ${new Date().getFullYear()}년 ${new Date().getMonth() + 1}월 확인" 1회 이상
+- E-E-A-T 강화: 공식 출처·상품 DB·검색 의도 근거처럼 독자가 확인 가능한 근거를 사용
 - FAQ schema 호환 H2 1개 ("자주 묻는 질문")
 `,
     mid: `
 ## SEO Tier: MID (중경쟁 · 검색량 ${volume ?? '?'})
 - 본문 1,800~2,500자
-- H2 5~7개
+- H2 5~7개. FAQ·공식 링크·CTA 블록이 목차를 과하게 늘리지 않도록 짧게 정리
 - 검색 의도 직답 — 첫 200자 안에 ${primaryKw}의 핵심 답 제시
 - 비교/리스트형 구조 권장 (월별 표·체크리스트·Top N)
 - 내부링크 ≥2 (head 글 + 다른 mid 글)
 `,
     longtail: `
 ## SEO Tier: LONGTAIL (저경쟁 · 검색량 ${volume ?? '?'})
-- 본문 1,500자 이상
-- H2 5개
+- 본문 1,200~1,800자. 구체 질문에 답하면 충분하며 분량 채우기 금지
+- H2 4~6개
 - 매우 구체적 사용자 시나리오에 1:1 답변 (예: "${primaryKw} 검색하는 사람의 1순위 궁금증 = 가격/일정/포함")
 - 상품 랜딩은 본문 하단 1회만 약하게 연결. 검색 의도 해결이 우선이며, 도입부·중간 강CTA 금지
 - 내부링크 ≥1 (head pillar로)
@@ -2266,7 +3261,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   };
 
   const trendBlock = trendScore && trendScore > 30
-    ? `\n## ⚡ 트렌드 신호\n- 트렌드 점수: ${trendScore}/100 — "지금 검색되는" 토픽\n- 도입부에 "최근 ${new Date().getMonth() + 1}월 검색 급증", "지금 한국인이 가장 많이 묻는" 같은 신선도 트리거 포함\n- 데이터 출처 추정 → 출처 한 줄 명시 ("트렌드 분석 기준")\n` : '';
+    ? `\n## 검색 수요 참고\n- 트렌드 점수: ${trendScore}/100은 내부 우선순위 참고값입니다.\n- 본문에 "검색 급증", "가장 많이 묻는" 같은 단정형 표현을 쓰지 말고, 시의성이 필요한 확인 항목만 자연스럽게 반영하세요.\n` : '';
 
   // SERP analysis: always for head/mid, selectively for proven longtail opportunities.
   let serpBlock = '';
@@ -2298,10 +3293,10 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
           );
           if (gapResult.missingTopics.length > 0) {
             serpGapBlock = `
-## 경쟁사 대비 부족한 주제 (반드시 H2로 추가)
+## 경쟁 글에서 자주 다루는 보강 주제
 
 아래는 경쟁사 상위 글이 공통으로 다루지만 이 글에는 없는 주제입니다.
-각각을 **추가 H2 섹션**으로 본문에 포함하세요. (기존 H2 순서는 유지하며 적절한 위치에 삽입)
+각각을 무조건 H2로 늘리지 말고, 기존 섹션에 자연스럽게 통합하세요. 꼭 별도 판단이 필요한 주제만 H2로 승격합니다.
 
 ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggestions[i] || '관련 내용으로 H2 섹션 추가'}`).join('\n')}
 
@@ -2328,7 +3323,6 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
 **부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
 
 ${reviewPromptBlock}
-${originalityPromptBlock}
 ${freshnessPromptBlock}
 ${intentPromptBlock}
 ${buildBlogContentBriefPromptBlock(contentBrief)}
@@ -2355,11 +3349,11 @@ ${serpGapBlock}
 - 표는 반드시 GitHub Flavored Markdown 형식으로 작성: 헤더 행 바로 다음 줄에 | --- | --- | 구분선을 넣고, 표 행 사이에 빈 줄을 넣지 말 것
 - 구체 수치(원/km/분/℃)는 숫자 그대로 작성
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
-- CTA는 본문 마지막에만 1회 사용. 도입부와 본문 중간에는 상품 보기, 카카오, 상담 신청, 예약하기 링크를 넣지 말 것
-- 마지막 CTA 문장 예시: [내 일정 기준으로 가능 여부 확인](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_soft_cta)`;
+- CTA 섹션과 CTA URL을 본문에 쓰지 말 것. 상품 보기, 카카오, 상담 신청, 예약하기, 카페, 딜방 링크는 공개 렌더러의 중앙 CTA 설정이 담당한다.`;
 
   const raw = await generatePublisherBlogText(prompt, { temperature: 0.7 });
-  let blog_html = raw
+  const writerOutput = parseBlogInformationWriterOutput(raw);
+  let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
@@ -2411,22 +3405,31 @@ ${serpGapBlock}
       primary_keyword: contentBrief.primaryKeyword,
       secondary_keywords: contentBrief.secondaryKeywords,
       search_intent: contentBrief.searchIntent,
+      intent_type: contentBrief.plan.intent,
+      destination_id: contentBrief.plan.destinationId,
+      audience: contentBrief.plan.audience,
+      locale: contentBrief.plan.locale,
+      traveler_nationality: contentBrief.plan.travelerNationality,
+      risk_level: contentBrief.plan.riskLevel,
       required_sections: contentBrief.requiredSections,
+      required_facts: contentBrief.plan.requiredFacts,
+      planned_tables: contentBrief.plan.plannedTables,
+      faq_questions: contentBrief.plan.faqQuestions,
+      missing_inputs: contentBrief.plan.missingInputs,
+      requires_human_review: contentBrief.plan.requiresHumanReview,
+      source_policy: contentBrief.plan.sourcePolicy,
       forbidden_angles: contentBrief.forbiddenAngles,
       source_requirements: contentBrief.sourceRequirements,
       evidence: contentBrief.evidence,
+      claim_ledger_policy: contentBrief.claimLedgerPolicy,
+    },
+    writer_claim_ledger: {
+      version: 'v1',
+      claims: writerOutput.claimLedger,
+      issues: writerOutput.ledgerIssues,
     },
     serp_analyzed: Boolean(serpData),
     freshness_risk: freshnessRisk,
-    originality_signals: {
-      destination: originalitySignals.destination,
-      package_count: originalitySignals.packageCount,
-      active_package_count: originalitySignals.activePackageCount,
-      booking_count: originalitySignals.bookingCount,
-      min_price: originalitySignals.minPrice,
-      max_price: originalitySignals.maxPrice,
-      latest_package_updated_at: originalitySignals.latestPackageUpdatedAt,
-    },
     ...(serpData ? {
       serp_analysis: {
         keyword: serpData.keyword,

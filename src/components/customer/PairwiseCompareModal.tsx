@@ -1,12 +1,7 @@
-/**
- * Pairwise 풀 비교 모달 (v3.7, 2026-04-30)
- *
- * 같은 출발일 그룹의 1위 vs 2위(/3위) 패키지를 사이드바이사이드 표로 비교.
- * RecommendationCard의 토글보다 더 풍부 — 표 형태 + 항목별 차이 강조.
- */
 'use client';
 
 import { useEffect } from 'react';
+import type { ReactNode } from 'react';
 
 interface RivalLite {
   package_id: string;
@@ -39,10 +34,38 @@ interface Props {
   onClose: () => void;
 }
 
+type CompareItem = {
+  title: string;
+  list_price: number;
+  hotel_avg_grade: number | null;
+  shopping_count: number | null;
+  free_option_count: number | null;
+  is_direct_flight: boolean | null;
+};
+
+function formatKrw(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '상담 후 확인';
+  return `₩${Math.round(value).toLocaleString('ko-KR')}`;
+}
+
+function formatHotelCondition(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '상담 후 확인';
+  if (value >= 4.5) return '호텔 조건 우수';
+  if (value >= 3.5) return '호텔 조건 확인';
+  return '상담 후 확인';
+}
+
+function formatCount(value: number | null, suffix: string): string {
+  if (value == null || !Number.isFinite(value)) return '상담 후 확인';
+  return `${value}${suffix}`;
+}
+
 export default function PairwiseCompareModal({ self, rivals, departureDate, open, onClose }: Props) {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
@@ -53,9 +76,9 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
 
   if (!open) return null;
 
-  const all = [
+  const items: Array<{ label: string; data: CompareItem; isSelf: boolean }> = [
     {
-      label: '🥇 이 패키지 (1위)',
+      label: '선택한 상품',
       data: {
         title: self.title,
         list_price: self.list_price,
@@ -66,117 +89,128 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
       },
       isSelf: true,
     },
-    ...rivals.map(r => ({
-      label: `${r.rank_in_group === 2 ? '🥈' : '🥉'} ${r.rank_in_group}위 옵션`,
-      data: r,
+    ...rivals.map((rival) => ({
+      label: `${rival.rank_in_group}순위 일정`,
+      data: rival,
       isSelf: false,
     })),
   ];
 
-  // 행 데이터 (헤더, 모든 옵션의 값)
-  const rows: { label: string; render: (d: (typeof all)[0]['data']) => React.ReactNode; bestIs?: 'high' | 'low' }[] = [
+  const rows: Array<{
+    label: string;
+    render: (item: CompareItem) => ReactNode;
+    value: (item: CompareItem) => number;
+    bestIs: 'high' | 'low';
+  }> = [
     {
-      label: '정가',
-      render: (d) => `₩${d.list_price.toLocaleString()}`,
+      label: '가격',
+      render: (item) => formatKrw(item.list_price),
+      value: (item) => (Number.isFinite(item.list_price) && item.list_price > 0 ? item.list_price : Number.MAX_SAFE_INTEGER),
       bestIs: 'low',
     },
     {
-      label: '호텔 등급',
-      render: (d) => d.hotel_avg_grade != null ? `${d.hotel_avg_grade}성` : '미확인',
+      label: '호텔 조건',
+      render: (item) => formatHotelCondition(item.hotel_avg_grade),
+      value: (item) => item.hotel_avg_grade ?? -1,
       bestIs: 'high',
     },
     {
-      label: '직항',
-      render: (d) => d.is_direct_flight ? '✓' : '경유',
+      label: '항공',
+      render: (item) => (item.is_direct_flight ? '직항' : '경유 또는 상담 확인'),
+      value: (item) => (item.is_direct_flight ? 1 : 0),
       bestIs: 'high',
     },
     {
-      label: '쇼핑 횟수',
-      render: (d) => d.shopping_count != null ? `${d.shopping_count}회` : '—',
+      label: '쇼핑',
+      render: (item) => formatCount(item.shopping_count, '회'),
+      value: (item) => item.shopping_count ?? Number.MAX_SAFE_INTEGER,
       bestIs: 'low',
     },
     {
-      label: '무료 옵션',
-      render: (d) => d.free_option_count != null ? `${d.free_option_count}개` : '—',
+      label: '포함 옵션',
+      render: (item) => formatCount(item.free_option_count, '개'),
+      value: (item) => item.free_option_count ?? -1,
       bestIs: 'high',
     },
   ];
 
-  // best 컬럼 결정 (각 행마다)
-  const bestIdxFor = (rowIdx: number): number | null => {
-    const row = rows[rowIdx];
-    if (!row.bestIs) return null;
-    const values = all.map(a => {
-      const d = a.data;
-      switch (row.label) {
-        case '정가': return d.list_price;
-        case '호텔 등급': return d.hotel_avg_grade ?? -1;
-        case '직항': return d.is_direct_flight ? 1 : 0;
-        case '쇼핑 횟수': return d.shopping_count ?? 99;
-        case '무료 옵션': return d.free_option_count ?? -1;
-        default: return 0;
-      }
-    });
+  const bestIdxFor = (rowIndex: number): number | null => {
+    const row = rows[rowIndex];
+    const values = items.map((item) => row.value(item.data));
     let bestIdx = 0;
-    for (let i = 1; i < values.length; i++) {
+
+    for (let i = 1; i < values.length; i += 1) {
       if (row.bestIs === 'high' && values[i] > values[bestIdx]) bestIdx = i;
       if (row.bestIs === 'low' && values[i] < values[bestIdx]) bestIdx = i;
     }
-    return bestIdx;
+
+    return Number.isFinite(values[bestIdx]) ? bestIdx : null;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
       <button
         type="button"
-        aria-label="Close comparison"
+        aria-label="비교 창 닫기"
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div
-        className="relative bg-white w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-hidden flex flex-col"
-      >
-        {/* 헤더 */}
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+
+      <div className="relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white md:max-w-2xl md:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <div>
-            <h3 className="text-[15px] font-extrabold text-slate-900">📊 같은 일정 비교</h3>
+            <h3 className="text-[15px] font-extrabold text-slate-900">같은 출발일 상품 비교</h3>
             {departureDate && (
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {departureDate.slice(5).replace('-', '/')} 출발 · {all.length}개 옵션
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                {departureDate.slice(5).replace('-', '/')} 출발 · {items.length}개 일정
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl px-2" aria-label="닫기">✕</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-2 text-xl text-slate-400 hover:text-slate-600"
+            aria-label="비교 창 닫기"
+          >
+            ×
+          </button>
         </div>
 
-        {/* 비교 표 */}
         <div className="flex-1 overflow-auto">
           <table className="w-full text-xs">
-            <thead className="bg-slate-50 sticky top-0">
+            <thead className="sticky top-0 bg-slate-50">
               <tr className="border-b border-slate-100">
-                <th className="text-left px-3 py-2.5 text-[10px] font-medium text-slate-500 w-20">항목</th>
-                {all.map((a, i) => (
-                  <th key={i} className={`text-left px-3 py-2.5 text-[11px] font-bold leading-snug ${a.isSelf ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700'}`}>
-                    {a.label}
-                    <p className="font-normal text-[10px] text-slate-500 mt-0.5 line-clamp-2 break-keep">
-                      {a.data.title}
+                <th className="w-20 px-3 py-2.5 text-left text-[10px] font-medium text-slate-500">항목</th>
+                {items.map((item) => (
+                  <th
+                    key={item.label}
+                    className={`px-3 py-2.5 text-left text-[11px] font-bold leading-snug ${
+                      item.isSelf ? 'bg-emerald-50 text-emerald-800' : 'text-slate-700'
+                    }`}
+                  >
+                    {item.label}
+                    <p className="mt-0.5 line-clamp-2 break-keep text-[10px] font-normal text-slate-500">
+                      {item.data.title}
                     </p>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, ri) => {
-                const bestIdx = bestIdxFor(ri);
+              {rows.map((row, rowIndex) => {
+                const bestIdx = bestIdxFor(rowIndex);
                 return (
-                  <tr key={ri} className="border-b border-slate-50">
-                    <td className="px-3 py-2.5 text-slate-500 font-medium">{row.label}</td>
-                    {all.map((a, ai) => (
-                      <td key={ai} className={`px-3 py-2.5 tabular-nums ${
-                        bestIdx === ai ? 'text-emerald-700 font-bold' : 'text-slate-700'
-                      }`}>
-                        {row.render(a.data)}
-                        {bestIdx === ai && <span className="ml-1 text-[9px] text-emerald-500">★</span>}
+                  <tr key={row.label} className="border-b border-slate-50">
+                    <td className="px-3 py-2.5 font-medium text-slate-500">{row.label}</td>
+                    {items.map((item, itemIndex) => (
+                      <td
+                        key={`${row.label}-${item.label}`}
+                        className={`px-3 py-2.5 tabular-nums ${
+                          bestIdx === itemIndex ? 'font-bold text-emerald-700' : 'text-slate-700'
+                        }`}
+                      >
+                        {row.render(item.data)}
+                        {bestIdx === itemIndex && <span className="ml-1 text-[9px] text-emerald-500">추천</span>}
                       </td>
                     ))}
                   </tr>
@@ -186,9 +220,8 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
           </table>
         </div>
 
-        {/* 푸터 */}
-        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 text-[11px] text-slate-500 leading-relaxed">
-          ★ 표시 = 해당 항목 베스트 · 모든 차이는 같은 출발일 비교 결과
+        <div className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-[11px] leading-relaxed text-slate-500">
+          비교 결과는 현재 저장된 상품 조건 기준입니다. 실제 가능 여부와 요금은 상담 시점에 다시 확인합니다.
         </div>
       </div>
     </div>

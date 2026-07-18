@@ -4,6 +4,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 
+const CUSTOMER_VISIBLE_STATUSES = ['active', 'approved', 'selling', 'available'];
+
 const rawArgs = process.argv.slice(2);
 const json = rawArgs.includes('--json');
 
@@ -154,7 +156,7 @@ if (missingConnection.length === 0) {
     supabase
       .from('travel_packages')
       .select('id,status,title,display_title,updated_at')
-      .in('status', ['active', 'approved', 'published'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'published'])
       .order('updated_at', { ascending: false, nullsFirst: false })
       .limit(1),
   );

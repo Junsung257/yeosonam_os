@@ -31,6 +31,7 @@ import { generateGoogleAdsRSA } from '@/lib/content-pipeline/agents/google-ads-r
 import { recommendPublishSlot } from '@/lib/best-time-engine';
 import { getSecret } from '@/lib/secret-registry';
 import { publishDistribution, type ScheduledDistributionRow } from '@/lib/social-publishing/distribution-publisher';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -105,16 +106,10 @@ export async function POST(request: NextRequest) {
   } catch { /* 멱등성 체크 실패해도 발행은 진행 */ }
 
   // 1) 상품 로드 (실 스키마: price, photos/photo_urls — base_price/hero_image_url 없음)
-  const { data: pkg, error: pkgErr } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, product_highlights, inclusions, photos, photo_urls, itinerary_data')
-    .eq('id', body.product_id)
-    .limit(1);
-
-  if (pkgErr || !pkg?.[0]) {
-    return NextResponse.json({ error: `상품 조회 실패: ${pkgErr?.message ?? 'not found'}` }, { status: 404 });
+  const product = await loadPublicContentPackageForGeneration(body.product_id);
+  if (!product) {
+    return NextResponse.json({ error: '고객 공개 승인된 상품만 자동 발행에 사용할 수 있습니다.' }, { status: 404 });
   }
-  const product = pkg[0];
   const productInput = {
     title: product.title,
     destination: product.destination ?? undefined,

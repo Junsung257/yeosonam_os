@@ -169,7 +169,7 @@ export default function LeadBottomSheet({
                 <StepIcon icon={<Calendar size={28} className="text-yellow-500" />} />
                 <h2 className="text-center text-lg font-bold text-gray-900">희망 출발일을 선택해 주세요</h2>
                 <p className="text-center text-sm text-gray-500">
-                  {priceDates && priceDates.length > 0 ? '확정 또는 가능 출발일에서 선택하세요.' : '일정 조율을 위해 필요해요.'}
+                  {priceDates && priceDates.length > 0 ? '예약 가능한 출발일에서 선택하세요.' : '일정 조율을 위해 필요해요.'}
                 </p>
                 {priceDates && priceDates.length > 0 ? (
                   <DepartureCalendar
@@ -269,7 +269,7 @@ export default function LeadBottomSheet({
                         {hasSpecialTerms ? (
                           <>
                             <span className="font-medium text-red-700">[필수]</span>{' '}
-                            본 상품은 특별약관 적용 상품으로, 예약 즉시 항공·호텔 정보가 확정될 수 있으며 취소 시 비용이 발생할 수 있음에 동의합니다.
+                            본 상품은 특별약관 적용 상품으로, 항공·호텔 가능 여부는 담당자 확인 후 확정되며 취소 시 비용이 발생할 수 있음에 동의합니다.
                           </>
                         ) : (
                           <>

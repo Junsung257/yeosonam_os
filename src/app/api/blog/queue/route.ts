@@ -6,6 +6,7 @@ import { computeSeasonalTargetPublishAt } from '@/lib/blog-season-publish';
 import { attachTopicFitMeta, evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 import { getBlogQueueOperationalState } from '@/lib/blog-queue-operational-health';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /** 서버에서 자기 호스트 크론 URL 호출 시 CRON_SECRET 전달 (프로덕션에서 발행자·트렌드 마이너 401 방지) */
 async function fetchCronEndpoint(path: string): Promise<Response> {
@@ -89,6 +90,9 @@ function enrichQueueItem(row: any, now = new Date()) {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const { searchParams } = request.nextUrl;
   const status = searchParams.get('status');
   const scope = (searchParams.get('scope') || (status ? 'all' : 'active')) as QueueScope;
@@ -179,6 +183,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseAdminConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -296,6 +303,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseAdminConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -330,6 +340,9 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseAdminConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });

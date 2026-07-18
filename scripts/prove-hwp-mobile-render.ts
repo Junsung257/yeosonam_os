@@ -11,8 +11,11 @@ import { supabaseAdmin } from '../src/lib/supabase';
 import { getSecret } from '../src/lib/secret-registry';
 import { renderPackage } from '../src/lib/render-contract';
 import { auditCustomerVisibleScreenText } from '../src/lib/customer-visible-text-audit';
+import { buildPublicPackageSnapshot } from '../src/lib/package-publication/public-snapshot';
+import { isCustomerVisibleStatus } from '../src/lib/visibility-status';
 
 type PackageRow = {
+  [key: string]: unknown;
   id: string;
   title: string | null;
   display_title: string | null;
@@ -33,6 +36,7 @@ type PackageRow = {
   optional_tours: unknown;
   accommodations: unknown;
   internal_code: string | null;
+  package_revision?: number | string | null;
 };
 
 type CheckResult = {
@@ -51,6 +55,7 @@ type SurfaceProofResult = {
   checks: CheckResult[];
   screen_hash?: string;
   customer_visible_hash?: string;
+  public_snapshot_hash?: string | null;
   screenshot_path?: string;
   error?: string;
 };
@@ -64,6 +69,9 @@ type PackageProofResult = {
   status: 'pass' | 'fail';
   checked_at: string;
   package_updated_at: string | null;
+  package_revision: number | null;
+  public_snapshot_hash: string | null;
+  app_build_id: string | null;
   mobile_checks: CheckResult[];
   a4_checks: CheckResult[];
   surface_results: SurfaceProofResult[];
@@ -128,6 +136,7 @@ const limit = Math.max(1, Math.min(Number(argValue('limit') ?? '200') || 200, 50
 const outputDir = argValue('output-dir') || path.join(process.cwd(), 'data/product-registration/hwp-inbox/reports/mobile-browser-proof');
 const screenshotDir = path.join(outputDir, 'screenshots');
 const viewport = { width: 390, height: 844 };
+const appBuildId = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null;
 
 function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
@@ -139,6 +148,25 @@ function asArray(value: unknown): unknown[] {
 
 function normalizeText(value: unknown): string {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function currentPackageRevision(pkg: PackageRow): number {
+  const revision = Number(pkg.package_revision ?? 1);
+  return Number.isFinite(revision) && revision > 0 ? revision : 1;
+}
+
+function proofPackageRevision(pkg: PackageRow): number {
+  const current = currentPackageRevision(pkg);
+  return isCustomerVisibleStatus(pkg.status) ? current : current + 1;
+}
+
+function proofSnapshotHash(pkg: PackageRow, revision: number): string {
+  const snapshotPkg = {
+    ...pkg,
+    status: isCustomerVisibleStatus(pkg.status) ? pkg.status : 'active',
+    package_revision: revision,
+  };
+  return buildPublicPackageSnapshot(snapshotPkg).snapshotHash;
 }
 
 function getItineraryDays(value: unknown): Array<Record<string, unknown>> {
@@ -457,6 +485,8 @@ async function inspectCustomerSurface(page: Page, pkg: PackageRow, proofSecret: 
 
 async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: string): Promise<PackageProofResult> {
   const checkedAt = new Date().toISOString();
+  const packageRevision = proofPackageRevision(pkg);
+  const publicSnapshotHash = proofSnapshotHash(pkg, packageRevision);
   const result: PackageProofResult = {
     id: pkg.id,
     title: pkg.display_title || pkg.title,
@@ -466,6 +496,9 @@ async function inspectMobilePage(page: Page, pkg: PackageRow, proofSecret: strin
     status: 'fail',
     checked_at: checkedAt,
     package_updated_at: pkg.updated_at,
+    package_revision: packageRevision,
+    public_snapshot_hash: publicSnapshotHash,
+    app_build_id: appBuildId,
     mobile_checks: [],
     a4_checks: auditA4PayloadForPackage(pkg),
     surface_results: [],
@@ -492,6 +525,8 @@ function errorDetail(error: unknown): string {
 function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackageProofResult {
   const checkedAt = new Date().toISOString();
   const detail = errorDetail(error);
+  const packageRevision = proofPackageRevision(pkg);
+  const publicSnapshotHash = proofSnapshotHash(pkg, packageRevision);
   return {
     id: pkg.id,
     title: pkg.display_title || pkg.title,
@@ -501,6 +536,9 @@ function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackagePro
     status: 'fail',
     checked_at: checkedAt,
     package_updated_at: pkg.updated_at,
+    package_revision: packageRevision,
+    public_snapshot_hash: publicSnapshotHash,
+    app_build_id: appBuildId,
     mobile_checks: [
       {
         name: 'mobile_proof_unhandled_error',
@@ -517,7 +555,7 @@ function buildUnhandledProofFailure(pkg: PackageRow, error: unknown): PackagePro
 async function loadPackages(): Promise<PackageRow[]> {
   let query = supabaseAdmin
     .from('travel_packages')
-    .select('id,title,display_title,destination,status,audit_status,audit_report,updated_at,duration,nights,trip_style,price,price_dates,price_tiers,itinerary_data,inclusions,excludes,optional_tours,accommodations,internal_code')
+    .select('*')
     .order('created_at', { ascending: true })
     .limit(limit);
 
@@ -540,13 +578,19 @@ function buildProofPayload(result: PackageProofResult, status: 'pass' | 'fail', 
     status,
     checked_at: result.checked_at,
     package_updated_at: result.package_updated_at,
+    package_revision: result.package_revision,
+    public_snapshot_hash: result.public_snapshot_hash,
+    app_build_id: result.app_build_id,
     screen_hash: sha256(screenHashSource),
     customer_visible_hash: sha256(visibleHashSource),
     surfaces,
     url: result.url,
     http_status: result.http_status,
     viewport,
-    surface_results: result.surface_results,
+    surface_results: result.surface_results.map(surface => ({
+      ...surface,
+      public_snapshot_hash: result.public_snapshot_hash,
+    })),
     ...(status === 'fail' ? { failed_checks: failedChecks } : {}),
     checks: result.mobile_checks,
     a4: {

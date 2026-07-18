@@ -83,6 +83,7 @@ export function categorizeProductEvidenceBlocker(blocker: string): string {
   if (lower.includes('archived_product') || lower.includes('retired_product')) return 'archived_product';
   if (lower.includes('mobile_proof')) return 'mobile_proof';
   if (lower.includes('quality_scorecard')) return 'quality_scorecard';
+  if (lower.includes('product_status_not_customer_visible') || lower.includes('pending_review')) return 'product_status';
   if (lower.includes('registration_evidence_pack') || lower.includes('blog_publish')) return 'evidence_pack';
   if (lower.startsWith('v3') || lower.includes('v3_payload')) return 'v3_customer_payload';
   if (lower.includes('package_lookup')) return 'package_lookup';
@@ -92,6 +93,7 @@ export function categorizeProductEvidenceBlocker(blocker: string): string {
 
 function actionForCategories(categories: string[]): string {
   if (categories.includes('archived_product')) return 'skip_archived_product_candidate';
+  if (categories.includes('product_status')) return '상품을 고객 공개 상태로 검수/승인한 뒤 재큐잉';
   if (categories.includes('package_lookup')) return '상품 ID 연결 또는 상품 상태를 먼저 복구';
   if (categories.includes('mobile_proof')) return '모바일 공개 화면 증빙을 새로 생성하고 customer_open_contract 재평가';
   if (categories.includes('v3_customer_payload')) return 'V3 고객 안내문/원문 누수 차단 사유를 수정';

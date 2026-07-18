@@ -2,9 +2,29 @@
 
 const fs = require('node:fs');
 const https = require('node:https');
+const path = require('node:path');
+
+function loadEnvFile(file) {
+  const fullPath = path.resolve(process.cwd(), file);
+  if (!fs.existsSync(fullPath)) return;
+  const text = fs.readFileSync(fullPath, 'utf8');
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const idx = trimmed.indexOf('=');
+    if (idx < 0) continue;
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+    if (!process.env[key]) process.env[key] = value;
+  }
+}
+
+for (const file of ['.env.local', '.env.croncheck.local', '.env.prod', '.env']) {
+  loadEnvFile(file);
+}
 
 const supabaseUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 const timeoutMs = Number(process.env.DB_HEALTH_TIMEOUT_MS || '5000');
 
 function isPlaceholder(value) {

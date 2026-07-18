@@ -7,7 +7,7 @@ describe('customer package client payload', () => {
   it('removes internal source, audit, and margin fields before client serialization', () => {
     const sanitized = sanitizeCustomerPackageForClient({
       id: 'pkg-1',
-      title: '고객 상품',
+      title: 'customer package',
       price: 1_290_000,
       raw_text: 'supplier raw source',
       raw_text_hash: 'hash',
@@ -30,9 +30,10 @@ describe('customer package client payload', () => {
       catalog_id: 'catalog-1',
       commission_rate: 9,
       data_completeness: 80,
+      internal_code: 'LAND-SECRET',
       products: {
         internal_code: 'PUS-CEB-001',
-        display_name: '세부',
+        display_name: 'public product',
         net_price: 900_000,
         margin_rate: 0.2,
         selling_price: 1_290_000,
@@ -41,11 +42,10 @@ describe('customer package client payload', () => {
 
     expect(sanitized).toMatchObject({
       id: 'pkg-1',
-      title: '고객 상품',
+      title: 'customer package',
       price: 1_290_000,
       products: {
-        internal_code: 'PUS-CEB-001',
-        display_name: '세부',
+        display_name: 'public product',
       },
     });
     expect(sanitized).not.toHaveProperty('raw_text');
@@ -69,17 +69,19 @@ describe('customer package client payload', () => {
     expect(sanitized).not.toHaveProperty('catalog_id');
     expect(sanitized).not.toHaveProperty('commission_rate');
     expect(sanitized).not.toHaveProperty('data_completeness');
+    expect(sanitized).not.toHaveProperty('internal_code');
     expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('net_price');
     expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('margin_rate');
     expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('selling_price');
+    expect(sanitized?.products as Record<string, unknown>).not.toHaveProperty('internal_code');
   });
 
-  it('strips margin fields from nested product arrays as well as objects', () => {
+  it('strips internal product fields from nested product arrays as well as objects', () => {
     const sanitized = sanitizeCustomerPackageForClient({
       id: 'pkg-1',
       products: [{
         internal_code: 'PUS-CEB-001',
-        display_name: '?몃?',
+        display_name: 'public product',
         net_price: 900_000,
         cost_price: 800_000,
         margin_rate: 0.2,
@@ -88,8 +90,7 @@ describe('customer package client payload', () => {
     });
 
     expect(sanitized?.products).toEqual([{
-      internal_code: 'PUS-CEB-001',
-      display_name: '?몃?',
+      display_name: 'public product',
     }]);
   });
 
@@ -101,13 +102,61 @@ describe('customer package client payload', () => {
         adult_selling_price: 1_290_000,
         net_price: 900_000,
         margin_rate: 0.2,
-        note: 'A 호텔',
+        note: 'A option',
       }],
     })?.product_prices).toEqual([{
       target_date: '2026-07-01',
       adult_selling_price: 1_290_000,
-      note: 'A 호텔',
+      note: 'A option',
     }]);
+  });
+
+  it('removes internal price and operator fields from nested customer payloads', () => {
+    const sanitized = sanitizeCustomerPackageForClient({
+      id: 'pkg-1',
+      itinerary_data: {
+        days: [{
+          day: 1,
+          schedule: [{
+            activity: 'public attraction visit',
+            source_activity: 'public attraction visit',
+            internal_note: 'supplier commission 9%',
+            net_price: 900_000,
+            margin_rate: 0.1,
+            supplier_code: 'LAND-SECRET',
+            internal_code: 'ATTR-SECRET',
+          }],
+        }],
+      },
+      optional_tours: [{
+        name: 'night city tour',
+        price: '$40',
+        commission_rate: 9,
+        supplier_note: 'supplier only',
+        internal_code: 'OPT-SECRET',
+      }],
+    });
+
+    const schedule = (((sanitized?.itinerary_data as Record<string, unknown>).days as Array<Record<string, unknown>>)[0]
+      ?.schedule as Array<Record<string, unknown>>)[0];
+    const optionalTour = (sanitized?.optional_tours as Array<Record<string, unknown>>)[0];
+
+    expect(schedule).toMatchObject({
+      activity: 'public attraction visit',
+      source_activity: 'public attraction visit',
+    });
+    expect(schedule).not.toHaveProperty('internal_note');
+    expect(schedule).not.toHaveProperty('net_price');
+    expect(schedule).not.toHaveProperty('margin_rate');
+    expect(schedule).not.toHaveProperty('supplier_code');
+    expect(schedule).not.toHaveProperty('internal_code');
+    expect(optionalTour).toMatchObject({
+      name: 'night city tour',
+      price: '$40',
+    });
+    expect(optionalTour).not.toHaveProperty('commission_rate');
+    expect(optionalTour).not.toHaveProperty('supplier_note');
+    expect(optionalTour).not.toHaveProperty('internal_code');
   });
 
   it('uses the sanitizer at the package detail server-to-client boundary', () => {
@@ -123,6 +172,20 @@ describe('customer package client payload', () => {
     expect(pageSource).toContain("export const dynamic = 'force-dynamic'");
     expect(pageSource).toContain('export const revalidate = 0');
     expect(pageSource).not.toContain('export async function generateStaticParams');
+  });
+
+  it('does not post-process already published public snapshot rows on the package detail page', () => {
+    const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
+
+    expect(pageSource).toContain('const writeTimeProcessed = Boolean(publicSnapshot) || parserVersion.includes(POSTPROCESS_VERSION)');
+    expect(pageSource).toContain('const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow');
+  });
+
+  it('uses the public snapshot canonical view before recalculating package render data on the client', () => {
+    const detailSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
+
+    expect(detailSource).toContain('_canonical_view?: CanonicalView | null');
+    expect(detailSource).toContain('return pkg._canonical_view ?? renderPackage');
   });
 
   it('passes package detail duration and hero render facts through the customer boundary', () => {
@@ -144,7 +207,25 @@ describe('customer package client payload', () => {
     expect(routeSource).toContain('isAdminRequest');
     expect(routeSource).toContain('function stripPublicPackageFields');
     expect(routeSource).toContain('sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row))');
-    expect(routeSource).toContain(': stripPublicPackageFields(pkg as Record<string, unknown>)');
+    expect(routeSource).toContain('fetchLatestPublicPackageSnapshot');
+    expect(routeSource).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(routeSource).toContain('isCustomerPublicSnapshotCandidate');
     expect(routeSource).toContain(': stripPublicPackageFields(row)');
+  });
+
+  it('uses public snapshots before rendering package detail rival comparison titles', () => {
+    const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
+    const rivalScoreIndex = pageSource.indexOf("label: 'package.score-rivals'");
+    const rivalPackageIndex = pageSource.indexOf("label: 'package.score-rival-packages'");
+    const snapshotMergeIndex = pageSource.indexOf('const publicRivals = await fetchAndMergeCurrentPublicPackageCardSnapshots', rivalPackageIndex);
+    const titleMapIndex = pageSource.indexOf('const titleByRivalId = new Map', snapshotMergeIndex);
+    const pushIndex = pageSource.indexOf('title: publicTitle', titleMapIndex);
+
+    expect(pageSource).not.toContain('travel_packages!inner(title)');
+    expect(pageSource).toContain('fetchAndMergeCurrentPublicPackageCardSnapshots');
+    expect(rivalPackageIndex).toBeGreaterThan(rivalScoreIndex);
+    expect(snapshotMergeIndex).toBeGreaterThan(rivalPackageIndex);
+    expect(titleMapIndex).toBeGreaterThan(snapshotMergeIndex);
+    expect(pushIndex).toBeGreaterThan(titleMapIndex);
   });
 });

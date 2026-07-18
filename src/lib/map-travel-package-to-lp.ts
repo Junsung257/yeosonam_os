@@ -2,12 +2,13 @@ import type { PriceListItem } from '@/lib/parser';
 import { normalizeDays } from '@/lib/attraction-matcher';
 import { getEffectivePriceDates } from '@/lib/price-dates';
 import { getKakaoChannelChatUrl } from '@/lib/kakaoChannel';
-import { renderPackage } from '@/lib/render-contract';
+import { renderPackage, type CanonicalView } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
 import { formatKstDate, isUpcomingKstDate, isValidIsoDateKst } from '@/lib/kst-date';
 import type { NormalizedOptionalTour } from '@/lib/itinerary-render';
+import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -183,15 +184,69 @@ function readInternalCode(pkg: Record<string, unknown>): string | undefined {
   return Array.isArray(products) ? products[0]?.internal_code : products?.internal_code;
 }
 
+function readProductDisplayName(pkg: Record<string, unknown>): string | undefined {
+  const products = pkg.products as
+    | { display_name?: string | null }
+    | Array<{ display_name?: string | null }>
+    | null
+    | undefined;
+  return Array.isArray(products) ? products[0]?.display_name ?? undefined : products?.display_name ?? undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readCanonicalView(pkg: Record<string, unknown>): CanonicalView {
+  const snapshotView = asRecord(pkg._canonical_view);
+  if (snapshotView) return snapshotView as unknown as CanonicalView;
+  return renderPackage(pkg);
+}
+
+function readLpProjection(pkg: Record<string, unknown>): Record<string, unknown> {
+  return asRecord(pkg._lp_projection) ?? {};
+}
+
+function projectionString(projection: Record<string, unknown>, key: string): string | null {
+  const value = projection[key];
+  return typeof value === 'string' && value.trim() ? normalizeCustomerVisibleCopy(value) : null;
+}
+
+function projectionNumber(projection: Record<string, unknown>, key: string): number | null {
+  const value = Number(projection[key]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export function mapTravelPackageToLandingData(
   pkg: Record<string, unknown>,
   lpHeroImageUrl: string | null,
 ): LandingProductData {
-  const view = renderPackage(pkg);
+  const view = readCanonicalView(pkg);
+  const lpProjection = readLpProjection(pkg);
   const internalCode = readInternalCode(pkg);
-  const cleanTitle = normalizeCustomerVisibleCopy(String(pkg.display_title || pkg.title || ''));
   const cleanDestination = normalizeCustomerVisibleCopy(String(pkg.destination || '여행지')) || '여행지';
-  const cleanSummary = normalizeCustomerVisibleCopy(String(pkg.product_summary || ''));
+  const displayCopy = buildCustomerPackageDisplayCopy({
+    title: String(pkg.title || ''),
+    display_title: typeof pkg.display_title === 'string' ? pkg.display_title : null,
+    product_display_name: readProductDisplayName(pkg),
+    hero_tagline: typeof pkg.hero_tagline === 'string' ? pkg.hero_tagline : null,
+    product_summary: typeof pkg.product_summary === 'string' ? pkg.product_summary : null,
+    destination: cleanDestination,
+    duration: typeof pkg.duration === 'number' ? pkg.duration : null,
+    nights: typeof pkg.nights === 'number' ? pkg.nights : null,
+    trip_style: typeof pkg.trip_style === 'string' ? pkg.trip_style : null,
+    product_type: typeof pkg.product_type === 'string' ? pkg.product_type : null,
+    airline: typeof pkg.airline === 'string' ? pkg.airline : null,
+    product_highlights: asStringArray(pkg.product_highlights),
+    inclusions: asStringArray(pkg.inclusions),
+    excludes: asStringArray(pkg.excludes),
+    customer_notes: typeof pkg.customer_notes === 'string' ? pkg.customer_notes : null,
+    optional_tours: Array.isArray(pkg.optional_tours)
+      ? pkg.optional_tours as Array<{ name?: string | null; displayName?: string | null; note?: string | null }>
+      : null,
+  });
 
   const effectiveDates = getEffectivePriceDates(pkg as Parameters<typeof getEffectivePriceDates>[0]);
   const sortedDates = [...effectiveDates].filter(row => row.date).sort((a, b) => a.date.localeCompare(b.date));
@@ -199,7 +254,8 @@ export function mapTravelPackageToLandingData(
   const upcoming = sortedDates.find(row => isUpcomingKstDate(row.date, todayStr)) ?? sortedDates[0] ?? null;
 
   const priceNums = effectiveDates.map(row => row.price).filter((price): price is number => typeof price === 'number' && price > 0);
-  const minPrice = priceNums.length > 0 ? Math.min(...priceNums) : (Number(pkg.price) || 0);
+  const minPrice = projectionNumber(lpProjection, 'price')
+    ?? (priceNums.length > 0 ? Math.min(...priceNums) : 0);
   const maxPrice = priceNums.length > 0 ? Math.max(...priceNums) : null;
   const compareAtPrice = maxPrice != null && maxPrice > minPrice ? maxPrice : null;
 
@@ -250,16 +306,19 @@ export function mapTravelPackageToLandingData(
     deadlineDays,
     customMessage: {
       insta: {
-        headline: `${cleanDestination}의\n아름다운 순간`,
-        subline: cleanTitle,
+        headline: `${cleanDestination}의\n추천 일정`,
+        subline: displayCopy.cardTitle,
       },
       kakao: {
-        headline: `${cleanTitle}\n상담 문의가 많습니다`,
+        headline: `${displayCopy.cardTitle}\n상담 문의가 많습니다`,
         subline: '전 일정 확인 · 항공/호텔 조건 상담 · 직판가 안내',
       },
       default: {
-        headline: cleanTitle,
-        subline: cleanSummary,
+        headline: projectionString(lpProjection, 'title') ?? displayCopy.heroHeadline,
+        subline: projectionString(lpProjection, 'subtitle')
+          ?? projectionString(lpProjection, 'summary')
+          ?? displayCopy.heroSubline
+          ?? displayCopy.summaryLead,
       },
     },
     priceFrom: minPrice,

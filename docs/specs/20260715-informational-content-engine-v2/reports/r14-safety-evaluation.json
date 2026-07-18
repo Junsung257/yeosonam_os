@@ -1,0 +1,1372 @@
+{
+  "schemaVersion": 2,
+  "evaluatedAt": "2026-07-15T09:00:00.000Z",
+  "fixtureOnly": true,
+  "realPathModules": true,
+  "externalCalls": 0,
+  "publicMutations": 0,
+  "total": 10,
+  "passed": 10,
+  "failed": 0,
+  "ok": true,
+  "cases": [
+    {
+      "id": "sapporo_food_budget",
+      "label": "삿포로 식비",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "food_budget",
+            "expected": "food_budget",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "food_budget:three_tiers_required",
+              "food_budget:daily_tier_rows_required",
+              "food_budget:아침_value_required",
+              "food_budget:점심_value_required",
+              "food_budget:저녁_value_required",
+              "food_budget:간식_value_required",
+              "food_budget:representative_menu_prices_required",
+              "food_budget:trip_total_required",
+              "food_budget:evidence_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 2,
+            "meaningfulRowCount": 7
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 10,
+            "persistedClaims": 10,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 10,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "삿포로-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": "이스크림 | 450엔 |\n\n3박 4일 여행 총액은 일반형 기준 26,000엔으로 계산합니다.\n근거: https://statistics.gov.example/sapporo-food-2026\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/sapporo-food-budget-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "guangzhou_monthly_weather",
+      "label": "광저우 월별 날씨",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "monthly_weather",
+            "expected": "monthly_weather",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "monthly_weather:month_rows_required",
+              "monthly_weather:source_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 12
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 13,
+            "persistedClaims": 13,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 13,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "광저우-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": " 21℃ | 60mm | 코트 |\n| 12월 | 29℃ | 22℃ | 64mm | 코트 |\n\n공식 기후 자료: https://weather.gov.example/climate-normal\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/guangzhou-monthly-weather-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "osaka_airport_transport",
+      "label": "오사카 공항 이동",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "airport_transport",
+            "expected": "airport_transport",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "airport_transport:multiple_modes_required",
+              "airport_transport:prices_required",
+              "airport_transport:durations_required",
+              "airport_transport:operating_hours_required",
+              "airport_transport:evidence_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 3
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 4,
+            "persistedClaims": 4,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 4,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "오사카-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": " | 24시간 |\n\n수하물이 많으면 버스나 택시를, 심야·야간 도착이면 운행 종료 여부를 확인합니다.\n근거: https://transport.gov.example/osaka-airport\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/osaka-airport-transport-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "taiwan_hotel_areas",
+      "label": "대만 숙소 지역",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "hotel_areas",
+            "expected": "hotel_areas",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "hotel_areas:real_area_rows_required",
+              "hotel_areas:price_ranges_required",
+              "hotel_areas:pros_cons_required",
+              "hotel_areas:access_required",
+              "hotel_areas:traveler_fit_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 3
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 3,
+            "persistedClaims": 3,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 3,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "대만-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "CONSULTATION",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": " 145,000원 | 식당이 가깝지만 밤에 혼잡 | 지하철 도보 7분 | 커플 추천 |\n| 중산 | 170,000원 | 조용하지만 공항에서 멀 수 있음 | 역 도보 8분 | 가족 추천 |\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/taiwan-hotel-areas-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "singapore_family_budget",
+      "label": "싱가포르 가족 예산",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "family_budget",
+            "expected": "family_budget",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "family_budget:party_composition_required",
+              "family_budget:duration_required",
+              "family_budget:항공_required",
+              "family_budget:숙소_required",
+              "family_budget:식비_required",
+              "family_budget:교통_required",
+              "family_budget:total_required",
+              "family_budget:currency_date_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 5
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 6,
+            "persistedClaims": 6,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 6,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "싱가포르-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent",
+              "same_specific_audience"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": " | 왕복 3인 |\n| 숙소 | 900SGD | 3박 |\n| 식비 | 600SGD | 4일 |\n| 교통 | 180SGD | 대중교통 중심 |\n| 총액 | 3,180SGD | 가족 전체 |\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/singapore-family-budget-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "cebu_shopping_souvenirs",
+      "label": "세부 쇼핑·기념품",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "shopping_souvenirs",
+            "expected": "shopping_souvenirs",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "shopping_souvenirs:item_rows_required",
+              "shopping_souvenirs:prices_required",
+              "shopping_souvenirs:purchase_areas_required",
+              "shopping_souvenirs:official_customs_evidence_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 3
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 3,
+            "persistedClaims": 3,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 3,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "세부-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": "지역 슈퍼마켓 |\n| 기타 키링 | 2.1USD | 막탄 공항 매장 |\n\n반입·면세 주의사항 공식 세관 근거: https://customs.gov.example/cebu-souvenirs\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/cebu-shopping-souvenirs-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "shijiazhuang_currency_payment",
+      "label": "석가장 환전·결제",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "currency_payment",
+            "expected": "currency_payment",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "currency_payment:currency_required",
+              "currency_payment:payment_methods_required",
+              "currency_payment:evidence_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 3
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 4,
+            "persistedClaims": 4,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 4,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "석가장-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "DEAL_ROOM",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": "제 수수료 2.0% | 호텔과 대형 매장 |\n| 모바일 결제 | 충전 수수료 0.8% | 본인 인증 가능 시 |\n\n환율 근거: https://bank.gov.example/cny-rate\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/shijiazhuang-currency-payment-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "mongolia_weather_clothing",
+      "label": "몽골 날씨·옷차림",
+      "expectedPublishState": "published",
+      "actualPublishState": "published",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "monthly_weather",
+            "expected": "monthly_weather",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "monthly_weather:month_rows_required",
+              "monthly_weather:source_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 12
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 13,
+            "persistedClaims": 13,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 13,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": true,
+            "requiresHumanReview": false,
+            "issues": []
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "몽골-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "NAVER_CAFE",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": " 11℃ | 60mm | 코트 |\n| 12월 | 21℃ | 14℃ | 64mm | 코트 |\n\n공식 기후 자료: https://weather.gov.example/climate-normal\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/mongolia-weather-clothing-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "eligible": true,
+            "lane": "information_v2",
+            "reason": "eligible_information_v2"
+          }
+        },
+        "publishState": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "published",
+            "expected": "published"
+          }
+        }
+      }
+    },
+    {
+      "id": "japan_entry_requirements",
+      "label": "일본 입국·비자",
+      "expectedPublishState": "pending_review",
+      "actualPublishState": "pending_review",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "entry_requirements",
+            "expected": "entry_requirements",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "entry_requirements:official_primary_source_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 0,
+            "meaningfulRowCount": 0
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 6,
+            "persistedClaims": 6,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 6,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": false,
+            "requiresHumanReview": true,
+            "issues": [
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required"
+            ]
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "일본-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "OFFICIAL_SOURCE",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "OFFICIAL_SOURCE",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": "가정하며 여권, 비자와 전자 허가 조건을 각각 확인합니다.\n확인일 2026-07-15 기준 공식 1차 출처: https://immigration.gov.example/japan-entry\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/japan-entry-visa-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "eligible": false,
+            "lane": "information_v2",
+            "reason": "review_blocked"
+          }
+        },
+        "publishState": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "pending_review",
+            "expected": "pending_review"
+          }
+        }
+      }
+    },
+    {
+      "id": "overseas_travel_insurance",
+      "label": "해외여행 보험",
+      "expectedPublishState": "pending_review",
+      "actualPublishState": "pending_review",
+      "passed": true,
+      "checks": {
+        "intent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": "travel_insurance",
+            "expected": "travel_insurance",
+            "missingInputs": []
+          }
+        },
+        "labelOnlyBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "missingSlots": [],
+            "structuredIssues": [
+              "travel_insurance:coverage_rows_required",
+              "travel_insurance:limits_required",
+              "travel_insurance:deductible_required",
+              "travel_insurance:official_policy_source_required"
+            ]
+          }
+        },
+        "structuredContent": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "contractIssues": [],
+            "structureIssues": [],
+            "tableCount": 1,
+            "meaningfulRowCount": 3
+          }
+        },
+        "evidenceCoverage": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "claims": 7,
+            "persistedClaims": 7,
+            "issues": []
+          }
+        },
+        "unsupportedNumbersBlocked": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "claims": 7,
+            "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate"
+            ]
+          }
+        },
+        "claimValidation": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "approved": true,
+            "pending": false,
+            "requiresHumanReview": true,
+            "issues": [
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required"
+            ]
+          }
+        },
+        "relatedLinks": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "slugs": [
+              "global-related-guide"
+            ],
+            "reasons": [
+              "same_destination_adjacent_intent"
+            ]
+          }
+        },
+        "ctaSelection": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "actual": [
+              "OFFICIAL_SOURCE",
+              "RELATED_ARTICLES"
+            ],
+            "expected": [
+              "OFFICIAL_SOURCE",
+              "RELATED_ARTICLES"
+            ]
+          }
+        },
+        "bodyCtaSanitization": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "sanitizedTail": ",000원부터이며 면책과 보장 제외 사항은 상품별 약관을 확인합니다.\n보험사 약관·감독기관 공식 1차 출처: https://insurance.gov.example/travel-policy\n\n지금 예약 가능\n\n상담하기"
+          }
+        },
+        "renderQuality": {
+          "status": "PASS",
+          "passed": true,
+          "evidence": {
+            "issues": [],
+            "canonicalUrl": "https://www.yeosonam.com/blog/overseas-travel-insurance-safety-eval"
+          }
+        },
+        "publicEligibility": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "eligible": false,
+            "lane": "information_v2",
+            "reason": "review_blocked"
+          }
+        },
+        "publishState": {
+          "status": "EXPECTED_BLOCK",
+          "passed": true,
+          "evidence": {
+            "actual": "pending_review",
+            "expected": "pending_review"
+          }
+        }
+      }
+    }
+  ]
+}

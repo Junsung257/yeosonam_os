@@ -88,7 +88,7 @@ const DESTINATIONS: Record<string, { kr: string; en: string; aliases: string[]; 
 
 const PRODUCT_TYPES = ['패키지', '자유여행', '노팁노옵션', '노쇼핑', '골프', '실속', '품격', '프리미엄', '허니문', '효도'];
 const DEPARTURE_CITIES = ['부산', '인천', '김해', '김포', '대구', '청주', '제주'];
-const TRAVEL_MODIFIERS = ['특가', '땡처리', '얼리버드', '조기예약', '마감임박', '출발확정', '소그룹', '단체', '가족', '신혼', '효도', '2인', '4인'];
+const TRAVEL_MODIFIERS = ['특가', '땡처리', '얼리버드', '조기예약', '출발일확인', '소그룹', '단체', '가족', '신혼', '효도', '2인', '4인'];
 
 const NEGATIVE_KEYWORDS = [
   '자유여행 호텔', '에어비앤비', '호텔 예약', '항공권만', '비자 발급',

@@ -30,10 +30,15 @@ const NON_ATTRACTION_CANDIDATE_RE =
   /^(?:전용|임주|석가장|치토세|삿포로|도야|오타루|후라노|비에이|노보리베츠|죠잔케이|동경|나리타|이도백화|출발확정|출확|마감|선발권조건|6일|=>)$/;
 
 const NON_ATTRACTION_TEXT_RE =
-  /(?:^\(?성인\s*\/\s*아동\s*동일\)?$|^\(?자유식\)?$|^\(?무제한\)?$|삼겹구이|모듬구이|씨푸드|짜조|스테이크\s*정식|세트메뉴|텐동소바세트|카츠카레\s*정식|해산물\s*철판구이|분짜|반쎄오|노미호다이|석-한\s*식|열대\s*과일\s*시식|소프트\s*아이스크림|온천계란|밀크티|생강차|멜리아\s*빈펄|동급\s*\(5성\)|일정\s*중\s*내\s*마음대로\s*택|아융강\s*래프팅|왕복케이블카|루지편도|유리잔도|유리전망대|도야\s*불꽃놀이|북해도\s*품격|비에이ㆍ오타루|출확|노노|차장관광|차창관광|달콤한\s*로맨틱\s*오타루\s*과자|해당일\s*제외일자|별도문의|선발권|출발확정|초특가|특가|추석|^\d{1,2}[./-]\d{1,2}(?:\s*[~-]\s*\d{1,2}[./-]?\d{0,2})?$|^\d{1,2}[./-]\d{1,2}(?:,\s*\d{1,2})+|^\d{1,2}[./-]\d{1,2}까지$)/;
+  /(?:^\(?성인\s*\/\s*아동\s*동일\)?$|^\(?자유식\)?$|^\(?무제한\)?$|삼겹구이|모듬구이|씨푸드|짜조|스테이크\s*정식|세트메뉴|텐동소바세트|카츠카레\s*정식|해산물\s*철판구이|분짜|반쎄오|노미호다이|석-한\s*식|열대\s*과일\s*시식|소프트\s*아이스크림|온천계란|밀크티|생강차|멜리아\s*빈펄|동급\s*\(5성\)|일정\s*중\s*내\s*마음대로\s*택|아융강\s*래프팅|왕복케이블카|루지편도|유리잔도|유리전망대|도야\s*불꽃놀이|북해도\s*품격|비에이ㆍ오타루|출확|노노|차장관광|차창관광|달콤한\s*로맨틱\s*오타루\s*과자|해당일\s*제외일자|별도문의|선발권|출발확정|초특가|특가|추석|사원\s*관람시|입장\s*불가|비운항일|^확인$|^[월화수목금토일]{2,7}$|^\(?\d{1,2}\/\d{1,2}(?:,\d{1,2})*제외\)?$|돈까스|넘능\s*세트|왕새우|민물가재|오징어볶음|가리비구이|문어구이|소고기안심구이|치킨윙|올유캔잇|우렁이찜|핫팟|소고기모듬|닭구이|대통밥정식|미식|레스토랑|카페|수박\s*쥬스|^\d{1,2}[./-]\d{1,2}(?:\s*[~-]\s*\d{1,2}[./-]?\d{0,2})?$|^\d{1,2}[./-]\d{1,2}(?:,\s*\d{1,2})+|^\d{1,2}[./-]\d{1,2}까지$)/;
 
 const DESCRIPTION_LABEL_RULES: Array<[RegExp, string]> = [
+  [/달랏\s*기차역|기차역\s*달랏\s*기차역/i, '달랏기차역'],
   [/도멘\s*드\s*마리\s*성당|핑크빛\s*건축물\s*수녀원/i, '도멘 드 마리 성당'],
+  [/도멘드\s*드\s*마리\s*성당/i, '도멘 드 마리 성당'],
+  [/천국의\s*계단/i, '천국의계단'],
+  [/압록강\s*대협곡/i, '압록강대협곡'],
+  [/조선족\s*민속원|전통\s*한옥\s*마을.*민속원/i, '연길민속촌'],
   [/다딴라\s*폭포|레일바이크/i, '다딴라 폭포'],
   [/쑤언흐엉|쑤언\s*흐엉/i, '쑤언흐엉호수'],
   [/플라워가든|꽃정원/i, '달랏 플라워가든'],
@@ -121,8 +126,100 @@ function extractAttractionCandidateLabels(rawText: string): string[] {
 
   const tokens = cleaned.split(/\s+/).filter(Boolean);
   pushCandidate(candidates, tokens.at(-1));
+  for (let size = 2; size <= 3; size++) {
+    if (tokens.length >= size) pushCandidate(candidates, tokens.slice(-size).join(' '));
+  }
 
   return candidates;
+}
+
+const DESTINATION_SCOPE_HINT_STOP_WORDS = new Set([
+  'day',
+  'include',
+  'exclude',
+  'pkg',
+  '\uc77c\uc815',
+  '\uad00\uad11',
+  '\ubc29\ubb38',
+  '\uc870\uc2dd',
+  '\uc911\uc2dd',
+  '\uc11d\uc2dd',
+  '\ud638\ud154',
+  '\uacf5\ud56d',
+]);
+
+function compactAttractionText(value: string | null | undefined): string {
+  return String(value ?? '').replace(/\s+/g, '').toLowerCase();
+}
+
+function pushScopeHint(scopes: string[], value: string | null | undefined, currentDestination?: string): void {
+  const normalized = normalizedAttractionCandidate(value ?? '');
+  const compact = compactAttractionText(normalized);
+  if (compact.length < 2 || compact.length > 16) return;
+  if (compact === compactAttractionText(currentDestination)) return;
+  if (DESTINATION_SCOPE_HINT_STOP_WORDS.has(compact)) return;
+  if (!/[A-Za-z\uac00-\ud7a3]/.test(normalized)) return;
+  if (!scopes.some(scope => compactAttractionText(scope) === compact)) scopes.push(normalized);
+}
+
+function extractDestinationScopeHints(
+  rawText: string,
+  candidate: string,
+  currentDestination?: string,
+): string[] {
+  const cleaned = normalizedAttractionCandidate(rawText);
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  const candidateTokens = normalizedAttractionCandidate(candidate).split(/\s+/).filter(Boolean);
+  if (tokens.length <= candidateTokens.length || candidateTokens.length === 0) return [];
+
+  const tail = tokens.slice(-candidateTokens.length).join('');
+  if (tail !== candidateTokens.join('')) return [];
+
+  const prefixTokens = tokens.slice(0, -candidateTokens.length);
+  if (prefixTokens.length === 0 || prefixTokens.length > 2) return [];
+
+  const scopes: string[] = [];
+  pushScopeHint(scopes, prefixTokens.join(' '), currentDestination);
+  for (const token of prefixTokens) pushScopeHint(scopes, token, currentDestination);
+  return scopes;
+}
+
+const STRUCTURAL_NON_ATTRACTION_COMPACT = new Set([
+  '\ub610\ub294',
+  '\uc815\uc2dd',
+  '\uc77c\uc815',
+  '\uad00\uad11',
+  '\ud2b9\uc804',
+]);
+
+function isStructuralNonAttractionCandidate(rawText: string): boolean {
+  const cleaned = normalizedAttractionCandidate(rawText);
+  const compact = compactAttractionText(cleaned);
+  if (STRUCTURAL_NON_ATTRACTION_COMPACT.has(compact)) return true;
+  if (/^\u2605?\ud2b9\uc804\d*\u2605?/.test(compact)) return true;
+  if (compact.includes('\ud2b9\uc804') && (compact.includes('\uc81c\uacf5') || compact.includes('\ub3c4\uc2dc\ub77d') || compact.includes('\ud558\uc774\ud2f0'))) return true;
+  return false;
+}
+
+function attractionScopeTokens(attraction: AttractionData): string[] {
+  return String(attraction.region ?? '')
+    .split(/[,/|&\u00b7\u318d\uBC0F\s]+/)
+    .map(token => normalizedAttractionCandidate(token))
+    .filter(token => compactAttractionText(token).length >= 2);
+}
+
+function isStandaloneKnownDestinationScope(
+  rawText: string,
+  attractions: AttractionData[],
+): boolean {
+  const cleaned = normalizedAttractionCandidate(rawText);
+  const compact = compactAttractionText(cleaned);
+  if (compact.length < 2 || compact.length > 16) return false;
+  if (/\s/.test(cleaned) || /\d/.test(cleaned)) return false;
+  if (STRUCTURAL_NON_ATTRACTION_COMPACT.has(compact)) return false;
+  return attractions.some(attraction =>
+    attractionScopeTokens(attraction).some(token => compactAttractionText(token) === compact),
+  );
 }
 
 export function applyProductRegistrationV3Matching(
@@ -145,7 +242,10 @@ export function applyProductRegistrationV3Matching(
       notice.category === 'optional_tour'
       && notice.review_status === 'auto_clean'
     );
+    const destinationScopesByDay = new Map<number, string[]>();
     for (const day of variant.days) {
+      const dayDestinationScopes = destinationScopesByDay.get(day.day) ?? [];
+      if (!destinationScopesByDay.has(day.day)) destinationScopesByDay.set(day.day, dayDestinationScopes);
       for (const event of day.events) {
         if (event.type === 'shopping') shoppingCount++;
         if (event.type === 'option' && !variantHasAutoCleanOptionalDisclosure) optionReview++;
@@ -157,7 +257,11 @@ export function applyProductRegistrationV3Matching(
           continue;
         }
 
-        if (isNonAttractionCandidate(event.raw_text) || isDestinationScopedNonAttractionCandidate(event.raw_text, destination)) {
+        if (
+          isStructuralNonAttractionCandidate(event.raw_text)
+          || isNonAttractionCandidate(event.raw_text)
+          || isDestinationScopedNonAttractionCandidate(event.raw_text, destination)
+        ) {
           event.type = 'notice';
           event.canonical_type = null;
           event.match_status = 'ignored';
@@ -167,7 +271,17 @@ export function applyProductRegistrationV3Matching(
         const scopedDestination = destination?.trim() || undefined;
         let match: AttractionData | null = null;
         for (const candidate of extractAttractionCandidateLabels(event.raw_text)) {
-          match = matchAttraction(candidate, attractions, scopedDestination);
+          const destinationScopes = [
+            scopedDestination,
+            ...dayDestinationScopes,
+            ...extractDestinationScopeHints(event.raw_text, candidate, scopedDestination),
+          ].filter((scope, index, scopes): scope is string | undefined =>
+            index === scopes.findIndex(other => compactAttractionText(other) === compactAttractionText(scope)),
+          );
+          for (const scope of destinationScopes) {
+            match = matchAttraction(candidate, attractions, scope);
+            if (match) break;
+          }
           if (!match && (!scopedDestination || DESCRIPTION_LABEL_FALLBACKS.has(candidate.replace(/\s+/g, '')))) {
             match = matchAttraction(candidate, attractions, undefined);
           }
@@ -178,6 +292,11 @@ export function applyProductRegistrationV3Matching(
           event.canonical_type = 'attraction';
           event.match_status = 'matched';
           attractionMatched++;
+        } else if (isStandaloneKnownDestinationScope(event.raw_text, attractions)) {
+          pushScopeHint(dayDestinationScopes, event.raw_text, scopedDestination);
+          event.type = 'notice';
+          event.canonical_type = null;
+          event.match_status = 'ignored';
         } else {
           event.match_status = 'unmatched';
           attractionUnmatched++;

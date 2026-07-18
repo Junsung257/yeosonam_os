@@ -15,6 +15,8 @@ import { pickMarketingPrice } from '@/lib/marketing-price';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '@/lib/pexels';
 import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export const maxDuration = 60;
 
@@ -25,6 +27,9 @@ export const maxDuration = 60;
  * - 최대 5개 (6개 이상은 SEO 페널티 리스크)
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -43,13 +48,10 @@ export async function POST(request: NextRequest) {
     const n = Math.min(5, Math.max(1, count || 1));
 
     // 상품 조회
-    const { data: pkg } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, price_tiers, price_dates, inclusions, excludes, product_type, airline, departure_airport, product_highlights, itinerary, itinerary_data, optional_tours, notices_parsed')
-      .eq('id', product_id)
-      .single();
-
-    if (!pkg) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
+    const pkg = await loadPublicContentPackageForGeneration(product_id);
+    if (!pkg) {
+      return NextResponse.json({ error: '고객 공개 승인된 상품만 블로그 대량 생성에 사용할 수 있습니다.' }, { status: 404 });
+    }
 
     // 관광지 조회 (복합 지역 분리 검색)
     let attractions: AttractionData[] = [];

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 
@@ -17,6 +18,13 @@ import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-sav
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { BLOG_PUBLIC_ANGLE_LABELS } from '@/lib/blog-public-taxonomy';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { isObviouslyInvalidDestinationRoute } from '../public-route';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -30,10 +38,21 @@ const BASE_URL = resolveBlogCanonicalOrigin();
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
   og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
-  travel_packages: { id: string; title: string; destination: string; price: number | null; duration: string | null } | null;
 }
 
-type DestinationPackage = { id: string; title: string; price: number | null };
+type DestinationPackage = {
+  id: string;
+  title: string;
+  price: number | null;
+  status?: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
+};
 
 type DestinationPageData = {
   destination: string;
@@ -106,6 +125,21 @@ function getDisplayImageUrl(post: BlogPost): string | null {
   return toBlogImageDisplaySrc(post.og_image_url);
 }
 
+function isBlogDestinationPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+async function mergeBlogDestinationPublicPackages<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
+  if (rows.length === 0) return [];
+  try {
+    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+  } catch (error) {
+    console.warn('[blog/destination] public snapshot merge failed; hiding package rows', error);
+    return [];
+  }
+}
+
 async function resolveDestinationRouteParamUncached(value: string): Promise<string> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded || !isSupabaseConfigured || !isSupabaseAdminConfigured) return decoded;
@@ -166,8 +200,8 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
   try {
     // 블로그 글 (해당 목적지)
     const postsQuery = supabaseAdmin
-      .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, duration)')
+      .from(PUBLIC_BLOG_READ_SOURCE)
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('destination', destination)
@@ -180,22 +214,22 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
       throw createBlogDatabaseUnavailableError();
     }
 
-    const posts = ((postsResult.data || []) as unknown as BlogPost[]).filter(
-      p => {
-        const postDestination = (p.destination || p.travel_packages?.destination || '').trim();
+    const posts = ((postsResult.data || []) as unknown as BlogPost[])
+      .filter(p => {
+        const postDestination = (p.destination || '').trim();
         return (
           postDestination.includes(destination) ||
           destinationSlugMatches(postDestination, destination)
         );
-      },
-    );
+      });
 
     // 관련 상품
     const packagesQuery = supabaseAdmin
       .from('travel_packages')
-      .select('id, title, price')
+      .select('id, title, price, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .ilike('destination', `%${destination}%`)
-      .in('status', ['active', 'approved'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(6);
 
@@ -204,7 +238,10 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
     return {
       destination,
       posts,
-      packages: (packagesResult.data || []) as unknown as DestinationPackage[],
+      packages: await mergeBlogDestinationPublicPackages(
+        ((packagesResult.data || []) as unknown as Array<Record<string, unknown>>)
+          .filter(isBlogDestinationPublicSnapshotCandidate),
+      ) as unknown as DestinationPackage[],
       unavailable: false,
     };
   } catch {
@@ -214,20 +251,12 @@ async function getDestinationPageDataUncached(dest: string): Promise<Destination
 
 const getCachedDestinationPageData = unstable_cache(
   async (dest: string) => getDestinationPageDataUncached(dest),
-  ['blog-destination-page-v1'],
+  ['blog-destination-page-v2-public-eligibility'],
   { revalidate: 300, tags: [BLOG_DESTINATION_CACHE_TAG] },
 );
 
 async function getDestinationPageData(dest: string): Promise<DestinationPageData> {
-  const fallbackDestination = safeDecodePathSegment(dest).trim();
-  try {
-    return await getCachedDestinationPageData(dest);
-  } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) {
-      return { destination: fallbackDestination, posts: [], packages: [], unavailable: true };
-    }
-    throw err;
-  }
+  return getCachedDestinationPageData(dest);
 }
 
 export async function generateStaticParams() {
@@ -237,7 +266,7 @@ export async function generateStaticParams() {
 
   try {
     const { data } = await supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select('destination')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -259,7 +288,9 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ dest?: string | string[] }> }): Promise<Metadata> {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
-  const destination = safeDecodePathSegment(dest).trim();
+  if (isObviouslyInvalidDestinationRoute(dest)) notFound();
+  const destination = await resolveDestinationRouteParam(dest);
+  if (isObviouslyInvalidDestinationRoute(destination)) notFound();
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
   return {
     title: `${destination} 여행 가이드`,
@@ -276,7 +307,9 @@ export async function generateMetadata({ params }: { params: Promise<{ dest?: st
 export default async function DestinationBlogPage({ params }: { params: Promise<{ dest?: string | string[] }> }) {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
+  if (isObviouslyInvalidDestinationRoute(dest)) notFound();
   const { destination, posts, packages, unavailable } = await getDestinationPageData(dest);
+  if (!unavailable && posts.length === 0) notFound();
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
 
   return (
@@ -286,7 +319,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
         suppressHydrationWarning
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: `${destination} 여행 가이드`,
