@@ -16,6 +16,7 @@ import { getPrompt } from '@/lib/prompt-loader'
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages'
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint'
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor'
+import { applyCustomerAnswerGuard } from '@/lib/jarvis/customer-answer-guard'
 import { critiqueReply } from '@/lib/jarvis/response-critic'
 import { llmCall, tryDeepSeekStream } from '@/lib/llm-gateway'
 import { resolveAffiliateScopeId } from '@/lib/affiliate-scope'
@@ -583,13 +584,27 @@ ${message}`
           if (linkStr) finalReply = finalReply.trimEnd() + `\n\n자세한 상품 보기: ${linkStr}`
         }
         const suppressNoInventoryEscalation = scopedPackageIds.length === 0 && Boolean(freeTravelHref)
-        const finalEscalate =
+        let finalEscalate =
           ((parsed.escalate ?? false) && !suppressNoInventoryEscalation) ||
           effectiveCritiqueSeverity === 'block'
 
         // ★ Critic 수정본이 있으면 후처리된 버전에 추가 병합 (warn 수준만)
         if (effectiveCritiqueSeverity === 'warn' && critique.correctedReply) {
           finalReply = `💡 ${critique.correctedReply}\n\n---\n${finalReply}`
+        }
+
+        const answerGuard = applyCustomerAnswerGuard({
+          message,
+          reply: finalReply,
+          ctx: {
+            surface: 'customer',
+            userRole: 'customer',
+            tenantId: affiliateScopeId ?? undefined,
+          },
+        })
+        if (answerGuard.wasGuarded) {
+          finalReply = answerGuard.reply
+          finalEscalate = finalEscalate || answerGuard.escalate
         }
 
         void recordCritiqueResult({
@@ -612,6 +627,8 @@ ${message}`
             recommended_count: parsed.recommendedPackageIds?.length ?? 0,
             corrections_applied: corrections.length,
             negative_examples_applied: negExamples.length,
+            answer_guard_applied: answerGuard.wasGuarded,
+            answer_guard_issues: answerGuard.issues,
           },
         })
 

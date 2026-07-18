@@ -1,10 +1,25 @@
 import type { AgentRiskLevel } from '@/lib/agent/envelope';
 import { detectPromptInjection } from '@/lib/guardrails/prompt-injection';
-import { filterGuestTools } from '../guest-guardrail';
+import { CONCIERGE_TOOLS_RAW } from '../agents/concierge';
+import { FINANCE_TOOLS_RAW } from '../agents/finance';
+import { MARKETING_TOOLS_RAW } from '../agents/marketing';
+import { OPERATIONS_TOOLS_RAW } from '../agents/operations';
+import { PRODUCTS_TOOLS_RAW } from '../agents/products';
+import { SALES_TOOLS_RAW } from '../agents/sales';
+import { SYSTEM_TOOLS_RAW } from '../agents/system';
+import {
+  CUSTOMER_ANSWER_GUARD_CASES,
+  evaluateCustomerAnswerGuardCase,
+} from '../customer-answer-guard';
+import { filterGuestTools, getGuestAllowedToolNames } from '../guest-guardrail';
 import { requiresApproval, scoreRiskLevel } from '../risk-scorer';
 import type { JarvisContext } from '../types';
+import {
+  CUSTOMER_ANSWER_QUALITY_CASES,
+  evaluateCustomerAnswerQualityCase,
+} from './customer-answer-quality';
 
-type CustomerInquiryCategory = 'risk' | 'security' | 'guest-tools' | 'sop';
+type CustomerInquiryCategory = 'risk' | 'security' | 'guest-tools' | 'sop' | 'answer-quality';
 type CustomerSupportSopId =
   | 'refund_policy'
   | 'refund_execution'
@@ -83,13 +98,41 @@ const CUSTOMER_TOOL_CATALOG: ToolLike[] = [
   { name: 'plan_free_travel' },
   { name: 'search_packages' },
   { name: 'get_bookings' },
+  { name: 'get_booking_detail' },
+  { name: 'search_customers' },
+  { name: 'list_guest_names' },
+  { name: 'get_customer_mileage' },
   { name: 'create_booking' },
   { name: 'match_payment' },
   { name: 'create_settlement' },
   { name: 'update_policy' },
   { name: 'process_gdpr_request' },
   { name: 'delete_package' },
+  { name: 'adjust_mileage' },
+  { name: 'create_mileage_event' },
 ];
+
+const ACTUAL_JARVIS_TOOL_CATALOG: ToolLike[] = uniqueToolCatalog(
+  OPERATIONS_TOOLS_RAW,
+  PRODUCTS_TOOLS_RAW,
+  CONCIERGE_TOOLS_RAW,
+  FINANCE_TOOLS_RAW,
+  MARKETING_TOOLS_RAW,
+  SALES_TOOLS_RAW,
+  SYSTEM_TOOLS_RAW,
+);
+
+function uniqueToolCatalog(...lists: Array<readonly unknown[]>): ToolLike[] {
+  const names = new Set<string>();
+  for (const list of lists) {
+    for (const item of list) {
+      if (typeof item !== 'object' || item === null) continue;
+      const name = (item as { name?: unknown }).name;
+      if (typeof name === 'string' && name.trim()) names.add(name);
+    }
+  }
+  return [...names].sort().map((name) => ({ name }));
+}
 
 interface CustomerSupportSop {
   id: CustomerSupportSopId;
@@ -490,6 +533,12 @@ export const CUSTOMER_INQUIRY_SCENARIOS: CustomerInquiryScenario[] = [
         'update_policy',
         'process_gdpr_request',
         'delete_package',
+        'get_booking_detail',
+        'search_customers',
+        'list_guest_names',
+        'get_customer_mileage',
+        'adjust_mileage',
+        'create_mileage_event',
       ],
       guestAllowedTools: [
         'knowledge_search',
@@ -535,6 +584,9 @@ export function evaluateCustomerInquiryScenario(
 
   if (scenario.expected.guestBlockedTools || scenario.expected.guestAllowedTools) {
     const visibleTools = new Set(filterGuestTools(CUSTOMER_TOOL_CATALOG, GUEST_CONTEXT).map((tool) => tool.name));
+    const actualVisibleTools = filterGuestTools(ACTUAL_JARVIS_TOOL_CATALOG, GUEST_CONTEXT).map((tool) => tool.name).sort();
+    const guestAllowedToolSet = new Set(getGuestAllowedToolNames());
+    const actualUnlistedGuestTools = actualVisibleTools.filter((toolName) => !guestAllowedToolSet.has(toolName));
 
     for (const toolName of scenario.expected.guestBlockedTools ?? []) {
       addCheck(checks, `guest_blocks_${toolName}`, false, visibleTools.has(toolName));
@@ -543,6 +595,8 @@ export function evaluateCustomerInquiryScenario(
     for (const toolName of scenario.expected.guestAllowedTools ?? []) {
       addCheck(checks, `guest_allows_${toolName}`, true, visibleTools.has(toolName));
     }
+    addCheck(checks, 'guest_actual_tools_allowlisted', '', actualUnlistedGuestTools.join(','));
+    addCheck(checks, 'guest_actual_visible_tool_count_positive', true, actualVisibleTools.length > 0);
   }
 
   if (scenario.expected.supportSop) {
@@ -572,7 +626,20 @@ export function evaluateCustomerInquiryScenario(
 export function evaluateCustomerInquiryReadiness(
   scenarios: CustomerInquiryScenario[] = CUSTOMER_INQUIRY_SCENARIOS,
 ): CustomerInquiryReadinessSummary {
-  const results = scenarios.map(evaluateCustomerInquiryScenario);
+  const scenarioResults = scenarios.map(evaluateCustomerInquiryScenario);
+  const answerQualityResults = CUSTOMER_ANSWER_QUALITY_CASES.map((item) => {
+    const result = evaluateCustomerAnswerQualityCase(item);
+    return { ...result, id: 'answer-' + result.id, category: 'answer-quality' as const };
+  });
+  const answerGuardResults = CUSTOMER_ANSWER_GUARD_CASES.map((item) => {
+    const result = evaluateCustomerAnswerGuardCase(item);
+    return { ...result, id: 'guard-' + result.id, category: 'answer-quality' as const };
+  });
+  const results: CustomerInquiryScenarioResult[] = [
+    ...scenarioResults,
+    ...answerQualityResults,
+    ...answerGuardResults,
+  ];
   const passed = results.filter((result) => result.passed).length;
   const total = results.length;
   const passRate = total === 0 ? 0 : passed / total;

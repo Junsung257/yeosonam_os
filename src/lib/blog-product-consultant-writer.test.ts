@@ -84,7 +84,7 @@ describe('blog product consultant writer', () => {
 
       expect(markdown).not.toContain('localhost:3000');
       expect(markdown).toContain('https://www.yeosonam.com/packages/22222222-2222-2222-2222-222222222222');
-      expect(markdown).toContain('https://www.yeosonam.com/group-inquiry');
+      expect(markdown).toContain('https://www.yeosonam.com/group?');
     } finally {
       if (previousBaseUrl === undefined) delete process.env.NEXT_PUBLIC_BASE_URL;
       else process.env.NEXT_PUBLIC_BASE_URL = previousBaseUrl;

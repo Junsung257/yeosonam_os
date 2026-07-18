@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { AdminInquiryRow } from '@/app/api/admin/leads/route';
 import { maskPhone } from '@/lib/pii-mask';
 
-type Filter = 'all' | 'lead' | 'qa';
+type Filter = 'all' | 'lead' | 'qa' | 'rfq';
 
 export default function LeadsPageClient() {
   const [rows, setRows] = useState<AdminInquiryRow[]>([]);
@@ -39,6 +39,7 @@ export default function LeadsPageClient() {
     all: rows.length,
     lead: rows.filter(r => r.source === 'lead').length,
     qa: rows.filter(r => r.source === 'qa').length,
+    rfq: rows.filter(r => r.source === 'rfq').length,
   }), [rows]);
 
   const fmtDate = (iso: string) => {
@@ -65,7 +66,7 @@ export default function LeadsPageClient() {
       </div>
 
       <div className="flex gap-2 mb-4">
-        {(['all', 'lead', 'qa'] as Filter[]).map(f => (
+        {(['all', 'lead', 'qa', 'rfq'] as Filter[]).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -75,7 +76,7 @@ export default function LeadsPageClient() {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            {f === 'all' ? '전체' : f === 'lead' ? '예약문의(폼)' : 'QA 챗봇'} ({counts[f]})
+            {f === 'all' ? '전체' : f === 'lead' ? '예약문의(폼)' : f === 'qa' ? 'QA 챗봇' : '단체 RFQ'} ({counts[f]})
           </button>
         ))}
       </div>
@@ -92,6 +93,7 @@ export default function LeadsPageClient() {
         <div className="py-12 text-center text-gray-400">
           {filter === 'lead' ? '아직 모바일 폼 예약문의가 없습니다.' :
            filter === 'qa' ? '아직 QA 챗봇 문의가 없습니다.' :
+           filter === 'rfq' ? '아직 단체 RFQ가 없습니다.' :
            '예약문의가 없습니다.'}
         </div>
       )}
@@ -116,16 +118,24 @@ export default function LeadsPageClient() {
                 <tr key={`${r.source}-${r.id}`} className="hover:bg-gray-50">
                   <td className="px-3 py-3">
                     <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
-                      r.source === 'lead' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                      r.source === 'lead'
+                        ? 'bg-blue-50 text-blue-700'
+                        : r.source === 'qa'
+                          ? 'bg-purple-50 text-purple-700'
+                          : 'bg-emerald-50 text-emerald-700'
                     }`}>
-                      {r.source === 'lead' ? '폼' : 'QA'}
+                      {r.source === 'lead' ? '폼' : r.source === 'qa' ? 'QA' : 'RFQ'}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</td>
                   <td className="px-3 py-3 font-medium text-gray-900">{r.name ?? '-'}</td>
                   <td className="px-3 py-3 text-gray-700 tabular-nums">{maskPhone(r.phone, 'marketer') ?? '-'}</td>
                   <td className="px-3 py-3 max-w-md">
-                    {r.product_id && r.product_title ? (
+                    {r.source === 'rfq' && r.product_id ? (
+                      <Link href={`/admin/rfqs/${encodeURIComponent(r.product_id)}`} target="_blank" className="text-brand hover:underline">
+                        {r.product_title ?? '단체 RFQ'}
+                      </Link>
+                    ) : r.product_id && r.product_title ? (
                       <Link href={`/packages/${encodeURIComponent(r.product_id)}`} target="_blank" className="text-brand hover:underline">
                         {r.product_title}
                       </Link>

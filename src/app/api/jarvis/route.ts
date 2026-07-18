@@ -25,6 +25,7 @@ import { createAgentTask, recordAgentIncident, transitionAgentTask } from '@/lib
 import { rateLimitAI } from '@/lib/rate-limiter'
 import { applyRequestContext } from '@/lib/jarvis/scoped-client'
 import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
+import { applyCustomerAnswerGuard } from '@/lib/jarvis/customer-answer-guard'
 
 export async function POST(req: NextRequest) {
   const limited = await rateLimitAI(req)
@@ -122,6 +123,13 @@ export async function POST(req: NextRequest) {
     } as const
     const runAgent = agentMap[agentType]
     const result = await runAgent({ message, session, user: null, ctx })
+    const answerGuard = applyCustomerAnswerGuard({
+      message,
+      reply: result.response,
+      ctx,
+      pendingActionId: result.pendingActionId,
+    })
+    const finalResponse = answerGuard.reply
     if (taskId) {
       await transitionAgentTask(taskId, 'running', 'done')
     }
@@ -132,7 +140,7 @@ export async function POST(req: NextRequest) {
       { role: 'user', content: message, timestamp: new Date().toISOString() },
       {
         role: 'assistant',
-        content: result.response,
+        content: finalResponse,
         agent: agentType,
         toolsUsed: result.toolsUsed,
         pendingActionId: result.pendingActionId,
@@ -166,6 +174,8 @@ export async function POST(req: NextRequest) {
         specialist_method: specialistPick.method,
         tools_used: result.toolsUsed ?? [],
         pending_hitl: !!result.pendingActionId,
+        customer_answer_guarded: answerGuard.wasGuarded,
+        customer_answer_guard_issues: answerGuard.issues,
       },
     })
 
@@ -173,9 +183,12 @@ export async function POST(req: NextRequest) {
       sessionId: session.id,
       agent: agentType,
       specialist: specialistPick,
-      response: result.response,
+      response: finalResponse,
       pendingAction: result.pendingAction,
       toolsUsed: result.toolsUsed,
+      customerAnswerGuard: answerGuard.wasGuarded
+        ? { issues: answerGuard.issues, escalated: answerGuard.escalate }
+        : null,
     })
 
   } catch (error) {

@@ -11,6 +11,7 @@
  */
 
 export type StreamEventType =
+  | 'text_final'      // final corrected answer replacement
   | 'text_delta'      // 토큰 단위 answer 청크
   | 'tool_use_start'  // tool 호출 시작 — UI 에서 "예약 조회 중..." 표시
   | 'tool_result'     // tool 결과 (요약) — UI 에서 "3건 찾음" 표시

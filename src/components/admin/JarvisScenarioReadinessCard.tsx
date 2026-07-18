@@ -13,6 +13,11 @@ interface ScenarioReadinessPayload {
     passed: number;
     score: number;
   };
+  feature_coverage?: {
+    total: number;
+    passed: number;
+    score: number;
+  };
   free_travel: {
     total: number;
     passed: number;
@@ -83,10 +88,18 @@ export default function JarvisScenarioReadinessCard() {
 
       {summary && payload ? (
         <>
-          <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-5">
             <Kpi label="Weighted" value={`${summary.score}/${summary.maxScore}`} highlight={summary.status === 'pass'} />
             <Kpi label="Threshold" value={`${summary.passThreshold}+`} />
             <Kpi label="Inquiry" value={`${payload.customer_inquiry.passed}/${payload.customer_inquiry.total}`} />
+            <Kpi
+              label="Coverage"
+              value={
+                payload.feature_coverage
+                  ? `${payload.feature_coverage.passed}/${payload.feature_coverage.total}`
+                  : sectionScore(summary, 'jarvis-feature-coverage')
+              }
+            />
             <Kpi label="Free travel" value={`${payload.free_travel.passed}/${payload.free_travel.total}`} />
           </div>
 
@@ -120,6 +133,11 @@ export default function JarvisScenarioReadinessCard() {
       )}
     </section>
   );
+}
+
+function sectionScore(summary: AllScenarioReadinessSummary, id: string): string {
+  const section = summary.sections.find((item) => item.id === id);
+  return section ? `${section.score}/${section.maxScore}` : '-';
 }
 
 function Kpi({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {

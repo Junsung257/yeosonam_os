@@ -311,6 +311,10 @@ async function tryV2Stream(text: string): Promise<boolean> {
             ensureMessage();
             hasTextChunk = true;
             appendToMessage(assistantId!, parsed.content);
+          } else if (currentEvent === 'text_final' && parsed.content != null) {
+            ensureMessage();
+            hasTextChunk = true;
+            updateMessage(assistantId!, { content: parsed.content });
           } else if (currentEvent === 'tool_use_start') {
             // 내부 도구 호출은 노출하지 않는다. 초반 오류 시 V1 폴백을 방해하지 않기 위함.
           } else if (currentEvent === 'tool_result') {
