@@ -20,6 +20,13 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('candidateFailures.push');
   });
 
+  it('deduplicates micro-angle candidates by destination, broad angle, and micro angle', () => {
+    const source = routeSource();
+
+    expect(source).toContain('buildRecentInfoDuplicateScope(item)');
+    expect(source).toContain("query.contains('generation_meta', { micro_angle: scope.microAngle })");
+  });
+
   it('never lets deterministic information fallback become a public article', () => {
     const source = routeSource();
 

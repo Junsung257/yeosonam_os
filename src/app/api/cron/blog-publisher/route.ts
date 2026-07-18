@@ -114,6 +114,7 @@ import {
 } from '@/lib/blog-information-representative-repository';
 import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
 import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
+import { buildRecentInfoDuplicateScope } from '@/lib/blog-info-duplicate-scope';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -1729,29 +1730,35 @@ export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
 });
 
 async function isRecentInfoDuplicateCandidate(item: any): Promise<boolean> {
-  if (item.product_id) return false;
-  const destination = typeof item.destination === 'string' ? item.destination.trim() : '';
-  if (!destination) return false;
-  const angleType = typeof item.angle_type === 'string' && item.angle_type.trim()
-    ? item.angle_type.trim()
-    : 'value';
+  const scope = buildRecentInfoDuplicateScope(item);
+  if (!scope) return false;
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { count, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('content_creatives')
     .select('id', { count: 'exact', head: true })
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
-    .eq('destination', destination)
-    .eq('angle_type', angleType)
+    .eq('destination', scope.destination)
+    .eq('angle_type', scope.angleType)
     .is('product_id', null)
     .gte('published_at', cutoff);
+
+  // Refill candidates under the broad `value` angle are intentionally
+  // distinct when their micro angles differ. Legacy rows without a micro
+  // angle keep the conservative destination+angle duplicate rule.
+  if (scope.microAngle) {
+    query = query.contains('generation_meta', { micro_angle: scope.microAngle });
+  }
+
+  const { count, error } = await query;
 
   if (error) {
     logWarning('[cron/blog-publisher] recent duplicate precheck failed', {
       id: item.id,
-      destination,
-      angleType,
+      destination: scope.destination,
+      angleType: scope.angleType,
+      microAngle: scope.microAngle,
       error: error.message,
     });
     return false;

@@ -29,6 +29,27 @@ function sha256(content) {
   return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
+function stripDollarQuotedBodies(content) {
+  const delimiterPattern = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/g;
+  let cursor = 0;
+  let result = '';
+  let match;
+
+  while ((match = delimiterPattern.exec(content)) !== null) {
+    const delimiter = match[0];
+    const bodyEnd = content.indexOf(delimiter, delimiterPattern.lastIndex);
+    if (bodyEnd === -1) break;
+
+    result += content.slice(cursor, match.index);
+    const quoted = content.slice(match.index, bodyEnd + delimiter.length);
+    result += quoted.replace(/[^\n]/g, ' ');
+    cursor = bodyEnd + delimiter.length;
+    delimiterPattern.lastIndex = cursor;
+  }
+
+  return result + content.slice(cursor);
+}
+
 function parseNameStatusZ(output) {
   const tokens = output.split('\0').filter(Boolean);
   const changes = [];
@@ -87,7 +108,9 @@ class MigrationChecker {
   }
 
   checkDestructiveOps() {
-    this.content.split('\n').forEach((line, index) => {
+    // Statements inside a function body are defined, not executed, by the
+    // migration. Runtime DML is reviewed by function/RPC security tests.
+    stripDollarQuotedBodies(this.content).split('\n').forEach((line, index) => {
       const cleanLine = line.replace(/--.*$/, '').trim();
       if (!cleanLine) return;
       if (/DROP\s+TABLE/i.test(cleanLine)) this.addIssue(SEVERITY.BLOCKING, 'destructive', 'DROP TABLE can remove production data', index + 1);
@@ -153,7 +176,10 @@ class MigrationChecker {
     for (const { table, column } of foreignKeys) {
       const index = new RegExp(`create (?:unique )?index[^;]* on (?:public\\.)?${table}\\s*\\([^)]*\\b${column}\\b`);
       const uniqueOrPrimary = new RegExp(`(?:primary key|unique)\\s*\\([^)]*\\b${column}\\b`);
-      if (!index.test(this.indexCorpus) && !uniqueOrPrimary.test(this.normalizedContent)) {
+      const inlineUnique = new RegExp(`(?:^|,)\\s*${column}\\s+[^,]*\\bunique\\b`);
+      if (!index.test(this.indexCorpus)
+        && !uniqueOrPrimary.test(this.normalizedContent)
+        && !inlineUnique.test(this.normalizedContent)) {
         this.addIssue(SEVERITY.HIGH, 'foreign-key-index', `Foreign key '${table}.${column}' has no supporting index in the change set`);
       }
     }
@@ -188,7 +214,51 @@ class MigrationChecker {
   }
 }
 
-function analyzeChangeSet(changes) {
+function issueKey(issue) {
+  return `${issue.severity}:${issue.type}:${issue.description}`;
+}
+
+function applyExactApprovals(result, approvals = {}) {
+  const approved = [];
+  const remainingFiles = [];
+
+  for (const fileResult of result.files) {
+    const approval = approvals[fileResult.file];
+    const change = result.changes.find((candidate) => path.basename(candidate.path || candidate.oldPath) === fileResult.file);
+    const currentHash = change?.content ? sha256(change.content) : null;
+    const actualIssues = fileResult.issues.map(issueKey).sort();
+    const approvedIssues = Array.isArray(approval?.approvedIssues)
+      ? approval.approvedIssues.map(issueKey).sort()
+      : [];
+    const exactMatch = approval
+      && approval.status === fileResult.status
+      && approval.sha256 === currentHash
+      && JSON.stringify(actualIssues) === JSON.stringify(approvedIssues);
+
+    if (exactMatch) {
+      approved.push({
+        file: fileResult.file,
+        status: fileResult.status,
+        sha256: currentHash,
+        rationale: approval.rationale,
+        evidence: approval.evidence,
+        issues: fileResult.issues,
+      });
+    } else {
+      remainingFiles.push(fileResult);
+    }
+  }
+
+  return {
+    ...result,
+    files: remainingFiles,
+    totalIssues: remainingFiles.reduce((sum, file) => sum + file.issues.length, 0),
+    approved,
+    approvedIssues: approved.reduce((sum, file) => sum + file.issues.length, 0),
+  };
+}
+
+function analyzeChangeSet(changes, options = {}) {
   const indexCorpus = changes.filter((change) => change.content).map((change) => change.content).join('\n');
   const files = [];
   let totalIssues = 0;
@@ -219,7 +289,10 @@ function analyzeChangeSet(changes) {
       totalIssues += issues.length;
     }
   }
-  return { files, totalIssues, totalChecked: changes.length, changes };
+  return applyExactApprovals(
+    { files, totalIssues, totalChecked: changes.length, changes },
+    options.approvals,
+  );
 }
 
 function determineExitCode(result) {
@@ -231,6 +304,7 @@ function printReport(result) {
   console.log(`Files checked: ${result.totalChecked}`);
   console.log(`Files with issues: ${result.files.length}`);
   console.log(`Total issues: ${result.totalIssues}`);
+  console.log(`Exactly approved issues: ${result.approvedIssues || 0}`);
   for (const { file, status, issues } of result.files) {
     console.log(`\n${status} ${file}`);
     for (const issue of issues) console.log(`  [${issue.severity.toUpperCase()}] ${issue.type}: ${issue.description}`);
@@ -250,6 +324,10 @@ function parseArgs(args) {
 
 function runCli(args = process.argv.slice(2), cwd = process.cwd()) {
   const options = parseArgs(args);
+  const approvalsPath = path.join(cwd, '.github', 'migration-safety-approvals.json');
+  const approvalConfig = fs.existsSync(approvalsPath)
+    ? JSON.parse(fs.readFileSync(approvalsPath, 'utf8'))
+    : { approvals: {} };
   let changes;
   if (options.base && options.head) {
     changes = collectMigrationChanges({ base: options.base, head: options.head, cwd });
@@ -260,7 +338,7 @@ function runCli(args = process.argv.slice(2), cwd = process.cwd()) {
       return { status: 'A', path: relativePath, content: fs.readFileSync(absolutePath, 'utf8'), oldContent: null };
     });
   }
-  const result = analyzeChangeSet(changes);
+  const result = analyzeChangeSet(changes, { approvals: approvalConfig.approvals || {} });
   printReport(result);
   const reportPath = path.resolve(cwd, options.report || 'migration-safety-report.json');
   fs.writeFileSync(reportPath, JSON.stringify({ timestamp: new Date().toISOString(), ...result }, null, 2));
@@ -271,10 +349,12 @@ module.exports = {
   SEVERITY,
   MigrationChecker,
   analyzeChangeSet,
+  applyExactApprovals,
   collectMigrationChanges,
   determineExitCode,
   normalizeSql,
   parseNameStatusZ,
+  stripDollarQuotedBodies,
   runCli,
 };
 

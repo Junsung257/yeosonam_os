@@ -96,4 +96,3 @@ keyword/topic + validated destination
 5. Staging-only fixture and publish-state verification.
 
 No migration is applied to a remote database in this goal.
-

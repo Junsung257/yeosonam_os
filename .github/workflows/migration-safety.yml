@@ -5,6 +5,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'scripts/migration-safety-checker.js'
+      - '.github/migration-safety-approvals.json'
       - 'src/lib/migration-safety-checker.test.ts'
       - '.github/workflows/migration-safety.yml'
   push:

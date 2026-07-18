@@ -10,8 +10,12 @@ const checker = require('../../scripts/migration-safety-checker.js') as {
   MigrationChecker: new (file: string, content: string, options?: { indexCorpus?: string }) => {
     run(): Array<{ severity: string; type: string }>;
   };
-  analyzeChangeSet(changes: Array<Record<string, unknown>>): {
+  analyzeChangeSet(changes: Array<Record<string, unknown>>, options?: { approvals?: Record<string, unknown> }): {
     files: Array<{ issues: Array<{ severity: string }> }>;
+  };
+  applyExactApprovals(result: Record<string, unknown>, approvals: Record<string, unknown>): {
+    files: Array<{ issues: Array<{ severity: string }> }>;
+    approvedIssues: number;
   };
   collectMigrationChanges(input: { base: string; head: string; cwd: string }): Array<{
     status: string;
@@ -20,6 +24,7 @@ const checker = require('../../scripts/migration-safety-checker.js') as {
   }>;
   determineExitCode(result: { files: Array<{ issues: Array<{ severity: string }> }> }): number;
   parseNameStatusZ(output: string): Array<{ status: string; path: string; oldPath?: string }>;
+  stripDollarQuotedBodies(content: string): string;
 };
 
 const temporaryDirectories: string[] = [];
@@ -68,6 +73,40 @@ describe('migration safety checker', () => {
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'high' }] }] })).toBe(1);
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'critical' }] }] })).toBe(1);
     expect(checker.determineExitCode({ files: [{ issues: [{ severity: 'medium' }] }] })).toBe(0);
+  });
+
+  it('does not treat DML inside a function definition as migration-time deletion', () => {
+    const migration = `
+      CREATE FUNCTION public.refresh_rows() RETURNS void LANGUAGE plpgsql AS $$
+      BEGIN
+        DELETE FROM public.runtime_rows;
+      END;
+      $$;
+    `;
+    expect(checker.stripDollarQuotedBodies(migration)).not.toContain('DELETE FROM');
+    expect(new checker.MigrationChecker('20260101000000_function.sql', migration).run())
+      .not.toContainEqual(expect.objectContaining({ type: 'destructive' }));
+  });
+
+  it('accepts a safety approval only for an exact file hash and exact issue set', () => {
+    const content = 'CREATE INDEX idx_runtime_rows ON public.runtime_rows(id);\n';
+    const change = { status: 'A', path: 'supabase/migrations/20260101000000_index.sql', content, oldContent: null };
+    const raw = checker.analyzeChangeSet([change]);
+    const issue = raw.files[0].issues[0];
+    const hash = createRequire(import.meta.url)('node:crypto').createHash('sha256').update(content).digest('hex');
+    const approvals = {
+      '20260101000000_index.sql': {
+        sha256: hash,
+        status: 'A',
+        rationale: 'verified fixture',
+        evidence: 'test',
+        approvedIssues: [issue],
+      },
+    };
+
+    expect(checker.analyzeChangeSet([change], { approvals }).files).toHaveLength(0);
+    expect(checker.analyzeChangeSet([{ ...change, content: `${content}-- changed\n` }], { approvals }).files)
+      .toHaveLength(1);
   });
 
   it('collects the complete merge range including A/M/D/R and blocks history rewrites', () => {
