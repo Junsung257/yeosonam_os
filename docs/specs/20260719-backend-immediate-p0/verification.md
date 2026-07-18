@@ -21,7 +21,7 @@ npm run type-check
 
 ## Evidence To Report
 
-- Test output: vulnerable baseline 8 failed/6 passed; final expanded backend/security suite 11 files / 108 tests passed
+- Test output: vulnerable baseline 8 failed/6 passed; final post-main-merge backend/security suite 12 files / 113 tests passed
 - Independent integration review: 8 files / 51 tests passed; no remaining release blocker found
 - API response: route tests assert 401/403/503 and valid 2xx controls
 - DB/schema check: no DB change or live mutation
