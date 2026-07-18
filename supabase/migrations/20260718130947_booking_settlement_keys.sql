@@ -32,10 +32,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_settlement_keys_active
 CREATE INDEX IF NOT EXISTS idx_booking_settlement_keys_booking
   ON public.booking_settlement_keys (booking_id, status);
 
-CREATE INDEX IF NOT EXISTS idx_booking_settlement_keys_land_operator
-  ON public.booking_settlement_keys (land_operator_id)
-  WHERE land_operator_id IS NOT NULL;
-
 CREATE INDEX IF NOT EXISTS idx_booking_settlement_keys_lookup
   ON public.booking_settlement_keys (departure_date, customer_name_snapshot, land_operator_name_snapshot)
   WHERE status = 'active';
