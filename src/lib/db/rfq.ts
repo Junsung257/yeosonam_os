@@ -5,7 +5,7 @@
  * 호출자는 기존 그대로 `@/lib/supabase` 에서 import 가능 (re-export 유지).
  */
 
-import { getSupabase } from '../supabase';
+import { getSupabase, getSupabaseAdmin } from '../supabase';
 
 // ─── 타입 ────────────────────────────────────────────────────
 
@@ -112,6 +112,30 @@ export interface RfqMessage {
   is_visible_to_customer: boolean;
   is_visible_to_tenant:   boolean;
   created_at:             string;
+}
+
+export interface AuthorizedRfqTenant {
+  id: string;
+  tier: 'gold' | 'silver' | 'bronze';
+}
+
+/**
+ * Server-only tenant lookup for an RFQ route after request authorization.
+ * This must not fall back to the anonymous client because RFQ/tenant RLS is
+ * default-deny for browser roles at the launch boundary.
+ */
+export async function getRfqTenantForAuthorizedRequest(
+  tenantId: string,
+): Promise<AuthorizedRfqTenant | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+  const { data } = await sb
+    .from('tenants')
+    .select('id, tier')
+    .eq('id', tenantId)
+    .eq('status', 'active')
+    .single();
+  return data as AuthorizedRfqTenant | null;
 }
 
 // RFQ 채번 헬퍼

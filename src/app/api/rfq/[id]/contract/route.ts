@@ -4,6 +4,17 @@ import {
   getGroupRfq,
   getRfqProposals,
 } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { hasValidRfqShareToken } from '@/lib/rfq-request-auth';
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 // ── 계약서 HTML 생성기 ───────────────────────────────────────────────────────
 function generateContractHtml(params: {
@@ -50,18 +61,18 @@ function generateContractHtml(params: {
 </head>
 <body>
 <h1>단체여행 표준 계약서</h1>
-<p class="subtitle">여소남 여행 플랫폼 · 계약번호: ${params.rfq_code} · 계약일: ${params.contract_date}</p>
+<p class="subtitle">여소남 여행 플랫폼 · 계약번호: ${escapeHtml(params.rfq_code)} · 계약일: ${escapeHtml(params.contract_date)}</p>
 
 <div class="section">
   <div class="section-title">제1조 여행 개요</div>
   <table>
-    <tr><td>목적지</td><td>${params.destination}</td></tr>
+    <tr><td>목적지</td><td>${escapeHtml(params.destination)}</td></tr>
     <tr><td>여행 인원</td><td>성인 ${params.adult_count}명 / 아동 ${params.child_count}명 (총 ${pax}명)</td></tr>
     <tr><td>여행 기간</td><td>${params.duration_nights ? `${params.duration_nights}박 ${params.duration_nights + 1}일` : '협의 후 확정'}</td></tr>
-    <tr><td>숙박 등급</td><td>${params.hotel_grade || '협의 후 확정'}</td></tr>
-    <tr><td>식사</td><td>${params.meal_plan || '협의 후 확정'}</td></tr>
-    <tr><td>교통</td><td>${params.transportation || '협의 후 확정'}</td></tr>
-    ${params.special_requests ? `<tr><td>특별 요청</td><td>${params.special_requests}</td></tr>` : ''}
+    <tr><td>숙박 등급</td><td>${escapeHtml(params.hotel_grade || '협의 후 확정')}</td></tr>
+    <tr><td>식사</td><td>${escapeHtml(params.meal_plan || '협의 후 확정')}</td></tr>
+    <tr><td>교통</td><td>${escapeHtml(params.transportation || '협의 후 확정')}</td></tr>
+    ${params.special_requests ? `<tr><td>특별 요청</td><td>${escapeHtml(params.special_requests)}</td></tr>` : ''}
   </table>
 </div>
 
@@ -80,7 +91,7 @@ function generateContractHtml(params: {
       <td>포함 항목</td>
       <td>
         ${params.inclusions.length > 0
-          ? params.inclusions.map(i => `<span class="tag tag-green">✓ ${i}</span>`).join('')
+          ? params.inclusions.map(i => `<span class="tag tag-green">✓ ${escapeHtml(i)}</span>`).join('')
           : '<span style="color:#999">별도 안내</span>'}
       </td>
     </tr>
@@ -88,7 +99,7 @@ function generateContractHtml(params: {
       <td>불포함 항목</td>
       <td>
         ${params.exclusions.length > 0
-          ? params.exclusions.map(e => `<span class="tag tag-red">✗ ${e}</span>`).join('')
+          ? params.exclusions.map(e => `<span class="tag tag-red">✗ ${escapeHtml(e)}</span>`).join('')
           : '<span style="color:#555">없음 (전포함)</span>'}
       </td>
     </tr>
@@ -146,9 +157,10 @@ function generateContractHtml(params: {
 }
 
 // ── GET: 계약서 조회 ─────────────────────────────────────────────────────────
-export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id: rfqId } = params;
+  const adminError = await requireAdminRequest(request);
 
   if (!isSupabaseConfigured) {
     const mockHtml = generateContractHtml({
@@ -173,6 +185,10 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
     const rfq = await getGroupRfq(rfqId);
     if (!rfq) {
       return NextResponse.json({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    if (adminError && !hasValidRfqShareToken(request, rfq.share_token)) {
+      return adminError;
     }
 
     if (rfq.status !== 'contracted' && rfq.status !== 'completed') {

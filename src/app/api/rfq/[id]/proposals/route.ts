@@ -6,12 +6,19 @@ import {
   getRfqProposals,
   type RfqProposal,
 } from '@/lib/supabase';
+import {
+  resolveRfqActor,
+  rfqUnauthorizedResponse,
+} from '@/lib/rfq-request-auth';
 
 const MOCK_PROPOSALS: RfqProposal[] = [];
 
-export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id: rfqId } = params;
+
+  const actor = await resolveRfqActor(request);
+  if (actor?.kind !== 'admin') return rfqUnauthorizedResponse();
 
   if (!isSupabaseConfigured) {
     const proposals = MOCK_PROPOSALS.filter(p => p.rfq_id === rfqId || rfqId.startsWith('mock'));
@@ -20,7 +27,10 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
 
   try {
     const proposals = await getRfqProposals(rfqId);
-    return apiResponse({ proposals, count: proposals.length });
+    return apiResponse(
+      { proposals, count: proposals.length },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (error) {
     console.error('[rfq/proposals] failed:', sanitizeDbError(error));
     return apiResponse(

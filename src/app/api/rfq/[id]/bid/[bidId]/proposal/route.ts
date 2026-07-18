@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   isSupabaseConfigured,
   getGroupRfq,
-  getRfqProposal,
+  getRfqBids,
   getRfqProposals,
   createRfqProposal,
   updateRfqProposal,
@@ -12,6 +12,11 @@ import {
   RfqProposal,
 } from '@/lib/supabase';
 import { reviewProposal, generateFactBombingReport } from '@/lib/rfq-ai';
+import {
+  resolveRfqActor,
+  rfqForbiddenResponse,
+  rfqUnauthorizedResponse,
+} from '@/lib/rfq-request-auth';
 
 const REQUIRED_CHECKLIST_ITEMS: (keyof ProposalChecklist)[] = [
   'guide_fee',
@@ -32,13 +37,25 @@ function validateChecklist(checklist: Partial<ProposalChecklist>): string[] {
   return missing;
 }
 
+function isBidDeadlinePassed(deadline: string | undefined): boolean {
+  return Boolean(deadline && new Date(deadline).getTime() <= Date.now());
+}
+
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   props: { params: Promise<{ id: string; bidId: string }> }
 ) {
   const params = await props.params;
   const { id: rfqId, bidId } = params;
 
+  const actor = await resolveRfqActor(request);
+  if (!actor) return rfqUnauthorizedResponse();
+  const bids = await getRfqBids(rfqId);
+  const bid = bids.find((candidate) => candidate.id === bidId);
+  if (!bid) return NextResponse.json({ error: '입찰을 찾을 수 없습니다.' }, { status: 404 });
+  if (actor.kind === 'tenant' && bid.tenant_id !== actor.tenantId) {
+    return rfqForbiddenResponse();
+  }
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
@@ -69,6 +86,18 @@ export async function POST(
   const params = await props.params;
   const { id: rfqId, bidId } = params;
 
+  const actor = await resolveRfqActor(request);
+  if (!actor) return rfqUnauthorizedResponse();
+  const bids = await getRfqBids(rfqId);
+  const bid = bids.find((candidate) => candidate.id === bidId);
+  if (!bid) return NextResponse.json({ error: '입찰을 찾을 수 없습니다.' }, { status: 404 });
+  if (actor.kind === 'tenant' && bid.tenant_id !== actor.tenantId) {
+    return rfqForbiddenResponse();
+  }
+  if (bid.status !== 'locked' || isBidDeadlinePassed(bid.submit_deadline)) {
+    return NextResponse.json({ error: '제안서를 제출할 수 없는 입찰 상태입니다.' }, { status: 409 });
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
@@ -84,7 +113,6 @@ export async function POST(
       total_cost,
       total_selling_price,
       checklist,
-      tenant_id,
     } = body;
 
     if (total_cost === undefined || total_selling_price === undefined) {
@@ -112,7 +140,7 @@ export async function POST(
     const proposal = await createRfqProposal({
       rfq_id: rfqId,
       bid_id: bidId,
-      tenant_id: tenant_id ?? '',
+      tenant_id: bid.tenant_id,
       proposal_title,
       itinerary_summary,
       total_cost,
@@ -193,6 +221,15 @@ export async function PATCH(
   const params = await props.params;
   const { id: rfqId, bidId } = params;
 
+  const actor = await resolveRfqActor(request);
+  if (!actor) return rfqUnauthorizedResponse();
+  const bids = await getRfqBids(rfqId);
+  const bid = bids.find((candidate) => candidate.id === bidId);
+  if (!bid) return NextResponse.json({ error: '입찰을 찾을 수 없습니다.' }, { status: 404 });
+  if (actor.kind === 'tenant' && bid.tenant_id !== actor.tenantId) {
+    return rfqForbiddenResponse();
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase가 설정되지 않았습니다.' },
@@ -215,6 +252,13 @@ export async function PATCH(
     const existing = proposals.find(p => p.bid_id === bidId);
     if (!existing) {
       return NextResponse.json({ error: '제안서를 찾을 수 없습니다.' }, { status: 404 });
+    }
+    if (
+      ['selected', 'rejected'].includes(existing.status)
+      || ['selected', 'rejected', 'timeout', 'withdrawn'].includes(bid.status)
+      || isBidDeadlinePassed(bid.submit_deadline)
+    ) {
+      return NextResponse.json({ error: '제안서를 수정할 수 없는 상태입니다.' }, { status: 409 });
     }
 
     const mergedChecklist: Partial<ProposalChecklist> = {

@@ -8,9 +8,13 @@ import {
   RfqProposal,
 } from '@/lib/supabase';
 import { generateFactBombingReport } from '@/lib/rfq-ai';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 // GET: 기 분석된 TOP 3 제안서 + 순위 반환 (캐시된 결과)
-export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   const { id: rfqId } = params;
 
@@ -72,7 +76,10 @@ const MOCK_RANKED: RfqProposal[] = [
   },
 ];
 
-export async function POST(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   const { id: rfqId } = params;
 

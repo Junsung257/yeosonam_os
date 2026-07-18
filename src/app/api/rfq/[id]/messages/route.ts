@@ -5,10 +5,18 @@ import {
   isSupabaseConfigured,
   getGroupRfq,
   getRfqMessages,
+  getRfqProposals,
   createRfqMessage,
   type RfqMessage,
 } from '@/lib/supabase';
 import { processCustomerMessage, processTenantMessage } from '@/lib/rfq-ai';
+import {
+  hasValidRfqShareToken,
+  presentedRfqShareToken,
+  resolveRfqActor,
+  rfqForbiddenResponse,
+  rfqUnauthorizedResponse,
+} from '@/lib/rfq-request-auth';
 
 type MessageSender = 'customer' | 'tenant';
 
@@ -17,35 +25,64 @@ function isMessageSender(value: unknown): value is MessageSender {
 }
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const { id: rfqId } = params;
+  const { id: rfqId } = await props.params;
+  const proposalId = request.nextUrl.searchParams.get('proposal_id')?.trim() || undefined;
+  const actor = await resolveRfqActor(request);
+  if (!actor && !presentedRfqShareToken(request)) return rfqUnauthorizedResponse();
+
+  let viewAs: 'customer' | 'tenant' | 'admin';
+  if (actor?.kind === 'admin') {
+    viewAs = 'admin';
+  } else if (actor?.kind === 'tenant') {
+    if (!proposalId) return rfqForbiddenResponse();
+    const proposals = await getRfqProposals(rfqId);
+    const ownsProposal = proposals.some(
+      (proposal) => proposal.id === proposalId && proposal.tenant_id === actor.tenantId,
+    );
+    if (!ownsProposal) return rfqForbiddenResponse();
+    viewAs = 'tenant';
+  } else {
+    const rfq = await getGroupRfq(rfqId);
+    if (!rfq || !hasValidRfqShareToken(request, rfq.share_token)) {
+      return rfqUnauthorizedResponse();
+    }
+    viewAs = 'customer';
+  }
 
   if (!isSupabaseConfigured) {
-    const mockMessages: RfqMessage[] = [
-      {
-        id: 'mock-msg-001',
-        rfq_id: rfqId,
-        sender_type: 'customer',
-        raw_content: '숙박 업그레이드가 가능한가요?',
-        processed_content: '[업무 지원] 고객이 숙박 등급 업그레이드 가능 여부를 문의했습니다.',
-        pii_detected: false,
-        pii_blocked: false,
-        recipient_type: 'tenant',
-        is_visible_to_customer: true,
-        is_visible_to_tenant: true,
-        created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      },
-    ];
-    return apiResponse({ messages: mockMessages, mock: true });
+    const mockMessages: RfqMessage[] = [{
+      id: 'mock-msg-001',
+      rfq_id: rfqId,
+      sender_type: 'customer',
+      raw_content: '숙박 업그레이드가 가능한가요?',
+      processed_content: '[업무 지시] 고객이 숙박 등급 업그레이드 가능 여부를 문의했습니다.',
+      pii_detected: false,
+      pii_blocked: false,
+      recipient_type: 'tenant',
+      is_visible_to_customer: true,
+      is_visible_to_tenant: true,
+      created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    }];
+    return apiResponse(
+      { messages: mockMessages, mock: true },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   }
 
   try {
-    const { searchParams } = new URL(request.url);
-    const viewAs = (searchParams.get('viewAs') ?? 'admin') as 'customer' | 'tenant' | 'admin';
-    const proposalId = searchParams.get('proposal_id') ?? undefined;
-
     const messages = await getRfqMessages(rfqId, viewAs, proposalId);
-    return apiResponse({ messages, count: messages.length });
+    const visibleMessages = viewAs === 'customer'
+      ? messages.map((message) => message.pii_blocked
+        ? {
+            ...message,
+            raw_content: message.processed_content || '[개인정보가 차단된 메시지]',
+          }
+        : message)
+      : messages;
+    return apiResponse(
+      { messages: visibleMessages, count: visibleMessages.length },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (error) {
     console.error('[rfq/messages] list failed:', sanitizeDbError(error));
     return apiResponse(
@@ -56,44 +93,21 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 }
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const { id: rfqId } = params;
-
-  if (!isSupabaseConfigured) {
-    const body = await request.json();
-    const senderType = isMessageSender(body.sender_type) ? body.sender_type : 'customer';
-    const rawContent = typeof body.raw_content === 'string' ? body.raw_content : '';
-    const processedContent = `[처리됨] ${rawContent}`;
-    return apiResponse({
-      message: {
-        id: `mock-msg-${Date.now()}`,
-        rfq_id: rfqId,
-        sender_type: senderType,
-        raw_content: rawContent,
-        processed_content: processedContent,
-        pii_detected: false,
-        pii_blocked: false,
-        recipient_type: senderType === 'customer' ? 'tenant' : 'customer',
-        is_visible_to_customer: true,
-        is_visible_to_tenant: true,
-        created_at: new Date().toISOString(),
-      },
-      processed_content: processedContent,
-      pii_blocked: false,
-      mock: true,
-    });
-  }
+  const { id: rfqId } = await props.params;
 
   try {
-    const body = await request.json();
-    const senderType = body.sender_type;
-    const rawContent = body.raw_content;
+    const body = await request.json() as Record<string, unknown>;
+    const rawContent = typeof body.raw_content === 'string' ? body.raw_content.trim() : '';
+    if (!rawContent) {
+      return apiResponse({ error: 'raw_content는 필수입니다.' }, { status: 400 });
+    }
+    if (rawContent.length > 5000) {
+      return apiResponse({ error: '메시지는 5,000자 이하여야 합니다.' }, { status: 413 });
+    }
 
-    if (!isMessageSender(senderType) || typeof rawContent !== 'string' || !rawContent.trim()) {
-      return apiResponse(
-        { error: 'sender_type과 raw_content는 필수입니다.' },
-        { status: 400 },
-      );
+    const actor = await resolveRfqActor(request);
+    if (!actor && !presentedRfqShareToken(request, body.share_token)) {
+      return rfqUnauthorizedResponse();
     }
 
     const rfq = await getGroupRfq(rfqId);
@@ -101,26 +115,69 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    const proposalId = typeof body.proposal_id === 'string' ? body.proposal_id : undefined;
-    const senderId = typeof body.sender_id === 'string' ? body.sender_id : undefined;
-    let isVisibleToCustomer: boolean;
-    let isVisibleToTenant: boolean;
-    let recipientType: 'customer' | 'tenant' | 'admin';
+    const shareAccess = !actor && hasValidRfqShareToken(request, rfq.share_token, body.share_token);
+    if (!actor && !shareAccess) return rfqUnauthorizedResponse();
+
+    const proposalId = typeof body.proposal_id === 'string' && body.proposal_id.trim()
+      ? body.proposal_id.trim()
+      : undefined;
+
+    let senderType: MessageSender;
+    let senderId: string | undefined;
+    if (actor?.kind === 'tenant') {
+      if (!proposalId) return rfqForbiddenResponse();
+      const proposals = await getRfqProposals(rfqId);
+      const ownsProposal = proposals.some(
+        (proposal) => proposal.id === proposalId && proposal.tenant_id === actor.tenantId,
+      );
+      if (!ownsProposal) return rfqForbiddenResponse();
+      senderType = 'tenant';
+      senderId = actor.userId;
+    } else if (actor?.kind === 'admin') {
+      senderType = isMessageSender(body.sender_type) ? body.sender_type : 'customer';
+      senderId = undefined;
+    } else {
+      senderType = 'customer';
+      senderId = undefined;
+      if (proposalId) {
+        const proposals = await getRfqProposals(rfqId);
+        if (!proposals.some((proposal) => proposal.id === proposalId)) {
+          return rfqForbiddenResponse();
+        }
+      }
+    }
+
+    if (!isSupabaseConfigured) {
+      const processedContent = `[처리됨] ${rawContent}`;
+      return apiResponse({
+        message: {
+          id: `mock-msg-${Date.now()}`,
+          rfq_id: rfqId,
+          proposal_id: proposalId,
+          sender_type: senderType,
+          sender_id: senderId,
+          raw_content: rawContent,
+          processed_content: processedContent,
+          pii_detected: false,
+          pii_blocked: false,
+          recipient_type: senderType === 'customer' ? 'tenant' : 'customer',
+          is_visible_to_customer: true,
+          is_visible_to_tenant: true,
+          created_at: new Date().toISOString(),
+        },
+        processed_content: processedContent,
+        pii_blocked: false,
+        mock: true,
+      }, { status: 201 });
+    }
 
     const processResult = senderType === 'customer'
       ? await processCustomerMessage(rawContent, rfq)
       : await processTenantMessage(rawContent, rfq);
 
-    if (senderType === 'customer') {
-      isVisibleToCustomer = true;
-      isVisibleToTenant = !processResult.pii_detected;
-      recipientType = 'tenant';
-    } else {
-      isVisibleToCustomer = true;
-      isVisibleToTenant = true;
-      recipientType = 'customer';
-    }
-
+    const isVisibleToCustomer = true;
+    const isVisibleToTenant = senderType === 'tenant' || !processResult.pii_detected;
+    const recipientType = senderType === 'customer' ? 'tenant' : 'customer';
     const piiBlocked = processResult.pii_detected;
 
     const message = await createRfqMessage({
@@ -160,7 +217,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       message,
       processed_content: processResult.processed,
       pii_blocked: piiBlocked,
-    }, { status: 201 });
+    }, { status: 201, headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('[rfq/messages] send failed:', sanitizeDbError(error));
     return apiResponse(

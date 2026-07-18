@@ -4,16 +4,24 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   isSupabaseConfigured,
   getGroupRfq,
-  getTenant,
   getRfqBids,
   claimRfqBid,
   updateGroupRfq,
   type RfqBid,
 } from '@/lib/supabase';
+import { getRfqTenantForAuthorizedRequest } from '@/lib/db/rfq';
+import {
+  resolveRfqActor,
+  rfqForbiddenResponse,
+  rfqUnauthorizedResponse,
+} from '@/lib/rfq-request-auth';
 
-export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
+
+  const actor = await resolveRfqActor(request);
+  if (!actor) return rfqUnauthorizedResponse();
 
   if (!isSupabaseConfigured) {
     return apiResponse(
@@ -23,8 +31,14 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
   }
 
   try {
-    const bids = await getRfqBids(id);
-    return apiResponse({ bids, count: bids.length });
+    const allBids = await getRfqBids(id);
+    const bids = actor.kind === 'admin'
+      ? allBids
+      : allBids.filter((bid) => bid.tenant_id === actor.tenantId);
+    return apiResponse(
+      { bids, count: bids.length },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
   } catch (error) {
     console.error('[rfq/bid] list failed:', sanitizeDbError(error));
     return apiResponse(
@@ -38,12 +52,24 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const params = await props.params;
   const { id: rfqId } = params;
 
+  const actor = await resolveRfqActor(request);
+  if (!actor) return rfqUnauthorizedResponse();
+
+  const body = await request.json() as { tenant_id?: unknown };
+  const requestedTenantId = typeof body.tenant_id === 'string' ? body.tenant_id.trim() : '';
+  if (actor.kind === 'tenant' && requestedTenantId && requestedTenantId !== actor.tenantId) {
+    return rfqForbiddenResponse();
+  }
+  const tenantId = actor.kind === 'tenant' ? actor.tenantId : requestedTenantId;
+  if (!tenantId) {
+    return apiResponse({ error: 'tenant_id가 필요합니다.' }, { status: 400 });
+  }
+
   if (!isSupabaseConfigured) {
-    const { tenant_id } = await request.json();
     const mockBid: RfqBid = {
       id: `mock-bid-${Date.now()}`,
       rfq_id: rfqId,
-      tenant_id: tenant_id ?? 'mock-tenant',
+      tenant_id: tenantId,
       status: 'locked',
       locked_at: new Date().toISOString(),
       submit_deadline: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
@@ -53,12 +79,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   }
 
   try {
-    const { tenant_id } = await request.json();
-
-    if (!tenant_id) {
-      return apiResponse({ error: 'tenant_id가 필요합니다.' }, { status: 400 });
-    }
-
     const rfq = await getGroupRfq(rfqId);
     if (!rfq) {
       return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
@@ -70,12 +90,12 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    const tenant = await getTenant(tenant_id);
+    const tenant = await getRfqTenantForAuthorizedRequest(tenantId);
     if (!tenant) {
       return apiResponse({ error: '테넌트를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    const tier = (tenant as unknown as { tier?: string }).tier ?? 'bronze';
+    const tier = tenant.tier;
     let unlockAt: string | undefined;
     if (tier === 'gold') {
       unlockAt = rfq.gold_unlock_at ?? undefined;
@@ -103,7 +123,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return apiResponse({ error: '마감' }, { status: 410 });
     }
 
-    const bid = await claimRfqBid(rfqId, tenant_id);
+    const bid = await claimRfqBid(rfqId, tenantId);
     if (!bid) {
       return apiResponse(
         { error: '이미 입찰에 참여했거나 입찰 처리에 실패했습니다.' },
