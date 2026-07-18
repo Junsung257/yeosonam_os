@@ -195,7 +195,10 @@ function classifyPublisherFailure(reason?: string): string {
 
 function buildPublisherFailureBreakdown(results: Array<{ status: string; reason?: string }>): Record<string, number> {
   return results
-    .filter(result => result.status !== 'published' && result.status !== 'done' && result.status !== 'deferred_buffer')
+    .filter(result => result.status !== 'published'
+      && result.status !== 'done'
+      && result.status !== 'deferred_buffer'
+      && result.status !== 'deferred_time_budget')
     .reduce<Record<string, number>>((acc, result) => {
       const bucket = classifyPublisherFailure(result.reason);
       acc[bucket] = (acc[bucket] ?? 0) + 1;
@@ -239,12 +242,6 @@ function canStartPublisherQueueItem(item: any, remainingMs: number): boolean {
     fallbackMinItemStartMs: BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS,
     fallbackEligible: isFastFallbackEligibleInfoItem(item),
   });
-}
-
-function shouldUseFastDeterministicInfoFallback(item: any, remainingMs: number): boolean {
-  return isFastFallbackEligibleInfoItem(item)
-    && remainingMs < BLOG_PUBLISHER_MIN_ITEM_START_MS
-    && remainingMs >= BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS;
 }
 
 async function withGenerationBudget<T>(
@@ -1217,6 +1214,35 @@ async function releaseUnattemptedClaimedQueueItems(
   return { released, errors };
 }
 
+async function deferAttemptedQueueItemForTimeBudget(item: any, remainingMs: number): Promise<void> {
+  const now = new Date();
+  const targetPublishAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
+  const meta = item.meta && typeof item.meta === 'object' && !Array.isArray(item.meta)
+    ? { ...(item.meta as Record<string, unknown>) }
+    : {};
+  delete meta.deterministic_fallback_reason;
+  delete meta.deterministic_fallback_blocked;
+
+  const { error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .update({
+      status: 'queued',
+      attempts: item.attempts ?? 0,
+      target_publish_at: targetPublishAt,
+      updated_at: now.toISOString(),
+      last_error: 'publisher_deferred_before_generation_time_budget',
+      meta: {
+        ...meta,
+        time_budget_deferred_at: now.toISOString(),
+        time_budget_remaining_ms: Math.max(0, Math.floor(remainingMs)),
+      },
+    } as never)
+    .eq('id', item.id)
+    .eq('status', 'generating');
+
+  if (error) throw new Error(`time_budget_defer_failed:${error.message}`);
+}
+
 async function deferDuePillarQueueItems(): Promise<{ deferred: number }> {
   const now = new Date();
   const nextWeeklyWindow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -1424,7 +1450,7 @@ async function runBlogPublisher(request: NextRequest) {
         if (r.status === 'published') {
           publishedThisRun += 1;
         }
-        if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
+        if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
           candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
@@ -1537,7 +1563,7 @@ async function runBlogPublisher(request: NextRequest) {
           if (r.status === 'published') {
             publishedThisRun += 1;
           }
-          if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
+          if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'deferred_time_budget' && r.status !== 'skipped') {
             candidateFailures.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
           }
         } catch (err) {
@@ -1971,28 +1997,20 @@ async function processQueueItem(
       generated = await withGenerationBudget(startedAtMs, 'product_generation', () => generateFromProduct(item));
     } else {
       const remainingBeforeTopicGeneration = publisherRemainingMs(startedAtMs);
-      if (shouldUseFastDeterministicInfoFallback(item, remainingBeforeTopicGeneration)) {
-        generated = {
-          blog_html: '',
-          slug: buildQueueSlug(item),
-          seo_title: item.topic || item.primary_keyword || '여행 준비 가이드',
-          seo_description: '',
-          generation_meta: {
-            writer: 'info_writer',
-            deterministic_fast_fallback: true,
-            deterministic_fast_fallback_remaining_ms: remainingBeforeTopicGeneration,
-          },
+      if (!canStartPublisherQueueItem(item, remainingBeforeTopicGeneration)) {
+        await deferAttemptedQueueItemForTimeBudget(item, remainingBeforeTopicGeneration);
+        return {
+          id: item.id,
+          topic: item.topic,
+          status: 'deferred_time_budget',
+          reason: `publisher_deferred_before_generation_time_budget:${remainingBeforeTopicGeneration}ms`,
         };
-        await applyDeterministicInfoFallback(
-          generated,
-          item,
-          item.primary_keyword ?? item.destination ?? item.topic,
-          `low_time_budget:${remainingBeforeTopicGeneration}ms`,
-        );
-      } else {
-        try {
-          generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
-        } catch (error) {
+      }
+
+      try {
+        generated = await withGenerationBudget(startedAtMs, 'topic_generation', () => generateFromTopic(item));
+      } catch (error) {
+        if (item.meta?.private_diagnostic_fallback === true) {
           generated = {
             blog_html: '',
             slug: buildQueueSlug(item),
@@ -2009,6 +2027,8 @@ async function processQueueItem(
             item.primary_keyword ?? item.destination ?? item.topic,
             error instanceof Error ? error.message : String(error),
           );
+        } else {
+          throw error;
         }
       }
     }
@@ -2241,14 +2261,6 @@ async function processQueueItem(
       qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);
     }
 
-    if (!qa.passed && blogType === 'info') {
-      const fallbackChanges = await applyDeterministicInfoFallback(generated, item, primaryKeyword, qa.summary);
-      if (fallbackChanges.length > 0) {
-        console.log(`[blog-publisher] deterministic info fallback: ${fallbackChanges.join(', ')}`);
-        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
-      }
-    }
-
     if (!qa.passed) {
       const failureStatus = await handleFailure(item, qa.summary, qa);
       return {
@@ -2459,16 +2471,6 @@ async function processQueueItem(
         seoScore = computeSeoScore(buildSeoScoreInput());
         publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
         console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ')} -> passed=${publishQuality.passed}`);
-      }
-    }
-
-    if (!publishQuality.passed && blogType === 'info') {
-      const fallbackChanges = await applyDeterministicInfoFallback(generated, item, primaryKeyword, publishQuality.summary);
-      if (fallbackChanges.length > 0) {
-        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
-        seoScore = computeSeoScore(buildSeoScoreInput());
-        publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
-        console.log(`[blog-publisher] deterministic info fallback before publish: ${fallbackChanges.join(', ')} -> passed=${publishQuality.passed}`);
       }
     }
 

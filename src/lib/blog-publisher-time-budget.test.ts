@@ -21,13 +21,13 @@ describe('blog publisher time budget', () => {
     expect(canStartPublisherItem(74_999, 75_000)).toBe(false);
   });
 
-  it('allows low-time deterministic fallback starts only for eligible items', () => {
+  it('does not let a low-time deterministic fallback window authorize a new item', () => {
     expect(canStartPublisherItemWithFallback({
       remainingMs: 44_000,
       minItemStartMs: 75_000,
       fallbackMinItemStartMs: 30_000,
       fallbackEligible: true,
-    })).toBe(true);
+    })).toBe(false);
     expect(canStartPublisherItemWithFallback({
       remainingMs: 44_000,
       minItemStartMs: 75_000,
@@ -71,7 +71,7 @@ describe('blog publisher time budget', () => {
     });
   });
 
-  it('switches extra claims to fallback-eligible information candidates in the low-time recovery window', () => {
+  it('stops extra claims when normal generation cannot safely finish', () => {
     expect(getPublisherExtraClaimRecoveryPlan({
       remainingMs: 44_000,
       minItemStartMs: 75_000,
@@ -81,15 +81,15 @@ describe('blog publisher time budget', () => {
       claimPoolMultiplier: 4,
       maxCandidatePool: 12,
     })).toEqual({
-      canClaim: true,
-      claimLimit: 12,
-      fallbackEligibleOnly: true,
+      canClaim: false,
+      claimLimit: 0,
+      fallbackEligibleOnly: false,
       remainingQuota: 4,
-      reason: 'fallback_only_window',
+      reason: 'insufficient_time',
     });
   });
 
-  it('stops extra claims only when even deterministic fallback cannot safely finish', () => {
+  it('stops extra claims below the legacy fallback threshold as well', () => {
     expect(getPublisherExtraClaimRecoveryPlan({
       remainingMs: 29_999,
       minItemStartMs: 75_000,
