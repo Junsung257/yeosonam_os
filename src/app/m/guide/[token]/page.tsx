@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { supabaseAdmin, isSupabaseConfigured, getVoucherByBooking } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseConfigured, getVoucher, getVoucherByBooking } from '@/lib/supabase';
 import { verifyGuidebookToken } from '@/lib/guidebook-token';
 import GuideTimeline from './GuideTimeline';
 import { renderVoucherHtml } from '@/lib/voucher-generator';
@@ -83,7 +83,10 @@ export default async function MobileGuidePage({
     );
   }
 
-  const voucher = await getVoucherByBooking(payload.bookingId);
+  const scopedVoucher = payload.voucherId
+    ? await getVoucher(payload.voucherId)
+    : await getVoucherByBooking(payload.bookingId);
+  const voucher = scopedVoucher?.booking_id === payload.bookingId ? scopedVoucher : null;
   const voucherHtml = voucher ? renderVoucherHtml(voucher.parsed_data) : null;
 
   let dayPlans: DayPlan[] = [];

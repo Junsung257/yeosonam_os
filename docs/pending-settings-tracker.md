@@ -16,6 +16,7 @@
 - 🔑 `KAKAO_SENDER_NUMBER` — 발신번호 (예: 051-000-0000)
 - 🔑 `KAKAO_CHANNEL_ID` — 카카오 채널 pfId (서버용)
 - 🔑 `NEXT_PUBLIC_KAKAO_CHANNEL_ID` — 카카오 채널 pfId (클라이언트용)
+- 🔑 `KAKAO_CHANNEL_SECRET` — 카카오 챗봇 스킬 관리자센터의 운영/Test 헤더에 `x-api-key`로 등록하고 Vercel Production/Preview에도 같은 secret 설정
 
 ### 카카오 알림톡 템플릿 ID (Solapi 심사 승인 후 입력)
 - 🔑 `KAKAO_TEMPLATE_REVIEW_REQUEST` — 리뷰 요청 템플릿 ID
@@ -32,6 +33,7 @@
 - 🔑 `GSC_SERVICE_ACCOUNT_JSON` — `/api/cron/gsc-index-rank` 신규 크론 (2026-05-15)이 사용. 미설정 시 `GOOGLE_SERVICE_ACCOUNT_JSON` 으로 자동 fallback. 별도 SA 분리 시에만 신규 키 주입.
 
 ### 외부 API
+- 🔑 `SLACK_SIGNING_SECRET` — Slack 앱 Basic Information의 Signing Secret을 Vercel Production/Preview에 설정
 - 🔑 `SLACK_WEBHOOK_URL` — 어드민 에러 알림
 - 🔑 `NEXT_PUBLIC_CONSULT_PHONE` — QA 채팅 전화 상담 버튼 (없으면 카톡만)
 

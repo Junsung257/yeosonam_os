@@ -140,3 +140,54 @@ describe('middleware content-hub API boundary', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 });
+
+describe('middleware backend P0 server-token pass-through', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    '/api/billing/issue-billing-key',
+    '/api/voucher',
+  ])('allows a valid server admin token to reach the route-local guard for %s', async (path) => {
+    vi.stubEnv('ADMIN_API_TOKEN', 'backend-p0-admin-token');
+
+    const response = await middleware(new NextRequest(`https://www.yeosonam.com${path}`, {
+      method: 'POST',
+      headers: { 'x-admin-token': 'backend-p0-admin-token' },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+});
+
+describe('middleware guide-token public entry points', () => {
+  it('lets voucher GET reach the route-local guide-token/admin guard', async () => {
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/api/voucher?id=voucher-a&bookingId=booking-a&guideToken=token-a',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not make voucher mutations public', async () => {
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/api/voucher',
+      { method: 'POST' },
+    ));
+
+    expect(response.status).not.toBe(200);
+    expect(response.headers.get('x-middleware-next')).not.toBe('1');
+  });
+
+  it('lets the signed mobile guide page reach its token verifier', async () => {
+    const response = await middleware(new NextRequest(
+      'https://www.yeosonam.com/m/guide/token-a',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+});

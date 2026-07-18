@@ -326,6 +326,7 @@ const PUBLIC_PREFIXES = [
   '/m/review/',
   '/m/passport/',
   '/m/pay/',
+  '/m/guide/',
 ];
 
 // 짧은 정확 일치 경로 (prefix 배열 없이 Set에 포함)
@@ -613,6 +614,12 @@ function isPublicPath(request: NextRequest) {
     return request.method === 'GET';
   }
 
+  // Voucher reads may use a signed guide token. The route/page re-validates
+  // token scope or requires an administrator before any service-role access.
+  if (pathname === '/api/voucher') {
+    return request.method === 'GET';
+  }
+
   if (pathname.startsWith('/api/destinations/')) {
     const segments = pathname.split('/').filter(Boolean);
     const routeName = segments[2] ?? '';
@@ -811,6 +818,8 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/api/admin/')
     || pathname === '/api/agent/prompt-optimizer'
+    || pathname === '/api/billing/issue-billing-key'
+    || pathname === '/api/voucher'
     || pathname === '/api/blog'
     || pathname.startsWith('/api/blog/')
     || pathname === '/api/content-hub'
