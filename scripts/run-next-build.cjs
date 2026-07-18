@@ -74,9 +74,9 @@ function appendNodeOption(current, option) {
 function buildMaxOldSpaceSizeMb() {
   const configured = Number(process.env.NEXT_BUILD_MAX_OLD_SPACE_SIZE);
   if (Number.isFinite(configured) && configured >= 1024) return Math.floor(configured);
-  // Leave room for webpack workers and native allocations on Vercel's 8 GB
-  // standard builder. A 6 GB heap caused the builder itself to OOM/SIGKILL.
-  return process.env.VERCEL === '1' ? 3072 : 6144;
+  // Vercel's standard builder has 8 GB available and this large Next app needs
+  // a larger heap to avoid SIGKILL/OOM before compilation finishes.
+  return 6144;
 }
 
 function cleanDistDir() {
