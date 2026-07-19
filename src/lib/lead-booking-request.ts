@@ -10,6 +10,7 @@ export interface LandingBookingForm {
   children: number;
   name: string;
   phone: string;
+  message?: string | null;
   privacyConsent: boolean;
   termsConsent?: boolean;
 }
@@ -237,6 +238,7 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
     '고객이 상품 랜딩에서 예약 문의 후 카카오 채널로 이동했습니다.',
     `희망 출발일: ${input.form.desiredDate || '미정'}`,
     `인원: 성인 ${adultCount}명 / 아동 ${childCount}명`,
+    input.form.message?.trim() ? `고객 요청사항: ${input.form.message.trim().slice(0, 1000)}` : null,
     input.leadId ? `lead_id: ${input.leadId}` : null,
     internalCode ? `상품코드: ${internalCode}` : null,
     input.tracking?.landingUrl ? `랜딩URL: ${input.tracking.landingUrl}` : null,

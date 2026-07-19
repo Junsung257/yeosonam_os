@@ -46,6 +46,17 @@ const PackageFAQ = nextDynamic(() => import('@/components/customer/PackageFAQ'),
 const ReviewDigestStrip = nextDynamic(() => import('@/components/customer/ReviewDigestStrip'), { ssr: false, loading: () => null });
 const UNKNOWN_FLIGHT_TIME_LABEL = '시간 미정';
 
+function isValidReservationName(value: string): boolean {
+  return value.trim().replace(/\s+/g, ' ').length >= 2;
+}
+
+function isValidReservationPhone(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /[^0-9+()\s-]/.test(trimmed)) return false;
+  const digits = trimmed.replace(/\D/g, '');
+  return /^(?:0\d{8,10}|82\d{9,10})$/.test(digits) && new Set(digits).size > 1;
+}
+
 interface PriceTier {
   period_label: string;
   departure_dates?: string[];
@@ -951,7 +962,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     setReservationSubmitAttempted(true);
     setReservationSubmitError('');
 
-    if (!formData.name.trim() || !formData.phone.trim() || !reservationConsent || isSubmitting) return;
+    if (
+      !isValidReservationName(formData.name)
+      || !isValidReservationPhone(formData.phone)
+      || !reservationConsent
+      || isSubmitting
+    ) return;
     setIsSubmitting(true);
     let ok = false;
     let errMsg = '';
@@ -965,6 +981,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           form: {
             name: formData.name,
             phone: formData.phone,
+            message: formData.message,
             desiredDate: formData.date || selectedTier?.period_label || null,
             adults: 1,
             children: 0,
@@ -1024,8 +1041,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       behavior: 'smooth',
     });
   };
-  const reservationNameMissing = formData.name.trim().length === 0;
-  const reservationPhoneMissing = formData.phone.trim().length === 0;
+  const reservationNameMissing = !isValidReservationName(formData.name);
+  const reservationPhoneMissing = !isValidReservationPhone(formData.phone);
   const reservationConsentMissing = !reservationConsent;
   const showReservationNameError = reservationSubmitAttempted && reservationNameMissing;
   const showReservationPhoneError = reservationSubmitAttempted && reservationPhoneMissing;
@@ -2545,7 +2562,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     <input id="reservation-name" name="name" autoComplete="name" aria-describedby={showReservationNameError ? 'reservation-name-error' : 'reservation-inquiry-description'} aria-invalid={showReservationNameError} placeholder="홍길동" value={formData.name} onChange={e => { setFormData(f => ({ ...f, name: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                     {showReservationNameError && (
-                      <p id="reservation-name-error" className="mt-1 text-xs font-semibold text-red-600">이름을 입력해주세요.</p>
+                      <p id="reservation-name-error" className="mt-1 text-xs font-semibold text-red-600">이름을 2자 이상 입력해주세요.</p>
                     )}
                   </label>
                   <label className="block">
@@ -2553,7 +2570,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     <input id="reservation-phone" name="phone" autoComplete="tel" inputMode="tel" aria-describedby={showReservationPhoneError ? 'reservation-phone-error' : undefined} aria-invalid={showReservationPhoneError} placeholder="010-0000-0000" value={formData.phone} onChange={e => { setFormData(f => ({ ...f, phone: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                     {showReservationPhoneError && (
-                      <p id="reservation-phone-error" className="mt-1 text-xs font-semibold text-red-600">연락처를 입력해주세요.</p>
+                      <p id="reservation-phone-error" className="mt-1 text-xs font-semibold text-red-600">연락 가능한 전화번호를 입력해주세요.</p>
                     )}
                   </label>
                   {!selectedTier && <label className="block">
