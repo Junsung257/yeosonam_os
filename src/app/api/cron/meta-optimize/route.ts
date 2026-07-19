@@ -19,12 +19,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const cronSecret = getSecret('CRON_SECRET');
     // 내부적으로 optimize API 로직을 직접 호출
     const optimizeResponse = await fetch(
       `${getSecret('NEXT_PUBLIC_APP_URL') ?? 'http://localhost:3000'}/api/meta/optimize`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
+        },
         body: JSON.stringify({}),
       }
     );
