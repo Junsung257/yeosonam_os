@@ -28,6 +28,7 @@ import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages, findRelevantBlogPexelsImage } from '@/lib/blog-inline-images';
+import { generateSectionImage, isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { repairBlogImageQuality } from '@/lib/blog-image-quality';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
@@ -64,6 +65,14 @@ import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
 import { selectActiveBlogPrompt, type SelectedBlogPrompt } from '@/lib/blog-prompt-selection';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
+import {
+  BLOG_INFORMATION_RESEARCH_META_KEY,
+  buildBlogGenerationResearchPromptBlock,
+  evaluateBlogGenerationResearchReadiness,
+  repairBlogGenerationResearchStructure,
+  summarizeBlogGenerationResearch,
+} from '@/lib/blog-generation-research';
+import { persistBlogInformationResearch } from '@/lib/blog-information-evidence-repository';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
   normalizeBlogVisualAccents,
@@ -170,6 +179,49 @@ const STALE_GENERATING_RECOVERY_MS = 15 * 60 * 1000;
 function getQueueMicroAngle(item: any): string | null {
   const value = item?.meta?.micro_angle;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function buildQueueContentBrief(item: any) {
+  const queuedKeywords = Array.isArray(item.meta?.keywords) ? item.meta.keywords as string[] : [];
+  return buildBlogContentBrief({
+    topic: item.topic,
+    destination: item.destination,
+    primaryKeyword: item.primary_keyword || item.destination || item.topic.split(' ')[0],
+    category: item.category,
+    source: item.source,
+    keywords: queuedKeywords,
+    microAngle: getQueueMicroAngle(item),
+    audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
+    locale: typeof item.meta?.locale === 'string' ? item.meta.locale : null,
+    travelerNationality: typeof item.meta?.traveler_nationality === 'string'
+      ? item.meta.traveler_nationality
+      : null,
+  });
+}
+
+function queueMetaWithoutResearchBundle(meta: unknown): Record<string, unknown> {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+  const safeMeta = { ...(meta as Record<string, unknown>) };
+  delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY];
+  return safeMeta;
+}
+
+async function findOrGenerateBlogCover(input: {
+  destination: string;
+  primaryKeyword: string;
+  sectionTitle: string;
+}): Promise<string | null> {
+  let url: string | null = null;
+  if (isPexelsConfigured()) {
+    url = await findRelevantBlogPexelsImage(input);
+  }
+  if (url) return url;
+  return generateSectionImage(
+    input.sectionTitle,
+    input.primaryKeyword,
+    input.destination,
+    { skipPexelsFallback: true },
+  );
 }
 
 function classifyPublisherFailure(reason?: string): string {
@@ -1342,6 +1394,107 @@ async function runBlogPublisher(request: NextRequest) {
         };
       }
 
+      const privateRegenerationRequest = readPrivateBlogRegenerationRequest(item);
+      if (privateRegenerationRequest) {
+        const { data: replacementTarget, error: replacementTargetError } = await supabaseAdmin
+          .from('content_creatives')
+          .select('id,channel,status,generation_meta')
+          .eq('id', privateRegenerationRequest.contentCreativeId)
+          .maybeSingle();
+        if (replacementTargetError
+          || !isEligiblePrivateBlogRegenerationTarget(replacementTarget, privateRegenerationRequest)) {
+          const reason = 'private_regeneration_target_not_eligible';
+          await supabaseAdmin.from('blog_topic_queue').update({
+            status: 'skipped',
+            last_error: reason,
+            meta: {
+              ...(item.meta || {}),
+              self_heal_blocked: true,
+              private_regeneration_blocked: true,
+              target_error: replacementTargetError?.message ?? null,
+            },
+          }).eq('id', privateQueueId);
+          return {
+            ok: false,
+            processed: 0,
+            published: 0,
+            targetedPrivateRegeneration: true,
+            reason,
+            results,
+            errors: [reason],
+          };
+        }
+
+        const contentBrief = buildQueueContentBrief(item);
+        const researchReadiness = evaluateBlogGenerationResearchReadiness({
+          meta: item.meta,
+          expectedContentKey: buildQueueSlug(item),
+          destination: item.destination,
+          intent: contentBrief.intentType,
+          locale: contentBrief.plan.locale,
+          sourcePolicy: contentBrief.sourcePolicy,
+        });
+        const researchSummary = summarizeBlogGenerationResearch(researchReadiness);
+        if (!contentBrief.passed || !researchReadiness.passed || !researchReadiness.bundle) {
+          const issues = !contentBrief.passed
+            ? contentBrief.issues.map((issue) => `brief:${issue}`)
+            : researchReadiness.issues;
+          const reason = `private_regeneration_research_preflight:${issues.slice(0, 8).join(',')}`;
+          await supabaseAdmin.from('blog_topic_queue').update({
+            status: 'skipped',
+            last_error: reason,
+            meta: {
+              ...(item.meta || {}),
+              self_heal_blocked: true,
+              research_preflight: researchSummary,
+            },
+          }).eq('id', privateQueueId);
+          return {
+            ok: false,
+            processed: 0,
+            published: 0,
+            targetedPrivateRegeneration: true,
+            reason,
+            researchPreflight: researchSummary,
+            results,
+            errors: [reason],
+          };
+        }
+
+        try {
+          await persistBlogInformationResearch({
+            ...researchReadiness.bundle,
+            creativeId: privateRegenerationRequest.contentCreativeId,
+            tenantId: item.tenant_id ?? researchReadiness.bundle.tenantId ?? null,
+          });
+        } catch (error) {
+          const persistenceIssue = error instanceof Error ? error.message : String(error);
+          const reason = `private_regeneration_research_persistence:${persistenceIssue}`;
+          await supabaseAdmin.from('blog_topic_queue').update({
+            status: 'skipped',
+            last_error: reason,
+            meta: {
+              ...(item.meta || {}),
+              self_heal_blocked: true,
+              research_preflight: {
+                ...researchSummary,
+                persistence_passed: false,
+              },
+            },
+          }).eq('id', privateQueueId);
+          return {
+            ok: false,
+            processed: 0,
+            published: 0,
+            targetedPrivateRegeneration: true,
+            reason,
+            researchPreflight: researchSummary,
+            results,
+            errors: [reason],
+          };
+        }
+      }
+
       let result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
       let targetedAttempts = 1;
       while (
@@ -2312,26 +2465,81 @@ async function processQueueItem(
       }
     }
 
-    let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+    const applyFinalResearchStructureRepair = (): void => {
+      const finalContentBrief = buildQueueContentBrief(item);
+      if (!finalContentBrief.passed) return;
+      const finalResearchReadiness = evaluateBlogGenerationResearchReadiness({
+        meta: item.meta,
+        expectedContentKey: generated.slug,
+        destination: item.destination,
+        intent: finalContentBrief.intentType,
+        locale: finalContentBrief.plan.locale,
+        sourcePolicy: finalContentBrief.sourcePolicy,
+      });
+      const finalResearchRepair = repairBlogGenerationResearchStructure({
+        markdown: generated.blog_html,
+        intent: finalContentBrief.intentType,
+        readiness: finalResearchReadiness,
+      });
+      if (!finalResearchRepair.changed) return;
+
+      generated.blog_html = finalResearchRepair.markdown;
+      const currentMeta = generated.generation_meta || {};
+      const writerLedger = currentMeta.writer_claim_ledger
+        && typeof currentMeta.writer_claim_ledger === 'object'
+        && !Array.isArray(currentMeta.writer_claim_ledger)
+        ? currentMeta.writer_claim_ledger as Record<string, unknown>
+        : {};
+      const currentClaims = Array.isArray(writerLedger.claims)
+        ? writerLedger.claims as BlogInformationClaimLedgerEntry[]
+        : [];
+      const approvedClaims = finalResearchRepair.approvedClaims.map((claim) => ({
+        claimFingerprint: claim.claimFingerprint,
+        claimText: claim.claimText,
+        claimType: claim.claimType,
+        riskLevel: claim.riskLevel,
+      }));
+      generated.generation_meta = {
+        ...currentMeta,
+        writer_claim_ledger: {
+          ...writerLedger,
+          claims: [...new Map([...currentClaims, ...approvedClaims]
+            .map((claim) => [claim.claimFingerprint, claim])).values()],
+        },
+        information_research_structure_repair: {
+          applied: true,
+          stage: 'final_quality_boundary',
+          changes: finalResearchRepair.changes,
+        },
+      };
+      console.log(`[blog-publisher] final research structure repair: ${finalResearchRepair.changes.join(', ')}`);
+    };
+    const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
+      applyFinalResearchStructureRepair();
+      return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+    };
+
+    let qa = await runQualityWithResearchStructure();
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
-      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'hook' && !gate.passed)) {
       generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
-      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
-      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed) {
       qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed) {
@@ -2540,7 +2748,7 @@ async function processQueueItem(
           slug: generated.slug,
           utmSource: 'naver_blog',
         });
-        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+        qa = await runQualityWithResearchStructure();
         seoScore = computeSeoScore(buildSeoScoreInput());
         publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
         console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ')} -> passed=${publishQuality.passed}`);
@@ -2589,7 +2797,7 @@ async function processQueueItem(
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
-      ...(item.meta || {}),
+      ...queueMetaWithoutResearchBundle(item.meta),
       ...(generated.generation_meta || {}),
       engine_version: 'blog-engine-v2',
       writer: typeof generated.generation_meta?.writer === 'string'
@@ -3176,8 +3384,8 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
   let og_image_url: string | null = null;
   try {
     const destForOg = item.destination || extractDestination(item.topic);
-    if (destForOg && isPexelsConfigured()) {
-      og_image_url = await findRelevantBlogPexelsImage({
+    if (destForOg) {
+      og_image_url = await findOrGenerateBlogCover({
         destination: destForOg,
         primaryKeyword: seoTitle,
         sectionTitle: '관광지 일정 비용 여행 준비',
@@ -3329,24 +3537,19 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
-  const queuedKeywords = Array.isArray(item.meta?.keywords) ? item.meta.keywords as string[] : [];
-  const contentBrief = buildBlogContentBrief({
-    topic: item.topic,
-    destination: item.destination,
-    primaryKeyword: item.primary_keyword || item.destination || item.topic.split(' ')[0],
-    category: item.category,
-    source: item.source,
-    keywords: queuedKeywords,
-    microAngle: getQueueMicroAngle(item),
-    audience: typeof item.meta?.audience === 'string' ? item.meta.audience : null,
-    locale: typeof item.meta?.locale === 'string' ? item.meta.locale : null,
-    travelerNationality: typeof item.meta?.traveler_nationality === 'string'
-      ? item.meta.traveler_nationality
-      : null,
-  });
+  const contentBrief = buildQueueContentBrief(item);
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
   }
+  const researchReadiness = evaluateBlogGenerationResearchReadiness({
+    meta: item.meta,
+    expectedContentKey: queueSlug,
+    destination: item.destination,
+    intent: contentBrief.intentType,
+    locale: contentBrief.plan.locale,
+    sourcePolicy: contentBrief.sourcePolicy,
+  });
+  const researchPromptBlock = buildBlogGenerationResearchPromptBlock(researchReadiness);
   const infoGuideBrief = buildInfoGuideBrief(contentBrief);
   const effectiveTopic = contentBrief.title;
   const primaryKw = contentBrief.primaryKeyword;
@@ -3457,6 +3660,7 @@ ${freshnessPromptBlock}
 ${intentPromptBlock}
 ${buildBlogContentBriefPromptBlock(contentBrief)}
 ${buildInfoWriterPromptBlock(infoGuideBrief)}
+${researchPromptBlock}
 
 ## Current quality contract from recent /blog samples
 - Micro-angle ids or English planning labels are internal only. Never expose labels like "family budget", "transport cost", "hotel area budget", "weather packing", or "local mobility" in the H1, H2, slug text, or body. Convert them into natural Korean search intent.
@@ -3491,6 +3695,23 @@ ${serpGapBlock}
     .replace(/```\s*$/i, '')
     .trim();
   blog_html = await maybeApplyChainOfDensity(blog_html);
+  const researchStructureRepair = repairBlogGenerationResearchStructure({
+    markdown: blog_html,
+    intent: contentBrief.intentType,
+    readiness: researchReadiness,
+  });
+  if (researchStructureRepair.changed) {
+    blog_html = researchStructureRepair.markdown;
+    writerOutput.claimLedger = [...new Map([
+      ...writerOutput.claimLedger,
+      ...researchStructureRepair.approvedClaims.map((claim) => ({
+        claimFingerprint: claim.claimFingerprint,
+        claimText: claim.claimText,
+        claimType: claim.claimType,
+        riskLevel: claim.riskLevel,
+      })),
+    ].map((claim) => [claim.claimFingerprint, claim])).values()];
+  }
 
   // slug 자동 — 오래된 큐에 잘못 들어간 expected_slug는 자동 무시
   const slug = queueSlug;
@@ -3518,9 +3739,9 @@ ${serpGapBlock}
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
   const destForImage = item.destination || extractDestination(item.topic);
-  if (destForImage && isPexelsConfigured()) {
+  if (destForImage) {
     try {
-      og_image_url = await findRelevantBlogPexelsImage({
+      og_image_url = await findOrGenerateBlogCover({
         destination: destForImage,
         primaryKeyword: contentBrief.primaryKeyword,
         sectionTitle: contentBrief.title,
@@ -3561,6 +3782,15 @@ ${serpGapBlock}
       version: 'v1',
       claims: writerOutput.claimLedger,
       issues: writerOutput.ledgerIssues,
+    },
+    information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
+    information_research_structure_repair: {
+      applied: researchStructureRepair.changed,
+      changes: researchStructureRepair.changes,
+    },
+    cover_image: {
+      provider: isGeneratedBlogImageUrl(og_image_url) ? 'ai_generated' : (og_image_url ? 'pexels' : 'none'),
+      disclosure: isGeneratedBlogImageUrl(og_image_url) ? 'AI 생성 참고 이미지' : null,
     },
     serp_analyzed: Boolean(serpData),
     freshness_risk: freshnessRisk,

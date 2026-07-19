@@ -33,6 +33,7 @@ export interface RagIndexAuditOptions {
   minChunkChars?: number;
   minContextualChars?: number;
   expectedSourceTypes?: string[];
+  presentSourceTypes?: string[];
   sampleIssueLimit?: number;
 }
 
@@ -80,7 +81,7 @@ export interface RagIndexAuditSummary {
   remediationActions: RagIndexRemediationAction[];
 }
 
-const DEFAULT_OPTIONS: Required<Omit<RagIndexAuditOptions, 'now'>> = {
+const DEFAULT_OPTIONS: Required<Omit<RagIndexAuditOptions, 'now' | 'presentSourceTypes'>> = {
   staleAfterDays: 30,
   minChunkChars: 80,
   minContextualChars: 120,
@@ -343,7 +344,8 @@ export function auditRagIndexRows(
     }
   }
 
-  const presentSourceTypes = [...new Set(rows.map((row) => normalizeText(row.source_type)).filter(Boolean))].sort();
+  const sampleSourceTypes = rows.map((row) => normalizeText(row.source_type)).filter(Boolean);
+  const presentSourceTypes = [...new Set([...(opts.presentSourceTypes ?? []), ...sampleSourceTypes].map(normalizeText).filter(Boolean))].sort();
   const missingSourceTypes = opts.expectedSourceTypes.filter((sourceType) => !presentSourceTypes.includes(sourceType));
   for (const _sourceType of missingSourceTypes) incrementIssue(issueCounts, 'missing_expected_source');
 

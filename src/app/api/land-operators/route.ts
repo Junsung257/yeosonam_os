@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 // 기본 랜드사 목록 (land_operators 테이블이 없을 때 폴백)
@@ -9,7 +10,10 @@ const DEFAULT_OPERATORS = [
 ].map((name, i) => ({ id: `default-${i}`, name, contact: null, regions: [] as string[], is_active: true }));
 
 // GET /api/land-operators — 전체 목록 반환 (is_active 포함)
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ operators: DEFAULT_OPERATORS });
 
   const { data, error } = await supabaseAdmin
@@ -38,6 +42,9 @@ export async function GET() {
 // POST /api/land-operators — 신규 랜드사 DB Insert + ID 반환
 // 트랜잭션: 이미 존재하면 Upsert (중복 방지)
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   const body = await req.json();
   const { name, contact, regions } = body as { name: string; contact?: string; regions?: string[] };
 
@@ -73,6 +80,9 @@ export async function POST(req: NextRequest) {
 // PATCH /api/land-operators — Soft Delete / 복구 / 이름·연락처 수정
 // Body: { id, is_active } | { id, name, contact }
 export async function PATCH(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
   const body = await req.json();

@@ -38,6 +38,39 @@ function titleHintFromBoundary(lines: V3SourceLine[], startLine: number, endLine
   );
 }
 
+function titleHintFromProductLikeLine(lines: V3SourceLine[], startLine: number, endLine: number): string {
+  const candidate = lines
+    .slice(startLine - 1, endLine)
+    .map(line => line.quote.trim())
+    .find(line => (
+      /(?:상품|product|pkg)/i.test(line)
+      || (/\d+\s*박\s*\d+\s*일/.test(line) && !/[\/&]|출발일|판매가|상품가|요금/.test(line))
+    ));
+  return compact(candidate ?? titleHintFromBoundary(lines, startLine, endLine));
+}
+
+function hasDayHeader(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  return lines.slice(startLine - 1, endLine).some(line => DAY_HEADER_RE.test(line.quote.trim()));
+}
+
+function hasItineraryDayHeader(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  const itineraryDayHeaderRe = /^(?:day\s*\d{1,2}(?:\b|\s|$)|제\s*\d{1,2}\s*일(?:차)?(?:\s|$)|\d{1,2}\s*일차(?:\s|$))/i;
+  return lines.slice(startLine - 1, endLine).some(line => itineraryDayHeaderRe.test(line.quote.trim()));
+}
+
+function hasFlightCode(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  return lines.slice(startLine - 1, endLine).some(line => /\b[A-Z0-9]{2}\s*\d{3,4}\b/.test(line.quote));
+}
+
+function isDurationPricePreamble(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  const text = lines.slice(startLine - 1, endLine).map(line => line.quote.trim()).join('\n');
+  return /출발일/.test(text)
+    && /판매가|상품가|요금/.test(text)
+    && /\d+\s*박\s*\d+\s*일/.test(text)
+    && !hasItineraryDayHeader(lines, startLine, endLine)
+    && !hasFlightCode(lines, startLine, endLine);
+}
+
 function collectCatalogBoundaryStarts(raw: string): number[] {
   const variantStarts = collectVariantCatalogBlockStarts(raw);
   const transportStarts = collectTransportVariantDetailBlockStarts(raw);
@@ -85,7 +118,7 @@ function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boun
     ? rawCatalogStarts
     : filterCatalogStartsBySectionEvidence(lines, rawCatalogStarts);
   if (catalogStarts.length >= 2) {
-    return catalogStarts.map((start, index) => {
+    const boundaries = catalogStarts.map((start, index) => {
       const startLine = lineNumberForCharOffset(lines, start);
       const nextStart = catalogStarts[index + 1];
       const endLine = nextStart == null ? lines.length : Math.max(startLine, lineNumberForCharOffset(lines, nextStart) - 1);
@@ -96,6 +129,50 @@ function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boun
         title_hint: titleHintFromBoundary(lines, startLine, endLine),
       };
     });
+    const merged: V3StructurePlan['product_boundaries'] = [];
+    for (let index = 0; index < boundaries.length; index += 1) {
+      const current = boundaries[index];
+      const next = boundaries[index + 1];
+      if (isDurationPricePreamble(lines, current.line_start, current.line_end)) {
+        let targetIndex = index + 1;
+        while (
+          targetIndex < boundaries.length
+          && isDurationPricePreamble(lines, boundaries[targetIndex].line_start, boundaries[targetIndex].line_end)
+        ) {
+          targetIndex += 1;
+        }
+        const target = boundaries[targetIndex];
+        if (target && (hasItineraryDayHeader(lines, target.line_start, target.line_end) || hasFlightCode(lines, target.line_start, target.line_end))) {
+          merged.push({
+            index: merged.length,
+            line_start: current.line_start,
+            line_end: target.line_end,
+            title_hint: titleHintFromProductLikeLine(lines, target.line_start, target.line_end),
+          });
+          index = targetIndex;
+          continue;
+        }
+      }
+      if (
+        next
+        && isDurationPricePreamble(lines, current.line_start, current.line_end)
+        && (hasItineraryDayHeader(lines, next.line_start, next.line_end) || hasFlightCode(lines, next.line_start, next.line_end))
+      ) {
+        merged.push({
+          index: merged.length,
+          line_start: current.line_start,
+          line_end: next.line_end,
+          title_hint: titleHintFromProductLikeLine(lines, next.line_start, next.line_end),
+        });
+        index += 1;
+        continue;
+      }
+      merged.push({
+        ...current,
+        index: merged.length,
+      });
+    }
+    return merged;
   }
 
   const starts = lines.filter(line => PRODUCT_HEADER_RE.test(line.quote.trim()));

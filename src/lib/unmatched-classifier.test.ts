@@ -192,6 +192,14 @@ describe('classifyUnmatchedActivity', () => {
       category: 'free_time',
       terminalStatus: 'ignored',
     });
+    expect(classifyUnmatchedActivity('제외일자')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
+    expect(classifyUnmatchedActivity('4+0')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
+    });
     expect(classifyUnmatchedActivity('OR 룩락')).toMatchObject({
       category: 'meal',
       terminalStatus: 'added',
@@ -216,6 +224,13 @@ describe('classifyUnmatchedActivity', () => {
       category: 'attraction',
       terminalStatus: 'pending',
       suggestedAction: 'needs_new_master',
+    });
+  });
+
+  it('treats measurement-only attraction description fragments as noise', () => {
+    expect(classifyUnmatchedActivity('총길이 430M, 넓이 6M, 계곡에서의 높이 300M에 달하는 세계 최고의')).toMatchObject({
+      category: 'free_time',
+      terminalStatus: 'ignored',
     });
   });
 

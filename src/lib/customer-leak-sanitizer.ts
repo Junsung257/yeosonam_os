@@ -50,7 +50,7 @@ export const LEAK_PATTERNS: ReadonlyArray<{
   { id: 'settlement_internal',pattern: /정산\s*(?:기준|예정)\s*[:：]/g,           severity: 'high',     description: '정산 기준 (내부)' },
 
   // 연락처 leak (CRITICAL)
-  { id: 'internal_phone',     pattern: /(?:0[12]|02|031|032)-\d{3,4}-\d{4}/g,   severity: 'high',     description: '내부 연락처' },
+  { id: 'internal_phone',     pattern: /(?<![A-Za-z0-9-])(?:0[12]|02|031|032)-\d{3,4}-\d{4}(?![A-Za-z0-9-])/g,   severity: 'high',     description: '내부 연락처' },
   { id: 'land_op_email',      pattern: /[\w.-]+@(?!yeosonam|gmail|naver|daum|kakao|outlook)[\w.-]+\.(com|co\.kr|net)/g, severity: 'high', description: '외부(랜드사) 이메일' },
 ];
 

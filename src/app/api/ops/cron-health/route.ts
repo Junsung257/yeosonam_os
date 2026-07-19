@@ -2,10 +2,11 @@
  * GET /api/ops/cron-health
  *
  * Returns recent cron health and the last 24h failure history for the ops dashboard.
- * Access is protected by middleware; CRON_SECRET Bearer is recognized for server-to-server callers
- * that are allowed through the platform layer.
+ * Access is protected at the route layer. CRON_SECRET Bearer is accepted for
+ * server-to-server callers; browser/admin calls must pass the admin guard.
  */
 import { type NextRequest } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
@@ -17,9 +18,12 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const cronSecret = getSecret('CRON_SECRET');
-  const accessMode = cronSecret && safeEqualString(authHeader, `Bearer ${cronSecret}`)
-    ? 'cron'
-    : 'admin';
+  const isCron = Boolean(cronSecret && safeEqualString(authHeader, `Bearer ${cronSecret}`));
+  if (!isCron) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+  }
+  const accessMode = isCron ? 'cron' : 'admin';
 
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'DB가 설정되지 않았습니다.' }, { status: 503 });

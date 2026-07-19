@@ -109,7 +109,11 @@ export default function ChatWidget() {
                 <div className="text-[10px] text-white/80">AI가 도와드립니다</div>
               </div>
             </div>
-            <button onClick={closeChat} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition">
+            <button
+              onClick={closeChat}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition"
+              aria-label="상담창 닫기"
+            >
               <X size={20} />
             </button>
           </div>
@@ -180,6 +184,7 @@ export default function ChatWidget() {
                 ref={inputRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
+                aria-label="상담 메시지 입력"
                 placeholder="메시지를 입력하세요..."
                 className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 resize-none text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 max-h-24"
                 rows={1}
@@ -189,6 +194,7 @@ export default function ChatWidget() {
                 onClick={handleSend}
                 disabled={!inputValue.trim()}
                 className="w-10 h-10 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white rounded-xl flex items-center justify-center transition shrink-0"
+                aria-label="상담 메시지 보내기"
               >
                 <Send size={18} />
               </button>

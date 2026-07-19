@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ensureBlogInlineImages } from './blog-inline-images';
 import { isPexelsConfigured, searchPexelsPhotos } from '@/lib/pexels';
+import { generateSectionImage } from '@/lib/blog-image-gen';
 
 vi.mock('@/lib/pexels', () => ({
   destToEnKeyword: vi.fn(() => 'Da Nang Vietnam travel'),
@@ -21,10 +22,17 @@ vi.mock('@/lib/pexels', () => ({
   ]),
 }));
 
+vi.mock('@/lib/blog-image-gen', () => ({
+  generateSectionImage: vi.fn(async () => null),
+  isGeneratedBlogImageUrl: vi.fn((value: string | null | undefined) =>
+    typeof value === 'string' && value.includes('/generated/blog/')),
+}));
+
 describe('ensureBlogInlineImages', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isPexelsConfigured).mockReturnValue(true);
+    vi.mocked(generateSectionImage).mockResolvedValue(null);
   });
 
   it('leaves articles with enough images untouched', async () => {
@@ -120,5 +128,28 @@ describe('ensureBlogInlineImages', () => {
 
     expect(result.inserted).toBe(0);
     expect(result.markdown).toBe(markdown);
+  });
+
+  it('uses a clearly disclosed AI reference image when Pexels has no relevant result', async () => {
+    vi.mocked(searchPexelsPhotos).mockResolvedValue([]);
+    vi.mocked(generateSectionImage).mockResolvedValue(
+      'https://cdn.test/storage/v1/object/public/blog-assets/generated/blog/aa/image.jpg',
+    );
+
+    const result = await ensureBlogInlineImages({
+      markdown: '# 삿포로 식비\n\n## 끼니별 예산\n본문입니다.',
+      destination: '삿포로',
+      primaryKeyword: '삿포로 식비',
+      minImages: 1,
+    });
+
+    expect(generateSectionImage).toHaveBeenCalledWith(
+      '끼니별 예산',
+      '삿포로 식비',
+      '삿포로',
+      { skipPexelsFallback: true },
+    );
+    expect(result.markdown).toContain('![AI 생성 참고 이미지: 삿포로 끼니별 예산]');
+    expect(result.markdown).toContain('AI 생성 참고 이미지 · 실제 현장 기록이나 최신 운영 상황의 증거로 사용하지 않습니다.');
   });
 });
