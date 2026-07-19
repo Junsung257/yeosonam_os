@@ -150,6 +150,10 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('parseBlogInformationWriterOutput(raw)');
     expect(source).toContain('repairBlogGenerationResearchStructure({');
     expect(source).toContain('information_research_structure_repair: {');
+    expect(source).toContain('const applyFinalResearchStructureRepair = (): void =>');
+    expect(source).toContain("stage: 'final_quality_boundary'");
+    expect(source).toContain('const runQualityWithResearchStructure = async (): Promise<QualityGateReport> =>');
+    expect(source).toContain('qa = await runQualityWithResearchStructure();');
     expect(source).toContain('writer_claim_ledger: {');
     expect(source).toContain("claimLedger: contentBoundary.lane === 'informational'");
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
