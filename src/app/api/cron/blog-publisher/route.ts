@@ -1342,7 +1342,23 @@ async function runBlogPublisher(request: NextRequest) {
         };
       }
 
-      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      let result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      let targetedAttempts = 1;
+      while (
+        result.status === 'gate_failed'
+        && targetedAttempts < 2
+        && publisherRemainingMs(startTime) >= BLOG_PUBLISHER_MIN_ITEM_START_MS
+      ) {
+        const { data: retryItem, error: retryError } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .select('*')
+          .eq('id', privateQueueId)
+          .eq('status', 'queued')
+          .maybeSingle();
+        if (retryError || !retryItem || !hasPrivateBlogRegenerationIntent(retryItem)) break;
+        targetedAttempts += 1;
+        result = await processQueueItem(retryItem, new Map(), { startedAtMs: startTime });
+      }
       results.push(result);
       const completedPrivately = result.status === 'pending_review' || result.status === 'done';
       return {
@@ -1350,6 +1366,7 @@ async function runBlogPublisher(request: NextRequest) {
         processed: 1,
         published: 0,
         targetedPrivateRegeneration: true,
+        targetedAttempts,
         queueId: privateQueueId,
         results,
         errors: completedPrivately ? errors : [...errors, result.reason || result.status],
@@ -3464,7 +3481,9 @@ ${serpGapBlock}
 - 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
 - CTA 섹션과 CTA URL을 본문에 쓰지 말 것. 상품 보기, 카카오, 상담 신청, 예약하기, 카페, 딜방 링크는 공개 렌더러의 중앙 CTA 설정이 담당한다.`;
 
-  const raw = await generatePublisherBlogText(prompt, { temperature: 0.7 });
+  const raw = await generatePublisherBlogText(prompt, {
+    temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7,
+  });
   const writerOutput = parseBlogInformationWriterOutput(raw);
   let blog_html = writerOutput.markdown
     .replace(/^```markdown\s*/i, '')
