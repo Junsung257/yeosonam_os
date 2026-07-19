@@ -78,6 +78,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-20 | `2026-07-20-meta-publisher-boundary.md` | Meta publisher external-write boundary audit: disabled incomplete deploy context, guarded mutation routes, and aligned PAUSED ad copy with the marketing SSOT. |
 | 2026-07-09 | `2026-07-09-blog-writing-engine-research.md` | Blog writing-engine research: competitor patterns, customer-language scorecard, open-source eval/observability adoption priorities, and remaining hardening backlog. |
 | 2026-06-15 | `2026-06-15-blog-autopublish-quality-incident.md` + `../blog-autopublish-contract.md` | Blog autopublish repeated-quality root cause, evidence-backed prevention contract, verification commands, and remaining slug migration gate. |
 | 2026-06-08 | `2026-06-08-blog-production-visual-audit.md` | Blog visual QA, GSC canonical/domain evidence, and 100-point prevention gate. |

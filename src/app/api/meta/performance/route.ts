@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured, getAdPerformance, upsertAdPerformanceSnapshot, supabaseAdmin } from '@/lib/supabase';
 import { fetchCampaignInsights, isMetaConfigured } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
@@ -8,6 +9,9 @@ import { getSecret } from '@/lib/secret-registry';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({
       campaigns: [],
@@ -89,6 +93,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 연동이 설정되지 않아 Meta 성과를 저장할 수 없습니다.' }, { status: 503 });
   }
