@@ -19,6 +19,8 @@ import { getSecret } from '@/lib/secret-registry'
 
 const EMBED_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent'
 const RERANK_MODEL = 'gemini-2.5-flash'
+const PACKAGE_LINK_RE = /\/packages\/([a-zA-Z0-9-]+)/g
+const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
 
 export type SourceType = 'package' | 'blog' | 'attraction' | 'policy' | 'custom'
 
@@ -43,6 +45,45 @@ export interface RetrievalHit {
   score: number          // 최종 score (rerank 여부에 따라 rrf 또는 rerank 점수)
   vectorScore: number
   bm25Score: number
+}
+
+function extractPackageIds(query: string): string[] {
+  const ids = new Set<string>()
+  for (const match of query.matchAll(PACKAGE_LINK_RE)) ids.add(match[1])
+  for (const match of query.matchAll(UUID_RE)) ids.add(match[0])
+  return [...ids]
+}
+
+async function retrieveExplicitPackageChunks(packageIds: string[], limit: number): Promise<RetrievalHit[]> {
+  if (packageIds.length === 0) return []
+
+  const { data, error } = await supabaseAdmin
+    .from('jarvis_knowledge_chunks')
+    .select('id, tenant_id, source_type, source_id, source_url, source_title, chunk_index, chunk_text, contextual_text, metadata, updated_at')
+    .eq('source_type', 'package')
+    .in('source_id', packageIds)
+    .order('chunk_index', { ascending: true })
+    .limit(Math.max(limit, packageIds.length))
+
+  if (error) {
+    console.error('[rag] explicit package chunk lookup error:', error)
+    return []
+  }
+
+  return (data ?? []).map((r: any, index: number) => ({
+    id: r.id,
+    tenantId: r.tenant_id,
+    sourceType: r.source_type,
+    sourceId: r.source_id,
+    sourceUrl: r.source_url,
+    sourceTitle: r.source_title,
+    chunkText: r.chunk_text,
+    contextualText: r.contextual_text,
+    metadata: r.metadata ?? {},
+    score: 1 - (index * 0.001),
+    vectorScore: 0,
+    bm25Score: 0,
+  }))
 }
 
 /** 쿼리 → 임베딩 벡터. 실패 시 null (retrieval 은 BM25 only 로 폴백). */
@@ -75,6 +116,15 @@ async function embedQuery(query: string): Promise<number[] | null> {
 /** Hybrid search — vector + BM25 + RRF. embedding 이 null 이면 BM25 only. */
 export async function retrieve(q: RetrievalQuery): Promise<RetrievalHit[]> {
   const limit = q.limit ?? 5
+  const explicitPackageIds = extractPackageIds(q.query)
+  if (
+    explicitPackageIds.length > 0 &&
+    (!q.sourceTypes || q.sourceTypes.includes('package'))
+  ) {
+    const exactHits = await retrieveExplicitPackageChunks(explicitPackageIds, limit)
+    if (exactHits.length > 0) return exactHits.slice(0, limit)
+  }
+
   const queryLimit = q.rerank ? Math.max(limit * 4, 20) : limit
   const embedding = await embedQuery(q.query)
 

@@ -12,6 +12,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import { buildProductAnswerIdentity } from '@/lib/product-answer-identity';
 
 const FLASH_MODEL = 'gemini-2.5-flash';
 const EMBED_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent';
@@ -28,6 +29,7 @@ interface IndexableDoc {
   sourceTitle: string;
   docSummary: string;
   body: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface IndexResult {
@@ -130,15 +132,44 @@ async function indexDoc(doc: IndexableDoc): Promise<IndexResult> {
     const raw = chunks[idx];
     const hash = hashContent(raw);
 
-    // dedupe
-    const { data: existing } = await supabaseAdmin
+    const { data: existingRows, error: existingError } = await supabaseAdmin
       .from('jarvis_knowledge_chunks')
-      .select('id, content_hash')
+      .select('id, content_hash, updated_at')
       .eq('source_type', doc.sourceType)
       .eq('source_id', doc.sourceId)
       .eq('chunk_index', idx)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
+    if (existingError) {
+      console.error(`[rag-indexer] lookup 실패 ${doc.sourceType}/${doc.sourceId}#${idx}:`, existingError.message);
+      result.failed++;
+      continue;
+    }
+    const existing = (existingRows ?? [])[0] as { id: string; content_hash: string } | undefined;
+    const duplicateIds = ((existingRows ?? []) as Array<{ id: string }>).slice(1).map((row) => row.id);
+    if (duplicateIds.length > 0) {
+      const { error: deleteError } = await supabaseAdmin
+        .from('jarvis_knowledge_chunks')
+        .delete()
+        .in('id', duplicateIds);
+      if (deleteError) {
+        console.error(`[rag-indexer] duplicate cleanup 실패 ${doc.sourceType}/${doc.sourceId}#${idx}:`, deleteError.message);
+        result.failed++;
+        continue;
+      }
+    }
+
     if (existing && (existing as { content_hash: string }).content_hash === hash) {
+      if (doc.metadata && Object.keys(doc.metadata).length > 0) {
+        await supabaseAdmin
+          .from('jarvis_knowledge_chunks')
+          .update({
+            metadata: doc.metadata,
+            source_title: doc.sourceTitle,
+            source_url: doc.sourceUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', (existing as { id: string }).id);
+      }
       result.skipped++;
       continue;
     }
@@ -147,29 +178,47 @@ async function indexDoc(doc: IndexableDoc): Promise<IndexResult> {
     const embedding = await embed(ctxText);
     if (!embedding) { result.failed++; continue; }
 
-    const { error } = await supabaseAdmin
-      .from('jarvis_knowledge_chunks')
-      .upsert({
-        tenant_id: doc.tenantId,
-        source_type: doc.sourceType,
-        source_id: doc.sourceId,
-        source_url: doc.sourceUrl,
-        source_title: doc.sourceTitle,
-        chunk_index: idx,
-        chunk_text: raw,
-        contextual_text: ctxText,
-        embedding,
-        content_hash: hash,
-        metadata: {},
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'tenant_id,source_type,source_id,chunk_index' });
+    const payload = {
+      tenant_id: doc.tenantId,
+      source_type: doc.sourceType,
+      source_id: doc.sourceId,
+      source_url: doc.sourceUrl,
+      source_title: doc.sourceTitle,
+      chunk_index: idx,
+      chunk_text: raw,
+      contextual_text: ctxText,
+      embedding,
+      content_hash: hash,
+      metadata: doc.metadata ?? {},
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = existing
+      ? await supabaseAdmin
+        .from('jarvis_knowledge_chunks')
+        .update(payload)
+        .eq('id', existing.id)
+      : await supabaseAdmin
+        .from('jarvis_knowledge_chunks')
+        .insert(payload);
 
     if (error) {
-      console.error(`[rag-indexer] upsert 실패 ${doc.sourceType}/${doc.sourceId}#${idx}:`, error.message);
+      console.error(`[rag-indexer] save 실패 ${doc.sourceType}/${doc.sourceId}#${idx}:`, error.message);
       result.failed++;
       continue;
     }
     result.inserted++;
+  }
+
+  const { error: obsoleteDeleteError } = await supabaseAdmin
+    .from('jarvis_knowledge_chunks')
+    .delete()
+    .eq('source_type', doc.sourceType)
+    .eq('source_id', doc.sourceId)
+    .gte('chunk_index', chunks.length);
+  if (obsoleteDeleteError) {
+    console.error(`[rag-indexer] obsolete cleanup 실패 ${doc.sourceType}/${doc.sourceId}:`, obsoleteDeleteError.message);
+    result.failed++;
   }
   return result;
 }
@@ -179,21 +228,54 @@ async function indexDoc(doc: IndexableDoc): Promise<IndexResult> {
 export async function indexPackage(packageId: string): Promise<IndexResult> {
   const { data: pkg, error } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, tenant_id, title, destination, product_summary, product_highlights, itinerary_data')
+    .select('id, tenant_id, title, display_title, destination, country, product_summary, product_highlights, itinerary_data, internal_code, short_code, price, price_dates, duration, nights, product_type, trip_style, airline')
     .eq('id', packageId)
     .single();
   if (error || !pkg) return { inserted: 0, skipped: 0, failed: 1 };
 
   const itinFlat = flattenItinerary(pkg.itinerary_data);
   const highlightsText = Array.isArray(pkg.product_highlights) ? pkg.product_highlights.join('\n') : '';
+  const identity = buildProductAnswerIdentity(pkg);
   return indexDoc({
     tenantId: pkg.tenant_id ?? null,
     sourceType: 'package',
     sourceId: pkg.id,
     sourceUrl: `/packages/${pkg.id}`,
-    sourceTitle: pkg.title,
-    docSummary: `${pkg.destination ?? ''} · ${(pkg.product_summary ?? '').slice(0, 300)}`,
-    body: [pkg.product_summary ?? '', highlightsText, itinFlat].filter(Boolean).join('\n\n'),
+    sourceTitle: identity.label,
+    metadata: {
+      answer_identity_key: identity.key,
+      answer_identity_label: identity.label,
+      base_title: identity.baseTitle,
+      destination: pkg.destination ?? null,
+      country: pkg.country ?? null,
+      internal_code: pkg.internal_code ?? null,
+      short_code: pkg.short_code ?? null,
+      price: pkg.price ?? null,
+      duration: pkg.duration ?? null,
+      nights: pkg.nights ?? null,
+      product_type: pkg.product_type ?? null,
+      trip_style: pkg.trip_style ?? null,
+      airline: pkg.airline ?? null,
+    },
+    docSummary: `${identity.label} · ${pkg.destination ?? ''} · ${(pkg.product_summary ?? '').slice(0, 300)}`,
+    body: [
+      `Answer identity label: ${identity.label}`,
+      `Answer identity key: ${identity.key}`,
+      `Package title: ${pkg.title}`,
+      `Package ID: ${pkg.id}`,
+      pkg.internal_code ? `Internal product code: ${pkg.internal_code}` : '',
+      pkg.short_code ? `Public product code: ${pkg.short_code}` : '',
+      pkg.destination ? `Destination: ${pkg.destination}` : '',
+      pkg.price ? `Base price: ${Number(pkg.price).toLocaleString('ko-KR')} KRW` : '',
+      pkg.duration ? `Duration: ${pkg.duration} days` : '',
+      pkg.nights ? `Nights: ${pkg.nights}` : '',
+      pkg.product_type ? `Product type: ${pkg.product_type}` : '',
+      pkg.trip_style ? `Trip style: ${pkg.trip_style}` : '',
+      pkg.airline ? `Airline: ${pkg.airline}` : '',
+      pkg.product_summary ?? '',
+      highlightsText,
+      itinFlat,
+    ].filter(Boolean).join('\n\n'),
   });
 }
 
