@@ -100,6 +100,12 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('forced_private_review: true');
   });
 
+  it('excludes the in-place replacement draft from its own duplicate check', () => {
+    const source = routeSource();
+
+    expect(source).toContain('excludeContentCreativeId: item.content_creative_id ?? null');
+  });
+
   it('reconciles the final informational body with a bounded writer claim ledger', () => {
     const source = routeSource();
 
