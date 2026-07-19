@@ -1,5 +1,6 @@
 import type { CampaignStatus } from '@/types/meta-ads';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured, getAdCampaigns, upsertCampaign } from '@/lib/supabase';
 import {
   createMetaCampaign,
@@ -12,6 +13,9 @@ import { logError } from '@/lib/sentry-logger';
 import type { CreateCampaignRequest } from '@/types/meta-ads';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({
       campaigns: [],
@@ -38,6 +42,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 연동이 설정되지 않아 캠페인을 생성할 수 없습니다.' }, { status: 503 });
   }
