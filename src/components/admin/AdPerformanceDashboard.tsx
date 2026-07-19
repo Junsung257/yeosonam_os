@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useId, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 const BarChart = dynamic(() => import('recharts').then(m => ({ default: m.BarChart })), { ssr: false });
@@ -28,6 +28,7 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState('');
   const [sortBy, setSortBy] = useState<'ctr' | 'conversions' | 'spend'>('ctr');
+  const modalTitleId = useId();
 
   // papaparse 동적 임포트 (초기 번들 경량화)
   const papaRef = useRef<any>(null);
@@ -97,6 +98,17 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
     if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
   }, [handleFiles]);
 
+  const openCsvPicker = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.onchange = e => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files) handleFiles(files);
+    };
+    input.click();
+  }, [handleFiles]);
+
   const handleClear = () => {
     if (!confirm('모든 성과 데이터를 삭제하시겠습니까?')) return;
     clearPerformanceData();
@@ -125,25 +137,32 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button
+        type="button"
+        aria-label="Ad-Brain 성과 대시보드 닫기"
+        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={modalTitleId}
         className="relative w-full max-w-3xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
-        onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-admin-lg font-semibold text-admin-text-2">Ad-Brain 성과 대시보드</h2>
+            <h2 id={modalTitleId} className="text-admin-lg font-semibold text-admin-text-2">Ad-Brain 성과 대시보드</h2>
             <p className="text-[11px] text-admin-muted mt-0.5">Meta CSV 드롭 → 자동 분석 → 다음 기획안에 RAG 반영</p>
           </div>
           <div className="flex items-center gap-2">
             {rows.length > 0 && (
-              <button onClick={handleClear} className="px-3 py-1.5 text-admin-xs text-red-500 border border-red-200 rounded hover:bg-red-50 transition">
+              <button type="button" onClick={handleClear} className="px-3 py-1.5 text-admin-xs text-red-500 border border-red-200 rounded hover:bg-red-50 transition">
                 초기화
               </button>
             )}
-            <button onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
+            <button type="button" aria-label="Ad-Brain 성과 대시보드 닫기" onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
@@ -156,16 +175,16 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
             onDragLeave={e => { e.preventDefault(); setDragActive(false); }}
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = '.csv';
-              input.onchange = e => {
-                const files = (e.target as HTMLInputElement).files;
-                if (files) handleFiles(files);
-              };
-              input.click();
+            onClick={openCsvPicker}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openCsvPicker();
+              }
             }}
+            role="button"
+            tabIndex={0}
+            aria-label="Meta Ads CSV 파일 업로드"
             className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition ${
               dragActive ? 'border-[#005d90] bg-blue-50' : 'border-admin-border-strong bg-admin-bg hover:border-slate-400'
             }`}
