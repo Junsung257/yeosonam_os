@@ -16,7 +16,6 @@ import { getPrompt } from '@/lib/prompt-loader'
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages'
 import { scopeQaPackagesToExplicitProduct } from '@/lib/qa-product-scope'
 import { buildProductAnswerIdentity } from '@/lib/product-answer-identity'
-import { safeRawTextExcerpt } from '@/lib/raw-text-privacy'
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint'
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor'
 import { applyCustomerAnswerGuard } from '@/lib/jarvis/customer-answer-guard'
@@ -382,8 +381,7 @@ Price dates: ${JSON.stringify(p.price_dates ?? null).slice(0, 500)}
 핵심 포인트: ${(p.product_highlights ?? []).join(', ') || '미지정'}
 포함사항: ${(p.inclusions ?? []).join(', ') || '없음'}
 불포함: ${(p.excludes ?? []).join(', ') || '없음'}
-일정: ${(p.itinerary ?? []).join(' | ') || '없음'}
-상세내용: ${safeRawTextExcerpt(p.raw_text, 800) ?? ''}`
+일정: ${(p.itinerary ?? []).join(' | ') || '없음'}`
           }).join('\n\n---\n\n')
           : '현재 등록된 상품이 없습니다.'
 

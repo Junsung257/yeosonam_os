@@ -4,11 +4,10 @@ import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
-import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
-  'id,title,display_title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,raw_text,status,publication_state,package_revision,audit_status,audit_report,created_at,updated_at,optional_tours,itinerary_data,internal_code,short_code,product_summary,product_highlights,price_dates,product_type,trip_style,airline';
+  'id,title,display_title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,status,publication_state,package_revision,audit_status,audit_report,created_at,updated_at,optional_tours,itinerary_data,internal_code,short_code,product_summary,product_highlights,price_dates,product_type,trip_style,airline';
 
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
@@ -60,7 +59,6 @@ function toQaCustomerPackageRows(
         inclusions: asStringArray(row.inclusions),
         excludes: asStringArray(row.excludes),
         itinerary: asStringArray(row.itinerary),
-        raw_text: safeRawTextExcerpt(typeof source?.raw_text === 'string' ? source.raw_text : null, 800) ?? '',
         internal_code: asString(source?.internal_code),
         short_code: asString(source?.short_code),
         price_dates: Array.isArray(row.price_dates)
