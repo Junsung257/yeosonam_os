@@ -32,6 +32,7 @@ import { recommendPublishSlot } from '@/lib/best-time-engine';
 import { getSecret } from '@/lib/secret-registry';
 import { publishDistribution, type ScheduledDistributionRow } from '@/lib/social-publishing/distribution-publisher';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -63,6 +64,9 @@ interface RequestBody {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }
