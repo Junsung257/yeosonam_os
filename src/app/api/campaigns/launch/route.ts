@@ -12,6 +12,7 @@ import {
   type CampaignCreativeWithPublicPackage,
 } from '@/lib/campaign-public-packages';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 type CampaignLaunchCreative = CampaignCreativeWithPublicPackage & {
   id: string;
@@ -20,6 +21,9 @@ type CampaignLaunchCreative = CampaignCreativeWithPublicPackage & {
 };
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   try {
     const { creative_ids, budgets = {} } = await request.json();
 
@@ -65,8 +69,8 @@ export async function POST(request: NextRequest) {
       try {
         if (creative.channel === 'meta') {
           // Meta 배포 — 기존 meta-api.ts 활용
-          const launched = await launchMeta(creative, budgets.meta_daily ?? 10000, supabaseAdmin);
-          results.push({ id: creative.id, channel: 'meta', status: launched ? 'active' : 'review' });
+          await launchMeta(creative, budgets.meta_daily ?? 10000, supabaseAdmin);
+          results.push({ id: creative.id, channel: 'meta', status: 'review' });
         } else if (creative.channel === 'naver') {
           // 네이버 — 아직 API 미연동, review 상태로만 변경
           await supabaseAdmin
@@ -90,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      launched: results.filter(r => r.status === 'active').length,
+      launched: 0,
       review: results.filter(r => r.status === 'review').length,
       errors: results.filter(r => r.status === 'error').length,
       details: results,
@@ -105,6 +109,11 @@ export async function POST(request: NextRequest) {
 }
 
 async function launchMeta(creative: any, dailyBudget: number, sb: any): Promise<boolean> {
+  if (creative.meta_campaign_id) {
+    await sb.from('ad_creatives').update({ status: 'review' }).eq('id', creative.id);
+    return false;
+  }
+
   // Meta API 키 확인
   if (!hasSecrets(['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID', 'META_PAGE_ID'])) {
     // Meta 미설정 → review 상태로만 변경
@@ -163,8 +172,8 @@ async function launchMeta(creative: any, dailyBudget: number, sb: any): Promise<
     meta_ad_id: ad.id,
     meta_creative_id: adCreative.id,
     utm_params: utm,
-    status: 'active',
-    launched_at: new Date().toISOString(),
+    status: 'review',
+    launched_at: null,
   }).eq('id', creative.id);
 
   // 캠페인 테이블에도 저장
@@ -175,7 +184,7 @@ async function launchMeta(creative: any, dailyBudget: number, sb: any): Promise<
     meta_ad_id: ad.id,
     name: `여소남_${dest}_${creative.hook_type}`,
     channel: 'meta',
-    status: 'ACTIVE',
+    status: 'PAUSED',
     objective: 'LINK_CLICKS',
     daily_budget_krw: dailyBudget,
   });
