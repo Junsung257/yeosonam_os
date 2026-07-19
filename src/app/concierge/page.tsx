@@ -17,7 +17,7 @@ import {
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 
-interface MockSearchResult {
+interface ConciergeSearchResult {
   product_id: string;
   product_name: string;
   api_name: string;
@@ -29,7 +29,7 @@ interface MockSearchResult {
   attrs?: Record<string, unknown>;
 }
 
-interface CartItem extends MockSearchResult {
+interface CartItem extends ConciergeSearchResult {
   quantity: number;
 }
 
@@ -100,9 +100,6 @@ const PRODUCT_TYPE_TONES: Record<string, string> = {
 };
 
 const API_LABELS: Record<string, string> = {
-  agoda_mock: 'Agoda',
-  klook_mock: 'Klook',
-  cruise_mock: 'Cruise',
   tenant_product: '랜드사',
 };
 
@@ -126,7 +123,7 @@ function money(value: number): string {
   return `₩${value.toLocaleString('ko-KR')}`;
 }
 
-function getResultInsight(item: MockSearchResult) {
+function getResultInsight(item: ConciergeSearchResult) {
   const category = resolveCategory(item);
   if (item.product_type === 'CRUISE') {
     return {
@@ -209,7 +206,7 @@ function ModalFrame({
 export default function ConciergePage() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<MockSearchResult[]>([]);
+  const [results, setResults] = useState<ConciergeSearchResult[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
@@ -287,10 +284,10 @@ export default function ConciergePage() {
         signal: controller.signal,
         body: JSON.stringify({ query: normalized, ...inferIntentSummary(prompt, normalized, cart) }),
       });
-      if (!response.ok) {
-        throw new Error('검색 응답을 불러오지 못했습니다. 다시 시도하거나 카톡 상담으로 이어가 주세요.');
-      }
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? '검색 응답을 불러오지 못했습니다. 다시 시도하거나 카톡 상담으로 이어가 주세요.');
+      }
       if (data.error) throw new Error(data.error);
       setResults(data.results ?? []);
     } catch (error) {
@@ -313,7 +310,7 @@ export default function ConciergePage() {
     await performSearch(query, activePrompt);
   }
 
-  async function addToCart(item: MockSearchResult) {
+  async function addToCart(item: ConciergeSearchResult) {
     const newItem: CartItem = { ...item, quantity: 1 };
     const idx = cart.findIndex((existing) => existing.product_id === item.product_id);
     const updated =
@@ -425,7 +422,7 @@ export default function ConciergePage() {
         <div className="rounded-[16px] border border-dashed border-[#D1DCE8] bg-[#F8FAFC] px-4 py-8 text-center">
           <Package className="mx-auto mb-3 text-text-secondary" size={28} />
           <p className="text-[14px] font-bold text-text-primary">아직 담은 상품이 없습니다</p>
-          <p className="mt-1 text-[13px] text-text-secondary">AI 추천 결과에서 필요한 상품을 담아보세요.</p>
+          <p className="mt-1 text-[13px] text-text-secondary">실제 연결 가능한 추천 결과에서 필요한 상품을 담아보세요.</p>
         </div>
       ) : (
         <>
@@ -776,7 +773,7 @@ function ResultCard({
   onAdd,
   onConsult,
 }: {
-  item: MockSearchResult;
+  item: ConciergeSearchResult;
   onAdd: () => void;
   onConsult: () => void;
 }) {

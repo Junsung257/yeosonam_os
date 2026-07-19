@@ -61,17 +61,29 @@ describe('concierge public payload safety', () => {
 
     expect(searchRoute).toContain('sanitizeConciergeItemsForPublic');
     expect(searchRoute).toContain('results: sanitizeConciergeItemsForPublic');
+    expect(searchRoute).not.toContain('@/lib/mock-apis');
+    expect(searchRoute).not.toContain('searchHotels');
+    expect(searchRoute).not.toContain('searchActivities');
+    expect(searchRoute).not.toContain('searchCruises');
     expect(cartRoute).toContain('sanitizeConciergeItemForPublic');
     expect(cartRoute).toContain('sanitizeConciergeItemsForPublic');
+    expect(cartRoute).toContain("api_name === 'tenant_product'");
+    expect(cartRoute).toContain('keepLaunchSafeCartItems');
   });
 
   it('keeps checkout cost and price server-authoritative', () => {
     const checkoutRoute = readFileSync(join(process.cwd(), 'src/app/api/concierge/checkout/route.ts'), 'utf8');
+    const transactionRoute = readFileSync(join(process.cwd(), 'src/app/api/concierge/transactions/[id]/route.ts'), 'utf8');
 
     expect(checkoutRoute).toContain('CONCIERGE_CHECKOUT_DISABLED');
     expect(checkoutRoute).toContain('status: 503');
     expect(checkoutRoute).toContain('private, no-store');
     expect(checkoutRoute).not.toContain('const items = cart.items;');
     expect(checkoutRoute).not.toContain('CUSTOMER_PAID');
+    expect(transactionRoute).toContain('CONCIERGE_REFUND_DISABLED');
+    expect(transactionRoute).toContain('status: 503');
+    expect(transactionRoute).toContain('private, no-store');
+    expect(transactionRoute).not.toContain('@/lib/mock-apis');
+    expect(transactionRoute).not.toContain('cancelProduct');
   });
 });
