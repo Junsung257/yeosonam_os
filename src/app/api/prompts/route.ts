@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
 import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-async function requireAdminUser(request: NextRequest): Promise<string | null> {
-  const token =
-    request.cookies.get('sb-access-token')?.value ??
-    request.headers.get('Authorization')?.replace('Bearer ', '');
-  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
-  return userData?.user?.id ?? null;
-}
-
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
-  const userId = await requireAdminUser(request);
-  if (!userId) return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
 
   try {
     const { data, error } = await supabaseAdmin
@@ -34,10 +27,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
-  const userId = await requireAdminUser(request);
-  if (!userId) return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  const actor = await resolveAdminActorLabel(request);
 
   try {
     const body = await request.json();
@@ -82,7 +76,7 @@ export async function POST(request: NextRequest) {
         task_type: task_type ?? null,
         metadata: metadata ?? {},
         change_note: change_note ?? null,
-        created_by: 'admin',
+        created_by: actor,
       })
       .select('id, key, version')
       .single();
