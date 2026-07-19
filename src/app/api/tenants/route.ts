@@ -1,17 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cacheHeader } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { listTenants, createTenant, isSupabaseConfigured } from '@/lib/supabase';
 
-export async function GET() {
-  if (!isSupabaseConfigured) return NextResponse.json({ tenants: [] });
+const PRIVATE_NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' };
+
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
+  if (!isSupabaseConfigured) return NextResponse.json({ tenants: [] }, { headers: PRIVATE_NO_STORE_HEADERS });
   const tenants = await listTenants();
-  return NextResponse.json({ tenants }, { headers: cacheHeader(60) });
+  return NextResponse.json({ tenants }, { headers: PRIVATE_NO_STORE_HEADERS });
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ error: 'Supabase is not configured' }, { status: 503, headers: PRIVATE_NO_STORE_HEADERS });
+  }
+
   const body = await request.json();
-  if (!body.name) return NextResponse.json({ error: 'name 필수' }, { status: 400 });
+  if (!body.name) return NextResponse.json({ error: 'name is required' }, { status: 400, headers: PRIVATE_NO_STORE_HEADERS });
   const tenant = await createTenant(body);
-  return NextResponse.json({ tenant }, { status: 201 });
+  return NextResponse.json({ tenant }, { status: 201, headers: PRIVATE_NO_STORE_HEADERS });
 }

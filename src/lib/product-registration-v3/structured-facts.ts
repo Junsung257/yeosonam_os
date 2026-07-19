@@ -202,7 +202,9 @@ function isCancellationOrPaymentPolicyLine(source: string): boolean {
 }
 
 function isConditionalMinPaxSurchargeLine(source: string): boolean {
-  return /(?:최소\s*)?(?:성인\s*)?\d+\s*(?:명|인)\s*이상|인원\s*충족|인원충족|예약\s*조건/.test(source)
+  const conditionalGroupOrPrivateEvent =
+    /(?:최소\s*)?(?:성인\s*)?\d+\s*(?:명|인)\s*이상|인원\s*충족|인원충족|예약\s*조건|단독\s*(?:행사|진행|투어|요청)|단독행사|단독진행|단독투어/.test(source);
+  return conditionalGroupOrPrivateEvent
     && /추가\s*요금|추가요금|추가금/.test(source)
     && !/(?:\d{2,3}(?:,\d{3})+|\d+\s*만원|\$\s*\d+)/.test(source);
 }

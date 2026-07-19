@@ -2,9 +2,11 @@
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
 
-> **정보성 블로그 근거 모델 (2026-07-15, 로컬 migration only):** `blog_information_sources`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 DB에는 아직 적용하지 않았으며 `docs/blog-autopublish-contract.md`를 따른다.
+> **정보성 블로그 근거 모델 (2026-07-19, 운영 스키마 적용·데이터 준비 전):** `blog_information_sources`, `blog_information_source_versions`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 DB에 테이블은 적용됐으며 2026-07-19 읽기 감사 기준 source/evidence/claim과 active 공식 출처 레지스트리는 모두 0건이다. 근거 수집·검증 없이 비공개 재생성을 실행하지 않으며 `docs/blog-autopublish-contract.md`를 따른다.
 
-> **정보성 대표키·canonical (2026-07-15, 로컬 migration only):** `blog_information_representatives`가 `destination_id + intent + audience + locale`당 신규 공개 URL을 하나로 제한한다. 기존 공개 글은 자동 backfill·redirect·병합하지 않는다.
+> **정보성 대표키·canonical (2026-07-19, 운영 스키마 적용):** `blog_information_representatives`가 `destination_id + intent + audience + locale`당 신규 공개 URL을 하나로 제한한다. 기존 공개 글은 자동 backfill·redirect·병합하지 않는다.
+
+> **R18 연구 우선 비공개 재생성 (2026-07-19):** 비공개 단일 재생성은 검증된 `information_research_bundle`을 글쓰기 전에 검사하고 기존 `blog_information_*` 감사 체인에 저장한다. 누락·오래된 근거·목적지/언어 불일치·의도별 claim 부족·저장 실패는 AI 호출 전에 `skipped + self_heal_blocked`로 보류한다. 일반 자동발행 경로는 이번 단계에서 아직 강제 차단하지 않는다. Pexels 관련 이미지가 없으면 AI 참고 이미지를 생성할 수 있지만 공개 alt/caption에 `AI 생성 참고 이미지`를 표시하고 사실 근거로 취급하지 않는다.
 
 > **정보성 관련 글 랭킹 (2026-07-15, 로컬 코드):** 신규 정보성 글은 목적지·의도·국가/권역·특정 고객군·편집 클러스터를 기준으로만 내부링크를 추천한다. 미발행·noindex·redirect·비canonical 후보를 제외하고, 관련 후보가 없으면 빈 결과를 허용한다. 상품성·레거시 글의 기존 경로는 유지한다.
 
@@ -192,8 +194,8 @@
 |---|--------|-----------|------|
 | 32 | **card_news** | `id`, `package_id`(FK), `campaign_id`(FK), `title`, `status`(DRAFT/CONFIRMED/LAUNCHED/ARCHIVED), `slides`(JSONB), `meta_creative_id` | 카드뉴스 에디터 |
 | 33 | **content_creatives** | `id`, `tenant_id`(FK), `product_id`(FK), `angle_type`, `target_audience`, `channel`, `image_ratio`, `slides`(JSONB), `blog_html`, `tracking_id`(UNIQUE), `status` | 멀티채널 콘텐츠 |
-| 33a | **blog_information_sources / evidence / claims / claim_evidence** | `source_type`, `source_url/internal_identifier`, `publisher`, `retrieved_at`, `valid_from/until`, `destination/country`, `claim_type`, `risk_level`, `reviewer/reviewed_at`, `validation_status` | 정보성 블로그 전용 source→evidence→claim 감사 체인(상품 evidence와 분리, 서버 전용, 2026-07-15 로컬 migration) |
-| 33b | **blog_information_representatives** | `representative_key`, `destination_id`, `intent`, `audience`, `locale`, `canonical_creative_id`, `canonical_slug`, `status`, `reservation_owner` | 정보성 신규 URL 중복 방지·canonical 예약 레지스트리(서버 전용, 기존 글 무변경) |
+| 33a | **blog_information_sources / source_versions / evidence / claims / claim_evidence** | `source_type`, `source_url/internal_identifier`, `publisher`, `retrieved_at`, `valid_from/until`, `destination/country`, `claim_type`, `risk_level`, `reviewer/reviewed_at`, `validation_status` | 정보성 블로그 전용 source→evidence→claim 감사 체인(상품 evidence와 분리, 서버 전용, 운영 스키마 적용·2026-07-19 데이터 0건 확인) |
+| 33b | **blog_information_representatives** | `representative_key`, `destination_id`, `intent`, `audience`, `locale`, `canonical_creative_id`, `canonical_slug`, `status`, `reservation_owner` | 정보성 신규 URL 중복 방지·canonical 예약 레지스트리(서버 전용, 운영 스키마 적용, 기존 글 무변경) |
 | 34 | **content_performance** | `id`, `creative_id`(FK), `date`, `impressions`, `clicks`, `conversions`, `spend`, `ctr`, `cpa`, `roas`, UNIQUE(creative_id,date) | 콘텐츠 일일 성과 |
 | 35 | **content_insights** | `id`, `destination`, `angle_type`, `channel`, `avg_ctr`, `avg_conversions`, `confidence_score` | 콘텐츠 인사이트(자동집계) |
 | 36 | **winning_patterns** | `id`, `destination_type`, `channel`, `target_segment`, `hook_type`, `creative_type`, `avg_ctr`, `avg_roas`, `best_headline`, `best_body` | AI 학습 — 우승 패턴 |
