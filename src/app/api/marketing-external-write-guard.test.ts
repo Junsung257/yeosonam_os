@@ -16,6 +16,7 @@ function handlerSource(route: string, method: string): string {
 }
 
 const adminOnlyMutationRoutes = [
+  { path: 'src/app/api/card-news/[id]/route.ts', methods: ['PATCH', 'DELETE'] },
   { path: 'src/app/api/meta/campaigns/route.ts', methods: ['GET', 'POST'] },
   { path: 'src/app/api/meta/campaigns/[id]/route.ts', methods: ['GET', 'PATCH', 'DELETE'] },
   { path: 'src/app/api/meta/creatives/route.ts', methods: ['GET', 'POST'] },
