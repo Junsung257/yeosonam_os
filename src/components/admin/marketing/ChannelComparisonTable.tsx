@@ -121,7 +121,7 @@ export default function ChannelComparisonTable({ data, loading }: ChannelCompari
                 <tr key={row.channel} className="border-b border-admin-border-mid hover:bg-admin-bg">
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${bg} border border-current ${color}`} />
+                      <span role="img" aria-label={`${row.channelLabel} 채널 표시`} className={`w-2 h-2 rounded-full ${bg} border border-current ${color}`} />
                       <span className="font-medium text-admin-text-2">{row.channelLabel}</span>
                     </div>
                   </td>
