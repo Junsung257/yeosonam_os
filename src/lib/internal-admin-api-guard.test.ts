@@ -13,7 +13,6 @@ const guardedInternalRoutes = [
   'src/app/api/bookings/[id]/restore/route.ts',
   'src/app/api/bookings/[id]/timeline/route.ts',
   'src/app/api/bookings/[id]/transition/route.ts',
-  'src/app/api/tenant/settlements/route.ts',
   'src/app/api/bookings/unsettled/route.ts',
   'src/app/api/bank-transactions/route.ts',
   'src/app/api/customers/route.ts',
@@ -32,6 +31,10 @@ const guardedInternalRoutes = [
   'src/app/api/payments/settlements/route.ts',
 ];
 
+const guardedTenantRoutes = [
+  'src/app/api/tenant/settlements/route.ts',
+];
+
 describe('internal API admin guard', () => {
   it.each(guardedInternalRoutes)('%s requires an admin request before returning data', (relativePath) => {
     const source = readFileSync(join(process.cwd(), relativePath), 'utf8');
@@ -40,5 +43,14 @@ describe('internal API admin guard', () => {
     expect(source).toContain('requireAdminRequest');
     expect(source).toContain('const authError = await requireAdminRequest');
     expect(source).toContain('if (authError) return authError');
+  });
+
+  it.each(guardedTenantRoutes)('%s requires verified tenant membership before returning data', (relativePath) => {
+    const source = readFileSync(join(process.cwd(), relativePath), 'utf8');
+
+    expect(source).toContain("from '@/lib/tenant-portal-auth'");
+    expect(source).toContain('requireTenantPortalRequest');
+    expect(source).toContain('const authorization = await requireTenantPortalRequest');
+    expect(source).toContain('if (isTenantPortalAuthError(authorization)) return authorization');
   });
 });
