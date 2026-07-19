@@ -87,6 +87,24 @@ describe('blog content brief', () => {
     expect(brief.requiredSections).toContain('정부·대사관·공항·세관 1차 출처');
   });
 
+  it('requires evidence-backed daily tiers and meal prices for food-budget articles', () => {
+    const brief = buildBlogContentBrief({
+      topic: '삿포로 식비와 하루 음식 예산',
+      destination: '삿포로',
+      primaryKeyword: '삿포로 식비',
+      category: 'cost',
+      microAngle: 'food_budget',
+    });
+    const prompt = buildBlogContentBriefPromptBlock(brief);
+
+    expect(brief.intentType).toBe('food_budget');
+    expect(prompt).toContain('Mandatory food-budget evidence tables');
+    expect(prompt).toContain('| 예산 유형 | 아침 | 점심 | 저녁 | 간식 | 1인 1일 총액 |');
+    expect(prompt).toContain('| 끼니 | 대표 메뉴 | 가격 범위 | 근거 |');
+    expect(prompt).toContain('Never estimate, average, or invent a price');
+    expect(prompt).toContain('missing evidence in the claim ledger');
+  });
+
   it('fails closed before writing when a regulated plan is missing traveler nationality', () => {
     const brief = buildBlogContentBrief({
       topic: '일본 비자 입국 신고와 세관 조건',
