@@ -6,7 +6,7 @@
 
 **출시 판정: HOLD**
 
-2026-07-19 기준으로 즉시 악용 가능한 관리자·고객·정산·관광지·백엔드 신뢰 경계 일부를 차단하고 PR까지 정리했다. 그러나 Supabase JWT 신뢰 루트 수정은 아직 PR #759의 최종 CI를 기다리고 있고, RFQ와 tenant portal의 교차 접근 경계는 단계적 rollout 전용 draft PR #760·#761에 머물러 있다. 결제 완료 기능의 검증 기반 재구축, 운영 브라우저 기반 시각·기능 검증, 정식 deep security scan도 남아 있다. 이 영역들이 닫히기 전에는 고객 전체 공개를 승인하지 않는다.
+2026-07-19 기준으로 즉시 악용 가능한 관리자·고객·정산·관광지·백엔드 신뢰 경계 일부를 차단하고 PR까지 정리했다. Supabase JWT 신뢰 루트 수정도 PR #759의 전체 CI·Vercel·성능 분석 통과 후 main에 반영했다. 그러나 RFQ와 tenant portal의 교차 접근 경계는 단계적 rollout 전용 draft PR #760·#761에 머물러 있다. 결제 완료 기능의 검증 기반 재구축, 운영 브라우저 기반 시각·기능 검증, 정식 deep security scan도 남아 있다. 이 영역들이 닫히기 전에는 고객 전체 공개를 승인하지 않는다.
 
 ## 2. 감사 범위와 한계
 
@@ -29,7 +29,7 @@
 ### 아직 완료되지 않은 검증
 
 - 사용자 Chrome runtime이 연결되지 않아 desktop/mobile 실제 화면의 screenshot 비교, focus 이동, modal, overflow, 실제 CTA journey는 검증하지 못했다. 코드 기반 UX 감사만 완료했다.
-- Codex Security의 정식 deep-security-scan 다중 라운드는 개선 작업과 동시에 실행할 수 없어 아직 시작하지 않았다. 이 문서는 정식 deep scan 결과를 주장하지 않는다.
+- Codex Security의 정식 deep-security-scan 사전점검은 수행했지만, 현재 세션이 coordinator 포함 4개 thread라 정확히 6개 usable worker를 요구하는 규격을 충족하지 못해 `blocked` 판정을 받았다. 설정은 임의 변경하지 않았고 정식 scan은 시작하지 않았다. 이 문서는 정식 deep scan 결과를 주장하지 않는다.
 - 실제 결제·예약·PII·외부 발행을 발생시키는 production smoke는 수행하지 않았다.
 
 ## 3. 완료된 P0 조치
@@ -57,11 +57,12 @@
 1. **Supabase JWT 신뢰 루트**
    - 기존 verifier가 검증 전 토큰의 `iss`를 JWKS 위치로 사용할 수 있는 신뢰 경계 문제를 확인했다.
    - configured Supabase URL에 issuer/JWKS를 고정하고 `aud`, role, UUID subject, expiry, algorithm을 검증하는 수정과 forged issuer 회귀 테스트를 PR #759에 분리했다.
-   - PR #759는 mergeable 상태이며 Vercel과 대부분의 checks는 통과했지만, 이 문서 갱신 시점에는 `Build & Test`가 진행 중이므로 아직 main에 반영되지 않았다.
+   - PR #759는 전체 test, visual regression, Vercel, Lighthouse, bundle analysis를 통과한 뒤 squash merge했고 main merge commit은 `37ce1d74`다.
 
 2. **RFQ·Tenant portal 단계적 rollout**
    - RFQ의 PII/message/proposal 경계, tenant ID spoofing, 공개 share mutation, tenant portal의 사용자→tenant 귀속을 보완한 코드는 각각 draft PR #760·#761에 있다.
-   - 두 PR은 의도적으로 merge-blocked 상태다. #759 merge 후 최신 main 재병합, read-only 운영 schema/policy/history 확인, Phase-A membership migration 승인·적용, 실제 membership provisioning, RFQ·tenant Phase-B 동시 배포가 필요하다.
+   - 독립 재감사에서 RFQ 공유 메시지 내부 필드, 제안 입력·AI 출력 검증, reaction 남용, timeout 중복 실행, chat 회귀를 추가 발견해 #760에서 보강했다. Tenant 쪽은 공개 재고 상업 데이터, RFQ 자유입력 PII, tier unlock API 우회, 정산 오류의 0원 은폐를 #761에서 보강했다.
+   - 두 PR은 #759가 반영된 최신 main을 재병합하고 교차 회귀 테스트·ESLint·전체 type-check를 통과했지만 의도적으로 merge-blocked 상태다. read-only 운영 schema/policy/history 확인, Phase-A membership migration 승인·적용, 실제 membership provisioning, RFQ·tenant Phase-B 동시 배포가 필요하다.
    - Phase-A migration은 membership table/index/grant/own-row RLS만 추가하는 additive 변경이다. authenticated RFQ direct access의 default-deny와 Jarvis 함수 권한 변경은 재작성·버전 고정·별도 승인이 필요한 Phase-C 제안으로 분리했다.
    - 이 감사에서는 Supabase 원격 migration apply/repair나 schema/data mutation을 수행하지 않았다. 운영 적용 전까지 main의 기존 RFQ RLS와 tenant 귀속 부재는 출시 차단 상태다.
    - RFQ owner-action token과 bid/select 원자적 RPC는 추가 P1 gate로 남아 있다.
@@ -114,15 +115,15 @@
 
 ### 진행 중인 출시 PR
 
-- #759 `fix(auth): pin Supabase JWT trust root`는 ready PR이다. Vercel과 대부분의 checks는 green이고 최종 `Build & Test` 완료를 기다린 뒤에만 merge한다.
-- #760 `draft: enforce RFQ tenant and persistence boundaries`는 draft/merge-blocked다. 로컬 focused test 31개, ESLint, 전체 type-check, diff check를 통과했지만 rollout 선행 조건 전에는 merge하지 않는다.
-- #761 `draft: enforce tenant portal membership isolation`은 draft/merge-blocked다. 로컬 focused test 92개와 SQL contract test 13개, ESLint, 전체 type-check, migration 검증을 통과했지만 최신 main 재병합과 rollout 선행 조건이 남아 있다.
+- #759 `fix(auth): pin Supabase JWT trust root`는 전체 CI/Vercel/성능 분석 green 후 merge했고 원격 작업 브랜치도 정리했다.
+- #760 `draft: enforce RFQ tenant and persistence boundaries`는 draft/merge-blocked다. 최신 main 재병합 후 RFQ·JWT·middleware 교차 회귀 12 files/81 tests, ESLint, 전체 type-check, diff check를 통과했지만 rollout 선행 조건 전에는 merge하지 않는다.
+- #761 `draft: enforce tenant portal membership isolation`은 draft/merge-blocked다. 최신 main 재병합 후 tenant·JWT·middleware 교차 회귀 7 files/78 tests, ESLint, 전체 type-check, migration 검증을 통과했다. CI의 기존 admin-only 정적 계약과 새 tenant-membership 계약 충돌도 수정·재검증했지만 rollout 선행 조건이 남아 있다.
 
 ## 6. 출시 게이트
 
 | Gate | 통과 조건 | 현재 |
 |---|---|---|
-| Git/CI | 대상 PR 전체 required check + Vercel green, main 반영 확인 | #759 최종 check 진행 중, #760·#761 draft 유지 |
+| Git/CI | 대상 PR 전체 required check + Vercel green, main 반영 확인 | #759까지 main 반영, #760·#761 draft 유지 |
 | Auth/tenant | admin, RFQ, tenant portal의 서버측 귀속 검증 | 미통과 |
 | Money | 결제 완료의 provider/DB-backed verification + idempotency | 미통과 |
 | PII | 공개/교차 tenant 조회 불가, 로그·error 노출 없음 | 부분 통과 |
@@ -134,9 +135,9 @@
 ## 7. 병렬 작업 구역
 
 1. Backend boundary: PR #755 merge와 전체 CI/Vercel green 확인 완료
-2. JWT trust root: PR #759 최종 CI 확인 후 merge
-3. RFQ: PR #760을 #759 이후 최신 main에 재병합하고 tenant rollout과 함께 재검증
-4. Tenant portal: PR #761의 additive Phase-A 승인·membership provisioning·Phase-B 배포 준비
+2. JWT trust root: PR #759 전체 CI/Vercel green 후 merge 완료
+3. RFQ: PR #760 최신 main 재병합·교차 검증 완료, tenant rollout과 함께 Phase-B 준비
+4. Tenant portal: PR #761 최신 main 재병합·교차 검증 완료, additive Phase-A 승인·membership provisioning·Phase-B 배포 준비
 5. Admin KPI: PR #757 merge와 전체 CI/Vercel green 확인 완료
 6. Visual QA: 사용자 Chrome 연결 후 desktop/mobile journey
 7. Security closure: 코드 동결 뒤 정식 deep scan 및 validated finding 수정
