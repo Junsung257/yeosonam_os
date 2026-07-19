@@ -5,7 +5,7 @@
  * 호출자는 기존 그대로 `@/lib/supabase` 에서 import 가능 (re-export 유지).
  */
 import type { VoucherData } from '../voucher-generator';
-import { getSupabase } from '../supabase';
+import { getSupabase, getSupabaseAdmin } from '../supabase';
 import { insertRow, updateRow, updateRowsWhere } from './helpers';
 
 // ─── 타입 ────────────────────────────────────────────────────
@@ -89,20 +89,20 @@ export async function unmaskChatsForBooking(bookingId: string): Promise<void> {
 export async function createVoucher(
   data: Omit<Voucher, 'id' | 'created_at' | 'updated_at'>
 ): Promise<Voucher | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
   return insertRow<Voucher>(sb, 'vouchers', { ...data, updated_at: new Date().toISOString() });
 }
 
 export async function getVoucher(id: string): Promise<Voucher | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
   const { data } = await sb.from('vouchers').select('*').eq('id', id).single();
   return data ? (data as unknown as Voucher) : null;
 }
 
 export async function getVoucherByBooking(bookingId: string): Promise<Voucher | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
   const { data } = await sb
     .from('vouchers')
@@ -118,7 +118,7 @@ export async function updateVoucher(
   id: string,
   patch: Partial<Omit<Voucher, 'id' | 'created_at'>>
 ): Promise<Voucher | null> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return null;
   return updateRow<Voucher>(sb, 'vouchers', id, patch);
 }
@@ -130,7 +130,7 @@ export interface VoucherWithCustomerPhone extends Voucher {
 
 /** 여행 종료일 +1일이 지났고 만족도 조사를 아직 보내지 않은 확정서 목록 (고객 전화번호 포함) */
 export async function getVouchersForReviewNotification(): Promise<VoucherWithCustomerPhone[]> {
-  const sb = getSupabase();
+  const sb = getSupabaseAdmin();
   if (!sb) return [];
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);

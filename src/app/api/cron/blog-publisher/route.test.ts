@@ -30,11 +30,15 @@ describe('blog publisher quota recovery contract', () => {
   it('never lets deterministic information fallback become a public article', () => {
     const source = routeSource();
 
-    expect(source).toContain('shouldUseFastDeterministicInfoFallback');
+    expect(source).toContain('deferAttemptedQueueItemForTimeBudget');
+    expect(source).toContain("status: 'deferred_time_budget'");
+    expect(source).toContain('private_diagnostic_fallback === true');
     expect(source).toContain('applyDeterministicInfoFallback');
     expect(source).toContain('deterministic_fast_fallback');
     expect(source).toContain('deterministic_info_fallback_not_publishable');
     expect(source).toContain('deterministic_fallback_blocked: true');
+    expect(source).not.toContain('applyDeterministicInfoFallback(generated, item, primaryKeyword, qa.summary)');
+    expect(source).not.toContain('applyDeterministicInfoFallback(generated, item, primaryKeyword, publishQuality.summary)');
   });
 
   it('does not inject product counts, prices, or booking signals into informational prompts', () => {
@@ -81,6 +85,19 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("status: 'pending_review'");
     expect(source).toContain('humanReviewRequired: true');
     expect(source).toContain("riskLevel: 'high'");
+  });
+
+  it('replaces quarantined fallback posts in place and always sends them to private review', () => {
+    const source = routeSource();
+
+    expect(source).toContain('readPrivateBlogRegenerationRequest(item)');
+    expect(source).toContain('hasPrivateBlogRegenerationIntent(item)');
+    expect(source).toContain('isEligiblePrivateBlogRegenerationTarget');
+    expect(source).toContain("const reason = 'private_regeneration_request_invalid'");
+    expect(source).toContain("const reason = 'private_regeneration_target_not_eligible'");
+    expect(source).toContain('privateReplacementDraftId = privateRegenerationRequest.contentCreativeId');
+    expect(source).toContain('privateRegenerationRequest !== null || requiresClaimReview');
+    expect(source).toContain('forced_private_review: true');
   });
 
   it('reconciles the final informational body with a bounded writer claim ledger', () => {

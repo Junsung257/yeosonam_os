@@ -2,20 +2,7 @@ import { checkAiReadability } from './blog-quality-gate';
 import { extractFaqItems, extractHowToSteps } from './blog-jsonld';
 import { computeReadability } from './blog-readability';
 import { stripMarkup } from './blog-text-utils';
-
-const OFFICIAL_DOMAIN_PATTERNS = [
-  /\.go\.kr$/i,
-  /\.gov$/i,
-  /\.gov\.[a-z]{2}$/i,
-  /0404\.go\.kr$/i,
-  /mofa\.go\.kr$/i,
-  /visitkorea\.or\.kr$/i,
-  /knto\.or\.kr$/i,
-  /airportal\.go\.kr$/i,
-  /korea\.kr$/i,
-  /travel\.state\.gov$/i,
-  /japan\.travel$/i,
-];
+import { isLikelyOfficialBlogSourceUrl } from './blog-official-source-url';
 
 const SUMMARY_HEADING_RE = /^##\s*(tl;dr|요약|핵심 요약|한눈에 보기|빠른 요약)/im;
 const FAQ_HEADING_RE = /^##\s*(faq|자주 묻는 질문|자주 하는 질문|q\s*&\s*a)/im;
@@ -165,12 +152,7 @@ function extractFirstParagraph(markdown: string): string {
 }
 
 function isOfficialUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return OFFICIAL_DOMAIN_PATTERNS.some((pattern) => pattern.test(parsed.hostname));
-  } catch {
-    return false;
-  }
+  return isLikelyOfficialBlogSourceUrl(url);
 }
 
 function isInternalUrl(url: string, baseHost: string): boolean {

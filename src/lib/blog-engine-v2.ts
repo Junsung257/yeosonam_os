@@ -1,4 +1,5 @@
 import { stripMarkup } from './blog-text-utils';
+import { isLikelyOfficialBlogSourceUrl } from './blog-official-source-url';
 
 export const BLOG_ENGINE_V2_VERSION = 'blog-engine-v2';
 
@@ -147,9 +148,9 @@ function firstBodyParagraph(source: string): string {
 function extractExternalLinks(markdown: string): BlogEngineEvidenceItem[] {
   const out: BlogEngineEvidenceItem[] = [];
   const seen = new Set<string>();
-  for (const match of markdown.matchAll(/\[[^\]]+]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g)) {
+  for (const match of markdown.matchAll(/(?<!!)\[[^\]]+]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g)) {
     const url = match[1];
-    if (!url || /yeosonam\.com/i.test(url) || seen.has(url)) continue;
+    if (!url || /yeosonam\.com/i.test(url) || seen.has(url) || !isLikelyOfficialBlogSourceUrl(url)) continue;
     seen.add(url);
     out.push({ kind: 'official_source', label: new URL(url).hostname, url, source: 'markdown_link' });
   }

@@ -2,6 +2,34 @@ import { describe, expect, it } from 'vitest';
 import { buildBlogEngineV2Brief, evaluateBlogEngineV2 } from './blog-engine-v2';
 
 describe('blog engine v2 evaluation', () => {
+  it('never treats stock-photo image links or arbitrary websites as official evidence', () => {
+    const brief = buildBlogEngineV2Brief({
+      blogHtml: [
+        '![삿포로 겨울 풍경](https://images.pexels.com/photos/123/photo.jpeg)',
+        '[일반 여행 블로그](https://example.com/sapporo-weather)',
+      ].join('\n\n'),
+      primaryKeyword: '삿포로 월별 날씨',
+      destination: '삿포로',
+      generationMeta: {
+        writer: 'info_writer',
+        info_guide_brief: { official_sources_required: true },
+      },
+    });
+
+    expect(brief.evidence_items.filter((item) => item.kind === 'official_source')).toEqual([]);
+  });
+
+  it('keeps conservative government links as official-source candidates', () => {
+    const brief = buildBlogEngineV2Brief({
+      blogHtml: '[인도네시아 외교부](https://kemlu.go.id)',
+      generationMeta: { writer: 'info_writer' },
+    });
+
+    expect(brief.evidence_items).toEqual([
+      expect.objectContaining({ kind: 'official_source', url: 'https://kemlu.go.id' }),
+    ]);
+  });
+
   it('passes an evidence-backed informational post with bottom-soft CTA', () => {
     const blogHtml = `# 발리 가족 여행 경비
 
@@ -227,7 +255,7 @@ describe('blog engine v2 evaluation', () => {
         '| 일정 | 숙소 위치 | 이동 시간이 달라집니다. |',
         '',
         '## 공식 확인',
-        '[몽골 기상 정보](https://example.com/weather)',
+        '[외교부 해외안전여행](https://www.0404.go.kr/)',
       ].join('\n'),
       primaryKeyword: '몽골 6월 날씨',
       destination: '몽골',

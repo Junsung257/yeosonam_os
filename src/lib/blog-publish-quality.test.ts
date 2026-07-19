@@ -90,6 +90,36 @@ describe('blog publish quality', () => {
     ]);
   });
 
+  it.each([
+    'deterministic_info_fallback',
+    'deterministic_fast_fallback',
+  ])('blocks %s artifacts even when every scored gate passes', async (fallbackFlag) => {
+    const report = await evaluateBlogPublishQuality({
+      blog_html: '# 다낭 여행 준비\n\n다낭 여행 준비에 필요한 내용을 정리했습니다.',
+      slug: 'danang-travel-guide',
+      seo_title: '다낭 여행 준비 가이드',
+      seo_description: '다낭 여행 준비에 필요한 핵심 정보',
+      destination: '다낭',
+      generation_meta: { [fallbackFlag]: true },
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.publishContractIssues).toEqual([
+      expect.objectContaining({
+        code: 'deterministic_info_fallback_not_publishable',
+        evidence: { fallbackFlags: [fallbackFlag] },
+      }),
+    ]);
+    expect(blogPublishQualityWarnings(report)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'publish_contract',
+          gate: 'deterministic_info_fallback_not_publishable',
+        }),
+      ]),
+    );
+  });
+
   it('stores publish evidence and the rendered reading-time SSOT on updates', async () => {
     const report = await evaluateBlogPublishQuality({
       blog_html: '# Title\n\n본문입니다.',

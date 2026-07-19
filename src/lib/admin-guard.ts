@@ -83,7 +83,7 @@ export async function requireAdminRequest(req: NextRequest): Promise<NextRespons
       { code: 'TOKEN_EXPIRED', error: 'token expired' },
       { status: 401 },
     );
-    response.headers.set('Cache-Control', 'no-store');
+    response.headers.set('Cache-Control', 'private, no-store');
     return response;
   }
 
@@ -92,7 +92,7 @@ export async function requireAdminRequest(req: NextRequest): Promise<NextRespons
       { code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' },
       { status: 403 },
     );
-    response.headers.set('Cache-Control', 'no-store');
+    response.headers.set('Cache-Control', 'private, no-store');
     return response;
   }
 
@@ -100,7 +100,7 @@ export async function requireAdminRequest(req: NextRequest): Promise<NextRespons
     { code: 'UNAUTHORIZED', error: '관리자 권한이 필요합니다.' },
     { status: 401 },
   );
-  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('Cache-Control', 'private, no-store');
   return response;
 }
 
