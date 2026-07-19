@@ -31,6 +31,7 @@ import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { classifyBlogIntent, inspectBlogIntentQuality } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
@@ -1185,6 +1186,7 @@ async function renderBlogDetail({
   const pkg = post.travel_packages;
   const rawTitle = post.seo_title || pkg?.title || '여행 가이드';
   const title = rawTitle.replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '').trim();
+  const generatedHeroImage = isGeneratedBlogImageUrl(post.og_image_url);
 
   // 블로그 유형 판별
   const isInfoBlog = !post.product_id;
@@ -1566,14 +1568,22 @@ async function renderBlogDetail({
             <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
               <img
                 src={toBlogImageDisplaySrc(post.og_image_url) || post.og_image_url}
-                alt={[pkg?.destination || post.destination, title].filter(Boolean).join(' — ')}
+                alt={[
+                  generatedHeroImage ? 'AI 생성 참고 이미지' : null,
+                  pkg?.destination || post.destination,
+                  title,
+                ].filter(Boolean).join(' — ')}
                 className="absolute inset-0 h-full w-full object-cover"
                 loading="eager"
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 768px, 1024px"
                 fetchPriority="high"
               />
             </div>
-            <figcaption className="sr-only">{title}</figcaption>
+            <figcaption className={generatedHeroImage ? 'mt-2 text-center text-xs text-slate-500' : 'sr-only'}>
+              {generatedHeroImage
+                ? 'AI 생성 참고 이미지 · 실제 현장 기록이나 최신 운영 상황의 증거로 사용하지 않습니다.'
+                : title}
+            </figcaption>
           </figure>
         )}
 
