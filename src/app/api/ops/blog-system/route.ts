@@ -2,7 +2,10 @@
  * GET /api/ops/blog-system
  *
  * Summarizes blog automation health for the internal ops dashboard.
+ * Browser/admin callers must pass the admin guard. Server-to-server probes may
+ * use CRON_SECRET Bearer.
  */
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { checkPublicBlogSurfaces, type BlogPublicSurfaceCheckReport } from '@/lib/blog-public-surface-check';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -10,6 +13,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { summarizeBlogQueueOperationalHealth } from '@/lib/blog-queue-operational-health';
 import type { NextRequest } from 'next/server';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -109,6 +113,15 @@ function publicSurfaceBaseUrl(request: NextRequest): string {
 }
 
 export async function GET(request: NextRequest) {
+  const cronSecret = getSecret('CRON_SECRET');
+  const isCron = Boolean(
+    cronSecret && safeEqualString(request.headers.get('authorization'), `Bearer ${cronSecret}`),
+  );
+  if (!isCron) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+  }
+
   const publicSurfacesPromise = checkPublicBlogSurfaces({ baseUrl: publicSurfaceBaseUrl(request) })
     .catch((err) => failedPublicSurfaceReport(err));
 
