@@ -319,6 +319,18 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
 }
 
 export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): string {
+  const intentStructureContract = brief.intentType === 'food_budget'
+    ? [
+        '',
+        '### Mandatory food-budget evidence tables',
+        '- Use only destination-specific prices supported by a cited source and an explicit research/check date. Never estimate, average, or invent a price to fill a cell.',
+        '- Table 1 must use this exact shape: `| 예산 유형 | 아침 | 점심 | 저녁 | 간식 | 1인 1일 총액 |` with exactly one row each for `절약형`, `일반형`, and `여유형`. Every price cell must include the local currency or currency code.',
+        '- Table 2 must use this exact shape: `| 끼니 | 대표 메뉴 | 가격 범위 | 근거 |` with at least one row each for `아침`, `점심`, `저녁`, and `간식`. Use real destination-specific menu names, distinct supported price values, and a source link or source name in every row.',
+        '- After the tables, state a trip total for the requested or clearly declared trip length and explain the calculation basis.',
+        '- If reliable price evidence is unavailable, do not substitute generic values. Leave the article non-publishable by recording the missing evidence in the claim ledger.',
+      ]
+    : [];
+
   return [
     '## Content Brief - must follow before writing',
     `- Final title/topic: ${brief.title}`,
@@ -343,5 +355,6 @@ export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): strin
     `- Claim ledger candidate kinds: ${brief.claimLedgerPolicy.candidateKinds.join(', ')}`,
     `- Claim ledger maximum entries: ${brief.claimLedgerPolicy.maxEntries}`,
     '- Do not copy SERP articles. Use SERP only to understand intent, missing subtopics, and reader expectations.',
+    ...intentStructureContract,
   ].join('\n');
 }
