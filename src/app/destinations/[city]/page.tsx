@@ -19,6 +19,7 @@ import {
   slugMatchesPublicDestination,
   type ActiveDestinationLike,
 } from '@/lib/public-destinations';
+import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
 import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
@@ -703,16 +704,7 @@ async function renderPillarBody(md: string): Promise<string> {
   const { marked } = await import('marked');
   const html = marked.parse(accented) as string;
   const colored = applyHtmlAccents(html);
-  return sanitizePillarHtml(colored);
-}
-
-function sanitizePillarHtml(html: string): string {
-  return html
-    .replace(/<\s*(script|style|iframe|object|embed|form|input|textarea)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
-    .replace(/<\s*(script|style|iframe|object|embed|form|input|textarea)\b[^>]*\/?>/gi, '')
-    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s+(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, '')
-    .replace(/\s+(href|src)\s*=\s*javascript:[^\s>]+/gi, '');
+  return sanitizePublicBlogBodyHtml(colored);
 }
 
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city?: string | string[] }> }) {
