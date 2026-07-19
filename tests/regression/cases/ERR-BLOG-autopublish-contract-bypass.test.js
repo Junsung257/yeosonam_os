@@ -44,6 +44,17 @@ test('ERR-BLOG-autopublish-contract-bypass: live publisher runs structure repair
   assert.ok(structureRepair < firstGate, 'structure repair must run before the first quality gate');
 });
 
+test('ERR-BLOG-autopublish-contract-bypass: live publisher accepts Vercel cron authorization', () => {
+  const source = read('src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts');
+
+  assert.match(source, /isCronOrVercelAuthorized/, 'publisher must allow Vercel cron header auth');
+  assert.doesNotMatch(
+    source,
+    /if\s*\(\s*!isCronAuthorized\(request\)\s*\)/,
+    'publisher must not reject Vercel cron header-only calls',
+  );
+});
+
 test('ERR-BLOG-autopublish-contract-bypass: shared prepare helper repairs before evaluating publish quality', () => {
   const source = read('src', 'lib', 'blog-publish-quality.ts');
   const prepareStart = indexOfOrFail(source, 'export async function prepareBlogForPublish', 'prepareBlogForPublish');
