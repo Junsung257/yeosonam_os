@@ -199,6 +199,10 @@ async function runAutoPublishLoop(request: NextRequest) {
         errors.push(`base url 미설정 — ${card.id} 발행 스킵`);
         continue;
       }
+      const publishCaption = card.ig_caption?.trim() || card.title;
+      const imageUrls = slides
+        .map((slide) => slide.bg_image_url)
+        .filter((url): url is string => typeof url === 'string' && url.length > 0);
       const cronSecret = getSecret('CRON_SECRET') || getSecret('ADMIN_API_TOKEN') || '';
       const res = await fetch(`${baseUrl}/api/card-news/${card.id}/publish-instagram`, {
         method: 'POST',
@@ -206,7 +210,12 @@ async function runAutoPublishLoop(request: NextRequest) {
           'Authorization': `Bearer ${cronSecret}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ source: 'auto-publish-loop' }),
+        body: JSON.stringify({
+          when: 'now',
+          caption: publishCaption,
+          image_urls: imageUrls,
+          source: 'auto-publish-loop',
+        }),
       });
       if (res.ok) {
         summary.actually_published += 1;
