@@ -29,7 +29,7 @@ export interface ScheduledDistributionRow {
 }
 
 export interface DistributionPublishResult {
-  status: 'published' | 'failed' | 'skipped';
+  status: 'published' | 'draft' | 'failed' | 'skipped';
   external_id?: string;
   external_url?: string;
   verification_status?: 'verified' | 'pending' | 'failed';
@@ -78,6 +78,22 @@ export async function persistDistributionPublishResult(
         external_url: result.external_url ?? null,
         retry_count: 0,
         error_message: null,
+        engagement,
+      })
+      .eq('id', row.id);
+    return;
+  }
+
+  if (result.status === 'draft') {
+    await supabaseAdmin
+      .from('content_distributions')
+      .update({
+        status: 'draft',
+        published_at: null,
+        external_id: result.external_id ?? null,
+        external_url: result.external_url ?? null,
+        retry_count: 0,
+        error_message: result.reason ?? null,
         engagement,
       })
       .eq('id', row.id);
@@ -134,6 +150,14 @@ async function publishDistributionProvider(
       landing_url: landingUrl,
     });
     if (result.status === 'error') return { status: 'failed', error: result.error };
+    if (result.status === 'draft') {
+      return {
+        status: 'draft',
+        external_id: result.campaign_id,
+        external_url: result.external_url,
+        reason: 'Meta Ads assets were created as PAUSED drafts pending manual approval',
+      };
+    }
     return {
       status: 'published',
       external_id: result.campaign_id,

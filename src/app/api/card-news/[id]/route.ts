@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin, getCardNewsById } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { insertBlogTopicQueue } from '@/lib/card-news/blog-topic-queue';
@@ -32,6 +33,9 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
  * (기존 구현은 title 누락 시 "제목 없음" 으로 덮어씀 — 버그였음)
  */
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
@@ -125,7 +129,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 }
 
 
-export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

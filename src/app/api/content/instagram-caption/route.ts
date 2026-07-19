@@ -18,6 +18,7 @@ import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
 import { generateInstagramCaption } from '@/lib/content-pipeline/agents/instagram-caption';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -30,6 +31,9 @@ interface RequestBody {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }

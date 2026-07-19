@@ -69,6 +69,7 @@ export async function publishToMetaAds(input: MetaAdsPublishInput): Promise<Meta
   const endTime = input.end_time ?? new Date(Date.now() + 7 * 86400000).toISOString();
 
   const api = `https://graph.facebook.com/v20.0`;
+  const metaDraftStatus = 'PAUSED';
 
   try {
     // 1. Campaign 생성
@@ -78,7 +79,7 @@ export async function publishToMetaAds(input: MetaAdsPublishInput): Promise<Meta
       body: JSON.stringify({
         name: `Yeosonam ${new Date().toISOString().slice(0, 10)}`,
         objective: 'OUTCOME_TRAFFIC',
-        status: testMode ? 'PAUSED' : 'ACTIVE',
+        status: metaDraftStatus,
         special_ad_categories: [],
         access_token: token,
       }),
@@ -111,7 +112,7 @@ export async function publishToMetaAds(input: MetaAdsPublishInput): Promise<Meta
           age_min: 25,
           age_max: 55,
         },
-        status: testMode ? 'PAUSED' : 'ACTIVE',
+        status: metaDraftStatus,
         access_token: token,
       }),
     });
@@ -163,7 +164,7 @@ export async function publishToMetaAds(input: MetaAdsPublishInput): Promise<Meta
         name: `Yeosonam Ad ${Date.now()}`,
         adset_id: adsetId,
         creative: { creative_id: creativeData.id },
-        status: testMode ? 'PAUSED' : 'ACTIVE',
+        status: metaDraftStatus,
         access_token: token,
       }),
     });
@@ -179,7 +180,7 @@ export async function publishToMetaAds(input: MetaAdsPublishInput): Promise<Meta
     }
 
     return {
-      status: testMode ? 'draft' : 'published',
+      status: 'draft',
       campaign_id: campaignId,
       adset_id: adsetId,
       ad_ids: [adData.id as string],
