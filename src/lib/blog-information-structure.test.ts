@@ -130,6 +130,15 @@ describe('blog information structured intent contracts', () => {
     expect(report.issues).toContain('shopping_souvenirs:item_rows_required');
   });
 
+  it('accepts food-budget rows when the local currency is declared once in the total header', () => {
+    const markdown = BASE.food_budget.replace(
+      `| 유형 | 1인 하루 총액 |\n| --- | --- |\n| 절약 | USD 30 |\n| 일반 | USD 50 |\n| 여유 | USD 80 |`,
+      `| 예산 유형 | 1인 1일 총액 (USD) | 산정 근거 |\n| --- | --- | --- |\n| 절약형 | 30~40 | 공식 메뉴 가격 |\n| 일반형 | 50~60 | 공식 메뉴 가격 |\n| 여유형 | 80~100 | 공식 메뉴 가격 |`,
+    );
+    const report = validateBlogInformationStructure({ intent: 'food_budget', markdown });
+    expect(report, report.issues.join(',')).toMatchObject({ passed: true });
+  });
+
   it('rejects low-quality tables that repeat one numeric value in every row', () => {
     const markdown = BASE.hotel_areas.replace(/12,000~20,000|15,000~25,000|9,000~16,000|5분|8분|6분/g, '100');
     const report = validateBlogInformationStructure({ intent: 'hotel_areas', markdown });
