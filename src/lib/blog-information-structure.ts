@@ -89,13 +89,26 @@ function hasRowsWith(rows: string[][], count: number, patterns: RegExp[]): boole
   return distinctFirstCells(matched).length >= count;
 }
 
+function hasFoodBudgetTierRows(tables: BlogInformationTable[]): boolean {
+  const tierTables = matchingTables(tables, /유형|예산|하루|1일|총액/i);
+  const tierRows = tierTables.flatMap((table) => {
+    const currencyDeclaredInHeader = CURRENCY_RE.test(table.headers.join(' '));
+    return table.rows.filter((row) => {
+      if (!row.every(meaningful)) return false;
+      const text = rowText(row);
+      return PRICE_RE.test(text) || (currencyDeclaredInHeader && /\d+(?:[,.]\d+)*/.test(text));
+    });
+  });
+  const labels = tierRows.map((row) => clean(row[0] ?? ''));
+  return ['절약', '일반', '여유'].every((tier) => labels.some((label) => label.includes(tier)));
+}
+
 function validateFood(markdown: string, tables: BlogInformationTable[], issues: string[]): void {
-  const daily = rowsFrom(tables, /유형|예산|하루|1일|총액/i);
   const meals = rowsFrom(tables, /끼니|식사|메뉴|가격/i);
   add(issues, CURRENCY_RE.test(markdown), 'food_budget:currency_required');
   add(issues, DATE_RE.test(markdown), 'food_budget:research_date_required');
   add(issues, /절약/.test(markdown) && /일반/.test(markdown) && /여유/.test(markdown), 'food_budget:three_tiers_required');
-  add(issues, hasRowsWith(daily, 3, [PRICE_RE]), 'food_budget:daily_tier_rows_required');
+  add(issues, hasFoodBudgetTierRows(tables), 'food_budget:daily_tier_rows_required');
   for (const meal of ['아침', '점심', '저녁', '간식']) {
     add(issues, meals.some((row) => rowText(row).includes(meal) && PRICE_RE.test(rowText(row))), `food_budget:${meal}_value_required`);
   }
