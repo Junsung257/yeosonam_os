@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { isCronAuthorized } from '@/lib/cron-auth';
 import { isSupabaseConfigured, getAdCampaigns, upsertCampaign, getMetaCpcThreshold } from '@/lib/supabase';
 import { pauseAd, updateAdsetBudget, isMetaConfigured, krwToMetaCents } from '@/lib/meta-api';
 import { getRolling7DayRoas } from '@/lib/roas-calculator';
@@ -6,7 +8,12 @@ import { getRateInfo } from '@/lib/exchange-rate';
 import type { OptimizeResult } from '@/types/meta-ads';
 import { getSecret } from '@/lib/secret-registry';
 
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
+  if (!isCronAuthorized(request)) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }

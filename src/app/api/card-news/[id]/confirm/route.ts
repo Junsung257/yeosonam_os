@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured, getCardNewsById, upsertCardNews } from '@/lib/supabase';
 import {
   createMetaCampaign,
@@ -14,6 +15,9 @@ import { getSecret } from '@/lib/secret-registry';
 import type { CampaignObjective } from '@/types/meta-ads';
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

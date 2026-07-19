@@ -228,6 +228,21 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(bookingQuery).not.toContain(".lte('departure_date', periodEnd)");
   });
 
+  it('treats only explicit admin auth as settlement PDF admin access', () => {
+    const route = source('src/app/api/settlements/[id]/pdf/route.ts');
+    const handlerStart = route.indexOf('export async function GET');
+    const handler = route.slice(handlerStart);
+    const adminCheck = handler.indexOf('await isAdminRequest(request)');
+    const affiliateTokenCheck = handler.indexOf("request.cookies.get('inf_token')");
+    const settlementQuery = handler.indexOf(".from('settlements')");
+
+    expect(route).toContain("import { isAdminRequest } from '@/lib/admin-guard'");
+    expect(route).not.toContain('requireAuthenticatedRoute');
+    expect(adminCheck).toBeGreaterThanOrEqual(0);
+    expect(affiliateTokenCheck).toBeGreaterThan(adminCheck);
+    expect(settlementQuery).toBeGreaterThan(adminCheck);
+  });
+
   it('adds payout evidence columns for affiliate settlements', () => {
     const migration = source('supabase/migrations/20260603064124_affiliate_settlement_payout_evidence.sql');
 
