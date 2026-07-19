@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 
 type Platform = 'blog' | 'instagram' | 'cafe' | 'threads' | 'other';
 
@@ -41,6 +41,8 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
   const [autoDetected, setAutoDetected] = useState<Platform | null>(null);
   const [urlError, setUrlError]     = useState('');
   const [saving, setSaving]         = useState(false);
+  const modalTitleId = useId();
+  const urlInputId = `${modalTitleId}-url`;
 
   // URL 변경 시 실시간 자동 감지
   useEffect(() => {
@@ -89,24 +91,33 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
   const meta = PLATFORM_META[platform];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <button
+        type="button"
+        aria-label="마케팅 기록 닫기"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
       <div
-        className="bg-white rounded-admin-lg shadow-2xl w-full max-w-md mx-4 p-6"
-        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={modalTitleId}
+        className="relative bg-white rounded-admin-lg shadow-2xl w-full max-w-md mx-4 p-6"
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-lg font-bold text-admin-text">발행 기록 남기기</h2>
+            <h2 id={modalTitleId} className="text-lg font-bold text-admin-text">발행 기록 남기기</h2>
             <p className="text-xs text-admin-muted mt-0.5">마케팅 발행 URL을 저장합니다</p>
           </div>
-          <button onClick={onClose} className="text-admin-muted-2 hover:text-admin-text-2 text-xl leading-none">×</button>
+          <button type="button" aria-label="마케팅 기록 닫기" onClick={onClose} className="text-admin-muted-2 hover:text-admin-text-2 text-xl leading-none">×</button>
         </div>
 
         {/* URL 입력 */}
         <div className="mb-4">
-          <label className="block text-sm font-semibold text-admin-text-2 mb-1.5">발행 URL</label>
+          <label htmlFor={urlInputId} className="block text-sm font-semibold text-admin-text-2 mb-1.5">발행 URL</label>
           <input
+            id={urlInputId}
             type="url"
             value={url}
             onChange={e => setUrl(e.target.value)}
@@ -130,12 +141,14 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
 
         {/* 플랫폼 선택 */}
         <div className="mb-5">
-          <label className="block text-sm font-semibold text-admin-text-2 mb-2">플랫폼 선택</label>
+          <fieldset>
+            <legend className="block text-sm font-semibold text-admin-text-2 mb-2">플랫폼 선택</legend>
           <div className="grid grid-cols-5 gap-2">
             {(Object.entries(PLATFORM_META) as [Platform, typeof PLATFORM_META[Platform]][]).map(([key, m]) => (
               <button
                 key={key}
                 type="button"
+                aria-pressed={platform === key}
                 onClick={() => setPlatform(key)}
                 className={`flex flex-col items-center gap-1 py-2.5 rounded-admin-md border-2 transition-all
                   ${platform === key
@@ -152,17 +165,20 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
               </button>
             ))}
           </div>
+          </fieldset>
         </div>
 
         {/* 저장 버튼 */}
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 py-2.5 rounded-admin-md border border-admin-border-mid text-sm font-medium text-admin-muted hover:bg-admin-bg transition-colors"
           >
             취소
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving || !!urlError || !url.trim()}
             className="flex-1 py-2.5 rounded-admin-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-sm font-bold text-white transition-colors"
