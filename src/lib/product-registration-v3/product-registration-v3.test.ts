@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSourceLineIndex, parseV3AiStructurePlan, persistProductRegistrationDraftV3, planProductRegistrationV3, runProductRegistrationV3 } from '.';
+import { applyProductRegistrationV3Matching, createSourceLineIndex, parseV3AiStructurePlan, persistProductRegistrationDraftV3, planProductRegistrationV3, runProductRegistrationV3 } from '.';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildStandardNoticeDraft } from './standard-notices';
@@ -175,6 +175,72 @@ ZE982
         || check.id.endsWith('high_risk_notice_values')
         || check.id.endsWith('high_risk_structured_fact_values')),
     )).toBe(false);
+    expect(result.gate_result.status).not.toBe('blocked');
+  });
+
+  it('keeps duration price preambles with the following real product boundary', async () => {
+    const raw = [
+      '신선이 된 것 같은 곳,',
+      '구름 위의 절경',
+      '张家界장가계',
+      '월토일 3박4일 / 화수목 4박5일',
+      '출발일',
+      '판매가',
+      '3박4일',
+      '8월',
+      '30일',
+      '829,000',
+      '31일',
+      '799,000',
+      '9월',
+      '19, 20, 21',
+      '899,000',
+      '4박5일',
+      '9월',
+      '1일',
+      '799,000',
+      '월드체인 풀만 호텔 장가계 특가',
+      '★~6/29까지 선발권 조건★',
+      '장가계 4박 5일',
+      '제1일',
+      '부  산',
+      '장가계',
+      'BX371',
+      '전용차량',
+      '09:00',
+      '11:20',
+      '부산 출발',
+      '장가계 도착 / 가이드 미팅 후 중식',
+      '천문산 등정',
+      '제2일',
+      '천자산 풍경구 관광',
+      '제3일',
+      '보봉호 관광',
+      '제4일',
+      '황룡동굴 관광',
+      '제5일',
+      '장가계',
+      '부  산',
+      '전용차량',
+      'BX372',
+      '12:20',
+      '16:35',
+      '장가계 출발',
+      '부산 도착',
+      '포함 호텔 식사',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, { destination: '장가계' });
+    const variant = result.ledger.variants[0];
+
+    expect(result.structure_plan.expected_products).toBe(1);
+    expect(variant.course).toContain('장가계 4박 5일');
+    expect(variant.flight_segments).toMatchObject([
+      { code: 'BX371', dep_time: '09:00', arr_time: '11:20' },
+      { code: 'BX372', dep_time: '12:20', arr_time: '16:35' },
+    ]);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('.flight'))?.status).toBe('pass');
     expect(result.gate_result.status).not.toBe('blocked');
   });
 
@@ -1890,6 +1956,37 @@ ZE982
     expect(notices.every(n => n.evidence.length > 0 && n.evidence[0].quote === n.source_text)).toBe(true);
   });
 
+  it('treats included guide/driver expenses without an amount as included, not local payment review', async () => {
+    const raw = [
+      '상품: 장가계 4박5일',
+      '가격 799,000원 / 최소출발 4명',
+      '노팁 노옵션',
+      '왕복 항공료 및 텍스, 호텔(2인실), 차량, 가이드, 식사, 여행자보험, 기사/가이드경비',
+      'DAY 1',
+      'BX371',
+      '09:00',
+      '11:20',
+      '부산 출발',
+      '장가계 도착',
+      'DAY 5',
+      'BX372',
+      '12:20',
+      '16:35',
+      '장가계 출발',
+      '부산 도착',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+    const tipNotices = result.ledger.variants[0].standard_notices.filter(n => n.category === 'tip_guideline');
+
+    expect(tipNotices.some(n => n.template_key === 'guide.tip_included')).toBe(true);
+    expect(tipNotices.some(n =>
+      n.template_key === 'guide.tip_amount_local_payment'
+      && n.review_status === 'review_needed'
+    )).toBe(false);
+    expect(result.gate_result.checks.find(check => check.id.endsWith('high_risk_notice_values'))?.status).toBe('pass');
+  });
+
   it('renders customer notices with Yeosonam standard text only (no supplier remark leakage)', async () => {
     const raw = fixtures.find(f => f.name === 'nha-trang-dalat-remark-standardization')!.raw;
     const result = await runProductRegistrationV3(raw);
@@ -1939,6 +2036,88 @@ DAY 3 KE124 출발 13:00 도착 15:00
     expect(notice?.review_status).toBe('review_needed');
     expect(result.gate_result.status).not.toBe('blocked');
     expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(false);
+  });
+
+  it('treats amount-less private-event surcharge as safe inquiry wording', async () => {
+    const raw = `
+상품: 서안 화산 품격 패키지 3박5일
+가격 899,000원 / 최소출발 4명
+DAY 1 BX123 출발 10:00 도착 12:00
+REMARK
+* 단독행사 요청시 추가 요금 발생합니다.
+DAY 5 BX124 출발 13:00 도착 17:00
+`.trim();
+    const result = await runProductRegistrationV3(raw);
+    const surcharge = result.ledger.variants[0].structured_facts.find(f => f.category === 'surcharge');
+
+    expect(surcharge?.review_status).toBe('auto_clean');
+    expect(surcharge?.risk_level).toBe('medium');
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_structured_fact_values') && c.status === 'fail')).toBe(false);
+  });
+
+  it('matches Xi’an route fragments and ignores golf table noise before entity review', () => {
+    const evidence = { line_start: 1, line_end: 1, char_start: 0, char_end: 1, quote: '' };
+    const rawEvents = [
+      '종고루광장야경',
+      '북봉-천제용령-상용령-금사관-중봉-남봉',
+      '진나라2세 효예묘',
+      'PUS',
+      'FSZ',
+      'PUS-FSZ',
+      '#시즈오카',
+      '#다색골프',
+      '(1,320엔)',
+      '제외일자',
+      '4+0',
+      '*사가라CC 미진행시 쿨카트 제공 X',
+      '*오후 플레이 욕장+락커 사용 불가-미리환복 必',
+      '*인원미달 요금추가',
+    ];
+    const ledger = {
+      document: { type: 'single_package' as const, expected_products: 1, variant_axes: [] },
+      variants: [{
+        variant_key: 'base',
+        grade: null,
+        course: null,
+        duration_days: 5,
+        nights: 3,
+        title_parts: [],
+        price_calendar: [],
+        flight_segments: [],
+        days: [{
+          day: 1,
+          route: [],
+          events: rawEvents.map(raw_text => ({
+            type: 'attraction' as const,
+            time: null,
+            raw_text,
+            canonical_id: null,
+            canonical_type: null,
+            match_status: 'unmatched' as const,
+            evidence: { ...evidence, quote: raw_text },
+          })),
+          meals: { breakfast: {}, lunch: {}, dinner: {} },
+          hotel: {},
+        }],
+        inclusions: [],
+        exclusions: [],
+        options: [],
+        shopping: [],
+        structured_facts: [],
+        standard_notices: [],
+        minimum_departure: null,
+        evidence_coverage: {},
+      }],
+    };
+    const result = applyProductRegistrationV3Matching(ledger, [
+      { id: 'bell-drum', name: '종고루광장 야시장', aliases: [], region: '서안', country: 'CN' },
+      { id: 'huashan', name: '화산', aliases: ['화산 북봉'], region: '서안', country: 'CN' },
+      { id: 'huhye', name: '진나라의 2세 황제 호혜묘', aliases: ['진나라2세호혜묘'], region: '서안', country: 'CN' },
+    ], '서안');
+
+    expect(result.matchSummary.attraction_unmatched_count).toBe(0);
+    expect(result.matchSummary.attraction_matched_count).toBe(3);
+    expect(result.matchSummary.entity_summary.attraction_unresolved_count).toBe(0);
   });
 
   it('extracts prohibited e-cigarette notice even when supplier omits country name', async () => {
