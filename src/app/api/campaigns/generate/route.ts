@@ -10,6 +10,7 @@ import { generateCarouselVariants } from '@/lib/creative-engine/carousel-generat
 import { generateSingleImageVariants } from '@/lib/creative-engine/single-image-generator';
 import { generateTextAdVariants } from '@/lib/creative-engine/text-ad-generator';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 const PostBodySchema = z.object({
   productId: z.string().uuid('productId는 UUID 형식이어야 합니다.'),
@@ -20,6 +21,9 @@ const PostBodySchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   try {
     const parsed = PostBodySchema.safeParse(await request.json());
     if (!parsed.success) {
