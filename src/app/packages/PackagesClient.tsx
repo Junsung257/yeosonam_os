@@ -22,7 +22,39 @@ import {
 } from '@/lib/departure-hub';
 import Loading from './loading';
 
-const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
+export class PackagesSearchError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'PackagesSearchError';
+  }
+}
+
+export async function packagesSearchFetcher(url: string): Promise<SearchResponse> {
+  const response = await fetch(url);
+  const payload = await response.json().catch(() => null) as Partial<SearchResponse> & {
+    error?: string;
+    code?: string;
+  } | null;
+
+  if (!response.ok) {
+    throw new PackagesSearchError(
+      payload?.error || '상품 목록을 불러오지 못했습니다.',
+      response.status,
+      payload?.code,
+    );
+  }
+
+  if (!payload || !Array.isArray(payload.packages)) {
+    throw new PackagesSearchError('상품 목록 응답 형식이 올바르지 않습니다.', response.status);
+  }
+
+  return payload as SearchResponse;
+}
+
 const INITIAL_VISIBLE_COUNT = 18;
 const VISIBLE_STEP = 18;
 const consultTelHref = getConsultTelHref();
@@ -244,9 +276,9 @@ export default function PackagesClient() {
   const filterForClientInitial = rawFilter === '인천출발' ? '' : rawFilter;
 
   const apiQuery = searchParams.toString();
-  const { data, isLoading } = useSWR<SearchResponse>(
+  const { data, error: searchError, isLoading, mutate: retrySearch } = useSWR<SearchResponse>(
     `/api/packages/search?${apiQuery}`,
-    swrFetcher,
+    packagesSearchFetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
 
@@ -517,6 +549,59 @@ export default function PackagesClient() {
 
   const listTopRef = useRef<HTMLDivElement>(null);
   if (isLoading) return <Loading />;
+
+  if (searchError) {
+    const message = searchError instanceof PackagesSearchError
+      ? searchError.message
+      : '상품 목록을 불러오지 못했습니다.';
+
+    return (
+      <div className="min-h-screen bg-white">
+        <GlobalNav />
+        <h1 className="sr-only">여소남 패키지 여행 상품</h1>
+        <div className="md:border-b md:border-[#F2F4F6]">
+          <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-6 pb-[5px] md:pb-0">
+            <SearchBar
+              variant="packages"
+              initialQ={q}
+              initialMonth={month}
+              initialPriceMin={priceMin}
+              initialPriceMax={priceMax}
+              initialDestination={destination}
+              hub={hub}
+              urgency={urgency}
+              category={category}
+            />
+          </div>
+        </div>
+        <main className="mx-auto max-w-2xl px-4 py-16 text-center">
+          <div className="rounded-[24px] border border-red-100 bg-red-50/70 px-6 py-8 shadow-sm">
+            <p className="text-[15px] font-bold text-red-700">상품 목록을 불러오지 못했습니다</p>
+            <p className="mt-2 text-[13px] leading-6 text-red-700/80">
+              {message} 잠시 후 다시 시도하거나 상담으로 원하시는 조건을 알려주세요.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => void retrySearch()}
+                className="rounded-full bg-brand px-5 py-2.5 text-[13px] font-bold text-white transition hover:bg-brand-dark"
+              >
+                다시 불러오기
+              </button>
+              {consultTelHref && (
+                <a
+                  href={consultTelHref}
+                  className="rounded-full border border-red-200 bg-white px-5 py-2.5 text-[13px] font-bold text-red-700 transition hover:bg-red-50"
+                >
+                  상담으로 문의하기
+                </a>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
