@@ -6,12 +6,16 @@
  * 1단계: 수동 입력 + 분석, 추후 크롤러 붙이기.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ snapshots: [] });
   const brand = request.nextUrl.searchParams.get('brand');
   const destination = request.nextUrl.searchParams.get('destination');
@@ -33,6 +37,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {

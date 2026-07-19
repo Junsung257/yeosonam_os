@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -16,6 +17,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const scope = searchParams.get('scope'); // info | product | both | null(전체)
     const includeInactive = searchParams.get('include_inactive') === '1';
+    if (includeInactive) {
+      const authError = await requireAdminRequest(request);
+      if (authError) return authError;
+    }
 
     let query = supabaseAdmin
       .from('blog_categories')
@@ -38,6 +43,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -74,6 +82,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -107,6 +118,9 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
