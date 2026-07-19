@@ -26,6 +26,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
   const activeSlide = slides[activeSlideIndex];
   const ratio = ASPECT_RATIOS[aspectRatio];
+  const activeSlideControlPrefix = `card-news-slide-${activeSlideIndex}`;
 
   const handleSave = async () => {
     const ok = await saveToDb();
@@ -43,6 +44,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
       <div className="bg-white border-b border-admin-border-mid px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <input
+            aria-label="카드뉴스 제목"
             value={cardNewsTitle}
             onChange={e => setCardNewsTitle(e.target.value)}
             className="text-admin-lg font-semibold text-admin-text-2 border-none focus:ring-0 bg-transparent w-64 placeholder:text-admin-muted-2"
@@ -135,13 +137,14 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
           {activeSlide ? (
             <>
               {/* 오버레이 */}
-              <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">오버레이</label>
+              <fieldset>
+                <legend className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">오버레이</legend>
                 <div className="flex gap-1">
                   {(['dark', 'light', 'none'] as const).map(style => (
                     <button
                       key={style}
                       onClick={() => updateSlide(activeSlideIndex, { overlay_style: style })}
+                      aria-pressed={activeSlide.overlay_style === style}
                       className={`flex-1 py-1.5 text-[11px] rounded border transition ${
                         activeSlide.overlay_style === style
                           ? 'bg-blue-600 text-white border-blue-600'
@@ -152,17 +155,18 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                     </button>
                   ))}
                 </div>
-              </div>
+              </fieldset>
 
               {/* 배경 이미지 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">배경 이미지</label>
+                <p className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">배경 이미지</p>
                 {activeSlide.bg_image_url ? (
                   <div className="relative mb-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={activeSlide.bg_image_url} alt="" className="w-full h-24 object-cover rounded" />
                     <button
                       onClick={() => swapBackground(activeSlideIndex, '')}
+                      aria-label="배경 이미지 제거"
                       className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded"
                     >
                       제거
@@ -184,6 +188,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                   <div className="mt-2 space-y-2">
                     <div className="flex gap-1">
                       <input
+                        aria-label="Pexels 검색어"
                         value={pexelsQuery}
                         onChange={e => setPexelsQuery(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handlePexelsSearch()}
@@ -206,6 +211,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                             swapBackground(activeSlideIndex, photo.src.large);
                             setShowPexels(false);
                           }}
+                          aria-label={`배경 이미지 선택: ${photo.alt || `${idx + 1}번 이미지`}`}
                           className="overflow-hidden rounded hover:ring-2 hover:ring-[#005d90] transition"
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -219,8 +225,9 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
               {/* 텍스트 편집 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">제목</label>
+                <label htmlFor={`${activeSlideControlPrefix}-headline`} className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">제목</label>
                 <textarea
+                  id={`${activeSlideControlPrefix}-headline`}
                   value={activeSlide.headline}
                   onChange={e => updateSlide(activeSlideIndex, { headline: e.target.value })}
                   rows={2}
@@ -228,8 +235,9 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">본문</label>
+                <label htmlFor={`${activeSlideControlPrefix}-body`} className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">본문</label>
                 <textarea
+                  id={`${activeSlideControlPrefix}-body`}
                   value={activeSlide.body}
                   onChange={e => updateSlide(activeSlideIndex, { body: e.target.value })}
                   rows={4}
@@ -239,8 +247,9 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
               {/* Pexels 키워드 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">이미지 키워드</label>
+                <label htmlFor={`${activeSlideControlPrefix}-pexels-keyword`} className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">이미지 키워드</label>
                 <input
+                  id={`${activeSlideControlPrefix}-pexels-keyword`}
                   value={activeSlide.pexels_keyword}
                   onChange={e => updateSlide(activeSlideIndex, { pexels_keyword: e.target.value })}
                   className="w-full px-2 py-1.5 border border-admin-border-mid rounded text-admin-sm focus:ring-1 focus:ring-[#005d90]"
