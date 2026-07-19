@@ -81,6 +81,64 @@ describe('mapTravelPackageToLandingData', () => {
     expect(day1.activities.some((a) => a.type === 'hotel' && a.label.includes('하카타 호텔'))).toBe(true);
     expect(day1.activities.some((a) => a.type === 'flight')).toBe(true);
   });
+  it('prefers public snapshot canonical view and LP projection over recalculating from the raw row', () => {
+    const baseView = renderPackage({
+      id: 'pkg-snapshot',
+      title: 'Raw supplier title',
+      destination: 'Raw destination',
+      inclusions: ['raw include'],
+      excludes: ['raw exclude'],
+      itinerary_data: {
+        days: [
+          { day: 1, regions: ['Raw'], meals: {}, schedule: [{ activity: 'Raw activity', type: 'normal' }] },
+        ],
+      },
+    } as unknown as Parameters<typeof renderPackage>[0]);
+    const snapshotView = {
+      ...baseView,
+      days: [
+        {
+          ...baseView.days[0],
+          regions: ['Snapshot region'],
+          schedule: [{ activity: 'Snapshot activity', type: 'normal' }],
+        },
+      ],
+      inclusions: { ...baseView.inclusions, flat: ['Snapshot include'] },
+      excludes: { ...baseView.excludes, basic: ['Snapshot exclude'] },
+    };
+
+    const mapped = mapTravelPackageToLandingData({
+      id: 'pkg-snapshot',
+      title: 'Raw supplier title',
+      destination: 'Raw destination',
+      price: 999000,
+      price_dates: [{ date: '2026-08-01', price: 999000, confirmed: true }],
+      inclusions: ['raw include'],
+      excludes: ['raw exclude'],
+      itinerary_data: {
+        days: [
+          { day: 1, regions: ['Raw'], meals: {}, schedule: [{ activity: 'Raw activity', type: 'normal' }] },
+        ],
+      },
+      _canonical_view: snapshotView,
+      _lp_projection: {
+        title: 'Snapshot landing title',
+        subtitle: 'Snapshot landing subtitle',
+        summary: 'Snapshot summary',
+        price: 777000,
+      },
+    } as unknown as Record<string, unknown>, null);
+
+    expect(mapped.customMessage.default.headline).toBe('Snapshot landing title');
+    expect(mapped.customMessage.default.subline).toBe('Snapshot landing subtitle');
+    expect(mapped.priceFrom).toBe(777000);
+    expect(mapped.itinerary.includes).toEqual(['Snapshot include']);
+    expect(mapped.itinerary.excludes).toEqual(['Snapshot exclude']);
+    expect(mapped.itinerary.days[0]?.title).toBe('Snapshot region');
+    expect(mapped.itinerary.days[0]?.activities.map(activity => activity.label)).toContain('Snapshot activity');
+    expect(mapped.itinerary.days[0]?.activities.map(activity => activity.label)).not.toContain('Raw activity');
+  });
+
   it('filters supplier table fragments from mobile landing activities', () => {
     const pkg = {
       id: 'pkg-baekdu',
@@ -208,5 +266,6 @@ describe('mapTravelPackageToLandingData', () => {
 
     expect(mapped.departureFullDate).toBeNull();
     expect(mapped.departureDateLabel).toBe('미정');
+    expect(mapped.priceFrom).toBe(0);
   });
 });

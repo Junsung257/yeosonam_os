@@ -46,6 +46,34 @@ describe('repairCustomerVisibleCopyPayload', () => {
     expect(blockingCustomerVisibleTextIssues(result.value)).toEqual([]);
   });
 
+  it('normalizes customer schedule copy without changing internal attraction ids', () => {
+    const truncatedAttractionId = 'fcf2-4df5-ac1d-f454bb4a84a4';
+    const result = repairCustomerVisibleCopyPayload({
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '공항으로 이동합니다.',
+                landing_sentence: '공항으로 이동합니다.',
+                attraction_ids: [truncatedAttractionId],
+                entity_kind: 'transfer',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const schedule = (result.value as {
+      itinerary_data: { days: Array<{ schedule: Array<{ landing_sentence: string; attraction_ids: string[] }> }> };
+    }).itinerary_data.days[0].schedule[0];
+
+    expect(schedule.landing_sentence).toBe('공항 이동');
+    expect(schedule.attraction_ids).toEqual([truncatedAttractionId]);
+  });
+
   it('normalizes duplicated inclusions/options while preserving source evidence and core fields', () => {
     const result = repairCustomerVisibleCopyPayload({
       title: '다낭 바나힐 패키지',
@@ -177,5 +205,51 @@ describe('repairCustomerVisibleCopyPayload', () => {
         note: null,
       }],
     });
+  });
+
+  it('removes risky promise copy without inventing replacement claims', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      title: '연길·백두산 2명부터 출발확정 4박5일',
+      hero_tagline: '예약 즉시 항공·숙박 확보 가능',
+      itinerary_data: {
+        meta: {
+          title: '6/11(목) 까지 항공권 발권조건 2명부터 출발확정',
+        },
+      },
+      customer_notes: '확정 또는 가능 출발일에서 선택하세요.',
+    });
+
+    expect(result.value).toMatchObject({
+      title: '연길·백두산 4박5일',
+      customer_notes: '예약 가능 출발일에서 선택하세요',
+    });
+    expect(JSON.stringify(result.value)).not.toContain('출발확정');
+    expect(JSON.stringify(result.value)).not.toContain('예약 즉시');
+    expect(result.changes.map(change => change.codes)).toContainEqual(['risky_customer_promise_copy']);
+    expect(auditCustomerVisibleProductText(result.value as Record<string, unknown>)).toEqual([]);
+  });
+
+  it('keeps only priced public optional tours and removes table fragments', () => {
+    const result = repairCustomerVisibleCopyPayload({
+      optional_tours: [
+        { name: '\ub178\uc635\uc158' },
+        { name: '\uc624\uc804\uc790\uc720' },
+        { name: '599' },
+        { name: '\ucc28\ub7c9' },
+        { name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' },
+      ],
+    });
+
+    expect(result.value).toEqual({
+      optional_tours: [
+        { name: '\uc120\ud0dd\uad00\uad11 \ud638\ud551\ud22c\uc5b4', price: '$80/\uc778' },
+      ],
+    });
+    expect(result.changes.map(change => change.codes[0])).toEqual(expect.arrayContaining([
+      'optional_tour_no_option_evidence',
+      'optional_tour_unknown_fragment',
+      'optional_tour_price_table_fragment',
+      'optional_tour_inclusion_fragment',
+    ]));
   });
 });

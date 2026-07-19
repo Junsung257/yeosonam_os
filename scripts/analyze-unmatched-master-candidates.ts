@@ -2,6 +2,7 @@ import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import {
   evaluateMasterCandidate,
+  mergeCandidateExternalSources,
   type CandidateExternalSource,
   type MasterCandidateDecision,
 } from '../src/lib/entity-master-candidates';
@@ -33,6 +34,7 @@ type CandidateGroup = {
   packageIds: Set<string>;
   packageTitles: Set<string>;
   occurrenceCount: number;
+  externalSources: CandidateExternalSource[];
   examples: Array<{
     id: string;
     package_id: string | null;
@@ -127,6 +129,7 @@ function buildGroups(rows: UnmatchedRow[]): Map<string, CandidateGroup> {
         packageIds: new Set(row.package_id ? [row.package_id] : []),
         packageTitles: new Set(row.package_title ? [row.package_title] : []),
         occurrenceCount: row.occurrence_count ?? 1,
+        externalSources,
         examples: [{
           id: row.id,
           package_id: row.package_id,
@@ -144,6 +147,10 @@ function buildGroups(rows: UnmatchedRow[]): Map<string, CandidateGroup> {
     if (row.package_id) existing.packageIds.add(row.package_id);
     if (row.package_title) existing.packageTitles.add(row.package_title);
     existing.occurrenceCount += row.occurrence_count ?? 1;
+    existing.externalSources = mergeCandidateExternalSources([
+      ...existing.externalSources,
+      ...externalSources,
+    ]);
     if (existing.examples.length < 5) {
       existing.examples.push({
         id: row.id,
@@ -165,7 +172,7 @@ function buildGroups(rows: UnmatchedRow[]): Map<string, CandidateGroup> {
       occurrenceCount: existing.occurrenceCount,
       evidenceCount: existing.ids.length,
       packageCount: existing.packageIds.size,
-      externalSources,
+      externalSources: existing.externalSources,
     });
   }
 
@@ -191,10 +198,13 @@ function candidatePayload(group: CandidateGroup) {
       package_titles: Array.from(group.packageTitles).slice(0, 20),
       mobile_landing_impact: group.packageIds.size > 0,
       examples: group.examples,
+      external_source_count: group.externalSources.length,
+      external_source_types: [...new Set(group.externalSources.map(source => source.source))],
+      public_gate: decision.suggestedMaster.public_gate,
       analyzer: 'analyze-unmatched-master-candidates',
       analyzed_at: new Date().toISOString(),
     },
-    external_sources: [],
+    ...(group.externalSources.length > 0 ? { external_sources: group.externalSources } : {}),
     suggested_master: decision.suggestedMaster,
     confidence: decision.confidence,
     promotion_status: decision.promotionStatus,

@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-07-05
+Last updated: 2026-07-19
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -38,6 +38,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-06 | `2026-07-06-mobile-landing-copy-audit-smoke/` | Mobile landing copy audit smoke output for shared customer-facing package title/summary logic. |
 | 2026-06-24 | `2026-06-24-upload-function-timeout-queue-first.md` | Queue-first upload timeout prevention and replay-source preservation evidence. |
 | 2026-06-08 | `2026-06-08-product-registration-learning-engine-audit.md` | Self-improving registration engine verification and live readiness evidence. |
 | 2026-06-20 | `2026-06-20-upload-inbox-engine-hardening.md` | Offline upload-inbox hardening evidence for price/date, flight, and remaining itinerary blockers. |
@@ -54,6 +55,8 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-19 | `2026-07-19-release-readiness-full-audit.md` | Customer launch HOLD evidence, completed P0 remediations, open gates, Git/PR cleanup, and parallel closure lanes. |
+| 2026-07-06 | `2026-07-06-destinations-full-audit/` | Public destinations full audit output: desktop/mobile screenshots, route matrix, image/placeholder/climate/attraction checks. |
 | 2026-05-30 | `2026-05-30-full-stack-admin-final-audit.md` | Full-stack admin final audit evidence. |
 | 2026-05-30 | `2026-05-30-admin-full-system-audit.md` | Admin full-system evidence. |
 | 2026-05-30 | `2026-05-30-launch-readiness-audit.md` | Launch readiness evidence. |
@@ -75,6 +78,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-09 | `2026-07-09-blog-writing-engine-research.md` | Blog writing-engine research: competitor patterns, customer-language scorecard, open-source eval/observability adoption priorities, and remaining hardening backlog. |
 | 2026-06-15 | `2026-06-15-blog-autopublish-quality-incident.md` + `../blog-autopublish-contract.md` | Blog autopublish repeated-quality root cause, evidence-backed prevention contract, verification commands, and remaining slug migration gate. |
 | 2026-06-08 | `2026-06-08-blog-production-visual-audit.md` | Blog visual QA, GSC canonical/domain evidence, and 100-point prevention gate. |
 | 2026-06-09 | `2026-06-09-blog-publish-quality-reverification.md` | Blog publish-path SEO/readability/render quality gate reverification. |
@@ -99,6 +103,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-05 | `2026-07-05-jarvis-customer-inquiry-research.md` | Research-backed Jarvis customer inquiry answer-quality gate mapping for grounding, uncertainty, handoff, no-dead-end, and bounded-empathy checks. |
 | 2026-07-05 | `2026-07-05-secret-surface-audit.md` | Secret/env surface audit covering local env files, tracked `.env.prod`, command-output risk, rotation priorities, and existing prevention checks. |
 | 2026-06-26 | `2026-06-26-project-readiness-audit.md` | Pre-development local, Vercel, Supabase, MCP, docs, and build readiness audit after workspace consolidation. |
 | 2026-05-28 | `2026-05-28-runtime-risk-audit.md` | Runtime risk audit evidence. |

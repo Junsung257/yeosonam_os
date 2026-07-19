@@ -87,7 +87,7 @@ export function DestinationImageFallback({ title, destination, className = '', c
   return (
     <div
       className={`absolute inset-0 flex h-full w-full flex-col justify-end overflow-hidden bg-gradient-to-br from-[#EAF3FF] via-white to-[#E9F8F0] p-3 text-left ${className}`}
-      aria-label={`${destinationLabel} 상품 이미지 준비 중`}
+      aria-label={`${destinationLabel} 상품 카드`}
       role="img"
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand via-emerald-400 to-sky-400" aria-hidden />
@@ -98,7 +98,7 @@ export function DestinationImageFallback({ title, destination, className = '', c
         <p className={`${compact ? 'text-[12px]' : 'text-sm'} line-clamp-2 font-extrabold leading-tight text-slate-900`}>
           {titleLabel}
         </p>
-        <p className="mt-1 text-[10px] font-semibold text-slate-500">이미지 준비 중 · 조건 먼저 확인 가능</p>
+        <p className="mt-1 text-[10px] font-semibold text-slate-500">핵심 조건을 먼저 확인할 수 있어요</p>
       </div>
     </div>
   );

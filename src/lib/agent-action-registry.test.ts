@@ -73,4 +73,19 @@ describe('agent action registry autopilot decisions', () => {
     expect(requiresActionApproval('run_ad_optimization')).toBe(true);
     expect(requiresActionApproval('export_settlement_report')).toBe(true);
   });
+
+  it('approval-gates mileage mutations from Jarvis tools', () => {
+    expect(getActionRegistryEntry('adjust_mileage')).toMatchObject({
+      agentType: 'marketing',
+      riskLevel: 'high',
+      requiresApproval: true,
+    });
+    expect(getActionRegistryEntry('create_mileage_event')).toMatchObject({
+      agentType: 'marketing',
+      riskLevel: 'high',
+      requiresApproval: true,
+    });
+    expect(requiresActionApproval('adjust_mileage')).toBe(true);
+    expect(requiresActionApproval('create_mileage_event')).toBe(true);
+  });
 });

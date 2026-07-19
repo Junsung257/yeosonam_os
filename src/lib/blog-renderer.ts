@@ -1,6 +1,5 @@
 import { applyHtmlAccents, applyMarkdownAccents } from '@/lib/blog-accent';
 import { proxyBlogImageUrlsInHtml } from '@/lib/blog-image-proxy';
-import { ensureRequiredBlogDecisionBlocksHtml } from '@/lib/blog-required-structure';
 
 export interface RenderBlogContentOptions {
   stripDecorativeBold?: boolean;
@@ -300,7 +299,7 @@ export function normalizeStoredBlogMarkdownStructure(source: string): string {
   // Recover block boundaries before marked parses the first heading as the whole body.
   out = out.replace(/[ \t]+(?=#{2,6}\s+\S)/g, '\n\n');
   out = out.replace(/[ \t]+(?=!\[[^\]]*]\([^)]+\))/g, '\n\n');
-  out = out.replace(/[ \t]+---+[ \t]+/g, '\n\n---\n\n');
+  out = out.replace(/(^|\n)[ \t]*---+[ \t]*(?=\n|$)/g, '$1\n\n---\n\n');
   out = out.replace(/(<\/figcaption>)[ \t]+/gi, '$1\n\n');
   out = out.replace(/(<\/aside>)[ \t]+/gi, '$1\n\n');
   out = out.replace(/(<\/figcaption>)\n(?=\S)/gi, '$1\n\n');
@@ -353,6 +352,65 @@ function stripHtmlForArtifactScan(html: string): string {
 
 function countMatches(value: string, pattern: RegExp): number {
   return (value.match(pattern) || []).length;
+}
+
+function stripTagsForCompare(value: string): string {
+  return normalizeTableCompareText(value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim());
+}
+
+function normalizeTableCompareText(value: string): string {
+  return value
+    .replace(/(\d)\s*[~～]\s*(\d)(?=\s*(?:개국|개월|주|일|시간|분|만|원|℃|도|mm|페소|달러|엔|위안|바트))/g, '$1-$2')
+    .replace(/\s*([(),:])\s*/g, '$1')
+    .replace(/(\d[\d,]*원)\s+(\d[\d,]*원)/g, '$1-$2')
+    .replace(/(\d[\d,]*만)(\d[\d,]*만\s*원)/g, '$1-$2')
+    .replace(/(\d[\d,]*(?:원|만)?)(?:\s*[–—-]\s*)(\d[\d,]*(?:원|만)?)/g, '$1-$2')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseMarkdownTableCells(row: string): string[] {
+  return row
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell
+      .replace(/!\[([^\]]*)]\([^)]+\)/g, '$1')
+      .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+      .replace(/(\d)\s*[~～]\s*(\d)(?=\s*(?:개국|개월|주|일|시간|분|만|원|℃|도|mm|페소|달러|엔|위안|바트))/g, '$1-$2')
+      .replace(/[*_`~]/g, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim())
+    .map(normalizeTableCompareText);
+}
+
+function extractMarkdownTableHeaders(source: string): string[][] {
+  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  const headers: string[][] = [];
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const current = lines[index]?.trim() || '';
+    const next = lines[index + 1]?.trim() || '';
+    if (!isMarkdownTableRowLine(current) || !isMarkdownTableSeparatorLine(next)) continue;
+    headers.push(parseMarkdownTableCells(current));
+  }
+
+  return headers;
+}
+
+function extractRenderedTableHeaders(html: string): string[][] {
+  const tables = html.match(/<table\b[\s\S]*?<\/table>/gi) || [];
+  return tables.map((table) => {
+    const thead = table.match(/<thead\b[\s\S]*?<\/thead>/i)?.[0] || table;
+    return (thead.match(/<th\b[^>]*>[\s\S]*?<\/th>/gi) || []).map(stripTagsForCompare);
+  });
 }
 
 function renderResidualMarkdownLinks(html: string): string {
@@ -577,7 +635,7 @@ export async function renderBlogContentToHtml(
       normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(source))),
     );
     const readableHtml = splitLongPlainHtmlParagraphs(promoteLongNumberedParagraphsToLists(normalizedHtml));
-    return proxyBlogImageUrlsInHtml(applyHtmlAccents(ensureRequiredBlogDecisionBlocksHtml(readableHtml)));
+    return proxyBlogImageUrlsInHtml(applyHtmlAccents(readableHtml));
   }
 
   const normalizedSource = normalizeStoredBlogMarkdownStructure(source);
@@ -705,12 +763,59 @@ export function inspectRenderedBlogIntegrity(
     artifacts.push('literal_markdown_table_separator');
     artifactSamples.push(literalSeparator[0]);
   }
+  const literalPipeTableRow =
+    renderedHtml.match(/<p>\s*\|[^<\n]+\|\s*<\/p>/i) ||
+    renderedText.match(/.{0,40}\|[^|\n]{1,80}\|[^|\n]{1,80}\|.{0,40}/);
+  if (literalPipeTableRow) {
+    artifacts.push('literal_markdown_table_row');
+    artifactSamples.push(literalPipeTableRow[0]);
+  }
+  const tableSeparatorAsRules = renderedHtml.match(/(?:<hr\s*\/?>\s*){2,}<table\b/i);
+  if (tableSeparatorAsRules) {
+    artifacts.push('markdown_table_separator_rendered_as_rules');
+    artifactSamples.push(tableSeparatorAsRules[0]);
+  }
+  const standaloneBold = renderedText.match(/.{0,40}(?:^|\s)\*\*(?:\s|$).{0,40}/);
+  if (standaloneBold && !artifacts.includes('literal_markdown_bold')) {
+    artifacts.push('literal_markdown_bold');
+    artifactSamples.push(standaloneBold[0]);
+  }
+  const headingTexts = (renderedHtml.match(/<h[23]\b[^>]*>[\s\S]*?<\/h[23]>/gi) || [])
+    .map(stripTagsForCompare)
+    .filter(Boolean);
+  const seenHeadings = new Set<string>();
+  const duplicateHeading = headingTexts.find((heading) => {
+    const key = heading.toLowerCase();
+    if (seenHeadings.has(key)) return true;
+    seenHeadings.add(key);
+    return false;
+  });
+  if (duplicateHeading) {
+    artifacts.push('duplicate_rendered_heading');
+    artifactSamples.push(duplicateHeading);
+  }
   if (markdownImageCount > 0 && renderedImageCount < markdownImageCount) artifacts.push('missing_rendered_images');
   if (markdownHeadingCount >= 2 && renderedHeadingCount < Math.min(markdownHeadingCount, 2)) {
     artifacts.push('missing_rendered_headings');
   }
   if (markdownTableRowCount >= 2 && renderedTableCount === 0) {
     artifacts.push('missing_rendered_table');
+  }
+  const markdownHeaders = extractMarkdownTableHeaders(sourceMarkdown);
+  if (markdownHeaders.length > 0 && renderedTableCount > 0) {
+    const renderedHeaders = extractRenderedTableHeaders(renderedHtml);
+    if (markdownHeaders.length === renderedHeaders.length) {
+      const mismatch = markdownHeaders.find((header, index) => {
+        const renderedHeader = renderedHeaders[index] || [];
+        if (renderedHeader.length < header.length) return true;
+        return header.some((cell, cellIndex) => renderedHeader[cellIndex] !== cell);
+      });
+      if (mismatch) {
+        artifacts.push('rendered_table_header_mismatch');
+        const renderedPreview = (renderedHeaders[markdownHeaders.indexOf(mismatch)] || []).join(' | ');
+        artifactSamples.push(`${mismatch.join(' | ')} => ${renderedPreview}`);
+      }
+    }
   }
 
   return {

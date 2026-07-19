@@ -298,8 +298,10 @@ function parseKrw(textValue: string): { amount: number | null; currency: string 
 }
 
 function parseUsd(textValue: string): number | null {
-  const m = textValue.match(/(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)/i);
-  return m ? Number(m[1]) : null;
+  const prefixed = textValue.match(/(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)/i);
+  if (prefixed) return Number(prefixed[1]);
+  const suffixed = textValue.match(/(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|달러)/i);
+  return suffixed ? Number(suffixed[1]) : null;
 }
 
 function detectCountry(source: string): string | null {

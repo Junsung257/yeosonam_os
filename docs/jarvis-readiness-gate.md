@@ -28,6 +28,7 @@ The admin card should be treated as an operational indicator. The release source
 ```text
 npm run verify:jarvis-readiness:ci
 npm run verify:jarvis-all-scenarios -- --json
+npm run verify:jarvis-all-scenarios:vercel
 ```
 
 ## Scoring
@@ -50,8 +51,9 @@ The gate uses a 100-point readiness model:
 
 | Area | Points |
 |---|---:|
-| Jarvis core release gate | 40 |
+| Jarvis core release gate | 35 |
 | Customer inquiry automation | 20 |
+| Jarvis OS feature coverage | 5 |
 | Autopilot and HITL controls | 15 |
 | Free-travel 100 scenarios | 20 |
 | Live RAG index | 5 |
@@ -60,7 +62,33 @@ The gate uses a 100-point readiness model:
 
 ## Current Evidence
 
-Latest local result:
+Latest production-env result:
+
+```text
+npm run verify:jarvis-all-scenarios:vercel
+
+Jarvis all-scenarios readiness: PASS 100/100
+- PASS jarvis-core-readiness: 35/35 100/100
+- PASS customer-inquiry-automation: 20/20 100/100
+- PASS jarvis-feature-coverage: 5/5 100/100
+- PASS autopilot-hitl: 15/15 agent-action registry and HITL tests passed
+- PASS free-travel-100: 20/20 100/100, P0 failures=0
+- PASS live-rag-index: 5/5 99/100 ready
+```
+
+Latest live RAG audit evidence:
+
+```text
+npm run audit:jarvis-rag:vercel
+
+totalRows=1418
+sampledRows=250
+qualityScore=99/100
+readinessLevel=ready
+coverage=package, blog, attraction, policy
+```
+
+Latest readiness result:
 
 ```text
 Jarvis readiness: PASS 100/100

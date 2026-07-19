@@ -78,6 +78,22 @@ describe('computeSeoScore', () => {
     expect(result.details.filter((detail) => detail.status === 'fail').length).toBeGreaterThan(0);
   });
 
+  it('recognizes the verified runtime CTA for informational articles without body sales links', () => {
+    const result = computeSeoScore({
+      blogHtml: '# 삿포로 식비\n\n## 하루 예산\n\n관련 내용을 충분히 설명합니다.',
+      slug: 'sapporo-food-budget-guide',
+      blogType: 'info',
+      primaryKeyword: '삿포로 식비',
+      destination: '삿포로',
+      hasRuntimeInformationalCta: true,
+    });
+
+    expect(result.details.find((detail) => detail.name === 'internal_links_cta')).toMatchObject({
+      score: 7,
+      status: 'pass',
+    });
+  });
+
   it('does not count markdown image and link targets as long raw urls', () => {
     const longUrl = 'https://images.pexels.com/photos/123456789/pexels-photo-123456789.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200&utm_source=very-long-tracking-value';
     const result = computeSeoScore({

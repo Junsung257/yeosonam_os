@@ -17,21 +17,27 @@ import { ingestSlackRawEvent } from '@/lib/slack-ingest';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { safeEqualString } from '@/lib/timing-safe';
 
-async function verifySlackSignature(req: NextRequest, body: string): Promise<boolean> {
+type SignatureVerification = 'valid' | 'invalid' | 'misconfigured';
+
+async function verifySlackSignature(req: NextRequest, body: string): Promise<SignatureVerification> {
   const signingSecret = getSecret('SLACK_SIGNING_SECRET');
-  if (!signingSecret) return true;
+  if (!signingSecret) {
+    const isLocalDevelopment = process.env.NODE_ENV !== 'production'
+      && ['localhost', '127.0.0.1', '::1'].includes(req.nextUrl.hostname);
+    return isLocalDevelopment ? 'valid' : 'misconfigured';
+  }
 
   const timestamp = req.headers.get('x-slack-request-timestamp');
   const slackSig = req.headers.get('x-slack-signature');
-  if (!timestamp || !slackSig) return false;
+  if (!timestamp || !slackSig) return 'invalid';
 
-  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return 'invalid';
 
   const hmac = createHmac('sha256', signingSecret)
     .update(`v0:${timestamp}:${body}`)
     .digest('hex');
 
-  return safeEqualString(`v0=${hmac}`, slackSig);
+  return safeEqualString(`v0=${hmac}`, slackSig) ? 'valid' : 'invalid';
 }
 
 function deepExtractText(
@@ -84,6 +90,17 @@ function unescapeSlackEntities(text: string): string {
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
 
+  const signatureVerification = await verifySlackSignature(request, rawBody);
+  if (signatureVerification === 'misconfigured') {
+    return apiResponse(
+      { code: 'WEBHOOK_SECRET_MISSING', error: 'webhook verification unavailable' },
+      { status: 503 },
+    );
+  }
+  if (signatureVerification === 'invalid') {
+    return apiResponse({ error: 'signature verification failed' }, { status: 401 });
+  }
+
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(rawBody) as Record<string, unknown>;
@@ -93,10 +110,6 @@ export async function POST(request: NextRequest) {
 
   if (payload.type === 'url_verification') {
     return apiResponse({ challenge: payload.challenge });
-  }
-
-  if (!await verifySlackSignature(request, rawBody)) {
-    return apiResponse({ error: 'signature verification failed' }, { status: 401 });
   }
 
   const retryNum = request.headers.get('x-slack-retry-num');

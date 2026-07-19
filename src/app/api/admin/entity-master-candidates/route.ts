@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import {
   resolveItineraryEntityCandidate,
@@ -7,6 +8,20 @@ import {
 } from '@/lib/itinerary-entity-resolution-engine';
 import { getGooglePlacesBudgetFromEnv } from '@/lib/google-places-entity-verifier';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
+
+export const dynamic = 'force-dynamic';
+
+const PRIVATE_NO_STORE = 'private, no-store, max-age=0';
+
+type RouteHandler = (request: NextRequest) => Promise<NextResponse>;
+
+function withPrivateNoStore(handler: RouteHandler): RouteHandler {
+  return async (request: NextRequest) => {
+    const response = await handler(request);
+    response.headers.set('Cache-Control', PRIVATE_NO_STORE);
+    return response;
+  };
+}
 
 const LIST_FIELDS = [
   'id',
@@ -134,7 +149,7 @@ async function persistDecision(candidate: Record<string, unknown>, decision: Ent
   return data;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ candidates: [] });
 
   try {
@@ -173,7 +188,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
+async function patchHandler(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
 
   try {
@@ -347,3 +362,6 @@ export async function PATCH(request: NextRequest) {
     );
   }
 }
+
+export const GET = withPrivateNoStore(withAdminGuard(getHandler));
+export const PATCH = withPrivateNoStore(withAdminGuard(patchHandler));

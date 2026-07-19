@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabase, getSupabaseAdmin, supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 // ── SELECT 상수 ──────────────────────────────────────────────
 
@@ -183,7 +184,7 @@ export async function getApprovedPackages(destination?: string, keyword?: string
     let query = supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, category, price, price_dates, status, internal_code, short_code')
-      .in('status', ['active', 'approved']);
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
     if (destination) query = query.eq('destination', destination);
     if (keyword) {
@@ -223,6 +224,7 @@ export async function approvePackage(packageId: string) {
       .from('travel_packages')
       .update({
         status: 'approved',
+        publication_state: 'blocked',
         audit_status: 'clean',
         audit_checked_at: new Date().toISOString(),
         baseline_requested_at: new Date().toISOString(),

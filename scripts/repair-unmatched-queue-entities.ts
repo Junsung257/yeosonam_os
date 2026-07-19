@@ -216,7 +216,8 @@ export function findExistingAttractionMatchForActivity(
 function actionFor(classified: ClassifiedUnmatched): PlannedAction {
   if (classified.suggestedAction === 'structure_non_master') return 'close_nonblocking_entity';
   if (['meal', 'transfer', 'hotel', 'shopping'].includes(classified.category)) return 'close_nonblocking_entity';
-  if (['notice', 'free_time', 'price_noise'].includes(classified.category)) return 'ignore_noise';
+  if (['free_time', 'price_noise'].includes(classified.category)) return 'ignore_noise';
+  if (classified.category === 'notice') return 'keep_manual_review';
   if (classified.category === 'attraction') return 'keep_attraction_gap';
   return 'keep_manual_review';
 }

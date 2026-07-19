@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyMobileProofRefreshCandidate,
+  parseMobileProofRefreshStatusFilter,
   selectMobileProofRefreshCandidates,
   summarizeMobileProofRefreshCandidates,
 } from './mobile-proof-refresh-candidates';
@@ -15,8 +16,28 @@ const passProof = (updatedAt = '2026-07-01T00:00:00.000Z') => ({
     customer_visible_hash: 'visible',
     surfaces: ['packages', 'lp'],
     surface_results: [
-      { surface: 'packages', status: 'pass', screen_hash: 'p-screen', customer_visible_hash: 'p-visible' },
-      { surface: 'lp', status: 'pass', screen_hash: 'l-screen', customer_visible_hash: 'l-visible' },
+      {
+        surface: 'packages',
+        status: 'pass',
+        screen_hash: 'p-screen',
+        customer_visible_hash: 'p-visible',
+        checks: [
+          { name: 'packages_reservation_cta_visible', ok: true },
+          { name: 'packages_reservation_sheet_opens', ok: true },
+          { name: 'packages_reservation_sheet_has_product_context', ok: true },
+        ],
+      },
+      {
+        surface: 'lp',
+        status: 'pass',
+        screen_hash: 'l-screen',
+        customer_visible_hash: 'l-visible',
+        checks: [
+          { name: 'lp_lead_cta_visible', ok: true },
+          { name: 'lp_lead_sheet_opens', ok: true },
+          { name: 'lp_lead_sheet_has_customer_copy', ok: true },
+        ],
+      },
     ],
   },
 });
@@ -58,5 +79,88 @@ describe('mobile proof refresh candidates', () => {
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.id).toBe('stale');
+  });
+
+  it('parses explicit status filters without changing the safe default', () => {
+    expect(parseMobileProofRefreshStatusFilter(null, ['active', 'approved'])).toEqual(['active', 'approved']);
+    expect(parseMobileProofRefreshStatusFilter('pending_review,active,pending_review', ['active'])).toEqual([
+      'pending_review',
+      'active',
+    ]);
+  });
+
+  it('classifies hash-only proof as CTA reproof work', () => {
+    const candidate = classifyMobileProofRefreshCandidate({
+      id: 'hash-only',
+      updated_at: '2026-07-01T00:00:00.000Z',
+      audit_report: {
+        mobile_browser_proof: {
+          status: 'pass',
+          checked_at: '2026-07-01T00:01:00.000Z',
+          package_updated_at: '2026-07-01T00:00:00.000Z',
+          source: 'hwp-mobile-browser-proof',
+          screen_hash: 'screen',
+          customer_visible_hash: 'visible',
+          surfaces: ['packages', 'lp'],
+          surface_results: [
+            { surface: 'packages', status: 'pass', screen_hash: 'p-screen', customer_visible_hash: 'p-visible' },
+            { surface: 'lp', status: 'pass', screen_hash: 'l-screen', customer_visible_hash: 'l-visible' },
+          ],
+        },
+      },
+    });
+
+    expect(candidate?.reason).toBe('cta_missing');
+  });
+
+  it('classifies legacy proof without revision metadata as reproof work when the row has a stored revision', () => {
+    const candidate = classifyMobileProofRefreshCandidate({
+      id: 'legacy-proof',
+      status: 'active',
+      package_revision: 7,
+      updated_at: '2026-07-01T00:00:00.000Z',
+      audit_report: passProof(),
+    });
+
+    expect(candidate?.reason).toBe('hash_missing');
+    expect(candidate?.detail).toContain('package revision is missing');
+  });
+
+  it('classifies fetch-only AutoQA proof as source-invalid browser reproof work', () => {
+    const candidate = classifyMobileProofRefreshCandidate({
+      id: 'fetch-proof',
+      status: 'pending_review',
+      package_revision: 7,
+      updated_at: '2026-07-01T00:00:00.000Z',
+      audit_report: {
+        mobile_browser_proof: {
+          ...passProof().mobile_browser_proof,
+          source: 'auto-mobile-fetch-proof',
+          package_revision: 8,
+          public_snapshot_hash: 'snapshot-hash',
+          surface_results: [
+            {
+              surface: 'packages',
+              status: 'pass',
+              screen_hash: 'p-screen',
+              customer_visible_hash: 'p-visible',
+              public_snapshot_hash: 'snapshot-hash',
+              checks: [],
+            },
+            {
+              surface: 'lp',
+              status: 'pass',
+              screen_hash: 'l-screen',
+              customer_visible_hash: 'l-visible',
+              public_snapshot_hash: 'snapshot-hash',
+              checks: [],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(candidate?.reason).toBe('source_invalid');
+    expect(candidate?.detail).toContain('auto-mobile-fetch-proof');
   });
 });

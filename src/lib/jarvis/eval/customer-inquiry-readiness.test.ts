@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CUSTOMER_ANSWER_QUALITY_CASES,
+  evaluateCustomerAnswerQualityCase,
+} from './customer-answer-quality';
+import { CUSTOMER_ANSWER_GUARD_CASES } from '../customer-answer-guard';
+import {
   CUSTOMER_INQUIRY_SCENARIOS,
   CUSTOMER_SUPPORT_SOP_MATRIX,
   evaluateCustomerInquiryReadiness,
@@ -12,7 +17,11 @@ describe('customer inquiry readiness', () => {
 
     expect(summary.status).toBe('pass');
     expect(summary.score).toBe(100);
-    expect(summary.passed).toBe(CUSTOMER_INQUIRY_SCENARIOS.length);
+    expect(summary.passed).toBe(
+      CUSTOMER_INQUIRY_SCENARIOS.length
+      + CUSTOMER_ANSWER_QUALITY_CASES.length
+      + CUSTOMER_ANSWER_GUARD_CASES.length,
+    );
   });
 
   it('approval-gates Korean refund, payment cancel, and price mutation requests', () => {
@@ -46,5 +55,36 @@ describe('customer inquiry readiness', () => {
     expect(sopResults.every((result) => result.passed)).toBe(true);
     expect(sopResults.some((result) => result.checks.some((check) => check.name === 'sop_handoff_required' && check.actual === true))).toBe(true);
     expect(sopResults.every((result) => result.checks.some((check) => check.name === 'sop_forbidden_auto_execute' && check.actual === true))).toBe(true);
+  });
+
+  it('includes research-informed answer quality checks in the readiness score', () => {
+    const summary = evaluateCustomerInquiryReadiness();
+    const answerQualityResults = summary.results.filter((result) => result.id.startsWith('answer-'));
+
+    expect(CUSTOMER_ANSWER_QUALITY_CASES.length).toBeGreaterThanOrEqual(5);
+    expect(answerQualityResults).toHaveLength(CUSTOMER_ANSWER_QUALITY_CASES.length);
+    expect(answerQualityResults.every((result) => result.passed)).toBe(true);
+    expect(answerQualityResults.every((result) => result.checks.some((check) => check.name === 'answer_avoids_dead_end' && check.actual === true))).toBe(true);
+    expect(answerQualityResults.every((result) => result.checks.some((check) => check.name === 'answer_avoids_unsupported_promise' && check.actual === true))).toBe(true);
+  });
+
+  it('includes runtime customer answer guard checks in the readiness score', () => {
+    const summary = evaluateCustomerInquiryReadiness();
+    const guardResults = summary.results.filter((result) => result.id.startsWith('guard-'));
+
+    expect(CUSTOMER_ANSWER_GUARD_CASES.length).toBeGreaterThanOrEqual(5);
+    expect(guardResults).toHaveLength(CUSTOMER_ANSWER_GUARD_CASES.length);
+    expect(guardResults.every((result) => result.passed)).toBe(true);
+    expect(guardResults.some((result) => result.checks.some((check) => check.name === 'was_guarded' && check.actual === true))).toBe(true);
+    expect(guardResults.some((result) => result.checks.some((check) => check.name === 'was_guarded' && check.actual === false))).toBe(true);
+  });
+
+  it('requires source caveats for volatile visa and passport guidance', () => {
+    const result = evaluateCustomerAnswerQualityCase(
+      CUSTOMER_ANSWER_QUALITY_CASES.find((item) => item.id === 'visa-passport-changing-rules')!,
+    );
+
+    expect(result.passed).toBe(true);
+    expect(result.checks.find((check) => check.name === 'answer_source_caveat')?.actual).toBe(true);
   });
 });

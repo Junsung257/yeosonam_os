@@ -18,8 +18,9 @@ const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const FLIGHT_CODE_RE = /\b([A-Z][A-Z0-9]|[0-9][A-Z])\s*(\d{3,4})\b/;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(\uc6d0|KRW|USD|\$)?/i;
 const ABBREVIATED_PRICE_RE = /^[1-9]\d{1,2},\s*-$/;
-const USD_RE = /\$\s*(\d+(?:\.\d+)?)/;
-const DAY_HEADER_RE = /^(?:day\s*(\d{1,2})(?:\b|\s|$)|\uc81c\s*(\d{1,2})\s*\uc77c(?:\s|$)|(\d{1,2})\s*\uc77c\ucc28(?:\s|$))/i;
+const USD_RE = /(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/i;
+const USD_RE_GLOBAL = /(?:USD|US\$|\$)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:USD|US\$|\$|\uB2EC\uB7EC)/gi;
+const DAY_HEADER_RE = /^(?:day\s*(\d{1,2})(?:\b|\s|$)|\uc81c\s*(\d{1,2})\s*\uc77c(?:\uCC28)?(?:\s|$)|(\d{1,2})\s*\uc77c(?:\uCC28)?(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
 const PRICE_HEADER_RE = /^price\s*[:\-]|^(?:\uac00\uaca9|\uc694\uae08)\s*[:\-]?/i;
 const PRICE_TABLE_OR_DOCUMENT_HEADER_RE =
@@ -38,7 +39,7 @@ const FLIGHT_WORD_RE = /flight|\ud56d\uacf5|\ucd9c\ubc1c|\ub3c4\ucc29|\uacf5\ud5
 const TRANSFER_RE = /transfer|\uc774\ub3d9|\ucc28\ub7c9|\ubc84\uc2a4|\uc804\uc6a9\ucc28\ub7c9|\uc1a1\uc601|\ud53d\uc5c5/i;
 const MEAL_RE = /breakfast|lunch|dinner|\uc870\uc2dd|\uc911\uc2dd|\uc11d\uc2dd|\ud2b9\uc2dd|meal/i;
 const HOTEL_RE = /hotel|resort|\uc219\ubc15|\ud638\ud154|\ub9ac\uc870\ud2b8|\ud480\s*\ube4c\ub77c|\ube4c\ub77c|\uac1d\uc2e4|\uccb4\ud06c\uc778|\uccb4\ud06c\uc544\uc6c3/i;
-const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\uc635\uc158|\ucd94\ucc9c\s*(?:\uad00\uad11|\uc120\ud0dd)|\ud604\uc9c0\s*\uc9c0\ubd88/i;
+const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\uc635\uc158|\ucd94\ucc9c\s*(?:\uad00\uad11|\uc120\ud0dd|\ud574\uc591\s*\uc2a4\ud3ec\uce20)|\ud574\uc591\s*\uc2a4\ud3ec\uce20|\ud604\uc9c0\s*\uc9c0\ubd88/i;
 const GOLF_OPTION_DETAIL_RE =
   /(?:\uace8\ud504\uc7a5\s*\uc815\ubcf4|\ucf54\uc2a4\uc815\ubcf4|\ud2f0\s*\ud0c0\uc784|\uadf8\ub9b0\ud53c|\uce90\ub514\ud53c|\uce74\ud2b8\ud53c|\uce90\ub514\s*\ud301|\uc2f1\uae00\s*\uce74\ud2b8|\ud074\ub7fd\s*\ub80c\ud0c8)/i;
 const GOLF_ROUND_RE =
@@ -46,7 +47,7 @@ const GOLF_ROUND_RE =
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const SHOPPING_DETAIL_RE = /\uae30\ub150\ud488|\ud1a0\uc0b0\ud488|\uac74\uac15\ubcf4\uc870\uc2dd\ud488|\uc7a1\ud654|\uc9c4\uc8fc/i;
 const INCLUDED_ACTIVITY_RE = /\ub514\uc2a4\ucee4\ubc84\ub9ac\s*\ud22c\uc5b4|\uc2dc\ub0b4\uad00\uad11|\uc2a4\ucfe0\ubc84\ub2e4\uc774\ube59|\uc218\uc601\uc7a5\s*\uc2e4\uc2b5|\uc624\uc77c\ub9c8\uc0ac\uc9c0|\ud638\ud551\ud22c\uc5b4/i;
-const OPTION_PRICE_CANDIDATE_RE = /\uc120\ud0dd|\uc635\uc158|\ud638\ud551|\ud30c\ub77c\uc138\uc77c\ub9c1|\uc528\uc6cc\ud06c|\ub2e4\uc774\ube59|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\uc1fc|\ud22c\uc5b4/i;
+const OPTION_PRICE_CANDIDATE_RE = /\uc120\ud0dd|\uc635\uc158|\ud638\ud551|\ubc14\ub098\ub098\s*\ubcf4\ud2b8|\ud30c\ub77c\uc138\uc77c\ub9c1|\ud328\ub7ec\uc138\uc77c\ub9c1|\ud30c\ub77c\uc140\ub9c1|\uc81c\ud2b8\s*\uc2a4\ud0a4|\uc528\s*\uc6cc\ud06c|\uc528\s*\uc6cc\ud0b9|\ub2e4\uc774\ube59|\ub9c8\uc0ac\uc9c0|\uc2a4\ud30c|\uc1fc|\ud22c\uc5b4/i;
 const TOUR_ACTIVITY_LINE_RE = /(?:\uc790\uc720\s*\uad00\uad11|\uad00\uad11|\ud22c\uc5b4|\ub9c8\ucf13|\uc2dc\uc7a5|\uc57c\uc2dc\uc7a5|\uc0ac\uc6d0|\ud574\ubcc0|\ube44\uce58|\ub18d\uc7a5|\uc218\uc6a9\uc18c|\ud3ec\ud1a0\uc874|\uc57c\uacbd|\ubc14\uc790|\uc120\uc14b\ud0c0\uc6b4|\ud56b\ud50c\s*\uce74\ud398)/i;
 const ACTIVITY_NOTE_LINE_RE = /(?:\uc900\ube44\ubb3c|\uc7a5\ube44|\uad6c\uba85\uc870\ub07c|\ubbf8\ub07c|\uc544\ucfe0\uc544\uc288\uc988|\uc218\uc601\ubcf5|\uc120\ud06c\ub9bc|\uc5ec\ubc8c\s*\uc637)/i;
 const BROAD_TOUR_ACTIVITY_LINE_RE = /(?:\uc790\uc720\s*\uad00\uad11|\uad00\uad11|\ud22c\uc5b4|\ub9c8\ucf13|\uc2dc\uc7a5|\uc57c\uc2dc\uc7a5|\uc0ac\uc6d0|\ud574\ubcc0|\ube44\uce58|\ub18d\uc7a5|\uc218\uc6a9\uc18c|\ud3ec\ud1a0\uc874|\uc57c\uacbd|\ubc14\uc790|\uc120\uc14b\ud0c0\uc6b4|\ud56b\ud50c\s*\uce74\ud398|\ud14c\ub9c8\ud30c\ud06c|\uc6cc\ud130\ud30c\ud06c|\ube0c\ub9bf\uc9c0|\uc0ac\ud30c\ub9ac|\ub3d9\ubb3c\uc6d0|\uc2dd\ubb3c\uc6d0)/i;
@@ -73,6 +74,8 @@ const BAKEKDU_DESCRIPTION_FRAGMENT_RE =
 
 const TIME_WITH_ARRIVAL_OFFSET_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+?\d+\))?$/;
 const SOURCE_EVIDENCE_HEADER_RE = /^\[\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\]$/;
+const POST_ITINERARY_PRICE_EVIDENCE_SECTION_RE =
+  /^(?:\[\s*\uacf5\ud1b5\s*\uac00\uaca9\ud45c\s*\uc6d0\ubb38\s*\uadfc\uac70\s*\]|.*\bPKG\b.*(?:\d+\s*\ubc15\s*\d+\s*\uc77c|\d+N\d+D)|\*{2,}.*\ubc1c\uad8c\uc870\uac74.*\*{2,})/i;
 const HOLIDAY_PRICE_NOISE_RE = /^[\s\u25cf\u2605\u2606*]+.*\uc5f0\ud734\s*\ucd9c\ubc1c/;
 const KOREAN_REGION_CELL_ONLY_RE =
   /^(?:\uacc4\ub9bc|\uc591\uc0ad|\uc6a9\uc2b9|\ubc31\uc0ac|\uc720\uc8fc|\uc11c\uc548|\ud654\uc0b0|\uc2dc\uc988\uc624\uce74|\uc5f0\uae38|\ub3c4\ubb38|\uc6a9\uc815|\uc1a1\uac15\ud558|\uc774\ub3c4\ubc31\ud558|\ub0a8\ud30c|\ubd81\ud30c|\uc11c\ud30c)$/;
@@ -173,9 +176,9 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (INCLUDED_ACTIVITY_RE.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(text)) return 'activity';
   if (/\ub9c8\uc0ac\uc9c0|\uc628\ucc9c\uc695/.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ud604\uc9c0\uc9c0\ubd88/i.test(text)) return 'activity';
   if (/(?:\uc1fc|show|\ud06c\ub8e8\uc988|\uc720\ub78c\uc120|\uccb4\ud5d8)/i.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ud604\uc9c0\uc635\uc158/i.test(text)) return 'activity';
+  if (FREE_TIME_RE.test(text)) return 'free_time';
   if (OPTION_RE.test(text)) return 'option';
   if (SHOPPING_RE.test(text) || SHOPPING_DETAIL_RE.test(text)) return 'shopping';
-  if (FREE_TIME_RE.test(text)) return 'free_time';
   if (NOTICE_RE.test(text)) return 'notice';
   if (INCLUDED_ACTIVITY_RE.test(text)) return 'activity';
   if (/^\s*[▶●•·◆◇■□★☆+\-○▪◦*♣]/.test(text) && TOUR_ACTIVITY_LINE_RE.test(text)) return 'activity';
@@ -205,12 +208,27 @@ function optionCategory(text: string): V3OptionCandidate['category'] {
 
 function splitOptionLine(line: V3SourceLine): Array<{ text: string; line: V3SourceLine }> {
   const text = line.quote.trim();
-  if (!USD_RE.test(text) || !/[,\uff0c，]/.test(text)) return [{ text, line }];
-  return text
-    .split(/\s*[,，]\s*/)
-    .map(segment => segment.trim())
+  if (!USD_RE.test(text)) return [{ text, line }];
+  const commaSegments = /[,\uff0c，]/.test(text)
+    ? text.split(/\s*[,，]\s*/)
+    : [text];
+  return commaSegments
+    .flatMap(segment => {
+      const trimmed = segment.trim();
+      const slashSegments = trimmed.split(/\s*\/\s*/).map(part => part.trim()).filter(Boolean);
+      const pricedSegmentCount = slashSegments.filter(part => USD_RE.test(part)).length;
+      return pricedSegmentCount >= 2 ? slashSegments : [trimmed];
+    })
     .filter(segment => segment.length > 0)
     .map(segment => ({ text: segment, line }));
+}
+
+function parseUsdAmount(text: string): number | null {
+  const match = text.match(USD_RE);
+  const value = match?.[1] ?? match?.[2];
+  if (!value) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
 }
 
 function optionDurationMinutes(text: string): number | null {
@@ -224,12 +242,14 @@ function optionDurationMinutes(text: string): number | null {
 function normalizeOptionName(text: string): string {
   return text
     .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b]+/, '')
-    .replace(/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uad00\uad11|\ub9c8\uc0ac\uc9c0|\uc2dd\uc0ac)\s*[:：]\s*/i, '')
+    .replace(/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\ud574\uc591\s*\uc2a4\ud3ec\uce20|\ud574\uc591\s*\uc2a4\ud3ec\uce20|\uad00\uad11|\ub9c8\uc0ac\uc9c0|\uc2dd\uc0ac)\s*[:：]\s*/i, '')
     .replace(/\(\s*\$\s*\d+(?:\.\d+)?\s*\)/g, '')
     .replace(/\s*\/\s*\ud604\uc9c0\s*\uc635\uc158\uac00\s*(?:\/\s*\uc778)?/gi, '')
-    .replace(USD_RE, '')
+    .replace(USD_RE_GLOBAL, '')
+    .replace(/\(\s*\)/g, '')
     .replace(/\s*\/\s*\uc778/g, '')
     .replace(/\s*\uc778\.?$/g, '')
+    .replace(/\s*\uB4F1$/g, '')
     .replace(/\(\s*\ud301\ubcc4\ub3c4\s*\)/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -352,6 +372,18 @@ function resolveSeparatedArrivalTime(
   return null;
 }
 
+function itineraryLinesBeforePriceEvidenceTail(sectionLines: V3SourceLine[]): V3SourceLine[] {
+  let seenItineraryDay = false;
+  for (let index = 0; index < sectionLines.length; index++) {
+    const trimmed = sectionLines[index].quote.trim();
+    if (DAY_HEADER_RE.test(trimmed)) seenItineraryDay = true;
+    if (seenItineraryDay && POST_ITINERARY_PRICE_EVIDENCE_SECTION_RE.test(trimmed)) {
+      return sectionLines.slice(0, index);
+    }
+  }
+  return sectionLines;
+}
+
 function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_boundaries'][number]): V3LedgerVariant {
   const sectionLines = lines.slice(boundary.line_start - 1, boundary.line_end);
   const linePrices = sectionLines
@@ -366,16 +398,17 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     }))
     .filter(price => price.amount > 0);
   const prices = linePrices.length > 0 ? linePrices : buildPriceCalendarFromIR(sectionLines, boundary.title_hint);
+  const itinerarySectionLines = itineraryLinesBeforePriceEvidenceTail(sectionLines);
 
-  const flightRows = sectionLines
+  const flightRows = itinerarySectionLines
     .map((line, sectionIndex) => ({ line, sectionIndex, match: line.quote.match(FLIGHT_CODE_RE) }))
     .filter((row): row is { line: V3SourceLine; sectionIndex: number; match: RegExpMatchArray } => Boolean(row.match));
   const flight_segments = flightRows.map(({ line, match, sectionIndex }, index) => {
     const times = [...line.quote.matchAll(TIME_RE_GLOBAL)].map(m => m[0]);
-    const resolvedTimes = resolveAdjacentFlightTimes(sectionLines, sectionIndex, times);
+    const resolvedTimes = resolveAdjacentFlightTimes(itinerarySectionLines, sectionIndex, times);
     let arrTime = resolvedTimes.arrTime;
     if (!arrTime) {
-      for (const next of sectionLines.slice(sectionIndex + 1, sectionIndex + 4)) {
+      for (const next of itinerarySectionLines.slice(sectionIndex + 1, sectionIndex + 4)) {
         if (FLIGHT_CODE_RE.test(next.quote)) break;
         if (!/\ub3c4\ucc29/.test(next.quote)) continue;
         const nextTime = next.quote.match(TIME_RE)?.[0] ?? null;
@@ -385,7 +418,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
         }
       }
     }
-    arrTime ??= resolveSeparatedArrivalTime(sectionLines, sectionIndex);
+    arrTime ??= resolveSeparatedArrivalTime(itinerarySectionLines, sectionIndex);
     return {
       leg: index === 0 ? 'outbound' as const : index === 1 ? 'inbound' as const : 'unknown' as const,
       code: `${match[1]}${match[2]}`,
@@ -400,7 +433,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   let inRemarkSection = false;
   let seenItineraryDay = false;
   let itineraryClosed = false;
-  for (const line of sectionLines) {
+  for (const line of itinerarySectionLines) {
     const trimmed = line.quote.trim();
     if (/^(REMARK|비고|주의\s*사항|공지\s*사항)\s*$/i.test(trimmed)) {
       inRemarkSection = true;
@@ -456,7 +489,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     .filter(candidate => !isOptionHeadingOrNonCustomerOption(candidate.text))
     .filter(candidate => isCustomerOptionalTourCandidate(candidate.text));
   const options = optionCandidates.map(candidate => {
-    const usd = candidate.text.match(USD_RE);
+    const usdAmount = parseUsdAmount(candidate.text);
     const day = [...days].reverse().find(d => d.events.some(event => event.evidence.line_start <= candidate.line.lineNumber));
     return {
       region: null,
@@ -464,8 +497,8 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       raw_name: candidate.text,
       normalized_name: normalizeOptionName(candidate.text),
       category: optionCategory(candidate.text),
-      price_amount: usd ? Number(usd[1]) : null,
-      currency: usd ? 'USD' : null,
+      price_amount: usdAmount,
+      currency: usdAmount == null ? null : 'USD',
       duration_minutes: optionDurationMinutes(candidate.text),
       day_number: day?.day ?? null,
       evidence: evidenceFromLines(lines, candidate.line.lineNumber),

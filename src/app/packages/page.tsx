@@ -30,7 +30,7 @@ export default function PackagesPage() {
   return (
     <>
       <h1 className="sr-only">여소남 패키지 여행 상품</h1>
-      <Link href="/group-inquiry" className="sr-only">여행 상품 문의</Link>
+      <Link href="/group" className="sr-only">여행 상품 문의</Link>
       <Suspense fallback={<Loading />}>
         <PackagesClient />
       </Suspense>

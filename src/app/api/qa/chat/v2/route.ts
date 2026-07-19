@@ -18,6 +18,7 @@ import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase'
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages'
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint'
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor'
+import { applyCustomerAnswerGuard } from '@/lib/jarvis/customer-answer-guard'
 import { critiqueReply, applyCritique } from '@/lib/jarvis/response-critic'
 import { rateLimitAI } from '@/lib/rate-limiter'
 import { resolveAffiliateScopeId } from '@/lib/affiliate-scope'
@@ -322,6 +323,8 @@ export async function POST(req: NextRequest) {
             destination: p.destination,
             duration: p.duration,
             price: p.price,
+            product_summary: p.product_summary,
+            product_highlights: p.product_highlights,
             inclusions: p.inclusions,
             itinerary: p.itinerary,
           })),
@@ -373,7 +376,7 @@ export async function POST(req: NextRequest) {
         const critique = await critiqueReply({
           userQuestion: message,
           packageContext: packages.length > 0
-            ? packages.map((p: any) => `[${p.id}] ${p.title} ${p.destination} ${p.price ? p.price.toLocaleString() + '원' : ''}`).join('\n')
+            ? packages.map((p: any) => `[${p.id}] ${p.title} ${p.destination} ${p.price ? p.price.toLocaleString() + '원' : ''} ${p.product_summary ?? ''}`).join('\n')
             : '',
           reply: fullResponse || finalResult?.response || '',
           recommendedPackageIds,
@@ -385,15 +388,29 @@ export async function POST(req: NextRequest) {
           critique,
         )
 
-        let finalReply = gated.wasGated ? gated.reply : (fullResponse || finalResult?.response || '')
+        const rawReply = fullResponse || finalResult?.response || ''
+        let finalReply = gated.wasGated ? gated.reply : rawReply
         const riskEscalate = requiresApproval(scoreRiskLevel({ message }))
-        const finalEscalate = gated.escalate || riskEscalate || !finalReply.trim()
+        let finalEscalate = gated.escalate || riskEscalate || !finalReply.trim()
         if (!finalReply.trim()) {
           finalReply = '정확한 안내가 필요한 문의입니다. 담당자가 확인 후 이어서 안내드릴게요.'
           emitSSE('text', { content: finalReply })
         }
 
         // critique 결과 영속화
+        const answerGuard = applyCustomerAnswerGuard({
+          message,
+          reply: finalReply,
+          ctx: { ...ctx, surface: 'customer', userRole: 'customer' },
+        })
+        if (answerGuard.wasGuarded) {
+          finalReply = answerGuard.reply
+          finalEscalate = finalEscalate || answerGuard.escalate
+        }
+        if (finalReply.trim() && finalReply !== rawReply) {
+          emitSSE('text_final', { content: finalReply })
+        }
+
         void recordCritiqueResult({
           source: 'qa_chat',
           sessionId: sessionId ?? null,
@@ -406,9 +423,13 @@ export async function POST(req: NextRequest) {
           severity: critique.severity,
           issues: critique.issues ?? [],
           userQuestion: message,
-          reply: fullResponse || finalResult?.response || '',
-          correctedReply: gated.wasGated ? finalReply : null,
-          wasGated: gated.wasGated,
+          reply: rawReply,
+          correctedReply: gated.wasGated || answerGuard.wasGuarded ? finalReply : null,
+          wasGated: gated.wasGated || answerGuard.wasGuarded,
+          metadata: {
+            answer_guard_applied: answerGuard.wasGuarded,
+            answer_guard_issues: answerGuard.issues,
+          },
         })
 
         // ── 9. Customer Journey 업데이트 ──
@@ -428,6 +449,8 @@ export async function POST(req: NextRequest) {
             destination: p.destination,
             duration: p.duration,
             price: p.price,
+            product_summary: p.product_summary,
+            product_highlights: p.product_highlights,
             sellingPrice: p.price ? applyCommission(p.price) : null,
             commissionRate: COMMISSION_RATE,
           }))

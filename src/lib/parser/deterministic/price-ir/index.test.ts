@@ -129,6 +129,41 @@ ${MONTH_KO}7
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-20', adult_price: 879000 }));
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-06-17', adult_price: 829000 }));
   });
+
+  it('uses later monthly rows as corrections and repairs one missing trailing zero', () => {
+    const rawText = [
+      '7\uC6D4',
+      '\u26057/24\uAE4C\uC9C0 \uC120\uBC1C\uAD8C \uC870\uAC74\u2605',
+      '7/19, 24',
+      '1,099,000\uC6D0',
+      '8\uC6D4',
+      '8/2,7,8,12,16,20,27',
+      '1,069,000\uC6D0',
+      '8/7,8,16,20',
+      '1,099,000\uC6D0',
+      '8/15',
+      '1,199,00\uC6D0',
+      '9\uC6D4',
+      '9/4,5,10,11,12,17,21',
+      '1,019,000\uC6D0',
+      '9/3,18,20,21',
+      '1,049,000\uC6D0',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(pricesByDate.get('2026-07-24')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-07')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-08')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-16')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-20')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-15')).toBe(1_199_000);
+    expect(pricesByDate.get('2026-09-21')).toBe(1_049_000);
+    expect(result.rows.filter(row => row.date === '2026-08-07')).toHaveLength(1);
+    expect(result.rows.filter(row => row.date === '2026-09-21')).toHaveLength(1);
+  });
 });
 
 describe('extractPriceIR cruise cabin price tables', () => {

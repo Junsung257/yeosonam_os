@@ -52,6 +52,25 @@ describe('blog queue operational health', () => {
     });
   });
 
+  it('routes max-attempt repairable quality failures to editorial recovery instead of hidden terminal', () => {
+    const state = getBlogQueueOperationalState({
+      status: 'failed',
+      attempts: 2,
+      last_error: '2/20 failed: [render_integrity] literal_markdown_bold · [article_quality_v2] standalone_markdown_bold',
+      meta: {
+        failure_code: 'render_integrity',
+      },
+    });
+
+    expect(state).toMatchObject({
+      attention: false,
+      manualReview: true,
+      retryable: false,
+      terminal: true,
+      action: 'editorial_backlog',
+    });
+  });
+
   it('marks old generating rows as stale recovery work', () => {
     const now = new Date('2026-07-01T00:00:00.000Z');
     const state = getBlogQueueOperationalState({

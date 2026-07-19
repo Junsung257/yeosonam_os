@@ -1,5 +1,3 @@
-import { ensureRequiredBlogDecisionBlocks } from './blog-required-structure';
-
 const DOUBLE_TILDE_SENTINEL = 'YS_DOUBLE_TILDE_SENTINEL';
 const CODE_SENTINEL_PREFIX = 'YS_CODE_CHUNK_';
 const MAX_NUM_ACCENTS = 35;
@@ -51,7 +49,7 @@ export function normalizeRangeDashes(md: string): string {
 export function applyMarkdownAccents(md: string): string {
   if (!md) return md;
 
-  let out = normalizeRangeDashes(ensureRequiredBlogDecisionBlocks(md));
+  let out = normalizeRangeDashes(md);
 
   // The page template owns the only H1. Body H1s become H2s.
   out = out.replace(/^# /gm, '## ');

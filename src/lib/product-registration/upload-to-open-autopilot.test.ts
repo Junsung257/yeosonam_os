@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { buildRepairFirstOpenabilitySummary } from './repair-first-openability';
 import {
+  buildAutopilotStageAuditReport,
   buildSourceBackedDepartureDaysRepair,
   buildPackageDerivedV3Result,
   classifyUploadToOpenReviewReason,
   detectSourceTicketingDeadline,
+  evaluateUploadVerifyAutopilotGate,
   filterResolvedUploadToOpenReasons,
   filterCustomerOpenPriceDates,
   missingPriceDatesFromScorecard,
@@ -13,8 +17,11 @@ import {
   reconcileV3DraftWithLiveEntityQueueClear,
   repairMojibakeAttractionNamesInItinerary,
   repairMissingSourceBackedHotelsInItinerary,
+  repairHotelNightsForCustomerItinerary,
   repairNonLodgingHotelNamesInItinerary,
   repairOvernightArrivalDaySplit,
+  repairPollutedSourceBackedHotelNamesInItinerary,
+  repairSavedItineraryAttractionIdsFromExistingAttractions,
   repairDurationToSavedItineraryDays,
   repairEmptyItineraryDaySchedules,
   repairCustomerVisibleCopyPayload,
@@ -28,6 +35,57 @@ import {
   sanitizeCustomerVisibleTitle,
   shouldAutoApplySourceBackedPriceRepair,
 } from './upload-to-open-autopilot';
+
+describe('buildAutopilotStageAuditReport', () => {
+  it('routes the final auto-open step through the immutable public snapshot gate before product activation', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/lib/product-registration/upload-to-open-autopilot.ts'),
+      'utf8',
+    );
+    const finalOpenStart = source.indexOf('const openedAt = nowIso();');
+    const snapshotGate = source.indexOf('createPublicPackageSnapshotAndDecision(', finalOpenStart);
+    const blockedStage = source.indexOf("stage: 'blocked_after_public_snapshot'", snapshotGate);
+    const productActivation = source.indexOf(".from('products')", snapshotGate);
+
+    expect(finalOpenStart).toBeGreaterThan(-1);
+    expect(snapshotGate).toBeGreaterThan(finalOpenStart);
+    expect(blockedStage).toBeGreaterThan(snapshotGate);
+    expect(productActivation).toBeGreaterThan(snapshotGate);
+  });
+
+  it('persists the customer open contract at the standard top level and inside the autopilot snapshot', () => {
+    const contract = {
+      status: 'pass',
+      ok: true,
+      blockers: [],
+      checked_at: '2026-07-08T10:00:00.000Z',
+    };
+
+    const auditReport = buildAutopilotStageAuditReport(
+      {
+        existing_signal: true,
+        upload_to_open_autopilot: {
+          previous: 'kept',
+        },
+      },
+      'ready_not_opened',
+      '2026-07-08T11:00:00.000Z',
+      {
+        source_verify: 'clean',
+        customer_open_contract: contract,
+      },
+    );
+
+    expect(auditReport.customer_open_contract).toEqual(contract);
+    expect(auditReport.upload_to_open_autopilot).toEqual(expect.objectContaining({
+      previous: 'kept',
+      stage: 'ready_not_opened',
+      checked_at: '2026-07-08T11:00:00.000Z',
+      customer_open_contract: contract,
+    }));
+    expect(auditReport.existing_signal).toBe(true);
+  });
+});
 
 describe('buildSourceBackedDepartureDaysRepair', () => {
   it('fills missing departure_days from source-backed supplier weekdays', () => {
@@ -89,6 +147,30 @@ describe('repairMissingSourceBackedHotelsInItinerary', () => {
     });
 
     expect(result.repaired).toBe(false);
+  });
+
+  it('does not refill departure-day hotels when source-backed nights are already occupied', () => {
+    const result = repairMissingSourceBackedHotelsInItinerary({
+      nights: 3,
+      accommodations: [
+        '\uB3C4\uC57C \uC120\uD314\uB808\uC2A4, \uD638\uBC18\uC815 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09',
+        '\uC8E0\uC794\uCF00\uC774\uBDF0, \uBC00\uB9AC\uC624\uB124 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09',
+        '\uC0BF\uD3EC\uB85C \uB818\uBE0C\uB780\uD2B8 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09',
+      ],
+      rawText: '',
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: '\uB3C4\uC57C \uC120\uD314\uB808\uC2A4, \uD638\uBC18\uC815 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09' } },
+          { day: 2, hotel: { name: '\uC8E0\uC794\uCF00\uC774\uBDF0, \uBC00\uB9AC\uC624\uB124 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09' } },
+          { day: 3, hotel: { name: '\uC0BF\uD3EC\uB85C \uB818\uBE0C\uB780\uD2B8 \uD638\uD154 \uB610\uB294 \uB3D9\uAE09' } },
+          { day: 4, hotel: null },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } | null }> }).days;
+    expect(result.repaired).toBe(false);
+    expect(days[3].hotel).toBeNull();
   });
 });
 
@@ -173,6 +255,56 @@ describe('filterResolvedUploadToOpenReasons', () => {
     });
 
     expect(reasons).toEqual(['publish_gate:critical 품질 실패: 고객 노출 문구 원문 근거 없음: 호텔명']);
+  });
+});
+
+describe('evaluateUploadVerifyAutopilotGate', () => {
+  it('blocks the autopilot when deterministic upload verify is blocked even if later gates look ready', () => {
+    const gate = evaluateUploadVerifyAutopilotGate([
+      {
+        status: 'blocked',
+        checks: [
+          { id: 'C18', label: 'customer visible copy', status: 'fail' },
+          { id: 'C19', label: 'registration quality scorecard', status: 'fail' },
+        ],
+        fixable: [],
+        passCount: 18,
+        warnCount: 0,
+        failCount: 2,
+      },
+    ]);
+
+    expect(gate.ok).toBe(false);
+    expect(gate.status).toBe('blocked');
+    expect(gate.blockers).toEqual(['upload_verify:blocked:C18,C19']);
+    expect(gate.snapshots[0]).toEqual(expect.objectContaining({
+      failedChecks: ['C18', 'C19'],
+    }));
+  });
+
+  it('blocks fail-closed when upload verify returns no result', () => {
+    const gate = evaluateUploadVerifyAutopilotGate([null]);
+
+    expect(gate.ok).toBe(false);
+    expect(gate.status).toBe('missing');
+    expect(gate.blockers).toEqual(['upload_verify:missing_result']);
+  });
+
+  it('allows warning-only upload verify results to continue through the later contract gates', () => {
+    const gate = evaluateUploadVerifyAutopilotGate([
+      {
+        status: 'warnings',
+        checks: [{ id: 'C5', label: 'departure weekdays', status: 'warn' }],
+        fixable: ['C5:departure_days'],
+        passCount: 19,
+        warnCount: 1,
+        failCount: 0,
+      },
+    ]);
+
+    expect(gate.ok).toBe(true);
+    expect(gate.status).toBe('warnings');
+    expect(gate.blockers).toEqual([]);
   });
 });
 
@@ -463,6 +595,10 @@ describe('sanitizeCustomerVisibleTitle', () => {
   it('keeps normal customer titles unchanged', () => {
     expect(sanitizeCustomerVisibleTitle('방콕 파타야 3박 5일 실속 패키지')).toBe('방콕 파타야 3박 5일 실속 패키지');
   });
+
+  it('drops supplier promo-only display titles from customer-facing title policy', () => {
+    expect(sanitizeCustomerVisibleTitle('SPECIAL PRICE')).toBeNull();
+  });
 });
 
 describe('repairPolicyLeakInItinerarySchedule', () => {
@@ -516,6 +652,52 @@ describe('repairPolicyLeakInItinerarySchedule', () => {
     expect(result.removed).toHaveLength(2);
     expect(days[0].schedule.map(item => item.activity)).toEqual(['\uC138\uBD80 \uD638\uD154 \uD734\uC2DD \uBC0F \uC790\uC720\uC2DC\uAC04']);
   });
+
+  it('removes weather notices and standalone price rows from itinerary schedules', () => {
+    const result = repairPolicyLeakInItinerarySchedule({
+      days: [
+        {
+          day: 4,
+          schedule: [
+            { activity: '\u203B \uAE30\uC0C1 \uC5EC\uAC74\uC5D0 \uB530\uB77C \uBCC0\uB3D9\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4' },
+            { activity: '1,729,000\uC6D0/\uC778' },
+            { activity: '\uC624\uD0C0\uB8E8 \uC6B4\uD558\uC218 \uC790\uC720\uC2DC\uAC04' },
+          ],
+        },
+      ],
+    });
+
+    const days = (result.itineraryData as { days: Array<{ schedule: Array<{ activity: string }> }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toEqual([
+      '\u203B \uAE30\uC0C1 \uC5EC\uAC74\uC5D0 \uB530\uB77C \uBCC0\uB3D9\uB420 \uC218 \uC788\uC2B5\uB2C8\uB2E4',
+      '1,729,000\uC6D0/\uC778',
+    ]);
+    expect(days[0].schedule.map(item => item.activity)).toEqual(['\uC624\uD0C0\uB8E8 \uC6B4\uD558\uC218 \uC790\uC720\uC2DC\uAC04']);
+  });
+
+  it('removes supplier departure-table rows from the last itinerary day', () => {
+    const result = repairPolicyLeakInItinerarySchedule({
+      days: [
+        {
+          day: 4,
+          schedule: [
+            { activity: '\uBD81\uD574\uB3C4 \uD488\uACA9BA\uD329 3\uBC154\uC77C' },
+            { activity: '8/13, 17, 23, 26,' },
+            { activity: '\uC608\uC57D\uD6C4 3\uC77C\uB0B4 \uBC1C\uAD8C' },
+            { activity: '7/24\uAE4C\uC9C0' },
+            { activity: '\uD2B9\uAC00♥ 8/23, 26' },
+            { activity: '\uCE58\uD1A0\uC138\uACF5\uD56D\uC73C\uB85C \uC774\uB3D9' },
+          ],
+        },
+      ],
+    });
+
+    const days = (result.itineraryData as { days: Array<{ schedule: Array<{ activity: string }> }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toHaveLength(5);
+    expect(days[0].schedule.map(item => item.activity)).toEqual(['\uCE58\uD1A0\uC138\uACF5\uD56D\uC73C\uB85C \uC774\uB3D9']);
+  });
 });
 
 describe('repairNonLodgingHotelNamesInItinerary', () => {
@@ -535,6 +717,215 @@ describe('repairNonLodgingHotelNamesInItinerary', () => {
       '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131)',
       '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC (4\uC131)',
     ]);
+  });
+});
+
+describe('repairHotelNightsForCustomerItinerary', () => {
+  it('cleans hotel display markers and removes hotels after the source-backed night count', () => {
+    const result = repairHotelNightsForCustomerItinerary({
+      nights: 2,
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: '\uDB80\uDDB9 \uC655\uC870\uC131\uC9C0(\uB2E4\uC774\uB108\uC2A4\uD2F0)\uD638\uD154 \uB610\uB294 \uB3D9\uAE09', grade: '5\uC131' } },
+          { day: 2, hotel: { name: '\uDB80\uDDB9 \uC5F0\uAE38 \uAD6D\uC81C\uD638\uD154 \uB610\uB294 \uB3D9\uAE09', grade: '5\uC131' } },
+          {
+            day: 3,
+            hotel: {
+              name: '\uC655\uC870\uC131\uC9C0(\uB2E4\uC774\uB108\uC2A4\uD2F0)\uD638\uD154 \uB610\uB294 \uB3D9\uAE09 / \uAE30\uC0AC/\uAC00\uC774\uB4DC \uACBD\uBE44, \uC804\uC2E0\uB9C8\uC0AC\uC9C0 90\uBD84 1\uD68C, \uD2B9\uC2DD2\uD68C',
+            },
+          },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } | null }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.cleaned).toHaveLength(2);
+    expect(result.removed).toHaveLength(1);
+    expect(days[0].hotel?.name).toBe('\uC655\uC870\uC131\uC9C0(\uB2E4\uC774\uB108\uC2A4\uD2F0)\uD638\uD154 \uB610\uB294 \uB3D9\uAE09');
+    expect(days[1].hotel?.name).toBe('\uC5F0\uAE38 \uAD6D\uC81C\uD638\uD154 \uB610\uB294 \uB3D9\uAE09');
+    expect(days[2].hotel).toBeNull();
+  });
+});
+
+describe('repairPollutedSourceBackedHotelNamesInItinerary', () => {
+  it('replaces HOTEL marker pollution with the existing source-backed accommodation name', () => {
+    const cleanHotel = '\uBCA0\uC2A4\uD2B8\uC6E8\uC2A4\uD134 / \uC18C\uB098\uAC00 / \uC194\uBC14\uC774 \uB610\uB294 \uB3D9\uAE09';
+    const pollutedHotel = `${cleanHotel} / \uAE09 \uD638\uD154 / HOTEL : ${cleanHotel}`;
+    const result = repairPollutedSourceBackedHotelNamesInItinerary({
+      accommodations: [cleanHotel],
+      rawText: `\uD638\uD154 : ${cleanHotel}`,
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: cleanHotel }, schedule: [] },
+          { day: 2, hotel: { name: pollutedHotel }, schedule: [] },
+          { day: 3, hotel: { name: pollutedHotel }, schedule: [] },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.replacements).toHaveLength(2);
+    expect(days.map(day => day.hotel.name)).toEqual([cleanHotel, cleanHotel, cleanHotel]);
+    expect(result.accommodations).toBeUndefined();
+  });
+
+  it('normalizes polluted accommodation values without inventing unsupported hotel names', () => {
+    const cleanHotel = '\uBB34\uC5C9\uD0C4 \uB7ED\uC154\uB9AC \uD638\uD154 \uB3D9\uAE09';
+    const result = repairPollutedSourceBackedHotelNamesInItinerary({
+      accommodations: [`${cleanHotel} / \uAE09 \uD638\uD154 / HOTEL : ${cleanHotel}`],
+      rawText: '',
+      itineraryData: {
+        days: [
+          { day: 1, hotel: { name: `${cleanHotel} / \uAE09 \uD638\uD154 / HOTEL : ${cleanHotel}` }, schedule: [] },
+        ],
+      },
+    });
+
+    const days = (result.itineraryData as { days: Array<{ hotel: { name: string } }> }).days;
+    expect(result.repaired).toBe(true);
+    expect(result.accommodations).toEqual([cleanHotel]);
+    expect(days[0].hotel.name).toBe(cleanHotel);
+  });
+});
+
+describe('repairSavedItineraryAttractionIdsFromExistingAttractions', () => {
+  it('matches only existing customer-publishable attractions and removes product/hotel fragments', () => {
+    const result = repairSavedItineraryAttractionIdsFromExistingAttractions({
+      destination: '\uD478\uAFB8\uC625 \uD488\uACA9\uD329',
+      accommodations: ['\uC708\uB364 \uADF8\uB79C\uB4DC \uD478\uAFB8\uC625'],
+      attractions: [
+        {
+          id: '8ccb7e3f-bbd8-41d7-9c97-ef283e399820',
+          name: '\uC120\uC14B\uD0C0\uC6B4',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
+        {
+          id: '44cf6e6a-1349-4e3b-829f-2c56ae06f10c',
+          name: '\uD638\uAD6D\uC0AC',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
+        {
+          id: '29c29ce9-2fb9-49a0-8f05-ef87fa9a28e3',
+          name: '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: false,
+          aliases: [],
+        },
+        {
+          id: '55555555-5555-4555-8555-555555555555',
+          name: 'Tokyo eSIM unlimited data product',
+          region: '\uD478\uAFB8\uC625',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
+      ],
+      itineraryData: {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '\uD478\uAFB8\uC625 \uB0A8\uBD80 \uC120\uC14B\uD0C0\uC6B4 \uAD00\uAD11',
+                attraction_names: ['\uC120\uC14B\uD0C0\uC6B4'],
+                attraction_ids: [
+                  'bbd8-41d7-9c97-ef283e399820',
+                  '11111111-1111-4111-8111-111111111111',
+                ],
+              },
+              {
+                activity: '\uD478\uAFB8\uC625 \uBE48\uD384 \uC0AC\uD30C\uB9AC \uC785\uC7A5',
+                attraction_names: ['\uD478\uAFB8\uC625 \uBE48\uD384 \uC0AC\uD30C\uB9AC QR\uD2F0\uCF13 \uC785\uC7A5\uAD8C \uD328\uC2A4\uD2B8\uD328\uC2A4'],
+                attraction_ids: [],
+              },
+              {
+                activity: '\uADF8\uB79C\uB4DC\uC6D4\uB4DC \uC57C\uACBD \uAC10\uC0C1',
+                attraction_names: ['\uC708\uB364 \uADF8\uB79C\uB4DC \uD478\uAFB8\uC625'],
+                attraction_ids: [],
+              },
+              {
+                activity: '\uD638\uAD6D\uC0AC \uAD00\uAD11',
+                attraction_names: ['\uD638\uAD6D\uC0AC'],
+                attraction_ids: [],
+              },
+              {
+                activity: '\uC544\uCFE0\uC544\uD1A0\uD53C\uC544 \uC6CC\uD130\uD30C\uD06C',
+                attraction_names: ['\uC544\uCFE0\uC544\uD1A0\uD53C\uC544\uC6CC\uD130\uD30C\uD06C'],
+                attraction_ids: [],
+              },
+              {
+                activity: 'Tokyo eSIM unlimited data product',
+                attraction_names: ['Tokyo eSIM unlimited data product'],
+                attraction_ids: ['55555555-5555-4555-8555-555555555555'],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const schedule = (result.itineraryData as { days: Array<{ schedule: Array<{ attraction_names: string[]; attraction_ids: string[] }> }> }).days[0].schedule;
+    expect(result.repaired).toBe(true);
+    expect(result.matched).toBe(2);
+    expect(result.removedNoise).toBe(4);
+    expect(result.remainingUnmatched).toBe(0);
+    expect(schedule[0].attraction_ids).toEqual(['8ccb7e3f-bbd8-41d7-9c97-ef283e399820']);
+    expect(schedule[1].attraction_names).toEqual([]);
+    expect(schedule[2].attraction_names).toEqual([]);
+    expect(schedule[3].attraction_ids).toEqual(['44cf6e6a-1349-4e3b-829f-2c56ae06f10c']);
+    expect(schedule[4].attraction_names).toEqual([]);
+    expect(schedule[5].attraction_names).toEqual([]);
+    expect(schedule[5].attraction_ids).toEqual([]);
+  });
+
+  it('falls back to the visible activity text when a saved attraction candidate is wrong', () => {
+    const result = repairSavedItineraryAttractionIdsFromExistingAttractions({
+      destination: '\uB2E4\uB0AD',
+      attractions: [
+        {
+          id: '00000000-0000-4000-8000-000000000123',
+          name: '\uD55C\uC2DC\uC7A5',
+          region: '\uB2E4\uB0AD',
+          is_active: true,
+          customer_publishable: true,
+          aliases: [],
+        },
+      ],
+      itineraryData: {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              {
+                activity: '\uD604\uC9C0\uC778\uB4E4\uC758 \uC0B6\uC774 \uACE0\uC2A4\uB780\uD788 \uB179\uC544\uC788\uB294 \uD55C\uC2DC\uC7A5 \uBC29\uBB38',
+                attraction_query: '\uD55C\uC815\uC2DD',
+                attraction_names: ['\uD55C\uC815\uC2DD'],
+                attraction_ids: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const item = (result.itineraryData as {
+      days: Array<{ schedule: Array<{ attraction_names: string[]; attraction_ids: string[] }> }>;
+    }).days[0].schedule[0];
+
+    expect(result.repaired).toBe(true);
+    expect(result.matched).toBe(1);
+    expect(result.remainingUnmatched).toBe(0);
+    expect(item.attraction_names).toEqual(['\uD55C\uC2DC\uC7A5']);
+    expect(item.attraction_ids).toEqual(['00000000-0000-4000-8000-000000000123']);
   });
 });
 
@@ -578,6 +969,37 @@ describe('repairOptionalTourScheduleDuplicates', () => {
     expect(tours).toEqual([
       { name: '\uCCB4\uD5D8\uB2E4\uC774\uBE59', price: '$120/\uC778' },
       { name: '\uC544\uC77C\uB79C\uB4DC \uD638\uD551\uD22C\uC5B4', price: '$80/\uC778' },
+    ]);
+  });
+
+  it('removes no-option policy labels from optional tours without dropping paid options', () => {
+    const result = repairOptionalToursForCustomerDisplay([
+      { name: '\uB178\uD301 \uB178\uC635\uC158!!' },
+      { name: '\uB178\uC1FC\uD551' },
+      { name: '\uCD94\uCC9C\uC120\uD0DD\uAD00\uAD11 : \uC544\uC77C\uB79C\uB4DC \uD638\uD551\uD22C\uC5B4', price: '$80/\uC778' },
+    ]);
+
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toEqual(['\uB178\uD301 \uB178\uC635\uC158!!', '\uB178\uC1FC\uD551']);
+    expect(result.optionalTours).toEqual([
+      { name: '\uC544\uC77C\uB79C\uB4DC \uD638\uD551\uD22C\uC5B4', price: '$80/\uC778' },
+    ]);
+  });
+
+  it('quarantines price-less perks from optional tours while keeping paid options', () => {
+    const result = repairOptionalToursForCustomerDisplay([
+      { name: '\uD2B9\uC2DD \u2013 \uBC14\uB098\uC0B0 \uC815\uC0C1 \uB808\uC2A4\uD1A0\uB791\uC5D0\uC11C \uC800\uB141\uC2DD\uC0AC' },
+      { name: '\uC804\uC2E0\uB9C8\uC0AC\uC9C0 50\uBD84\uC73C\uB85C \uD734\uC2DD \uB9E4\uB108\uD301\uC740 \uBCC4\uB3C4\uC785\uB2C8\uB2E4.' },
+      { name: '\uCD94\uCC9C\uC120\uD0DD\uAD00\uAD11 : \uC9D0\uBC14\uB780 \uC528\uD478\uB4DC', price: '$50/\uC778' },
+    ]);
+
+    expect(result.repaired).toBe(true);
+    expect(result.removed).toEqual(expect.arrayContaining([
+      '\uD2B9\uC2DD \u2013 \uBC14\uB098\uC0B0 \uC815\uC0C1 \uB808\uC2A4\uD1A0\uB791\uC5D0\uC11C \uC800\uB141\uC2DD\uC0AC',
+      '\uC804\uC2E0\uB9C8\uC0AC\uC9C0 50\uBD84\uC73C\uB85C \uD734\uC2DD \uB9E4\uB108\uD301\uC740 \uBCC4\uB3C4\uC785\uB2C8\uB2E4.',
+    ]));
+    expect(result.optionalTours).toEqual([
+      { name: '\uC9D0\uBC14\uB780 \uC528\uD478\uB4DC', price: '$50/\uC778' },
     ]);
   });
 

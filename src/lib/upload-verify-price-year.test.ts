@@ -11,7 +11,7 @@ describe('upload verify price year', () => {
     const rawText = `
 regular fare distributed 2026.2.1
 spot
-7/2,9
+8/2,9
 999,-
 1,159,-
 
@@ -25,8 +25,8 @@ PKG sample golf package 3n5d
       raw_text: rawText,
       accommodations: ['villa'],
       price_dates: [
-        { date: '2026-07-02', price: 1159000 },
-        { date: '2026-07-09', price: 1159000 },
+        { date: '2026-08-02', price: 1159000 },
+        { date: '2026-08-09', price: 1159000 },
       ],
     });
 
@@ -39,7 +39,7 @@ PKG sample golf package 3n5d
     const rawText = `
 regular fare distributed 2026.2.1
 spot
-7/2,9
+8/2,9
 999,-
 1,159,-
 
@@ -53,8 +53,8 @@ PKG sample golf package 3n5d
       raw_text: rawText,
       accommodations: ['villa'],
       price_dates: [
-        { date: '2028-07-02', price: 1159000 },
-        { date: '2028-07-09', price: 1159000 },
+        { date: '2028-08-02', price: 1159000 },
+        { date: '2028-08-09', price: 1159000 },
       ],
     });
 

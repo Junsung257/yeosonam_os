@@ -48,6 +48,116 @@ describe('blog-renderer', () => {
     );
   });
 
+  it('keeps valid GFM table headers intact during normalization', async () => {
+    const source = [
+      '| 구분 | 평균 최고 기온 | 평균 최저 기온 | 평균 강수량 | 평균 강수일수 | 평균 습도 |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| 울란바토르 | 25℃ | 12℃ | 65mm | 9일 | 60% |',
+      '| 고비 사막 | 30℃ | 15℃ | 20mm | 4일 | 35% |',
+      '| 홉스골 | 20℃ | 8℃ | 70mm | 12일 | 70% |',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).toContain('<th>구분</th>');
+    expect(html).toContain('<th>평균 최고 기온</th>');
+    expect(html).toContain('<td>울란바토르</td>');
+    expect(html).not.toContain('<p>| 구분 |');
+    expect(html).not.toMatch(/(?:<hr>\s*){2,}<table/);
+    expect(report.passed).toBe(true);
+  });
+
+  it('fails render integrity when a markdown table header is rendered as prose and rules', () => {
+    const source = [
+      '| 구분 | 평균 최고 기온 | 평균 최저 기온 |',
+      '| --- | --- | --- |',
+      '| 울란바토르 | 25℃ | 12℃ |',
+      '| 고비 사막 | 30℃ | 15℃ |',
+    ].join('\n');
+    const brokenHtml = [
+      '<p>| 구분 | 평균 최고 기온 | 평균 최저 기온 |</p>',
+      '<hr><hr><hr>',
+      '<table><thead><tr><th>울란바토르</th><th>25℃</th><th>12℃</th></tr></thead>',
+      '<tbody><tr><td>고비 사막</td><td>30℃</td><td>15℃</td></tr></tbody></table>',
+    ].join('');
+
+    const report = inspectRenderedBlogIntegrity(source, brokenHtml);
+
+    expect(report.passed).toBe(false);
+    expect(report.evidence.artifacts).toEqual(
+      expect.arrayContaining([
+        'literal_markdown_table_row',
+        'markdown_table_separator_rendered_as_rules',
+        'rendered_table_header_mismatch',
+      ]),
+    );
+  });
+
+  it('compares table headers after stripping harmless markdown emphasis', async () => {
+    const source = [
+      '| **식료품** | 예상 비용 | 확인 포인트 |',
+      '| --- | --- | --- |',
+      '| 건망고 | 20,000원 | 현지 마트가 저렴 |',
+      '| 코코넛 오일 | 50,000원 | 수하물 무게 확인 |',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).toContain('<th>식료품</th>');
+    expect(report.passed).toBe(true);
+  });
+
+  it('compares numeric tilde ranges in table headers like rendered hyphen ranges', async () => {
+    const source = [
+      '| 항목 | 유럽 (3주, 3~4개국) | 동남아 (2주, 2~3개국) |',
+      '| --- | --- | --- |',
+      '| 예산 | 300만~500만 원 | 150만~250만 원 |',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(report.evidence.artifacts).not.toContain('rendered_table_header_mismatch');
+  });
+
+  it('does not fail only because a stale source table candidate has no rendered pair', () => {
+    const source = [
+      'Food | dried mango | 20,000won | local mart |',
+      '| --- | --- | --- | --- |',
+      '',
+      '| Situation | Check |',
+      '| --- | --- |',
+      '| Family | transfer time |',
+      '| Budget | local extra cost |',
+    ].join('\n');
+    const html = [
+      '<p>Food / dried mango / 20,000won / local mart</p>',
+      '<table><thead><tr><th>Situation</th><th>Check</th></tr></thead>',
+      '<tbody><tr><td>Family</td><td>transfer time</td></tr><tr><td>Budget</td><td>local extra cost</td></tr></tbody></table>',
+    ].join('');
+
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(report.evidence.artifacts).not.toContain('rendered_table_header_mismatch');
+  });
+
+  it('does not add required decision blocks while rendering', async () => {
+    const source = [
+      '## 오사카 7월 날씨',
+      '',
+      '오사카 7월 날씨는 덥고 습하므로 얇은 옷과 비 대비 준비를 먼저 확인하면 됩니다.',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).not.toContain('<table>');
+    expect(html).not.toContain('빠른 판단');
+    expect(report.passed).toBe(true);
+  });
+
   it('splits question-answer prose that was accidentally rendered as a heading', async () => {
     const source = [
       '### 예약 전 무엇을 먼저 확인해야 할까요? 답부터 말하면, 2026년 기준 비용·일정·준비 조건을 함께 확인해야 현지에서 생기는 추가 부담을 줄일 수 있습니다. 포함/불포함과 이동 시간까지 같이 보면 1~2시간의 불필요한 이동을 줄이는 데 도움이 됩니다.',

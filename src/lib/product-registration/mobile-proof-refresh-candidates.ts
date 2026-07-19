@@ -1,11 +1,15 @@
 import { evaluateCustomerMobileProof } from '@/lib/customer-mobile-proof';
+import { buildPublicPackageSnapshot } from '@/lib/package-publication/public-snapshot';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 
 export type MobileProofRefreshCandidateRow = {
+  [key: string]: unknown;
   id: string;
   internal_code?: string | null;
   title?: string | null;
   status?: string | null;
   updated_at?: string | null;
+  package_revision?: string | number | null;
   audit_report?: unknown;
 };
 
@@ -14,6 +18,7 @@ export type MobileProofRefreshReason =
   | 'stale'
   | 'hash_missing'
   | 'surface_missing'
+  | 'cta_missing'
   | 'source_invalid'
   | 'status_not_pass'
   | 'unknown';
@@ -29,10 +34,23 @@ export type MobileProofRefreshCandidate = {
   priority: number;
 };
 
+export function parseMobileProofRefreshStatusFilter(
+  value: string | null | undefined,
+  fallback: readonly string[],
+): string[] {
+  const rawStatuses = String(value ?? '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+  const statuses = rawStatuses.length > 0 ? rawStatuses : [...fallback];
+  return [...new Set(statuses)];
+}
+
 function reasonFromDetail(detail: string): MobileProofRefreshReason {
   const text = detail.toLowerCase();
   if (text.includes('stale')) return 'stale';
-  if (text.includes('hash')) return 'hash_missing';
+  if (text.includes('hash') || text.includes('revision') || text.includes('build')) return 'hash_missing';
+  if (text.includes('cta checks')) return 'cta_missing';
   if (text.includes('surface') || text.includes('lp')) return 'surface_missing';
   if (text.includes('source')) return 'source_invalid';
   if (text.includes('status')) return 'status_not_pass';
@@ -48,6 +66,8 @@ function priorityForReason(reason: MobileProofRefreshReason): number {
       return 20;
     case 'hash_missing':
       return 30;
+    case 'cta_missing':
+      return 35;
     case 'surface_missing':
       return 40;
     case 'source_invalid':
@@ -62,9 +82,24 @@ function priorityForReason(reason: MobileProofRefreshReason): number {
 export function classifyMobileProofRefreshCandidate(
   row: MobileProofRefreshCandidateRow,
 ): MobileProofRefreshCandidate | null {
+  const hasStoredRevision = row.package_revision != null;
+  const currentRevision = Number(row.package_revision ?? 1);
+  const expectedRevision = hasStoredRevision && Number.isFinite(currentRevision) && currentRevision > 0
+    ? (isCustomerVisibleStatus(row.status) ? currentRevision : currentRevision + 1)
+    : null;
+  const expectedSnapshotHash = expectedRevision
+    ? buildPublicPackageSnapshot({
+      ...row,
+      status: isCustomerVisibleStatus(row.status) ? row.status : 'active',
+      package_revision: expectedRevision,
+    }).snapshotHash
+    : null;
   const proof = evaluateCustomerMobileProof({
     auditReport: row.audit_report,
     packageUpdatedAt: row.updated_at ?? null,
+    packageRevision: expectedRevision,
+    publicSnapshotHash: expectedSnapshotHash,
+    appBuildId: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_BUILD_ID ?? null,
   });
   if (proof.ok) return null;
   const reason = reasonFromDetail(proof.reason);

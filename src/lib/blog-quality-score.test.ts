@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { aggregateBlogQualityFleet, calculateBlogQualityScore } from './blog-quality-score';
+import type { BlogCustomerQualityReport } from './blog-customer-quality';
 import type { BlogIntentQualityReport } from './blog-content-intent';
 import type { QualityGateReport } from './blog-quality-gate';
 import type { ReadabilityResult } from './blog-readability';
@@ -53,6 +54,20 @@ const passedEditorial: BlogIntentQualityReport = {
   issues: [],
 };
 
+const passedCustomerQuality: BlogCustomerQualityReport = {
+  passed: true,
+  score: 100,
+  issues: [],
+  metrics: {
+    customer_language: 100,
+    answer_usefulness: 100,
+    product_decision_helpfulness: 100,
+    naturalness: 100,
+    trust_and_evidence: 100,
+  },
+  summary: 'customer quality passed',
+};
+
 describe('blog quality score', () => {
   it('returns score_100 only when every component has zero issues', () => {
     const report = calculateBlogQualityScore({
@@ -60,12 +75,36 @@ describe('blog quality score', () => {
       seoScore: passedSeo,
       readability: passedReadability,
       editorial: passedEditorial,
+      customerQuality: passedCustomerQuality,
     });
 
     expect(report.status).toBe('score_100');
     expect(report.passed).toBe(true);
     expect(report.score).toBe(100);
     expect(report.issues).toEqual([]);
+  });
+
+  it('blocks 100 when customer-facing quality finds AI-like copy', () => {
+    const report = calculateBlogQualityScore({
+      customerQuality: {
+        ...passedCustomerQuality,
+        passed: false,
+        score: 80,
+        issues: [
+          {
+            code: 'generic_answer_opening',
+            severity: 'major',
+            message: 'Generic opening.',
+          },
+        ],
+      },
+    });
+
+    expect(report.status).toBe('fail');
+    expect(report.passed).toBe(false);
+    expect(report.issues).toMatchObject([
+      { code: 'customer.generic_answer_opening', severity: 'major' },
+    ]);
   });
 
   it('blocks 100 when editorial has a warning', () => {

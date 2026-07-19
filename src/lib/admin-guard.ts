@@ -11,21 +11,27 @@ import { apiResponse } from '@/lib/api-response';
 import { isValidAdminApiToken } from '@/lib/api-auth';
 import { verifySupabaseAccessToken, legacyJwtExpValid } from '@/lib/supabase-jwt-verify';
 
-function isAccessTokenExpired(req: NextRequest): boolean {
-  const token = req.cookies.get('sb-access-token')?.value;
-  if (!token) return false;
-  return !legacyJwtExpValid(token);
-}
+type AdminAuthorization = {
+  authorized: boolean;
+  authenticated: boolean;
+  expired: boolean;
+};
 
-export async function isAdminRequest(req: NextRequest): Promise<boolean> {
+async function resolveAdminAuthorization(req: NextRequest): Promise<AdminAuthorization> {
   if (isValidAdminApiToken(req)) {
-    return true;
+    return { authorized: true, authenticated: true, expired: false };
   }
 
   if (process.env.NODE_ENV !== 'production') {
-    if (req.cookies.get('ys-dev-admin')?.value === '1') return true;
-    if (req.cookies.get('sb-admin')?.value) return true;
-    if (req.cookies.get('sb-access-token')?.value) return true;
+    if (req.cookies.get('ys-dev-admin')?.value === '1') {
+      return { authorized: true, authenticated: true, expired: false };
+    }
+    if (req.cookies.get('sb-admin')?.value) {
+      return { authorized: true, authenticated: true, expired: false };
+    }
+    if (req.cookies.get('sb-access-token')?.value) {
+      return { authorized: true, authenticated: true, expired: false };
+    }
   }
 
   const adminEmails = (process.env.ADMIN_EMAILS ?? '')
@@ -34,30 +40,59 @@ export async function isAdminRequest(req: NextRequest): Promise<boolean> {
     .filter(Boolean);
 
   const token = req.cookies.get('sb-access-token')?.value;
-  if (!token) return false;
+  if (!token) {
+    return { authorized: false, authenticated: false, expired: false };
+  }
+
+  if (!legacyJwtExpValid(token)) {
+    return { authorized: false, authenticated: false, expired: true };
+  }
 
   const v = await verifySupabaseAccessToken(token);
-  if (!v.ok) return false;
+  if (!v.ok) {
+    return { authorized: false, authenticated: false, expired: false };
+  }
 
   if (adminEmails.length === 0) {
-    return process.env.NODE_ENV !== 'production';
+    return {
+      authorized: process.env.NODE_ENV !== 'production',
+      authenticated: true,
+      expired: false,
+    };
   }
 
   const email =
     typeof v.payload.email === 'string' ? v.payload.email.toLowerCase() : undefined;
-  return !!(email && adminEmails.includes(email));
+  return {
+    authorized: !!(email && adminEmails.includes(email)),
+    authenticated: true,
+    expired: false,
+  };
+}
+
+export async function isAdminRequest(req: NextRequest): Promise<boolean> {
+  return (await resolveAdminAuthorization(req)).authorized;
 }
 
 export async function requireAdminRequest(req: NextRequest): Promise<NextResponse | null> {
-  const isAdmin = await isAdminRequest(req);
-  if (isAdmin) return null;
+  const authorization = await resolveAdminAuthorization(req);
+  if (authorization.authorized) return null;
 
-  if (isAccessTokenExpired(req)) {
+  if (authorization.expired) {
     const response = apiResponse(
       { code: 'TOKEN_EXPIRED', error: 'token expired' },
       { status: 401 },
     );
-    response.headers.set('Cache-Control', 'no-store');
+    response.headers.set('Cache-Control', 'private, no-store');
+    return response;
+  }
+
+  if (authorization.authenticated) {
+    const response = apiResponse(
+      { code: 'FORBIDDEN', error: '관리자 권한이 필요합니다.' },
+      { status: 403 },
+    );
+    response.headers.set('Cache-Control', 'private, no-store');
     return response;
   }
 
@@ -65,7 +100,7 @@ export async function requireAdminRequest(req: NextRequest): Promise<NextRespons
     { code: 'UNAUTHORIZED', error: '관리자 권한이 필요합니다.' },
     { status: 401 },
   );
-  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('Cache-Control', 'private, no-store');
   return response;
 }
 

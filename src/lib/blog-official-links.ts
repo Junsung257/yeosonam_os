@@ -34,7 +34,14 @@ export function appendOfficialReferenceLinksIfNeeded(markdown: string): string {
 }
 
 export function forceAppendOfficialReferenceLinks(markdown: string): string {
-  return `${markdown.trimEnd()}\n\n## 공식 확인 링크\n\n${OFFICIAL_REFERENCE_LINKS
+  const existingLinks = getMarkdownLinks(markdown);
+  const existingUrlSet = new Set(existingLinks.map(url => url.replace(/\/$/, '')));
+  const missingLinks = OFFICIAL_REFERENCE_LINKS.filter(
+    link => !existingUrlSet.has(link.url.replace(/\/$/, '')),
+  );
+  if (missingLinks.length === 0) return markdown;
+
+  return `${markdown.trimEnd()}\n\n## 공식 확인 링크\n\n${missingLinks
     .map(link => `- [${link.label}](${link.url})`)
     .join('\n')}\n`;
 }

@@ -2,6 +2,8 @@ import {
   customerCopyQualityIssues,
   normalizeCustomerVisibleCopy,
 } from '@/lib/customer-copy-quality';
+import { hasRiskyCustomerPromiseCopy } from '@/lib/customer-risky-copy';
+import { classifyOptionalTourForPublicEligibility } from '@/lib/package-public-eligibility';
 
 export type CustomerVisibleTextIssue = {
   fieldPath: string;
@@ -56,6 +58,22 @@ const LOW_VALUE_SCREEN_LINES = new Set([
   '호텔',
   '항공',
   '선택관광',
+]);
+
+const NON_CUSTOMER_VISIBLE_STRING_KEYS = new Set([
+  'id',
+  'package_id',
+  'product_id',
+  'internal_code',
+  'short_code',
+  'attraction_id',
+  'attraction_ids',
+  'resolved_attraction_id',
+  'entity_id',
+  'entity_kind',
+  'source_id',
+  'source_ids',
+  'raw_text_hash',
 ]);
 
 type TextRow = {
@@ -134,6 +152,7 @@ function walkCustomerStrings(value: unknown, pathParts: string[], visit: (fieldP
   }
   if (!value || typeof value !== 'object') return;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (NON_CUSTOMER_VISIBLE_STRING_KEYS.has(key)) continue;
     if (key === 'raw_text' || key === 'net_price' || key === 'cost_price' || key === 'margin_rate') continue;
     walkCustomerStrings(item, [...pathParts, key], visit);
   }
@@ -150,6 +169,18 @@ function issueFromRow(row: TextRow, code: string, detail: string, safeFixable = 
     surface: row.surface,
     line: row.line,
   };
+}
+
+function addRiskyCustomerPromiseIssues(rows: TextRow[], issues: CustomerVisibleTextIssue[]) {
+  for (const row of rows) {
+    if (!hasRiskyCustomerPromiseCopy(row.value) && !hasRiskyCustomerPromiseCopy(row.normalized)) continue;
+    issues.push(issueFromRow(
+      row,
+      'risky_customer_promise_copy',
+      '고객에게 확정·보장처럼 보일 수 있는 문구는 담당자 확인/예약 가능 여부 중심으로 바꿔야 합니다.',
+      false,
+    ));
+  }
 }
 
 function addSingleValueContextIssues(rows: TextRow[], issues: CustomerVisibleTextIssue[]) {
@@ -194,6 +225,32 @@ function addCrossFieldContextIssues(rows: TextRow[], issues: CustomerVisibleText
   }
 }
 
+function addOptionalTourPollutionIssues(value: unknown, pathParts: string[], issues: CustomerVisibleTextIssue[]) {
+  if (Array.isArray(value) && pathParts.at(-1) === 'optional_tours') {
+    value.forEach((item, index) => {
+      const finding = classifyOptionalTourForPublicEligibility(item);
+      if (finding.classification === 'valid_paid_option') return;
+      issues.push({
+        fieldPath: [...pathParts, String(index)].join('.'),
+        code: 'optional_tour_display_pollution',
+        detail: '선택관광에는 가격/비용 근거가 있는 유료 옵션만 고객에게 보여야 합니다.',
+        value: excerpt(finding.text || JSON.stringify(item)),
+        normalizedValue: excerpt(normalizeCustomerVisibleCopy(finding.text || JSON.stringify(item))),
+        safeFixable: false,
+      });
+    });
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => addOptionalTourPollutionIssues(item, [...pathParts, String(index)], issues));
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    addOptionalTourPollutionIssues(item, [...pathParts, key], issues);
+  }
+}
+
 function collectProductRows(pkg: Record<string, unknown>): TextRow[] {
   const rows: TextRow[] = [];
   for (const key of CUSTOMER_TEXT_FIELDS) {
@@ -228,6 +285,8 @@ export function auditCustomerVisibleProductText(pkg: Record<string, unknown>): C
     }
   }
 
+  addRiskyCustomerPromiseIssues(rows, issues);
+  addOptionalTourPollutionIssues(pkg, [], issues);
   addSingleValueContextIssues(rows, issues);
   addCrossFieldContextIssues(rows, issues);
 
@@ -271,6 +330,7 @@ export function auditCustomerVisibleScreenText(
     }
   }
 
+  addRiskyCustomerPromiseIssues(rows, issues);
   addSingleValueContextIssues(rows, issues);
 
   return issues;

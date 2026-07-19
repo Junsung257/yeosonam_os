@@ -2,6 +2,7 @@ import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
 import { logError, logWarning } from '@/lib/sentry-logger';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /**
  * 자동 아카이브 크론 — 매일 새벽 1시 실행
@@ -27,7 +28,7 @@ const getHandler = async () => {
     const { data: packages, error } = await supabaseAdmin
       .from('travel_packages')
       .select('id, ticketing_deadline, price_tiers, price_dates, created_at')
-      .in('status', ['approved', 'active', 'pending', 'pending_review', 'draft']);
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'pending', 'pending_review', 'draft']);
 
     if (error) throw error;
     if (!packages || packages.length === 0) {

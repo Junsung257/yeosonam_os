@@ -1,42 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { uploadCreativeToMeta, createAd, isMetaConfigured } from '@/lib/meta-api';
+
+import {
+  attachPublicPackagesToCampaignCreatives,
+  CAMPAIGN_CREATIVE_PUBLIC_FIELDS,
+  type CampaignCreativeWithPublicPackage,
+} from '@/lib/campaign-public-packages';
+import { createAd, isMetaConfigured, uploadCreativeToMeta } from '@/lib/meta-api';
 import { getSecret } from '@/lib/secret-registry';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ error: 'Supabase 연동이 설정되지 않았습니다.' }, { status: 503 });
   }
 
   if (!isMetaConfigured()) {
-    return NextResponse.json({ error: 'Meta API 미설정 (META_ACCESS_TOKEN, META_AD_ACCOUNT_ID 확인)' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Meta API 연동이 설정되지 않았습니다. META_ACCESS_TOKEN, META_AD_ACCOUNT_ID를 확인해 주세요.' },
+      { status: 503 },
+    );
   }
 
   try {
-    const { creative_id, campaign_id, package_url } = await request.json();
+    const { creative_id, campaign_id } = await request.json();
 
     if (!creative_id || !campaign_id) {
-      return NextResponse.json({ error: 'creative_id, campaign_id 필수' }, { status: 400 });
+      return NextResponse.json({ error: 'creative_id와 campaign_id가 필요합니다.' }, { status: 400 });
     }
 
     const { createClient } = await import('@supabase/supabase-js');
     const sb = createClient(
       getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
+      getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!,
     );
 
-    // 소재 조회
     const { data: creative } = await sb
       .from('ad_creatives')
-      .select('*')
+      .select(CAMPAIGN_CREATIVE_PUBLIC_FIELDS)
       .eq('id', creative_id)
       .single();
 
     if (!creative) {
-      return NextResponse.json({ error: '소재를 찾을 수 없습니다' }, { status: 404 });
+      return NextResponse.json({ error: '광고 소재를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 캠페인 조회 (adset_id 필요)
+    const [deployableCreative] = await attachPublicPackagesToCampaignCreatives(
+      sb,
+      [creative as unknown as CampaignCreativeWithPublicPackage],
+    );
+    const pkg = deployableCreative?.travel_packages;
+    if (!pkg?.id) {
+      return NextResponse.json(
+        { error: 'PUBLIC_SNAPSHOT_REQUIRED_FOR_META_CREATIVE_DEPLOY' },
+        { status: 409 },
+      );
+    }
+
     const { data: campaign } = await sb
       .from('ad_campaigns')
       .select('meta_adset_id, name')
@@ -45,40 +64,40 @@ export async function POST(request: NextRequest) {
 
     if (!campaign?.meta_adset_id) {
       return NextResponse.json(
-        { error: '캠페인에 Meta adset_id가 없습니다. 캠페인을 먼저 Meta에 배포하세요.' },
-        { status: 400 }
+        { error: '광고 소재를 배포하려면 캠페인이 먼저 Meta에 배포되어 있어야 합니다.' },
+        { status: 400 },
       );
     }
 
-    // 소재 복사본 텍스트 준비
-    const messageText = creative.headline
-      ? `${creative.headline}\n\n${creative.body_copy}`
-      : creative.body_copy;
+    const messageText = [
+      deployableCreative.headline,
+      deployableCreative.primary_text ?? deployableCreative.body ?? deployableCreative.description,
+    ]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join('\n\n');
 
-    const targetUrl = package_url ?? `${getSecret('NEXT_PUBLIC_APP_URL') ?? 'https://yeosonam.com'}/packages`;
+    const targetUrl = `${getSecret('NEXT_PUBLIC_APP_URL') ?? 'https://yeosonam.com'}/packages/${pkg.id}`;
+    const variant = deployableCreative.variant_index ?? 1;
+    const channel = deployableCreative.channel ?? 'meta';
 
-    // Meta에 소재 업로드
     const metaCreative = await uploadCreativeToMeta({
-      name: `${creative.platform}-v${creative.variant_index}-${creative_id.slice(0, 8)}`,
+      name: `${channel}-v${variant}-${creative_id.slice(0, 8)}`,
       message: messageText,
       link: targetUrl,
     });
 
-    // Meta 광고 생성
     const metaAd = await createAd({
       adsetId: campaign.meta_adset_id,
       creativeId: metaCreative.id,
-      name: `${campaign.name} - ${creative.platform} v${creative.variant_index}`,
+      name: `${campaign.name} - ${channel} v${variant}`,
     });
 
-    // DB 업데이트
     await sb.from('ad_creatives').update({
       meta_creative_id: metaCreative.id,
       is_deployed: true,
       campaign_id,
     }).eq('id', creative_id);
 
-    // 캠페인의 meta_ad_id도 저장 (마지막 배포 광고)
     await sb.from('ad_campaigns').update({
       meta_ad_id: metaAd.id,
     }).eq('id', campaign_id);
@@ -89,26 +108,26 @@ export async function POST(request: NextRequest) {
       deployed: true,
     });
   } catch (error) {
-    console.error('소재 배포 실패:', error);
+    console.error('[meta creative deploy] failed:', error);
+    const message = error instanceof Error ? error.message : '광고 소재 배포에 실패했습니다.';
 
-    // META_TOKEN_EXPIRED 특별 처리
-    const errMsg = error instanceof Error ? error.message : '배포 실패';
-    if (errMsg.includes('META_TOKEN_EXPIRED')) {
-      // audit_logs에 기록
+    if (message.includes('META_TOKEN_EXPIRED')) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
         const sb = createClient(
           getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-          getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!
+          getSecret('NEXT_PUBLIC_SUPABASE_ANON_KEY')!,
         );
         await sb.from('audit_logs').insert({
           action: 'META_TOKEN_EXPIRED',
           target_type: 'campaign',
-          description: errMsg,
+          description: message,
         });
-      } catch { /* 로깅 실패는 무시 */ }
+      } catch {
+        // Ignore audit-log write failures while reporting the deploy error.
+      }
     }
 
-    return NextResponse.json({ error: errMsg }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

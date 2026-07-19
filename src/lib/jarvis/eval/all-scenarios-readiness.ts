@@ -8,6 +8,8 @@ export interface AllScenarioReadinessInput {
   jarvisReadinessStatus: JarvisReadinessStatus;
   customerInquiryScore: number;
   customerInquiryStatus: 'pass' | 'warn' | 'fail';
+  featureCoverageScore: number;
+  featureCoverageStatus: 'pass' | 'warn' | 'fail';
   autopilotHitlPassed: boolean | 'skipped';
   freeTravelScore: number;
   freeTravelStatus: 'pass' | 'warn' | 'fail';
@@ -70,8 +72,8 @@ export function evaluateAllScenarioReadiness(
       id: 'jarvis-core-readiness',
       label: 'Jarvis core release gate',
       status: statusFromSource(input.jarvisReadinessStatus),
-      score: scoreFromRatio(input.jarvisReadinessScore, input.jarvisReadinessMaxScore, 40),
-      maxScore: 40,
+      score: scoreFromRatio(input.jarvisReadinessScore, input.jarvisReadinessMaxScore, 35),
+      maxScore: 35,
       message: `${input.jarvisReadinessScore}/${input.jarvisReadinessMaxScore}`,
     },
     {
@@ -81,6 +83,14 @@ export function evaluateAllScenarioReadiness(
       score: scoreFromPercent(input.customerInquiryScore, 20),
       maxScore: 20,
       message: `${boundedPercent(input.customerInquiryScore)}/100`,
+    },
+    {
+      id: 'jarvis-feature-coverage',
+      label: 'Jarvis OS feature coverage',
+      status: statusFromSource(input.featureCoverageStatus),
+      score: scoreFromPercent(input.featureCoverageScore, 5),
+      maxScore: 5,
+      message: `${boundedPercent(input.featureCoverageScore)}/100`,
     },
     {
       id: 'autopilot-hitl',

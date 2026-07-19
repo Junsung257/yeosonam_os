@@ -106,6 +106,8 @@ const GUEST_BLOCKED_TOOLS = new Set<string>([
   'activate_policy',
   // Phase 2 추가 — marketing
   'approve_content',
+  'adjust_mileage',
+  'create_mileage_event',
   // Phase 2 추가 — system
   'update_system_config',
   'trigger_cron_job',
@@ -116,11 +118,39 @@ const GUEST_BLOCKED_TOOLS = new Set<string>([
   'toggle_integration',
 ]);
 
+const GUEST_ALLOWED_TOOLS = new Set<string>([
+  'knowledge_search',
+  'recommend_best_packages',
+  'recommend_compare_pair',
+  'plan_free_travel',
+  'search_packages',
+  'get_package_detail',
+  'recommend_package',
+  'top_recommended_packages',
+  'recommend_multi_intent',
+  'list_attractions',
+  'get_price_quote',
+  'find_cheapest_dates',
+  'generate_itinerary',
+  'get_bookings',
+  'get_visa_info',
+]);
+
 type ToolLike = { name?: string } & Record<string, unknown>;
+
+export function getGuestAllowedToolNames(): string[] {
+  return [...GUEST_ALLOWED_TOOLS].sort();
+}
+
+export function isGuestAllowedToolName(toolName: string): boolean {
+  return GUEST_ALLOWED_TOOLS.has(toolName) && !GUEST_BLOCKED_TOOLS.has(toolName) && !getJarvisMutatingToolNames().includes(toolName);
+}
 
 export function filterGuestTools<T extends ToolLike>(tools: T[], ctx: JarvisContext): T[] {
   const isGuest = ctx.userRole === 'customer' && ctx.surface === 'customer';
   if (!isGuest) return tools;
-  const blocked = new Set([...GUEST_BLOCKED_TOOLS, ...getJarvisMutatingToolNames()]);
-  return tools.filter((t) => typeof t.name === 'string' && !blocked.has(t.name));
+  return tools.filter((t) => {
+    if (typeof t.name !== 'string') return false;
+    return isGuestAllowedToolName(t.name);
+  });
 }

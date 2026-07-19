@@ -72,6 +72,20 @@ describe('checkDuplicate', () => {
     expect(mocks.calls[0].filters).toContainEqual(['eq', 'slug', 'travel-guide-q1234']);
   });
 
+  it('excludes an in-place replacement draft from its own duplicate queries', async () => {
+    mocks.responses.push([]);
+
+    const gate = await checkDuplicate({
+      blog_html: '# 삿포로 식비',
+      slug: 'sapporo-food-budget',
+      blog_type: 'info',
+      excludeContentCreativeId: 'creative-1',
+    });
+
+    expect(gate.passed).toBe(true);
+    expect(mocks.calls[0].filters).toContainEqual(['neq', 'id', 'creative-1']);
+  });
+
   it('does not block product posts because a recent info post used the same destination and angle', async () => {
     mocks.responses.push([], []);
 

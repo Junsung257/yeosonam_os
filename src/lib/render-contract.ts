@@ -34,6 +34,7 @@ import {
   type NormalizedOptionalTour,
   type OptionalTourGroup,
 } from './itinerary-render';
+import { isCustomerOptionalTourCandidate } from './customer-option-classifier';
 import {
   formatExcludeDisplayLabel,
   isMealDayExcludeLine,
@@ -711,8 +712,18 @@ export function resolveTermsMisc(shopping: CanonicalShopping): CanonicalTermsMis
 
 export function resolveOptionalTours(pkg: RenderPackageInput): CanonicalOptionalTours {
   const tours = pkg.optional_tours ?? [];
-  const flat = tours.map(normalizeOptionalTour);
-  const groups = groupOptionalToursByRegion(tours);
+  const customerTours = tours.filter((tour) => {
+    const text = [
+      tour.name,
+      tour.price,
+      tour.price_usd ? `$${tour.price_usd}/인` : null,
+      tour.price_krw ? `${tour.price_krw.toLocaleString('ko-KR')}원/인` : null,
+      tour.note,
+    ].filter(Boolean).join(' ');
+    return isCustomerOptionalTourCandidate(text);
+  });
+  const flat = customerTours.map(normalizeOptionalTour);
+  const groups = groupOptionalToursByRegion(customerTours);
   return { groups, flat, count: flat.length };
 }
 

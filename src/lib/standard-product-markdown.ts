@@ -460,7 +460,7 @@ export function parseStandardProductMarkdown(rawText: string, filename = 'standa
 
   return {
     filename,
-    fileType: 'hwp',
+    fileType: 'text',
     rawText,
     extractedData,
     itineraryData,

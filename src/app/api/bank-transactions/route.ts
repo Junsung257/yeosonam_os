@@ -27,6 +27,11 @@ import {
   buildBankTransactionFingerprint,
   scoreBankTransactionSimilarity,
 } from '@/lib/bank-transaction-fingerprint';
+import {
+  parseTravelSettlementMemo,
+  resolveSettlementMemoBooking,
+  type ParsedTravelSettlementMemo,
+} from '@/lib/settlement-import';
 
 // 매칭 성공 후 counterparty_name ↔ customer 매핑 학습 (best-effort)
 async function learnAliasForMatch(bookingId: string, counterpartyName: string | undefined | null) {
@@ -68,6 +73,7 @@ interface ExistingBankTxCandidate {
   booking_id: string | null;
   match_status: string | null;
   source?: string | null;
+  memo?: string | null;
   source_metadata?: Record<string, unknown> | null;
 }
 
@@ -113,11 +119,12 @@ async function findExistingBankTransaction(input: {
   txType: string;
   amount: number;
   counterpartyName: string;
+  memo?: string;
   fingerprint: string;
 }): Promise<{ kind: 'exact' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
   const exact = await supabaseAdmin
     .from('bank_transactions')
-    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source')
+    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo')
     .eq('transaction_fingerprint', input.fingerprint)
     .maybeSingle();
 
@@ -132,7 +139,7 @@ async function findExistingBankTransaction(input: {
   const to = new Date(center.getTime() + 60 * 60_000).toISOString();
   let query = supabaseAdmin
     .from('bank_transactions')
-    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source')
+    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source, memo')
     .eq('transaction_type', input.txType)
     .eq('amount', input.amount)
     .gte('received_at', from)
@@ -154,9 +161,7 @@ async function findExistingBankTransaction(input: {
     }
   }
 
-  return bestScore >= 0.9
-    ? { kind: 'probable', row: best, confidence: bestScore }
-    : { kind: null, row: bestScore >= 0.65 ? best : null, confidence: bestScore };
+  return { kind: null, row: bestScore >= 0.65 ? best : null, confidence: bestScore };
 }
 
 async function attachBulkImportEvidence(existingId: string, input: {
@@ -180,8 +185,11 @@ async function attachBulkImportEvidence(existingId: string, input: {
         bulk_import: {
           event_id: input.eventId,
           received_at: input.row.receivedAt,
+          account_number: input.row.accountNumber ?? null,
           counterparty_name: input.row.counterpartyName,
           memo: input.row.memo,
+          original_line: input.row.originalLine ?? null,
+          row_index: input.row.rowIndex ?? null,
           imported_at: new Date().toISOString(),
         },
       },
@@ -971,24 +979,15 @@ export async function PATCH(request: NextRequest) {
 
 // ─── POST: 과거 내역 일괄 등록 ────────────────────────────────────────────────
 
-function parseBulkMemo(memo: string) {
-  const parts = memo.split('_');
-  if (parts.length < 3) return null;
-  const [yymmdd, customerName, ...agencyParts] = parts;
-  if (!/^\d{6}$/.test(yymmdd)) return null;
-  return {
-    departureDatePrefix: `20${yymmdd.slice(0, 2)}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`,
-    customerName,
-    agencyName: agencyParts.join('_'),
-  };
-}
-
 interface BulkRow {
   receivedAt: string;
   depositAmount: number;
   withdrawAmount: number;
   counterpartyName: string;
   memo: string;
+  accountNumber?: string;
+  originalLine?: string;
+  rowIndex?: number;
 }
 
 export async function POST(request: NextRequest) {
@@ -1004,60 +1003,63 @@ export async function POST(request: NextRequest) {
 
     if (rows.length === 0) return NextResponse.json({ error: '등록할 행이 없습니다.' }, { status: 400 });
 
-    const { data: bookingsRaw } = await supabaseAdmin
-      .from('bookings')
-      .select(`
-        id, booking_no, package_title,
-        total_price, total_cost, paid_amount, total_paid_out,
-        departure_date, status, payment_status,
-        customers!lead_customer_id(name)
-      `)
-      .in('status', ['pending', 'confirmed', 'completed']);
-
-    const bookings = (bookingsRaw || []).map((b: BookingRow) => ({ ...b, customer_name: (b.customers as { name?: string } | null)?.name }));
-
     const results: Array<Record<string, unknown>> = [];
 
     for (const row of rows) {
       const isDeposit = row.depositAmount > 0;
       const amount    = isDeposit ? row.depositAmount : row.withdrawAmount;
       const txType: '입금' | '출금' = isDeposit ? '입금' : '출금';
-      const parsed = parseBulkMemo(row.memo);
+      const parsed: ParsedTravelSettlementMemo | null = parseTravelSettlementMemo(row.memo);
       const fingerprint = buildBankTransactionFingerprint({
+        accountNumber: row.accountNumber,
         receivedAt: row.receivedAt,
         txType,
         amount,
         counterpartyName: row.counterpartyName,
+        memo: row.memo,
       });
       const duplicate = await findExistingBankTransaction({
         receivedAt: row.receivedAt,
         txType,
         amount,
         counterpartyName: row.counterpartyName,
+        memo: row.memo,
         fingerprint,
       });
 
-      let matchedBooking: typeof bookings[0] | null = null;
+      let matchedBooking: {
+        id: string;
+        booking_no?: string | null;
+        customer_name?: string | null;
+      } | null = null;
       let confidence = 0;
       const matchReasons: string[] = [];
+      let resolutionSource: string | null = null;
 
       if (parsed) {
-        let best = 0;
-        for (const b of bookings) {
-          let score = 0;
-          if (b.departure_date?.startsWith(parsed.departureDatePrefix)) score += 0.4;
-          const ns = nameSim(b.customer_name || '', parsed.customerName);
-          if (ns > 0) score += ns * 0.5;
-          if (score > best) { best = score; matchedBooking = b; confidence = score; }
+        const resolution = await resolveSettlementMemoBooking(parsed, { createIfMissing: !preview });
+        resolutionSource = resolution.source;
+        confidence = resolution.confidence;
+        if (resolution.bookingId) {
+          matchedBooking = {
+            id: resolution.bookingId,
+            booking_no: resolution.bookingNo,
+            customer_name: resolution.customerName,
+          };
+          matchReasons.push(`memo_key:${parsed.normalizedKey}`, `source:${resolution.source}`);
+        } else if (resolution.reason) {
+          matchReasons.push(resolution.reason);
         }
-        if (confidence < 0.5) { matchedBooking = null; confidence = 0; }
       }
 
       const matchStatus: 'auto' | 'review' | 'unmatched' =
+        !parsed ? 'unmatched' :
+        !isDeposit ? 'review' :
         confidence >= 0.85 ? 'auto' : confidence >= 0.5 ? 'review' : 'unmatched';
 
       const eventId = `bulk_${fingerprint.replace(/^sha256:/, '')}`;
       const importAction =
+        !parsed ? 'ignored_non_travel' :
         duplicate.kind === 'exact' ? 'already_processed' :
         duplicate.kind === 'probable' ? 'merge_candidate' :
         duplicate.row && duplicate.confidence >= 0.65 ? 'duplicate_review' :
@@ -1071,6 +1073,7 @@ export async function POST(request: NextRequest) {
         customerName: matchedBooking?.customer_name, eventId,
         transactionFingerprint: fingerprint,
         importAction,
+        resolutionSource,
         existingTxId: duplicate.row?.id ?? null,
         existingMatchStatus: duplicate.row?.match_status ?? null,
         duplicateConfidence: Math.round(duplicate.confidence * 100),
@@ -1078,7 +1081,12 @@ export async function POST(request: NextRequest) {
 
       if (preview) { results.push(previewRow); continue; }
 
-      if ((duplicate.kind === 'exact' || duplicate.kind === 'probable') && duplicate.row) {
+      if (!parsed) {
+        results.push({ ...previewRow, status: 'skipped' });
+        continue;
+      }
+
+      if (duplicate.kind === 'exact' && duplicate.row) {
         await attachBulkImportEvidence(duplicate.row.id, { fingerprint, row, eventId });
         results.push({ ...previewRow, status: 'merged', txId: duplicate.row.id });
         continue;
@@ -1094,8 +1102,12 @@ export async function POST(request: NextRequest) {
             bulk_import: {
               event_id: eventId,
               received_at: row.receivedAt,
+              account_number: row.accountNumber ?? null,
               counterparty_name: row.counterpartyName,
               memo: row.memo,
+              original_line: row.originalLine ?? null,
+              row_index: row.rowIndex ?? null,
+              settlement_key: parsed.normalizedKey,
               imported_at: new Date().toISOString(),
             },
           },
@@ -1114,7 +1126,7 @@ export async function POST(request: NextRequest) {
       if (insertError?.code === '23505') { results.push({ ...previewRow, status: 'duplicate' }); continue; }
       if (insertError) { results.push({ ...previewRow, status: 'error', error: insertError.message }); continue; }
 
-      if (matchStatus === 'auto' && matchedBooking) {
+      if (matchStatus === 'auto' && matchedBooking && isDeposit) {
         const insertedId = (inserted as { id?: string })?.id;
         if (insertedId) await matchTransactionAllocations({
           transactionId: insertedId,
@@ -1132,6 +1144,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       inserted:   results.filter(r => r.status === 'inserted').length,
+      skipped:    results.filter(r => r.status === 'skipped').length,
       duplicates: results.filter(r => r.status === 'duplicate').length,
       merged:     results.filter(r => r.status === 'merged').length,
       errors:     results.filter(r => r.status === 'error').length,

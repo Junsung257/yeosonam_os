@@ -2,6 +2,22 @@
 
 > **AI operations baseline (2026-06-29):** `/admin/control-tower` and `/api/admin/automation-command-center` expose a read-only snapshot for Jarvis readiness, Ad OS 95+ evidence, approval packets, blockers, and the next safe click. Booking, payment, refund, PII, and external ad-spend actions remain behind the existing HITL/approval paths.
 
+> **정보성 블로그 근거 모델 (2026-07-19, 운영 스키마 적용·데이터 준비 전):** `blog_information_sources`, `blog_information_source_versions`, `blog_information_evidence`, `blog_information_claims`, `blog_information_claim_evidence`는 상품 evidence/snapshot과 분리된 서버 전용 namespace다. 운영 DB에 테이블은 적용됐으며 2026-07-19 읽기 감사 기준 source/evidence/claim과 active 공식 출처 레지스트리는 모두 0건이다. 근거 수집·검증 없이 비공개 재생성을 실행하지 않으며 `docs/blog-autopublish-contract.md`를 따른다.
+
+> **정보성 대표키·canonical (2026-07-19, 운영 스키마 적용):** `blog_information_representatives`가 `destination_id + intent + audience + locale`당 신규 공개 URL을 하나로 제한한다. 기존 공개 글은 자동 backfill·redirect·병합하지 않는다.
+
+> **R18 연구 우선 비공개 재생성 (2026-07-19):** 비공개 단일 재생성은 검증된 `information_research_bundle`을 글쓰기 전에 검사하고 기존 `blog_information_*` 감사 체인에 저장한다. 누락·오래된 근거·목적지/언어 불일치·의도별 claim 부족·저장 실패는 AI 호출 전에 `skipped + self_heal_blocked`로 보류한다. 일반 자동발행 경로는 이번 단계에서 아직 강제 차단하지 않는다. Pexels 관련 이미지가 없으면 AI 참고 이미지를 생성할 수 있지만 공개 alt/caption에 `AI 생성 참고 이미지`를 표시하고 사실 근거로 취급하지 않는다.
+
+> **정보성 관련 글 랭킹 (2026-07-15, 로컬 코드):** 신규 정보성 글은 목적지·의도·국가/권역·특정 고객군·편집 클러스터를 기준으로만 내부링크를 추천한다. 미발행·noindex·redirect·비canonical 후보를 제외하고, 관련 후보가 없으면 빈 결과를 허용한다. 상품성·레거시 글의 기존 경로는 유지한다.
+
+> **정보성 CTA 허브 (2026-07-15, 로컬 코드):** 정보성 본문은 CTA URL을 생성하지 않고 공개 렌더러가 중앙 설정에서 목적지·의도·위험도·언어에 맞는 CTA를 최대 2개 선택한다. 외부 URL 미설정·불명확 시 관련 글만 표시하며, 입국·비자·보험 고위험 글은 관련 정보를 우선한다. 상품성 CTA 경로는 유지한다.
+
+> **정보성 최종 렌더 SEO QA (2026-07-15, 로컬 코드):** 발행 게이트가 공개 페이지와 같은 렌더러·sanitizer로 H1, 메타 의도, 마크다운 잔여물, 표/빈 제목, placeholder, canonical/index, JSON-LD, CTA 중복을 검사한다. 새 정보성 글의 읽기 시간은 `quality_gate.rendered_reading_time_minutes`에 저장해 목록·상세가 같은 값을 사용한다. 상품성 발행 계약은 유지한다.
+
+> **정보성 V2 고정 평가 세트 (2026-07-15, 로컬 fixture):** `npm run eval:blog-info-v2`가 지정된 11개 샘플의 intent·필수 사실·근거/claim·중복·관련 글·CTA·렌더·발행 상태를 외부 호출과 공개 데이터 변경 없이 평가한다. 현재 생성 보고서는 11/11 PASS이며 고위험 글은 `pending_review`, 잘못된 목적지는 `blocked_plan`, 대표키 중복은 `update_existing`으로 확인됐다.
+
+> **정보성 기존 글 dry-run·운영 인수 (2026-07-15, 로컬 표본):** `npm run audit:blog-info-v2`는 apply 모드 없이 로컬 JSON/fallback 표본만 `KEEP|REWRITE|MERGE|REMOVE|HIGH_RISK_REVIEW`로 분류한다. 기본 표본 8건은 REWRITE 8건으로 제안됐고 DB 읽기·쓰기·외부 호출은 모두 0이다. 운영 DB 전체 결론이 아니며 후속 정리는 `docs/blog-informational-engine-v2-owner-runbook.md`의 사람 승인 절차를 따른다.
+
 > **헌법 기준 (2026-06-28):** 최상위 제품 원칙과 MVP 경계는 `docs/yeosonam-os-constitution.md`를 우선 확인한다. 이 파일은 2026-05-28 기준 운영 스냅샷이므로 실제 기술 스택은 `package.json`, 최신 스키마는 `supabase/migrations/**`, 도메인별 최신 규칙은 `docs/*-current-ssot.md`와 함께 대조한다.
 
 > **최근 작업 (2026-05-28):** as any 전수조사/제거, 타입 안전성 대폭 개선, 마일리지 시스템 전면 구현 (적립/사용/소멸/개인화/알림/분석), 게이미피케이션(출석/도전과제) 추가
@@ -178,6 +194,8 @@
 |---|--------|-----------|------|
 | 32 | **card_news** | `id`, `package_id`(FK), `campaign_id`(FK), `title`, `status`(DRAFT/CONFIRMED/LAUNCHED/ARCHIVED), `slides`(JSONB), `meta_creative_id` | 카드뉴스 에디터 |
 | 33 | **content_creatives** | `id`, `tenant_id`(FK), `product_id`(FK), `angle_type`, `target_audience`, `channel`, `image_ratio`, `slides`(JSONB), `blog_html`, `tracking_id`(UNIQUE), `status` | 멀티채널 콘텐츠 |
+| 33a | **blog_information_sources / source_versions / evidence / claims / claim_evidence** | `source_type`, `source_url/internal_identifier`, `publisher`, `retrieved_at`, `valid_from/until`, `destination/country`, `claim_type`, `risk_level`, `reviewer/reviewed_at`, `validation_status` | 정보성 블로그 전용 source→evidence→claim 감사 체인(상품 evidence와 분리, 서버 전용, 운영 스키마 적용·2026-07-19 데이터 0건 확인) |
+| 33b | **blog_information_representatives** | `representative_key`, `destination_id`, `intent`, `audience`, `locale`, `canonical_creative_id`, `canonical_slug`, `status`, `reservation_owner` | 정보성 신규 URL 중복 방지·canonical 예약 레지스트리(서버 전용, 운영 스키마 적용, 기존 글 무변경) |
 | 34 | **content_performance** | `id`, `creative_id`(FK), `date`, `impressions`, `clicks`, `conversions`, `spend`, `ctr`, `cpa`, `roas`, UNIQUE(creative_id,date) | 콘텐츠 일일 성과 |
 | 35 | **content_insights** | `id`, `destination`, `angle_type`, `channel`, `avg_ctr`, `avg_conversions`, `confidence_score` | 콘텐츠 인사이트(자동집계) |
 | 36 | **winning_patterns** | `id`, `destination_type`, `channel`, `target_segment`, `hook_type`, `creative_type`, `avg_ctr`, `avg_roas`, `best_headline`, `best_body` | AI 학습 — 우승 패턴 |

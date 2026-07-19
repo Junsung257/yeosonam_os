@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { encrypt } from '@/lib/encryption';
 import { type Provider } from '@/lib/tenant-token-store';
@@ -12,6 +13,9 @@ import { type Provider } from '@/lib/tenant-token-store';
 const ALLOWED_PROVIDERS = ['google_ads', 'meta', 'naver', 'google_analytics', 'kakao_biz'] as const;
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ tokens: [] }, { headers: { 'Cache-Control': 'no-store' } });
 
   const tenantId = request.nextUrl.searchParams.get('tenant_id');
@@ -30,6 +34,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -82,6 +89,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   const id = request.nextUrl.searchParams.get('id');
@@ -95,4 +105,3 @@ export async function DELETE(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
-

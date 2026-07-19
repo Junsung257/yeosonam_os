@@ -409,7 +409,7 @@ describe('evaluateVerifyChecks — fail/warn 회귀 차단', () => {
 6/20,21,28
 999,-
 1,159,-
-7/2,9
+8/5,6
 1,139,-
 1,259,-
 6/4~6/30
@@ -436,8 +436,8 @@ PKG
       accommodations: ['신축 풀빌라 또는 동급 *1인1실'],
       departure_days: '수,목',
       price_dates: [
-        { date: '2026-07-02', price: 1139000 },
-        { date: '2026-07-09', price: 1139000 },
+        { date: '2026-08-05', price: 1139000 },
+        { date: '2026-08-06', price: 1139000 },
       ],
     });
 
@@ -454,7 +454,7 @@ PKG
 더비스타 품격2색
 풀빌라 / 단독골프
 스팟특가
-7/2,9
+8/5,6
 1,139,-
 1,259,-
 
@@ -471,9 +471,9 @@ PKG
       accommodations: ['신축 풀빌라 또는 동급 *1인1실'],
       departure_days: '수,목',
       price_dates: [
-        { date: '2026-07-02', price: 1259000 },
-        { date: '2026-07-09', price: 1259000 },
-        { date: '2026-07-16', price: 1259000 },
+        { date: '2026-08-05', price: 1259000 },
+        { date: '2026-08-06', price: 1259000 },
+        { date: '2026-08-12', price: 1259000 },
       ],
     });
 
@@ -484,7 +484,7 @@ PKG
   it('C12 expands month/day raw prices using the DB price_date year', () => {
     const rawText = `
 spot
-7/2,9
+8/2,9
 999,-
 1,159,-
 
@@ -498,8 +498,8 @@ premium villa golf package 3n5d
       raw_text: rawText,
       accommodations: ['villa'],
       price_dates: [
-        { date: '2027-07-02', price: 1159000 },
-        { date: '2027-07-09', price: 1159000 },
+        { date: '2027-08-02', price: 1159000 },
+        { date: '2027-08-09', price: 1159000 },
       ],
     });
 

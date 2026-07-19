@@ -12,7 +12,7 @@ describe('blog scheduler queue refill helpers', () => {
     expect(keyword).not.toMatch(/family budget|transport cost|hotel area budget|weather packing|local mobility/i);
   });
 
-  it('does not count duplicate active rows as publishable candidates', () => {
+  it('counts different micro-angles for the same destination as separate publishable candidates', () => {
     const stats = countPublishableQueueCandidates({
       recentPublished: [
         { destination: '발리', angle_type: 'value', generation_meta: { micro_angle: 'budget_family' } },
@@ -77,6 +77,25 @@ describe('blog scheduler queue refill helpers', () => {
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 0,
     });
+  });
+
+  it('keeps information candidates available for quota recovery when product rows are blocked', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeQueue: [
+        { destination: '몽골', angle_type: 'value', meta: { writer_type: 'info_writer', micro_angle: 'weather_packing' } },
+        { destination: '세부', angle_type: 'value', meta: { writer_type: 'info_writer', micro_angle: 'airport_arrival' } },
+        { destination: '발리', angle_type: 'value', meta: { writer_type: 'info_writer', micro_angle: 'budget_family' } },
+        { destination: '나트랑', angle_type: 'value', meta: { writer_type: 'info_writer', micro_angle: 'transport_cost' } },
+        { product_id: 'pkg-blocked-1', meta: { failure_code: 'product_open_contract' } },
+        { product_id: 'pkg-blocked-2', meta: { quarantine_reason: 'product_open_contract' } },
+        { product_id: 'pkg-blocked-3', generation_meta: { failure_bucket: 'product_open_contract' } },
+      ],
+    });
+
+    expect(stats.publishableCount).toBe(4);
+    expect(stats.productOpenContractBlocked).toBe(3);
+    expect(stats.evidenceInsufficient).toBe(0);
   });
 
   it('excludes destinationless info candidates unless they are explicitly generic', () => {

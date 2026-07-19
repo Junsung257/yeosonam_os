@@ -3,7 +3,7 @@ const withSerwist = require('@serwist/next').default({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   cacheOnNavigation: true,
-  disable: process.env.NODE_ENV !== 'production',
+  disable: process.env.NODE_ENV !== 'production' || process.env.VERCEL_ENV === 'preview',
 });
 
 const fs = require('fs');
@@ -18,6 +18,8 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
+const enableWebpackBuildWorker =
+  process.env.VERCEL === '1' && process.env.NEXT_BUILD_WEBPACK_WORKER !== '0';
 const SPECIAL_PAGE_SHIMS = {
   _app: 'next/dist/pages/_app',
   _error: 'next/dist/pages/_error',
@@ -164,7 +166,7 @@ const nextConfig = {
     'googleapis',
   ],
   experimental: {
-    webpackBuildWorker: false,
+    webpackBuildWorker: enableWebpackBuildWorker,
     prerenderEarlyExit: false,
     // Dev-only Segment Explorer can fail to resolve its client manifest on
     // Windows paths with non-ASCII characters; keep page rendering stable.

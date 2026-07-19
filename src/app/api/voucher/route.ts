@@ -8,8 +8,8 @@ import {
 } from '@/lib/supabase';
 import { generateVoucherData, renderVoucherHtml, type RawVoucherInput } from '@/lib/voucher-generator';
 import { sendVoucherIssuedAlimtalk } from '@/lib/kakao';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { verifyGuidebookToken } from '@/lib/guidebook-token';
-import { requireAuthenticatedRoute } from '@/lib/session-guard';
 
 // ── Mock ───────────────────────────────────────────────────────
 
@@ -32,6 +32,9 @@ function mockVoucher(raw: RawVoucherInput) {
 // ── POST /api/voucher — 확정서 생성 ───────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   let body: {
     raw: RawVoucherInput;
     customer_id?: string;
@@ -120,11 +123,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const tokenPayload = guideToken ? verifyGuidebookToken(guideToken) : null;
-  const hasGuideScope = Boolean(tokenPayload && bookingId && tokenPayload.bookingId === bookingId);
+  const hasGuideScope = Boolean(
+    tokenPayload
+      && bookingId
+      && tokenPayload.bookingId === bookingId
+      && (!id || (tokenPayload.voucherId && tokenPayload.voucherId === id)),
+  );
   if (!hasGuideScope) {
-    const guard = await requireAuthenticatedRoute(request);
-    if (guard instanceof NextResponse) {
-      return NextResponse.json({ error: '인증 또는 유효한 가이드 토큰이 필요합니다' }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+    const guard = await requireAdminRequest(request);
+    if (guard) {
+      return guard;
     }
   }
 
@@ -140,6 +148,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: '확정서를 찾을 수 없습니다' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
   }
 
+  if (hasGuideScope && tokenPayload) {
+    const scopedVoucher = voucher as { id?: string | null; booking_id?: string | null };
+    const bookingMatches = scopedVoucher.booking_id === tokenPayload.bookingId;
+    const voucherMatches = !tokenPayload.voucherId || scopedVoucher.id === tokenPayload.voucherId;
+    if (!bookingMatches || !voucherMatches) {
+      return NextResponse.json(
+        { error: 'valid guide token required' },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+  }
+
   // ?html=true 요청 시 렌더링된 HTML 포함
   if (withHtml) {
     const html = renderVoucherHtml(voucher.parsed_data);
@@ -152,6 +172,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 // ── PATCH /api/voucher — 상태 변경 (issued → sent) ────────────
 
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   let body: {
     id: string;
     status?: 'draft' | 'issued' | 'sent' | 'cancelled';

@@ -77,6 +77,7 @@ describe('parseUploadDocumentForRegistration', () => {
     });
 
     expect(mocks.parseDocument).not.toHaveBeenCalled();
+    expect(result.parsedDocument.fileType).toBe('text');
     expect(result.parsedDocument.rawText).toBe('direct raw text');
     expect(result.normalizedCatalogHash).toBe('normalized-hash');
     expect(mocks.checkParsedDocumentNormalizedDuplicate).toHaveBeenCalledWith(expect.objectContaining({
@@ -89,7 +90,7 @@ describe('parseUploadDocumentForRegistration', () => {
     const standardRaw = 'YSN-PRODUCT-MD v1\n\n## 기본정보\n- 상품명: 테스트 상품';
     const standardParsed = {
       filename: 'standard.md',
-      fileType: 'hwp' as const,
+      fileType: 'text' as const,
       rawText: standardRaw,
       extractedData: {
         title: '테스트 상품',
@@ -133,6 +134,7 @@ describe('parseUploadDocumentForRegistration', () => {
     });
 
     expect(mocks.parseDocument).not.toHaveBeenCalled();
+    expect(result.parsedDocument.fileType).toBe('text');
     expect(result.parsedDocument.rawText).toContain('광저우 5일');
   });
 

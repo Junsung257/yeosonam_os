@@ -7,6 +7,7 @@ import {
 } from '@/lib/ad-os-v41-v60';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,11 +38,16 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
   if (runError) return NextResponse.json({ ok: false, error: runError.message }, { status: 500 });
 
-  let packageQuery = supabaseAdmin.from('travel_packages').select('*').order('created_at', { ascending: false }).limit(1);
+  let packageQuery = supabaseAdmin
+    .from('travel_packages')
+    .select('id,tenant_id')
+    .in('publication_state', ['approved', 'published'])
+    .order('created_at', { ascending: false })
+    .limit(1);
   if (productId) packageQuery = packageQuery.eq('id', productId);
   const { data: packages, error: packageError } = await packageQuery;
-  const pkg = packages?.[0] as PackageFact | undefined;
-  if (packageError || !pkg) {
+  const candidate = packages?.[0] as { id: string; tenant_id?: string | null } | undefined;
+  if (packageError || !candidate) {
     const message = packageError?.message || 'No package found for creative asset generation.';
     await supabaseAdmin
       .from('ad_os_automation_runs')
@@ -49,6 +55,25 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .eq('id', run.id);
     return NextResponse.json({ ok: false, error: message }, { status: packageError ? 500 : 404 });
   }
+
+  const publicPackage = await loadPublicContentPackageForGeneration(candidate.id);
+  if (!publicPackage?.destination) {
+    const message = 'Approved public package snapshot is required for creative asset generation.';
+    await supabaseAdmin
+      .from('ad_os_automation_runs')
+      .update({ status: 'failed', errors: [{ message }], finished_at: new Date().toISOString() })
+      .eq('id', run.id);
+    return NextResponse.json({ ok: false, error: message }, { status: 409 });
+  }
+
+  const pkg: PackageFact = {
+    id: publicPackage.id,
+    tenant_id: candidate.tenant_id ?? null,
+    title: publicPackage.title,
+    destination: publicPackage.destination,
+    price: publicPackage.price ?? null,
+    status: 'published',
+  };
 
   let existingSignalsQuery = supabaseAdmin
     .from('ad_os_travel_intent_signals')

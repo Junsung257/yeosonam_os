@@ -3,6 +3,7 @@ import { buildEnterpriseKeywordBrain } from '@/lib/ad-os-v19-v25';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +63,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .limit(1);
 
   if (packageId) packageQuery = packageQuery.eq('id', packageId);
-  else packageQuery = packageQuery.in('status', ['active', 'approved', 'confirmed', 'published']);
+  else packageQuery = packageQuery.in('status', [...CUSTOMER_VISIBLE_STATUSES, 'confirmed', 'published']);
 
   const { data: packages, error: packageError } = await packageQuery;
   const pkg = packages?.[0] as {

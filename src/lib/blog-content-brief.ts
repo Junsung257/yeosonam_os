@@ -1,4 +1,18 @@
 import type { SerpAnalysis } from './serp-analyzer';
+import {
+  type BlogInformationIntent,
+  type BlogInformationSourcePolicy,
+} from './blog-information-contract';
+import {
+  buildBlogInformationPlan,
+  type BlogInformationAudience,
+  type BlogInformationPlan,
+} from './blog-information-planner';
+import {
+  BLOG_INFORMATION_CLAIM_LEDGER_MAX_ENTRIES,
+  BLOG_INFORMATION_FACTUAL_CANDIDATE_KINDS,
+  type BlogInformationFactualCandidateKind,
+} from './blog-information-claim-ledger';
 
 type BlogBriefIntent =
   | 'weather'
@@ -17,12 +31,20 @@ export interface BlogContentBriefInput {
   source?: string | null;
   keywords?: string[] | null;
   serp?: SerpAnalysis | null;
+  microAngle?: string | null;
+  audience?: BlogInformationAudience | null;
+  locale?: string | null;
+  travelerNationality?: string | null;
 }
 
 export interface BlogContentBrief {
   title: string;
   primaryKeyword: string;
   secondaryKeywords: string[];
+  intentType: BlogInformationIntent;
+  requiresHumanReview: boolean;
+  sourcePolicy: BlogInformationSourcePolicy;
+  plan: BlogInformationPlan;
   searchIntent: BlogBriefIntent;
   readerQuestion: string;
   requiredSections: string[];
@@ -30,6 +52,11 @@ export interface BlogContentBrief {
   sourceRequirements: string[];
   titleCandidates: string[];
   evidence: string[];
+  claimLedgerPolicy: {
+    required: true;
+    maxEntries: number;
+    candidateKinds: BlogInformationFactualCandidateKind[];
+  };
   passed: boolean;
   issues: string[];
 }
@@ -37,10 +64,6 @@ export interface BlogContentBrief {
 const LODGING_TANGENT_RE = /에어컨|에어콘|숙소|호텔|리조트|숙박|air\s*con|aircon|a\/c|accommodation|hotel|resort/i;
 const WEATHER_RE = /날씨|옷차림|우기|건기|기온|강수|비\s*(?:예보|소식|가|는|와|올|내릴|많|적)|스콜|태풍|weather|clothing|rain|season/i;
 const PREPARATION_RE = /준비물|체크리스트|짐싸기|필수품|packing|checklist|preparation/i;
-const COST_RE = /비용|예산|경비|가격|환전|가성비|이동비|교통비|차량비|렌터카|택시|픽업|cost|budget|expense|price/i;
-const TRANSPORT_RE = /항공권|공항|교통|이동|비행|렌터카|택시|픽업|차량|flight|airport|transport|transfer/i;
-const ITINERARY_RE = /일정|코스|루트|day\s*\d+|itinerary|course|route/i;
-const COMPARISON_RE = /비교|추천|순위|best|top|vs|comparison|ranking/i;
 const MONTH_RE = /(?:^|\s)(1[0-2]|[1-9])\s*월(?:\s|$)|(?:^|\s)(1[0-2]|[1-9])\s*month(?:\s|$)/i;
 
 function clean(value?: string | null): string {
@@ -67,14 +90,24 @@ function inferMonth(text: string): string | null {
   return month ? `${Number(month)}월` : null;
 }
 
-function inferIntent(text: string): BlogBriefIntent {
-  if (WEATHER_RE.test(text)) return 'weather';
-  if (PREPARATION_RE.test(text)) return 'preparation';
-  if (COST_RE.test(text)) return 'cost';
-  if (TRANSPORT_RE.test(text)) return 'transport';
-  if (ITINERARY_RE.test(text)) return 'itinerary';
-  if (COMPARISON_RE.test(text)) return 'comparison';
-  return 'general';
+function toLegacyBriefIntent(intentType: BlogInformationIntent): BlogBriefIntent {
+  switch (intentType) {
+    case 'monthly_weather':
+      return 'weather';
+    case 'food_budget':
+    case 'family_budget':
+    case 'currency_payment':
+    case 'shopping_souvenirs':
+      return 'cost';
+    case 'airport_transport':
+      return 'transport';
+    case 'hotel_areas':
+      return 'comparison';
+    case 'itinerary':
+      return 'itinerary';
+    default:
+      return 'general';
+  }
 }
 
 function inferDestination(input: BlogContentBriefInput, text: string): string {
@@ -200,17 +233,46 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
   const month = inferMonth(text);
   const destination = inferDestination(input, text);
   const rawPrimary = clean(input.primaryKeyword) || clean(input.topic);
-  const coreIntent = inferIntent(coreText);
-  const rawIntent = coreIntent === 'general' ? inferIntent(text) : coreIntent;
+  const informationPlan = buildBlogInformationPlan({
+    destination,
+    topic: coreText,
+    primaryKeyword: rawPrimary,
+    category: input.category,
+    microAngle: input.microAngle,
+    audience: input.audience,
+    locale: input.locale,
+    travelerNationality: input.travelerNationality,
+  });
   const isDestinationMonth = Boolean(destination && month);
   const shouldForceWeather = Boolean(
     isDestinationMonth &&
-    (input.source === 'seasonal' || WEATHER_RE.test(text) || PREPARATION_RE.test(text) || LODGING_TANGENT_RE.test(text)),
+    (
+      informationPlan.intent === 'monthly_weather'
+      || input.source === 'seasonal'
+      || WEATHER_RE.test(text)
+      || PREPARATION_RE.test(text)
+      || LODGING_TANGENT_RE.test(text)
+    ),
   );
+
+  const finalInformationPlan = shouldForceWeather && informationPlan.intent !== 'monthly_weather'
+    ? buildBlogInformationPlan({
+        destination,
+        topic: `${coreText} 날씨 옷차림 월별 기온 강수`,
+        primaryKeyword: `${destination} ${month ?? ''} 날씨`,
+        category: 'weather',
+        microAngle: 'weather_packing',
+        audience: input.audience,
+        locale: input.locale,
+        travelerNationality: input.travelerNationality,
+      })
+    : informationPlan;
+  const finalInformationContract = finalInformationPlan.contract;
+  const finalIntent = toLegacyBriefIntent(finalInformationPlan.intent);
 
   const base = shouldForceWeather
     ? weatherBrief(destination, month as string)
-    : genericBrief(destination, rawPrimary, rawIntent, keywords);
+    : genericBrief(destination, rawPrimary, finalIntent, keywords);
 
   const serpEntities = input.serp?.recommended_entities_to_include || [];
   const secondaryKeywords = unique([
@@ -223,37 +285,78 @@ export function buildBlogContentBrief(input: BlogContentBriefInput): BlogContent
     input.source ? `source:${input.source}` : null,
     month ? `month:${month}` : null,
     destination ? `destination:${destination}` : null,
+    `intent:${finalInformationContract.intentType}`,
     input.serp ? `serp:${input.serp.source}` : null,
   ]);
 
-  const issues: string[] = [];
+  const issues: string[] = finalInformationPlan.missingInputs.map((issue) => `information_plan:${issue}`);
   if (base.primaryKeyword.length < 2) issues.push('missing_primary_keyword');
   if (secondaryKeywords.length < 3) issues.push('not_enough_secondary_keywords');
-  if (base.requiredSections.length < 4) issues.push('not_enough_required_sections');
+  if (finalInformationContract.requiredSections.length < 4) issues.push('not_enough_required_sections');
   if (shouldForceWeather && LODGING_TANGENT_RE.test(base.title)) issues.push('seasonal_title_lodging_tangent');
   if (shouldForceWeather && !WEATHER_RE.test(`${base.title} ${base.primaryKeyword}`)) issues.push('seasonal_weather_intent_missing');
 
   return {
     ...base,
     secondaryKeywords,
-    searchIntent: shouldForceWeather ? 'weather' : rawIntent,
+    intentType: finalInformationContract.intentType,
+    requiresHumanReview: finalInformationContract.humanReview.required,
+    sourcePolicy: finalInformationContract.sourcePolicy,
+    plan: finalInformationPlan,
+    searchIntent: finalIntent,
+    readerQuestion: finalInformationPlan.primaryQuestion,
+    requiredSections: finalInformationContract.requiredSections,
+    sourceRequirements: finalInformationContract.sourceRequirements,
     evidence,
-    passed: issues.length === 0,
+    claimLedgerPolicy: {
+      required: true,
+      maxEntries: BLOG_INFORMATION_CLAIM_LEDGER_MAX_ENTRIES,
+      candidateKinds: [...BLOG_INFORMATION_FACTUAL_CANDIDATE_KINDS],
+    },
+    passed: finalInformationPlan.passed && issues.length === 0,
     issues,
   };
 }
 
 export function buildBlogContentBriefPromptBlock(brief: BlogContentBrief): string {
+  const intentStructureContract = brief.intentType === 'food_budget'
+    ? [
+        '',
+        '### Mandatory food-budget evidence tables',
+        '- Use only destination-specific prices supported by a cited source and an explicit research/check date. Never estimate, average, or invent a price to fill a cell.',
+        '- The first body paragraph must include `기준으로` and answer with a source-backed numeric 1-person daily budget range in the local currency. Reuse values supported by the article evidence; never create a new number for the opening.',
+        '- Table 1 must use this exact compact shape: `| 예산 유형 | 1인 1일 총액 | 산정 근거 |`. Keep exactly three data rows, in this order: `절약형`, `일반형`, `여유형`. Every total cell must contain a source-backed numeric range in the local currency, and every evidence-basis cell must be non-empty.',
+        '- Do not remove any of the three Table 1 rows, and do not leave a blank, dash, placeholder, `미정`, or `확인 필요` in any Table 1 cell. If a supported value is unavailable, record the evidence gap in the claim ledger instead of fabricating a number.',
+        '- Table 2 must use this exact shape: `| 끼니 | 대표 메뉴 | 가격 범위 | 근거 |` with at least one row each for `아침`, `점심`, `저녁`, and `간식`. Use real destination-specific menu names, distinct supported price values, and a source link or source name in every row.',
+        '- After the tables, include this exact sentence shape with supported values: `N박 M일 여행 총액은 1인 기준 [현지통화 금액]입니다. 계산식: [1인 1일 총액] × [식사일 수] = [여행 총액].` Use a requested trip length, or clearly declare one when the queue topic has none.',
+        '- If reliable price evidence is unavailable, do not substitute generic values. Leave the article non-publishable by recording the missing evidence in the claim ledger.',
+      ]
+    : [];
+
   return [
     '## Content Brief - must follow before writing',
     `- Final title/topic: ${brief.title}`,
     `- Primary keyword: ${brief.primaryKeyword}`,
     `- Secondary keywords: ${brief.secondaryKeywords.join(', ')}`,
     `- Search intent: ${brief.searchIntent}`,
+    `- Explicit intent type: ${brief.intentType}`,
+    `- Destination id: ${brief.plan.destinationId ?? 'missing'}`,
+    `- Audience: ${brief.plan.audience}`,
+    `- Locale: ${brief.plan.locale}`,
+    `- Risk level: ${brief.plan.riskLevel}`,
+    `- Human review required: ${brief.requiresHumanReview ? 'yes' : 'no'}`,
     `- Reader question: ${brief.readerQuestion}`,
     `- Required H2 sections: ${brief.requiredSections.join(' / ')}`,
+    `- Required facts: ${brief.plan.requiredFacts.map((fact) => fact.label).join(' / ')}`,
+    `- Planned tables: ${brief.plan.plannedTables.map((table) => table.purpose).join(' / ')}`,
+    `- FAQ questions: ${brief.plan.faqQuestions.join(' / ')}`,
+    `- Missing inputs: ${brief.plan.missingInputs.join(', ') || 'none'}`,
     `- Forbidden angles: ${brief.forbiddenAngles.join(' / ')}`,
     `- Source requirements: ${brief.sourceRequirements.join(' / ')}`,
+    `- Structured claim ledger required: ${brief.claimLedgerPolicy.required ? 'yes' : 'no'}`,
+    `- Claim ledger candidate kinds: ${brief.claimLedgerPolicy.candidateKinds.join(', ')}`,
+    `- Claim ledger maximum entries: ${brief.claimLedgerPolicy.maxEntries}`,
     '- Do not copy SERP articles. Use SERP only to understand intent, missing subtopics, and reader expectations.',
+    ...intentStructureContract,
   ].join('\n');
 }

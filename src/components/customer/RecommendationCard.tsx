@@ -1,17 +1,3 @@
-/**
- * 추천 카드 — Booking.com 5-layer 심리 프레임 (2026-04-29)
- *
- * 학술 기반:
- *  ① Authority (Cialdini)        — "✓ 여소남 픽" 큐레이션 인장 (Editor's Choice 패턴)
- *  ② Loss Aversion (Kahneman)    — "이 구성 따로 사면 +27만원" (이득 X 손실 프레임. 2.5x 강함)
- *  ③ Social Proof (Cialdini)     — "이번 달 N명 문의" (임계값 미만은 비노출)
- *  ④ Scarcity                    — 잔여 좌석 (별도 SeatBadge로 처리 — 이 카드 외부)
- *  ⑤ Anchoring (Tversky)         — 정가 취소선 → 절약액 큰 글씨
- *
- * "실효가" 단어는 프론트에서 제거. DB 컬럼명만 유지. 산식은 "어떻게 골랐나요?" 토글에만.
- *
- * 데이터 출처: package_scores (rank/effective_price/breakdown) + features + product_highlights
- */
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -53,108 +39,108 @@ interface Props {
   deductions: Deductions;
   features: Features;
   productHighlights: string[];
-  /** 사회적 증거 (Cialdini 4) — destination 단위 30일 카운트 */
   socialProof?: { bookings: number; interest: number };
-  /** package_id — 추천 노출 트래킹용 */
   packageId?: string;
-  /** 같은 날 다른 패키지 (pairwise 비교용) */
   rivals?: Rival[];
-  /** 개인화 추천 시 "xxx님을 위한 추천" 라벨 (기본값: "여소남 픽") */
   customerPicksLabel?: string;
 }
 
-// rivals 1개를 자연어 한 줄로 합성 (pairwise diff)
-function diffLine(self: { listPrice: number; features: Features; productHighlights: string[] }, rival: Rival): string {
-  const priceDiff = self.listPrice - rival.list_price;
-  const priceWord = priceDiff > 5000 ? `${(priceDiff / 10000).toFixed(0)}만원 더 비싸지만`
-    : priceDiff < -5000 ? `${(-priceDiff / 10000).toFixed(0)}만원 더 저렴하면서`
-    : '비슷한 가격에';
-
-  const better: string[] = [];
-  const sf = self.features;
-
-  const hotelDiff = (sf.hotel_avg_grade ?? 0) - (rival.hotel_avg_grade ?? 0);
-  if (hotelDiff >= 0.5) better.push(`호텔 ${sf.hotel_avg_grade}성`);
-  if (sf.is_direct_flight && !rival.is_direct_flight) better.push('직항');
-  if ((rival.shopping_count ?? 99) > (sf.shopping_count ?? 0)) {
-    if (sf.shopping_count === 0) better.push('노쇼핑');
-    else better.push(`쇼핑 ${(rival.shopping_count ?? 0) - (sf.shopping_count ?? 0)}회 적음`);
-  }
-  const optDiff = (sf.free_option_count ?? 0) - (rival.free_option_count ?? 0);
-  if (optDiff >= 1) {
-    const massage = self.productHighlights.find(h => /마사지/.test(h));
-    if (massage) better.push('마사지 추가 포함');
-    else better.push(`옵션 ${optDiff}개 더`);
-  }
-
-  if (better.length === 0) return `${priceWord} 비슷한 구성이에요`;
-  return `${priceWord} ${better.slice(0, 2).join(' + ')} 포함이에요`;
+function formatKrw(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '상담 후 확인';
+  return `₩${Math.round(value).toLocaleString('ko-KR')}`;
 }
 
-// ─── 헤드라인 자동 합성 ────────────────────────────────────────────
-function generateHeadline(rank: number, ded: Deductions, feat: Features): string {
+function formatDateLabel(date?: string | null): string {
+  if (!date) return '출발일 상담 가능';
+  return `${date.slice(5).replace('-', '/')} 출발`;
+}
+
+function hasText(highlights: string[], pattern: RegExp): boolean {
+  return highlights.some((text) => pattern.test(text));
+}
+
+function diffLine(self: { listPrice: number; features: Features; productHighlights: string[] }, rival: Rival): string {
+  const parts: string[] = [];
+  const priceDiff = self.listPrice - rival.list_price;
+
+  if (priceDiff > 5000) parts.push(`가격은 약 ${Math.round(priceDiff / 10000)}만원 높지만`);
+  if (priceDiff < -5000) parts.push(`가격은 약 ${Math.round(Math.abs(priceDiff) / 10000)}만원 낮고`);
+  if (parts.length === 0) parts.push('가격대는 비슷하고');
+
+  if (self.features.is_direct_flight && !rival.is_direct_flight) parts.push('직항 조건을 함께 볼 수 있어요');
+  if (self.features.shopping_count === 0 && (rival.shopping_count ?? 99) > 0) parts.push('쇼핑 없는 일정이에요');
+
+  const optionDiff = (self.features.free_option_count ?? 0) - (rival.free_option_count ?? 0);
+  if (optionDiff > 0) parts.push(`포함 옵션이 ${optionDiff}개 더 많아요`);
+
+  if (hasText(self.productHighlights, /마사지|스파/i)) parts.push('휴식 요소가 포함돼 있어요');
+
+  return parts.slice(0, 3).join(' · ');
+}
+
+function generateHeadline(rank: number, deductions: Deductions, features: Features): string {
   const isWinner = rank === 1;
-  const flight = (ded.flight_premium ?? 0) > 0 || feat.is_direct_flight === true;
-  const noShopping = feat.shopping_count === 0;
-  const fiveStar = (feat.hotel_avg_grade ?? 0) >= 4.5;
-  const optionPacked = (ded.free_options ?? 0) > 0 || (feat.free_option_count ?? 0) >= 2;
+  const hasFlightMerit = (deductions.flight_premium ?? 0) > 0 || features.is_direct_flight === true;
+  const noShopping = features.shopping_count === 0;
+  const hasHotelMerit = (features.hotel_avg_grade ?? 0) >= 4.5;
+  const optionPacked = (deductions.free_options ?? 0) > 0 || (features.free_option_count ?? 0) >= 2;
 
   if (isWinner) {
-    if (flight && fiveStar) return '직항에 5성인데 이 일정 최저가';
-    if (flight && noShopping) return '직항 노쇼핑인데 이 일정 최저가';
-    if (fiveStar && noShopping) return '5성급 노쇼핑인데 이 일정 최저가';
-    if (flight) return '직항인데 이 일정 최저가';
-    if (noShopping) return '노쇼핑인데 이 일정 최저가';
-    if (fiveStar) return '5성급인데 이 일정 최저가';
-    if (optionPacked) return '옵션 포함인데 이 일정 최저가';
-    return '이 출발일 최고 가성비 구성';
+    if (hasFlightMerit && noShopping) return '직항과 쇼핑 없는 일정을 함께 보는 상품';
+    if (hasFlightMerit && hasHotelMerit) return '항공과 호텔 조건을 함께 보는 상품';
+    if (noShopping && optionPacked) return '쇼핑 부담을 줄이고 포함 조건을 보는 상품';
+    if (hasFlightMerit) return '항공 조건을 먼저 비교해볼 상품';
+    if (noShopping) return '쇼핑 없는 일정으로 비교해볼 상품';
+    if (optionPacked) return '포함 조건을 비교해볼 상품';
+    return '같은 일정에서 먼저 비교해볼 상품';
   }
-  if (flight && fiveStar) return '직항·5성 가치가 큰 옵션';
-  if (flight) return '직항 가치가 큰 옵션';
-  if (noShopping) return '노쇼핑 구성으로 부담 적은 옵션';
-  if (fiveStar) return '5성급 가치가 큰 옵션';
-  if (optionPacked) return '옵션까지 포함된 풍부한 구성';
-  return '동급 대비 강점이 있는 옵션';
+
+  if (hasFlightMerit) return '항공 조건을 비교해볼 대안';
+  if (noShopping) return '쇼핑 조건을 줄인 대안';
+  if (hasHotelMerit) return '호텔 조건을 비교해볼 대안';
+  if (optionPacked) return '포함 조건을 비교해볼 대안';
+  return '조건을 함께 비교해볼 대안';
 }
 
-// ─── 칩 4개 자동 매핑 ──────────────────────────────────────────────
-function generateChips(ded: Deductions, feat: Features, highlights: string[]): { icon: string; label: string }[] {
-  const chips: { icon: string; label: string }[] = [];
-  if ((ded.flight_premium ?? 0) > 0 || feat.is_direct_flight === true) {
-    const isCharter = highlights.some(h => /전세기/.test(h));
-    chips.push({ icon: '✈️', label: isCharter ? '직항 전세기' : '직항' });
+function generateChips(deductions: Deductions, features: Features, highlights: string[]): { label: string }[] {
+  const chips: { label: string }[] = [];
+
+  if ((deductions.flight_premium ?? 0) > 0 || features.is_direct_flight === true) {
+    chips.push({ label: hasText(highlights, /전세기/) ? '직항 전세기' : '직항' });
   }
-  if ((feat.hotel_avg_grade ?? 0) >= 4.5) chips.push({ icon: '🏨', label: '5성급 호텔' });
-  if (feat.shopping_count === 0) chips.push({ icon: '🛍️', label: '쇼핑 없음' });
-  const massage = highlights.find(h => /마사지/.test(h));
-  if (massage) {
-    const m = massage.match(/(전신|발|풋|아로마)?\s*마사지\s*(\d+분)?/);
-    chips.push({ icon: '💆', label: m && m[2] ? `마사지 ${m[2]}` : '마사지 포함' });
-  } else if ((feat.free_option_count ?? 0) >= 2) {
-    chips.push({ icon: '💎', label: '옵션 포함' });
-  }
+  if ((features.hotel_avg_grade ?? 0) >= 4.5) chips.push({ label: '호텔 조건 우수' });
+  if (features.shopping_count === 0) chips.push({ label: '쇼핑 없음' });
+  if (hasText(highlights, /마사지|스파/i)) chips.push({ label: '휴식 일정 포함' });
+  if ((features.free_option_count ?? 0) >= 2) chips.push({ label: `포함 옵션 ${features.free_option_count}개` });
+
   return chips.slice(0, 4);
 }
 
-// ─── 사회적 증거 메시지 (임계값 미만 비노출) ──────────────────────
-function socialProofMessage(sp?: { bookings: number; interest: number }): string | null {
-  if (!sp) return null;
-  if (sp.bookings >= 3) return `최근 30일 ${sp.bookings}건 예약`;       // 가장 강함
-  if (sp.interest >= 10) return `최근 한 달 ${sp.interest}명이 같은 일정 관심`;
-  return null; // false signal 방지
+function socialProofMessage(socialProof?: { bookings: number; interest: number }): string | null {
+  if (!socialProof) return null;
+  if (socialProof.bookings >= 3) return `최근 30일 예약 ${socialProof.bookings}건`;
+  if (socialProof.interest >= 10) return `최근 ${socialProof.interest}명이 관심을 보인 일정`;
+  return null;
 }
 
-// ─── 메인 컴포넌트 ────────────────────────────────────────────────
 export default function RecommendationCard({
-  rankInGroup, groupSize, effectivePrice, listPrice, departureDate,
-  deductions, features, productHighlights, socialProof, packageId, rivals = [],
+  rankInGroup,
+  groupSize,
+  effectivePrice,
+  listPrice,
+  departureDate,
+  deductions,
+  features,
+  productHighlights,
+  socialProof,
+  packageId,
+  rivals = [],
   customerPicksLabel,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // 노출 트래킹 — recommendation_outcomes 자동 누적 (LTR ground truth)
   useEffect(() => {
     if (!packageId || groupSize < 2 || rankInGroup > 3) return;
     fetch('/api/tracking/recommendation', {
@@ -164,179 +150,169 @@ export default function RecommendationCard({
         package_id: packageId,
         source: 'mobile_card',
         recommended_rank: rankInGroup,
-        outcome: null, // 노출만 (클릭 시 별도 호출)
+        outcome: null,
       }),
     }).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packageId, rankInGroup, groupSize]);
 
-  if (groupSize <= 1) return null;
-  if (rankInGroup > 3) return null;
+  if (groupSize <= 1 || rankInGroup > 3) return null;
 
   const isWinner = rankInGroup === 1;
-  const totalSavings = Math.max(0, listPrice - effectivePrice);
-  const savingsManwon = Math.round(totalSavings / 10000);
-
+  const priceGap = Math.max(0, listPrice - effectivePrice);
+  const priceGapManwon = Math.round(priceGap / 10000);
   const headline = generateHeadline(rankInGroup, deductions, features);
   const chips = generateChips(deductions, features, productHighlights);
   const proof = socialProofMessage(socialProof);
-  const dateLabel = departureDate ? `${departureDate.slice(5).replace('-', '/')} 출발` : '같은 일정';
 
   return (
     <section className="px-4 mt-4">
-      <div className={`rounded-2xl overflow-hidden border ${
-        isWinner
-          ? 'bg-gradient-to-br from-emerald-50 to-lime-50/40 border-emerald-200 shadow-sm'
-          : 'bg-white border-slate-100 shadow-sm'
-      }`}>
-        {/* ① Authority — 여소남 픽 인장 + 순위 컨텍스트 */}
-        <div className="px-5 pt-4 pb-1 flex items-center gap-2 flex-wrap">
+      <div
+        className={`overflow-hidden rounded-2xl border shadow-sm ${
+          isWinner
+            ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-lime-50/40'
+            : 'border-slate-100 bg-white'
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-2 px-5 pb-1 pt-4">
           {isWinner && (
-            <span className="inline-flex items-center gap-1 text-micro font-extrabold text-emerald-700 bg-white border border-emerald-300 px-2.5 py-1 rounded-full">
-              <span className="text-emerald-600">✓</span>
-              <span>{customerPicksLabel || '여소남 픽'}</span>
+            <span className="inline-flex items-center rounded-full border border-emerald-300 bg-white px-2.5 py-1 text-micro font-extrabold text-emerald-700">
+              {customerPicksLabel || '여소남 추천'}
             </span>
           )}
           <span className="text-[11px] font-semibold text-slate-500">
-            {dateLabel} · {groupSize}개 비교 {rankInGroup}위
+            {formatDateLabel(departureDate)} · {groupSize}개 일정 비교 · {rankInGroup}순위
           </span>
         </div>
 
-        {/* 강력 헤드라인 */}
-        <div className="px-5 pt-1 pb-2">
-          <h3 className="text-[19px] font-extrabold text-slate-900 leading-snug break-keep">
+        <div className="px-5 pb-2 pt-1">
+          <h3 className="break-keep text-[19px] font-extrabold leading-snug text-slate-900">
             {headline}
           </h3>
         </div>
 
-        {/* ⑤ Anchoring + ② Loss Aversion */}
-        {isWinner && savingsManwon >= 5 && (
+        {isWinner && priceGapManwon >= 5 && (
           <div className="px-5 pb-3">
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="text-micro text-slate-400 line-through tabular-nums">
-                ₩{listPrice.toLocaleString()}
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-micro tabular-nums text-slate-400 line-through">
+                {formatKrw(listPrice)}
               </span>
-              <span className="text-[24px] font-black text-emerald-700 tabular-nums leading-none">
-                ₩{effectivePrice.toLocaleString()}
+              <span className="text-[24px] font-black leading-none tabular-nums text-emerald-700">
+                {formatKrw(effectivePrice)}
               </span>
-              <span className="text-[11px] font-bold text-slate-500">상당</span>
+              <span className="text-[11px] font-bold text-slate-500">비교 기준</span>
             </div>
-            <p className="text-[13px] text-rose-600 font-semibold mt-1 break-keep">
-              💸 이 구성 따로 사면 <span className="text-body font-extrabold">+{savingsManwon}만원</span> 더 들어요
+            <p className="mt-1 break-keep text-[13px] font-semibold text-rose-600">
+              같은 출발일 비교 기준으로 약 {priceGapManwon}만원 차이가 있어요.
             </p>
           </div>
         )}
 
-        {/* 칩 4개 (스캔용) */}
         {chips.length > 0 && (
-          <div className="px-5 pb-3 flex flex-wrap gap-1.5">
-            {chips.map((c, i) => (
-              <span key={i} className={`inline-flex items-center gap-1 text-micro font-semibold px-2.5 py-1 rounded-full ${
-                isWinner ? 'bg-white text-slate-800 border border-emerald-200' : 'bg-slate-50 text-slate-700'
-              }`}>
-                <span>{c.icon}</span>
-                <span>{c.label}</span>
+          <div className="flex flex-wrap gap-1.5 px-5 pb-3">
+            {chips.map((chip) => (
+              <span
+                key={chip.label}
+                className={`inline-flex rounded-full px-2.5 py-1 text-micro font-semibold ${
+                  isWinner
+                    ? 'border border-emerald-200 bg-white text-slate-800'
+                    : 'bg-slate-50 text-slate-700'
+                }`}
+              >
+                {chip.label}
               </span>
             ))}
           </div>
         )}
 
-        {/* ③ Social Proof — 임계값 충족 시만 */}
         {proof && (
           <div className="px-5 pb-3">
-            <p className="text-micro text-slate-600 flex items-center gap-1.5">
-              <span className="w-1 h-1 rounded-full bg-emerald-500 flex-shrink-0" />
+            <p className="flex items-center gap-1.5 text-micro text-slate-600">
+              <span className="h-1 w-1 flex-shrink-0 rounded-full bg-emerald-500" />
               <span>{proof}</span>
             </p>
           </div>
         )}
 
-        {/* "다른 옵션과 비교" 토글 + 풀 모달 버튼 */}
         {rivals.length > 0 && (
           <>
             <div className="flex items-center border-t border-emerald-100/60">
               <button
                 type="button"
                 onClick={() => setCompareOpen(!compareOpen)}
-                className="flex-1 px-5 py-3 text-left flex items-center justify-between text-micro text-slate-700 hover:bg-white/40 transition"
+                className="flex-1 px-5 py-3 text-left text-micro text-slate-700 transition hover:bg-white/40"
                 aria-expanded={compareOpen}
               >
                 <span className="font-semibold">
-                  같은 날 다른 옵션과 비교 <span className="text-slate-400 font-normal">({rivals.length}개)</span>
+                  같은 출발일 다른 일정과 비교 <span className="font-normal text-slate-400">({rivals.length}개)</span>
                 </span>
-                <span className={`transition-transform text-slate-400 ${compareOpen ? 'rotate-180' : ''}`}>▾</span>
               </button>
               <button
                 type="button"
                 onClick={() => setModalOpen(true)}
-                className="px-3 py-3 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 transition border-l border-emerald-100/60"
-                aria-label="풀 비교 표 열기"
+                className="border-l border-emerald-100/60 px-3 py-3 text-[11px] font-semibold text-violet-700 transition hover:bg-violet-50"
+                aria-label="전체 비교 열기"
               >
-                풀 비교 ↗
+                전체 비교
               </button>
             </div>
+
             {compareOpen && (
-              <div className="px-5 pb-3 border-t border-emerald-100/40 bg-white/60 space-y-2.5 pt-3">
-                {rivals.map(r => {
-                  const line = diffLine({ listPrice, features, productHighlights }, r);
-                  return (
-                    <div key={r.package_id} className="rounded-lg bg-slate-50 px-3 py-2.5">
-                      <div className="flex items-baseline justify-between gap-2 mb-1">
-                        <span className="text-[11px] font-bold text-slate-500">
-                          {r.rank_in_group}위 옵션
-                        </span>
-                        <span className="text-micro font-extrabold text-slate-800 tabular-nums">
-                          ₩{r.list_price.toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="text-micro text-slate-700 leading-snug break-keep mb-1.5 line-clamp-2">
-                        {r.title}
-                      </p>
-                      <p className="text-micro text-emerald-700 font-semibold leading-snug break-keep">
-                        💡 이 1위 패키지가 {line}
-                      </p>
+              <div className="space-y-2.5 border-t border-emerald-100/40 bg-white/60 px-5 pb-3 pt-3">
+                {rivals.map((rival) => (
+                  <div key={rival.package_id} className="rounded-lg bg-slate-50 px-3 py-2.5">
+                    <div className="mb-1 flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] font-bold text-slate-500">
+                        {rival.rank_in_group}순위 일정
+                      </span>
+                      <span className="text-micro font-extrabold tabular-nums text-slate-800">
+                        {formatKrw(rival.list_price)}
+                      </span>
                     </div>
-                  );
-                })}
+                    <p className="mb-1.5 line-clamp-2 break-keep text-micro leading-snug text-slate-700">
+                      {rival.title}
+                    </p>
+                    <p className="break-keep text-micro font-semibold leading-snug text-emerald-700">
+                      이 상품은 {diffLine({ listPrice, features, productHighlights }, rival)}
+                    </p>
+                  </div>
+                ))}
               </div>
             )}
           </>
         )}
 
-        {/* "어떻게 골랐나요?" 토글 — 큐레이션 스토리 */}
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="w-full px-5 py-3 text-left flex items-center justify-between border-t border-emerald-100/60 text-micro text-slate-600 hover:bg-white/40 transition"
+          className="flex w-full items-center justify-between border-t border-emerald-100/60 px-5 py-3 text-left text-micro text-slate-600 transition hover:bg-white/40"
           aria-expanded={open}
         >
-          <span className="font-medium">어떻게 골랐나요?</span>
-          <span className={`transition-transform text-slate-400 ${open ? 'rotate-180' : ''}`}>▾</span>
+          <span className="font-medium">어떤 기준으로 비교했나요?</span>
+          <span className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}>⌄</span>
         </button>
+
         {open && (
-          <div className="px-5 pb-4 border-t border-emerald-100/40 bg-white/60 text-micro text-slate-600 leading-relaxed space-y-2 pt-3">
+          <div className="space-y-2 border-t border-emerald-100/40 bg-white/60 px-5 pb-4 pt-3 text-micro leading-relaxed text-slate-600">
             <p>
-              여소남이 같은 목적지·같은 출발일 패키지를 모아 <strong>호텔 등급·직항·옵션 포함·쇼핑 횟수·랜드사 신뢰도</strong>를 종합적으로 비교해요.
+              여소남은 같은 목적지와 같은 출발일 상품을 묶어 가격, 항공, 호텔, 쇼핑, 포함 옵션을 함께 비교합니다.
             </p>
-            {savingsManwon >= 5 && (
-              <p className="text-emerald-700 font-medium">
-                이 패키지는 정가 ₩{listPrice.toLocaleString()} 안에 약 <strong>{savingsManwon}만원</strong>치의
-                셀링포인트 (호텔·직항·옵션 등)가 포함된 셈이에요. 따로 구성하면 더 비싸집니다.
+            {priceGapManwon >= 5 && (
+              <p className="font-medium text-emerald-700">
+                표시된 가격 차이는 현재 비교 데이터 기준입니다. 실제 가능 여부와 요금은 상담 시점에 다시 확인합니다.
               </p>
             )}
-            <p className="text-[10px] text-slate-400 mt-2">
-              ※ 매일 새벽 자동 재계산 · 정책 v1 (학술적으로 검증된 헤도닉 + TOPSIS 결합)
+            <p className="text-[10px] text-slate-400">
+              좌석, 객실, 요금은 출발일과 예약 시점에 따라 달라질 수 있습니다.
             </p>
           </div>
         )}
       </div>
 
-      {/* 풀 비교 모달 */}
       {rivals.length > 0 && packageId && (
         <PairwiseCompareModal
           self={{
             package_id: packageId,
-            title: '이 패키지',
+            title: '선택한 상품',
             list_price: listPrice,
             hotel_avg_grade: features.hotel_avg_grade,
             shopping_count: features.shopping_count,

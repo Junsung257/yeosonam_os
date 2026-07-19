@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import ReviewForm from './ReviewForm';
+import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repository';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +19,9 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
-interface ReviewMetadataBookingRow {
-  travel_packages: { title?: string | null } | null;
+interface ReviewPublicPackage {
+  title: string | null;
+  destination: string | null;
 }
 
 async function getBookingInfo(bookingId: string) {
@@ -30,12 +32,11 @@ async function getBookingInfo(bookingId: string) {
     product_id: string | null;
     lead_customer_id: string | null;
     status: string | null;
-    travel_packages: { title: string | null; destination: string | null } | null;
   }
 
   const { data } = await supabaseAdmin
     .from('bookings')
-    .select('id, product_id, lead_customer_id, status, travel_packages(title, destination)')
+    .select('id, product_id, lead_customer_id, status')
     .eq('id', bookingId)
     .limit(1);
 
@@ -52,6 +53,25 @@ async function getBookingInfo(bookingId: string) {
     booking: data[0] as unknown as BookingWithPackage,
     hasReview: (existing?.length ?? 0) > 0,
   };
+}
+
+async function getReviewPublicPackage(productId: string | null | undefined): Promise<ReviewPublicPackage | null> {
+  if (!isSupabaseConfigured || !productId) return null;
+
+  const publicSnapshot = await fetchLatestPublicPackageSnapshot(supabaseAdmin, productId).catch(() => null);
+  const snapshotPackage = publicSnapshot?.package;
+  if (!snapshotPackage) return null;
+
+  const title =
+    typeof snapshotPackage.title === 'string' && snapshotPackage.title.trim()
+      ? snapshotPackage.title.trim()
+      : null;
+  const destination =
+    typeof snapshotPackage.destination === 'string' && snapshotPackage.destination.trim()
+      ? snapshotPackage.destination.trim()
+      : null;
+
+  return title || destination ? { title, destination } : null;
 }
 
 export async function generateMetadata({
@@ -72,14 +92,15 @@ export async function generateMetadata({
     };
   }
 
-  let data: ReviewMetadataBookingRow[] | null = null;
+  let productId: string | null = null;
   try {
     const result = await supabaseAdmin
       .from('bookings')
-      .select('travel_packages(title)')
+      .select('product_id')
       .eq('id', bookingId)
       .limit(1);
-    data = result.data as ReviewMetadataBookingRow[] | null;
+    const booking = result.data?.[0] as { product_id?: string | null } | undefined;
+    productId = booking?.product_id ?? null;
   } catch {
     return {
       title: DEFAULT_REVIEW_TITLE,
@@ -89,7 +110,7 @@ export async function generateMetadata({
     };
   }
 
-  const pkg = data?.[0]?.travel_packages ?? null;
+  const pkg = await getReviewPublicPackage(productId);
   const title = pkg?.title ? `${pkg.title} 후기 | 여소남` : DEFAULT_REVIEW_TITLE;
 
   return {
@@ -117,7 +138,7 @@ export default async function ReviewPage({
   const info = await getBookingInfo(bookingId);
   if (!info) notFound();
 
-  const pkg = info.booking.travel_packages;
+  const pkg = await getReviewPublicPackage(info.booking.product_id);
 
   if (info.hasReview) {
     return (

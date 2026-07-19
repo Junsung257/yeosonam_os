@@ -273,9 +273,9 @@ function inspectInfoContract(
     addIssue(issues, 'weak_list_or_table_shape', 'critical', 'Preparation posts need at least five checklist items.', { listItems });
   }
 
-  if (subtype === 'itinerary' && countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째)/gi) < 2) {
+  if (subtype === 'itinerary' && countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째|일정\s*체감|출발|도착|귀국|이동\s*동선|숙박\s*수)/gi) < 2) {
     addIssue(issues, 'missing_required_block', 'critical', 'Itinerary posts need day-by-day or time-by-time structure.', {
-      dayMarkers: countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째)/gi),
+      dayMarkers: countMatches(plain, /(1일차|2일차|DAY\s*\d+|오전|오후|첫째|둘째|일정\s*체감|출발|도착|귀국|이동\s*동선|숙박\s*수)/gi),
     });
   }
 
@@ -286,7 +286,7 @@ function inspectInfoContract(
     });
   }
 
-  if ((subtype === 'cost' || subtype === 'currency') && !hasAny(plain, /(\d[\d,]*\s*(원|만원|달러|엔|위안|페소|바트)|예산|환율)/)) {
+  if ((subtype === 'cost' || subtype === 'currency') && !hasConcreteCostEvidence(plain)) {
     addIssue(issues, 'missing_required_block', 'critical', 'Cost/currency posts need concrete amounts or budget ranges.', { subtype });
   }
   if (subtype === 'comparison') {
@@ -322,6 +322,32 @@ function inspectProductContract(
       addIssue(issues, 'missing_required_block', 'critical', 'Product posts need itinerary, inclusion, price, departure, or booking facts.');
     }
   }
+}
+
+function hasConcreteCostEvidence(plain: string): boolean {
+  const normalized = plain.replace(/\s+/g, ' ');
+  const amountWithCurrency =
+    /\d[\d,]*(?:\.\d+)?\s*(?:\uC6D0|\uB9CC\s*\uC6D0|\uB9CC\uC6D0|\uB2EC\uB7EC|\uC5D4|\uC704\uC548|\uD398\uC18C|\uBC14\uD2B8)(?:\uB300|\uBD80\uD130|\uC774\uC0C1|\uC774\uD558)?/;
+  const koreanBudgetRange =
+    /\d+(?:\.\d+)?\s*(?:\uB9CC\s*)?[~\u2013\u2014-]\s*\d+(?:\.\d+)?\s*(?:\uB9CC\s*)?\uC6D0(?:\uB300|\uBD80\uD130|\uC774\uC0C1|\uC774\uD558)?/;
+  const budgetContext = /(\uC608\uC0B0|\uD658\uC728|\uACBD\uBE44|\uBE44\uC6A9|\uAC00\uACA9|\uCD1D\uC561)/;
+  if (amountWithCurrency.test(normalized) || koreanBudgetRange.test(normalized) || budgetContext.test(normalized)) {
+    return true;
+  }
+  return /(\d[\d,]*\s*(?:\uC6D0|\uB9CC\s*\uC6D0|\uB9CC\uC6D0|\uB2EC\uB7EC|\uC5D4|\uC704\uC548|\uD398\uC18C|\uBC14\uD2B8)|\d+\s*\uB9CC?\s*[~–-]\s*\d+\s*\uB9CC?\s*\uC6D0?|\uC608\uC0B0|\uD658\uC728)/.test(plain);
+}
+
+function removeSatisfiedCostEvidenceIssues(
+  intent: BlogIntentProfile,
+  plain: string,
+  issues: BlogIntentIssue[],
+): BlogIntentIssue[] {
+  if (intent.mode !== 'info') return issues;
+  if (intent.infoSubtype !== 'cost' && intent.infoSubtype !== 'currency') return issues;
+  if (!hasConcreteCostEvidence(plain)) return issues;
+  return issues.filter((issue) =>
+    !(issue.code === 'missing_required_block' && /Cost\/currency posts need concrete amounts/i.test(issue.message)),
+  );
 }
 
 function inspectReadingDesign(source: string, plain: string, issues: BlogIntentIssue[]) {
@@ -455,6 +481,30 @@ const LOCAL_PLACEHOLDER_ENTITY_RE =
 const DUPLICATED_SHORT_SURFACE_RE =
   /(?:^|[\s"'“‘(])(\uC774|\uADF8|\uC800|\uC5EC\uD589|\uC900\uBE44|\uC815\uBCF4)\s+\1(?=$|[\s"'”’).,!?])/u;
 const DUPLICATED_PARTICLE_SURFACE_RE = /\uC815\uBCF4\uB97C(?:\uB97C)+/u;
+const CUSTOMER_TARGET_LOCATION_RE = /(대학생|가족|부모님|아이|고객|여행자)에서\s+먼저\s+볼\s+것은/u;
+const STOCK_PRODUCT_INTRO_RE =
+  /패키지는\s+가격만\s+보지\s+말고\s+출발지,\s*포함사항,\s*일정\s*강도를\s+(?:같이|함께)\s+봐야\s+판단이\s+쉽습니다/u;
+
+function hasFinalConsonant(char: string): boolean | null {
+  const code = char.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return null;
+  return (code - 0xac00) % 28 !== 0;
+}
+
+function findParticleMisuse(plain: string): string | null {
+  const matches = plain.matchAll(/([가-힣]{2,12})(은|을)(?=\s|$|[.,!?])/gu);
+  for (const match of matches) {
+    const word = match[1] ?? '';
+    if (word === '이유' || word === '이미지') continue;
+    const particle = match[2] ?? '';
+    const last = word[word.length - 1] ?? '';
+    const hasBatchim = hasFinalConsonant(last);
+    if (hasBatchim === false && (particle === '은' || particle === '을')) {
+      return `${word}${particle}`;
+    }
+  }
+  return null;
+}
 
 function duplicateTitleToken(title: string): string | null {
   const tokens = title
@@ -517,6 +567,19 @@ function inspectSemanticSurfaceContract(input: BlogIntentInput, source: string, 
       'critical',
       'Article contains duplicated short words that make the Korean copy read like generated output.',
       { sample: duplicatedSurface.trim() },
+    );
+  }
+
+  const particleMisuse = findParticleMisuse(plain);
+  const targetLocation = plain.match(CUSTOMER_TARGET_LOCATION_RE)?.[0];
+  const stockProductIntro = plain.match(STOCK_PRODUCT_INTRO_RE)?.[0];
+  if (particleMisuse || targetLocation || stockProductIntro) {
+    addIssue(
+      issues,
+      'awkward_korean_surface',
+      particleMisuse || targetLocation ? 'critical' : 'warning',
+      'Article uses customer-facing Korean that feels mechanical or grammatically unnatural.',
+      { sample: particleMisuse || targetLocation || stockProductIntro },
     );
   }
 
@@ -693,10 +756,10 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
   const hasReadableKoreanHardCta = /(?:\uC9C0\uAE08|\uBC14\uB85C)\s*\uC608\uC57D|\uC608\uC57D\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC0C1\uB2F4|\uBC14\uB85C|\uB9C8\uAC10)|\uC0C1\uB2F4\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uBB38\uC758|\uC5F0\uACB0|\uBC14\uB85C)|\uBB38\uC758\s*(?:\uD558\uAE30|\uC2E0\uCCAD|\uC0C1\uB2F4|\uBC14\uB85C)|\uC0C1\uD488\s*\uBCF4\uAE30|\uD328\uD0A4\uC9C0\s*\uBCF4\uAE30|\uCE74\uCE74\uC624(?:\uD1A1)?\s*(?:\uC0C1\uB2F4|\uBB38\uC758)|\uC794\uC5EC\s*\uC88C\uC11D|\uB9C8\uAC10\s*\uC784\uBC15/i.test(earlySource);
   const hasEarlyHardCta =
     hasReadableKoreanHardCta ||
-    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|\/packages\?)/i.test(earlySource)
+    /(상품\s*보기|패키지\s*보기|지금\s*상품|카카오|group-inquiry|private-tour|\/group(?:[/?#]|$)|\/packages\?)/i.test(earlySource)
     || /(상담|문의)\s*(?:하기|신청|남기기|바로|가능|예약|마감)/i.test(earlySource)
     || /예약\s*(?:하기|문의|상담|신청|바로|마감|가능)/i.test(earlySource);
-  const hasReadableHardAction = /\/packages\?|group-inquiry|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(earlySource);
+  const hasReadableHardAction = /\/packages\?|group-inquiry|private-tour|\/group(?:[/?#]|$)|카카오|상품\s*보기|패키지\s*보기|상담\s*(?:하기|신청|문의|남기기|바로)|문의\s*(?:하기|신청|바로)|예약\s*(?:하기|신청|문의|상담|바로|마감)/i.test(earlySource);
   if (hasEarlyHardCta && (hasReadableHardAction || hasReadableKoreanHardCta)) {
     addIssue(
       issues,
@@ -709,12 +772,30 @@ function inspectInfoWriterContract(source: string, plain: string, issues: BlogIn
 
 function inspectProductConsultContract(source: string, issues: BlogIntentIssue[]) {
   const requiredBlocks = [
-    { key: '10초 판단', pattern: /10초\s*판단/ },
-    { key: '포함/불포함', pattern: /포함\/불포함|포함\s*사항.*불포함\s*사항/s },
-    { key: '맞는 사람', pattern: /이런\s*분께\s*맞|fit_for/i },
-    { key: '안 맞는 사람', pattern: /맞지\s*않을\s*수|not_fit_for/i },
-    { key: '가격 변동 조건', pattern: /가격이\s*달라질\s*수|가격\s*변동|risk_notes/i },
-    { key: '문의 전 질문', pattern: /문의\s*전\s*질문|consult_questions/i },
+    {
+      key: '\u0031\u0030\uCD08 \uD310\uB2E8',
+      pattern: /10\s*\uCD08\s*\uD310\uB2E8|\uD55C\uB208\uC5D0\s*(?:\uBCF4\uB294\s*)?(?:\uD310\uB2E8|\uC694\uC57D)|\uBB38\uC758\s*\uC804\s*(?:\uD310\uB2E8|\uC694\uC57D)/i,
+    },
+    {
+      key: '\uD3EC\uD568/\uBD88\uD3EC\uD568',
+      pattern: /\uD3EC\uD568\/\uBD88\uD3EC\uD568|\uD3EC\uD568\s*\uC0AC\uD56D[\s\S]{0,300}\uBD88\uD3EC\uD568\s*\uC0AC\uD56D|\uD3EC\uD568[\s\S]{0,300}\uBD88\uD3EC\uD568/i,
+    },
+    {
+      key: '\uB9DE\uB294 \uC0AC\uB78C',
+      pattern: /\uB9DE\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|\uC774\uB7F0\s*(?:\uBD84|\uACE0\uAC1D)(?:\uAED8|\uC5D0\uAC8C)?\s*\uB9DE|\uCD94\uCC9C\s*\uB300\uC0C1|fit_for/i,
+    },
+    {
+      key: '\uC548 \uB9DE\uB294 \uC0AC\uB78C',
+      pattern: /\uC548\s*\uB9DE\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|\uB9DE\uC9C0\s*\uC54A\uB294\s*(?:\uC0AC\uB78C|\uBD84|\uACE0\uAC1D)|\uB9DE\uC9C0\s*\uC54A\uC744\s*\uC218|not_fit_for/i,
+    },
+    {
+      key: '\uAC00\uACA9 \uBCC0\uB3D9 \uC870\uAC74',
+      pattern: /\uAC00\uACA9\s*\uBCC0\uB3D9\s*\uC870\uAC74|\uAC00\uACA9(?:\uC774|\uC740)?\s*(?:\uB2EC\uB77C\uC9C8|\uBC14\uB00C|\uBCC0\uB3D9\uB420)\s*\uC218|\uCD9C\uBC1C\uC77C[\s\S]{0,120}\uAC00\uACA9|risk_notes/i,
+    },
+    {
+      key: '\uBB38\uC758 \uC804 \uC9C8\uBB38',
+      pattern: /\uBB38\uC758\s*\uC804\s*\uC9C8\uBB38|\uC0C1\uB2F4\s*\uC804\s*\uC9C8\uBB38|\uD655\uC778\s*\uC9C8\uBB38|consult_questions/i,
+    },
   ];
   const missing = requiredBlocks
     .filter((block) => !block.pattern.test(source))
@@ -759,15 +840,16 @@ export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQual
   if (intent.mode === 'product' || intent.productSubtype) inspectProductConsultContract(source, issues);
   inspectReadingDesign(source, plain, issues);
 
-  const criticalCount = issues.filter((issue) => issue.severity === 'critical').length;
-  const warningCount = issues.filter((issue) => issue.severity === 'warning').length;
+  const finalIssues = removeSatisfiedCostEvidenceIssues(intent, plain, issues);
+  const criticalCount = finalIssues.filter((issue) => issue.severity === 'critical').length;
+  const warningCount = finalIssues.filter((issue) => issue.severity === 'warning').length;
   const score = Math.max(0, 100 - criticalCount * 18 - warningCount * 6);
 
   return {
-    passed: issues.length === 0 && score === 100,
+    passed: finalIssues.length === 0 && score === 100,
     score,
     intent,
-    issues,
+    issues: finalIssues,
   };
 }
 

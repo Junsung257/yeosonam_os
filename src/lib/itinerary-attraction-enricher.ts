@@ -1,5 +1,6 @@
 import {
   destinationAllowsAttractionScope,
+  isCustomerRenderableAttraction,
   isMatchableAttractionAlias,
   matchAttractions,
   type AttractionData,
@@ -72,11 +73,15 @@ function destinationAllowsAttraction(attraction: AttractionData, destination?: s
 }
 
 function isSightseeingAttractionRow(attraction: AttractionData): boolean {
-  return !NON_SIGHTSEEING_ATTRACTION_ROW_RE.test([
+  return isCustomerRenderableAttraction(attraction) && !NON_SIGHTSEEING_ATTRACTION_ROW_RE.test([
     attraction.name,
     attraction.category ?? '',
     ...(attraction.aliases ?? []),
   ].join(' '));
+}
+
+function hasAttractionScope(attraction: AttractionData): boolean {
+  return Boolean(normalizeDirectTerm(attraction.region) || normalizeDirectTerm(attraction.country));
 }
 
 function directTermOccurs(text: string, term: string): boolean {
@@ -85,6 +90,10 @@ function directTermOccurs(text: string, term: string): boolean {
   const compact = clean.replace(/\s+/g, '');
   if (compact.length <= 2) return hasTermBoundary(text.toLowerCase(), clean);
   return normalizeDirectTerm(text).includes(compact);
+}
+
+function attractionNameOccurs(text: string, attraction: AttractionData): boolean {
+  return typeof attraction.name === 'string' && directTermOccurs(text, attraction.name);
 }
 
 function contextAllowsAttractionScope(attraction: AttractionData, text: string): boolean {
@@ -130,7 +139,7 @@ function compactScheduleText(value: string | null | undefined): string {
 
 function hasAttractionVisitHint(text: string): boolean {
   const compact = compactScheduleText(text);
-  return /(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uC77C\uC1A1\uC815|\uD574\uB780\uAC15|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|CC)/.test(compact);
+  return /(?:\uAD00\uAD11|\uAD00\uB78C|\uBC29\uBB38|\uCCB4\uD5D8|\uB4F1\uC815|\uAC10\uC0C1|\uD22C\uC5B4|\uC1FC|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C|\uC77C\uC1A1\uC815|\uD574\uB780\uAC15|\uCC9C\uC9C0|\uC628\uCC9C\uC9C0\uB300|\uACBD\uACC4\uBE44|\uB300\uD611\uACE1|\uACE0\uC0B0\uD654\uC6D0|\uB77C\uC6B4\uB529|\uACE8\uD504\uC7A5|CC)/.test(compact);
 }
 
 function isSupplierHeaderOrCommerceLine(text: string): boolean {
@@ -153,7 +162,8 @@ function shouldStripAttractionReferences(item: ItineraryScheduleItem): boolean {
   if (isHotelOperationLine(text)) return true;
   if (isHotelStayLine(text)) return true;
   if (isSupplierHeaderOrCommerceLine(text)) return true;
-  if (item.entity_kind === 'optional_tour' || item.entity_kind === 'perk') return true;
+  if (item.entity_kind === 'optional_tour') return true;
+  if (item.entity_kind === 'perk' && !hasAttractionVisitHint(text)) return true;
   if (item.entity_kind === 'transfer' && !hasAttractionVisitHint(text)) return true;
   return false;
 }
@@ -177,7 +187,9 @@ function removeAttractionReferences(item: ItineraryScheduleItem): ItinerarySched
 
 function dedupeAttractionMatches(values: AttractionData[], text: string): AttractionData[] {
   const compact = compactScheduleText(text);
-  let filtered = values;
+  let filtered = values
+    .filter(isSightseeingAttractionRow)
+    .filter(value => hasAttractionScope(value) || attractionNameOccurs(text, value));
 
   if (/\uC545\uD654\uD3ED\uD3EC/.test(compact) && !/\uCC9C\uC9C0/.test(compact)) {
     filtered = filtered.filter(value => {
@@ -203,14 +215,11 @@ function dedupeAttractionMatches(values: AttractionData[], text: string): Attrac
   const unique = [...byNormalized.values()];
   return unique.filter(value => {
     const name = normalizeDirectTerm(value.name);
-    if (name.length <= 2) {
-      return !unique.some(other => {
-        if (other === value) return false;
-        const otherName = normalizeDirectTerm(other.name);
-        return otherName.length > name.length && otherName.includes(name);
-      });
-    }
-    return true;
+    return !unique.some(other => {
+      if (other === value) return false;
+      const otherName = normalizeDirectTerm(other.name);
+      return otherName.length > name.length && otherName.includes(name);
+    });
   });
 }
 
@@ -272,7 +281,7 @@ function findMatchesForQueries(
     for (const direct of findRegisteredAttractionTermsInText(query, attractions, destination)) {
       found.set(String(direct.id ?? direct.name), direct);
     }
-    for (const matched of matchAttractions(query, attractions, destination)) {
+    for (const matched of matchAttractions(query, attractions, destination, { customerFacing: true })) {
       found.set(String(matched.id ?? matched.name), matched);
     }
   }
@@ -293,7 +302,7 @@ function isGenericNonAttractionActivity(activity: string): boolean {
   if (/디스커버리\s*투어|시내관광|스쿠버다이빙|수영장\s*실습|오일마사지|호핑투어|자유시간|선택관광\s*즐기기/i.test(text)) return true;
   if (/기념품|토산품|건강보조식품|잡화|진주/.test(text)) return true;
   if (/^(?:\uC804\uC6A9\uCC28\uB7C9|\uC804\uC77C|\uACF5\uD56D\uC73C\uB85C\uC774\uB3D9|\uD638\uD154\uD22C\uC219\uBC0F\uD734\uC2DD)$/.test(compact)) return true;
-  if (/^(?:\uC870|\uC911|\uC11D)\s*:/.test(text)) return true;
+  if (/^(?:\uC870|\uC911|\uC11D)\s*[:-]/.test(text)) return true;
   if (/^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/.test(compact)) return true;
   if (/^\$?\d+/.test(text)) return true;
   if (/(관광|방문|투어|입장|관람|탐방|체험)/.test(text)) return false;
@@ -341,11 +350,11 @@ export function enrichItineraryWithAttractionReferences(
     const schedule = (day.schedule ?? []).map((item) => {
       if (item.type && SKIP_TYPES.has(item.type)) return item;
       if (shouldStripAttractionReferences(item)) return removeAttractionReferences(item);
+      const itemText = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
       const existingIds = Array.isArray(item.attraction_ids)
         ? item.attraction_ids.map(id => String(id)).filter(Boolean)
         : [];
       if (existingIds.length > 0) {
-        const itemText = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
         const directValues = dedupeAttractionMatches(
           findRegisteredAttractionTermsInText(itemText, attractions, matchDestination),
           itemText,
@@ -380,35 +389,36 @@ export function enrichItineraryWithAttractionReferences(
         return removeAttractionReferences(item);
       }
 
+      let pendingCompiledQueryUnmatched: string | null = null;
       const compiledQueries = getAttractionQueries(item);
       if (compiledQueries.length > 0) {
         const values = dedupeAttractionMatches(
           findMatchesForQueries(compiledQueries, attractions, matchDestination),
-          [item.activity, item.note ?? '', ...compiledQueries].filter(Boolean).join(' '),
+          [itemText, ...compiledQueries].filter(Boolean).join(' '),
         );
         if (values.length === 0) {
-          unmatched.push({ activity: compiledQueries[0], day_number: day.day ?? 0 });
-          return item;
+          pendingCompiledQueryUnmatched = compiledQueries[0] ?? null;
+        } else {
+          matchedScheduleItemCount++;
+          values.forEach(v => matchedNames.add(v.name));
+          return {
+            ...item,
+            attraction_ids: values.map(v => v.id).filter(Boolean),
+            attraction_names: values.map(v => v.name),
+            attraction_note: customerSafeAttractionNote(item, values[0]),
+          };
         }
-        matchedScheduleItemCount++;
-        values.forEach(v => matchedNames.add(v.name));
-        return {
-          ...item,
-          attraction_ids: values.map(v => v.id).filter(Boolean),
-          attraction_names: values.map(v => v.name),
-          attraction_note: customerSafeAttractionNote(item, values[0]),
-        };
       }
 
       const noteHasAttractionHint = /(산|궁|공원|호수|폭포|사원|성당|교회|광장|마을|전망|유적|박물관|시장|민속촌)/.test(item.note ?? '');
       if (isDirectScanUnsafeActivity(item.activity) && !noteHasAttractionHint) return item;
       const directMatches = findRegisteredAttractionTermsInText(
-        [item.activity, item.note ?? ''].filter(Boolean).join(' '),
+        itemText,
         attractions,
         matchDestination,
       );
       if (directMatches.length > 0) {
-        const values = dedupeAttractionMatches(directMatches, [item.activity, item.note ?? ''].filter(Boolean).join(' '));
+        const values = dedupeAttractionMatches(directMatches, itemText);
         if (values.length === 0) return removeAttractionReferences(item);
         matchedScheduleItemCount++;
         values.forEach(v => matchedNames.add(v.name));
@@ -420,13 +430,19 @@ export function enrichItineraryWithAttractionReferences(
         };
       }
 
-      if (!shouldAttemptAttractionMatch(item)) return item;
+      if (!shouldAttemptAttractionMatch(item)) {
+        if (pendingCompiledQueryUnmatched) unmatched.push({ activity: pendingCompiledQueryUnmatched, day_number: day.day ?? 0 });
+        return item;
+      }
       const candidates = extractAttractionCandidates(item.activity, item.note);
-      if (candidates.length === 0) return item;
+      if (candidates.length === 0) {
+        if (pendingCompiledQueryUnmatched) unmatched.push({ activity: pendingCompiledQueryUnmatched, day_number: day.day ?? 0 });
+        return item;
+      }
 
       const found = new Map<string, AttractionData>();
       for (const c of candidates) {
-        const matches = matchAttractions(c, attractions, matchDestination);
+        const matches = matchAttractions(c, attractions, matchDestination, { customerFacing: true });
         for (const m of matches) {
           const key = (m.id ?? m.name).toString();
           found.set(key, m);
@@ -434,11 +450,11 @@ export function enrichItineraryWithAttractionReferences(
       }
 
       if (found.size === 0) {
-        unmatched.push({ activity: candidates[0], day_number: day.day ?? 0 });
+        unmatched.push({ activity: pendingCompiledQueryUnmatched ?? candidates[0], day_number: day.day ?? 0 });
         return item;
       }
 
-      const values = dedupeAttractionMatches([...found.values()], [item.activity, item.note ?? ''].filter(Boolean).join(' '));
+      const values = dedupeAttractionMatches([...found.values()], itemText);
       if (values.length === 0) return removeAttractionReferences(item);
       matchedScheduleItemCount++;
       values.forEach(v => matchedNames.add(v.name));

@@ -116,7 +116,7 @@ async function scanGoogleAds(
     platform: "google" as const,
     advertiserName: advertiser,
     headline: `${advertiser} ${config.keywords[0] ?? "해외여행"} 베스트 딜`,
-    description: `${advertiser}의 엄선된 ${config.keywords[0] ?? "여행"} 상품. 최저가 보장, 24시간 고객 지원, 간편 예약 시스템. 지금 바로 확인하세요.`,
+    description: `${advertiser}의 엄선된 ${config.keywords[0] ?? "여행"} 상품. 출발일과 요금 조건을 확인하고 상담으로 예약 가능 여부를 확인하세요.`,
     destination: `https://www.google.com/ads/${advertiser.toLowerCase()}`,
     estimatedSpend: undefined,
     firstSeen: new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000),

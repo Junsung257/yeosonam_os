@@ -2,6 +2,10 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +18,35 @@ type PublicCardNews = {
   created_at: string;
   engagement_score: number | null;
 };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function isAffiliatePublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+function toAffiliatePublicPackage(row: Record<string, unknown>): Record<string, unknown> {
+  const cardProjection = asRecord(row._card_projection);
+  const customerPackage = sanitizeCustomerPackageForClient({
+    id: row.id,
+    title: row.title,
+    destination: row.destination,
+    location_summary: cardProjection?.summary ?? row.summary ?? row.location_summary ?? null,
+    price: row.price,
+    price_display: row.price_display,
+    package_type: row.package_type ?? row.product_type ?? null,
+    main_image: row.main_image ?? row.hero_image_url ?? row.thumbnail_url ?? null,
+    badges: cardProjection?.badges ?? [],
+    publication_state: row.publication_state,
+    package_revision: row.package_revision,
+  });
+  return customerPackage ?? {};
+}
 
 export async function GET(
   _request: NextRequest,
@@ -68,10 +101,15 @@ export async function GET(
     if (affiliate.landing_pick_package_ids && affiliate.landing_pick_package_ids.length > 0) {
       const { data: pkgData } = await supabaseAdmin
         .from('travel_packages')
-        .select('id, title, location_summary, price, original_price, discount_rate, package_type, main_image')
+        .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .in('id', affiliate.landing_pick_package_ids)
+        .in('publication_state', ['approved', 'published'])
         .limit(10);
-      packages = pkgData ?? [];
+      const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+        supabaseAdmin,
+        ((pkgData ?? []) as Array<Record<string, unknown>>).filter(isAffiliatePublicSnapshotCandidate),
+      ).catch(() => []);
+      packages = publicPackages.map(toAffiliatePublicPackage);
     }
 
     return apiResponse({

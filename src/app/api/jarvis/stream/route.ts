@@ -31,6 +31,7 @@ import { createAgentTask, recordAgentIncident, transitionAgentTask } from '@/lib
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { rateLimitAI } from '@/lib/rate-limiter'
 import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
+import { applyCustomerAnswerGuard } from '@/lib/jarvis/customer-answer-guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // DeepSeek V4-Pro 5라운드 최대 ~100초 + 마진
@@ -158,6 +159,7 @@ export async function POST(req: NextRequest) {
       let finalResult: AgentRunResult | null = null
       let firstTokenAt: number | null = null
       let keepaliveTimer: ReturnType<typeof setInterval> | null = null
+      const bufferCustomerAnswer = ctx.surface === 'customer' || ctx.userRole === 'customer'
 
       try {
         // 시작 이벤트 — agent 선택 결과 (게스트 여부 client 에 전달)
@@ -182,6 +184,7 @@ export async function POST(req: NextRequest) {
         }, 15_000)
 
         const generator = runV2(dispatch, { message, session, ctx }) as AsyncGenerator<StreamEvent, AgentRunResult>
+        let bufferedAnswer = ''
         while (true) {
           const step = await generator.next()
           if (step.done) {
@@ -191,11 +194,43 @@ export async function POST(req: NextRequest) {
           if (firstTokenAt === null && step.value?.type === 'text_delta') {
             firstTokenAt = Date.now()
           }
+          if (bufferCustomerAnswer && step.value?.type === 'text_delta') {
+            bufferedAnswer += typeof step.value.data === 'string' ? step.value.data : ''
+            continue
+          }
           controller.enqueue(encodeSSE(step.value))
         }
 
         // 4) 세션 히스토리 업데이트 (비동기로 빼지 않고 확정 후 종료 전에 기록)
         if (finalResult) {
+          if (!finalResult.response && bufferedAnswer.trim()) {
+            finalResult = { ...finalResult, response: bufferedAnswer }
+          }
+          const answerGuard = applyCustomerAnswerGuard({
+            message,
+            reply: finalResult.response,
+            ctx,
+            pendingActionId: finalResult.pendingActionId,
+          })
+          if (answerGuard.wasGuarded) {
+            finalResult = {
+              ...finalResult,
+              response: answerGuard.reply,
+              contextUpdate: {
+                ...finalResult.contextUpdate,
+                customerAnswerGuard: {
+                  issues: answerGuard.issues,
+                  escalated: answerGuard.escalate,
+                },
+              },
+            }
+          }
+          if (bufferCustomerAnswer || answerGuard.wasGuarded) {
+            controller.enqueue(encodeSSE({
+              type: 'text_final',
+              data: finalResult.response,
+            } as StreamEvent))
+          }
           const updatedMessages = [
             ...(session?.messages ?? []),
             { role: 'user', content: message, timestamp: new Date().toISOString() },

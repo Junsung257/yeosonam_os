@@ -3,6 +3,7 @@ import { getAdOsLearningContextForPackage } from '@/lib/ad-os-learning-context';
 import {
   buildSearchAdPackagePlan,
   buildAndSaveSearchAdPackagePlan,
+  loadPublicSearchAdPackage,
   type TravelPackageForSearchAds,
 } from '@/lib/search-ads-auto-planner';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -94,17 +95,7 @@ async function finishRun(runId: string | null, result: ProductAutopilotResult): 
 }
 
 async function loadPackage(packageId: string): Promise<TravelPackageForSearchAds> {
-  const { data, error } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id,title,destination,country,duration,nights,price,departure_airport,airline,product_type,price_tiers,inclusions,itinerary,parsed_data,short_code,tenant_id')
-    .eq('id', packageId)
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message ?? '상품을 찾을 수 없습니다.');
-  }
-
-  return data as TravelPackageForSearchAds;
+  return loadPublicSearchAdPackage(packageId);
 }
 
 function scenarioToDbRow(

@@ -1,11 +1,10 @@
 /**
  * @file eslint-a11y.config.js
- * @description jsx-a11y 전용 strict 설정 (CI에서 사용)
+ * @description Dedicated jsx-a11y audit config used by npm run lint:a11y.
  *
- * - `plugin:jsx-a11y/recommended` 전체 활성화
- * - 일부 규칙을 strict (error) 로 상향
- * - image 파일 (next/image 사용해야 하는 곳) 에서의 alt 누락 방지
- * - 워닝은 무시하고 에러만 리포트 (CI break 용도는 아니고 info성)
+ * Keep this config intentionally narrow. The audit should report accessibility
+ * findings only, not unknown-rule noise from project-wide Next.js or React Hooks
+ * inline directives.
  */
 module.exports = {
   root: true,
@@ -44,9 +43,6 @@ module.exports = {
     'jsx-a11y/role-supports-aria-props': 'error',
     'jsx-a11y/scope': 'error',
     'jsx-a11y/tabindex-no-positive': 'warn',
-    // next/image 관련: <img> 직접 사용 금지 (next.config 에서 이미 img-component=next/image
-    // 로 강제하지 않는 경우에만 필요)
-    '@next/next/no-img-element': 'off',
   },
   ignorePatterns: [
     '.next/**',

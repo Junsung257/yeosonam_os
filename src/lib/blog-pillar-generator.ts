@@ -90,32 +90,22 @@ export async function ensureAllDestinationsHavePillar(): Promise<{ queued: numbe
  */
 export async function buildPillarContext(destination: string): Promise<{
   attractions: string[];
-  packageSummary: string;
-  priceRange: string;
-  airlines: string[];
   seasonHint: string;
 } | null> {
-  const [{ data: attrs }, { data: pkgs }] = await Promise.all([
-    supabaseAdmin.from('attractions').select('name, short_desc').eq('region', destination).limit(12),
-    supabaseAdmin.from('travel_packages').select('title, price, airline, duration, nights').eq('destination', destination).in('status', ['approved', 'active']).order('price', { ascending: true }).limit(10),
-  ]);
+  const { data: attrs } = await supabaseAdmin
+    .from('attractions')
+    .select('name, short_desc')
+    .eq('region', destination)
+    .limit(12);
 
-  if ((!attrs || attrs.length === 0) && (!pkgs || pkgs.length === 0)) return null;
+  if (!attrs || attrs.length === 0) return null;
 
   const attractions = ((attrs || []) as Array<{ name: string; short_desc?: string }>)
     .map(a => a.short_desc ? `${a.name}(${a.short_desc.slice(0, 30)})` : a.name);
-
-  const prices = ((pkgs || []) as unknown[]).map(p => (p as Record<string, unknown>).price).filter((p): p is number => !!p);
-  const minP = prices.length ? Math.min(...prices) : 0;
-  const maxP = prices.length ? Math.max(...prices) : 0;
-  const priceRange = minP && maxP ? `${Math.round(minP / 10000)}만원 ~ ${Math.round(maxP / 10000)}만원` : '미정';
-
-  const airlines = Array.from(new Set(((pkgs || []) as unknown[]).map(p => (p as Record<string, unknown>).airline).filter(Boolean))) as string[];
-  const packageSummary = `활성 패키지 ${pkgs?.length || 0}개 · ${priceRange}`;
 
   const month = new Date().getMonth() + 1;
   const season = month <= 2 ? '겨울' : month <= 5 ? '봄' : month <= 8 ? '여름' : month <= 11 ? '가을' : '겨울';
   const seasonHint = `현재 ${month}월 (${season})`;
 
-  return { attractions, packageSummary, priceRange, airlines, seasonHint };
+  return { attractions, seasonHint };
 }
