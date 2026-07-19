@@ -32,9 +32,14 @@
  * a.click();
  */
 
-import { generateBriefingPPT, type BriefingConfig } from "@/lib/briefing-ppt-generator";
+import { type NextRequest } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { generateBriefingPPT, type BriefingConfig } from '@/lib/briefing-ppt-generator';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   try {
     const config: BriefingConfig = await request.json();
 

@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { cacheHeader } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -32,6 +33,9 @@ function detectPlatform(url: string): Platform {
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({
       logs: [],
@@ -64,6 +68,9 @@ export async function GET(request: NextRequest) {
 
 // ─── POST ─────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase is not configured. Marketing logs cannot be saved.' }, { status: 503 });
   }
@@ -118,6 +125,9 @@ export async function POST(request: NextRequest) {
 
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase is not configured. Marketing logs cannot be deleted.' }, { status: 503 });
   }

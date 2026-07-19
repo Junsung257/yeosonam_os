@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 type Params = { params: Promise<{ key: string }> };
 
-async function requireAdminUser(request: NextRequest): Promise<string | null> {
-  const token =
-    request.cookies.get('sb-access-token')?.value ??
-    request.headers.get('Authorization')?.replace('Bearer ', '');
-  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
-  return userData?.user?.id ?? null;
-}
-
 export async function GET(req: NextRequest, { params }: Params) {
-  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
 
-  const userId = await requireAdminUser(req);
-  if (!userId) return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
 
   const { key } = await params;
 
@@ -38,10 +31,11 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 // PATCH — 특정 버전으로 롤백 (body: { version: number })
 export async function PATCH(request: NextRequest, { params }: Params) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
-  const userId = await requireAdminUser(request);
-  if (!userId) return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  const actor = await resolveAdminActorLabel(request);
 
   const { key } = await params;
 
@@ -52,7 +46,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { data, error } = await supabaseAdmin.rpc('rollback_prompt', {
       p_key: key,
       p_version: version,
-      p_by: 'admin',
+      p_by: actor,
     });
 
     if (error) throw error;
