@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 interface Props {
   cardNewsId: string;
@@ -40,6 +40,10 @@ export default function InstagramPublishModal({
 
   const captionCount = caption.length;
   const captionLimit = 2200;  // Instagram 캡션 최대 2200자
+
+  const modalTitleId = useId();
+  const scheduledAtId = `${modalTitleId}-scheduled-at`;
+  const captionId = `${modalTitleId}-caption`;
 
   const handleSubmit = async () => {
     setError(null);
@@ -81,13 +85,25 @@ export default function InstagramPublishModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" onClick={onClose} />
+      <button
+        type="button"
+        aria-label="인스타그램 발행 닫기"
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
+        onClick={onClose}
+      />
       <div className="fixed inset-0 z-[61] flex items-center justify-center p-4 pointer-events-none">
-        <div className="pointer-events-auto bg-white rounded-admin-md w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={modalTitleId}
+          className="pointer-events-auto bg-white rounded-admin-md w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]"
+        >
           {/* 헤더 */}
           <div className="px-5 py-4 border-b border-admin-border-mid flex items-center justify-between">
-            <h3 className="text-base font-bold text-admin-text">인스타그램 발행</h3>
+            <h3 id={modalTitleId} className="text-base font-bold text-admin-text">인스타그램 발행</h3>
             <button
+              type="button"
+              aria-label="인스타그램 발행 닫기"
               onClick={onClose}
               className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none"
             >×</button>
@@ -121,14 +137,20 @@ export default function InstagramPublishModal({
 
           {/* 탭 */}
           <div className="px-5 pt-4">
-            <div className="flex gap-1 bg-admin-surface-2 rounded-lg p-1">
+            <div className="flex gap-1 bg-admin-surface-2 rounded-lg p-1" role="tablist" aria-label="발행 방식">
               <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'now'}
                 onClick={() => setTab('now')}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
                   tab === 'now' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'
                 }`}
               >즉시 발행</button>
               <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'scheduled'}
                 onClick={() => setTab('scheduled')}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
                   tab === 'scheduled' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'
@@ -141,8 +163,9 @@ export default function InstagramPublishModal({
           <div className="px-5 py-4 overflow-y-auto flex-1 space-y-4">
             {tab === 'scheduled' && (
               <div>
-                <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">발행 일시 (KST)</label>
+                <label htmlFor={scheduledAtId} className="text-xs font-semibold text-admin-muted uppercase block mb-1">발행 일시 (KST)</label>
                 <input
+                  id={scheduledAtId}
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
@@ -156,12 +179,13 @@ export default function InstagramPublishModal({
             )}
 
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">
+              <label htmlFor={captionId} className="text-xs font-semibold text-admin-muted uppercase block mb-1">
                 캡션 <span className={`ml-1 ${captionCount > captionLimit ? 'text-red-600' : 'text-admin-muted-2'}`}>
                   {captionCount}/{captionLimit}
                 </span>
               </label>
               <textarea
+                id={captionId}
                 value={caption}
                 onChange={e => setCaption(e.target.value)}
                 placeholder="인스타 피드에 표시될 캡션 + 해시태그"
@@ -179,10 +203,12 @@ export default function InstagramPublishModal({
           {/* 하단 버튼 */}
           <div className="px-5 py-4 border-t border-admin-border-mid flex gap-3">
             <button
+              type="button"
               onClick={onClose}
               className="flex-1 border border-admin-border-mid text-sm text-admin-muted py-2.5 rounded-lg hover:bg-admin-bg"
             >취소</button>
             <button
+              type="button"
               onClick={handleSubmit}
               disabled={submitting || !imageCountValid || !caption.trim() || captionCount > captionLimit}
               className="flex-1 bg-blue-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-blue-900 disabled:opacity-50"
