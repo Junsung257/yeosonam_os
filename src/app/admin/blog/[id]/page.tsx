@@ -259,6 +259,7 @@ export default function BlogEditPage() {
             <span className="text-[10px] text-admin-muted-2">{blogHtml.length}자</span>
           </div>
           <textarea
+            aria-label="블로그 본문 마크다운"
             value={blogHtml}
             onChange={e => setBlogHtml(e.target.value)}
             className="flex-1 border border-t-0 border-admin-border-mid rounded-b-lg p-4 text-admin-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#005d90]"
@@ -295,27 +296,27 @@ export default function BlogEditPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
+            <label htmlFor="blog-edit-slug" className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-admin-muted-2">/blog/</span>
-              <input value={slug}
+              <input id="blog-edit-slug" value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
                 className="flex-1 border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
-            <input value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
+            <label htmlFor="blog-edit-og-image" className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
+            <input id="blog-edit-og-image" value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 <span className="text-admin-muted-2">{seoTitle.length}/60</span></label>
-            <input value={seoTitle} onChange={e => setSeoTitle(e.target.value.substring(0, 60))}
+            <label htmlFor="blog-edit-seo-title" className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 <span className="text-admin-muted-2">{seoTitle.length}/60</span></label>
+            <input id="blog-edit-seo-title" value={seoTitle} onChange={e => setSeoTitle(e.target.value.substring(0, 60))}
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명 <span className="text-admin-muted-2">{seoDescription.length}/160</span></label>
-            <input value={seoDescription} onChange={e => setSeoDescription(e.target.value.substring(0, 160))}
+            <label htmlFor="blog-edit-seo-description" className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명 <span className="text-admin-muted-2">{seoDescription.length}/160</span></label>
+            <input id="blog-edit-seo-description" value={seoDescription} onChange={e => setSeoDescription(e.target.value.substring(0, 160))}
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
         </div>
