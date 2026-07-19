@@ -15,9 +15,9 @@ export function canStartPublisherItemWithFallback(input: {
   fallbackMinItemStartMs: number;
   fallbackEligible: boolean;
 }): boolean {
-  if (canStartPublisherItem(input.remainingMs, input.minItemStartMs)) return true;
-  return input.fallbackEligible
-    && canStartPublisherItem(input.remainingMs, input.fallbackMinItemStartMs);
+  // Deterministic fallback copy is not publishable. A shorter fallback window
+  // therefore cannot authorize starting another queue item.
+  return canStartPublisherItem(input.remainingMs, input.minItemStartMs);
 }
 
 export function getPublisherGenerationTimeoutMs(
@@ -85,16 +85,6 @@ export function getPublisherExtraClaimRecoveryPlan(input: {
       fallbackEligibleOnly: false,
       remainingQuota,
       reason: 'normal_generation_window',
-    };
-  }
-
-  if (canStartPublisherItem(input.remainingMs, input.fallbackMinItemStartMs)) {
-    return {
-      canClaim: true,
-      claimLimit,
-      fallbackEligibleOnly: true,
-      remainingQuota,
-      reason: 'fallback_only_window',
     };
   }
 

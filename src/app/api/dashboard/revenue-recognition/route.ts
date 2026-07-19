@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { withAdminGuard } from '@/lib/admin-guard';
 import {
   getRecognizedRevenueMonthly,
   getNewBookingsMonthly,
@@ -12,9 +13,14 @@ import {
  *  - newBookings: 생성일 KST 기준 신규예약 + 취소율 (영업, 사장님 요구 #2)
  *  - paceAndCancellation: D-N 버킷별 향후 출발 + 90일 취소율 (Booking.com 표준)
  */
-export async function GET(request: Request) {
+const PRIVATE_NO_STORE = { 'Cache-Control': 'private, no-store' };
+
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ recognized: [], newBookings: [], pace: [], cancellation_90d: null });
+    return NextResponse.json(
+      { recognized: [], newBookings: [], pace: [], cancellation_90d: null },
+      { headers: PRIVATE_NO_STORE },
+    );
   }
   const { searchParams } = new URL(request.url);
   const months = Math.min(24, Math.max(1, parseInt(searchParams.get('months') || '6', 10)));
@@ -25,16 +31,22 @@ export async function GET(request: Request) {
       getNewBookingsMonthly(months),
       getBookingPaceAndCancellation(),
     ]);
-    return NextResponse.json({
-      recognized,
-      newBookings,
-      pace: paceAndCancel.pace,
-      cancellation_90d: paceAndCancel.cancellation_90d,
-    });
+    return NextResponse.json(
+      {
+        recognized,
+        newBookings,
+        pace: paceAndCancel.pace,
+        cancellation_90d: paceAndCancel.cancellation_90d,
+      },
+      { headers: PRIVATE_NO_STORE },
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : '대시보드 V4 조회 실패' },
-      { status: 500 },
+      { status: 500, headers: PRIVATE_NO_STORE },
     );
   }
-}
+};
+
+export const dynamic = 'force-dynamic';
+export const GET = withAdminGuard(getHandler);

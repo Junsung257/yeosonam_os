@@ -1,7 +1,7 @@
 import { SignJWT } from 'jose';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { requireAdminRequest } from '@/lib/admin-guard';
+import { requireAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
 import { requireTenantPortalRequest } from '@/lib/tenant-portal-auth';
 
 const PROJECT_ISSUER = 'https://project-ref.supabase.co/auth/v1';
@@ -52,5 +52,14 @@ describe('pinned Supabase JWT caller regression', () => {
       role: 'platform_admin',
       isPlatformAdmin: true,
     });
+  });
+
+  it('keeps admin actor resolution compatible with the pinned verifier', async () => {
+    const token = await adminAccessToken();
+    const request = new NextRequest('https://www.yeosonam.com/api/admin/session', {
+      headers: { cookie: `sb-access-token=${token}` },
+    });
+
+    await expect(resolveAdminActorLabel(request)).resolves.toBe('admin@yeosonam.com');
   });
 });

@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-15
+Last updated: 2026-07-19
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -46,6 +46,15 @@ A day is healthy only when all of these are true:
 - Repeated `topic_fit` failures: fix keyword/topic generation before requeueing.
 - Repeated `editorial_quality`, `structure_integrity`, or `raw_directive_leak` failures: fix the publish preparation/repair path before regenerating more posts.
 - Repeated `content_creatives_angle_type_check`: normalize queue `angle_type` to a valid content angle before publish.
+
+## Private Replacement of Legacy Deterministic Fallback Posts
+
+- Quarantine the linked `content_creatives` row as `draft` before requeueing it. Never leave the old fallback body public while replacement generation runs.
+- The queue row must keep the same `content_creative_id` and set `meta.private_regeneration` to `{ "mode": "replace_existing_fallback_draft", "force_private_review": true }`.
+- The publisher fails closed unless the linked row is a `naver_blog` draft whose stored metadata still proves `deterministic_info_fallback` or `deterministic_fast_fallback`.
+- A successful replacement updates the same creative ID and slug, then leaves the queue and creative in private review. It must not call atomic publication or indexing until a later explicit approval reruns current publish QA.
+- When a representative record exists, move it from `active` to a reservation owned by the same queue row before requeueing. This prevents a stale active representative from blocking the controlled in-place replacement.
+- Verify the write by reading back creative status, review status, fallback flags, queue status, replacement metadata, and representative ownership. A fallback flag remaining on a `published` row is a release blocker.
 
 ## Verification Commands
 
@@ -139,8 +148,9 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Do not hide historical failures such as a missed prior KST day or old publisher timeout evidence. Keep them in `historical_buckets` so the incident remains auditable.
 - Current operations should be judged from `operating_status`, `active_buckets`, today's published count, current-day publisher health, publish preflight blockers, and publishable candidate count.
 - A prior-day `daily_publish_sla_miss` or old `publisher_timeout` becomes historical only when the current KST day has already met the daily target, current-day publisher health is healthy, preflight has no blockers, and candidate shortage is false.
-- Low-time quota recovery now has a fast information fallback path. When a normal AI generation item cannot safely start under `BLOG_PUBLISHER_MIN_ITEM_START_MS`, an information-only candidate may still start down to `BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS` and bypass AI generation with the deterministic info fallback. Product, card-news, and pillar candidates are excluded from this shortcut because they need source-specific evidence.
-- Low-time claim ordering now prioritizes fallback-eligible information rows when the remaining window is below the normal item-start threshold but above the deterministic fallback threshold. This prevents a product/card/pillar claim from consuming the final viable slot when a safe information fallback could still publish and help meet the daily target.
+- Superseded on 2026-07-19: low-time recovery may still create a deterministic information fallback as a private diagnostic or repair draft, but it must never publish it. `deterministic_info_fallback` and `deterministic_fast_fallback` are central publish blockers. When there is not enough time for normal generation and every current gate, release claimed rows back to `queued` and accept a quota miss instead of lowering the customer-content contract.
+- Low-time claim ordering must prioritize candidates that can still complete normal generation and all gates within the remaining budget. The old fallback-eligible publish shortcut is retired; do not use `BLOG_PUBLISHER_FAST_FALLBACK_MIN_ITEM_START_MS` as authority to publish deterministic copy.
+- The publisher now returns an attempted row to `queued` with `publisher_deferred_before_generation_time_budget` when the normal-generation window is no longer safe. This deferral restores the prior attempt count and must not be counted as a content failure. Deterministic fallback generation is available only behind the explicit private diagnostic flag `meta.private_diagnostic_fallback=true`; ordinary generation or quality failures retain their original reason for repair and review.
 - If the publisher already claimed rows but stopped before attempting them, `timeBudgetClaimRelease` must return those rows to `queued` with an immediate publish time. Treat stale `generating` rows after a low-time publisher exit as a recovery defect, because they reduce the next run's publishable inventory.
 - Daily summary now escalates `catchup_publishable_candidates_available` when the daily target was missed even though enough publishable candidates were available for the remaining slots. This is a publisher recovery failure, not a topic shortage: force scheduler, then rerun publisher until `remainingAfterRun=0` or a concrete blocker is reported.
 - Product-backed blog eligibility now treats `source_verify_status='blocked'` as a customer-open blocker. A product post must not publish just because mobile proof and scorecard look pass-like when upload/source verification is still blocked.

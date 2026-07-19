@@ -38,8 +38,18 @@ export interface BlogPublishQualityInput {
   skipFuzzyDuplicate?: boolean;
 }
 
+export type BlogPublishContractIssueCode =
+  | 'deterministic_info_fallback_not_publishable';
+
+export interface BlogPublishContractIssue {
+  code: BlogPublishContractIssueCode;
+  message: string;
+  evidence?: Record<string, unknown>;
+}
+
 export interface BlogPublishQualityReport {
   passed: boolean;
+  publishContractIssues: BlogPublishContractIssue[];
   qualityGate: QualityGateReport;
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
@@ -100,6 +110,7 @@ function hasHowToBlock(markdownOrHtml: string): boolean {
 }
 
 function buildSummary(report: {
+  publishContractIssues: BlogPublishContractIssue[];
   qualityGate: QualityGateReport;
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
@@ -107,6 +118,9 @@ function buildSummary(report: {
   renderedSeoQuality?: BlogRenderedSeoQualityReport | null;
 }): string {
   const parts: string[] = [];
+  for (const issue of report.publishContractIssues) {
+    parts.push(`[publish-contract] ${issue.code}: ${issue.message}`);
+  }
   if (!report.blogQualityScore.passed) parts.push(`[score] ${report.blogQualityScore.summary}`);
   if (!report.qualityGate.passed) parts.push(`[quality] ${report.qualityGate.summary}`);
   if (!report.seoScore.passed) parts.push(`[seo] ${report.seoScore.summary}`);
@@ -121,10 +135,29 @@ function buildSummary(report: {
     : `publish quality passed: strict score ${report.blogQualityScore.score}/100, SEO ${report.seoScore.score}/100, readability ${report.readability.score}/100`;
 }
 
+function inspectBlogPublishContract(input: BlogPublishQualityInput): BlogPublishContractIssue[] {
+  if (input.product_id) return [];
+
+  const generationMeta = input.generation_meta ?? {};
+  const fallbackFlags = [
+    'deterministic_info_fallback',
+    'deterministic_fast_fallback',
+  ].filter((flag) => generationMeta[flag] === true);
+
+  if (fallbackFlags.length === 0) return [];
+
+  return [{
+    code: 'deterministic_info_fallback_not_publishable',
+    message: '생성 실패 시 만든 비상용 정보성 글은 공개 발행할 수 없습니다.',
+    evidence: { fallbackFlags },
+  }];
+}
+
 export async function evaluateBlogPublishQuality(
   input: BlogPublishQualityInput,
 ): Promise<BlogPublishQualityReport> {
   const blogType = input.product_id ? 'product' : 'info';
+  const publishContractIssues = inspectBlogPublishContract(input);
   const destination = input.destination ?? null;
   const primaryKeyword = input.primary_keyword || destination || input.seo_title || input.slug;
   const images = extractImages(input.blog_html);
@@ -197,6 +230,7 @@ export async function evaluateBlogPublishQuality(
       : null,
   });
   const report = {
+    publishContractIssues,
     qualityGate,
     seoScore,
     readability,
@@ -208,7 +242,7 @@ export async function evaluateBlogPublishQuality(
 
   return {
     ...report,
-    passed: blogQualityScore.isPerfect,
+    passed: blogQualityScore.isPerfect && publishContractIssues.length === 0,
     summary: buildSummary(report),
   };
 }
@@ -365,6 +399,11 @@ export async function prepareBlogForPublish(
 export function blogPublishQualityWarnings(report: BlogPublishQualityReport | null) {
   if (!report || report.passed) return null;
   return [
+    ...report.publishContractIssues.map((issue) => ({
+      type: 'publish_contract',
+      gate: issue.code,
+      reason: issue.message,
+    })),
     ...report.qualityGate.gates
       .filter((gate) => !gate.passed)
       .map((gate) => ({ type: 'quality', gate: gate.gate, reason: gate.reason })),

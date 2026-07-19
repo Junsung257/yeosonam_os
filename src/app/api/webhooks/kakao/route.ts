@@ -4,22 +4,35 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { logAndSanitize } from '@/lib/error-sanitizer'
 import { safeEqualString } from '@/lib/timing-safe'
 import { apiResponse } from '@/lib/api-response'
-import crypto from 'crypto'
 
-function verifyKakaoSignature(body: string, signature: string): boolean {
+type KakaoVerification = 'valid' | 'invalid' | 'misconfigured'
+
+function verifyKakaoApiKey(req: NextRequest): KakaoVerification {
   const secret = getSecret('KAKAO_CHANNEL_SECRET') || ''
-  if (!secret) return true // 시크릿 미설정 시 검증 스킵 (로컬 개발 편의)
-  const hash = crypto.createHmac('sha256', secret).update(body).digest('hex')
-  return safeEqualString(hash, signature)
+  if (!secret) {
+    const isLocalDevelopment = process.env.NODE_ENV !== 'production'
+      && ['localhost', '127.0.0.1', '::1'].includes(req.nextUrl.hostname)
+    return isLocalDevelopment ? 'valid' : 'misconfigured'
+  }
+
+  const apiKey = req.headers.get('x-api-key') || ''
+  return apiKey && safeEqualString(apiKey, secret) ? 'valid' : 'invalid'
 }
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
-  const signature = req.headers.get('x-kakao-signature') || ''
 
-  // 서명 검증 — KAKAO_CHANNEL_SECRET 설정 시 모든 환경에서 강제 (verifyKakaoSignature 내부에서 미설정 시 skip)
-  if (!verifyKakaoSignature(rawBody, signature)) {
-    return apiResponse({ error: 'Invalid signature' }, { status: 401 })
+  const verification = verifyKakaoApiKey(req)
+  if (verification === 'misconfigured') {
+    return apiResponse(
+      { code: 'WEBHOOK_SECRET_MISSING', error: 'webhook verification unavailable' },
+      { status: 503 },
+    )
+  }
+
+  // Kakao Chatbot skill settings send this static x-api-key header.
+  if (verification === 'invalid') {
+    return apiResponse({ error: 'Invalid API key' }, { status: 401 })
   }
 
   try {

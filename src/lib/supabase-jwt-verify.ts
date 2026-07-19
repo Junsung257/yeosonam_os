@@ -139,7 +139,7 @@ export async function verifySupabaseAccessToken(
       || !legacyJwtExpValid(token)
       || !isVerifiedUserAccessPayload(raw as jose.JWTPayload, configuration.issuer)
     ) return { ok: false };
-    return { ok: true, payload: (raw ?? {}) as jose.JWTPayload };
+    return { ok: true, payload: raw as jose.JWTPayload };
   }
   try {
     const { payload } = await jose.jwtVerify(

@@ -130,6 +130,47 @@ describe('verifySupabaseAccessToken', () => {
       .resolves.toEqual({ ok: false });
   });
 
+  it('rejects expired legacy access tokens', async () => {
+    vi.stubEnv('SUPABASE_JWT_SECRET', LEGACY_SECRET);
+    const token = await new SignJWT({ role: 'authenticated' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer(PROJECT_ISSUER)
+      .setAudience('authenticated')
+      .setSubject(USER_ID)
+      .setIssuedAt()
+      .setExpirationTime('-1s')
+      .sign(new TextEncoder().encode(LEGACY_SECRET));
+
+    await expect(verifySupabaseAccessToken(token)).resolves.toEqual({ ok: false });
+  });
+
+  it('rejects access tokens without the authenticated role', async () => {
+    vi.stubEnv('SUPABASE_JWT_SECRET', LEGACY_SECRET);
+    const token = await new SignJWT({ role: 'anon' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer(PROJECT_ISSUER)
+      .setAudience('authenticated')
+      .setSubject(USER_ID)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(new TextEncoder().encode(LEGACY_SECRET));
+
+    await expect(verifySupabaseAccessToken(token)).resolves.toEqual({ ok: false });
+  });
+
+  it('rejects access tokens whose subject is not a user UUID', async () => {
+    vi.stubEnv('SUPABASE_JWT_SECRET', LEGACY_SECRET);
+    const token = await new SignJWT({ role: 'authenticated' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer(PROJECT_ISSUER)
+      .setAudience('authenticated')
+      .setSubject('not-a-user-id')
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(new TextEncoder().encode(LEGACY_SECRET));
+
+    await expect(verifySupabaseAccessToken(token)).resolves.toEqual({ ok: false });
+  });
   it('rejects an otherwise valid token that uses an unsupported algorithm', async () => {
     vi.stubEnv('SUPABASE_JWT_SECRET', LEGACY_SECRET);
     const token = await new SignJWT({ role: 'authenticated' })
