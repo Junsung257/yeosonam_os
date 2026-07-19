@@ -328,6 +328,7 @@ export default function BlogWritePage() {
             <span className="text-[10px] text-admin-muted-2">{blogHtml.length}자</span>
           </div>
           <textarea
+            aria-label="블로그 본문 마크다운"
             value={blogHtml}
             onChange={e => setBlogHtml(e.target.value)}
             placeholder="# 제목을 입력하세요&#10;&#10;## 소제목&#10;&#10;본문을 작성하세요..."
@@ -383,14 +384,14 @@ export default function BlogWritePage() {
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 <span className="text-admin-muted-2">{seoTitle.length}/60</span></label>
-            <input value={seoTitle} onChange={e => setSeoTitle(e.target.value.substring(0, 60))}
+            <label htmlFor="blog-seo-title" className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 <span className="text-admin-muted-2">{seoTitle.length}/60</span></label>
+            <input id="blog-seo-title" value={seoTitle} onChange={e => setSeoTitle(e.target.value.substring(0, 60))}
               placeholder="다낭 호이안 3박5일 가성비 여행 | 2026 가이드"
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명 <span className="text-admin-muted-2">{seoDescription.length}/160</span></label>
-            <input value={seoDescription} onChange={e => setSeoDescription(e.target.value.substring(0, 160))}
+            <label htmlFor="blog-seo-description" className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명 <span className="text-admin-muted-2">{seoDescription.length}/160</span></label>
+            <input id="blog-seo-description" value={seoDescription} onChange={e => setSeoDescription(e.target.value.substring(0, 160))}
               placeholder="다낭 호이안 가성비 패키지 729,000원~. 여소남에서 비교하세요."
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
