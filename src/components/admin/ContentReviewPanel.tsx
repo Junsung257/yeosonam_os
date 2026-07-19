@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { CheckCircle2, XCircle, RefreshCw, AlertTriangle, FileText } from 'lucide-react';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -57,6 +58,10 @@ export default function ContentReviewPanel({
   const [rejectionCategory, setRejectionCategory] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [suggestedChanges, setSuggestedChanges] = useState('');
+  const sanitizedPreviewHtml = useMemo(
+    () => (creative?.blog_html ? DOMPurify.sanitize(creative.blog_html) : ''),
+    [creative?.blog_html]
+  );
 
   // ─── 데이터 로드 ─────────────────────────────────────────────
 
@@ -218,7 +223,7 @@ export default function ContentReviewPanel({
             {creative.blog_html ? (
               <div
                 className="prose prose-sm max-w-none text-admin-text [&_img]:max-w-full [&_img]:rounded"
-                dangerouslySetInnerHTML={{ __html: creative.blog_html }}
+                dangerouslySetInnerHTML={{ __html: sanitizedPreviewHtml }}
               />
             ) : (
               <p className="text-admin-muted-2 text-sm italic">
