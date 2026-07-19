@@ -51,11 +51,15 @@ A day is healthy only when all of these are true:
 
 - Quarantine the linked `content_creatives` row as `draft` before requeueing it. Never leave the old fallback body public while replacement generation runs.
 - The queue row must keep the same `content_creative_id` and set `meta.private_regeneration` to `{ "mode": "replace_existing_fallback_draft", "force_private_review": true }`.
+- Before changing the row back to `queued`, attach a validated `meta.information_research_bundle` whose content key, destination, language, source freshness, exact evidence excerpts, and customer-visible claims match the target article. For a food-budget article this includes at least seven supported price claims covering three daily-budget tiers and four meal categories.
+- If the targeted response says `private_regeneration_research_preflight` or `private_regeneration_research_persistence`, stop. Do not retry the writer. Repair or complete the research bundle first; the row is intentionally left `skipped + self_heal_blocked`.
+- Official sources also require an active matching row in `blog_information_official_source_registry`. An empty registry is a setup blocker for official-source persistence, not permission to downgrade the source.
 - The publisher fails closed unless the linked row is a `naver_blog` draft whose stored metadata still proves `deterministic_info_fallback` or `deterministic_fast_fallback`.
 - A successful replacement updates the same creative ID and slug, then leaves the queue and creative in private review. It must not call atomic publication or indexing until a later explicit approval reruns current publish QA.
 - For a controlled retry, an authorized operator may call `blog-publisher?force=true&privateQueueId=<queue UUID>`. This mode accepts only a queued row carrying the private-regeneration contract, processes exactly that row, bypasses daily quota refill, and still leaves a successful replacement in private review. Do not use the normal publisher endpoint for a one-row retry because normal quota recovery may add and process unrelated candidates.
 - When a representative record exists, move it from `active` to a reservation owned by the same queue row before requeueing. This prevents a stale active representative from blocking the controlled in-place replacement.
 - Verify the write by reading back creative status, review status, fallback flags, queue status, replacement metadata, and representative ownership. A fallback flag remaining on a `published` row is a release blocker.
+- Verify generated cover and inline images in the public renderer. AI-created assets must visibly say `AI 생성 참고 이미지`; they are never evidence for prices, schedules, policies, weather, or current conditions.
 
 ## Verification Commands
 
