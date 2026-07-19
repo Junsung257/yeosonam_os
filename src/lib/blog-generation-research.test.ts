@@ -9,8 +9,10 @@ import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
   evaluateBlogGenerationResearchReadiness,
+  repairBlogGenerationResearchStructure,
   summarizeBlogGenerationResearch,
 } from './blog-generation-research';
+import { validateBlogInformationStructure } from './blog-information-structure';
 
 const CONTENT_KEY = 'sapporo-food-budget';
 const CHECKED_AT = '2026-07-19T00:00:00.000Z';
@@ -190,5 +192,54 @@ describe('blog generation research preflight', () => {
     expect(prompt).toContain('never add a new number');
     expect(summary).not.toContain('삿포로 식비 현장 조사');
     expect(summary).not.toContain('절약형 하루 예산 기준값');
+  });
+
+  it('moves approved food-budget claims into deterministic tier and meal tables', () => {
+    const result = readiness(foodBudgetBundle());
+    const original = [
+      '# 삿포로 식비 예산',
+      '2026-07-19 조사 기준입니다.',
+      '3박 4일 여행 총액은 일정에 맞춰 확인하세요.',
+      '출처: https://www.budgetyourtrip.com/japan/sapporo',
+      ...result.bundle!.claims.map((claim) => `- ${claim.claimText}`),
+    ].join('\n\n');
+
+    expect(validateBlogInformationStructure({ intent: 'food_budget', markdown: original }).passed).toBe(false);
+
+    const repaired = repairBlogGenerationResearchStructure({
+      markdown: original,
+      intent: 'food_budget',
+      readiness: result,
+    });
+    const report = validateBlogInformationStructure({ intent: 'food_budget', markdown: repaired.markdown });
+
+    expect(repaired.changed).toBe(true);
+    expect(repaired.approvedClaims).toHaveLength(7);
+    expect(repaired.markdown).toContain('| 절약 | 3,000 JPY |');
+    expect(repaired.markdown).toContain('| 아침 | 700 JPY |');
+    expect(repaired.markdown.match(/삿포로 일반 여행자의 절약형 하루 예산 기준값은 3000 JPY입니다\./g)).toHaveLength(1);
+    expect(report).toMatchObject({ passed: true, issues: [] });
+  });
+
+  it('does not rewrite an article whose required food-budget structure already passes', () => {
+    const result = readiness(foodBudgetBundle());
+    const first = repairBlogGenerationResearchStructure({
+      markdown: [
+        '# 삿포로 식비 예산',
+        '2026-07-19 조사 기준입니다. 3박 4일 여행 총액을 확인하세요.',
+        '출처: https://www.budgetyourtrip.com/japan/sapporo',
+      ].join('\n\n'),
+      intent: 'food_budget',
+      readiness: result,
+    });
+    const second = repairBlogGenerationResearchStructure({
+      markdown: first.markdown,
+      intent: 'food_budget',
+      readiness: result,
+    });
+
+    expect(first.changed).toBe(true);
+    expect(second.changed).toBe(false);
+    expect(second.markdown).toBe(first.markdown);
   });
 });

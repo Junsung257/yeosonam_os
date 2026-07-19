@@ -6,6 +6,7 @@ import {
   type BlogInformationClaimType,
   type BlogInformationResearchBundle,
 } from './blog-information-evidence';
+import { validateBlogInformationStructure } from './blog-information-structure';
 
 export const BLOG_INFORMATION_RESEARCH_META_KEY = 'information_research_bundle';
 
@@ -64,6 +65,24 @@ export interface BlogGenerationResearchReadiness {
     distinctNormalizedValueCount: number;
   };
 }
+
+export interface BlogGenerationResearchStructureRepair {
+  markdown: string;
+  changed: boolean;
+  changes: string[];
+  approvedClaims: BlogInformationResearchBundle['claims'];
+}
+
+const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v1 -->';
+const FOOD_BUDGET_STRUCTURE_ISSUES = new Set([
+  'food_budget:daily_tier_rows_required',
+  'food_budget:아침_value_required',
+  'food_budget:점심_value_required',
+  'food_budget:저녁_value_required',
+  'food_budget:간식_value_required',
+  'food_budget:representative_menu_prices_required',
+  'food_budget:insufficient_unique_values',
+]);
 
 function clean(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -234,6 +253,104 @@ export function buildBlogGenerationResearchPromptBlock(readiness: BlogGeneration
     ...readiness.bundle.claims.map((claim) =>
       `- [${claim.claimType}] ${claim.claimText} (evidence: ${claim.evidenceKeys.join(', ')})`),
   ].join('\n');
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
+}
+
+function formatExtractedPrice(claim: BlogInformationResearchBundle['claims'][number]): string {
+  const normalizedValue = clean(claim.extractedValue?.normalizedValue);
+  const currency = clean(claim.extractedValue?.currency);
+  const formattedValue = /^\d+$/.test(normalizedValue)
+    ? Number(normalizedValue).toLocaleString('en-US')
+    : normalizedValue;
+  return escapeMarkdownTableCell(`${formattedValue} ${currency}`.trim());
+}
+
+function findFoodBudgetClaim(
+  claims: BlogInformationResearchBundle['claims'],
+  pattern: RegExp,
+): BlogInformationResearchBundle['claims'][number] | null {
+  return claims.find((claim) => claim.claimType === 'price' && pattern.test(normalize(claim.claimText))) ?? null;
+}
+
+/**
+ * Reuses only preflight-approved claims to make required food-budget tables deterministic.
+ * It never calculates a total, converts currencies, or introduces a value outside the bundle.
+ */
+export function repairBlogGenerationResearchStructure(input: {
+  markdown: string;
+  intent: BlogInformationIntent;
+  readiness: BlogGenerationResearchReadiness;
+}): BlogGenerationResearchStructureRepair {
+  const unchanged = (approvedClaims: BlogInformationResearchBundle['claims'] = []) => ({
+    markdown: input.markdown,
+    changed: false,
+    changes: [],
+    approvedClaims,
+  });
+  if (input.intent !== 'food_budget' || !input.readiness.passed || !input.readiness.bundle) {
+    return unchanged();
+  }
+
+  const report = validateBlogInformationStructure({ intent: input.intent, markdown: input.markdown });
+  if (!report.issues.some((issue) => FOOD_BUDGET_STRUCTURE_ISSUES.has(issue))) {
+    return unchanged();
+  }
+  if (input.markdown.includes(FOOD_BUDGET_STRUCTURE_MARKER)) {
+    return unchanged(input.readiness.bundle.claims);
+  }
+
+  const claims = input.readiness.bundle.claims;
+  const rows = {
+    budget: findFoodBudgetClaim(claims, /절약/),
+    midrange: findFoodBudgetClaim(claims, /일반형|중간형|중간\s*예산/),
+    luxury: findFoodBudgetClaim(claims, /여유형|고급형|고급\s*예산/),
+    breakfast: findFoodBudgetClaim(claims, /아침/),
+    lunch: findFoodBudgetClaim(claims, /점심/),
+    dinner: findFoodBudgetClaim(claims, /저녁/),
+    snack: findFoodBudgetClaim(claims, /간식|커피|카페|스낵/),
+  };
+  if (Object.values(rows).some((claim) => !claim || !formatExtractedPrice(claim))) {
+    return unchanged();
+  }
+
+  const approvedClaims = Object.values(rows) as BlogInformationResearchBundle['claims'];
+  let markdown = input.markdown;
+  for (const claim of approvedClaims) {
+    markdown = markdown.split(claim.claimText).join('');
+  }
+  markdown = markdown
+    .replace(/^\s*(?:[-*+]\s*)?$/gm, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const tableBlock = [
+    FOOD_BUDGET_STRUCTURE_MARKER,
+    '## 근거로 확인한 1인 하루 식비',
+    '| 예산 유형 | 1인 하루 식비 | 근거 문장 |',
+    '| --- | ---: | --- |',
+    `| 절약 | ${formatExtractedPrice(rows.budget!)} | ${escapeMarkdownTableCell(rows.budget!.claimText)} |`,
+    `| 일반 | ${formatExtractedPrice(rows.midrange!)} | ${escapeMarkdownTableCell(rows.midrange!.claimText)} |`,
+    `| 여유 | ${formatExtractedPrice(rows.luxury!)} | ${escapeMarkdownTableCell(rows.luxury!.claimText)} |`,
+    '',
+    '## 근거로 확인한 끼니별 가격',
+    '| 끼니·메뉴 | 가격 | 근거 문장 |',
+    '| --- | ---: | --- |',
+    `| 아침 | ${formatExtractedPrice(rows.breakfast!)} | ${escapeMarkdownTableCell(rows.breakfast!.claimText)} |`,
+    `| 점심 | ${formatExtractedPrice(rows.lunch!)} | ${escapeMarkdownTableCell(rows.lunch!.claimText)} |`,
+    `| 저녁 | ${formatExtractedPrice(rows.dinner!)} | ${escapeMarkdownTableCell(rows.dinner!.claimText)} |`,
+    `| 간식·커피 | ${formatExtractedPrice(rows.snack!)} | ${escapeMarkdownTableCell(rows.snack!.claimText)} |`,
+  ].join('\n');
+
+  return {
+    markdown: `${markdown}\n\n${tableBlock}`.trim(),
+    changed: true,
+    changes: ['food_budget_verified_research_tables'],
+    approvedClaims,
+  };
 }
 
 export function summarizeBlogGenerationResearch(readiness: BlogGenerationResearchReadiness): Record<string, unknown> {

@@ -148,6 +148,8 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('parseBlogInformationWriterOutput(raw)');
+    expect(source).toContain('repairBlogGenerationResearchStructure({');
+    expect(source).toContain('information_research_structure_repair: {');
     expect(source).toContain('writer_claim_ledger: {');
     expect(source).toContain("claimLedger: contentBoundary.lane === 'informational'");
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
