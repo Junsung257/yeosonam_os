@@ -2465,26 +2465,81 @@ async function processQueueItem(
       }
     }
 
-    let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+    const applyFinalResearchStructureRepair = (): void => {
+      const finalContentBrief = buildQueueContentBrief(item);
+      if (!finalContentBrief.passed) return;
+      const finalResearchReadiness = evaluateBlogGenerationResearchReadiness({
+        meta: item.meta,
+        expectedContentKey: generated.slug,
+        destination: item.destination,
+        intent: finalContentBrief.intentType,
+        locale: finalContentBrief.plan.locale,
+        sourcePolicy: finalContentBrief.sourcePolicy,
+      });
+      const finalResearchRepair = repairBlogGenerationResearchStructure({
+        markdown: generated.blog_html,
+        intent: finalContentBrief.intentType,
+        readiness: finalResearchReadiness,
+      });
+      if (!finalResearchRepair.changed) return;
+
+      generated.blog_html = finalResearchRepair.markdown;
+      const currentMeta = generated.generation_meta || {};
+      const writerLedger = currentMeta.writer_claim_ledger
+        && typeof currentMeta.writer_claim_ledger === 'object'
+        && !Array.isArray(currentMeta.writer_claim_ledger)
+        ? currentMeta.writer_claim_ledger as Record<string, unknown>
+        : {};
+      const currentClaims = Array.isArray(writerLedger.claims)
+        ? writerLedger.claims as BlogInformationClaimLedgerEntry[]
+        : [];
+      const approvedClaims = finalResearchRepair.approvedClaims.map((claim) => ({
+        claimFingerprint: claim.claimFingerprint,
+        claimText: claim.claimText,
+        claimType: claim.claimType,
+        riskLevel: claim.riskLevel,
+      }));
+      generated.generation_meta = {
+        ...currentMeta,
+        writer_claim_ledger: {
+          ...writerLedger,
+          claims: [...new Map([...currentClaims, ...approvedClaims]
+            .map((claim) => [claim.claimFingerprint, claim])).values()],
+        },
+        information_research_structure_repair: {
+          applied: true,
+          stage: 'final_quality_boundary',
+          changes: finalResearchRepair.changes,
+        },
+      };
+      console.log(`[blog-publisher] final research structure repair: ${finalResearchRepair.changes.join(', ')}`);
+    };
+    const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
+      applyFinalResearchStructureRepair();
+      return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+    };
+
+    let qa = await runQualityWithResearchStructure();
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
-      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'hook' && !gate.passed)) {
       generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
-      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
-      qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed) {
       qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);
+      qa = await runQualityWithResearchStructure();
     }
 
     if (!qa.passed) {
@@ -2693,7 +2748,7 @@ async function processQueueItem(
           slug: generated.slug,
           utmSource: 'naver_blog',
         });
-        qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+        qa = await runQualityWithResearchStructure();
         seoScore = computeSeoScore(buildSeoScoreInput());
         publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
         console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ')} -> passed=${publishQuality.passed}`);
