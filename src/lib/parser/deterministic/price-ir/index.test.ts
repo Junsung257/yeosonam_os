@@ -271,6 +271,48 @@ BX341 21:55 01:25
       expect.objectContaining({ date: '2026-07-22', adult_price: 899000 }),
     ]);
   });
+
+  it('filters shared duration-section supplier price tables by product duration', () => {
+    const rawText = [
+      '신선이 된 것 같은 곳,',
+      '구름 위의 절경',
+      '张家界장가계',
+      '월토일 3박4일 / 화수목 4박5일',
+      '출발일',
+      '판매가',
+      '3박4일',
+      '8월',
+      '30일',
+      '829,000',
+      '31일',
+      '799,000',
+      '9월',
+      '19, 20, 21',
+      '899,000',
+      '4박5일',
+      '9월',
+      '1일',
+      '799,000',
+      '월드체인 풀만 호텔 장가계 특가',
+      '장가계 4박 5일',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, {
+      year: 2026,
+      durationDays: 5,
+      title: '장가계 4박 5일',
+    });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        date: '2026-09-01',
+        adult_price: 799000,
+        note: 'source_korean_duration_section_price',
+      }),
+    ]);
+    expect(result.rows.some(row => row.date === '2026-08-30' || row.date === '2026-09-19')).toBe(false);
+  });
 });
 
 const HOTEL_COLUMN_MATRIX = `

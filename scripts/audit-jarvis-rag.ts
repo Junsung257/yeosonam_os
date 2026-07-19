@@ -39,7 +39,7 @@ function parseCliOptions(args: string[]): CliOptions {
     json: args.includes('--json'),
     strict: args.includes('--strict'),
     requireDb: args.includes('--require-db'),
-    limit: Math.max(1, Math.floor(readNumberArg(args, '--limit', 250))),
+    limit: Math.max(1, Math.floor(readNumberArg(args, '--limit', 500))),
     minScore: readNumberArg(args, '--min-score', args.includes('--strict') ? 90 : 80),
     staleDays: Math.max(1, Math.floor(readNumberArg(args, '--stale-days', 30))),
     sourceType: readStringArg(args, '--source'),
@@ -96,7 +96,14 @@ async function main(): Promise<void> {
     sampleQuery = sampleQuery.eq('source_type', options.sourceType);
   }
 
-  const [totalRes, sampleRes] = await Promise.all([totalQuery, sampleQuery]);
+  const sourceCoverageQuery = options.sourceType
+    ? Promise.resolve({ data: [{ source_type: options.sourceType }], error: null })
+    : supabase
+      .from('jarvis_knowledge_chunks')
+      .select('source_type')
+      .limit(10000);
+
+  const [totalRes, sampleRes, sourceCoverageRes] = await Promise.all([totalQuery, sampleQuery, sourceCoverageQuery]);
   if (totalRes.error || sampleRes.error) {
     const error = totalRes.error ?? sampleRes.error;
     const payload = {
@@ -109,9 +116,16 @@ async function main(): Promise<void> {
     return;
   }
 
-  const summary = auditRagIndexRows((sampleRes.data ?? []) as unknown as RagIndexAuditRow[], {
-    staleAfterDays: options.staleDays,
-  });
+  const summary = auditRagIndexRows(
+    (sampleRes.data ?? []) as unknown as RagIndexAuditRow[],
+    {
+      staleAfterDays: options.staleDays,
+      presentSourceTypes: [...new Set((sourceCoverageRes.data ?? [])
+        .map((row: { source_type?: string | null }) => row.source_type)
+        .filter((sourceType): sourceType is string => Boolean(sourceType)))],
+      ...(options.sourceType ? { expectedSourceTypes: [options.sourceType] } : {}),
+    },
+  );
   const ok = summary.qualityScore >= options.minScore && summary.readinessLevel !== 'blocked';
   const payload = {
     ok,

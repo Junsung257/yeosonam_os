@@ -99,6 +99,12 @@ These audits contain recent evidence for the current product-registration engine
 | 2026-05-30 | `2026-05-30-marketing-followup-recommendation-ledger.md` | Marketing follow-up recommendation ledger. |
 | 2026-05-30 | `2026-05-30-evidence-based-ai-ux-masterplan-v2.md` | Historical evidence-based AI UX masterplan. |
 
+## AI, Jarvis, And RAG
+
+| Date | File | Use |
+|---|---|---|
+| 2026-07-05 | `2026-07-05-jarvis-product-db-learning-scan.md` | Live product catalog learning coverage, active package RAG gap, and package RAG backfill command evidence. |
+
 ## System, Runtime, And Code Review
 
 | Date | File | Use |
