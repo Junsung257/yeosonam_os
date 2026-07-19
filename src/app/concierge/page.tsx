@@ -352,29 +352,18 @@ export default function ConciergePage() {
     setPaying(true);
     setErrorMsg('');
     trackEngagement({
-      event_type: 'checkout_start',
+      event_type: 'consultation_request_start',
       page_url: '/concierge',
       ...intentSummary,
     });
 
     try {
-      const response = await fetch('/api/concierge/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, customer, ...intentSummary }),
-      });
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      if (data.status === 'COMPLETED') {
-        setVouchers(data.vouchers ?? []);
-        setCart([]);
-        setCheckoutOpen(false);
-        setCartSheetOpen(false);
-      } else if (data.status === 'PARTIAL_FAIL') {
-        setErrorMsg(`일부 API 오류로 결제가 취소되었습니다: ${data.errors?.join(', ')}`);
-      }
+      await handleShare();
+      setCheckoutOpen(false);
+      setCartSheetOpen(false);
+      return;
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '결제 오류가 발생했습니다.');
+      setErrorMsg(error instanceof Error ? error.message : '상담 요청 처리 중 오류가 발생했습니다.');
     } finally {
       setPaying(false);
     }
@@ -457,7 +446,7 @@ export default function ConciergePage() {
         <div className="w-full max-w-lg rounded-[24px] border border-[#E5E7EB] bg-white p-6 shadow-card">
           <div className="mb-6 text-center">
             <CheckCircle2 className="mx-auto mb-3 text-success" size={44} />
-            <h1 className="text-[24px] font-extrabold text-text-primary">결제 완료</h1>
+            <h1 className="text-[24px] font-extrabold text-text-primary">상담 요청 완료</h1>
             <p className="mt-1 text-[14px] text-text-secondary">아래 바우처 정보를 확인해 주세요.</p>
           </div>
           <div className="space-y-3">
@@ -524,7 +513,7 @@ export default function ConciergePage() {
                 어떤 여행을 찾는지 말해주시면, 비교해서 담아드릴게요
               </h1>
               <p className="mt-2 max-w-2xl text-pretty text-[15px] leading-7 text-text-secondary">
-                호텔, 액티비티, 크루즈, 랜드사 상품을 한 번에 보고 카톡 상담이나 결제로 이어갈 수 있습니다.
+                호텔, 액티비티, 크루즈, 랜드사 상품을 한 번에 보고 카톡 상담으로 이어갈 수 있습니다.
               </p>
             </div>
 
@@ -642,7 +631,7 @@ export default function ConciergePage() {
               cartTotal={cartTotal}
               sharing={sharing}
               onShare={handleShare}
-              onCheckout={() => setCheckoutOpen(true)}
+              onCheckout={handleShare}
               onKakao={() => openKakaoConsult('desktop_cart')}
             />
           </div>
@@ -687,7 +676,7 @@ export default function ConciergePage() {
             cartTotal={cartTotal}
             sharing={sharing}
             onShare={handleShare}
-            onCheckout={() => setCheckoutOpen(true)}
+            onCheckout={handleShare}
             onKakao={() => openKakaoConsult('mobile_cart_sheet')}
           />
         </ModalFrame>
@@ -740,7 +729,7 @@ export default function ConciergePage() {
 
               <div className="rounded-[14px] bg-[#F8FAFC] p-4 text-[14px]">
                 <div className="flex justify-between gap-3">
-                  <span className="text-text-secondary">결제 금액</span>
+                  <span className="text-text-secondary">예상 금액</span>
                   <span className="font-extrabold text-text-primary">{money(cartTotal)}</span>
                 </div>
                 <p className="mt-1 text-[12px] text-text-secondary">{cart.length}개 상품</p>
@@ -766,7 +755,7 @@ export default function ConciergePage() {
                 disabled={paying || !customer.name.trim()}
                 className="h-11 rounded-full bg-brand text-[14px] font-bold text-white hover:bg-brand-dark disabled:opacity-50"
               >
-                {paying ? '처리 중' : '결제 완료'}
+                {paying ? '처리 중' : '상담 요청'}
               </button>
             </div>
           </form>
@@ -950,7 +939,7 @@ function CartActions({
           className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full bg-brand text-[14px] font-bold text-white hover:bg-brand-dark disabled:opacity-40"
         >
           <Wallet size={17} />
-          결제
+          상담 요청
         </button>
       </div>
     </div>

@@ -7,11 +7,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { cacheHeader } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
-import { requireAuthenticatedRoute } from '@/lib/session-guard';
 import { getSecret } from '@/lib/secret-registry';
+
+const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' } as const;
 
 // ─── B2B 필드 목록 (VA 역할에게 숨겨야 하는 필드) ────────────────────────────
 const B2B_FIELDS = ['net_price', 'margin_rate', 'discount_amount', 'b2b_notes', 'supplier_code'] as const;
@@ -48,12 +49,12 @@ function omitB2BFields<T extends Record<string, unknown>>(obj: T): Omit<T, B2BFi
 // ─── GET ──────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
-
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
 
   const { searchParams } = new URL(request.url);
   const id             = searchParams.get('id');
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 404 });
     const role = await getUserRole(request.headers.get('authorization'));
     const product = role === 'va' ? omitB2BFields(data as Record<string, unknown>) : data;
-    return NextResponse.json({ product }, { headers: cacheHeader(60) });
+    return NextResponse.json({ product }, { headers: NO_STORE_HEADERS });
   }
 
   // 역할 조회 (목록에서도 B2B 필드 필터링)
@@ -105,18 +106,18 @@ export async function GET(request: NextRequest) {
   const products = role === 'va'
     ? (data ?? []).map((p: Record<string, unknown>) => omitB2BFields(p))
     : data;
-  return NextResponse.json({ products, count, page, limit }, { headers: cacheHeader(60) });
+  return NextResponse.json({ products, count, page, limit }, { headers: NO_STORE_HEADERS });
 }
 
 // ─── POST ─────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
-
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
 
   try {
     const body = await request.json();
@@ -198,12 +199,12 @@ const PATCHABLE_FIELDS = [
 ] as const;
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
-
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
 
   try {
     const body = await request.json();
@@ -241,12 +242,12 @@ export async function PATCH(request: NextRequest) {
 // ─── DELETE ───────────────────────────────────────────────────
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }
-
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
