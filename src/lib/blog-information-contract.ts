@@ -281,7 +281,12 @@ const SLOTS: Record<BlogInformationIntent, BlogInformationRequiredSlot[]> = {
 };
 
 const SOURCE_POLICIES: Record<BlogInformationIntent, BlogInformationSourcePolicy> = {
-  food_budget: sourcePolicy(0.9, false, ['official', 'field_research', 'reputable_local_source']),
+  food_budget: sourcePolicy(0.9, false, [
+    'official',
+    'field_research',
+    'reputable_local_source',
+    'reputable_price_source',
+  ]),
   monthly_weather: sourcePolicy(0.9, true, ['meteorological_agency', 'official_climate_data']),
   airport_transport: sourcePolicy(0.9, true, ['airport', 'transport_operator', 'government']),
   hotel_areas: sourcePolicy(0.9, false, ['official_map', 'field_research', 'reputable_booking_data']),

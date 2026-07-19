@@ -20,7 +20,7 @@ const FOOD_POLICY: BlogInformationSourcePolicy = {
   primarySourcesRequired: false,
   exactNumbersRequireSource: true,
   retrievedAtRequired: true,
-  sourceTypes: ['official', 'field_research', 'reputable_local_source'],
+  sourceTypes: ['official', 'field_research', 'reputable_local_source', 'reputable_price_source'],
 };
 
 function foodBudgetBundle(priceCount = 7): BlogInformationResearchBundle {
@@ -144,6 +144,38 @@ describe('blog generation research preflight', () => {
     expect(result.issues).toEqual(expect.arrayContaining([
       'source_claim_types_missing:sapporo-food-field-research',
       'source_stale:sapporo-food-field-research',
+    ]));
+  });
+
+  it('accepts a current reputable price source for food budgets', () => {
+    const bundle = foodBudgetBundle();
+    bundle.sources[0].sourceType = 'reputable_price_source';
+    bundle.sources[0].authorityLevel = 'editorial_secondary';
+    bundle.sources[0].sourceUrl = 'https://www.budgetyourtrip.com/japan/sapporo';
+    delete bundle.sources[0].internalIdentifier;
+
+    expect(readiness(bundle).issues).not.toContain(
+      'source_type_not_allowed:sapporo-food-field-research',
+    );
+  });
+
+  it('blocks seven unrelated price claims that do not cover the required food-budget decisions', () => {
+    const bundle = foodBudgetBundle();
+    bundle.claims = bundle.claims.map((claim, index) => {
+      const claimText = `삿포로 일반 여행자의 가격 참고값 ${index + 1}은 ${claim.extractedValue?.normalizedValue} JPY입니다.`;
+      return {
+        ...claim,
+        claimText,
+        claimFingerprint: createBlogInformationClaimFingerprint(claimText),
+      };
+    });
+
+    const result = readiness(bundle);
+    expect(result.passed).toBe(false);
+    expect(result.issues).toEqual(expect.arrayContaining([
+      'claim_semantic_coverage_missing:food_budget:budget_tier',
+      'claim_semantic_coverage_missing:food_budget:breakfast',
+      'claim_semantic_coverage_missing:food_budget:snack',
     ]));
   });
 
