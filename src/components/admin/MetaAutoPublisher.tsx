@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useId } from 'react';
 import dynamic from 'next/dynamic';
 
 const BarChart = dynamic(() => import('recharts').then(m => ({ default: m.BarChart })), { ssr: false });
@@ -58,6 +58,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
   const [killing, setKilling] = useState<string | null>(null);
   const [autoKill, setAutoKill] = useState(false);
   const [budget, setBudget] = useState(50000);
+  const modalTitleId = useId();
 
   // ── Auto-Publishing ────────────────────────────────────
   const publishToMeta = useCallback(async () => {
@@ -189,19 +190,26 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
     .map(c => ({ name: c.creative_id || c.name.slice(0, 12), ctr: c.ctr, isDanger: c.isDanger }));
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button
+        type="button"
+        aria-label="Meta Ads 컨트롤 센터 닫기"
+        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={modalTitleId}
         className="relative w-full max-w-2xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
-        onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="bg-blue-600 text-white px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-admin-lg font-semibold">Meta Ads 컨트롤 센터</h2>
+            <h2 id={modalTitleId} className="text-admin-lg font-semibold">Meta Ads 컨트롤 센터</h2>
             <p className="text-[11px] text-blue-200 mt-0.5">퍼블리싱 · 실시간 모니터링 · Kill Switch</p>
           </div>
-          <button onClick={onClose} className="p-1.5 text-white/60 hover:text-white transition">
+          <button type="button" aria-label="Meta Ads 컨트롤 센터 닫기" onClick={onClose} className="p-1.5 text-white/60 hover:text-white transition">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -215,7 +223,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             <div className="flex items-center gap-3 mb-3">
               <div className="flex items-center gap-1 border border-admin-border-mid rounded px-2 py-1.5">
                 <span className="text-[10px] text-admin-muted-2">일예산</span>
-                <input type="number" value={budget} onChange={e => setBudget(parseInt(e.target.value) || 50000)}
+                <input aria-label="일예산" type="number" value={budget} onChange={e => setBudget(parseInt(e.target.value) || 50000)}
                   step={10000} min={10000} className="w-20 border-none text-admin-sm text-right focus:ring-0 bg-transparent p-0" />
                 <span className="text-[10px] text-admin-muted-2">원</span>
               </div>
@@ -225,6 +233,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             </div>
 
             <button
+              type="button"
               onClick={publishToMeta}
               disabled={publishing}
               className="w-full py-3 bg-blue-600 text-white text-admin-base font-semibold rounded-lg hover:bg-blue-900 disabled:bg-slate-300 transition flex items-center justify-center gap-2"
@@ -252,6 +261,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
               <div className="flex items-center gap-2">
                 {lastSync && <span className="text-[10px] text-admin-muted-2">최근: {lastSync}</span>}
                 <button
+                  type="button"
                   onClick={fetchLiveInsights}
                   disabled={syncing}
                   className="px-3 py-1 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg disabled:opacity-50 transition"
@@ -308,15 +318,19 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
           <section className="bg-white border border-admin-border-mid rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-admin-base font-semibold text-admin-text-2">Kill Switch</h3>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <div className="flex items-center gap-2">
                 <span className="text-[11px] text-admin-muted">자동 Kill</span>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoKill}
                   onClick={() => setAutoKill(!autoKill)}
                   className={`w-9 h-5 rounded-full transition relative ${autoKill ? 'bg-red-500' : 'bg-slate-300'}`}
                 >
-                  <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${autoKill ? 'left-4' : 'left-0.5'}`} />
+                  <span className="sr-only">자동 Kill</span>
+                  <span className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${autoKill ? 'left-4' : 'left-0.5'}`} />
                 </button>
-              </label>
+              </div>
             </div>
 
             <p className="text-[11px] text-admin-muted-2 mb-3">CTR 1% 미만 + 지출 5만원 초과 캠페인 자동 감지</p>
@@ -335,6 +349,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => killCampaign(c.id)}
                       disabled={killing === c.id}
                       className="px-3 py-1.5 bg-red-600 text-white text-admin-xs font-medium rounded hover:bg-red-700 disabled:bg-red-300 transition"
