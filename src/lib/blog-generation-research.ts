@@ -75,6 +75,7 @@ export interface BlogGenerationResearchStructureRepair {
 
 const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:food_budget:v1 -->';
+const FOOD_BUDGET_AREA_PRICE_DIFFERENCE_PATTERN = /(?:지역별|지역)[^\n]{0,120}(?:가격 차이|비용 차이)/;
 const FOOD_BUDGET_STRUCTURE_ISSUES = new Set([
   'food_budget:daily_tier_rows_required',
   'food_budget:아침_value_required',
@@ -312,7 +313,9 @@ export function repairBlogGenerationResearchStructure(input: {
   }
 
   const report = validateBlogInformationStructure({ intent: input.intent, markdown: input.markdown });
-  if (!report.issues.some((issue) => FOOD_BUDGET_STRUCTURE_ISSUES.has(issue))) {
+  const needsVerifiedTables = report.issues.some((issue) => FOOD_BUDGET_STRUCTURE_ISSUES.has(issue));
+  const needsAreaPriceDifferenceGuidance = !FOOD_BUDGET_AREA_PRICE_DIFFERENCE_PATTERN.test(input.markdown);
+  if (!needsVerifiedTables && !needsAreaPriceDifferenceGuidance) {
     return unchanged();
   }
   const claims = input.readiness.bundle.claims;
@@ -358,6 +361,10 @@ export function repairBlogGenerationResearchStructure(input: {
     `| 점심 | ${formatExtractedPrice(rows.lunch!)} | ${escapeMarkdownTableCell(rows.lunch!.claimText)} |`,
     `| 저녁 | ${formatExtractedPrice(rows.dinner!)} | ${escapeMarkdownTableCell(rows.dinner!.claimText)} |`,
     `| 간식·커피 | ${formatExtractedPrice(rows.snack!)} | ${escapeMarkdownTableCell(rows.snack!.claimText)} |`,
+    '',
+    '## 지역별 가격 차이 확인 방법',
+    '',
+    '삿포로의 지역별 가격 차이는 상권·업장·메뉴에 따라 달라집니다. 이 자료는 도시 전체 평균이므로 구체적인 지역별 차액을 단정하지 않습니다. 방문할 지역의 메뉴판과 공식 예약 화면에서 비용 차이를 다시 확인하세요.',
     '',
     FOOD_BUDGET_STRUCTURE_END_MARKER,
   ].join('\n');
