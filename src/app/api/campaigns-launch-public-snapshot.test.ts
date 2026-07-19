@@ -7,6 +7,21 @@ function routeSource(): string {
 }
 
 describe('campaign launch public package boundary', () => {
+  it('requires admin authorization before launch body parsing or service-role work', () => {
+    const source = routeSource();
+    const postIndex = source.indexOf('export async function POST');
+    const postSource = source.slice(postIndex, source.indexOf('async function launchMeta'));
+    const guardIndex = postSource.indexOf('await requireAdminRequest(request)');
+    const bodyIndex = postSource.indexOf('request.json');
+    const supabaseIndex = postSource.indexOf('supabaseAdmin');
+
+    expect(source).toContain("from '@/lib/admin-guard'");
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(postSource.slice(guardIndex, bodyIndex)).toContain('if (authError) return authError');
+    expect(bodyIndex).toBeGreaterThan(guardIndex);
+    expect(supabaseIndex).toBeGreaterThan(guardIndex);
+  });
+
   it('requires approved public package snapshots before launching customer-facing ads', () => {
     const source = routeSource();
     const creativeQueryIndex = source.indexOf(".from('ad_creatives')");
@@ -31,6 +46,18 @@ describe('campaign launch public package boundary', () => {
     expect(postSource).toContain('attachPublicPackagesToCampaignCreatives');
   });
 
+  it('keeps Meta launch-created assets in review/paused state until external confirmation', () => {
+    const source = routeSource();
+    const launchMetaIndex = source.indexOf('async function launchMeta');
+    const launchMetaSource = source.slice(launchMetaIndex);
+
+    expect(launchMetaSource).toContain("status: 'review'");
+    expect(launchMetaSource).toContain('launched_at: null');
+    expect(launchMetaSource).toContain("status: 'PAUSED'");
+    expect(launchMetaSource).not.toContain("status: 'active'");
+    expect(launchMetaSource).not.toContain("status: 'ACTIVE'");
+  });
+
   it('keeps the campaign package snapshot gate in the shared campaign helper', () => {
     const helper = readFileSync(join(process.cwd(), 'src/lib/campaign-public-packages.ts'), 'utf8');
 
@@ -39,5 +66,9 @@ describe('campaign launch public package boundary', () => {
     expect(helper).toContain('isCustomerPubliclyOpenable');
     expect(helper).toContain(".in('publication_state', ['approved', 'published'])");
     expect(helper).toContain('travel_packages: publicPackagesById.get(productId) ?? null');
+    expect(helper).toContain("'meta_campaign_id'");
+    expect(helper).toContain("'meta_adset_id'");
+    expect(helper).toContain("'meta_ad_id'");
+    expect(helper).toContain("'meta_creative_id'");
   });
 });
