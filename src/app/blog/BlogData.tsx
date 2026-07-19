@@ -443,7 +443,11 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     if (isBlogDatabaseUnavailableError(err)) {
       const lastGood = lastGoodBlogData.get(cacheKey);
       if (lastGood) return lastGood;
-      throw err;
+      return {
+        ...unavailableBlogData(filter),
+        fallback: true,
+        fallbackReason: '블로그 데이터를 잠시 불러오지 못했습니다. 핵심 여행 상품과 상담 경로는 계속 이용할 수 있습니다.',
+      };
     }
     throw err;
   }
@@ -908,6 +912,19 @@ export default async function BlogData({ searchParams }: Props) {
           )}
 
           {/* 페이지네이션 */}
+          {(unavailable || posts.length === 0) && (
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              {(destination || angle) && !unavailable && (
+                <Link href="/blog" className="inline-flex items-center justify-center rounded-full border border-[#DDE3EA] px-5 py-2.5 text-[13px] font-bold text-text-primary transition hover:bg-bg-section">
+                  전체 글 보기
+                </Link>
+              )}
+              <Link href="/packages" className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-[#1B64DA]">
+                여행 상품 보기
+              </Link>
+            </div>
+          )}
+
           {totalPages > 1 && (
             <nav className="mt-12 flex items-center justify-center gap-1.5">
               {page > 1 && (
