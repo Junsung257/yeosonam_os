@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   listTenantPortalRfqs: vi.fn(),
   getTenantPortalRfq: vi.fn(),
   getTenantPortalBid: vi.fn(),
+  sanitizeTenantPortalRfq: vi.fn(),
 }));
 
 vi.mock('@/lib/tenant-portal-auth', () => ({
@@ -37,6 +38,7 @@ vi.mock('@/lib/tenant-portal-rfq', () => ({
   listTenantPortalRfqs: mocks.listTenantPortalRfqs,
   getTenantPortalRfq: mocks.getTenantPortalRfq,
   getTenantPortalBid: mocks.getTenantPortalBid,
+  sanitizeTenantPortalRfq: mocks.sanitizeTenantPortalRfq,
 }));
 
 import { GET as getProducts, PUT as putProduct } from '@/app/api/tenant/products/route';
@@ -83,6 +85,16 @@ describe('tenant portal route authorization', () => {
     });
     mocks.listTenantPortalRfqs.mockResolvedValue([]);
     mocks.getTenantPortalBid.mockResolvedValue(null);
+    mocks.sanitizeTenantPortalRfq.mockImplementation((rfq: Record<string, unknown>) => {
+      const safe = { ...rfq };
+      delete safe.share_token;
+      delete safe.customer_name;
+      delete safe.customer_phone;
+      delete safe.customer_id;
+      delete safe.ai_interview_log;
+      delete safe.custom_requirements;
+      return { ...safe, customer_name: '고객 (익명)' };
+    });
   });
 
   afterEach(() => {
@@ -152,6 +164,19 @@ describe('tenant portal route authorization', () => {
     expect(mocks.getTenantSettlements).toHaveBeenCalledWith(TENANT_A, '2026-07');
   });
 
+  it('returns 500 instead of a false zero settlement when storage fails', async () => {
+    mocks.getTenantSettlements.mockRejectedValue(new Error('postgrest unavailable'));
+
+    const response = await getSettlements(new NextRequest(
+      `https://www.yeosonam.com/api/tenant/settlements?tenant_id=${TENANT_A}&month=2026-07`,
+    ));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: '정산 조회에 실패했습니다.',
+    });
+  });
+
   it('loads tenant RFQ bid state only for the authorized tenant', async () => {
     mocks.listTenantPortalRfqs.mockResolvedValue([{
       id: '20000000-0000-4000-8000-000000000001',
@@ -160,6 +185,11 @@ describe('tenant portal route authorization', () => {
       customer_name: 'real customer',
       customer_phone: '010-1234-5678',
       ai_interview_log: [{ answer: 'sensitive transcript' }],
+      custom_requirements: {
+        customer_email: 'customer@example.com',
+        privacy_consent: true,
+        utm: { source: 'campaign' },
+      },
       created_at: '2026-07-19T00:00:00.000Z',
       updated_at: '2026-07-19T00:00:00.000Z',
     }]);
@@ -179,6 +209,32 @@ describe('tenant portal route authorization', () => {
     expect(payload.rfqs[0]).not.toHaveProperty('share_token');
     expect(payload.rfqs[0]).not.toHaveProperty('customer_phone');
     expect(payload.rfqs[0]).not.toHaveProperty('ai_interview_log');
+    expect(payload.rfqs[0]).not.toHaveProperty('custom_requirements');
+  });
+
+  it('does not return a locked RFQ detail before this tenant tier unlocks', async () => {
+    const rfqId = '20000000-0000-4000-8000-000000000001';
+    mocks.getTenantPortalRfq.mockResolvedValue({
+      id: rfqId,
+      status: 'published',
+      destination: 'private destination',
+      bronze_unlock_at: '2099-01-01T00:00:00.000Z',
+      created_at: '2026-07-19T00:00:00.000Z',
+      updated_at: '2026-07-19T00:00:00.000Z',
+    });
+
+    const response = await getTenantRfqDetail(
+      new NextRequest(
+        `https://www.yeosonam.com/api/tenant/rfqs/${rfqId}?tenant_id=${TENANT_A}`,
+      ),
+      { params: Promise.resolve({ rfqId }) },
+    );
+
+    expect(response.status).toBe(403);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ code: 'RFQ_TIER_LOCKED' });
+    expect(payload).not.toHaveProperty('rfq');
+    expect(mocks.sanitizeTenantPortalRfq).not.toHaveBeenCalled();
   });
 
   it.each(['draft', 'cancelled'] as const)(

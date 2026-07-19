@@ -6,6 +6,7 @@
  */
 
 import { getSupabase, getSupabaseAdmin } from '../supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '../visibility-status';
 
 // ─── 타입 ────────────────────────────────────────────────────
 
@@ -53,6 +54,12 @@ export interface InventoryBlock {
   status:          'OPEN' | 'CLOSED' | 'SOLDOUT';
   created_at:      string;
   updated_at:      string;
+}
+
+export interface PublicInventoryBlock {
+  date:            string;
+  available_seats: number;
+  price_override?: number | null;
 }
 
 export interface CrossSearchResult {
@@ -195,24 +202,38 @@ export async function tenantProductBelongsToTenant(
 
 // ── Inventory Blocks ─────────────────────────────────────────
 
-export async function getInventoryBlocks(
+export async function getPublicInventoryBlocks(
   productId: string,
   from: string,
   to: string
-): Promise<InventoryBlock[]> {
-  // Public availability is exposed through a server route with a filtered
-  // response. Use the server client so enabling RLS does not silently empty
-  // that customer-facing route.
+): Promise<PublicInventoryBlock[] | null> {
   const sb = getSupabaseAdmin();
-  if (!sb) return [];
-  const { data } = await sb
+  if (!sb) throw new Error('Public inventory storage is unavailable');
+
+  // The public endpoint may use service_role only after proving the product is
+  // customer-visible. Never let a guessed draft/blocked package UUID become a
+  // service-role read primitive.
+  const { data: product, error: productError } = await sb
+    .from('travel_packages')
+    .select('id')
+    .eq('id', productId)
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+    .in('publication_state', ['approved', 'published'])
+    .maybeSingle();
+  if (productError) throw productError;
+  if (!product) return null;
+
+  const { data, error } = await sb
     .from('inventory_blocks')
-    .select('*')
+    .select('date, available_seats, price_override')
     .eq('product_id', productId)
     .gte('date', from)
     .lte('date', to)
+    .eq('status', 'OPEN')
+    .gt('available_seats', 0)
     .order('date');
-  return (data ?? []) as InventoryBlock[];
+  if (error) throw error;
+  return (data ?? []) as PublicInventoryBlock[];
 }
 
 export async function getTenantInventoryBlocks(
@@ -489,20 +510,21 @@ export async function getTenantSettlements(
   month: string
 ): Promise<{ rows: TenantSettlementRow[]; total_cost: number }> {
   const sb = getSupabaseAdmin();
-  if (!sb) return { rows: [], total_cost: 0 };
+  if (!sb) throw new Error('Tenant settlement storage is unavailable');
 
   const [y, m] = month.split('-').map(Number);
   const from = `${y}-${String(m).padStart(2, '0')}-01`;
   const lastDay = new Date(y, m, 0).getDate();
   const to = `${y}-${String(m).padStart(2, '0')}-${lastDay}T23:59:59Z`;
 
-  const { data } = await sb
+  const { data, error } = await sb
     .from('api_orders')
     .select('id, product_name, created_at, quantity, cost, transactions!transaction_id(status)')
     .eq('tenant_id', tenantId)
     .gte('created_at', from)
     .lte('created_at', to);
 
+  if (error) throw error;
   if (!data) return { rows: [], total_cost: 0 };
 
   type Row = { id: string; product_name: string; created_at: string; quantity: number; cost: number; transactions: { status: string } | null };

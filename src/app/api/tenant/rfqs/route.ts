@@ -10,6 +10,7 @@ import {
   getTenantPortalBid,
   getTenantPortalTenant,
   listTenantPortalRfqs,
+  sanitizeTenantPortalRfq,
 } from '@/lib/tenant-portal-rfq';
 
 interface RfqWithTierInfo extends GroupRfq {
@@ -55,12 +56,7 @@ export async function GET(request: NextRequest) {
       const isUnlocked = !unlockAt || new Date(unlockAt) <= now;
       const myBid = await getTenantPortalBid(rfq.id, authorization.tenantId);
       return {
-        ...rfq,
-        share_token: undefined,
-        customer_name: '고객 (익명)',
-        customer_phone: undefined,
-        customer_id: undefined,
-        ai_interview_log: undefined,
+        ...sanitizeTenantPortalRfq(rfq),
         is_unlocked: isUnlocked,
         unlocks_in_seconds: !isUnlocked && unlockAt
           ? Math.ceil((new Date(unlockAt).getTime() - now.getTime()) / 1000)

@@ -1,10 +1,45 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import type { GroupRfq, RfqBid } from '@/lib/db/rfq';
 import type { Tenant } from '@/lib/db/tenant';
+import { redactKoreanPII } from '@/lib/pii-redactor';
 
 type TenantPortalTenant = Pick<Tenant, 'id' | 'name' | 'status' | 'tier'>;
 
-const TENANT_RFQ_FIELDS = 'id, rfq_code, destination, departure_date_from, departure_date_to, duration_nights, adult_count, child_count, budget_per_person, total_budget, hotel_grade, meal_plan, transportation, special_requests, custom_requirements, status, published_at, gold_unlock_at, silver_unlock_at, bronze_unlock_at, bid_deadline, max_proposals, selected_proposal_id, created_at, updated_at' as const;
+const TENANT_RFQ_FIELDS = 'id, rfq_code, destination, departure_date_from, departure_date_to, duration_nights, adult_count, child_count, budget_per_person, total_budget, hotel_grade, meal_plan, transportation, special_requests, status, published_at, gold_unlock_at, silver_unlock_at, bronze_unlock_at, bid_deadline, max_proposals, selected_proposal_id, created_at, updated_at' as const;
+
+const TENANT_RFQ_PRIVATE_FIELDS = [
+  'share_token',
+  'customer_name',
+  'customer_phone',
+  'customer_id',
+  'ai_interview_log',
+  'custom_requirements',
+] as const;
+
+type TenantPortalRfq = Omit<
+  GroupRfq,
+  | 'share_token'
+  | 'customer_name'
+  | 'customer_phone'
+  | 'customer_id'
+  | 'ai_interview_log'
+  | 'custom_requirements'
+> & { customer_name: string };
+
+export function sanitizeTenantPortalRfq(
+  rfq: GroupRfq,
+): TenantPortalRfq {
+  const safe = { ...rfq } as Record<string, unknown>;
+  for (const field of TENANT_RFQ_PRIVATE_FIELDS) delete safe[field];
+
+  if (typeof safe.special_requests === 'string') {
+    const redacted = redactKoreanPII(safe.special_requests).redacted.trim();
+    safe.special_requests = redacted || undefined;
+  }
+  safe.customer_name = '고객 (익명)';
+
+  return safe as TenantPortalRfq;
+}
 
 export async function getTenantPortalTenant(
   tenantId: string,

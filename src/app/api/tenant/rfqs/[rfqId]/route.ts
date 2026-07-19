@@ -10,6 +10,7 @@ import {
   getTenantPortalBid,
   getTenantPortalRfq,
   getTenantPortalTenant,
+  sanitizeTenantPortalRfq,
 } from '@/lib/tenant-portal-rfq';
 
 function tierUnlockAt(rfq: GroupRfq, tier: string): string | undefined {
@@ -49,16 +50,26 @@ export async function GET(
       return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
     }
 
+    const now = new Date();
     const unlockAt = tierUnlockAt(rfq, tenant.tier ?? 'bronze');
-    const isUnlocked = !unlockAt || new Date(unlockAt) <= new Date();
-    const sanitized: Partial<GroupRfq> & { customer_name: string } = {
-      ...rfq,
-      share_token: undefined,
-      customer_name: '고객 (익명)',
-      customer_phone: undefined,
-      customer_id: undefined,
-      ai_interview_log: undefined,
-    };
+    const isUnlocked = !unlockAt || new Date(unlockAt) <= now;
+    if (!isUnlocked && !myBid) {
+      return apiResponse(
+        {
+          code: 'RFQ_TIER_LOCKED',
+          error: '티어 등급에 따라 아직 공개되지 않은 RFQ입니다.',
+          unlocks_in_seconds: unlockAt
+            ? Math.max(1, Math.ceil((new Date(unlockAt).getTime() - now.getTime()) / 1000))
+            : undefined,
+        },
+        {
+          status: 403,
+          headers: { 'Cache-Control': 'private, no-store' },
+        },
+      );
+    }
+
+    const sanitized = sanitizeTenantPortalRfq(rfq);
 
     return apiResponse({
       rfq: sanitized,

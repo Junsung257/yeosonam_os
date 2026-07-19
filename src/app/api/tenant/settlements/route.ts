@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getTenantSettlements, isSupabaseAdminConfigured } from '@/lib/supabase';
 import {
   isTenantPortalAuthError,
@@ -20,9 +21,20 @@ export async function GET(request: NextRequest) {
     return apiResponse({ error: 'month는 YYYY-MM 형식이어야 합니다.' }, { status: 400 });
   }
 
-  const { rows, total_cost } = await getTenantSettlements(authorization.tenantId, month);
-  return apiResponse(
-    { rows, total_cost, month },
-    { headers: { 'Cache-Control': 'private, no-store' } },
-  );
+  try {
+    const { rows, total_cost } = await getTenantSettlements(authorization.tenantId, month);
+    return apiResponse(
+      { rows, total_cost, month },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  } catch (error) {
+    console.error('[tenant/settlements] lookup failed', sanitizeDbError(error));
+    return apiResponse(
+      { error: '정산 조회에 실패했습니다.' },
+      {
+        status: 500,
+        headers: { 'Cache-Control': 'private, no-store' },
+      },
+    );
+  }
 }

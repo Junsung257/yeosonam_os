@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getInventoryBlocks, isSupabaseConfigured } from '@/lib/supabase';
+import { getPublicInventoryBlocks, isSupabaseConfigured } from '@/lib/supabase';
 
 // GET /api/packages/[id]/inventory?from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -16,11 +16,25 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     .slice(0, 10);
   const to = request.nextUrl.searchParams.get('to') ?? defaultTo;
 
-  const blocks = await getInventoryBlocks(id, from, to);
-
-  // OPEN 상태 + available_seats > 0 인 미래 날짜만 필터
   const today = new Date().toISOString().slice(0, 10);
-  const available = blocks.filter(b => b.date >= today && b.status === 'OPEN' && b.available_seats > 0);
+  try {
+    const blocks = await getPublicInventoryBlocks(id, from < today ? today : from, to);
+    if (!blocks) {
+      return NextResponse.json({ error: '상품을 찾을 수 없습니다.' }, { status: 404 });
+    }
 
-  return NextResponse.json({ blocks: available });
+    const publicBlocks = blocks.map((block) => ({
+      date: block.date,
+      available_seats: block.available_seats,
+      ...(block.price_override == null ? {} : { price_override: block.price_override }),
+    }));
+
+    return NextResponse.json(
+      { blocks: publicBlocks },
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } },
+    );
+  } catch (error) {
+    console.error('[public-inventory] lookup failed', error instanceof Error ? error.message : 'unknown');
+    return NextResponse.json({ error: '재고 조회에 실패했습니다.' }, { status: 500 });
+  }
 }

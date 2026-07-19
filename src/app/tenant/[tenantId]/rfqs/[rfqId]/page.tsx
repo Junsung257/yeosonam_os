@@ -227,8 +227,14 @@ export default function TenantRfqDetailPage() {
 
     try {
       const res = await fetch(`/api/tenant/rfqs/${encodedRfqId}?tenant_id=${encodedTenantId}`);
-      if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === 'string'
+            ? data.error
+            : '데이터를 불러올 수 없습니다',
+        );
+      }
       setRfq(data.rfq ?? data);
       setIsUnlocked(data.is_unlocked ?? true);
       if (data.my_bid) {

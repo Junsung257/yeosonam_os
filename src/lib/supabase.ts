@@ -387,14 +387,14 @@ export type {
 export {
   listTenants, getTenant, createTenant, updateTenant,
   getTenantProducts, upsertTenantProduct, tenantProductBelongsToTenant,
-  getInventoryBlocks, getTenantInventoryBlocks, getInventoryByTenant, upsertInventoryBlock, deductInventory,
+  getPublicInventoryBlocks, getTenantInventoryBlocks, getInventoryByTenant, upsertInventoryBlock, deductInventory,
   searchTenantProducts,
   getMasterLedger,
   getTenantSettlements,
   updateTenantReliability,
 } from './db/tenant';
 export type {
-  Tenant, TenantProduct, InventoryBlock, CrossSearchResult,
+  Tenant, TenantProduct, InventoryBlock, PublicInventoryBlock, CrossSearchResult,
   LedgerEntry, TenantSettlementRow,
 } from './db/tenant';
 
