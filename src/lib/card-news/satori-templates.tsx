@@ -102,8 +102,9 @@ function CleanWhiteSatori(props: SatoriTemplateInput): JSX.Element {
         }}
       >
         {bgImageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+          // eslint-disable-next-line @next/next/no-img-element
           <img
+            alt=""
             src={bgImageUrl}
             width={w}
             height={imageH}
@@ -249,8 +250,9 @@ function LuxuryGoldSatori(props: SatoriTemplateInput): JSX.Element {
       }}
     >
       {bgImageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+        // eslint-disable-next-line @next/next/no-img-element
         <img
+          alt=""
           src={bgImageUrl}
           width={w}
           height={h}
@@ -448,8 +450,9 @@ function DarkCinematicSatori(props: SatoriTemplateInput): JSX.Element {
       }}
     >
       {bgImageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+        // eslint-disable-next-line @next/next/no-img-element
         <img
+          alt=""
           src={bgImageUrl}
           width={w}
           height={h}
@@ -623,8 +626,9 @@ function BoldGradientSatori(props: SatoriTemplateInput): JSX.Element {
     >
       {/* 배경 이미지는 낮은 opacity로 오버레이 (Satori는 mixBlendMode 미지원 → opacity만) */}
       {bgImageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+        // eslint-disable-next-line @next/next/no-img-element
         <img
+          alt=""
           src={bgImageUrl}
           width={w}
           height={h}
@@ -830,8 +834,9 @@ function MagazineSatori(props: SatoriTemplateInput): JSX.Element {
     >
       {/* 풀블리드 배경 이미지 */}
       {bgImageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+        // eslint-disable-next-line @next/next/no-img-element
         <img
+          alt=""
           src={bgImageUrl}
           width={w}
           height={h}

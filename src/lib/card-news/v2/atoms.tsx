@@ -375,8 +375,9 @@ export function PhotoFrame({
       }}
     >
       {imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+        // eslint-disable-next-line @next/next/no-img-element
         <img
+          alt=""
           src={imageUrl}
           width={w}
           height={h}
