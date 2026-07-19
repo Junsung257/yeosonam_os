@@ -7,7 +7,7 @@ import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-pu
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
-  'id,destination,status,publication_state,package_revision,audit_status,audit_report,updated_at,optional_tours,itinerary_data';
+  'id,title,display_title,destination,duration,nights,price,price_tiers,inclusions,excludes,itinerary,status,publication_state,package_revision,audit_status,audit_report,created_at,updated_at,optional_tours,itinerary_data,internal_code,short_code,product_summary,product_highlights,price_dates,product_type,trip_style,airline';
 
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
@@ -32,22 +32,46 @@ function isQaPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
   return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
 }
 
-function toQaCustomerPackageRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+function toQaCustomerPackageRows(
+  rows: Record<string, unknown>[],
+  sourceRows: Record<string, unknown>[] = rows,
+): Record<string, unknown>[] {
+  const sourceById = new Map(
+    sourceRows
+      .map((row) => [asString(row.id), row] as const)
+      .filter((entry): entry is readonly [string, Record<string, unknown>] => Boolean(entry[0])),
+  );
+
   return rows
-    .map((row) => ({
-      id: asString(row.id),
-      title: asString(row.title) ?? asString(row.display_title),
-      destination: asString(row.destination),
-      duration: asNumber(row.duration),
-      nights: asNumber(row.nights),
-      price: asNumber(row.price),
-      product_summary: asString(row.product_summary) ?? asString(row.summary),
-      product_highlights: asStringArray(row.product_highlights),
-      inclusions: asStringArray(row.inclusions),
-      excludes: asStringArray(row.excludes),
-      itinerary: asStringArray(row.itinerary),
-      _public_snapshot: row._public_snapshot ?? null,
-    }))
+    .map((row) => {
+      const id = asString(row.id);
+      const source = id ? sourceById.get(id) : null;
+      return {
+        id,
+        title: asString(row.title) ?? asString(row.display_title),
+        display_title: asString(row.display_title) ?? asString(row.title),
+        destination: asString(row.destination),
+        duration: asNumber(row.duration),
+        nights: asNumber(row.nights),
+        price: asNumber(row.price),
+        product_summary: asString(row.product_summary) ?? asString(row.summary),
+        product_highlights: asStringArray(row.product_highlights),
+        inclusions: asStringArray(row.inclusions),
+        excludes: asStringArray(row.excludes),
+        itinerary: asStringArray(row.itinerary),
+        internal_code: asString(source?.internal_code),
+        short_code: asString(source?.short_code),
+        price_dates: Array.isArray(row.price_dates)
+          ? row.price_dates
+          : Array.isArray(source?.price_dates)
+            ? source.price_dates
+            : [],
+        product_type: asString(row.product_type) ?? asString(source?.product_type),
+        trip_style: asString(row.trip_style) ?? asString(source?.trip_style),
+        airline: asString(row.airline) ?? asString(source?.airline),
+        _public_snapshot: row._public_snapshot ?? null,
+      };
+    })
     .filter((row) => typeof row.id === 'string' && row.id.length > 0 && typeof row.title === 'string' && row.title.length > 0);
 }
 
@@ -55,7 +79,7 @@ async function mergeQaPublicSnapshots(rows: Record<string, unknown>[]): Promise<
   const candidates = rows.filter(isQaPublicSnapshotCandidate);
   if (candidates.length === 0) return [];
   const merged = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, candidates);
-  return toQaCustomerPackageRows(merged);
+  return toQaCustomerPackageRows(merged, candidates);
 }
 
 function fresh(entry: CacheEntry | undefined, now: number): boolean {

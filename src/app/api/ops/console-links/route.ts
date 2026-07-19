@@ -4,6 +4,8 @@
  * Returns admin console URLs for internal ops dashboards.
  * No secrets are returned; Supabase links are derived from the project ref only.
  */
+import { type NextRequest } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { getSecret } from '@/lib/secret-registry';
 import { getVercelOpsProjectBaseUrl } from '@/lib/vercel-ops-defaults';
@@ -23,7 +25,10 @@ function supabaseDashboardUrl(): string | null {
   return null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const supabase = supabaseDashboardUrl();
   const base = getVercelOpsProjectBaseUrl();
   const vercelCustom = getSecret('OPS_VERCEL_DASHBOARD_URL')?.trim();
