@@ -8,18 +8,15 @@ import {
   getRfqBids,
   claimRfqBid,
   updateGroupRfq,
-  type RfqBid,
 } from '@/lib/supabase';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
 
   if (!isSupabaseConfigured) {
-    return apiResponse(
-      { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500 },
-    );
+    return sensitiveBackendUnavailable('rfq_bid');
   }
 
   try {
@@ -39,17 +36,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
-    const { tenant_id } = await request.json();
-    const mockBid: RfqBid = {
-      id: `mock-bid-${Date.now()}`,
-      rfq_id: rfqId,
-      tenant_id: tenant_id ?? 'mock-tenant',
-      status: 'locked',
-      locked_at: new Date().toISOString(),
-      submit_deadline: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-      is_penalized: false,
-    };
-    return apiResponse({ bid: mockBid, mock: true }, { status: 201 });
+    return sensitiveBackendUnavailable('rfq_bid');
   }
 
   try {

@@ -12,6 +12,7 @@ import {
   getTenantPortalTenant,
   sanitizeTenantPortalRfq,
 } from '@/lib/tenant-portal-rfq';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 function tierUnlockAt(rfq: GroupRfq, tier: string): string | undefined {
   const normalized = tier.toLowerCase();
@@ -28,7 +29,7 @@ export async function GET(
   const authorization = await requireTenantPortalRequest(request, requestedTenantId);
   if (isTenantPortalAuthError(authorization)) return authorization;
   if (!isSupabaseAdminConfigured) {
-    return apiResponse({ error: '테넌트 저장소를 사용할 수 없습니다.' }, { status: 503 });
+    return sensitiveBackendUnavailable('tenant_rfq');
   }
 
   try {
