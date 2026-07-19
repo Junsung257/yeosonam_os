@@ -34,7 +34,7 @@
     "prestart": "node scripts/ensure-next-main-app-js-shim.cjs",
     "start": "next start",
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx --max-warnings=0",
-    "lint:a11y": "eslint src --no-eslintrc --config eslint-a11y.config.js --format=compact",
+    "lint:a11y": "node scripts/run-a11y-lint.cjs",
     "type-check": "cross-env NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
     "verify:tokens": "node scripts/verify-admin-tokens.mjs",
     "audit:public-critical": "node scripts/audit-public-critical-pages.mjs",

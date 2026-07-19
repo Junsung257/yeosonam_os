@@ -63,7 +63,7 @@ describe('blog publisher quota recovery contract', () => {
   it('blocks incomplete information plans before invoking the writer', () => {
     const source = routeSource();
     const generatorStart = source.indexOf('async function generateFromTopic');
-    const planner = source.indexOf('const contentBrief = buildBlogContentBrief', generatorStart);
+    const planner = source.indexOf('const contentBrief = buildQueueContentBrief', generatorStart);
     const blocker = source.indexOf('if (!contentBrief.passed)', planner);
     const writer = source.indexOf('const raw = await generatePublisherBlogText', blocker);
 
@@ -126,6 +126,22 @@ describe('blog publisher quota recovery contract', () => {
     const source = routeSource();
 
     expect(source).toContain('temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7');
+  });
+
+  it('requires persisted research before targeted private regeneration calls the writer', () => {
+    const source = routeSource();
+    const targetedStart = source.indexOf("searchParams.get('privateQueueId')");
+    const preflight = source.indexOf('evaluateBlogGenerationResearchReadiness({', targetedStart);
+    const persistence = source.indexOf('persistBlogInformationResearch({', preflight);
+    const writer = source.indexOf('let result = await processQueueItem', persistence);
+
+    expect(preflight).toBeGreaterThan(targetedStart);
+    expect(persistence).toBeGreaterThan(preflight);
+    expect(writer).toBeGreaterThan(persistence);
+    expect(source).toContain('private_regeneration_research_preflight:');
+    expect(source).toContain('private_regeneration_research_persistence:');
+    expect(source).toContain("delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY]");
+    expect(source).toContain('${researchPromptBlock}');
   });
 
   it('reconciles the final informational body with a bounded writer claim ledger', () => {

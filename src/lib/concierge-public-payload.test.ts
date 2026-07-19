@@ -68,9 +68,10 @@ describe('concierge public payload safety', () => {
   it('keeps checkout cost and price server-authoritative', () => {
     const checkoutRoute = readFileSync(join(process.cwd(), 'src/app/api/concierge/checkout/route.ts'), 'utf8');
 
-    expect(checkoutRoute).toContain('resolveServerPricedItem');
-    expect(checkoutRoute).toContain('getMockProductServerPricing');
-    expect(checkoutRoute).toContain('resolveTenantProductPricing');
+    expect(checkoutRoute).toContain('CONCIERGE_CHECKOUT_DISABLED');
+    expect(checkoutRoute).toContain('status: 503');
+    expect(checkoutRoute).toContain('private, no-store');
     expect(checkoutRoute).not.toContain('const items = cart.items;');
+    expect(checkoutRoute).not.toContain('CUSTOMER_PAID');
   });
 });
