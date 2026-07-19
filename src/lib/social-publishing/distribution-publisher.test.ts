@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { publishDistribution, type ScheduledDistributionRow } from './distribution-publisher';
 import { publishToThreads } from '@/lib/threads-publisher';
 import { evaluateThreadsDistribution } from '@/lib/content-pipeline/threads-automation';
+import { publishToMetaAds } from '@/lib/content-pipeline/publishers/meta-ads-publisher';
 
 const updateMock = vi.fn();
 const eqMock = vi.fn();
@@ -128,6 +129,40 @@ describe('publishDistribution', () => {
       status: 'failed',
       retry_count: 3,
       error_message: 'provider error',
+    }));
+  });
+
+  it('keeps Meta Ads publish results as draft when provider creates paused assets', async () => {
+    vi.mocked(publishToMetaAds).mockResolvedValueOnce({
+      status: 'draft',
+      campaign_id: 'campaign-1',
+      external_url: 'https://meta.test/campaign-1',
+      test_mode: false,
+    });
+
+    const result = await publishDistribution(row({
+      platform: 'meta_ads',
+      payload: {
+        primary_texts: ['Safe draft copy'],
+        headlines: ['Draft headline'],
+        descriptions: ['Draft description'],
+        cta_button: 'LEARN_MORE',
+      },
+    }));
+
+    expect(result).toEqual({
+      status: 'draft',
+      external_id: 'campaign-1',
+      external_url: 'https://meta.test/campaign-1',
+      reason: 'Meta Ads assets were created as PAUSED drafts pending manual approval',
+    });
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'draft',
+      published_at: null,
+      external_id: 'campaign-1',
+      external_url: 'https://meta.test/campaign-1',
+      retry_count: 0,
+      error_message: 'Meta Ads assets were created as PAUSED drafts pending manual approval',
     }));
   });
 });

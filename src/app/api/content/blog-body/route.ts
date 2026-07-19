@@ -13,6 +13,7 @@ import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { logError } from '@/lib/sentry-logger';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 90;
@@ -24,6 +25,9 @@ interface RequestBody {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }

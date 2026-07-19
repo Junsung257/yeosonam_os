@@ -37,6 +37,7 @@ import { generateBlogBody } from '@/lib/content-pipeline/blog-body';
 import { logError } from '@/lib/sentry-logger';
 import type { ContentBrief } from '@/lib/validators/content-brief';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -57,6 +58,9 @@ interface RequestBody {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -313,6 +317,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   // 상품의 기존 distributions 조회
   if (!isSupabaseConfigured) return NextResponse.json({ distributions: [] });
   const product_id = request.nextUrl.searchParams.get('product_id');
