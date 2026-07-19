@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 import { getGroupRfq, updateGroupRfq } from '@/lib/db/rfq-server';
 import { isAdminRequest } from '@/lib/admin-guard';
 
@@ -15,10 +16,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
   const { id } = params;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500, headers: PRIVATE_NO_STORE }
-    );
+    return sensitiveBackendUnavailable('rfq');
   }
 
   try {
@@ -45,10 +43,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const { id } = params;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500 }
-    );
+    return sensitiveBackendUnavailable('rfq');
   }
 
   try {

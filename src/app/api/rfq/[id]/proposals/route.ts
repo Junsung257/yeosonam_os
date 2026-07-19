@@ -3,15 +3,14 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   isSupabaseConfigured,
-  type RfqProposal,
 } from '@/lib/supabase';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 import { getRfqProposals } from '@/lib/db/rfq-server';
 import {
   resolveRfqActor,
   rfqUnauthorizedResponse,
 } from '@/lib/rfq-request-auth';
 
-const MOCK_PROPOSALS: RfqProposal[] = [];
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -21,8 +20,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   if (actor?.kind !== 'admin') return rfqUnauthorizedResponse();
 
   if (!isSupabaseConfigured) {
-    const proposals = MOCK_PROPOSALS.filter(p => p.rfq_id === rfqId || rfqId.startsWith('mock'));
-    return apiResponse({ proposals, count: proposals.length, mock: true });
+    return sensitiveBackendUnavailable('rfq_proposals');
   }
 
   try {

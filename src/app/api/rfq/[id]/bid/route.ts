@@ -1,16 +1,14 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import {
-  isSupabaseConfigured,
-  type RfqBid,
-} from '@/lib/supabase';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { claimRfqBid, getGroupRfq, getRfqBids, getRfqTenantForAuthorizedRequest, updateGroupRfq } from '@/lib/db/rfq-server';
 import {
   resolveRfqActor,
   rfqForbiddenResponse,
   rfqUnauthorizedResponse,
 } from '@/lib/rfq-request-auth';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -20,10 +18,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   if (!actor) return rfqUnauthorizedResponse();
 
   if (!isSupabaseConfigured) {
-    return apiResponse(
-      { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500 },
-    );
+    return sensitiveBackendUnavailable('rfq_bid');
   }
 
   try {
@@ -51,6 +46,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const actor = await resolveRfqActor(request);
   if (!actor) return rfqUnauthorizedResponse();
 
+  if (!isSupabaseConfigured) {
+    return sensitiveBackendUnavailable('rfq_bid');
+  }
+
   const body = await request.json() as { tenant_id?: unknown };
   const requestedTenantId = typeof body.tenant_id === 'string' ? body.tenant_id.trim() : '';
   if (actor.kind === 'tenant' && requestedTenantId && requestedTenantId !== actor.tenantId) {
@@ -59,19 +58,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const tenantId = actor.kind === 'tenant' ? actor.tenantId : requestedTenantId;
   if (!tenantId) {
     return apiResponse({ error: 'tenant_id가 필요합니다.' }, { status: 400 });
-  }
-
-  if (!isSupabaseConfigured) {
-    const mockBid: RfqBid = {
-      id: `mock-bid-${Date.now()}`,
-      rfq_id: rfqId,
-      tenant_id: tenantId,
-      status: 'locked',
-      locked_at: new Date().toISOString(),
-      submit_deadline: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-      is_penalized: false,
-    };
-    return apiResponse({ bid: mockBid, mock: true }, { status: 201 });
   }
 
   try {

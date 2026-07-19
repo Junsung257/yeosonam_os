@@ -1,10 +1,7 @@
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-import {
-  isSupabaseConfigured,
-  type RfqMessage,
-} from '@/lib/supabase';
+import { isSupabaseConfigured, type RfqMessage } from '@/lib/supabase';
 import { createRfqMessage, getGroupRfq, getRfqMessages, getRfqProposals, getRfqShareIdentity } from '@/lib/db/rfq-server';
 import { processCustomerMessage, processTenantMessage } from '@/lib/rfq-ai';
 import {
@@ -14,6 +11,7 @@ import {
   rfqForbiddenResponse,
   rfqUnauthorizedResponse,
 } from '@/lib/rfq-request-auth';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 type MessageSender = 'customer' | 'tenant';
 
@@ -62,23 +60,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   }
 
   if (!isSupabaseConfigured) {
-    const mockMessages: RfqMessage[] = [{
-      id: 'mock-msg-001',
-      rfq_id: rfqId,
-      sender_type: 'customer',
-      raw_content: '숙박 업그레이드가 가능한가요?',
-      processed_content: '[업무 지시] 고객이 숙박 등급 업그레이드 가능 여부를 문의했습니다.',
-      pii_detected: false,
-      pii_blocked: false,
-      recipient_type: 'tenant',
-      is_visible_to_customer: true,
-      is_visible_to_tenant: true,
-      created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    }];
-    return apiResponse(
-      { messages: viewAs === 'customer' ? mockMessages.map(toCustomerMessage) : mockMessages, mock: true },
-      { headers: { 'Cache-Control': 'private, no-store' } },
-    );
+    return sensitiveBackendUnavailable('rfq_messages');
   }
 
   try {
@@ -101,6 +83,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const { id: rfqId } = await props.params;
+
+  if (!isSupabaseConfigured) {
+    return sensitiveBackendUnavailable('rfq_messages');
+  }
 
   try {
     const body = await request.json() as Record<string, unknown>;
@@ -147,30 +133,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           return rfqForbiddenResponse();
         }
       }
-    }
-
-    if (!isSupabaseConfigured) {
-      const processedContent = `[처리됨] ${rawContent}`;
-      return apiResponse({
-        message: {
-          id: `mock-msg-${Date.now()}`,
-          rfq_id: rfqId,
-          proposal_id: proposalId,
-          sender_type: senderType,
-          sender_id: senderId,
-          raw_content: rawContent,
-          processed_content: processedContent,
-          pii_detected: false,
-          pii_blocked: false,
-          recipient_type: senderType === 'customer' ? 'tenant' : 'customer',
-          is_visible_to_customer: true,
-          is_visible_to_tenant: true,
-          created_at: new Date().toISOString(),
-        },
-        processed_content: processedContent,
-        pii_blocked: false,
-        mock: true,
-      }, { status: 201 });
     }
 
     const processResult = senderType === 'customer'
