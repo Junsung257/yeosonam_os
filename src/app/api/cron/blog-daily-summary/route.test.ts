@@ -80,6 +80,10 @@ describe('blog daily summary report day', () => {
     expect(workflow).toContain('"27 3,6,9,12,13 * * *"|"40 13 * * *")');
     expect(workflow).toContain("cron: '45 13 * * *'");
     expect(workflow).toContain('MAX_PUBLISHER_ATTEMPTS: 4');
+    expect(workflow).toContain('private_queue_id:');
+    expect(selectStep).toContain('private_queue_id is allowed only with blog-publisher');
+    expect(selectStep).toContain('private_queue_id must be a UUID');
+    expect(selectStep).toContain('query="${query}&privateQueueId=${private_queue_id}"');
     expect(workflow).toContain('while [ "$attempt" -lt "${MAX_PUBLISHER_ATTEMPTS}" ]; do');
     expect(workflow).toContain('timeout-minutes: 45');
     expect(workflow).toContain('Running pre-summary publisher catch-up before daily summary.');

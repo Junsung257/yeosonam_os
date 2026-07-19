@@ -99,8 +99,14 @@ describe('blog content brief', () => {
 
     expect(brief.intentType).toBe('food_budget');
     expect(prompt).toContain('Mandatory food-budget evidence tables');
-    expect(prompt).toContain('| 예산 유형 | 아침 | 점심 | 저녁 | 간식 | 1인 1일 총액 |');
+    expect(prompt).toContain('| 예산 유형 | 1인 1일 총액 | 산정 근거 |');
+    expect(prompt).toContain('exactly three data rows');
+    expect(prompt).toContain('do not leave a blank, dash, placeholder');
     expect(prompt).toContain('| 끼니 | 대표 메뉴 | 가격 범위 | 근거 |');
+    expect(prompt).toContain('first body paragraph must include `기준으로`');
+    expect(prompt).toContain('source-backed numeric 1-person daily budget range');
+    expect(prompt).toContain('N박 M일 여행 총액은 1인 기준 [현지통화 금액]입니다');
+    expect(prompt).toContain('계산식: [1인 1일 총액] × [식사일 수] = [여행 총액]');
     expect(prompt).toContain('Never estimate, average, or invent a price');
     expect(prompt).toContain('missing evidence in the claim ledger');
   });

@@ -115,8 +115,17 @@ describe('blog publisher quota recovery contract', () => {
     expect(targetedStart).toBeLessThan(regularRefill);
     expect(source).toContain('hasPrivateBlogRegenerationIntent(item)');
     expect(source).toContain('targetedPrivateRegeneration: true');
+    expect(source).toContain('targetedAttempts < 2');
+    expect(source).toContain('publisherRemainingMs(startTime) >= BLOG_PUBLISHER_MIN_ITEM_START_MS');
+    expect(source).toContain('targetedAttempts,');
     expect(source).toContain("result.status === 'pending_review' || result.status === 'done'");
     expect(source).toContain(".eq('status', 'queued')\n    .select('id')\n    .maybeSingle()");
+  });
+
+  it('uses a lower-variance writer temperature for private regeneration', () => {
+    const source = routeSource();
+
+    expect(source).toContain('temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7');
   });
 
   it('reconciles the final informational body with a bounded writer claim ledger', () => {
