@@ -22,6 +22,21 @@ const MINIMUM_CLAIMS_BY_INTENT: Partial<Record<BlogInformationIntent, Partial<Re
   travel_insurance: { insurance: 4, policy: 2 },
 };
 
+const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, Array<{
+  key: string;
+  pattern: RegExp;
+}>>> = {
+  food_budget: [
+    { key: 'budget_tier', pattern: /절약/ },
+    { key: 'midrange_tier', pattern: /일반|중간/ },
+    { key: 'luxury_tier', pattern: /여유|고급/ },
+    { key: 'breakfast', pattern: /아침/ },
+    { key: 'lunch', pattern: /점심/ },
+    { key: 'dinner', pattern: /저녁/ },
+    { key: 'snack', pattern: /간식|커피|카페|패스트\s*푸드|길거리\s*음식/ },
+  ],
+};
+
 const MAX_SOURCE_AGE_DAYS: Record<BlogInformationClaimType, number> = {
   price: 45,
   currency: 30,
@@ -164,6 +179,13 @@ export function evaluateBlogGenerationResearchReadiness(input: {
   for (const [claimType, minimum] of Object.entries(minimums)) {
     const count = supportedClaims.filter((claim) => claim.claimType === claimType).length;
     if (count < Number(minimum)) issues.push(`claim_type_below_minimum:${claimType}:${count}/${minimum}`);
+  }
+
+  const supportedClaimText = supportedClaims.map((claim) => normalize(claim.claimText)).join('\n');
+  for (const semantic of REQUIRED_CLAIM_SEMANTICS_BY_INTENT[input.intent] ?? []) {
+    if (!semantic.pattern.test(supportedClaimText)) {
+      issues.push(`claim_semantic_coverage_missing:${input.intent}:${semantic.key}`);
+    }
   }
 
   const distinctNormalizedValues = new Set(bundle.evidence
