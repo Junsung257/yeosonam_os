@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import React from 'react';
 import { renderToStream } from '@react-pdf/renderer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { isAdminRequest } from '@/lib/admin-guard';
 import { verifyInfluencerPinForReferral } from '@/lib/affiliate-influencer-auth';
 import { verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
 import { SettlementPdfDocument } from '@/lib/affiliate/settlement-pdf';
@@ -18,8 +18,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
   const { id } = params;
 
-  const guard = await requireAuthenticatedRoute(request);
-  const isAdmin = !(guard instanceof NextResponse);
+  const isAdmin = await isAdminRequest(request);
   let pinAffiliateId: string | null = null;
 
   if (!isAdmin) {

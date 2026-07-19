@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   publishCarouselToInstagram,
@@ -26,6 +28,11 @@ export const maxDuration = 120;  // Meta 컨테이너 폴링까지 최대 90초 
  * 실패 시 card_news.ig_publish_status='failed', ig_error 저장 ([attempt:N] 접두사로 재시도 횟수 기록).
  */
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  if (!isCronAuthorized(request)) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+  }
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
