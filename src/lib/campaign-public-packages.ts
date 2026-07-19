@@ -36,6 +36,10 @@ export const CAMPAIGN_CREATIVE_PUBLIC_FIELDS = [
   'created_at',
   'launched_at',
   'ended_at',
+  'meta_campaign_id',
+  'meta_adset_id',
+  'meta_ad_id',
+  'meta_creative_id',
 ].join(', ');
 
 const CAMPAIGN_PUBLIC_PACKAGE_FIELDS =
