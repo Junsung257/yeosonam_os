@@ -75,6 +75,7 @@ describe('POST /api/leads customer identity boundary', () => {
       name: '홍길동',
       phone: '010-1234-5678',
       privacyConsent: true,
+      message: '부모님 동행이라 낮은 피로도 일정으로 부탁드립니다.',
       adults: 2,
       children: 0,
     }));
@@ -83,5 +84,10 @@ describe('POST /api/leads customer identity boundary', () => {
     expect(mocks.findReplay).toHaveBeenCalledOnce();
     expect(mocks.from).toHaveBeenCalledWith('leads');
     expect(mocks.createBooking).toHaveBeenCalledOnce();
+    expect(mocks.createBooking).toHaveBeenCalledWith(expect.objectContaining({
+      form: expect.objectContaining({
+        message: '부모님 동행이라 낮은 피로도 일정으로 부탁드립니다.',
+      }),
+    }));
   });
 });

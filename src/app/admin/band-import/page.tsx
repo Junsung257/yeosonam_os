@@ -107,10 +107,11 @@ export default function BandImportPage() {
       {/* 입력 영역 */}
       <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-admin-text-2 mb-1">
+          <label htmlFor="band-post-url" className="block text-sm font-medium text-admin-text-2 mb-1">
             밴드 게시글 URL <span className="text-admin-muted-2">(선택 — 중복 방지용)</span>
           </label>
           <input
+            id="band-post-url"
             type="url"
             value={bandPostUrl}
             onChange={e => setBandPostUrl(e.target.value)}
@@ -120,10 +121,11 @@ export default function BandImportPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-admin-text-2 mb-1">
+          <label htmlFor="band-post-raw-text" className="block text-sm font-medium text-admin-text-2 mb-1">
             게시글 내용 붙여넣기 <span className="text-red-500">*</span>
           </label>
           <textarea
+            id="band-post-raw-text"
             value={rawText}
             onChange={e => setRawText(e.target.value)}
             rows={10}

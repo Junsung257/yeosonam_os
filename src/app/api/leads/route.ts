@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       ...form,
       name: form.name.trim().replace(/\s+/g, ' '),
       phone: form.phone.trim(),
+      message: typeof form.message === 'string' ? form.message.trim().slice(0, 1000) : null,
       privacyConsent: true,
     };
 
