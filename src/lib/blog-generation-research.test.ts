@@ -13,6 +13,7 @@ import {
   summarizeBlogGenerationResearch,
 } from './blog-generation-research';
 import { validateBlogInformationStructure } from './blog-information-structure';
+import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 
 const CONTENT_KEY = 'sapporo-food-budget';
 const CHECKED_AT = '2026-07-19T00:00:00.000Z';
@@ -243,19 +244,18 @@ describe('blog generation research preflight', () => {
     expect(second.markdown).toBe(first.markdown);
   });
 
-  it('rebuilds a marked research block when a later formatter flattened its tables', () => {
+  it('rebuilds a marked research block when a later formatter flattened its tables', async () => {
     const result = readiness(foodBudgetBundle());
     const first = repairBlogGenerationResearchStructure({
       markdown: [
         '# 삿포로 식비 예산',
         '2026-07-19 조사 기준입니다. 3박 4일 여행 총액을 확인하세요.',
         '출처: https://www.budgetyourtrip.com/japan/sapporo',
-        '<!-- prompt_version: test -->',
       ].join('\n\n'),
       intent: 'food_budget',
       readiness: result,
     });
-    const flattened = first.markdown
+    const flattened = `${first.markdown}\n\n<!-- prompt_version: test -->`
       .replace(/^\|.*\|$/gm, (line) => line.replace(/\|/g, ' / '))
       .replace('<!-- /blog_research_structure:food_budget:v1 -->', '');
 
@@ -272,5 +272,9 @@ describe('blog generation research preflight', () => {
       passed: true,
       issues: [],
     });
+    const rendered = await renderBlogContentToHtml(repaired.markdown);
+    const renderReport = inspectRenderedBlogIntegrity(repaired.markdown, rendered);
+    expect(rendered.match(/<table\b/g)).toHaveLength(2);
+    expect(renderReport.evidence.artifacts).toEqual([]);
   });
 });
