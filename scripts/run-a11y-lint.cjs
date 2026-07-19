@@ -16,6 +16,7 @@ const result = spawnSync(
     eslintBin,
     'src/**/*.{js,jsx,ts,tsx}',
     '--no-eslintrc',
+    '--no-inline-config',
     '--config',
     'eslint-a11y.config.js',
     '--format=compact',
