@@ -36,6 +36,7 @@ vi.mock('@/lib/db/rfq-server', () => ({
   createRfqMessage: vi.fn(),
   getRfqTenantForAuthorizedRequest: vi.fn(),
   addRfqReaction: vi.fn(),
+  countRfqReactions: vi.fn(),
 }));
 
 vi.mock('@/lib/rate-limiter', () => ({ rateLimit: vi.fn(async () => null) }));
@@ -52,6 +53,7 @@ vi.mock('@/lib/push-dispatcher', () => ({
 }));
 
 import { isAdminRequest, requireAdminRequest } from '@/lib/admin-guard';
+import { rateLimit } from '@/lib/rate-limiter';
 import {
   hasValidRfqShareToken,
   resolveRfqActor,
@@ -70,13 +72,14 @@ import {
   findRecentDuplicateGroupRfq,
   addRfqReaction,
   getRfqShareIdentity,
+  countRfqReactions,
 } from '@/lib/db/rfq-server';
 import { GET as getProposals } from './[id]/proposals/route';
 import { GET as getMessages, POST as postMessage } from './[id]/messages/route';
 import { GET as getBids, POST as postBid } from './[id]/bid/route';
 import { GET as getAnalysis, POST as postAnalysis } from './[id]/analyze/route';
 import { GET as getContract } from './[id]/contract/route';
-import { GET as getProposal, POST as postProposal } from './[id]/bid/[bidId]/proposal/route';
+import { GET as getProposal, PATCH as patchProposal, POST as postProposal } from './[id]/bid/[bidId]/proposal/route';
 import { POST as createPublicRfq } from './route';
 import { POST as selectProposal } from './[id]/select/route';
 import { POST as postReaction } from './share/reaction/route';
@@ -99,6 +102,8 @@ const mockedUpdateRfq = vi.mocked(updateGroupRfq);
 const mockedDuplicateRfq = vi.mocked(findRecentDuplicateGroupRfq);
 const mockedAddReaction = vi.mocked(addRfqReaction);
 const mockedShareIdentity = vi.mocked(getRfqShareIdentity);
+const mockedReactionCount = vi.mocked(countRfqReactions);
+const mockedRateLimit = vi.mocked(rateLimit);
 
 const params = { params: Promise.resolve({ id: 'rfq-1' }) };
 const proposalParams = { params: Promise.resolve({ id: 'rfq-1', bidId: 'bid-1' }) };
@@ -136,6 +141,7 @@ describe('RFQ API security boundaries', () => {
     mockedDuplicateRfq.mockResolvedValue(false);
     mockedAddReaction.mockResolvedValue(true);
     mockedShareIdentity.mockResolvedValue({ id: 'rfq-1', share_token: 'share-1' });
+    mockedReactionCount.mockResolvedValue(0);
   });
 
   it('blocks anonymous proposal and bid-list disclosure', async () => {
@@ -231,8 +237,32 @@ describe('RFQ API security boundaries', () => {
     expect(response.status).toBe(200);
     expect(mockedGetMessages).toHaveBeenCalledWith('rfq-1', 'customer', undefined);
     const body = await response.json();
-    expect(body.messages[0].raw_content).toBe('phone [REDACTED]');
+    expect(body.messages[0].processed_content).toBe('phone [REDACTED]');
+    expect(body.messages[0]).not.toHaveProperty('raw_content');
     expect(JSON.stringify(body)).not.toContain('010-1234-5678');
+  });
+
+  it('projects only customer-safe message fields for a share-link caller', async () => {
+    mockedShare.mockReturnValue(true);
+    mockedGetMessages.mockResolvedValue([{
+      id: 'message-1', rfq_id: 'rfq-1', proposal_id: 'proposal-1', sender_type: 'tenant',
+      sender_id: 'internal-user-id', raw_content: 'private raw text', processed_content: 'safe processed text',
+      pii_detected: false, pii_blocked: false, recipient_type: 'customer',
+      is_visible_to_customer: true, is_visible_to_tenant: true,
+      created_at: '2026-07-19T00:00:00.000Z',
+    }]);
+
+    const response = await getMessages(request('/api/rfq/rfq-1/messages?share_token=share-1'), params);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.messages[0]).toEqual(expect.objectContaining({
+      id: 'message-1', processed_content: 'safe processed text', sender_type: 'tenant',
+    }));
+    expect(body.messages[0]).not.toHaveProperty('raw_content');
+    expect(body.messages[0]).not.toHaveProperty('sender_id');
+    expect(body.messages[0]).not.toHaveProperty('recipient_type');
+    expect(body.messages[0]).not.toHaveProperty('is_visible_to_tenant');
   });
 
   it('prevents a share-link caller from spoofing a tenant message', async () => {
@@ -309,6 +339,42 @@ describe('RFQ API security boundaries', () => {
     }));
     expect(accepted.status).toBe(200);
     expect(mockedAddReaction).toHaveBeenCalledWith('rfq-1', 'visitor-123', 'like', undefined);
+    expect(mockedRateLimit).toHaveBeenCalledTimes(4);
+    expect(mockedRateLimit.mock.calls.slice(-3).map(([, options]) => options?.prefix)).toEqual([
+      'rl-rfq-reaction-global', 'rl-rfq-reaction-share', 'rl-rfq-reaction-visitor',
+    ]);
+  });
+
+  it('stops reaction persistence when the visitor rate limit is exceeded', async () => {
+    mockedShare.mockReturnValue(true);
+    mockedRateLimit
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(Response.json({ error: 'limited' }, { status: 429 }) as never);
+
+    const response = await postReaction(request('/api/rfq/share/reaction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rfqId: 'rfq-1', visitorToken: 'visitor-123', reactionType: 'like', shareToken: 'share-1' }),
+    }));
+
+    expect(response.status).toBe(429);
+    expect(mockedReactionCount).not.toHaveBeenCalled();
+    expect(mockedAddReaction).not.toHaveBeenCalled();
+  });
+
+  it('stops reaction persistence when the RFQ reaction capacity is reached', async () => {
+    mockedShare.mockReturnValue(true);
+    mockedReactionCount.mockResolvedValue(5_000);
+
+    const response = await postReaction(request('/api/rfq/share/reaction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rfqId: 'rfq-1', visitorToken: 'visitor-123', reactionType: 'like', shareToken: 'share-1' }),
+    }));
+
+    expect(response.status).toBe(429);
+    expect(mockedAddReaction).not.toHaveBeenCalled();
   });
 
   it('validates share identity before any full RFQ row read and marks PII detail private', async () => {
@@ -415,6 +481,51 @@ describe('RFQ API security boundaries', () => {
       bid_id: 'bid-1',
       tenant_id: 'tenant-a',
     }));
+  });
+
+  it.each([
+    ['negative cost', { total_cost: -1, total_selling_price: 120 }],
+    ['fractional selling price', { total_cost: 100, total_selling_price: 120.5 }],
+    ['string cost', { total_cost: '100', total_selling_price: 120 }],
+    ['oversized title', { total_cost: 100, total_selling_price: 120, proposal_title: 'x'.repeat(201) }],
+  ])('rejects malformed proposal input: %s', async (_label, invalidFields) => {
+    mockedActor.mockResolvedValue({ kind: 'tenant', tenantId: 'tenant-a', userId: 'user-a' });
+    mockedGetBids.mockResolvedValue([{
+      id: 'bid-1', rfq_id: 'rfq-1', tenant_id: 'tenant-a', status: 'locked',
+      submit_deadline: '2099-01-01T00:00:00.000Z',
+    } as never]);
+
+    const response = await postProposal(request('/api/rfq/rfq-1/bid/bid-1/proposal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...invalidFields,
+        checklist: {
+          guide_fee: { included: true }, driver_tip: { included: true },
+          fuel_surcharge: { included: true }, local_tax: { included: true }, water_cost: { included: true },
+        },
+      }),
+    }), proposalParams);
+
+    expect(response.status).toBe(400);
+    expect(mockedCreateProposal).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed proposal PATCH values before persistence', async () => {
+    mockedActor.mockResolvedValue({ kind: 'tenant', tenantId: 'tenant-a', userId: 'user-a' });
+    mockedGetBids.mockResolvedValue([{
+      id: 'bid-1', rfq_id: 'rfq-1', tenant_id: 'tenant-a', status: 'submitted',
+      submit_deadline: '2099-01-01T00:00:00.000Z',
+    } as never]);
+
+    const response = await patchProposal(request('/api/rfq/rfq-1/bid/bid-1/proposal', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ total_selling_price: -1 }),
+    }), proposalParams);
+
+    expect(response.status).toBe(400);
+    expect(mockedGetProposals).not.toHaveBeenCalled();
   });
 
   it('keeps RFQ analysis mutations admin-only', async () => {

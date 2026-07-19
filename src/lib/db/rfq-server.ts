@@ -136,6 +136,23 @@ export async function updateRfqBid(id: string, patch: Partial<RfqBid>): Promise<
   assertNoError(error, 'RFQ bid update');
 }
 
+export async function claimExpiredRfqBidTimeout(id: string): Promise<boolean> {
+  const { data, error } = await db()
+    .from('rfq_bids')
+    .update({
+      status: 'timeout',
+      is_penalized: true,
+      penalty_reason: '3시간 내 미제출',
+    } as never)
+    .eq('id', id)
+    .eq('status', 'locked')
+    .lt('submit_deadline', new Date().toISOString())
+    .select('id')
+    .maybeSingle();
+  assertNoError(error, 'Expired RFQ bid claim');
+  return Boolean(data);
+}
+
 export async function getExpiredBids(): Promise<RfqBid[]> {
   const { data, error } = await db().from('rfq_bids').select('*').eq('status', 'locked').lt('submit_deadline', new Date().toISOString());
   assertNoError(error, 'Expired RFQ bids lookup');
@@ -197,4 +214,13 @@ export async function addRfqReaction(rfqId: string, visitorToken: string, reacti
   );
   assertNoError(error, 'RFQ reaction upsert');
   return true;
+}
+
+export async function countRfqReactions(rfqId: string): Promise<number> {
+  const { count, error } = await db()
+    .from('rfq_share_reactions')
+    .select('id', { count: 'exact', head: true })
+    .eq('rfq_id', rfqId);
+  assertNoError(error, 'RFQ reaction count');
+  return count ?? 0;
 }

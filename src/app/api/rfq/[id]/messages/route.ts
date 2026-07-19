@@ -17,6 +17,21 @@ import {
 
 type MessageSender = 'customer' | 'tenant';
 
+function toCustomerMessage(message: RfqMessage) {
+  return {
+    id: message.id,
+    rfq_id: message.rfq_id,
+    proposal_id: message.proposal_id,
+    sender_type: message.sender_type,
+    processed_content: message.pii_blocked
+      ? message.processed_content || '[개인정보가 차단된 메시지]'
+      : message.processed_content || '',
+    pii_blocked: message.pii_blocked,
+    is_visible_to_customer: message.is_visible_to_customer,
+    created_at: message.created_at,
+  };
+}
+
 function isMessageSender(value: unknown): value is MessageSender {
   return value === 'customer' || value === 'tenant';
 }
@@ -61,7 +76,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     }];
     return apiResponse(
-      { messages: mockMessages, mock: true },
+      { messages: viewAs === 'customer' ? mockMessages.map(toCustomerMessage) : mockMessages, mock: true },
       { headers: { 'Cache-Control': 'private, no-store' } },
     );
   }
@@ -69,12 +84,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   try {
     const messages = await getRfqMessages(rfqId, viewAs, proposalId);
     const visibleMessages = viewAs === 'customer'
-      ? messages.map((message) => message.pii_blocked
-        ? {
-            ...message,
-            raw_content: message.processed_content || '[개인정보가 차단된 메시지]',
-          }
-        : message)
+      ? messages.map(toCustomerMessage)
       : messages;
     return apiResponse(
       { messages: visibleMessages, count: visibleMessages.length },

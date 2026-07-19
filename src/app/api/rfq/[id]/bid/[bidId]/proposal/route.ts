@@ -20,6 +20,88 @@ const REQUIRED_CHECKLIST_ITEMS: (keyof ProposalChecklist)[] = [
   'water_cost',
 ];
 
+const MAX_PROPOSAL_AMOUNT = 2_000_000_000;
+const MAX_CHECKLIST_BYTES = 50_000;
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isOptionalText(value: unknown, maxLength: number): boolean {
+  return value === undefined || (typeof value === 'string' && value.length <= maxLength);
+}
+
+function isProposalAmount(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && Number.isInteger(value)
+    && value >= 0
+    && value <= MAX_PROPOSAL_AMOUNT;
+}
+
+function isStringArray(value: unknown, maxItems: number, maxItemLength: number): boolean {
+  return Array.isArray(value)
+    && value.length <= maxItems
+    && value.every((item) => typeof item === 'string' && item.length <= maxItemLength);
+}
+
+function validateChecklistShape(value: unknown, requireRequiredItems: boolean): string | null {
+  if (!isPlainRecord(value)) return 'checklist는 객체여야 합니다.';
+  if (JSON.stringify(value).length > MAX_CHECKLIST_BYTES) return 'checklist가 너무 큽니다.';
+
+  const allowedKeys = new Set<string>([
+    ...REQUIRED_CHECKLIST_ITEMS,
+    'inclusions', 'exclusions', 'optional_tours', 'hotel_info', 'meal_plan', 'transportation',
+  ]);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    return 'checklist에 지원하지 않는 필드가 있습니다.';
+  }
+
+  for (const key of REQUIRED_CHECKLIST_ITEMS) {
+    const item = value[key];
+    if (item === undefined && !requireRequiredItems) continue;
+    if (!isPlainRecord(item) || typeof item.included !== 'boolean') return `${key} 형식이 올바르지 않습니다.`;
+    if (item.amount !== undefined && item.amount !== null && !isProposalAmount(item.amount)) return `${key}.amount 형식이 올바르지 않습니다.`;
+    if (!isOptionalText(item.note, 500)) return `${key}.note가 너무 깁니다.`;
+  }
+
+  if (value.inclusions !== undefined && !isStringArray(value.inclusions, 100, 500)) return 'inclusions 형식이 올바르지 않습니다.';
+  if (value.exclusions !== undefined && !isStringArray(value.exclusions, 100, 500)) return 'exclusions 형식이 올바르지 않습니다.';
+  if (value.optional_tours !== undefined) {
+    if (!Array.isArray(value.optional_tours) || value.optional_tours.length > 50
+      || value.optional_tours.some((tour) => !isPlainRecord(tour)
+        || typeof tour.name !== 'string' || !tour.name.trim() || tour.name.length > 200
+        || !isProposalAmount(tour.price))) {
+      return 'optional_tours 형식이 올바르지 않습니다.';
+    }
+  }
+  if (value.hotel_info !== undefined) {
+    const hotel = value.hotel_info;
+    if (!isPlainRecord(hotel)
+      || !isOptionalText(hotel.grade, 100)
+      || !isOptionalText(hotel.name, 200)
+      || !isOptionalText(hotel.notes, 1000)) return 'hotel_info 형식이 올바르지 않습니다.';
+  }
+  if (!isOptionalText(value.meal_plan, 500) || !isOptionalText(value.transportation, 500)) {
+    return 'checklist 텍스트가 너무 깁니다.';
+  }
+  return null;
+}
+
+function validateProposalBody(body: unknown, partial: boolean): string | null {
+  if (!isPlainRecord(body)) return '요청 본문은 객체여야 합니다.';
+  if (!isOptionalText(body.proposal_title, 200) || !isOptionalText(body.itinerary_summary, 20_000)) {
+    return '제안서 텍스트가 너무 깁니다.';
+  }
+  if ((!partial || body.total_cost !== undefined) && !isProposalAmount(body.total_cost)) return 'total_cost 형식이 올바르지 않습니다.';
+  if ((!partial || body.total_selling_price !== undefined) && !isProposalAmount(body.total_selling_price)) return 'total_selling_price 형식이 올바르지 않습니다.';
+  if (!partial || body.checklist !== undefined) {
+    const checklistError = validateChecklistShape(body.checklist, !partial);
+    if (checklistError) return checklistError;
+  }
+  return null;
+}
+
 function validateChecklist(checklist: Partial<ProposalChecklist>): string[] {
   const missing: string[] = [];
   for (const item of REQUIRED_CHECKLIST_ITEMS) {
@@ -100,24 +182,20 @@ export async function POST(
   }
 
   try {
-    const body = await request.json();
+    const body: unknown = await request.json();
+    const validationError = validateProposalBody(body, false);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+    const proposalBody = body as Record<string, unknown>;
     const {
       proposal_title,
       itinerary_summary,
       total_cost,
       total_selling_price,
       checklist,
-    } = body;
-
-    if (total_cost === undefined || total_selling_price === undefined) {
-      return NextResponse.json(
-        { error: 'total_cost와 total_selling_price는 필수입니다.' },
-        { status: 400 }
-      );
-    }
+    } = proposalBody;
 
     // 체크리스트 검증
-    const missingItems = validateChecklist(checklist ?? {});
+    const missingItems = validateChecklist(checklist as Partial<ProposalChecklist>);
     if (missingItems.length > 0) {
       return NextResponse.json(
         {
@@ -135,12 +213,12 @@ export async function POST(
       rfq_id: rfqId,
       bid_id: bidId,
       tenant_id: bid.tenant_id,
-      proposal_title,
-      itinerary_summary,
-      total_cost,
-      total_selling_price,
+      proposal_title: proposal_title as string | undefined,
+      itinerary_summary: itinerary_summary as string | undefined,
+      total_cost: total_cost as number,
+      total_selling_price: total_selling_price as number,
       hidden_cost_estimate: 0,
-      checklist: checklist ?? {},
+      checklist: checklist as Partial<ProposalChecklist>,
       checklist_completed: checklistCompleted,
       status: 'submitted',
       submitted_at: new Date().toISOString(),
@@ -232,14 +310,17 @@ export async function PATCH(
   }
 
   try {
-    const body = await request.json();
+    const body: unknown = await request.json();
+    const validationError = validateProposalBody(body, true);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+    const proposalBody = body as Record<string, unknown>;
     const {
       proposal_title,
       itinerary_summary,
       total_cost,
       total_selling_price,
       checklist,
-    } = body;
+    } = proposalBody;
 
     // 제안서 찾기
     const proposals = await getRfqProposals(rfqId);
@@ -260,14 +341,21 @@ export async function PATCH(
       ...(checklist ?? {}),
     };
 
+    if (checklist !== undefined) {
+      const mergedChecklistError = validateChecklistShape(mergedChecklist, false);
+      if (mergedChecklistError) {
+        return NextResponse.json({ error: mergedChecklistError }, { status: 400 });
+      }
+    }
+
     const missingItems = validateChecklist(mergedChecklist);
     const checklistCompleted = missingItems.length === 0;
 
     const patch: Partial<RfqProposal> = { checklist_completed: checklistCompleted };
-    if (proposal_title !== undefined) patch.proposal_title = proposal_title;
-    if (itinerary_summary !== undefined) patch.itinerary_summary = itinerary_summary;
-    if (total_cost !== undefined) patch.total_cost = total_cost;
-    if (total_selling_price !== undefined) patch.total_selling_price = total_selling_price;
+    if (proposal_title !== undefined) patch.proposal_title = proposal_title as string;
+    if (itinerary_summary !== undefined) patch.itinerary_summary = itinerary_summary as string;
+    if (total_cost !== undefined) patch.total_cost = total_cost as number;
+    if (total_selling_price !== undefined) patch.total_selling_price = total_selling_price as number;
     if (checklist !== undefined) patch.checklist = mergedChecklist;
 
     const updated = await updateRfqProposal(existing.id, patch);

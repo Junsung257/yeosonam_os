@@ -5,7 +5,7 @@ import {
 } from '@/lib/supabase';
 import {
   getExpiredBids,
-  updateRfqBid,
+  claimExpiredRfqBidTimeout,
   updateTenantReliability,
   createRfqMessage,
 } from '@/lib/db/rfq-server';
@@ -35,12 +35,9 @@ const getHandler = async (_request: NextRequest) => {
     await Promise.all(
       expiredBids.map(async bid => {
         try {
-          // 1. 입찰 상태를 timeout으로 변경 + 패널티 적용
-          await updateRfqBid(bid.id, {
-            status: 'timeout',
-            is_penalized: true,
-            penalty_reason: '3시간 내 미제출',
-          });
+          // 1. locked + expired 상태를 조건부로 선점한다. 겹친 cron은 false를 받고 부수효과를 건너뛴다.
+          const claimed = await claimExpiredRfqBidTimeout(bid.id);
+          if (!claimed) return;
 
           // 2. 테넌트 신뢰도 점수 차감
           await updateTenantReliability(bid.tenant_id, -5);

@@ -25,6 +25,8 @@ export default function RfqChatPage() {
   const id = getRouteParam(params?.id);
   const encodedId = id ? encodeURIComponent(id) : '';
   const proposalId = searchParams?.get('proposal_id')?.trim() ?? '';
+  const shareToken = searchParams?.get('share_token')?.trim() ?? '';
+  const readOnlyShareView = Boolean(shareToken);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<RfqMessage[]>([]);
@@ -37,14 +39,14 @@ export default function RfqChatPage() {
   useEffect(() => {
     fetchMessages();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [id, encodedId]);
+  }, [id, encodedId, proposalId, shareToken]);
 
   // 10초 폴링
   useEffect(() => {
     const interval = setInterval(fetchMessages, 10000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [id, encodedId]);
+  }, [id, encodedId, proposalId, shareToken]);
 
   // 자동 스크롤
   useEffect(() => {
@@ -59,10 +61,20 @@ export default function RfqChatPage() {
     }
 
     try {
-      const res = await fetch(`/api/rfq/${encodedId}/messages?viewAs=customer`);
-      if (!res.ok) throw new Error('메시지를 불러올 수 없습니다');
+      const query = new URLSearchParams();
+      if (proposalId) query.set('proposal_id', proposalId);
+      const queryString = query.toString();
+      const res = await fetch(
+        `/api/rfq/${encodedId}/messages${queryString ? `?${queryString}` : ''}`,
+        shareToken ? { headers: { 'x-rfq-share-token': shareToken } } : undefined,
+      );
+      if (!res.ok) {
+        const responseBody = await res.json().catch(() => ({}));
+        throw new Error(typeof responseBody?.error === 'string' ? responseBody.error : '메시지를 불러올 수 없습니다');
+      }
       const data = await res.json();
-      setMessages(Array.isArray(data) ? data : []);
+      setMessages(Array.isArray(data?.messages) ? data.messages : []);
+      setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : '오류가 발생했습니다');
     } finally {
@@ -72,9 +84,10 @@ export default function RfqChatPage() {
 
   async function sendMessage() {
     const text = input.trim();
-    if (!id || !text || sending) return;
+    if (!id || !text || sending || readOnlyShareView) return;
     setSending(true);
     setInput('');
+    setError('');
 
     // 낙관적 업데이트
     const optimistic: RfqMessage = {
@@ -89,7 +102,7 @@ export default function RfqChatPage() {
     setMessages((prev) => [...prev, optimistic]);
 
     try {
-      await fetch(`/api/rfq/${encodedId}/messages`, {
+      const response = await fetch(`/api/rfq/${encodedId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,10 +111,15 @@ export default function RfqChatPage() {
           proposal_id: proposalId || undefined,
         }),
       });
+      if (!response.ok) {
+        const responseBody = await response.json().catch(() => ({}));
+        throw new Error(typeof responseBody?.error === 'string' ? responseBody.error : '메시지 전송에 실패했습니다.');
+      }
       await fetchMessages();
-    } catch {
+    } catch (sendError) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-      alert('메시지 전송 중 오류가 발생했습니다.');
+      setInput(text);
+      setError(sendError instanceof Error ? sendError.message : '메시지 전송 중 오류가 발생했습니다.');
     } finally {
       setSending(false);
     }
@@ -226,6 +244,13 @@ export default function RfqChatPage() {
       {/* 입력 영역 */}
       <div className="border-t bg-white px-4 py-3 sticky bottom-0">
         <div className="max-w-2xl mx-auto flex gap-2 items-end">
+          {readOnlyShareView && (
+            <p className="w-full rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700" role="status">
+              공유 링크에서는 대화를 읽기만 할 수 있습니다. 메시지 전송은 본인 인증 후 이용해주세요.
+            </p>
+          )}
+          {!readOnlyShareView && (
+            <>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -242,6 +267,8 @@ export default function RfqChatPage() {
           >
             {sending ? '...' : '전송'}
           </button>
+            </>
+          )}
         </div>
       </div>
     </div>
