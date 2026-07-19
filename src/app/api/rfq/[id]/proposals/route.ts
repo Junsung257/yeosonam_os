@@ -4,18 +4,16 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   isSupabaseConfigured,
   getRfqProposals,
-  type RfqProposal,
 } from '@/lib/supabase';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
-const MOCK_PROPOSALS: RfqProposal[] = [];
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
-    const proposals = MOCK_PROPOSALS.filter(p => p.rfq_id === rfqId || rfqId.startsWith('mock'));
-    return apiResponse({ proposals, count: proposals.length, mock: true });
+    return sensitiveBackendUnavailable('rfq_proposals');
   }
 
   try {

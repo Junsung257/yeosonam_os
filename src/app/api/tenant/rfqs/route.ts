@@ -6,6 +6,7 @@ import {
   getRfqBids,
   GroupRfq,
 } from '@/lib/supabase';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 interface RfqWithTierInfo extends GroupRfq {
   is_unlocked: boolean;
@@ -18,32 +19,6 @@ interface RfqWithTierInfo extends GroupRfq {
   } | null;
 }
 
-const MOCK_TENANT_RFQS: RfqWithTierInfo[] = [
-  {
-    id: 'mock-rfq-001',
-    rfq_code: 'GRP-1001',
-    customer_name: '고객 (익명)',
-    destination: '일본 도쿄',
-    adult_count: 20,
-    child_count: 5,
-    budget_per_person: 1200000,
-    hotel_grade: '4성',
-    meal_plan: '전식포함',
-    transportation: '전세버스',
-    status: 'published',
-    published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    gold_unlock_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    silver_unlock_at: new Date(Date.now() - 1.5 * 60 * 60 * 1000).toISOString(),
-    bronze_unlock_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-    bid_deadline: new Date(Date.now() + 22 * 60 * 60 * 1000).toISOString(),
-    max_proposals: 3,
-    created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    is_unlocked: true,
-    my_bid: null,
-  },
-];
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const tenantId = searchParams.get('tenant_id');
@@ -53,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ rfqs: MOCK_TENANT_RFQS, mock: true });
+    return sensitiveBackendUnavailable('tenant_rfqs');
   }
 
   try {

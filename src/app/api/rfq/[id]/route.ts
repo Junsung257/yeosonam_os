@@ -5,6 +5,7 @@ import {
   updateGroupRfq,
 } from '@/lib/supabase';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 const TIER_DELAY_MS = parseInt(process.env.RFQ_TIER_DELAY_MINUTES ?? '10') * 60 * 1000;
 
@@ -17,10 +18,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
   const { id } = params;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500 }
-    );
+    return sensitiveBackendUnavailable('rfq');
   }
 
   try {
@@ -47,10 +45,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const { id } = params;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { error: 'Supabase가 설정되지 않았습니다.' },
-      { status: 500 }
-    );
+    return sensitiveBackendUnavailable('rfq');
   }
 
   try {

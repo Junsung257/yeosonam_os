@@ -6,9 +6,9 @@ import {
   getGroupRfq,
   getRfqMessages,
   createRfqMessage,
-  type RfqMessage,
 } from '@/lib/supabase';
 import { processCustomerMessage, processTenantMessage } from '@/lib/rfq-ai';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 type MessageSender = 'customer' | 'tenant';
 
@@ -21,22 +21,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
-    const mockMessages: RfqMessage[] = [
-      {
-        id: 'mock-msg-001',
-        rfq_id: rfqId,
-        sender_type: 'customer',
-        raw_content: '숙박 업그레이드가 가능한가요?',
-        processed_content: '[업무 지원] 고객이 숙박 등급 업그레이드 가능 여부를 문의했습니다.',
-        pii_detected: false,
-        pii_blocked: false,
-        recipient_type: 'tenant',
-        is_visible_to_customer: true,
-        is_visible_to_tenant: true,
-        created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      },
-    ];
-    return apiResponse({ messages: mockMessages, mock: true });
+    return sensitiveBackendUnavailable('rfq_messages');
   }
 
   try {
@@ -60,28 +45,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
-    const body = await request.json();
-    const senderType = isMessageSender(body.sender_type) ? body.sender_type : 'customer';
-    const rawContent = typeof body.raw_content === 'string' ? body.raw_content : '';
-    const processedContent = `[처리됨] ${rawContent}`;
-    return apiResponse({
-      message: {
-        id: `mock-msg-${Date.now()}`,
-        rfq_id: rfqId,
-        sender_type: senderType,
-        raw_content: rawContent,
-        processed_content: processedContent,
-        pii_detected: false,
-        pii_blocked: false,
-        recipient_type: senderType === 'customer' ? 'tenant' : 'customer',
-        is_visible_to_customer: true,
-        is_visible_to_tenant: true,
-        created_at: new Date().toISOString(),
-      },
-      processed_content: processedContent,
-      pii_blocked: false,
-      mock: true,
-    });
+    return sensitiveBackendUnavailable('rfq_messages');
   }
 
   try {
