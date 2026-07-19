@@ -242,4 +242,35 @@ describe('blog generation research preflight', () => {
     expect(second.changed).toBe(false);
     expect(second.markdown).toBe(first.markdown);
   });
+
+  it('rebuilds a marked research block when a later formatter flattened its tables', () => {
+    const result = readiness(foodBudgetBundle());
+    const first = repairBlogGenerationResearchStructure({
+      markdown: [
+        '# 삿포로 식비 예산',
+        '2026-07-19 조사 기준입니다. 3박 4일 여행 총액을 확인하세요.',
+        '출처: https://www.budgetyourtrip.com/japan/sapporo',
+        '<!-- prompt_version: test -->',
+      ].join('\n\n'),
+      intent: 'food_budget',
+      readiness: result,
+    });
+    const flattened = first.markdown
+      .replace(/^\|.*\|$/gm, (line) => line.replace(/\|/g, ' / '))
+      .replace('<!-- /blog_research_structure:food_budget:v1 -->', '');
+
+    const repaired = repairBlogGenerationResearchStructure({
+      markdown: flattened,
+      intent: 'food_budget',
+      readiness: result,
+    });
+
+    expect(repaired.changed).toBe(true);
+    expect(repaired.markdown.match(/blog_research_structure:food_budget:v1/g)).toHaveLength(2);
+    expect(repaired.markdown.match(/삿포로 일반 여행자의 절약형 하루 예산 기준값은 3000 JPY입니다\./g)).toHaveLength(1);
+    expect(validateBlogInformationStructure({ intent: 'food_budget', markdown: repaired.markdown })).toMatchObject({
+      passed: true,
+      issues: [],
+    });
+  });
 });
