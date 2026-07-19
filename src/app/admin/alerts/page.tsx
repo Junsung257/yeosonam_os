@@ -116,8 +116,9 @@ export default function AdminAlertsPage() {
 
       {/* 필터 */}
       <section className="admin-card p-4 flex flex-wrap items-center gap-3">
-        <label className="text-admin-xs font-semibold text-admin-text-2">카테고리</label>
+        <label htmlFor="admin-alert-category-filter" className="text-admin-xs font-semibold text-admin-text-2">카테고리</label>
         <select
+          id="admin-alert-category-filter"
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value)}
           className="h-8 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
@@ -128,8 +129,9 @@ export default function AdminAlertsPage() {
           ))}
         </select>
 
-        <label className="text-admin-xs font-semibold text-admin-text-2">심각도</label>
+        <label htmlFor="admin-alert-severity-filter" className="text-admin-xs font-semibold text-admin-text-2">심각도</label>
         <select
+          id="admin-alert-severity-filter"
           value={severityFilter}
           onChange={e => setSeverityFilter(e.target.value)}
           className="h-8 text-admin-sm border border-admin-border-mid rounded-admin-sm px-2.5 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
