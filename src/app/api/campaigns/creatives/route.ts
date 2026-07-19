@@ -10,8 +10,12 @@ import {
   type CampaignCreativeWithPublicPackage,
 } from '@/lib/campaign-public-packages';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({
       creatives: [],
@@ -58,6 +62,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json(
       { error: 'Supabase 연동이 설정되지 않아 소재 상태를 변경할 수 없습니다.' },
@@ -72,7 +79,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'id, status 필수' }, { status: 400 });
   }
 
-  const validStatuses = ['draft', 'review', 'active', 'paused', 'ended'];
+  const validStatuses = ['draft', 'review', 'paused', 'ended'];
   if (!validStatuses.includes(status)) {
     return NextResponse.json({ error: `유효하지 않은 상태: ${status}` }, { status: 400 });
   }
