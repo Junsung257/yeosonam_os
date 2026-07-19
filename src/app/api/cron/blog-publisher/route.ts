@@ -69,6 +69,7 @@ import {
   BLOG_INFORMATION_RESEARCH_META_KEY,
   buildBlogGenerationResearchPromptBlock,
   evaluateBlogGenerationResearchReadiness,
+  repairBlogGenerationResearchStructure,
   summarizeBlogGenerationResearch,
 } from '@/lib/blog-generation-research';
 import { persistBlogInformationResearch } from '@/lib/blog-information-evidence-repository';
@@ -3639,6 +3640,23 @@ ${serpGapBlock}
     .replace(/```\s*$/i, '')
     .trim();
   blog_html = await maybeApplyChainOfDensity(blog_html);
+  const researchStructureRepair = repairBlogGenerationResearchStructure({
+    markdown: blog_html,
+    intent: contentBrief.intentType,
+    readiness: researchReadiness,
+  });
+  if (researchStructureRepair.changed) {
+    blog_html = researchStructureRepair.markdown;
+    writerOutput.claimLedger = [...new Map([
+      ...writerOutput.claimLedger,
+      ...researchStructureRepair.approvedClaims.map((claim) => ({
+        claimFingerprint: claim.claimFingerprint,
+        claimText: claim.claimText,
+        claimType: claim.claimType,
+        riskLevel: claim.riskLevel,
+      })),
+    ].map((claim) => [claim.claimFingerprint, claim])).values()];
+  }
 
   // slug 자동 — 오래된 큐에 잘못 들어간 expected_slug는 자동 무시
   const slug = queueSlug;
@@ -3711,6 +3729,10 @@ ${serpGapBlock}
       issues: writerOutput.ledgerIssues,
     },
     information_research_preflight: summarizeBlogGenerationResearch(researchReadiness),
+    information_research_structure_repair: {
+      applied: researchStructureRepair.changed,
+      changes: researchStructureRepair.changes,
+    },
     cover_image: {
       provider: isGeneratedBlogImageUrl(og_image_url) ? 'ai_generated' : (og_image_url ? 'pexels' : 'none'),
       disclosure: isGeneratedBlogImageUrl(og_image_url) ? 'AI 생성 참고 이미지' : null,
