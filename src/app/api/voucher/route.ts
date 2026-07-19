@@ -10,30 +10,17 @@ import { generateVoucherData, renderVoucherHtml, type RawVoucherInput } from '@/
 import { sendVoucherIssuedAlimtalk } from '@/lib/kakao';
 import { requireAdminRequest } from '@/lib/admin-guard';
 import { verifyGuidebookToken } from '@/lib/guidebook-token';
-
-// ── Mock ───────────────────────────────────────────────────────
-
-function mockVoucher(raw: RawVoucherInput) {
-  const parsed = generateVoucherData(raw);
-  return {
-    id: `voucher-mock-${Date.now()}`,
-    booking_id: raw.booking_id ?? null,
-    rfq_id: raw.rfq_id ?? null,
-    parsed_data: parsed,
-    upsell_data: parsed.upsell,
-    pdf_url: null,
-    status: 'issued',
-    issued_at: new Date().toISOString(),
-    review_notified: false,
-    mock: true,
-  };
-}
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 // ── POST /api/voucher — 확정서 생성 ───────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
+
+  if (!isSupabaseConfigured) {
+    return sensitiveBackendUnavailable('voucher');
+  }
 
   let body: {
     raw: RawVoucherInput;
@@ -69,11 +56,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // ── 여소남 표준 확정서 데이터 생성 + 업셀링 자동 주입 ──────
   const voucherData = generateVoucherData(raw);
-
-  if (!isSupabaseConfigured) {
-    const mock = mockVoucher(raw);
-    return NextResponse.json({ voucher: mock }, { status: 201 });
-  }
 
   const voucher = await createVoucher({
     booking_id: raw.booking_id ?? null,
@@ -175,6 +157,10 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAdminRequest(request);
   if (authError) return authError;
 
+  if (!isSupabaseConfigured) {
+    return sensitiveBackendUnavailable('voucher');
+  }
+
   let body: {
     id: string;
     status?: 'draft' | 'issued' | 'sent' | 'cancelled';
@@ -191,10 +177,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
   if (!body.id) {
     return NextResponse.json({ error: 'id가 필요합니다' }, { status: 400 });
-  }
-
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: true, mock: true });
   }
 
   const patch: Partial<{

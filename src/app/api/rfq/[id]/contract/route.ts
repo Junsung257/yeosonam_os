@@ -4,6 +4,7 @@ import {
   getGroupRfq,
   getRfqProposals,
 } from '@/lib/supabase';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 // ── 계약서 HTML 생성기 ───────────────────────────────────────────────────────
 function generateContractHtml(params: {
@@ -151,22 +152,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
   const { id: rfqId } = params;
 
   if (!isSupabaseConfigured) {
-    const mockHtml = generateContractHtml({
-      rfq_code:           'GRP-1001',
-      destination:        '일본 도쿄',
-      adult_count:        20,
-      child_count:        5,
-      duration_nights:    4,
-      hotel_grade:        '4성',
-      meal_plan:          '전식포함',
-      transportation:     '전세버스',
-      special_requests:   '어린이 동반, 유아 카시트 필요',
-      total_selling_price: 24000000,
-      inclusions:         ['항공', '숙박(4성)', '전 식사', '전세버스'],
-      exclusions:         ['개인 음료', '쇼핑'],
-      contract_date:      new Date().toISOString().slice(0, 10),
-    });
-    return NextResponse.json({ contract_html: mockHtml, mock: true });
+    return sensitiveBackendUnavailable('rfq_contract');
   }
 
   try {
