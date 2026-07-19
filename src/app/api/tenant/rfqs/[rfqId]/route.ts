@@ -6,6 +6,7 @@ import {
   getRfqBids,
   GroupRfq,
 } from '@/lib/supabase';
+import { sensitiveBackendUnavailable } from '@/lib/sensitive-api-fail-closed';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ rfqId: string }> }) {
   const params = await props.params;
@@ -18,30 +19,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ rfqId
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({
-      rfq: {
-        id: rfqId,
-        rfq_code: 'GRP-1001',
-        destination: '일본 도쿄',
-        adult_count: 20,
-        child_count: 5,
-        budget_per_person: 1200000,
-        total_budget: 30000000,
-        hotel_grade: '4성',
-        meal_plan: '전식포함',
-        transportation: '전세버스',
-        duration_nights: 4,
-        special_requests: '어린이 동반, 유아 카시트 필요',
-        status: 'published',
-        bid_deadline: new Date(Date.now() + 22 * 60 * 60 * 1000).toISOString(),
-        // 고객 개인정보 마스킹
-        customer_name: '고객 (익명)',
-        customer_phone: undefined,
-      },
-      is_unlocked: true,
-      my_bid: null,
-      mock: true,
-    });
+    return sensitiveBackendUnavailable('tenant_rfq');
   }
 
   try {
