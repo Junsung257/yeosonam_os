@@ -1,92 +1,83 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSupabase } from '@/lib/supabase';
-import { cacheHeader } from '@/lib/api-response';
 
-export async function GET(req: NextRequest) {
-  const sb = getSupabase();
-  if (!sb) {
-    // mock data
-    return NextResponse.json({
-      histories: [
-        {
-          id: 'mock-1',
-          destination: '일본 오사카',
-          destination_country: '일본',
-          departure_date: '2025-12-10',
-          duration_nights: 4,
-          trip_type: '가족여행',
-          tenant_name: 'JTB Japan',
-          proposal_title: '오사카 가족 자유여행 4박',
-          total_price: 4200000,
-          total_pax: 4,
-          stamp_image_url: null,
-          review_submitted: true,
-        },
-        {
-          id: 'mock-2',
-          destination: '베트남 다낭',
-          destination_country: '베트남',
-          departure_date: '2025-08-20',
-          duration_nights: 3,
-          trip_type: '친구·모임',
-          tenant_name: 'Viet Travel Co.',
-          proposal_title: '다낭 골프+관광 3박',
-          total_price: 2800000,
-          total_pax: 8,
-          stamp_image_url: null,
-          review_submitted: false,
-        },
-      ],
-    }, { headers: cacheHeader(120) });
+const PRIVATE_NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store',
+};
+
+function normalizePhoneForCustomerLookup(phone: string | null | undefined) {
+  if (!phone) return null;
+
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
   }
 
-  // 실제 구현: auth.uid()로 customers.id를 먼저 조회한 후 travel history 조회
-  // (customers 테이블의 id와 auth.users의 id가 다르므로)
+  return phone;
+}
+
+export async function GET() {
+  const sb = getSupabase();
+  if (!sb) {
+    return apiResponse(
+      { histories: [], error: 'TRAVEL_HISTORY_UNAVAILABLE' },
+      { status: 503, headers: PRIVATE_NO_STORE_HEADERS },
+    );
+  }
+
   try {
-    const { data: { user } } = await sb.auth.getUser();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
     if (!user) {
-      return NextResponse.json({ histories: [] }, { headers: cacheHeader(120) });
+      return apiResponse({ histories: [] }, { headers: PRIVATE_NO_STORE_HEADERS });
     }
 
-    // auth user의 phone 기준으로 customers 테이블 조회
-    const phone = user.phone ?? user.email ?? null;
     let customerId: string | null = null;
+    const phone = normalizePhoneForCustomerLookup(user.phone);
 
     if (phone) {
-      const digits = phone.replace(/\D/g, '');
-      const dbPhone = digits.length === 11
-        ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
-        : phone;
-      const { data: customer } = await sb
+      const { data: customer, error: customerError } = await sb
         .from('customers')
         .select('id')
-        .eq('phone', dbPhone)
+        .eq('phone', phone)
         .limit(1);
-      customerId = ((customer as unknown as Array<Record<string, unknown>>)?.[0]?.id as string) ?? null;
+      if (customerError) throw customerError;
+
+      customerId =
+        ((customer as unknown as Array<Record<string, unknown>>)?.[0]?.id as string) ?? null;
     }
 
-    // phone으로 찾을 수 없으면 customers.email로 fallback 조회
     if (!customerId && user.email) {
-      const { data: customerByEmail } = await sb
+      const { data: customerByEmail, error: customerByEmailError } = await sb
         .from('customers')
         .select('id')
         .eq('email', user.email)
         .limit(1);
-      customerId = ((customerByEmail as unknown as Array<Record<string, unknown>>)?.[0]?.id as string) ?? null;
+      if (customerByEmailError) throw customerByEmailError;
+
+      customerId =
+        ((customerByEmail as unknown as Array<Record<string, unknown>>)?.[0]?.id as string) ?? null;
     }
 
     if (!customerId) {
-      return NextResponse.json({ histories: [] }, { headers: cacheHeader(120) });
+      return apiResponse({ histories: [] }, { headers: PRIVATE_NO_STORE_HEADERS });
     }
 
-    const { data } = await sb
+    const { data, error } = await sb
       .from('user_travel_histories')
       .select('*')
       .eq('customer_id', customerId)
       .order('created_at', { ascending: false });
+    if (error) throw error;
 
-    return NextResponse.json({ histories: data ?? [] }, { headers: cacheHeader(120) });
-  } catch {
-    return NextResponse.json({ histories: [] }, { headers: cacheHeader(120) });
+    return apiResponse({ histories: data ?? [] }, { headers: PRIVATE_NO_STORE_HEADERS });
+  } catch (error) {
+    console.error('[travel-history] lookup failed:', sanitizeDbError(error));
+    return apiResponse(
+      { histories: [], error: 'TRAVEL_HISTORY_LOOKUP_FAILED' },
+      { status: 503, headers: PRIVATE_NO_STORE_HEADERS },
+    );
   }
 }
