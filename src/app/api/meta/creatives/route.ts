@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured, getAdCreatives, saveCreatives } from '@/lib/supabase';
 import { generateAdVariants } from '@/lib/ai';
 import type { AiModel, CreativePlatform } from '@/types/meta-ads';
@@ -12,6 +13,9 @@ const PostBodySchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({
       creatives: [],
@@ -44,6 +48,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const limited = await rateLimitAI(request);
   if (limited) return limited;
 

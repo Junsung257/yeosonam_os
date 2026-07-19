@@ -12,6 +12,7 @@ import {
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getThreadsConfig, publishToThreads } from '@/lib/threads-publisher';
+import { getSecret } from '@/lib/secret-registry';
 
 export interface ScheduledDistributionRow {
   id: string;
@@ -146,9 +147,13 @@ async function publishDistributionProvider(
     }
     try {
       const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+      const cronSecret = getSecret('CRON_SECRET');
       const res = await fetch(`${base}/api/card-news/${row.card_news_id}/publish-instagram`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {}),
+        },
         body: JSON.stringify({ caption_override: (payload.caption as string) ?? undefined }),
       });
       const data = await res.json();

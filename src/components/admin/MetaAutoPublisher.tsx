@@ -39,6 +39,7 @@ interface CampaignInsight {
 interface MetaAutoPublisherProps {
   onClose: () => void;
   creativeId?: string;
+  campaignId?: string;
   campaignName?: string;
   slides?: { hook_copy?: string; main_text?: string }[];
 }
@@ -49,7 +50,7 @@ function isDangerCampaign(c: CampaignInsight): boolean {
 }
 
 // ══════════════════════════════════════════════════════════
-export default function MetaAutoPublisher({ onClose, creativeId, campaignName, slides }: MetaAutoPublisherProps) {
+export default function MetaAutoPublisher({ onClose, creativeId, campaignId, campaignName, slides }: MetaAutoPublisherProps) {
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -59,14 +60,26 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
   const [autoKill, setAutoKill] = useState(false);
   const [budget, setBudget] = useState(50000);
   const modalTitleId = useId();
+  const deployHelpId = useId();
+  const deployCreativeId = creativeId?.trim();
+  const deployCampaignId = campaignId?.trim();
+  const isDeployContextMissing = !deployCreativeId || !deployCampaignId;
 
   // ── Auto-Publishing ────────────────────────────────────
   const publishToMeta = useCallback(async () => {
+    if (!deployCreativeId || !deployCampaignId) {
+      setPublishResult({
+        ok: false,
+        msg: 'Meta 배포는 기존 광고 소재와 Meta 배포 완료 캠페인을 먼저 선택한 뒤 실행할 수 있습니다.',
+      });
+      return;
+    }
+
     setPublishing(true);
     setPublishResult(null);
 
     const payload: AdPayload = {
-      creativeId: creativeId || `YSN-GEN-${Date.now().toString(36).toUpperCase()}`,
+      creativeId: deployCreativeId,
       campaignName: campaignName || '여소남 카드뉴스 캠페인',
       images: [],
       headlineCopy: slides?.[0]?.hook_copy || '여소남 특가 여행',
@@ -81,6 +94,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           creative_id: payload.creativeId,
+          campaign_id: deployCampaignId,
           campaign_name: payload.campaignName,
           headline: payload.headlineCopy,
           body_copy: payload.bodyCopy,
@@ -93,8 +107,8 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
         setPublishResult({
           ok: true,
           msg: data.meta_ad_id
-            ? `캠페인 라이브! Ad ID: ${data.meta_ad_id}`
-            : `CONFIRMED 상태로 저장됨 (Meta API 키 미설정 시 시뮬레이션)`,
+            ? `Meta PAUSED 광고 초안 생성 완료. Ad ID: ${data.meta_ad_id}`
+            : `내부 확인 상태로 저장됨 (Meta API 키 미설정 시 외부 배포 없음)`,
         });
       } else {
         setPublishResult({ ok: false, msg: data.error || '배포 실패' });
@@ -104,7 +118,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
     } finally {
       setPublishing(false);
     }
-  }, [creativeId, campaignName, slides, budget]);
+  }, [deployCampaignId, deployCreativeId, campaignName, slides, budget]);
 
   // ── Live Insights Sync ─────────────────────────────────
   const fetchLiveInsights = useCallback(async () => {
@@ -235,15 +249,20 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             <button
               type="button"
               onClick={publishToMeta}
-              disabled={publishing}
+              disabled={publishing || isDeployContextMissing}
+              aria-describedby={deployHelpId}
               className="w-full py-3 bg-blue-600 text-white text-admin-base font-semibold rounded-lg hover:bg-blue-900 disabled:bg-slate-300 transition flex items-center justify-center gap-2"
             >
               {publishing ? (
                 <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> 배포 중...</>
               ) : (
-                'Meta 광고 즉시 라이브'
+                'Meta PAUSED 광고 초안 배포'
               )}
             </button>
+            <p id={deployHelpId} className="mt-2 text-[11px] leading-relaxed text-admin-muted-2">
+              외부 광고는 소재와 Meta 배포 완료 캠페인이 모두 연결된 경우에만 생성합니다. 생성된 Meta 광고는
+              라이브가 아니라 PAUSED 상태이며, 활성화는 별도 승인/확인 절차에서 처리해야 합니다.
+            </p>
 
             {publishResult && (
               <div className={`mt-3 px-3 py-2 rounded text-admin-xs ${
