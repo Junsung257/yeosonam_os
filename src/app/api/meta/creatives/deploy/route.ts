@@ -5,11 +5,15 @@ import {
   CAMPAIGN_CREATIVE_PUBLIC_FIELDS,
   type CampaignCreativeWithPublicPackage,
 } from '@/lib/campaign-public-packages';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { createAd, isMetaConfigured, uploadCreativeToMeta } from '@/lib/meta-api';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 연동이 설정되지 않았습니다.' }, { status: 503 });
   }
