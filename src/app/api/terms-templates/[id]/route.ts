@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { invalidateTermsCache } from '@/lib/standard-terms';
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(_request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ data: null });
   try {
@@ -23,6 +27,9 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
 }
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   try {
@@ -50,7 +57,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   }
 }
 
-export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   try {
