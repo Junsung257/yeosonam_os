@@ -23,6 +23,7 @@
  *   - "이번 달 모든 destination 1위 자동 발행" — limit=10
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
 
@@ -40,6 +41,9 @@ interface Body {
 }
 
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'supabase 미설정' }, { status: 503 });
   try {
     const body = await req.json() as Body;
