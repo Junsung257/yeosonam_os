@@ -1,6 +1,6 @@
 # Blog Autopublish Contract
 
-Last updated: 2026-07-15
+Last updated: 2026-07-20
 
 This document defines the required contract for automatic blog generation, publishing, and indexing. Publishing and indexing must be treated as separate responsibilities. It exists because one-off repairs to already published rows do not prevent the same defect from recurring in live autopublishing.
 
@@ -18,6 +18,11 @@ Official and implementation references:
 - IndexNow batch/retry/cache implementation reference: https://github.com/viv1/indexnow-submitter
 - Free search-intent fallback: Google Suggest autocomplete via `suggestqueries.google.com` is allowed as keyword/intent guidance when paid or keyed SERP providers are unavailable. It must not be represented as ranking proof.
 - Gemini native image generation: https://ai.google.dev/gemini-api/docs/image-generation
+- Google people-first content guidance: https://developers.google.com/search/docs/fundamentals/creating-helpful-content
+- Google image SEO guidance: https://developers.google.com/search/docs/appearance/google-images
+- Prompt/evaluation regression reference: https://github.com/promptfoo/promptfoo
+- Prompt versioning and trace reference: https://github.com/langfuse/langfuse
+- Metric-driven prompt optimization reference: https://github.com/stanfordnlp/dspy
 
 Local code references:
 
@@ -87,19 +92,20 @@ Before the first publish gate:
 3. For information posts, build the explicit intent contract (`food_budget`, `monthly_weather`, `airport_transport`, `hotel_areas`, `family_budget`, `family_itinerary`, `entry_requirements`, `travel_insurance`, `currency_payment`, or `general`). Persist the planner-selected intent and reuse it at the final required-slot gate so title repair cannot silently change the contract.
 4. Treat raw queue topics as seeds only. The brief is the source of truth for final title, primary keyword, secondary keywords, search intent, required sections, forbidden angles, source policy, and human-review policy.
 5. Run `analyzeSerp()` for eligible keywords. If Naver keys are missing or no results are returned, use the free Google Suggest fallback only as keyword/search-intent guidance.
-6. Build the LLM prompt from the same visual/content contract used by gates: no `==...==`, no `<mark>`, no highlight-style emphasis, and tables must be valid GitHub Flavored Markdown with a separator row and no blank lines inside table rows. An active database prompt may override Prompt-as-Code only when its semantic version is at least `BLOG_PROMPT_VERSION`; empty, malformed, or older rows fall back to the repository guide and persist `generation_meta.prompt_source='repository_fallback'`.
-7. Normalize or reject the slug.
-8. Ensure internal CTA links.
-9. Ensure official reference links.
-10. Insert or verify inline images.
-11. Run `repairBlogEditorialQuality()`.
-12. Run `repairBlogStructureQuality()`.
-13. Run `runQualityGates()`, including `topic_fit`, `editorial_quality`, `accent_density`, `table_integrity`, and `cta_destination_integrity`.
-14. Run `inspectBlogCustomerQuality()` through `evaluateBlogPublishQuality()` so customer-visible writing defects are scored with the same publish decision as render/SEO gates.
-15. Run `computeSeoScore()`.
-16. Run `computeReadability()` on the final post-gate body.
-17. Render information Markdown through the public renderer and sanitizer. Block publication unless the final surface has exactly one page H1, aligned title/H1/description intent, no raw Markdown or literal `\n`, valid non-empty headings and tables, no placeholder, self-consistent canonical/index state, valid JSON-LD, answer-first CTA placement, and no duplicate CTA.
-18. Persist `quality_gate.rendered_reading_time_minutes` from that final rendered body. Public list and detail views must read the same persisted value; legacy rows may use the existing fallback calculation.
+6. Build the LLM prompt from the same visual/content contract used by gates: no `==...==`, no `<mark>`, no highlight-style emphasis, and tables must be valid GitHub Flavored Markdown with a separator row and no blank lines inside table rows. Information posts must use the dedicated `blog_info_writer_guide` domain and `BLOG_INFORMATION_PROMPT_VERSION`; they must not inherit product-sales, fixed character-count, keyword repetition-quota, mandatory product-link, hashtag, or CTA-writing rules from `blog_style_guide`. An active database information prompt may override Prompt-as-Code only when its semantic version is current and it passes `isValidInformationalWriterGuide()`. Empty, malformed, stale, or contract-incomplete rows fall back to the repository guide and persist `generation_meta.prompt_source='repository_fallback'`.
+7. Assemble information prompts through `buildInformationalWriterPrompt()`. The composer must fail closed on missing priority/evidence/output/brief/claim-ledger blocks or known legacy instruction conflicts. Persist only the version, source, SHA-256 digest, size, section ids, and warnings in `generation_meta.prompt_manifest`; never persist the raw prompt or evidence pack in that manifest.
+8. Normalize or reject the slug.
+9. Ensure internal CTA links.
+10. Ensure official reference links.
+11. Insert or verify inline images.
+12. Run `repairBlogEditorialQuality()`.
+13. Run `repairBlogStructureQuality()`.
+14. Run `runQualityGates()`, including `topic_fit`, `editorial_quality`, `accent_density`, `table_integrity`, and `cta_destination_integrity`.
+15. Run `inspectBlogCustomerQuality()` through `evaluateBlogPublishQuality()` so customer-visible writing defects are scored with the same publish decision as render/SEO gates.
+16. Run `computeSeoScore()`.
+17. Run `computeReadability()` on the final post-gate body.
+18. Render information Markdown through the public renderer and sanitizer. Block publication unless the final surface has exactly one page H1, aligned title/H1/description intent, no raw Markdown or literal `\n`, valid non-empty headings and tables, no placeholder, self-consistent canonical/index state, valid JSON-LD, answer-first CTA placement, and no duplicate CTA.
+19. Persist `quality_gate.rendered_reading_time_minutes` from that final rendered body. Public list and detail views must read the same persisted value; legacy rows may use the existing fallback calculation.
 
 Entry/visa/immigration and travel-insurance information always require human review. Even after automated gates pass, the publisher must store these candidates as `content_creatives.status='draft'`, set `review_status='pending_review'`, enqueue a high-risk review with no timed auto-approval, and set `blog_topic_queue.status='pending_review'`. This branch must return before public cache revalidation, advertising mapping, publish logging, sitemap/indexing enqueue, or any public count increment. Human approval only unlocks a later explicit publish action; that action must rerun current publish QA.
 
@@ -117,7 +123,7 @@ Product-open blockers must not reduce the daily publish target. If product-backe
 
 Deterministic information fallback is an operational recovery artifact, not publishable content. It may be used to diagnose missing slots or prepare a private repair draft, but it must never be written as `published`, revalidated as public, added to sitemap, or enqueued for indexing. A quota miss is preferable to publishing a generic fallback that does not satisfy the promised intent.
 
-Image count and rewritten alt text are not proof of visual relevance. Pexels selection must use destination + intent queries, inspect the provider's original photo description, reject scene conflicts such as an unrelated coast for an inland city, and prefer the first relevant search page instead of random deep pages. If no candidate reaches the relevance threshold, the publisher may request a contextual AI reference image; it must never relabel an unrelated stock image with a destination caption. AI-generated images must use the current Gemini native image API, be persisted to an immutable public `blog-assets/generated/blog/...` Storage path before insertion, and carry `AI 생성 참고 이미지` in both customer-visible caption and alt text. Base64/data URLs are never publishable blog image URLs, and generated visuals are illustrative context rather than factual evidence. If both relevant Pexels selection and AI generation fail, the slot stays empty and the normal image-quality gate decides whether the draft can proceed.
+Image count and rewritten alt text are not proof of visual relevance. Pexels selection must use destination + intent queries, inspect the provider's original photo description, reject scene conflicts such as an unrelated coast for an inland city, and prefer the first relevant search page instead of random deep pages. If no candidate reaches the relevance threshold, the publisher may request a contextual AI reference image; it must never relabel an unrelated stock image with a destination caption. AI-generated images must use the current Gemini native image API, prefer realistic editorial photography over collages or ads, and must not invent a recognizable landmark, readable sign, menu price, factual chart, or identifiable person unless the explicit visual request safely supports it. Generated bytes must be persisted to an immutable public `blog-assets/generated/blog/...` Storage path before insertion and carry `AI 생성 참고 이미지` in both customer-visible caption and alt text. Base64/data URLs are never publishable blog image URLs, and generated visuals are illustrative context rather than factual evidence. If both relevant Pexels selection and AI generation fail, the slot stays empty and the normal image-quality gate decides whether the draft can proceed.
 
 Extra recovery claims must use the shared time-budget plan in `src/lib/blog-publisher-time-budget.ts`. When normal generation time remains, the publisher may claim the mixed publishable pool. When there is not enough time to complete research, generation, repair, and all gates, it must stop claiming publish candidates or keep the result private for later repair. Time pressure must not downgrade the information-content contract.
 
