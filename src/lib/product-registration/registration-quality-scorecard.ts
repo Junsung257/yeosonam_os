@@ -1,3 +1,5 @@
+import { hashRawText } from '@/lib/source-evidence';
+
 type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
 
 export type RegistrationQualityDomainId =
@@ -181,6 +183,19 @@ function textLength(pkg: Record<string, unknown>, key: string): number {
   return asString(pkg[key]).length;
 }
 
+const SHA256_RE = /^[a-f0-9]{64}$/i;
+
+function sourceHashBlockers(pkg: Record<string, unknown>): string[] {
+  const rawText = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
+  const rawTextForPresence = rawText.trim();
+  const storedHash = asString(pkg.raw_text_hash);
+  if (rawTextForPresence.length < 50) return ['raw_text is missing or too short for QA evidence'];
+  if (!SHA256_RE.test(storedHash)) return ['raw_text_hash is missing or invalid'];
+  const actualHash = hashRawText(rawText);
+  if (storedHash.toLowerCase() !== actualHash) return ['raw_text_hash does not match raw_text'];
+  return [];
+}
+
 function normalizeMobileProof(input: unknown): { resultOk: boolean | null; reason: string | null; proof: MobileProofLike | null } {
   const result = asRecord(input) as (MobileProofResultLike & Record<string, unknown>) | null;
   const rawProof = result && typeof result.ok === 'boolean' && 'proof' in result
@@ -267,8 +282,8 @@ export function evaluateRegistrationQualityScorecard(input: {
     domain({
       id: 'source_preservation',
       label: '원문 입력/보존',
-      blockers: textLength(pkg, 'raw_text') >= 50 ? [] : ['raw_text is missing or too short for QA evidence'],
-      evidence: [`raw_text length ${textLength(pkg, 'raw_text')}`],
+      blockers: sourceHashBlockers(pkg),
+      evidence: [`raw_text length ${textLength(pkg, 'raw_text')}`, `raw_text_hash ${asString(pkg.raw_text_hash) || 'missing'}`],
     }),
     domain({
       id: 'structured_json',

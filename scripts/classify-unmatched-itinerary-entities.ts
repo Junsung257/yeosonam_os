@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '../src/lib/unmatched-suggest';
+import {
+  destinationAllowsAttractionScope,
+  isCustomerRenderableAttraction,
+  isMatchableAttractionAlias,
+} from '../src/lib/attraction-matcher';
 
 loadEnv({ path: '.env.local' });
 loadEnv();
@@ -59,6 +64,7 @@ const argValue = (name: string, fallback: string) => {
 };
 
 const apply = args.has('--apply');
+const addAliases = args.has('--add-aliases');
 const json = args.has('--json');
 const limit = Number(argValue('--limit', '5000'));
 const minAttractionScore = Number(argValue('--min-attraction-score', '100'));
@@ -114,6 +120,17 @@ const SHOPPING_TEXT_RE = /(?:선물\s*구입|쇼핑|라텍스|잡화|기념품|�
 const HIGH_RISK_NOTICE_TEXT_RE = /(?:취소|공제|수수료|예약금|특별\s*약관|특별약관|현금영수증|여권|입국|이트래블|QR코드|발급|환불|결제|유효기간)/i;
 const MEAL_TEXT_RE = /(?:^석\s*[:：]|^중\s*[:：]|^조\s*[:：]|반찬|일정식|쇼카도우고젠|저녁\s*메뉴|먹자골목|음식|식사|조식|중식|석식|디너|런치|메뉴\s*안내)/i;
 
+const CUSTOMER_CONDITION_NOTICE_RE = /(?:\uC5EC\uAD8C\s*\uC720\uD6A8\uAE30\uAC04|\uC131\uC778\s*\d+\s*\uBA85\s*\uC774\uC0C1|\uC778\uC194\uC790\s*\uBBF8\uB3D9\uD589|\uD56D\uACF5\uB8CC\s*(?:\uBC0F|and)?\s*\uD14D\uC2A4|\uC720\uB958\uD560\uC99D\uB8CC|\uC5EC\uD589\uC790\uBCF4\uD5D8|\uD55C\uAD6D\uC5B4\s*\uAC00\uC774\uB4DC|\uC785\uC7A5\uB8CC|\uAE30\uC0AC\s*\/?\s*\uAC00\uC774\uB4DC\s*\uACBD\uBE44)/i;
+const CUSTOMER_ATTRACTION_OVERRIDE_RE = /(?:\uACE0\uC758\uB839|\uB300\uC548\uD0D1|\uADF8\uB79C\uB4DC\s*\uC6D4\uB4DC|\uADF8\uB79C\uB4DC\uC6D4\uB4DC)/i;
+const CUSTOMER_TOUR_OVERRIDE_RE = /(?:\uC2DC\uD2F0\s*\uD22C\uC5B4|\uC2DC\uD2F0\uD22C\uC5B4|\uB098\uC774\uD2B8\s*\uD22C\uC5B4|\uC57C\uAC04\s*\uC2DC\uD2F0|\uD2B8\uB7A8.*\uC720\uB8CC|\uBCC4\uB3C4\s*\uBB38\uC758\s*\/?\s*\uC720\uB8CC)/i;
+const CUSTOMER_ATTRACTION_CANDIDATE_RE = /(?:\uBE48\uD384\s*\uC0AC\uD30C\uB9AC|\uBE48\uD384\uC0AC\uD30C\uB9AC)/i;
+const NO_OPTION_EVIDENCE_RE = /(?:\uB178\s*\uC635\uC158(?:\uC785\uB2C8\uB2E4)?|\uC120\uD0DD\s*\uAD00\uAD11\s*[:\uFF1A]?\s*\uB178\s*\uC635\uC158)/i;
+const INCLUDED_SERVICE_NOTICE_RE = /(?:(?:\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0).*(?:\uCCB4\uD5D8|\uD3EC\uD568|\uD301\s*\uBCC4\uB3C4|\uB9E4\uB108\s*\uD301\s*\uBCC4\uB3C4|\$\s*\d+)|(?:\uC695\uC7A5|\uB77D\uCEE4).*\uC0AC\uC6A9\s*\uBD88\uAC00|\uBBF8\uB9AC\s*\uD658\uBCF5|\uB178\s*\uD301\s*\uB178\s*\uC635\uC158\s*PKG)/i;
+const EXPLICIT_OPTIONAL_TOUR_EVIDENCE_RE =
+  /(?:선택\s*관광|추천\s*옵션|강력\s*추천\s*옵션|옵션\s*가능|현지\s*지불|현지\s*별도|별도\s*문의|별도\s*비용|유료|선\s*포함|팁\s*별도|매너\s*팁\s*별도|\$\s*\d+|USD\s*\d+|US\$\s*\d+|\d{1,4}(?:,\d{3})*\s*(?:원|동|엔|만\s*원)|\d+\s*(?:불|달러)\s*\/?\s*인)/i;
+const ATTRACTION_VISIT_SIGNAL_RE =
+  /(?:관광|관람|방문|감상|등정|투어|나이트\s*투어|시티\s*투어|사파리|야시장|그랜드\s*월드|그랜드월드|대협곡|협곡|공원|사원|교회|생가|거리|대학교|민속촌|마을|광장|시장|비치|해변|섬|폭포|박물관|전망대|전망|공연장|유람선|나룻배|명소|장로봉)/i;
+
 function cleanText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -129,7 +146,10 @@ function standardCategory(value: string | null): EntityCategory | null {
 function isSafeAutoStructuredEntity(category: EntityCategory, activity: string): boolean {
   if (category === 'notice') {
     return (LOW_RISK_SCHEDULE_NOTICE_RE.test(activity) && !HIGH_RISK_NOTICE_RE.test(activity)) ||
-      LOW_RISK_PREP_RE.test(activity);
+      LOW_RISK_PREP_RE.test(activity) ||
+      NO_OPTION_EVIDENCE_RE.test(activity) ||
+      (INCLUDED_SERVICE_NOTICE_RE.test(activity) && !/\uC120\s*\uD3EC\uD568|\uAC15\uB825\s*\uCD94\uCC9C\s*\uC635\uC158|\uCD94\uCC9C\s*\uC635\uC158/.test(activity)) ||
+      CUSTOMER_CONDITION_NOTICE_RE.test(activity);
   }
   if (category === 'optional_tour') {
     return OPTION_STRUCTURED_DETAIL_RE.test(activity) ||
@@ -150,6 +170,14 @@ function looksLikeRegionLabel(text: string, row?: Pick<UnmatchedRow, 'country' |
   return scope.includes(compact);
 }
 
+function hasExplicitOptionalTourEvidence(text: string): boolean {
+  return EXPLICIT_OPTIONAL_TOUR_EVIDENCE_RE.test(text);
+}
+
+function shouldKeepAsAttractionGap(text: string): boolean {
+  return ATTRACTION_VISIT_SIGNAL_RE.test(text) && !hasExplicitOptionalTourEvidence(text);
+}
+
 function classifyText(
   activity: string,
   existingCategory: string | null,
@@ -165,6 +193,18 @@ function classifyText(
   if (AGE_PRICE_RE.test(text)) return { category: 'price_noise', confidence: 0.92 };
   if (PRICE_NOISE_RE.test(text)) return { category: 'price_noise', confidence: 0.9 };
   if (/^(?:길이|높이|직경|총길이)\s*\d/i.test(text)) return { category: 'price_noise', confidence: 0.9 };
+  if (CUSTOMER_ATTRACTION_OVERRIDE_RE.test(text)) return { category: 'attraction', confidence: 0.78 };
+  if (CUSTOMER_ATTRACTION_CANDIDATE_RE.test(text)) return { category: 'attraction', confidence: 0.78 };
+  if (CUSTOMER_TOUR_OVERRIDE_RE.test(text)) {
+    return hasExplicitOptionalTourEvidence(text)
+      ? { category: 'optional_tour', confidence: 0.88 }
+      : { category: 'attraction', confidence: 0.78 };
+  }
+  if (NO_OPTION_EVIDENCE_RE.test(text)) return { category: 'notice', confidence: 0.92 };
+  if (INCLUDED_SERVICE_NOTICE_RE.test(text) && !/\uC120\s*\uD3EC\uD568|\uAC15\uB825\s*\uCD94\uCC9C\s*\uC635\uC158|\uCD94\uCC9C\s*\uC635\uC158/.test(text)) {
+    return { category: 'notice', confidence: 0.9 };
+  }
+  if (CUSTOMER_CONDITION_NOTICE_RE.test(text)) return { category: 'notice', confidence: 0.9 };
   if (SHOPPING_TEXT_RE.test(text)) return { category: 'shopping', confidence: 0.88 };
   if (GOLF_METRIC_RE.test(text)) return { category: 'optional_tour', confidence: 0.9 };
   if (LOW_RISK_PREP_RE.test(text)) return { category: 'notice', confidence: 0.88 };
@@ -176,7 +216,10 @@ function classifyText(
   if (HOTEL_RE.test(text)) return { category: 'hotel', confidence: 0.86 };
   if (SHOPPING_RE.test(text)) return { category: 'shopping', confidence: 0.88 };
   if (GOLF_DETAIL_RE.test(text)) return { category: 'optional_tour', confidence: 0.88 };
-  if (OPTION_RE.test(text)) return { category: 'optional_tour', confidence: 0.88 };
+  if (OPTION_RE.test(text)) {
+    if (shouldKeepAsAttractionGap(text)) return { category: 'attraction', confidence: 0.78 };
+    return { category: 'optional_tour', confidence: hasExplicitOptionalTourEvidence(text) ? 0.88 : 0.72 };
+  }
   if (NOTICE_RE.test(text)) return { category: 'notice', confidence: 0.86 };
   if (GOLF_OPTION_RE.test(context)) return { category: 'optional_tour', confidence: 0.86 };
   if (ATTRACTION_TEXT_RE.test(text) || DESCRIPTIVE_FRAGMENT_RE.test(text)) return { category: 'attraction', confidence: 0.72 };
@@ -198,6 +241,7 @@ function statusFor(category: EntityCategory, confidence: number, resolvedAttract
   if (resolvedAttractionId) return 'added';
   if ((category === 'meal' || category === 'transfer') && confidence >= 0.85) return 'added';
   if ((category === 'free_time' || category === 'price_noise') && confidence >= 0.85) return 'ignored';
+  if (category === 'notice' && confidence >= 0.85 && isSafeAutoStructuredEntity(category, activity)) return 'ignored';
   if (confidence >= 0.85 && isSafeAutoStructuredEntity(category, activity)) return 'added';
   return 'pending';
 }
@@ -231,6 +275,21 @@ function resolution(row: UnmatchedRow, category: EntityCategory, action: Suggest
   };
 }
 
+function rowDestinationScope(row: UnmatchedRow): string | undefined {
+  return row.region || row.country || undefined;
+}
+
+function hasAttractionScope(attr: AttractionSuggestRow): boolean {
+  return Boolean(attr.region?.trim() || attr.country?.trim());
+}
+
+function isAttractionInRowScope(attr: AttractionSuggestRow, row: UnmatchedRow): boolean {
+  const destination = rowDestinationScope(row);
+  if (!destination) return true;
+  if (!hasAttractionScope(attr)) return false;
+  return destinationAllowsAttractionScope(attr, destination);
+}
+
 async function fetchUnmatchedRows(): Promise<UnmatchedRow[]> {
   const rows: UnmatchedRow[] = [];
   const pageSize = 1000;
@@ -257,12 +316,18 @@ async function fetchAttractions(): Promise<AttractionSuggestRow[]> {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id, name, aliases, region, country, category, emoji, short_desc')
+      .select('id, name, aliases, region, country, category, badge_type, emoji, short_desc, is_active, customer_publishable, mrt_gid')
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .range(from, from + pageSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
-    rows.push(...data as AttractionSuggestRow[]);
+    rows.push(...(data as AttractionSuggestRow[])
+      .filter(isCustomerRenderableAttraction)
+      .map(attr => ({
+        ...attr,
+        aliases: (attr.aliases ?? []).filter(alias => isMatchableAttractionAlias(alias, attr)),
+      })));
     if (data.length < pageSize) break;
   }
   return rows;
@@ -274,10 +339,8 @@ function classifyRow(row: UnmatchedRow, attractions: AttractionSuggestRow[]): Cl
   let resolvedAttractionId: string | null = null;
 
   if (classified.category === 'attraction') {
-    const scoped = attractions.filter(attr =>
-      (!row.region || !attr.region || row.region === attr.region) &&
-      (!row.country || !attr.country || row.country === attr.country));
-    const pool = scoped.length > 0 ? scoped : attractions;
+    const scoped = attractions.filter(attr => isAttractionInRowScope(attr, row));
+    const pool = rowDestinationScope(row) ? scoped : attractions;
     const { suggestions } = suggestAttractionsForActivity(row.activity, pool, minAttractionScore, 1);
     if (suggestions.length > 0) {
       const top = suggestions[0];
@@ -293,7 +356,9 @@ function classifyRow(row: UnmatchedRow, attractions: AttractionSuggestRow[]): Cl
   }
 
   const status = statusFor(classified.category, classified.confidence, resolvedAttractionId, row.activity);
-  const action = status === 'added' && isSafeAutoStructuredEntity(classified.category, row.activity)
+  const action = status === 'ignored'
+    ? 'auto_ignore_noise'
+    : status === 'added' && isSafeAutoStructuredEntity(classified.category, row.activity)
     ? 'auto_resolve_existing'
     : actionFor(classified.category, classified.confidence, resolvedAttractionId);
 
@@ -319,11 +384,17 @@ function classifyRow(row: UnmatchedRow, attractions: AttractionSuggestRow[]): Cl
 }
 
 async function maybeAddAlias(item: ClassifiedRow, attractions: AttractionSuggestRow[]) {
+  if (!addAliases) return false;
   if (!item.resolvedAttractionId) return false;
-  const raw = cleanText(item.row.activity);
-  if (raw.length > 60) return false;
+  const suggestion = item.suggestedResolution.attraction_suggestion;
+  const matchedTerm = suggestion && typeof suggestion === 'object'
+    ? (suggestion as Record<string, unknown>).matched_term
+    : null;
+  const raw = cleanText(typeof matchedTerm === 'string' ? matchedTerm : '');
+  if (raw.length < 2 || raw.length > 40) return false;
   const attraction = attractions.find(attr => attr.id === item.resolvedAttractionId);
   if (!attraction) return false;
+  if (!isMatchableAttractionAlias(raw, attraction)) return false;
   const aliases = attraction.aliases ?? [];
   if (aliases.includes(raw) || attraction.name === raw) return false;
   const { error } = await supabase

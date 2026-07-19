@@ -5,7 +5,19 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { hasSecrets } from '@/lib/secret-registry';
+import {
+  attachPublicPackagesToCampaignCreatives,
+  campaignCreativesMissingPublicPackage,
+  CAMPAIGN_CREATIVE_PUBLIC_FIELDS,
+  type CampaignCreativeWithPublicPackage,
+} from '@/lib/campaign-public-packages';
 import { isSupabaseConfigured } from '@/lib/supabase';
+
+type CampaignLaunchCreative = CampaignCreativeWithPublicPackage & {
+  id: string;
+  product_id?: string | null;
+  channel: string;
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,16 +39,29 @@ export async function POST(request: NextRequest) {
     // 소재 조회
     const { data: creatives, error: fetchErr } = await supabaseAdmin
       .from('ad_creatives')
-      .select('*, travel_packages!inner(id, title, destination, price)')
+      .select(CAMPAIGN_CREATIVE_PUBLIC_FIELDS)
       .in('id', creative_ids);
 
     if (fetchErr || !creatives?.length) {
       return NextResponse.json({ error: '소재 조회 실패' }, { status: 404 });
     }
 
+    const creativeRows = (creatives as unknown) as CampaignLaunchCreative[];
+    const launchableCreatives = await attachPublicPackagesToCampaignCreatives(
+      supabaseAdmin,
+      creativeRows,
+    );
+    const blockedCreatives = campaignCreativesMissingPublicPackage(launchableCreatives);
+    if (blockedCreatives.length > 0) {
+      return NextResponse.json({
+        error: 'PUBLIC_SNAPSHOT_REQUIRED_FOR_CAMPAIGN_LAUNCH',
+        blocked_creative_ids: blockedCreatives.map((creative) => creative.id),
+      }, { status: 409 });
+    }
+
     const results: { id: string; channel: string; status: string; error?: string }[] = [];
 
-    for (const creative of creatives) {
+    for (const creative of launchableCreatives) {
       try {
         if (creative.channel === 'meta') {
           // Meta 배포 — 기존 meta-api.ts 활용

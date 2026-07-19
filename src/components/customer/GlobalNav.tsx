@@ -262,9 +262,9 @@ export default function GlobalNav() {
 
             {/* 단체 문의 */}
             <Link
-              href="/group-inquiry"
+              href="/group"
               className={`px-4 py-2 rounded-[10px] text-[15px] font-semibold transition
-                ${pathname?.startsWith('/group-inquiry')
+                ${pathname?.startsWith('/group')
                   ? 'text-brand bg-brand-light'
                   : 'text-text-primary hover:bg-bg-section hover:text-brand'
                 }`}
@@ -339,7 +339,7 @@ export default function GlobalNav() {
                 <Link href="/destinations" className="block py-2.5 text-base font-semibold text-slate-900">여행지 가이드</Link>
                 <Link href="/blog" className="block py-2.5 text-base font-semibold text-slate-900">매거진</Link>
                 <Link href="/private-tour" className="block py-2.5 text-base font-semibold text-slate-900">단독맞춤여행</Link>
-                <Link href="/group-inquiry" className="block py-2.5 text-base font-semibold text-slate-900">단체 문의</Link>
+                <Link href="/group" className="block py-2.5 text-base font-semibold text-slate-900">단체 문의</Link>
               </div>
 
               {/* 테마 */}

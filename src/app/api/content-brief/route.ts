@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { generateContentBrief } from '@/lib/content-pipeline/content-brief';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export const maxDuration = 120;
 
@@ -57,15 +58,10 @@ export async function POST(request: NextRequest) {
       if (!package_id) {
         return NextResponse.json({ error: 'product 모드에서는 package_id가 필수입니다.' }, { status: 400 });
       }
-      const { data, error } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, duration, nights, price, airline, departure_airport, inclusions, product_highlights, itinerary, product_summary')
-        .eq('id', package_id)
-        .limit(1);
-      if (error || !data || data.length === 0) {
-        return NextResponse.json({ error: '상품을 찾을 수 없습니다.' }, { status: 404 });
+      productData = await loadPublicContentPackageForGeneration(package_id);
+      if (!productData) {
+        return NextResponse.json({ error: '고객 공개 승인된 상품만 콘텐츠를 만들 수 있습니다.' }, { status: 404 });
       }
-      productData = data[0];
     } else {
       if (!topic || !topic.trim()) {
         return NextResponse.json({ error: 'info 모드에서는 topic이 필수입니다.' }, { status: 400 });

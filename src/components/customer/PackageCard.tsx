@@ -8,6 +8,7 @@ import { getAirlineName } from '@/lib/render-contract';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { getSessionId } from '@/lib/tracker';
 import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
+import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 
 export interface PackageCardData {
   id: string;
@@ -31,7 +32,7 @@ export interface PackageCardData {
   review_count?: number | null;
   seats_held?: number | null;
   seats_confirmed?: number | null;
-  products?: { display_name?: string | null; internal_code?: string | null } | null;
+  products?: { display_name?: string | null; internal_code?: string | null; thumbnail_urls?: string[] | null } | null;
   // 2026-05-19 박제 (PR #139 P2-A / A2): 같은 카탈로그 N 패키지 그룹 UUID
   catalog_id?: string | null;
 }
@@ -81,11 +82,23 @@ function pickImage(pkg: PackageCardData, override?: string | null): string | nul
   if (override) return override;
   if (pkg.hero_image_url) return pkg.hero_image_url;
   if (pkg.thumbnail_urls && pkg.thumbnail_urls.length > 0) return pkg.thumbnail_urls[0];
+  if (pkg.products?.thumbnail_urls && pkg.products.thumbnail_urls.length > 0) return pkg.products.thumbnail_urls[0];
   return null;
 }
 
 function pickTitle(pkg: PackageCardData): string {
-  return pkg.display_title || pkg.products?.display_name || pkg.title;
+  return buildCustomerPackageDisplayCopy({
+    title: pkg.title,
+    display_title: pkg.display_title,
+    product_display_name: pkg.products?.display_name,
+    hero_tagline: pkg.hero_tagline,
+    destination: pkg.destination,
+    duration: pkg.duration,
+    nights: pkg.nights,
+    product_type: pkg.product_type,
+    airline: pkg.airline,
+    product_highlights: pkg.product_highlights ?? null,
+  }).cardTitle;
 }
 
 function formatDuration(pkg: PackageCardData): string | null {
@@ -436,6 +449,18 @@ function CardBody({
   const hasReviews = pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0;
   const showComparisonTrust = !hasReviews && Boolean(comparisonLabel || comparisonSummary);
   const safeComparisonReasons = (comparisonReasons ?? []).slice(0, 3);
+  const displayCopy = buildCustomerPackageDisplayCopy({
+    title: pkg.title,
+    display_title: pkg.display_title,
+    product_display_name: pkg.products?.display_name,
+    hero_tagline: pkg.hero_tagline,
+    destination: pkg.destination,
+    duration: pkg.duration,
+    nights: pkg.nights,
+    product_type: pkg.product_type,
+    airline: pkg.airline,
+    product_highlights: pkg.product_highlights ?? null,
+  });
   return (
     <div className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}>
       {/* 목적지 + 일정 메타 */}
@@ -515,9 +540,9 @@ function CardBody({
       )}
 
       {/* 한 줄 후킹 */}
-      {!lossAversionText && pkg.hero_tagline && (
+      {!lossAversionText && displayCopy.heroSubline && (
         <p className="mt-1 text-[13px] text-text-body leading-snug line-clamp-1 break-keep">
-          {pkg.hero_tagline}
+          {displayCopy.heroSubline}
         </p>
       )}
 

@@ -11,6 +11,7 @@
 
 import { romanize } from './slug-utils';
 import { supabaseAdmin } from './supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
 
 // 목적지별 "필수 정보성 블로그" 표준 체크리스트
 // 각 항목은 여행 준비 funnel 의 구체적 질문에 1:1 대응
@@ -50,7 +51,7 @@ export async function analyzeCoverageGaps(opts?: { maxPerDestination?: number })
   const { data: packages, error: pkgErr } = await supabaseAdmin
     .from('travel_packages')
     .select('destination')
-    .in('status', ['approved', 'active']);
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
   if (pkgErr) throw pkgErr;
 

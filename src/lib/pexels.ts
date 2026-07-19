@@ -162,6 +162,8 @@ const KOREAN_TO_EN_DEST: Record<string, string> = {
   '장가계': 'Zhangjiajie China mountains',
   '서안': 'Xian China ancient city',
   '상해': 'Shanghai China skyline',
+  '광저우': 'Guangzhou China Canton Tower city skyline',
+  '광주 중국': 'Guangzhou China Canton Tower city skyline',
   '북경': 'Beijing China',
   '청도': 'Qingdao China coast',
   '칭다오': 'Qingdao China coast',

@@ -3,7 +3,11 @@
 import './load-script-env';
 
 import { supabaseAdmin } from '../src/lib/supabase';
-import { loadCustomerOpenContractForPackage } from '../src/lib/product-registration/customer-open-contract';
+import {
+  customerOpenContractBlogBlockReason,
+  isCustomerOpenContractBlogPublishable,
+  loadCustomerOpenContractForPackage,
+} from '../src/lib/product-registration/customer-open-contract';
 import { isRetiredBlogProductStatus } from '../src/lib/blog-product-status';
 import {
   buildBlogProductEvidenceArchivedProductDecision,
@@ -145,8 +149,10 @@ async function main() {
     const productStatus = row.product_id ? productStatuses.get(row.product_id) ?? null : null;
     const retiredProduct = isRetiredBlogProductStatus(productStatus);
     const contract = retiredProduct
-      ? { ok: false, blockers: ['archived_product'] }
+      ? null
       : await loadCustomerOpenContractForPackage(supabaseAdmin, row.product_id as string);
+    const blogPublishable = contract ? isCustomerOpenContractBlogPublishable(contract) : false;
+    const blogBlockers = contract ? [customerOpenContractBlogBlockReason(contract)] : ['archived_product'];
     const decision = retiredProduct
       ? buildBlogProductEvidenceArchivedProductDecision({
           meta: row.meta,
@@ -155,8 +161,8 @@ async function main() {
         })
       : buildBlogProductEvidenceRecheckDecision({
           meta: row.meta,
-          contractOk: contract.ok,
-          blockers: contract.blockers,
+          contractOk: blogPublishable,
+          blockers: blogBlockers,
           checkedAt: now,
         });
 
@@ -168,7 +174,7 @@ async function main() {
       before_status: row.status,
       product_status: productStatus,
       action: decision.action,
-      blockers: contract.blockers,
+      blockers: blogBlockers,
     };
     const dedupKey = readBlogProductEvidenceDedupKey({
       product_id: row.product_id,

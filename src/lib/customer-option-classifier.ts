@@ -1,12 +1,14 @@
-const MONEY_RE = /(?:\$\s*\d+(?:\.\d+)?|\d[\d,]*\s*(?:원|KRW|동|VND)|USD\s*\d+(?:\.\d+)?)/i;
+const MONEY_RE = /(?:\$\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:\$|달러|USD)|\d[\d,]*\s*(?:원|KRW|동|VND)|USD\s*\d+(?:\.\d+)?)/i;
 const TOUR_KEYWORD_RE =
-  /(?:선택\s*관광|현지\s*지불\s*옵션|현지지불옵션|강력\s*추천\s*옵션|추천\s*옵션|옵션\s*투어|호핑|투어|마사지|스파|쇼|공연|크루즈|체험|입장권|티켓|케이블카|워터파크|온천|5D|VIP|식사|삼겹살|불고기|양꼬치|송이구이|파라세일링|씨워크|다이빙|parasailling|parasailing|seawalk|diving|massage|spa|show|cruise|ticket|tour)/i;
+  /(?:선택\s*관광|현지\s*지불\s*옵션|현지지불옵션|강력\s*추천\s*옵션|추천\s*옵션|옵션\s*투어|호핑|투어|마사지|스파|쇼|공연|크루즈|체험|입장권|티켓|케이블카|워터파크|온천|5D|VIP|식사|삼겹살|불고기|양꼬치|송이구이|바나나\s*보트|바나나|파라세일링|패러세일링|파라셀링|패러셀링|제트\s*스키|씨\s*워크|씨\s*워킹|다이빙|parasailling|parasailing|seawalk|diving|massage|spa|show|cruise|ticket|tour)/i;
 const NON_OPTION_FEE_RE =
   /(?:가이드|기사|경비|팁|tip|매너팁|마사지\s*팁|캐디\s*팁|캐디팁|캐디피|그린피|카트비|싱글\s*카트|싱글카트|싱글\s*차지|싱글차지|써차지|서차지|surcharge|유류|비자|여권|전자담배|패널티|벌금|공항세|텍스|tax|룸\s*타입|객실|호텔\s*예약|갈라디너|주말\s*플레이|국경일|휴장|티오프|티업|라운딩\s*순서|골프장\s*선택|골프장\s*정보|코스\s*정보|미팅\/?샌딩|송영차량비|차량비|단독차량|현장\s*결제)/i;
 const CATALOG_NOISE_RE =
-  /^(?:기\s*간|상\s*품\s*가|룸\s*타\s*입|인\s*원|포\s*함|불\s*포\s*함|포함\s*사항|불포함\s*사항|비\s*고|R\s*M\s*K|REMARK|쇼핑\s*센터|쇼핑|출\s*발\s*일|판매\s*가|요금표|---)$/i;
+  /^(?:기\s*간|상\s*품\s*가|룸\s*타\s*입|인\s*원|포\s*함|불\s*포\s*함|포\s*함\s*내\s*역|불\s*포\s*함\s*내\s*역|포함\s*사항|불포함\s*사항|선택\s*관광|비\s*고|R\s*M\s*K|REMARK|쇼핑\s*센터|쇼핑|출\s*발\s*일|판매\s*가|요금표|차량|가이드|식사|관광지\s*입장료|여행자\s*보험|숙박료|특식\s*\d+\s*회|---)$/i;
 const NO_OPTION_RE = /(?:노\s*옵션|no\s*option|선택\s*관광\s*(?:없음|무|0\s*회))/i;
 const SHOPPING_DISCLOSURE_RE = /(?:노\s*쇼핑|쇼핑\s*센터|쇼핑\s*\d+\s*회|쇼핑\d+회)/i;
+const DATE_DEPARTURE_FRAGMENT_RE =
+  /^(?:(?:\d{1,2}\s*월\s*)?\d{1,2}(?:\s*,\s*\d{1,2})?\s*일?(?:\s*\[[^\]]+\])?\s*출발|\d{1,2}\s*월\s*\d{1,2})$/i;
 
 function clean(value: string): string {
   return value
@@ -23,9 +25,11 @@ export function isNonCustomerOptionText(value: string | null | undefined): boole
   if (NO_OPTION_RE.test(text)) return true;
   if (SHOPPING_DISCLOSURE_RE.test(text) && !/선택|옵션|현지지불/i.test(text)) return true;
   if (NON_OPTION_FEE_RE.test(text)) return true;
+  if (DATE_DEPARTURE_FRAGMENT_RE.test(text)) return true;
   if (/\d{1,2}[/-]\d{1,2}.*발권/.test(text)) return true;
   if (/^\d{1,2}[/-]\d{1,2}(?:,\s*\d{1,2})*$/.test(compact)) return true;
-  if (/^\d{1,3}$/.test(compact) || /^\d[\d,]*원?$/.test(compact)) return true;
+  if (/^\d{1,3}$/.test(compact) || /^\d[\d,]*원?(?:\/?인)?$/.test(compact)) return true;
+  if (/^(?:왕복\s*)?항공료|유류\s*할증료|현지\s*공항세/i.test(text)) return true;
   return false;
 }
 

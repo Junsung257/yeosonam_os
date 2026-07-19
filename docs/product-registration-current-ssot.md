@@ -1,6 +1,6 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-06-27
+Last updated: 2026-07-13
 
 This is the current operating contract for supplier upload registration, customer mobile landing, and A4 poster readiness.
 
@@ -76,12 +76,22 @@ upload route
 
 ### Customer Open Operational Gate
 
-New supplier uploads are not "auto published." They become automatic customer-open candidates only after the same repeatable gate passes: registration schema, customer copy V2 safe repair, source-backed price/date/flight/hotel/entity checks, `/packages/{id}` proof, `/lp/{id}` proof, and `customer_open_contract`.
+New supplier uploads are not "auto published." They become automatic customer-open candidates only after the same repeatable gate passes: registration schema, customer copy V2 safe repair, source-backed date-level price or source-backed applicable-period price/flight/hotel/entity checks, `/packages/{id}` proof, `/lp/{id}` proof, and `customer_open_contract`.
+
+Customer exposure is decided by publication state and public snapshots, not by `status` or `audit_status` alone. `status` remains the sales/operations state, while `publication_state` is the customer-public state. Customer routes must prefer `public_package_snapshots` and must fail closed when a row has `publication_state in ('approved','published')` but no approved/published snapshot exists. The publish gate writes `package_publish_decisions`; hidden DB pollution, stale proof, broken attraction IDs, risky CTA copy, and unsupported title claims remain blockers even when the renderer can hide the affected section.
+
+Final approval must not mark a package customer-active before the immutable public snapshot and publish decision are saved. The approval API must assemble final title/copy/repair data in memory and send it to `publish_package_snapshot_atomic()` as the package patch; the success path must not stage a separate `travel_packages` update before publication. `public_package_snapshots` upsert, `package_publish_decisions` insert, and the final `travel_packages.status='active'`/`publication_state` update happen inside one database RPC transaction. RPC persistence failure must return `PUBLIC_SNAPSHOT_SAVE_FAILED`, record `audit_report.public_snapshot_error`, and move or keep the package at `status='draft'` with `publication_state='blocked'`.
 
 The operational gate is scripted so release readiness does not depend on memory or one-off audits:
 
 ```bash
 npx tsx scripts/run-customer-open-operational-gate.ts --base=https://www.yeosonam.com
+```
+
+For process-level public snapshot generation auditing, use the read-only field classifier. It must report title, summary, price, itinerary, terms, optional tours, attractions, images, and customer copy as `generated`, `repairable`, or `blocked`, with repair actions that explain what source-backed generation step is missing:
+
+```bash
+npm run audit:public-snapshot-generation -- --json --limit=500
 ```
 
 For a newly saved pending package rehearsal, run:
@@ -92,6 +102,8 @@ npx tsx scripts/rehearse-customer-open-candidate.ts --code=<INTERNAL_CODE> --bas
 
 The rehearsal must run with `autoOpen:false`. A pass means `customer_open_candidate`; a fail must end as `needs_human_source_review` with attempted repairs, remaining blockers, and next action. Do not expose the product to customers from a rehearsal result alone.
 
+Saved package rehearsal includes the final re-proof step by default: after bounded repairs, if the only remaining blockers are `/packages` or `/lp` mobile proof blockers, it must regenerate real `hwp-mobile-browser-proof` evidence and reload `customer_open_contract` before reporting the final state. Use `--skip-proof-refresh` only for a dry diagnostic run where browser proof is intentionally deferred.
+
 Stored mobile proof freshness is part of the same operational contract. A public screen audit can prove the current customer page is clean, but approval, blog, and marketing gates still require non-stale stored `/packages` and `/lp` proof hashes. Use the refresh selector before release work:
 
 ```bash
@@ -100,6 +112,26 @@ npm run refresh:customer-mobile-proofs:apply -- --base=https://www.yeosonam.com 
 ```
 
 The dry run must list only packages whose stored proof is missing, stale, hashless, surface-incomplete, or source-invalid. The apply run reuses the internal mobile proof renderer and must not publish or unpublish products by itself; it only refreshes `audit_report.mobile_browser_proof` and clears proof-required audit markers when the proof passes.
+
+For upload-to-open preparation, pending rows can require the same real browser proof before they are opened. Use the explicit pending selector instead of trusting fetch-only AutoQA output:
+
+```bash
+npm run refresh:customer-mobile-proofs:pending -- --summary-only --json --status=pending_review
+npm run refresh:customer-mobile-proofs:pending -- --apply --base=https://www.yeosonam.com --status=pending_review --limit=20 --batch-size=5
+```
+
+`auto-mobile-fetch-proof` is diagnostic evidence only. It must not satisfy `customer_open_contract`; customer-open proof must be stored with `source='hwp-mobile-browser-proof'` and include `/packages` and `/lp` CTA interaction checks.
+
+Customer title claims are checked again at the public snapshot gate, even when the title generator already cleaned the copy. The same claim policy applies to subtitle, card badges, and LP summary copy so raw supplier title claims cannot re-enter through secondary surfaces. `출발확정` is never allowed in a customer title. `온천` may be a title theme or badge only when source evidence shows a real onsen-themed trip, such as an onsen town/ryokan/hotel/stay/theme, not a single included `온천욕` service. `5성`, `준5성`, or `특급호텔` may appear in customer title/subtitle/badges only when hotel-grade evidence exists in the source hotel/accommodation facts.
+
+If a live sweep finds `active`/`approved` rows that fail `customer_open_contract` or stored mobile proof, treat that as a publication-state drift, not a copy-only issue. First audit, then demote unsafe public statuses so no raw status/API/listing path can treat them as customer-open:
+
+```bash
+npx tsx scripts/audit-package-public-eligibility.ts --status=active,approved --limit=5000 --json
+npx tsx scripts/audit-package-public-eligibility.ts --status=active,approved --limit=5000 --demote-unsafe-public --json
+```
+
+The blog engine depends on the same proof. The `Blog Product Proof Refresh` GitHub Actions workflow runs daily before blog scheduling, refreshes active product proof, and requeues recovered product-backed blog candidates. This is the preferred recovery path for blog product posts blocked only by stale mobile proof; archiving the blog post is the fallback after proof refresh fails or the linked product is no longer customer-openable.
 
 Baseline refresh is also part of this gate. `scripts/refresh-baselines.js` must use environment variables first, load `.env.local` only as a local fallback, accept `SUPABASE_SERVICE_KEY` when `SUPABASE_SERVICE_ROLE_KEY` is absent, and fail during preflight before Playwright when Supabase URL/key values are missing or invalid:
 
@@ -128,7 +160,7 @@ The original supplier text must never be overwritten during preprocessing. The i
 
 Evidence is multi-source. `evidence.rawTextHash` remains the legacy representative hash, but `evidence.sourceDocuments[]` must carry the distinct source records used by registration: `original_raw`, `parser_raw`, `document_raw`, `section_raw`, and `analysis_normalized` when available. Evidence spans with `sourceId` must match the same source document's hash; sourceId/hash cross-wiring is invalid. Legacy spans without `sourceId` may still use the legacy representative hash or any registered source document hash for backward compatibility.
 
-Before any product reaches DB persistence, the result of `registerProductFromRaw()` and bounded micro QA must satisfy `src/lib/product-registration/standard-registration-schema.ts`. The gate is both a Zod runtime validator and a JSON Schema contract for structured-output/eval tooling. A customer-deliverable registration requires source hash evidence, non-empty `product_prices`, non-empty `price_dates`, and itinerary days. Schema failures are not partial successes; they must go to `upload_review_queue` with the preprocessing snapshot and structured diagnostics.
+Before any product reaches DB persistence, the result of `registerProductFromRaw()` and bounded micro QA must satisfy `src/lib/product-registration/standard-registration-schema.ts`. The gate is both a Zod runtime validator and a JSON Schema contract for structured-output/eval tooling. A customer-deliverable registration requires source hash evidence, source-backed customer price evidence, and itinerary days. Date-level prices require non-empty `product_prices` and `price_dates`; supplier documents that only provide an applicable-period price such as `전 출발일` must carry source-backed `price_tiers` with a matching amount and period/departure-day basis. Schema failures are not partial successes; they must go to `upload_review_queue` with the preprocessing snapshot and structured diagnostics.
 
 LLM or structured-output repairs may propose fields, but deterministic validation owns the final decision. Price/date/itinerary evidence that is weak, contradictory, or missing must stay `needs_review`; it must not be saved as a customer-openable package.
 
@@ -173,7 +205,14 @@ The upload verify layer owns these customer-render gates:
 - Shopping review blockers must use the live pending unmatched queue, not stale V3 draft summary counts, because resolved shopping rows are structured schedule facts and must not require attraction master creation.
 - `C16 customer render duration contract`: saved itinerary day count, duplicate day numbers, `itinerary_data.meta.days`, `itinerary_data.meta.nights`, `duration`, `nights`, and `trip_style` must agree. A product such as `2박 3일` must not carry `itinerary_data.meta.nights=1`.
 - `C17 customer render entity contract`: schedule rows that are meals, shopping, options, notices, hotels, transfers, free time, or price noise must not carry attraction cards/photos. Meal-only tokens such as `꿔바로우`, shopping rows such as `면세점 1곳`, and hotel/service rows must not render as normal attraction timeline cards.
+- Attraction enrichment must not stop just because a saved `attraction_query` fails to match. The engine must fall back to the full customer-visible schedule text before creating an unmatched review row, so registered attractions embedded inside a longer activity sentence are not missed. Broad DB repair runs must use additive-only mode first; any removal or metadata-only rewrite remains a review item unless explicitly approved.
+- Mobile/A4 readiness audits must evaluate both `type` and `entity_kind` before reporting an unlinked registered attraction. Transfer, meal, shopping, optional tour, notice, free-time, hotel, flight, and price-noise rows are not attraction visits even when a destination or attraction name appears in the sentence.
+- Mobile/A4 readiness audits must treat the live `unmatched_activities` queue as the current source of truth. `product_registration_drafts.match_summary` may be stale after repair/backfill jobs, so draft unmatched counts are allowed only when the live queue lookup fails, and that lookup failure must be recorded as a data query error. A resolved live queue must not keep products warning-blocked through stale draft counts.
+- The mobile quality engine must run `auto-audit-entity-review-candidates` before final readiness auditing. This step may deterministically reject supplier tokens, price-table fragments, policy notices, and other non-master candidates, but must not create customer-publishable attraction records. Remaining review candidates continue to block or warn through the publish gate.
+- Shopping, optional-tour, notice, and other customer-disclosure candidates are not attraction master candidates. Deterministic rules may mark source-backed shopping stops, option/activity descriptions, hotel-equivalent notes, photo disclaimers, holiday surcharge notices, personal-expense/tip notes, and standard schedule-change notices as `structured_non_master`/`rejected_noise` for master-candidate purposes. This must not invent public option pricing or hide unsupported paid-option claims; optional-tour public rendering remains governed by the source-backed optional-tour contract.
+- V3 entity normalization must keep meal/menu fragments and flight-operation labels out of the attraction review queue. Standalone menu labels such as local dish names, buffet/seafood/lobster/set labels, and flight-operation labels such as regular/extra-flight markers are meal or notice facts, not unresolved attractions. Explicit shopping-stop count disclosures such as known shop categories plus "3 stops/visits" are customer disclosure facts, not attraction master candidates. Real place names that remain unmatched still go to the existing review queue; do not auto-create attraction masters.
 - `C18 customer visible copy V2`: customer-visible DB fields and actual `/packages/{id}` plus `/lp/{id}` body text must be checked with the same deterministic copy-quality rules. Safe repairs include HTML entity decode, RMK/P.P/backslash price cleanup, `OR` -> `또는`, `월기준` spacing, `기사가이드경비` wording, `바나산 정산` -> `바나산 정상`, and low-information action sentences such as `OO로 이동합니다` -> `OO 이동`. Unsafe issues such as mojibake, internal/operator terms, and unresolved attraction placeholders remain blocking. Duplicate checks must target real customer-section duplication such as optional tour vs inclusion/highlight, not internal render helper fields such as `entity_kind`, `attraction_query`, `a4_sentence`, or `landing_sentence`.
+- Public snapshots and customer payloads must recursively strip internal nested keys before rendering or storage. `랜드사`, `거래처`, `공급가`, `원가`, `마진`, `커미션`, `정산`, `관리자노트`, `내부메모`, `supplier`, `operator`, `commission`, and equivalent internal price/operator fields are never customer-visible, even when hidden inside `itinerary_data`, `optional_tours`, or nested product objects. Customer-facing fee lines such as guide expense remain allowed when they do not expose internal settlement or margin information.
 
 These gates are not optional advisory checks. If any fail, the product can be saved for review, but it is not customer-openable and must not be described as mobile-landing-ready.
 
@@ -435,6 +474,8 @@ price success =
 If a `product_prices` date is missing from `price_dates`, the registration is not customer-ready because the customer calendar can hide a sellable option.
 
 Customer pages must never read or serialize internal `net_price` as the customer selling price. Customer-safe price payloads use `adult_selling_price`.
+Public snapshots must derive representative customer price from the minimum positive `product_prices.adult_selling_price` first, then `price_dates`. If the source explicitly provides an applicable-period basis such as `전 출발일` plus a matching adult selling price and departure-weekday/period evidence, source-backed `price_tiers` may provide the representative price even when exact `price_dates` are unavailable. A stale or internal top-level `price` must not override customer option rows and must never be used alone.
+For the same `target_date` and same customer option/variant, conflicting positive `adult_selling_price` values are blocking. If `adult_selling_price` is absent, the gate may fall back to `net_price` for conflict detection, but customer-ready rows still require a positive `adult_selling_price`.
 
 The central registration object must populate `product_prices.adult_selling_price` from `net_price` before the deliverability gate when no approved selling override exists. If a positive `product_prices.net_price` still has no positive `adult_selling_price` at gate time, customer deliverability is blocked.
 
@@ -733,7 +774,9 @@ node --check scripts/audit-product-mobile-landing-readiness.mjs
 
 After deployment or remote DB/data changes, run the live readiness audit with `npm run verify:product-registration-learning:live`, `npm run verify:product-registration-live-samples:ci`, or `npm run audit:product-mobile-readiness:public` using the appropriate filters. Public release handoff must include the public HTML proof path (`--verify-public-html`) so a stale or broken `/packages/{id}` customer page cannot be reported as ready from DB/V3/A4 checks alone. Before release handoff, run `npm run verify:product-registration-learning:full` so the same regression gates, stored live-sample learning verification, live audit, and production build pass together.
 
-The strict live audit must fail customer-visible samples when the latest V3 draft is `blocked`, `needs_review`, or missing. For attraction matching, the latest `product_registration_drafts.match_summary.attraction_unmatched_count` is authoritative; the legacy `unmatched_activities` queue is only a fallback when no draft summary exists, and only unresolved pending rows count.
+The strict live audit must fail customer-visible samples when the latest V3 draft is `blocked`, `needs_review`, or missing. For non-public rows, stale V3 draft `needs_review` may be downgraded only when the current live unmatched/entity queues are clean, the draft gate has no explicit reasons, all remaining failed checks are stale match-summary queue checks, the live queue lookup succeeded, and the row has no current mobile/A4 readiness blockers. Flight, price, render, inclusion, option-publication, and other non-queue failed checks still block. This is a stale-state classification, not customer approval; a fresh V3 draft, public snapshot, and mobile proof are still required before publication. For attraction matching, the live `unmatched_activities` queue is authoritative because it reflects current repair/backfill state. `product_registration_drafts.match_summary.attraction_unmatched_count` is a fallback only when the live queue lookup itself fails, and that failure must keep the audit from reporting a fully clean data surface.
+
+Non-public readiness warnings must name the real hold state. `needs_human_source_review` is reserved for rows that genuinely require a human to inspect the source; expired ticketing-deadline offers are `source_offer_expired_nonblocking`, and rows that need deterministic reprocessing or a fresh publish-gate pass but explicitly do not require human source review are `nonpublic_repair_review_required`. These labels do not make a product customer-openable; they prevent operators and agents from treating expired or repair-pending rows as manual content cleanup work.
 
 When a live data sweep finds customer-invisible rows that fail mobile/A4 readiness, `npx tsx scripts/audit-product-mobile-landing-readiness.mjs --days=3650 --limit=2000 --json --archive-failed-nonpublic` may be used to quarantine those rows as `archived` with `audit_status=blocked` and an `audit_report`. This does not delete source data and must not be used to bypass the public V3 gate; public failures use `--demote-unsafe-public` instead.
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 
 interface RecentPkg {
   id: string;
@@ -45,6 +46,13 @@ function getComparisonBadges(pkg: RecentPkg): string[] {
   if (duration) badges.push(duration.replace(/\s+/g, ''));
   if (/직항|에어부산|이스타|티웨이|진에어|대한항공|아시아나/.test(source)) badges.push('항공 포함');
   return Array.from(new Set(badges)).slice(0, 3);
+}
+
+function getRecentCustomerTitle(pkg: RecentPkg): string {
+  return buildCustomerPackageDisplayCopy({
+    title: pkg.title,
+    destination: pkg.destination,
+  }).cardTitle;
 }
 
 function normalizeRecentPackages(value: unknown): RecentPkg[] {
@@ -156,14 +164,14 @@ export default function RecentViews({ customerId, sessionId, currentPackageId }:
           <Link
             key={pkg.id}
             href={`/packages/${encodeURIComponent(pkg.id)}`}
-            aria-label={`${pkg.title} 자세히 비교하기`}
+            aria-label={`${getRecentCustomerTitle(pkg)} 자세히 비교하기`}
             className="flex min-h-[176px] w-[82vw] max-w-[320px] flex-shrink-0 snap-start flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all card-touch hover:border-slate-300 hover:shadow-md"
           >
             <p className="text-[11px] font-bold text-slate-500 mb-1 line-clamp-1">
               {pkg.destination}
             </p>
             <p className="text-[15px] font-extrabold text-slate-950 leading-snug line-clamp-2 mb-3 min-h-[2.65em]">
-              {pkg.title}
+              {getRecentCustomerTitle(pkg)}
             </p>
             {type === 'similar' && (
               <div className="mb-4 flex flex-wrap gap-1.5">

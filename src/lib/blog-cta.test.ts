@@ -62,8 +62,8 @@ describe('blog CTA helpers', () => {
       utmSource: 'naver_blog',
     });
 
-    expect(markdown).toContain('[관련 패키지 보기](https://www.yeosonam.com/packages?');
-    expect(markdown).toContain('[여소남에서 상담 이어가기](https://www.yeosonam.com/?');
+    expect(markdown).toContain('https://www.yeosonam.com/packages?');
+    expect(markdown).toContain('https://www.yeosonam.com/?');
     expect(markdown).toContain('utm_content=packages_bottom');
     expect(markdown).toContain('utm_content=site_consult');
 
@@ -86,5 +86,24 @@ describe('blog CTA helpers', () => {
     const internalLinks = result.details.find((detail) => detail.name === 'internal_links_cta');
     expect(internalLinks?.message).toMatch(/cta [23]/);
     expect(internalLinks?.status).not.toBe('fail');
+  });
+
+  it('varies standard CTA labels by slug while keeping tracked links', () => {
+    const first = buildStandardBlogCtaMarkdown({
+      destination: '몽골',
+      slug: 'mongolia-food-budget',
+      baseUrl: 'https://www.yeosonam.com',
+    });
+    const second = buildStandardBlogCtaMarkdown({
+      destination: '몽골',
+      slug: 'mongolia-shopping-budget',
+      baseUrl: 'https://www.yeosonam.com',
+    });
+
+    expect(first).not.toBe(second);
+    expect(first).toContain('utm_content=packages_bottom');
+    expect(second).toContain('utm_content=packages_bottom');
+    expect(first).toContain('https://pf.kakao.com/_xfxnFj/chat');
+    expect(second).toContain('https://pf.kakao.com/_xfxnFj/chat');
   });
 });

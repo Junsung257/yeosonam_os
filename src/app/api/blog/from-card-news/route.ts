@@ -16,6 +16,8 @@ import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 import { safeEqualString } from '@/lib/timing-safe';
 import { filterReachableImageUrls } from '@/lib/card-news-slide-urls';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
 export const maxDuration = 240;
@@ -45,7 +47,12 @@ function isPublisherBridge(request: NextRequest, body: { publisher_bridge?: bool
  *   6. card_news.linked_blog_id 업데이트 — publisher_bridge 시 생략
  */
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  const cronBridgeAuthorized = Boolean(request.headers.get('authorization'))
+    && isPublisherBridge(request, { publisher_bridge: true });
+  if (!cronBridgeAuthorized) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+  }
 
   try {
     const body = await request.json();
@@ -55,12 +62,14 @@ export async function POST(request: NextRequest) {
       publisher_bridge?: boolean;
     };
 
-    if (publisher_bridge && !isPublisherBridge(request, body)) {
+    if (Boolean(publisher_bridge) !== cronBridgeAuthorized) {
       return NextResponse.json(
-        { error: 'publisher_bridge는 CRON_SECRET Bearer 인증이 있을 때만 허용됩니다.' },
+        { error: 'publisher_bridge는 CRON_SECRET Bearer 인증과 함께만 사용할 수 있습니다.' },
         { status: 403 },
       );
     }
+
+    if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
     if (!card_news_id) {
       return NextResponse.json({ error: 'card_news_id 필수' }, { status: 400 });
@@ -103,13 +112,11 @@ export async function POST(request: NextRequest) {
       productId = cn.package_id;
       angleType = (cn as Record<string, unknown>).angle_type as string || 'value';
 
-      const { data: pkg } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, duration, nights, price, price_tiers, price_dates, inclusions, excludes, product_type, airline, departure_airport, product_highlights, itinerary, itinerary_data, optional_tours, notices_parsed')
-        .eq('id', cn.package_id)
-        .single();
-      if (!pkg) return NextResponse.json({ error: '연결된 상품을 찾을 수 없습니다.' }, { status: 404 });
-      productData = pkg;
+      const publicPackage = await loadPublicContentPackageForGeneration(String(cn.package_id));
+      if (!publicPackage) {
+        return NextResponse.json({ error: '고객 공개 승인된 상품만 블로그 생성에 사용할 수 있습니다.' }, { status: 404 });
+      }
+      productData = publicPackage;
 
       // Brief 없으면 즉석 생성 (기존 카드뉴스 호환)
       if (!brief) {
@@ -117,7 +124,7 @@ export async function POST(request: NextRequest) {
           brief = await generateContentBrief({
             mode: 'product',
             slideCount: Math.max(3, cardNewsImages.length || 6),
-            product: pkg,
+            product: publicPackage,
             angle: angleType,
           });
         } catch (err) {

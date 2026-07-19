@@ -2,8 +2,12 @@ import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { getFallbackBlogPosts } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 const BASE_URL = resolveBlogCanonicalOrigin();
 const PACKAGE_LIMIT = 1000;
@@ -19,6 +23,19 @@ type SitemapQueryResponse<T> = {
 type ActiveDestinationSitemapRow = {
   destination: string | null;
   package_count?: number | string | null;
+};
+
+type PublicPackageDestinationSitemapRow = {
+  id: string | null;
+  destination: string | null;
+  status?: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
 };
 
 export const revalidate = 3600;
@@ -54,6 +71,24 @@ function isAbortLikeError(err: unknown): boolean {
   return false;
 }
 
+function isSitemapPublicSnapshotCandidate(row: PublicPackageDestinationSitemapRow): boolean {
+  return isPublicPublicationState(row.publication_state)
+    && isCustomerPubliclyOpenable(row as unknown as Record<string, unknown>);
+}
+
+async function fetchSitemapPublicSnapshotRows(rows: PublicPackageDestinationSitemapRow[]): Promise<PublicPackageDestinationSitemapRow[]> {
+  if (rows.length === 0) return [];
+  try {
+    return await fetchAndMergeCurrentPublicPackageCardSnapshots(
+      supabaseAdmin,
+      rows as unknown as Array<Record<string, unknown>>,
+    ) as unknown as PublicPackageDestinationSitemapRow[];
+  } catch (error) {
+    console.warn('[sitemap] public snapshot merge failed; hiding package destination URLs:', error);
+    return [];
+  }
+}
+
 async function runSitemapQuery<T>(
   label: string,
   queryFactory: (signal: AbortSignal) => PromiseLike<SitemapQueryResponse<T>>,
@@ -83,6 +118,7 @@ async function runSitemapQuery<T>(
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const routes: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
+    { url: `${BASE_URL}/group`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 },
     { url: `${BASE_URL}/private-tour`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
     { url: `${BASE_URL}/packages`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
     { url: `${BASE_URL}/destinations`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
@@ -93,12 +129,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
   ];
 
-  const [activeDests, queriedPosts] = await Promise.all([
-    runSitemapQuery<ActiveDestinationSitemapRow>('destinations', (signal) =>
+  const [packageDestinations, queriedPosts] = await Promise.all([
+    runSitemapQuery<PublicPackageDestinationSitemapRow>('destinations', (signal) =>
       supabaseAdmin
-        .from('active_destinations')
-        .select('destination, package_count')
-        .limit(DESTINATION_LIMIT)
+        .from('travel_packages')
+        .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published'])
+        .not('destination', 'is', null)
+        .limit(PACKAGE_LIMIT)
         .abortSignal(signal),
     ),
     runSitemapQuery<{
@@ -107,10 +146,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       angle_type: string | null;
       published_at: string | null;
       updated_at: string | null;
+      product_id: string | null;
+      generation_meta: Record<string, unknown> | null;
     }>('blog', (signal) =>
       supabaseAdmin
-        .from('content_creatives')
-        .select('slug, destination, angle_type, published_at, updated_at')
+        .from(PUBLIC_BLOG_READ_SOURCE)
+        .select('slug, destination, angle_type, published_at, updated_at, product_id, generation_meta')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
         .not('slug', 'is', null)
@@ -119,11 +160,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .abortSignal(signal),
     ),
   ]);
-  const posts = queriedPosts.length > 0
-    ? queriedPosts
-    : getFallbackBlogPosts().filter((post) => post.detail_available);
+  const canonicalPosts = queriedPosts;
 
-  for (const d of activeDests) {
+  const snapshotDestinations = await fetchSitemapPublicSnapshotRows(
+    packageDestinations.filter(isSitemapPublicSnapshotCandidate),
+  );
+  const publicDestinations = new Map<string, ActiveDestinationSitemapRow>();
+  for (const pkg of snapshotDestinations) {
+    const destination = pkg.destination?.trim();
+    if (!destination) continue;
+    const current = publicDestinations.get(destination) ?? { destination, package_count: 0 };
+    current.package_count = Number(current.package_count ?? 0) + 1;
+    publicDestinations.set(destination, current);
+    if (publicDestinations.size >= DESTINATION_LIMIT) break;
+  }
+
+  for (const d of publicDestinations.values()) {
     const destination = getSafeSitemapDestination(d);
     if (destination) {
       routes.push({
@@ -139,7 +191,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const destinations = new Set<string>();
   const anglesWithPosts = new Set<string>();
 
-  for (const post of posts) {
+  for (const post of canonicalPosts) {
     const destination = post.destination?.trim();
     if (destination) destinations.add(destination);
     if (post.angle_type && angles.has(post.angle_type)) {
@@ -165,7 +217,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     });
   }
 
-  for (const post of posts) {
+  for (const post of canonicalPosts) {
     if (isSafeSitemapBlogSlug(post.slug)) {
       routes.push({
         url: `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`,

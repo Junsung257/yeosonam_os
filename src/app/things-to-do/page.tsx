@@ -10,6 +10,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
 
 export const revalidate = 86400; // 1d
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,12 @@ interface AttractionPhoto {
   src_large?: string;
 }
 
+type AttractionRegionRow = AttractionData & {
+  region?: string | null;
+  photos?: AttractionPhoto[] | null;
+  mention_count?: number | null;
+};
+
 function normalizeRegionName(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -43,7 +50,9 @@ async function getRegions(): Promise<RegionEntry[]> {
   try {
     const { data: regionRows } = await supabaseAdmin
       .from('attractions')
-      .select('region')
+      .select('region, name, category, badge_type, is_active, customer_publishable')
+      .eq('is_active', true)
+      .eq('customer_publishable', true)
       .not('region', 'is', null)
       .order('mention_count', { ascending: false })
       .limit(4000);
@@ -51,14 +60,19 @@ async function getRegions(): Promise<RegionEntry[]> {
     if (!regionRows) return [];
     const { data: coverRows } = await supabaseAdmin
       .from('attractions')
-      .select('region, photos')
+      .select('region, photos, name, category, badge_type, is_active, customer_publishable')
+      .eq('is_active', true)
+      .eq('customer_publishable', true)
       .not('region', 'is', null)
       .not('photos', 'is', null)
       .order('mention_count', { ascending: false })
       .limit(450);
 
+    const safeRegionRows = ((regionRows ?? []) as AttractionRegionRow[]).filter(isCustomerRenderableAttraction);
+    const safeCoverRows = ((coverRows ?? []) as AttractionRegionRow[]).filter(isCustomerRenderableAttraction);
+
     const map = new Map<string, RegionEntry>();
-    for (const r of regionRows) {
+    for (const r of safeRegionRows) {
       const region = normalizeRegionName(r.region);
       if (!region) continue;
       if (!map.has(region)) map.set(region, { region, count: 0, cover: null });
@@ -66,7 +80,7 @@ async function getRegions(): Promise<RegionEntry[]> {
       e.count += 1;
     }
 
-    for (const r of coverRows ?? []) {
+    for (const r of safeCoverRows) {
       const region = normalizeRegionName(r.region);
       if (!region) continue;
       const e = map.get(region);

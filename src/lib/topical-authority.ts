@@ -15,6 +15,13 @@
  */
 
 import { supabaseAdmin } from './supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from './visibility-status';
+import {
+  rankBlogInformationalRelatedLinks,
+  readBlogInformationalLinkCandidate,
+  type BlogInformationalLinkContext,
+} from './blog-informational-related-links';
+import { readBlogInformationRepresentativeIdentity } from './blog-information-representative';
 
 const MAX_CLUSTERS_PER_PILLAR = 12;
 const MAX_SIBLINGS_FOR_CLUSTER = 4;
@@ -102,9 +109,68 @@ export async function appendInterlinkSection(
   blogHtml: string,
   slug: string,
   destination: string | null,
+  informationContext?: {
+    generationMeta?: Record<string, unknown> | null;
+    contentType?: string | null;
+    pillarFor?: string | null;
+  },
 ): Promise<string> {
   if (!destination) return blogHtml;
   if (blogHtml.includes('## 이 글과 함께 읽기')) return blogHtml;  // 이미 있음
+
+  const informationIdentity = readBlogInformationRepresentativeIdentity(
+    informationContext?.generationMeta,
+  );
+  if (informationIdentity) {
+    const { data: candidateRows } = await supabaseAdmin
+      .from('content_creatives')
+      .select('id, slug, seo_title, destination, status, content_type, pillar_for, target_audience, published_at, generation_meta')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
+      .neq('slug', slug)
+      .order('published_at', { ascending: false })
+      .limit(100);
+
+    const sourceMeta = informationContext?.generationMeta || {};
+    const source: BlogInformationalLinkContext = {
+      slug,
+      destination,
+      destinationId: informationIdentity.destinationId,
+      intent: informationIdentity.intent,
+      audience: informationIdentity.audience,
+      locale: informationIdentity.locale,
+      contentType: informationContext?.contentType,
+      pillarFor: informationContext?.pillarFor,
+      clusterId: typeof sourceMeta.editorial_cluster_id === 'string'
+        ? sourceMeta.editorial_cluster_id
+        : null,
+    };
+    const candidates = ((candidateRows || []) as Array<Record<string, unknown>>).flatMap((row) => {
+      const candidate = readBlogInformationalLinkCandidate({
+        id: String(row.id || ''),
+        slug: String(row.slug || ''),
+        title: typeof row.seo_title === 'string' ? row.seo_title : null,
+        destination: typeof row.destination === 'string' ? row.destination : null,
+        status: typeof row.status === 'string' ? row.status : null,
+        contentType: typeof row.content_type === 'string' ? row.content_type : null,
+        pillarFor: typeof row.pillar_for === 'string' ? row.pillar_for : null,
+        targetAudience: typeof row.target_audience === 'string' ? row.target_audience : null,
+        publishedAt: typeof row.published_at === 'string' ? row.published_at : null,
+        generationMeta: row.generation_meta && typeof row.generation_meta === 'object'
+          ? row.generation_meta as Record<string, unknown>
+          : null,
+      });
+      return candidate ? [candidate] : [];
+    });
+    const rankedLinks = rankBlogInformationalRelatedLinks(source, candidates, 6);
+    if (rankedLinks.length === 0) return blogHtml;
+
+    const linksMarkdown = rankedLinks
+      .map((entry) => `- [${entry.anchorText}](/blog/${entry.candidate.slug})`)
+      .join('\n');
+    return insertInterlinkMarkdown(blogHtml, linksMarkdown);
+  }
 
   // 이 글이 pillar인지 cluster인지 판별
   const { data: thisPostRows } = await supabaseAdmin
@@ -170,6 +236,10 @@ export async function appendInterlinkSection(
 
   if (!linksMarkdown) return blogHtml;
 
+  return insertInterlinkMarkdown(blogHtml, linksMarkdown);
+}
+
+function insertInterlinkMarkdown(blogHtml: string, linksMarkdown: string): string {
   const interlinkSection = `\n\n## 이 글과 함께 읽기\n\n${linksMarkdown}\n`;
 
   // CTA 섹션이 마지막에 있으면 그 직전에, 없으면 끝에
@@ -191,7 +261,7 @@ export async function rebuildAllClusters(): Promise<{
   const { data: pkgs } = await supabaseAdmin
     .from('travel_packages')
     .select('destination')
-    .in('status', ['approved', 'active']);
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
   const destinations = Array.from(new Set(
     ((pkgs || []) as Array<{ destination: string | null }>)

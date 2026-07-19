@@ -14,6 +14,7 @@ import LedgerStatusChip from './_components/LedgerStatusChip';
 import { calcSettlementAccounting } from '@/lib/settlement-accounting';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
+import { parseBankStatementRows } from '@/lib/settlement-import/bank-statement-parser';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,9 @@ const MATCH_COLORS: Record<string, string> = {
 };
 
 function importActionBadge(action?: ImportRow['importAction']) {
+  if (action === 'ignored_non_travel') return { label: '여행 메모 없음', cls: 'bg-slate-100 text-slate-600 border-slate-200' };
+  if (action === 'memo_updated') return { label: '메모 수정 반영', cls: 'bg-blue-50 text-blue-700 border-blue-200' };
+  if (action === 'memo_changed_review') return { label: '메모 변경 검토', cls: 'bg-red-50 text-red-700 border-red-200' };
   if (action === 'already_processed') return { label: '이미 처리됨', cls: 'bg-slate-100 text-slate-700 border-slate-200' };
   if (action === 'merge_candidate') return { label: '같은 거래 병합', cls: 'bg-blue-50 text-blue-700 border-blue-200' };
   if (action === 'duplicate_review') return { label: '중복 의심', cls: 'bg-amber-50 text-amber-700 border-amber-200' };
@@ -350,29 +354,25 @@ interface ImportRow {
   receivedAt: string; depositAmount: number; withdrawAmount: number;
   counterpartyName: string; memo: string;
   matchStatus?: string; confidence?: number; bookingNo?: string; customerName?: string;
-  importAction?: 'insert' | 'already_processed' | 'merge_candidate' | 'duplicate_review';
+  importAction?: 'insert' | 'already_processed' | 'merge_candidate' | 'duplicate_review' | 'ignored_non_travel' | 'memo_updated' | 'memo_changed_review';
   existingTxId?: string | null; existingMatchStatus?: string | null; duplicateConfidence?: number;
+  accountNumber?: string; originalLine?: string; rowIndex?: number;
   include?: boolean;
 }
 
 function parseTSV(text: string): ImportRow[] {
-  return text.trim().split('\n')
-    .filter(l => l.trim() && !l.startsWith('거래일시'))
-    .map(line => {
-      const [dateTime, deposit, withdraw, counterparty, memo] = line.split('\t');
-      if (!dateTime?.trim()) return null;
-      const dt = dateTime.trim();
-      const receivedAt = dt.length >= 16 ? `${dt.replace(' ', 'T')}:00+09:00` : new Date().toISOString();
-      return {
-        receivedAt,
-        depositAmount:  parseInt((deposit  || '0').replace(/,/g, ''), 10) || 0,
-        withdrawAmount: parseInt((withdraw || '0').replace(/,/g, ''), 10) || 0,
-        counterpartyName: (counterparty || '').trim(),
-        memo: (memo || '').trim(), include: true,
-      };
-    })
-    .filter((r): r is NonNullable<typeof r> =>
-      r !== null && (r.depositAmount > 0 || r.withdrawAmount > 0)) as ImportRow[];
+  const parsedRows = parseBankStatementRows(text).map(row => ({
+    receivedAt: row.receivedAt,
+    depositAmount: row.depositAmount,
+    withdrawAmount: row.withdrawAmount,
+    counterpartyName: row.counterpartyName,
+    memo: row.memo,
+    accountNumber: row.accountNumber,
+    originalLine: row.originalLine,
+    rowIndex: row.rowIndex,
+    include: row.include,
+  }));
+  return parsedRows;
 }
 
 // ─── 메인 페이지 ───────────────────────────────────────────────────────────────
@@ -510,8 +510,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [importStep, setImportStep] = useState<'paste' | 'preview' | 'done'>('paste');
   const [pasteText, setPasteText] = useState('');
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
-  const [importResult, setImportResult] = useState<{ inserted: number; duplicates: number; merged?: number; errors: number; matched: number; firstError?: string } | null>(null);
+  const [importResult, setImportResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; firstError?: string } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [clobeSyncing, setClobeSyncing] = useState(false);
+  const [clobeSyncResult, setClobeSyncResult] = useState<{ inserted: number; skipped?: number; duplicates: number; merged?: number; errors: number; matched: number; memoUpdated?: number; memoChangedReview?: number; normalized?: number; firstError?: string | null } | null>(null);
 
   function showToast(msg: string, type: 'ok' | 'err' = 'ok') {
     setToast({ msg, type });
@@ -931,6 +933,29 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   // ── 소프트 삭제 (5초 Undo) ──────────────────────────────────────────────────
 
+  async function handleClobeSync() {
+    setClobeSyncing(true);
+    try {
+      const res = await fetch('/api/bank-transactions/sync-clobe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 200 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Clobe sync failed', 'err');
+        return;
+      }
+      setClobeSyncResult(data);
+      showToast(`Clobe sync: new ${data.inserted || 0}, matched ${data.matched || 0}, memo review ${data.memoChangedReview || 0}`);
+      load(); loadErp(); loadOpsQueue();
+    } catch {
+      showToast('Clobe sync failed', 'err');
+    } finally {
+      setClobeSyncing(false);
+    }
+  }
+
   function handleTrashSingle(tx: BankTransaction) {
     setTransactions(prev => prev.filter(t => t.id !== tx.id));
 
@@ -1188,6 +1213,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
             {bulkProcessing ? '처리 중...' : '일괄 자동 매칭'}
           </button>
+          <button type="button" onClick={handleClobeSync} disabled={clobeSyncing} aria-busy={clobeSyncing}
+            className="px-3 py-2 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition">
+            {clobeSyncing ? 'Clobe syncing...' : 'Clobe sync'}
+          </button>
           <button type="button" onClick={() => setShowImport(true)}
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
             과거 내역 가져오기
@@ -1200,6 +1229,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       </div>
 
       {/* ── 사장님용 정산판 ─────────────────────────────────────────────────── */}
+      {clobeSyncResult && (
+        <div className="mb-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+          Clobe sync result: normalized {clobeSyncResult.normalized ?? 0}, new {clobeSyncResult.inserted}, matched {clobeSyncResult.matched}, memo updated {clobeSyncResult.memoUpdated ?? 0}, memo review {clobeSyncResult.memoChangedReview ?? 0}, merged {clobeSyncResult.merged ?? 0}, duplicates {clobeSyncResult.duplicates}, skipped {clobeSyncResult.skipped ?? 0}, errors {clobeSyncResult.errors}
+          {clobeSyncResult.firstError ? ` / first error: ${clobeSyncResult.firstError}` : ''}
+        </div>
+      )}
+
       <PaymentOpsQueue
         activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow' ? tab : undefined}
         counts={{
@@ -2135,12 +2171,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             {importStep === 'done' && importResult && (
               <div className="p-8 text-center">
                 <p className="text-admin-lg font-semibold text-admin-text-2 mb-4">등록 완료</p>
-                <div className="grid grid-cols-5 gap-4 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                   {[
                     { label: '신규 등록', val: importResult.inserted, cls: 'bg-white border-emerald-200 text-emerald-700' },
                     { label: '기존 병합', val: importResult.merged ?? 0, cls: 'bg-white border-slate-200 text-slate-700' },
                     { label: '자동 매칭', val: importResult.matched,  cls: 'bg-white border-blue-200 text-blue-700' },
                     { label: '중복 스킵', val: importResult.duplicates, cls: 'bg-white border-admin-border-mid text-admin-muted' },
+                    { label: '건너뜀', val: importResult.skipped ?? 0, cls: 'bg-white border-slate-200 text-slate-600' },
                     { label: '오류',     val: importResult.errors,   cls: 'bg-white border-red-200 text-red-600' },
                   ].map(({ label, val, cls }) => (
                     <div key={label} className={`border rounded-lg p-3 ${cls}`}>

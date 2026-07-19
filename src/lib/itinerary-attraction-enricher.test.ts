@@ -34,6 +34,44 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(res.unmatchedCandidates).toHaveLength(0);
   });
 
+  it('falls back to scanning full activity text when attraction_query has no match', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 3,
+            schedule: [
+              {
+                activity: '\uC808\uBCBD\uC5D0 \uC0C8\uACA8\uC9C4 \uD669\uAE08\uBD88\uC0C1 \uD669\uAE08\uC808\uBCBD\uC0AC\uC6D0 \uAD00\uAD11(\uCF54\uB07C\uB9AC \uD2B8\uB798\uD0B9 \uCCB4\uD5D8)',
+                type: 'normal',
+                entity_kind: 'attraction visit',
+                attraction_query: '\uC808\uBCBD\uC5D0 \uC0C8\uACA8\uC9C4 \uD669\uAE08\uBD88\uC0C1 \uD669\uAE08\uC808\uBCBD\uC0AC\uC6D0',
+                attraction_queries: ['\uC808\uBCBD\uC5D0 \uC0C8\uACA8\uC9C4 \uD669\uAE08\uBD88\uC0C1 \uD669\uAE08\uC808\uBCBD\uC0AC\uC6D0'],
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'elephant-trekking',
+          name: '\uCF54\uB07C\uB9AC \uD2B8\uB798\uD0B9',
+          region: '\uD30C\uD0C0\uC57C',
+          country: 'TH',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '\uBC29\uCF55/\uD30C\uD0C0\uC57C',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['elephant-trekking']);
+    expect(item.attraction_names).toEqual(['\uCF54\uB07C\uB9AC \uD2B8\uB798\uD0B9']);
+    expect(res.unmatchedCandidates).toHaveLength(0);
+  });
+
   it('does not direct-scan long MRT product titles as attraction cards', () => {
     const res = enrichItineraryWithAttractionReferences(
       {
@@ -60,6 +98,156 @@ describe('enrichItineraryWithAttractionReferences', () => {
     const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
     expect(item.attraction_ids).toBeUndefined();
     expect(res.matchedScheduleItemCount).toBe(0);
+  });
+
+  it('does not attach customer-hidden ticket or discount products as attraction cards', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { activity: '푸꾸옥 빈펄 사파리와 선셋타운 관광' },
+              { activity: '공항 패스트트랙 및 노보텔 뷔페 안내' },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'ticket-1',
+          name: '푸꾸옥 빈펄 사파리 빈원더스 콤보 QR티켓 입장권 패스트패스',
+          region: '푸꾸옥',
+          country: 'VN',
+          category: 'sightseeing',
+          badge_type: 'special',
+          customer_publishable: false,
+        },
+        {
+          id: 'discount-1',
+          name: '5월 한정 노보텔 뷔페 50%할인 /베트남 푸꾸옥 공항 패스트트랙 입국/출국 심사 생략!',
+          region: '푸꾸옥',
+          country: 'VN',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: false,
+        },
+        {
+          id: 'sunset-town',
+          name: '선셋타운',
+          region: '푸꾸옥',
+          country: 'VN',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '푸꾸옥',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toEqual(['sunset-town']);
+    expect(schedule[1].attraction_ids).toBeUndefined();
+  });
+
+  it('does not fuzzy-match unscoped generic museums unless the canonical name appears', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { activity: '태국의 역사, 문화, 종교, 건축 문화를 축약한 세계 최대의 야외 박물관 무앙보란 관광' },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'marine-museum',
+          name: '해양박물관',
+          aliases: ['박물관'],
+          category: 'museum',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+        {
+          id: 'muang-boran',
+          name: '무앙보란',
+          region: '방콕',
+          country: 'TH',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '방콕',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['muang-boran']);
+    expect(item.attraction_names).toEqual(['무앙보란']);
+  });
+
+  it('prefers the more specific attraction when names overlap in one schedule row', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { activity: '두만강 강변공원 일정을 진행합니다' },
+            ],
+          },
+        ],
+      },
+      [
+        { id: 'river', name: '두만강', region: '연길', country: 'CN', customer_publishable: true },
+        { id: 'river-park', name: '두만강 강변공원', region: '연길', country: 'CN', customer_publishable: true },
+      ],
+      '연길',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toEqual(['river-park']);
+  });
+
+  it('keeps attraction cards for customer-visible perk rows with visit hints', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              {
+                activity: '\uD478\uAFB8\uC625\uC758 \uC791\uC740 \uC720\uB7FD, \uC120\uC14B\uD0C0\uC6B4 \uC804\uB3D9\uCE74 \uCCB4\uD5D8',
+                entity_kind: 'perk',
+              },
+              {
+                activity: '\uC120\uD0DD\uAD00\uAD11 \uC120\uC14B\uD0C0\uC6B4 \uD22C\uC5B4 $30',
+                entity_kind: 'optional_tour',
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'sunset-town',
+          name: '\uC120\uC14B\uD0C0\uC6B4',
+          region: '\uD478\uAFB8\uC625',
+          country: 'VN',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '\uD478\uAFB8\uC625',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toEqual(['sunset-town']);
+    expect(schedule[1].attraction_ids).toBeUndefined();
   });
 
   it('removes stale non-sightseeing attraction ids such as eSIM data products', () => {
@@ -297,6 +485,75 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(shouldAttemptAttractionMatch({ activity: '\uC11D:\uC0BC\uACB9\uC0B4', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '$30/\uC778 \uBC1C\uC81C\uC678/\uD301\uBCC4\uB3C4', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '\uC9C4\uB2EC\uB798\uAD11\uC7A5', type: 'normal' })).toBe(true);
+  });
+
+  it('does not attach attraction cards to meal rows written with hyphen separators', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              { activity: '중-분짜+반쎄오', type: 'normal' },
+              { activity: '석-샤브샤브', type: 'normal' },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'tower-1',
+          name: '침향타워',
+          region: '나트랑',
+          country: 'VN',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '나트랑',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toBeUndefined();
+    expect(schedule[1].attraction_ids).toBeUndefined();
+    expect(res.matchedScheduleItemCount).toBe(0);
+  });
+
+  it('ignores polluted customer aliases while still matching the canonical attraction name', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              { activity: '\uC911-\uBD84\uC9DC+\uBC18\uC384\uC624', type: 'normal' },
+              { activity: '\uBBFC\uC18C\uB9E4\uD2F0, \uBC18\uBC14\uC9C0 \uAC00\uB2A5', type: 'normal' },
+              { activity: '\uCE68\uD5A5\uD0C0\uC6CC \uBC29\uBB38', type: 'normal' },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'tower-1',
+          name: '\uCE68\uD5A5\uD0C0\uC6CC',
+          aliases: ['\uC911-\uBD84\uC9DC+\uBC18\uC384\uC624', '\uBBFC\uC18C\uB9E4\uD2F0', '\uBC18\uBC14\uC9C0 \uAC00\uB2A5'],
+          region: '\uB098\uD2B8\uB791',
+          country: 'VN',
+          category: 'sightseeing',
+          badge_type: 'tour',
+          customer_publishable: true,
+        },
+      ],
+      '\uB098\uD2B8\uB791',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toBeUndefined();
+    expect(schedule[1].attraction_ids).toBeUndefined();
+    expect(schedule[2].attraction_ids).toEqual(['tower-1']);
+    expect(res.matchedScheduleItemCount).toBe(1);
   });
 
   it('does not attach Baekdu heaven lake cards to Akhwa waterfall or optional price rows', () => {

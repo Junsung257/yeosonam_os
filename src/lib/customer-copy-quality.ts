@@ -5,7 +5,47 @@ export type CustomerCopyQualityIssue = {
 
 const HANGUL_WORD = '[가-힣A-Za-z0-9·.,&()/\\-\\s]';
 
+const KOREAN_LETTER = '\\uAC00-\\uD7A3';
+
 const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
+  {
+    code: 'customer_forbidden_internal_terms',
+    pattern: new RegExp(
+      [
+        '\\uB79C\\uB4DC\\uC0AC',
+        '\\uAC70\\uB798\\uCC98',
+        '\\uACF5\\uAE09\\uC0AC',
+        `(?<![${KOREAN_LETTER}])\\uC6D0\\uAC00(?![${KOREAN_LETTER}])`,
+        '\\uACF5\\uAE09\\uAC00',
+        '\\uB3C4\\uB9E4\\uAC00',
+        '\\uB9C8\\uC9C4',
+        '\\uC218\\uC775',
+        '\\uCEE4\\uBBF8\\uC158',
+        `(?<![${KOREAN_LETTER}])\\uC815\\uC0B0(?![${KOREAN_LETTER}])`,
+        '\\uAD00\\uB9AC\\uC790\\s*(?:\\uB178\\uD2B8|\\uBA54\\uBAA8)',
+        '\\uB0B4\\uBD80\\s*(?:\\uBA54\\uBAA8|\\uC6A9|\\uD655\\uC778)',
+        '\\uBE44\\uACF5\\uAC1C',
+        '\\uC601\\uC5C5\\uC6A9',
+        '\\uD310\\uB9E4\\uC790\\s*\\uD655\\uC778',
+        '\\uC785\\uAE08\\s*\\uD655\\uC778',
+        '\\uB300\\uAE30\\s*\\uC785\\uAE08',
+        '\\bNET\\b',
+        '\\bB2B\\b',
+        '\\bcommission\\b',
+        '\\bcomm\\b',
+        '\\bmargin\\b',
+        '\\boperator\\b',
+        '\\bsupplier\\b',
+        'land\\s*operator',
+        'land\\s*agency',
+        '\\bOP\\b',
+        '\\bPAX\\b',
+        '(?:\\uCEF4|\\uCEE4\\uBBF8\\uC158|comm(?:ission)?)\\s*\\d{1,2}\\s*%',
+      ].join('|'),
+      'iu',
+    ),
+    label: '?쒕뱶???댁쁺?먯슜 ?대? ?⑹뼱媛 怨좉컼 臾멸뎄??蹂댁엯?덈떎.',
+  },
   {
     code: 'html_entity_visible',
     pattern: /&#(?:x[0-9a-f]+|\d+);?|&(amp|lt|gt|quot|apos);/i,
@@ -13,7 +53,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'placeholder_or_mojibake',
-    pattern: /�|占|锟|ï¿½|\?{2,}/i,
+    pattern: /�|占|锟|ï¿½|\?{2,}|(?:사진|이미지|대표\s*이미지|상세\s*이미지|썸네일)(?:은|는|이|가)?\s*(?:아직\s*)?(?:준비\s*중|준비중|없음|미등록)|(?:준비\s*중|준비중)\s*(?:사진|이미지)/i,
     label: '깨진 글자 또는 placeholder가 고객 문구에 보입니다.',
   },
   {
@@ -23,7 +63,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'customer_forbidden_internal_terms',
-    pattern: /\b(?:NET|OP|PAX)\b|랜드사\s*공급가|거래처\s*단가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민\s*담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|마진).{0,12}정산|정산\s*(?:메모|요청|확인)/i,
+    pattern: /\b(?:NET|OP|PAX|B2B|commission)\b|랜드사|거래처|랜드\s*오퍼레이터|커미션|랜드사\s*공급가|거래처\s*단가|상품\s*원가|마진|수익|컴프|커펌|배분|어드민\s*담당자\s*확인|대기\s*입금|입금\s*확인|(?:거래처|랜드사|마진|커미션).{0,12}정산|정산\s*(?:메모|요청|확인)/i,
     label: '랜드사/운영자용 내부 용어가 고객 문구에 보입니다.',
   },
   {
@@ -38,7 +78,7 @@ const QUALITY_RULES: Array<{ code: string; pattern: RegExp; label: string }> = [
   },
   {
     code: 'supplier_notation',
-    pattern: /\bTAX\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|유류할증료\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|\d{1,2}\s*월기준|\d{1,2}\s*월\s*(?:선발|발권|선발권\s*기준\s*요금)|기사가이드경비|기사\s*가이드\s*경비|\[\s*[A-Z0-9]{2,3}\s+[^\]]*?PKG\s*\]|(^|[\s📍])\[?[A-Z0-9]{2,3}\]\s*(?=[가-힣])|[☑✓✔ώ]|[가-힣]+\s*OR\s*[가-힣]+|[가-힣]+\s*or\s*[가-힣]+|바나산\s*정산|맥주\s*OR\s*음료/i,
+    pattern: /\bTAX\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|유류할증료\s*\(\s*\d{1,2}\s*월\s*기준\s*\)|\d{1,2}\s*월기준|\d{1,2}\s*월\s*(?:선발|발권|선발권\s*기준\s*요금)|기사가이드경비|기사\s*가이드\s*경비|\[\s*[A-Z0-9]{2,3}\s+[^\]]*?PKG\s*\]|(^|[\s📍])\[?[A-Z0-9]{2,3}\]\s*(?=[가-힣])|[☑✔ώ]|✓(?=\S)|(?<=\S)✓|[가-힣]+\s*OR\s*[가-힣]+|[가-힣]+\s*or\s*[가-힣]+|바나산\s*정산|맥주\s*OR\s*음료/i,
     label: '랜드사식 표기 또는 고객에게 어색한 원문 표기가 보입니다.',
   },
   {

@@ -6,6 +6,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { detectDestination } from '@/lib/keyword-research';
 import { refreshThreadsTrendLearning } from '@/lib/threads-trend-learner';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /**
  * Threads Trend Miner — 매일 06:30 KST (21:30 UTC)
@@ -49,7 +50,7 @@ async function runThreadsTrendMiner(request: NextRequest) {
   const { data: pkgs } = await supabaseAdmin
     .from('travel_packages')
     .select('destination')
-    .in('status', ['approved', 'active']);
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
 
   const destCounts = new Map<string, number>();
   for (const p of (pkgs ?? []) as Array<{ destination: string | null }>) {

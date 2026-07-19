@@ -127,6 +127,33 @@ describe('blog editorial backlog recheck', () => {
     expect(decision.last_error).toBeNull();
   });
 
+  it('requeues residual markdown bold failures after render repair support is deployed', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-07T00:00:00.000Z',
+      row: {
+        id: 'queue-markdown-bold',
+        status: 'failed',
+        attempts: 2,
+        topic: 'Bali shopping budget checklist',
+        destination: 'Bali',
+        last_error: '2/20 실패: [render_integrity] 렌더 결과에 마크다운 잔여물 감지: literal_markdown_bold · [article_quality_v2] article quality v2 failed: standalone_markdown_bold',
+        meta: {
+          failure_code: 'other',
+          quarantine_reason: 'other',
+          quality_gate_failures: ['standalone_markdown_bold'],
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.reasons).toEqual(expect.arrayContaining([
+      expect.stringContaining('literal_markdown_bold'),
+      expect.stringContaining('standalone_markdown_bold'),
+    ]));
+    expect(decision.last_error).toBeNull();
+  });
+
   it('keeps unsafe image evidence blocked when the issue is not just image count', () => {
     const decision = buildBlogEditorialBacklogRecheckDecision({
       row: {
@@ -194,6 +221,32 @@ describe('blog editorial backlog recheck', () => {
 
     expect(decision.action).toBe('requeue');
     expect(decision.reasons).toContain('stale_generating_or_non_retryable_failure');
+  });
+
+  it('requeues timeout-only editorial rows so the publisher can retry with the repaired engine', () => {
+    const decision = buildBlogEditorialBacklogRecheckDecision({
+      checkedAt: '2026-07-09T00:00:00.000Z',
+      row: {
+        id: 'queue-timeout',
+        status: 'failed',
+        attempts: 2,
+        topic: '세부 공항 도착 후 입국 심사 환전 픽업 순서',
+        destination: '세부',
+        source: 'coverage_gap',
+        last_error: 'topic_generation_timeout:84106ms',
+        meta: {
+          micro_angle: 'airport_arrival',
+          failure_code: 'timeout',
+          self_heal_blocked: true,
+        },
+      },
+    });
+
+    expect(decision.action).toBe('requeue');
+    expect(decision.last_error).toBeNull();
+    expect(decision.meta).toMatchObject({
+      editorial_backlog_recheck_result: 'requeue',
+    });
   });
 
   it('retires legacy pillar seeds that were blocked by missing context', () => {

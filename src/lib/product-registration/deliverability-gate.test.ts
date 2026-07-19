@@ -460,6 +460,60 @@ Excluded: personal expenses, weekend golf surcharge 15,000원
     expect(result.blockers.join(' | ')).toContain('adult_selling_price below net_price');
   });
 
+  it('blocks conflicting same-date prices from the same source variant', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [
+        { target_date: '2026-08-07', day_of_week: null, net_price: 1069000, adult_selling_price: 1069000, child_price: null, note: 'pdf_date_price_table' },
+        { target_date: '2026-08-07', day_of_week: null, net_price: 1099000, adult_selling_price: 1099000, child_price: null, note: 'pdf_date_price_table' },
+      ],
+      priceDates: [{ date: '2026-08-07', price: 1069000, confirmed: false }],
+      destination: 'Tokyo',
+      destinationCode: 'TYO',
+      internalCode: 'PUS-AA-TYO-04-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }],
+      durationDays: 4,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join(' | ')).toContain('conflicting prices for same date 2026-08-07');
+  });
+
+  it('blocks conflicting customer selling prices even when net prices match', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [
+        { target_date: '2026-08-07', day_of_week: null, net_price: 1069000, adult_selling_price: 1099000, child_price: null, note: 'pdf_date_price_table' },
+        { target_date: '2026-08-07', day_of_week: null, net_price: 1069000, adult_selling_price: 1199000, child_price: null, note: 'pdf_date_price_table' },
+      ],
+      priceDates: [{ date: '2026-08-07', price: 1099000, confirmed: false }],
+      destination: 'Tokyo',
+      destinationCode: 'TYO',
+      internalCode: 'PUS-AA-TYO-04-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }],
+      durationDays: 4,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join(' | ')).toContain('conflicting prices for same date 2026-08-07');
+    expect(result.blockers.join(' | ')).toContain('1,099,000, 1,199,000');
+  });
+
+  it('allows same-date prices when they are separate customer options', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [
+        { target_date: '2026-08-07', day_of_week: null, net_price: 1069000, adult_selling_price: 1069000, child_price: null, note: 'standard hotel' },
+        { target_date: '2026-08-07', day_of_week: null, net_price: 1199000, adult_selling_price: 1199000, child_price: null, note: 'premium hotel' },
+      ],
+      priceDates: [{ date: '2026-08-07', price: 1069000, confirmed: false }],
+      destination: 'Tokyo',
+      destinationCode: 'TYO',
+      internalCode: 'PUS-AA-TYO-04-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }],
+      durationDays: 4,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('blocks calendar summaries that omit product price dates', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [

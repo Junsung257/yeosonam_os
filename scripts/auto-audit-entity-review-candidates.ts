@@ -1,5 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { KOREAN_DESTINATION_TO_ISO } from '../src/lib/destination-iso';
 import { terminalNonMasterReason } from '../src/lib/itinerary-entity-resolution-engine';
 import { reEnrichAffectedPackages } from '../src/lib/package-reenrich-on-attraction-change';
 
@@ -9,6 +10,7 @@ loadEnv();
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
 const json = args.includes('--json');
+const allowAutoInternal = args.includes('--allow-auto-internal');
 const limit = Number(argValue('--limit', '1000'));
 
 function argValue(name: string, fallback: string): string {
@@ -30,20 +32,87 @@ type ReviewCandidateRow = {
   raw_label: string | null;
   normalized_label: string | null;
   canonical_name: string | null;
+  destination_scope: string | null;
+  country_scope: string | null;
+  region_scope: string | null;
   promotion_status: string | null;
   auto_action: string | null;
   auto_verification_status: string | null;
   decision_reason: string | null;
   source_unmatched_ids: string[] | null;
+  source_context: Record<string, unknown> | null;
   suggested_master: Record<string, unknown> | null;
 };
 
-type PublishedAttractionMatch = {
+type ExistingAttractionMatch = {
   id: string;
   name: string;
+  aliases?: string[] | null;
+  badge_type?: string | null;
+  customer_publishable?: boolean | null;
+  country?: string | null;
+  region?: string | null;
 };
 
+type AttractionAliasRow = {
+  canonical_name: string | null;
+  alias: string | null;
+};
+
+type IndexedAttractionTerm = {
+  attraction: ExistingAttractionMatch;
+  term: string;
+  normalized: string;
+  primary: boolean;
+};
+
+type AttractionIndex = {
+  literal: Map<string, ExistingAttractionMatch[]>;
+  normalized: Map<string, ExistingAttractionMatch[]>;
+  terms: IndexedAttractionTerm[];
+};
+
+const GENERIC_CONTAINED_MATCH_TERMS = new Set([
+  '관광',
+  '관광지',
+  '기념촬영',
+  '디너크루즈',
+  '유람선',
+  '입장권',
+  '체험',
+  '크루즈',
+  '테마파크',
+  '투어',
+  '야시장',
+  '시장',
+]);
+const PRODUCT_LIKE_ATTRACTION_NAME_RE = /(?:투어|티켓|입장권|할인|픽업|당일|즉시|출발|예약|패키지|PKG|\[[^\]]+\])/i;
+const SHORT_CONTAINED_ATTRACTION_TERMS = new Set(['예류', '야류', '스펀', '지우펀'].map(normalizedAttractionMatchTerm));
+
+const LODGING_LIKE_ATTRACTION_NAME_RE = /(?:호텔|리조트|윈덤|노보텔|멜리아|하바나|하얏트|풀만|홀리데이|아쿠아썬|스파)/i;
+const NON_ATTRACTION_BADGE_TYPES = new Set(['hotel', 'restaurant', 'meal', 'shopping', 'golf']);
+
+const COUNTRY_SCOPE_ALIASES = (() => {
+  const aliases = new Map<string, Set<string>>();
+  for (const [name, iso] of Object.entries(KOREAN_DESTINATION_TO_ISO)) {
+    if (!aliases.has(iso)) aliases.set(iso, new Set([iso]));
+    aliases.get(iso)?.add(name);
+  }
+  const extraAliases: Record<string, string[]> = {
+    CN: ['백두산', '연변', '길림', '두만강'],
+    JP: ['규슈', '유후인', '쿠로가와'],
+    TW: ['기륭', '타이완'],
+    VN: ['캠비치', '소나시'],
+  };
+  for (const [iso, names] of Object.entries(extraAliases)) {
+    if (!aliases.has(iso)) aliases.set(iso, new Set([iso]));
+    for (const name of names) aliases.get(iso)?.add(name);
+  }
+  return aliases;
+})();
+
 const supabase = createClient(url, key, { auth: { persistSession: false } });
+const REVIEW_CATEGORIES = ['attraction', 'hotel', 'shopping', 'optional_tour', 'notice', 'unknown'];
 const candidateColumns = [
   'id',
   'candidate_key',
@@ -51,11 +120,15 @@ const candidateColumns = [
   'raw_label',
   'normalized_label',
   'canonical_name',
+  'destination_scope',
+  'country_scope',
+  'region_scope',
   'promotion_status',
   'auto_action',
   'auto_verification_status',
   'decision_reason',
   'source_unmatched_ids',
+  'source_context',
   'suggested_master',
 ].join(', ');
 
@@ -64,7 +137,7 @@ async function fetchRows(): Promise<ReviewCandidateRow[]> {
     .from('entity_master_candidates')
     .select(candidateColumns)
     .eq('promotion_status', 'needs_review')
-    .in('category', ['attraction', 'hotel'])
+    .in('category', REVIEW_CATEGORIES)
     .limit(limit);
   if (reviewError) throw reviewError;
 
@@ -72,7 +145,7 @@ async function fetchRows(): Promise<ReviewCandidateRow[]> {
     .from('entity_master_candidates')
     .select(candidateColumns)
     .eq('promotion_status', 'candidate')
-    .in('category', ['attraction', 'hotel'])
+    .in('category', REVIEW_CATEGORIES)
     .limit(limit);
   if (candidateError) throw candidateError;
 
@@ -116,27 +189,264 @@ function canonicalFor(row: ReviewCandidateRow): string {
   return row.canonical_name || row.normalized_label || row.raw_label || '';
 }
 
+function embeddedCandidateTerms(value: string): string[] {
+  const terms: string[] = [];
+  const patterns = [
+    /["“”'‘’「」『』〈〉《》]\s*([^"“”'‘’「」『』〈〉《》]{2,24}?)\s*["“”'‘’「」『』〈〉《》]/g,
+    /[([]\s*([^()[\]]{2,24}?)\s*[)\]]/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of value.matchAll(pattern)) {
+      const term = match[1]?.replace(/\s+/g, ' ').trim();
+      if (term && term.length >= 2) terms.push(term);
+    }
+  }
+  return terms;
+}
+
+function descriptiveAttractionCandidateTerms(value: string): string[] {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+
+  const terms: string[] = [];
+  const patterns = [
+    /(바오다이\s*황제(?:의)?\s*여름별장)/,
+    /(두만강\s*강변공원)/,
+    /(그랜드\s*월드|그랜드월드)(?:\s*나이트)?/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const term = match?.[1]?.replace(/\s+/g, ' ').trim();
+    if (term && term.length >= 2) terms.push(term);
+  }
+
+  return terms;
+}
+
 function exactCandidateTerms(row: ReviewCandidateRow): string[] {
-  return Array.from(new Set([
+  const baseTerms = [
     row.canonical_name,
     row.normalized_label,
     row.raw_label,
   ].map(value => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''))
-    .filter(value => value.length >= 2)));
+    .filter(value => value.length >= 2);
+
+  return Array.from(new Set([
+    ...baseTerms,
+    ...baseTerms.flatMap(embeddedCandidateTerms),
+    ...baseTerms.flatMap(descriptiveAttractionCandidateTerms),
+  ]));
 }
 
-async function findExactPublishedAttraction(row: ReviewCandidateRow): Promise<PublishedAttractionMatch | null> {
-  if (row.category !== 'attraction') return null;
-  for (const term of exactCandidateTerms(row)) {
+function normalizedAttractionMatchTerm(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[()[\]{}<>〈〉《》「」『』【】]/g, '')
+    .replace(/[·ㆍ.,/\\|:;'"`~!@#$%^&*_+=?，。]/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function addIndexedTerm(
+  index: AttractionIndex,
+  attraction: ExistingAttractionMatch,
+  term: unknown,
+  primary = false,
+) {
+  if (typeof term !== 'string') return;
+  const literal = term.replace(/\s+/g, ' ').trim();
+  if (literal.length < 2) return;
+
+  const literalRows = index.literal.get(literal) ?? [];
+  literalRows.push(attraction);
+  index.literal.set(literal, literalRows);
+
+  const normalized = normalizedAttractionMatchTerm(literal);
+  if (normalized.length < 2) return;
+  const normalizedRows = index.normalized.get(normalized) ?? [];
+  normalizedRows.push(attraction);
+  index.normalized.set(normalized, normalizedRows);
+  index.terms.push({ attraction, term: literal, normalized, primary });
+}
+
+async function fetchAttractionIndex(): Promise<AttractionIndex> {
+  const index: AttractionIndex = {
+    literal: new Map(),
+    normalized: new Map(),
+    terms: [],
+  };
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('attractions')
-      .select('id, name')
-      .eq('name', term)
-      .eq('customer_publishable', true)
-      .limit(1);
-    if (!error && data && data.length > 0) return data[0] as PublishedAttractionMatch;
+      .select('id, name, aliases, badge_type, customer_publishable, country, region')
+      .eq('is_active', true)
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as ExistingAttractionMatch[];
+    for (const attraction of rows) {
+      addIndexedTerm(index, attraction, attraction.name, true);
+      for (const alias of attraction.aliases ?? []) addIndexedTerm(index, attraction, alias);
+    }
+    if (rows.length < pageSize) break;
   }
-  return null;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('attractions_aliases')
+      .select('canonical_name, alias')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const aliasRows = (data ?? []) as AttractionAliasRow[];
+    for (const aliasRow of aliasRows) {
+      const canonicalName = typeof aliasRow.canonical_name === 'string'
+        ? aliasRow.canonical_name.replace(/\s+/g, ' ').trim()
+        : '';
+      const alias = typeof aliasRow.alias === 'string'
+        ? aliasRow.alias.replace(/\s+/g, ' ').trim()
+        : '';
+      if (!canonicalName || !alias) continue;
+
+      const canonicalAttraction =
+        uniqueAttractionMatch(index.literal.get(canonicalName)) ??
+        uniqueAttractionMatch(index.normalized.get(normalizedAttractionMatchTerm(canonicalName)));
+      if (!canonicalAttraction) continue;
+      addIndexedTerm(index, canonicalAttraction, alias);
+    }
+    if (aliasRows.length < pageSize) break;
+  }
+  return index;
+}
+
+function uniqueAttractionMatch(matches: ExistingAttractionMatch[] | undefined): ExistingAttractionMatch | null {
+  if (!matches || matches.length === 0) return null;
+  const byId = new Map(matches.map(match => [match.id, match]));
+  return byId.size === 1 ? [...byId.values()][0] ?? null : null;
+}
+
+function isUnsafeExactAttractionTerm(row: ReviewCandidateRow, term: string): boolean {
+  if (row.category !== 'attraction') return false;
+  const cleaned = term.replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned.length < 2) return true;
+  return Boolean(terminalNonMasterReason('attraction', cleaned, term));
+}
+
+function sourcePackageIds(row: ReviewCandidateRow): string[] {
+  const ids = row.source_context?.package_ids;
+  return Array.isArray(ids)
+    ? ids.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+}
+
+function compactScopeText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(compactScopeText).join(' ');
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).map(compactScopeText).join(' ');
+  }
+  return '';
+}
+
+function sourceScopeText(row: ReviewCandidateRow): string {
+  const source = row.source_context ?? {};
+  return [
+    row.canonical_name,
+    row.raw_label,
+    row.normalized_label,
+    row.country_scope,
+    row.region_scope,
+    source.country,
+    source.region,
+    source.destinations,
+    source.regions,
+    source.countries,
+    source.package_titles,
+    source.examples,
+  ].map(compactScopeText).join(' ');
+}
+
+function hasScopeSupport(row: ReviewCandidateRow, attraction: ExistingAttractionMatch): boolean {
+  const normalizedScope = normalizedAttractionMatchTerm(sourceScopeText(row));
+  const region = normalizedAttractionMatchTerm(attraction.region ?? '');
+  const country = normalizedAttractionMatchTerm(attraction.country ?? '');
+  const countryAliases = COUNTRY_SCOPE_ALIASES.get(String(attraction.country ?? '').toUpperCase()) ?? new Set();
+  const countryAliasSupported = [...countryAliases].some(alias => {
+    const normalizedAlias = normalizedAttractionMatchTerm(alias);
+    return normalizedAlias.length >= 2 && normalizedScope.includes(normalizedAlias);
+  });
+  return Boolean(
+    (region.length >= 2 && normalizedScope.includes(region)) ||
+    (country.length >= 2 && normalizedScope.includes(country)) ||
+    countryAliasSupported,
+  );
+}
+
+function isGenericContainedMatchTerm(entry: IndexedAttractionTerm): boolean {
+  if (GENERIC_CONTAINED_MATCH_TERMS.has(entry.normalized)) return true;
+  return !entry.primary && entry.normalized.length < 4;
+}
+
+function isProductLikeAttractionName(attraction: ExistingAttractionMatch): boolean {
+  return PRODUCT_LIKE_ATTRACTION_NAME_RE.test(attraction.name) ||
+    LODGING_LIKE_ATTRACTION_NAME_RE.test(attraction.name) ||
+    NON_ATTRACTION_BADGE_TYPES.has(String(attraction.badge_type ?? '').toLowerCase());
+}
+
+function findContainedExistingAttractionMatch(
+  row: ReviewCandidateRow,
+  index: AttractionIndex,
+): ExistingAttractionMatch | null {
+  if (row.category !== 'attraction') return null;
+
+  const matches: IndexedAttractionTerm[] = [];
+  for (const term of exactCandidateTerms(row)) {
+    if (isUnsafeExactAttractionTerm(row, term)) continue;
+    const normalizedCandidate = normalizedAttractionMatchTerm(term);
+    if (normalizedCandidate.length < 4 && !SHORT_CONTAINED_ATTRACTION_TERMS.has(normalizedCandidate)) continue;
+
+    for (const entry of index.terms) {
+      if (entry.normalized.length < 3) continue;
+      if (isGenericContainedMatchTerm(entry)) continue;
+      if (!entry.attraction.customer_publishable) continue;
+      if (isProductLikeAttractionName(entry.attraction)) continue;
+      if (!hasScopeSupport(row, entry.attraction)) continue;
+
+      const primaryName = normalizedAttractionMatchTerm(entry.attraction.name);
+      const primaryContained = primaryName.length >= 3 && (
+        normalizedCandidate.includes(primaryName) ||
+        primaryName.includes(normalizedCandidate)
+      );
+      const aliasNearExact = !entry.primary &&
+        entry.normalized.length >= 4 &&
+        Math.min(normalizedCandidate.length, entry.normalized.length) /
+          Math.max(normalizedCandidate.length, entry.normalized.length) >= 0.75;
+
+      if (!primaryContained && !aliasNearExact) continue;
+      if (!normalizedCandidate.includes(entry.normalized) && !entry.normalized.includes(normalizedCandidate)) continue;
+      matches.push(entry);
+    }
+  }
+
+  const byId = new Map(matches.map(match => [match.attraction.id, match.attraction]));
+  return byId.size === 1 ? [...byId.values()][0] ?? null : null;
+}
+
+function findExistingAttractionMatch(row: ReviewCandidateRow, index: AttractionIndex): ExistingAttractionMatch | null {
+  if (row.category !== 'attraction') return null;
+  for (const term of exactCandidateTerms(row)) {
+    if (isUnsafeExactAttractionTerm(row, term)) continue;
+
+    const literalMatch = uniqueAttractionMatch(index.literal.get(term));
+    if (literalMatch && !isProductLikeAttractionName(literalMatch)) return literalMatch;
+
+    const normalized = normalizedAttractionMatchTerm(term);
+    if (normalized.length < 2) continue;
+    const normalizedMatch = uniqueAttractionMatch(index.normalized.get(normalized));
+    if (normalizedMatch && !isProductLikeAttractionName(normalizedMatch)) return normalizedMatch;
+  }
+  return findContainedExistingAttractionMatch(row, index);
 }
 
 async function persist(
@@ -202,7 +512,7 @@ async function persistInternalCandidate(row: ReviewCandidateRow): Promise<void> 
   if (error) throw error;
 }
 
-async function persistExistingMatch(row: ReviewCandidateRow, attraction: PublishedAttractionMatch): Promise<string[]> {
+async function persistExistingMatch(row: ReviewCandidateRow, attraction: ExistingAttractionMatch): Promise<string[]> {
   const now = new Date().toISOString();
   const { error } = await supabase
     .from('entity_master_candidates')
@@ -210,44 +520,50 @@ async function persistExistingMatch(row: ReviewCandidateRow, attraction: Publish
       promotion_status: 'promoted',
       promoted_attraction_id: attraction.id,
       promoted_at: now,
-      auto_verification_status: 'verified_publishable',
-      decision_reason: `auto-linked to exact published attraction ${attraction.name}`,
+      auto_verification_status: attraction.customer_publishable === true ? 'verified_publishable' : 'verified_internal',
+      decision_reason: `auto-linked to existing attraction ${attraction.name}`,
     })
     .eq('id', row.id);
   if (error) throw error;
 
   const sourceUnmatchedIds = (row.source_unmatched_ids ?? []).filter(Boolean);
-  if (sourceUnmatchedIds.length === 0) return [];
+  let sourceRows: Array<{ package_id: string | null }> = [];
+  if (sourceUnmatchedIds.length > 0) {
+    const { data: loadedSourceRows, error: sourceRowsError } = await supabase
+      .from('unmatched_activities')
+      .select('package_id')
+      .in('id', sourceUnmatchedIds)
+      .not('package_id', 'is', null);
+    if (sourceRowsError) throw sourceRowsError;
+    sourceRows = (loadedSourceRows ?? []) as Array<{ package_id: string | null }>;
 
-  const { data: sourceRows, error: sourceRowsError } = await supabase
-    .from('unmatched_activities')
-    .select('package_id')
-    .in('id', sourceUnmatchedIds)
-    .not('package_id', 'is', null);
-  if (sourceRowsError) throw sourceRowsError;
+    const { error: closeError } = await supabase
+      .from('unmatched_activities')
+      .update({
+        status: 'added',
+        resolved_at: now,
+        resolved_kind: 'auto_existing_attraction',
+        resolved_attraction_id: attraction.id,
+        resolved_by: 'auto-audit-entity-review-candidates',
+        updated_at: now,
+      })
+      .in('id', sourceUnmatchedIds)
+      .eq('status', 'pending')
+      .is('resolved_at', null);
+    if (closeError) throw closeError;
+  }
 
-  const { error: closeError } = await supabase
-    .from('unmatched_activities')
-    .update({
-      status: 'added',
-      resolved_at: now,
-      resolved_kind: 'auto_existing_exact_published_attraction',
-      resolved_attraction_id: attraction.id,
-      resolved_by: 'auto-audit-entity-review-candidates',
-      updated_at: now,
-    })
-    .in('id', sourceUnmatchedIds)
-    .eq('status', 'pending')
-    .is('resolved_at', null);
-  if (closeError) throw closeError;
-
-  return Array.from(new Set((sourceRows ?? [])
-    .map(row => (row as { package_id: string | null }).package_id)
-    .filter((value): value is string => Boolean(value))));
+  return Array.from(new Set([
+    ...sourcePackageIds(row),
+    ...sourceRows
+      .map(sourceRow => sourceRow.package_id)
+      .filter((value): value is string => Boolean(value)),
+  ]));
 }
 
 async function main() {
   const rows = await fetchRows();
+  const attractionIndex = await fetchAttractionIndex();
   const audited: Array<{ candidate_key: string; category: string; canonical_name: string; reason: string }> = [];
   const linkedExisting: Array<{ candidate_key: string; category: string; canonical_name: string; attraction: string }> = [];
   const internalCandidates: Array<{ candidate_key: string; category: string; canonical_name: string }> = [];
@@ -268,13 +584,19 @@ async function main() {
         continue;
       }
 
-      const exactMatch = await findExactPublishedAttraction(row);
+      const exactMatch = findExistingAttractionMatch(row, attractionIndex);
       if (!exactMatch) {
-        internalCandidates.push({
+        const unresolved = {
           candidate_key: row.candidate_key,
           category: row.category,
           canonical_name: canonicalFor(row),
-        });
+        };
+        if (!allowAutoInternal) {
+          remaining.push(unresolved);
+          continue;
+        }
+
+        internalCandidates.push(unresolved);
         if (apply) {
           try {
             await persistInternalCandidate(row);
@@ -349,6 +671,7 @@ async function main() {
     auto_internal_candidates: internalCandidates.length,
     remaining_review: remaining.length,
     apply,
+    allow_auto_internal: allowAutoInternal,
     reEnrich,
     errors,
     byReason: audited.reduce<Record<string, number>>((acc, row) => {
@@ -356,7 +679,7 @@ async function main() {
       return acc;
     }, {}),
     sampleAutoRejected: audited.slice(0, 20),
-    sampleLinkedExisting: linkedExisting.slice(0, 20),
+    sampleLinkedExisting: linkedExisting.slice(0, 50),
     sampleAutoInternalCandidates: internalCandidates.slice(0, 20),
     sampleRemaining: remaining.slice(0, 20),
   };

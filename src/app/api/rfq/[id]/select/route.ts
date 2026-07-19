@@ -10,6 +10,8 @@ import {
   updateRfqProposal,
   updateRfqBid,
 } from '@/lib/supabase';
+import { isAdminRequest } from '@/lib/admin-guard';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -23,7 +25,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   }
 
   try {
-    const { proposal_id } = await request.json();
+    const body = await request.json() as { proposal_id?: string; share_token?: string };
+    const { proposal_id } = body;
 
     if (!proposal_id) {
       return apiResponse({ error: 'proposal_id가 필요합니다.' }, { status: 400 });
@@ -32,6 +35,13 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const rfq = await getGroupRfq(rfqId);
     if (!rfq) {
       return apiResponse({ error: 'RFQ를 찾을 수 없습니다.' }, { status: 404 });
+    }
+
+    const rfqShareToken = typeof rfq.share_token === 'string' ? rfq.share_token : null;
+    const requestShareToken = body.share_token ?? request.headers.get('x-rfq-share-token');
+    const isAdmin = await isAdminRequest(request);
+    if (!isAdmin && !safeEqualString(requestShareToken, rfqShareToken)) {
+      return apiResponse({ error: '공유 링크 권한이 필요합니다.' }, { status: 403 });
     }
 
     if (rfq.status !== 'awaiting_selection' && rfq.status !== 'bidding') {

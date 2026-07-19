@@ -27,6 +27,71 @@ export type QueueReason =
   | 'high_traffic_update'
   | 'scheduled_publish';
 
+export type ContentReviewRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface ContentReviewAutoApprovalPolicyInput {
+  autoApproveAfterHours?: number | null;
+  humanReviewRequired?: boolean;
+  riskLevel?: ContentReviewRiskLevel;
+}
+
+export interface ContentReviewAutoApprovalPolicy {
+  autoApproveAfterHours: number | null;
+  requiresHumanReview: boolean;
+}
+
+const DEFAULT_AUTO_APPROVE_AFTER_HOURS = 48;
+
+/**
+ * Human-required and high-risk reviews must never become eligible for timed
+ * auto-approval. `NULL` is the durable queue representation for that policy.
+ */
+export function resolveContentReviewAutoApprovalPolicy(
+  input: ContentReviewAutoApprovalPolicyInput,
+): ContentReviewAutoApprovalPolicy {
+  const requiresHumanReview = input.humanReviewRequired === true
+    || input.riskLevel === 'high'
+    || input.riskLevel === 'critical';
+
+  if (requiresHumanReview) {
+    return { autoApproveAfterHours: null, requiresHumanReview: true };
+  }
+
+  const requestedHours = input.autoApproveAfterHours === undefined
+    ? DEFAULT_AUTO_APPROVE_AFTER_HOURS
+    : input.autoApproveAfterHours;
+  const autoApproveAfterHours = typeof requestedHours === 'number'
+    && Number.isFinite(requestedHours)
+    && requestedHours > 0
+    ? requestedHours
+    : null;
+
+  return { autoApproveAfterHours, requiresHumanReview: false };
+}
+
+export interface AutoApprovalCandidate {
+  id: string;
+  creative_id: string | null;
+  priority: number | null;
+  auto_approve_after_hours: number | null;
+  created_at: string | null;
+}
+
+/** Select only low-priority rows whose own opt-in timeout has elapsed. */
+export function selectAutoApprovableReviewItems(
+  rows: AutoApprovalCandidate[],
+  nowMs = Date.now(),
+): Array<AutoApprovalCandidate & { creative_id: string }> {
+  return rows.filter((row): row is AutoApprovalCandidate & { creative_id: string } => {
+    if (!row.creative_id || (row.priority ?? 50) >= 30) return false;
+    const hours = row.auto_approve_after_hours;
+    if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0) return false;
+    const createdAtMs = row.created_at ? Date.parse(row.created_at) : Number.NaN;
+    if (!Number.isFinite(createdAtMs)) return false;
+    return nowMs - createdAtMs >= hours * 60 * 60 * 1000;
+  });
+}
+
 export interface ReviewDecision {
   creativeId: string;
   reviewerId: string;
@@ -39,10 +104,13 @@ export interface ReviewDecision {
 
 export interface QueueItem {
   creativeId: string;
+  informationReviewCaseId?: string | null;
   priority?: number;
   reason?: QueueReason;
   dueAt?: string;
-  autoApproveAfterHours?: number;
+  autoApproveAfterHours?: number | null;
+  humanReviewRequired?: boolean;
+  riskLevel?: ContentReviewRiskLevel;
 }
 
 export interface ReviewHistoryEntry {
@@ -69,14 +137,20 @@ export interface PendingReviewItem {
 
 /** 콘텐츠를 검토 큐에 등록한다 */
 export async function queueForReview(item: QueueItem): Promise<{ queueId: string }> {
+  const autoApprovalPolicy = resolveContentReviewAutoApprovalPolicy({
+    autoApproveAfterHours: item.autoApproveAfterHours,
+    humanReviewRequired: item.humanReviewRequired,
+    riskLevel: item.riskLevel,
+  });
   const { data, error } = await supabaseAdmin
     .from('content_review_queue')
     .insert({
       creative_id: item.creativeId,
+      information_review_case_id: item.informationReviewCaseId ?? null,
       priority: item.priority ?? 50,
       reason: item.reason ?? 'new_content',
       due_at: item.dueAt ?? null,
-      auto_approve_after_hours: item.autoApproveAfterHours ?? 48,
+      auto_approve_after_hours: autoApprovalPolicy.autoApproveAfterHours,
     })
     .select('id')
     .single();
@@ -283,30 +357,26 @@ export async function submitReview(
 
 // ─── Auto-Approve Stale Items ──────────────────────────────────────────────────
 
-/** 낮은 우선순위(priority < 30) 큐 아이템 중 auto_approve_after_hours 가 지난 항목을 자동 승인한다 */
+/** 낮은 우선순위 큐 아이템 중 각 행의 자동승인 시간이 지난 항목만 승인한다. */
 export async function autoApproveStaleItems(): Promise<{
   approved: number;
   still_pending: number;
 }> {
   const { data: staleItems, error } = await supabaseAdmin
     .from('content_review_queue')
-    .select('id, creative_id, priority')
+    .select('id, creative_id, priority, auto_approve_after_hours, created_at')
     .eq('status', 'queued')
-    .lt('priority', 30)
-    .lt(
-      'created_at',
-      new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-    );
+    .lt('priority', 30);
 
   if (error) throw new Error(`만료 큐 조회 실패: ${error.message}`);
 
   let approved = 0;
 
-  for (const item of (staleItems || []) as Array<{
-    id: string;
-    creative_id: string;
-    priority: number;
-  }>) {
+  const approvableItems = selectAutoApprovableReviewItems(
+    (staleItems || []) as AutoApprovalCandidate[],
+  );
+
+  for (const item of approvableItems) {
     // 자동 승인 review 레코드 생성
     await supabaseAdmin.from('content_reviews').insert({
       creative_id: item.creative_id,
@@ -331,7 +401,7 @@ export async function autoApproveStaleItems(): Promise<{
       .eq('id', item.id);
 
     // Slack 알림 (자동 승인)
-    const hoursElapsed = 48;
+    const hoursElapsed = item.auto_approve_after_hours;
     await sendReviewNotification({
       creativeId: item.creative_id,
       eventType: 'approved',
@@ -402,7 +472,7 @@ export async function getPendingReviews(
       reason,
       created_at,
       due_at,
-      content_creatives!inner(title, status)
+      content_creatives!inner(seo_title, status)
     `,
     )
     .in('status', ['queued', 'assigned'])
@@ -422,11 +492,13 @@ export async function getPendingReviews(
     reason: string;
     created_at: string;
     due_at: string | null;
-    content_creatives: { title: string; status: string } | Array<{ title: string; status: string }>;
+    content_creatives: { seo_title: string | null; status: string } | Array<{ seo_title: string | null; status: string }>;
   }>) || []).map((r) => ({
     queueId: r.id,
     creativeId: r.creative_id,
-    title: r.content_creatives && 'length' in r.content_creatives ? (r.content_creatives as Array<{ title: string }>)[0]?.title ?? '(제목 없음)' : r.content_creatives?.title ?? '(제목 없음)',
+    title: r.content_creatives && 'length' in r.content_creatives
+      ? (r.content_creatives as Array<{ seo_title: string | null }>)[0]?.seo_title ?? '(제목 없음)'
+      : r.content_creatives?.seo_title ?? '(제목 없음)',
     channel: r.content_creatives && 'length' in r.content_creatives ? (r.content_creatives as Array<{ status: string }>)[0]?.status ?? '' : r.content_creatives?.status ?? '',
     priority: r.priority,
     reason: r.reason,

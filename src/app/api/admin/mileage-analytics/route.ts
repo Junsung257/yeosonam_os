@@ -7,7 +7,8 @@
  * 보안: admin 세션 필요
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, getSupabase } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,23 +16,8 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     // ── Admin 인증 ───────────────────────────────────────────
-    const supabaseClient = getSupabase();
-    if (!supabaseClient) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
-    const { data: { user } } = await supabaseClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: admin } = await supabaseAdmin
-      .from('admins')
-      .select('id')
-      .eq('id', user.id)
-      .single();
-
-    if (!admin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
 
     // ── 기간 설정 ────────────────────────────────────────────
     const { searchParams } = new URL(request.url);
@@ -71,7 +57,7 @@ export async function GET(request: NextRequest) {
     let earnedCount = 0;
     let usedCount = 0;
 
-    // topEarner 집계용
+    // Top earners aggregation
     const earnerMap = new Map<string, number>();
 
     for (const tx of (periodTransactions ?? []) as Array<{ amount: number; type: string; user_id: string }>) {

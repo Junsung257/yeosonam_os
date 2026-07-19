@@ -1,6 +1,30 @@
 # Blog Errors
 
-Last updated: 2026-07-03
+Last updated: 2026-07-19
+
+## ERR-BLOG-image-relevance-and-generation-persistence@2026-07-19
+
+- [x] **ERR-BLOG-image-relevance-and-generation-persistence@2026-07-19**: Automatic information posts could receive visually unrelated Pexels photos because the selector sampled random pages and the gate only checked destination words that the application itself wrote into alt/caption text. A separate AI image helper still called the retired Imagen 3 endpoint and returned temporary Base64 data URLs instead of public assets.
+- **Root cause**: Image quantity and synthetic metadata were treated as relevance evidence. The live publisher did not inspect Pexels' original description, destination mappings missed cities such as Guangzhou, and the dormant AI path had no durable Storage step.
+- **Fix**: Image selection now searches the first high-relevance page with destination + intent queries, scores provider descriptions, rejects visual conflicts, and uses OG only after no second contextual candidate exists. Guangzhou has an explicit Canton Tower/city mapping. AI generation uses Gemini 3.1 Flash Image through the Interactions API, uploads immutable content-hashed files to public `blog-assets/generated/blog/...`, and labels generated alt text as an AI reference image. Disabling AI generation still leaves Pexels fallback active.
+- **Prevention**: Do not infer image relevance from application-generated alt text. Base64/data URLs cannot enter a public blog body. Generated visuals are presentation assets, never official-source or factual evidence. Runtime MCP is not an image provider; production uses explicit provider APIs with stored provenance and deterministic tests.
+- **Verification**: `npx vitest run src/lib/blog-image-relevance.test.ts src/lib/blog-inline-images.test.ts src/lib/blog-image-gen.test.ts src/lib/blog-image-quality.test.ts`; targeted ESLint; `git diff --check`. No paid image-generation request or remote Storage upload was made during implementation.
+
+## ERR-BLOG-fallback-source-prompt-drift@2026-07-19
+
+- [x] **ERR-BLOG-fallback-source-prompt-drift@2026-07-19**: Recent public samples exposed three related quality-control gaps: a late repair could recreate deterministic fallback copy after the publisher's first blocker, Markdown image URLs and arbitrary external links could be counted as official-source evidence, and an active database prompt older than the repository contract could continue driving generation.
+- **Root cause**: The fallback rule lived in one publisher branch instead of the shared publish contract; engine evidence extraction did not distinguish image links or validate source hosts; prompt selection trusted `is_active` without comparing versions.
+- **Fix**: `evaluateBlogPublishQuality()` now blocks both deterministic fallback flags for every information-post publishing path. Official-source candidate extraction excludes images and non-official/unsafe hosts, while final factual trust remains owned by the server registry and claim-evidence gate. Prompt selection uses the repository guide whenever the database row is empty, malformed, or older than `BLOG_PROMPT_VERSION`, and records `prompt_source` for diagnosis.
+- **Prevention**: A technical SEO/readability score can never override a publish-contract issue. Stock-image URLs are visual assets, not evidence. Active prompt rows must meet the current code version before overriding Prompt-as-Code. Food-budget and monthly-weather fallback examples remain locked as intent-contract regression tests.
+- **Verification**: `npx vitest run src/lib/blog-publish-quality.test.ts src/lib/blog-engine-v2.test.ts src/lib/blog-official-source-url.test.ts src/lib/blog-prompt-selection.test.ts src/lib/blog-quality-gate-information-contract.test.ts`; `npx vitest run src/app/api/cron/blog-publisher/route.test.ts`; targeted ESLint; `git diff --check`.
+
+## ERR-BLOG-info-fallback-and-ops-signal-leak@2026-07-15
+
+- [x] **ERR-BLOG-info-fallback-and-ops-signal-leak@2026-07-15**: Information generation failures could be replaced by one broad deterministic travel template and still continue through publish gates. The same path also injected related-product counts, active-product counts, internal price ranges, and booking counts into information-writer prompts.
+- **Root cause**: Quota recovery was allowed to substitute shape-complete boilerplate for intent-complete research, and product/booking operational signals were treated as originality evidence for informational articles.
+- **Fix**: The publisher now hard-blocks deterministic fallback artifacts before any public write and no longer fetches or injects product/booking originality signals in `generateFromTopic()`. Customer quality also blocks explicit active-product and booking/consultation signal values.
+- **Prevention**: Information posts may publish only from an intent-specific, evidence-backed candidate. Fallback copy can be private repair evidence only. Product inventory and reservation operations are never informational prompt inputs. Regression coverage lives in `src/app/api/cron/blog-publisher/route.test.ts` and `src/lib/blog-customer-quality.test.ts`.
+- **Verification**: Run the focused Vitest files above, then `npm run type-check` and the standard blog quality/public customer audits.
 
 ## ERR-BLOG-legacy-surface-artifacts@2026-07-03
 

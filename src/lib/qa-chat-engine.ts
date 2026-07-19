@@ -16,8 +16,10 @@ import { getPrompt } from '@/lib/prompt-loader'
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages'
 import { scopeQaPackagesToExplicitProduct } from '@/lib/qa-product-scope'
 import { buildProductAnswerIdentity } from '@/lib/product-answer-identity'
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy'
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint'
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor'
+import { applyCustomerAnswerGuard } from '@/lib/jarvis/customer-answer-guard'
 import { critiqueReply } from '@/lib/jarvis/response-critic'
 import { llmCall, tryDeepSeekStream } from '@/lib/llm-gateway'
 import { resolveAffiliateScopeId } from '@/lib/affiliate-scope'
@@ -41,7 +43,6 @@ import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 import { requiresApproval } from '@/lib/jarvis/risk-scorer'
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { hasResilientLlmConfig } from '@/lib/secret-registry'
-import { safeRawTextExcerpt } from '@/lib/raw-text-privacy'
 
 const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9)
 const QA_SYSTEM_FALLBACK = [
@@ -377,6 +378,8 @@ Price dates: ${JSON.stringify(p.price_dates ?? null).slice(0, 500)}
 목적지: ${p.destination ?? '미지정'}
 기간: ${p.duration ? p.duration + '일' : '미지정'}
 기본가: ${p.price ? p.price.toLocaleString() + '원' : '미지정'} / 판매가(커미션${COMMISSION_RATE}% 포함): ${p.price ? applyCommission(p.price).toLocaleString() + '원' : '미지정'}
+요약: ${p.product_summary ?? '미지정'}
+핵심 포인트: ${(p.product_highlights ?? []).join(', ') || '미지정'}
 포함사항: ${(p.inclusions ?? []).join(', ') || '없음'}
 불포함: ${(p.excludes ?? []).join(', ') || '없음'}
 일정: ${(p.itinerary ?? []).join(' | ') || '없음'}
@@ -606,13 +609,27 @@ ${message}`
           if (linkStr) finalReply = finalReply.trimEnd() + `\n\n자세한 상품 보기: ${linkStr}`
         }
         const suppressNoInventoryEscalation = scopedPackageIds.length === 0 && Boolean(freeTravelHref)
-        const finalEscalate =
+        let finalEscalate =
           ((parsed.escalate ?? false) && !suppressNoInventoryEscalation) ||
           effectiveCritiqueSeverity === 'block'
 
         // ★ Critic 수정본이 있으면 후처리된 버전에 추가 병합 (warn 수준만)
         if (effectiveCritiqueSeverity === 'warn' && critique.correctedReply) {
           finalReply = `💡 ${critique.correctedReply}\n\n---\n${finalReply}`
+        }
+
+        const answerGuard = applyCustomerAnswerGuard({
+          message,
+          reply: finalReply,
+          ctx: {
+            surface: 'customer',
+            userRole: 'customer',
+            tenantId: affiliateScopeId ?? undefined,
+          },
+        })
+        if (answerGuard.wasGuarded) {
+          finalReply = answerGuard.reply
+          finalEscalate = finalEscalate || answerGuard.escalate
         }
 
         void recordCritiqueResult({
@@ -635,6 +652,8 @@ ${message}`
             recommended_count: parsed.recommendedPackageIds?.length ?? 0,
             corrections_applied: corrections.length,
             negative_examples_applied: negExamples.length,
+            answer_guard_applied: answerGuard.wasGuarded,
+            answer_guard_issues: answerGuard.issues,
           },
         })
 

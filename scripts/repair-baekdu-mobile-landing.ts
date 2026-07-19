@@ -1,5 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { CUSTOMER_VISIBLE_STATUSES } from '../src/lib/visibility-status';
 
 loadEnv({ path: '.env.local' });
 loadEnv();
@@ -215,7 +216,7 @@ async function main() {
     .from('travel_packages')
     .select('id, title, display_title, status, destination, itinerary_data')
     .or('title.ilike.%백두산%,title.ilike.%연길%,display_title.ilike.%백두산%,display_title.ilike.%연길%,destination.ilike.%백두산%,destination.ilike.%연길%')
-    .in('status', ['active', 'approved', 'selling', 'available', 'published'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'published'])
     .order('created_at', { ascending: false });
 
   if (error) throw error;

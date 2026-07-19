@@ -4,6 +4,7 @@ import './globals.css';
 import PartytownInit from '@/components/PartytownInit';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 import LayoutClientWidgets from '@/components/LayoutClientWidgets';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const ENABLE_SPEED_INSIGHTS = process.env.VERCEL === '1';
@@ -122,7 +123,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLdForScript({
               '@context': 'https://schema.org',
               '@type': 'Organization',
               name: SITE_NAME,
@@ -138,7 +139,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           suppressHydrationWarning
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: serializeJsonLdForScript({
               '@context': 'https://schema.org',
               '@type': 'WebSite',
               name: SITE_NAME,
@@ -147,7 +148,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 '@type': 'SearchAction',
                 target: {
                   '@type': 'EntryPoint',
-                  urlTemplate: `${BASE_URL}/search?q={search_term_string}`,
+                  urlTemplate: `${BASE_URL}/packages?q={search_term_string}`,
                 },
                 'query-input': 'required name=search_term_string',
               },

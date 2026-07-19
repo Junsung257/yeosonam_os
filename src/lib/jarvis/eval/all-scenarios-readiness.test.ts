@@ -7,6 +7,8 @@ const PASSING_INPUT = {
   jarvisReadinessStatus: 'pass' as const,
   customerInquiryScore: 100,
   customerInquiryStatus: 'pass' as const,
+  featureCoverageScore: 100,
+  featureCoverageStatus: 'pass' as const,
   autopilotHitlPassed: true,
   freeTravelScore: 100,
   freeTravelStatus: 'pass' as const,
@@ -45,5 +47,16 @@ describe('all scenario readiness model', () => {
 
     expect(summary.status).toBe('fail');
     expect(summary.blockingSections).toContain('free-travel-100');
+  });
+
+  it('fails when Jarvis feature coverage loses a domain route', () => {
+    const summary = evaluateAllScenarioReadiness({
+      ...PASSING_INPUT,
+      featureCoverageScore: 92,
+      featureCoverageStatus: 'fail',
+    });
+
+    expect(summary.status).toBe('fail');
+    expect(summary.blockingSections).toContain('jarvis-feature-coverage');
   });
 });

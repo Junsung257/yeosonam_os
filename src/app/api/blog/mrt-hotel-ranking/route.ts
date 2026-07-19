@@ -11,13 +11,8 @@ import { llmCall } from '@/lib/llm-gateway';
 import { mrtProvider, buildMylinkUrl } from '@/lib/travel-providers/mrt';
 import { getPrompt } from '@/lib/prompt-loader';
 import { logAndSanitize } from '@/lib/error-sanitizer';
-import {
-  applyBlogPublishQualityToUpdate,
-  blogPublishQualityWarnings,
-  prepareBlogForPublish,
-} from '@/lib/blog-publish-quality';
-import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
-import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { isCronAuthorized } from '@/lib/cron-auth';
 
 export const maxDuration = 60;
 
@@ -58,6 +53,12 @@ async function ensureUniqueSlug(slug: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
+  const cronAuthorized = Boolean(request.headers.get('authorization')) && isCronAuthorized(request);
+  if (!cronAuthorized) {
+    const authError = await requireAdminRequest(request);
+    if (authError) return authError;
+  }
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
 
   try {
@@ -71,7 +72,11 @@ export async function POST(request: NextRequest) {
     const city = body.city?.trim();
     const tier = body.tier ?? 'luxury';
     const count = Math.min(10, Math.max(3, body.count ?? 5));
-    const publish = body.publish !== false;
+    if (body.publish === true) {
+      return NextResponse.json({
+        error: '호텔 랭킹 초안은 정보성 검토·승인 절차를 거친 뒤에만 발행할 수 있습니다.',
+      }, { status: 409 });
+    }
 
     if (!city) return NextResponse.json({ error: 'city is required' }, { status: 400 });
 
@@ -177,44 +182,18 @@ ${filtered.map((hotel, i) => {
     const seoTitle = `${city} ${tierLabel} 호텔 TOP ${topN} ${year}년 최신`.slice(0, 60);
     const seoDesc = `${city} ${tierLabel} 호텔 ${topN}곳을 평점, 가격, 위치 기준으로 비교했습니다. MyRealTrip 실시간 호텔 데이터를 바탕으로 예약 링크까지 정리했습니다.`.slice(0, 160);
 
-    const prepared = publish
-      ? await prepareBlogForPublish({
-          blog_html: blogHtml,
-          slug: finalSlug,
-          seo_title: seoTitle,
-          seo_description: seoDesc,
-          destination: city,
-          angle_type: 'hotel_ranking',
-          product_id: null,
-          primary_keyword: keyword,
-          secondary_keywords: [`${city} 호텔 추천`, `${city} 호텔 가격`, `${city} 숙소 위치`],
-        })
-      : null;
-    const qaReport = prepared?.report ?? null;
-    if (qaReport && !qaReport.passed) {
-      return NextResponse.json({
-        error: 'Blog publish quality gate failed',
-        summary: qaReport.summary,
-        quality_warnings: blogPublishQualityWarnings(qaReport),
-        blog_quality_score: qaReport.blogQualityScore,
-        quality_gate: qaReport.qualityGate,
-        seo_score: qaReport.seoScore,
-        readability: qaReport.readability,
-      }, { status: 422 });
-    }
-
     const insertData: Record<string, unknown> = {
       channel: 'naver_blog',
-      blog_html: prepared?.blogHtml ?? blogHtml,
+      blog_html: blogHtml,
       slides: [],
-      status: publish ? 'published' : 'draft',
+      status: 'draft',
       category: 'hotel_ranking',
       slug: finalSlug,
       seo_title: seoTitle,
       seo_description: seoDesc,
       destination: city,
       topic_source: 'mrt_hotel',
-      published_at: publish ? new Date().toISOString() : null,
+      published_at: null,
       generation_params: {
         city,
         tier,
@@ -223,8 +202,6 @@ ${filtered.map((hotel, i) => {
         ai_model: result.model ?? 'gemini-2.5-flash',
       },
     };
-    if (qaReport) applyBlogPublishQualityToUpdate(insertData, qaReport);
-
     const { data: creative, error } = await supabaseAdmin
       .from('content_creatives')
       .insert(insertData)
@@ -233,22 +210,12 @@ ${filtered.map((hotel, i) => {
 
     if (error) throw error;
 
-    if (publish) {
-      revalidatePublicBlogCache(finalSlug, city);
-      await enqueueBlogIndexingJob({
-        slug: finalSlug,
-        baseUrl,
-        contentCreativeId: creative?.id ?? null,
-        source: 'mrt_hotel_ranking',
-      });
-    }
-
     return NextResponse.json({
       ok: true,
       slug: finalSlug,
       id: creative?.id,
       hotels: topN,
-      status: publish ? 'published' : 'draft',
+      status: 'draft',
     });
   } catch (err) {
     return NextResponse.json(

@@ -18,6 +18,12 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
+import { isCustomerRenderableAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -74,6 +80,14 @@ interface PackageRow {
   airline: string | null;
   photos: GalleryPhoto[] | null;
   photo_urls: string[] | null;
+  status?: string | null;
+  publication_state?: string | null;
+  package_revision?: number | null;
+  audit_status?: string | null;
+  audit_report?: unknown;
+  updated_at?: string | null;
+  optional_tours?: unknown;
+  itinerary_data?: unknown;
 }
 
 interface PageData {
@@ -156,6 +170,11 @@ function normalizePackageRow(row: unknown): PackageRow | null {
   };
 }
 
+function isThingsToDoPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
 function pickPackageCoverUrl(p: PackageRow): string | null {
   const fromPhotos = pickAttractionPhotoUrl(p.photos);
   if (fromPhotos) return fromPhotos;
@@ -192,20 +211,24 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
   const [{ data: attractions }, { data: packages }] = await Promise.all([
     supabaseAdmin
       .from('attractions')
-      .select('id, name, short_desc, long_desc, category, badge_type, photos, emoji, region')
+      .select('id, name, short_desc, long_desc, category, badge_type, photos, emoji, region, is_active, customer_publishable')
       .eq('region', region)
+      .eq('is_active', true)
+      .eq('customer_publishable', true)
       .order('mention_count', { ascending: false })
       .limit(60),
     supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, photos, photo_urls, status')
+      .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('destination', region)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(8),
   ]).catch(() => [{ data: null }, { data: null }]);
 
   const normalizedAttractions = ((attractions as unknown[] | null) ?? [])
+    .filter((row): row is AttractionData => isCustomerRenderableAttraction(row as AttractionData))
     .map((row) => normalizeAttractionRow(row, region))
     .filter((row): row is AttractionRow => row != null);
   if (normalizedAttractions.length === 0) return null;
@@ -217,10 +240,16 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
     grouped[cat].push(a);
   }
 
+  const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+    supabaseAdmin,
+    ((packages as Array<Record<string, unknown>> | null) ?? [])
+      .filter(isThingsToDoPublicSnapshotCandidate),
+  ).catch(() => []);
+
   return {
     region,
     attractionsByCategory: grouped,
-    packages: ((packages as unknown[] | null) ?? [])
+    packages: publicPackages
       .map(normalizePackageRow)
       .filter((row): row is PackageRow => row != null),
     totalAttractions: normalizedAttractions.length,
@@ -387,7 +416,7 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: serializeJsonLdForScript({
             '@context': 'https://schema.org',
             '@type': 'ItemList',
             name: `${data.region} 가볼만한 곳`,

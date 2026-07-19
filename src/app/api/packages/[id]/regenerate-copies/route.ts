@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateMarketingCopies } from '@/lib/ai';
+import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
 export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -10,28 +11,30 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ id: str
     return NextResponse.json({ error: 'id 파라미터가 필요합니다.' }, { status: 400 });
   }
 
-  const { data: pkg, error: fetchError } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id, title, destination, price, product_highlights, inclusions, product_summary')
-    .eq('id', id)
-    .single();
+  const pkg = await loadPublicContentPackageForGeneration(id);
 
-  if (fetchError || !pkg) {
+  if (!pkg) {
     return NextResponse.json(
-      { error: fetchError?.message ?? '상품을 찾을 수 없습니다.' },
+      { error: '고객 공개 승인된 상품만 고객용 문구를 재생성할 수 있습니다.' },
       { status: 404 },
+    );
+  }
+  if (!pkg.destination || typeof pkg.duration !== 'number' || typeof pkg.price !== 'number') {
+    return NextResponse.json(
+      { error: '목적지, 기간, 가격이 공개 승인된 상품만 고객용 문구를 재생성할 수 있습니다.' },
+      { status: 422 },
     );
   }
 
   let marketing_copies;
   try {
     marketing_copies = await generateMarketingCopies({
-      destination:  pkg.destination ?? '',
-      duration:     5,
-      price:        pkg.price ?? 0,
+      destination:  pkg.destination,
+      duration:     pkg.duration,
+      price:        pkg.price,
       highlights:   Array.isArray(pkg.product_highlights) ? pkg.product_highlights : [],
       inclusions:   Array.isArray(pkg.inclusions) ? pkg.inclusions : [],
-      rawText:      pkg.product_summary ?? pkg.title ?? '',
+      rawText:      pkg.product_summary ?? pkg.title,
     });
   } catch (err) {
     return NextResponse.json(

@@ -63,6 +63,9 @@ describe('unmatched orchestrator route', () => {
     const source = readFileSync(mobileQualityEngineScriptPath, 'utf8');
 
     expect(source).toContain("const destination = argValue('--destination', '')");
+    expect(source).toContain("const entityReviewLimit = Number(argValue('--entity-review-limit'");
+    expect(source).toContain('scripts/auto-audit-entity-review-candidates.ts');
+    expect(source).toContain('Auto-audit entity review candidates before customer readiness');
     expect(source).toContain('scripts/verify-entity-master-candidates.ts');
     expect(source).toContain('scripts/promote-verified-attraction-candidates.ts');
     expect(source.match(/`--destination=\$\{destination\}`/g)).toHaveLength(2);

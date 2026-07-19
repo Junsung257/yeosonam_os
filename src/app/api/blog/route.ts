@@ -10,15 +10,33 @@ import {
 } from '@/lib/blog-publish-quality';
 import { apiResponse } from '@/lib/api-response';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
-import { getFallbackBlogPost, getFallbackBlogPosts } from '@/lib/blog-public-fallback';
-import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { getInformationalReviewBlockReason } from '@/lib/blog-publication-review-policy';
+import {
+  evaluateBlogInformationClaimPublishGate,
+  toBlogInformationClaimValidationMeta,
+} from '@/lib/blog-information-claim-publish-gate';
+import { buildBlogContentBrief } from '@/lib/blog-content-brief';
+import {
+  ensureBlogInformationRepresentativeForPublish,
+} from '@/lib/blog-information-representative-repository';
+import {
+  buildBlogInformationRepresentativeKey,
+  readBlogInformationRepresentativeIdentity,
+  type BlogInformationRepresentativeIdentity,
+} from '@/lib/blog-information-representative';
+import { publishBlogInformationAtomically } from '@/lib/blog-information-atomic-publication';
+import { createBlogInformationContentFingerprint } from '@/lib/blog-information-review-workflow';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
 };
 
 const BLOG_PUBLIC_CACHE_CONTROL = 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=86400';
-const BLOG_DEGRADED_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120, stale-if-error=600';
 const BLOG_STALE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=300, stale-if-error=86400';
 const BLOG_LIST_SELECT = 'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination';
 const CONTENT_CREATIVE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,6 +55,33 @@ type BlogListPayload = {
 };
 
 const lastGoodBlogLists = new Map<string, BlogListPayload>();
+
+function isBlogApiPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+async function attachPublicPackageSnapshotToBlogPost<T extends Record<string, unknown>>(post: T): Promise<T> {
+  const productId = typeof post.product_id === 'string' ? post.product_id : null;
+  if (!productId) return { ...post, travel_packages: null };
+
+  const { data, error } = await supabaseAdmin
+    .from('travel_packages')
+    .select('id, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+    .eq('id', productId)
+    .in('publication_state', ['approved', 'published'])
+    .limit(1);
+  if (error) throw error;
+
+  const candidate = ((data ?? []) as Array<Record<string, unknown>>).find(isBlogApiPublicSnapshotCandidate);
+  if (!candidate) return { ...post, travel_packages: null };
+
+  const publicRows = await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, [candidate]);
+  return {
+    ...post,
+    travel_packages: publicRows[0] ?? null,
+  };
+}
 
 function blogListCacheKey(page: number, limit: number, destination: string | null): string {
   return JSON.stringify({ page, limit, destination: destination || '' });
@@ -109,34 +154,15 @@ function qualityGateFailedResponse(report: BlogPublishQualityReport) {
   }, { status: 422 });
 }
 
-function degradedBlogListResponse(reason: string, page: number, limit: number, destination?: string | null) {
-  const posts = getFallbackBlogPosts({ destination });
-  if (posts.length > 0) {
-    return apiResponse({
-      posts: posts.slice((page - 1) * limit, page * limit),
-      total: posts.length,
-      page,
-      totalPages: Math.max(1, Math.ceil(posts.length / limit)),
-      fallback: true,
-      reason,
-    }, {
-      headers: {
-        'Cache-Control': BLOG_STALE_CACHE_CONTROL,
-        'X-Data-State': 'fallback',
-      },
-    });
-  }
+function unavailableBlogResponse(reason: string) {
   return apiResponse({
-    posts: [],
-    total: 0,
-    page,
-    totalPages: 0,
-    degraded: true,
-    reason,
+    error: 'Public blog data is temporarily unavailable',
+    detail: reason,
   }, {
+    status: 503,
     headers: {
-      'Cache-Control': BLOG_DEGRADED_CACHE_CONTROL,
-      'X-Data-State': 'degraded',
+      'Cache-Control': 'no-store',
+      'X-Data-State': 'unavailable',
     },
   });
 }
@@ -151,19 +177,24 @@ export async function GET(request: NextRequest) {
 
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
     if (!id && !slug && searchParams.get('admin') !== '1') {
-      return degradedBlogListResponse('Blog database is not configured', page, limit, destination);
+      return unavailableBlogResponse('Blog database is not configured');
     }
-    return apiResponse({ error: 'Blog database is not configured' }, { status: 503 });
+    return apiResponse(
+      { error: 'Blog database is not configured' },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 
   try {
     if (id) {
+      const authError = await requireAdminRequest(request);
+      if (authError) return authError;
       if (!isValidContentCreativeId(id)) {
         return apiResponse({ error: 'Post not found' }, { status: 404 });
       }
       const { data, error } = await runApiBlogQuery('id', supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, category, tracking_id, tone, published_at, created_at, updated_at, product_id, travel_packages(id, title, destination, price, duration, nights, category)')
+        .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, category, tracking_id, tone, published_at, created_at, updated_at, product_id, destination')
         .eq('id', id)
         .limit(1));
 
@@ -171,10 +202,13 @@ export async function GET(request: NextRequest) {
       if (!data || data.length === 0) {
         return apiResponse({ error: 'Post not found' }, { status: 404 });
       }
-      return apiResponse({ post: data[0] });
+      const post = await attachPublicPackageSnapshotToBlogPost(data[0] as Record<string, unknown>);
+      return apiResponse({ post });
     }
 
     if (searchParams.get('admin') === '1') {
+      const authError = await requireAdminRequest(request);
+      if (authError) return authError;
       const adminStatus = searchParams.get('status');
       let adminQuery = supabaseAdmin
         .from('content_creatives')
@@ -192,7 +226,7 @@ export async function GET(request: NextRequest) {
 
     if (slug) {
       const { data, error } = await runApiBlogQuery('slug', supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('id, slug, seo_title, seo_description, og_image_url, angle_type, channel, published_at, created_at, product_id, tracking_id, destination')
         .eq('slug', slug)
         .eq('status', 'published')
@@ -216,25 +250,27 @@ export async function GET(request: NextRequest) {
     const cacheKey = blogListCacheKey(page, limit, destination);
 
     let query = supabaseAdmin
-      .from('content_creatives')
-      .select(BLOG_LIST_SELECT)
+      .from(PUBLIC_BLOG_READ_SOURCE)
+      .select(BLOG_LIST_SELECT, { count: 'exact' })
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false, nullsFirst: false })
-      .range(offset, offset + limit);
+      .range(offset, offset + limit - 1);
 
     if (destination) {
       query = query.eq('destination', destination);
     }
 
     const listResult = await runApiBlogQuery('list', query, 2500);
-    const { data, error } = listResult;
+    const { data, count, error } = listResult;
     if (error) throw error;
     const fetchedPosts = Array.isArray(data) ? data : [];
     const posts = fetchedPosts.slice(0, limit);
-    const hasNextPage = fetchedPosts.length > limit;
-    const total = hasNextPage ? offset + limit + 1 : offset + posts.length;
+    if (typeof count !== 'number' || !Number.isFinite(count)) {
+      throw new Error('Exact blog count unavailable');
+    }
+    const total = Math.max(0, Math.trunc(count));
     const payload: BlogListPayload = {
       posts,
       total,
@@ -248,42 +284,30 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     if (isAbortLikeError(err)) {
-      if (slug && !id && searchParams.get('admin') !== '1') {
-        const fallbackPost = getFallbackBlogPost(slug);
-        if (fallbackPost) {
-          return apiResponse({ post: fallbackPost, fallback: true, reason: 'Blog database request timed out' }, {
-            headers: {
-              'Cache-Control': BLOG_STALE_CACHE_CONTROL,
-              'X-Data-State': 'fallback',
-            },
-          });
-        }
-      }
       if (!id && !slug && searchParams.get('admin') !== '1') {
         const stale = staleBlogListResponse(blogListCacheKey(page, limit, destination), 'Blog database request timed out');
         if (stale) return stale;
-        return degradedBlogListResponse(
-          shouldSkipPublicDbReadsForResourceSaver()
-            ? 'Public blog DB reads are slow while resource saver mode is active'
-            : 'Blog database request timed out',
-          page,
-          limit,
-          destination,
-        );
+        return unavailableBlogResponse('Blog database request timed out');
       }
       return apiResponse(
         { error: 'Blog database request timed out' },
         { status: 503, headers: { 'Cache-Control': 'no-store' } },
       );
     }
+    if (!id && searchParams.get('admin') !== '1') {
+      return unavailableBlogResponse(err instanceof Error ? err.message : 'Public blog query failed');
+    }
     return apiResponse(
       { error: err instanceof Error ? err.message : 'Query failed' },
-      { status: 500 },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return apiResponse({ error: 'DB not configured' }, { status: 503 });
 
   try {
@@ -307,6 +331,20 @@ export async function POST(request: NextRequest) {
     const cleanSlug = normalizeSlug(slug);
     const status = reqStatus === 'published' ? 'published' : 'draft';
 
+    if (status === 'published') {
+      const reviewBlock = getInformationalReviewBlockReason({
+        productId: product_id || null,
+        title: seo_title || cleanSlug,
+        category: category || null,
+      });
+      if (reviewBlock) {
+        return apiResponse({
+          error: 'Human review approval is required before publishing this informational draft',
+          review_reason: reviewBlock,
+        }, { status: 409 });
+      }
+    }
+
     let destinationForQa: string | null = null;
     if (product_id) {
       const { data: packageRows, error: packageError } = await supabaseAdmin
@@ -320,6 +358,10 @@ export async function POST(request: NextRequest) {
 
     let qaReport: BlogPublishQualityReport | null = null;
     let finalBlogHtml = blog_html;
+    let informationIdentity: BlogInformationRepresentativeIdentity | null = null;
+    let claimValidationMeta: Record<string, unknown> | null = null;
+    const representativeOwner = `api_blog_post:${cleanSlug}`;
+    let informationGenerationMeta: Record<string, unknown> | null = null;
     if (status === 'published') {
       const prepared = await prepareBlogForPublish({
         blog_html,
@@ -335,7 +377,52 @@ export async function POST(request: NextRequest) {
       if (!qaReport.passed) {
         return qualityGateFailedResponse(qaReport);
       }
+      const claimReport = await evaluateBlogInformationClaimPublishGate({
+        contentKey: cleanSlug,
+        markdown: prepared.blogHtml,
+        productId: product_id || null,
+        expectedScope: { destination: destinationForQa || undefined },
+      });
+      if (!claimReport.passed) {
+        return apiResponse({
+          error: 'Informational claim evidence gate failed',
+          claim_validation: claimReport,
+        }, { status: 422 });
+      }
+      claimValidationMeta = toBlogInformationClaimValidationMeta(claimReport);
       finalBlogHtml = prepared.blogHtml;
+      if (!product_id) {
+        const contentBrief = buildBlogContentBrief({
+          topic: seo_title || cleanSlug,
+          primaryKeyword: seo_title || cleanSlug,
+          category: category || null,
+        });
+        if (!contentBrief.passed) {
+          return apiResponse({
+            error: 'Informational representative identity is incomplete',
+            issues: contentBrief.issues,
+          }, { status: 422 });
+        }
+        informationIdentity = {
+          destinationId: contentBrief.plan.destinationId ?? 'global',
+          intent: contentBrief.plan.intent,
+          audience: contentBrief.plan.audience,
+          locale: contentBrief.plan.locale,
+        };
+        informationGenerationMeta = {
+          content_brief: {
+            intent_type: contentBrief.plan.intent,
+            destination_id: contentBrief.plan.destinationId ?? 'global',
+            audience: contentBrief.plan.audience,
+            locale: contentBrief.plan.locale,
+          },
+          information_representative: {
+            status: 'pending_publication',
+            canonical_slug: null,
+          },
+          information_claim_validation: claimValidationMeta,
+        };
+      }
     }
 
     const insertData: Record<string, unknown> = {
@@ -346,12 +433,12 @@ export async function POST(request: NextRequest) {
       og_image_url: og_image_url || null,
       channel: 'naver_blog',
       angle_type: angle_type || 'value',
-      status,
+      status: status === 'published' ? 'draft' : status,
       category: category || (product_id ? 'product_intro' : null),
+      ...(informationGenerationMeta ? { generation_meta: informationGenerationMeta } : {}),
     };
 
     if (product_id) insertData.product_id = product_id;
-    if (status === 'published') insertData.published_at = new Date().toISOString();
     if (qaReport) applyBlogPublishQualityToUpdate(insertData, qaReport);
 
     const { data, error } = await supabaseAdmin
@@ -362,10 +449,52 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     if (status === 'published') {
+      const contentCreativeId = (data?.[0] as { id?: string } | undefined)?.id ?? null;
+      if (!contentCreativeId) throw new Error('Published draft insert did not return an id');
+      if (informationGenerationMeta && claimValidationMeta) {
+        informationGenerationMeta.information_claim_validation = claimValidationMeta;
+      }
+      const publishedAt = new Date().toISOString();
+      if (!product_id) {
+        if (!informationIdentity || !qaReport || !claimValidationMeta) {
+          throw new Error('Informational atomic publication inputs are incomplete');
+        }
+        const publication = await publishBlogInformationAtomically({
+          creativeId: contentCreativeId,
+          contentFingerprint: createBlogInformationContentFingerprint({
+            blogHtml: finalBlogHtml,
+            seoTitle: seo_title || null,
+            seoDescription: seo_description || null,
+            slug: cleanSlug,
+          }),
+          validationMeta: { information_claim_validation: claimValidationMeta },
+          qualityGate: qaReport.qualityGate,
+          publishedAt,
+          identity: informationIdentity,
+          reservationOwner: representativeOwner,
+        });
+        data[0] = {
+          ...(data[0] as Record<string, unknown>),
+          status: 'published',
+          published_at: publication.publishedAt,
+        };
+        revalidatePublicBlogCache(cleanSlug);
+        return apiResponse({ post: data[0], success: true }, { status: 201 });
+      }
+      const { data: publishedRows, error: publishError } = await supabaseAdmin
+        .from('content_creatives')
+        .update({
+          status: 'published',
+          published_at: publishedAt,
+          ...(informationGenerationMeta ? { generation_meta: informationGenerationMeta } : {}),
+        })
+        .eq('id', contentCreativeId)
+        .select();
+      if (publishError) throw publishError;
+      if (publishedRows?.[0]) data[0] = publishedRows[0];
       revalidatePublicBlogCache(cleanSlug);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-      const contentCreativeId = (data?.[0] as { id?: string } | undefined)?.id ?? null;
       void enqueueBlogIndexingJob({
         slug: cleanSlug,
         baseUrl,
@@ -383,6 +512,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return apiResponse({ error: 'DB not configured' }, { status: 503 });
 
   try {
@@ -394,7 +526,7 @@ export async function PATCH(request: NextRequest) {
     if (force_revalidate === true) {
       const { data: row, error: rowErr } = await supabaseAdmin
         .from('content_creatives')
-        .select('slug, status, channel')
+        .select('slug, status, channel, product_id, review_status, seo_title, category, content_type, blog_html, destination, generation_meta')
         .eq('id', id)
         .limit(1);
       if (rowErr) throw rowErr;
@@ -402,6 +534,58 @@ export async function PATCH(request: NextRequest) {
       if (!target?.slug) {
         return apiResponse({ error: 'Post not found or slug missing' }, { status: 404 });
       }
+      const reviewBlock = getInformationalReviewBlockReason({
+        productId: target.product_id ?? null,
+        reviewStatus: target.review_status ?? null,
+        title: target.seo_title ?? null,
+        category: target.category ?? null,
+        contentType: target.content_type ?? null,
+      });
+      if (target.status !== 'published' || reviewBlock) {
+        return apiResponse({
+          error: 'Only an approved published article can be reindexed',
+          review_reason: reviewBlock,
+        }, { status: 409 });
+      }
+      const claimReport = await evaluateBlogInformationClaimPublishGate({
+        creativeId: id,
+        contentKey: target.slug,
+        markdown: target.blog_html ?? '',
+        productId: target.product_id ?? null,
+        reviewStatus: target.review_status ?? null,
+        expectedScope: { destination: target.destination ?? undefined },
+      });
+      if (!claimReport.passed) {
+        return apiResponse({
+          error: 'Informational claim evidence gate failed',
+          claim_validation: claimReport,
+        }, { status: 422 });
+      }
+      const representative = await ensureBlogInformationRepresentativeForPublish({
+        creativeId: id,
+        slug: target.slug,
+        title: target.seo_title ?? target.slug,
+        markdown: target.blog_html ?? '',
+        productId: target.product_id ?? null,
+        generationMeta: target.generation_meta ?? null,
+      });
+      const { error: representativeMetaError } = await supabaseAdmin
+        .from('content_creatives')
+        .update({
+          generation_meta: {
+            ...(target.generation_meta || {}),
+            information_claim_validation: toBlogInformationClaimValidationMeta(claimReport),
+            ...(representative ? {
+              information_representative: {
+                representative_key: representative.representativeKey,
+                status: 'active',
+                canonical_slug: representative.canonicalSlug,
+              },
+            } : {}),
+          },
+        })
+        .eq('id', id);
+      if (representativeMetaError) throw representativeMetaError;
       revalidatePublicBlogCache(target.slug);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       const queued = await enqueueBlogIndexingJob({
@@ -421,15 +605,30 @@ export async function PATCH(request: NextRequest) {
     if (og_image_url !== undefined) updateData.og_image_url = og_image_url;
     if (category !== undefined) updateData.category = category;
 
+    const changesPublicContract = [blog_html, slug, seo_title, seo_description, category]
+      .some((value) => value !== undefined);
+    if (changesPublicContract && reqStatus !== 'published') {
+      updateData.status = 'draft';
+      updateData.published_at = null;
+      updateData.quality_gate = null;
+    }
+
     let qaReport: BlogPublishQualityReport | null = null;
+    let informationPublicationInput: {
+      identity: BlogInformationRepresentativeIdentity;
+      contentFingerprint: string;
+      validationMeta: Record<string, unknown>;
+      qualityGate: object;
+      publishedAt: string;
+    } | null = null;
+    let publishingProduct = false;
     if (reqStatus === 'published') {
-      updateData.status = 'published';
-      updateData.published_at = new Date().toISOString();
+      const requestedPublishedAt = new Date().toISOString();
 
       try {
         const { data: existing, error: existingError } = await supabaseAdmin
           .from('content_creatives')
-          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)')
+          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id, review_status, topic_source, category, content_type, generation_meta')
           .eq('id', id)
           .limit(1);
         if (existingError) throw existingError;
@@ -441,13 +640,45 @@ export async function PATCH(request: NextRequest) {
           destination?: string | null;
           angle_type?: string | null;
           product_id?: string | null;
-          travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
+          review_status?: string | null;
+          topic_source?: string | null;
+          category?: string | null;
+          content_type?: string | null;
+          generation_meta?: Record<string, unknown> | null;
         } | undefined;
         const finalHtml = (blog_html as string | undefined) ?? row?.blog_html ?? '';
         const finalSlug = (updateData.slug as string | undefined) ?? row?.slug ?? '';
         const finalTitle = (seo_title as string | undefined) ?? row?.seo_title ?? null;
         const finalDescription = (seo_description as string | undefined) ?? row?.seo_description ?? null;
         const destination = row ? resolveBlogDestination(row) : null;
+
+        const reviewBlock = getInformationalReviewBlockReason({
+          productId: row?.product_id ?? null,
+          reviewStatus: row?.review_status ?? null,
+          title: finalTitle,
+          category: category ?? row?.category ?? null,
+          contentType: row?.content_type ?? null,
+          topic: row?.topic_source ?? null,
+        });
+        const changesReviewedHighRiskContent = reviewBlock == null
+          && row?.product_id == null
+          && row?.review_status === 'approved'
+          && getInformationalReviewBlockReason({
+            productId: null,
+            reviewStatus: 'none',
+            title: finalTitle,
+            category: category ?? row?.category ?? null,
+            contentType: row?.content_type ?? null,
+            topic: row?.topic_source ?? null,
+          }) === 'high_risk_human_review_required'
+          && [blog_html, seo_title, seo_description].some((value) => value !== undefined);
+        if (reviewBlock || changesReviewedHighRiskContent) {
+          return apiResponse({
+            error: 'Human review approval is required before publishing this informational draft',
+            review_status: row?.review_status,
+            review_reason: reviewBlock ?? 'reviewed_content_changed',
+          }, { status: 409 });
+        }
 
         if (!finalHtml || !finalSlug) {
           return apiResponse({ error: 'Blog quality gate input missing' }, { status: 400 });
@@ -467,6 +698,55 @@ export async function PATCH(request: NextRequest) {
         qaReport = prepared.report;
         updateData.blog_html = prepared.blogHtml;
         applyBlogPublishQualityToUpdate(updateData, qaReport);
+        publishingProduct = Boolean(row?.product_id);
+        updateData.status = publishingProduct ? 'published' : 'draft';
+        updateData.published_at = publishingProduct ? requestedPublishedAt : null;
+        const claimReport = await evaluateBlogInformationClaimPublishGate({
+          creativeId: id,
+          contentKey: finalSlug,
+          markdown: prepared.blogHtml,
+          productId: row?.product_id ?? null,
+          reviewStatus: row?.review_status ?? null,
+          expectedScope: { destination: destination || undefined },
+        });
+        if (!claimReport.passed) {
+          return apiResponse({
+            error: 'Informational claim evidence gate failed',
+            claim_validation: claimReport,
+          }, { status: 422 });
+        }
+        const identity = row?.product_id
+          ? null
+          : readBlogInformationRepresentativeIdentity(row?.generation_meta ?? null);
+        if (!row?.product_id && !identity) {
+          throw new Error('blog_information_representative_identity_missing');
+        }
+        const claimValidationMeta = toBlogInformationClaimValidationMeta(claimReport);
+        updateData.generation_meta = {
+          ...(row?.generation_meta || {}),
+          information_claim_validation: claimValidationMeta,
+          ...(identity ? {
+            information_representative: {
+              representative_key: buildBlogInformationRepresentativeKey(identity),
+              status: 'pending_publication',
+              canonical_slug: null,
+            },
+          } : {}),
+        };
+        if (identity) {
+          informationPublicationInput = {
+            identity,
+            contentFingerprint: createBlogInformationContentFingerprint({
+              blogHtml: prepared.blogHtml,
+              seoTitle: finalTitle,
+              seoDescription: finalDescription,
+              slug: finalSlug,
+            }),
+            validationMeta: { information_claim_validation: claimValidationMeta },
+            qualityGate: qaReport.qualityGate,
+            publishedAt: requestedPublishedAt,
+          };
+        }
       } catch (qaErr) {
         console.warn('[blog PATCH] quality gate failed to run:', qaErr);
         return apiResponse({
@@ -492,9 +772,23 @@ export async function PATCH(request: NextRequest) {
 
     if (reqStatus === 'published') {
       const finalSlug = (updateData.slug as string) || (data?.[0] as Record<string, unknown>)?.slug as string;
+      if (informationPublicationInput) {
+        const publication = await publishBlogInformationAtomically({
+          creativeId: id,
+          ...informationPublicationInput,
+          reservationOwner: `api_blog_patch:${id}`,
+        });
+        if (data?.[0]) {
+          data[0] = {
+            ...(data[0] as Record<string, unknown>),
+            status: 'published',
+            published_at: publication.publishedAt,
+          } as typeof data[0];
+        }
+      }
       revalidatePublicBlogCache(finalSlug || null);
 
-      if (finalSlug) {
+      if (finalSlug && publishingProduct) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
         void enqueueBlogIndexingJob({
           slug: finalSlug,

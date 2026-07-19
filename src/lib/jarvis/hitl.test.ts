@@ -20,6 +20,8 @@ describe('Jarvis HITL registry', () => {
       'send_booking_guide',
       'generate_affiliate_link',
       'dismiss_alert',
+      'adjust_mileage',
+      'create_mileage_event',
     ];
 
     for (const tool of mutatingTools) {

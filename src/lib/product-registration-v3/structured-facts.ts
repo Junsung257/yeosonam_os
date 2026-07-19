@@ -131,8 +131,10 @@ function addNotice(out: StandardNoticeDraft[], notice: StandardNoticeDraft | nul
 }
 
 function parseUsd(text: string): number | null {
-  const m = text.match(/(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)/i);
-  return m ? Number(m[1]) : null;
+  const prefixed = text.match(/(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)/i);
+  if (prefixed) return Number(prefixed[1]);
+  const suffixed = text.match(/(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|달러)/i);
+  return suffixed ? Number(suffixed[1]) : null;
 }
 
 function parseKrw(text: string): number | null {
@@ -157,7 +159,7 @@ function isIncludedCostLine(source: string): boolean {
 }
 
 function isCleanIncludedGuideTipLine(source: string): boolean {
-  const hasGuideTip = /(?:\uAE30\uC0AC\s*(?:\/|&)?\s*\uAC00\uC774\uB4DC\s*\uD301|\uAC00\uC774\uB4DC\s*(?:\/|&)?\s*\uAE30\uC0AC\s*\uD301|\uAE30\uC0AC\s*\uD301|\uAC00\uC774\uB4DC\s*\uD301|\uB178\s*\uD301|NO\s*TIP)/iu.test(source);
+  const hasGuideTip = /(?:\uAE30\uC0AC\s*(?:\/|&)?\s*\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAC00\uC774\uB4DC\s*(?:\/|&)?\s*\uAE30\uC0AC\s*(?:\uD301|\uACBD\uBE44)|\uAE30\uC0AC\s*\uD301|\uAC00\uC774\uB4DC\s*\uD301|\uAE30\uC0AC\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAC00\uC774\uB4DC\uAE30\uC0AC\s*(?:\uD301|\uACBD\uBE44)|\uB178\s*\uD301|NO\s*TIP)/iu.test(source);
   if (!hasGuideTip) return false;
   if (isCleanExcludedGuideTipLine(source)) return false;
   return /(?:\uD3EC\uD568\uC0AC\uD56D|\uD3EC\uD568\uB0B4\uC5ED|\uD3EC\uD568|\uD56D\uACF5\uB8CC|TAX|\uD638\uD154|\uCC28\uB7C9|\uC2DD\uC0AC|\uC785\uC7A5\uB8CC|\uC5EC\uD589\uC790\uBCF4\uD5D8)/iu.test(source);
@@ -171,9 +173,28 @@ function isCleanExcludedGuideTipLine(source: string): boolean {
 function isSourceBackedIncludedGuideTipLine(source: string): boolean {
   if (isCleanExcludedGuideTipLine(source)) return false;
   if (isCleanIncludedGuideTipLine(source)) return true;
-  return /(?:\uAE30\uC0AC\s*&\s*\uAC00\uC774\uB4DC\s*\uD301|\uAE30\uC0AC\s*\/\s*\uAC00\uC774\uB4DC\s*\uD301|\uAC00\uC774\uB4DC\s*\/\s*\uAE30\uC0AC\s*\uD301)/u.test(source)
+  return /(?:\uAE30\uC0AC\s*&\s*\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAE30\uC0AC\s*\/\s*\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAC00\uC774\uB4DC\s*\/\s*\uAE30\uC0AC\s*(?:\uD301|\uACBD\uBE44)|\uAE30\uC0AC\uAC00\uC774\uB4DC\s*(?:\uD301|\uACBD\uBE44)|\uAC00\uC774\uB4DC\uAE30\uC0AC\s*(?:\uD301|\uACBD\uBE44))/u.test(source)
     && /(?:\uC655\uBCF5\uD56D\uACF5\uB8CC|\uC720\uB958\uD560\uC99D\uB8CC|\uD638\uD154|\uC2DD\uC0AC|\uC804\uC6A9\uCC28\uB7C9|\uC5EC\uD589\uC790\uBCF4\uD5D8|\uC785\uC7A5\uB8CC)/u.test(source)
     && !/(?:\uAC1C\uC778\uACBD\uBE44|\uB9E4\uB108\uD301|\uBD88\uD3EC\uD568|\uD604\uC9C0\s*\uC9C0\uBD88)/u.test(source);
+}
+
+function hasHardExcludedGuidePaymentMarker(source: string): boolean {
+  return /(?:\uBD88\uD3EC\uD568|\uBCC4\uB3C4|\uD604\uC9C0\s*\uC9C0\uBD88|\uD604\uC9C0\uC9C0\uBD88)/u.test(source);
+}
+
+function isAmountlessDerivedGuideTipReview(fact: StructuredFact): boolean {
+  if (fact.category !== 'guide_tip') return false;
+  if (fact.review_status !== 'review_needed') return false;
+  if (fact.values.included !== false || fact.values.amount != null) return false;
+  const source = fact.evidence.map(item => item.quote).join(' ');
+  return !hasHardExcludedGuidePaymentMarker(source);
+}
+
+function isAmountlessDerivedGuideTipNotice(notice: StandardNoticeDraft): boolean {
+  if (notice.category !== 'tip_guideline') return false;
+  if (notice.template_key !== 'guide.tip_amount_local_payment') return false;
+  if (notice.review_status !== 'review_needed' || notice.values.amount != null) return false;
+  return !hasHardExcludedGuidePaymentMarker(notice.source_text);
 }
 
 function isCancellationOrPaymentPolicyLine(source: string): boolean {
@@ -181,7 +202,9 @@ function isCancellationOrPaymentPolicyLine(source: string): boolean {
 }
 
 function isConditionalMinPaxSurchargeLine(source: string): boolean {
-  return /(?:최소\s*)?(?:성인\s*)?\d+\s*(?:명|인)\s*이상|인원\s*충족|인원충족|예약\s*조건/.test(source)
+  const conditionalGroupOrPrivateEvent =
+    /(?:최소\s*)?(?:성인\s*)?\d+\s*(?:명|인)\s*이상|인원\s*충족|인원충족|예약\s*조건|단독\s*(?:행사|진행|투어|요청)|단독행사|단독진행|단독투어/.test(source);
+  return conditionalGroupOrPrivateEvent
     && /추가\s*요금|추가요금|추가금/.test(source)
     && !/(?:\d{2,3}(?:,\d{3})+|\d+\s*만원|\$\s*\d+)/.test(source);
 }
@@ -693,8 +716,20 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     }
   }
 
-  patch.category_attrs = summarizeCategoryAttrs(facts);
-  return { structuredFacts: facts, standardNotices: notices, customerFieldPatch: patch };
+  const hasIncludedGuideTip = facts.some(fact =>
+    fact.category === 'guide_tip'
+    && fact.review_status === 'auto_clean'
+    && fact.values.included === true
+  );
+  const resolvedFacts = hasIncludedGuideTip
+    ? facts.filter(fact => !isAmountlessDerivedGuideTipReview(fact))
+    : facts;
+  const resolvedNotices = hasIncludedGuideTip
+    ? notices.filter(notice => !isAmountlessDerivedGuideTipNotice(notice))
+    : notices;
+
+  patch.category_attrs = summarizeCategoryAttrs(resolvedFacts);
+  return { structuredFacts: resolvedFacts, standardNotices: resolvedNotices, customerFieldPatch: patch };
 }
 
 export function collectStructuredFactsFromLedger(ledger: unknown): StructuredFact[] {

@@ -96,7 +96,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
             if (selectedProposalId) {
               const { data: prop } = await sb
                 .from('rfq_proposals')
-                .select('title, price, tenant_id')
+                .select('proposal_title, total_selling_price, tenant_id')
                 .eq('id', selectedProposalId)
                 .single();
               proposal = prop as unknown as Record<string, unknown> | null;
@@ -112,10 +112,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
               }
             }
 
+            const customerId = (rfq as unknown as Record<string, unknown>).customer_id;
+            if (!customerId) {
+              return NextResponse.json({ rfq });
+            }
+
             const { error: insertError } = await sb
               .from('user_travel_histories')
               .upsert({
-                customer_id: (rfq as unknown as Record<string, unknown>).customer_id,
+                customer_id: customerId,
                 rfq_id: id,
                 destination: (rfq as unknown as Record<string, unknown>).destination ?? '미등록',
                 destination_country: null,
@@ -123,11 +128,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
                 duration_nights: (rfq as unknown as Record<string, unknown>).duration_nights ?? null,
                 trip_type: ((rfq as unknown as Record<string, unknown>).custom_requirements as { group_type?: string } | undefined)?.group_type ?? null,
                 tenant_name: tenantName,
-                proposal_title: proposal?.title ?? null,
-                total_price: proposal?.price ?? null,
+                proposal_title: proposal?.proposal_title ?? null,
+                total_price: proposal?.total_selling_price ?? null,
                 total_pax: (((rfq as unknown as Record<string, unknown>).adult_count as number) ?? 0) + (((rfq as unknown as Record<string, unknown>).child_count as number) ?? 0),
                 review_submitted: false,
-              } as never, { onConflict: 'customer_id,rfq_id', ignoreDuplicates: 'true' } as never);
+              } as never, { onConflict: 'customer_id,rfq_id', ignoreDuplicates: true } as never);
             if (insertError) {
               console.error('Travel history upsert 오류:', insertError);
             }

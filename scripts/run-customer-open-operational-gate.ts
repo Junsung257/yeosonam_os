@@ -48,6 +48,7 @@ function runStep(step: Step): StepResult {
 function main() {
   const baseUrl = readArg('--base', process.env.PRODUCTION_URL || 'https://www.yeosonam.com');
   const publicLimit = readArg('--public-limit', '500');
+  const prePublicLimit = readArg('--pre-public-limit', '50');
   const dbLimit = readArg('--db-limit', '5000');
   const includeTypeCheck = !hasFlag('--skip-type-check');
   const includeBaseline = !hasFlag('--skip-baseline');
@@ -77,6 +78,24 @@ function main() {
         `--limit=${publicLimit}`,
         '--page-timeout-ms=20000',
         '--text-timeout-ms=5000',
+        '--retry=1',
+        '--json',
+      ],
+    },
+    {
+      name: 'pre-public proof mobile text audit packages+lp',
+      command: 'npx',
+      args: [
+        'tsx',
+        'scripts/audit-mobile-landing-copy.ts',
+        `--base=${baseUrl}`,
+        '--scope=non-archived',
+        '--surfaces=packages,lp',
+        '--screen-non-public',
+        '--concurrency=3',
+        `--limit=${prePublicLimit}`,
+        '--page-timeout-ms=30000',
+        '--text-timeout-ms=10000',
         '--retry=1',
         '--json',
       ],

@@ -6,6 +6,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 import { filterTopicFitPassed } from '@/lib/blog-topic-fit-gate';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 
 /**
  * 트렌드 토픽 마이너 — 매일 06:00 KST (21:00 UTC) 실행
@@ -55,7 +56,7 @@ async function runTrendMiner(request: NextRequest) {
   const { data: pkgs } = await supabaseAdmin
     .from('travel_packages')
     .select('destination')
-    .in('status', ['approved', 'active']);
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES]);
   const activeDestinations = new Set(
     ((pkgs || []) as Array<{ destination: string | null }>)
       .map(p => p.destination)

@@ -296,7 +296,7 @@ export function PosterPrice({
         </div>
       )}
 
-      {/* 출발확정일 섹션 — price_tiers에서 status==='confirmed' 추출 */}
+      {/* 예약 가능일 섹션 — price_tiers에서 status==='confirmed' 추출 */}
       {(() => {
         const confirmedDates = tiers
           .filter(t => t.status === 'confirmed')
@@ -318,7 +318,7 @@ export function PosterPrice({
             background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '3px',
             padding: '3px 8px', marginBottom: '4px', fontSize: '9.5px', color: '#166534', fontWeight: 600,
           }}>
-            🟢 출발확정 (예약 문의 가능)&nbsp;&nbsp;
+            🟢 예약 가능일&nbsp;&nbsp;
             {Object.entries(byMonth).map(([m, days], i) => (
               <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
             ))}
@@ -391,7 +391,7 @@ export function PosterPrice({
                       <tr key={row.date} style={{ background: bg }}>
                         <td style={tdS}>
                           {formatPriceDate(row.date)} 출발
-                          {isConfirmed && <span style={{ background: '#dcfce7', color: '#166534', fontSize: '8px', padding: '1px 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 600 }}>확정</span>}
+                          {isConfirmed && <span style={{ background: '#dcfce7', color: '#166534', fontSize: '8px', padding: '1px 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 600 }}>가능</span>}
                           {isHighlighted && <span style={{ color: '#1e40af', marginLeft: '4px' }}>◀</span>}
                         </td>
                         <td style={{ ...tdS, textAlign: 'right', fontWeight: 700 }}>
@@ -416,7 +416,7 @@ export function PosterPrice({
                     <tr key={i} style={{ background: bg }}>
                       <td style={tdS}>
                         {label}{dayLabel ? ` ${dayLabel}` : ''}
-                        {isConfirmed && <span style={{ background: '#dcfce7', color: '#166534', fontSize: '8px', padding: '1px 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 600 }}>확정</span>}
+                        {isConfirmed && <span style={{ background: '#dcfce7', color: '#166534', fontSize: '8px', padding: '1px 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 600 }}>가능</span>}
                         {isSoldout && <span style={{ background: '#fee2e2', color: '#b91c1c', fontSize: '8px', padding: '1px 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 600 }}>마감</span>}
                         {isHighlighted && <span style={{ color: '#1e40af', marginLeft: '4px' }}>◀</span>}
                       </td>
@@ -538,7 +538,7 @@ export function PosterLegalNotice({
           <div key={idx}>• {line}</div>
         )) : (
           <>
-            <div>• 예약 확정 후 취소 시 출발일 기준 특별약관에 따른 수수료가 적용될 수 있습니다.</div>
+            <div>• 예약 완료 후 취소 시 출발일 기준 특별약관에 따른 수수료가 적용될 수 있습니다.</div>
             <div>• 항공/현지 사정 및 기상 악화 등 불가항력 상황에서는 일정이 조정될 수 있습니다.</div>
             <div>• 상세 환불 기준은 결제 시점 약관을 기준으로 적용됩니다.</div>
           </>

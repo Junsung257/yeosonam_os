@@ -15,6 +15,18 @@ describe('product-registration-v3 structured facts', () => {
     expect(result.standardNotices[0]?.standard_text).toBe('가이드/기사 팁은 1인 기준 $50 현지 지불입니다.');
   });
 
+  it('extracts trailing-dollar guide tip amount as source-backed auto-clean evidence', () => {
+    const rawText = '가이드/기사경비 50$ ,개인 비용, 매너팁';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const fact = result.structuredFacts.find(row => row.category === 'guide_tip');
+    const notice = result.standardNotices.find(row => row.category === 'tip_guideline');
+
+    expect(fact?.values).toMatchObject({ included: false, amount: 50, currency: 'USD', payment: 'local' });
+    expect(fact?.review_status).toBe('auto_clean');
+    expect(notice?.values).toMatchObject({ amount: 50, currency: 'USD' });
+    expect(notice?.review_status).toBe('auto_clean');
+  });
+
   it('treats no-tip and included guide tip as an explicit safe state', () => {
     const rawText = '포함사항: 기사/가이드팁 포함, 노팁 상품';
     const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
@@ -24,6 +36,35 @@ describe('product-registration-v3 structured facts', () => {
     expect(fact?.review_status).toBe('auto_clean');
     expect(result.customerFieldPatch.guide_tip).toBe('포함');
     expect(result.standardNotices[0]?.standard_text).toBe('가이드/기사 팁은 포함되어 있습니다.');
+  });
+
+  it('keeps included guide tip evidence authoritative over amount-less derived tip noise', () => {
+    const rawText = [
+      '포함사항: 기사/가이드팁 포함, 노팁 상품',
+      '가이드/기사경비, 개인 비용, 매너팁',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const guideTips = result.structuredFacts.filter(row => row.category === 'guide_tip');
+    const reviewNeededNotices = result.standardNotices.filter(row =>
+      row.category === 'tip_guideline' && row.review_status === 'review_needed'
+    );
+
+    expect(guideTips).toHaveLength(1);
+    expect(guideTips[0]?.values).toMatchObject({ included: true, amount: null });
+    expect(guideTips[0]?.review_status).toBe('auto_clean');
+    expect(reviewNeededNotices).toHaveLength(0);
+  });
+
+  it('keeps explicit amount-less local guide tip conflicts blocked even when included evidence exists', () => {
+    const rawText = [
+      '포함사항: 기사/가이드팁 포함, 노팁 상품',
+      '불포함: 가이드/기사 팁 별도',
+    ].join('\n');
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+
+    expect(result.structuredFacts.some(row =>
+      row.category === 'guide_tip' && row.review_status === 'review_needed'
+    )).toBe(true);
   });
 
   it('extracts Korean adult minimum departure and included guide tip from catalog terms', () => {
@@ -38,6 +79,18 @@ describe('product-registration-v3 structured facts', () => {
     expect(minPax?.values).toMatchObject({ count: 6 });
     expect(guideTip?.values).toMatchObject({ included: true, amount: null });
     expect(guideTip?.review_status).toBe('auto_clean');
+  });
+
+  it('treats guide expense inside an inclusion list as included instead of missing local payment', () => {
+    const rawText = '기사가이드경비, 바나산 국립공원 입장료, 전신마사지 2시간, 김해공항샌딩, 해외여행자보험';
+    const result = extractStructuredFactsFromSupplierText({ rawText, lines: createSourceLineIndex(rawText) });
+    const guideTip = result.structuredFacts.find(row => row.category === 'guide_tip');
+
+    expect(guideTip?.values).toMatchObject({ included: true, amount: null });
+    expect(guideTip?.review_status).toBe('auto_clean');
+    expect(result.standardNotices.some(row =>
+      row.category === 'tip_guideline' && row.review_status === 'review_needed'
+    )).toBe(false);
   });
 
   it('extracts no option, no shopping, shopping count, hotel grade, meals, and transport', () => {

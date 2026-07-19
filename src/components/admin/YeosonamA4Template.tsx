@@ -620,17 +620,17 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
 
     return (
       <section className="mb-3">
-        {/* 출발확정일 배너 */}
+        {/* 예약 가능일 배너 */}
         {Object.keys(pdConfirmedByMonth).length > 0 && (
           <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-admin-sm text-green-800 font-semibold">
-            🟢 출발확정 (예약 문의 가능)&nbsp;&nbsp;
+            🟢 예약 가능일&nbsp;&nbsp;
             {Object.entries(pdConfirmedByMonth).map(([m, days], i) => (
               <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
             ))}
           </div>
         )}
         <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-admin-md ${EC}`}>출발일별 요금</h3>
-        {pdConfirmedDates.length > 0 && <p className="text-[9px] text-admin-muted-2 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
+        {pdConfirmedDates.length > 0 && <p className="text-[9px] text-admin-muted-2 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 예약 가능일</p>}
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
@@ -787,17 +787,17 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
 
   return (
     <section className="mb-3">
-      {/* 출발확정일 배너 */}
+      {/* 예약 가능일 배너 */}
       {Object.keys(confirmedByMonth).length > 0 && (
         <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-admin-sm text-green-800 font-semibold">
-          🟢 출발확정 (예약 문의 가능)&nbsp;&nbsp;
+          🟢 예약 가능일&nbsp;&nbsp;
           {Object.entries(confirmedByMonth).map(([m, days], i) => (
             <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
           ))}
         </div>
       )}
       <h3 {...E} className={`font-bold text-[#001f3f] mb-1.5 text-admin-md ${EC}`}>출발일별 요금</h3>
-      {confirmedSet.size > 0 && <p className="text-[9px] text-admin-muted-2 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 출발확정일</p>}
+      {confirmedSet.size > 0 && <p className="text-[9px] text-admin-muted-2 mb-1">* <span className="text-red-600 font-bold">빨간색</span> = 예약 가능일</p>}
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
           <tr>

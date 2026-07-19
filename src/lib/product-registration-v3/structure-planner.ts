@@ -10,7 +10,7 @@ import {
 const FLIGHT_CODE_RE = /\b(?:[A-Z][A-Z0-9]|[0-9][A-Z])\s*\d{3,4}\b/g;
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(?:\uc6d0|KRW|USD|\$)?/i;
-const DAY_HEADER_RE = /^(?:day\s*\d{1,2}(?:\b|\s|$)|\uc81c\s*\d{1,2}\s*\uc77c(?:\s|$)|\d{1,2}\s*\uc77c\ucc28(?:\s|$))/i;
+const DAY_HEADER_RE = /^(?:day\s*\d{1,2}(?:\b|\s|$)|\uc81c\s*\d{1,2}\s*\uc77c(?:\uCC28)?(?:\s|$)|\d{1,2}\s*\uc77c(?:\uCC28)?(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
 const OPTION_RE = /option|optional|\uc120\ud0dd\s*\uad00\uad11|\ud604\uc9c0\s*\uc9c0\ubd88\s*\uc635\uc158|\uac15\ub825\s*\ucd94\ucc9c\s*\uc635\uc158|\ucd94\ucc9c\s*\uc120\ud0dd\s*\uad00\uad11/i;
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
@@ -38,6 +38,39 @@ function titleHintFromBoundary(lines: V3SourceLine[], startLine: number, endLine
   );
 }
 
+function titleHintFromProductLikeLine(lines: V3SourceLine[], startLine: number, endLine: number): string {
+  const candidate = lines
+    .slice(startLine - 1, endLine)
+    .map(line => line.quote.trim())
+    .find(line => (
+      /(?:상품|product|pkg)/i.test(line)
+      || (/\d+\s*박\s*\d+\s*일/.test(line) && !/[\/&]|출발일|판매가|상품가|요금/.test(line))
+    ));
+  return compact(candidate ?? titleHintFromBoundary(lines, startLine, endLine));
+}
+
+function hasDayHeader(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  return lines.slice(startLine - 1, endLine).some(line => DAY_HEADER_RE.test(line.quote.trim()));
+}
+
+function hasItineraryDayHeader(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  const itineraryDayHeaderRe = /^(?:day\s*\d{1,2}(?:\b|\s|$)|제\s*\d{1,2}\s*일(?:차)?(?:\s|$)|\d{1,2}\s*일차(?:\s|$))/i;
+  return lines.slice(startLine - 1, endLine).some(line => itineraryDayHeaderRe.test(line.quote.trim()));
+}
+
+function hasFlightCode(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  return lines.slice(startLine - 1, endLine).some(line => /\b[A-Z0-9]{2}\s*\d{3,4}\b/.test(line.quote));
+}
+
+function isDurationPricePreamble(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  const text = lines.slice(startLine - 1, endLine).map(line => line.quote.trim()).join('\n');
+  return /출발일/.test(text)
+    && /판매가|상품가|요금/.test(text)
+    && /\d+\s*박\s*\d+\s*일/.test(text)
+    && !hasItineraryDayHeader(lines, startLine, endLine)
+    && !hasFlightCode(lines, startLine, endLine);
+}
+
 function collectCatalogBoundaryStarts(raw: string): number[] {
   const variantStarts = collectVariantCatalogBlockStarts(raw);
   const transportStarts = collectTransportVariantDetailBlockStarts(raw);
@@ -53,11 +86,39 @@ function collectCatalogBoundaryStarts(raw: string): number[] {
   return [...new Set(starts)].sort((a, b) => a - b);
 }
 
+function sectionHasItineraryDayEvidence(lines: V3SourceLine[], startLine: number, endLine: number): boolean {
+  return lines
+    .slice(startLine - 1, endLine)
+    .some(line => DAY_HEADER_RE.test(line.quote.trim()));
+}
+
+function filterCatalogStartsBySectionEvidence(lines: V3SourceLine[], starts: number[]): number[] {
+  if (starts.length < 2) return starts;
+
+  const filtered = starts.filter((start, index) => {
+    const startLine = lineNumberForCharOffset(lines, start);
+    const nextStart = starts[index + 1];
+    const endLine = nextStart == null
+      ? lines.length
+      : Math.max(startLine, lineNumberForCharOffset(lines, nextStart) - 1);
+    return sectionHasItineraryDayEvidence(lines, startLine, endLine);
+  });
+
+  return filtered.length >= 2 ? filtered : [];
+}
+
 function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boundaries'] {
   const raw = lines.map(line => line.quote).join('\n');
-  const catalogStarts = collectCatalogBoundaryStarts(raw);
+  const hasExplicitCatalogStarts =
+    collectPkgBlockStarts(raw).length >= 2
+    || collectTransportVariantDetailBlockStarts(raw).length >= 2
+    || collectVariantCatalogBlockStarts(raw).length >= 2;
+  const rawCatalogStarts = collectCatalogBoundaryStarts(raw);
+  const catalogStarts = hasExplicitCatalogStarts
+    ? rawCatalogStarts
+    : filterCatalogStartsBySectionEvidence(lines, rawCatalogStarts);
   if (catalogStarts.length >= 2) {
-    return catalogStarts.map((start, index) => {
+    const boundaries = catalogStarts.map((start, index) => {
       const startLine = lineNumberForCharOffset(lines, start);
       const nextStart = catalogStarts[index + 1];
       const endLine = nextStart == null ? lines.length : Math.max(startLine, lineNumberForCharOffset(lines, nextStart) - 1);
@@ -68,6 +129,50 @@ function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boun
         title_hint: titleHintFromBoundary(lines, startLine, endLine),
       };
     });
+    const merged: V3StructurePlan['product_boundaries'] = [];
+    for (let index = 0; index < boundaries.length; index += 1) {
+      const current = boundaries[index];
+      const next = boundaries[index + 1];
+      if (isDurationPricePreamble(lines, current.line_start, current.line_end)) {
+        let targetIndex = index + 1;
+        while (
+          targetIndex < boundaries.length
+          && isDurationPricePreamble(lines, boundaries[targetIndex].line_start, boundaries[targetIndex].line_end)
+        ) {
+          targetIndex += 1;
+        }
+        const target = boundaries[targetIndex];
+        if (target && (hasItineraryDayHeader(lines, target.line_start, target.line_end) || hasFlightCode(lines, target.line_start, target.line_end))) {
+          merged.push({
+            index: merged.length,
+            line_start: current.line_start,
+            line_end: target.line_end,
+            title_hint: titleHintFromProductLikeLine(lines, target.line_start, target.line_end),
+          });
+          index = targetIndex;
+          continue;
+        }
+      }
+      if (
+        next
+        && isDurationPricePreamble(lines, current.line_start, current.line_end)
+        && (hasItineraryDayHeader(lines, next.line_start, next.line_end) || hasFlightCode(lines, next.line_start, next.line_end))
+      ) {
+        merged.push({
+          index: merged.length,
+          line_start: current.line_start,
+          line_end: next.line_end,
+          title_hint: titleHintFromProductLikeLine(lines, next.line_start, next.line_end),
+        });
+        index += 1;
+        continue;
+      }
+      merged.push({
+        ...current,
+        index: merged.length,
+      });
+    }
+    return merged;
   }
 
   const starts = lines.filter(line => PRODUCT_HEADER_RE.test(line.quote.trim()));

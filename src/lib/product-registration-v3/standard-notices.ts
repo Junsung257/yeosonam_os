@@ -298,8 +298,10 @@ function parseKrw(textValue: string): { amount: number | null; currency: string 
 }
 
 function parseUsd(textValue: string): number | null {
-  const m = textValue.match(/(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)/i);
-  return m ? Number(m[1]) : null;
+  const prefixed = textValue.match(/(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)/i);
+  if (prefixed) return Number(prefixed[1]);
+  const suffixed = textValue.match(/(\d+(?:\.\d+)?)\s*(?:USD|US\$|\$|달러)/i);
+  return suffixed ? Number(suffixed[1]) : null;
 }
 
 function detectCountry(source: string): string | null {
@@ -384,11 +386,15 @@ export function detectStandardNoticeFromLine(
   }
 
   if (/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) {
-    const included = /포함|노팁|NO\s*TIP/i.test(source);
     const usdAmount = parseUsd(source);
     const krwAmount = usdAmount == null ? parseKrw(source) : { amount: null, currency: null };
     const amount = usdAmount ?? krwAmount.amount;
     const currency = usdAmount ? 'USD' : krwAmount.currency;
+    const explicitlyIncluded = /포함|특전|노팁|노\s*팁|NO\s*TIP/i.test(source);
+    const includedByNoAmountCostContext = amount == null
+      && /경비/.test(source)
+      && !/불포함|별도|현지\s*지불|현지지불|개인경비|매너팁|팁\s*별도/i.test(source);
+    const included = explicitlyIncluded || includedByNoAmountCostContext;
     return buildStandardNoticeDraft({
       source_text: source,
       category: 'tip_guideline',

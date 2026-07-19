@@ -24,6 +24,64 @@ export const runtime = 'edge';
 // 캐시: 동일 code+pkg 조합은 1시간 동안 같은 이미지 (CDN edge 캐시).
 export const revalidate = 3600;
 
+type RestPackageGateRow = {
+  publication_state?: string | null;
+  package_revision?: number | null;
+};
+
+type PublicSnapshotRestRow = {
+  snapshot_json?: Record<string, unknown> | null;
+  card_projection?: Record<string, unknown> | null;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function asNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isPublicPackageGateRow(row: RestPackageGateRow | null | undefined): row is RestPackageGateRow {
+  return row?.publication_state === 'approved' || row?.publication_state === 'published';
+}
+
+function publicProductFromSnapshot(row: PublicSnapshotRestRow | null | undefined): {
+  title: string;
+  destination: string;
+  price: number | null;
+} | null {
+  const snapshot = asRecord(row?.snapshot_json);
+  const card = asRecord(row?.card_projection);
+  const pkg = asRecord(snapshot?.package);
+  const destinations = Array.isArray(snapshot?.destinations) ? snapshot.destinations : [];
+
+  const title =
+    asNonEmptyString(card?.title) ||
+    asNonEmptyString(snapshot?.public_title) ||
+    asNonEmptyString(pkg?.title) ||
+    asNonEmptyString(pkg?.display_title);
+
+  if (!title) return null;
+
+  return {
+    title,
+    destination:
+      asNonEmptyString(card?.destination) ||
+      asNonEmptyString(destinations[0]) ||
+      asNonEmptyString(pkg?.destination) ||
+      '',
+    price: asNumber(card?.price ?? pkg?.price),
+  };
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = normalizeAffiliateReferralCode(searchParams.get('code') || 'PARTNER') || 'PARTNER';
@@ -49,17 +107,28 @@ export async function GET(request: NextRequest) {
       const affs = (await affRes.json()) as Array<{ name: string }>;
       if (affs?.[0]?.name) affiliateName = affs[0].name;
 
-      // 상품
+      // 상품: 공개 상태/리비전만 원본 테이블에서 확인하고, 고객 문구는 public snapshot에서만 읽는다.
       if (pkgId) {
-        const pkgRes = await fetch(
-          `${supabaseUrl}/rest/v1/travel_packages?id=eq.${encodeURIComponent(pkgId)}&select=title,destination,price&limit=1`,
+        const pkgGateRes = await fetch(
+          `${supabaseUrl}/rest/v1/travel_packages?id=eq.${encodeURIComponent(pkgId)}&select=publication_state,package_revision&publication_state=in.(approved,published)&limit=1`,
           { headers, next: { revalidate: 600 } },
         );
-        const pkgs = (await pkgRes.json()) as Array<{ title: string; destination: string; price: number }>;
-        if (pkgs?.[0]) {
-          productTitle = pkgs[0].title || productTitle;
-          productDestination = pkgs[0].destination || '';
-          productPrice = pkgs[0].price ?? null;
+        const pkgGateRows = (await pkgGateRes.json()) as RestPackageGateRow[];
+        const gateRow = pkgGateRows?.[0];
+        const revision = Number(gateRow?.package_revision ?? 1);
+
+        if (isPublicPackageGateRow(gateRow) && Number.isFinite(revision) && revision > 0) {
+          const snapshotRes = await fetch(
+            `${supabaseUrl}/rest/v1/public_package_snapshots?package_id=eq.${encodeURIComponent(pkgId)}&package_revision=eq.${revision}&status=in.(approved,published)&select=snapshot_json,card_projection&order=created_at.desc&limit=1`,
+            { headers, next: { revalidate: 600 } },
+          );
+          const snapshotRows = (await snapshotRes.json()) as PublicSnapshotRestRow[];
+          const publicProduct = publicProductFromSnapshot(snapshotRows?.[0]);
+          if (publicProduct) {
+            productTitle = publicProduct.title;
+            productDestination = publicProduct.destination;
+            productPrice = publicProduct.price;
+          }
         }
       }
     }

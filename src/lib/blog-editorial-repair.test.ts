@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   repairBlogEditorialQuality,
+  repairBlogSemanticSurface,
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from './blog-editorial-repair';
@@ -8,6 +9,201 @@ import { checkHook, checkMarkdownTableIntegrity, checkRenderIntegrity } from './
 import { computeReadability } from './blog-readability';
 
 describe('blog editorial repair', () => {
+  it('repairs customer-visible placeholder product copy', () => {
+    const result = repairBlogEditorialQuality({
+      title: '광저우 패키지',
+      slug: 'guangzhou-package',
+      contentType: 'package_intro',
+      productId: 'pkg-1',
+      blogHtml: [
+        '# 광저우 패키지',
+        '',
+        '1,369,000원부터부터 보이는 상품입니다.',
+        '',
+        '## 일정 체감',
+        '',
+        '- 상세 일차별 일정은 상담에서 확정본 기준으로 확인해야 합니다.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).not.toContain('원부터부터');
+    expect(result.blogHtml).not.toContain('상세 일차별 일정은 상담에서 확정본 기준으로 확인해야 합니다');
+  });
+
+  it('rewrites generic answer-first openings into topic-specific intros', () => {
+    const result = repairBlogEditorialQuality({
+      title: '세부 쇼핑 예산',
+      slug: 'cebu-shopping-budget',
+      primaryKeyword: '세부 쇼핑 예산',
+      destination: '세부',
+      contentType: 'guide',
+      blogHtml: [
+        '# 세부 쇼핑 예산',
+        '',
+        '답부터 말하면, 2026년 7월 기준 세부에서 먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다. 포함/불포함, 이동 시간, 현지 추가비용을 함께 비교하면 불필요한 이동과 추가 부담을 줄일 수 있습니다.',
+        '',
+        '## 항목별 예산',
+        '',
+        '| 항목 | 금액 | 체크 |',
+        '| --- | --- | --- |',
+        '| 건망고 | 10,000원 | 수량 확인 |',
+        '| 선물 | 30,000원 | 무게 확인 |',
+        '| 쇼핑몰 이동 | 15분 | 동선 확인 |',
+      ].join('\n'),
+    });
+
+    expect(result.changes).toContain('repaired_generic_answer_opening');
+    expect(result.blogHtml).not.toContain('답부터 말하면, 2026년 7월 기준');
+    expect(result.blogHtml).toContain('세부 쇼핑 예산');
+  });
+
+  it('rewrites weather openings with weather language instead of generic cost language', () => {
+    const result = repairBlogEditorialQuality({
+      title: '몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      slug: 'mongolia-july-weather-packing',
+      primaryKeyword: '몽골 7월 날씨 옷차림',
+      destination: '몽골',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 7월 날씨 옷차림',
+        '',
+        '답부터 말하면, 2026년 7월 기준 몽골 7월 날씨 옷차림에서 먼저 볼 것은 예산 범위, 이동 순서, 현지 확인 사항입니다. 포함/불포함, 이동 시간, 현지 추가비용을 함께 비교하면 불필요한 이동과 추가 부담을 줄일 수 있습니다.',
+        '',
+        '## 기온과 옷차림',
+        '',
+        '| 구분 | 기준 | 준비 |',
+        '| --- | --- | --- |',
+        '| 낮 | 25도 안팎 | 얇은 긴팔 |',
+        '| 밤 | 10도 안팎 | 겉옷 |',
+        '| 비 | 소나기 가능 | 우비 |',
+      ].join('\n'),
+    });
+
+    expect(result.changes).toContain('repaired_generic_answer_opening');
+    expect(result.blogHtml).toContain('낮과 밤 기온');
+    expect(result.blogHtml).toContain('비 예보');
+    expect(result.blogHtml).not.toContain('예산 범위, 이동 순서, 현지 확인 사항');
+  });
+
+  it('repairs readable weather leads that still answer with generic cost and movement language', () => {
+    const result = repairBlogEditorialQuality({
+      title: '광저우 월별 날씨와 옷차림 가이드',
+      slug: 'guangzhou-weather',
+      primaryKeyword: '광저우 월별 날씨와 옷차림',
+      destination: '광저우',
+      category: 'weather',
+      contentType: 'guide',
+      blogHtml: [
+        '# 광저우 월별 날씨와 옷차림 가이드',
+        '',
+        '광저우 월별 날씨와 옷차림은 일정, 비용, 이동 시간, 현지 확인 조건을 먼저 나누면 판단이 쉽습니다. 출발일 기준으로 바뀔 수 있는 항목을 다시 확인하고, 표와 체크리스트에서 필요한 부분만 빠르게 비교하세요.',
+        '',
+        '## 월별 날씨 표',
+        '',
+        '| 월 | 날씨 포인트 | 옷차림 |',
+        '| --- | --- | --- |',
+        '| 1월 | 아침저녁 일교차가 있습니다. | 얇은 겉옷 |',
+        '| 7월 | 비 예보와 습도를 함께 봅니다. | 통풍되는 옷 |',
+        '| 12월 | 바람을 확인합니다. | 가벼운 외투 |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('낮과 밤 기온, 비 예보, 일교차');
+    expect(result.blogHtml).toContain('## 출발 전 날씨 준비물 체크리스트');
+    expect(result.blogHtml).not.toContain('일정, 비용, 이동 시간, 현지 확인 조건');
+  });
+
+  it('splits mobile paragraph walls before customer quality gates', () => {
+    const longParagraph = [
+      '몽골 7월 여행은 낮과 밤의 기온 차이가 커서 옷을 한 벌로 정하기보다 얇은 긴팔, 바람막이, 밤용 겉옷을 나눠 준비하는 편이 안전합니다.',
+      '낮에는 햇빛과 자외선이 강하고 이동 중 먼지가 많을 수 있어 피부를 가리는 옷이 편하며, 밤에는 게르 캠프나 별보기 일정에서 체감온도가 빠르게 내려갈 수 있습니다.',
+      '비가 오더라도 하루 종일 이어지는 장마라기보다 짧게 지나가는 소나기 형태가 많아 우산보다 방수 바람막이가 실용적인 경우가 많습니다.',
+      '아이와 함께라면 감기약, 지사제, 밴드, 보습제처럼 현지에서 바로 구하기 어려운 물품을 작은 파우치에 따로 챙기는 것이 좋고, 이동 시간이 길어질 수 있으니 보조배터리와 간식도 같이 준비하면 좋습니다.',
+      '현지에서 바로 사면 되는 물건과 한국에서 챙겨야 하는 물건을 나눠두면 짐은 줄이면서도 꼭 필요한 준비물은 놓치지 않을 수 있습니다.',
+    ].join(' ');
+    const result = repairBlogStructureQuality({
+      title: '몽골 7월 날씨 옷차림',
+      slug: 'mongolia-july-weather',
+      primaryKeyword: '몽골 7월 날씨',
+      destination: '몽골',
+      contentType: 'guide',
+      blogHtml: [
+        '# 몽골 7월 날씨 옷차림',
+        '',
+        longParagraph,
+        '',
+        '## 공식 확인 링크',
+        '',
+        '- 외교부 해외안전여행',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('split_long_paragraphs');
+    expect(result.blogHtml.split(/\n{2,}/).some((paragraph) => paragraph.length >= 360)).toBe(false);
+  });
+
+  it('removes visual highlight residue without breaking URL query strings', () => {
+    const result = repairBlogStructureQuality({
+      title: '발리 준비물',
+      slug: 'bali-packing',
+      primaryKeyword: '발리 준비물',
+      destination: '발리',
+      contentType: 'guide',
+      blogHtml: [
+        '# 발리 준비물',
+        '',
+        '=출발 전 샤워기 필터와 모기 기피제를 먼저 챙기면 좋습니다=',
+        '',
+        '[상담 링크](https://www.yeosonam.com/group-inquiry?utm_source=naver_blog&utm_campaign=blog)',
+        '',
+        '**',
+        '',
+        '## 체크리스트',
+        '',
+        '- 여권',
+        '- 선크림',
+        '- 상비약',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('출발 전 샤워기 필터와 모기 기피제를 먼저 챙기면 좋습니다');
+    expect(result.blogHtml).toContain('utm_source=naver_blog');
+    expect(result.blogHtml).not.toMatch(/(^|\n)\s*>?\s*\*\*\s*(?=\n|$)/);
+    expect(result.blogHtml).not.toContain('=출발 전');
+  });
+
+  it('softens readable unsupported internal product and booking data claims', () => {
+    const result = repairBlogEditorialQuality({
+      title: '석가장 여행 비용',
+      slug: 'shijiazhuang-3-4-budget',
+      primaryKeyword: '석가장 여행 비용',
+      destination: '석가장',
+      contentType: 'guide',
+      blogHtml: [
+        '# 석가장 여행 비용',
+        '',
+        '여소남 내부 상품 및 예약 데이터를 기준으로, 석가장 여행 비용 트렌드를 정리했습니다.',
+        '',
+        '## 비용 표',
+        '',
+        '| 항목 | 금액 | 확인 |',
+        '| --- | --- | --- |',
+        '| 항공 | 30만 원 | 발권 시점 확인 |',
+        '| 숙소 | 18만 원 | 위치 확인 |',
+        '| 식사 | 18만 원 | 포함 여부 확인 |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('softened_unsupported_yeosonam_data_claims');
+    expect(result.blogHtml).not.toContain('여소남 내부 상품 및 예약 데이터');
+    expect(result.blogHtml).toContain('현재 확인 가능한 상품 조건');
+  });
+
   it('repairs loose markdown tables with blank lines and missing separators', () => {
     const result = repairBlogStructureQuality({
       title: 'Nha Trang weather',
@@ -220,12 +416,52 @@ describe('blog editorial repair', () => {
         '<h1>Clark monthly weather guide</h1>',
         '<p>**Quick answer** Clark is easiest to plan when you check rain, heat, and moving time together.</p>',
         '<p>Before asking about a package, compare **departure date**, hotel location, and airport transfer time.</p>',
+        '',
+        '**핵심 요약**',
+        '',
+        '비가 오는 날은 **이동 시간**을 먼저 확인합니다.',
       ].join('\n'),
     });
 
     expect(result.changed).toBe(true);
     expect(result.changes).toContain('removed_residual_html_markdown_bold');
     expect(result.blogHtml).not.toContain('**');
+
+    const renderGate = await checkRenderIntegrity(result.blogHtml);
+    expect(renderGate.passed).toBe(true);
+    expect(renderGate.evidence).toMatchObject({
+      artifactCount: 0,
+      artifacts: [],
+    });
+  });
+
+  it('removes standalone and escaped markdown bold residue that would block autopublish', async () => {
+    const result = repairBlogStructureQuality({
+      title: 'Cebu family travel cost',
+      category: 'cost',
+      contentType: 'guide',
+      primaryKeyword: 'Cebu family travel cost',
+      blogHtml: [
+        '# Cebu family travel cost',
+        '',
+        '<p>**</p>',
+        '',
+        '> **',
+        '',
+        '<p>\\*\\*Quick answer\\*\\* Check airfare, hotel area, transfers, and local meals before comparing package prices.</p>',
+        '',
+        '| Item | Check | Note |',
+        '| --- | --- | --- |',
+        '| Airfare | Departure date | Recheck seat class |',
+        '| Hotel | Area | Compare transfer time |',
+        '| Local cost | Meals | Keep cash buffer |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('removed_residual_html_markdown_bold');
+    expect(result.blogHtml).not.toContain('**');
+    expect(result.blogHtml).not.toContain('\\*\\*');
 
     const renderGate = await checkRenderIntegrity(result.blogHtml);
     expect(renderGate.passed).toBe(true);
@@ -417,6 +653,81 @@ describe('blog editorial repair', () => {
     expect(result.after.issues.some((issue) => issue.code === 'placeholder_destination_context')).toBe(false);
     expect(result.after.issues.some((issue) => issue.code === 'placeholder_reference_link')).toBe(false);
     expect(result.after.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(false);
+  });
+
+  it('repairs customer-language particle and target wording defects', () => {
+    const result = repairBlogSemanticSurface({
+      title: '광저우 4박6일 패키지 가격 조건',
+      primaryKeyword: '광저우 패키지',
+      destination: '광저우',
+      category: 'product',
+      contentType: 'package_intro',
+      productId: 'pkg_456',
+      blogHtml: [
+        '# 광저우 4박6일 패키지 가격 조건',
+        '',
+        '광저우은 가격만 보지 말고 출발지, 포함사항, 일정 강도를 같이 봐야 판단이 쉽습니다. 대학생에서 먼저 볼 것은 비용과 일정입니다.',
+        '',
+        '## 10초 판단',
+        '| 확인 항목 | 현재 기준 | 문의 전 볼 점 |',
+        '| --- | --- | --- |',
+        '| 가격 | 749,000원부터 | 출발일별 확인 |',
+        '| 기간 | 4박6일 | 이동 부담 확인 |',
+        '| 포함 | 항공/호텔 | 불포함 확인 |',
+        '',
+        '## 포함/불포함',
+        '| 구분 | 항목 | 확인 포인트 |',
+        '| --- | --- | --- |',
+        '| 포함 | 항공 | 상담 확인 |',
+        '| 불포함 | 개인경비 | 상담 확인 |',
+        '| 불포함 | 선택관광 | 상담 확인 |',
+        '',
+        '## 이런 분께 맞습니다',
+        '- 가격과 일정을 비교하려는 고객',
+        '',
+        '## 이런 분께는 맞지 않을 수 있습니다',
+        '- 자유일정 비중이 큰 여행을 원하는 고객',
+        '',
+        '## 가격이 달라질 수 있는 조건',
+        '- 가격과 좌석은 발권 시점에 달라질 수 있음',
+        '',
+        '## 문의 전 질문',
+        '- 인원과 출발 가능일이 어떻게 되나요?',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('광저우는');
+    expect(result.blogHtml).toContain('대학생 여행에서 먼저 볼 것은');
+    expect(result.after.issues.some((issue) => issue.code === 'awkward_korean_surface')).toBe(false);
+  });
+
+  it('repairs budget particle defects in generated bullet summaries', () => {
+    const result = repairBlogSemanticSurface({
+      title: '세부 숙소 지역별 예산 여행 가이드 2026',
+      primaryKeyword: '세부 숙소 지역별 예산',
+      destination: '세부',
+      category: 'cost',
+      contentType: 'guide',
+      blogHtml: [
+        '# 세부 숙소 지역별 예산 여행 가이드 2026',
+        '',
+        '세부 숙소 지역별 예산, 먼저 총액에서 무엇이 빠지는지 봐야 합니다.',
+        '',
+        '## 세부 숙소 지역별 예산 확인 포인트',
+        '',
+        '- 세부 숙소 지역별 예산는 상품가와 현지 개인경비를 나눠 봐야 총액이 맞습니다.',
+        '- 예산는 식사, 교통, 선택 관광 비용을 따로 잡으면 비교가 쉬워집니다.',
+        '- 비용는 환율과 성수기 여부에 따라 달라질 수 있어 예약 전 조건을 다시 확인하세요.',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('세부 숙소 지역별 예산은 상품가');
+    expect(result.blogHtml).toContain('예산은 식사');
+    expect(result.blogHtml).toContain('비용은 환율');
+    expect(result.blogHtml).not.toContain('예산는');
+    expect(result.blogHtml).not.toContain('비용는');
   });
 
   it('repairs generated image context and removes repeated answer scaffolds', () => {
@@ -827,6 +1138,147 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).not.toContain('일정별 확인 항목 할까요');
   });
 
+  it('repairs article quality v2 surface issues before quality gates', () => {
+    const source = [
+      '# 몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      '',
+      '몽골 7월 날씨은 여행 전 비용, 이동 시간, 현지 결제 조건을 먼저 확인해야 시행착오를 줄일 수 있는 핵심 준비 항목입니다.',
+      '',
+      '이 정보는 2024년 6월 10일 확인 기준으로 작성되었습니다.',
+      '',
+      '여소남 내부 상품/예약 데이터 기준, 몽골 여행 상품은 여러 가격대로 구성되어 있더라고요.',
+      '',
+      '## 공식 확인 링크',
+      '',
+      '외교부 해외안전여행',
+      '',
+      '## 공식 확인 링크',
+      '',
+      '몽골 기상청',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '몽골 7월 날씨 옷차림 여행 준비물 체크리스트',
+      category: 'weather',
+      contentType: 'guide',
+      primaryKeyword: '몽골 7월 날씨 옷차림 여행 준비물',
+      destination: '몽골',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(expect.arrayContaining(['repaired_article_quality_v2_surface', 'deduped_repeated_headings']));
+    expect(result.blogHtml).toContain('몽골 7월 날씨 옷차림 여행 준비물에서 핵심은 낮 기온만 보는 것이 아닙니다.');
+    expect(result.blogHtml).not.toContain('날씨은');
+    expect(result.blogHtml).not.toContain('2024년 6월 10일 확인 기준');
+    expect(result.blogHtml).not.toContain('여소남 내부 상품/예약 데이터 기준');
+    expect((result.blogHtml.match(/^## 공식 확인 링크$/gm) || []).length).toBe(1);
+  });
+
+  it('removes stale confirmation dates even when the phrase is not sentence-prefixed', () => {
+    const result = repairBlogStructureQuality({
+      title: '푸꾸옥 가족여행 2026 실제 경비표',
+      category: 'budget',
+      contentType: 'guide',
+      primaryKeyword: '푸꾸옥 가족여행 경비',
+      destination: '푸꾸옥',
+      blogHtml: [
+        '# 푸꾸옥 가족여행 2026 실제 경비표',
+        '',
+        '푸꾸옥 가족여행 경비는 항공, 숙소, 식비를 먼저 나눠 보면 됩니다. 4인 가족은 숙소 위치와 현지 이동 시간이 총액 차이를 만듭니다.',
+        '',
+        '세부 비용은 2024년 7월 8일 확인 기준으로 정리했습니다.',
+        '',
+        '## 경비 표',
+        '| 항목 | 확인 기준 | 메모 |',
+        '| --- | --- | --- |',
+        '| 항공 | 출발일 | 성수기 변동 |',
+        '| 숙소 | 위치 | 이동비 차이 |',
+        '| 식비 | 동선 | 리조트 포함 여부 |',
+      ].join('\n'),
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).not.toContain('2024년 7월 8일 확인 기준');
+  });
+
+  it('repairs data rows that were accidentally promoted to markdown table headers', () => {
+    const source = [
+      '# 세부 쇼핑 예산',
+      '',
+      '비고 |',
+      '',
+      '| **식료품** | 건망고 | 20,000원 ~ 50,000원 | 현지 마트가 저렴 |',
+      '| --- | --- | --- | --- |',
+      '| **기념품** | 라탄 가방 | 30,000원 ~ 80,000원 | 흥정 필요 |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '세부 쇼핑 예산',
+      category: 'budget',
+      contentType: 'guide',
+      primaryKeyword: '세부 쇼핑 예산',
+      destination: '세부',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.blogHtml).toContain('- 항목: 식료품 / 내용: 건망고 / 비용: 20,000원 ~ 50,000원 / 비고: 현지 마트가 저렴');
+    expect(result.blogHtml).not.toContain('**식료품**');
+    expect(result.blogHtml).not.toContain('비고 |\n\n| **식료품**');
+    expect(result.blogHtml).not.toContain('| --- | --- | --- | --- |');
+  });
+
+  it('flattens pipe separators inside list items', () => {
+    const source = [
+      '# 세부 아이와 가족여행 일정',
+      '',
+      '- 1일 차|세부 도착 및 리조트 휴식',
+      '- 2일 차|호핑투어와 해양 액티비티',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '세부 아이와 가족여행 일정',
+      category: 'itinerary',
+      contentType: 'guide',
+      primaryKeyword: '세부 아이와 가족여행 일정',
+      destination: '세부',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('flattened_list_pipes');
+    expect(result.blogHtml).toContain('- 1일 차 - 세부 도착 및 리조트 휴식');
+    expect(result.blogHtml).not.toContain('1일 차|');
+  });
+
+  it('repairs loose data rows before markdown table separators', () => {
+    const source = [
+      '# Cebu shopping budget',
+      '',
+      'Note |',
+      '',
+      'Food | dried mango | 20,000won ~ 50,000won | local mart is cheaper |',
+      '| --- | --- | --- | --- |',
+      'Gift | coconut oil | 30,000won ~ 80,000won | confirm baggage limit |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Cebu shopping budget',
+      category: 'budget',
+      contentType: 'guide',
+      primaryKeyword: 'Cebu shopping budget',
+      destination: 'Cebu',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_misplaced_table_separators');
+    expect(result.blogHtml).toContain('-');
+    expect(result.blogHtml).not.toContain('Food | dried mango');
+    expect(result.blogHtml).not.toContain('| --- | --- | --- | --- |');
+  });
+
   it('adds a publish checklist and splits overlong headings before publish gates', () => {
     const source = [
       '# Cebu budget checklist',
@@ -960,6 +1412,49 @@ describe('blog editorial repair', () => {
     expect(result.changed).toBe(true);
     expect(result.blogHtml).toContain('| --- | --- | --- |');
     expect(checkMarkdownTableIntegrity(result.blogHtml).passed).toBe(true);
+  });
+
+  it('adds a renderable decision table when public info posts only have pseudo-table prose', () => {
+    const source = [
+      '# 클락 여행 가이드 2026',
+      '',
+      '클락은 총액에서 식사, 이동, 선택 관광이 빠졌는지 먼저 보면 가족 예산 오차를 줄이기 좋습니다.',
+      '',
+      '## 확인된 근거로 보는 클락 식사 예산',
+      '',
+      '식사 종류 / 1인당 평균 비용 / 특징',
+      '',
+      '- 가족 여행객이라면 메뉴 선정과 위생까지 함께 봐야 합니다.',
+      '- 식사 포함 여부와 자유식 횟수를 나눠 봅니다.',
+      '- 아이 동반이면 익숙한 메뉴가 있는지 확인합니다.',
+    ].join('\n');
+
+    const result = repairBlogEditorialQuality({
+      title: '클락 가족 식사 체크',
+      slug: 'clark-food',
+      category: 'food',
+      contentType: 'guide',
+      primaryKeyword: '클락 음식',
+      destination: '클락',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('added_required_info_decision_table');
+    expect(result.blogHtml).toContain('## 클락 비용·판단 표');
+    expect((result.blogHtml.match(/^\|.+\|$/gm) || []).length).toBeGreaterThanOrEqual(5);
+    expect(result.blogHtml).toContain('| 식사·이동 |');
+
+    const finalResult = repairBlogStructureQuality({
+      title: '클락 가족 식사 체크',
+      slug: 'clark-food',
+      category: 'food',
+      contentType: 'guide',
+      primaryKeyword: '클락 음식',
+      destination: '클락',
+      blogHtml: result.blogHtml,
+    });
+    expect(checkMarkdownTableIntegrity(finalResult.blogHtml).passed).toBe(true);
   });
 
   it('converts too-short markdown tables into scan-friendly bullets', () => {

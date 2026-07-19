@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { encodeDestinationPathSegment, destinationSlugMatches } from '@/lib/regions';
+import { encodeDestinationPathSegment } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { canonicalizePublicDestination, getPublicDestinationQueryNames, slugMatchesPublicDestination } from '@/lib/public-destinations';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
 
 /**
  * 목적지별 RSS 피드 — /destinations/[city]/rss.xml
@@ -43,11 +46,27 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
 }
 
+type FeedPost = {
+  id: string | null;
+  slug: string | null;
+  seo_title: string | null;
+  seo_description: string | null;
+  og_image_url: string | null;
+  published_at: string | null;
+  updated_at: string | null;
+  content_type: string | null;
+  destination: string | null;
+  product_id: string | null;
+};
+
+type FeedPostWithSlug = FeedPost & { slug: string };
+
 async function resolveDestinationRouteParam(value: string): Promise<string | null> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded) return null;
-  if (!isSupabaseConfigured) return decoded;
-  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
+  const decodedCanonical = canonicalizePublicDestination(decoded) ?? decoded;
+  if (!isSupabaseConfigured) return decodedCanonical;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return decodedCanonical;
 
   try {
     const { data, error } = await supabaseAdmin
@@ -58,11 +77,11 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
 
     const match = ((data ?? []) as Array<{ destination: string | null }>)
       .map(row => row.destination?.trim() ?? '')
-      .find(destination => destination && destinationSlugMatches(destination, decoded));
+      .find(destination => destination && slugMatchesPublicDestination(destination, decoded));
 
-    return match || decoded;
+    return canonicalizePublicDestination(match) || decodedCanonical;
   } catch {
-    return decoded;
+    return decodedCanonical;
   }
 }
 
@@ -80,28 +99,74 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
 
   const skipDbReads = shouldSkipPublicDbReadsForResourceSaver();
 
-  // destination 매칭 글 (destination 컬럼 또는 travel_packages.destination)
-  let posts: unknown[] = [];
+  // destination 매칭 글: content_creatives.destination 또는 승인된 public snapshot destination만 사용
+  let posts: FeedPost[] = [];
+  let publicPackageDestinationById = new Map<string, string>();
   if (!skipDbReads) {
     try {
-      const result = await supabaseAdmin
-        .from('content_creatives')
-        .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, travel_packages(destination)')
+      const queryNames = getPublicDestinationQueryNames(decoded);
+      const directResult = await supabaseAdmin
+        .from(PUBLIC_BLOG_READ_SOURCE)
+        .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, product_id')
+        .in('destination', queryNames)
         .eq('channel', 'naver_blog')
         .eq('status', 'published')
         .not('slug', 'is', null)
         .order('published_at', { ascending: false })
         .limit(50);
-      posts = result.data ?? [];
+      const linkedResult = await supabaseAdmin
+        .from(PUBLIC_BLOG_READ_SOURCE)
+        .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, product_id')
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .not('slug', 'is', null)
+        .not('product_id', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(200);
+      posts = [...new Map(
+        [
+          ...((directResult.data ?? []) as FeedPost[]),
+          ...((linkedResult.data ?? []) as FeedPost[]),
+        ].map(post => [post.id ?? post.slug ?? '', post] as const),
+      ).values()].filter(post => post.id || post.slug);
+
+      const productIds = [...new Set(
+        posts
+          .map(post => typeof post.product_id === 'string' ? post.product_id.trim() : '')
+          .filter(Boolean),
+      )];
+      if (productIds.length > 0) {
+        const { data: packageRows } = await supabaseAdmin
+          .from('travel_packages')
+          .select('id, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+          .in('id', productIds);
+        const publicPackages = await fetchAndMergeCurrentPublicPackageCardSnapshots(
+          supabaseAdmin,
+          (packageRows ?? []) as Array<Record<string, unknown>>,
+        );
+        publicPackageDestinationById = new Map(
+          (publicPackages as Array<{ id?: unknown; destination?: unknown }>)
+            .map(pkg => [
+              typeof pkg.id === 'string' ? pkg.id.trim() : '',
+              typeof pkg.destination === 'string' ? pkg.destination.trim() : '',
+            ] as const)
+            .filter(([id, destination]) => Boolean(id && destination)),
+        );
+      }
     } catch {
       posts = [];
+      publicPackageDestinationById = new Map();
     }
   }
 
-  const filtered = ((posts || []) as Array<any>).filter(p =>
+  const feedDestinationNames = getPublicDestinationQueryNames(decoded);
+  const filtered = (posts || []).filter((p): p is FeedPostWithSlug =>
     typeof p?.slug === 'string' &&
-    p.slug.trim() &&
-    (p.destination === decoded || p.travel_packages?.destination === decoded)
+    p.slug.trim().length > 0 &&
+    (
+      feedDestinationNames.includes(p.destination ?? '') ||
+      feedDestinationNames.includes(publicPackageDestinationById.get(p.product_id ?? '') ?? '')
+    )
   ).slice(0, 20);
 
   const channelUrl = `${BASE_URL}/destinations/${encodeDestinationPathSegment(decoded)}`;

@@ -4,6 +4,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
   buildSearchTermGrowthPlan,
   type ExistingKeywordPlanSignal,
@@ -234,7 +235,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       supabaseAdmin
         .from('travel_packages')
         .select('id,title,destination,short_code')
-        .in('status', ['active', 'approved', 'confirmed', 'published'])
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'confirmed', 'published'])
         .limit(1000),
       supabaseAdmin
         .from('search_ad_keyword_plans')

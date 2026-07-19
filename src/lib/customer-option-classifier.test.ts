@@ -16,5 +16,18 @@ describe('customer option classifier', () => {
     expect(isNonCustomerOptionText('6/26까지 발권')).toBe(true);
     expect(isNonCustomerOptionText('▶ 여권유효기간은 반드시 6개월 이상 남아 있어야 합니다')).toBe(true);
   });
-});
 
+  it('blocks supplier price-table fragments from no-option products', () => {
+    expect(isCustomerOptionalTourCandidate('7월 5')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('12일 [일요일] 출발')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('599')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('000원/인')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('포 함 내 역')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('차량')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('가이드')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('식사')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('특식4회')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('기사/가이드경비. $50/인')).toBe(false);
+    expect(isCustomerOptionalTourCandidate('노옵션')).toBe(false);
+  });
+});

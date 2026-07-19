@@ -49,9 +49,25 @@ type ActiveRow = {
   source_context: Record<string, unknown> | null;
 };
 
+type AttractionRow = {
+  id: string;
+  name: string;
+  aliases: string[] | null;
+  country: string | null;
+  region: string | null;
+};
+
+type ExistingAttractionMatch = {
+  id: string;
+  name: string;
+  matchedLabel: string;
+  matchKind: 'name' | 'alias';
+};
+
 type PlannedAction =
   | 'close_nonblocking_entity'
   | 'ignore_noise'
+  | 'resolve_existing_attraction'
   | 'keep_attraction_gap'
   | 'keep_manual_review';
 
@@ -59,6 +75,7 @@ type PlanRow = {
   row: ActiveRow;
   classified: ClassifiedUnmatched;
   action: PlannedAction;
+  existingAttractionMatch: ExistingAttractionMatch | null;
 };
 
 async function fetchActiveRows(): Promise<ActiveRow[]> {
@@ -85,10 +102,122 @@ async function fetchActiveRows(): Promise<ActiveRow[]> {
   return rows;
 }
 
+async function fetchActiveAttractions(): Promise<AttractionRow[]> {
+  const rows: AttractionRow[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('attractions')
+      .select('id, name, aliases, country, region')
+      .eq('is_active', true)
+      .range(from, to);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...(data as AttractionRow[]));
+    if (data.length < pageSize) break;
+  }
+  return rows;
+}
+
+function normalizeMatchText(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFKC')
+    .toLocaleLowerCase('ko-KR')
+    .replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+function matchVariants(value: string | null | undefined): string[] {
+  const normalized = normalizeMatchText(value);
+  const variants = new Set<string>();
+  if (normalized) variants.add(normalized);
+
+  const stripped = normalized
+    .replace(/(?:야경|야시장|야간투어|야간관광|관광|투어|유람|유람선)$/u, '');
+  if (stripped.length >= 5) variants.add(stripped);
+
+  return [...variants];
+}
+
+function scopeCompatible(row: Pick<ActiveRow, 'country' | 'region'>, attraction: AttractionRow): boolean {
+  const rowRegion = normalizeMatchText(row.region);
+  const attrRegion = normalizeMatchText(attraction.region);
+  if (rowRegion && attrRegion && rowRegion !== attrRegion) return false;
+
+  return true;
+}
+
+export function findExistingAttractionMatchForActivity(
+  row: Pick<ActiveRow, 'activity' | 'country' | 'region' | 'package_title'>,
+  attractions: AttractionRow[],
+): ExistingAttractionMatch | null {
+  const normalizedActivity = normalizeMatchText(row.activity);
+  if (normalizedActivity.length < 3) return null;
+
+  const activityVariants = matchVariants(row.activity);
+  let best: (ExistingAttractionMatch & { normalizedLength: number }) | null = null;
+  for (const attraction of attractions) {
+    if (!scopeCompatible(row, attraction)) continue;
+    const labels = [
+      { label: attraction.name, kind: 'name' as const },
+      ...(attraction.aliases ?? []).map(label => ({ label, kind: 'alias' as const })),
+    ];
+
+    for (const { label, kind } of labels) {
+      const normalizedLabel = normalizeMatchText(label);
+      if (normalizedLabel.length < 3) continue;
+      const labelVariants = matchVariants(label);
+      const directMatch = normalizedActivity.includes(normalizedLabel);
+      const variantMatch = activityVariants.some(activityVariant =>
+        labelVariants.some(labelVariant => activityVariant === labelVariant && activityVariant.length >= 5),
+      );
+      if (!directMatch && !variantMatch) continue;
+      if (best && best.normalizedLength >= normalizedLabel.length) continue;
+      best = {
+        id: attraction.id,
+        name: attraction.name,
+        matchedLabel: label,
+        matchKind: kind,
+        normalizedLength: normalizedLabel.length,
+      };
+    }
+  }
+
+  if (!best) {
+    const packageTitle = normalizeMatchText(row.package_title);
+    const huashanRouteTerms = ['북봉', '천제용령', '상용령', '금사관', '중봉', '남봉'];
+    const routeTermCount = huashanRouteTerms.filter(term => normalizedActivity.includes(term)).length;
+    if (packageTitle.includes('화산') && routeTermCount >= 2) {
+      const huashan = attractions.find(attraction =>
+        normalizeMatchText(attraction.name) === '화산'
+        && normalizeMatchText(attraction.region).includes('서안'),
+      );
+      if (huashan) {
+        best = {
+          id: huashan.id,
+          name: huashan.name,
+          matchedLabel: '화산 내부 코스',
+          matchKind: 'alias',
+          normalizedLength: 6,
+        };
+      }
+    }
+  }
+
+  if (!best) return null;
+  return {
+    id: best.id,
+    name: best.name,
+    matchedLabel: best.matchedLabel,
+    matchKind: best.matchKind,
+  };
+}
+
 function actionFor(classified: ClassifiedUnmatched): PlannedAction {
   if (classified.suggestedAction === 'structure_non_master') return 'close_nonblocking_entity';
   if (['meal', 'transfer', 'hotel', 'shopping'].includes(classified.category)) return 'close_nonblocking_entity';
-  if (['notice', 'free_time', 'price_noise'].includes(classified.category)) return 'ignore_noise';
+  if (['free_time', 'price_noise'].includes(classified.category)) return 'ignore_noise';
+  if (classified.category === 'notice') return 'keep_manual_review';
   if (classified.category === 'attraction') return 'keep_attraction_gap';
   return 'keep_manual_review';
 }
@@ -119,7 +248,7 @@ function sourceContext(row: ActiveRow, classified: ClassifiedUnmatched, action: 
     country: row.country,
     destination: row.region ?? row.country,
     customer_visible: !['price_noise', 'free_time', 'notice'].includes(classified.category),
-    blocks_publish: classified.category === 'attraction',
+    blocks_publish: classified.category === 'attraction' && action !== 'resolve_existing_attraction',
     cleanup_action: action,
     classifier: 'unmatched-classifier-v2',
     cleanup_version: 'repair-unmatched-queue-entities-v1',
@@ -137,7 +266,20 @@ async function applyPlan(plan: PlanRow[]): Promise<{ updated: number; errors: Ar
       segment_kind_guess: item.classified.category,
       confidence: item.classified.confidence,
       suggested_action: item.classified.suggestedAction,
-      suggested_resolution: suggestedResolution(item.row, item.classified, item.action),
+      suggested_resolution: {
+        ...suggestedResolution(item.row, item.classified, item.action),
+        ...(item.existingAttractionMatch
+          ? {
+              matched_existing_attraction: {
+                id: item.existingAttractionMatch.id,
+                name: item.existingAttractionMatch.name,
+                matched_label: item.existingAttractionMatch.matchedLabel,
+                match_kind: item.existingAttractionMatch.matchKind,
+              },
+              policy: 'existing-attraction-contained-label-match-no-auto-create',
+            }
+          : {}),
+      },
       source_context: sourceContext(item.row, item.classified, item.action),
       classification_version: 'repair-unmatched-queue-entities-v1',
       updated_at: now,
@@ -154,6 +296,13 @@ async function applyPlan(plan: PlanRow[]): Promise<{ updated: number; errors: Ar
       payload.resolved_kind = `auto_ignore_${item.classified.category}`;
       payload.resolved_by = 'repair_unmatched_queue_entities';
       payload.suggested_action = 'auto_ignore_noise';
+    } else if (item.action === 'resolve_existing_attraction' && item.existingAttractionMatch) {
+      payload.status = 'added';
+      payload.resolved_at = now;
+      payload.resolved_kind = 'auto_resolve_existing_attraction';
+      payload.resolved_attraction_id = item.existingAttractionMatch.id;
+      payload.resolved_by = 'repair_unmatched_queue_entities';
+      payload.suggested_action = 'auto_resolve_existing';
     }
 
     const { data, error } = await supabase
@@ -201,9 +350,18 @@ async function countActivePending(): Promise<number> {
 async function main() {
   const startedActivePending = await countActivePending();
   const rows = await fetchActiveRows();
+  const attractions = await fetchActiveAttractions();
   const plan = rows.map(row => {
     const classified = classifyUnmatchedActivity(row.activity, row.segment_kind_guess);
-    return { row, classified, action: actionFor(classified) };
+    const existingAttractionMatch = classified.category === 'attraction'
+      ? findExistingAttractionMatchForActivity(row, attractions)
+      : null;
+    return {
+      row,
+      classified,
+      existingAttractionMatch,
+      action: existingAttractionMatch ? 'resolve_existing_attraction' as const : actionFor(classified),
+    };
   });
   const applyResult = apply ? await applyPlan(plan) : { updated: 0, errors: [] };
   const activePendingAfter = apply ? await countActivePending() : startedActivePending;
@@ -220,6 +378,7 @@ async function main() {
     samples: {
       close_nonblocking_entity: plan.filter(item => item.action === 'close_nonblocking_entity').slice(0, 20).map(sampleFor),
       ignore_noise: plan.filter(item => item.action === 'ignore_noise').slice(0, 20).map(sampleFor),
+      resolve_existing_attraction: plan.filter(item => item.action === 'resolve_existing_attraction').slice(0, 20).map(sampleFor),
       keep_attraction_gap: plan.filter(item => item.action === 'keep_attraction_gap').slice(0, 20).map(sampleFor),
       keep_manual_review: plan.filter(item => item.action === 'keep_manual_review').slice(0, 20).map(sampleFor),
     },
@@ -237,6 +396,14 @@ function sampleFor(item: PlanRow) {
     before_category: item.row.segment_kind_guess,
     after_category: item.classified.category,
     action: item.action,
+    existing_attraction: item.existingAttractionMatch
+      ? {
+          id: item.existingAttractionMatch.id,
+          name: item.existingAttractionMatch.name,
+          matched_label: item.existingAttractionMatch.matchedLabel,
+          match_kind: item.existingAttractionMatch.matchKind,
+        }
+      : null,
     occurrence_count: item.row.occurrence_count,
   };
 }

@@ -138,6 +138,8 @@ const HIGH_TOOLS = new Set([
   'update_booking_status',
   'update_customer',
   'update_guest_names',
+  'adjust_mileage',
+  'create_mileage_event',
 ]);
 
 function normalize(value: string): string {

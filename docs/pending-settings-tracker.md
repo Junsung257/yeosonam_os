@@ -16,6 +16,7 @@
 - 🔑 `KAKAO_SENDER_NUMBER` — 발신번호 (예: 051-000-0000)
 - 🔑 `KAKAO_CHANNEL_ID` — 카카오 채널 pfId (서버용)
 - 🔑 `NEXT_PUBLIC_KAKAO_CHANNEL_ID` — 카카오 채널 pfId (클라이언트용)
+- 🔑 `KAKAO_CHANNEL_SECRET` — 카카오 챗봇 스킬 관리자센터의 운영/Test 헤더에 `x-api-key`로 등록하고 Vercel Production/Preview에도 같은 secret 설정
 
 ### 카카오 알림톡 템플릿 ID (Solapi 심사 승인 후 입력)
 - 🔑 `KAKAO_TEMPLATE_REVIEW_REQUEST` — 리뷰 요청 템플릿 ID
@@ -32,8 +33,14 @@
 - 🔑 `GSC_SERVICE_ACCOUNT_JSON` — `/api/cron/gsc-index-rank` 신규 크론 (2026-05-15)이 사용. 미설정 시 `GOOGLE_SERVICE_ACCOUNT_JSON` 으로 자동 fallback. 별도 SA 분리 시에만 신규 키 주입.
 
 ### 외부 API
+- 🔑 `SLACK_SIGNING_SECRET` — Slack 앱 Basic Information의 Signing Secret을 Vercel Production/Preview에 설정
 - 🔑 `SLACK_WEBHOOK_URL` — 어드민 에러 알림
 - 🔑 `NEXT_PUBLIC_CONSULT_PHONE` — QA 채팅 전화 상담 버튼 (없으면 카톡만)
+
+### 정보성 블로그 CTA — 전체 공개 HTTPS URL 확인 후 입력
+- 🔑 `BLOG_NAVER_CAFE_URL` — 공식 네이버 카페 공개 URL (미확인 상태에서는 CTA 숨김)
+- 🔑 `BLOG_DEAL_ROOM_URL` — 공식 딜방/여행 소식 공개 URL (미확인 상태에서는 CTA 숨김)
+- 🔑 `BLOG_CONSULTATION_URL` — 정보성 글 전용 상담 URL (선택, `KAKAO_CHANNEL_ID` 재사용 가능)
 
 ### Meta 광고 (미확인 — 이미 설정됐으면 삭제)
 - 🔑 `META_ACCESS_TOKEN` — Meta Ads API 토큰

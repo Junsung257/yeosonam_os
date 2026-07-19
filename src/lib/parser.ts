@@ -34,7 +34,7 @@ const itinSchema: ResponseSchema = {
       flight_out: { type: SchemaType.STRING, nullable: true },
       flight_in: { type: SchemaType.STRING, nullable: true },
       departure_days: { type: SchemaType.STRING, nullable: true },
-      min_participants: { type: SchemaType.INTEGER },
+      min_participants: { type: SchemaType.INTEGER, nullable: true },
       room_type: { type: SchemaType.STRING, nullable: true },
       ticketing_deadline: { type: SchemaType.STRING, nullable: true },
       hashtags: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
@@ -311,7 +311,7 @@ export interface ExtractedData {
 
 export interface ParsedDocument {
   filename: string;
-  fileType: 'pdf' | 'image' | 'hwp' | 'hwpx';
+  fileType: 'text' | 'pdf' | 'image' | 'hwp' | 'hwpx';
   rawText: string;
   extractedData: ExtractedData;
   itineraryData?: TravelItinerary | null;  // 고객용 일정표 JSON
@@ -567,7 +567,7 @@ const EXTRACT_PROMPT = `이 여행상품 문서에서 정보를 추출해 정확
   "departure_days": "매주 화요일 또는 특정날짜 나열 (없으면 null)",
   "departure_airport": "출발공항명 (없으면 null)",
   "airline": "항공편명 (예: BX341/BX342, 없으면 null)",
-  "min_participants": 최소출발인원 숫자 (없으면 4),
+  "min_participants": 최소출발인원 숫자 (원문에 없으면 null),
   "ticketing_deadline": "YYYY-MM-DD 또는 null",
   "guide_tip": "기사/가이드경비 원문 그대로 (예: '$50/인', 없으면 null)",
   "single_supplement": "싱글차지 원문 (예: '$60/인/박', 없으면 null)",
@@ -758,7 +758,7 @@ function parseGeminiResponse(raw: string, fallbackText: string): ExtractedData {
     departure_days: formatDepartureDays(parsed.departure_days) || undefined,
     departure_airport: parsed.departure_airport || undefined,
     airline: normalizeAirlineCode(parsed.airline) || undefined,
-    min_participants: parsed.min_participants || 4,
+    min_participants: typeof parsed.min_participants === 'number' ? parsed.min_participants : undefined,
     ticketing_deadline: parsed.ticketing_deadline || undefined,
     guide_tip: parsed.guide_tip || undefined,
     single_supplement: parsed.single_supplement || undefined,
@@ -1106,7 +1106,7 @@ title 또는 본문에 "부관훼리", "뉴카멜리아", "카멜리아", "훼�
   {
     "title":"상품명","category":"package|golf|honeymoon|cruise|theme","product_type":"실속|품격|노팁노옵션|null",
     "trip_style":"3박4일|null","destination":"목적지","duration":일수,"departure_days":"출발요일|null",
-    "departure_airport":"출발공항|null","airline":"항공사/편명|null","min_participants":최소인원,
+    "departure_airport":"출발공항|null","airline":"항공사/편명|null","min_participants":최소인원숫자|null,
     "ticketing_deadline":"YYYY-MM-DD|null","guide_tip":"원문|null","single_supplement":"원문|null",
     "small_group_surcharge":"원문|null",
     "price_tiers":[{"period_label":"기간원문","departure_dates":["YYYY-MM-DD"],"date_range":{"start":"","end":""},
@@ -1136,7 +1136,7 @@ const MULTI_PRODUCT_PHASE2_PROMPT = `"{{PRODUCT_TITLE}}" 상품의 일정표만 
 ★ 연도 (오늘: {TODAY_ISO}): 일정 내 날짜에 연도가 없으면 오늘 이후 가장 가까운 연도 사용. 과거 연도 금지.
 
 {
-  "meta":{"title":"상품명","destination":"목적지","nights":박수,"days":일수,"departure_airport":"출발공항|null","airline":"항공사|null","flight_out":"출발편|null","flight_in":"귀국편|null","departure_days":"출발요일|null","min_participants":최소인원,"brand":"여소남"},
+  "meta":{"title":"상품명","destination":"목적지","nights":박수,"days":일수,"departure_airport":"출발공항|null","airline":"항공사|null","flight_out":"출발편|null","flight_in":"귀국편|null","departure_days":"출발요일|null","min_participants":최소인원숫자|null,"brand":"여소남"},
   "highlights":{"inclusions":["포함 원문 그대로"],"excludes":["불포함 원문 그대로"],"shopping":"쇼핑원문|null","remarks":["비고 원문 그대로"]},
   "days":[{"day":1,"regions":["지역"],"meals":{"breakfast":false,"lunch":true,"dinner":true,"breakfast_note":null,"lunch_note":"식사명","dinner_note":"식사명"},
     "schedule":[{"time":"09:05","activity":"원문 그대로","transport":"BX1385","note":null,"type":"flight|normal|golf|optional|shopping|cruise|spa","badge":"⛳ 18홀|null"}],
@@ -1333,7 +1333,7 @@ function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: strin
     departure_days: formatDepartureDays(item.departure_days) || undefined,
     departure_airport: (item.departure_airport as string) || undefined,
     airline: (item.airline as string) || undefined,
-    min_participants: typeof item.min_participants === 'number' ? item.min_participants : 4,
+    min_participants: typeof item.min_participants === 'number' ? item.min_participants : undefined,
     ticketing_deadline: (item.ticketing_deadline as string) || undefined,
     guide_tip: (item.guide_tip as string) || undefined,
     single_supplement: (item.single_supplement as string) || undefined,
@@ -2113,7 +2113,7 @@ export function shouldTreatDocumentAsPlainText(buffer: Buffer, filename: string)
 
 export async function parseDocument(buffer: Buffer, filename: string, options?: ParseOptions): Promise<ParsedDocument> {
   const ext = documentExtension(filename);
-  let fileType: 'pdf' | 'image' | 'hwp' | 'hwpx' = 'pdf';
+  let fileType: ParsedDocument['fileType'] = 'pdf';
 
   try {
     if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
@@ -2138,7 +2138,7 @@ export async function parseDocument(buffer: Buffer, filename: string, options?: 
     let rawText = '';
     if (shouldTreatDocumentAsPlainText(buffer, filename)) {
       // 텍스트 직접 입력 모드: buffer가 이미 텍스트
-      fileType = 'pdf'; // 타입은 pdf로 통일 (내부 분류용)
+      fileType = 'text';
       rawText = buffer.toString('utf-8');
     } else if (ext === 'pdf') {
       fileType = 'pdf';

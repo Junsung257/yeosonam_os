@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { getRateInfo } from '@/lib/exchange-rate';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import { NewBookingFormClient } from './NewBookingFormClient';
 
 interface ServerPackage { id: string; title: string; destination?: string; price?: number; }
@@ -43,7 +44,7 @@ export default async function NewBookingPage() {
     supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, price')
-      .in('status', ['active', 'approved', 'pending'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'pending'])
       .order('created_at', { ascending: false })
       .limit(200),
     supabaseAdmin

@@ -14,6 +14,10 @@ import { describe, it, expect } from 'vitest';
 import {
   type AttractionData,
   buildAttractionIndex,
+  destinationAllowsAttractionScope,
+  getCustomerAttractionRenderBlockers,
+  isCustomerRenderableAttraction,
+  isMatchableAttractionAlias,
   matchAttraction,
   matchAttractionIndexed,
   matchAttractions,
@@ -209,6 +213,108 @@ describe('buildAttractionIndex / matchAttractionIndexed', () => {
   });
 });
 
+describe('customer-facing attraction gate', () => {
+  const pollutedCustomerAttractions: AttractionData[] = [
+    attr({
+      name: '교토 청수사',
+      region: '교토',
+      country: '일본',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '[한국어 가이드] 오사카 출발 교토&나라 체험 투어',
+      region: '교토',
+      country: '일본',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '지오베르티 호텔',
+      region: '로마',
+      country: '이탈리아',
+      category: 'sightseeing',
+      badge_type: 'hotel',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '관리자 검수 전 관광지',
+      region: '교토',
+      country: '일본',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: false,
+    }),
+    attr({
+      name: '쇼핑',
+      region: '방콕',
+      country: '태국',
+      category: 'sightseeing',
+      badge_type: 'shopping',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '\uC528\uD074\uB85C',
+      region: '\uB2E4\uB0AD',
+      country: 'VN',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
+    attr({
+      name: '\uC704\uC990\uCEE4\uD53C',
+      region: '\uB098\uD2B8\uB791',
+      country: 'VN',
+      category: 'sightseeing',
+      badge_type: 'tour',
+      is_active: true,
+      customer_publishable: true,
+    }),
+  ];
+
+  it('blocks product-like and non-public masters on customer-facing indexes', () => {
+    const idx = buildAttractionIndex(pollutedCustomerAttractions, '교토', { customerFacing: true });
+    expect(idx.filtered.map(a => a.name)).toEqual(['교토 청수사']);
+    expect(matchAttraction('교토 청수사 방문', pollutedCustomerAttractions, '교토', { customerFacing: true })?.name)
+      .toBe('교토 청수사');
+    expect(matchAttraction('[한국어 가이드] 오사카 출발 교토&나라 체험 투어', pollutedCustomerAttractions, '교토', { customerFacing: true }))
+      .toBeNull();
+  });
+
+  it('keeps legacy internal matching broad unless customerFacing is requested', () => {
+    const internal = buildAttractionIndex(pollutedCustomerAttractions, '교토');
+    expect(internal.filtered.map(a => a.name)).toContain('[한국어 가이드] 오사카 출발 교토&나라 체험 투어');
+  });
+
+  it('exposes the customer render predicate for route/API filters', () => {
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[0])).toBe(true);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[1])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[2])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[3])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[4])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[5])).toBe(false);
+    expect(isCustomerRenderableAttraction(pollutedCustomerAttractions[6])).toBe(false);
+  });
+
+  it('returns actionable blockers for DB repair reports', () => {
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[0])).toEqual([]);
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[1])).toContain('product_like_name');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[2])).toContain('non_customer_badge_type');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[3])).toContain('not_customer_publishable');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[4])).toContain('generic_name');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[5])).toContain('generic_name');
+    expect(getCustomerAttractionRenderBlockers(pollutedCustomerAttractions[6])).toContain('generic_name');
+  });
+});
+
 describe('WeakMap 캐시 동작', () => {
   it('같은 attractions 배열 반복 호출 시 안전하게 동작 (캐시 없으면 동일 결과 보장)', () => {
     const r1 = matchAttraction('메르데카 광장', sampleAttractions, '쿠알라룸푸르');
@@ -260,6 +366,37 @@ describe('regional route scope matching', () => {
       '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
     );
     expect(matched?.name).toBe('\uC5F0\uAE38\uBBFC\uC18D\uCD0C');
+  });
+});
+
+describe('scoped customer attraction alias safety', () => {
+  const glassBridgeAttraction = attr({
+    name: '\uCE60\uC131\uC0B0\uC720\uB9AC\uC794\uB3C4',
+    aliases: ['\uC720\uB9AC\uC794\uB3C4'],
+    region: '\uC7A5\uAC00\uACC4',
+    country: 'CN',
+    category: 'sightseeing',
+    is_active: true,
+    customer_publishable: true,
+  });
+
+  it('blocks generic facility aliases that would attach the wrong attraction', () => {
+    expect(isMatchableAttractionAlias('\uC720\uB9AC\uC794\uB3C4', glassBridgeAttraction)).toBe(false);
+    expect(isMatchableAttractionAlias('\uBAA8\uB178\uB808\uC77C', glassBridgeAttraction)).toBe(false);
+    expect(isMatchableAttractionAlias('\uBC15\uBB3C\uAD00', glassBridgeAttraction)).toBe(false);
+    expect(isMatchableAttractionAlias('\uC7AC\uB798\uC2DC\uC7A5', glassBridgeAttraction)).toBe(false);
+    expect(isMatchableAttractionAlias('\uD14C\uB9C8\uD30C\uD06C', glassBridgeAttraction)).toBe(false);
+  });
+
+  it('allows known nearby scopes but rejects unrelated destination scopes', () => {
+    expect(destinationAllowsAttractionScope(
+      attr({ name: '\uC77C\uC1A1\uC815', region: '\uC5F0\uBCC0', country: 'CN' }),
+      '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
+    )).toBe(true);
+    expect(destinationAllowsAttractionScope(
+      attr({ name: '\uB2EC\uB784\uC57C\uC2DC\uC7A5', region: '\uB2EC\uB784', country: 'VN' }),
+      '\uD6C4\uCFE0\uC624\uCE74',
+    )).toBe(false);
   });
 });
 

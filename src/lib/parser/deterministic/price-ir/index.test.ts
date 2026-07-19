@@ -129,6 +129,41 @@ ${MONTH_KO}7
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-20', adult_price: 879000 }));
     expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-06-17', adult_price: 829000 }));
   });
+
+  it('uses later monthly rows as corrections and repairs one missing trailing zero', () => {
+    const rawText = [
+      '7\uC6D4',
+      '\u26057/24\uAE4C\uC9C0 \uC120\uBC1C\uAD8C \uC870\uAC74\u2605',
+      '7/19, 24',
+      '1,099,000\uC6D0',
+      '8\uC6D4',
+      '8/2,7,8,12,16,20,27',
+      '1,069,000\uC6D0',
+      '8/7,8,16,20',
+      '1,099,000\uC6D0',
+      '8/15',
+      '1,199,00\uC6D0',
+      '9\uC6D4',
+      '9/4,5,10,11,12,17,21',
+      '1,019,000\uC6D0',
+      '9/3,18,20,21',
+      '1,049,000\uC6D0',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+    const pricesByDate = new Map(result.rows.map(row => [row.date, row.adult_price]));
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(pricesByDate.get('2026-07-24')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-07')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-08')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-16')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-20')).toBe(1_099_000);
+    expect(pricesByDate.get('2026-08-15')).toBe(1_199_000);
+    expect(pricesByDate.get('2026-09-21')).toBe(1_049_000);
+    expect(result.rows.filter(row => row.date === '2026-08-07')).toHaveLength(1);
+    expect(result.rows.filter(row => row.date === '2026-09-21')).toHaveLength(1);
+  });
 });
 
 describe('extractPriceIR cruise cabin price tables', () => {
@@ -235,6 +270,48 @@ BX341 21:55 01:25
       expect.objectContaining({ date: '2026-07-15', adult_price: 899000 }),
       expect.objectContaining({ date: '2026-07-22', adult_price: 899000 }),
     ]);
+  });
+
+  it('filters shared duration-section supplier price tables by product duration', () => {
+    const rawText = [
+      '신선이 된 것 같은 곳,',
+      '구름 위의 절경',
+      '张家界장가계',
+      '월토일 3박4일 / 화수목 4박5일',
+      '출발일',
+      '판매가',
+      '3박4일',
+      '8월',
+      '30일',
+      '829,000',
+      '31일',
+      '799,000',
+      '9월',
+      '19, 20, 21',
+      '899,000',
+      '4박5일',
+      '9월',
+      '1일',
+      '799,000',
+      '월드체인 풀만 호텔 장가계 특가',
+      '장가계 4박 5일',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, {
+      year: 2026,
+      durationDays: 5,
+      title: '장가계 4박 5일',
+    });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        date: '2026-09-01',
+        adult_price: 799000,
+        note: 'source_korean_duration_section_price',
+      }),
+    ]);
+    expect(result.rows.some(row => row.date === '2026-08-30' || row.date === '2026-09-19')).toBe(false);
   });
 });
 

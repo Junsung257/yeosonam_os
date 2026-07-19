@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import dotenv from 'dotenv';
 import { evaluateAllScenarioReadiness } from '../src/lib/jarvis/eval/all-scenarios-readiness';
+import { evaluateJarvisFeatureCoverage } from '../src/lib/jarvis/eval/feature-coverage';
 import type { AllScenarioReadinessStatus } from '../src/lib/jarvis/eval/all-scenarios-readiness';
 import type { JarvisReadinessStatus } from '../src/lib/jarvis/eval/readiness-gate';
 
@@ -141,6 +142,7 @@ function arrayLength(record: Record<string, unknown>, key: string): number {
 }
 
 function buildPayload() {
+  const featureCoverage = evaluateJarvisFeatureCoverage();
   const jarvis = parseJsonResult(runCommand('jarvis-readiness', commandName('npm'), [
     'run',
     'verify:jarvis-readiness',
@@ -193,6 +195,8 @@ function buildPayload() {
     customerInquiryStatus: customer.ok && statusField(customerScenarios, 'status', ['pass', 'warn', 'fail'] as const, 'fail') === 'pass'
       ? 'pass'
       : 'fail',
+    featureCoverageScore: featureCoverage.score,
+    featureCoverageStatus: featureCoverage.status,
     autopilotHitlPassed: autopilot.ok,
     freeTravelScore: freeTravel.ok ? numberField(freeTravelPayload, 'score', 0) : 0,
     freeTravelStatus: freeTravel.ok
@@ -215,6 +219,7 @@ function buildPayload() {
     evidence: {
       jarvis: jarvis.parsed ?? null,
       customer: customer.parsed ?? null,
+      featureCoverage,
       freeTravel: freeTravel.parsed ?? null,
       rag: rag.parsed ?? null,
     },

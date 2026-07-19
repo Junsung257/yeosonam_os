@@ -47,6 +47,9 @@ function readUserId(): string | null {
 }
 
 function getCtaMeta(link: HTMLAnchorElement): CtaMeta | null {
+  // Informational CTA telemetry has its own anonymous, deduplicated endpoint.
+  // Do not duplicate those events into the session/user attribution stream.
+  if (link.dataset.informationalCta === 'true') return null;
   const href = link.getAttribute('href') || '';
   const isProductCta = href.startsWith('/packages/') || href.startsWith('/packages?') || Boolean(link.dataset.blogProductId);
   const isKakaoCta = /pf\.kakao\.com/.test(href);

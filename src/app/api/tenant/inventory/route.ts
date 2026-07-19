@@ -1,4 +1,5 @@
 import { type NextRequest } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
@@ -9,6 +10,9 @@ import {
 } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return apiResponse({ blocks: [] });
   const { searchParams } = request.nextUrl;
   const tenantId = searchParams.get('tenant_id');
@@ -28,6 +32,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -45,6 +52,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }

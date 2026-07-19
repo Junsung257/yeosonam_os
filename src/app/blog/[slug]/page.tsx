@@ -25,21 +25,48 @@ import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
 import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { classifyBlogIntent, inspectBlogIntentQuality } from '@/lib/blog-content-intent';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+import { CUSTOMER_VISIBLE_STATUSES } from '@/lib/visibility-status';
 import {
   BLOG_DETAIL_CACHE_TAG,
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
-import { getFallbackBlogPost } from '@/lib/blog-public-fallback';
 import { resolveBlogCanonicalOrigin } from '@/lib/blog-canonical-url';
+import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
+import { isPublicPublicationState } from '@/lib/package-publication/types';
+import {
+  rankBlogInformationalRelatedLinks,
+  readBlogInformationalLinkCandidate,
+  type BlogInformationalLinkContext,
+} from '@/lib/blog-informational-related-links';
+import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-information-representative';
+import { InformationalCtaHub } from '@/components/blog/InformationalCtaHub';
+import {
+  selectBlogInformationalCtas,
+  stripBlogInformationalBodyCtas,
+} from '@/lib/blog-informational-cta';
+import {
+  loadBlogInformationalCtaSettings,
+  loadBlogInformationalOfficialSourceUrl,
+} from '@/lib/blog-informational-cta-settings';
+import type { BlogInformationRiskLevel } from '@/lib/blog-information-planner';
+import { sanitizePublicBlogBodyHtml } from '@/lib/blog-public-render-normalizer';
+import { PUBLIC_BLOG_READ_SOURCE } from '@/lib/blog-public-eligibility';
+import {
+  calculateBlogReadingTimeFromHtml,
+  readPersistedBlogReadingTime,
+} from '@/lib/blog-reading-time';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,6 +90,22 @@ function isNextRedirectError(err: unknown): boolean {
     typeof (err as { digest?: unknown }).digest === 'string' &&
     (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')
   );
+}
+
+function readInformationalRiskLevel(
+  generationMeta: Record<string, unknown> | null | undefined,
+  intent: string,
+): BlogInformationRiskLevel {
+  const contentBrief = generationMeta?.content_brief;
+  if (contentBrief && typeof contentBrief === 'object' && !Array.isArray(contentBrief)) {
+    const risk = (contentBrief as Record<string, unknown>).risk_level;
+    if (risk === 'LOW' || risk === 'MEDIUM' || risk === 'HIGH') return risk;
+  }
+  if (intent === 'entry_requirements' || intent === 'travel_insurance') return 'HIGH';
+  if (intent === 'monthly_weather' || intent === 'airport_transport' || intent === 'currency_payment') {
+    return 'MEDIUM';
+  }
+  return 'LOW';
 }
 
 /**
@@ -107,6 +150,11 @@ interface BlogPost {
   landing_enabled: boolean | null;
   landing_headline: string | null;
   landing_subtitle: string | null;
+  content_type?: string | null;
+  pillar_for?: string | null;
+  target_audience?: string | null;
+  generation_meta?: Record<string, unknown> | null;
+  quality_gate?: Record<string, unknown> | null;
   travel_packages: {
     id: string;
     title: string;
@@ -120,8 +168,30 @@ interface BlogPost {
     product_highlights: string[] | null;
     inclusions: string[] | null;
     status?: string | null;
+    publication_state?: string | null;
+    package_revision?: number | null;
+    audit_status?: string | null;
+    audit_report?: unknown;
+    updated_at?: string | null;
+    optional_tours?: unknown;
+    itinerary_data?: unknown;
     hero_image_url?: string | null;
   } | null;
+}
+
+function isBlogPublicSnapshotCandidate(row: Record<string, unknown>): boolean {
+  const publicationState = typeof row.publication_state === 'string' ? row.publication_state : null;
+  return isPublicPublicationState(publicationState) && isCustomerPubliclyOpenable(row);
+}
+
+async function mergeBlogPublicPackageSnapshots<T extends Record<string, unknown>>(rows: T[]): Promise<T[]> {
+  if (rows.length === 0) return [];
+  try {
+    return await fetchAndMergeCurrentPublicPackageCardSnapshots(supabaseAdmin, rows);
+  } catch (error) {
+    console.warn('[blog] public snapshot merge failed; hiding package-derived blog data', error);
+    return [];
+  }
 }
 
 interface RelatedPost {
@@ -131,7 +201,16 @@ interface RelatedPost {
   og_image_url: string | null;
   angle_type: string;
   published_at: string;
+  product_id: string | null;
+  destination: string | null;
+  status?: string | null;
+  content_type?: string | null;
+  pillar_for?: string | null;
+  target_audience?: string | null;
+  generation_meta?: Record<string, unknown> | null;
+  related_anchor?: string;
   travel_packages: {
+    id?: string;
     destination: string;
     price: number | null;
     duration: string | number | null;
@@ -274,7 +353,7 @@ async function getDuplicateTitleSuffix(post: BlogPost): Promise<string> {
     const result = await runBlogDetailQuery(
       'duplicateTitleSuffix',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, published_at, created_at')
         .eq('channel', 'naver_blog')
         .eq('status', 'published')
@@ -327,12 +406,6 @@ function extractTldrItems(post: BlogPost): string[] {
   });
 }
 
-function estimateReadingMinutes(html: string): number {
-  const text = html.replace(/<[^>]+>/g, '').trim();
-  // 한국어 기준 분당 500자. 최소 3분.
-  return Math.max(3, Math.round(text.length / 500));
-}
-
 async function withBlogRenderTimeout<T>(
   label: string,
   promise: Promise<T>,
@@ -355,19 +428,33 @@ async function withBlogRenderTimeout<T>(
   }
 }
 
-function sanitizeServerBlogHtml(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<\/?(del|s|strike)\b[^>]*>/gi, '')
-    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[^>]*\/?>/gi, '')
-    .replace(/\s(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s(href|src)\s*=\s*(["']?)\s*(javascript:|data:text\/html|vbscript:)[\s\S]*?\2/gi, '')
-    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '')
-    .replace(/<h1\b[^>]*>\s*(?:&nbsp;|\u00a0|<br\s*\/?>|\s)*<\/h1>/gi, '')
-    .replace(/<h1\b([^>]*)>/gi, '<h2$1>')
-    .replace(/<\/h1>/gi, '</h2>');
+function normalizeHeadingTextForCompare(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|\u00a0/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/[^\p{L}\p{N}\uac00-\ud7a3]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function stripDuplicateBodyTitleHeading(html: string, pageTitle: string): string {
+  const titleSignature = normalizeHeadingTextForCompare(pageTitle);
+  if (!titleSignature) return html;
+
+  return html.replace(
+    /^\s*<h2\b([^>]*)>([\s\S]*?)<\/h2>\s*/i,
+    (match, attrs: string, headingHtml: string) => {
+      const headingSignature = normalizeHeadingTextForCompare(headingHtml);
+      if (!headingSignature) return match;
+      const isSameTitle =
+        headingSignature === titleSignature ||
+        headingSignature.includes(titleSignature) ||
+        titleSignature.includes(headingSignature);
+      return isSameTitle ? '' : `<h2${attrs}>${headingHtml}</h2>`;
+    },
+  );
 }
 
 // ── 데이터 페칭 ──────────────────────────────────────────────
@@ -378,12 +465,12 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   const dbSlug = safeDecodeSlug(slug);
 
   const { data, error } = await supabaseAdmin
-    .from('content_creatives')
+    .from(PUBLIC_BLOG_READ_SOURCE)
     .select(
       // travel_packages.hero_image_url 컬럼은 DB에 존재하지 않는다 (photos 는 별도 테이블).
       // select에 포함하면 supabase가 통째로 에러 반환 → data=null → notFound() 404.
       // 이것이 "발행했는데 글이 안 뜬다"의 진짜 원인이었음. (API 라우트는 select 안 함 → 200)
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, travel_packages(id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status)',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
     )
     .eq('slug', dbSlug)
     .eq('status', 'published')
@@ -400,7 +487,7 @@ async function getPost(slug: string): Promise<BlogPost | null> {
       code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
       hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
     });
-    return null;
+    throw createBlogDatabaseUnavailableError();
   }
   if (!data || data.length === 0) return null;
   return data[0] as unknown as BlogPost;
@@ -418,9 +505,9 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   const postResult = await runBlogDetailQuery(
     'postFast',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select(
-        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle',
+        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle, content_type, pillar_for, target_audience, generation_meta, quality_gate',
       )
       .eq('slug', dbSlug)
       .eq('status', 'published')
@@ -449,30 +536,27 @@ async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
       'postFastPackage',
       supabaseAdmin
         .from('travel_packages')
-        .select('id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status')
+        .select('id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
         .eq('id', post.product_id)
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published'])
         .limit(1),
       { data: null, error: null },
       4000,
     );
-    post.travel_packages = ((packageRows || [])[0] as BlogPost['travel_packages']) ?? null;
+    const packageRow = ((packageRows || [])[0] as (BlogPost['travel_packages'] & Record<string, unknown>) | undefined) ?? null;
+    const publicRows = packageRow && isBlogPublicSnapshotCandidate(packageRow)
+      ? await mergeBlogPublicPackageSnapshots([packageRow])
+      : [];
+    post.travel_packages = (publicRows[0] as BlogPost['travel_packages'] | undefined) ?? null;
   }
 
   return post;
 }
 
 const getCachedPostFast = unstable_cache(
-  async (slug: string) => {
-    try {
-      return await getPostFastUncached(slug);
-    } catch (error) {
-      if (isBlogDatabaseUnavailableError(error)) {
-        return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
-      }
-      throw error;
-    }
-  },
-  ['blog-detail-v2'],
+  async (slug: string) => getPostFastUncached(slug),
+  ['blog-detail-v3-public-eligibility'],
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
 
@@ -520,9 +604,6 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
     if (isNextCacheContextUnavailable(error)) {
       return getPostFastUncached(slug);
     }
-    if (isBlogDatabaseUnavailableError(error)) {
-      return getFallbackBlogPost(safeDecodeSlug(slug)) as unknown as BlogPost | null;
-    }
     throw error;
   }
 }
@@ -539,7 +620,7 @@ async function getRelatedProducts(
     'relatedProductScores',
     supabaseAdmin
       .from('package_scores')
-      .select('package_id, rank_in_group, effective_price, list_price, travel_packages!inner(id, title, destination, price, duration, nights, airline, departure_airport, status)')
+      .select('package_id, rank_in_group, effective_price, list_price, travel_packages!inner(id, title, destination, price, duration, nights, airline, departure_airport, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data)')
       .ilike('travel_packages.destination', `%${destination}%`)
       .gte('departure_date', today)
       .order('rank_in_group', { ascending: true })
@@ -551,36 +632,59 @@ async function getRelatedProducts(
         rank_in_group: number | null;
         effective_price: number | null;
         list_price: number | null;
-        travel_packages: RelatedProductLite & { status?: string | null };
+        travel_packages: RelatedProductLite & { status?: string | null; publication_state?: string | null; package_revision?: number | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown };
       }>,
       error: null,
     },
     2200,
   );
   if (!isBlogDetailQueryUnavailable(scoreResult) && !scoreResult.error && scoreResult.data) {
-    const seen = new Set<string>();
-    const scored: RelatedProductLite[] = [];
+    const scoredCandidates: Array<Record<string, unknown> & {
+      _blog_score_rank?: number | null;
+      _blog_effective_price?: number | null;
+      _blog_list_price?: number | null;
+      _blog_score_index?: number;
+    }> = [];
     for (const [index, row] of (scoreResult.data as Array<{
       package_id: string;
       rank_in_group: number | null;
       effective_price: number | null;
       list_price: number | null;
-      travel_packages: (RelatedProductLite & { status?: string | null }) | Array<RelatedProductLite & { status?: string | null }> | null;
+      travel_packages:
+        | (RelatedProductLite & { status?: string | null; publication_state?: string | null; package_revision?: number | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown })
+        | Array<RelatedProductLite & { status?: string | null; publication_state?: string | null; package_revision?: number | null; audit_status?: string | null; audit_report?: unknown; updated_at?: string | null; optional_tours?: unknown; itinerary_data?: unknown }>
+        | null;
     }>).entries()) {
       const pkg = Array.isArray(row.travel_packages) ? row.travel_packages[0] : row.travel_packages;
-      if (!pkg || pkg.status && !['active', 'approved'].includes(pkg.status)) continue;
-      if (pkg.id === currentProductId || seen.has(pkg.id)) continue;
-      seen.add(pkg.id);
+      if (!pkg || !isBlogPublicSnapshotCandidate(pkg as unknown as Record<string, unknown>)) continue;
+      if (pkg.id === currentProductId) continue;
+      scoredCandidates.push({
+        ...(pkg as unknown as Record<string, unknown>),
+        _blog_score_rank: row.rank_in_group,
+        _blog_effective_price: row.effective_price,
+        _blog_list_price: row.list_price,
+        _blog_score_index: index,
+      });
+    }
+    const seen = new Set<string>();
+    const scored: RelatedProductLite[] = [];
+    for (const pkg of await mergeBlogPublicPackageSnapshots(scoredCandidates)) {
+      const id = typeof pkg.id === 'string' ? pkg.id : '';
+      if (!id || id === currentProductId || seen.has(id)) continue;
+      seen.add(id);
       scored.push({
-        id: pkg.id,
-        title: pkg.title,
-        destination: pkg.destination,
-        price: row.effective_price ?? pkg.price ?? row.list_price,
-        duration: pkg.duration,
-        nights: pkg.nights,
-        airline: pkg.airline,
-        departure_airport: pkg.departure_airport,
-        recommended_rank: row.rank_in_group ?? index + 1,
+        id,
+        title: typeof pkg.title === 'string' ? pkg.title : '',
+        destination: typeof pkg.destination === 'string' ? pkg.destination : '',
+        price: (typeof pkg._blog_effective_price === 'number' ? pkg._blog_effective_price : null)
+          ?? (typeof pkg.price === 'number' ? pkg.price : null)
+          ?? (typeof pkg._blog_list_price === 'number' ? pkg._blog_list_price : null),
+        duration: typeof pkg.duration === 'number' || typeof pkg.duration === 'string' ? pkg.duration : null,
+        nights: typeof pkg.nights === 'number' ? pkg.nights : null,
+        airline: typeof pkg.airline === 'string' ? pkg.airline : null,
+        departure_airport: typeof pkg.departure_airport === 'string' ? pkg.departure_airport : null,
+        recommended_rank: (typeof pkg._blog_score_rank === 'number' ? pkg._blog_score_rank : null)
+          ?? (typeof pkg._blog_score_index === 'number' ? pkg._blog_score_index + 1 : scored.length + 1),
         policy_id: null,
         recommendation_intent: `${intent}:package_scores`,
       });
@@ -591,9 +695,10 @@ async function getRelatedProducts(
 
   let query = supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, price, duration, nights, airline, departure_airport')
+    .select('id, title, destination, price, duration, nights, airline, departure_airport, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
     .eq('destination', destination)
-    .in('status', ['active', 'approved'])
+    .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+    .in('publication_state', ['approved', 'published'])
     .order('price', { ascending: true })
     .limit(4);
   if (currentProductId) query = query.neq('id', currentProductId);
@@ -605,11 +710,14 @@ async function getRelatedProducts(
   );
   if (isBlogDetailQueryUnavailable(result) || result.error) return [];
   const { data } = result;
-  return ((data as unknown as RelatedProductLite[]) || []).map((item, index) => ({
-    ...item,
-    recommended_rank: index + 1,
-    recommendation_intent: `${intent}:fallback_price`,
-  }));
+  return (await mergeBlogPublicPackageSnapshots(
+    ((data as unknown as Array<Record<string, unknown>>) || []).filter(isBlogPublicSnapshotCandidate),
+  ) as unknown as RelatedProductLite[])
+    .map((item, index) => ({
+      ...item,
+      recommended_rank: index + 1,
+      recommendation_intent: `${intent}:fallback_price`,
+    }));
 }
 
 /**
@@ -630,19 +738,77 @@ function splitHtmlForInlineInjection(html: string): { before: string; after: str
   return { before, after };
 }
 
+function relatedPostDestination(post: RelatedPost): string | null {
+  return post.travel_packages?.destination || post.destination || null;
+}
+
+async function attachRelatedPostPublicSnapshots(posts: RelatedPost[]): Promise<RelatedPost[]> {
+  const productIds = Array.from(
+    new Set(posts.map((post) => post.product_id).filter((id): id is string => Boolean(id))),
+  );
+  if (productIds.length === 0) {
+    return posts.map((post) => ({ ...post, travel_packages: null }));
+  }
+
+  try {
+    const { data } = await runBlogDetailQuery(
+      'relatedPostPublicPackages',
+      supabaseAdmin
+        .from('travel_packages')
+        .select('id, title, destination, price, duration, nights, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
+        .in('id', productIds)
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+        .in('publication_state', ['approved', 'published']),
+      { data: [] as Array<Record<string, unknown>>, error: null },
+      2200,
+    );
+    const publicRows = await mergeBlogPublicPackageSnapshots(
+      ((data || []) as Array<Record<string, unknown>>).filter(isBlogPublicSnapshotCandidate),
+    );
+    const publicById = new Map(
+      publicRows.map((pkg) => [String(pkg.id), pkg]),
+    );
+
+    return posts.map((post) => {
+      const publicPkg = post.product_id ? publicById.get(post.product_id) : null;
+      if (!publicPkg) return { ...post, travel_packages: null };
+      return {
+        ...post,
+        travel_packages: {
+          id: typeof publicPkg.id === 'string' ? publicPkg.id : undefined,
+          destination: typeof publicPkg.destination === 'string' ? publicPkg.destination : '',
+          price: typeof publicPkg.price === 'number' ? publicPkg.price : null,
+          duration:
+            typeof publicPkg.duration === 'number' || typeof publicPkg.duration === 'string'
+              ? publicPkg.duration
+              : null,
+          nights: typeof publicPkg.nights === 'number' ? publicPkg.nights : null,
+        },
+      };
+    });
+  } catch (error) {
+    console.warn('[blog] related post public snapshot merge failed; hiding package price/duration', error);
+    return posts.map((post) => ({ ...post, travel_packages: null }));
+  }
+}
+
 async function getRelatedPosts(
   currentSlug: string,
   destination: string | undefined,
   angleType: string | undefined,
+  sourcePost?: Pick<
+    BlogPost,
+    'product_id' | 'content_type' | 'pillar_for' | 'target_audience' | 'generation_meta'
+  >,
 ): Promise<RelatedPost[]> {
   if (!isSupabaseConfigured) return [];
 
   const result = await runBlogDetailQuery(
     'relatedPosts',
     supabaseAdmin
-      .from('content_creatives')
+      .from(PUBLIC_BLOG_READ_SOURCE)
       .select(
-        'id, slug, seo_title, og_image_url, angle_type, published_at, travel_packages(destination, price, duration, nights)',
+        'id, slug, seo_title, og_image_url, angle_type, published_at, product_id, destination, status, content_type, pillar_for, target_audience, generation_meta',
       )
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -655,20 +821,63 @@ async function getRelatedPosts(
   );
   if (isBlogDetailQueryUnavailable(result) || result.error || !result.data) return [];
   const { data } = result;
-  const posts = data as unknown as RelatedPost[];
+  const posts = await attachRelatedPostPublicSnapshots(data as unknown as RelatedPost[]);
+
+  const informationIdentity = sourcePost?.product_id
+    ? null
+    : readBlogInformationRepresentativeIdentity(sourcePost?.generation_meta);
+  if (informationIdentity) {
+    const sourceMeta = sourcePost?.generation_meta || {};
+    const source: BlogInformationalLinkContext = {
+      slug: currentSlug,
+      destination: destination ?? null,
+      destinationId: informationIdentity.destinationId,
+      intent: informationIdentity.intent,
+      audience: informationIdentity.audience,
+      locale: informationIdentity.locale,
+      contentType: sourcePost?.content_type,
+      pillarFor: sourcePost?.pillar_for,
+      clusterId: typeof sourceMeta.editorial_cluster_id === 'string'
+        ? sourceMeta.editorial_cluster_id
+        : null,
+    };
+    const postBySlug = new Map(posts.map((post) => [post.slug, post]));
+    return rankBlogInformationalRelatedLinks(
+      source,
+      posts.flatMap((post) => {
+        const candidate = readBlogInformationalLinkCandidate({
+          id: post.id,
+          slug: post.slug,
+          title: post.seo_title,
+          destination: relatedPostDestination(post),
+          status: post.status,
+          contentType: post.content_type,
+          pillarFor: post.pillar_for,
+          targetAudience: post.target_audience,
+          publishedAt: post.published_at,
+          generationMeta: post.generation_meta,
+        });
+        return candidate ? [candidate] : [];
+      }),
+      6,
+    ).flatMap((entry) => {
+      const post = postBySlug.get(entry.candidate.slug);
+      return post ? [{ ...post, related_anchor: entry.anchorText }] : [];
+    });
+  }
 
   // 우선순위: 같은 destination + 같은 angle → 같은 destination → 같은 angle → 최신
   const sameDestSameAngle = posts.filter(
-    (p) => p.travel_packages?.destination === destination && p.angle_type === angleType,
+    (p) => relatedPostDestination(p) === destination && p.angle_type === angleType,
   );
   const sameDest = posts.filter(
-    (p) => p.travel_packages?.destination === destination && p.angle_type !== angleType,
+    (p) => relatedPostDestination(p) === destination && p.angle_type !== angleType,
   );
   const sameAngle = posts.filter(
-    (p) => p.angle_type === angleType && p.travel_packages?.destination !== destination,
+    (p) => p.angle_type === angleType && relatedPostDestination(p) !== destination,
   );
   const rest = posts.filter(
-    (p) => p.travel_packages?.destination !== destination && p.angle_type !== angleType,
+    (p) => relatedPostDestination(p) !== destination && p.angle_type !== angleType,
   );
 
   const merged: RelatedPost[] = [];
@@ -702,15 +911,24 @@ async function getCurationProductsForInfo(destination: string) {
     airline: string | null;
     departure_airport: string | null;
     price_dates: Array<{ date?: string; price?: number }> | null;
+    status?: string | null;
+    publication_state?: string | null;
+    package_revision?: number | null;
+    audit_status?: string | null;
+    audit_report?: unknown;
+    updated_at?: string | null;
+    optional_tours?: unknown;
+    itinerary_data?: unknown;
   }
 
   const result = await runBlogDetailQuery(
     'curationProducts',
     supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates')
+      .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
       .eq('destination', destination)
-      .in('status', ['approved', 'active'])
+      .in('status', [...CUSTOMER_VISIBLE_STATUSES])
+      .in('publication_state', ['approved', 'published'])
       .order('price', { ascending: true })
       .limit(12),
     { data: [] as CurationPackage[], error: null },
@@ -720,16 +938,22 @@ async function getCurationProductsForInfo(destination: string) {
   const { data } = result;
 
   // 미래 출발일 있는 상품만 필터
-  const alive = (data as unknown as CurationPackage[]).filter((p) => {
-    const pd = (p.price_dates || []) as Array<{ date?: string }>;
-    if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
-    return pd.some((d) => d.date && d.date >= today);
-  });
+  const alive = (data as unknown as CurationPackage[])
+    .filter((p) => isBlogPublicSnapshotCandidate(p as unknown as Record<string, unknown>))
+    .filter((p) => {
+      const pd = (p.price_dates || []) as Array<{ date?: string }>;
+      if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
+      return pd.some((d) => d.date && d.date >= today);
+    });
 
-  if (alive.length <= 3) return alive;
+  const publicAlive = await mergeBlogPublicPackageSnapshots(
+    alive as unknown as Array<Record<string, unknown>>,
+  ) as unknown as CurationPackage[];
+
+  if (publicAlive.length <= 3) return publicAlive;
 
   // 가격 3분위에서 1개씩 (가성비 / 중가 / 프리미엄)
-  const sorted = [...alive].sort((a, b) => (a.price || 0) - (b.price || 0));
+  const sorted = [...publicAlive].sort((a, b) => (a.price || 0) - (b.price || 0));
   const n = sorted.length;
   return [
     sorted[0],
@@ -751,7 +975,7 @@ async function getPrevNextPosts(
     runBlogDetailQuery(
       'prevPost',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, seo_title, og_image_url, destination')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -766,7 +990,7 @@ async function getPrevNextPosts(
     runBlogDetailQuery(
       'nextPost',
       supabaseAdmin
-        .from('content_creatives')
+        .from(PUBLIC_BLOG_READ_SOURCE)
         .select('slug, seo_title, og_image_url, destination')
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
@@ -956,20 +1180,13 @@ async function renderBlogDetail({
     redirect('/blog');
   }
 
-  let post: BlogPost | null = null;
-  try {
-    post = await getPostFast(slug);
-  } catch (err) {
-    if (isBlogDatabaseUnavailableError(err)) {
-      return <BlogDatabaseUnavailableView slug={slug} />;
-    }
-    throw err;
-  }
+  const post = await getPostFast(slug);
   if (!post) notFound();
 
   const pkg = post.travel_packages;
   const rawTitle = post.seo_title || pkg?.title || '여행 가이드';
   const title = rawTitle.replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '').trim();
+  const generatedHeroImage = isGeneratedBlogImageUrl(post.og_image_url);
 
   // 블로그 유형 판별
   const isInfoBlog = !post.product_id;
@@ -986,6 +1203,12 @@ async function renderBlogDetail({
     intentProfile.infoSubtype || intentProfile.productSubtype || intentProfile.readerIntent,
   ].filter(Boolean).join(':');
   const effectiveDestination = post.destination || pkg?.destination || undefined;
+  const informationalIdentity = isInfoBlog
+    ? readBlogInformationRepresentativeIdentity(post.generation_meta)
+    : null;
+  const informationalRiskLevel = informationalIdentity
+    ? readInformationalRiskLevel(post.generation_meta, informationalIdentity.intent)
+    : null;
 
   // ── A/B 테스트: headline 실험 ────────────────────────────
   // visitorId = post.id (고유 식별자, 결정론적 할당용)
@@ -1040,7 +1263,7 @@ async function renderBlogDetail({
 
   // PPR: dki(랜딩) + relatedProducts(인라인 주입) + relatedPosts(인라인+사이드바)는
   // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
-  const [dki, relatedPosts, relatedProducts] = await Promise.all([
+  const [dki, relatedPosts, relatedProducts, officialSourceTarget] = await Promise.all([
     isLanding
       ? withBlogRenderTimeout(
           'dki',
@@ -1055,13 +1278,40 @@ async function renderBlogDetail({
           null,
         )
       : Promise.resolve(null),
-    withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type), []),
+    withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type, post), []),
     withBlogRenderTimeout('relatedProducts', getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent), []),
+    informationalIdentity && informationalRiskLevel === 'HIGH'
+      ? withBlogRenderTimeout('officialSourceCta', loadBlogInformationalOfficialSourceUrl({
+          creativeId: post.id,
+          generationMeta: post.generation_meta,
+        }), null, 1500)
+      : Promise.resolve(null),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
   const angleLabel = ANGLE_LABELS[post.angle_type] || post.angle_type;
   const pageUrl = `${BASE_URL}/blog/${slug}`;
+  const relatedArticlesHref = relatedPosts[0]?.slug
+    ? `/blog/${relatedPosts[0].slug}`
+    : effectiveDestination
+      ? `/blog/destination/${encodeURIComponent(effectiveDestination)}`
+      : '/blog';
+  const informationalCtas = informationalIdentity
+    ? selectBlogInformationalCtas({
+        intent: informationalIdentity.intent,
+        destination: effectiveDestination,
+        riskLevel: informationalRiskLevel ?? 'LOW',
+        locale: informationalIdentity.locale,
+        placement: 'bottom',
+        settings: loadBlogInformationalCtaSettings({
+          destination: effectiveDestination,
+          relatedArticlesHref,
+          officialSourceUrl: officialSourceTarget?.url,
+          officialSourceRegistryHostname: officialSourceTarget?.registryHostname,
+          officialSourceAllowSubdomains: officialSourceTarget?.allowSubdomains,
+        }),
+      })
+    : [];
 
   // 본문 sanitize + TOC 추출
   let bodyHtml = '';
@@ -1073,12 +1323,14 @@ async function renderBlogDetail({
     // blog_html은 "마크다운 + 일부 안전한 HTML(figcaption/aside)" 혼합 저장값이다.
     // figcaption 태그만 보고 전체를 raw HTML로 취급하면 이미지/표/링크 마크다운이 그대로 노출된다.
     const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
-    const sanitized = sanitizeServerBlogHtml(rendered);
+    const normalizedBody = isInfoBlog ? stripBlogInformationalBodyCtas(rendered) : rendered;
+    const sanitized = stripDuplicateBodyTitleHeading(sanitizePublicBlogBodyHtml(normalizedBody), abTestTitle);
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;
     showToc = shouldShowToc(sanitized, toc);
-    readingMinutes = estimateReadingMinutes(sanitized);
+    readingMinutes = readPersistedBlogReadingTime(post.quality_gate)
+      ?? calculateBlogReadingTimeFromHtml(sanitized);
   }
 
   const [curationSection, sidebarRelatedPosts, relatedPostsSection, prevNextSection] = await Promise.all([
@@ -1092,11 +1344,13 @@ async function renderBlogDetail({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
+      sourcePost: post,
     }), null),
     withBlogRenderTimeout('relatedPostsSection', RelatedPostsSection({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
+      sourcePost: post,
     }), null),
     withBlogRenderTimeout('prevNextSection', PrevNextSection({ slug, publishedAt: post.published_at }), null),
   ]);
@@ -1137,39 +1391,39 @@ async function renderBlogDetail({
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.blogPosting) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.blogPosting) }}
       />
       <script
         suppressHydrationWarning
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.breadcrumbList) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.breadcrumbList) }}
       />
       {jsonLd.faqPage && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.faqPage) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.faqPage) }}
         />
       )}
       {jsonLd.howTo && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.howTo) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.howTo) }}
         />
       )}
       {jsonLd.touristTrip && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.touristTrip) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.touristTrip) }}
         />
       )}
       {jsonLd.product && (
         <script
           suppressHydrationWarning
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.product) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(jsonLd.product) }}
         />
       )}
 
@@ -1314,14 +1568,22 @@ async function renderBlogDetail({
             <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
               <img
                 src={toBlogImageDisplaySrc(post.og_image_url) || post.og_image_url}
-                alt={[pkg?.destination || post.destination, title].filter(Boolean).join(' — ')}
+                alt={[
+                  generatedHeroImage ? 'AI 생성 참고 이미지' : null,
+                  pkg?.destination || post.destination,
+                  title,
+                ].filter(Boolean).join(' — ')}
                 className="absolute inset-0 h-full w-full object-cover"
                 loading="eager"
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 768px, 1024px"
                 fetchPriority="high"
               />
             </div>
-            <figcaption className="sr-only">{title}</figcaption>
+            <figcaption className={generatedHeroImage ? 'mt-2 text-center text-xs text-slate-500' : 'sr-only'}>
+              {generatedHeroImage
+                ? 'AI 생성 참고 이미지 · 실제 현장 기록이나 최신 운영 상황의 증거로 사용하지 않습니다.'
+                : title}
+            </figcaption>
           </figure>
         )}
 
@@ -1342,8 +1604,8 @@ async function renderBlogDetail({
                   .slice(0, 2)
                   .map((rp) => ({
                     slug: rp.slug,
-                    seo_title: rp.seo_title,
-                    destination: rp.travel_packages?.destination,
+                    seo_title: rp.related_anchor || rp.seo_title,
+                    destination: relatedPostDestination(rp) ?? undefined,
                   }));
                 const canInject =
                   split &&
@@ -1378,6 +1640,13 @@ async function renderBlogDetail({
               })()
             ) : (
               <p className="py-10 text-center text-slate-400">본문이 준비 중입니다.</p>
+            )}
+
+            {informationalIdentity && informationalCtas.length > 0 && (
+              <InformationalCtaHub
+                articleId={post.id}
+                ctas={informationalCtas}
+              />
             )}
 
             {/* 상품 CTA 카드 — Jiwonnote 미니멀 스타일: 슬레이트 보더 + 흰배경 */}
@@ -1485,17 +1754,23 @@ async function RelatedPostsSection({
   currentSlug,
   destination,
   angleType,
+  sourcePost,
 }: {
   currentSlug: string;
   destination: string | undefined;
   angleType: string | undefined;
+  sourcePost?: BlogPost;
 }) {
-  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType);
+  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType, sourcePost);
   if (relatedPosts.length === 0) return null;
 
   return (
     <ScrollReveal>
-    <section className="border-t border-slate-200 bg-white" aria-label="관련 여행 가이드">
+    <section
+      data-related-posts="footer"
+      className="border-t border-slate-200 bg-white"
+      aria-label="관련 여행 가이드"
+    >
       <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
         <div className="border-b-[3px] border-slate-900 pb-3 md:pb-4 mb-6 md:mb-8 flex items-end justify-between">
           <div className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
@@ -1510,10 +1785,11 @@ async function RelatedPostsSection({
         </div>
         <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {relatedPosts.slice(0, 6).map((rp) => {
-            const rpTitle = (rp.seo_title || '여행 가이드')
+            const rpTitle = (rp.related_anchor || rp.seo_title || '여행 가이드')
               .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
               .trim();
             const rpDur = formatDuration(rp.travel_packages?.duration, rp.travel_packages?.nights);
+            const rpDestination = relatedPostDestination(rp);
             return (
               <Link
                 key={rp.id}
@@ -1537,10 +1813,10 @@ async function RelatedPostsSection({
                 )}
                 <div className="p-5">
                   <div className="mb-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-medium">
-                    {rp.travel_packages?.destination && (
-                      <span>{rp.travel_packages.destination}</span>
+                    {rpDestination && (
+                      <span>{rpDestination}</span>
                     )}
-                    {rp.travel_packages?.destination && <span>·</span>}
+                    {rpDestination && <span>·</span>}
                     <span>{ANGLE_LABELS[rp.angle_type] || rp.angle_type}</span>
                     {rpDur && <><span>·</span><span>{rpDur}</span></>}
                   </div>
@@ -1568,20 +1844,22 @@ async function SidebarRelatedPosts({
   currentSlug,
   destination,
   angleType,
+  sourcePost,
 }: {
   currentSlug: string;
   destination: string | undefined;
   angleType: string | undefined;
+  sourcePost?: BlogPost;
 }) {
-  const posts = await getRelatedPosts(currentSlug, destination, angleType);
+  const posts = await getRelatedPosts(currentSlug, destination, angleType, sourcePost);
   if (posts.length === 0) return null;
 
   return (
-    <div>
+    <div data-related-posts="sidebar">
       <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">추천 포스팅</p>
       <ul className="space-y-3">
         {posts.slice(0, 4).map((rp) => {
-          const rpTitle = (rp.seo_title || '여행 가이드')
+          const rpTitle = (rp.related_anchor || rp.seo_title || '여행 가이드')
             .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
             .trim();
           return (

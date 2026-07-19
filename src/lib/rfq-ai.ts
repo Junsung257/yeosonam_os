@@ -56,7 +56,7 @@ const INTERVIEW_SYSTEM_PROMPT = `
 당신은 여소남 여행사의 단체여행 전문 컨시어지 AI입니다.
 고객과 자연스럽게 대화하여 단체여행 RFQ(견적 요청서)에 필요한 정보를 수집해 주세요.
 
-수집해야 할 8가지 정보 (우선순위 순):
+수집해야 할 정보 (우선순위 순):
 [필수]
 1. destination   — 여행 목적지 (예: 일본 도쿄, 베트남 다낭)
 2. people        — 인원 수 (성인/아동 구분)
@@ -68,11 +68,15 @@ const INTERVIEW_SYSTEM_PROMPT = `
 6. meal_plan     — 식사 형태 (전식포함/조식/불포함)
 7. transportation — 이동 수단 (전세버스/기차/자유이동)
 8. special       — 특별 요청사항 (어린이 동반, 휠체어, 알레르기 등)
+9. organization  — 회사/협회/모임 등 단체 성격
+10. seminar      — 세미나룸·연수·회의 필요 여부
+11. payment      — 법인카드/세금계산서 등 결제 조건
+12. decision     — 견적 확정·보고 마감일
 
 규칙:
 - 한 번에 1-2가지만 질문하세요 (너무 많은 질문은 부담)
 - 이미 언급된 정보는 다시 묻지 마세요
-- 필수 3개 수집 완료 시 마지막 메시지에 "[RFQ_READY]" 태그를 포함하세요
+- 필수 3개 수집 완료 후에는 단체 성격/세미나/결제/마감 중 빠진 핵심 1개만 추가로 물어보고, 바로 접수 가능하면 마지막 메시지에 "[RFQ_READY]" 태그를 포함하세요
 - 금액은 한국어로 자연스럽게 (예: "1인당 100만원")
 - JSON 형식이나 기술적 용어 사용 금지
 `.trim();
@@ -139,6 +143,12 @@ function extractFromConversation(messages: GeminiMessage[], prev: Partial<GroupR
   // 예산
   const budgetMatch = text.match(/(\d+(?:\.\d+)?)\s*만\s*원/);
   if (budgetMatch) ext.budget_per_person = parseInt(budgetMatch[1]) * 10000;
+  const totalBudgetMatch = text.match(/총\s*(\d+(?:\.\d+)?)\s*(만\s*)?원/);
+  if (totalBudgetMatch) ext.total_budget = Math.round(parseFloat(totalBudgetMatch[1]) * (totalBudgetMatch[2] ? 10000 : 1));
+
+  // 기간
+  const durationMatch = text.match(/(\d+)\s*박/);
+  if (durationMatch) ext.duration_nights = parseInt(durationMatch[1]);
 
   // 호텔
   if (text.includes('5성')) ext.hotel_grade = '5성';
@@ -149,6 +159,19 @@ function extractFromConversation(messages: GeminiMessage[], prev: Partial<GroupR
   if (text.includes('전식포함') || text.includes('전 식사 포함')) ext.meal_plan = '전식포함';
   else if (text.includes('조식')) ext.meal_plan = '조식';
   else if (text.includes('불포함')) ext.meal_plan = '불포함';
+
+  // 단체/기업 조건
+  if (/전세\s*버스|버스|단체\s*버스/.test(text)) ext.transportation = '전세버스';
+  const corporateSignals: string[] = [];
+  if (/워크샵|워크숍|연수|기업|회사|법인/.test(text)) corporateSignals.push('기업/연수 목적');
+  if (/세미나|회의|컨퍼런스|강의/.test(text)) corporateSignals.push('세미나룸 필요');
+  if (/법인카드|세금계산서|계산서/.test(text)) corporateSignals.push('법인 결제/증빙 필요');
+  if (/보고|결재|확정|마감/.test(text)) corporateSignals.push('의사결정 마감 확인 필요');
+  if (corporateSignals.length > 0) {
+    ext.special_requests = [ext.special_requests, ...corporateSignals]
+      .filter(Boolean)
+      .join(' · ');
+  }
 
   return ext;
 }
@@ -163,7 +186,7 @@ function runMockInterviewTurn(userMessage: string, state: InterviewState): { rep
     '감사합니다! 필요한 기본 정보가 모두 수집되었습니다. 이 정보를 바탕으로 랜드사들에게 견적을 요청할게요!',
   ];
 
-  const reply = replies[Math.min(stepCount / 2, replies.length - 1)] ?? replies[replies.length - 1];
+  const reply = replies[Math.min(Math.floor(stepCount / 2), replies.length - 1)] ?? replies[replies.length - 1];
   const isComplete = stepCount >= 6;
 
   const newMessages: GeminiMessage[] = [

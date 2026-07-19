@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import process from 'node:process';
+import { spawnSync } from 'node:child_process';
 
 import './load-script-env';
 
@@ -22,7 +23,22 @@ type Options = {
   baseUrl: string;
   title: string | null;
   destination: string | null;
+  refreshProof: boolean;
+  skipAxe: boolean;
 };
+
+type ProofRefreshResult =
+  | {
+      attempted: true;
+      exitCode: number;
+      stdout?: string;
+      stderr?: string;
+      error?: string;
+    }
+  | {
+      attempted: false;
+      reason: string;
+    };
 
 function parseOptions(args: string[]): Options {
   return {
@@ -37,6 +53,8 @@ function parseOptions(args: string[]): Options {
       ?? 'https://www.yeosonam.com',
     title: args.find((arg) => arg.startsWith('--title='))?.split('=').slice(1).join('=') ?? null,
     destination: args.find((arg) => arg.startsWith('--destination='))?.split('=').slice(1).join('=') ?? null,
+    refreshProof: !args.includes('--skip-proof-refresh'),
+    skipAxe: args.includes('--skip-axe'),
   };
 }
 
@@ -119,6 +137,40 @@ async function runRawInputRehearsal(options: Options) {
   };
 }
 
+function isMobileProofBlocker(blocker: string): boolean {
+  return /mobile_proof|packages_mobile|lp_mobile|browser proof|actual .*proof/i.test(blocker);
+}
+
+function shouldRefreshMobileProof(blockers: string[]): boolean {
+  return blockers.length > 0 && blockers.every(isMobileProofBlocker);
+}
+
+function runMobileProofRefresh(options: Options, packageId: string): ProofRefreshResult {
+  const args = [
+    'node_modules/tsx/dist/cli.mjs',
+    'scripts/prove-hwp-mobile-render.ts',
+    `--package-ids=${packageId}`,
+    `--base=${options.baseUrl}`,
+    '--apply-pass-only',
+    '--continue-on-fail',
+    '--json',
+    ...(options.skipAxe ? ['--skip-axe'] : []),
+  ];
+  const result = spawnSync(process.execPath, args, {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+  return {
+    attempted: true,
+    exitCode: result.status ?? 1,
+    stdout: result.status === 0 ? (result.stdout ?? '').slice(0, 8_000) : undefined,
+    stderr: result.status === 0 ? undefined : (result.stderr ?? '').slice(0, 4_000),
+    error: result.error ? result.error.message : undefined,
+  };
+}
+
 async function runSavedPackageRehearsal(options: Options, packageId: string) {
   const autopilot = await runUploadToOpenAutopilot({
     supabase: supabaseAdmin,
@@ -131,13 +183,28 @@ async function runSavedPackageRehearsal(options: Options, packageId: string) {
       limit: 1,
     },
   });
-  const contract = await loadCustomerOpenContractForPackage(supabaseAdmin, packageId);
+  let contract = await loadCustomerOpenContractForPackage(supabaseAdmin, packageId);
+  const proofRefresh: ProofRefreshResult = options.refreshProof && shouldRefreshMobileProof(contract.blockers)
+    ? runMobileProofRefresh(options, packageId)
+    : {
+        attempted: false,
+        reason: options.refreshProof
+          ? (contract.blockers.length === 0
+              ? 'customer_open_contract already passed'
+              : 'remaining blockers are not only mobile proof blockers')
+          : 'disabled_by_skip_proof_refresh',
+      };
+
+  if (proofRefresh.attempted && proofRefresh.exitCode === 0) {
+    contract = await loadCustomerOpenContractForPackage(supabaseAdmin, packageId);
+  }
 
   return {
     mode: 'saved_package_customer_open_rehearsal',
     packageId,
     autoOpen: false,
     baseUrl: options.baseUrl,
+    proofRefresh,
     autopilot: {
       ok: autopilot.ok,
       scanned: autopilot.scanned,

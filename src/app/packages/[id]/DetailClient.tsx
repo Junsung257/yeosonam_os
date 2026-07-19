@@ -35,8 +35,8 @@ import {
   type CustomerProductPriceRow,
 } from '@/lib/customer-package-price-options';
 import { formatProductTypeLabel } from '@/lib/product-type-label';
-import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
-import { hasCustomerCopyQualityIssues, normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { normalizeCustomerVisibleCopy } from '@/lib/customer-copy-quality';
+import { buildCustomerPackageDisplayCopy } from '@/lib/customer-package-display-copy';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -115,6 +115,7 @@ interface Package {
   lp_hero_image_url?: string | null;
   thumbnail_urls?: string[] | null;
   products?: { display_name?: string; internal_code?: string };
+  _canonical_view?: CanonicalView | null;
 }
 
 interface AttractionInfo {
@@ -355,24 +356,6 @@ function decodeCustomerHtmlEntities(value: string | null | undefined): string {
 
 function customerVisibleText(value: string | null | undefined): string {
   return normalizeCustomerVisibleCopy(decodeCustomerHtmlEntities(value));
-}
-
-function customerSafeProductSummary(pkg: Package): string {
-  const existing = customerVisibleText(pkg.product_summary);
-  if (existing && !isWeakCopy(existing, pkg.title) && !hasCustomerCopyQualityIssues(existing)) {
-    return existing;
-  }
-
-  return generateRecommendationCopy({
-    title: pkg.title,
-    destination: pkg.destination,
-    duration: pkg.duration,
-    trip_style: pkg.trip_style,
-    product_type: pkg.product_type,
-    inclusions: pkg.inclusions ?? null,
-    product_highlights: pkg.product_highlights ?? null,
-    airline: pkg.airline,
-  });
 }
 
 function decodeCustomerVisibleValue(value: unknown): unknown {
@@ -694,11 +677,29 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   }, [pkg, updateActiveSection]);
 
   /** 한 번 이상 스크롤한 뒤 멈춤 → 상담 힌트만 준비, 화면을 자동으로 덮지는 않음 */
+  const proactiveDisplayCopy = pkg ? buildCustomerPackageDisplayCopy({
+    title: pkg.title,
+    display_title: pkg.display_title,
+    product_display_name: pkg.products?.display_name,
+    hero_tagline: pkg.hero_tagline,
+    product_summary: pkg.product_summary,
+    destination: pkg.destination,
+    duration: pkg.duration,
+    nights: pkg.nights,
+    trip_style: pkg.trip_style,
+    product_type: pkg.product_type,
+    airline: pkg.airline,
+    product_highlights: pkg.product_highlights ?? null,
+    inclusions: pkg.inclusions ?? null,
+    excludes: pkg.excludes ?? null,
+    customer_notes: pkg.customer_notes ?? null,
+    optional_tours: pkg.optional_tours ?? null,
+  }) : null;
   const proactiveChatDoneRef = useRef(false);
   useEffect(() => {
     if (!pkg || isLoading) return;
     proactiveChatDoneRef.current = false;
-    const label = pkg.display_title || pkg.products?.display_name || pkg.title || '이 상품';
+    const label = proactiveDisplayCopy?.cardTitle || '이 상품';
     const dest = pkg.destination?.trim() || '목적지';
 
     let scrollSettle: ReturnType<typeof setTimeout> | null = null;
@@ -739,7 +740,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       if (scrollSettle) clearTimeout(scrollSettle);
       clearDwell();
     };
-  }, [pkg, isLoading, packageId]);
+  }, [pkg, isLoading, packageId, proactiveDisplayCopy?.cardTitle]);
 
   // Day 스크롤 추적: 스크롤하면 현재 보이는 day에 맞춰 탭 자동 활성화
   useEffect(() => {
@@ -761,7 +762,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   // pkg 의존 헤비 계산은 메모이제이션 (state 변경 시 불필요한 재계산 방지)
   // CRC: renderPackage()는 845줄 모듈의 풀 파이프라인이므로 매 렌더 호출 비용 큼.
   const view: CanonicalView | null = useMemo(
-    () => (pkg ? renderPackage(pkg as Parameters<typeof renderPackage>[0]) : null),
+    () => {
+      if (!pkg) return null;
+      return pkg._canonical_view ?? renderPackage(pkg as Parameters<typeof renderPackage>[0]);
+    },
     [pkg],
   );
   const days: DaySchedule[] = useMemo(() => {
@@ -883,6 +887,22 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
   const durationLabel = formatPackageDuration(pkg);
+  const displayCopy = buildCustomerPackageDisplayCopy({
+    title: pkg.title,
+    display_title: pkg.display_title,
+    product_display_name: pkg.products?.display_name,
+    hero_tagline: pkg.hero_tagline,
+    product_summary: pkg.product_summary,
+    destination: pkg.destination,
+    duration: pkg.duration,
+    nights: pkg.nights,
+    trip_style: pkg.trip_style,
+    product_type: pkg.product_type,
+    airline: airlineName,
+    product_highlights: pkg.product_highlights ?? null,
+    inclusions: pkg.inclusions ?? null,
+    optional_tours: pkg.optional_tours ?? null,
+  });
   const todayForDeparture = new Date().toISOString().slice(0, 10);
   const nextAvailableDepartureLabel = formatCompactDepartureDate(
     allPriceDates
@@ -986,7 +1006,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
   const handleShare = async () => {
     const url = window.location.href;
-    if (navigator.share) { try { await navigator.share({ title: pkg.title, url }); } catch {} }
+    if (navigator.share) { try { await navigator.share({ title: displayCopy.cardTitle, url }); } catch {} }
     else {
       await navigator.clipboard.writeText(url);
       setShareToast(true);
@@ -1018,7 +1038,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       : reservationConsentMissing
         ? '개인정보 안내에 동의하면 문의를 접수할 수 있어요.'
         : '담당자가 출발 가능일과 인원을 확인해 연락드립니다.';
-  const customerSummary = customerSafeProductSummary(pkg);
+  const customerSummary = `${displayCopy.summaryLead}\n\n${displayCopy.summaryBody}`;
   // currentDay는 일정표 days.map 루프 내에서 정의됨
 
   return (
@@ -1100,7 +1120,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               ② Tagline  (sub, 톤 다운, ≤40자)     — hero_tagline
               레거시 폴백: display_title 안에 "—"가 있으면 split해서 헤드라인/서브로 분리. */}
           {(() => {
-            const raw = pkg.display_title || pkg.products?.display_name || pkg.title;
+            const raw = displayCopy.heroHeadline;
             const dashIdx = raw.indexOf(' — ');
             const legacyHeadline = dashIdx > 0 ? raw.slice(0, dashIdx) : raw;
             const legacyTail = dashIdx > 0 ? raw.slice(dashIdx + 3) : '';
@@ -1109,8 +1129,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             return (
               <>
                 <h1 className="text-white text-[25px] md:text-3xl font-extrabold leading-tight mb-1.5 break-keep drop-shadow-sm">{headline}</h1>
-                {tagline && (
-                  <p className="text-white/85 text-sm font-medium leading-snug mb-3 break-keep">{tagline}</p>
+                {displayCopy.heroSubline && (
+                  <p className="text-white/85 text-sm font-medium leading-snug mb-3 break-keep line-clamp-2">{displayCopy.heroSubline}</p>
                 )}
               </>
             );
@@ -1181,20 +1201,28 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <div className="flex flex-nowrap md:flex-wrap gap-2 overflow-x-auto md:overflow-visible no-scrollbar -mx-1 px-1" aria-label="일정 옵션 선택 목록">
               {/* 현재 패키지 (selected) */}
               <span className="inline-flex items-center max-w-[190px] px-3 py-2 rounded-full bg-slate-950 text-white text-xs font-semibold shadow-sm shrink-0">
-                <span className="truncate">{pkg.display_title || pkg.title}</span>
+                <span className="truncate">{displayCopy.cardTitle}</span>
                 <span className="ml-1.5 text-white/65 shrink-0">현재</span>
               </span>
               {/* 다른 sibling 패키지 — Link 로 즉시 이동 */}
-              {catalogSiblings.map(s => (
-                <Link
-                  key={s.id}
-                  href={`/packages/${s.id}`}
-                  className="inline-flex items-center max-w-[190px] px-3 py-2 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-white hover:border-slate-300 transition-colors shrink-0"
-                  title={s.display_title || s.title}
-                >
-                  <span className="truncate">{s.display_title || s.title}</span>
-                </Link>
-              ))}
+              {catalogSiblings.map(s => {
+                const siblingTitle = buildCustomerPackageDisplayCopy({
+                  title: s.title,
+                  display_title: s.display_title,
+                  destination: s.destination,
+                  product_highlights: s.product_highlights ?? null,
+                }).cardTitle;
+                return (
+                  <Link
+                    key={s.id}
+                    href={`/packages/${s.id}`}
+                    className="inline-flex items-center max-w-[190px] px-3 py-2 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-white hover:border-slate-300 transition-colors shrink-0"
+                    title={siblingTitle}
+                  >
+                    <span className="truncate">{siblingTitle}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -1233,11 +1261,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       <div className="h-full bg-brand rounded-full transition-all" style={{ width: `${Math.min(100, (booked / minP) * 100)}%` }} />
                     </div>
                     <span className="text-[11px] text-brand font-bold whitespace-nowrap">
-                      {m}/{d} 출발 확정까지 {remaining}명
+                      {m}/{d} 모객 기준까지 {remaining}명
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[11px] text-emerald-600 font-bold">✅ {m}/{d} 출발 확정!</span>
+                  <span className="text-[11px] text-emerald-600 font-bold">✅ {m}/{d} 조건 확인</span>
                 );
               })()}
             </div>
@@ -1525,7 +1553,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 스티키 탭 ═══ */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
         <div className="flex gap-0 px-3">
-          {NAV_SECTIONS.map(section => (
+          {NAV_SECTIONS.filter(section => section !== '선택관광' || (view?.optionalTours.count ?? 0) > 0).map(section => (
             <button key={section} onClick={() => scrollToSection(section)}
               className={`flex-1 py-3 text-[11px] font-bold text-center transition-colors border-b-2 ${
                 activeSection === section ? 'text-slate-950 border-slate-950' : 'text-gray-500 border-transparent'
@@ -1652,7 +1680,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] font-extrabold uppercase tracking-wide text-brand">Decision guide</p>
+              <p className="text-[11px] font-extrabold tracking-wide text-brand">상품 선택 가이드</p>
               <h2 className="mt-1 text-lg font-extrabold text-slate-950">이 상품, 이런 분께 잘 맞아요</h2>
             </div>
             <button
@@ -2191,11 +2219,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         productType={pkg.product_type ?? null}
         kakaoChannel={() => openKakaoChannel({
           internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
-          productTitle: pkg.products?.display_name || pkg.title,
+          productTitle: displayCopy.cardTitle,
           intent: pkg.product_type ?? null,
           budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
           destination: pkg.destination ?? null,
-          selected_products: [pkg.products?.display_name || pkg.title],
+          selected_products: [displayCopy.cardTitle],
           departureDate: selectedDate || selectedTier?.departure_dates?.[0],
         })}
       />
@@ -2337,8 +2365,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               {pkg.product_type && /노쇼핑|no.?shopping/i.test(pkg.product_type) && <span>✅ 쇼핑 없음</span>}
               <span className="truncate">
                 ✅ {specialTermsProduct
-                  ? '예약 즉시 항공·숙박 확보'
-                  : (nextConfirmedDate ? `${nextConfirmedDate} 출발 확정` : '출발 확정 후 안심 예약')}
+                  ? '상담 후 항공·숙박 확인'
+                  : (nextConfirmedDate ? `${nextConfirmedDate} 조건 확인` : '출발일 상담 확인')}
               </span>
             </div>
           );
@@ -2368,7 +2396,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             )}
           </div>
 
-          {/* 카톡 — secondary, 빠른 채팅 (리드 저장 + 카카오 채널 오픈) */}
+          {/* 카톡 — secondary, 분석 기록 후 카카오 채널 오픈 (리드는 명시 동의 폼에서만 생성) */}
           <button
             type="button"
             aria-label="카카오톡으로 문의"
@@ -2377,7 +2405,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               trackEngagement({
                 event_type: ANALYTICS_EVENTS.kakaoClicked,
                 product_id: id,
-                product_name: pkg.title,
+                product_name: displayCopy.cardTitle,
                 page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
                 metadata: {
                   source: 'detail_mobile_sticky_kakao',
@@ -2386,7 +2414,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 },
               });
               trackLead({
-                content_name: pkg.title || '',
+                content_name: displayCopy.cardTitle || '',
                 value: displayPrice || 0,
                 content_ids: [id],
               });
@@ -2396,24 +2424,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ package_id: id, outcome: 'inquiry' }),
               }).catch(() => {});
-              fetch('/api/leads', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  productId: id,
-                  channel: 'kakao_channel',
-                  form: { name: '카카오문의', phone: '-', desiredDate: selectedTier?.departure_dates?.[0] || null, adults: 1, children: 0, privacyConsent: true },
-                  tracking: { landingUrl: window.location.href, utmSource: new URLSearchParams(window.location.search).get('utm_source'), utmMedium: new URLSearchParams(window.location.search).get('utm_medium'), utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') },
-                  submittedAt: new Date().toISOString(),
-                }),
-              }).catch(() => {});
               const copied = await openKakaoChannel({
                 internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
-                productTitle: pkg.products?.display_name || pkg.title,
+                productTitle: displayCopy.cardTitle,
                 intent: pkg.product_type ?? null,
                 budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
                 destination: pkg.destination ?? null,
-                selected_products: [pkg.products?.display_name || pkg.title],
+                selected_products: [displayCopy.cardTitle],
                 departureDate: selectedDate || selectedTier?.departure_dates?.[0],
               });
               if (copied) {
@@ -2515,7 +2532,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   이름과 연락처만 남기면 담당자가 출발 가능일과 인원을 확인해 연락드립니다.
                 </p>
                 <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4 text-xs text-text-primary">
-                  <p className="font-bold">{pkg.title}</p>
+                  <p className="font-bold">{displayCopy.cardTitle}</p>
                   {selectedTier ? (
                     <p className="mt-1">📅 {selectedTier.period_label} — ₩{selectedTier.adult_price?.toLocaleString()}</p>
                   ) : displayPrice && displayPrice < Infinity ? (
@@ -2605,7 +2622,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         onClose={() => setTermsSheetOpen(false)}
         notices={initialNotices}
         hasSpecialTerms={hasSpecialTermsBanner(initialNotices)}
-        productTitle={pkg.title}
+        productTitle={displayCopy.cardTitle}
       />
     </main>
     </>

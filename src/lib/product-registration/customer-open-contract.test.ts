@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { hashRawText } from '@/lib/source-evidence';
 import {
   customerOpenContractBlogBlockReason,
   evaluateCustomerOpenContract,
@@ -7,11 +8,14 @@ import {
   type CustomerOpenContractResult,
 } from './customer-open-contract';
 
+const baseRawText = 'PKG Da Nang package\n'.repeat(10);
+
 const basePkg = {
   id: 'pkg-1',
   title: 'Da Nang package',
   destination: 'Da Nang',
-  raw_text: 'PKG Da Nang package\n'.repeat(10),
+  raw_text: baseRawText,
+  raw_text_hash: hashRawText(baseRawText),
   internal_code: 'PUS-ETC-DAD-05-0001',
   airline: 'BX',
   updated_at: '2026-06-28T00:00:00.000Z',
@@ -145,5 +149,60 @@ describe('customer-open contract', () => {
     expect(staleEvidence.ok).toBe(true);
     expect(isCustomerOpenContractBlogPublishable(staleEvidence)).toBe(false);
     expect(customerOpenContractBlogBlockReason(staleEvidence)).toBe('downstream_blog_publish_false');
+  });
+
+  it('blocks customer opening and product-backed blog publishing when source verify is blocked', () => {
+    const result = evaluateCustomerOpenContract({
+      pkg: basePkg,
+      verifyChecks: [{ id: 'C15', status: 'pass' }, { id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      v3Gate: { blocksApproval: false, payloadError: null, blockReasons: [], draftStatus: 'ready_to_publish' },
+      sourceVerifyStatus: 'blocked',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('blocked');
+    expect(result.blockers).toContain('source_verify:blocked');
+    expect(result.evidencePack.status).toBe('blocked');
+    expect(result.evidencePack.downstream_eligibility.blog_publish).toBe(false);
+    expect(isCustomerOpenContractBlogPublishable(result)).toBe(false);
+    expect(customerOpenContractBlogBlockReason(result)).toBe('source_verify:blocked');
+  });
+
+  it('blocks customer opening when source hash evidence is missing', () => {
+    const result = evaluateCustomerOpenContract({
+      pkg: { ...basePkg, raw_text_hash: null },
+      verifyChecks: [{ id: 'C15', status: 'pass' }, { id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      v3Gate: { blocksApproval: false, payloadError: null, blockReasons: [], draftStatus: 'ready_to_publish' },
+      sourceVerifyStatus: 'clean',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('blocked');
+    expect(result.blockers.join('\n')).toContain('source_preservation: raw_text_hash is missing or invalid');
+    expect(result.evidencePack.status).toBe('blocked');
+    expect(result.evidencePack.downstream_eligibility.customer_open).toBe(false);
+  });
+
+  it('does not allow product-backed blog publishing for non-customer-visible package statuses', () => {
+    const result = evaluateCustomerOpenContract({
+      pkg: {
+        ...basePkg,
+        status: 'pending_review',
+      },
+      verifyChecks: [{ id: 'C15', status: 'pass' }, { id: 'C18', status: 'pass' }],
+      productPrices,
+      mobileProof,
+      v3Gate: { blocksApproval: false, payloadError: null, blockReasons: [], draftStatus: 'ready_to_publish' },
+      sourceVerifyStatus: 'clean',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.evidencePack.downstream_eligibility.blog_publish).toBe(true);
+    expect(isCustomerOpenContractBlogPublishable(result)).toBe(false);
+    expect(customerOpenContractBlogBlockReason(result)).toBe('product_status_not_customer_visible:pending_review');
   });
 });

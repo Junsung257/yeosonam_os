@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { getTenantProducts, upsertTenantProduct, isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const tenantId = request.nextUrl.searchParams.get('tenant_id');
   if (!tenantId) return NextResponse.json({ error: 'tenant_id 필수' }, { status: 400 });
   if (!isSupabaseConfigured) return NextResponse.json({ products: [] });
@@ -10,6 +14,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   const body = await request.json();
   if (!body.tenant_id || !body.title) {
@@ -20,6 +27,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   const body = await request.json();
   if (!body.id || !body.tenant_id) {
