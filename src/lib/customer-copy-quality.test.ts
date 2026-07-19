@@ -97,6 +97,20 @@ describe('customer visible copy quality', () => {
     expect(issueCodes('상품 원가 기준으로 마진을 확인합니다')).toContain('customer_forbidden_internal_terms');
   });
 
+  it('does not flag Yuanjiajie place names as internal cost copy', () => {
+    expect(issueCodes('원가계로 이동합니다.')).not.toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('원가계 후화원 · 천태만상 봉우리 향연')).not.toContain('customer_forbidden_internal_terms');
+    expect(issueCodes('원가 기준으로 마진 확인')).toContain('customer_forbidden_internal_terms');
+  });
+
+  it('does not flag normal package terms used on customer-facing travel pages', () => {
+    const codes = issueCodes(
+      '선택관광은 현지에서 신청할 수 있으며, 디즈니랜드 일정과 최소 행사인원, 현지 가이드 안내가 포함됩니다. 예약대기 상품은 순차 안내됩니다.',
+    );
+
+    expect(codes).toEqual([]);
+  });
+
   it('does not mistake internal field keys containing pp for per-person shorthand', () => {
     expect(issueCodes('supplier_raw_facts')).toEqual([]);
     expect(normalizeCustomerVisibleCopy('P.P $60')).toBe('1인 $60');
