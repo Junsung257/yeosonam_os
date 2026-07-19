@@ -218,6 +218,7 @@ export async function generateSectionImage(
   sectionTitle: string,
   keyword: string,
   destination?: string,
+  options?: { skipPexelsFallback?: boolean },
 ): Promise<string | null> {
   const dest = destination || keyword || '';
 
@@ -233,8 +234,10 @@ export async function generateSectionImage(
   }
 
   // 2) Pexels fallback
-  const pexelsUrl = await tryPexelsSearch(searchQuery, dest, keyword, sectionTitle);
-  if (pexelsUrl) return pexelsUrl;
+  if (!options?.skipPexelsFallback) {
+    const pexelsUrl = await tryPexelsSearch(searchQuery, dest, keyword, sectionTitle);
+    if (pexelsUrl) return pexelsUrl;
+  }
 
   return null;
 }
