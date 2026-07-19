@@ -112,6 +112,7 @@
 - 실제 Pexels 후보 육안 검수와 기존 fallback 글 운영 정리는 코드 merge와 별개의 운영 gate로 남아 있다.
 - #757 `fix(admin): correct and protect dashboard KPIs`는 독립 재검토 RELEASE-CLEAR, 최신 main 회귀 19개·ESLint·전체 type-check와 전체 CI/Vercel green 후 merge됐다.
 - #758 `fix(blog): defer unsafe fallback regeneration`도 전체 CI/Vercel green 후 merge됐고, 이 감사 브랜치는 #758까지 포함한 최신 `origin/main`을 병합했다.
+- #762 `fix(blog): repair private regeneration quality checks`도 전체 CI/Vercel/성능 분석 green 후 merge됐고, 감사·RFQ·tenant 세 브랜치 모두 해당 main을 다시 병합해 회귀 검증했다.
 
 ### 진행 중인 출시 PR
 
