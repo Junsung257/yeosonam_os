@@ -53,6 +53,7 @@ A day is healthy only when all of these are true:
 - The queue row must keep the same `content_creative_id` and set `meta.private_regeneration` to `{ "mode": "replace_existing_fallback_draft", "force_private_review": true }`.
 - The publisher fails closed unless the linked row is a `naver_blog` draft whose stored metadata still proves `deterministic_info_fallback` or `deterministic_fast_fallback`.
 - A successful replacement updates the same creative ID and slug, then leaves the queue and creative in private review. It must not call atomic publication or indexing until a later explicit approval reruns current publish QA.
+- For a controlled retry, an authorized operator may call `blog-publisher?force=true&privateQueueId=<queue UUID>`. This mode accepts only a queued row carrying the private-regeneration contract, processes exactly that row, bypasses daily quota refill, and still leaves a successful replacement in private review. Do not use the normal publisher endpoint for a one-row retry because normal quota recovery may add and process unrelated candidates.
 - When a representative record exists, move it from `active` to a reservation owned by the same queue row before requeueing. This prevents a stale active representative from blocking the controlled in-place replacement.
 - Verify the write by reading back creative status, review status, fallback flags, queue status, replacement metadata, and representative ownership. A fallback flag remaining on a `published` row is a release blocker.
 

@@ -1309,6 +1309,54 @@ async function runBlogPublisher(request: NextRequest) {
 
   try {
     blogStyleGuideCache = null;
+    const privateQueueId = request.nextUrl.searchParams.get('privateQueueId')?.trim();
+    if (privateQueueId) {
+      const { data: item, error: itemError } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .select('*')
+        .eq('id', privateQueueId)
+        .eq('status', 'queued')
+        .maybeSingle();
+
+      if (itemError || !item) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedPrivateRegeneration: true,
+          reason: itemError?.message || 'private_regeneration_queue_item_not_found',
+          results,
+          errors,
+        };
+      }
+
+      if (!hasPrivateBlogRegenerationIntent(item)) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedPrivateRegeneration: true,
+          reason: 'private_regeneration_intent_required',
+          results,
+          errors,
+        };
+      }
+
+      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      results.push(result);
+      const completedPrivately = result.status === 'pending_review' || result.status === 'done';
+      return {
+        ok: completedPrivately,
+        processed: 1,
+        published: 0,
+        targetedPrivateRegeneration: true,
+        queueId: privateQueueId,
+        results,
+        errors: completedPrivately ? errors : [...errors, result.reason || result.status],
+        ranAt: new Date().toISOString(),
+      };
+    }
+
     const staleRecovery = await recoverStaleGeneratingQueueItems();
     const recoverableBacklogRecovery = await recoverRequeueableFailedBlogQueueItems({
       limit: MAX_CANDIDATE_POOL * 3,
@@ -1816,14 +1864,21 @@ async function processQueueItem(
   atomicIndexing?: boolean;
 }> {
   // 동시성 방지 — generating 락
-  const { error: lockErr } = await supabaseAdmin
+  const { data: lockedRow, error: lockErr } = await supabaseAdmin
     .from('blog_topic_queue')
     .update({ status: 'generating', attempts: (item.attempts || 0) + 1 })
     .eq('id', item.id)
-    .eq('status', 'queued');
+    .eq('status', 'queued')
+    .select('id')
+    .maybeSingle();
 
-  if (lockErr) {
-    return { id: item.id, topic: item.topic, status: 'lock_failed', reason: lockErr.message };
+  if (lockErr || !lockedRow) {
+    return {
+      id: item.id,
+      topic: item.topic,
+      status: 'lock_failed',
+      reason: lockErr?.message || 'queue_item_not_available_for_claim',
+    };
   }
 
   try {

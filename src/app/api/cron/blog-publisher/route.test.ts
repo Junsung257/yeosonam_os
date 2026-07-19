@@ -106,6 +106,19 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('excludeContentCreativeId: item.content_creative_id ?? null');
   });
 
+  it('supports an authenticated single-item private regeneration without quota refill', () => {
+    const source = routeSource();
+    const targetedStart = source.indexOf("searchParams.get('privateQueueId')");
+    const regularRefill = source.indexOf('const queueRefill = await ensureDailyPublishableQueue');
+
+    expect(targetedStart).toBeGreaterThanOrEqual(0);
+    expect(targetedStart).toBeLessThan(regularRefill);
+    expect(source).toContain('hasPrivateBlogRegenerationIntent(item)');
+    expect(source).toContain('targetedPrivateRegeneration: true');
+    expect(source).toContain("result.status === 'pending_review' || result.status === 'done'");
+    expect(source).toContain(".eq('status', 'queued')\n    .select('id')\n    .maybeSingle()");
+  });
+
   it('reconciles the final informational body with a bounded writer claim ledger', () => {
     const source = routeSource();
 
