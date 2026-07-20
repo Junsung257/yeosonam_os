@@ -470,7 +470,7 @@ When Supabase service-role credentials are available, prefer
 `npm run discover:operational-inputs -- --out=.tmp/operational-readiness-discovered.env`
 first and pass that file to `verify:operational-inputs` or `verify:local-release`.
 The discovery script only writes non-secret probe identifiers:
-`OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`,
+`OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`, `OPEN_CHECK_BLOG_SLUG`,
 `MARKETING_CHECK_CARD_NEWS_ID`, and `MARKETING_CHECK_VARIANT_GROUP_ID`.
 
 Rendered readiness summaries and tracked attention-item issues include
@@ -481,7 +481,7 @@ The audit covers:
 
 | Group | Keys |
 |---|---|
-| Public data probes | `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE` |
+| Public data probes | `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`, `OPEN_CHECK_BLOG_SLUG` |
 | Marketing dynamic page probes | `MARKETING_CHECK_CARD_NEWS_ID`, `MARKETING_CHECK_VARIANT_GROUP_ID` |
 | Protected ops probes | `CRON_SECRET`, or `OPEN_CHECK_AUTH_COOKIE` for cookie-authenticated staging checks |
 | External management APIs | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN` |
