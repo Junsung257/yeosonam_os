@@ -201,7 +201,7 @@ export default function MarketingDashboardPage() {
         <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
           {mainTab === 'meta' && (
             <>
-              <button
+              <button type="button"
                 onClick={handleOptimize}
                 disabled={optimizing}
                 className={PRIMARY_ACTION_CLASS}
@@ -217,7 +217,7 @@ export default function MarketingDashboardPage() {
             </>
           )}
           {mainTab === 'links' && (
-            <button onClick={() => setBuilderOpen(true)} className={PRIMARY_ACTION_CLASS}>
+            <button type="button" onClick={() => setBuilderOpen(true)} className={PRIMARY_ACTION_CLASS}>
               + 새 링크 만들기
             </button>
           )}
@@ -249,7 +249,7 @@ export default function MarketingDashboardPage() {
           { key: 'meta', label: 'Meta 광고' },
           { key: 'links', label: '링크 센터' },
         ] as { key: MainTab; label: string }[]).map(tab => (
-          <button
+          <button type="button"
             key={tab.key}
             onClick={() => setMainTab(tab.key)}
             className={`${TAB_BUTTON_BASE} ${
@@ -554,11 +554,11 @@ export default function MarketingDashboardPage() {
                           <td className="px-3 py-2">
                             <div className="flex gap-2 justify-center">
                               {c.status === 'ACTIVE' ? (
-                                <button onClick={() => handleCampaignStatus(c.id, 'PAUSED')} className="text-[11px] px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100">일시정지</button>
+                                <button type="button" onClick={() => handleCampaignStatus(c.id, 'PAUSED')} className="text-[11px] px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100">일시정지</button>
                               ) : c.status === 'PAUSED' ? (
-                                <button onClick={() => handleCampaignStatus(c.id, 'ACTIVE')} className="text-[11px] px-2 py-1 bg-emerald-50 text-emerald-700 rounded hover:bg-emerald-100">재개</button>
+                                <button type="button" onClick={() => handleCampaignStatus(c.id, 'ACTIVE')} className="text-[11px] px-2 py-1 bg-emerald-50 text-emerald-700 rounded hover:bg-emerald-100">재개</button>
                               ) : null}
-                              <button onClick={() => handleCampaignStatus(c.id, 'ARCHIVED')} className="text-[11px] px-2 py-1 bg-admin-surface-2 text-admin-muted rounded hover:bg-slate-200">종료</button>
+                              <button type="button" onClick={() => handleCampaignStatus(c.id, 'ARCHIVED')} className="text-[11px] px-2 py-1 bg-admin-surface-2 text-admin-muted rounded hover:bg-slate-200">종료</button>
                             </div>
                           </td>
                         </tr>

@@ -903,7 +903,7 @@ export default function UploadPage() {
                   ? `${textInput.length}자 · ${textChunkCount}개 감지 · Ctrl+Enter로 빠른 추가`
                   : '원문 그대로 붙여넣기 — 랜드사명·커미션은 자동 마스킹'}
               </span>
-              <button
+              <button type="button"
                 onClick={addTextToQueue}
                 disabled={!textInput.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-xs font-medium hover:bg-[#003366] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
@@ -942,7 +942,7 @@ export default function UploadPage() {
 
               <div className="flex gap-2">
                 {waitingFileCount > 0 && !isRunning && (
-                  <button
+                  <button type="button"
                     onClick={startQueue}
                     className="flex-1 bg-blue-600 text-white py-2 rounded text-admin-sm font-medium hover:bg-blue-700 transition"
                   >
@@ -958,14 +958,14 @@ export default function UploadPage() {
                 {!isRunning && (
                   <>
                     {doneCount > 0 && (
-                      <button
+                      <button type="button"
                         onClick={() => router.push('/admin/packages')}
                         className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition"
                       >
                         상품 목록에서 확인
                       </button>
                     )}
-                    <button
+                    <button type="button"
                       onClick={resetQueue}
                       className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 rounded text-admin-sm hover:bg-admin-bg transition"
                     >
@@ -1220,7 +1220,7 @@ export default function UploadPage() {
                         )}
                         {(item.verifyStatus === 'warnings' || item.verifyStatus === 'blocked') && item.verifyReport && (
                           <div className="mt-1">
-                            <button
+                            <button type="button"
                               onClick={() => setQueue(prev => prev.map(it => it.id === item.id ? { ...it, verifyExpanded: !it.verifyExpanded } : it))}
                               className={`text-[10px] font-medium flex items-center gap-1 ${item.verifyStatus === 'blocked' ? 'text-red-500' : 'text-yellow-600'}`}
                             >
@@ -1245,7 +1245,7 @@ export default function UploadPage() {
                       <div className="mt-0.5 flex items-start gap-2">
                         <p className="text-[11px] text-red-500 flex-1 leading-snug">{item.errorMsg}</p>
                         {item.rawText && (
-                          <button
+                          <button type="button"
                             onClick={() => retryItem(item)}
                             className="flex-shrink-0 text-[10px] font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50 transition"
                           >

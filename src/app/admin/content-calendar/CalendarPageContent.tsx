@@ -227,7 +227,7 @@ function DroppableCell({
   const { setNodeRef, isOver } = useDroppable({ id: dateStr });
 
   return (
-    <button
+    <button type="button"
       ref={setNodeRef}
       onClick={onClick}
       className={`min-h-[110px] border-b border-r border-admin-border p-1.5 text-left transition-colors ${
@@ -484,13 +484,13 @@ export function ContentCalendarPage() {
         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
           {/* 헤더 */}
           <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
-            <button onClick={prevMonth} className="text-sm text-admin-muted hover:text-admin-text-2">
+            <button type="button" onClick={prevMonth} className="text-sm text-admin-muted hover:text-admin-text-2">
               ← {month === 1 ? `12월` : `${month - 1}월`}
             </button>
             <h2 className="font-semibold text-admin-text">
               {year}년 {MONTH_LABELS[month - 1]}
             </h2>
-            <button onClick={nextMonth} className="text-sm text-admin-muted hover:text-admin-text-2">
+            <button type="button" onClick={nextMonth} className="text-sm text-admin-muted hover:text-admin-text-2">
               {month === 12 ? `1월` : `${month + 1}월`} →
             </button>
           </div>
@@ -646,7 +646,7 @@ function RecommendationsPanel({
 
   return (
     <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
-      <button
+      <button type="button"
         onClick={onToggle}
         className="w-full px-6 py-4 flex items-center justify-between hover:bg-admin-bg transition-colors"
       >
@@ -865,14 +865,14 @@ function DayDetailPanel({
                             onChange={(e) => setEditTime(e.target.value)}
                             className="text-xs border border-admin-border-mid rounded px-1 py-0.5 w-20"
                           />
-                          <button
+                          <button type="button"
                             onClick={() => handleReschedule(s)}
                             disabled={editing}
                             className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded hover:bg-indigo-700 disabled:opacity-50"
                           >
                             {editing ? '...' : '저장'}
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => setEditScheduledId(null)}
                             className="text-xs text-admin-muted px-1 py-0.5"
                           >
@@ -885,7 +885,7 @@ function DayDetailPanel({
                             {scheduledTime}
                             {isPast && ' (지남)'}
                           </span>
-                          <button
+                          <button type="button"
                             onClick={() => {
                               setEditScheduledId(`${s.source}-${s.id}`);
                               setEditTime(scheduledTime);
@@ -962,7 +962,7 @@ function DayDetailPanel({
                 {/* 액션 */}
                 <div className="flex gap-1 shrink-0">
                   {isScheduled && !isPublished && (
-                    <button
+                    <button type="button"
                       onClick={() => {
                         setEditScheduledId(`${item.source}-${item.id}`);
                         setEditTime(item.scheduled_for?.slice(11, 16) ?? '10:00');

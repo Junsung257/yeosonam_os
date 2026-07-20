@@ -267,7 +267,7 @@ export default function RegistrationMonitorPage() {
     <main className="p-6 space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">등록 정확도 모니터링</h1>
-        <button onClick={() => void load()} className="text-admin-sm px-3 py-1 bg-admin-surface-2 rounded">새로고침</button>
+        <button type="button" onClick={() => void load()} className="text-admin-sm px-3 py-1 bg-admin-surface-2 rounded">새로고침</button>
       </div>
 
       {toast && <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded text-sm">{toast}</div>}
@@ -286,7 +286,7 @@ export default function RegistrationMonitorPage() {
           ))}
         </div>
         {triggerEval.all_passed && !policy.full_auto_enabled && (
-          <button
+          <button type="button"
             disabled={saving}
             onClick={() => void updatePolicy({ full_auto_enabled: true, notes: `풀자동 전환 ${new Date().toISOString()}` })}
             className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded font-semibold disabled:opacity-50"
@@ -295,7 +295,7 @@ export default function RegistrationMonitorPage() {
           </button>
         )}
         {policy.full_auto_enabled && (
-          <button
+          <button type="button"
             disabled={saving}
             onClick={() => void updatePolicy({ full_auto_enabled: false, notes: `컨펌 큐 복귀 ${new Date().toISOString()}` })}
             className="mt-4 px-4 py-2 bg-gray-600 text-white rounded font-semibold disabled:opacity-50"
@@ -565,7 +565,7 @@ export default function RegistrationMonitorPage() {
               사장님 거절 + 정정(critical/high) 누적분으로 BAD set 의 (1-α) quantile 을 임계값으로 사용 — false-accept rate ≤ α 수학적 보장.
             </p>
           </div>
-          <button
+          <button type="button"
             disabled={saving}
             onClick={() => void recalibrateConformal()}
             className="text-[11px] px-3 py-1.5 bg-indigo-600 text-white rounded font-semibold disabled:opacity-50"
@@ -749,7 +749,7 @@ function ThresholdRow({ label, value, onChange, disabled }: { label: string; val
           onChange={e => setLocal(Number(e.target.value))}
           className="w-20 px-2 py-1 border rounded text-admin-sm"
         />
-        <button
+        <button type="button"
           disabled={disabled || local === value}
           onClick={() => onChange(local)}
           className="text-[10px] px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-40"
