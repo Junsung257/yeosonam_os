@@ -55,7 +55,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
-| 2026-07-20 | `2026-07-20-launch-readiness-continuation-audit.md` | Continuation evidence for Git/PR cleanup, public package JSON-LD hardening, readiness checks, and remaining launch blockers. |
+| 2026-07-20 | `2026-07-20-launch-readiness-continuation-audit.md` | Continuation evidence for Git/PR cleanup, public package/blog readiness hardening, merged #824-#830 work, and remaining launch blockers. |
 | 2026-07-19 | `2026-07-19-release-readiness-full-audit.md` | Customer launch HOLD evidence, completed P0 remediations, open gates, Git/PR cleanup, and parallel closure lanes. |
 | 2026-07-06 | `2026-07-06-destinations-full-audit/` | Public destinations full audit output: desktop/mobile screenshots, route matrix, image/placeholder/climate/attraction checks. |
 | 2026-05-30 | `2026-05-30-full-stack-admin-final-audit.md` | Full-stack admin final audit evidence. |
