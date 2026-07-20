@@ -49,6 +49,20 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).not.toContain('originality_signals:');
   });
 
+  it('uses the dedicated validated information prompt and records a safe manifest', () => {
+    const source = routeSource();
+    const generatorStart = source.indexOf('async function generateFromTopic');
+    const generatorSource = source.slice(generatorStart, source.indexOf('async function', generatorStart + 30));
+
+    expect(source).toContain(".eq('domain', 'blog_info_writer_guide')");
+    expect(source).toContain('databaseContentValidator: isValidInformationalWriterGuide');
+    expect(generatorSource).toContain('getActiveBlogInformationWriterGuide()');
+    expect(generatorSource).toContain('buildInformationalWriterPrompt({');
+    expect(generatorSource).toContain('prompt_manifest: promptManifest');
+    expect(generatorSource).not.toContain('5~8회 반복');
+    expect(generatorSource).not.toContain("content: styleGuide");
+  });
+
   it('routes queue rows through the explicit information/product boundary before generation', () => {
     const source = routeSource();
 
@@ -141,7 +155,7 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('private_regeneration_research_preflight:');
     expect(source).toContain('private_regeneration_research_persistence:');
     expect(source).toContain("delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY]");
-    expect(source).toContain('${researchPromptBlock}');
+    expect(source).toContain('researchPromptBlock,');
   });
 
   it('reconciles the final informational body with a bounded writer claim ledger', () => {

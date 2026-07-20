@@ -86,8 +86,11 @@ export function buildGeneratedBlogImagePrompt(prompt: string): string {
   return [
     'Create a high-quality editorial travel image for a Korean travel guide.',
     prompt,
-    'Photorealistic natural lighting, useful visual context, 16:9 horizontal composition.',
-    'No text, no watermark, no logo, no readable signs, no identifiable person, no invented factual chart.',
+    'Make the destination and the section intent visually relevant rather than using a generic postcard scene.',
+    'Photorealistic natural lighting, realistic scale and colors, useful visual context, 16:9 horizontal composition.',
+    'Use an observational editorial-photography composition, not a collage, advertisement, or staged influencer portrait.',
+    'Do not invent a recognizable landmark unless the request explicitly names it.',
+    'No text, no watermark, no logo, no readable signs, no menu prices, no identifiable person, no invented factual chart.',
     'Treat this as an illustrative reference image, not documentary proof of current conditions.',
   ].join(' ');
 }

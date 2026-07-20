@@ -58,8 +58,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 10,
-            "persistedClaims": 10,
+            "claims": 13,
+            "persistedClaims": 13,
             "issues": []
           }
         },
@@ -67,8 +67,11 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 10,
+            "claims": 13,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -193,8 +196,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 13,
-            "persistedClaims": 13,
+            "claims": 16,
+            "persistedClaims": 16,
             "issues": []
           }
         },
@@ -202,8 +205,11 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 13,
+            "claims": 16,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -334,8 +340,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 4,
-            "persistedClaims": 4,
+            "claims": 7,
+            "persistedClaims": 7,
             "issues": []
           }
         },
@@ -343,8 +349,11 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 4,
+            "claims": 7,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -466,8 +475,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 3,
-            "persistedClaims": 3,
+            "claims": 5,
+            "persistedClaims": 5,
             "issues": []
           }
         },
@@ -475,8 +484,10 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 3,
+            "claims": 5,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate"
@@ -600,8 +611,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 6,
-            "persistedClaims": 6,
+            "claims": 8,
+            "persistedClaims": 8,
             "issues": []
           }
         },
@@ -609,8 +620,10 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 6,
+            "claims": 8,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -734,8 +747,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 3,
-            "persistedClaims": 3,
+            "claims": 5,
+            "persistedClaims": 5,
             "issues": []
           }
         },
@@ -743,8 +756,10 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 3,
+            "claims": 5,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate"
@@ -863,8 +878,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 4,
-            "persistedClaims": 4,
+            "claims": 6,
+            "persistedClaims": 6,
             "issues": []
           }
         },
@@ -872,8 +887,10 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 4,
+            "claims": 6,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -992,8 +1009,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 13,
-            "persistedClaims": 13,
+            "claims": 16,
+            "persistedClaims": 16,
             "issues": []
           }
         },
@@ -1001,8 +1018,11 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 13,
+            "claims": 16,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -1129,8 +1149,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 6,
-            "persistedClaims": 6,
+            "claims": 9,
+            "persistedClaims": 9,
             "issues": []
           }
         },
@@ -1138,8 +1158,11 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 6,
+            "claims": 9,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -1157,6 +1180,9 @@
             "pending": false,
             "requiresHumanReview": true,
             "issues": [
+              "human_approval_required",
+              "human_approval_required",
+              "human_approval_required",
               "human_approval_required",
               "human_approval_required",
               "human_approval_required",
@@ -1269,8 +1295,8 @@
           "status": "PASS",
           "passed": true,
           "evidence": {
-            "claims": 7,
-            "persistedClaims": 7,
+            "claims": 9,
+            "persistedClaims": 9,
             "issues": []
           }
         },
@@ -1278,8 +1304,10 @@
           "status": "EXPECTED_BLOCK",
           "passed": true,
           "evidence": {
-            "claims": 7,
+            "claims": 9,
             "issues": [
+              "unclassified_factual_candidate",
+              "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
               "unclassified_factual_candidate",
@@ -1298,6 +1326,8 @@
             "pending": false,
             "requiresHumanReview": true,
             "issues": [
+              "human_approval_required",
+              "human_approval_required",
               "human_approval_required",
               "human_approval_required",
               "human_approval_required",

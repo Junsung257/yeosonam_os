@@ -125,6 +125,18 @@ function currentOrDiscovered(key, discovered, source) {
   return { key, value: '', source: 'missing' };
 }
 
+function discoveredOrCurrent(key, discovered, source) {
+  if (discovered) return { key, value: discovered, source };
+  const current = envValue(key);
+  if (current) return { key, value: current, source: 'env' };
+  return { key, value: '', source: 'missing' };
+}
+
+function discoveredOnly(key, discovered, source) {
+  if (discovered) return { key, value: discovered, source };
+  return { key, value: '', source: 'missing' };
+}
+
 const loadedEnvFileKeys = loadEnvFile(envFile);
 const supabaseUrl = envValue('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL');
 const serviceKey = envValue('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY');
@@ -152,15 +164,47 @@ if (missingConnection.length === 0) {
     },
   });
 
-  const packageQuery = await safeQuery('travel-packages', () =>
+  const packageQuery = await safeQuery('public-package-snapshots', () =>
+    supabase
+      .from('public_package_snapshots')
+      .select('package_id,package_revision,status,created_at')
+      .in('status', ['approved', 'published'])
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .limit(20),
+  );
+  const snapshotRows = Array.isArray(packageQuery.data) ? packageQuery.data : [];
+  const snapshotPackageIds = [...new Set(snapshotRows.map((row) => row?.package_id).filter(Boolean))];
+  let packageRow = null;
+  if (snapshotPackageIds.length > 0) {
+    const publishedPackageQuery = await safeQuery('travel-packages-with-public-snapshot', () =>
+      supabase
+        .from('travel_packages')
+        .select('id,status,title,display_title,publication_state,package_revision,audit_status,updated_at')
+        .in('id', snapshotPackageIds)
+        .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'published'])
+        .in('publication_state', ['approved', 'published'])
+        .neq('audit_status', 'blocked')
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .limit(20),
+    );
+    report.checks.push(publishedPackageQuery);
+    const packageRows = Array.isArray(publishedPackageQuery.data) ? publishedPackageQuery.data : [];
+    packageRow = packageRows.find((row) => row?.id) || null;
+  }
+  if (!packageRow) {
+    const fallbackPackageQuery = await safeQuery('travel-packages', () =>
     supabase
       .from('travel_packages')
-      .select('id,status,title,display_title,updated_at')
+      .select('id,status,title,display_title,publication_state,package_revision,audit_status,updated_at')
       .in('status', [...CUSTOMER_VISIBLE_STATUSES, 'published'])
+      .in('publication_state', ['approved', 'published'])
+      .neq('audit_status', 'blocked')
       .order('updated_at', { ascending: false, nullsFirst: false })
       .limit(1),
-  );
-  let packageRow = firstRow(packageQuery.data);
+    );
+    report.checks.push(fallbackPackageQuery);
+    packageRow = firstRow(fallbackPackageQuery.data);
+  }
   if (!packageRow && packageQuery.status !== 'pass') {
     const fallback = await safeQuery('travel-packages-fallback', () =>
       supabase
@@ -172,6 +216,18 @@ if (missingConnection.length === 0) {
     report.checks.push(fallback);
     packageRow = firstRow(fallback.data);
   }
+
+  const blogQuery = await safeQuery('content-creatives-blog', () =>
+    supabase
+      .from('content_creatives')
+      .select('slug,status,channel,published_at,updated_at')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .limit(1),
+  );
+  const blogRow = firstRow(blogQuery.data);
 
   const affiliateQuery = await safeQuery('affiliates', () =>
     supabase
@@ -220,10 +276,11 @@ if (missingConnection.length === 0) {
     if (fallbackVariant?.variant_group_id) cardRows.unshift(fallbackVariant);
   }
 
-  report.checks.unshift(packageQuery, affiliateQuery, cardNewsQuery);
+  report.checks.unshift(packageQuery, blogQuery, affiliateQuery, cardNewsQuery);
   report.discovered = {
-    OPEN_CHECK_PACKAGE_ID: currentOrDiscovered('OPEN_CHECK_PACKAGE_ID', packageRow?.id, 'travel_packages.id'),
+    OPEN_CHECK_PACKAGE_ID: discoveredOnly('OPEN_CHECK_PACKAGE_ID', packageRow?.id, 'travel_packages.id'),
     OPEN_CHECK_REF_CODE: currentOrDiscovered('OPEN_CHECK_REF_CODE', affiliateRow?.referral_code, 'affiliates.referral_code'),
+    OPEN_CHECK_BLOG_SLUG: discoveredOnly('OPEN_CHECK_BLOG_SLUG', blogRow?.slug, 'content_creatives.slug'),
     MARKETING_CHECK_CARD_NEWS_ID: currentOrDiscovered('MARKETING_CHECK_CARD_NEWS_ID', cardRow?.id, 'card_news.id'),
     MARKETING_CHECK_VARIANT_GROUP_ID: currentOrDiscovered(
       'MARKETING_CHECK_VARIANT_GROUP_ID',
@@ -235,6 +292,7 @@ if (missingConnection.length === 0) {
   for (const key of [
     'OPEN_CHECK_PACKAGE_ID',
     'OPEN_CHECK_REF_CODE',
+    'OPEN_CHECK_BLOG_SLUG',
     'MARKETING_CHECK_CARD_NEWS_ID',
     'MARKETING_CHECK_VARIANT_GROUP_ID',
   ]) {
