@@ -227,11 +227,11 @@ export default function CardNewsNewWizardPage() {
           <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-5">
             {/* 모드 */}
             <div className="flex gap-1 bg-admin-surface-2 rounded-lg p-1">
-              <button
+              <button type="button"
                 onClick={() => setMode('product')}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md ${mode === 'product' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'}`}
               >상품 카드뉴스</button>
-              <button
+              <button type="button"
                 onClick={() => setMode('info')}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md ${mode === 'info' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'}`}
               >정보성 카드뉴스</button>
@@ -296,7 +296,7 @@ export default function CardNewsNewWizardPage() {
                   <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">앵글</label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {ANGLES.map(a => (
-                      <button
+                      <button type="button"
                         key={a.key}
                         onClick={() => setAngle(a.key)}
                         className={`px-3 py-2 text-sm rounded-lg border transition ${
@@ -383,7 +383,7 @@ export default function CardNewsNewWizardPage() {
             )}
 
             <div className="flex justify-end gap-3 pt-3 border-t border-admin-border">
-              <button
+              <button type="button"
                 onClick={handleGenerateBrief}
                 disabled={!step1Valid || loadingBrief}
                 className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
@@ -505,13 +505,13 @@ export default function CardNewsNewWizardPage() {
             )}
 
             <div className="flex justify-between gap-3 pt-3 border-t border-admin-border">
-              <button
+              <button type="button"
                 onClick={() => setStep(1)}
                 className="px-4 py-2.5 border border-admin-border-mid text-sm text-admin-muted rounded-lg hover:bg-admin-bg"
               >
                 ← 재생성
               </button>
-              <button
+              <button type="button"
                 onClick={handleCreateCardNews}
                 disabled={creating}
                 className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"

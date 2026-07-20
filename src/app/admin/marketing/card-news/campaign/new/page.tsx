@@ -215,7 +215,7 @@ export default function CampaignNewPage() {
               <h2 className="text-sm font-semibold text-admin-text-2 mb-3">카피 각도</h2>
               <div className="flex flex-wrap gap-2">
                 {ANGLES.map((a) => (
-                  <button
+                  <button type="button"
                     key={a.key}
                     onClick={() => setAngle(a.key)}
                     disabled={running}
@@ -236,7 +236,7 @@ export default function CampaignNewPage() {
               <h2 className="text-sm font-semibold text-admin-text-2 mb-3">템플릿 스타일</h2>
               <div className="grid grid-cols-2 gap-2">
                 {FAMILIES.map((f) => (
-                  <button
+                  <button type="button"
                     key={f.key}
                     onClick={() => setFamily(f.key)}
                     disabled={running}
@@ -271,7 +271,7 @@ export default function CampaignNewPage() {
             </div>
 
             {/* 시작 버튼 */}
-            <button
+            <button type="button"
               onClick={startCampaign}
               disabled={running || !selectedPkg}
               className="w-full py-3 rounded-admin-md bg-blue-600 text-white font-bold text-base hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
