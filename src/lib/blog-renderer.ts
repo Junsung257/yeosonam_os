@@ -583,18 +583,22 @@ function normalizeRenderedHeadingArtifacts(html: string): string {
     .replace(
       /<h([23])([^>]*)>\s*([^<]*?)\s*<strong>\s*(Q\d+[.:)]?\s*[^<]+?)<\/strong>\s*<\/h\1>/gi,
       (_full, level, attrs, prefix, question) => {
-        const heading = String(prefix || '').trim() || 'FAQ';
-        return `<h${level}${attrs}>${heading}</h${level}>\n<h3>${String(question).trim()}</h3>`;
+        const heading = String(prefix || '').trim();
+        const questionText = String(question).trim();
+        if (!heading) return `<h3${attrs}>${questionText}</h3>`;
+        return `<h${level}${attrs}>${heading}</h${level}>\n<h3>${questionText}</h3>`;
       },
     )
     .replace(/<h([23])([^>]*)>\s*([^<]{0,60}?)(Q\d+[.)]?\s+[^<]{20,}?)\s*<\/h\1>/gi, (_full, level, attrs, prefix, qaText) => {
-      const heading = String(prefix || '').trim() || 'FAQ';
+      const heading = String(prefix || '').trim();
       const qa = String(qaText || '').trim();
+      const parent = heading ? `<h${level}${attrs}>${heading}</h${level}>\n` : '';
+      const questionAttrs = heading ? '' : String(attrs || '');
       const answerSplit = qa.match(/^(Q\d+[.)]?\s+.*?)(\s+A\d?[:.]?\s+.*)$/i);
       if (answerSplit) {
-        return `<h${level}${attrs}>${heading}</h${level}>\n<h3>${answerSplit[1].trim()}</h3>\n<p>${answerSplit[2].trim()}</p>`;
+        return `${parent}<h3${questionAttrs}>${answerSplit[1].trim()}</h3>\n<p>${answerSplit[2].trim()}</p>`;
       }
-      return `<h${level}${attrs}>${heading}</h${level}>\n<h3>${qa}</h3>`;
+      return `${parent}<h3${questionAttrs}>${qa}</h3>`;
     })
     .replace(
       /<h([23])([^>]*)>\s*(자주\s*묻는\s*질문)\s+(Q\d+[.)]?\s+[^<]+?)\s*<\/h\1>/gi,
@@ -617,7 +621,8 @@ function normalizeRenderedHeadingArtifacts(html: string): string {
       '<p>$3</p>',
     )
     .replace(/<h([23])([^>]*)>\s*(핵심\s*요약|자주\s*묻는\s*질문|FAQ|Q&amp;A|Q&A)\s*<\/h\1>/gi, (full, level, attrs, text) => {
-      const key = String(text).replace(/\s+/g, ' ').toLowerCase();
+      const normalized = String(text).replace(/\s+/g, ' ').toLowerCase();
+      const key = /^(?:자주 묻는 질문|faq|q&amp;a|q&a)$/.test(normalized) ? 'faq' : normalized;
       if (seenCore.has(key)) return '';
       seenCore.add(key);
       return `<h${level}${attrs}>${text}</h${level}>`;

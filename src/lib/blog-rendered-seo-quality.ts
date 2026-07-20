@@ -25,6 +25,7 @@ export type BlogRenderedSeoIssueCode =
 export interface BlogRenderedSeoIssue {
   code: BlogRenderedSeoIssueCode;
   message: string;
+  evidence?: Record<string, unknown>;
 }
 
 export interface BlogRenderedSeoQualityReport {
@@ -57,8 +58,9 @@ function addIssue(
   issues: BlogRenderedSeoIssue[],
   code: BlogRenderedSeoIssueCode,
   message: string,
+  evidence?: Record<string, unknown>,
 ): void {
-  if (!issues.some((issue) => issue.code === code)) issues.push({ code, message });
+  if (!issues.some((issue) => issue.code === code)) issues.push({ code, message, evidence });
 }
 
 function readRecord(value: unknown): Record<string, unknown> | null {
@@ -72,25 +74,46 @@ function renderedHeadingLevel(element: Element): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function renderedHeadingHasSectionContent(
+interface RenderedSectionSiblingDiagnostic {
+  tag: string;
+  textLength: number;
+  textPreview?: string;
+  hasNonTextContent: boolean;
+}
+
+function compactRenderedText($: cheerio.CheerioAPI, element?: Element): string {
+  if (!element) return '';
+  return $(element).text().replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function renderedHeadingSectionDiagnostics(
   $: cheerio.CheerioAPI,
   element: Element,
-): boolean {
+): { hasContent: boolean; siblings: RenderedSectionSiblingDiagnostic[] } {
   const level = renderedHeadingLevel(element);
-  if (level === null) return false;
+  if (level === null) return { hasContent: false, siblings: [] };
   let sibling = $(element).next();
+  const siblings: RenderedSectionSiblingDiagnostic[] = [];
   while (sibling.length > 0) {
     const siblingElement = sibling.get(0);
     if (!siblingElement || siblingElement.type !== 'tag') break;
     const siblingHeadingLevel = renderedHeadingLevel(siblingElement);
     if (siblingHeadingLevel !== null && siblingHeadingLevel <= level) break;
-    const text = sibling.text().replace(/\u00a0/g, ' ').trim();
+    const text = compactRenderedText($, siblingElement);
     const hasNonTextContent = sibling.is('img,table,ul,ol,blockquote')
       || sibling.find('img,table,ul,ol,blockquote').length > 0;
-    if (text || hasNonTextContent) return true;
+    if (siblings.length < 8) {
+      siblings.push({
+        tag: siblingElement.tagName.toLowerCase(),
+        textLength: text.length,
+        ...(text ? { textPreview: text.slice(0, 120) } : {}),
+        hasNonTextContent,
+      });
+    }
+    if (text || hasNonTextContent) return { hasContent: true, siblings };
     sibling = sibling.next();
   }
-  return false;
+  return { hasContent: false, siblings };
 }
 
 function inspectCanonicalAndIndex(
@@ -158,13 +181,39 @@ export async function inspectBlogRenderedSeoQuality(
   if ($.root().text().includes('\\n')) {
     addIssue(issues, 'literal_newline_escape', '공개 렌더에 문자 그대로의 \\n이 남았습니다.');
   }
-  $('h2,h3,h4,h5,h6').each((_, element) => {
+  const emptyHeadingDiagnostics: Array<Record<string, unknown>> = [];
+  $('h2,h3,h4,h5,h6').each((index, element) => {
     const heading = $(element);
     const headingText = heading.text().replace(/\u00a0/g, ' ').trim();
-    if (!headingText || !renderedHeadingHasSectionContent($, element)) {
-      addIssue(issues, 'empty_heading', '내용이 없는 제목이 있습니다.');
+    const section = renderedHeadingSectionDiagnostics($, element);
+    if (!headingText || !section.hasContent) {
+      const previous = heading.prev().get(0);
+      const next = heading.next().get(0);
+      emptyHeadingDiagnostics.push({
+        index,
+        tag: element.tagName.toLowerCase(),
+        text: headingText.slice(0, 120),
+        reason: headingText ? 'missing_section_content' : 'missing_heading_text',
+        parentTag: element.parent?.type === 'tag' ? element.parent.tagName.toLowerCase() : null,
+        previousTag: previous?.type === 'tag' ? previous.tagName.toLowerCase() : null,
+        previousTextPreview: previous?.type === 'tag' ? compactRenderedText($, previous).slice(0, 120) : '',
+        nextTag: next?.type === 'tag' ? next.tagName.toLowerCase() : null,
+        nextTextPreview: next?.type === 'tag' ? compactRenderedText($, next).slice(0, 120) : '',
+        sectionSiblings: section.siblings,
+      });
     }
   });
+  if (emptyHeadingDiagnostics.length > 0) {
+    addIssue(
+      issues,
+      'empty_heading',
+      '내용이 없는 제목이 있습니다.',
+      {
+        count: emptyHeadingDiagnostics.length,
+        headings: emptyHeadingDiagnostics.slice(0, 5),
+      },
+    );
+  }
   $('table').each((_, table) => {
     const rows = $(table).find('tr');
     const cells = $(table).find('th,td');
