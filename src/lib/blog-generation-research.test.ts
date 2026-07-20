@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { BlogInformationSourcePolicy } from './blog-information-contract';
+import {
+  buildBlogInformationContract,
+  inspectBlogInformationMarkdown,
+  type BlogInformationSourcePolicy,
+} from './blog-information-contract';
 import {
   createBlogInformationClaimFingerprint,
   createBlogInformationSourceContentHash,
@@ -220,8 +224,23 @@ describe('blog generation research preflight', () => {
     expect(repaired.markdown).toContain('| 아침 | 700 JPY |');
     expect(repaired.markdown).toContain('## 지역별 가격 차이 확인 방법');
     expect(repaired.markdown).toContain('이 자료는 도시 전체 평균');
+    expect(repaired.markdown).toContain('## 세금·서비스료·예약 조건은 어떻게 확인할까?');
+    expect(repaired.markdown).toContain('현재 가격 근거 묶음에는 업장별 세금·서비스료·예약 조건이 포함되어 있지 않습니다.');
+    expect(repaired.markdown).toContain('세금 포함 여부, 서비스료, 예약·취소 조건을 확인하세요.');
     expect(repaired.markdown.match(/삿포로 일반 여행자의 절약형 하루 예산 기준값은 3000 JPY입니다\./g)).toHaveLength(1);
     expect(report).toMatchObject({ passed: true, issues: [] });
+    const informationReport = inspectBlogInformationMarkdown({
+      markdown: repaired.markdown,
+      contract: buildBlogInformationContract({
+        intentType: 'food_budget',
+        destination: '삿포로',
+        topic: '삿포로 식비 예산',
+        primaryKeyword: '삿포로 식비',
+        category: 'food',
+        microAngle: 'food_budget',
+      }),
+    });
+    expect(informationReport.missingSlots).not.toContain('fees_and_booking');
   });
 
   it('does not rewrite an article whose required food-budget structure already passes', () => {
