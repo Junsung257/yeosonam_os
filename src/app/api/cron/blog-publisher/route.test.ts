@@ -129,8 +129,8 @@ describe('blog publisher quota recovery contract', () => {
     expect(targetedStart).toBeLessThan(regularRefill);
     expect(source).toContain('hasPrivateBlogRegenerationIntent(item)');
     expect(source).toContain('targetedPrivateRegeneration: true');
-    expect(source).toContain('targetedAttempts < 2');
-    expect(source).toContain('publisherRemainingMs(startTime) >= BLOG_PUBLISHER_MIN_ITEM_START_MS');
+    expect(source).toContain('const targetedAttempts = 1');
+    expect(source).not.toContain('targetedAttempts < 2');
     expect(source).toContain('targetedAttempts,');
     expect(source).toContain("result.status === 'pending_review' || result.status === 'done'");
     expect(source).toContain(".eq('status', 'queued')\n    .select('id')\n    .maybeSingle()");
@@ -142,12 +142,24 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7');
   });
 
+  it('avoids duplicate AI and image work during a controlled private regeneration', () => {
+    const source = routeSource();
+
+    expect(source).toContain('const privateRegeneration = hasPrivateBlogRegenerationIntent(item)');
+    expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
+    expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
+    expect(source).toContain('fallbackImageUrls: privateReplacementAssets?.inlineImageUrls');
+    expect(source).toContain('preferFallbackImages: privateReplacementAssets !== null');
+    expect(source).toContain('allowPexelsSearch: privateReplacementAssets === null');
+    expect(source).toContain('allowGeneratedFallback: privateReplacementAssets === null');
+  });
+
   it('requires persisted research before targeted private regeneration calls the writer', () => {
     const source = routeSource();
     const targetedStart = source.indexOf("searchParams.get('privateQueueId')");
     const preflight = source.indexOf('evaluateBlogGenerationResearchReadiness({', targetedStart);
     const persistence = source.indexOf('persistBlogInformationResearch({', preflight);
-    const writer = source.indexOf('let result = await processQueueItem', persistence);
+    const writer = source.indexOf('const result = await processQueueItem', persistence);
 
     expect(preflight).toBeGreaterThan(targetedStart);
     expect(persistence).toBeGreaterThan(preflight);
