@@ -542,7 +542,12 @@ export default function LedgerPage() {
                     <p className="font-medium text-admin-text-2">{fmtW(e.amount)}</p>
                     <p className="text-admin-muted">{e.entry_date} {e.note && `/ ${e.note}`}</p>
                   </div>
-                  <button type="button" onClick={() => handleRemoveCapital(e.id, e.amount)} className="text-admin-muted-2 hover:text-red-400">
+                  <button
+                    type="button"
+                    aria-label={`${fmtW(e.amount)} 자본금 항목 삭제`}
+                    onClick={() => handleRemoveCapital(e.id, e.amount)}
+                    className="text-admin-muted-2 hover:text-red-400"
+                  >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -609,39 +614,40 @@ export default function LedgerPage() {
 
         {/* 테이블 */}
         {loading ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-admin-sm">
-              <thead>
-                <tr className="border-b-2 border-admin-border">
-                  <th className="px-3 py-3 w-8 bg-admin-bg/80" />
-                  {['일시', '구분', '거래처', '금액', '상태', '예약'].map(h => (
-                    <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-admin-muted uppercase tracking-wider whitespace-nowrap bg-admin-bg/80">{h}</th>
-                  ))}
-                  <th className="px-3 py-3 w-16 bg-admin-bg/80" />
-                </tr>
-              </thead>
-              <tbody>
+          <div className="overflow-x-auto" role="status" aria-label="거래 내역을 불러오는 중">
+            <div aria-hidden="true" className="min-w-full">
+              <div className="grid grid-cols-[2rem_repeat(6,minmax(4rem,1fr))_4rem] border-b-2 border-admin-border bg-admin-bg/80">
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="border-b border-admin-border">
-                    <td className="px-3 py-3" />
-                    {[80, 40, 120, 70, 56, 60].map((w, j) => (
-                      <td key={j} className="px-3 py-3">
-                        <div className={`h-3 bg-admin-surface-2 rounded animate-pulse`} style={{ width: w }} />
-                      </td>
-                    ))}
-                    <td className="px-3 py-3" />
-                  </tr>
+                  <div key={i} className="px-3 py-3">
+                    {i > 0 && i < 7 && <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-12" />}
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="grid grid-cols-[2rem_repeat(6,minmax(4rem,1fr))_4rem] border-b border-admin-border">
+                  <div className="px-3 py-3" />
+                  {[80, 40, 120, 70, 56, 60].map((w, j) => (
+                    <div key={j} className="px-3 py-3">
+                      <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
+                    </div>
+                  ))}
+                  <div className="px-3 py-3" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-admin-sm">
               <thead>
                 <tr className="border-b-2 border-admin-border">
-                  <th className="px-3 py-3 w-8 bg-admin-bg/80 backdrop-blur-sm">
-                    <button type="button" onClick={toggleAll} className="text-admin-muted-2 hover:text-admin-text-2">
+                  <th className="px-3 py-3 w-8 bg-admin-bg/80 backdrop-blur-sm" aria-label="거래 선택">
+                    <button
+                      type="button"
+                      aria-label={selected.size > 0 && selected.size === (tab === 'trash' ? trashTxs : displayTxs).length ? '전체 거래 선택 해제' : '전체 거래 선택'}
+                      onClick={toggleAll}
+                      className="text-admin-muted-2 hover:text-admin-text-2"
+                    >
                       {selected.size > 0 && selected.size === (tab === 'trash' ? trashTxs : displayTxs).length
                         ? <CheckSquare className="w-4 h-4 text-blue-600" />
                         : <Square className="w-4 h-4" />
@@ -651,14 +657,19 @@ export default function LedgerPage() {
                   {['일시', '구분', '거래처', '금액', '상태', '예약'].map(h => (
                     <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-admin-muted uppercase tracking-wider whitespace-nowrap bg-admin-bg/80 backdrop-blur-sm">{h}</th>
                   ))}
-                  <th className="px-3 py-3 w-16 bg-admin-bg/80 backdrop-blur-sm" />
+                  <th className="px-3 py-3 w-16 bg-admin-bg/80 backdrop-blur-sm" aria-label="거래 작업" />
                 </tr>
               </thead>
               <tbody>
                 {(tab === 'trash' ? trashTxs : displayTxs).map(tx => (
                   <tr key={tx.id} className={`border-b border-admin-border-mid hover:bg-admin-bg ${selected.has(tx.id) ? 'bg-blue-50' : ''}`}>
                     <td className="px-3 py-2">
-                      <button type="button" onClick={() => toggleSelect(tx.id)} className="text-admin-muted-2 hover:text-blue-600">
+                      <button
+                        type="button"
+                        aria-label={`${fmtDate(tx.received_at)} ${tx.counterparty_name || '거래'} 선택`}
+                        onClick={() => toggleSelect(tx.id)}
+                        className="text-admin-muted-2 hover:text-blue-600"
+                      >
                         {selected.has(tx.id)
                           ? <CheckSquare className="w-4 h-4 text-blue-600" />
                           : <Square className="w-4 h-4" />
@@ -704,6 +715,7 @@ export default function LedgerPage() {
                           <button type="button"
                             onClick={() => handleRestore([tx.id])}
                             title="복원"
+                            aria-label={`${tx.counterparty_name || '거래'} 복원`}
                             className="p-1.5 rounded-lg text-admin-muted-2 hover:text-blue-600 hover:bg-blue-50 transition"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
@@ -711,6 +723,7 @@ export default function LedgerPage() {
                           <button type="button"
                             onClick={() => handleHardDelete([tx.id])}
                             title="영구 삭제"
+                            aria-label={`${tx.counterparty_name || '거래'} 영구 삭제`}
                             className="p-1.5 rounded-lg text-admin-muted-2 hover:text-red-600 hover:bg-red-50 transition"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -720,6 +733,7 @@ export default function LedgerPage() {
                         <button type="button"
                           onClick={() => handleTrash([tx.id])}
                           title="휴지통으로 이동"
+                          aria-label={`${tx.counterparty_name || '거래'} 휴지통으로 이동`}
                           className="p-1.5 rounded-lg text-admin-muted-2 hover:text-red-500 hover:bg-red-50 transition"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -752,7 +766,12 @@ export default function LedgerPage() {
       {/* ── AI 스마트 클리닝 슬라이드 오버 패널 ────────────────────────────── */}
       {showAI && (
         <>
-          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setShowAI(false)} />
+          <button
+            type="button"
+            aria-label="AI 스마트 클리닝 결과 패널 닫기"
+            className="fixed inset-0 bg-black/30 z-40"
+            onClick={() => setShowAI(false)}
+          />
           <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white border-l border-admin-border-mid z-50 overflow-y-auto">
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
@@ -760,7 +779,12 @@ export default function LedgerPage() {
                   <Sparkles className="w-4 h-4 text-purple-600" />
                   <h2 className="text-admin-lg font-semibold text-admin-text-2">AI 스마트 클리닝 결과</h2>
                 </div>
-                <button type="button" onClick={() => setShowAI(false)} className="text-admin-muted-2 hover:text-admin-muted">
+                <button
+                  type="button"
+                  aria-label="AI 스마트 클리닝 결과 패널 닫기"
+                  onClick={() => setShowAI(false)}
+                  className="text-admin-muted-2 hover:text-admin-muted"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
