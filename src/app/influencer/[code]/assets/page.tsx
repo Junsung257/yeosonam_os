@@ -82,13 +82,13 @@ export default function InfluencerAssets() {
 
       {/* 탭 */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        <button
+        <button type="button"
           onClick={() => setTab('card_news')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === 'card_news' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
         >
           🎨 카드뉴스 ({cardNews.length})
         </button>
-        <button
+        <button type="button"
           onClick={() => setTab('copies')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === 'copies' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
         >
@@ -133,7 +133,7 @@ export default function InfluencerAssets() {
                 <div className="p-3">
                   <h3 className="text-sm font-bold text-gray-900 line-clamp-2 break-keep">{cn.title}</h3>
                   <p className="text-xs text-gray-400 mt-1">{cn.created_at?.slice(0, 10)}</p>
-                  <button
+                  <button type="button"
                     className="mt-2 w-full py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
                     onClick={() => {
                       // 카드뉴스 상세 보기 (추후 모달 또는 페이지)
@@ -187,7 +187,7 @@ export default function InfluencerAssets() {
                   <div className="mb-3">
                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">AI 요약</p>
                     <p className="text-sm text-gray-600 break-keep">{pkg.summary}</p>
-                    <button
+                    <button type="button"
                       onClick={() => copyText(pkg.summary!, `summary_${pkg.package_id}`)}
                       className={`mt-1 text-xs font-medium ${copiedIdx === `summary_${pkg.package_id}` ? 'text-green-600' : 'text-blue-600 hover:underline'}`}
                     >
@@ -204,7 +204,7 @@ export default function InfluencerAssets() {
                       <div key={i} className="bg-gray-50 rounded-lg p-3">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-gray-700">{copy.type || `카피 ${i + 1}`}</span>
-                          <button
+                          <button type="button"
                             onClick={() => copyText(`${copy.title}\n\n${copy.body}`, `copy_${pkg.package_id}_${i}`)}
                             className={`text-xs font-medium ${copiedIdx === `copy_${pkg.package_id}_${i}` ? 'text-green-600' : 'text-blue-600 hover:underline'}`}
                           >

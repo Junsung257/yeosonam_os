@@ -155,7 +155,7 @@ export default function JarvisFloatingWidget() {
     <>
       {/* 플로팅 버튼 */}
       {!isOpen && (
-        <button
+        <button type="button"
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 hidden w-14 h-14 bg-purple-700 hover:bg-purple-800 text-white rounded-full shadow-lg items-center justify-center transition-all z-50 active:scale-95 md:flex"
           aria-label="자비스 AI 열기"
@@ -176,7 +176,7 @@ export default function JarvisFloatingWidget() {
                 <div className="text-[10px] text-white/80">여소남 OS 통합제어</div>
               </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition">
+            <button type="button" onClick={() => setIsOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition">
               <X size={20} />
             </button>
           </div>
@@ -242,7 +242,7 @@ export default function JarvisFloatingWidget() {
           {/* 빠른 명령 */}
           <div className="px-3 py-1.5 flex gap-1.5 overflow-x-auto border-t border-gray-100">
             {QUICK_COMMANDS.map(cmd => (
-              <button
+              <button type="button"
                 key={cmd}
                 onClick={() => sendMessage(cmd)}
                 className="whitespace-nowrap text-[11px] px-2.5 py-1 rounded-full border border-purple-200 text-purple-700 bg-white hover:bg-purple-50 transition"
@@ -269,7 +269,7 @@ export default function JarvisFloatingWidget() {
                 className="flex-1 border border-gray-200 rounded-xl px-3 py-2 resize-none text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 max-h-20"
                 rows={1}
               />
-              <button
+              <button type="button"
                 onClick={() => sendMessage(input)}
                 disabled={loading || !input.trim()}
                 className="w-10 h-10 bg-purple-700 hover:bg-purple-800 disabled:bg-gray-300 text-white rounded-xl flex items-center justify-center transition shrink-0"
@@ -308,14 +308,14 @@ function ActionCardMini({ action, onApprove, onReject }: {
         ))}
       </div>
       <div className="flex gap-1.5">
-        <button
+        <button type="button"
           onClick={async () => { setLoading('a'); await onApprove(action.id); setLoading(null) }}
           disabled={loading !== null}
           className="flex-1 py-1.5 rounded-lg bg-purple-700 text-white text-xs font-semibold hover:bg-purple-800 disabled:opacity-50 transition"
         >
           {loading === 'a' ? '...' : '승인'}
         </button>
-        <button
+        <button type="button"
           onClick={async () => { setLoading('r'); await onReject(action.id); setLoading(null) }}
           disabled={loading !== null}
           className="flex-1 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-600 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 transition"

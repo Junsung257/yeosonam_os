@@ -703,19 +703,19 @@ export default function ScoringAdminPage() {
 
       {/* 액션 버튼 */}
       <div className="flex gap-3 flex-wrap">
-        <button
+        <button type="button"
           onClick={handleSavePolicy} disabled={saving}
           className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50"
         >{saving ? '저장 중...' : '정책 저장'}</button>
-        <button
+        <button type="button"
           onClick={handleRecompute} disabled={recomputing}
           className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50"
         >{recomputing ? '재계산 중...' : '지금 전체 재계산'}</button>
-        <button
+        <button type="button"
           onClick={handleMatchLandOps} disabled={matching}
           className="px-4 py-2 bg-sky-600 text-white text-sm rounded-lg hover:bg-sky-700 disabled:opacity-50"
         >{matching ? '매핑 중...' : '랜드사 자동 매핑'}</button>
-        <button
+        <button type="button"
           onClick={handleReliabilityFit} disabled={reliabilityFitting}
           className="px-4 py-2 bg-amber-600 text-white text-sm rounded-lg hover:bg-amber-700 disabled:opacity-50"
         >{reliabilityFitting ? '계산 중...' : '신뢰도 갱신'}</button>
@@ -763,7 +763,7 @@ export default function ScoringAdminPage() {
               onChange={e => setPreviewWindow(parseInt(e.target.value) || 0)}
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
-          <button onClick={handlePreview} disabled={previewLoading}
+          <button type="button" onClick={handlePreview} disabled={previewLoading}
             className="px-4 py-1.5 bg-slate-700 text-white text-sm rounded hover:bg-slate-800 disabled:opacity-50">
             {previewLoading ? '조회 중...' : '미리보기'}
           </button>
@@ -880,7 +880,7 @@ export default function ScoringAdminPage() {
               onChange={e => setNewRateValue(parseInt(e.target.value) || 0)}
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
-          <button onClick={handleAddRate}
+          <button type="button" onClick={handleAddRate}
             className="px-3 py-1.5 bg-slate-700 text-white text-sm rounded hover:bg-slate-800">추가</button>
         </div>
 
@@ -906,7 +906,7 @@ export default function ScoringAdminPage() {
                   <td className="px-3 py-2 text-right font-mono">{r.market_rate_krw.toLocaleString()}</td>
                   <td className="px-3 py-2 text-xs text-admin-muted">{r.source}</td>
                   <td className="px-3 py-2 text-right">
-                    <button onClick={() => handleDeleteRate(r.id)}
+                    <button type="button" onClick={() => handleDeleteRate(r.id)}
                       className="text-xs text-red-600 hover:underline">삭제</button>
                   </td>
                 </tr>

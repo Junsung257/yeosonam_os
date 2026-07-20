@@ -220,24 +220,24 @@ export default function BlogEditPage() {
       {/* 상단 바 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/blog')} className="text-admin-xs text-admin-muted hover:text-admin-text-2">← 목록</button>
+          <button type="button" onClick={() => router.push('/admin/blog')} className="text-admin-xs text-admin-muted hover:text-admin-text-2">← 목록</button>
           <h1 className="text-admin-lg font-bold text-admin-text-2">블로그 편집</h1>
           <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${status === 'published' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
             {status === 'published' ? '발행됨' : '초안'}
           </span>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => handleSave('draft')} disabled={saving}
+          <button type="button" onClick={() => handleSave('draft')} disabled={saving}
             className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded-lg hover:bg-admin-bg disabled:opacity-40 transition">
             저장
           </button>
-          <button onClick={() => handleSave('published')} disabled={saving || !slug}
+          <button type="button" onClick={() => handleSave('published')} disabled={saving || !slug}
             className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40 transition">
             {status === 'published' ? '업데이트' : '발행하기'}
           </button>
           {status === 'published' && slug && (
             <>
-              <button onClick={handleReindex} disabled={reindexing}
+              <button type="button" onClick={handleReindex} disabled={reindexing}
                 title="구글 서치콘솔 사이트맵 + 네이버 수집 알림 요청"
                 className="px-4 py-2 bg-white border border-emerald-300 text-emerald-700 text-admin-xs rounded-lg hover:bg-emerald-50 disabled:opacity-40 transition">
                 {reindexing ? '요청 중...' : '🔄 재색인 요청'}
@@ -393,7 +393,7 @@ export default function BlogEditPage() {
                         </span>
                       </div>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => attachCardNewsToBody(cn)}
                       disabled={!hasImages}
                       className="px-2.5 py-1 text-[11px] font-medium bg-white border border-admin-border-strong text-admin-text-2 rounded hover:bg-admin-bg disabled:opacity-30 disabled:cursor-not-allowed transition flex-shrink-0"

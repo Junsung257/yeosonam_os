@@ -317,7 +317,7 @@ function JarvisPageContent() {
         </div>
         {/* 탭 */}
         <div className="ml-4 flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1">
-          <button
+          <button type="button"
             onClick={() => setActiveTab('chat')}
             className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors ${
               activeTab === 'chat' ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'
@@ -325,7 +325,7 @@ function JarvisPageContent() {
           >
             채팅
           </button>
-          <button
+          <button type="button"
             onClick={() => setActiveTab('actions')}
             className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors inline-flex items-center gap-1 ${
               activeTab === 'actions' ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'
@@ -340,14 +340,14 @@ function JarvisPageContent() {
           </button>
         </div>
         {kakaoCount > 0 && (
-          <button
+          <button type="button"
             onClick={() => sendMessage(`미처리 카카오 메시지 ${kakaoCount}개 요약해줘`)}
             className="ml-auto flex items-center gap-1.5 bg-status-warningBg text-status-warningFg text-admin-xs font-semibold px-3 h-8 rounded-full hover:opacity-80 transition-opacity"
           >
             카카오 <span className="admin-num">{kakaoCount}</span>건
           </button>
         )}
-        <button
+        <button type="button"
           onClick={() => {
             setMessages([{
               id: '0', role: 'assistant',
@@ -456,7 +456,7 @@ function JarvisPageContent() {
           {/* 빠른 명령 */}
           <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
             {QUICK_COMMANDS.map(cmd => (
-              <button
+              <button type="button"
                 key={cmd}
                 onClick={() => sendMessage(cmd)}
                 className="whitespace-nowrap text-admin-xs px-3 py-1.5 rounded-full border border-brand/20 text-brand bg-brand-light hover:bg-brand-light/70 transition-colors font-medium"
@@ -481,7 +481,7 @@ function JarvisPageContent() {
               className="flex-1 resize-none border border-admin-border-mid rounded-admin-md px-3 py-2 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors min-h-[42px] max-h-[120px]"
               rows={1}
             />
-            <button
+            <button type="button"
               onClick={() => sendMessage(input)}
               disabled={loading || !input.trim()}
               className="w-10 h-10 bg-brand text-white rounded-admin-md flex items-center justify-center hover:bg-brand-dark disabled:opacity-40 disabled:bg-admin-border-mid transition-colors"

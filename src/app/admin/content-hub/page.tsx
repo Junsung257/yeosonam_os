@@ -359,7 +359,7 @@ export default function ContentHubPage() {
               <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">앵글 선택 (다중)</label>
               <div className="grid grid-cols-2 gap-2">
                 {(Object.entries(ANGLE_PRESETS) as [AngleType, typeof ANGLE_PRESETS[AngleType]][]).map(([key, preset]) => (
-                  <button key={key} onClick={() => {
+                  <button type="button" key={key} onClick={() => {
                     const next = new Set(selectedAngles);
                     next.has(key) ? next.delete(key) : next.add(key);
                     setSelectedAngles(next);
@@ -400,7 +400,7 @@ export default function ContentHubPage() {
               <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">디자인 템플릿</label>
               <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
                 {TEMPLATE_PRESETS.map(t => (
-                  <button key={t.id} onClick={() => setTemplateId(t.id)}
+                  <button type="button" key={t.id} onClick={() => setTemplateId(t.id)}
                     className={`p-2.5 rounded border text-left transition ${
                       templateId === t.id ? 'border-blue-600 bg-blue-50' : 'border-admin-border-mid hover:bg-admin-bg'
                     }`}>
@@ -425,7 +425,7 @@ export default function ContentHubPage() {
                 <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">이미지 비율</label>
                 <div className="flex gap-2">
                   {(Object.entries(RATIO_SIZE) as [ImageRatio, typeof RATIO_SIZE[ImageRatio]][]).map(([key, v]) => (
-                    <button key={key} onClick={() => setRatio(key)}
+                    <button type="button" key={key} onClick={() => setRatio(key)}
                       className={`px-3 py-1.5 rounded text-admin-xs transition ${ratio === key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                       {v.label}
                     </button>
@@ -460,7 +460,7 @@ export default function ContentHubPage() {
               </div>
             </div>
 
-            <button onClick={handleGenerate} disabled={!selectedPkgId || selectedAngles.size === 0 || generating}
+            <button type="button" onClick={handleGenerate} disabled={!selectedPkgId || selectedAngles.size === 0 || generating}
               className="w-full py-3 bg-blue-600 text-white text-admin-base font-semibold rounded-lg hover:bg-blue-700 disabled:bg-slate-300 transition">
               {generating ? 'AI 생성 중...' : `${selectedAngles.size * selectedChannels.size}개 소재 생성`}
             </button>
@@ -474,7 +474,7 @@ export default function ContentHubPage() {
           {/* 앵글/채널 탭 */}
           <div className="flex gap-1 flex-wrap">
             {creativeSets.map((set, i) => (
-              <button key={i} onClick={() => { setActiveSetIdx(i); setActiveSlideIdx(0); setActiveElementIdx(null); }}
+              <button type="button" key={i} onClick={() => { setActiveSetIdx(i); setActiveSlideIdx(0); setActiveElementIdx(null); }}
                 className={`px-3 py-1.5 rounded text-admin-xs font-medium transition ${
                   i === activeSetIdx ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
                 }`}>
@@ -491,12 +491,12 @@ export default function ContentHubPage() {
                 {/* 슬라이드 썸네일 */}
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {activeSet.slides.map((slide, i) => (
-                    <button key={slide.id} onClick={() => { setActiveSlideIdx(i); setActiveElementIdx(null); }}
+                    <button type="button" key={slide.id} onClick={() => { setActiveSlideIdx(i); setActiveElementIdx(null); }}
                       className={`flex-shrink-0 w-14 h-14 rounded border-2 text-[11px] font-bold flex items-center justify-center transition ${
                         i === activeSlideIdx ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-admin-border-mid text-admin-muted-2 hover:border-admin-border-strong'
                       }`}>{i + 1}</button>
                   ))}
-                  <button onClick={() => {
+                  <button type="button" onClick={() => {
                     const newSlide: Slide = {
                       id: crypto.randomUUID(), bgColor: '#1a1a2e', bgOpacity: 70, bgOverlay: '',
                       elements: [{ id: crypto.randomUUID(), type: 'text', text: '새 텍스트', fontFamily: 'Pretendard',
@@ -608,7 +608,7 @@ export default function ContentHubPage() {
                         { key: 'textDecoration', active: activeElement.textDecoration === 'underline', on: 'underline', off: 'none', label: 'U' },
                         { key: 'textDecoration', active: activeElement.textDecoration === 'line-through', on: 'line-through', off: 'none', label: 'S' },
                       ].map((btn, i) => (
-                        <button key={i} onClick={() => updateElement(btn.key, btn.active ? btn.off : btn.on)}
+                        <button type="button" key={i} onClick={() => updateElement(btn.key, btn.active ? btn.off : btn.on)}
                           className={`w-8 h-8 rounded border text-admin-sm font-bold transition ${
                             btn.active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-admin-muted border-admin-border-mid hover:bg-admin-bg'
                           }`}
@@ -621,7 +621,7 @@ export default function ContentHubPage() {
                     {/* 정렬 */}
                     <div className="flex gap-1">
                       {(['left', 'center', 'right'] as const).map(align => (
-                        <button key={align} onClick={() => updateElement('textAlign', align)}
+                        <button type="button" key={align} onClick={() => updateElement('textAlign', align)}
                           className={`flex-1 py-1.5 rounded border text-[11px] transition ${
                             activeElement.textAlign === align ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-admin-muted border-admin-border-mid'
                           }`}>
@@ -635,7 +635,7 @@ export default function ContentHubPage() {
                       <label className="block text-[10px] text-admin-muted-2 mb-1">글자 색상</label>
                       <div className="flex flex-wrap gap-1.5">
                         {PALETTE.map(c => (
-                          <button key={c} onClick={() => updateElement('color', c)}
+                          <button type="button" key={c} onClick={() => updateElement('color', c)}
                             className={`w-6 h-6 rounded-full border-2 transition ${activeElement.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                             style={{ backgroundColor: c }} />
                         ))}
@@ -652,7 +652,7 @@ export default function ContentHubPage() {
                         <input type="color" value={activeElement.bgColor || '#000000'}
                           onChange={e => updateElement('bgColor', e.target.value)}
                           className="w-8 h-8 rounded cursor-pointer" />
-                        <button onClick={() => updateElement('bgColor', undefined)}
+                        <button type="button" onClick={() => updateElement('bgColor', undefined)}
                           className="text-[11px] text-admin-muted-2 hover:text-admin-muted">투명</button>
                       </div>
                     </div>
@@ -683,7 +683,7 @@ export default function ContentHubPage() {
 
                 {/* 슬라이드 삭제 */}
                 {activeSet.slides.length > 1 && (
-                  <button onClick={() => {
+                  <button type="button" onClick={() => {
                     setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx
                       ? { ...s, slides: s.slides.filter((_, si) => si !== activeSlideIdx) }
                       : s));
@@ -791,9 +791,9 @@ export default function ContentHubPage() {
 
           {/* 하단 버튼 */}
           <div className="flex gap-2">
-            <button onClick={() => setStep(1)} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">이전</button>
+            <button type="button" onClick={() => setStep(1)} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">이전</button>
             <div className="flex-1" />
-            <button onClick={() => setStep(3)} className="px-6 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded hover:bg-blue-700">발행 준비</button>
+            <button type="button" onClick={() => setStep(3)} className="px-6 py-2 bg-blue-600 text-white text-admin-sm font-semibold rounded hover:bg-blue-700">발행 준비</button>
           </div>
         </div>
       )}
@@ -814,22 +814,22 @@ export default function ContentHubPage() {
                   </div>
                   <div className="flex gap-2">
                     {set.slides.length > 0 && (
-                      <button onClick={() => { setActiveSetIdx(i); handleDownloadZip(); }} disabled={publishing}
+                      <button type="button" onClick={() => { setActiveSetIdx(i); handleDownloadZip(); }} disabled={publishing}
                         className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg">
                         {publishing ? '...' : 'ZIP'}
                       </button>
                     )}
                     {set.blogHtml && (
                       <>
-                        <button onClick={() => { setActiveSetIdx(i); handleCopyBlog(); }}
+                        <button type="button" onClick={() => { setActiveSetIdx(i); handleCopyBlog(); }}
                           className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg">
                           복사
                         </button>
-                        <button onClick={() => { setActiveSetIdx(i); setStep(2); }}
+                        <button type="button" onClick={() => { setActiveSetIdx(i); setStep(2); }}
                           className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg">
                           편집으로
                         </button>
-                        <button onClick={() => handlePublishBlog(i)} disabled={blogPublishing || !set.slug}
+                        <button type="button" onClick={() => handlePublishBlog(i)} disabled={blogPublishing || !set.slug}
                           className="px-3 py-1.5 bg-blue-600 text-white text-[11px] rounded hover:bg-blue-700 disabled:bg-slate-300 transition"
                           title={!set.slug ? 'SEO 설정이 필요합니다' : ''}>
                           {blogPublishing ? '발행 중...' : '블로그 발행'}
@@ -837,7 +837,7 @@ export default function ContentHubPage() {
                       </>
                     )}
                     {set.adCopy && (
-                      <button onClick={() => {
+                      <button type="button" onClick={() => {
                         navigator.clipboard.writeText(
                           set.adCopy!.headlines.join('\n') + '\n---\n' + set.adCopy!.descriptions.join('\n')
                         );
@@ -854,8 +854,8 @@ export default function ContentHubPage() {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => setStep(2)} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">편집으로</button>
-            <button onClick={() => { setStep(1); setCreativeSets([]); }} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">새로 만들기</button>
+            <button type="button" onClick={() => setStep(2)} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">편집으로</button>
+            <button type="button" onClick={() => { setStep(1); setCreativeSets([]); }} className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg">새로 만들기</button>
           </div>
         </div>
       )}

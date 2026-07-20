@@ -190,7 +190,7 @@ export default function PassportAssistPage() {
             </div>
           )}
 
-          <button
+          <button type="button"
             onClick={() => void handleOcr()}
             disabled={loading || !preview}
             className="w-full py-2.5 bg-indigo-600 text-white text-[14px] font-semibold rounded-lg hover:bg-indigo-700 transition disabled:opacity-40"
@@ -230,21 +230,21 @@ export default function PassportAssistPage() {
 
           {/* 액션 버튼 */}
           <div className="flex gap-2 pt-2">
-            <button
+            <button type="button"
               onClick={() => void handleCopy()}
               disabled={!success}
               className="flex-1 py-2 bg-slate-800 text-white text-[13px] rounded-lg hover:bg-slate-900 transition disabled:opacity-40"
             >
               {copied ? '복사됨!' : '텍스트 복사'}
             </button>
-            <button
+            <button type="button"
               onClick={handlePrint}
               disabled={!success}
               className="flex-1 py-2 bg-white border border-slate-300 text-slate-700 text-[13px] rounded-lg hover:bg-slate-50 transition disabled:opacity-40"
             >
               인쇄
             </button>
-            <button
+            <button type="button"
               onClick={handleReset}
               className="px-4 py-2 text-slate-500 text-[13px] rounded-lg hover:bg-slate-100 transition"
             >

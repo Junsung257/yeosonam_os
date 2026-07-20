@@ -154,7 +154,7 @@ export default function ContentReviewPanel({
           <span className="font-semibold">오류</span>
         </div>
         <p>{error}</p>
-        <button
+        <button type="button"
           onClick={loadData}
           className="mt-2 text-xs text-red-600 underline hover:no-underline"
         >
@@ -239,7 +239,7 @@ export default function ContentReviewPanel({
             검토 결정
           </h4>
           <div className="grid grid-cols-3 gap-3">
-            <button
+            <button type="button"
               onClick={() => setDecision('approved')}
               className={`flex items-center justify-center gap-2 px-4 py-3 rounded-admin-md border-2 text-sm font-semibold transition ${
                 decision === 'approved'
@@ -250,7 +250,7 @@ export default function ContentReviewPanel({
               <CheckCircle2 size={16} />
               승인
             </button>
-            <button
+            <button type="button"
               onClick={() => setDecision('changes_requested')}
               className={`flex items-center justify-center gap-2 px-4 py-3 rounded-admin-md border-2 text-sm font-semibold transition ${
                 decision === 'changes_requested'
@@ -261,7 +261,7 @@ export default function ContentReviewPanel({
               <RefreshCw size={16} />
               수정 요청
             </button>
-            <button
+            <button type="button"
               onClick={() => setDecision('rejected')}
               className={`flex items-center justify-center gap-2 px-4 py-3 rounded-admin-md border-2 text-sm font-semibold transition ${
                 decision === 'rejected'
@@ -352,13 +352,13 @@ export default function ContentReviewPanel({
 
         {/* 제출 버튼 */}
         <div className="flex justify-end gap-3 pt-2 border-t border-admin-border">
-          <button
+          <button type="button"
             onClick={resetForm}
             className="px-4 py-2.5 rounded-admin-md border-2 border-admin-border-mid text-sm text-admin-muted hover:bg-admin-surface-2 transition"
           >
             초기화
           </button>
-          <button
+          <button type="button"
             onClick={handleSubmit}
             disabled={!canSubmit}
             className="px-6 py-2.5 rounded-admin-md bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center gap-2"
