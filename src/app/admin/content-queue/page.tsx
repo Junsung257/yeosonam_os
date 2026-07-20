@@ -334,32 +334,32 @@ export default function ContentQueuePage() {
             {tab === 'draft' && (
               <>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
+                  <label htmlFor="content-queue-edit-slug" className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
                   <div className="flex items-center gap-1">
                     <span className="text-[11px] text-admin-muted-2">/blog/</span>
-                    <input value={editSlug}
+                    <input id="content-queue-edit-slug" value={editSlug}
                       onChange={e => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
                       placeholder="bangkok-5days-trip"
                       className="flex-1 border border-admin-border-mid rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목</label>
-                  <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                  <label htmlFor="content-queue-edit-title" className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목</label>
+                  <input id="content-queue-edit-title" value={editTitle} onChange={e => setEditTitle(e.target.value)}
                     maxLength={60}
                     className="w-full border border-admin-border-mid rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
                   <p className="text-[9px] text-admin-muted-2 mt-0.5">{editTitle.length}/60</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명</label>
-                  <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
+                  <label htmlFor="content-queue-edit-description" className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명</label>
+                  <textarea id="content-queue-edit-description" value={editDesc} onChange={e => setEditDesc(e.target.value)}
                     maxLength={160}
                     className="w-full border border-admin-border-mid rounded px-2 py-1 text-admin-xs h-14 resize-none focus:ring-1 focus:ring-indigo-400" />
                   <p className="text-[9px] text-admin-muted-2 mt-0.5">{editDesc.length}/160</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
-                  <input value={editOgImage} onChange={e => setEditOgImage(e.target.value)}
+                  <label htmlFor="content-queue-edit-og-image" className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
+                  <input id="content-queue-edit-og-image" value={editOgImage} onChange={e => setEditOgImage(e.target.value)}
                     placeholder="https://..."
                     className="w-full border border-admin-border-mid rounded px-2 py-1 text-admin-xs focus:ring-1 focus:ring-indigo-400" />
                 </div>

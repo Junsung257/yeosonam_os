@@ -100,6 +100,8 @@ export interface ScorerInput {
   destination?: string | null;
   blogType: 'product' | 'info';
   hasRuntimeInformationalCta?: boolean;
+  /** The public blog template renders seoTitle as the page-level H1 outside blogHtml. */
+  hasRenderedPageH1?: boolean;
   imageCount?: number;
   imagesWithAlt?: number;
   hasJsonLd?: {
@@ -272,10 +274,12 @@ function scoreHeadings(input: ScorerInput, keyword: string, dest: string): SeoSc
   const text = input.blogHtml;
   const h1 = text.match(/^#[ \t]+.+$/gm) || [];
   const h2 = text.match(/^##[ \t]+.+$/gm) || [];
+  const usesRenderedPageH1 = h1.length === 0 && input.hasRenderedPageH1 === true;
+  const effectiveH1Count = h1.length + (usesRenderedPageH1 ? 1 : 0);
   let score = 0;
   const expected = input.blogType === 'info' ? { min: 5, max: 9 } : { min: 3, max: 8 };
 
-  if (h1.length === 1) score += 3;
+  if (effectiveH1Count === 1) score += 3;
   if (h2.length >= expected.min && h2.length <= expected.max) score += 3;
   else if (h2.length >= 2) score += 1;
 
@@ -283,7 +287,14 @@ function scoreHeadings(input: ScorerInput, keyword: string, dest: string): SeoSc
   if (keyword && headingText.includes(keyword)) score += 2;
   if ((dest && headingText.includes(dest)) || /[?？]|비용|일정|준비물|날씨|FAQ|자주 묻는 질문/.test(headingText)) score += 2;
 
-  return detail('heading_structure', score, 10, 8, 5, `H1 ${h1.length}개, H2 ${h2.length}개`);
+  return detail(
+    'heading_structure',
+    score,
+    10,
+    8,
+    5,
+    `H1 ${effectiveH1Count}개${usesRenderedPageH1 ? ' (페이지 제목)' : ''}, H2 ${h2.length}개`,
+  );
 }
 
 function scorePrimaryKeyword(plainText: string, keyword: string, blogType: 'product' | 'info'): SeoScoreDetail {
