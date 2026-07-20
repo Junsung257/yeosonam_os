@@ -625,7 +625,7 @@ const PackageRow = React.memo(function PackageRow({
         ) : (() => {
           const op = allVendors.find(v => v.id === pkg.land_operator_id);
           if (op) return (
-            <button
+            <button type="button"
               className="flex items-center gap-1 text-left hover:bg-blue-50 rounded px-1 py-0.5 w-full group/vendor"
               onClick={() => onSetInlineEditPkgId(pkg.id)}
             >
@@ -637,7 +637,7 @@ const PackageRow = React.memo(function PackageRow({
             </button>
           );
           return (
-            <button
+            <button type="button"
               className="text-[11px] text-admin-muted-2 hover:text-blue-500 hover:bg-blue-50 rounded px-1 py-0.5"
               onClick={() => onSetInlineEditPkgId(pkg.id)}
             >+ 랜드사 연결</button>
@@ -2245,13 +2245,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 title="깨진 inclusions/excludes 포함 강제 덮어쓰기"
               >강제 Section 재추출</button>
               {!!selected.itinerary_data ? (
-                <button
+                <button type="button"
                   onClick={() => handleGenerateImage(selected, 'detail')}
                   disabled={imgGenerating}
                   className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-admin-sm hover:bg-blue-700 disabled:opacity-50"
                 >{imgGenerating ? '생성 중...' : 'A4 이미지'}</button>
               ) : (
-                <button
+                <button type="button"
                   onClick={async () => {
                     setReextracting(true);
                     try {
@@ -2285,17 +2285,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 target="_blank"
                 className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg"
               >A4 인쇄</a>
-              <button
+              <button type="button"
                 onClick={e => { setSelected(null); openSingleEdit(selected, e); }}
                 className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg"
               >수정</button>
-              <button
+              <button type="button"
                 onClick={() => handleAction(selected.id, 'delete')}
                 disabled={!!actionLoading}
                 className="px-3 py-1.5 text-red-500 border border-red-200 rounded-lg text-admin-sm hover:bg-red-50 disabled:opacity-50"
               >삭제</button>
               {isExpired(selected) && (
-                <button
+                <button type="button"
                   onClick={() => handleAction(selected.id, 'extend')}
                   disabled={!!actionLoading}
                   className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-admin-sm hover:bg-blue-700 disabled:opacity-50"
@@ -2303,12 +2303,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               )}
               {selected.status === 'pending' && (
                 <>
-                  <button
+                  <button type="button"
                     onClick={() => handleAction(selected.id, 'reject')}
                     disabled={!!actionLoading}
                     className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg disabled:opacity-50"
                   >거부</button>
-                  <button
+                  <button type="button"
                     onClick={() => handleAction(selected.id, 'approve')}
                     disabled={!!actionLoading}
                     className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-admin-sm font-medium hover:bg-green-700 disabled:opacity-50"
@@ -2316,14 +2316,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 </>
               )}
               {selected.status === 'approved' && (
-                <button
+                <button type="button"
                   onClick={() => handleAction(selected.id, 'reject')}
                   disabled={!!actionLoading}
                   className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg disabled:opacity-50"
                 >비활성화</button>
               )}
               {selected.status === 'rejected' && (
-                <button
+                <button type="button"
                   onClick={() => handleAction(selected.id, 'approve')}
                   disabled={!!actionLoading}
                   className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-admin-sm font-medium hover:bg-green-700 disabled:opacity-50"
