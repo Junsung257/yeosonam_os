@@ -79,6 +79,9 @@ async function main(): Promise<void> {
     questionH2Count: (creativeMarkdown.match(/^##\s+.+[?？]\s*$/gm) || []).length,
     hasFaqHeading: /^##\s*(?:자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)\s*$/im.test(creativeMarkdown),
     inlineImageCount: (creativeMarkdown.match(/!\[[^\]]*]\(https:\/\/[^)]+\)/g) || []).length,
+    uniqueInlineImageCount: new Set(
+      [...creativeMarkdown.matchAll(/!\[[^\]]*]\((https:\/\/[^)]+)\)/g)].map((match) => match[1]),
+    ).size,
   };
 
   const checkedAt = new Date();

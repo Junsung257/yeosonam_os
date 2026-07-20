@@ -24,6 +24,7 @@ interface BlogInlineImageOptions {
   preferFallbackImages?: boolean;
   allowPexelsSearch?: boolean;
   allowGeneratedFallback?: boolean;
+  maxExternalAssetAttempts?: number;
 }
 
 export interface BlogInlineImageResult {
@@ -138,6 +139,8 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
 
   let inserted = 0;
   let imageCount = existingImages.length;
+  let externalAssetAttempts = 0;
+  const maxExternalAssetAttempts = Math.max(0, options.maxExternalAssetAttempts ?? maxImages);
 
   for (const h2 of h2Indexes) {
     if (imageCount >= minImages || inserted >= maxImages) break;
@@ -148,7 +151,9 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
     if (options.preferFallbackImages) {
       url = takeFallbackImage();
     }
-    if (!url && options.allowPexelsSearch !== false) {
+    const canAttemptExternalAsset = externalAssetAttempts < maxExternalAssetAttempts;
+    if (!url && canAttemptExternalAsset && options.allowPexelsSearch !== false) {
+      externalAssetAttempts += 1;
       url = await findRelevantBlogPexelsImage({
         destination: options.destination,
         primaryKeyword: options.primaryKeyword,
@@ -156,7 +161,8 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
         usedUrls,
       });
     }
-    if (!url && options.allowGeneratedFallback !== false) {
+    if (!url && canAttemptExternalAsset && options.allowGeneratedFallback !== false) {
+      if (options.allowPexelsSearch === false) externalAssetAttempts += 1;
       url = await generateSectionImage(
         heading,
         options.primaryKeyword || heading,

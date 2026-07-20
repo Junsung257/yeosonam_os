@@ -2307,6 +2307,14 @@ async function processQueueItem(
     if (privateReplacementAssets?.ogImageUrl && !generated.og_image_url) {
       generated.og_image_url = privateReplacementAssets.ogImageUrl;
     }
+    const privateReusableImageCount = privateReplacementAssets
+      ? new Set([
+          ...privateReplacementAssets.inlineImageUrls,
+          ...(privateReplacementAssets.ogImageUrl ? [privateReplacementAssets.ogImageUrl] : []),
+        ].filter((url) => /^https:\/\//i.test(url))).size
+      : 0;
+    const mayFillSinglePrivateImageShortfall = privateReplacementAssets !== null
+      && privateReusableImageCount === 2;
 
     const slugNormalized = normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
@@ -2411,8 +2419,11 @@ async function processQueueItem(
         maxImages: item.card_news_id ? 3 : 4,
         fallbackImageUrls: privateReplacementAssets?.inlineImageUrls,
         preferFallbackImages: privateReplacementAssets !== null,
-        allowPexelsSearch: privateReplacementAssets === null,
-        allowGeneratedFallback: privateReplacementAssets === null,
+        allowPexelsSearch: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall,
+        allowGeneratedFallback: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall,
+        maxExternalAssetAttempts: privateReplacementAssets === null
+          ? undefined
+          : mayFillSinglePrivateImageShortfall ? 1 : 0,
       });
       if (imageResult.inserted > 0) {
         generated.blog_html = imageResult.markdown;

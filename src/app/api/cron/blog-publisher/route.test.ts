@@ -150,8 +150,10 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
     expect(source).toContain('fallbackImageUrls: privateReplacementAssets?.inlineImageUrls');
     expect(source).toContain('preferFallbackImages: privateReplacementAssets !== null');
-    expect(source).toContain('allowPexelsSearch: privateReplacementAssets === null');
-    expect(source).toContain('allowGeneratedFallback: privateReplacementAssets === null');
+    expect(source).toContain('const mayFillSinglePrivateImageShortfall = privateReplacementAssets !== null');
+    expect(source).toContain('allowPexelsSearch: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall');
+    expect(source).toContain('allowGeneratedFallback: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall');
+    expect(source).toContain('mayFillSinglePrivateImageShortfall ? 1 : 0');
   });
 
   it('requires persisted research before targeted private regeneration calls the writer', () => {
