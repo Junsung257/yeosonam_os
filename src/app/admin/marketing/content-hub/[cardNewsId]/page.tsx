@@ -164,7 +164,7 @@ export default function ContentHubPage() {
       {/* 헤더 */}
       <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-admin-muted-2 hover:text-admin-muted text-sm">← 뒤로</button>
+          <button type="button" onClick={() => router.back()} className="text-admin-muted-2 hover:text-admin-muted text-sm">← 뒤로</button>
           <div>
             <h1 className="font-semibold text-admin-text truncate max-w-md">{cn.title}</h1>
             <p className="text-xs text-admin-muted-2 mt-0.5">콘텐츠 허브</p>
@@ -229,7 +229,7 @@ export default function ContentHubPage() {
 
           {/* 전체 채널 생성 버튼 */}
           {cn.package_id && (
-            <button
+            <button type="button"
               onClick={handleStartFactory}
               disabled={startingFactory || job?.status === 'running'}
               className="w-full mt-4 py-2 px-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 text-white text-xs font-medium rounded-lg transition"
@@ -244,7 +244,7 @@ export default function ContentHubPage() {
           {/* 탭 */}
           <div className="bg-white border-b flex gap-0">
             {tabs.map(t => (
-              <button
+              <button type="button"
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
                 className={`px-5 py-3 text-sm font-medium border-b-2 transition flex items-center gap-1.5 ${activeTab === t.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-admin-muted hover:text-admin-text-2'}`}
@@ -359,7 +359,7 @@ export default function ContentHubPage() {
                 )}
 
                 {ig.status === 'idle' || ig.status === 'failed' ? (
-                  <button
+                  <button type="button"
                     onClick={() => setShowIgModal(true)}
                     disabled={allRenders1x1.length < 2}
                     className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-40 transition"
@@ -407,7 +407,7 @@ export default function ContentHubPage() {
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-admin-muted">블로그 초안이 없습니다. 카드뉴스 PNG 렌더가 완료되면 블로그를 자동 생성할 수 있습니다.</p>
-                    <button
+                    <button type="button"
                       onClick={handleGenerateBlog}
                       disabled={generatingBlog || allRenders1x1.length === 0}
                       className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition"
@@ -488,7 +488,7 @@ export default function ContentHubPage() {
                         {metaPublishMsg}
                       </span>
                     )}
-                    <button
+                    <button type="button"
                       onClick={handlePublishMeta}
                       disabled={publishingMeta || allRenders1x1.length === 0}
                       className="ml-auto px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition"

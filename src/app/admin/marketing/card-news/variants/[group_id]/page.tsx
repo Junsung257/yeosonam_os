@@ -222,7 +222,7 @@ export default function VariantGroupComparePage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={fetchVariants}
             className="rounded-lg border px-4 py-2 text-sm hover:bg-admin-bg"
           >
@@ -265,7 +265,7 @@ export default function VariantGroupComparePage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={() => handleDecideWinner(false)}
               disabled={decidingWinner}
               className="rounded-lg border border-blue-400 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
@@ -273,7 +273,7 @@ export default function VariantGroupComparePage() {
             >
               {decidingWinner ? '판정 중…' : '🔍 winner 분석'}
             </button>
-            <button
+            <button type="button"
               onClick={() => handleDecideWinner(true)}
               disabled={decidingWinner}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
@@ -414,13 +414,13 @@ export default function VariantGroupComparePage() {
 
               {/* 액션 */}
               <div className="flex gap-1 border-t border-admin-border bg-admin-bg px-3 py-2">
-                <button
+                <button type="button"
                   onClick={() => router.push(`/admin/marketing/card-news/${v.id}/v2`)}
                   className="flex-1 rounded bg-white border border-admin-border-mid px-2 py-1.5 text-xs font-medium hover:bg-admin-surface-2"
                 >
                   스튜디오
                 </button>
-                <button
+                <button type="button"
                   onClick={() => handleRender(v.id)}
                   disabled={renderingId === v.id || archived}
                   className="flex-1 rounded bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
@@ -428,7 +428,7 @@ export default function VariantGroupComparePage() {
                 >
                   {renderingId === v.id ? '렌더 중…' : v.ig_slide_urls?.length ? '🔄 재렌더' : '🖼 PNG 렌더'}
                 </button>
-                <button
+                <button type="button"
                   onClick={() => handleArchive(v.id)}
                   disabled={archivingId === v.id || archived}
                   className="rounded border border-admin-border-mid bg-white px-2 py-1.5 text-xs hover:bg-admin-surface-2 disabled:opacity-40"

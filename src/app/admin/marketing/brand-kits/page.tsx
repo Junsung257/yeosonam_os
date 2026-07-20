@@ -196,7 +196,7 @@ export default function BrandKitsPage() {
           <h1 className="text-2xl font-bold text-admin-text">브랜드킷 관리</h1>
           <p className="text-sm text-admin-muted">카드뉴스·블로그·소셜에 주입되는 브랜드 토큰과 보이스 가이드</p>
         </div>
-        <button
+        <button type="button"
           onClick={openNew}
           className="px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
         >
@@ -221,7 +221,7 @@ export default function BrandKitsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 005.304 0l6.401-6.402M6.75 21A3.75 3.75 0 013 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 003.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008z" />
           </svg>
           <p className="text-sm font-medium text-gray-400">브랜드킷이 없습니다.</p>
-          <button onClick={openNew} className="text-xs text-amber-600 hover:text-amber-700 underline">
+          <button type="button" onClick={openNew} className="text-xs text-amber-600 hover:text-amber-700 underline">
             첫 브랜드킷 만들기 →
           </button>
         </div>
@@ -266,7 +266,7 @@ export default function BrandKitsPage() {
 
               <div className="flex items-center justify-between pt-1">
                 <p className="text-[10px] text-gray-400">{kit.updated_at?.slice(0, 10)}</p>
-                <button
+                <button type="button"
                   onClick={() => openEdit(kit)}
                   className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium"
                 >
@@ -295,14 +295,14 @@ export default function BrandKitsPage() {
               </div>
               <div className="flex items-center gap-2">
                 {!isNew && (
-                  <button
+                  <button type="button"
                     onClick={() => setDeleteConfirm(editing.id)}
                     className="text-xs text-red-400 hover:text-red-600 px-2 py-1"
                   >
                     삭제
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={() => { setEditing(null); setIsNew(false); }}
                   className="text-gray-400 hover:text-gray-600 text-xl leading-none"
                 >
@@ -422,7 +422,7 @@ export default function BrandKitsPage() {
               <Section title="보이스 샘플 (Few-shot)">
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] text-gray-400">AI가 글을 쓸 때 참조할 실제 카피 예시</p>
-                  <button onClick={addVoiceSample}
+                  <button type="button" onClick={addVoiceSample}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium">
                     + 추가
                   </button>
@@ -442,7 +442,7 @@ export default function BrandKitsPage() {
                             <option value="threads">Threads</option>
                             <option value="general">General</option>
                           </select>
-                          <button onClick={() => removeVoiceSample(i)}
+                          <button type="button" onClick={() => removeVoiceSample(i)}
                             className="ml-auto text-xs text-red-400 hover:text-red-600">삭제</button>
                         </div>
                         <textarea value={s.text} onChange={e => updateVoiceSample(i, 'text', e.target.value)}
@@ -496,11 +496,11 @@ export default function BrandKitsPage() {
                 </span>
               )}
               <div className="ml-auto flex gap-3">
-                <button onClick={() => { setEditing(null); setIsNew(false); }}
+                <button type="button" onClick={() => { setEditing(null); setIsNew(false); }}
                   className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
                   닫기
                 </button>
-                <button onClick={handleSave} disabled={saving}
+                <button type="button" onClick={handleSave} disabled={saving}
                   className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
                   {saving ? '저장 중...' : isNew ? '생성' : '저장'}
                 </button>
@@ -519,11 +519,11 @@ export default function BrandKitsPage() {
               <h3 className="font-semibold text-gray-900 mb-2">브랜드킷 삭제</h3>
               <p className="text-sm text-gray-500 mb-4">정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
               <div className="flex gap-3 justify-end">
-                <button onClick={() => setDeleteConfirm(null)}
+                <button type="button" onClick={() => setDeleteConfirm(null)}
                   className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
                   취소
                 </button>
-                <button onClick={() => handleDelete(deleteConfirm)}
+                <button type="button" onClick={() => handleDelete(deleteConfirm)}
                   className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
                   삭제
                 </button>

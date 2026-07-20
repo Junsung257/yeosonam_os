@@ -303,7 +303,7 @@ export default function CardNewsHtmlNewPage() {
           </div>
         </div>
 
-        <button
+        <button type="button"
           onClick={handleGenerate}
           disabled={generating || !rawText.trim()}
           className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
@@ -396,7 +396,7 @@ export default function CardNewsHtmlNewPage() {
             />
           </div>
 
-          <button
+          <button type="button"
             onClick={handleRender}
             disabled={rendering}
             className="w-full rounded-lg bg-green-600 py-3 font-semibold text-white hover:bg-green-700 disabled:opacity-50"
@@ -443,7 +443,7 @@ export default function CardNewsHtmlNewPage() {
             <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm">
               ✓ 카드뉴스 레코드: <code className="font-mono">{result?.card_news_id}</code>
               <br />✓ Storage 업로드 완료, 인스타 발행 가능 상태
-              <button
+              <button type="button"
                 onClick={() => router.push(`/admin/marketing/card-news/${result?.card_news_id}/v2`)}
                 className="ml-2 inline-block rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
               >

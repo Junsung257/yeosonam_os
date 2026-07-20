@@ -187,7 +187,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
       {/* ── 상단 툴바 ──────────────────────────────── */}
       <div className="bg-white border-b border-admin-border-mid px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={onClose} className="text-admin-muted-2 hover:text-admin-muted transition p-1">
+          <button type="button" onClick={onClose} className="text-admin-muted-2 hover:text-admin-muted transition p-1">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
           <h2 className="text-admin-md font-semibold text-admin-text-2">카드뉴스 스튜디오</h2>
@@ -198,14 +198,14 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
         <div className="flex items-center gap-2">
           {slides.length > 0 && (
             <>
-              <button
+              <button type="button"
                 onClick={handleExportZip}
                 disabled={exporting}
                 className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
               >
                 {exporting ? '생성 중...' : `ZIP 다운로드`}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setMetaOpen(true)}
                 className="px-4 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 transition font-medium"
               >
@@ -213,7 +213,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
               </button>
             </>
           )}
-          <button onClick={onClose} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
             닫기
           </button>
         </div>
@@ -238,7 +238,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
             <div className="px-3 py-2 bg-red-50 border-t border-red-200 text-[11px] text-red-600">{parseError}</div>
           )}
           <div className="px-3 py-2 border-t border-admin-border-mid">
-            <button
+            <button type="button"
               onClick={handleParse}
               disabled={parsing || !jsonInput.trim()}
               className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
@@ -266,14 +266,14 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
               {/* 컨트롤 오버레이 */}
               <div className="absolute top-2 right-2 flex gap-1">
                 {activeSlide.pexelsResults.length > 1 && (
-                  <button
+                  <button type="button"
                     onClick={() => handleReroll(activeIdx)}
                     className="px-2 py-1 bg-white/90 border border-admin-border-mid rounded text-[11px] text-admin-muted hover:bg-white shadow-admin-xs"
                   >
                     리롤 ({activeSlide.pexelsIndex + 1}/{activeSlide.pexelsResults.length})
                   </button>
                 )}
-                <button
+                <button type="button"
                   onClick={() => handleClearBg(activeIdx)}
                   className="px-2 py-1 bg-white/90 border border-admin-border-mid rounded text-[11px] text-admin-muted hover:bg-white shadow-admin-xs"
                 >
@@ -300,7 +300,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
               슬라이드 목록
             </div>
             {slides.map((slide, idx) => (
-              <button
+              <button type="button"
                 key={idx}
                 onClick={() => setActiveIdx(idx)}
                 className={`w-full p-1.5 border-b border-admin-border text-left transition ${
