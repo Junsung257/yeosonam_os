@@ -229,7 +229,7 @@ export default function CreativesPage() {
           <h1 className="text-xl font-bold text-admin-text">광고 소재 공장</h1>
           <p className="text-xs text-admin-muted mt-0.5">상품 → 캐러셀 + 단일이미지 + 텍스트광고 자동 생성</p>
         </div>
-        <button onClick={() => setShowGenerator(!showGenerator)}
+        <button type="button" onClick={() => setShowGenerator(!showGenerator)}
           disabled={integrationBlocked}
           title={integrationBlocked ? '연동 상태를 먼저 확인하세요' : undefined}
           className="px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 transition">
@@ -260,7 +260,7 @@ export default function CreativesPage() {
               <label className="text-xs font-medium text-admin-muted block mb-1">채널</label>
               <div className="flex gap-2">
                 {['meta', 'naver', 'google'].map(ch => (
-                  <button key={ch} onClick={() => toggleChannel(ch)}
+                  <button type="button" key={ch} onClick={() => toggleChannel(ch)}
                     className={`px-3 py-1.5 text-xs rounded-lg border transition ${channels.includes(ch) ? 'bg-violet-50 border-violet-300 text-violet-700' : 'border-admin-border-mid text-admin-muted'}`}>
                     {CHANNEL_LABELS[ch]}
                   </button>
@@ -274,7 +274,7 @@ export default function CreativesPage() {
                 <label className="text-xs text-admin-muted">캐러셀 변형 수</label>
                 <div className="flex items-center gap-2 mt-1">
                   {[1,2,3].map(n => (
-                    <button key={n} onClick={() => setCarouselCount(n)}
+                    <button type="button" key={n} onClick={() => setCarouselCount(n)}
                       className={`w-8 h-8 rounded-lg text-xs font-medium transition ${carouselCount === n ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted'}`}>{n}</button>
                   ))}
                 </div>
@@ -283,7 +283,7 @@ export default function CreativesPage() {
                 <label className="text-xs text-admin-muted">단일이미지 변형 수</label>
                 <div className="flex items-center gap-2 mt-1">
                   {[1,2,3].map(n => (
-                    <button key={n} onClick={() => setSingleCount(n)}
+                    <button type="button" key={n} onClick={() => setSingleCount(n)}
                       className={`w-8 h-8 rounded-lg text-xs font-medium transition ${singleCount === n ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted'}`}>{n}</button>
                   ))}
                 </div>
@@ -291,7 +291,7 @@ export default function CreativesPage() {
             </div>
           )}
           {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
-          <button onClick={handleGenerate} disabled={generating || !selectedPkg || integrationBlocked}
+          <button type="button" onClick={handleGenerate} disabled={generating || !selectedPkg || integrationBlocked}
             title={integrationBlocked ? '연동 상태를 먼저 확인하세요' : undefined}
             className="px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition">
             {generating ? '생성 중 (최대 60초)...' : '소재 생성'}
@@ -303,7 +303,7 @@ export default function CreativesPage() {
       <div className="bg-white rounded-admin-md border border-admin-border-mid p-3 flex flex-wrap items-center gap-3">
         <div className="flex border border-admin-border-mid rounded-lg overflow-hidden">
           {['all', 'carousel', 'single_image', 'text_ad'].map(t => (
-            <button key={t} onClick={() => setFilterType(t)}
+            <button type="button" key={t} onClick={() => setFilterType(t)}
               className={`px-3 py-1.5 text-xs transition ${filterType === t ? 'bg-slate-900 text-white' : 'text-admin-muted hover:bg-admin-bg'}`}>
               {t === 'all' ? '전체' : TYPE_LABELS[t]}
             </button>
@@ -386,26 +386,26 @@ export default function CreativesPage() {
                   {/* 우측: 액션 버튼 */}
                   <div className="flex flex-col gap-1.5 shrink-0">
                     {c.status === 'draft' && (
-                      <button onClick={() => handleStatusChange(c.id, 'review')}
+                      <button type="button" onClick={() => handleStatusChange(c.id, 'review')}
                         className="text-[10px] px-3 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg hover:bg-yellow-100">검토완료</button>
                     )}
                     {c.status === 'review' && (
-                      <button onClick={() => handleStatusChange(c.id, 'launch')}
+                      <button type="button" onClick={() => handleStatusChange(c.id, 'launch')}
                         className="text-[10px] px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">배포</button>
                     )}
                     {c.status === 'active' && (
-                      <button onClick={() => handleStatusChange(c.id, 'paused')}
+                      <button type="button" onClick={() => handleStatusChange(c.id, 'paused')}
                         className="text-[10px] px-3 py-1.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100">일시정지</button>
                     )}
                     {c.status === 'paused' && (
-                      <button onClick={() => handleStatusChange(c.id, 'review')}
+                      <button type="button" onClick={() => handleStatusChange(c.id, 'review')}
                         className="text-[10px] px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">재개</button>
                     )}
                     {c.status !== 'ended' && (
-                      <button onClick={() => handleStatusChange(c.id, 'ended')}
+                      <button type="button" onClick={() => handleStatusChange(c.id, 'ended')}
                         className="text-[10px] px-3 py-1.5 bg-red-50 text-red-500 border border-red-200 rounded-lg hover:bg-red-100">종료</button>
                     )}
-                    <button onClick={() => loadPerformance(c.id)}
+                    <button type="button" onClick={() => loadPerformance(c.id)}
                       className={`text-[10px] px-3 py-1.5 border rounded-lg transition ${expandedId === c.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-admin-bg text-admin-muted border-admin-border-mid hover:bg-admin-surface-2'}`}>
                       성과
                     </button>

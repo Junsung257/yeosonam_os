@@ -156,7 +156,7 @@ export default function PublishedFeedPage() {
             ))}
           </select>
         </label>
-        <button onClick={load} className="rounded bg-neutral-100 px-3 py-1 text-sm hover:bg-neutral-200">
+        <button type="button" onClick={load} className="rounded bg-neutral-100 px-3 py-1 text-sm hover:bg-neutral-200">
           새로고침
         </button>
         {loading && <span className="text-xs text-neutral-400">로딩 중...</span>}
