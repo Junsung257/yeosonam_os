@@ -20,6 +20,10 @@ interface BlogInlineImageOptions {
   ogImageUrl?: string | null;
   minImages?: number;
   maxImages?: number;
+  fallbackImageUrls?: string[];
+  preferFallbackImages?: boolean;
+  allowPexelsSearch?: boolean;
+  allowGeneratedFallback?: boolean;
 }
 
 export interface BlogInlineImageResult {
@@ -35,6 +39,13 @@ function getMarkdownImages(markdown: string): Array<{ alt: string; url: string }
     images.push({ alt: match[1] ?? '', url: match[2] ?? '' });
   }
   return images;
+}
+
+export function extractBlogInlineImageUrls(markdown: string | null | undefined): string[] {
+  if (!markdown) return [];
+  return [...new Set(getMarkdownImages(markdown)
+    .map((image) => image.url.trim())
+    .filter((url) => /^https:\/\//i.test(url)))];
 }
 
 function cleanHeading(raw: string): string {
@@ -114,6 +125,12 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
   }
 
   const usedUrls = new Set(existingImages.map((image) => image.url).filter(Boolean));
+  const fallbackImageUrls = [
+    ...(options.fallbackImageUrls ?? []),
+    ...(options.ogImageUrl ? [options.ogImageUrl] : []),
+  ].filter((url) => /^https:\/\//i.test(url));
+  const takeFallbackImage = (): string | null =>
+    fallbackImageUrls.find((url) => !usedUrls.has(url)) ?? null;
   const lines = options.markdown.split('\n');
   const h2Indexes = lines
     .map((line, index) => ({ line, index, match: line.match(H2_RE) }))
@@ -128,13 +145,18 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
 
     const heading = h2.match[1] ?? '';
     let url: string | null = null;
-    url = await findRelevantBlogPexelsImage({
-      destination: options.destination,
-      primaryKeyword: options.primaryKeyword,
-      sectionTitle: heading,
-      usedUrls,
-    });
-    if (!url) {
+    if (options.preferFallbackImages) {
+      url = takeFallbackImage();
+    }
+    if (!url && options.allowPexelsSearch !== false) {
+      url = await findRelevantBlogPexelsImage({
+        destination: options.destination,
+        primaryKeyword: options.primaryKeyword,
+        sectionTitle: heading,
+        usedUrls,
+      });
+    }
+    if (!url && options.allowGeneratedFallback !== false) {
       url = await generateSectionImage(
         heading,
         options.primaryKeyword || heading,
@@ -142,8 +164,8 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
         { skipPexelsFallback: true },
       );
     }
-    if (!url && options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
-      url = options.ogImageUrl;
+    if (!url) {
+      url = takeFallbackImage();
     }
 
     if (!url) continue;
@@ -156,10 +178,11 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
     imageCount += 1;
   }
 
-  if (imageCount < minImages && options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
+  const finalFallbackUrl = takeFallbackImage();
+  if (imageCount < minImages && finalFallbackUrl) {
     const baseAlt = buildAlt(options.destination, '여행 핵심 이미지', options.primaryKeyword || '');
-    const label = buildImageLabel(baseAlt, options.ogImageUrl);
-    lines.push('', `![${label.alt}](${options.ogImageUrl})`, `<figcaption>${label.caption}</figcaption>`);
+    const label = buildImageLabel(baseAlt, finalFallbackUrl);
+    lines.push('', `![${label.alt}](${finalFallbackUrl})`, `<figcaption>${label.caption}</figcaption>`);
     inserted += 1;
     imageCount += 1;
   }

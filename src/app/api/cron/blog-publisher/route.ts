@@ -27,7 +27,11 @@ import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
-import { ensureBlogInlineImages, findRelevantBlogPexelsImage } from '@/lib/blog-inline-images';
+import {
+  ensureBlogInlineImages,
+  extractBlogInlineImageUrls,
+  findRelevantBlogPexelsImage,
+} from '@/lib/blog-inline-images';
 import { generateSectionImage, isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { repairBlogImageQuality } from '@/lib/blog-image-quality';
@@ -1524,23 +1528,8 @@ async function runBlogPublisher(request: NextRequest) {
         }
       }
 
-      let result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
-      let targetedAttempts = 1;
-      while (
-        result.status === 'gate_failed'
-        && targetedAttempts < 2
-        && publisherRemainingMs(startTime) >= BLOG_PUBLISHER_MIN_ITEM_START_MS
-      ) {
-        const { data: retryItem, error: retryError } = await supabaseAdmin
-          .from('blog_topic_queue')
-          .select('*')
-          .eq('id', privateQueueId)
-          .eq('status', 'queued')
-          .maybeSingle();
-        if (retryError || !retryItem || !hasPrivateBlogRegenerationIntent(retryItem)) break;
-        targetedAttempts += 1;
-        result = await processQueueItem(retryItem, new Map(), { startedAtMs: startTime });
-      }
+      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      const targetedAttempts = 1;
       results.push(result);
       const completedPrivately = result.status === 'pending_review' || result.status === 'done';
       return {
@@ -2145,6 +2134,7 @@ async function processQueueItem(
     const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
     const privateRegenerationRequest = readPrivateBlogRegenerationRequest(item);
     let privateReplacementDraftId: string | null = null;
+    let privateReplacementAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
     if (privateRegenerationIntent && !privateRegenerationRequest) {
       const reason = 'private_regeneration_request_invalid';
       await handleFailure(item, reason, null, true, {
@@ -2155,11 +2145,12 @@ async function processQueueItem(
     if (privateRegenerationRequest) {
       const { data: replacementTarget, error: replacementTargetError } = await supabaseAdmin
         .from('content_creatives')
-        .select('id,channel,status,generation_meta')
+        .select('id,channel,status,generation_meta,og_image_url,blog_html')
         .eq('id', privateRegenerationRequest.contentCreativeId)
         .maybeSingle();
       if (
         replacementTargetError
+        || !replacementTarget
         || !isEligiblePrivateBlogRegenerationTarget(replacementTarget, privateRegenerationRequest)
       ) {
         const reason = 'private_regeneration_target_not_eligible';
@@ -2170,6 +2161,12 @@ async function processQueueItem(
         return { id: item.id, topic: item.topic, status: 'skipped', reason };
       }
       privateReplacementDraftId = privateRegenerationRequest.contentCreativeId;
+      privateReplacementAssets = {
+        ogImageUrl: typeof replacementTarget.og_image_url === 'string' ? replacementTarget.og_image_url : null,
+        inlineImageUrls: extractBlogInlineImageUrls(
+          typeof replacementTarget.blog_html === 'string' ? replacementTarget.blog_html : null,
+        ),
+      };
     }
 
     if (await isRecentInfoDuplicateCandidate(item)) {
@@ -2308,6 +2305,10 @@ async function processQueueItem(
       };
     }
 
+    if (privateReplacementAssets?.ogImageUrl && !generated.og_image_url) {
+      generated.og_image_url = privateReplacementAssets.ogImageUrl;
+    }
+
     const slugNormalized = normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
       await supabaseAdmin
@@ -2409,6 +2410,10 @@ async function processQueueItem(
         ogImageUrl: generated.og_image_url,
         minImages: item.card_news_id ? 2 : 3,
         maxImages: item.card_news_id ? 3 : 4,
+        fallbackImageUrls: privateReplacementAssets?.inlineImageUrls,
+        preferFallbackImages: privateReplacementAssets !== null,
+        allowPexelsSearch: privateReplacementAssets === null,
+        allowGeneratedFallback: privateReplacementAssets === null,
       });
       if (imageResult.inserted > 0) {
         generated.blog_html = imageResult.markdown;
@@ -3551,6 +3556,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     version: promptVersion,
     source: promptSource,
   } = await getActiveBlogInformationWriterGuide();
+  const privateRegeneration = hasPrivateBlogRegenerationIntent(item);
   const queueSlug = buildQueueSlug(item);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
@@ -3601,7 +3607,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   let serpBlock = '';
   let serpGapBlock = '';
   let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
-  const shouldAnalyzeSerp = Boolean(
+  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
     primaryKw &&
     (
       tier === 'head' ||
@@ -3682,7 +3688,9 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
-  blog_html = await maybeApplyChainOfDensity(blog_html);
+  if (!privateRegeneration) {
+    blog_html = await maybeApplyChainOfDensity(blog_html);
+  }
   const researchStructureRepair = repairBlogGenerationResearchStructure({
     markdown: blog_html,
     intent: contentBrief.intentType,
@@ -3727,7 +3735,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
   const destForImage = item.destination || extractDestination(item.topic);
-  if (destForImage) {
+  if (destForImage && !privateRegeneration) {
     try {
       og_image_url = await findOrGenerateBlogCover({
         destination: destForImage,
