@@ -56,7 +56,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
           {/* 비율 선택 */}
           <div className="flex border border-admin-border-mid rounded overflow-hidden">
             {(Object.keys(ASPECT_RATIOS) as AspectRatio[]).map(r => (
-              <button
+              <button type="button"
                 key={r}
                 onClick={() => setAspectRatio(r)}
                 className={`px-3 py-1 text-[11px] transition ${
@@ -67,14 +67,14 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
               </button>
             ))}
           </div>
-          <button
+          <button type="button"
             onClick={handleSave}
             disabled={saving}
             className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition"
           >
             {saving ? '저장 중...' : '저장'}
           </button>
-          <button
+          <button type="button"
             onClick={exportAll}
             disabled={exporting}
             className="px-4 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg disabled:bg-admin-surface-2 transition"
@@ -89,7 +89,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
         {/* 좌측: 슬라이드 목록 */}
         <div className="w-40 bg-admin-bg border-r border-admin-border-mid overflow-y-auto p-2 space-y-2 flex-shrink-0">
           {slides.map((slide, idx) => (
-            <button
+            <button type="button"
               key={slide.id}
               onClick={() => setActiveSlideIndex(idx)}
               className={`w-full relative group ${
@@ -101,7 +101,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                 {idx + 1}
               </span>
               {slides.length > 1 && (
-                <button
+                <button type="button"
                   onClick={e => { e.stopPropagation(); removeSlide(idx); }}
                   className="absolute top-1 right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full opacity-0 group-hover:opacity-100 transition flex items-center justify-center"
                 >
@@ -110,7 +110,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
               )}
             </button>
           ))}
-          <button
+          <button type="button"
             onClick={addSlide}
             className="w-full border-2 border-dashed border-admin-border-strong rounded py-4 text-admin-muted-2 text-admin-xs hover:border-slate-400 hover:text-admin-muted transition"
           >
@@ -141,7 +141,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                 <legend className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">오버레이</legend>
                 <div className="flex gap-1">
                   {(['dark', 'light', 'none'] as const).map(style => (
-                    <button
+                    <button type="button"
                       key={style}
                       onClick={() => updateSlide(activeSlideIndex, { overlay_style: style })}
                       aria-pressed={activeSlide.overlay_style === style}
@@ -164,7 +164,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                   <div className="relative mb-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={activeSlide.bg_image_url} alt="" className="w-full h-24 object-cover rounded" />
-                    <button
+                    <button type="button"
                       onClick={() => swapBackground(activeSlideIndex, '')}
                       aria-label="배경 이미지 제거"
                       className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded"
@@ -177,7 +177,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                     이미지 없음
                   </div>
                 )}
-                <button
+                <button type="button"
                   onClick={() => setShowPexels(!showPexels)}
                   className="w-full py-1.5 text-admin-xs bg-white border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg transition"
                 >
@@ -195,7 +195,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                         placeholder="검색어 (영문)"
                         className="flex-1 px-2 py-1 border border-admin-border-mid rounded text-admin-xs focus:ring-1 focus:ring-[#005d90]"
                       />
-                      <button
+                      <button type="button"
                         onClick={handlePexelsSearch}
                         disabled={pexelsLoading}
                         className="px-2 py-1 bg-blue-600 text-white text-[11px] rounded hover:bg-blue-900 disabled:bg-slate-300"
@@ -205,7 +205,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                     </div>
                     <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto">
                       {pexelsResults.map((photo, idx) => (
-                        <button
+                        <button type="button"
                           key={idx}
                           onClick={() => {
                             swapBackground(activeSlideIndex, photo.src.large);
