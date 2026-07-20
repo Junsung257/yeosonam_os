@@ -148,6 +148,7 @@ export default function McpSettingsPage() {
           <button type="button"
             onClick={handleCreate}
             disabled={!newLabel.trim()}
+            aria-label="MCP 키 발급"
             className="px-4 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
           >
             발급
@@ -165,6 +166,7 @@ export default function McpSettingsPage() {
               </code>
               <button type="button"
                 onClick={handleCopy}
+                aria-label="새 MCP 키 복사"
                 className="px-3 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700 shrink-0"
               >
                 {copySuccess ? '✅ 복사됨' : '복사'}
@@ -185,12 +187,12 @@ export default function McpSettingsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-gray-500">
-                <th className="pb-2 pr-4">설명</th>
-                <th className="pb-2 pr-4">키 (앞자리)</th>
-                <th className="pb-2 pr-4">권한</th>
-                <th className="pb-2 pr-4">상태</th>
-                <th className="pb-2 pr-4">마지막 사용</th>
-                <th className="pb-2">
+                <th scope="col" className="pb-2 pr-4">설명</th>
+                <th scope="col" className="pb-2 pr-4">키 (앞자리)</th>
+                <th scope="col" className="pb-2 pr-4">권한</th>
+                <th scope="col" className="pb-2 pr-4">상태</th>
+                <th scope="col" className="pb-2 pr-4">마지막 사용</th>
+                <th scope="col" className="pb-2">
                   <span className="sr-only">관리</span>
                 </th>
               </tr>
@@ -213,6 +215,7 @@ export default function McpSettingsPage() {
                     {t.is_active && (
                       <button type="button"
                         onClick={() => handleRevoke(t.id)}
+                        aria-label={`${t.label} MCP 키 비활성화`}
                         className="text-xs text-red-500 hover:text-red-700"
                       >
                         비활성화
