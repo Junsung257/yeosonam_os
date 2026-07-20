@@ -357,7 +357,12 @@ async function resolvePackageDetailPath() {
   if (api.status === 200 && api.contentType.includes('application/json')) {
     try {
       const json = JSON.parse(api.text);
-      const pkg = json.packages?.find((p) => p?.id);
+      const rows = Array.isArray(json.packages)
+        ? json.packages
+        : Array.isArray(json.data)
+          ? json.data
+          : [];
+      const pkg = rows.find((p) => p?.id);
       if (pkg?.id) return `/packages/${pkg.id}`;
     } catch {
       // fall through to sitemap

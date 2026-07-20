@@ -24,6 +24,7 @@ export function selectActiveBlogPrompt(input: {
   databaseVersion?: string | null;
   repositoryContent: string;
   repositoryVersion: string;
+  databaseContentValidator?: (content: string) => boolean;
 }): SelectedBlogPrompt {
   const databaseContent = input.databaseContent?.trim() ?? '';
   const databaseVersion = parsePromptVersion(input.databaseVersion);
@@ -32,7 +33,8 @@ export function selectActiveBlogPrompt(input: {
     databaseContent
     && databaseVersion
     && repositoryVersion
-    && comparePromptVersions(databaseVersion, repositoryVersion) >= 0,
+    && comparePromptVersions(databaseVersion, repositoryVersion) >= 0
+    && (!input.databaseContentValidator || input.databaseContentValidator(databaseContent)),
   );
 
   if (databaseIsCurrent) {

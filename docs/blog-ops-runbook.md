@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -16,6 +16,18 @@ A day is healthy only when all of these are true:
 - `/admin/blog/system` shows `blog-publisher`, `blog-scheduler`, `blog-daily-summary`, `blog-indexing-worker`, `gsc-index-rank`, and `serp-rank-snapshot` as successful or explainably skipped.
 - Published posts have current `quality_gate`, `seo_score`, `readability_score`, `generation_meta.content_brief`, final slug, title, description, and image evidence.
 - Public blog sections (`/blog`, `/blog/[slug]`, `/blog/destination/[dest]`, `/blog/angle/[angle]`, sitemap, blog API) return healthy titles, canonical URLs, indexability signals, and non-empty collection evidence.
+
+## Prompt Change Standard
+
+Information-writer prompt changes are release changes, not copy edits.
+
+1. Run `npm run eval:blog-prompt-v2`. All 10 information intents must score 100 with no legacy instruction conflict.
+2. Run `npm run eval:blog-info-v2`. All planner, evidence, structure, claim-ledger, render, and publish-eligibility fixtures must pass.
+3. Run the focused prompt, editorial, image, and claim-ledger tests plus `npm run type-check`.
+4. After deployment, generate only a private canary first. Confirm its `generation_meta.prompt_manifest.contract`, digest, size, warnings, and all normal content gates.
+5. Do not publicize the canary merely because the prompt evaluation passed. Public release still requires the normal evidence, review, rendering, SEO, image, and indexing contracts.
+
+The repository prompt is the safe baseline. A database override in `prompt_versions.domain='blog_info_writer_guide'` is accepted only when its semantic version is current and its required priority, factual-safety, people-first, output, and claim-ledger markers are intact. Invalid overrides automatically fall back to the repository version.
 - New or changed published URLs are enqueued through `blog_indexing_jobs`; indexing provider calls are handled by the worker, not inline publish code.
 - Google actual URL knowledge is tracked separately from IndexNow or sitemap request success.
 
