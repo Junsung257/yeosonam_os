@@ -12,6 +12,7 @@ Release posture improved, but not final GO.
   - #795 `feat(blog): validate information writer prompt v2`
   - #824 `fix(readiness): reject package not-found pages`
   - #825 `fix(seo): safely serialize package jsonld`
+  - #826 `fix(blog): keep private regeneration within time budget`
 - Updated active draft security boundary PRs against current `main`:
   - #760 RFQ tenant/persistence boundaries: draft, mergeable, checks green.
   - #761 tenant portal membership isolation: draft, mergeable, checks green.
@@ -19,8 +20,7 @@ Release posture improved, but not final GO.
 - Old large draft PRs remain unsafe to merge directly:
   - #749 public package egress boundary: draft, conflicting/dirty; large multi-area diff.
   - #352 marketing readiness integration: draft, very old, too large for normal GitHub diff, previous readiness failure.
-- New draft PR observed:
-  - #826 blog private regeneration time budget: draft, mergeable, Build & Test pending at time of this audit.
+- Blog private regeneration budget PR #826 passed CI and was merged after this audit record was started.
 
 ## Changes completed
 
@@ -94,7 +94,7 @@ Validation evidence before merge:
 | P0 | Checkout completion evidence | Draft #768 green/mergeable | Review final product decision, undraft, merge if intended for launch. |
 | P0 | Tenant/RFQ isolation | Draft #760/#761 green/mergeable | Review final product decision, undraft, merge if intended for launch. |
 | P0 | Old public egress boundary | Draft #749 conflicting | Do not merge directly. Rebase/cherry-pick only the still-relevant pieces onto current `main`. |
-| P1 | Blog private regeneration budget | Draft #826 pending | Wait for CI, inspect diff, merge only if checks pass and scope is isolated. |
+| P1 | Blog private regeneration budget | #826 merged | Monitor next private-regeneration canary for runtime duration and output-quality parity. |
 | P1 | Regression suite | Failing | Split by domain. Avoid attraction changes without the attraction SSOT workflow. |
 | P1 | Dead code drift | Failing | Baseline review or remove/mark new unused exports in small domain PRs. |
 | P1 | PII surface | High-volume findings, no strict blockers | Role-matrix review for admin/product-registration/ad-os raw text surfaces. |
@@ -102,7 +102,6 @@ Validation evidence before merge:
 
 ## Git notes
 
-- `main` at audit time includes merge commit `78d58a97 fix(seo): safely serialize package jsonld (#825)`.
+- `main` at audit finalization includes merge commit `f0d5dcaf fix(blog): keep private regeneration within time budget (#826)`.
 - Root worktree `C:\dev\yeosonam-os` has separate dirty user/session changes and was intentionally not modified.
 - Main audit worktree used: `C:\dev\yeosonam-os-travel-history-p1`.
-
