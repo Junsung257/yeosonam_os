@@ -129,7 +129,7 @@ export default function TenantProductsPage() {
           <h1 className="text-xl font-bold text-gray-900">상품 관리</h1>
           <p className="text-sm text-gray-500 mt-0.5">등록된 상품은 여소남 AI 컨시어지에 노출됩니다.</p>
         </div>
-        <button
+        <button type="button"
           onClick={openCreate}
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
         >
@@ -177,7 +177,7 @@ export default function TenantProductsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <button
+                      <button type="button"
                         onClick={() => openEdit(p)}
                         className="text-xs text-indigo-600 hover:underline"
                       >

@@ -212,7 +212,7 @@ export default function TenantsPage() {
                   <Button variant="secondary" onClick={() => openEdit(t)}>
                     수정
                   </Button>
-                  <button
+                  <button type="button"
                     onClick={() => router.push(`/admin/tenants/${t.id}/bot`)}
                     className="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded border border-purple-200 hover:bg-purple-100 transition-colors"
                     title="자비스 봇 설정"
@@ -236,7 +236,7 @@ export default function TenantsPage() {
                 <h3 className="text-admin-h2 text-admin-text">
                   {form.id ? '테넌트 수정' : '새 테넌트 등록'}
                 </h3>
-                <button
+                <button type="button"
                   onClick={() => setPanel(false)}
                   className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
                   aria-label="닫기"
