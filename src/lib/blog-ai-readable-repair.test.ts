@@ -91,4 +91,31 @@ describe('repairBlogAiReadableStructure', () => {
     expect(result.markdown).toContain('## 자주 묻는 질문');
     expect(result.markdown).toContain('### Q1.');
   });
+
+  it('removes a named empty section while preserving a parent with child content', () => {
+    const result = repairBlogAiReadableStructure({
+      markdown: [
+        '# 삿포로 식비 예산',
+        '',
+        '삿포로 식비 예산을 확인합니다.',
+        '',
+        '## 자주 묻는 질문',
+        '',
+        '### Q1. 표는 어디에서 확인하나요?',
+        '',
+        'A. 위의 근거표를 확인하세요.',
+        '',
+        '## 비어 있는 마무리 제목',
+        '',
+        '<!-- prompt_version: test -->',
+      ].join('\n'),
+      keyword: '삿포로 식비 예산',
+      intent: 'general',
+    });
+
+    expect(result.markdown).toContain('## 자주 묻는 질문');
+    expect(result.markdown).toContain('### Q1. 표는 어디에서 확인하나요?');
+    expect(result.markdown).not.toContain('## 비어 있는 마무리 제목');
+    expect(result.changes).toContain('removed_empty_heading_sections');
+  });
 });
