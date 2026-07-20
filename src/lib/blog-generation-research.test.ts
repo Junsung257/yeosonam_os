@@ -253,6 +253,12 @@ describe('blog generation research preflight', () => {
         '여행 전 예산 범위를 먼저 확인하세요.',
         '## 근거로 확인한 1인 하루 식비',
         modelClaimRows,
+        '![삿포로 식비 예산 표](https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg)',
+        '<figcaption>삿포로 식비 예산 참고 이미지</figcaption>',
+        '![삿포로 끼니별 가격](https://images.pexels.com/photos/1002/pexels-photo-1002.jpeg)',
+        '<figcaption>삿포로 끼니별 가격 참고 이미지</figcaption>',
+        '![삿포로 예약 전 확인](https://images.pexels.com/photos/1003/pexels-photo-1003.jpeg)',
+        '<figcaption>삿포로 예약 전 확인 참고 이미지</figcaption>',
         '\\n##',
         '## 예약 전 확인 메모',
         '메뉴와 예약 화면의 최신 조건을 확인하세요.',
@@ -266,6 +272,10 @@ describe('blog generation research preflight', () => {
     expect(repaired.markdown).not.toMatch(/^\s*#{1,6}\s*$/m);
     expect(checkMarkdownTableIntegrity(repaired.markdown).passed).toBe(true);
     expect(repaired.markdown.match(/삿포로 일반 여행자의 .* 기준값은 .* JPY입니다\./g) ?? []).toHaveLength(0);
+    expect(new Set(
+      [...repaired.markdown.matchAll(/!\[[^\]]*]\((https:\/\/[^)]+)\)/g)].map((match) => match[1]),
+    ).size).toBe(3);
+    expect(repaired.markdown.match(/<figcaption>삿포로/g)).toHaveLength(3);
 
     const rendered = await renderBlogContentToHtml(repaired.markdown);
     expect(inspectRenderedBlogIntegrity(repaired.markdown, rendered).evidence.artifacts).toEqual([]);
