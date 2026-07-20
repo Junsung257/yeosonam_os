@@ -2867,7 +2867,7 @@ async function processQueueItem(
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
-      ...queueMetaWithoutResearchBundle(item.meta),
+      ...queueMetaWithoutResearchBundle(successfulQueueMeta),
       ...(generated.generation_meta || {}),
       engine_version: 'blog-engine-v2',
       writer: typeof generated.generation_meta?.writer === 'string'
