@@ -194,6 +194,51 @@ describe('blog information claim validator', () => {
       .toEqual(expect.arrayContaining(['money_price', 'regulated_policy', 'distance', 'availability_status']));
   });
 
+  it('maps compact deterministic food-budget rows to one uniquely matching persisted claim', () => {
+    const claimText = '삿포로 일반 여행자의 절약형 하루 예산 기준값은 3000 JPY입니다.';
+    const markdown = [
+      '<!-- blog_research_structure:food_budget:v1 -->',
+      '## 근거로 확인한 1인 하루 식비',
+      '| 예산 유형 | 1인 하루 식비 |',
+      '| --- | ---: |',
+      '| 절약 | 3,000 JPY |',
+      '<!-- /blog_research_structure:food_budget:v1 -->',
+    ].join('\n');
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(claimText)],
+      claimLedger: ledgerFor(claimText),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.claims).toEqual([expect.objectContaining({ claimText })]);
+  });
+
+  it('fails closed when a compact deterministic value matches more than one persisted claim', () => {
+    const first = '삿포로 일반 여행자의 절약형 하루 예산 기준값은 3000 JPY입니다.';
+    const second = '삿포로 일반 여행자의 평일 하루 예산 기준값은 3000 JPY입니다.';
+    const markdown = [
+      '<!-- blog_research_structure:food_budget:v1 -->',
+      '## 근거로 확인한 1인 하루 식비',
+      '| 예산 유형 | 1인 하루 식비 |',
+      '| --- | ---: |',
+      '| 절약 | 3,000 JPY |',
+      '<!-- /blog_research_structure:food_budget:v1 -->',
+    ].join('\n');
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(first), supportedRecord(second)],
+      claimLedger: [...ledgerFor(first), ...ledgerFor(second)],
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'unclassified_factual_candidate' }),
+    ]));
+  });
+
   it('blocks a factual candidate that is missing from the ledger', () => {
     const report = validateBlogInformationClaims({
       markdown: '공항에서 시내까지 약 50분이 걸립니다.',

@@ -76,6 +76,12 @@ export interface BlogGenerationResearchStructureRepair {
 const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_POLICY_GAP_MARKER = '<!-- blog_research_policy_gap:food_budget:v1 -->';
+const FOOD_BUDGET_DETERMINISTIC_HEADINGS = [
+  '근거로 확인한 1인 하루 식비',
+  '근거로 확인한 끼니별 가격',
+  '지역별 가격 차이 확인 방법',
+  '세금·서비스료·예약 조건은 어떻게 확인할까?',
+];
 const FOOD_BUDGET_AREA_PRICE_DIFFERENCE_PATTERN = /(?:지역별|지역)[^\n]{0,120}(?:가격 차이|비용 차이)/;
 const FOOD_BUDGET_FEES_BOOKING_PATTERN = /(?=[\s\S]*세금)(?=[\s\S]*서비스료)(?=[\s\S]*예약)/;
 const FOOD_BUDGET_STRUCTURE_ISSUES = new Set([
@@ -279,20 +285,53 @@ function findFoodBudgetClaim(
   return claims.find((claim) => claim.claimType === 'price' && pattern.test(normalize(claim.claimText))) ?? null;
 }
 
-function removeExistingFoodBudgetStructure(markdown: string): string {
-  const start = markdown.indexOf(FOOD_BUDGET_STRUCTURE_MARKER);
-  if (start < 0) return markdown;
-  const explicitEnd = markdown.indexOf(FOOD_BUDGET_STRUCTURE_END_MARKER, start);
-  if (explicitEnd >= 0) {
-    return `${markdown.slice(0, start)}${markdown.slice(explicitEnd + FOOD_BUDGET_STRUCTURE_END_MARKER.length)}`;
+function removeGeneratedFoodBudgetConflicts(markdown: string): string {
+  const normalizedHeadings = new Set(FOOD_BUDGET_DETERMINISTIC_HEADINGS.map(normalize));
+  const lines = markdown.replace(/\\n/g, '\n').split(/\r?\n/);
+  const kept: string[] = [];
+  let skippingConflictingSection = false;
+
+  for (const line of lines) {
+    const h2 = line.match(/^##\s+(.+?)\s*$/);
+    if (h2) {
+      skippingConflictingSection = normalizedHeadings.has(normalize(h2[1]));
+      if (skippingConflictingSection) continue;
+    } else if (skippingConflictingSection && /^<!--\s*(?:prompt_|blog_)/i.test(line.trim())) {
+      skippingConflictingSection = false;
+    }
+    if (skippingConflictingSection) continue;
+
+    // These tables are rebuilt exclusively from preflight-approved claims below.
+    // Removing model-authored pipe rows also drops malformed one-cell rows that
+    // otherwise survive claim removal as a bare "|" and fail render integrity.
+    if (/^\s*\|/.test(line)) continue;
+    if (/^\s*#{1,6}\s*$/.test(line)) continue;
+    kept.push(line);
   }
 
-  // v1 originally had only a start marker and was emitted immediately before prompt_version.
-  const promptVersion = markdown.indexOf('<!-- prompt_version:', start);
-  if (promptVersion >= 0) {
-    return `${markdown.slice(0, start)}${markdown.slice(promptVersion)}`;
+  return kept
+    .join('\n')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function removeExistingFoodBudgetStructure(markdown: string): string {
+  let withoutMarkedBlock = markdown;
+  const start = withoutMarkedBlock.indexOf(FOOD_BUDGET_STRUCTURE_MARKER);
+  if (start >= 0) {
+    const explicitEnd = withoutMarkedBlock.indexOf(FOOD_BUDGET_STRUCTURE_END_MARKER, start);
+    if (explicitEnd >= 0) {
+      withoutMarkedBlock = `${withoutMarkedBlock.slice(0, start)}${withoutMarkedBlock.slice(explicitEnd + FOOD_BUDGET_STRUCTURE_END_MARKER.length)}`;
+    } else {
+      // v1 originally had only a start marker and was emitted immediately before prompt_version.
+      const promptVersion = withoutMarkedBlock.indexOf('<!-- prompt_version:', start);
+      withoutMarkedBlock = promptVersion >= 0
+        ? `${withoutMarkedBlock.slice(0, start)}${withoutMarkedBlock.slice(promptVersion)}`
+        : withoutMarkedBlock.replace(FOOD_BUDGET_STRUCTURE_MARKER, '');
+    }
   }
-  return markdown.replace(FOOD_BUDGET_STRUCTURE_MARKER, '');
+  return removeGeneratedFoodBudgetConflicts(withoutMarkedBlock);
 }
 
 function appendFoodBudgetFeesBookingGuidance(
@@ -342,7 +381,10 @@ export function repairBlogGenerationResearchStructure(input: {
   }
 
   const report = validateBlogInformationStructure({ intent: input.intent, markdown: input.markdown });
-  const needsVerifiedTables = report.issues.some((issue) => FOOD_BUDGET_STRUCTURE_ISSUES.has(issue));
+  const hasDeterministicResearchBlock = input.markdown.includes(FOOD_BUDGET_STRUCTURE_MARKER)
+    && input.markdown.includes(FOOD_BUDGET_STRUCTURE_END_MARKER);
+  const needsVerifiedTables = !hasDeterministicResearchBlock
+    || report.issues.some((issue) => FOOD_BUDGET_STRUCTURE_ISSUES.has(issue));
   const needsAreaPriceDifferenceGuidance = !FOOD_BUDGET_AREA_PRICE_DIFFERENCE_PATTERN.test(input.markdown);
   const claims = input.readiness.bundle.claims;
   if (!needsVerifiedTables && !needsAreaPriceDifferenceGuidance) {
@@ -384,20 +426,20 @@ export function repairBlogGenerationResearchStructure(input: {
     FOOD_BUDGET_STRUCTURE_MARKER,
     '## 근거로 확인한 1인 하루 식비',
     '',
-    '| 예산 유형 | 1인 하루 식비 | 근거 문장 |',
-    '| --- | ---: | --- |',
-    `| 절약 | ${formatExtractedPrice(rows.budget!)} | ${escapeMarkdownTableCell(rows.budget!.claimText)} |`,
-    `| 일반 | ${formatExtractedPrice(rows.midrange!)} | ${escapeMarkdownTableCell(rows.midrange!.claimText)} |`,
-    `| 여유 | ${formatExtractedPrice(rows.luxury!)} | ${escapeMarkdownTableCell(rows.luxury!.claimText)} |`,
+    '| 예산 유형 | 1인 하루 식비 |',
+    '| --- | ---: |',
+    `| 절약 | ${formatExtractedPrice(rows.budget!)} |`,
+    `| 일반 | ${formatExtractedPrice(rows.midrange!)} |`,
+    `| 여유 | ${formatExtractedPrice(rows.luxury!)} |`,
     '',
     '## 근거로 확인한 끼니별 가격',
     '',
-    '| 끼니·메뉴 | 가격 | 근거 문장 |',
-    '| --- | ---: | --- |',
-    `| 아침 | ${formatExtractedPrice(rows.breakfast!)} | ${escapeMarkdownTableCell(rows.breakfast!.claimText)} |`,
-    `| 점심 | ${formatExtractedPrice(rows.lunch!)} | ${escapeMarkdownTableCell(rows.lunch!.claimText)} |`,
-    `| 저녁 | ${formatExtractedPrice(rows.dinner!)} | ${escapeMarkdownTableCell(rows.dinner!.claimText)} |`,
-    `| 간식·커피 | ${formatExtractedPrice(rows.snack!)} | ${escapeMarkdownTableCell(rows.snack!.claimText)} |`,
+    '| 끼니·메뉴 | 가격 |',
+    '| --- | ---: |',
+    `| 아침 | ${formatExtractedPrice(rows.breakfast!)} |`,
+    `| 점심 | ${formatExtractedPrice(rows.lunch!)} |`,
+    `| 저녁 | ${formatExtractedPrice(rows.dinner!)} |`,
+    `| 간식·커피 | ${formatExtractedPrice(rows.snack!)} |`,
     '',
     '## 지역별 가격 차이 확인 방법',
     '',
