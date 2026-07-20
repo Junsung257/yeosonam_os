@@ -24,6 +24,7 @@ import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
+import { buildBlogQueueSuccessMeta } from '@/lib/blog-queue-success-meta';
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
@@ -2844,6 +2845,12 @@ async function processQueueItem(
     seoScore = publishQuality.seoScore;
     const readability = publishQuality.readability;
     const now = new Date().toISOString();
+    const successfulQueueMeta = buildBlogQueueSuccessMeta({
+      currentMeta: item.meta,
+      qualityGate: qa,
+      publishQuality,
+      succeededAt: now,
+    });
     const engineGate = qa.gates.find(gate => gate.gate === 'engine_v2');
     const engineEvaluation = engineGate?.evidence && typeof engineGate.evidence === 'object'
       ? (engineGate.evidence as Record<string, unknown>).evaluation as Record<string, unknown> | undefined
@@ -3126,6 +3133,7 @@ async function processQueueItem(
           content_creative_id: creativeId,
           last_error: null,
           attempts: 0,
+          meta: successfulQueueMeta,
         })
         .eq('id', item.id);
       if (reviewStateError) {
@@ -3161,6 +3169,7 @@ async function processQueueItem(
         content_creative_id: creativeId,
         last_error: null,
         attempts: 0,
+        meta: successfulQueueMeta,
       })
       .eq('id', item.id);
 
