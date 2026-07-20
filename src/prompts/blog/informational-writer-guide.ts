@@ -4,7 +4,7 @@
  * This is intentionally separate from BLOG_STYLE_GUIDE, which still contains
  * product-sales rules used by product and pillar writers.
  */
-export const BLOG_INFORMATION_WRITER_GUIDE = `# Yeosonam informational travel writer v2
+export const BLOG_INFORMATION_WRITER_GUIDE = `# Yeosonam informational travel writer v2.1
 
 ## Instruction priority
 
@@ -50,7 +50,10 @@ Write for a Korean traveler who needs to make a real decision before departure. 
 3. Required H2 sections from the content brief, merged only when both requirements remain clearly answered.
 4. Checklists or tables only when they make comparison easier and the evidence supports every factual cell.
 5. A risk or mistake section when relevant.
-6. Official/current checks and concise FAQ answers when the brief requests them.
+6. At least one natural H2 phrased as a real reader question.
+7. For food-budget articles, author no more than six H2 sections because the verified-research repair may add up to three evidence-table H2 sections; the final article must stay within five to nine H2 sections.
+8. When the supplied evidence supports it, finish with a concise FAQ of three useful questions. Every answer must reuse approved claims only and must not introduce a new number, conversion, total, recommendation, or assumption.
+9. Official/current checks when the brief requests them.
 
 Avoid generic introductions, repeated conclusions, fake urgency, unexplained English labels, decorative highlight syntax, and claims of first-hand visits that were not provided.
 

@@ -36,7 +36,7 @@ export function buildBlogPackageCtaUrl(opts: BlogCtaOptions & { content?: string
   return `${normalizeBaseUrl(opts.baseUrl)}/packages?${params.toString()}`;
 }
 
-export function buildBlogDestinationCtaUrl(opts: BlogCtaOptions & { content?: string }): string {
+function buildBlogDestinationCtaUrl(opts: BlogCtaOptions & { content?: string }): string {
   const params = buildUtmSearchParams(opts, opts.content || 'destination_blog');
   const dest = normalizeBlogCtaDestination(opts.destination);
   if (!dest) return `${normalizeBaseUrl(opts.baseUrl)}/blog?${params.toString()}`;
