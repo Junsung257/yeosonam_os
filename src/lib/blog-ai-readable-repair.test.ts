@@ -47,7 +47,9 @@ describe('repairBlogAiReadableStructure', () => {
     expect((result.markdown.match(/^##\s+\S/gm) || [])).toHaveLength(9);
     expect(result.markdown).toMatch(/^##\s+.+\?$/m);
     expect(result.markdown).toContain('## 자주 묻는 질문');
-    for (const item of claims) expect(result.markdown).toContain(item.claimText);
+    for (const item of claims) expect(result.markdown).not.toContain(item.claimText);
+    expect(result.markdown).toContain("'근거로 확인한 1인 하루 식비' 표");
+    expect(result.markdown).toContain("'근거로 확인한 끼니별 가격' 표");
     expect(checkAiReadability(result.markdown, 'info').passed).toBe(true);
   });
 
