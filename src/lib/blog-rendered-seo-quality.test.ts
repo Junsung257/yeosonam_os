@@ -70,4 +70,19 @@ describe('informational rendered SEO quality', () => {
       'cta_replaces_answer',
     ]));
   });
+
+  it('treats child FAQ questions as content for their parent heading', async () => {
+    const report = await inspectBlogRenderedSeoQuality({
+      ...BASE,
+      markdown: [
+        '## 자주 묻는 질문',
+        '',
+        '### Q1. 하루 예산은 어디에서 확인하나요?',
+        '',
+        "A. 위의 '근거로 확인한 1인 하루 식비' 표를 확인하세요.",
+      ].join('\n'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('empty_heading');
+  });
 });

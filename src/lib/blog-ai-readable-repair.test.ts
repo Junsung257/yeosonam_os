@@ -64,4 +64,31 @@ describe('repairBlogAiReadableStructure', () => {
     expect(result.markdown).toMatch(/^##\s+.+\?$/m);
     expect(result.markdown).not.toContain('자주 묻는 질문');
   });
+
+  it('caps total heading count while preserving evidence and FAQ headings', () => {
+    const markdown = [
+      '# 삿포로 식비 예산',
+      '',
+      '삿포로 식비 예산을 표와 확인 항목으로 정리합니다.',
+      '',
+      ...Array.from({ length: 9 }, (_, index) => `## 구간 ${index + 1} 확인 방법\n\n본문 ${index + 1}`),
+      ...Array.from({ length: 16 }, (_, index) => `### 세부 선택 기준 ${index + 1}\n\n설명 ${index + 1}`),
+      '### 근거로 확인한 1인 하루 식비',
+      '',
+      '| 유형 | 가격 |',
+      '| --- | ---: |',
+      '| 절약 | 3,460 JPY |',
+    ].join('\n');
+    const result = repairBlogAiReadableStructure({
+      markdown,
+      keyword: '삿포로 식비 예산',
+      intent: 'food_budget',
+      approvedClaims: claims,
+    });
+
+    expect(result.markdown.match(/^#{2,6}\s+\S/gm)?.length ?? 0).toBeLessThanOrEqual(20);
+    expect(result.markdown).toContain('### 근거로 확인한 1인 하루 식비');
+    expect(result.markdown).toContain('## 자주 묻는 질문');
+    expect(result.markdown).toContain('### Q1.');
+  });
 });
