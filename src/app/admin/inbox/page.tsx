@@ -321,7 +321,7 @@ export default function InboxPage() {
             : data.tasks.filter(t => t.priority === tab.key).length;
           const active = priorityFilter === tab.key;
           return (
-            <button
+            <button type="button"
               key={String(tab.key)}
               onClick={() => setPriorityFilter(tab.key)}
               className={`px-3 py-2 text-admin-sm border-b-2 -mb-px transition-colors ${
@@ -341,7 +341,7 @@ export default function InboxPage() {
         {/* 룰 타입 필터 칩 */}
         {Object.keys(typeCounts).length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-4">
-            <button
+            <button type="button"
               onClick={() => setTypeFilter('all')}
               className={`px-2 py-1 text-admin-xs rounded-full transition-colors ${
                 typeFilter === 'all'
@@ -352,7 +352,7 @@ export default function InboxPage() {
               모든 룰
             </button>
             {Object.entries(typeCounts).map(([type, n]) => (
-              <button
+              <button type="button"
                 key={type}
                 onClick={() => setTypeFilter(type)}
                 className={`px-2 py-1 text-admin-xs rounded-full transition-colors ${
@@ -511,7 +511,7 @@ function TaskCard({
 
         {/* Actions */}
         <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-          <button
+          <button type="button"
             onClick={onResolve}
             className="h-8 px-3 text-admin-sm rounded-admin-sm bg-success text-white hover:opacity-90 transition-opacity font-medium"
             title="이 Task 를 수동으로 종결합니다"
@@ -520,7 +520,7 @@ function TaskCard({
           </button>
 
           <div className="relative">
-            <button
+            <button type="button"
               onClick={onToggleSnoozeMenu}
               className="h-8 px-3 text-admin-sm rounded-admin-sm border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2 hover:border-admin-border-strong transition-colors font-medium"
               title="나중에 다시 알림"
@@ -530,7 +530,7 @@ function TaskCard({
             {snoozeMenuOpen && (
               <div className="absolute right-0 top-full mt-1 bg-admin-surface border border-admin-border-mid rounded-admin-sm shadow-admin-md z-20 min-w-[120px] overflow-hidden">
                 {SNOOZE_PRESETS.map(preset => (
-                  <button
+                  <button type="button"
                     key={preset.label}
                     onClick={() => onSnooze(preset.hours)}
                     className="w-full text-left px-3 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-surface-2 hover:text-admin-text transition-colors"

@@ -362,7 +362,7 @@ export default function SharePage() {
             <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
               <div className="px-5 py-3 bg-gray-50 border-b flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900 text-sm">구성 상품 ({shared.items.length}건)</h2>
-                <button
+                <button type="button"
                   onClick={handleRefreshPrices}
                   disabled={refreshing}
                   className="text-xs text-blue-600 border border-blue-300 px-3 py-1 rounded-full hover:bg-blue-50 transition disabled:opacity-50"
@@ -427,7 +427,7 @@ export default function SharePage() {
               </table>
             </div>
 
-            <button
+            <button type="button"
               onClick={handleAddAllToCart}
               disabled={addingToCart}
               className="w-full bg-brand text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition disabled:opacity-50"
@@ -464,7 +464,7 @@ export default function SharePage() {
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {blocks.map(b => (
-                      <button
+                      <button type="button"
                         key={b.date}
                         onClick={() => setSelectedDate(b.date)}
                         className={`px-3 py-2 rounded-lg text-sm border transition ${
@@ -499,7 +499,7 @@ export default function SharePage() {
               </div>
             </div>
 
-            <button
+            <button type="button"
               onClick={handleFixedBook}
               disabled={!selectedDate || addingToCart}
               className="w-full bg-purple-600 text-white py-3 rounded-xl font-semibold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"

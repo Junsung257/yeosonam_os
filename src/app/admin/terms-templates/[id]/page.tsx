@@ -189,11 +189,11 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         </div>
         <div className="flex gap-2">
           {!isNew && (
-            <button onClick={softDelete} className="px-3 py-2 border border-red-300 text-red-600 rounded text-sm">
+            <button type="button" onClick={softDelete} className="px-3 py-2 border border-red-300 text-red-600 rounded text-sm">
               비활성화
             </button>
           )}
-          <button
+          <button type="button"
             onClick={save}
             disabled={saving}
             className="px-4 py-2 bg-slate-900 text-white rounded font-bold text-sm disabled:opacity-50"
@@ -304,7 +304,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
       <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-admin-text">Notice 블록 ({tpl.notices.length}개)</h2>
-          <button
+          <button type="button"
             onClick={addNotice}
             className="text-xs px-3 py-1 bg-admin-surface-2 hover:bg-slate-200 rounded font-bold"
           >
@@ -328,7 +328,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
               >
                 {ALL_SEVERITIES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <button
+              <button type="button"
                 onClick={() => removeNotice(idx)}
                 className="text-xs text-red-600 border border-red-200 rounded px-2 py-1"
               >
@@ -375,7 +375,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         )}
       </section>
       <div className="flex justify-end">
-        <button
+        <button type="button"
           onClick={save}
           disabled={saving}
           className="px-6 py-2.5 bg-slate-900 text-white rounded font-bold text-sm disabled:opacity-50"

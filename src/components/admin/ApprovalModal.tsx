@@ -152,7 +152,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                 {pkg.price ? ` · ${pkg.price.toLocaleString('ko-KR')}원~/인` : ''}
               </p>
             </div>
-            <button
+            <button type="button"
               onClick={onClose}
               className="p-2 rounded-lg text-admin-muted-2 hover:text-admin-text-2 hover:bg-admin-surface-2 transition"
             >
@@ -169,7 +169,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                 <h3 className="text-sm font-bold text-admin-text-2 uppercase tracking-wide">
                   AI 제안 카피 · 3종
                 </h3>
-                <button
+                <button type="button"
                   onClick={handleRegenerate}
                   disabled={regenerating}
                   className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50 transition"
@@ -190,7 +190,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                     const meta = COPY_META[copy.type] ?? COPY_META['신뢰형'];
                     const isSelected = selectedType === copy.type;
                     return (
-                      <button
+                      <button type="button"
                         key={copy.type}
                         onClick={() => selectCopy(copy)}
                         className={`relative text-left p-4 rounded-admin-md border-2 transition-all duration-150 cursor-pointer ${
@@ -291,7 +291,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
           {/* ── 하단 버튼 ────────────────────────────────────────────── */}
           <div className="px-7 py-4 border-t border-admin-border flex items-center justify-between gap-3 shrink-0 bg-admin-bg/50">
-            <button
+            <button type="button"
               onClick={() => pkg && onReject(pkg.id)}
               className="px-5 py-2.5 rounded-admin-md border-2 border-admin-border-mid text-admin-muted text-sm font-semibold hover:border-admin-border-strong hover:bg-admin-surface-2 transition"
             >
@@ -304,7 +304,7 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
                   {titleLen === 0 ? '상품명을 입력하세요' : titleLen > TITLE_MAX ? `제목 ${TITLE_MAX}자 초과` : `요약 ${SUMMARY_MAX}자 초과`}
                 </span>
               )}
-              <button
+              <button type="button"
                 onClick={handleApprove}
                 disabled={!canPublish}
                 className="px-6 py-2.5 rounded-admin-md bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition flex items-center gap-2"
