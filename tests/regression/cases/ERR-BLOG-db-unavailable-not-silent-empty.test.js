@@ -263,8 +263,12 @@ test('open readiness rejects blog detail not-found bodies even when HTTP status 
   const source = read('scripts', 'open-readiness-check.mjs');
 
   assert.match(source, /BLOG_DETAIL_NOT_FOUND_PATTERN/);
+  assert.match(source, /BLOG_DETAIL_NOINDEX_PATTERN/);
+  assert.match(source, /blogDetailLooksRenderable/);
   assert.match(source, /public:blog-runtime/);
   assert.match(source, /OPEN_CHECK_BLOG_SLUG/);
-  assert.match(source, /!BLOG_DETAIL_NOT_FOUND_PATTERN\.test\(body\)/);
-  assert.match(source, /blog detail rendered a not-found state/);
+  assert.match(source, /HAS_EXPLICIT_BLOG_SLUG/);
+  assert.match(source, /OPEN_CHECK_BLOG_SLUG not provided/);
+  assert.match(source, /blogDetailLooksRenderable\(body\)/);
+  assert.match(source, /blog detail rendered a not-found or noindex state/);
 });
