@@ -66,13 +66,13 @@ function ShareSection({ shareUrl }: { shareUrl: string }) {
     <div className="border-t pt-5 mt-5">
       <p className="text-xs font-semibold text-slate-500 mb-3">📤 일행에게 이 견적을 공유해보세요!</p>
       <div className="flex gap-2">
-        <button
+        <button type="button"
           onClick={handleCopyLink}
           className="flex-1 bg-gray-100 text-gray-800 py-3 rounded-xl text-sm font-semibold hover:bg-gray-200 transition"
         >
           {copied ? '✅ 링크 복사됨!' : '🔗 링크 복사'}
         </button>
-        <button
+        <button type="button"
           onClick={handleShareKakao}
           className="flex-1 bg-[#FEE500] text-[#191919] py-3 rounded-xl text-sm font-semibold hover:bg-[#FDD800] transition"
         >
@@ -969,7 +969,7 @@ export default function PrivateTourLandingClient() {
 
             {doneData.shareUrl && <ShareSection shareUrl={doneData.shareUrl} />}
 
-            <button
+            <button type="button"
               onClick={() => router.push('/')}
               className="w-full text-sm text-slate-500 py-2 hover:text-slate-700 transition"
             >

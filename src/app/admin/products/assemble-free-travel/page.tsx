@@ -215,7 +215,7 @@ export default function AssembleFreeTravelPage() {
                 className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={handleSearch}
             disabled={loading || !city.trim() || !dateFrom || !dateTo}
             className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm disabled:opacity-50 hover:bg-blue-700"
@@ -239,7 +239,7 @@ export default function AssembleFreeTravelPage() {
                 const ok = csOk(h);
                 const sel = selectedHotel?.providerId === h.providerId;
                 return (
-                  <button
+                  <button type="button"
                     key={i}
                     onClick={() => ok && setSelectedHotel(h)}
                     disabled={!ok}
@@ -277,7 +277,7 @@ export default function AssembleFreeTravelPage() {
                 const ok  = csOk(a);
                 const sel = selectedActs.has(a.providerId);
                 return (
-                  <button
+                  <button type="button"
                     key={i}
                     onClick={() => ok && toggleActivity(a.providerId)}
                     disabled={!ok || (!sel && selectedActs.size >= 5)}
@@ -305,10 +305,10 @@ export default function AssembleFreeTravelPage() {
           </div>
 
           <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="flex-1 py-2.5 border border-admin-border-strong text-admin-text-2 rounded-lg text-sm font-semibold hover:bg-admin-bg">
+            <button type="button" onClick={() => setStep(1)} className="flex-1 py-2.5 border border-admin-border-strong text-admin-text-2 rounded-lg text-sm font-semibold hover:bg-admin-bg">
               이전
             </button>
-            <button
+            <button type="button"
               onClick={() => { setError(null); setStep(3); }}
               disabled={!selectedHotel || selectedActs.size === 0}
               className="flex-2 flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-blue-700"
@@ -368,10 +368,10 @@ export default function AssembleFreeTravelPage() {
           </div>
 
           <div className="flex gap-3">
-            <button onClick={() => setStep(2)} className="flex-1 py-2.5 border border-admin-border-strong text-admin-text-2 rounded-lg text-sm font-semibold hover:bg-admin-bg">
+            <button type="button" onClick={() => setStep(2)} className="flex-1 py-2.5 border border-admin-border-strong text-admin-text-2 rounded-lg text-sm font-semibold hover:bg-admin-bg">
               이전
             </button>
-            <button
+            <button type="button"
               onClick={handleRegister}
               disabled={loading}
               className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-blue-700"
@@ -393,7 +393,7 @@ export default function AssembleFreeTravelPage() {
             <Link href="/admin/products" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
               상품 관리
             </Link>
-            <button
+            <button type="button"
               onClick={() => { setStep(1); setRegistered(null); setCity(''); setDateFrom(''); setDateTo(''); setSelectedHotel(null); setSelectedActs(new Set()); }}
               className="px-4 py-2 border border-admin-border-strong text-admin-text-2 rounded-lg text-sm font-semibold hover:bg-admin-bg"
             >
