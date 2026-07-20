@@ -161,6 +161,9 @@ describe('blog publish quality', () => {
         product_id: 'pkg_123',
       }),
     );
+    expect(computeSeoScoreMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ hasRenderedPageH1: true }),
+    );
   });
 
   it('resolves destination from joined travel package rows first', () => {

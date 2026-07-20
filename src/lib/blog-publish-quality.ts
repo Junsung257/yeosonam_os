@@ -184,6 +184,7 @@ export async function evaluateBlogPublishQuality(
     secondaryKeywords: input.secondary_keywords ?? [],
     destination,
     blogType,
+    hasRenderedPageH1: true,
     imageCount: images.length,
     imagesWithAlt: images.filter((image) => image.alt.trim().length >= 3).length,
     hasJsonLd: {
