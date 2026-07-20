@@ -214,6 +214,18 @@ function isReadableChecklistHeading(text: string): boolean {
   return CANONICAL_CHECKLIST_HEADING_RE.test(text);
 }
 
+function hasChecklistIntent(input: BlogStructureAuditInput): boolean {
+  const metadata = [input.title, input.slug, input.angleType, input.primaryKeyword]
+    .filter(Boolean)
+    .join(' ');
+  if (CANONICAL_CHECKLIST_HEADING_RE.test(metadata)) return true;
+
+  return input.rawMarkdown.split('\n').some((line) => {
+    const heading = line.trim().match(/^#{1,3}\s+(.+)$/);
+    return heading ? CANONICAL_CHECKLIST_HEADING_RE.test(heading[1] ?? '') : false;
+  });
+}
+
 function inspectChecklist(input: BlogStructureAuditInput, issues: BlogStructureIssue[]): void {
   const $ = load(input.renderedHtml);
   const readableChecklistHeadings = $('h2, h3')
@@ -227,7 +239,7 @@ function inspectChecklist(input: BlogStructureAuditInput, issues: BlogStructureI
     .toArray()
     .filter((heading) => isReadableChecklistHeading(normalizeText($(heading).text())));
 
-  if (checklistHeadings.length === 0 && CANONICAL_CHECKLIST_HEADING_RE.test(input.rawMarkdown)) {
+  if (checklistHeadings.length === 0 && hasChecklistIntent(input)) {
     addIssue(
       issues,
       'checklist_shape_invalid',
