@@ -539,11 +539,11 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
 
                 {/* Count */}
                 <div className="flex items-center gap-0.5 justify-center">
-                  <button onMouseDown={() => updateRow(idx, 'count', Math.max(0, row.count - 1))}
+                  <button type="button" onMouseDown={() => updateRow(idx, 'count', Math.max(0, row.count - 1))}
                     disabled={disabled}
                     className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-[14px] font-bold flex items-center justify-center select-none transition disabled:opacity-50">−</button>
                   <span className="w-6 text-center tabular-nums text-[14px] font-extrabold">{row.count}</span>
-                  <button onMouseDown={() => updateRow(idx, 'count', row.count + 1)}
+                  <button type="button" onMouseDown={() => updateRow(idx, 'count', row.count + 1)}
                     disabled={disabled}
                     className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 text-[14px] font-bold flex items-center justify-center select-none transition disabled:opacity-50">+</button>
                 </div>
@@ -582,7 +582,7 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
                 </div>
 
                 {!isFixed ? (
-                  <button onMouseDown={() => { setRows(prev => prev.filter((_, i) => i !== idx)); setIsDirty(true); }}
+                  <button type="button" onMouseDown={() => { setRows(prev => prev.filter((_, i) => i !== idx)); setIsDirty(true); }}
                     className="w-7 h-7 rounded flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition text-[14px]">✕</button>
                 ) : <span />}
               </div>
@@ -591,7 +591,7 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
         </div>
 
         {/* Add custom row */}
-        <button onMouseDown={addCustomRow}
+        <button type="button" onMouseDown={addCustomRow}
           className="mt-3 flex items-center gap-1.5 text-[13px] text-blue-600 hover:text-blue-700 font-medium transition">
           <span className="text-[18px] leading-none font-light">+</span> 커스텀 항목 추가
         </button>
@@ -604,7 +604,7 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
               <span className="text-[10px] text-amber-600 font-normal">(% 또는 총액 — 한쪽만 입력, 나머지 자동)</span>
             </span>
             {(commissionRate || commissionAmount) ? (
-              <button onMouseDown={() => { setCommissionRate(null); setCommissionAmount(null); setIsDirty(true); }}
+              <button type="button" onMouseDown={() => { setCommissionRate(null); setCommissionAmount(null); setIsDirty(true); }}
                 disabled={disabled}
                 className="text-[10px] text-gray-400 hover:text-red-500 transition">초기화</button>
             ) : null}
@@ -706,7 +706,7 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
                   <span className="text-[13px] text-gray-400 line-through tabular-nums">
                     {computedNet.toLocaleString()}원
                   </span>
-                  <button onClick={resetOverride}
+                  <button type="button" onClick={resetOverride}
                     title="빌더 자동 계산으로 되돌리기"
                     className="text-gray-400 hover:text-blue-500 transition text-[16px] leading-none px-1 py-0.5 rounded hover:bg-blue-50">
                     ↺
@@ -729,7 +729,7 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
                 />
               ) : (
                 /* 현재 유효 금액 — 클릭해서 편집 진입 */
-                <button onClick={() => setIsEditingNet(true)}
+                <button type="button" onClick={() => setIsEditingNet(true)}
                   className="group flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-amber-50 transition">
                   <span className={`text-[16px] font-extrabold tabular-nums ${
                     netOverride !== null ? 'text-blue-600' : 'text-amber-700'
@@ -750,7 +750,7 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
               <div className="flex gap-1.5 flex-wrap">
                 <span className="text-[11px] text-gray-400 self-center">조정 사유:</span>
                 {QUICK_TAGS.map(tag => (
-                  <button key={tag}
+                  <button type="button" key={tag}
                     onClick={() => setOverrideMemo(overrideMemo === tag ? '' : tag)}
                     className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition border ${
                       overrideMemo === tag
@@ -1218,7 +1218,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 전체 편집 ↗
               </Link>
             )}
-            <button onClick={onClose}
+            <button type="button" onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition text-[16px]">
               ✕
             </button>
@@ -1395,7 +1395,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddMemo(); } }}
                       placeholder="메모 후 Enter..."
                       className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    <button onClick={handleAddMemo} disabled={savingMemo || !memo.trim()}
+                    <button type="button" onClick={handleAddMemo} disabled={savingMemo || !memo.trim()}
                       className="px-3 py-2 bg-blue-600 text-white text-[13px] rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
                       {savingMemo ? '...' : '추가'}
                     </button>
@@ -1540,7 +1540,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
           {transitions.length > 0 && (
             <div className="flex gap-1.5 flex-wrap flex-1">
               {transitions.map(t => (
-                <button key={t.to} onClick={() => handleTransition(t.to)}
+                <button type="button" key={t.to} onClick={() => handleTransition(t.to)}
                   disabled={transitioning !== null || (t.to === 'waiting_deposit' && depositTransitionBlocked)}
                   className={`px-3 py-1.5 text-[12px] font-semibold rounded-lg transition disabled:opacity-50 whitespace-nowrap ${
                     t.isMock
@@ -1555,12 +1555,12 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
 
           <div className="flex items-center gap-2 ml-auto">
             {isDirty && (
-              <button onClick={resetSettlementEdit}
+              <button type="button" onClick={resetSettlementEdit}
                 className="px-4 py-2 text-[13px] text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
                 되돌리기
               </button>
             )}
-            <button onClick={handleSettlementSave}
+            <button type="button" onClick={handleSettlementSave}
               disabled={savingSettlement || !isDirty}
               className={`px-5 py-2 text-[13px] font-extrabold rounded-lg transition flex items-center gap-2 ${
                 savingSettlement
@@ -1580,14 +1580,14 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
 
             {/* 정산 확정 / 해제 */}
             {isConfirmedSettlement ? (
-              <button onClick={() => handleConfirmSettlement(false)}
+              <button type="button" onClick={() => handleConfirmSettlement(false)}
                 disabled={confirmingSettlement}
                 title={`확정 시각: ${booking?.settlement_confirmed_at?.slice(0,19).replace('T',' ') ?? ''}`}
                 className="px-4 py-2 text-[13px] bg-slate-100 text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-200 transition whitespace-nowrap">
                 ♻️ 정산확정됨 · 해제
               </button>
             ) : (
-              <button onClick={() => handleConfirmSettlement(true)}
+              <button type="button" onClick={() => handleConfirmSettlement(true)}
                 disabled={confirmingSettlement}
                 title="이 예약을 '정산 끝'으로 마킹 → 목록에서 기본 숨김"
                 className="px-4 py-2 text-[13px] bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition whitespace-nowrap font-semibold">
@@ -1595,7 +1595,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
               </button>
             )}
 
-            <button onClick={onClose}
+            <button type="button" onClick={onClose}
               className="px-4 py-2 text-[13px] text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
               닫기
             </button>

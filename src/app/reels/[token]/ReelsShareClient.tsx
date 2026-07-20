@@ -93,14 +93,14 @@ export default function ReelsShareClient({ reel }: Props) {
             {/* 좌우 네비게이션 */}
             {photos.length > 1 && (
               <>
-                <button
+                <button type="button"
                   onClick={prev}
                   className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-9 h-9 flex items-center justify-center hover:bg-black/70 transition"
                   aria-label="이전 사진"
                 >
                   ‹
                 </button>
-                <button
+                <button type="button"
                   onClick={next}
                   className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full w-9 h-9 flex items-center justify-center hover:bg-black/70 transition"
                   aria-label="다음 사진"
@@ -122,7 +122,7 @@ export default function ReelsShareClient({ reel }: Props) {
           {photos.length > 1 && (
             <div className="flex gap-1.5 mt-3">
               {photos.map((_, i) => (
-                <button
+                <button type="button"
                   key={i}
                   onClick={() => setCurrentIdx(i)}
                   className={`w-2 h-2 rounded-full transition-all ${
@@ -138,7 +138,7 @@ export default function ReelsShareClient({ reel }: Props) {
           {photos.length > 1 && (
             <div className="flex gap-2 mt-3 w-full overflow-x-auto pb-1 scrollbar-hide">
               {photos.map((photo, i) => (
-                <button
+                <button type="button"
                   key={i}
                   onClick={() => setCurrentIdx(i)}
                   className={`flex-shrink-0 relative w-14 h-14 rounded-lg overflow-hidden border-2 transition ${
@@ -173,7 +173,7 @@ export default function ReelsShareClient({ reel }: Props) {
         </div>
 
         {/* 인스타그램 공유 버튼 */}
-        <button
+        <button type="button"
           onClick={handleShare}
           disabled={sharing}
           className="w-full bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 text-white font-semibold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
