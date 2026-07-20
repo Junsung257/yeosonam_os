@@ -81,7 +81,7 @@ export default function JarvisQuickAsk({
   if (compact) {
     return (
       <div className="relative">
-        <button
+        <button type="button"
           onClick={() => { setOpen(!open); setResult(null); setError(null) }}
           className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-admin-surface-hover transition-colors text-admin-muted hover:text-brand"
           title="자비스에게 물어보기"
@@ -94,7 +94,7 @@ export default function JarvisQuickAsk({
               <span className="text-[13px] font-semibold text-admin-text">
                 {contentType ? `${AGENT_CHANNEL[contentType] ?? ''} 자비스` : '자비스'}
               </span>
-              <button onClick={() => setOpen(false)} className="text-admin-muted hover:text-admin-text">
+              <button type="button" onClick={() => setOpen(false)} className="text-admin-muted hover:text-admin-text">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -158,7 +158,7 @@ function QuickAskBody({
       {showSuggestions && suggestions.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {suggestions.map((s) => (
-            <button
+            <button type="button"
               key={s}
               onClick={() => { setInput(s); onAsk() }}
               className="text-[11px] px-2 py-1 rounded-full border border-border text-admin-muted hover:text-brand hover:border-brand/30 transition-colors bg-admin-surface"
@@ -185,7 +185,7 @@ function QuickAskBody({
           className="flex-1 resize-none border border-border rounded-md px-2.5 py-1.5 text-[12px] bg-admin-surface text-admin-text focus:outline-none focus:border-brand transition-colors min-h-[32px] max-h-[80px]"
           rows={1}
         />
-        <button
+        <button type="button"
           onClick={onAsk}
           disabled={loading || !input.trim()}
           className="w-7 h-7 flex items-center justify-center rounded-md bg-brand text-white hover:bg-brand-dark disabled:opacity-40 transition-colors shrink-0"

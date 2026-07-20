@@ -57,7 +57,7 @@ export default function LeadsPageClient() {
           <h1 className="text-2xl font-bold text-gray-900">예약문의 / 상담신청</h1>
           <p className="text-sm text-gray-500 mt-1">모바일 랜딩 + 챗봇 문의 통합 노출 (최신순, 500건 한도)</p>
         </div>
-        <button
+        <button type="button"
           onClick={load}
           className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium"
         >
@@ -67,7 +67,7 @@ export default function LeadsPageClient() {
 
       <div className="flex gap-2 mb-4">
         {(['all', 'lead', 'qa', 'rfq'] as Filter[]).map(f => (
-          <button
+          <button type="button"
             key={f}
             onClick={() => setFilter(f)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${

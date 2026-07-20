@@ -82,7 +82,7 @@ export default function TmpPipelinePage() {
           >
             + 밴드 임포트
           </Link>
-          <button
+          <button type="button"
             onClick={() => void load()}
             className="px-4 py-2 border border-admin-border-strong text-admin-muted rounded-lg text-sm hover:bg-admin-bg transition"
           >
@@ -110,7 +110,7 @@ export default function TmpPipelinePage() {
       {/* 필터 */}
       <div className="flex gap-2">
         {Object.entries(FILTER_OPTIONS).map(([key, label]) => (
-          <button
+          <button type="button"
             key={key}
             onClick={() => setSource(key)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
