@@ -606,13 +606,13 @@ export default function PackageReviewPage() {
                   </div>
                   {!isEditing && (
                     <div className="flex flex-col gap-1 flex-shrink-0">
-                      <button onClick={() => startEdit(fieldPath)}
+                      <button type="button" onClick={() => startEdit(fieldPath)}
                         className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium">
                         ✏️ 직접 입력
                       </button>
                       {/* N4 박제: hotel 필드 면 마스터 검색 버튼 */}
                       {fieldPath.endsWith('.hotel') && (
-                        <button
+                        <button type="button"
                           onClick={() => {
                             setHotelSearchOpen(fieldPath);
                             setHotelSearchQ(pkg?.destination ?? '');
@@ -636,15 +636,15 @@ export default function PackageReviewPage() {
                         className="flex-1 text-xs border rounded-lg px-3 py-1.5"
                         placeholder="호텔명 또는 지역 (예: 하이탠 / 칭다오)"
                       />
-                      <button onClick={() => searchHotels(hotelSearchQ, pkg?.destination ?? '')}
+                      <button type="button" onClick={() => searchHotels(hotelSearchQ, pkg?.destination ?? '')}
                         className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700">검색</button>
-                      <button onClick={() => setHotelSearchOpen(null)}
+                      <button type="button" onClick={() => setHotelSearchOpen(null)}
                         className="px-3 py-1 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">닫기</button>
                     </div>
                     {hotelResults.length > 0 ? (
                       <div className="space-y-1.5 max-h-64 overflow-y-auto">
                         {hotelResults.map(h => (
-                          <button
+                          <button type="button"
                             key={h.id}
                             onClick={() => applyHotel(fieldPath, h)}
                             disabled={saving}
@@ -675,11 +675,11 @@ export default function PackageReviewPage() {
                       aria-label={`${fieldPath} 추가 입력`}
                     />
                     <div className="flex gap-2 mt-2 items-center">
-                      <button onClick={() => saveEdit(fieldPath)} disabled={saving}
+                      <button type="button" onClick={() => saveEdit(fieldPath)} disabled={saving}
                         className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
                         {saving ? '저장 중...' : '저장 + Reflexion 적립'}
                       </button>
-                      <button onClick={() => setEditingField(null)}
+                      <button type="button" onClick={() => setEditingField(null)}
                         className="px-3 py-1.5 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">취소</button>
                     </div>
                   </div>
@@ -725,7 +725,7 @@ export default function PackageReviewPage() {
                     </div>
                   </div>
                   {!isEditing && (
-                    <button onClick={() => startEdit(fieldPath)}
+                    <button type="button" onClick={() => startEdit(fieldPath)}
                       className="flex-shrink-0 px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700 font-medium">
                       ✏️ 정답 입력
                     </button>
@@ -742,12 +742,12 @@ export default function PackageReviewPage() {
                       aria-label={`${fieldPath} 정답 값`}
                     />
                     <div className="flex gap-2 mt-2 items-center">
-                      <button onClick={() => saveEdit(fieldPath)}
+                      <button type="button" onClick={() => saveEdit(fieldPath)}
                         disabled={saving}
                         className="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                         {saving ? '저장 중...' : '저장 + Reflexion 적립'}
                       </button>
-                      <button onClick={() => setEditingField(null)}
+                      <button type="button" onClick={() => setEditingField(null)}
                         className="px-3 py-1.5 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">취소</button>
                       <span className="text-[10px] text-admin-muted ml-auto">
                         저장 시 PATCH /api/packages → extractions_corrections 자동 적립 → 다음 등록부터 자동 회피

@@ -378,13 +378,13 @@ export default function LedgerPage() {
           <p className="text-admin-base text-admin-muted mt-0.5">실계좌 현금흐름 / 자본금 / 가용자산 분석</p>
         </div>
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={runAIScan}
             className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-white border border-admin-border-strong text-admin-text-2 hover:bg-admin-bg transition"
           >
             <Sparkles className="w-3.5 h-3.5" /> AI 클리닝
           </button>
-          <button
+          <button type="button"
             onClick={loadAll}
             disabled={loading}
             className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-white border border-admin-border-strong text-admin-text-2 hover:bg-admin-bg transition"
@@ -481,7 +481,7 @@ export default function LedgerPage() {
         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-admin-lg font-semibold text-admin-text-2">자본금 관리</h2>
-            <button
+            <button type="button"
               onClick={() => setShowCapForm(v => !v)}
               className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
             >
@@ -523,7 +523,7 @@ export default function LedgerPage() {
                 onChange={e => setCapitalForm(p => ({ ...p, date: e.target.value }))}
                 className="w-full text-admin-base border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
-              <button
+              <button type="button"
                 onClick={handleAddCapital}
                 className="w-full bg-blue-600 text-white text-admin-base rounded-lg py-2 hover:bg-blue-700 transition"
               >
@@ -542,7 +542,7 @@ export default function LedgerPage() {
                     <p className="font-medium text-admin-text-2">{fmtW(e.amount)}</p>
                     <p className="text-admin-muted">{e.entry_date} {e.note && `/ ${e.note}`}</p>
                   </div>
-                  <button onClick={() => handleRemoveCapital(e.id, e.amount)} className="text-admin-muted-2 hover:text-red-400">
+                  <button type="button" onClick={() => handleRemoveCapital(e.id, e.amount)} className="text-admin-muted-2 hover:text-red-400">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -563,7 +563,7 @@ export default function LedgerPage() {
             { id: 'expense',  label: '출금', icon: <ArrowUpCircle className="w-3.5 h-3.5" /> },
             { id: 'trash',    label: `휴지통 ${trashTxs.length > 0 ? `(${trashTxs.length})` : ''}`, icon: <Trash2 className="w-3.5 h-3.5" /> },
           ].map(t => (
-            <button
+            <button type="button"
               key={t.id}
               onClick={() => { setTab(t.id as Tab); setSelected(new Set()); }}
               className={`flex items-center gap-1.5 text-xs px-3 py-2.5 border-b-2 font-medium transition whitespace-nowrap ${
@@ -582,7 +582,7 @@ export default function LedgerPage() {
 
           {/* 벌크 액션 버튼 */}
           {tab !== 'trash' && selected.size > 0 && (
-            <button
+            <button type="button"
               onClick={() => handleTrash([...selected])}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition mr-1"
             >
@@ -591,13 +591,13 @@ export default function LedgerPage() {
           )}
           {tab === 'trash' && selected.size > 0 && (
             <div className="flex gap-1.5 mr-1">
-              <button
+              <button type="button"
                 onClick={() => handleRestore([...selected])}
                 className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-white text-admin-text-2 border border-admin-border-strong hover:bg-admin-bg transition"
               >
                 <RotateCcw className="w-3.5 h-3.5" /> 복원
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleHardDelete([...selected])}
                 className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition"
               >
@@ -641,7 +641,7 @@ export default function LedgerPage() {
               <thead>
                 <tr className="border-b-2 border-admin-border">
                   <th className="px-3 py-3 w-8 bg-admin-bg/80 backdrop-blur-sm">
-                    <button onClick={toggleAll} className="text-admin-muted-2 hover:text-admin-text-2">
+                    <button type="button" onClick={toggleAll} className="text-admin-muted-2 hover:text-admin-text-2">
                       {selected.size > 0 && selected.size === (tab === 'trash' ? trashTxs : displayTxs).length
                         ? <CheckSquare className="w-4 h-4 text-blue-600" />
                         : <Square className="w-4 h-4" />
@@ -658,7 +658,7 @@ export default function LedgerPage() {
                 {(tab === 'trash' ? trashTxs : displayTxs).map(tx => (
                   <tr key={tx.id} className={`border-b border-admin-border-mid hover:bg-admin-bg ${selected.has(tx.id) ? 'bg-blue-50' : ''}`}>
                     <td className="px-3 py-2">
-                      <button onClick={() => toggleSelect(tx.id)} className="text-admin-muted-2 hover:text-blue-600">
+                      <button type="button" onClick={() => toggleSelect(tx.id)} className="text-admin-muted-2 hover:text-blue-600">
                         {selected.has(tx.id)
                           ? <CheckSquare className="w-4 h-4 text-blue-600" />
                           : <Square className="w-4 h-4" />
@@ -701,14 +701,14 @@ export default function LedgerPage() {
                     <td className="px-3 py-2 text-right">
                       {tab === 'trash' ? (
                         <div className="flex gap-1.5 justify-end">
-                          <button
+                          <button type="button"
                             onClick={() => handleRestore([tx.id])}
                             title="복원"
                             className="p-1.5 rounded-lg text-admin-muted-2 hover:text-blue-600 hover:bg-blue-50 transition"
                           >
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => handleHardDelete([tx.id])}
                             title="영구 삭제"
                             className="p-1.5 rounded-lg text-admin-muted-2 hover:text-red-600 hover:bg-red-50 transition"
@@ -717,7 +717,7 @@ export default function LedgerPage() {
                           </button>
                         </div>
                       ) : (
-                        <button
+                        <button type="button"
                           onClick={() => handleTrash([tx.id])}
                           title="휴지통으로 이동"
                           className="p-1.5 rounded-lg text-admin-muted-2 hover:text-red-500 hover:bg-red-50 transition"
@@ -760,7 +760,7 @@ export default function LedgerPage() {
                   <Sparkles className="w-4 h-4 text-purple-600" />
                   <h2 className="text-admin-lg font-semibold text-admin-text-2">AI 스마트 클리닝 결과</h2>
                 </div>
-                <button onClick={() => setShowAI(false)} className="text-admin-muted-2 hover:text-admin-muted">
+                <button type="button" onClick={() => setShowAI(false)} className="text-admin-muted-2 hover:text-admin-muted">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -795,7 +795,7 @@ export default function LedgerPage() {
             {undoInfo.ids.length}건 이동 중
             <span className="text-admin-muted-2 ml-1">({undoInfo.countdown}초 후 확정)</span>
           </span>
-          <button
+          <button type="button"
             onClick={handleUndo}
             className="text-blue-400 hover:text-blue-300 text-admin-base font-semibold ml-2 transition"
           >
