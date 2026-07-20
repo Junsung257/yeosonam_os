@@ -125,6 +125,34 @@ describe('blog-structure-audit', () => {
     expect(report.issues.map((issue) => issue.code)).not.toContain('checklist_shape_invalid');
   });
 
+  it('does not infer checklist intent from incidental prose in a budget article', () => {
+    const report = inspectBlogStructure({
+      rawMarkdown: [
+        '# 삿포로 식비 예산',
+        '',
+        '표와 체크리스트에서 필요한 부분만 빠르게 비교하세요.',
+      ].join('\n'),
+      renderedHtml: '<article><h1>삿포로 식비 예산</h1><p>표와 체크리스트에서 필요한 부분만 빠르게 비교하세요.</p></article>',
+      title: '삿포로 식비 예산 현지 맛집 비용 가이드 2026',
+      slug: 'sapporo-food-budget',
+      primaryKeyword: '삿포로 식비 예산',
+      angleType: 'food_budget',
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('checklist_shape_invalid');
+  });
+
+  it('still blocks a missing checklist section when metadata declares checklist intent', () => {
+    const report = inspectBlogStructure({
+      rawMarkdown: '# 태국 입국 준비\n\n필요한 서류를 확인합니다.',
+      renderedHtml: '<article><h1>태국 입국 준비</h1><p>필요한 서류를 확인합니다.</p></article>',
+      title: '태국 입국 서류 체크리스트',
+      primaryKeyword: '태국 입국 체크리스트',
+    });
+
+    expect(report.issues.map((issue) => issue.code)).toContain('checklist_shape_invalid');
+  });
+
   it('blocks sales-product wording in weather guide articles', () => {
     const html = `
       <article>

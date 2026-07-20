@@ -337,8 +337,8 @@ export default function ContentHubPage() {
           {/* 좌측: 상품 + 앵글 */}
           <div className="space-y-4">
             <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
-              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">상품 선택</label>
-              <select value={selectedPkgId} onChange={e => setSelectedPkgId(e.target.value)}
+              <label htmlFor="content-hub-package-select" className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">상품 선택</label>
+              <select id="content-hub-package-select" value={selectedPkgId} onChange={e => setSelectedPkgId(e.target.value)}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
                 <option value="">상품 선택...</option>
                 {packages.map(p => (
@@ -356,10 +356,10 @@ export default function ContentHubPage() {
             </div>
 
             <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
-              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">앵글 선택 (다중)</label>
-              <div className="grid grid-cols-2 gap-2">
+              <p id="content-hub-angle-group" className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">앵글 선택 (다중)</p>
+              <div className="grid grid-cols-2 gap-2" aria-labelledby="content-hub-angle-group">
                 {(Object.entries(ANGLE_PRESETS) as [AngleType, typeof ANGLE_PRESETS[AngleType]][]).map(([key, preset]) => (
-                  <button type="button" key={key} onClick={() => {
+                  <button type="button" key={key} aria-pressed={selectedAngles.has(key)} onClick={() => {
                     const next = new Set(selectedAngles);
                     next.has(key) ? next.delete(key) : next.add(key);
                     setSelectedAngles(next);
@@ -377,8 +377,8 @@ export default function ContentHubPage() {
           {/* 우측: 채널 + 옵션 */}
           <div className="space-y-4">
             <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
-              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">채널 선택</label>
-              <div className="space-y-2">
+              <p id="content-hub-channel-group" className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">채널 선택</p>
+              <div className="space-y-2" aria-labelledby="content-hub-channel-group">
                 {(Object.entries(CHANNEL_PRESETS) as [Channel, typeof CHANNEL_PRESETS[Channel]][]).map(([key, preset]) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={selectedChannels.has(key)}
@@ -397,10 +397,10 @@ export default function ContentHubPage() {
 
             {/* 디자인 템플릿 선택 */}
             <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
-              <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">디자인 템플릿</label>
-              <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+              <p id="content-hub-template-group" className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">디자인 템플릿</p>
+              <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto" aria-labelledby="content-hub-template-group">
                 {TEMPLATE_PRESETS.map(t => (
-                  <button type="button" key={t.id} onClick={() => setTemplateId(t.id)}
+                  <button type="button" key={t.id} aria-pressed={templateId === t.id} onClick={() => setTemplateId(t.id)}
                     className={`p-2.5 rounded border text-left transition ${
                       templateId === t.id ? 'border-blue-600 bg-blue-50' : 'border-admin-border-mid hover:bg-admin-bg'
                     }`}>
@@ -422,10 +422,10 @@ export default function ContentHubPage() {
 
             <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">이미지 비율</label>
-                <div className="flex gap-2">
+                <p id="content-hub-ratio-group" className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">이미지 비율</p>
+                <div className="flex gap-2" aria-labelledby="content-hub-ratio-group">
                   {(Object.entries(RATIO_SIZE) as [ImageRatio, typeof RATIO_SIZE[ImageRatio]][]).map(([key, v]) => (
-                    <button type="button" key={key} onClick={() => setRatio(key)}
+                    <button type="button" key={key} aria-pressed={ratio === key} onClick={() => setRatio(key)}
                       className={`px-3 py-1.5 rounded text-admin-xs transition ${ratio === key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                       {v.label}
                     </button>
@@ -434,16 +434,16 @@ export default function ContentHubPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">
+                <label htmlFor="content-hub-slide-count" className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">
                   슬라이드 개수: <span className="text-blue-600 font-bold">{slideCount}장</span>
                 </label>
-                <input type="range" min={3} max={10} value={slideCount} onChange={e => setSlideCount(parseInt(e.target.value))}
+                <input id="content-hub-slide-count" type="range" min={3} max={10} value={slideCount} onChange={e => setSlideCount(parseInt(e.target.value))}
                   className="w-full accent-blue-600" />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">톤</label>
-                <select value={tone} onChange={e => setTone(e.target.value)}
+                <label htmlFor="content-hub-tone" className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">톤</label>
+                <select id="content-hub-tone" value={tone} onChange={e => setTone(e.target.value)}
                   className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm">
                   <option value="professional">전문가</option>
                   <option value="casual">캐주얼</option>
@@ -453,8 +453,8 @@ export default function ContentHubPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">추가 지시사항</label>
-                <textarea value={extraPrompt} onChange={e => setExtraPrompt(e.target.value)}
+                <label htmlFor="content-hub-extra-prompt" className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">추가 지시사항</label>
+                <textarea id="content-hub-extra-prompt" value={extraPrompt} onChange={e => setExtraPrompt(e.target.value)}
                   placeholder="AI에게 추가로 지시할 내용... (예: 5성급 호텔 강조)"
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-xs h-16 resize-none" />
               </div>
@@ -531,7 +531,17 @@ export default function ContentHubPage() {
                       {/* 요소들 */}
                       {activeSlide.elements.map((el, elIdx) => (
                         <div key={el.id}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`${el.type === 'text' ? '텍스트' : '이미지'} 요소 ${elIdx + 1} 선택`}
+                          aria-pressed={activeElementIdx === elIdx}
                           onClick={() => setActiveElementIdx(elIdx)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setActiveElementIdx(elIdx);
+                            }
+                          }}
                           style={{
                             position: 'absolute',
                             left: `${el.x}%`, top: `${el.y}%`,
@@ -583,8 +593,8 @@ export default function ContentHubPage() {
 
                     {/* 폰트 */}
                     <div>
-                      <label className="block text-[10px] text-admin-muted-2 mb-1">폰트</label>
-                      <select value={activeElement.fontFamily || 'Pretendard'} onChange={e => updateElement('fontFamily', e.target.value)}
+                      <label htmlFor="content-hub-element-font" className="block text-[10px] text-admin-muted-2 mb-1">폰트</label>
+                      <select id="content-hub-element-font" value={activeElement.fontFamily || 'Pretendard'} onChange={e => updateElement('fontFamily', e.target.value)}
                         className="w-full border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs">
                         {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
                       </select>
@@ -592,10 +602,10 @@ export default function ContentHubPage() {
 
                     {/* 크기 */}
                     <div>
-                      <label className="block text-[10px] text-admin-muted-2 mb-1">
+                      <label htmlFor="content-hub-element-font-size" className="block text-[10px] text-admin-muted-2 mb-1">
                         크기 <span className="text-blue-600 font-bold">{activeElement.fontSize || 32}px</span>
                       </label>
-                      <input type="range" min={12} max={96} value={activeElement.fontSize || 32}
+                      <input id="content-hub-element-font-size" type="range" min={12} max={96} value={activeElement.fontSize || 32}
                         onChange={e => updateElement('fontSize', parseInt(e.target.value))}
                         className="w-full accent-blue-600" />
                     </div>
@@ -608,7 +618,7 @@ export default function ContentHubPage() {
                         { key: 'textDecoration', active: activeElement.textDecoration === 'underline', on: 'underline', off: 'none', label: 'U' },
                         { key: 'textDecoration', active: activeElement.textDecoration === 'line-through', on: 'line-through', off: 'none', label: 'S' },
                       ].map((btn, i) => (
-                        <button type="button" key={i} onClick={() => updateElement(btn.key, btn.active ? btn.off : btn.on)}
+                        <button type="button" key={i} aria-label={`텍스트 ${btn.label} 스타일 ${btn.active ? '해제' : '적용'}`} aria-pressed={btn.active} onClick={() => updateElement(btn.key, btn.active ? btn.off : btn.on)}
                           className={`w-8 h-8 rounded border text-admin-sm font-bold transition ${
                             btn.active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-admin-muted border-admin-border-mid hover:bg-admin-bg'
                           }`}
@@ -621,7 +631,7 @@ export default function ContentHubPage() {
                     {/* 정렬 */}
                     <div className="flex gap-1">
                       {(['left', 'center', 'right'] as const).map(align => (
-                        <button type="button" key={align} onClick={() => updateElement('textAlign', align)}
+                        <button type="button" key={align} aria-label={`텍스트 ${align === 'left' ? '왼쪽' : align === 'center' ? '가운데' : '오른쪽'} 정렬`} aria-pressed={activeElement.textAlign === align} onClick={() => updateElement('textAlign', align)}
                           className={`flex-1 py-1.5 rounded border text-[11px] transition ${
                             activeElement.textAlign === align ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-admin-muted border-admin-border-mid'
                           }`}>
@@ -632,14 +642,14 @@ export default function ContentHubPage() {
 
                     {/* 글자 색상 */}
                     <div>
-                      <label className="block text-[10px] text-admin-muted-2 mb-1">글자 색상</label>
-                      <div className="flex flex-wrap gap-1.5">
+                      <p id="content-hub-element-color-group" className="block text-[10px] text-admin-muted-2 mb-1">글자 색상</p>
+                      <div className="flex flex-wrap gap-1.5" aria-labelledby="content-hub-element-color-group">
                         {PALETTE.map(c => (
-                          <button type="button" key={c} onClick={() => updateElement('color', c)}
+                          <button type="button" key={c} aria-label={`글자 색상 ${c} 선택`} aria-pressed={activeElement.color === c} onClick={() => updateElement('color', c)}
                             className={`w-6 h-6 rounded-full border-2 transition ${activeElement.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                             style={{ backgroundColor: c }} />
                         ))}
-                        <input type="color" value={activeElement.color || '#ffffff'}
+                        <input type="color" aria-label="사용자 지정 글자 색상" value={activeElement.color || '#ffffff'}
                           onChange={e => updateElement('color', e.target.value)}
                           className="w-6 h-6 rounded cursor-pointer" />
                       </div>
@@ -647,9 +657,9 @@ export default function ContentHubPage() {
 
                     {/* 배경 색상 (텍스트 배경) */}
                     <div>
-                      <label className="block text-[10px] text-admin-muted-2 mb-1">텍스트 배경</label>
+                      <label htmlFor="content-hub-element-bg-color" className="block text-[10px] text-admin-muted-2 mb-1">텍스트 배경</label>
                       <div className="flex items-center gap-2">
-                        <input type="color" value={activeElement.bgColor || '#000000'}
+                        <input id="content-hub-element-bg-color" type="color" value={activeElement.bgColor || '#000000'}
                           onChange={e => updateElement('bgColor', e.target.value)}
                           className="w-8 h-8 rounded cursor-pointer" />
                         <button type="button" onClick={() => updateElement('bgColor', undefined)}
@@ -662,17 +672,17 @@ export default function ContentHubPage() {
                     <p className="text-[11px] font-semibold text-admin-muted uppercase">슬라이드 배경</p>
 
                     <div>
-                      <label className="block text-[10px] text-admin-muted-2 mb-1">배경색</label>
-                      <input type="color" value={activeSlide?.bgColor || '#1a1a2e'}
+                      <label htmlFor="content-hub-slide-bg-color" className="block text-[10px] text-admin-muted-2 mb-1">배경색</label>
+                      <input id="content-hub-slide-bg-color" type="color" value={activeSlide?.bgColor || '#1a1a2e'}
                         onChange={e => updateSlideBg('bgColor', e.target.value)}
                         className="w-10 h-10 rounded cursor-pointer" />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-admin-muted-2 mb-1">
+                      <label htmlFor="content-hub-slide-bg-opacity" className="block text-[10px] text-admin-muted-2 mb-1">
                         오버레이 투명도: {activeSlide?.bgOpacity ?? 70}%
                       </label>
-                      <input type="range" min={0} max={100} value={activeSlide?.bgOpacity ?? 70}
+                      <input id="content-hub-slide-bg-opacity" type="range" min={0} max={100} value={activeSlide?.bgOpacity ?? 70}
                         onChange={e => updateSlideBg('bgOpacity', parseInt(e.target.value))}
                         className="w-full accent-blue-600" />
                     </div>
@@ -701,8 +711,9 @@ export default function ContentHubPage() {
           {activeSet.channel === 'naver_blog' && (
             <div className="space-y-4">
               <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
-                <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">네이버 블로그 포스팅</p>
+                <label htmlFor="content-hub-blog-html" className="block text-admin-xs font-semibold text-admin-text-2 mb-2">네이버 블로그 포스팅</label>
                 <textarea
+                  id="content-hub-blog-html"
                   value={activeSet.blogHtml || ''}
                   onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, blogHtml: e.target.value } : s))}
                   className="w-full h-96 border border-admin-border-mid rounded p-3 text-admin-sm font-mono resize-y focus:outline-none focus:ring-1 focus:ring-[#005d90]"
@@ -713,10 +724,11 @@ export default function ContentHubPage() {
               <div className="bg-white border border-indigo-200 rounded-lg p-5 space-y-3">
                 <p className="text-admin-xs font-semibold text-indigo-700 mb-1">블로그 SEO 설정 (공개 발행 시 필수)</p>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그 (영문/숫자/-)</label>
+                  <label htmlFor="content-hub-blog-slug" className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그 (영문/숫자/-)</label>
                   <div className="flex items-center gap-1">
                     <span className="text-[11px] text-admin-muted-2">/blog/</span>
                     <input
+                      id="content-hub-blog-slug"
                       value={activeSet.slug || ''}
                       onChange={e => {
                         const slug = e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-');
@@ -728,8 +740,9 @@ export default function ContentHubPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 (검색 결과에 표시)</label>
+                  <label htmlFor="content-hub-blog-seo-title" className="block text-[10px] text-admin-muted-2 mb-1">SEO 제목 (검색 결과에 표시)</label>
                   <input
+                    id="content-hub-blog-seo-title"
                     value={activeSet.seoTitle || ''}
                     onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, seoTitle: e.target.value } : s))}
                     placeholder="방콕 5일 가성비 여행 추천 | 2026 최신 가이드"
@@ -739,8 +752,9 @@ export default function ContentHubPage() {
                   <p className="text-[10px] text-admin-muted-2 mt-0.5">{(activeSet.seoTitle || '').length}/60자</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명</label>
+                  <label htmlFor="content-hub-blog-seo-description" className="block text-[10px] text-admin-muted-2 mb-1">SEO 설명</label>
                   <textarea
+                    id="content-hub-blog-seo-description"
                     value={activeSet.seoDescription || ''}
                     onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, seoDescription: e.target.value } : s))}
                     placeholder="방콕 5일 패키지 여행의 모든 것. 항공+호텔+관광 포함, 가성비 추천 일정..."
@@ -750,8 +764,9 @@ export default function ContentHubPage() {
                   <p className="text-[10px] text-admin-muted-2 mt-0.5">{(activeSet.seoDescription || '').length}/160자</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지 URL (선택)</label>
+                  <label htmlFor="content-hub-blog-og-image" className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지 URL (선택)</label>
                   <input
+                    id="content-hub-blog-og-image"
                     value={activeSet.ogImageUrl || ''}
                     onChange={e => setCreativeSets(prev => prev.map((s, i) => i === activeSetIdx ? { ...s, ogImageUrl: e.target.value } : s))}
                     placeholder="https://images.pexels.com/..."
@@ -768,8 +783,8 @@ export default function ContentHubPage() {
               <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">구글 검색광고 카피</p>
               {activeSet.adCopy.headlines.map((h, i) => (
                 <div key={i}>
-                  <label className="text-[10px] text-admin-muted-2">제목 {i + 1} (30자)</label>
-                  <input value={h} onChange={e => {
+                  <label htmlFor={`content-hub-ad-headline-${i}`} className="text-[10px] text-admin-muted-2">제목 {i + 1} (30자)</label>
+                  <input id={`content-hub-ad-headline-${i}`} value={h} onChange={e => {
                     const newHeadlines = [...(activeSet.adCopy?.headlines || [])];
                     newHeadlines[i] = e.target.value;
                     setCreativeSets(prev => prev.map((s, si) => si === activeSetIdx ? { ...s, adCopy: { ...s.adCopy!, headlines: newHeadlines } } : s));
@@ -778,8 +793,8 @@ export default function ContentHubPage() {
               ))}
               {activeSet.adCopy.descriptions.map((d, i) => (
                 <div key={i}>
-                  <label className="text-[10px] text-admin-muted-2">설명 {i + 1} (90자)</label>
-                  <textarea value={d} onChange={e => {
+                  <label htmlFor={`content-hub-ad-description-${i}`} className="text-[10px] text-admin-muted-2">설명 {i + 1} (90자)</label>
+                  <textarea id={`content-hub-ad-description-${i}`} value={d} onChange={e => {
                     const newDescs = [...(activeSet.adCopy?.descriptions || [])];
                     newDescs[i] = e.target.value;
                     setCreativeSets(prev => prev.map((s, si) => si === activeSetIdx ? { ...s, adCopy: { ...s.adCopy!, descriptions: newDescs } } : s));
