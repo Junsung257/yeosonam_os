@@ -126,7 +126,7 @@ export default function AffiliateCardNewsDetailPage() {
             목록
           </Link>
           <h1 className="text-sm font-semibold text-gray-900 truncate max-w-[200px]">{cardNews.title}</h1>
-          <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
+          <button type="button" onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
         </div>
       </header>
 
@@ -203,14 +203,14 @@ export default function AffiliateCardNewsDetailPage() {
 
           {/* 슬라이드 이동 버튼 */}
           <div className="flex justify-between px-4 py-3 border-t">
-            <button
+            <button type="button"
               onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
               disabled={currentSlide === 0}
               className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-30"
             >
               이전
             </button>
-            <button
+            <button type="button"
               onClick={() => setCurrentSlide(Math.min(slides.length - 1, currentSlide + 1))}
               disabled={currentSlide === slides.length - 1}
               className="text-xs px-3 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-30"
@@ -235,7 +235,7 @@ export default function AffiliateCardNewsDetailPage() {
           </div>
 
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={handleShare}
               className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 transition-colors"
             >

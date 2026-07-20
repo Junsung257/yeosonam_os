@@ -207,14 +207,14 @@ export default function InfluencerProducts() {
           onChange={e => setSearch(e.target.value)}
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm flex-1 min-w-[200px] focus:ring-2 focus:ring-blue-500 outline-none"
         />
-        <button
+        <button type="button"
           onClick={() => setFilter('all')}
           className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
         >
           전체
         </button>
         {destinations.map(d => (
-          <button
+          <button type="button"
             key={d}
             onClick={() => setFilter(d!)}
             className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${filter === d ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
@@ -340,7 +340,7 @@ export default function InfluencerProducts() {
                     {/* 기존 링크 표시 (정식 URL) */}
                     <div className="bg-gray-50 rounded-lg px-3 py-2 flex items-center gap-2">
                       <span className="text-xs text-gray-400 truncate flex-1 font-mono">{existingLink.short_url}</span>
-                      <button
+                      <button type="button"
                         onClick={() => copyLink(existingLink.short_url, pkg.id)}
                         className={`shrink-0 px-2 py-1 rounded text-xs font-medium transition-colors ${
                           isCopied ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
@@ -352,7 +352,7 @@ export default function InfluencerProducts() {
 
                     {/* 추가 공유 옵션 — 단축링크 / 임베드 코드 */}
                     <div className="grid grid-cols-2 gap-1.5">
-                      <button
+                      <button type="button"
                         onClick={() => {
                           const baseUrl = window.location.origin;
                           const short = `${baseUrl}/r/${encodedCode}/${encodeURIComponent(pkg.id)}`;
@@ -363,7 +363,7 @@ export default function InfluencerProducts() {
                       >
                         🔗 단축링크 + OG
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => {
                           const baseUrl = window.location.origin;
                           const embed = `<iframe src="${baseUrl}/embed/pkg/${encodeURIComponent(pkg.id)}?ref=${encodedCode}" width="100%" height="300" frameborder="0" loading="lazy" style="border:0;border-radius:12px;"></iframe>`;
@@ -384,7 +384,7 @@ export default function InfluencerProducts() {
                     </div>
                   </div>
                 ) : (
-                  <button
+                  <button type="button"
                     onClick={() => createLink(pkg)}
                     disabled={isCreating}
                     className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
