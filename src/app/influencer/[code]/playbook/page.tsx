@@ -87,7 +87,7 @@ export default function InfluencerPlaybookPage() {
                 </div>
               ) : null}
               <div className="mt-2 flex gap-2">
-                <button
+                <button type="button"
                   className="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200"
                   onClick={() => copy(`${item.title}\n${item.summary}`, `best_${idx}`)}
                 >
@@ -112,7 +112,7 @@ export default function InfluencerPlaybookPage() {
               <p className="text-sm font-semibold text-gray-900">{s.title}</p>
               <p className="text-[11px] text-gray-500 mt-1">{s.category}</p>
               <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{s.script}</p>
-              <button
+              <button type="button"
                 className="mt-2 text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200"
                 onClick={() => copy(s.script, `script_${idx}`)}
               >

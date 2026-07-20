@@ -258,7 +258,7 @@ export default function CustomerDetailPage() {
                 </div>
               </div>
             </div>
-            <button onClick={startEdit} className="text-sm text-admin-muted hover:text-admin-text-2 border border-admin-border-mid px-3 py-1.5 rounded-lg">편집</button>
+            <button type="button" onClick={startEdit} className="text-sm text-admin-muted hover:text-admin-text-2 border border-admin-border-mid px-3 py-1.5 rounded-lg">편집</button>
           </div>
 
           {/* 통계 */}
@@ -266,7 +266,7 @@ export default function CustomerDetailPage() {
             <div className="text-center">
               <div className="flex items-center justify-center gap-1.5">
                 <p className="text-2xl font-bold text-blue-600">{(customer.mileage || 0).toLocaleString()}</p>
-                <button
+                <button type="button"
                   onClick={() => setMileageModal(true)}
                   className="text-admin-muted-2 hover:text-blue-500 transition text-sm leading-none"
                   title="마일리지 수동 조정"
@@ -372,7 +372,7 @@ export default function CustomerDetailPage() {
                         <p className="text-xs text-admin-muted mb-0.5">{fmtTime(n.created_at)}</p>
                         <p className="text-sm text-admin-text-2 whitespace-pre-wrap break-words leading-relaxed">{n.content}</p>
                       </div>
-                      <button
+                      <button type="button"
                         onClick={() => handleDeleteNote(n.id)}
                         className="opacity-0 group-hover:opacity-100 transition text-admin-border-mid hover:text-red-400 text-xs shrink-0 mt-0.5"
                         title="삭제"
@@ -487,7 +487,7 @@ export default function CustomerDetailPage() {
                 <label className="block text-xs font-medium text-admin-text-2 mb-1">증감 포인트 (음수 입력 시 차감)</label>
                 <div className="flex gap-2 mb-2">
                   {[100, 500, 1000, -100, -500].map(v => (
-                    <button key={v} onClick={() => setMileageDelta(String(v))}
+                    <button type="button" key={v} onClick={() => setMileageDelta(String(v))}
                       className={`text-xs px-2 py-1 rounded-lg border transition ${v > 0 ? 'border-blue-200 text-blue-600 hover:bg-blue-50' : 'border-red-200 text-red-500 hover:bg-red-50'}`}>
                       {v > 0 ? '+' : ''}{v}
                     </button>
@@ -516,11 +516,11 @@ export default function CustomerDetailPage() {
                 />
               </div>
               <div className="flex gap-3 pt-2">
-                <button onClick={handleMileage} disabled={mileageSaving || !mileageDelta || isNaN(parseInt(mileageDelta))}
+                <button type="button" onClick={handleMileage} disabled={mileageSaving || !mileageDelta || isNaN(parseInt(mileageDelta))}
                   className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-200 disabled:text-admin-muted-2 transition">
                   {mileageSaving ? '처리 중...' : '적용'}
                 </button>
-                <button onClick={() => { setMileageModal(false); setMileageDelta(''); setMileageReason(''); }}
+                <button type="button" onClick={() => { setMileageModal(false); setMileageDelta(''); setMileageReason(''); }}
                   className="flex-1 bg-admin-surface-2 text-admin-text-2 py-2 rounded-lg text-sm hover:bg-slate-200 transition">취소</button>
               </div>
             </div>

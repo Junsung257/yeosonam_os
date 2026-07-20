@@ -56,7 +56,7 @@ export default function AffiliateCardNewsListPage() {
           <Link href="/affiliate/card-news/new" className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600">
               + 새 카드뉴스
             </Link>
-            <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
+            <button type="button" onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600">로그아웃</button>
           </div>
         </div>
       </header>

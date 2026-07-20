@@ -114,7 +114,7 @@ export default function TenantBotProfilePage(props: { params: Promise<Promise<{ 
           <h1 className="text-2xl font-bold">자비스 봇 설정</h1>
           <p className="text-sm text-admin-muted mt-1">테넌트 ID: <code>{tenantId}</code></p>
         </div>
-        <button
+        <button type="button"
           onClick={handleSave}
           disabled={saving}
           className="px-4 py-2 bg-purple-600 text-white rounded disabled:opacity-50"

@@ -109,7 +109,7 @@ export default function CommandPalette({ bookings, onSelect }: CommandPalettePro
             </p>
           ) : (
             filtered.map((b, i) => (
-              <button key={b.id}
+              <button type="button" key={b.id}
                 onMouseEnter={() => setFocusIdx(i)}
                 onClick={() => { onSelect(b.id); setOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${i === focusIdx ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>

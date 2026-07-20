@@ -503,7 +503,7 @@ function ResultPanel({
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <ScoreBar score={b.score} />
-                  <button
+                  <button type="button"
                     disabled={confirming === b.id}
                     onClick={e => {
                       e.stopPropagation();
@@ -536,7 +536,7 @@ function ResultPanel({
               {result.operators?.[0] ? '' : (result.parsed.operatorAlias ? ' (텍스트만)' : '')}
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={onCreateAndMatch}
             disabled={creatingNew || !result.parsed.customerName}
             className="inline-block text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
@@ -555,7 +555,7 @@ function ResultPanel({
           <div className="font-semibold text-admin-text-2 mb-1.5 text-xs">비슷한 고객 후보</div>
           <div className="flex flex-wrap gap-1.5">
             {result.similarCustomers.map(name => (
-              <button
+              <button type="button"
                 key={name}
                 onClick={() =>
                   setInput(

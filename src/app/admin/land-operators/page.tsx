@@ -158,7 +158,7 @@ export default function LandOperatorsPage() {
                         className="h-8 border border-brand rounded-admin-sm px-2 text-admin-sm w-full bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus"
                       />
                     ) : (
-                      <button
+                      <button type="button"
                         onClick={() => startEdit(v)}
                         className="text-left hover:text-brand w-full group flex items-center gap-1.5 transition-colors"
                         title="클릭하여 수정"

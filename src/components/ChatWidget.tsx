@@ -86,7 +86,7 @@ export default function ChatWidget() {
     <>
       {/* 플로팅 버튼 */}
       {!isOpen && (
-        <button
+        <button type="button"
           onClick={toggleChat}
           className="fixed right-6 z-[60] hidden w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg items-center justify-center transition-all active:scale-95 bottom-24 md:bottom-6 md:flex"
           aria-label="채팅 열기"
@@ -109,7 +109,7 @@ export default function ChatWidget() {
                 <div className="text-[10px] text-white/80">AI가 도와드립니다</div>
               </div>
             </div>
-            <button
+            <button type="button"
               onClick={closeChat}
               className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition"
               aria-label="상담창 닫기"
@@ -190,7 +190,7 @@ export default function ChatWidget() {
                 rows={1}
                 onKeyDown={handleKeyDown}
               />
-              <button
+              <button type="button"
                 onClick={handleSend}
                 disabled={!inputValue.trim()}
                 className="w-10 h-10 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white rounded-xl flex items-center justify-center transition shrink-0"

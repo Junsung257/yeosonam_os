@@ -175,7 +175,7 @@ export default function ScoringFunnelPage() {
                   {a.message && <p className="text-[11px] text-admin-muted mt-0.5 leading-snug">{a.message}</p>}
                   <p className="text-[10px] text-admin-muted-2 mt-0.5">{new Date(a.created_at).toLocaleString('ko-KR')}</p>
                 </div>
-                <button onClick={() => ackAlert(a.id)} className="text-[11px] text-violet-600 hover:underline flex-shrink-0">✓ 확인</button>
+                <button type="button" onClick={() => ackAlert(a.id)} className="text-[11px] text-violet-600 hover:underline flex-shrink-0">✓ 확인</button>
               </li>
             ))}
             {alerts.length > 5 && <li className="text-[11px] text-admin-muted text-center">+{alerts.length - 5}개 더</li>}

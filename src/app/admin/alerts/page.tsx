@@ -191,7 +191,7 @@ export default function AdminAlertsPage() {
                     )}
                   </div>
                   {!acked && (
-                    <button
+                    <button type="button"
                       onClick={() => ack(a.id)}
                       className="h-8 px-3 text-admin-sm font-medium text-brand bg-admin-surface border border-admin-border-mid hover:bg-brand-light hover:border-brand rounded-admin-sm transition-colors flex-shrink-0"
                     >

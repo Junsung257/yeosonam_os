@@ -135,7 +135,7 @@ export default function BandImportPage() {
           <p className="text-xs text-admin-muted-2 mt-1">{rawText.length.toLocaleString()}자</p>
         </div>
 
-        <button
+        <button type="button"
           onClick={handleAnalyze}
           disabled={analyzing || !rawText.trim()}
           className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
@@ -182,14 +182,14 @@ export default function BandImportPage() {
           )}
 
           <div className="flex gap-3 pt-2">
-            <button
+            <button type="button"
               onClick={handleSave}
               disabled={saving}
               className="px-5 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition"
             >
               {saving ? '저장 중...' : '✅ 상품 등록'}
             </button>
-            <button
+            <button type="button"
               onClick={() => setPreview(null)}
               className="px-4 py-2.5 border border-admin-border-strong text-admin-muted rounded-lg text-sm hover:bg-admin-bg transition"
             >

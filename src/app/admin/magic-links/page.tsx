@@ -366,7 +366,7 @@ export default function AdminMagicLinksPage() {
           </div>
         </div>
 
-        <button
+        <button type="button"
           onClick={mint}
           disabled={minting}
           className="mt-5 w-full sm:w-auto bg-gray-900 text-white rounded-xl px-6 py-3 text-sm font-semibold hover:bg-gray-800 disabled:opacity-40"
@@ -418,7 +418,7 @@ export default function AdminMagicLinksPage() {
               placeholder="bookingId 필터"
               className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-mono w-64"
             />
-            <button
+            <button type="button"
               onClick={() => loadList(filterBookingId)}
               className="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg"
             >
@@ -476,7 +476,7 @@ export default function AdminMagicLinksPage() {
                     </td>
                     <td className="py-2 text-right">
                       {!t.revoked_at && !t.used_at && (
-                        <button
+                        <button type="button"
                           onClick={() => revoke(t.id)}
                           className="text-xs text-red-600 hover:underline"
                         >
@@ -515,7 +515,7 @@ function UrlCopyRow({ label, value }: { label: string; value: string }) {
         className="flex-1 bg-white border border-emerald-200 rounded px-2 py-1 text-[11px] font-mono"
         onClick={(e) => (e.target as HTMLInputElement).select()}
       />
-      <button
+      <button type="button"
         onClick={() => {
           navigator.clipboard.writeText(value);
         }}
