@@ -2150,6 +2150,7 @@ async function processQueueItem(
         .maybeSingle();
       if (
         replacementTargetError
+        || !replacementTarget
         || !isEligiblePrivateBlogRegenerationTarget(replacementTarget, privateRegenerationRequest)
       ) {
         const reason = 'private_regeneration_target_not_eligible';
