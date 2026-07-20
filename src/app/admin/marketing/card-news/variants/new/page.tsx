@@ -310,7 +310,7 @@ export default function CardNewsVariantsNewPage() {
           </div>
         )}
 
-        <button
+        <button type="button"
           onClick={handleGenerate}
           disabled={generating || !rawText.trim() || selectedAngles.length === 0}
           className="w-full rounded-lg bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700 disabled:opacity-50"

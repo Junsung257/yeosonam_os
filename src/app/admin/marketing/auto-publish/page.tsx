@@ -227,7 +227,7 @@ export default function AutoPublishPage() {
                   {selected.destination} | {selected.short_code}
                 </p>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setStep(1)}
                 className="text-xs text-admin-muted-2 hover:text-emerald-400 transition-colors underline"
               >
@@ -282,7 +282,7 @@ export default function AutoPublishPage() {
               </div>
             </div>
 
-            <button
+            <button type="button"
               onClick={submit}
               disabled={loading}
               className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-bold py-4 rounded-admin-md hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-admin-md shadow-emerald-500/20"
@@ -378,7 +378,7 @@ export default function AutoPublishPage() {
                         {d.slot_source === 'data_driven' ? '📊 데이터 기반 Best Time' : '⏰ 기본 시간대 스케줄링'}
                       </span>
                       {d.payload && (
-                        <button
+                        <button type="button"
                           onClick={() => setExpandedRow(expandedRow === d.id ? null : d.id)}
                           className="text-cyan-400 hover:underline font-semibold flex items-center gap-1"
                         >
@@ -424,7 +424,7 @@ export default function AutoPublishPage() {
             </div>
 
             <div className="flex justify-end pt-4">
-              <button
+              <button type="button"
                 onClick={reset}
                 className="bg-slate-700 hover:bg-slate-600 text-admin-border-mid px-6 py-2.5 rounded-admin-md text-sm font-semibold transition-all"
               >
