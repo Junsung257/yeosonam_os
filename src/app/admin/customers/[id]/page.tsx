@@ -52,6 +52,7 @@ export default function CustomerDetailPage() {
   const params = useParams();
   const id = getRouteParam(params?.id);
   const encodedId = id ? encodeURIComponent(id) : '';
+  const controlIdPrefix = `customer-detail-${encodedId || 'unknown'}`;
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -269,6 +270,7 @@ export default function CustomerDetailPage() {
                 <button type="button"
                   onClick={() => setMileageModal(true)}
                   className="text-admin-muted-2 hover:text-blue-500 transition text-sm leading-none"
+                  aria-label="마일리지 수동 조정 열기"
                   title="마일리지 수동 조정"
                 >
                   ✏️
@@ -375,6 +377,7 @@ export default function CustomerDetailPage() {
                       <button type="button"
                         onClick={() => handleDeleteNote(n.id)}
                         className="opacity-0 group-hover:opacity-100 transition text-admin-border-mid hover:text-red-400 text-xs shrink-0 mt-0.5"
+                        aria-label="CS 메모 삭제"
                         title="삭제"
                       >✕</button>
                     </div>
@@ -419,46 +422,46 @@ export default function CustomerDetailPage() {
             </div>
             <form onSubmit={handleSave} className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">이름 *</label>
-                <input required value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})}
+                <label htmlFor={`${controlIdPrefix}-name`} className="block text-xs font-medium text-admin-text-2 mb-1">이름 *</label>
+                <input id={`${controlIdPrefix}-name`} required value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">전화번호</label>
-                <input value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})}
+                <label htmlFor={`${controlIdPrefix}-phone`} className="block text-xs font-medium text-admin-text-2 mb-1">전화번호</label>
+                <input id={`${controlIdPrefix}-phone`} value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">이메일</label>
-                <input type="email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})}
+                <label htmlFor={`${controlIdPrefix}-email`} className="block text-xs font-medium text-admin-text-2 mb-1">이메일</label>
+                <input id={`${controlIdPrefix}-email`} type="email" value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-admin-text-2 mb-1">여권번호</label>
-                  <input value={form.passport_no || ''} onChange={e => setForm({...form, passport_no: e.target.value})}
+                  <label htmlFor={`${controlIdPrefix}-passport-no`} className="block text-xs font-medium text-admin-text-2 mb-1">여권번호</label>
+                  <input id={`${controlIdPrefix}-passport-no`} value={form.passport_no || ''} onChange={e => setForm({...form, passport_no: e.target.value})}
                     className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-admin-text-2 mb-1">여권 만료일</label>
-                  <input type="date" value={form.passport_expiry || ''} onChange={e => setForm({...form, passport_expiry: e.target.value})}
+                  <label htmlFor={`${controlIdPrefix}-passport-expiry`} className="block text-xs font-medium text-admin-text-2 mb-1">여권 만료일</label>
+                  <input id={`${controlIdPrefix}-passport-expiry`} type="date" value={form.passport_expiry || ''} onChange={e => setForm({...form, passport_expiry: e.target.value})}
                     className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">생년월일</label>
-                <input type="date" value={form.birth_date || ''} onChange={e => setForm({...form, birth_date: e.target.value})}
+                <label htmlFor={`${controlIdPrefix}-birth-date`} className="block text-xs font-medium text-admin-text-2 mb-1">생년월일</label>
+                <input id={`${controlIdPrefix}-birth-date`} type="date" value={form.birth_date || ''} onChange={e => setForm({...form, birth_date: e.target.value})}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">태그 (쉼표 구분)</label>
-                <input value={form.tags_str || ''} onChange={e => setForm({...form, tags_str: e.target.value})}
+                <label htmlFor={`${controlIdPrefix}-tags`} className="block text-xs font-medium text-admin-text-2 mb-1">태그 (쉼표 구분)</label>
+                <input id={`${controlIdPrefix}-tags`} value={form.tags_str || ''} onChange={e => setForm({...form, tags_str: e.target.value})}
                   placeholder="VIP, 재방문, 골프"
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">메모</label>
-                <textarea value={form.memo || ''} onChange={e => setForm({...form, memo: e.target.value})} rows={2}
+                <label htmlFor={`${controlIdPrefix}-memo`} className="block text-xs font-medium text-admin-text-2 mb-1">메모</label>
+                <textarea id={`${controlIdPrefix}-memo`} value={form.memo || ''} onChange={e => setForm({...form, memo: e.target.value})} rows={2}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
               <div className="flex gap-3 pt-2">
@@ -484,7 +487,7 @@ export default function CustomerDetailPage() {
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">증감 포인트 (음수 입력 시 차감)</label>
+                <label htmlFor={`${controlIdPrefix}-mileage-delta`} className="block text-xs font-medium text-admin-text-2 mb-1">증감 포인트 (음수 입력 시 차감)</label>
                 <div className="flex gap-2 mb-2">
                   {[100, 500, 1000, -100, -500].map(v => (
                     <button type="button" key={v} onClick={() => setMileageDelta(String(v))}
@@ -494,6 +497,7 @@ export default function CustomerDetailPage() {
                   ))}
                 </div>
                 <input
+                  id={`${controlIdPrefix}-mileage-delta`}
                   type="number"
                   value={mileageDelta}
                   onChange={e => setMileageDelta(e.target.value)}
@@ -507,8 +511,9 @@ export default function CustomerDetailPage() {
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">사유 (선택)</label>
+                <label htmlFor={`${controlIdPrefix}-mileage-reason`} className="block text-xs font-medium text-admin-text-2 mb-1">사유 (선택)</label>
                 <input
+                  id={`${controlIdPrefix}-mileage-reason`}
                   value={mileageReason}
                   onChange={e => setMileageReason(e.target.value)}
                   placeholder="예: VIP 웰컴 포인트, 취소 위약금 차감..."
