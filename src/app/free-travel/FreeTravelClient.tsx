@@ -417,7 +417,7 @@ function ActivityCard({ a, defaultDate }: { a: ActivityResult; defaultDate?: str
             <span className="text-[14px] font-bold text-brand tabular-nums">{a.price.toLocaleString()}원~</span>
             <div className="flex items-center gap-1.5">
               {gid && link && (
-                <button
+                <button type="button"
                   onClick={toggleDetail}
                   className="text-[11px] font-medium text-text-secondary border border-[#E5E7EB] px-2 py-0.5 rounded-full hover:border-brand hover:text-brand transition-colors"
                 >
@@ -558,7 +558,7 @@ function FareCalendarWidget({
           const day = d.getDate() + '일';
           const isMin = e.price === minPrice;
           return (
-            <button
+            <button type="button"
               key={e.date}
               onClick={() => {
                 const dateTo = new Date(d.getTime() + nights * 86400_000).toISOString().slice(0, 10);
@@ -1239,7 +1239,7 @@ export default function FreeTravelClient() {
               </div>
             </div>
             <div className="flex justify-end px-3 pb-3">
-              <button
+              <button type="button"
                 onClick={handleSearch}
                 disabled={isSearching || !input.trim()}
                 className="px-5 py-2.5 bg-brand text-white text-[15px] font-semibold rounded-full hover:bg-[#1b6cf2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
@@ -1347,7 +1347,7 @@ export default function FreeTravelClient() {
         <section className="px-4 py-6 max-w-[640px] mx-auto">
           <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
             <p className="text-[14px] font-semibold text-red-600">{state.errorMessage}</p>
-            <button onClick={() => setState(prev => ({ ...prev, status: 'idle' }))}
+            <button type="button" onClick={() => setState(prev => ({ ...prev, status: 'idle' }))}
               className="mt-3 text-[13px] text-red-500 underline">다시 검색</button>
           </div>
         </section>
@@ -1634,7 +1634,7 @@ export default function FreeTravelClient() {
                   inputMode="numeric"
                   className="flex-1 border border-[#E5E7EB] rounded-xl px-4 py-2.5 text-[14px] outline-none focus:border-brand"
                 />
-                <button
+                <button type="button"
                   onClick={handlePhoneSave}
                   disabled={phoneSaving || !phone.trim()}
                   className="px-4 py-2.5 bg-[#FEE500] text-text-primary text-[14px] font-bold rounded-xl disabled:opacity-50 hover:brightness-95 transition-all whitespace-nowrap"
