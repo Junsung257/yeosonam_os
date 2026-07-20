@@ -199,9 +199,10 @@ export default function PolicyPage() {
       <div className="admin-card p-5 space-y-4">
         {/* posts_per_day */}
         <div>
-          <label className="text-admin-xs font-semibold text-admin-text-2">하루 발행 편수</label>
+          <label htmlFor="blog-policy-posts-per-day" className="text-admin-xs font-semibold text-admin-text-2">하루 발행 편수</label>
           <p className="text-[10px] text-admin-muted-2 mb-1">검색 안전선 8-12편/일. 12편 이상은 얇은 글이 늘어날 위험이 있습니다.</p>
           <input
+            id="blog-policy-posts-per-day"
             type="number" min="1" max="20"
             value={policy!.posts_per_day}
             onChange={e => update({ posts_per_day: parseInt(e.target.value) })}
@@ -212,9 +213,10 @@ export default function PolicyPage() {
 
         {/* product_ratio */}
         <div>
-          <label className="text-admin-xs font-semibold text-admin-text-2">상품 블로그 비율</label>
+          <label htmlFor="blog-policy-product-ratio" className="text-admin-xs font-semibold text-admin-text-2">상품 블로그 비율</label>
           <p className="text-[10px] text-admin-muted-2 mb-1">전체 발행 중 상품 블로그 비중 (0.0 ~ 1.0)</p>
           <input
+            id="blog-policy-product-ratio"
             type="number" step="0.05" min="0" max="1"
             value={policy!.product_ratio}
             onChange={e => update({ product_ratio: parseFloat(e.target.value) })}
@@ -224,9 +226,10 @@ export default function PolicyPage() {
 
         {/* per_destination_daily_cap */}
         <div>
-          <label className="text-admin-xs font-semibold text-admin-text-2">목적지별 1일 최대 편수</label>
+          <label htmlFor="blog-policy-per-destination-daily-cap" className="text-admin-xs font-semibold text-admin-text-2">목적지별 1일 최대 편수</label>
           <p className="text-[10px] text-admin-muted-2 mb-1">같은 목적지 반복 노출 분산. 권장 2-3편</p>
           <input
+            id="blog-policy-per-destination-daily-cap"
             type="number" min="1" max="5"
             value={policy!.per_destination_daily_cap}
             onChange={e => update({ per_destination_daily_cap: parseInt(e.target.value) })}
@@ -240,9 +243,10 @@ export default function PolicyPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[11px] text-admin-muted">상품당 발행 각도 수</label>
+              <label htmlFor="blog-policy-multi-angle-count" className="text-[11px] text-admin-muted">상품당 발행 각도 수</label>
               <p className="text-[10px] text-admin-muted-2 mb-1">1상품 {'>'} N개 각도(가성비/스토리/현지...) 자동 큐잉</p>
               <input
+                id="blog-policy-multi-angle-count"
                 type="number" min="1" max="7"
                 value={policy!.multi_angle_count}
                 onChange={e => update({ multi_angle_count: parseInt(e.target.value) })}
@@ -250,9 +254,10 @@ export default function PolicyPage() {
               />
             </div>
             <div>
-              <label className="text-[11px] text-admin-muted">각도별 발행 간격 (일)</label>
+              <label htmlFor="blog-policy-multi-angle-gap-days" className="text-[11px] text-admin-muted">각도별 발행 간격 (일)</label>
               <p className="text-[10px] text-admin-muted-2 mb-1">같은 상품을 다른 주제로 발행할 때의 최소 간격</p>
               <input
+                id="blog-policy-multi-angle-gap-days"
                 type="number" min="1" max="14"
                 value={policy!.multi_angle_gap_days}
                 onChange={e => update({ multi_angle_gap_days: parseInt(e.target.value) })}
@@ -264,9 +269,10 @@ export default function PolicyPage() {
 
         {/* slot_times */}
         <div className="border-t border-admin-border pt-4">
-          <label className="text-admin-xs font-semibold text-admin-text-2">슬롯 시간 (KST)</label>
+          <label htmlFor="blog-policy-slot-times" className="text-admin-xs font-semibold text-admin-text-2">슬롯 시간 (KST)</label>
           <p className="text-[10px] text-admin-muted-2 mb-1">하루 안에 분산 발행할 시각. 콤마 구분, HH:MM 형식</p>
           <input
+            id="blog-policy-slot-times"
             type="text"
             value={policy!.slot_times.join(', ')}
             onChange={e => update({ slot_times: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
@@ -278,8 +284,10 @@ export default function PolicyPage() {
         <div className="border-t border-admin-border pt-4 space-y-2">
           <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">상품 승인 시 자동 실행 (비용 발생 가능)</p>
 
-          <label className="flex items-start gap-2 cursor-pointer hover:bg-admin-bg p-1.5 rounded">
+          <label htmlFor="blog-policy-auto-trigger-card-news" className="flex items-start gap-2 cursor-pointer hover:bg-admin-bg p-1.5 rounded">
             <input type="checkbox"
+              id="blog-policy-auto-trigger-card-news"
+              aria-label="카드뉴스 자동 생성"
               checked={policy!.auto_trigger_card_news}
               onChange={e => update({ auto_trigger_card_news: e.target.checked })}
               className="mt-0.5"
@@ -290,8 +298,10 @@ export default function PolicyPage() {
             </div>
           </label>
 
-          <label className="flex items-start gap-2 cursor-pointer hover:bg-admin-bg p-1.5 rounded">
+          <label htmlFor="blog-policy-auto-trigger-orchestrator" className="flex items-start gap-2 cursor-pointer hover:bg-admin-bg p-1.5 rounded">
             <input type="checkbox"
+              id="blog-policy-auto-trigger-orchestrator"
+              aria-label="오케스트레이터 자동 생성"
               checked={policy!.auto_trigger_orchestrator}
               onChange={e => update({ auto_trigger_orchestrator: e.target.checked })}
               className="mt-0.5"
@@ -302,8 +312,10 @@ export default function PolicyPage() {
             </div>
           </label>
 
-          <label className="flex items-start gap-2 cursor-pointer hover:bg-admin-bg p-1.5 rounded">
+          <label htmlFor="blog-policy-auto-regenerate-underperformers" className="flex items-start gap-2 cursor-pointer hover:bg-admin-bg p-1.5 rounded">
             <input type="checkbox"
+              id="blog-policy-auto-regenerate-underperformers"
+              aria-label="저성과 글 자동 재생성"
               checked={policy!.auto_regenerate_underperformers}
               onChange={e => update({ auto_regenerate_underperformers: e.target.checked })}
               className="mt-0.5"
@@ -317,9 +329,10 @@ export default function PolicyPage() {
 
         {/* Webhook */}
         <div className="border-t border-admin-border pt-4">
-          <label className="text-admin-xs font-semibold text-admin-text-2">일일 발행 요약 알림 주소</label>
+          <label htmlFor="blog-policy-daily-summary-webhook" className="text-admin-xs font-semibold text-admin-text-2">일일 발행 요약 알림 주소</label>
           <p className="text-[10px] text-admin-muted-2 mb-1">Slack/Discord 알림 주소. 매일 09시(KST) 발송하며 비워두면 발송하지 않습니다.</p>
           <input
+            id="blog-policy-daily-summary-webhook"
             type="text"
             value={policy!.daily_summary_webhook || ''}
             onChange={e => update({ daily_summary_webhook: e.target.value || null })}

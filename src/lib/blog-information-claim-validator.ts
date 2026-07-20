@@ -261,6 +261,44 @@ function extractClaimValue(segment: string, kind: BlogInformationFactualCandidat
   return { normalizedValue: normalizeNumericValue(number ?? segment), unit: null, currency: null };
 }
 
+const FOOD_BUDGET_RESEARCH_BLOCK_START = '<!-- blog_research_structure:food_budget:v1 -->';
+const FOOD_BUDGET_RESEARCH_BLOCK_END = '<!-- /blog_research_structure:food_budget:v1 -->';
+
+function sameExtractedValue(
+  left: BlogInformationExtractedValue,
+  right: BlogInformationExtractedValue,
+): boolean {
+  return normalizeNumericValue(left.normalizedValue) === normalizeNumericValue(right.normalizedValue)
+    && (left.unit ?? '').normalize('NFKC').toLowerCase() === (right.unit ?? '').normalize('NFKC').toLowerCase()
+    && (left.currency ?? '').normalize('NFKC').toUpperCase() === (right.currency ?? '').normalize('NFKC').toUpperCase();
+}
+
+function expandDeterministicResearchRowsForValidation(
+  markdown: string,
+  persistedClaims: PersistedBlogInformationClaimRecord[],
+): string {
+  const start = markdown.indexOf(FOOD_BUDGET_RESEARCH_BLOCK_START);
+  const end = markdown.indexOf(FOOD_BUDGET_RESEARCH_BLOCK_END, start);
+  if (start < 0 || end < 0 || persistedClaims.length === 0) return markdown;
+
+  const contentStart = start + FOOD_BUDGET_RESEARCH_BLOCK_START.length;
+  const block = markdown.slice(contentStart, end);
+  const expanded = block.split(/\r?\n/).map((line) => {
+    if (!/^\s*\|.*\|\s*$/.test(line) || /^\s*\|\s*:?-{3,}/.test(line)) return line;
+    const classification = classifyBlogInformationStatement(line).factualClassification;
+    if (!classification) return line;
+    const extractedValue = extractClaimValue(line, classification.candidateKind);
+    const matches = persistedClaims.filter((claim) =>
+      claim.claimText
+      && claim.claimType === classification.claimType
+      && claim.extractedValue
+      && sameExtractedValue(claim.extractedValue, extractedValue));
+    return matches.length === 1 ? matches[0].claimText! : line;
+  }).join('\n');
+
+  return `${markdown.slice(0, contentStart)}${expanded}${markdown.slice(end)}`;
+}
+
 export function extractBlogInformationClaims(markdown: string): ExtractedBlogInformationClaim[] {
   return splitClaimSegments(markdown).flatMap((segment) => {
     const classification = classifyBlogInformationStatement(segment).factualClassification;
@@ -306,7 +344,11 @@ export function validateBlogInformationClaims(input: {
   now?: Date;
 }): BlogInformationClaimValidationReport {
   try {
-    const claims = extractBlogInformationClaims(input.markdown);
+    const validationMarkdown = expandDeterministicResearchRowsForValidation(
+      input.markdown,
+      input.persistedClaims,
+    );
+    const claims = extractBlogInformationClaims(validationMarkdown);
     const persistedByFingerprint = new Map(
       input.persistedClaims.map((claim) => [claim.claimFingerprint, claim]),
     );
@@ -334,7 +376,7 @@ export function validateBlogInformationClaims(input: {
       });
     }
 
-    const normalizedBody = stripMarkup(input.markdown, { collapseWhitespace: true })
+    const normalizedBody = stripMarkup(validationMarkdown, { collapseWhitespace: true })
       .normalize('NFKC')
       .replace(/[|.,!?。！？:;"'“”‘’()[\]{}]/g, ' ')
       .replace(/\s+/g, ' ')

@@ -22,6 +22,9 @@ async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
   const run = process.argv.includes('--run');
   if (run && !apply) throw new Error('--run requires --apply');
+  if (run && !process.env.CRON_SECRET) {
+    throw new Error('Missing CRON_SECRET; the queue was not changed. Use --apply and invoke the protected route separately.');
+  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
@@ -39,7 +42,7 @@ async function main(): Promise<void> {
 
   const { data: creative, error: creativeError } = await supabase
     .from('content_creatives')
-    .select('id,slug,status,channel,generation_meta,updated_at')
+    .select('id,slug,status,channel,review_status,blog_html,og_image_url,generation_meta,updated_at')
     .eq('id', CREATIVE_ID)
     .maybeSingle();
   if (creativeError || !creative) throw new Error(creativeError?.message || 'Canary creative not found.');
@@ -54,6 +57,32 @@ async function main(): Promise<void> {
     && regeneration?.mode === 'replace_existing_fallback_draft'
     && regeneration?.force_private_review === true;
   if (!safeTarget) throw new Error('Canary target contract does not match; no write was attempted.');
+
+  const creativeMarkdown = typeof creative.blog_html === 'string' ? creative.blog_html : '';
+  const creativeMeta = creative.generation_meta && typeof creative.generation_meta === 'object'
+    ? creative.generation_meta as Record<string, unknown>
+    : {};
+  const lastQa = meta.last_qa && typeof meta.last_qa === 'object'
+    ? meta.last_qa as { gates?: Array<{ gate?: string; passed?: boolean; evidence?: unknown }> }
+    : null;
+  const failedGates = Array.isArray(lastQa?.gates)
+    ? lastQa.gates
+      .filter((gate) => gate?.passed === false)
+      .map((gate) => ({ gate: gate.gate ?? 'unknown', evidence: gate.evidence ?? null }))
+    : [];
+  const promptManifest = creativeMeta.prompt_manifest && typeof creativeMeta.prompt_manifest === 'object'
+    ? creativeMeta.prompt_manifest as Record<string, unknown>
+    : null;
+  const structure = {
+    characters: creativeMarkdown.length,
+    h2Count: (creativeMarkdown.match(/^##\s+\S/gm) || []).length,
+    questionH2Count: (creativeMarkdown.match(/^##\s+.+[?？]\s*$/gm) || []).length,
+    hasFaqHeading: /^##\s*(?:자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)\s*$/im.test(creativeMarkdown),
+    inlineImageCount: (creativeMarkdown.match(/!\[[^\]]*]\(https:\/\/[^)]+\)/g) || []).length,
+    uniqueInlineImageCount: new Set(
+      [...creativeMarkdown.matchAll(/!\[[^\]]*]\((https:\/\/[^)]+)\)/g)].map((match) => match[1]),
+    ).size,
+  };
 
   const checkedAt = new Date();
   const bundle = buildSapporoFoodBudgetResearchBundle(checkedAt);
@@ -75,7 +104,19 @@ async function main(): Promise<void> {
     queueId: QUEUE_ID,
     creativeId: CREATIVE_ID,
     creativeStatus: creative.status,
+    creativeReviewStatus: creative.review_status ?? null,
     queueStatus: queue.status,
+    queueAttempts: queue.attempts ?? 0,
+    queueLastError: queue.last_error ?? null,
+    failureCode: meta.failure_code ?? null,
+    failedGates,
+    creativePrompt: {
+      version: creativeMeta.prompt_version ?? null,
+      contract: promptManifest?.contract ?? null,
+      digest: promptManifest?.digest ?? null,
+      warnings: promptManifest?.warnings ?? null,
+    },
+    structure,
     research: summarizeBlogGenerationResearch(readiness),
   }, null, 2));
 
@@ -102,7 +143,6 @@ async function main(): Promise<void> {
     const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL
       || process.env.NEXT_PUBLIC_SITE_URL
       || 'https://www.yeosonam.com').replace(/\/$/, '');
-    if (!process.env.CRON_SECRET) throw new Error('Missing CRON_SECRET.');
     const response = await fetch(`${baseUrl}/api/cron/blog-publisher?force=true&privateQueueId=${QUEUE_ID}`, {
       headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
     });
