@@ -2819,6 +2819,11 @@ async function processQueueItem(
         last_publish_quality: {
           score: publishQuality.blogQualityScore.score,
           issues: publishQuality.blogQualityScore.issues.slice(0, 8),
+          rendered_issues: (publishQuality.renderedSeoQuality?.issues ?? []).slice(0, 8).map((issue) => ({
+            code: issue.code,
+            message: issue.message,
+            evidence: issue.evidence ?? null,
+          })),
           components: publishQuality.blogQualityScore.components.map((component) => ({
             id: component.id,
             passed: component.passed,
