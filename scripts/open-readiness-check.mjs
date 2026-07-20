@@ -43,6 +43,8 @@ const LOCAL_MODE = hasFlag('--local') || process.env.OPEN_CHECK_LOCAL === '1' ||
 const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_EXTERNAL === '1' || LOCAL_MODE;
 const ALLOW_LOCAL_MISSING_DATA = hasFlag('--allow-local-missing-data') || process.env.OPEN_CHECK_ALLOW_LOCAL_MISSING_DATA === '1' || LOCAL_MODE;
 const LOCAL_DATA_UNAVAILABLE_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|local blog data unavailable|production\/staging data is required|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|command_failed|runtime_errors/i;
+const PACKAGE_NOT_FOUND_PATTERN = /NOT_FOUND|패키지를 찾을 수 없습니다|패키지가 존재하지 않거나 삭제되었습니다/i;
+const BLOG_DETAIL_NOT_FOUND_PATTERN = /E1401|블로그 글을 찾을 수 없습니다|blog post not found/i;
 const TRANSIENT_BLOG_DATA_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|timeout|timed out|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|블로그 데이터를|데이터를 불러올 수 없습니다/i;
 const INCLUDE_MARKETING_RUNTIME = hasFlag('--include-marketing-runtime') || process.env.OPEN_CHECK_INCLUDE_MARKETING_RUNTIME === '1';
 const MARKETING_RUNTIME_ISOLATED = hasFlag('--marketing-runtime-isolated') || process.env.OPEN_CHECK_MARKETING_RUNTIME_ISOLATED === '1';
@@ -351,9 +353,15 @@ async function checkPublicUrls() {
       notes: 'OPEN_CHECK_PACKAGE_ID not provided; local target may not have production package data',
     });
   } else {
-    await fetchUrl('public:package-detail', `/packages/${PACKAGE_ID}`, { readBody: false });
+    await fetchUrl('public:package-detail', `/packages/${PACKAGE_ID}`, {
+      ok: (res, body) => res.status >= 200 && res.status < 400 && !PACKAGE_NOT_FOUND_PATTERN.test(body),
+      notes: (_res, body) => (PACKAGE_NOT_FOUND_PATTERN.test(body) ? 'package detail rendered a not-found state' : ''),
+    });
   }
-  await fetchUrl('public:blog-runtime', '/blog/nagasaki-best', { readBody: false });
+  await fetchUrl('public:blog-runtime', '/blog/nagasaki-best', {
+    ok: (res, body) => res.status >= 200 && res.status < 400 && !BLOG_DETAIL_NOT_FOUND_PATTERN.test(body),
+    notes: (_res, body) => (BLOG_DETAIL_NOT_FOUND_PATTERN.test(body) ? 'blog detail rendered a not-found state' : ''),
+  });
   if (LOCAL_MODE && (!HAS_EXPLICIT_REF_CODE || !HAS_EXPLICIT_PACKAGE_ID)) {
     addBlockedCheck('public:referral-link', {
       url: `${BASE_URL}/r/${REF_CODE}/${PACKAGE_ID}`,
