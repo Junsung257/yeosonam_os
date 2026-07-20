@@ -18,6 +18,8 @@ export interface BlogAiReadableRepairResult {
 const FAQ_HEADING = /^##\s*(?:자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)\s*$/i;
 const QUESTION_H2 = /^##\s+.+[?？]\s*$/;
 
+const PROTECTED_SECONDARY_HEADING = /^(?:#{3,6})\s+(?:Q\d{0,2}[.:]?\s|근거로\s*확인한|지역별\s*가격\s*차이|세금·서비스료·예약\s*조건)/i;
+
 function clean(value: string | null | undefined): string {
   return (value || '').replace(/\s+/g, ' ').trim();
 }
@@ -100,6 +102,28 @@ function capH2PreservingAnswerBlocks(markdown: string, maxH2: number): { markdow
   return { markdown: lines.join('\n'), changed: true };
 }
 
+function capTotalHeadings(markdown: string, maxHeadings: number): { markdown: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const headingIndexes = lines
+    .map((line, index) => ({ line: line.trim(), index }))
+    .filter(({ line }) => /^#{2,6}\s+\S/.test(line));
+  const originalExcess = headingIndexes.length - maxHeadings;
+  let excess = originalExcess;
+  if (excess <= 0) return { markdown, changed: false };
+
+  const candidates = headingIndexes
+    .filter(({ line }) => /^#{3,6}\s+\S/.test(line) && !PROTECTED_SECONDARY_HEADING.test(line))
+    .reverse();
+  for (const candidate of candidates) {
+    if (excess <= 0) break;
+    const label = candidate.line.replace(/^#{3,6}\s+/, '').trim();
+    lines[candidate.index] = `**${label}**`;
+    excess -= 1;
+  }
+
+  return { markdown: lines.join('\n'), changed: excess < originalExcess };
+}
+
 /**
  * Repairs AI-readable structure without inventing facts. Evidence-backed FAQ answers
  * are emitted only for an intent whose required claims have already passed preflight.
@@ -128,6 +152,12 @@ export function repairBlogAiReadableStructure(input: BlogAiReadableRepairInput):
   if (capRepair.changed) {
     markdown = capRepair.markdown;
     changes.push('capped_h2_preserving_question_and_faq');
+  }
+
+  const totalCapRepair = capTotalHeadings(markdown, 20);
+  if (totalCapRepair.changed) {
+    markdown = totalCapRepair.markdown;
+    changes.push('capped_total_heading_count');
   }
 
   return {
