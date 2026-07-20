@@ -65,6 +65,8 @@ function envValue(...keys) {
   return '';
 }
 
+const publicBaseUrl = envValue('OPEN_CHECK_BASE_URL', 'NEXT_PUBLIC_BASE_URL', 'NEXT_PUBLIC_SITE_URL') || 'https://www.yeosonam.com';
+
 function isPlaceholder(value) {
   return /^(https:\/\/example\.supabase\.co|dummy-|example-|placeholder)/i.test(String(value || '').trim());
 }
@@ -104,6 +106,40 @@ function quoteEnv(value) {
 
 function firstRow(data) {
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+function firstPublicBlogSlugFromHtml(html) {
+  const seen = new Set();
+  const matches = String(html || '').matchAll(/href=["']\/blog\/([^"'?#/]+)(?:[?#][^"']*)?["']/g);
+  for (const match of matches) {
+    const raw = match[1] || '';
+    let slug = raw;
+    try {
+      slug = decodeURIComponent(raw);
+    } catch {
+      slug = raw;
+    }
+    slug = slug.trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    if (/^(destination|angle|tag|category|page|rss\.xml)$/i.test(slug)) continue;
+    return slug;
+  }
+  return '';
+}
+
+async function discoverPublicBlogSlugFromLiveIndex() {
+  const base = String(publicBaseUrl || '').replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(base)) return '';
+  try {
+    const response = await fetchWithTimeout(`${base}/blog`, {
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    });
+    if (!response.ok) return '';
+    return firstPublicBlogSlugFromHtml(await response.text());
+  } catch {
+    return '';
+  }
 }
 
 async function safeQuery(name, queryFactory) {
@@ -217,9 +253,9 @@ if (missingConnection.length === 0) {
     packageRow = firstRow(fallback.data);
   }
 
-  const blogQuery = await safeQuery('content-creatives-blog', () =>
+  const blogQuery = await safeQuery('public-blog-content-creatives', () =>
     supabase
-      .from('content_creatives')
+      .from('public_blog_content_creatives')
       .select('slug,status,channel,published_at,updated_at')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
@@ -227,7 +263,16 @@ if (missingConnection.length === 0) {
       .order('published_at', { ascending: false, nullsFirst: false })
       .limit(1),
   );
-  const blogRow = firstRow(blogQuery.data);
+  let blogRow = firstRow(blogQuery.data);
+  let liveBlogSlug = '';
+  if (!blogRow) {
+    liveBlogSlug = await discoverPublicBlogSlugFromLiveIndex();
+    report.checks.push({
+      name: 'live-blog-index',
+      status: liveBlogSlug ? 'pass' : 'blocked',
+      data: liveBlogSlug ? [{ slug: liveBlogSlug }] : [],
+    });
+  }
 
   const affiliateQuery = await safeQuery('affiliates', () =>
     supabase
@@ -280,7 +325,11 @@ if (missingConnection.length === 0) {
   report.discovered = {
     OPEN_CHECK_PACKAGE_ID: discoveredOnly('OPEN_CHECK_PACKAGE_ID', packageRow?.id, 'travel_packages.id'),
     OPEN_CHECK_REF_CODE: currentOrDiscovered('OPEN_CHECK_REF_CODE', affiliateRow?.referral_code, 'affiliates.referral_code'),
-    OPEN_CHECK_BLOG_SLUG: discoveredOnly('OPEN_CHECK_BLOG_SLUG', blogRow?.slug, 'content_creatives.slug'),
+    OPEN_CHECK_BLOG_SLUG: discoveredOnly(
+      'OPEN_CHECK_BLOG_SLUG',
+      blogRow?.slug || liveBlogSlug,
+      blogRow?.slug ? 'public_blog_content_creatives.slug' : 'live:/blog href',
+    ),
     MARKETING_CHECK_CARD_NEWS_ID: currentOrDiscovered('MARKETING_CHECK_CARD_NEWS_ID', cardRow?.id, 'card_news.id'),
     MARKETING_CHECK_VARIANT_GROUP_ID: currentOrDiscovered(
       'MARKETING_CHECK_VARIANT_GROUP_ID',
