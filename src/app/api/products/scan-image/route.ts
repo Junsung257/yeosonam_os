@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { analyzeFromText } from '@/lib/band-ai-analyzer';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
 
@@ -27,6 +28,9 @@ function getAnthropicClient(): Anthropic {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const limited = await rateLimitAI(request);
   if (limited) return limited;
 
