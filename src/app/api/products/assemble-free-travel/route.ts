@@ -9,6 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { buildMylinkUrl } from '@/lib/travel-providers/mrt';
 import type { StayResult, ActivityResult, FlightResult } from '@/lib/travel-providers/types';
@@ -66,6 +67,9 @@ async function getNextInternalCode(
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
