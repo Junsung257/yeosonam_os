@@ -19,12 +19,9 @@ describe('JSON-LD script sink inventory', () => {
       .flatMap(sourceFiles)
       .map((path) => ({ path, source: readFileSync(path, 'utf8') }))
       .filter(({ source }) => source.includes('application/ld+json'));
-    const productDetail = sinks.find(({ path }) => path.replace(/\\/g, '/').endsWith('/src/app/packages/[id]/page.tsx'));
-    const inScopeSinks = sinks.filter((sink) => sink !== productDetail);
 
-    expect(productDetail?.source).toMatch(/__html\s*:\s*JSON\.stringify/);
-    expect(inScopeSinks.length).toBeGreaterThan(0);
-    for (const sink of inScopeSinks) {
+    expect(sinks.length).toBeGreaterThan(0);
+    for (const sink of sinks) {
       const label = relative(process.cwd(), sink.path);
       expect(sink.source, label).toContain("from '@/lib/json-ld'");
       expect(sink.source, label).toContain('serializeJsonLdForScript');
