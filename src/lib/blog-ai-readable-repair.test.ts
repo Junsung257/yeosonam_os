@@ -47,7 +47,9 @@ describe('repairBlogAiReadableStructure', () => {
     expect((result.markdown.match(/^##\s+\S/gm) || [])).toHaveLength(9);
     expect(result.markdown).toMatch(/^##\s+.+\?$/m);
     expect(result.markdown).toContain('## 자주 묻는 질문');
-    for (const item of claims) expect(result.markdown).toContain(item.claimText);
+    for (const item of claims) expect(result.markdown).not.toContain(item.claimText);
+    expect(result.markdown).toContain("'근거로 확인한 1인 하루 식비' 표");
+    expect(result.markdown).toContain("'근거로 확인한 끼니별 가격' 표");
     expect(checkAiReadability(result.markdown, 'info').passed).toBe(true);
   });
 
@@ -61,5 +63,59 @@ describe('repairBlogAiReadableStructure', () => {
 
     expect(result.markdown).toMatch(/^##\s+.+\?$/m);
     expect(result.markdown).not.toContain('자주 묻는 질문');
+  });
+
+  it('caps total heading count while preserving evidence and FAQ headings', () => {
+    const markdown = [
+      '# 삿포로 식비 예산',
+      '',
+      '삿포로 식비 예산을 표와 확인 항목으로 정리합니다.',
+      '',
+      ...Array.from({ length: 9 }, (_, index) => `## 구간 ${index + 1} 확인 방법\n\n본문 ${index + 1}`),
+      ...Array.from({ length: 16 }, (_, index) => `### 세부 선택 기준 ${index + 1}\n\n설명 ${index + 1}`),
+      '### 근거로 확인한 1인 하루 식비',
+      '',
+      '| 유형 | 가격 |',
+      '| --- | ---: |',
+      '| 절약 | 3,460 JPY |',
+    ].join('\n');
+    const result = repairBlogAiReadableStructure({
+      markdown,
+      keyword: '삿포로 식비 예산',
+      intent: 'food_budget',
+      approvedClaims: claims,
+    });
+
+    expect(result.markdown.match(/^#{2,6}\s+\S/gm)?.length ?? 0).toBeLessThanOrEqual(20);
+    expect(result.markdown).toContain('### 근거로 확인한 1인 하루 식비');
+    expect(result.markdown).toContain('## 자주 묻는 질문');
+    expect(result.markdown).toContain('### Q1.');
+  });
+
+  it('removes a named empty section while preserving a parent with child content', () => {
+    const result = repairBlogAiReadableStructure({
+      markdown: [
+        '# 삿포로 식비 예산',
+        '',
+        '삿포로 식비 예산을 확인합니다.',
+        '',
+        '## 자주 묻는 질문',
+        '',
+        '### Q1. 표는 어디에서 확인하나요?',
+        '',
+        'A. 위의 근거표를 확인하세요.',
+        '',
+        '## 비어 있는 마무리 제목',
+        '',
+        '<!-- prompt_version: test -->',
+      ].join('\n'),
+      keyword: '삿포로 식비 예산',
+      intent: 'general',
+    });
+
+    expect(result.markdown).toContain('## 자주 묻는 질문');
+    expect(result.markdown).toContain('### Q1. 표는 어디에서 확인하나요?');
+    expect(result.markdown).not.toContain('## 비어 있는 마무리 제목');
+    expect(result.changes).toContain('removed_empty_heading_sections');
   });
 });

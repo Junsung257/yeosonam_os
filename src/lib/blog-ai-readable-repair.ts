@@ -18,6 +18,8 @@ export interface BlogAiReadableRepairResult {
 const FAQ_HEADING = /^##\s*(?:자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)\s*$/i;
 const QUESTION_H2 = /^##\s+.+[?？]\s*$/;
 
+const PROTECTED_SECONDARY_HEADING = /^(?:#{3,6})\s+(?:Q\d{0,2}[.:]?\s|근거로\s*확인한|지역별\s*가격\s*차이|세금·서비스료·예약\s*조건)/i;
+
 function clean(value: string | null | undefined): string {
   return (value || '').replace(/\s+/g, ' ').trim();
 }
@@ -35,13 +37,13 @@ function buildFoodBudgetFaq(keyword: string, claims: BlogInformationClaimInput[]
     '## 자주 묻는 질문',
     '',
     `### Q1. ${keyword}의 1인 하루 식비는 예산 유형별로 얼마인가요?`,
-    `A. ${daily.slice(0, 3).join(' ')}`,
+    "A. 위의 '근거로 확인한 1인 하루 식비' 표에서 절약·일반·여유 유형을 비교하세요. 조사 근거에 연결된 값만 표에 표시했습니다.",
     '',
     `### Q2. ${keyword}의 아침·점심·저녁 식비는 어느 정도인가요?`,
-    `A. ${meals.slice(0, 3).join(' ')}`,
+    "A. 위의 '근거로 확인한 끼니별 가격' 표에서 아침·점심·저녁 항목을 확인하세요. 같은 기준의 근거값을 한 표로 모았습니다.",
     '',
     `### Q3. ${keyword}의 간식·커피 기준 가격은 얼마인가요?`,
-    `A. ${snack}`,
+    "A. '근거로 확인한 끼니별 가격' 표의 간식·커피 행을 확인하세요. 본문은 근거에 없는 추가 금액을 추정하지 않습니다.",
   ].join('\n');
 }
 
@@ -100,6 +102,57 @@ function capH2PreservingAnswerBlocks(markdown: string, maxH2: number): { markdow
   return { markdown: lines.join('\n'), changed: true };
 }
 
+function capTotalHeadings(markdown: string, maxHeadings: number): { markdown: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const headingIndexes = lines
+    .map((line, index) => ({ line: line.trim(), index }))
+    .filter(({ line }) => /^#{2,6}\s+\S/.test(line));
+  const originalExcess = headingIndexes.length - maxHeadings;
+  let excess = originalExcess;
+  if (excess <= 0) return { markdown, changed: false };
+
+  const candidates = headingIndexes
+    .filter(({ line }) => /^#{3,6}\s+\S/.test(line) && !PROTECTED_SECONDARY_HEADING.test(line))
+    .reverse();
+  for (const candidate of candidates) {
+    if (excess <= 0) break;
+    const label = candidate.line.replace(/^#{3,6}\s+/, '').trim();
+    lines[candidate.index] = `**${label}**`;
+    excess -= 1;
+  }
+
+  return { markdown: lines.join('\n'), changed: excess < originalExcess };
+}
+
+function removeEmptyHeadingSections(markdown: string): { markdown: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const headings = lines
+    .map((line, index) => {
+      const match = line.trim().match(/^(#{2,6})\s+\S/);
+      return match ? { index, depth: match[1]!.length } : null;
+    })
+    .filter((heading): heading is { index: number; depth: number } => heading !== null);
+  const remove = new Set<number>();
+
+  for (const heading of headings) {
+    const boundary = headings.find((candidate) =>
+      candidate.index > heading.index && candidate.depth <= heading.depth)?.index ?? lines.length;
+    const hasContent = lines.slice(heading.index + 1, boundary).some((line) => {
+      const value = line.trim();
+      return Boolean(value)
+        && !/^#{2,6}\s+\S/.test(value)
+        && !/^<!--(?:[\s\S]*?)-->$/.test(value);
+    });
+    if (!hasContent) remove.add(heading.index);
+  }
+
+  if (remove.size === 0) return { markdown, changed: false };
+  return {
+    markdown: lines.filter((_, index) => !remove.has(index)).join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+    changed: true,
+  };
+}
+
 /**
  * Repairs AI-readable structure without inventing facts. Evidence-backed FAQ answers
  * are emitted only for an intent whose required claims have already passed preflight.
@@ -128,6 +181,18 @@ export function repairBlogAiReadableStructure(input: BlogAiReadableRepairInput):
   if (capRepair.changed) {
     markdown = capRepair.markdown;
     changes.push('capped_h2_preserving_question_and_faq');
+  }
+
+  const totalCapRepair = capTotalHeadings(markdown, 20);
+  if (totalCapRepair.changed) {
+    markdown = totalCapRepair.markdown;
+    changes.push('capped_total_heading_count');
+  }
+
+  const emptyHeadingRepair = removeEmptyHeadingSections(markdown);
+  if (emptyHeadingRepair.changed) {
+    markdown = emptyHeadingRepair.markdown;
+    changes.push('removed_empty_heading_sections');
   }
 
   return {
