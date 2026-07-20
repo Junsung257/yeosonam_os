@@ -163,7 +163,7 @@ export default function CreateContentPage() {
                 상품 선택
               </h2>
               {selected && (
-                <button onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-gray-600">
+                <button type="button" onClick={() => setSelected(null)} className="text-xs text-gray-400 hover:text-gray-600">
                   변경
                 </button>
               )}
@@ -211,7 +211,7 @@ export default function CreateContentPage() {
                 ) : (
                   <div className="max-h-72 overflow-y-auto space-y-1.5">
                     {filtered.slice(0, 30).map(pkg => (
-                      <button
+                      <button type="button"
                         key={pkg.id}
                         onClick={() => setSelected(pkg)}
                         className="w-full text-left p-2.5 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition"
@@ -247,7 +247,7 @@ export default function CreateContentPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 {PLATFORMS.map(p => (
-                  <button
+                  <button type="button"
                     key={p.key}
                     onClick={() => setPlatform(p.key)}
                     className={`p-3 rounded-lg border-2 text-left transition ${
@@ -280,7 +280,7 @@ export default function CreateContentPage() {
                   ⚠️ 공정위 표시지침에 따라 본 콘텐츠 첫 줄과 마지막 줄에 <b>"여소남 제휴 콘텐츠 (광고)"</b>가 자동 삽입됩니다.
                 </p>
               </div>
-              <button
+              <button type="button"
                 onClick={handleGenerate}
                 disabled={generating}
                 className="w-full py-3 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
@@ -302,7 +302,7 @@ export default function CreateContentPage() {
                 내 채널에 그대로 붙여넣고 발행하세요. 클릭/예약은 자동 추적됩니다.
               </p>
             </div>
-            <button
+            <button type="button"
               onClick={() => { setResult(null); setSelected(null); }}
               className="text-xs px-3 py-1.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
             >
@@ -315,7 +315,7 @@ export default function CreateContentPage() {
             <p className="text-[11px] font-semibold text-amber-700 uppercase mb-1">내 추천 링크 (자동 트래킹)</p>
             <div className="flex gap-2 items-center">
               <code className="flex-1 text-xs font-mono text-gray-700 truncate">{result.share_url}</code>
-              <button
+              <button type="button"
                 onClick={() => copyText(result.share_url, '링크')}
                 className="px-2 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700 shrink-0"
               >
@@ -331,7 +331,7 @@ export default function CreateContentPage() {
                 <p className="text-[11px] font-semibold text-gray-500 uppercase">
                   블로그 본문 ({result.payload.word_count}단어)
                 </p>
-                <button
+                <button type="button"
                   onClick={() => copyText(result.payload.markdown!, '본문')}
                   className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
                 >
@@ -349,7 +349,7 @@ export default function CreateContentPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-[11px] font-semibold text-gray-500 uppercase">캡션</p>
-                  <button
+                  <button type="button"
                     onClick={() => copyText(result.payload.caption!, '캡션')}
                     className="text-xs px-2 py-1 bg-blue-600 text-white rounded"
                   >복사</button>
@@ -360,7 +360,7 @@ export default function CreateContentPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-[11px] font-semibold text-gray-500 uppercase">해시태그</p>
-                    <button
+                    <button type="button"
                       onClick={() => copyText(result.payload.hashtags!.join(' '), '해시태그')}
                       className="text-xs px-2 py-1 bg-blue-600 text-white rounded"
                     >복사</button>
@@ -389,7 +389,7 @@ export default function CreateContentPage() {
                   </div>
                 </div>
               )}
-              <button
+              <button type="button"
                 onClick={() => {
                   const all = [result.payload.main, ...(result.payload.thread || [])].join('\n\n---\n\n');
                   copyText(all, '전체 스레드');

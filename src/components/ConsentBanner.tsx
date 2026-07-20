@@ -62,7 +62,7 @@ export default function ConsentBanner() {
   // 우측 하단 재설정 버튼 (배너 닫힌 후에도 항상 노출)
   if (!show && !open) {
     return (
-      <button
+      <button type="button"
         onClick={() => setOpen(true)}
         aria-label="쿠키 동의 설정"
         className="fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-white border border-slate-200 shadow-md text-slate-500 hover:text-slate-900 hover:border-slate-300 transition-colors flex items-center justify-center text-sm"
@@ -132,19 +132,19 @@ export default function ConsentBanner() {
             <div className="mt-4 flex flex-wrap gap-2 justify-end">
               {!open ? (
                 <>
-                  <button
+                  <button type="button"
                     onClick={() => setOpen(true)}
                     className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 font-medium"
                   >
                     상세 설정
                   </button>
-                  <button
+                  <button type="button"
                     onClick={rejectAll}
                     className="px-3 py-2 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium"
                   >
                     필수만 허용
                   </button>
-                  <button
+                  <button type="button"
                     onClick={acceptAll}
                     className="px-4 py-2 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-bold"
                   >
@@ -153,13 +153,13 @@ export default function ConsentBanner() {
                 </>
               ) : (
                 <>
-                  <button
+                  <button type="button"
                     onClick={() => setOpen(false)}
                     className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 font-medium"
                   >
                     취소
                   </button>
-                  <button
+                  <button type="button"
                     onClick={saveCustom}
                     className="px-4 py-2 text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-bold"
                   >
