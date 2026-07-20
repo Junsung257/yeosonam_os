@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateMarketingCopies } from '@/lib/ai';
 import { loadPublicContentPackageForGeneration } from '@/lib/content-public-package';
 
-export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   const { id } = params;
 

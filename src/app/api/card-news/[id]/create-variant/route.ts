@@ -8,6 +8,7 @@
  * Response: { variant_card_news_id, family }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ContentBriefSchema, type TemplateFamily, type ContentBrief } from '@/lib/validators/content-brief';
 import { briefToSlides } from '@/lib/card-news/v2/brief-to-slides';
@@ -17,6 +18,9 @@ export const runtime = 'nodejs';
 const VALID_FAMILIES: TemplateFamily[] = ['editorial', 'cinematic', 'premium', 'bold'];
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
