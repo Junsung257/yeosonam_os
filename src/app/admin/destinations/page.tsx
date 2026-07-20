@@ -36,6 +36,10 @@ function getDestinationApiUrl(destination: string): string {
   return `/api/destinations/${encodeDestinationPathSegment(destination)}`;
 }
 
+function getDestinationDomId(destination: string): string {
+  return encodeDestinationPathSegment(destination).replace(/[^a-zA-Z0-9_-]/g, '-') || 'destination';
+}
+
 function statusBadge(meta: DestMeta | null) {
   if (!meta) return { label: '미설정', color: 'bg-rose-100 text-rose-700', icon: '🔴' };
   if (meta.photo_approved) return { label: '완료', color: 'bg-emerald-100 text-emerald-700', icon: '✅' };
@@ -299,12 +303,16 @@ export default function AdminDestinationsPage() {
               const isExpanded = expanded === row.destination;
               const edit = editing[row.destination] || {};
               const ps = photoSearch[row.destination];
+              const destinationDomId = getDestinationDomId(row.destination);
 
               return (
                 <div key={row.destination} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
                   {/* 요약 행 */}
-                  <div
-                    className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-admin-bg transition"
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-controls={`destination-panel-${destinationDomId}`}
+                    className="flex w-full items-center gap-4 px-5 py-4 text-left cursor-pointer hover:bg-admin-bg transition"
                     onClick={() => setExpanded(isExpanded ? null : row.destination)}
                   >
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${status.color}`}>
@@ -318,17 +326,18 @@ export default function AdminDestinationsPage() {
                       </span>
                     )}
                     <span className="text-admin-muted-2 text-sm">{isExpanded ? '▲' : '▼'}</span>
-                  </div>
+                  </button>
 
                   {/* 확장 패널 */}
                   {isExpanded && (
-                    <div className="border-t border-admin-border p-5 space-y-6">
+                    <div id={`destination-panel-${destinationDomId}`} className="border-t border-admin-border p-5 space-y-6">
                       {/* 타이틀 편집 */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-bold text-admin-muted block mb-1.5">TAGLINE (H1)</label>
+                          <label htmlFor={`destination-${destinationDomId}-tagline`} className="text-xs font-bold text-admin-muted block mb-1.5">TAGLINE (H1)</label>
                           <div className="flex gap-2">
                             <input
+                              id={`destination-${destinationDomId}-tagline`}
                               value={edit.tagline ?? row.metadata?.tagline ?? ''}
                               onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], tagline: e.target.value } }))}
                               placeholder="감성 타이틀 입력..."
@@ -344,8 +353,9 @@ export default function AdminDestinationsPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-xs font-bold text-admin-muted block mb-1.5">HERO_TAGLINE (서브설명)</label>
+                          <label htmlFor={`destination-${destinationDomId}-hero-tagline`} className="text-xs font-bold text-admin-muted block mb-1.5">HERO_TAGLINE (서브설명)</label>
                           <input
+                            id={`destination-${destinationDomId}-hero-tagline`}
                             value={edit.hero_tagline ?? row.metadata?.hero_tagline ?? ''}
                             onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], hero_tagline: e.target.value } }))}
                             placeholder="1~2문장 서브 설명..."
@@ -366,7 +376,7 @@ export default function AdminDestinationsPage() {
 
                       {/* 히어로 사진 */}
                       <div>
-                        <label className="text-xs font-bold text-admin-muted block mb-3">히어로 사진</label>
+                        <label htmlFor={`destination-${destinationDomId}-photo-keyword`} className="text-xs font-bold text-admin-muted block mb-3">히어로 사진</label>
 
                         {/* 현재 사진 */}
                         {row.metadata?.hero_image_url && (
@@ -400,6 +410,7 @@ export default function AdminDestinationsPage() {
                         {/* Pexels 검색 */}
                         <div className="flex gap-2 mb-3">
                           <input
+                            id={`destination-${destinationDomId}-photo-keyword`}
                             value={ps?.keyword ?? DEFAULT_KEYWORD(row.destination)}
                             onChange={e => setPhotoSearch(p => ({ ...p, [row.destination]: { ...p[row.destination], keyword: e.target.value, results: p[row.destination]?.results || [] } }))}
                             placeholder="Pexels 검색 키워드..."
