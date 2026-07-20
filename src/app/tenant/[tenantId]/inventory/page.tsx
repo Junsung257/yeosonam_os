@@ -180,17 +180,17 @@ export default function TenantInventoryPage() {
             {products.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
           </select>
           <div className="flex items-center gap-1">
-            <button
+            <button type="button"
               onClick={() => { if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); } else setViewMonth(m => m - 1); }}
               className="px-2 py-1.5 border rounded text-sm hover:bg-gray-50"
             >←</button>
             <span className="text-sm font-semibold text-gray-700 px-2">{monthLabel}</span>
-            <button
+            <button type="button"
               onClick={() => { if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); } else setViewMonth(m => m + 1); }}
               className="px-2 py-1.5 border rounded text-sm hover:bg-gray-50"
             >→</button>
           </div>
-          <button
+          <button type="button"
             onClick={copyPrevMonth}
             disabled={!selectedProduct}
             className="text-xs border border-gray-300 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-40"

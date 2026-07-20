@@ -141,13 +141,13 @@ export default function CampaignsPage() {
           <p className="text-sm text-admin-muted">Meta 광고 캠페인을 생성하고 관리합니다</p>
         </div>
         <div className="flex gap-3">
-          <button
+          <button type="button"
             onClick={() => router.push('/admin/marketing')}
             className="px-3 py-2 text-sm text-admin-muted border border-admin-border-mid rounded-lg hover:bg-admin-bg"
           >
             ← 대시보드
           </button>
-          <button
+          <button type="button"
             onClick={() => setShowModal(true)}
             disabled={integrationBlocked}
             title={integrationBlocked ? '연동 상태를 먼저 확인하세요' : undefined}

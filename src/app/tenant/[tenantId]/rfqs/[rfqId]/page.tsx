@@ -449,7 +449,7 @@ export default function TenantRfqDetailPage() {
                 3시간 내 제안서를 제출하지 않으면 참여권이 자동 회수되며 신뢰도가 감점됩니다.
               </p>
               {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
-              <button
+              <button type="button"
                 onClick={claimBid}
                 disabled={claiming}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl text-sm font-medium transition-colors"
