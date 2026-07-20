@@ -237,7 +237,7 @@ export default function StubProductsPage() {
         <div className="admin-card p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-admin-h3 text-admin-text">최근 Stub 상품</h2>
-            <button onClick={refresh} disabled={loading} className="inline-flex items-center gap-1 text-admin-xs text-brand hover:text-brand-dark font-medium">
+            <button type="button" onClick={refresh} disabled={loading} className="inline-flex items-center gap-1 text-admin-xs text-brand hover:text-brand-dark font-medium">
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
               {loading ? '새로고침 중…' : '새로고침'}
             </button>

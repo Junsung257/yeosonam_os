@@ -96,7 +96,7 @@ export default function JarvisRagSearchPage() {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-admin-xs text-admin-muted self-center">빠른 테스트:</span>
         {['다낭 5월 가족여행', '호화호특 5성호텔 직항', '몽골 게르 휴양', '노옵션 가성비 패키지', '발리 풀빌라'].map(q => (
-          <button
+          <button type="button"
             key={q}
             onClick={() => { setQuery(q); setTimeout(search, 50); }}
             className="text-admin-xs bg-admin-surface border border-admin-border-mid hover:bg-brand-light hover:border-brand text-admin-text-2 px-2.5 py-1 rounded-full transition-colors"
