@@ -1571,7 +1571,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
         <div className="flex gap-0 px-3">
           {NAV_SECTIONS.filter(section => section !== '선택관광' || (view?.optionalTours.count ?? 0) > 0).map(section => (
-            <button key={section} onClick={() => scrollToSection(section)}
+            <button key={section} type="button" onClick={() => scrollToSection(section)}
               className={`flex-1 py-3 text-[11px] font-bold text-center transition-colors border-b-2 ${
                 activeSection === section ? 'text-slate-950 border-slate-950' : 'text-gray-500 border-transparent'
               }`}>{section}</button>
@@ -1590,7 +1590,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 const isSelected = selectedTier === t;
                 const isMin = t.adult_price === minPrice;
                 return (
-                  <button key={i} onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
+                  <button key={i} type="button" onClick={() => { setSelectedTier(isSelected ? null : t); setSelectedDate(isSelected ? '' : t.period_label); setFormData(f => ({ ...f, date: isSelected ? '' : `${t.period_label} ${t.departure_day_of_week || ''}`.trim() })); }}
                     className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl border text-left transition ${isSelected ? 'border-brand bg-brand-light ring-1 ring-brand' : 'border-gray-200 bg-white'}`}>
                     <div>
                       <p className="text-sm font-medium text-gray-800">
@@ -1759,7 +1759,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 const thumb = dayAttractionPhotos[idx];
                 const isActive = activeDay === day.day;
                 return (
-                  <button key={day.day} onClick={() => {
+                  <button key={day.day} type="button" onClick={() => {
                       setActiveDay(day.day);
                       dayRefs.current[day.day]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }}
@@ -2575,7 +2575,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   </label>
                   {!selectedTier && <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">희망 출발일</span>
-                    <input name="departureDate" autoComplete="off" placeholder="예: 7월 23일 또는 날짜 미정" value={formData.date} onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
+                    <input id="reservation-departure-date" name="departureDate" autoComplete="off" placeholder="예: 7월 23일 또는 날짜 미정" value={formData.date} onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                   </label>}
                   <label className="block">
@@ -2586,6 +2586,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   <div>
                     <label className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-600">
                       <input
+                        id="reservation-consent"
+                        name="reservationConsent"
                         type="checkbox"
                         checked={reservationConsent}
                         onChange={(e) => {
@@ -2615,7 +2617,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   }`}>
                     {reservationFormHint}
                   </p>
-                  <button onClick={handleSubmit} disabled={isSubmitting}
+                  <button type="button" onClick={handleSubmit} disabled={isSubmitting}
                     aria-disabled={!reservationFormReady}
                     title={!reservationFormReady ? '필수 항목을 확인해 주세요' : undefined}
                     data-analytics-id="reservation_sheet_submit"
