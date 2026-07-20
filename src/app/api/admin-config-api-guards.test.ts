@@ -30,6 +30,7 @@ const protectedHandlers = [
   { path: 'src/app/api/products/stub/route.ts', methods: ['GET', 'POST'] },
   { path: 'src/app/api/products/from-mrt/route.ts', methods: ['POST'] },
   { path: 'src/app/api/products/scan/route.ts', methods: ['POST'] },
+  { path: 'src/app/api/products/scan-image/route.ts', methods: ['POST'] },
   { path: 'src/app/api/products/scan-text/route.ts', methods: ['POST'] },
   { path: 'src/app/api/card-news/generate-html/route.ts', methods: ['POST'] },
   { path: 'src/app/api/departing-locations/route.ts', methods: ['GET', 'POST', 'PATCH'] },
