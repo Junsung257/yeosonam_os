@@ -27,6 +27,7 @@ const protectedHandlers = [
   { path: 'src/app/api/content-calendar/reschedule/route.ts', methods: ['POST'] },
   { path: 'src/app/api/orchestrator/auto-publish-top/route.ts', methods: ['POST'] },
   { path: 'src/app/api/briefings/generate-ppt/route.ts', methods: ['POST'] },
+  { path: 'src/app/api/products/stub/route.ts', methods: ['GET', 'POST'] },
 ];
 
 const sensitiveNeedles = [
