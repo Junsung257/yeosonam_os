@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import type { Element } from 'domhandler';
 import { resolveBlogCanonicalOrigin } from './blog-canonical-url';
 import { inferBlogInformationIntent, type BlogInformationIntent } from './blog-information-contract';
 import { readBlogInformationRepresentativeIdentity } from './blog-information-representative';
@@ -64,6 +65,32 @@ function readRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function renderedHeadingLevel(element: Element): number | null {
+  const match = element.tagName?.toLowerCase().match(/^h([2-6])$/);
+  return match ? Number(match[1]) : null;
+}
+
+function renderedHeadingHasSectionContent(
+  $: cheerio.CheerioAPI,
+  element: Element,
+): boolean {
+  const level = renderedHeadingLevel(element);
+  if (level === null) return false;
+  let sibling = $(element).next();
+  while (sibling.length > 0) {
+    const siblingElement = sibling.get(0);
+    if (!siblingElement || siblingElement.type !== 'tag') break;
+    const siblingHeadingLevel = renderedHeadingLevel(siblingElement);
+    if (siblingHeadingLevel !== null && siblingHeadingLevel <= level) break;
+    const text = sibling.text().replace(/\u00a0/g, ' ').trim();
+    const hasNonTextContent = sibling.is('img,table,ul,ol,blockquote')
+      || sibling.find('img,table,ul,ol,blockquote').length > 0;
+    if (text || hasNonTextContent) return true;
+    sibling = sibling.next();
+  }
+  return false;
 }
 
 function inspectCanonicalAndIndex(
@@ -134,11 +161,7 @@ export async function inspectBlogRenderedSeoQuality(
   $('h2,h3,h4,h5,h6').each((_, element) => {
     const heading = $(element);
     const headingText = heading.text().replace(/\u00a0/g, ' ').trim();
-    const section = heading.nextUntil('h2,h3,h4,h5,h6');
-    const sectionText = section.text().replace(/\u00a0/g, ' ').trim();
-    const hasNonTextContent = section.find('img,table,ul,ol,blockquote').length > 0
-      || section.filter('img,table,ul,ol,blockquote').length > 0;
-    if (!headingText || (!sectionText && !hasNonTextContent)) {
+    if (!headingText || !renderedHeadingHasSectionContent($, element)) {
       addIssue(issues, 'empty_heading', '내용이 없는 제목이 있습니다.');
     }
   });

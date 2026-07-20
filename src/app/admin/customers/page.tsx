@@ -562,7 +562,14 @@ export default function CustomersPage() {
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full" onClick={() => setOpenMenuId(null)}>
+    <div
+      className="flex h-full"
+      role="presentation"
+      onClick={() => setOpenMenuId(null)}
+      onKeyDown={e => {
+        if (e.key === 'Escape') setOpenMenuId(null);
+      }}
+    >
 
       {/* 메인 목록 */}
       <div className={`flex-1 min-w-0 transition-all duration-300 ${drawer ? 'mr-[520px]' : ''}`}>
@@ -590,20 +597,20 @@ export default function CustomersPage() {
             ))}
           </div>
 
-          <input value={search}
+          <input aria-label="고객 검색" value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="이름 / 전화번호 / 이메일"
             className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm w-52 focus:outline-none focus:ring-2 focus:ring-blue-300"
           />
 
-          <select value={gradeFilter}
+          <select aria-label="등급 필터" value={gradeFilter}
             onChange={e => { setGradeFilter(e.target.value); setPage(1); }}
             className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm">
             <option value="">전체 등급</option>
             {['VVIP', '우수', '일반', '신규'].map(g => <option key={g} value={g}>{g}</option>)}
           </select>
 
-          <select value={statusFilter}
+          <select aria-label="상태 필터" value={statusFilter}
             onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
             className="border border-admin-border-mid bg-white rounded px-3 py-2 text-admin-sm">
             <option value="">전체 상태</option>
@@ -619,6 +626,7 @@ export default function CustomersPage() {
                 <th className="pl-3 pr-2 py-2 w-10">
                   <input
                     type="checkbox"
+                    aria-label="현재 페이지 고객 전체 선택"
                     checked={customers.length > 0 && selectedIds.size === customers.length}
                     ref={el => {
                       if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < customers.length;
@@ -649,16 +657,16 @@ export default function CustomersPage() {
                   onClick={() => handleSort('totalSales')}>
                   총매출 {sortIcon('totalSales')}
                 </th>
-                <th className="pr-3 pl-2 py-2 w-10" />
+                <th aria-label="작업" className="pr-3 pl-2 py-2 w-10" />
               </tr>
             </thead>
 
             <tbody>
               {isLoading ? (
                 [...Array(6)].map((_, i) => (
-                  <tr key={i} className="border-b border-admin-border-mid">
-                    <td className="pl-3 pr-2 py-2" />
-                    <td className="px-3 py-2">
+                  <tr key={i} aria-hidden="true" className="border-b border-admin-border-mid">
+                    <td aria-label="선택 로딩" className="pl-3 pr-2 py-2" />
+                    <td aria-label="고객 정보 로딩" className="px-3 py-2">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-admin-surface-2 animate-pulse" />
                         <div className="space-y-1.5">
@@ -668,11 +676,11 @@ export default function CustomersPage() {
                       </div>
                     </td>
                     {[...Array(5)].map((_, j) => (
-                      <td key={j} className="px-3 py-2">
+                      <td key={j} aria-label="고객 지표 로딩" className="px-3 py-2">
                         <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse" />
                       </td>
                     ))}
-                    <td className="pr-3 pl-2 py-2" />
+                    <td aria-label="작업 로딩" className="pr-3 pl-2 py-2" />
                   </tr>
                 ))
               ) : customers.length === 0 ? (
@@ -689,6 +697,7 @@ export default function CustomersPage() {
 
                 return (
                   <tr key={c.id}
+                    aria-label={`${c.name} 상세 보기`}
                     onClick={() => { openDrawer(c); setOpenMenuId(null); }}
                     className={`group cursor-pointer transition-colors border-b border-admin-border-mid
                       ${isDrawerOn  ? 'bg-blue-50 ring-inset ring-2 ring-blue-300' : ''}
@@ -701,6 +710,7 @@ export default function CustomersPage() {
                     <td className="pl-3 pr-2 py-2" onClick={e => handleRowCheckbox(c.id, idx, e)}>
                       <input
                         type="checkbox"
+                        aria-label={`${c.name} 선택`}
                         checked={isChecked}
                         onChange={() => {}}
                         className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer"
@@ -708,7 +718,7 @@ export default function CustomersPage() {
                     </td>
 
                     {/* Identity Block */}
-                    <td className="px-3 py-2">
+                    <td aria-label={`${c.name} 고객 정보`} className="px-3 py-2">
                       <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center
                           text-[11px] font-bold flex-shrink-0 ${avatarBg(c.grade)}`}>
@@ -782,6 +792,8 @@ export default function CustomersPage() {
                     <td className="pr-3 pl-2 py-2" onClick={e => e.stopPropagation()}>
                       <div className="relative flex justify-end">
                         <button type="button"
+                          aria-label={`${c.name} 작업 메뉴 열기`}
+                          aria-expanded={openMenuId === c.id}
                           onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === c.id ? null : c.id); }}
                           className="w-7 h-7 rounded flex items-center justify-center text-lg leading-none
                             text-admin-muted-2 hover:text-admin-muted hover:bg-admin-surface-2 transition
@@ -832,7 +844,9 @@ export default function CustomersPage() {
           ? 'translate-y-0 opacity-100 pointer-events-auto'
           : 'translate-y-16 opacity-0 pointer-events-none'
         }`}
+        role="presentation"
         onClick={e => e.stopPropagation()}
+        onKeyDown={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 bg-blue-600 text-white px-5 py-3
           rounded border border-slate-700/50">
@@ -869,8 +883,14 @@ export default function CustomersPage() {
       {/* 확인 모달 */}
       {confirmModal && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
+          role="presentation"
+          onKeyDown={e => {
+            if (e.key === 'Escape') setConfirmModal(null);
+          }}
           onClick={() => setConfirmModal(null)}>
           <div className="bg-white rounded w-full max-w-sm p-6"
+            role="presentation"
+            onKeyDown={e => e.stopPropagation()}
             onClick={e => e.stopPropagation()}>
             <h3 className="text-admin-lg font-bold text-admin-text-2 mb-2">
               {confirmModal.type === 'mileage-reset' ? '마일리지 일괄 초기화'
@@ -886,16 +906,16 @@ export default function CustomersPage() {
                 </p>
                 <div className="space-y-3 mb-6">
                   <div>
-                    <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">지급 금액 (P)</label>
-                    <input type="number" min={1} max={1000000}
+                    <label htmlFor="bulk-grant-amount" className="text-[11px] text-admin-muted-2 font-medium block mb-1">지급 금액 (P)</label>
+                    <input id="bulk-grant-amount" type="number" min={1} max={1000000}
                       defaultValue={1000}
                       onChange={e => setConfirmModal(prev => prev ? { ...prev, grantAmount: parseInt(e.target.value) || 0 } : prev)}
                       className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">사유</label>
-                    <input type="text" defaultValue="프로모션 지급"
+                    <label htmlFor="bulk-grant-reason" className="text-[11px] text-admin-muted-2 font-medium block mb-1">사유</label>
+                    <input id="bulk-grant-reason" type="text" defaultValue="프로모션 지급"
                       onChange={e => setConfirmModal(prev => prev ? { ...prev, grantReason: e.target.value } : prev)}
                       className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500"
                       placeholder="예: 3개월 미구매 고객 프로모션"
@@ -903,8 +923,9 @@ export default function CustomersPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">등급 필터 (선택)</label>
+                      <label htmlFor="bulk-grant-grade-filter" className="text-[11px] text-admin-muted-2 font-medium block mb-1">등급 필터 (선택)</label>
                       <select
+                        id="bulk-grant-grade-filter"
                         onChange={e => setConfirmModal(prev => prev ? { ...prev, grantGradeFilter: e.target.value } : prev)}
                         className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500">
                         <option value="">전체 등급</option>
@@ -915,8 +936,9 @@ export default function CustomersPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[11px] text-admin-muted-2 font-medium block mb-1">미구매 기준 (선택)</label>
+                      <label htmlFor="bulk-grant-min-days" className="text-[11px] text-admin-muted-2 font-medium block mb-1">미구매 기준 (선택)</label>
                       <select
+                        id="bulk-grant-min-days"
                         onChange={e => setConfirmModal(prev => prev ? { ...prev, grantMinDays: parseInt(e.target.value) || 0 } : prev)}
                         className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500">
                         <option value="0">적용 안 함</option>
@@ -967,7 +989,14 @@ export default function CustomersPage() {
       {/* 사이드 드로어 (slide-over panel) */}
       {drawer && (
         <>
-          <div className="fixed inset-0 bg-black/20 z-30 lg:hidden" onClick={() => setDrawer(null)} />
+          <div
+            className="fixed inset-0 bg-black/20 z-30 lg:hidden"
+            role="presentation"
+            onClick={() => setDrawer(null)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setDrawer(null);
+            }}
+          />
 
           <div className="fixed right-0 top-0 h-full w-[520px] bg-white z-40 flex flex-col border-l border-admin-border-mid">
 
@@ -995,7 +1024,7 @@ export default function CustomersPage() {
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={() => setDrawer(null)} className="text-admin-muted-2 hover:text-admin-muted text-lg p-1">✕</button>
+              <button type="button" aria-label="고객 상세 닫기" onClick={() => setDrawer(null)} className="text-admin-muted-2 hover:text-admin-muted text-lg p-1">✕</button>
             </div>
 
             {/* 생애주기 프로세스 바 */}
@@ -1068,8 +1097,8 @@ export default function CustomersPage() {
                         ['생년월일',   'birth_date',       'date'],
                       ] as const).map(([label, field, type]) => (
                         <div key={field}>
-                          <label className="block text-[11px] font-semibold text-admin-muted mb-1">{label}</label>
-                          <input type={type}
+                          <label htmlFor={`customer-edit-${field}`} className="block text-[11px] font-semibold text-admin-muted mb-1">{label}</label>
+                          <input id={`customer-edit-${field}`} type={type}
                             value={(editInfo[field as keyof typeof editInfo] as string) ?? ''}
                             onChange={e => setEditInfo(prev => ({ ...prev, [field]: e.target.value }))}
                             className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -1078,8 +1107,8 @@ export default function CustomersPage() {
                       ))}
                       {/* 주민번호 7자리 → 생년월일 자동입력 */}
                       <div>
-                        <label className="block text-[11px] font-semibold text-admin-muted mb-1">주민번호 (앞6+뒤1)</label>
-                        <input maxLength={7} placeholder="6203152"
+                        <label htmlFor="customer-edit-resident-number" className="block text-[11px] font-semibold text-admin-muted mb-1">주민번호 (앞6+뒤1)</label>
+                        <input id="customer-edit-resident-number" maxLength={7} placeholder="6203152"
                           onChange={e => {
                             const v = e.target.value.replace(/[^0-9]/g, '');
                             e.target.value = v;
@@ -1103,8 +1132,8 @@ export default function CustomersPage() {
                         })()}
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-admin-muted mb-1">메모</label>
-                        <textarea value={editInfo.memo ?? ''}
+                        <label htmlFor="customer-edit-memo" className="block text-[11px] font-semibold text-admin-muted mb-1">메모</label>
+                        <textarea id="customer-edit-memo" value={editInfo.memo ?? ''}
                           onChange={e => setEditInfo(prev => ({ ...prev, memo: e.target.value }))}
                           rows={3}
                           className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
@@ -1168,7 +1197,7 @@ export default function CustomersPage() {
                           ))}
                         </div>
                         <div className="flex gap-2">
-                          <textarea value={noteInput}
+                          <textarea aria-label="상담 메모 입력" value={noteInput}
                             onChange={e => setNoteInput(e.target.value)}
                             placeholder="상담 내용을 입력하세요..."
                             rows={2}
@@ -1244,12 +1273,12 @@ export default function CustomersPage() {
                       <div className="bg-white rounded p-4 border border-admin-border-mid">
                         <p className="text-[11px] font-semibold text-admin-muted mb-3">수동 조정 (CS)</p>
                         <div className="flex gap-2 mb-2">
-                          <input type="number" value={mileageInput}
+                          <input aria-label="마일리지 증감 포인트" type="number" value={mileageInput}
                             onChange={e => setMileageInput(e.target.value)}
                             placeholder="+500 또는 -200"
                             className="flex-1 border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                           />
-                          <select value={mileageReason} onChange={e => setMileageReason(e.target.value)}
+                          <select aria-label="마일리지 조정 사유" value={mileageReason} onChange={e => setMileageReason(e.target.value)}
                             className="border border-admin-border-mid rounded px-2 text-admin-sm bg-white">
                             {['수동 조정', 'CS 보상', '오류 수정', '사용', '만료'].map(r => (
                               <option key={r} value={r}>{r}</option>
@@ -1301,24 +1330,34 @@ export default function CustomersPage() {
       {/* 신규 등록 슬라이드 패널 */}
       {showForm && (
         <>
-          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => { setShowForm(false); setPhoneDupe(null); }} />
+          <div
+            className="fixed inset-0 bg-black/40 z-50"
+            role="presentation"
+            onClick={() => { setShowForm(false); setPhoneDupe(null); }}
+            onKeyDown={e => {
+              if (e.key === 'Escape') {
+                setShowForm(false);
+                setPhoneDupe(null);
+              }
+            }}
+          />
           <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-admin-border-mid">
             <div className="px-6 py-4 border-b border-admin-border-mid flex items-center justify-between">
               <h2 className="text-admin-lg font-bold text-admin-text-2">신규 고객 등록</h2>
-              <button type="button" onClick={() => { setShowForm(false); setPhoneDupe(null); }} className="text-admin-muted-2 hover:text-admin-muted text-xl">✕</button>
+              <button type="button" aria-label="고객 등록 닫기" onClick={() => { setShowForm(false); setPhoneDupe(null); }} className="text-admin-muted-2 hover:text-admin-muted text-xl">✕</button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4 flex-1 overflow-y-auto">
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted mb-1">이름 *</label>
-                <input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                <label htmlFor="customer-create-name" className="block text-[11px] font-semibold text-admin-muted mb-1">이름 *</label>
+                <input id="customer-create-name" required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                   placeholder="홍길동" />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted mb-1">전화번호</label>
+                <label htmlFor="customer-create-phone" className="block text-[11px] font-semibold text-admin-muted mb-1">전화번호</label>
                 <div className="relative">
-                  <input value={form.phone}
+                  <input id="customer-create-phone" value={form.phone}
                     onChange={e => { setForm(p => ({ ...p, phone: e.target.value })); checkPhone(e.target.value); }}
                     className={`w-full border rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 ${phoneDupe ? 'border-orange-400 bg-orange-50' : 'border-admin-border-mid'}`}
                     placeholder="010-0000-0000" />
@@ -1338,28 +1377,29 @@ export default function CustomersPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted mb-1">이메일</label>
-                <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+                <label htmlFor="customer-create-email" className="block text-[11px] font-semibold text-admin-muted mb-1">이메일</label>
+                <input id="customer-create-email" type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-admin-muted mb-1">여권번호</label>
-                  <input value={form.passport_no} onChange={e => setForm(p => ({ ...p, passport_no: e.target.value }))}
+                  <label htmlFor="customer-create-passport-no" className="block text-[11px] font-semibold text-admin-muted mb-1">여권번호</label>
+                  <input id="customer-create-passport-no" value={form.passport_no} onChange={e => setForm(p => ({ ...p, passport_no: e.target.value }))}
                     className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-admin-muted mb-1">여권만료일</label>
-                  <input type="date" value={form.passport_expiry} onChange={e => setForm(p => ({ ...p, passport_expiry: e.target.value }))}
+                  <label htmlFor="customer-create-passport-expiry" className="block text-[11px] font-semibold text-admin-muted mb-1">여권만료일</label>
+                  <input id="customer-create-passport-expiry" type="date" value={form.passport_expiry} onChange={e => setForm(p => ({ ...p, passport_expiry: e.target.value }))}
                     className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 </div>
               </div>
 
               {/* 주민번호 7자리 → 성별/나이 자동 파싱 */}
               <div>
-                <label className="block text-[11px] font-semibold text-admin-muted mb-1">주민등록번호 (앞6 + 뒤1)</label>
+                <label htmlFor="customer-create-resident-number" className="block text-[11px] font-semibold text-admin-muted mb-1">주민등록번호 (앞6 + 뒤1)</label>
                 <input
+                  id="customer-create-resident-number"
                   maxLength={7}
                   placeholder="6203152"
                   onChange={e => {
