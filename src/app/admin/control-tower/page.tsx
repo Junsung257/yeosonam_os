@@ -439,13 +439,13 @@ export default function ControlTowerPage() {
           ))}
         </div>
         <div className="ml-auto flex gap-2 items-center">
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+          <select aria-label="정책 상태 필터" value={statusFilter} onChange={e => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
             className="px-2 py-1 border border-admin-border-mid rounded text-[11px] text-admin-muted">
             <option value="all">전체 상태</option>
             <option value="active">활성만</option>
             <option value="inactive">비활성만</option>
           </select>
-          <input type="text" placeholder="검색..." value={search} onChange={e => setSearch(e.target.value)}
+          <input aria-label="정책 검색" type="text" placeholder="검색..." value={search} onChange={e => setSearch(e.target.value)}
             className="px-2.5 py-1 border border-admin-border-mid rounded text-admin-xs w-40 focus:ring-1 focus:ring-blue-500" />
         </div>
       </div>
@@ -497,7 +497,7 @@ export default function ControlTowerPage() {
                 </div>
 
                 {/* 토글 */}
-                <button type="button" onClick={() => toggleActive(policy)}
+                <button type="button" aria-label={`${policy.name} 활성 상태 전환`} aria-pressed={policy.is_active} onClick={() => toggleActive(policy)}
                   className={`w-10 h-5 rounded-full flex-shrink-0 transition relative ${policy.is_active ? 'bg-emerald-500' : 'bg-slate-200'}`}>
                   <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${policy.is_active ? 'left-5' : 'left-0.5'}`} />
                 </button>
@@ -519,12 +519,24 @@ export default function ControlTowerPage() {
 
       {/* ── 편집 드로어 ───────────────────────────────── */}
       {editOpen && editTarget && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setEditOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 flex justify-end"
+          role="presentation"
+          onClick={() => setEditOpen(false)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setEditOpen(false);
+          }}
+        >
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
+          <div
+            className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
+            role="presentation"
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => e.stopPropagation()}
+          >
             <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
               <h2 className="text-admin-lg font-semibold text-admin-text-2">{editTarget.id ? '정책 편집' : '새 정책'}</h2>
-              <button type="button" onClick={() => setEditOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted">
+              <button type="button" aria-label="정책 편집 닫기" onClick={() => setEditOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
             </div>
@@ -532,49 +544,49 @@ export default function ControlTowerPage() {
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* 기본 정보 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">정책 이름 *</label>
-                <input type="text" value={editTarget.name || ''} onChange={e => updateField('name', e.target.value)}
+                <label htmlFor="control-policy-name" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">정책 이름 *</label>
+                <input id="control-policy-name" type="text" value={editTarget.name || ''} onChange={e => updateField('name', e.target.value)}
                   placeholder="예: 다낭 전 상품 3만원 할인"
                   className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-blue-500" />
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">설명</label>
-                <input type="text" value={editTarget.description || ''} onChange={e => updateField('description', e.target.value)}
+                <label htmlFor="control-policy-description" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">설명</label>
+                <input id="control-policy-description" type="text" value={editTarget.description || ''} onChange={e => updateField('description', e.target.value)}
                   placeholder="정책 상세 설명"
                   className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">카테고리 *</label>
-                  <select value={editTarget.category || 'pricing'} onChange={e => updateField('category', e.target.value)}
+                  <label htmlFor="control-policy-category" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">카테고리 *</label>
+                  <select id="control-policy-category" value={editTarget.category || 'pricing'} onChange={e => updateField('category', e.target.value)}
                     className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm">
                     {CATEGORIES.filter(c => c.key !== 'all').map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">우선순위</label>
-                  <input type="number" value={editTarget.priority ?? 100} onChange={e => updateField('priority', parseInt(e.target.value) || 100)}
+                  <label htmlFor="control-policy-priority" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">우선순위</label>
+                  <input id="control-policy-priority" type="number" value={editTarget.priority ?? 100} onChange={e => updateField('priority', parseInt(e.target.value) || 100)}
                     className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                 </div>
               </div>
 
               {/* 조건 */}
               <div className="border-t border-admin-border pt-4">
-                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">조건 (Trigger)</label>
-                <select value={editTarget.trigger_type || 'condition'} onChange={e => updateField('trigger_type', e.target.value)}
+                <label htmlFor="control-policy-trigger-type" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">조건 (Trigger)</label>
+                <select id="control-policy-trigger-type" value={editTarget.trigger_type || 'condition'} onChange={e => updateField('trigger_type', e.target.value)}
                   className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm mb-2">
                   {Object.entries(TRIGGER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
 
                 {(editTarget.trigger_type === 'condition' || editTarget.trigger_type === 'event') && (
                   <div className="grid grid-cols-3 gap-2">
-                    <input type="text" placeholder="필드 (예: destination)"
+                    <input aria-label="조건 필드" type="text" placeholder="필드 (예: destination)"
                       value={(editTarget.trigger_config as Record<string, string>)?.field || ''}
                       onChange={e => updateJsonField('trigger_config', 'field', e.target.value)}
                       className="border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs" />
-                    <select value={(editTarget.trigger_config as Record<string, string>)?.operator || '='}
+                    <select aria-label="조건 연산자" value={(editTarget.trigger_config as Record<string, string>)?.operator || '='}
                       onChange={e => updateJsonField('trigger_config', 'operator', e.target.value)}
                       className="border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs">
                       <option value="=">=</option>
@@ -586,7 +598,7 @@ export default function ControlTowerPage() {
                       <option value="in">포함</option>
                       <option value="between">범위</option>
                     </select>
-                    <input type="text" placeholder="값"
+                    <input aria-label="조건 값" type="text" placeholder="값"
                       value={String((editTarget.trigger_config as Record<string, unknown>)?.value ?? '')}
                       onChange={e => {
                         const v = e.target.value;
@@ -600,8 +612,8 @@ export default function ControlTowerPage() {
 
               {/* 액션 */}
               <div className="border-t border-admin-border pt-4">
-                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">액션 (Action)</label>
-                <select value={editTarget.action_type || ''} onChange={e => updateField('action_type', e.target.value)}
+                <label htmlFor="control-policy-action-type" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">액션 (Action)</label>
+                <select id="control-policy-action-type" value={editTarget.action_type || ''} onChange={e => updateField('action_type', e.target.value)}
                   className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm mb-2">
                   {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
@@ -609,56 +621,56 @@ export default function ControlTowerPage() {
                 {/* 액션별 파라미터 */}
                 {editTarget.action_type?.includes('discount_fixed') && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">할인 금액 (원)</label>
-                    <input type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
+                    <label htmlFor="control-action-discount-amount" className="text-[10px] text-admin-muted-2">할인 금액 (원)</label>
+                    <input id="control-action-discount-amount" type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
                       onChange={e => updateJsonField('action_config', 'amount', parseInt(e.target.value) || 0)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {(editTarget.action_type?.includes('_pct') || editTarget.action_type === 'mileage_fixed') && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">비율 (소수점, 예: 0.05 = 5%)</label>
-                    <input type="number" step="0.01" value={(editTarget.action_config as Record<string, number>)?.rate || 0}
+                    <label htmlFor="control-action-rate" className="text-[10px] text-admin-muted-2">비율 (소수점, 예: 0.05 = 5%)</label>
+                    <input id="control-action-rate" type="number" step="0.01" value={(editTarget.action_config as Record<string, number>)?.rate || 0}
                       onChange={e => updateJsonField('action_config', 'rate', parseFloat(e.target.value) || 0)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'mileage_multiply' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">배수 (예: 2 = 2배)</label>
-                    <input type="number" value={(editTarget.action_config as Record<string, number>)?.multiplier || 1}
+                    <label htmlFor="control-action-multiplier" className="text-[10px] text-admin-muted-2">배수 (예: 2 = 2배)</label>
+                    <input id="control-action-multiplier" type="number" value={(editTarget.action_config as Record<string, number>)?.multiplier || 1}
                       onChange={e => updateJsonField('action_config', 'multiplier', parseInt(e.target.value) || 1)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'mileage_grant' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">지급 포인트</label>
-                    <input type="number" value={(editTarget.action_config as Record<string, number>)?.points || 0}
+                    <label htmlFor="control-action-points" className="text-[10px] text-admin-muted-2">지급 포인트</label>
+                    <input id="control-action-points" type="number" value={(editTarget.action_config as Record<string, number>)?.points || 0}
                       onChange={e => updateJsonField('action_config', 'points', parseInt(e.target.value) || 0)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'mileage_expiration_months' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">소멸 기간 (개월, 예: 24 = 2년)</label>
-                    <input type="number" min={1} value={(editTarget.action_config as Record<string, number>)?.months || 24}
+                    <label htmlFor="control-action-expiration-months" className="text-[10px] text-admin-muted-2">소멸 기간 (개월, 예: 24 = 2년)</label>
+                    <input id="control-action-expiration-months" type="number" min={1} value={(editTarget.action_config as Record<string, number>)?.months || 24}
                       onChange={e => updateJsonField('action_config', 'months', parseInt(e.target.value) || 24)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'mileage_min_earn' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">최소 적립 금액 (원)</label>
-                    <input type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
+                    <label htmlFor="control-action-min-earn-amount" className="text-[10px] text-admin-muted-2">최소 적립 금액 (원)</label>
+                    <input id="control-action-min-earn-amount" type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
                       onChange={e => updateJsonField('action_config', 'amount', parseInt(e.target.value) || 0)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type === 'mileage_max_earn' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">최대 적립 상한 (원)</label>
-                    <input type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
+                    <label htmlFor="control-action-max-earn-amount" className="text-[10px] text-admin-muted-2">최대 적립 상한 (원)</label>
+                    <input id="control-action-max-earn-amount" type="number" value={(editTarget.action_config as Record<string, number>)?.amount || 0}
                       onChange={e => updateJsonField('action_config', 'amount', parseInt(e.target.value) || 0)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
@@ -666,14 +678,14 @@ export default function ControlTowerPage() {
                 {editTarget.action_type === 'show_badge' && (
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-admin-muted-2">뱃지 텍스트</label>
-                      <input type="text" value={(editTarget.action_config as Record<string, string>)?.text || ''}
+                      <label htmlFor="control-action-badge-text" className="text-[10px] text-admin-muted-2">뱃지 텍스트</label>
+                      <input id="control-action-badge-text" type="text" value={(editTarget.action_config as Record<string, string>)?.text || ''}
                         onChange={e => updateJsonField('action_config', 'text', e.target.value)}
                         className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-admin-muted-2">색상</label>
-                      <select value={(editTarget.action_config as Record<string, string>)?.color || 'red'}
+                      <label htmlFor="control-action-badge-color" className="text-[10px] text-admin-muted-2">색상</label>
+                      <select id="control-action-badge-color" value={(editTarget.action_config as Record<string, string>)?.color || 'red'}
                         onChange={e => updateJsonField('action_config', 'color', e.target.value)}
                         className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm">
                         <option value="red">빨강</option><option value="blue">파랑</option>
@@ -685,16 +697,16 @@ export default function ControlTowerPage() {
                 )}
                 {editTarget.action_type === 'show_banner' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">배너 텍스트</label>
-                    <input type="text" value={(editTarget.action_config as Record<string, string>)?.banner_text || ''}
+                    <label htmlFor="control-action-banner-text" className="text-[10px] text-admin-muted-2">배너 텍스트</label>
+                    <input id="control-action-banner-text" type="text" value={(editTarget.action_config as Record<string, string>)?.banner_text || ''}
                       onChange={e => updateJsonField('action_config', 'banner_text', e.target.value)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
                 )}
                 {editTarget.action_type?.includes('send_') && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">템플릿 ID</label>
-                    <input type="text" value={(editTarget.action_config as Record<string, string>)?.template || ''}
+                    <label htmlFor="control-action-template" className="text-[10px] text-admin-muted-2">템플릿 ID</label>
+                    <input id="control-action-template" type="text" value={(editTarget.action_config as Record<string, string>)?.template || ''}
                       onChange={e => updateJsonField('action_config', 'template', e.target.value)}
                       placeholder="예: d7_reminder, birthday_coupon"
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
@@ -702,8 +714,8 @@ export default function ControlTowerPage() {
                 )}
                 {editTarget.action_type === 'auto_refund' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">환불 비율 (1.0 = 전액)</label>
-                    <input type="number" step="0.1" value={(editTarget.action_config as Record<string, number>)?.refund_rate || 1}
+                    <label htmlFor="control-action-refund-rate" className="text-[10px] text-admin-muted-2">환불 비율 (1.0 = 전액)</label>
+                    <input id="control-action-refund-rate" type="number" step="0.1" value={(editTarget.action_config as Record<string, number>)?.refund_rate || 1}
                       onChange={e => updateJsonField('action_config', 'refund_rate', parseFloat(e.target.value) || 1)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
                   </div>
@@ -711,8 +723,8 @@ export default function ControlTowerPage() {
                 {editTarget.action_type === 'commission_campaign_bonus' && (
                   <div className="space-y-2">
                     <div>
-                      <label className="text-[10px] text-admin-muted-2">가산 커미션율 (예: 0.01 = +1%)</label>
-                      <input type="number" step="0.001" min="0" max="0.10"
+                      <label htmlFor="control-action-commission-bonus-rate" className="text-[10px] text-admin-muted-2">가산 커미션율 (예: 0.01 = +1%)</label>
+                      <input id="control-action-commission-bonus-rate" type="number" step="0.001" min="0" max="0.10"
                         value={(editTarget.action_config as Record<string, number>)?.rate ?? 0}
                         onChange={e => updateJsonField('action_config', 'rate', parseFloat(e.target.value) || 0)}
                         className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
@@ -728,8 +740,8 @@ export default function ControlTowerPage() {
                 )}
                 {editTarget.action_type === 'commission_cap' && (
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">최대 커미션율 (예: 0.07 = 7% 상한)</label>
-                    <input type="number" step="0.001" min="0" max="0.30"
+                    <label htmlFor="control-action-commission-max-rate" className="text-[10px] text-admin-muted-2">최대 커미션율 (예: 0.07 = 7% 상한)</label>
+                    <input id="control-action-commission-max-rate" type="number" step="0.001" min="0" max="0.30"
                       value={(editTarget.action_config as Record<string, number>)?.max_rate ?? 0.07}
                       onChange={e => updateJsonField('action_config', 'max_rate', parseFloat(e.target.value) || 0.07)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm" />
@@ -740,16 +752,16 @@ export default function ControlTowerPage() {
 
               {/* 대상 범위 */}
               <div className="border-t border-admin-border pt-4">
-                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">대상 범위 (Scope)</label>
+                <p className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">대상 범위 (Scope)</p>
                 <div className="space-y-2">
-                  <input type="text" placeholder="목적지 (예: 다낭, 비워두면 전체)"
+                  <input aria-label="대상 목적지" type="text" placeholder="목적지 (예: 다낭, 비워두면 전체)"
                     value={(editTarget.target_scope as Record<string, string>)?.destination || ''}
                     onChange={e => {
                       if (e.target.value) updateJsonField('target_scope', 'destination', e.target.value);
                       else updateField('target_scope', { all: true });
                     }}
                     className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-xs" />
-                  <input type="text" placeholder="고객 등급 (예: VVIP, 비워두면 전체)"
+                  <input aria-label="대상 고객 등급" type="text" placeholder="고객 등급 (예: VVIP, 비워두면 전체)"
                     value={(editTarget.target_scope as Record<string, string>)?.customer_grade || ''}
                     onChange={e => {
                       if (e.target.value) updateJsonField('target_scope', 'customer_grade', e.target.value);
@@ -760,17 +772,17 @@ export default function ControlTowerPage() {
 
               {/* 기간 */}
               <div className="border-t border-admin-border pt-4">
-                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">기간</label>
+                <p className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-2">기간</p>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">시작일</label>
-                    <input type="date" value={(editTarget.starts_at || '').slice(0, 10)}
+                    <label htmlFor="control-policy-starts-at" className="text-[10px] text-admin-muted-2">시작일</label>
+                    <input id="control-policy-starts-at" type="date" value={(editTarget.starts_at || '').slice(0, 10)}
                       onChange={e => updateField('starts_at', e.target.value)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-xs" />
                   </div>
                   <div>
-                    <label className="text-[10px] text-admin-muted-2">종료일 (비워두면 상시)</label>
-                    <input type="date" value={(editTarget.ends_at || '').slice(0, 10)}
+                    <label htmlFor="control-policy-ends-at" className="text-[10px] text-admin-muted-2">종료일 (비워두면 상시)</label>
+                    <input id="control-policy-ends-at" type="date" value={(editTarget.ends_at || '').slice(0, 10)}
                       onChange={e => updateField('ends_at', e.target.value || null)}
                       className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-xs" />
                   </div>
@@ -779,8 +791,8 @@ export default function ControlTowerPage() {
 
               {/* 변경 사유 (감사 로그) */}
               <div className="border-t border-admin-border pt-4">
-                <label className="text-[11px] font-semibold text-rose-600 uppercase block mb-1">변경 사유 * (감사 로그)</label>
-                <textarea value={editReason} onChange={e => setEditReason(e.target.value)}
+                <label htmlFor="control-policy-edit-reason" className="text-[11px] font-semibold text-rose-600 uppercase block mb-1">변경 사유 * (감사 로그)</label>
+                <textarea id="control-policy-edit-reason" value={editReason} onChange={e => setEditReason(e.target.value)}
                   rows={2}
                   placeholder="예: 동남아 비수기 부스터 1.5%로 상향"
                   className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-xs resize-none" />
