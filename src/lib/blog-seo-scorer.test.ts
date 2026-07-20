@@ -306,4 +306,28 @@ describe('computeSeoScore', () => {
 
     expect(result.details.find((detail) => detail.name === 'url_slug')?.status).toBe('pass');
   });
+
+  it('counts the public page title H1 when Markdown intentionally starts below the page header', () => {
+    const result = computeSeoScore({
+      blogHtml: [
+        '삿포로 식비 예산을 근거와 함께 정리합니다.',
+        '## 삿포로 식비 예산은 얼마일까?',
+        '## 하루 예산',
+        '## 끼니별 가격',
+        '## 지역별 차이',
+        '## 자주 묻는 질문',
+      ].join('\n\n'),
+      slug: 'sapporo-food-budget',
+      seoTitle: '삿포로 식비 예산과 끼니별 가격 가이드 2026',
+      seoDescription: '삿포로 식비 예산과 끼니별 가격을 2026년 기준 근거와 함께 확인하고 여행 전 체크할 항목을 정리합니다.',
+      primaryKeyword: '삿포로 식비 예산',
+      destination: '삿포로',
+      blogType: 'info',
+      hasRenderedPageH1: true,
+    });
+
+    const headings = result.details.find((detail) => detail.name === 'heading_structure');
+    expect(headings?.status).toBe('pass');
+    expect(headings?.message).toContain('H1 1개 (페이지 제목)');
+  });
 });

@@ -2649,6 +2649,7 @@ async function processQueueItem(
       secondaryKeywords: item.meta?.keywords ?? [],
       destination: item.destination,
       blogType,
+      hasRenderedPageH1: true,
       hasRuntimeInformationalCta: contentBoundary.lane === 'informational',
       imageCount: imgCount,
       imagesWithAlt: imgWithAlt,
@@ -2695,7 +2696,7 @@ async function processQueueItem(
       console.log(`[blog-publisher] SEO CTA repair -> ${seoScore.score}/${seoScore.maxScore}`);
     }
 
-    if (!seoScore.passed && seoScore.details.some(d => d.status === 'fail' && ['title', 'meta_description'].includes(d.name))) {
+    if (seoScore.details.some(d => d.status !== 'pass' && ['title', 'meta_description'].includes(d.name))) {
       const seoRepair = repairBlogSeoMetadata({
         seoTitle: generated.seo_title,
         seoDescription: generated.seo_description,
@@ -2803,11 +2804,13 @@ async function processQueueItem(
           slug: generated.slug,
           utmSource: 'naver_blog',
         });
-        qa = await runQualityWithResearchStructure();
-        seoScore = computeSeoScore(buildSeoScoreInput());
-        publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
-        console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ')} -> passed=${publishQuality.passed}`);
       }
+      qa = blogType === 'info'
+        ? await runQualityAfterAiReadableRepair()
+        : await runQualityWithResearchStructure();
+      seoScore = computeSeoScore(buildSeoScoreInput());
+      publishQuality = await runGeneratedPublishQuality(generated, item, blogType, primaryKeyword);
+      console.log(`[blog-publisher] final publish quality repair: ${finalRepairChanges.join(', ') || 'ai_readable_boundary'} -> passed=${publishQuality.passed}`);
     }
 
     if (!publishQuality.passed) {
