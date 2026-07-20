@@ -11,6 +11,7 @@ const outDir = resolve('.tmp', 'operational-apply-scripts-verify');
 const operationalKeys = [
   'OPEN_CHECK_PACKAGE_ID',
   'OPEN_CHECK_REF_CODE',
+  'OPEN_CHECK_BLOG_SLUG',
   'MARKETING_CHECK_CARD_NEWS_ID',
   'MARKETING_CHECK_VARIANT_GROUP_ID',
   'SUPABASE_ACCESS_TOKEN',

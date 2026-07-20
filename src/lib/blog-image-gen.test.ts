@@ -56,6 +56,9 @@ describe('blog image generation contract', () => {
     const prompt = buildGeneratedBlogImagePrompt('Guangzhou seasonal travel scene');
     expect(prompt).toContain('No text');
     expect(prompt).toContain('not documentary proof');
+    expect(prompt).toContain('not a collage');
+    expect(prompt).toContain('Do not invent a recognizable landmark');
+    expect(prompt).toContain('no menu prices');
   });
 
   it('recognizes only persisted public generated-image URLs', () => {

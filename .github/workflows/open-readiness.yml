@@ -29,6 +29,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
       OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
+      OPEN_CHECK_BLOG_SLUG: ${{ vars.OPEN_CHECK_BLOG_SLUG || secrets.OPEN_CHECK_BLOG_SLUG }}
       MARKETING_CHECK_CARD_NEWS_ID: ${{ vars.MARKETING_CHECK_CARD_NEWS_ID || secrets.MARKETING_CHECK_CARD_NEWS_ID }}
       MARKETING_CHECK_VARIANT_GROUP_ID: ${{ vars.MARKETING_CHECK_VARIANT_GROUP_ID || secrets.MARKETING_CHECK_VARIANT_GROUP_ID }}
       SERPAPI_KEY: ${{ secrets.SERPAPI_KEY || vars.SERPAPI_KEY }}
@@ -80,6 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp
+          unset OPEN_CHECK_PACKAGE_ID OPEN_CHECK_REF_CODE OPEN_CHECK_BLOG_SLUG MARKETING_CHECK_CARD_NEWS_ID MARKETING_CHECK_VARIANT_GROUP_ID
           npm run verify:operational-inputs -- --json \
             --env-file=.tmp/operational-readiness-discovered.env \
             --template-out=.tmp/operational-readiness-inputs.env.example \
@@ -94,6 +96,7 @@ jobs:
           set -euo pipefail
           mkdir -p .tmp
           if [[ -f .tmp/operational-readiness-discovered.env ]]; then
+            unset OPEN_CHECK_PACKAGE_ID OPEN_CHECK_REF_CODE OPEN_CHECK_BLOG_SLUG MARKETING_CHECK_CARD_NEWS_ID MARKETING_CHECK_VARIANT_GROUP_ID
             set -a
             source .tmp/operational-readiness-discovered.env
             set +a

@@ -249,3 +249,22 @@ test('local release readiness treats transient local DB outages as blocked, not 
   assert.match(source, /unavailable \? 'blocked' : 'fail'/);
   assert.match(source, /blog quality probe output was unavailable during a local DB\/runtime timeout/);
 });
+
+test('open readiness rejects package detail not-found bodies even when HTTP status is 200', () => {
+  const source = read('scripts', 'open-readiness-check.mjs');
+
+  assert.match(source, /public:package-detail/);
+  assert.match(source, /packageDetailLooksRenderable/);
+  assert.match(source, /PACKAGE_ID\.slice\(0, 8\)/);
+  assert.match(source, /package detail title did not include the probe package id/);
+});
+
+test('open readiness rejects blog detail not-found bodies even when HTTP status is 200', () => {
+  const source = read('scripts', 'open-readiness-check.mjs');
+
+  assert.match(source, /BLOG_DETAIL_NOT_FOUND_PATTERN/);
+  assert.match(source, /public:blog-runtime/);
+  assert.match(source, /OPEN_CHECK_BLOG_SLUG/);
+  assert.match(source, /!BLOG_DETAIL_NOT_FOUND_PATTERN\.test\(body\)/);
+  assert.match(source, /blog detail rendered a not-found state/);
+});
