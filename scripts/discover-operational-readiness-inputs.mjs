@@ -132,6 +132,11 @@ function discoveredOrCurrent(key, discovered, source) {
   return { key, value: '', source: 'missing' };
 }
 
+function discoveredOnly(key, discovered, source) {
+  if (discovered) return { key, value: discovered, source };
+  return { key, value: '', source: 'missing' };
+}
+
 const loadedEnvFileKeys = loadEnvFile(envFile);
 const supabaseUrl = envValue('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL');
 const serviceKey = envValue('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY');
@@ -273,9 +278,9 @@ if (missingConnection.length === 0) {
 
   report.checks.unshift(packageQuery, blogQuery, affiliateQuery, cardNewsQuery);
   report.discovered = {
-    OPEN_CHECK_PACKAGE_ID: discoveredOrCurrent('OPEN_CHECK_PACKAGE_ID', packageRow?.id, 'travel_packages.id'),
+    OPEN_CHECK_PACKAGE_ID: discoveredOnly('OPEN_CHECK_PACKAGE_ID', packageRow?.id, 'travel_packages.id'),
     OPEN_CHECK_REF_CODE: currentOrDiscovered('OPEN_CHECK_REF_CODE', affiliateRow?.referral_code, 'affiliates.referral_code'),
-    OPEN_CHECK_BLOG_SLUG: discoveredOrCurrent('OPEN_CHECK_BLOG_SLUG', blogRow?.slug, 'content_creatives.slug'),
+    OPEN_CHECK_BLOG_SLUG: discoveredOnly('OPEN_CHECK_BLOG_SLUG', blogRow?.slug, 'content_creatives.slug'),
     MARKETING_CHECK_CARD_NEWS_ID: currentOrDiscovered('MARKETING_CHECK_CARD_NEWS_ID', cardRow?.id, 'card_news.id'),
     MARKETING_CHECK_VARIANT_GROUP_ID: currentOrDiscovered(
       'MARKETING_CHECK_VARIANT_GROUP_ID',
