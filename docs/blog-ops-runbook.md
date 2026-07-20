@@ -410,3 +410,5 @@ npm run run:blog-indexing-worker -- --json --limit=15
 ### Information writer v2.1 private canary check
 
 The Sapporo food-budget canary reports queue failure evidence, stored prompt manifest, H2/question/FAQ counts, and image count in dry-run mode. A private regeneration may proceed only when the target remains a draft, the research preflight passes, and the route is called once. The AI-readable repair keeps the final article within nine H2 headings, preserves a natural question H2, and builds the food-budget FAQ only from approved claims. Missing `CRON_SECRET` must fail before `--apply --run` changes the queue; operators without that secret use `--apply` and invoke the protected production route separately.
+
+Count both image occurrences and unique image URLs. Three Markdown image tags backed by only two unique URLs are a one-image shortfall. In that exact case the private route may fetch at most one relevance-filtered Pexels asset, with one disclosed AI reference-image attempt only as its fallback; all other optional image expansion remains disabled.
