@@ -150,7 +150,7 @@ export default function SocialConfigsPage() {
                             }}
                           />
                         </div>
-                        <button
+                        <button type="button"
                           onClick={() => toggleEnabled(platform, config?.enabled ?? false)}
                           disabled={saving === platform}
                           className={`relative w-11 h-6 rounded-full transition-colors ${
@@ -168,7 +168,7 @@ export default function SocialConfigsPage() {
 
                     {/* OAuth 연결 버튼 (Meta 계열만) */}
                     {META_PLATFORMS.has(platform) && (
-                      <button
+                      <button type="button"
                         onClick={() => connectOAuth(platform)}
                         disabled={connecting === platform}
                         className="px-3 py-1.5 text-[11px] font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"

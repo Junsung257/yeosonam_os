@@ -358,7 +358,7 @@ export default function CardNewsEditorPage() {
       {/* ── 상단 툴바 ──────────────────────────────── */}
       <div className="bg-white border-b border-admin-border-mid px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/marketing/card-news')}
+          <button type="button" onClick={() => router.push('/admin/marketing/card-news')}
             className="text-admin-muted-2 hover:text-admin-muted transition p-1">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
@@ -383,7 +383,7 @@ export default function CardNewsEditorPage() {
           {/* 비율 선택 */}
           <div className="flex border border-admin-border-mid rounded overflow-hidden">
             {(Object.keys(RATIO_SIZES) as AspectRatio[]).map(r => (
-              <button key={r} onClick={() => setAspectRatio(r)}
+              <button type="button" key={r} onClick={() => setAspectRatio(r)}
                 className={`px-2.5 py-1 text-[11px] transition ${aspectRatio === r ? 'bg-slate-800 text-white' : 'bg-white text-admin-muted hover:bg-admin-bg'}`}>
                 {r}
               </button>
@@ -396,20 +396,20 @@ export default function CardNewsEditorPage() {
               step={10000} min={10000} className="w-20 border-none text-admin-xs text-admin-text-2 text-right focus:ring-0 bg-transparent p-0" />
             <span className="text-[10px] text-admin-muted-2">원</span>
           </div>
-          <button onClick={handleSave} disabled={saving}
+          <button type="button" onClick={handleSave} disabled={saving}
             className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {saving ? '...' : '저장'}
           </button>
-          <button onClick={handleExport} disabled={exporting}
+          <button type="button" onClick={handleExport} disabled={exporting}
             className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {exporting ? '생성 중...' : 'JPG 내보내기'}
           </button>
-          <button onClick={handleConfirmAndGenerateBlog} disabled={blogGenerating}
+          <button type="button" onClick={handleConfirmAndGenerateBlog} disabled={blogGenerating}
             className="px-3 py-1.5 bg-blue-600 text-white text-admin-xs rounded hover:bg-blue-700 disabled:opacity-50 transition font-medium"
             title="카드뉴스를 이미지로 저장하고 블로그를 자동 생성합니다">
             {blogGenerating ? '블로그 생성 중...' : '✨ 확정 + 블로그 생성'}
           </button>
-          <button
+          <button type="button"
             onClick={() => setIgModalOpen(true)}
             disabled={!cardNews.slide_image_urls || cardNews.slide_image_urls.length < 2}
             className={`px-3 py-1.5 text-white text-admin-xs rounded disabled:opacity-50 transition font-medium ${
@@ -428,7 +428,7 @@ export default function CardNewsEditorPage() {
                   ? '🔴 인스타 재시도'
                   : '📷 인스타 발행'}
           </button>
-          <button onClick={handleLaunch} disabled={launching || cardNews.status === 'LAUNCHED'}
+          <button type="button" onClick={handleLaunch} disabled={launching || cardNews.status === 'LAUNCHED'}
             className="px-3 py-1.5 bg-slate-900 text-white text-admin-xs rounded hover:bg-slate-800 disabled:opacity-50 transition font-medium">
             {launching ? '배포 중...' : cardNews.status === 'LAUNCHED' ? '런치됨' : '컨펌 & 런치'}
           </button>
@@ -449,7 +449,7 @@ export default function CardNewsEditorPage() {
             슬라이드 ({slides.length}장)
           </div>
           {slides.map((s, idx) => (
-            <button key={s.id} onClick={() => setActiveIdx(idx)}
+            <button type="button" key={s.id} onClick={() => setActiveIdx(idx)}
               className={`relative group text-left p-1.5 border-b border-admin-border hover:bg-blue-50/50 transition ${activeIdx === idx ? 'bg-blue-50 border-l-2 border-l-[#005d90]' : ''}`}>
               <div className={`w-full ${ratio.cls} rounded overflow-hidden bg-slate-200`}
                 style={s.bg_image_url ? { backgroundImage: `url(${s.bg_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
@@ -457,14 +457,14 @@ export default function CardNewsEditorPage() {
               </div>
               <p className="text-[10px] text-admin-muted truncate mt-1">{s.headline || `슬라이드 ${idx + 1}`}</p>
               <div className="absolute top-0.5 right-0.5 hidden group-hover:flex gap-0.5">
-                {idx > 0 && <button onClick={e => { e.stopPropagation(); moveSlide(idx, 'up'); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">↑</button>}
-                {idx < slides.length - 1 && <button onClick={e => { e.stopPropagation(); moveSlide(idx, 'down'); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">↓</button>}
-                <button onClick={e => { e.stopPropagation(); duplicateSlide(idx); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">+</button>
-                <button onClick={e => { e.stopPropagation(); deleteSlide(idx); }} className="w-4 h-4 bg-red-50 rounded text-red-400 text-[9px] hover:bg-red-100 border border-red-200">x</button>
+                {idx > 0 && <button type="button" onClick={e => { e.stopPropagation(); moveSlide(idx, 'up'); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">↑</button>}
+                {idx < slides.length - 1 && <button type="button" onClick={e => { e.stopPropagation(); moveSlide(idx, 'down'); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">↓</button>}
+                <button type="button" onClick={e => { e.stopPropagation(); duplicateSlide(idx); }} className="w-4 h-4 bg-white rounded text-admin-muted-2 text-[9px] hover:bg-admin-surface-2 border border-admin-border-mid">+</button>
+                <button type="button" onClick={e => { e.stopPropagation(); deleteSlide(idx); }} className="w-4 h-4 bg-red-50 rounded text-red-400 text-[9px] hover:bg-red-100 border border-red-200">x</button>
               </div>
             </button>
           ))}
-          <button onClick={addSlide} className="m-2 py-2 text-[11px] text-admin-muted-2 border border-dashed border-admin-border-strong rounded hover:border-slate-400 hover:text-admin-muted transition">
+          <button type="button" onClick={addSlide} className="m-2 py-2 text-[11px] text-admin-muted-2 border border-dashed border-admin-border-strong rounded hover:border-slate-400 hover:text-admin-muted transition">
             + 추가
           </button>
         </div>
@@ -542,7 +542,7 @@ export default function CardNewsEditorPage() {
                   <option value="magazine">📰 매거진</option>
                   <option value="luxury_gold">✨ 럭셔리 골드</option>
                 </select>
-                <button
+                <button type="button"
                   onClick={() => {
                     const tplId = activeSlide.template_id;
                     if (!tplId) { showToast('템플릿을 먼저 선택하세요'); return; }
@@ -611,7 +611,7 @@ export default function CardNewsEditorPage() {
                 </div>
                 <div className="flex gap-1">
                   {['#ffffff','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6','#8b5cf6','#ec4899'].map(c => (
-                    <button key={c} onClick={() => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, color: c } })}
+                    <button type="button" key={c} onClick={() => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, color: c } })}
                       className={`w-5 h-5 rounded-full border transition ${activeSlide.headline_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                       style={{ backgroundColor: c }} />
                   ))}
@@ -626,7 +626,7 @@ export default function CardNewsEditorPage() {
                     { k: 'textAlign', v: 'center', label: '중', active: (activeSlide.headline_style?.textAlign || 'center') === 'center' },
                     { k: 'textAlign', v: 'right', label: '우', active: activeSlide.headline_style?.textAlign === 'right' },
                   ].map((btn, i) => (
-                    <button key={i} onClick={() => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, [btn.k]: btn.active && btn.k === 'fontWeight' ? 'normal' : btn.v } })}
+                    <button type="button" key={i} onClick={() => updateActiveSlide({ headline_style: { ...activeSlide.headline_style, [btn.k]: btn.active && btn.k === 'fontWeight' ? 'normal' : btn.v } })}
                       className={`flex-1 py-1 rounded text-[10px] font-bold transition ${btn.active ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                       {btn.label}
                     </button>
@@ -646,7 +646,7 @@ export default function CardNewsEditorPage() {
                 </div>
                 <div className="flex gap-1">
                   {['#ffffff','#e0e0e0','#000000','#fbbf24','#ef4444','#22c55e','#3b82f6'].map(c => (
-                    <button key={c} onClick={() => updateActiveSlide({ body_style: { ...activeSlide.body_style, color: c } })}
+                    <button type="button" key={c} onClick={() => updateActiveSlide({ body_style: { ...activeSlide.body_style, color: c } })}
                       className={`w-5 h-5 rounded-full border transition ${activeSlide.body_style?.color === c ? 'border-blue-600 scale-110' : 'border-admin-border-mid'}`}
                       style={{ backgroundColor: c }} />
                   ))}
@@ -660,7 +660,7 @@ export default function CardNewsEditorPage() {
                   <div className="flex items-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={activeSlide.bg_image_url} alt="" className="w-10 h-10 rounded object-cover" />
-                    <button onClick={() => updateActiveSlide({ bg_image_url: '' })} className="text-[10px] text-red-500 hover:underline">제거</button>
+                    <button type="button" onClick={() => updateActiveSlide({ bg_image_url: '' })} className="text-[10px] text-red-500 hover:underline">제거</button>
                   </div>
                 ) : (
                   <div className="bg-orange-50 border border-orange-200 rounded p-2 text-[10px] text-orange-600">
@@ -671,13 +671,13 @@ export default function CardNewsEditorPage() {
                   <input value={pexelsKeyword} onChange={e => setPexelsKeyword(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && searchPexels()}
                     placeholder="키워드 (영문)" className="flex-1 border border-admin-border-mid rounded px-2 py-1 text-[11px] focus:ring-1 focus:ring-[#005d90]" />
-                  <button onClick={() => searchPexels(activeSlide.pexels_keyword || pexelsKeyword)} disabled={pexelsLoading}
+                  <button type="button" onClick={() => searchPexels(activeSlide.pexels_keyword || pexelsKeyword)} disabled={pexelsLoading}
                     className="px-2 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700 disabled:bg-slate-300">
                     {pexelsLoading ? '...' : '검색'}
                   </button>
                 </div>
                 {activeSlide.pexels_keyword && !activeSlide.bg_image_url && (
-                  <button onClick={() => { setPexelsKeyword(activeSlide.pexels_keyword); searchPexels(activeSlide.pexels_keyword); }}
+                  <button type="button" onClick={() => { setPexelsKeyword(activeSlide.pexels_keyword); searchPexels(activeSlide.pexels_keyword); }}
                     disabled={pexelsLoading}
                     className="w-full py-1.5 bg-blue-50 text-blue-600 text-[10px] rounded border border-blue-200 hover:bg-blue-100 disabled:opacity-50">
                     🔍 자동 검색: &quot;{activeSlide.pexels_keyword}&quot;
@@ -687,7 +687,7 @@ export default function CardNewsEditorPage() {
                   <div>
                     <div className="grid grid-cols-2 gap-1">
                       {pexelsPhotos.map(p => (
-                        <button key={p.id} onClick={() => applyPexelsPhoto(p)}
+                        <button type="button" key={p.id} onClick={() => applyPexelsPhoto(p)}
                           className="overflow-hidden rounded border-2 border-transparent hover:border-[#005d90] transition">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={p.src_medium} alt={p.alt} className="w-full h-14 object-cover" />
@@ -695,10 +695,10 @@ export default function CardNewsEditorPage() {
                       ))}
                     </div>
                     <div className="flex justify-between mt-1.5">
-                      <button onClick={() => searchPexels(undefined, Math.max(1, pexelsPage - 1))} disabled={pexelsPage <= 1}
+                      <button type="button" onClick={() => searchPexels(undefined, Math.max(1, pexelsPage - 1))} disabled={pexelsPage <= 1}
                         className="text-[10px] text-admin-muted-2 hover:text-admin-muted disabled:opacity-30">이전</button>
                       <span className="text-[10px] text-admin-muted-2">{pexelsPage}p</span>
-                      <button onClick={() => searchPexels(undefined, pexelsPage + 1)}
+                      <button type="button" onClick={() => searchPexels(undefined, pexelsPage + 1)}
                         className="text-[10px] text-admin-muted-2 hover:text-admin-muted">다음</button>
                     </div>
                   </div>
@@ -707,13 +707,13 @@ export default function CardNewsEditorPage() {
 
               {/* 순서 조작 */}
               <div className="flex gap-1">
-                <button onClick={() => moveSlide(activeIdx, 'up')} disabled={activeIdx === 0}
+                <button type="button" onClick={() => moveSlide(activeIdx, 'up')} disabled={activeIdx === 0}
                   className="flex-1 text-[10px] py-1.5 border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg disabled:opacity-30">위로</button>
-                <button onClick={() => duplicateSlide(activeIdx)}
+                <button type="button" onClick={() => duplicateSlide(activeIdx)}
                   className="flex-1 text-[10px] py-1.5 border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg">복제</button>
-                <button onClick={() => moveSlide(activeIdx, 'down')} disabled={activeIdx === slides.length - 1}
+                <button type="button" onClick={() => moveSlide(activeIdx, 'down')} disabled={activeIdx === slides.length - 1}
                   className="flex-1 text-[10px] py-1.5 border border-admin-border-mid rounded text-admin-muted hover:bg-admin-bg disabled:opacity-30">아래로</button>
-                <button onClick={() => deleteSlide(activeIdx)} disabled={slides.length <= 1}
+                <button type="button" onClick={() => deleteSlide(activeIdx)} disabled={slides.length <= 1}
                   className="px-2 py-1.5 border border-red-200 text-red-400 text-[10px] rounded hover:bg-red-50 disabled:opacity-30">삭제</button>
               </div>
             </>
