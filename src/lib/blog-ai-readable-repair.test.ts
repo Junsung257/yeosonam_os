@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkAiReadability } from './blog-quality-gate';
+import { inspectBlogRenderedSeoQuality } from './blog-rendered-seo-quality';
 import { repairBlogAiReadableStructure } from './blog-ai-readable-repair';
 import type { BlogInformationClaimInput } from './blog-information-evidence';
 
@@ -117,5 +118,38 @@ describe('repairBlogAiReadableStructure', () => {
     expect(result.markdown).toContain('### Q1. 표는 어디에서 확인하나요?');
     expect(result.markdown).not.toContain('## 비어 있는 마무리 제목');
     expect(result.changes).toContain('removed_empty_heading_sections');
+  });
+
+  it('does not treat a divider or empty HTML wrapper as rendered section content', async () => {
+    const result = repairBlogAiReadableStructure({
+      markdown: [
+        '# 삿포로 식비 예산',
+        '',
+        '삿포로 식비 예산을 확인합니다.',
+        '',
+        '## 내용이 없는 마무리',
+        '',
+        '<aside>',
+        '</aside>',
+        '',
+        '---',
+        '',
+        '<!-- prompt_version: test -->',
+      ].join('\n'),
+      keyword: '삿포로 식비 예산',
+      intent: 'general',
+    });
+
+    expect(result.markdown).not.toContain('## 내용이 없는 마무리');
+    expect(result.changes).toContain('removed_empty_heading_sections');
+
+    const rendered = await inspectBlogRenderedSeoQuality({
+      markdown: result.markdown,
+      slug: 'sapporo-food-budget',
+      title: '삿포로 식비 예산 가이드',
+      description: '삿포로 식비 예산과 음식 가격 기준을 한눈에 정리합니다.',
+      destination: '삿포로',
+    });
+    expect(rendered.issues.map((issue) => issue.code)).not.toContain('empty_heading');
   });
 });
