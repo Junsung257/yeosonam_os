@@ -129,7 +129,7 @@ export default function WebVitalsDashboard() {
     <div className="space-y-6">
       {/* 기간 선택 */}
       <div className="flex gap-2">
-        <button
+        <button type="button"
           onClick={() => setPeriod('day')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             period === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -137,7 +137,7 @@ export default function WebVitalsDashboard() {
         >
           오늘
         </button>
-        <button
+        <button type="button"
           onClick={() => setPeriod('week')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             period === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

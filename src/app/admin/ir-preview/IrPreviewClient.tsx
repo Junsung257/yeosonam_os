@@ -103,7 +103,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
       {toast && (
         <div className="fixed bottom-6 right-6 bg-admin-text text-white px-4 py-2 rounded-admin-sm shadow-admin-md text-admin-sm max-w-md z-50 flex items-center gap-3">
           <span>{toast}</span>
-          <button onClick={() => setToast(null)} className="text-admin-muted-2 hover:text-white">✕</button>
+          <button type="button" onClick={() => setToast(null)} className="text-admin-muted-2 hover:text-white">✕</button>
         </div>
       )}
 

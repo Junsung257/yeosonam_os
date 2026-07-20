@@ -168,13 +168,13 @@ function PartnerPortalContent() {
 
       {/* 탭 */}
       <div style={styles.tabRow}>
-        <button
+        <button type="button"
           style={activeTab === 'packages' ? styles.tabActive : styles.tab}
           onClick={() => setActiveTab('packages')}
         >
           행사 목록 ({packages.length})
         </button>
-        <button
+        <button type="button"
           style={activeTab === 'bookings' ? styles.tabActive : styles.tab}
           onClick={() => setActiveTab('bookings')}
         >

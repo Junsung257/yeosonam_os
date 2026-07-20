@@ -1691,7 +1691,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       {/* ── 휴지통 아코디언 ─────────────────────────────────────────────────── */}
       {trashTxs.length > 0 && (
         <div className="mt-4">
-          <button
+          <button type="button"
             onClick={() => setTrashOpen(o => !o)}
             className="w-full flex items-center justify-between px-4 py-3 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs text-admin-sm text-admin-muted hover:bg-admin-bg transition"
           >
@@ -1827,7 +1827,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
               {/* 신규 예약 생성 (입금→고객→예약→매칭 원스톱) */}
               {!showQuickCreate ? (
-                <button
+                <button type="button"
                   onClick={() => {
                     setShowQuickCreate(true);
                     setQuickForm({ packageTitle: '', departureDate: '', phone: '' });
@@ -2044,7 +2044,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             1건 휴지통 이동 중
             <span className="text-admin-muted-2 ml-1">({undoInfo.countdown}초 후 확정)</span>
           </span>
-          <button onClick={handleUndoTrash}
+          <button type="button" onClick={handleUndoTrash}
             className="text-blue-400 hover:text-blue-300 text-admin-sm font-semibold ml-2 transition">
             실행 취소
           </button>

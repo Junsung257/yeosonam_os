@@ -56,7 +56,7 @@ export default function DestinationPackagesSection({ destination, packages, depa
       {showTabs && (
         <div className="sticky top-28 z-20 bg-white/95 backdrop-blur-sm border-b border-slate-100 -mx-4 px-4 md:-mx-6 md:px-6 py-3 mb-6">
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-            <button
+            <button type="button"
               onClick={() => setSelectedCity(null)}
               className={`flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-full transition-all ${
                 selectedCity === null
@@ -67,7 +67,7 @@ export default function DestinationPackagesSection({ destination, packages, depa
               전체
             </button>
             {departureCities.map(c => (
-              <button
+              <button type="button"
                 key={c}
                 onClick={() => setSelectedCity(c)}
                 className={`flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-full transition-all whitespace-nowrap ${
@@ -101,7 +101,7 @@ export default function DestinationPackagesSection({ destination, packages, depa
             {selectedCity ? `${selectedCity} 출발 상품이 아직 없습니다.` : '상품 준비 중입니다.'}
           </p>
           {selectedCity && (
-            <button
+            <button type="button"
               onClick={() => setSelectedCity(null)}
               className="mt-3 text-sm text-brand font-semibold hover:underline"
             >

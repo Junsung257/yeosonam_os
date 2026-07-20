@@ -84,7 +84,7 @@ export default function ContentGapsPage() {
           { key: 'complete' as const, label: '완전 보유', color: 'text-green-600' },
           { key: 'all' as const, label: '전체', color: 'text-admin-muted' },
         ]).map(f => (
-          <button key={f.key} onClick={() => setFilter(f.key)}
+          <button type="button" key={f.key} onClick={() => setFilter(f.key)}
             className={`px-3 py-1.5 rounded text-admin-xs font-medium transition ${
               filter === f.key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
             }`}>

@@ -287,7 +287,7 @@ export default function AnalyticsDashboard() {
                           />
                           {menuId === link.id && (
                             <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-admin-border-mid rounded-admin-md shadow-admin-lg py-1 w-32">
-                              <button
+                              <button type="button"
                                 onClick={() => handleDelete(link.id)}
                                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition"
                               >
@@ -338,7 +338,7 @@ function ActionBtn({ label, icon, onClick, color }: {
   label: string; icon: React.ReactNode; onClick: () => void; color: string;
 }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       title={label}
       className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-admin-muted transition ${color}`}

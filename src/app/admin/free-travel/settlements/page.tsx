@@ -168,7 +168,7 @@ export default function FreeTravelSettlementsPage() {
       {loadError && (
         <div className="bg-danger-light border border-danger/20 rounded-admin-sm px-4 py-3 text-admin-sm text-danger font-medium flex items-center gap-2">
           <span>⚠</span> {loadError}
-          <button onClick={loadData} className="ml-auto text-danger underline text-admin-xs">다시 시도</button>
+          <button type="button" onClick={loadData} className="ml-auto text-danger underline text-admin-xs">다시 시도</button>
         </div>
       )}
 
@@ -346,7 +346,7 @@ export default function FreeTravelSettlementsPage() {
                         <p className="text-admin-xs text-text-body">
                           후보 {c.id.slice(0, 8)} · 예상 {Number(c.estimated_krw ?? 0).toLocaleString()}원
                         </p>
-                        <button
+                        <button type="button"
                           onClick={() => handleResolveUnmatched(u.id, c.id)}
                           className="text-[11px] font-semibold bg-brand text-white px-2.5 py-1 rounded-md hover:bg-[#1b6cf2]"
                         >

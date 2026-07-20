@@ -263,7 +263,7 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
                   <h3 className="text-admin-sm font-semibold text-admin-text-2">소재별 성과</h3>
                   <div className="flex gap-1">
                     {(['ctr', 'conversions', 'spend'] as const).map(s => (
-                      <button key={s} onClick={() => setSortBy(s)}
+                      <button type="button" key={s} onClick={() => setSortBy(s)}
                         className={`px-2 py-0.5 text-[10px] rounded transition ${sortBy === s ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                         {s === 'ctr' ? 'CTR순' : s === 'conversions' ? '전환순' : '지출순'}
                       </button>

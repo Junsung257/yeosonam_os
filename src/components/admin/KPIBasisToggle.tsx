@@ -27,7 +27,7 @@ export default function KPIBasisToggle({
       {KPI_BASIS_OPTIONS.map(opt => {
         const active = opt.id === value;
         return (
-          <button
+          <button type="button"
             key={opt.id}
             role="tab"
             aria-selected={active}

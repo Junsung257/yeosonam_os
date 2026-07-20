@@ -235,7 +235,7 @@ export default function RfqChatPage() {
             rows={2}
             className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-50"
           />
-          <button
+          <button type="button"
             onClick={sendMessage}
             disabled={sending || !input.trim()}
             className="bg-brand hover:bg-[#1B64DA] disabled:opacity-40 text-white px-5 py-3 rounded-xl font-medium transition-colors"

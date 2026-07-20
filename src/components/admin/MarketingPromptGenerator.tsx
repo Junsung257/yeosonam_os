@@ -289,13 +289,13 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
             {copied ? '클립보드에 복사되었습니다' : 'AI 채팅에 붙여넣기 하세요'}
           </p>
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={onClose}
               className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition"
             >
               닫기
             </button>
-            <button
+            <button type="button"
               onClick={handleCopy}
               className={`px-5 py-2 text-admin-sm rounded font-medium transition ${
                 copied
