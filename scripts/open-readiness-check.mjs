@@ -21,10 +21,13 @@ function hasFlag(name) {
 const BASE_URL = (argValue('--base', process.env.OPEN_CHECK_BASE_URL || 'https://www.yeosonam.com')).replace(/\/$/, '');
 const DEFAULT_PACKAGE_ID = '17945abe-026e-4696-96d0-2d8b14393fe6';
 const DEFAULT_REF = 'YSINF202606051602318291';
+const DEFAULT_BLOG_SLUG = 'nagasaki-best';
 const PACKAGE_ID_ARG = argValue('--package-id', '');
 const REF_CODE_ARG = argValue('--ref-code', '');
+const BLOG_SLUG_ARG = argValue('--blog-slug', '');
 const PACKAGE_ID = PACKAGE_ID_ARG || process.env.OPEN_CHECK_PACKAGE_ID || DEFAULT_PACKAGE_ID;
 const REF_CODE = REF_CODE_ARG || process.env.OPEN_CHECK_REF_CODE || DEFAULT_REF;
+const BLOG_SLUG = BLOG_SLUG_ARG || process.env.OPEN_CHECK_BLOG_SLUG || DEFAULT_BLOG_SLUG;
 const HAS_EXPLICIT_PACKAGE_ID = Boolean(PACKAGE_ID_ARG || process.env.OPEN_CHECK_PACKAGE_ID);
 const HAS_EXPLICIT_REF_CODE = Boolean(REF_CODE_ARG || process.env.OPEN_CHECK_REF_CODE);
 const VERCEL_SCOPE = argValue('--vercel-scope', process.env.VERCEL_SCOPE || 'zzbaa0317-4596s-projects');
@@ -358,7 +361,7 @@ async function checkPublicUrls() {
       notes: (_res, body) => (PACKAGE_NOT_FOUND_PATTERN.test(body) ? 'package detail rendered a not-found state' : ''),
     });
   }
-  await fetchUrl('public:blog-runtime', '/blog/nagasaki-best', {
+  await fetchUrl('public:blog-runtime', `/blog/${encodeURIComponent(BLOG_SLUG)}`, {
     ok: (res, body) => res.status >= 200 && res.status < 400 && !BLOG_DETAIL_NOT_FOUND_PATTERN.test(body),
     notes: (_res, body) => (BLOG_DETAIL_NOT_FOUND_PATTERN.test(body) ? 'blog detail rendered a not-found state' : ''),
   });

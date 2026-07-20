@@ -264,6 +264,7 @@ test('open readiness rejects blog detail not-found bodies even when HTTP status 
 
   assert.match(source, /BLOG_DETAIL_NOT_FOUND_PATTERN/);
   assert.match(source, /public:blog-runtime/);
+  assert.match(source, /OPEN_CHECK_BLOG_SLUG/);
   assert.match(source, /!BLOG_DETAIL_NOT_FOUND_PATTERN\.test\(body\)/);
   assert.match(source, /blog detail rendered a not-found state/);
 });
