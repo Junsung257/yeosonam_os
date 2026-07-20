@@ -2562,6 +2562,15 @@ async function processQueueItem(
       applyFinalResearchStructureRepair();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
+    const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> => {
+      // The evidence-backed tables must be final before H2/FAQ normalization.
+      // A later generic repair may replace the body, so this boundary is also
+      // repeated once after generic repair when AI readability is still failing.
+      applyFinalResearchStructureRepair();
+      generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
+      generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+      return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+    };
 
     let qa = await runQualityWithResearchStructure();
 
@@ -2576,14 +2585,16 @@ async function processQueueItem(
     }
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
-      generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
-      generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
-      qa = await runQualityWithResearchStructure();
+      qa = await runQualityAfterAiReadableRepair();
     }
 
     if (!qa.passed) {
       qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);
       qa = await runQualityWithResearchStructure();
+    }
+
+    if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
+      qa = await runQualityAfterAiReadableRepair();
     }
 
     if (!qa.passed) {
