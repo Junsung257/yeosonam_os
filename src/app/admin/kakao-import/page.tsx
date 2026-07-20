@@ -458,9 +458,9 @@ export default function KakaoImportPage() {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => addRow('adult')} className="text-xs text-blue-600 hover:underline">+ 성인</button>
-                    <button onClick={() => addRow('child')} className="text-xs text-blue-600 hover:underline">+ 소아</button>
-                    <button onClick={() => addRow('infant')} className="text-xs text-blue-600 hover:underline">+ 유아</button>
+                    <button type="button" onClick={() => addRow('adult')} className="text-xs text-blue-600 hover:underline">+ 성인</button>
+                    <button type="button" onClick={() => addRow('child')} className="text-xs text-blue-600 hover:underline">+ 소아</button>
+                    <button type="button" onClick={() => addRow('infant')} className="text-xs text-blue-600 hover:underline">+ 유아</button>
                   </div>
                 </div>
 
@@ -481,7 +481,7 @@ export default function KakaoImportPage() {
                       {/* 헤더 행: 대표자 라디오 + 성인/소아/유아 + 성별 + 삭제 */}
                       <div className="flex items-center gap-2">
                         {/* 대표자 라디오 버튼 */}
-                        <button
+                        <button type="button"
                           onClick={() => setRep(p.id)}
                           title="대표자로 지정"
                           className={`text-base leading-none transition-colors ${
@@ -516,7 +516,7 @@ export default function KakaoImportPage() {
                         {p.confidence < 0.5 && (
                           <span className="text-amber-600 text-[10px]">⚠ 확인 필요</span>
                         )}
-                        <button
+                        <button type="button"
                           onClick={() => removeRow(p.id)}
                           className="ml-auto text-admin-muted-2 hover:text-rose-500 text-[11px]"
                         >
@@ -591,7 +591,7 @@ export default function KakaoImportPage() {
 
             {/* 저장 버튼 */}
             <div className="bg-white rounded-admin-md shadow-admin-xs p-5 space-y-3">
-              <button
+              <button type="button"
                 onClick={() => setShowModal(true)}
                 disabled={saving || autoExtracting || !canSave}
                 className="w-full bg-emerald-600 text-white py-3 rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
@@ -801,13 +801,13 @@ export default function KakaoImportPage() {
               )}
             </div>
             <div className="flex gap-2 pt-1">
-              <button
+              <button type="button"
                 onClick={() => setShowModal(false)}
                 className="flex-1 border border-admin-border-strong text-admin-text-2 py-2.5 rounded-lg text-sm hover:bg-admin-bg"
               >
                 취소
               </button>
-              <button
+              <button type="button"
                 onClick={handleSaveConfirm}
                 className="flex-1 bg-emerald-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-emerald-700"
               >

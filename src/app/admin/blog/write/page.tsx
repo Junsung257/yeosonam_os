@@ -221,15 +221,15 @@ export default function BlogWritePage() {
       {/* 상단 바 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/blog')} className="text-admin-xs text-admin-muted hover:text-admin-text-2">← 목록</button>
+          <button type="button" onClick={() => router.push('/admin/blog')} className="text-admin-xs text-admin-muted hover:text-admin-text-2">← 목록</button>
           <h1 className="text-admin-lg font-bold text-admin-text-2">블로그 에디터</h1>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => handleSave('draft')} disabled={saving || !blogHtml}
+          <button type="button" onClick={() => handleSave('draft')} disabled={saving || !blogHtml}
             className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded-lg hover:bg-admin-bg disabled:opacity-40 transition">
             {saving ? '저장 중...' : '초안 저장'}
           </button>
-          <button onClick={() => handleSave('published')} disabled={saving || !blogHtml || !slug}
+          <button type="button" onClick={() => handleSave('published')} disabled={saving || !blogHtml || !slug}
             className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40 transition">
             {saving ? '발행 중...' : '발행하기'}
           </button>
@@ -285,7 +285,7 @@ export default function BlogWritePage() {
                 <option value={5}>5개 (최대)</option>
               </select>
             </div>
-            <button onClick={handleGenerate} disabled={generating || !selectedPkgId}
+            <button type="button" onClick={handleGenerate} disabled={generating || !selectedPkgId}
               className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition whitespace-nowrap">
               {generating ? (bulkCount > 1 ? `${bulkCount}개 생성 중...` : 'AI 생성 중...') : (bulkCount > 1 ? `${bulkCount}개 일괄 생성` : 'AI 자동 생성')}
             </button>
@@ -311,7 +311,7 @@ export default function BlogWritePage() {
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
-            <button onClick={handleGenerate} disabled={generating || !topic.trim()}
+            <button type="button" onClick={handleGenerate} disabled={generating || !topic.trim()}
               className="px-4 py-2 bg-blue-600 text-white text-admin-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition whitespace-nowrap">
               {generating ? 'AI 생성 중...' : 'AI 초안 생성'}
             </button>

@@ -366,12 +366,12 @@ export default function ControlTowerPage() {
           <p className="text-[11px] text-admin-muted mt-0.5">가격, 마일리지, 알림, 노출 등 OS 전체 정책을 한 곳에서 관리</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={handlePreview} disabled={previewing}
+          <button type="button" onClick={handlePreview} disabled={previewing}
             className="px-3 py-1.5 bg-rose-50 text-rose-700 text-admin-sm rounded hover:bg-rose-100 transition font-medium border border-rose-200 disabled:opacity-50">
             {previewing ? '시뮬레이션 중...' : '🔍 커미션 영향 미리보기'}
           </button>
           <div className="relative">
-            <button onClick={() => setTemplateOpen(!templateOpen)}
+            <button type="button" onClick={() => setTemplateOpen(!templateOpen)}
               className="px-3 py-1.5 bg-amber-50 text-amber-700 text-admin-sm rounded hover:bg-amber-100 transition font-medium border border-amber-200">
               📋 이벤트 템플릿
             </button>
@@ -379,7 +379,7 @@ export default function ControlTowerPage() {
               <div className="absolute right-0 top-full mt-1 bg-white border border-admin-border-mid rounded-lg shadow-lg z-50 w-64">
                 <div className="px-3 py-2 text-[10px] font-semibold text-admin-muted-2 uppercase border-b border-admin-border">마일리지 템플릿</div>
                 {MILEAGE_TEMPLATES.map((tmpl, i) => (
-                  <button
+                  <button type="button"
                     key={i}
                     onClick={() => {
                       const p = tmpl.build();
@@ -399,7 +399,7 @@ export default function ControlTowerPage() {
               </div>
             )}
           </div>
-          <button onClick={() => { setEditTarget({ ...EMPTY_POLICY }); setEditOpen(true); }}
+          <button type="button" onClick={() => { setEditTarget({ ...EMPTY_POLICY }); setEditOpen(true); }}
             className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
             + 새 정책
           </button>
@@ -432,7 +432,7 @@ export default function ControlTowerPage() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1 flex-wrap">
           {CATEGORIES.map(c => (
-            <button key={c.key} onClick={() => setCatFilter(c.key as PolicyCategory | 'all')}
+            <button type="button" key={c.key} onClick={() => setCatFilter(c.key as PolicyCategory | 'all')}
               className={`px-2.5 py-1 text-[11px] rounded transition ${catFilter === c.key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
               {c.label} {c.key !== 'all' && catCounts[c.key] ? `(${catCounts[c.key]})` : ''}
             </button>
@@ -497,18 +497,18 @@ export default function ControlTowerPage() {
                 </div>
 
                 {/* 토글 */}
-                <button onClick={() => toggleActive(policy)}
+                <button type="button" onClick={() => toggleActive(policy)}
                   className={`w-10 h-5 rounded-full flex-shrink-0 transition relative ${policy.is_active ? 'bg-emerald-500' : 'bg-slate-200'}`}>
                   <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${policy.is_active ? 'left-5' : 'left-0.5'}`} />
                 </button>
 
                 {/* 액션 */}
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
-                  <button onClick={() => { setEditTarget(policy); setEditOpen(true); }}
+                  <button type="button" onClick={() => { setEditTarget(policy); setEditOpen(true); }}
                     className="px-2 py-1 text-[10px] bg-admin-bg text-admin-muted rounded hover:bg-admin-surface-2">편집</button>
-                  <button onClick={() => handleDuplicate(policy)}
+                  <button type="button" onClick={() => handleDuplicate(policy)}
                     className="px-2 py-1 text-[10px] bg-admin-bg text-admin-muted rounded hover:bg-admin-surface-2">복제</button>
-                  <button onClick={() => handleDelete(policy.id)}
+                  <button type="button" onClick={() => handleDelete(policy.id)}
                     className="px-2 py-1 text-[10px] bg-red-50 text-red-600 rounded hover:bg-red-100">삭제</button>
                 </div>
               </div>
@@ -524,7 +524,7 @@ export default function ControlTowerPage() {
           <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
               <h2 className="text-admin-lg font-semibold text-admin-text-2">{editTarget.id ? '정책 편집' : '새 정책'}</h2>
-              <button onClick={() => setEditOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted">
+              <button type="button" onClick={() => setEditOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
             </div>
@@ -790,11 +790,11 @@ export default function ControlTowerPage() {
 
             {/* 저장 버튼 */}
             <div className="bg-white border-t border-admin-border-mid px-5 py-3 flex gap-2 flex-shrink-0">
-              <button onClick={handleSave} disabled={saving || !editTarget.name}
+              <button type="button" onClick={handleSave} disabled={saving || !editTarget.name}
                 className="flex-1 py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 disabled:bg-slate-300 transition font-medium">
                 {saving ? '저장 중...' : editTarget.id ? '수정 저장' : '정책 생성'}
               </button>
-              <button onClick={() => setEditOpen(false)}
+              <button type="button" onClick={() => setEditOpen(false)}
                 className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
                 취소
               </button>

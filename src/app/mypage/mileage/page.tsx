@@ -231,7 +231,7 @@ export default function MileagePage() {
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
       <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-20">
-        <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 p-1">←</button>
+        <button type="button" onClick={() => router.back()} className="text-gray-500 hover:text-gray-700 p-1">←</button>
         <h1 className="font-bold text-gray-900">마일리지</h1>
         <div className="w-8" />
       </header>
@@ -328,7 +328,7 @@ export default function MileagePage() {
           <p className="text-xs text-gray-500 mb-3">
             매일 출석하고 마일리지를 받으세요! 7일·30일·100일 연속 시 보너스 지급
           </p>
-          <button
+          <button type="button"
             onClick={handleCheckin}
             disabled={checkingIn || (streak?.todayChecked ?? false)}
             className={`w-full py-2.5 rounded-xl text-xs font-bold transition ${
@@ -443,7 +443,7 @@ export default function MileagePage() {
               { key: 'USED', label: '사용' },
               { key: 'CLAWBACK', label: '소멸/회수' },
             ] as const).map((tab) => (
-              <button
+              <button type="button"
                 key={tab.key}
                 onClick={() => setTxFilter(tab.key)}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition ${
@@ -501,7 +501,7 @@ export default function MileagePage() {
 
               {/* 더보기 */}
               {hasMore && (
-                <button
+                <button type="button"
                   onClick={handleLoadMore}
                   disabled={loadingMore}
                   className="w-full py-3 text-sm text-brand font-medium hover:bg-blue-50 rounded-xl transition disabled:opacity-50"
