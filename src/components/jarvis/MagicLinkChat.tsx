@@ -270,7 +270,7 @@ export default function MagicLinkChat({
       {showQuickReplies && !stream.streaming && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
           {dynamicQuickReplies.map((q) => (
-            <button
+            <button type="button"
               key={q}
               onClick={() => send(q)}
               className="flex-shrink-0 text-sm text-gray-700 bg-white border border-gray-200 rounded-full px-4 py-2 hover:bg-gray-100 active:bg-gray-200"
