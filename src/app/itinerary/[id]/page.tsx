@@ -203,7 +203,7 @@ export default function ItineraryPage() {
         <div className="text-center">
           <p className="text-lg font-semibold text-gray-700 mb-2">일정표를 찾을 수 없습니다</p>
           <p className="text-sm text-gray-400 mb-4">상품 ID: {id}</p>
-          <button onClick={() => router.back()} className="text-blue-600 text-sm">← 돌아가기</button>
+          <button type="button" onClick={() => router.back()} className="text-blue-600 text-sm">← 돌아가기</button>
         </div>
       </div>
     );
@@ -228,7 +228,7 @@ export default function ItineraryPage() {
       {/* 헤더 */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-gray-500 text-lg">←</button>
+          <button type="button" onClick={() => router.back()} className="text-gray-500 text-lg">←</button>
           <div className="flex-1 min-w-0">
             <h1 className="font-bold text-gray-900 text-sm truncate">{meta.title}</h1>
             <p className="text-xs text-gray-400">{meta.nights}박{meta.days}일 · {meta.destination}</p>
@@ -365,7 +365,7 @@ export default function ItineraryPage() {
         {/* 탭 */}
         <div className="bg-white border-b border-gray-200 flex">
           {(['overview', 'schedule', 'info'] as const).map(t => (
-            <button
+            <button type="button"
               key={t}
               onClick={() => setTab(t)}
               className={`flex-1 py-3 text-sm font-medium transition ${
@@ -407,7 +407,7 @@ export default function ItineraryPage() {
           <div className="p-4 space-y-3">
             {/* 뷰 모드 토글 */}
             <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm shadow-sm">
-              <button
+              <button type="button"
                 onClick={() => setViewMode('card')}
                 className={`flex-1 py-2.5 font-medium transition ${
                   viewMode === 'card'
@@ -417,7 +417,7 @@ export default function ItineraryPage() {
               >
                 📱 모바일형
               </button>
-              <button
+              <button type="button"
                 onClick={() => setViewMode('table')}
                 className={`flex-1 py-2.5 font-medium transition ${
                   viewMode === 'table'
@@ -546,7 +546,7 @@ export default function ItineraryPage() {
                             )}
                             {/* 4. 상세보기 버튼 */}
                             {attr.long_desc && (
-                              <button
+                              <button type="button"
                                 onClick={() => toggleExpand(expandKey)}
                                 className="flex items-center gap-1 text-left group mt-1.5"
                               >
@@ -696,7 +696,7 @@ export default function ItineraryPage() {
               </div>
             )}
           </div>
-          <button
+          <button type="button"
             onClick={handleGenerateImage}
             disabled={generating}
             className="w-full bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
