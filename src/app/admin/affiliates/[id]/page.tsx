@@ -307,7 +307,7 @@ export default function AffiliateDetailPage() {
             <p className="text-sm text-admin-muted font-mono mt-1">코드: {affiliate.referral_code}</p>
             {affiliate.phone && <p className="text-sm text-admin-muted">{maskPhone(affiliate.phone, 'finance')}</p>}
           </div>
-          <button
+          <button type="button"
             onClick={() => setEditMode(!editMode)}
             className="text-sm text-blue-600 hover:underline"
           >
@@ -382,7 +382,7 @@ export default function AffiliateDetailPage() {
                 <span className="text-sm">{form.is_active ? '활성' : '비활성 (휴면)'}</span>
               </label>
             </div>
-            <button
+            <button type="button"
               onClick={handleSave}
               disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"
@@ -406,7 +406,7 @@ export default function AffiliateDetailPage() {
               <span className="text-admin-muted-2">계좌 </span>
               {showBankInfo
                 ? <span className="font-mono text-red-600">{affiliate.bank_info || '등록 없음'}</span>
-                : <button onClick={toggleBankInfo} className="text-blue-500 hover:underline text-xs">
+                : <button type="button" onClick={toggleBankInfo} className="text-blue-500 hover:underline text-xs">
                     {affiliate.bank_info || '클릭하여 확인'}
                   </button>
               }
@@ -863,7 +863,7 @@ function ContentInsightSection({
             카드뉴스 성과 데이터 기반 AI 분석
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={handleGenerate}
           disabled={generating}
           className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs disabled:opacity-50 hover:bg-indigo-700 transition-colors"
@@ -915,7 +915,7 @@ function ContentInsightSection({
                   </p>
                 </div>
                 {!ins.is_read && (
-                  <button
+                  <button type="button"
                     onClick={() => handleMarkRead(ins.id)}
                     className="text-xs text-indigo-600 hover:underline shrink-0 mt-0.5"
                   >
@@ -992,7 +992,7 @@ function PortalSettingsSection({
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <button
+          <button type="button"
             onClick={handleSavePin}
             disabled={saving}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"

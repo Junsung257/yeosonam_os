@@ -372,7 +372,7 @@ export default function BlogQueueClient() {
           ['run_publisher', '발행자', '품질게이트 후 발행', PenLine],
           ['run_lifecycle', '라이프사이클', '만료/보관 처리', Archive],
         ] as const).map(([action, label, desc, Icon]) => (
-          <button
+          <button type="button"
             key={action}
             onClick={() => trigger(action)}
             disabled={running !== null}
@@ -419,7 +419,7 @@ export default function BlogQueueClient() {
       <div className="flex flex-col gap-3 rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs">
         <div className="flex flex-wrap gap-1 rounded-admin-sm bg-admin-surface-2 p-1 w-fit">
           {VIEW_TABS.map((tab) => (
-            <button
+            <button type="button"
               key={tab.key}
               onClick={() => setView(tab.key)}
               className={`h-8 rounded-admin-xs px-3 text-admin-sm font-medium transition-colors ${
@@ -519,7 +519,7 @@ export default function BlogQueueClient() {
                     {item.target_publish_at ? fmtDateTime(item.target_publish_at) : '-'}
                   </td>
                   <td className="min-w-0">
-                    <button onClick={() => setSelected(item)} className="block max-w-full truncate text-left text-admin-sm font-semibold text-admin-text hover:text-brand">
+                    <button type="button" onClick={() => setSelected(item)} className="block max-w-full truncate text-left text-admin-sm font-semibold text-admin-text hover:text-brand">
                       {item.topic || '(제목 없음)'}
                     </button>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -544,13 +544,13 @@ export default function BlogQueueClient() {
                         </Link>
                       )}
                       {item.status === 'failed' && !item.ops?.manual_review && (
-                        <button onClick={() => patchItem(item.id, 'requeue')} className="inline-flex h-7 items-center gap-1 rounded-admin-xs border border-admin-border px-2 text-admin-2xs font-semibold text-admin-text-2 hover:bg-admin-surface-2">
+                        <button type="button" onClick={() => patchItem(item.id, 'requeue')} className="inline-flex h-7 items-center gap-1 rounded-admin-xs border border-admin-border px-2 text-admin-2xs font-semibold text-admin-text-2 hover:bg-admin-surface-2">
                           <RotateCcw size={12} />
                           재시도
                         </button>
                       )}
                       {!['published', 'skipped'].includes(item.status) && (
-                        <button onClick={() => patchItem(item.id, 'hide')} className="inline-flex h-7 items-center gap-1 rounded-admin-xs border border-admin-border px-2 text-admin-2xs font-semibold text-admin-muted hover:bg-admin-surface-2">
+                        <button type="button" onClick={() => patchItem(item.id, 'hide')} className="inline-flex h-7 items-center gap-1 rounded-admin-xs border border-admin-border px-2 text-admin-2xs font-semibold text-admin-muted hover:bg-admin-surface-2">
                           <Archive size={12} />
                           숨김
                         </button>

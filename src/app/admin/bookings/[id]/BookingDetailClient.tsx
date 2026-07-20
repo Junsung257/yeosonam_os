@@ -566,7 +566,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-admin-sm font-semibold text-admin-text-2">수배 체크리스트</h3>
             {booking.status === 'fully_paid' && !booking.is_manifest_sent && (
-              <button
+              <button type="button"
                 onClick={async () => {
                   // 명단 생성 + 클립보드 복사
                   const lines = [
@@ -897,7 +897,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
         <div className="flex flex-wrap gap-3">
           {/* 상태 전이 버튼 */}
           {transitions.map(t => (
-            <button
+            <button type="button"
               key={t.to}
               onClick={() => handleTransition(t.to)}
               disabled={transitioning !== null || (t.to === 'waiting_deposit' && depositTransitionBlocked)}
@@ -913,7 +913,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           ))}
 
           {/* 스케줄러 강제 실행 */}
-          <button
+          <button type="button"
             onClick={handleRunScheduler}
             disabled={schedulerRunning}
             className="px-4 py-2 text-sm font-medium rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition disabled:opacity-50"
@@ -923,7 +923,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
           {/* 예약 취소 */}
           {!isCancelled && (
-            <button
+            <button type="button"
               onClick={() => setShowCancelModal(true)}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition"
             >
@@ -996,7 +996,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
               placeholder="수동 메모 입력 (엔터로 추가)"
               className="flex-1 border border-admin-border-mid rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
-            <button
+            <button type="button"
               onClick={handleAddMemo}
               disabled={savingMemo || !memo.trim()}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"

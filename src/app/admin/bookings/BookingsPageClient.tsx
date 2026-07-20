@@ -1789,7 +1789,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             placeholder="고객명, 상품명, 예약번호, 출발지역 / 날짜: 0426 · 260426 · 0426~0501"
             className="w-full pl-3 pr-8 py-2 border-2 border-admin-border rounded-lg text-admin-base focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 bg-admin-surface text-admin-text transition-colors" />
           {rawSearch && (
-            <button onClick={() => setRawSearch('')}
+            <button type="button" onClick={() => setRawSearch('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-admin-muted-2 hover:text-admin-muted text-[18px] leading-none">×</button>
           )}
         </div>
@@ -1823,7 +1823,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           const cnt = tab.cntFn();
           const isActive = lifecycleTab === tab.id;
           return (
-            <button key={tab.id}
+            <button type="button" key={tab.id}
               onClick={() => { setLifecycleTab(tab.id); setActiveTab(''); setDoneSubTab(tab.id === 'done' ? 'unsettled' : ''); }}
               className={`px-5 py-2.5 text-admin-sm font-semibold border-b-2 transition-colors whitespace-nowrap -mb-px
                 ${isActive ? 'border-brand text-brand' : 'border-transparent text-text-secondary hover:text-text-primary hover:border-[#E5E7EB]'}`}>
@@ -1851,7 +1851,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             ['refund_pending', '⚠️ 환불대기',         refundPendingCnt, 'amber'],
             ['settlement_pending', '⏳ 정산대기(D-7 지남)', settlementPendingCnt, 'slate'],
           ] as [string, string, number, string][]).map(([tab, label, cnt, color]) => (
-            <button key={tab} onClick={() => setActiveTab(prev => prev === tab ? '' : tab as typeof activeTab)}
+            <button type="button" key={tab} onClick={() => setActiveTab(prev => prev === tab ? '' : tab as typeof activeTab)}
               className={`px-3 py-1 rounded-full text-[11px] font-medium transition flex items-center gap-1 whitespace-nowrap
                 ${activeTab === tab
                   ? `bg-${color}-600 text-white`
@@ -1875,7 +1875,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               ['unsettled', '⏳ 정산대기', unsettledCnt, 'amber'],
               ['settled',   '✅ 정산완료', settledCnt,   'slate'],
             ] as [string, string, number, string][]).map(([tab, label, cnt, color]) => (
-              <button key={tab} onClick={() => setDoneSubTab(prev => prev === tab ? '' : tab as typeof doneSubTab)}
+              <button type="button" key={tab} onClick={() => setDoneSubTab(prev => prev === tab ? '' : tab as typeof doneSubTab)}
                 className={`px-3 py-1 rounded-full text-[11px] font-medium transition flex items-center gap-1 whitespace-nowrap
                   ${doneSubTab === tab
                     ? `bg-${color}-600 text-white`
@@ -1930,7 +1930,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               {isTrash ? '최근 삭제된 예약이 없습니다.' : rawSearch ? '다른 검색어로 시도하거나 필터를 초기화하세요.' : activeTab ? '현재 필터 조건에 해당하는 예약이 없습니다.' : '아직 등록된 예약이 없습니다.'}
             </p>
             {(rawSearch || activeTab) && (
-              <button onClick={() => { setRawSearch(''); setActiveTab(''); setDoneSubTab(''); }}
+              <button type="button" onClick={() => { setRawSearch(''); setActiveTab(''); setDoneSubTab(''); }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-admin-surface-2 hover:bg-slate-200 text-admin-text-2 text-admin-sm font-medium rounded-lg transition-colors">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

@@ -62,7 +62,7 @@ function SystemWeaknessPanel() {
         </div>
         <div className="flex gap-1 text-xs">
           {(['field', 'category', 'destination'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
+            <button type="button" key={t} onClick={() => setTab(t)}
               className={`px-2.5 py-1 rounded ${tab === t ? 'bg-blue-600 text-white' : 'bg-white text-admin-muted border border-admin-border-mid'}`}>
               {t === 'field' ? '필드별' : t === 'category' ? '카테고리별' : '목적지별'}
             </button>
@@ -292,7 +292,7 @@ export default function CorrectionsPage() {
         />
         <div className="flex gap-1">
           {(['all', 'critical', 'high', 'medium'] as const).map(s => (
-            <button
+            <button type="button"
               key={s}
               onClick={() => setFilterSeverity(s)}
               className={`h-8 px-3 text-admin-sm rounded-admin-sm font-medium transition-colors ${
@@ -376,9 +376,9 @@ export default function CorrectionsPage() {
                           <option value="missing">missing</option>
                           <option value="manual-correction">manual-correction</option>
                         </select>
-                        <button onClick={() => saveEdit(c.id)}
+                        <button type="button" onClick={() => saveEdit(c.id)}
                           className="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700">저장</button>
-                        <button onClick={() => setEditingId(null)}
+                        <button type="button" onClick={() => setEditingId(null)}
                           className="px-3 py-1.5 bg-admin-surface-2 text-admin-muted text-xs rounded-lg hover:bg-slate-200">취소</button>
                       </div>
                     </div>
@@ -393,11 +393,11 @@ export default function CorrectionsPage() {
                 </div>
 
                 <div className="flex flex-col gap-1 flex-shrink-0">
-                  <button onClick={() => startEdit(c)}
+                  <button type="button" onClick={() => startEdit(c)}
                     className="px-2.5 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700">
                     {c.reflection ? '교훈 수정' : '교훈 입력'}
                   </button>
-                  <button onClick={() => deactivate(c.id)}
+                  <button type="button" onClick={() => deactivate(c.id)}
                     className="px-2.5 py-1 bg-admin-surface-2 text-admin-muted text-[10px] rounded hover:bg-slate-200">
                     비활성화
                   </button>

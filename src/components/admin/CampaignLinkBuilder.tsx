@@ -138,7 +138,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
             </h2>
             <p className="text-sm text-admin-muted mt-0.5">3초 만에 UTM 링크 & QR 코드 생성</p>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-admin-surface-2 transition text-admin-muted-2 hover:text-admin-text-2"
           >
@@ -169,7 +169,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
           <FormField icon={<Megaphone className="w-4 h-4 text-admin-muted-2" />} label="유입 소스 (Source)">
             <div className="grid grid-cols-3 gap-2">
               {SOURCES.map(s => (
-                <button
+                <button type="button"
                   key={s.value}
                   onClick={() => setSource(s.value)}
                   className={`py-2.5 px-3 rounded-admin-md text-sm font-medium border-2 transition-all ${
@@ -215,7 +215,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
 
             {/* 액션 버튼 */}
             <div className="flex gap-3 pt-1">
-              <button
+              <button type="button"
                 onClick={handleCopy}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-admin-md font-semibold text-sm transition-all ${
                   copied
@@ -228,7 +228,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
                   : <><Copy size={16} /> 링크 복사</>
                 }
               </button>
-              <button
+              <button type="button"
                 onClick={() => setShowQr(v => !v)}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-admin-md font-semibold text-sm bg-white/10 hover:bg-white/20 text-white transition"
               >
@@ -253,7 +253,7 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
                   {ref && ` · ${ref}`}
                 </p>
               </div>
-              <button
+              <button type="button"
                 onClick={handleQrDownload}
                 className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-admin-md text-sm font-semibold hover:bg-gray-800 transition"
               >

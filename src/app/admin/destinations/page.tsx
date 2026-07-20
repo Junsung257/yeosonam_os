@@ -252,7 +252,7 @@ export default function AdminDestinationsPage() {
       {/* 필터 + 검색 */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {(['all', 'missing', 'pending', 'approved'] as StatusFilter[]).map(f => (
-          <button
+          <button type="button"
             key={f}
             onClick={() => setFilter(f)}
             className={`h-8 px-3 rounded-admin-sm text-admin-sm font-medium transition-colors ${
@@ -334,7 +334,7 @@ export default function AdminDestinationsPage() {
                               placeholder="감성 타이틀 입력..."
                               className="flex-1 text-sm border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                             />
-                            <button
+                            <button type="button"
                               onClick={() => autoGenTagline(row.destination)}
                               disabled={saving[row.destination]}
                               className="text-xs bg-violet-100 text-violet-700 font-bold px-3 py-2 rounded-lg hover:bg-violet-200 transition disabled:opacity-50 whitespace-nowrap"
@@ -355,7 +355,7 @@ export default function AdminDestinationsPage() {
                       </div>
 
                       {Object.keys(edit).length > 0 && (
-                        <button
+                        <button type="button"
                           onClick={() => patchMeta(row.destination, edit)}
                           disabled={saving[row.destination]}
                           className="text-sm font-bold bg-slate-900 text-white px-5 py-2 rounded-lg hover:bg-slate-700 transition disabled:opacity-50"
@@ -382,7 +382,7 @@ export default function AdminDestinationsPage() {
                               }`}>
                                 {row.metadata.photo_approved ? '✅ 고객 노출 중' : '⚠️ 미승인 (고객 미노출)'}
                               </span>
-                              <button
+                              <button type="button"
                                 onClick={() => toggleApprove(row.destination, row.metadata!.photo_approved)}
                                 disabled={saving[row.destination]}
                                 className={`text-sm font-bold px-4 py-1.5 rounded-lg transition disabled:opacity-50 ${
@@ -406,7 +406,7 @@ export default function AdminDestinationsPage() {
                             className="flex-1 text-sm border border-admin-border-mid rounded-lg px-3 py-2 focus:outline-none focus:border-brand"
                             onKeyDown={e => e.key === 'Enter' && searchPexels(row.destination)}
                           />
-                          <button
+                          <button type="button"
                             onClick={() => searchPexels(row.destination)}
                             disabled={ps?.loading}
                             className="text-sm font-bold bg-brand text-white px-4 py-2 rounded-lg hover:bg-[#2563eb] transition disabled:opacity-50"
@@ -426,7 +426,7 @@ export default function AdminDestinationsPage() {
                                   className="w-full aspect-video object-cover rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] cursor-pointer group-hover:border-brand transition"
                                   title={`© ${photo.photographer}`}
                                 />
-                                <button
+                                <button type="button"
                                   onClick={() => saveHeroPhoto(row.destination, photo)}
                                   disabled={saving[row.destination]}
                                   className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition rounded-lg flex items-center justify-center text-white text-xs font-bold"
