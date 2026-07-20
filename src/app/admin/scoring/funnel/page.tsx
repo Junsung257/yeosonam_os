@@ -271,6 +271,7 @@ export default function ScoringFunnelPage() {
                       <div className="flex justify-end gap-1">
                         <button
                           type="button"
+                          aria-label="고객 선택 피드백 저장"
                           disabled={feedbackSavingId === row.id}
                           onClick={() => saveFeedback(row.id, 'customer_selected')}
                           className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:opacity-50"
@@ -279,6 +280,7 @@ export default function ScoringFunnelPage() {
                         </button>
                         <button
                           type="button"
+                          aria-label="고객 거절 피드백 저장"
                           disabled={feedbackSavingId === row.id}
                           onClick={() => saveFeedback(row.id, 'customer_rejected')}
                           className="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 disabled:opacity-50"
@@ -287,6 +289,7 @@ export default function ScoringFunnelPage() {
                         </button>
                         <button
                           type="button"
+                          aria-label="호텔 확인 필요 피드백 저장"
                           disabled={feedbackSavingId === row.id}
                           onClick={() => saveFeedback(row.id, 'needs_hotel_check')}
                           className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:opacity-50"
