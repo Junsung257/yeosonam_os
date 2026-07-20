@@ -17,6 +17,7 @@ Release posture improved, but not final GO.
   - #828 `fix(blog): preserve evidence-backed answer structure`
   - #829 `chore(deadcode): hide internal blog destination cta helper`
   - #830 `fix(blog): fill one private image shortfall`
+  - #831 `fix(readiness): reject noindex blog not-found pages`
 - Updated active draft security boundary PRs against current `main`:
   - #760 RFQ tenant/persistence boundaries: draft, mergeable, checks green.
   - #761 tenant portal membership isolation: draft, mergeable, checks green.
@@ -25,7 +26,7 @@ Release posture improved, but not final GO.
   - #749 public package egress boundary: draft, conflicting/dirty; large multi-area diff.
   - #352 marketing readiness integration: draft, very old, too large for normal GitHub diff, previous readiness failure.
 - Blog private regeneration budget PRs #826 and #830 passed CI and were merged.
-- Draft #831 adds a stricter Open Readiness blog-detail guard, but is intentionally not merged because it correctly exposes the current production blocker: discovered public blog slug `phuquoc-kid-friendly` renders HTTP 200 with a not-found/noindex page. This is tracked in issue #332.
+- #831 passed CI and was merged after the Open Readiness discovery path was aligned to the public blog read source while keeping the stricter not-found/noindex detail guard.
 
 ## Changes completed
 
@@ -118,8 +119,8 @@ Validation:
 - Public blog list/detail inventory is not launch-ready:
   - `https://www.yeosonam.com/api/blog?limit=5` returned `posts: []`.
   - `https://www.yeosonam.com/blog` returned HTTP 200 but no crawlable `/blog/...` detail links in the server HTML.
-  - Open Readiness discovered `phuquoc-kid-friendly`, but the page rendered HTTP 200 with not-found/noindex content.
-  - Draft #831 is parked as the stricter guard until a real public blog slug is available and renderable.
+  - An earlier Open Readiness run discovered `phuquoc-kid-friendly`, but that page rendered HTTP 200 with not-found/noindex content.
+  - #831 now prevents that false-green condition; remaining public blog launch risk is broader surface/search-quality availability tracked in issue #332.
 
 ## Risk register
 
@@ -129,16 +130,16 @@ Validation:
 | P0 | Tenant/RFQ isolation | Draft #760/#761 green/mergeable | Review final product decision, undraft, merge if intended for launch. |
 | P0 | Old public egress boundary | Draft #749 conflicting | Do not merge directly. Rebase/cherry-pick only the still-relevant pieces onto current `main`. |
 | P1 | Blog private regeneration budget | #826 merged | Monitor next private-regeneration canary for runtime duration and output-quality parity. |
-| P0 | Public blog runtime sample | Blocked; #831 draft guard proves current slug is noindex/not-found | Publish/repair a real canonical public blog post, then rerun #831 Open Readiness and merge the guard. |
+| P0 | Public blog surface/search availability | Guard merged in #831; issue #332 still tracks public blog surface/search-quality blockers | Publish/repair canonical public blog posts, ensure `/api/blog` and crawlable `/blog/...` links return real content, then rerun Open Readiness and blog quality probes. |
 | P0 | Public package inventory/sample | Blocked/skipped; public package API returned no active package URL during continuation | Select/approve a real public package and set readiness `OPEN_CHECK_PACKAGE_ID`/ref probe inputs. |
-| P1 | Regression suite | Failing | Split by domain. Avoid attraction changes without the attraction SSOT workflow. |
+| P1 | Regression suite | Failing; #834 draft fixes one stale blog outage regression harness file | Split by domain. Avoid attraction changes without the attraction SSOT workflow. |
 | P1 | Dead code drift | Failing | Baseline review or remove/mark new unused exports in small domain PRs. |
 | P1 | PII surface | High-volume findings, no strict blockers | Role-matrix review for admin/product-registration/ad-os raw text surfaces. |
 | P2 | Visual QA | Not completed | Run browser/screenshot pass over customer, admin, checkout/RFQ, blog, and package detail flows. |
 
 ## Git notes
 
-- `main` at latest audit continuation includes `f3e70a9d fix(blog): fill one private image shortfall (#830)`.
-- Draft #831 is intentionally left open/draft with a PR comment explaining that its readiness failure is a real production data/content blocker, not a code failure.
+- `main` at latest audit continuation includes `156f200f fix(readiness): reject noindex blog not-found pages (#831)`.
+- Draft #834 records a follow-up correction for stale blog outage regression assertions discovered while validating #831.
 - Root worktree `C:\dev\yeosonam-os` has separate dirty user/session changes and was intentionally not modified.
 - Main audit worktree used: `C:\dev\yeosonam-os-travel-history-p1`.
