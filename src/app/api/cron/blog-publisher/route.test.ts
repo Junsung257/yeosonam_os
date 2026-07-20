@@ -181,7 +181,13 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const applyFinalResearchStructureRepair = (): void =>');
     expect(source).toContain("stage: 'final_quality_boundary'");
     expect(source).toContain('const runQualityWithResearchStructure = async (): Promise<QualityGateReport> =>');
+    expect(source).toContain('const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> =>');
     expect(source).toContain('qa = await runQualityWithResearchStructure();');
+    expect(source).toContain('qa = await runQualityAfterAiReadableRepair();');
+    const genericRepair = source.indexOf('qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);');
+    const finalAiRepair = source.indexOf('qa = await runQualityAfterAiReadableRepair();', genericRepair);
+    expect(genericRepair).toBeGreaterThan(-1);
+    expect(finalAiRepair).toBeGreaterThan(genericRepair);
     expect(source).toContain('writer_claim_ledger: {');
     expect(source).toContain("claimLedger: contentBoundary.lane === 'informational'");
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
