@@ -203,7 +203,7 @@ export default function IntegrationsPage() {
               {/* 액션 버튼 */}
               <div className="flex-shrink-0">
                 {item.connected ? (
-                  <button
+                  <button type="button"
                     onClick={() => handleDisconnect(item.platform)}
                     disabled={disconnecting === item.platform}
                     className="px-4 py-2 text-admin-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition"
@@ -211,7 +211,7 @@ export default function IntegrationsPage() {
                     {disconnecting === item.platform ? '해제 중...' : '연결 해제'}
                   </button>
                 ) : PLATFORM_OAUTH_START[item.platform] ? (
-                  <button
+                  <button type="button"
                     onClick={() => handleConnect(item.platform)}
                     className="px-4 py-2 text-admin-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
                   >
@@ -308,7 +308,7 @@ export default function IntegrationsPage() {
             value={policyForm.note ?? ''}
             onChange={(e) => setPolicyForm((p) => ({ ...p, note: e.target.value || null }))}
           />
-          <button
+          <button type="button"
             onClick={handleSavePolicy}
             disabled={policySaving}
             className="px-4 py-2 text-admin-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
@@ -351,13 +351,13 @@ export default function IntegrationsPage() {
                     <td className="px-3 py-2">{p.timeout_ms ?? '-'}</td>
                     <td className="px-3 py-2">{p.enabled ? 'Y' : 'N'}</td>
                     <td className="px-3 py-2">
-                      <button
+                      <button type="button"
                         className="text-blue-700 hover:underline mr-3"
                         onClick={() => setPolicyForm(p)}
                       >
                         편집
                       </button>
-                      <button
+                      <button type="button"
                         className="text-red-600 hover:underline"
                         onClick={() => handleDeletePolicy(p.task)}
                       >

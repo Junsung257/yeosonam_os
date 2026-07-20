@@ -226,7 +226,7 @@ export default function ApplicationsPage() {
           actions={
             <div className="flex gap-1.5 flex-wrap">
               {['', 'PENDING', 'APPROVED', 'REJECTED'].map(s => (
-                <button
+                <button type="button"
                   key={s}
                   onClick={() => setFilter(s)}
                   className={`h-8 px-3 rounded-admin-sm text-admin-sm font-medium transition-colors ${
@@ -244,7 +244,7 @@ export default function ApplicationsPage() {
                 { key: 'invited', label: '📩 초대' },
                 { key: 'open', label: '📢 자유' },
               ].map(({ key, label }) => (
-                <button
+                <button type="button"
                   key={key}
                   onClick={() => setInviteFilter(key)}
                   className={`h-8 px-2.5 rounded-admin-sm text-admin-xs font-medium transition-colors ${
@@ -320,19 +320,19 @@ export default function ApplicationsPage() {
                   </div>
                   {app.status === 'PENDING' && (
                     <div className="flex gap-2">
-                      <button
+                      <button type="button"
                         onClick={() => {
                           openChecklist(app);
                         }}
                         disabled={processingId === app.id}
                         className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium disabled:opacity-50 hover:bg-blue-100"
                       >심사</button>
-                      <button
+                      <button type="button"
                         onClick={() => handleApprove(app.id)}
                         disabled={processingId === app.id}
                         className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium disabled:opacity-50"
                       >승인</button>
-                      <button
+                      <button type="button"
                         onClick={() => setRejectTarget(app.id)}
                         disabled={processingId === app.id}
                         className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-medium disabled:opacity-50"

@@ -1139,7 +1139,7 @@ function SocialMetricsWidget() {
           SNS 채널 현황
           <span className="text-[10px] text-admin-muted-2 font-normal" title="이 데이터는 이 브라우저에만 저장됩니다. 기기가 바뀌면 초기화됩니다.">⚠ 로컬</span>
         </h2>
-        <button onClick={() => { setShowForm(!showForm); setFormValues(channels.map(c => String(c.current))); }}
+        <button type="button" onClick={() => { setShowForm(!showForm); setFormValues(channels.map(c => String(c.current))); }}
           className="px-2 py-1 bg-white border border-admin-border-strong rounded text-[11px] text-admin-muted hover:bg-admin-bg transition">
           지표 업데이트
         </button>
@@ -1194,20 +1194,20 @@ function SocialMetricsWidget() {
                 onChange={e => { const next = [...formValues]; next[i] = e.target.value; setFormValues(next); }}
                 className="flex-1 border border-admin-border-mid rounded px-2 py-1 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
               {channels.length > 1 && (
-                <button onClick={() => {
+                <button type="button" onClick={() => {
                   setChannels(channels.filter((_, idx) => idx !== i));
                   setFormValues(formValues.filter((_, idx) => idx !== i));
                 }} className="text-admin-muted-2 hover:text-red-500 text-admin-sm">x</button>
               )}
             </div>
           ))}
-          <button onClick={() => {
+          <button type="button" onClick={() => {
             setChannels([...channels, { name: `채널${channels.length + 1}`, current: 0, prev: 0 }]);
             setFormValues([...formValues, '0']);
           }} className="w-full py-1 border border-dashed border-admin-border-strong rounded text-[11px] text-admin-muted-2 hover:text-admin-muted hover:border-slate-400 transition">
             + 채널 추가
           </button>
-          <button onClick={handleSave} className="w-full py-1.5 bg-brand text-white rounded text-admin-xs hover:bg-blue-700 transition">저장</button>
+          <button type="button" onClick={handleSave} className="w-full py-1.5 bg-brand text-white rounded text-admin-xs hover:bg-blue-700 transition">저장</button>
         </div>
       )}
     </div>
@@ -1334,7 +1334,7 @@ function RecentFailuresWidget() {
 
   return (
     <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-      <button
+      <button type="button"
         onClick={() => setExpanded(e => !e)}
         className="w-full flex items-center justify-between text-left"
       >
@@ -1686,7 +1686,7 @@ export default function AdminPage({
           <span className="text-admin-xs text-amber-800">
             일부 데이터 로드 실패 ({fetchErrors.join(', ')}) — 새로고침 후 재시도
           </span>
-          <button onClick={() => setFetchErrors([])} className="text-amber-600 text-[11px] hover:underline ml-4">닫기</button>
+          <button type="button" onClick={() => setFetchErrors([])} className="text-amber-600 text-[11px] hover:underline ml-4">닫기</button>
         </div>
       )}
 
@@ -2108,13 +2108,13 @@ export default function AdminPage({
             <div className="sticky bottom-0 bg-white border-t border-admin-border-mid px-5 py-3 flex gap-2">
               {selectedPackage.status === 'pending' && (
                 <>
-                  <button onClick={() => handleAction(selectedPackage.id, 'approve')} disabled={processingId === selectedPackage.id}
+                  <button type="button" onClick={() => handleAction(selectedPackage.id, 'approve')} disabled={processingId === selectedPackage.id}
                     className="flex-1 bg-brand text-white py-2 rounded text-admin-sm hover:bg-blue-700 disabled:bg-slate-300 transition">승인</button>
-                  <button onClick={() => handleAction(selectedPackage.id, 'reject')} disabled={processingId === selectedPackage.id}
+                  <button type="button" onClick={() => handleAction(selectedPackage.id, 'reject')} disabled={processingId === selectedPackage.id}
                     className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">반려</button>
                 </>
               )}
-              <button onClick={() => setSelectedPackage(null)}
+              <button type="button" onClick={() => setSelectedPackage(null)}
                 className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">닫기</button>
             </div>
           </div>

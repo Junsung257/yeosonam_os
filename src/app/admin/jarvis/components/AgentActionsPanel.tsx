@@ -247,7 +247,7 @@ export default function AgentActionsPanel() {
     <div className="space-y-3">
       <div className="flex gap-1 rounded-lg bg-admin-surface-2 p-1">
         {STATUS_TABS.map((tab) => (
-          <button
+          <button type="button"
             key={tab.key}
             onClick={() => setStatusFilter(tab.key)}
             className={`rounded-md px-3 py-1.5 text-admin-xs font-medium transition ${
@@ -265,7 +265,7 @@ export default function AgentActionsPanel() {
         <p className="text-admin-xs text-admin-muted">
           {total} action{total === 1 ? '' : 's'} {loading ? '(loading)' : ''}
         </p>
-        <button
+        <button type="button"
           onClick={fetchActions}
           className="inline-flex h-7 items-center gap-1 rounded-admin-sm border border-admin-border-mid px-2 text-[11px] text-admin-muted transition hover:bg-admin-bg hover:text-admin-text-2"
         >
@@ -356,7 +356,7 @@ export default function AgentActionsPanel() {
                           />
                         )}
                         <div className="flex gap-1.5">
-                          <button
+                          <button type="button"
                             onClick={(event) => {
                               event.stopPropagation();
                               refreshDecision(action.id);
@@ -367,7 +367,7 @@ export default function AgentActionsPanel() {
                             <RefreshCw size={12} aria-hidden="true" />
                             Dry-run
                           </button>
-                          <button
+                          <button type="button"
                             onClick={(event) => {
                               event.stopPropagation();
                               handleAction(action.id, 'approve');
@@ -378,7 +378,7 @@ export default function AgentActionsPanel() {
                             {processingId === action.id ? 'Processing...' : 'Approve and execute'}
                           </button>
                           {rejectId === action.id ? (
-                            <button
+                            <button type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 handleAction(action.id, 'reject');
@@ -389,7 +389,7 @@ export default function AgentActionsPanel() {
                               Confirm reject
                             </button>
                           ) : (
-                            <button
+                            <button type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setRejectId(action.id);
@@ -413,7 +413,7 @@ export default function AgentActionsPanel() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2 pt-2">
-          <button
+          <button type="button"
             onClick={() => setPage((value) => Math.max(1, value - 1))}
             disabled={page <= 1}
             className="rounded border border-admin-border-mid px-2 py-1 text-[11px] hover:bg-admin-bg disabled:opacity-40"
@@ -421,7 +421,7 @@ export default function AgentActionsPanel() {
             Prev
           </button>
           <span className="text-[11px] text-admin-muted">{page} / {totalPages}</span>
-          <button
+          <button type="button"
             onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
             disabled={page >= totalPages}
             className="rounded border border-admin-border-mid px-2 py-1 text-[11px] hover:bg-admin-bg disabled:opacity-40"

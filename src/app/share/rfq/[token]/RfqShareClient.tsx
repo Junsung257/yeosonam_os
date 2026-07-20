@@ -292,14 +292,14 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
         <div className="bg-white rounded-xl border shadow-sm p-5">
           <h2 className="font-semibold text-gray-900 text-sm mb-3">💬 이 견적 어떤가요?</h2>
           <div className="flex gap-2 mb-3">
-            <button
+            <button type="button"
               onClick={() => addReaction('like')}
               disabled={myReactions.has('like')}
               className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg border text-sm font-medium transition disabled:opacity-50 disabled:cursor-default enabled:hover:bg-blue-50 enabled:hover:border-blue-300"
             >
               👍 좋아요 <span className="text-gray-400 text-xs">{counts.like}</span>
             </button>
-            <button
+            <button type="button"
               onClick={() => addReaction('curious')}
               disabled={myReactions.has('curious')}
               className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg border text-sm font-medium transition disabled:opacity-50 disabled:cursor-default enabled:hover:bg-purple-50 enabled:hover:border-purple-300"
@@ -316,7 +316,7 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
                 {proposals.map((p) => {
                   const voteKey = p.key === 'proposal_a' ? 'vote_a' : p.key === 'proposal_b' ? 'vote_b' : 'vote_c';
                   return (
-                    <button
+                    <button type="button"
                       key={voteKey}
                       onClick={() => addReaction(voteKey)}
                       disabled={myReactions.has(voteKey)}
@@ -336,13 +336,13 @@ export function RfqShareClient({ rfq, reactionCounts: initialCounts, shareToken 
         <div className="bg-white rounded-xl border shadow-sm p-5">
           <h2 className="font-semibold text-gray-900 text-sm mb-3">📤 일행에게 공유하기</h2>
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={handleCopyLink}
               className="flex-1 bg-gray-100 text-gray-800 py-2.5 rounded-lg text-sm font-semibold hover:bg-gray-200 transition"
             >
               {copied ? '✅ 링크 복사됨!' : '🔗 링크 복사'}
             </button>
-            <button
+            <button type="button"
               onClick={handleShareKakao}
               className="flex-1 bg-[#FEE500] text-[#191919] py-2.5 rounded-lg text-sm font-semibold hover:bg-[#FDD800] transition"
             >
