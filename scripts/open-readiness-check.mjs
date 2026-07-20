@@ -75,6 +75,15 @@ function missingImportantEnvVars() {
   return IMPORTANT_ENV.filter((key) => !process.env[key]);
 }
 
+function htmlTitle(body) {
+  return String(body || '').match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '';
+}
+
+function packageDetailLooksRenderable(body) {
+  const title = htmlTitle(body);
+  return title.includes(PACKAGE_ID.slice(0, 8));
+}
+
 function shouldBlockLocalRuntimeForMissingEnv(missing = missingImportantEnvVars()) {
   return LOCAL_MODE && ALLOW_LOCAL_MISSING_DATA && missing.length > 0;
 }
@@ -349,30 +358,30 @@ function isExpectedAuthRefreshProbeBlock(runtime, attentionChecks) {
 
 async function checkPublicUrls() {
   await fetchUrl('public:home', '/', { readBody: false });
-  if (LOCAL_MODE && !HAS_EXPLICIT_PACKAGE_ID) {
+  if (!HAS_EXPLICIT_PACKAGE_ID) {
     addBlockedCheck('public:package-detail', {
       url: `${BASE_URL}/packages/${PACKAGE_ID}`,
       missing: ['OPEN_CHECK_PACKAGE_ID'],
-      notes: 'OPEN_CHECK_PACKAGE_ID not provided; local target may not have production package data',
+      notes: 'OPEN_CHECK_PACKAGE_ID not provided; a real public package is required for package-detail verification',
     });
   } else {
     await fetchUrl('public:package-detail', `/packages/${PACKAGE_ID}`, {
-      ok: (res, body) => res.status >= 200 && res.status < 400 && !PACKAGE_NOT_FOUND_PATTERN.test(body),
-      notes: (_res, body) => (PACKAGE_NOT_FOUND_PATTERN.test(body) ? 'package detail rendered a not-found state' : ''),
+      ok: (res, body) => res.status >= 200 && res.status < 400 && packageDetailLooksRenderable(body),
+      notes: (_res, body) => (packageDetailLooksRenderable(body) ? '' : 'package detail title did not include the probe package id'),
     });
   }
   await fetchUrl('public:blog-runtime', `/blog/${encodeURIComponent(BLOG_SLUG)}`, {
     ok: (res, body) => res.status >= 200 && res.status < 400 && !BLOG_DETAIL_NOT_FOUND_PATTERN.test(body),
     notes: (_res, body) => (BLOG_DETAIL_NOT_FOUND_PATTERN.test(body) ? 'blog detail rendered a not-found state' : ''),
   });
-  if (LOCAL_MODE && (!HAS_EXPLICIT_REF_CODE || !HAS_EXPLICIT_PACKAGE_ID)) {
+  if (!HAS_EXPLICIT_REF_CODE || !HAS_EXPLICIT_PACKAGE_ID) {
     addBlockedCheck('public:referral-link', {
       url: `${BASE_URL}/r/${REF_CODE}/${PACKAGE_ID}`,
       missing: [
         ...(!HAS_EXPLICIT_REF_CODE ? ['OPEN_CHECK_REF_CODE'] : []),
         ...(!HAS_EXPLICIT_PACKAGE_ID ? ['OPEN_CHECK_PACKAGE_ID'] : []),
       ],
-      notes: 'OPEN_CHECK_REF_CODE and OPEN_CHECK_PACKAGE_ID are required for local referral-link verification',
+      notes: 'OPEN_CHECK_REF_CODE and OPEN_CHECK_PACKAGE_ID are required for referral-link verification',
     });
   } else {
     await fetchUrl('public:referral-link', `/r/${REF_CODE}/${PACKAGE_ID}`, {
