@@ -116,7 +116,7 @@ export default function TopicalPage() {
       )}
 
       <div className="grid gap-2 md:grid-cols-3">
-        <button
+        <button type="button"
           onClick={() => trigger('seed', '매트릭스 시드')}
           disabled={running !== null}
           className="admin-card px-3 py-3 text-left text-admin-xs transition-colors hover:border-admin-border-strong disabled:opacity-50"
@@ -127,7 +127,7 @@ export default function TopicalPage() {
           </span>
           <p className="mt-1 text-admin-2xs text-admin-muted">활성 목적지 x 고객 의도 생성</p>
         </button>
-        <button
+        <button type="button"
           onClick={() => trigger('promote', '대기 후보 큐 등록')}
           disabled={running !== null}
           className="admin-card px-3 py-3 text-left text-admin-xs transition-colors hover:border-admin-border-strong disabled:opacity-50"
@@ -138,7 +138,7 @@ export default function TopicalPage() {
           </span>
           <p className="mt-1 text-admin-2xs text-admin-muted">검색/광고 공백 우선순위 반영</p>
         </button>
-        <button
+        <button type="button"
           onClick={() => trigger('rebuild_clusters', '세부 글 연결 재구성')}
           disabled={running !== null}
           className="admin-card px-3 py-3 text-left text-admin-xs transition-colors hover:border-admin-border-strong disabled:opacity-50"

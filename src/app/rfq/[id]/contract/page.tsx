@@ -83,7 +83,7 @@ export default function ContractPage() {
                 출력 완료
               </span>
             )}
-            <button
+            <button type="button"
               onClick={handlePrint}
               className="bg-brand hover:bg-[#1B64DA] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
             >
@@ -125,7 +125,7 @@ export default function ContractPage() {
             >
               돌아가기
             </Link>
-            <button
+            <button type="button"
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors"
               onClick={() => alert('에스크로 결제 시스템에 연결됩니다. (프로덕션 연동 필요)')}
             >

@@ -119,7 +119,7 @@ export default function LedgerViewer({ bookingId, onClose }: Props) {
               {data?.booking.booking_no ?? bookingId.slice(0, 8)} · 거래는 immutable, 매 변경마다 새 entry 추가
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
         </div>
 
         {/* 컨텐츠 */}
@@ -201,7 +201,7 @@ export default function LedgerViewer({ bookingId, onClose }: Props) {
         </div>
 
         <div className="border-t p-3 text-right">
-          <button onClick={onClose} className="px-4 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded">
+          <button type="button" onClick={onClose} className="px-4 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded">
             닫기
           </button>
         </div>

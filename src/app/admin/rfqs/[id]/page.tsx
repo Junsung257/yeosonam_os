@@ -279,7 +279,7 @@ export default function AdminRfqDetailPage() {
       {/* 탭 */}
       <div className="flex gap-1 bg-admin-surface-2 rounded-admin-md p-1 w-fit">
         {TABS.map((tab) => (
-          <button
+          <button type="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -333,7 +333,7 @@ export default function AdminRfqDetailPage() {
             </h2>
             <div className="flex gap-2 flex-wrap">
               {STATUS_TRANSITIONS.map((t) => (
-                <button
+                <button type="button"
                   key={t.action}
                   onClick={() => transition(t.status)}
                   disabled={transitioning === t.status}
@@ -412,7 +412,7 @@ export default function AdminRfqDetailPage() {
       {activeTab === 'proposals' && (
         <div className="space-y-4">
           <div className="flex justify-end">
-            <button
+            <button type="button"
               onClick={runAnalysis}
               disabled={analyzing}
               className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-admin-md text-sm font-medium transition-colors"

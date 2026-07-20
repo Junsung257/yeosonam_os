@@ -254,7 +254,7 @@ export default function PlatformLearningPage() {
           { id: 'critique', label: 'Critique 현황' },
           { id: 'feedback', label: '고객 피드백' },
         ] as const).map((t) => (
-          <button
+          <button type="button"
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-admin-sm font-medium -mb-px border-b-2 transition-colors ${
@@ -385,7 +385,7 @@ export default function PlatformLearningPage() {
                       <p className="text-admin-text font-medium">{c.pattern}</p>
                       <p className="text-admin-xs text-admin-muted mt-1">{fmtDateTime(c.created_at)}</p>
                     </div>
-                    <button
+                    <button type="button"
                       onClick={() => toggleCorrection(c.id, !c.is_active)}
                       className={`text-admin-xs px-3 py-1 rounded-full border transition-colors shrink-0 ${
                         c.is_active

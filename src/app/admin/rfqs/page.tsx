@@ -115,7 +115,7 @@ export default function AdminRfqsPage() {
       {/* 탭 필터 */}
       <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit flex-wrap">
         {STATUS_TABS.map((tab) => (
-          <button
+          <button type="button"
             key={tab.value}
             onClick={() => setStatusFilter(tab.value)}
             className={`px-3 h-8 rounded-admin-xs text-admin-sm font-medium transition-colors ${

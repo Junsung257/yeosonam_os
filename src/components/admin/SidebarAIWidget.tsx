@@ -152,7 +152,7 @@ export default function SidebarAIWidget() {
   if (!expanded) {
     return (
       <div className="px-2 pb-2">
-        <button
+        <button type="button"
           onClick={() => setExpanded(true)}
           className="w-full flex items-center gap-2 px-2.5 py-2 rounded-admin-sm text-admin-xs text-admin-muted-2 hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
           title="AI 명령 입력"
@@ -170,7 +170,7 @@ export default function SidebarAIWidget() {
         <div className="flex items-center gap-1.5 text-admin-2xs font-semibold text-brand uppercase tracking-[0.06em]">
           <Bot size={10} />
           AI 명령
-          <button
+          <button type="button"
             onClick={() => { setExpanded(false); setMode('idle'); }}
             className="ml-auto p-0.5 rounded hover:bg-admin-surface text-admin-muted hover:text-admin-text"
           >
@@ -195,7 +195,7 @@ export default function SidebarAIWidget() {
               disabled={mode === 'processing'}
               className="flex-1 bg-transparent border-0 outline-none text-admin-xs text-admin-text placeholder:text-admin-muted-2 py-0.5"
             />
-            <button
+            <button type="button"
               onClick={handleSubmit}
               disabled={mode === 'processing' || !input.trim()}
               className="p-0.5 rounded text-brand hover:text-brand-light disabled:text-admin-muted-2 transition-colors"
@@ -219,7 +219,7 @@ export default function SidebarAIWidget() {
                     <span className="truncate">{item.label}</span>
                     <ExternalLink size={8} className="ml-auto shrink-0 text-admin-muted-2 opacity-0 group-hover:opacity-100" />
                   </Link>
-                  <button
+                  <button type="button"
                     onClick={() => remove(item.href)}
                     className="p-0.5 rounded text-admin-muted-2 opacity-0 group-hover:opacity-100 hover:text-danger transition-all"
                     title="삭제"

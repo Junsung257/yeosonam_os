@@ -174,7 +174,7 @@ export default function AdminConciergePage() {
                     />
                     <span className="text-[11px] text-admin-muted">ms</span>
                   </div>
-                  <button
+                  <button type="button"
                     onClick={() => saveConfig(cfg.api_name)}
                     disabled={saving[cfg.api_name]}
                     className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
@@ -204,7 +204,7 @@ export default function AdminConciergePage() {
               <option value="REFUNDED">REFUNDED</option>
               <option value="API_PROCESSING">API_PROCESSING</option>
             </select>
-            <button
+            <button type="button"
               onClick={loadData}
               className="text-admin-sm bg-white border border-admin-border-strong text-admin-text-2 px-3 py-1.5 rounded-lg hover:bg-admin-bg"
             >

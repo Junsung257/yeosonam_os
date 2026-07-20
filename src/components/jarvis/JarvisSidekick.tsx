@@ -49,7 +49,7 @@ export default function JarvisSidekick({ context, label = '여소남 안내', gr
     <>
       {/* Floating Button */}
       {!open && (
-        <button
+        <button type="button"
           onClick={() => setOpen(true)}
           className="fixed bottom-5 right-5 z-40 bg-gray-900 text-white rounded-full pl-4 pr-5 py-3 shadow-lg flex items-center gap-2 hover:bg-gray-800 active:scale-95 transition"
           aria-label="여소남 안내 챗 열기"
@@ -70,7 +70,7 @@ export default function JarvisSidekick({ context, label = '여소남 안내', gr
             aria-hidden
           />
           <div className="fixed inset-0 sm:inset-auto sm:right-5 sm:bottom-5 sm:top-5 sm:w-[400px] z-50 bg-white sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-            <button
+            <button type="button"
               onClick={() => setOpen(false)}
               className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/90 hover:bg-gray-100 text-gray-600 flex items-center justify-center text-lg"
               aria-label="닫기"

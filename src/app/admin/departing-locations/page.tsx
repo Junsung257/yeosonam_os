@@ -159,7 +159,7 @@ export default function DepartingLocationsPage() {
                         </Button>
                       </div>
                     ) : (
-                      <button
+                      <button type="button"
                         onClick={() => startEdit(l)}
                         className="text-left hover:text-brand group flex items-center gap-1.5 transition-colors"
                         title="클릭하여 수정"

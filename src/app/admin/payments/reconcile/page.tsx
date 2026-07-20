@@ -85,7 +85,7 @@ export default function LedgerReconcilePage() {
     return (
       <div className="p-6">
         <p className="text-red-600 text-sm">오류: {error}</p>
-        <button onClick={load} className="mt-2 px-3 py-1 text-sm bg-admin-surface-2 rounded">재시도</button>
+        <button type="button" onClick={load} className="mt-2 px-3 py-1 text-sm bg-admin-surface-2 rounded">재시도</button>
       </div>
     );
   }
@@ -103,7 +103,7 @@ export default function LedgerReconcilePage() {
             bookings.paid_amount / total_paid_out vs SUM(ledger_entries) 일일 대조
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={load}
           disabled={loading}
           className="px-3 py-1.5 text-sm bg-slate-800 text-white rounded hover:bg-slate-700 disabled:opacity-50"

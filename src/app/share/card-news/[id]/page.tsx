@@ -268,7 +268,7 @@ export default function SharedCardNewsPage() {
       {/* 네비게이션 */}
       {totalSlides > 1 && (
         <div className="flex items-center gap-4 mt-4">
-          <button
+          <button type="button"
             onClick={() => setCurrentSlide((p) => Math.max(0, p - 1))}
             disabled={currentSlideIndex === 0}
             className="px-4 py-2 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -278,7 +278,7 @@ export default function SharedCardNewsPage() {
           <span className="text-xs text-gray-500">
             {currentSlideIndex + 1} / {totalSlides}
           </span>
-          <button
+          <button type="button"
             onClick={() => setCurrentSlide((p) => Math.min(totalSlides - 1, p + 1))}
             disabled={currentSlideIndex === totalSlides - 1}
             className="px-4 py-2 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"

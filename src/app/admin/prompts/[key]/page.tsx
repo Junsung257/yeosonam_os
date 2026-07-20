@@ -149,14 +149,14 @@ export default function PromptEditPage(props: { params: Promise<Promise<{ key: s
           </span>
         )}
         <div className="ml-auto flex gap-2">
-          <button
+          <button type="button"
             onClick={handleInvalidate}
             disabled={invalidating}
             className="px-3 py-1.5 text-sm border border-admin-border-strong rounded-lg hover:bg-admin-bg disabled:opacity-50"
           >
             {invalidating ? '처리 중...' : '즉시 적용'}
           </button>
-          <button
+          <button type="button"
             onClick={handleSave}
             disabled={saving || !body.trim()}
             className="px-4 py-1.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50 font-medium"
@@ -242,7 +242,7 @@ export default function PromptEditPage(props: { params: Promise<Promise<{ key: s
                     </td>
                     <td className="px-4 py-2 text-right">
                       {!v.is_active && (
-                        <button
+                        <button type="button"
                           onClick={() => handleRollback(v.version)}
                           disabled={rollingBack === v.version}
                           className="text-blue-600 hover:text-blue-800 text-xs font-medium disabled:opacity-50"

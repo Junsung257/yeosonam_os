@@ -41,7 +41,7 @@ export default function AdminError({ error, reset }: Props) {
         )}
 
         <div className="flex gap-3 justify-center">
-          <button
+          <button type="button"
             onClick={reset}
             className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
           >

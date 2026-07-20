@@ -87,7 +87,7 @@ export default function FraudQuarantinePage() {
         </div>
         <div className="flex gap-2">
           {(['unresolved', 'resolved', 'all'] as const).map(f => (
-            <button
+            <button type="button"
               key={f}
               onClick={() => setFilter(f)}
               className={`text-admin-sm px-3 py-1 rounded ${filter === f ? 'bg-blue-600 text-white' : 'bg-admin-surface-2'}`}
@@ -140,14 +140,14 @@ export default function FraudQuarantinePage() {
 
                 {!item.resolved_at ? (
                   <div className="flex gap-2">
-                    <button
+                    <button type="button"
                       disabled={busy === item.id}
                       onClick={() => void doAction(item.id, 'resolve', 'false positive — 정상 예약')}
                       className="text-sm px-3 py-1.5 bg-emerald-600 text-white rounded disabled:opacity-50"
                     >
                       ✅ 해결 (정상)
                     </button>
-                    <button
+                    <button type="button"
                       disabled={busy === item.id}
                       onClick={() => {
                         if (confirm('이 예약을 차단(cancelled)하시겠습니까?')) {
@@ -164,7 +164,7 @@ export default function FraudQuarantinePage() {
                     <span className="text-admin-muted">
                       ✓ {item.resolved_by} · {item.resolved_at.slice(5, 16).replace('T', ' ')}
                     </span>
-                    <button
+                    <button type="button"
                       onClick={() => void doAction(item.id, 'unresolve')}
                       className="text-admin-muted hover:text-admin-text underline"
                     >

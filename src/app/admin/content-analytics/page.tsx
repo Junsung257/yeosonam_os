@@ -142,7 +142,7 @@ export default function ContentAnalyticsPage() {
                 상위 vs 하위 성과 글 비교 분석 → 프롬프트 개선안 자동 제안 (결재함에 등록)
               </p>
             </div>
-            <button
+            <button type="button"
               onClick={runOptimizer}
               disabled={!learningStatus.ready || optimizing}
               className="px-3 py-1.5 bg-blue-600 text-white text-admin-xs font-medium rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
@@ -248,7 +248,7 @@ export default function ContentAnalyticsPage() {
           { key: 'revenue' as const, label: '매출순' },
           { key: 'profit' as const, label: '순이익순' },
         ]).map(t => (
-          <button key={t.key} onClick={() => setSortBy(t.key)}
+          <button type="button" key={t.key} onClick={() => setSortBy(t.key)}
             className={`px-3 py-1.5 rounded text-admin-xs font-medium transition ${
               sortBy === t.key ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
             }`}>

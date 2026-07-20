@@ -121,7 +121,7 @@ export default function TenantTokensPage() {
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
-        <button
+        <button type="button"
           onClick={() => { setShowForm(!showForm); setMessage(null); }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
         >
@@ -198,7 +198,7 @@ export default function TenantTokensPage() {
               className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <button
+          <button type="button"
             onClick={handleSave}
             disabled={saving || !form.access_token}
             className="px-5 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition"
@@ -260,7 +260,7 @@ export default function TenantTokensPage() {
                       {fmtMonthDayTime(token.updated_at)}
                     </td>
                     <td className="py-3 px-4">
-                      <button
+                      <button type="button"
                         onClick={() => handleRevoke(token.id)}
                         className="text-xs text-red-500 hover:underline"
                       >

@@ -129,15 +129,15 @@ export default function BlogCategoriesPage() {
                     </span>
                   </td>
                   <td>
-                    <button onClick={() => handleToggleActive(cat)}
+                    <button type="button" onClick={() => handleToggleActive(cat)}
                       className={`px-2 py-0.5 text-admin-2xs rounded-admin-xs font-semibold transition-colors ${cat.is_active ? 'bg-status-successBg text-status-successFg hover:opacity-80' : 'bg-admin-surface-2 text-admin-muted hover:bg-admin-border-mid'}`}>
                       {cat.is_active ? '활성' : '비활성'}
                     </button>
                   </td>
                   <td className="text-right">
-                    <button onClick={() => { setEditing(cat); setShowForm(true); }}
+                    <button type="button" onClick={() => { setEditing(cat); setShowForm(true); }}
                       className="text-admin-xs text-brand hover:text-brand-dark hover:underline mr-2 font-medium">수정</button>
-                    <button onClick={() => handleDelete(cat.id)}
+                    <button type="button" onClick={() => handleDelete(cat.id)}
                       className="text-admin-xs text-danger hover:underline font-medium">비활성화</button>
                   </td>
                 </tr>
@@ -201,7 +201,7 @@ function CategoryForm({ initial, onClose, onSaved }: {
         <h2 className="text-admin-h3 text-admin-text">
           {isEdit ? '카테고리 수정' : '새 카테고리'}
         </h2>
-        <button
+        <button type="button"
           onClick={onClose}
           className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
           aria-label="닫기"
