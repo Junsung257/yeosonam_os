@@ -99,4 +99,19 @@ describe('informational rendered SEO quality', () => {
 
     expect(report.issues.map((issue) => issue.code)).not.toContain('empty_heading');
   });
+
+  it('keeps a canonical FAQ parent without creating a ghost FAQ child heading', async () => {
+    const report = await inspectBlogRenderedSeoQuality({
+      ...BASE,
+      markdown: [
+        '## 자주 묻는 질문',
+        '',
+        '### Q1. 삿포로 식비 예산은 어디에서 확인하나요?',
+        '',
+        'A. 위의 근거표에서 예산 유형별 값을 확인하세요.',
+      ].join('\n'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('empty_heading');
+  });
 });

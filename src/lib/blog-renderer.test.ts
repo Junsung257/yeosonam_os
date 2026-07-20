@@ -174,6 +174,25 @@ describe('blog-renderer', () => {
     expect(report.passed).toBe(true);
   });
 
+  it('does not insert an empty FAQ heading before an existing FAQ question', async () => {
+    const source = [
+      '## 자주 묻는 질문',
+      '',
+      '### Q1. 삿포로 식비 예산의 1인 하루 식비는 얼마인가요?',
+      '',
+      'A. 위의 근거표에서 예산 유형별 값을 확인하세요.',
+    ].join('\n');
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).toContain('<h2>자주 묻는 질문</h2>');
+    expect(html).toContain('<h3>Q1. 삿포로 식비 예산의 1인 하루 식비는 얼마인가요?</h3>');
+    expect(html).not.toContain('<h3>FAQ</h3>');
+    expect((html.match(/>자주 묻는 질문<|>FAQ</g) || []).length).toBe(1);
+    expect(report.passed).toBe(true);
+  });
+
   it('keeps Supabase blog asset images without remote checks by default', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
     const html = '<p><img src="https://example.supabase.co/storage/v1/object/public/blog-assets/post/image.jpg" alt="hero"></p>';
