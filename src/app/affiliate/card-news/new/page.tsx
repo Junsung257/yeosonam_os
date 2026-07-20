@@ -155,7 +155,7 @@ export default function AffiliateCardNewsNewPage() {
               >
                 내 카드뉴스 보기
               </Link>
-              <button
+              <button type="button"
                 onClick={() => { setResult(null); setTopic(''); }}
                 className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 transition-colors"
               >

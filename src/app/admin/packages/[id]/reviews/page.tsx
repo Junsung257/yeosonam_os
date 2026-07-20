@@ -211,7 +211,7 @@ export default function PackageReviewsAdminPage() {
 
       {/* 후기 등록 버튼 */}
       {!showForm && (
-        <button
+        <button type="button"
           onClick={() => setShowForm(true)}
           className="w-full mb-6 py-3 border-2 border-dashed border-brand text-brand rounded-admin-md text-sm font-semibold hover:bg-brand-light transition-colors"
         >
@@ -361,13 +361,13 @@ export default function PackageReviewsAdminPage() {
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5 shrink-0">
-                    <button
+                    <button type="button"
                       onClick={() => toggleStatus(r.id, r.status)}
                       className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${r.status === 'approved' ? 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
                     >
                       {r.status === 'approved' ? '숨김' : '노출'}
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => deleteReview(r.id)}
                       className="text-xs px-2.5 py-1 rounded-lg font-medium bg-red-50 text-red-500 hover:bg-red-100"
                     >

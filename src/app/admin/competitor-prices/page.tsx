@@ -224,7 +224,7 @@ export default function CompetitorPricesPage() {
             <option key={d} value={d}>{d}</option>
           ))}
         </select>
-        <button
+        <button type="button"
           onClick={() => void fetchData()}
           className="text-sm text-blue-600 hover:underline"
         >
