@@ -73,6 +73,9 @@ async function main(): Promise<void> {
   const promptManifest = creativeMeta.prompt_manifest && typeof creativeMeta.prompt_manifest === 'object'
     ? creativeMeta.prompt_manifest as Record<string, unknown>
     : null;
+  const lastPublishQuality = meta.last_publish_quality && typeof meta.last_publish_quality === 'object'
+    ? meta.last_publish_quality as Record<string, unknown>
+    : null;
   const structure = {
     characters: creativeMarkdown.length,
     h2Count: (creativeMarkdown.match(/^##\s+\S/gm) || []).length,
@@ -110,6 +113,7 @@ async function main(): Promise<void> {
     queueLastError: queue.last_error ?? null,
     failureCode: meta.failure_code ?? null,
     failedGates,
+    lastPublishQuality,
     creativePrompt: {
       version: creativeMeta.prompt_version ?? null,
       contract: promptManifest?.contract ?? null,

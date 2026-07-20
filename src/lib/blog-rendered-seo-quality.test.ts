@@ -56,7 +56,21 @@ describe('informational rendered SEO quality', () => {
       markdown: '답변을 먼저 제공합니다.\n\n## 비어 있는 섹션',
     });
 
-    expect(report.issues.map((issue) => issue.code)).toContain('empty_heading');
+    const issue = report.issues.find((item) => item.code === 'empty_heading');
+    expect(issue?.evidence).toMatchObject({
+      count: 1,
+      headings: [
+        {
+          index: 0,
+          tag: 'h2',
+          text: '비어 있는 섹션',
+          reason: 'missing_section_content',
+          parentTag: 'article',
+          nextTag: null,
+          sectionSiblings: [],
+        },
+      ],
+    });
   });
 
   it('detects duplicated body CTAs and an answer replaced by CTA copy', async () => {
@@ -80,6 +94,21 @@ describe('informational rendered SEO quality', () => {
         '### Q1. 하루 예산은 어디에서 확인하나요?',
         '',
         "A. 위의 '근거로 확인한 1인 하루 식비' 표를 확인하세요.",
+      ].join('\n'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('empty_heading');
+  });
+
+  it('keeps a canonical FAQ parent without creating a ghost FAQ child heading', async () => {
+    const report = await inspectBlogRenderedSeoQuality({
+      ...BASE,
+      markdown: [
+        '## 자주 묻는 질문',
+        '',
+        '### Q1. 삿포로 식비 예산은 어디에서 확인하나요?',
+        '',
+        'A. 위의 근거표에서 예산 유형별 값을 확인하세요.',
       ].join('\n'),
     });
 
