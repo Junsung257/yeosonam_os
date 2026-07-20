@@ -56,7 +56,21 @@ describe('informational rendered SEO quality', () => {
       markdown: '답변을 먼저 제공합니다.\n\n## 비어 있는 섹션',
     });
 
-    expect(report.issues.map((issue) => issue.code)).toContain('empty_heading');
+    const issue = report.issues.find((item) => item.code === 'empty_heading');
+    expect(issue?.evidence).toMatchObject({
+      count: 1,
+      headings: [
+        {
+          index: 0,
+          tag: 'h2',
+          text: '비어 있는 섹션',
+          reason: 'missing_section_content',
+          parentTag: 'article',
+          nextTag: null,
+          sectionSiblings: [],
+        },
+      ],
+    });
   });
 
   it('detects duplicated body CTAs and an answer replaced by CTA copy', async () => {
