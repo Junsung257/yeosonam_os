@@ -121,7 +121,7 @@ export default function FromMrtPage() {
       {/* 검색 폼 */}
       <div className="admin-card p-5 mb-5 space-y-3">
         <div className="flex gap-1.5">
-          <button
+          <button type="button"
             onClick={() => setType('stay')}
             className={`h-9 px-3.5 inline-flex items-center gap-1.5 rounded-admin-sm text-admin-sm font-medium transition-colors ${
               type === 'stay'
@@ -132,7 +132,7 @@ export default function FromMrtPage() {
             <Hotel size={14} />
             호텔·숙박
           </button>
-          <button
+          <button type="button"
             onClick={() => setType('tna')}
             className={`h-9 px-3.5 inline-flex items-center gap-1.5 rounded-admin-sm text-admin-sm font-medium transition-colors ${
               type === 'tna'
@@ -176,7 +176,7 @@ export default function FromMrtPage() {
         {/* 카테고리 필터 (tna 전용) */}
         {type === 'tna' && categories.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
-            <button
+            <button type="button"
               onClick={() => setSelectedCategory('')}
               className={`h-7 px-3 rounded-full text-admin-xs font-medium border transition-colors ${
                 selectedCategory === ''
@@ -187,7 +187,7 @@ export default function FromMrtPage() {
               전체
             </button>
             {categories.map(cat => (
-              <button
+              <button type="button"
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id === selectedCategory ? '' : cat.id)}
                 className={`h-7 px-3 rounded-full text-admin-xs font-medium border transition-colors ${

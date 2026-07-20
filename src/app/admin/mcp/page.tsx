@@ -143,7 +143,7 @@ export default function McpSettingsPage() {
               <option value="platform_admin">전체 (Admin)</option>
             </select>
           </div>
-          <button
+          <button type="button"
             onClick={handleCreate}
             disabled={!newLabel.trim()}
             className="px-4 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
@@ -161,7 +161,7 @@ export default function McpSettingsPage() {
               <code className="flex-1 bg-yellow-100 px-2 py-1 rounded text-xs font-mono break-all">
                 {newToken}
               </code>
-              <button
+              <button type="button"
                 onClick={handleCopy}
                 className="px-3 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700 shrink-0"
               >
@@ -207,7 +207,7 @@ export default function McpSettingsPage() {
                   </td>
                   <td className="py-2">
                     {t.is_active && (
-                      <button
+                      <button type="button"
                         onClick={() => handleRevoke(t.id)}
                         className="text-xs text-red-500 hover:text-red-700"
                       >

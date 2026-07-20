@@ -214,7 +214,7 @@ export function CommandPalette({
     const focused = idx === focusIdx;
     const Icon = s.cmd.icon;
     groupedNodes.push(
-      <button
+      <button type="button"
         key={s.cmd.id}
         onMouseEnter={() => setFocusIdx(idx)}
         onClick={() => runItem({ kind: 'static', cmd: s.cmd, score: s.score })}
@@ -257,7 +257,7 @@ export function CommandPalette({
       const focused = idx === focusIdx;
       const Icon = s.result.icon;
       groupedNodes.push(
-        <button
+        <button type="button"
           key={s.result.id}
           onMouseEnter={() => setFocusIdx(idx)}
           onClick={() => runItem({ kind: 'dynamic', result: s.result, score: s.score })}

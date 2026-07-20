@@ -100,7 +100,7 @@ export default function ScoringTrendsPage() {
       {/* 필터 */}
       <section className="flex gap-2">
         {(['all', 'climbed', 'fell', 'stable'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)}
+          <button type="button" key={f} onClick={() => setFilter(f)}
             className={`text-xs px-3 py-1.5 rounded-full font-semibold transition ${
               filter === f ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
             }`}>
@@ -176,7 +176,7 @@ export default function ScoringTrendsPage() {
                 {selectedPkg.departure_date} 출발 · 그룹 사이즈 {Number(selectedPkg.avg_group_size).toFixed(0)}
               </p>
             </div>
-            <button onClick={() => setSelectedPkg(null)} className="text-xs text-admin-muted-2 hover:text-admin-text-2">✕ 닫기</button>
+            <button type="button" onClick={() => setSelectedPkg(null)} className="text-xs text-admin-muted-2 hover:text-admin-text-2">✕ 닫기</button>
           </div>
 
           {chartLoading ? (

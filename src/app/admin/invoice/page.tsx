@@ -151,7 +151,7 @@ export default function InvoiceParsePage() {
           />
         </div>
 
-        <button
+        <button type="button"
           onClick={handleParse}
           disabled={!selectedFile || loading}
           style={selectedFile && !loading ? styles.btnActive : styles.btnDisabled}

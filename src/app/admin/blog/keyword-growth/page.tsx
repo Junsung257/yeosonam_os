@@ -159,7 +159,7 @@ export default function BlogKeywordGrowthPage() {
 
       <div className="flex gap-1 rounded-admin-sm bg-admin-surface-2 p-1 w-fit">
         {[14, 28, 60].map((value) => (
-          <button
+          <button type="button"
             key={value}
             onClick={() => setDays(value)}
             className={`h-8 rounded-admin-xs px-3 text-admin-sm font-medium transition-colors admin-num ${days === value ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}

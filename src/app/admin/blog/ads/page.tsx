@@ -292,7 +292,7 @@ export default function BlogAdsPage() {
 
       <div className="flex w-fit gap-1 rounded-admin-sm bg-admin-surface-2 p-1">
         {['all', ...PLATFORMS.map((platform) => platform.v)].map((value) => (
-          <button
+          <button type="button"
             key={value}
             onClick={() => setFilterPlatform(value)}
             className={`h-8 rounded-admin-xs px-3 text-admin-sm font-medium transition-colors ${filterPlatform === value ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}
@@ -343,7 +343,7 @@ export default function BlogAdsPage() {
                       )}
                     </td>
                     <td>
-                      <button onClick={() => copyText(mapping.landing_url)} className="inline-flex max-w-full items-center gap-1 text-admin-2xs text-brand hover:underline">
+                      <button type="button" onClick={() => copyText(mapping.landing_url)} className="inline-flex max-w-full items-center gap-1 text-admin-2xs text-brand hover:underline">
                         <Copy size={12} />
                         <span className="truncate">{mapping.utm_campaign}</span>
                       </button>
