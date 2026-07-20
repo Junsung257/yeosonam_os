@@ -559,17 +559,17 @@ export default function ProductReviewPage() {
                 <div className="sticky top-0 z-10 bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between text-admin-sm">
                   <span className="font-semibold text-blue-700">{bulkSelected.size}개 선택됨</span>
                   <div className="flex gap-2">
-                    <button
+                    <button type="button"
                       disabled={bulkBusy}
                       onClick={() => void bulkAction('approve')}
                       className="px-3 py-1 bg-emerald-600 text-white rounded text-xs disabled:opacity-50"
                     >✅ 일괄 승인</button>
-                    <button
+                    <button type="button"
                       disabled={bulkBusy}
                       onClick={() => void bulkAction('reject')}
                       className="px-3 py-1 bg-red-600 text-white rounded text-xs disabled:opacity-50"
                     >🚫 일괄 거절</button>
-                    <button
+                    <button type="button"
                       onClick={() => clearBulk()}
                       className="px-2 py-1 text-admin-muted text-xs"
                     >해제 (Esc)</button>
@@ -593,7 +593,7 @@ export default function ProductReviewPage() {
                         className="w-4 h-4 cursor-pointer"
                       />
                     </label>
-                    <button
+                    <button type="button"
                       onClick={() => selectProduct(p)}
                       className="flex-1 text-left px-2 py-3"
                     >
@@ -658,14 +658,14 @@ export default function ProductReviewPage() {
                   </p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                  <button
+                  <button type="button"
                     onClick={reject}
                     disabled={approving || rejecting}
                     className="px-4 py-2 text-admin-sm font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors bg-white"
                   >
                     반려
                   </button>
-                  <button
+                  <button type="button"
                     onClick={approve}
                     disabled={approving || rejecting}
                     className="px-5 py-2 text-admin-sm font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
@@ -681,7 +681,7 @@ export default function ProductReviewPage() {
                   {(['review', 'faq', 'marketing'] as const).map(t => {
                     const labels = { review: '검수', faq: 'FAQ 지식베이스', marketing: '마케팅 미리보기' };
                     return (
-                      <button
+                      <button type="button"
                         key={t}
                         onClick={() => setTab(t)}
                         className={`py-3 text-admin-sm font-semibold border-b-2 transition-colors ${tab === t ? 'border-blue-600 text-admin-text-2' : 'border-transparent text-admin-muted hover:text-admin-text-2'}`}
@@ -771,7 +771,7 @@ export default function ProductReviewPage() {
                         {tags.map(tag => (
                           <span key={tag} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] px-2.5 py-1 rounded-full">
                             {tag}
-                            <button onClick={() => removeTag(tag)} className="text-blue-400 hover:text-blue-700 leading-none">x</button>
+                            <button type="button" onClick={() => removeTag(tag)} className="text-blue-400 hover:text-blue-700 leading-none">x</button>
                           </span>
                         ))}
                         {tags.length === 0 && <span className="text-admin-sm text-admin-muted-2">태그 없음</span>}
@@ -784,7 +784,7 @@ export default function ProductReviewPage() {
                           placeholder="태그 추가..."
                           className="flex-1 border border-admin-border-mid rounded-lg px-3 py-1.5 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                         />
-                        <button onClick={addTag} className="px-3 py-1.5 bg-blue-600 text-white text-admin-sm rounded-lg hover:bg-blue-700">추가</button>
+                        <button type="button" onClick={addTag} className="px-3 py-1.5 bg-blue-600 text-white text-admin-sm rounded-lg hover:bg-blue-700">추가</button>
                       </div>
                     </div>
 
@@ -849,7 +849,7 @@ export default function ProductReviewPage() {
                     <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-admin-sm font-bold text-admin-text-2">대표 이미지 선택</h3>
-                        <button
+                        <button type="button"
                           onClick={loadImages}
                           disabled={loadingImages}
                           className="px-3 py-1.5 text-admin-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
@@ -860,7 +860,7 @@ export default function ProductReviewPage() {
                       {images.length > 0 ? (
                         <div className="grid grid-cols-3 gap-3">
                           {images.map(img => (
-                            <button
+                            <button type="button"
                               key={img.id}
                               onClick={() => setSelectedImageUrl(img.src.large)}
                               className={`relative rounded-lg overflow-hidden aspect-video border-2 transition-all ${selectedImageUrl === img.src.large ? 'border-blue-600' : 'border-transparent hover:border-admin-border-strong'}`}
@@ -891,7 +891,7 @@ export default function ProductReviewPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-admin-base font-bold text-admin-text-2">FAQ 지식 베이스</h3>
-                      <button
+                      <button type="button"
                         onClick={generateFaq}
                         disabled={loadingFaq}
                         className="px-4 py-2 text-admin-sm font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
@@ -938,21 +938,21 @@ export default function ProductReviewPage() {
                 {tab === 'marketing' && (
                   <div className="space-y-4">
                     <div className="flex gap-2 flex-wrap">
-                      <button
+                      <button type="button"
                         onClick={() => generateMarketing('blog')}
                         disabled={loadingMarketing}
                         className="px-4 py-2 text-admin-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors"
                       >
                         네이버 블로그 초안
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => generateMarketing('instagram')}
                         disabled={loadingMarketing}
                         className="px-4 py-2 text-admin-sm font-semibold bg-white border border-admin-border-strong text-admin-text-2 rounded-lg hover:bg-admin-bg disabled:opacity-40 transition-colors"
                       >
                         인스타 광고 문구
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => generateMarketing('itinerary')}
                         disabled={loadingMarketing}
                         className="px-4 py-2 text-admin-sm font-semibold bg-white border border-admin-border-strong text-admin-text-2 rounded-lg hover:bg-admin-bg disabled:opacity-40 transition-colors"
@@ -969,7 +969,7 @@ export default function ProductReviewPage() {
                       <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-admin-sm font-bold text-admin-muted uppercase">{marketing.type}</span>
-                          <button
+                          <button type="button"
                             onClick={() => navigator.clipboard.writeText(marketing.content).then(() => showToast('복사됨!'))}
                             className="text-admin-sm text-blue-700 hover:underline"
                           >

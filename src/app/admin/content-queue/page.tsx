@@ -203,7 +203,7 @@ export default function ContentQueuePage() {
           { key: 'published' as const, label: '발행됨', color: 'text-green-600' },
           { key: 'archived' as const, label: '반려/보관', color: 'text-admin-muted-2' },
         ]).map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key); setSelectedId(null); }}
+          <button type="button" key={t.key} onClick={() => { setTab(t.key); setSelectedId(null); }}
             className={`px-4 py-2 text-admin-sm font-medium border-b-2 transition ${
               tab === t.key ? `${t.color} border-current` : 'text-admin-muted-2 border-transparent hover:text-admin-muted'
             }`}>
@@ -219,11 +219,11 @@ export default function ContentQueuePage() {
       {tab === 'draft' && checkedIds.size > 0 && (
         <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2">
           <span className="text-admin-xs text-indigo-700 font-medium">{checkedIds.size}건 선택</span>
-          <button onClick={handleBulkApprove} disabled={processing}
+          <button type="button" onClick={handleBulkApprove} disabled={processing}
             className="px-3 py-1.5 bg-green-600 text-white text-admin-xs font-semibold rounded hover:bg-green-700 disabled:bg-slate-300 transition">
             {processing ? '처리 중...' : '선택 일괄 승인'}
           </button>
-          <button onClick={() => setCheckedIds(new Set())}
+          <button type="button" onClick={() => setCheckedIds(new Set())}
             className="text-[11px] text-admin-muted-2 hover:text-admin-muted">선택 해제</button>
         </div>
       )}
@@ -261,7 +261,7 @@ export default function ContentQueuePage() {
                     }}
                     className="mt-3.5 w-4 h-4 rounded border-admin-border-strong text-indigo-600 flex-shrink-0" />
                 )}
-                <button onClick={() => selectItem(item)}
+                <button type="button" onClick={() => selectItem(item)}
                   className={`flex-1 text-left p-3 rounded-lg border transition ${
                     selectedId === item.id
                       ? 'border-indigo-300 bg-indigo-50 shadow-admin-xs'
@@ -366,7 +366,7 @@ export default function ContentQueuePage() {
 
                 {/* 액션 버튼 */}
                 <div className="pt-2 space-y-2">
-                  <button onClick={handleApprove} disabled={processing || !editSlug}
+                  <button type="button" onClick={handleApprove} disabled={processing || !editSlug}
                     className="w-full py-2 bg-green-600 text-white text-admin-sm font-semibold rounded-lg hover:bg-green-700 disabled:bg-slate-300 transition">
                     {processing ? '처리 중...' : '승인 · 블로그 발행'}
                   </button>
@@ -374,7 +374,7 @@ export default function ContentQueuePage() {
                     <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
                       placeholder="반려 사유 (선택)"
                       className="w-full border border-admin-border-mid rounded px-2 py-1 text-[11px] mb-1" />
-                    <button onClick={handleReject} disabled={processing}
+                    <button type="button" onClick={handleReject} disabled={processing}
                       className="w-full py-1.5 border border-red-200 text-red-500 text-admin-xs rounded hover:bg-red-50 disabled:text-admin-muted-2 transition">
                       {processing ? '처리 중...' : '반려'}
                     </button>
