@@ -38,4 +38,17 @@ describe('blog prompt selection', () => {
       databaseVersion: 'latest',
     }).source).toBe('repository_fallback');
   });
+
+  it('falls back when a current database prompt violates its domain contract', () => {
+    expect(selectActiveBlogPrompt({
+      ...repositoryPrompt,
+      databaseContent: 'reviewed but incomplete prompt',
+      databaseVersion: 'v2.0',
+      databaseContentValidator: (content) => content.includes('required-domain-marker'),
+    })).toEqual({
+      content: 'repository v1.5 prompt',
+      version: 'v1.5',
+      source: 'repository_fallback',
+    });
+  });
 });

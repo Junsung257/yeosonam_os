@@ -60,9 +60,18 @@ import {
   loadCustomerOpenContractForPackage,
 } from '@/lib/product-registration/customer-open-contract';
 import { isPexelsConfigured } from '@/lib/pexels';
-import { BLOG_PROMPT_VERSION } from '@/lib/prompt-version';
+import { BLOG_INFORMATION_PROMPT_VERSION, BLOG_PROMPT_VERSION } from '@/lib/prompt-version';
 import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
+import {
+  BLOG_INFORMATION_WRITER_GUIDE,
+  isValidInformationalWriterGuide,
+} from '@/prompts/blog/informational-writer-guide';
 import { selectActiveBlogPrompt, type SelectedBlogPrompt } from '@/lib/blog-prompt-selection';
+import {
+  buildInformationalDepthBlock,
+  buildInformationalQualityBlock,
+  buildInformationalWriterPrompt,
+} from '@/lib/blog-informational-writer-prompt';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
 import {
@@ -345,6 +354,7 @@ async function getTodayBlogPublishCount(): Promise<{ count: number; dayKey: stri
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
 let blogStyleGuideCache: SelectedBlogPrompt | null = null;
+let blogInformationWriterGuideCache: SelectedBlogPrompt | null = null;
 
 const NEUTRAL_CLICHE_REPLACEMENTS: Record<string, string> = {
   '아름다운': '경관이 좋은',
@@ -1109,6 +1119,24 @@ async function getActiveBlogStyleGuide(): Promise<SelectedBlogPrompt> {
   return blogStyleGuideCache;
 }
 
+async function getActiveBlogInformationWriterGuide(): Promise<SelectedBlogPrompt> {
+  if (blogInformationWriterGuideCache) return blogInformationWriterGuideCache;
+  const { data: promptRow } = await supabaseAdmin
+    .from('prompt_versions')
+    .select('content, version')
+    .eq('domain', 'blog_info_writer_guide')
+    .eq('is_active', true)
+    .limit(1);
+  blogInformationWriterGuideCache = selectActiveBlogPrompt({
+    databaseContent: promptRow?.[0]?.content,
+    databaseVersion: promptRow?.[0]?.version,
+    repositoryContent: BLOG_INFORMATION_WRITER_GUIDE,
+    repositoryVersion: BLOG_INFORMATION_PROMPT_VERSION,
+    databaseContentValidator: isValidInformationalWriterGuide,
+  });
+  return blogInformationWriterGuideCache;
+}
+
 async function recoverStaleGeneratingQueueItems(): Promise<{ recovered: number; failed: number }> {
   const now = new Date().toISOString();
   const cutoff = new Date(Date.now() - STALE_GENERATING_RECOVERY_MS).toISOString();
@@ -1361,6 +1389,7 @@ async function runBlogPublisher(request: NextRequest) {
 
   try {
     blogStyleGuideCache = null;
+    blogInformationWriterGuideCache = null;
     const privateQueueId = request.nextUrl.searchParams.get('privateQueueId')?.trim();
     if (privateQueueId) {
       const { data: item, error: itemError } = await supabaseAdmin
@@ -3518,10 +3547,10 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   }
 
   const {
-    content: styleGuide,
+    content: informationWriterGuide,
     version: promptVersion,
     source: promptSource,
-  } = await getActiveBlogStyleGuide();
+  } = await getActiveBlogInformationWriterGuide();
   const queueSlug = buildQueueSlug(item);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
@@ -3565,36 +3594,8 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     productId: item.product_id ?? null,
   }));
 
-  const tierGuidance: Record<string, string> = {
-    head: `
-## SEO Tier: HEAD (고경쟁 · 검색량 ${volume ?? '?'})
-- 본문 2,200~3,000자. 필요한 정보가 없으면 길이를 억지로 늘리지 말 것
-- H2 6~8개. 목차를 채우기 위한 제목 추가 금지
-- 첫 H2 안에 ${primaryKw} 정의/위치/한 줄 요약
-- 내부링크 ≥3 (관련 longtail 글로 분산)
-- E-E-A-T 강화: 공식 출처·상품 DB·검색 의도 근거처럼 독자가 확인 가능한 근거를 사용
-- FAQ schema 호환 H2 1개 ("자주 묻는 질문")
-`,
-    mid: `
-## SEO Tier: MID (중경쟁 · 검색량 ${volume ?? '?'})
-- 본문 1,800~2,500자
-- H2 5~7개. FAQ·공식 링크·CTA 블록이 목차를 과하게 늘리지 않도록 짧게 정리
-- 검색 의도 직답 — 첫 200자 안에 ${primaryKw}의 핵심 답 제시
-- 비교/리스트형 구조 권장 (월별 표·체크리스트·Top N)
-- 내부링크 ≥2 (head 글 + 다른 mid 글)
-`,
-    longtail: `
-## SEO Tier: LONGTAIL (저경쟁 · 검색량 ${volume ?? '?'})
-- 본문 1,200~1,800자. 구체 질문에 답하면 충분하며 분량 채우기 금지
-- H2 4~6개
-- 매우 구체적 사용자 시나리오에 1:1 답변 (예: "${primaryKw} 검색하는 사람의 1순위 궁금증 = 가격/일정/포함")
-- 상품 랜딩은 본문 하단 1회만 약하게 연결. 검색 의도 해결이 우선이며, 도입부·중간 강CTA 금지
-- 내부링크 ≥1 (head pillar로)
-`,
-  };
-
   const trendBlock = trendScore && trendScore > 30
-    ? `\n## 검색 수요 참고\n- 트렌드 점수: ${trendScore}/100은 내부 우선순위 참고값입니다.\n- 본문에 "검색 급증", "가장 많이 묻는" 같은 단정형 표현을 쓰지 말고, 시의성이 필요한 확인 항목만 자연스럽게 반영하세요.\n` : '';
+    ? `\n## Demand signal (planning context only)\n- Internal trend score: ${trendScore}/100.\n- Never expose this score or claim that searches are surging. Use it only to prioritize timely reader checks.\n` : '';
 
   // SERP analysis: always for head/mid, selectively for proven longtail opportunities.
   let serpBlock = '';
@@ -3641,49 +3642,36 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     } catch { /* SERP 실패 시 미주입 — 발행은 계속 */ }
   }
 
-  const prompt = `${styleGuide}
-
----
-
-## 이번 작성 지시
-
-**주제**: ${item.topic}
-${item.destination ? `**목적지**: ${item.destination}` : ''}
-**카테고리**: ${item.category || 'travel_tips'}
-**Primary Keyword**: ${primaryKw}
-**Final Content Brief Topic**: ${effectiveTopic}
-**Brief Secondary Keywords**: ${contentBrief.secondaryKeywords.join(', ')}
-**부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
-
-${reviewPromptBlock}
-${freshnessPromptBlock}
-${intentPromptBlock}
-${buildBlogContentBriefPromptBlock(contentBrief)}
-${buildInfoWriterPromptBlock(infoGuideBrief)}
-${researchPromptBlock}
-
-## Current quality contract from recent /blog samples
-- Micro-angle ids or English planning labels are internal only. Never expose labels like "family budget", "transport cost", "hotel area budget", "weather packing", or "local mobility" in the H1, H2, slug text, or body. Convert them into natural Korean search intent.
-- The first 200 characters must answer the reader task: cost, timing, route, documents, packing, or decision criteria for ${primaryKw}.
-- If a Markdown table appears, it must be valid GitHub Flavored Markdown with a header row, separator row, and at least 3 body rows. If there are fewer than 3 real rows, write a checklist instead of a table.
-- Do not use ==highlight==, <mark>, fake emphasis syntax, or unexplained English placeholders.
-- Include official or primary-source links when the topic can change by policy, visa, weather, airport, transport, or ticketing conditions.
-- Destination is required unless the brief explicitly says the article is intentionally generic. Do not publish a generic travel guide when a destination exists in the queue item.
-
-${tierGuidance[tier]}
-${trendBlock}
-${serpBlock}
-${serpGapBlock}
-
-## 공통 출력 규칙
-- 마크다운 형식만 (코드블록 감싸지 말 것)
-- H1 첫 줄에 ${primaryKw} 포함
-- ==...==, <mark>, 형광펜식 하이라이트 금지
-- 강조는 제목 위계(H2/H3), 짧은 bullet, 필요한 경우 **굵게**만 사용
-- 표는 반드시 GitHub Flavored Markdown 형식으로 작성: 헤더 행 바로 다음 줄에 | --- | --- | 구분선을 넣고, 표 행 사이에 빈 줄을 넣지 말 것
-- 구체 수치(원/km/분/℃)는 숫자 그대로 작성
-- 키워드 ${primaryKw}는 자연스럽게 5~8회 반복 (밀도 ${tier === 'head' ? '1.5%' : '1.2%'} 이하)
-- CTA 섹션과 CTA URL을 본문에 쓰지 말 것. 상품 보기, 카카오, 상담 신청, 예약하기, 카페, 딜방 링크는 공개 렌더러의 중앙 CTA 설정이 담당한다.`;
+  const assignmentBlock = [
+    '## Assignment',
+    `- Queue topic: ${item.topic}`,
+    item.destination ? `- Destination: ${item.destination}` : '- Destination: intentionally generic only if the brief permits it',
+    `- Category: ${item.category || 'travel_tips'}`,
+    `- Primary keyword: ${primaryKw}`,
+    `- Final content brief topic: ${effectiveTopic}`,
+    `- Secondary keywords: ${contentBrief.secondaryKeywords.join(', ')}`,
+    `- Optional related terms: ${(item.meta?.keywords || []).join(', ') || 'none'}`,
+  ].join('\n');
+  const { prompt, manifest: promptManifest } = buildInformationalWriterPrompt({
+    guide: informationWriterGuide,
+    assignmentBlock,
+    contextBlocks: [
+      reviewPromptBlock,
+      freshnessPromptBlock,
+      intentPromptBlock,
+      buildBlogContentBriefPromptBlock(contentBrief),
+      buildInfoWriterPromptBlock(infoGuideBrief),
+      researchPromptBlock,
+      trendBlock,
+      serpBlock,
+      serpGapBlock,
+    ],
+    depthBlock: buildInformationalDepthBlock(tier),
+    qualityBlock: buildInformationalQualityBlock({
+      primaryKeyword: primaryKw,
+      destination: item.destination,
+    }),
+  });
 
   const raw = await generatePublisherBlogText(prompt, {
     temperature: hasPrivateBlogRegenerationIntent(item) ? 0.25 : 0.7,
@@ -3724,13 +3712,13 @@ ${serpGapBlock}
   const cat = (item.category || '').toLowerCase();
   let descTemplate: string;
   if (cat.includes('visa') || cat.includes('입국')) {
-    descTemplate = `${effectiveTopic} | ${new Date().getFullYear()}년 최신 입국 정보·필요 서류·면세 한도·비자 필수 사항을 여소남이 정리했습니다.`;
+    descTemplate = `${effectiveTopic} | 필요 서류, 비자, 면세 한도와 출발 전 공식 확인 항목을 한눈에 정리했습니다.`;
   } else if (cat.includes('itinerary') || cat.includes('일정')) {
-    descTemplate = `${effectiveTopic} | 추천 일정·예상 경비·필수 방문지·맛집 정보를 여소남의 현지 경험으로 엄선했습니다.`;
+    descTemplate = `${effectiveTopic} | 이동 동선, 일정별 판단 기준, 예상 경비와 출발 전 확인 항목을 정리했습니다.`;
   } else if (cat.includes('preparation') || cat.includes('준비')) {
-    descTemplate = `${effectiveTopic} | 여행 준비물·체크리스트·예약 꿀팁·주의사항까지 여소남이 꼼꼼하게 정리한 가이드.`;
+    descTemplate = `${effectiveTopic} | 여행 준비물, 체크리스트, 예약 전 확인사항과 놓치기 쉬운 주의점을 정리했습니다.`;
   } else if (cat.includes('local') || cat.includes('현지')) {
-    descTemplate = `${effectiveTopic} | 현지인 추천 맛집·교통 꿀팁·쇼핑 명소·숨은 여행지 정보를 여소남이 전해드립니다.`;
+    descTemplate = `${effectiveTopic} | 교통, 식사, 쇼핑과 현지에서 확인할 실용적인 판단 기준을 정리했습니다.`;
   } else {
     descTemplate = `${effectiveTopic} | 2026년 기준 비용, 일정, 준비물, 예약 전 확인할 현지 체크 포인트를 차분하게 정리했습니다.`;
   }
@@ -3752,6 +3740,7 @@ ${serpGapBlock}
   const generation_meta: Record<string, unknown> = {
     prompt_version: promptVersion,
     prompt_source: promptSource,
+    prompt_manifest: promptManifest,
     writer: 'info_writer',
     editorial_voice: BLOG_EDITORIAL_VOICE,
     info_guide_brief: infoGuideBrief,
