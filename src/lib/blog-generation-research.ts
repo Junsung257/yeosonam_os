@@ -75,7 +75,9 @@ export interface BlogGenerationResearchStructureRepair {
 
 const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:food_budget:v1 -->';
+const FOOD_BUDGET_POLICY_GAP_MARKER = '<!-- blog_research_policy_gap:food_budget:v1 -->';
 const FOOD_BUDGET_AREA_PRICE_DIFFERENCE_PATTERN = /(?:지역별|지역)[^\n]{0,120}(?:가격 차이|비용 차이)/;
+const FOOD_BUDGET_FEES_BOOKING_PATTERN = /(?=[\s\S]*세금)(?=[\s\S]*서비스료)(?=[\s\S]*예약)/;
 const FOOD_BUDGET_STRUCTURE_ISSUES = new Set([
   'food_budget:daily_tier_rows_required',
   'food_budget:아침_value_required',
@@ -293,6 +295,33 @@ function removeExistingFoodBudgetStructure(markdown: string): string {
   return markdown.replace(FOOD_BUDGET_STRUCTURE_MARKER, '');
 }
 
+function appendFoodBudgetFeesBookingGuidance(
+  markdown: string,
+  claims: BlogInformationResearchBundle['claims'],
+): { markdown: string; changed: boolean } {
+  if (FOOD_BUDGET_FEES_BOOKING_PATTERN.test(markdown)) {
+    return { markdown, changed: false };
+  }
+  const policyClaims = claims
+    .filter((claim) => claim.claimType === 'policy')
+    .map((claim) => clean(claim.claimText))
+    .filter(Boolean);
+  const evidenceBoundary = policyClaims.length > 0
+    ? `현재 근거 묶음에서 확인된 정책 정보는 다음과 같습니다. ${policyClaims.join(' ')}`
+    : '현재 가격 근거 묶음에는 업장별 세금·서비스료·예약 조건이 포함되어 있지 않습니다.';
+  const block = [
+    FOOD_BUDGET_POLICY_GAP_MARKER,
+    '## 세금·서비스료·예약 조건은 어떻게 확인할까?',
+    '',
+    evidenceBoundary,
+    '방문 전 공식 메뉴와 예약 화면에서 세금 포함 여부, 서비스료, 예약·취소 조건을 확인하세요.',
+  ].join('\n');
+  return {
+    markdown: `${markdown.trim()}\n\n${block}`,
+    changed: true,
+  };
+}
+
 /**
  * Reuses only preflight-approved claims to make required food-budget tables deterministic.
  * It never calculates a total, converts currencies, or introduces a value outside the bundle.
@@ -315,10 +344,18 @@ export function repairBlogGenerationResearchStructure(input: {
   const report = validateBlogInformationStructure({ intent: input.intent, markdown: input.markdown });
   const needsVerifiedTables = report.issues.some((issue) => FOOD_BUDGET_STRUCTURE_ISSUES.has(issue));
   const needsAreaPriceDifferenceGuidance = !FOOD_BUDGET_AREA_PRICE_DIFFERENCE_PATTERN.test(input.markdown);
-  if (!needsVerifiedTables && !needsAreaPriceDifferenceGuidance) {
-    return unchanged();
-  }
   const claims = input.readiness.bundle.claims;
+  if (!needsVerifiedTables && !needsAreaPriceDifferenceGuidance) {
+    const policyRepair = appendFoodBudgetFeesBookingGuidance(input.markdown, claims);
+    return policyRepair.changed
+      ? {
+          markdown: policyRepair.markdown,
+          changed: true,
+          changes: ['food_budget_fees_booking_evidence_gap'],
+          approvedClaims: [],
+        }
+      : unchanged();
+  }
   const rows = {
     budget: findFoodBudgetClaim(claims, /절약/),
     midrange: findFoodBudgetClaim(claims, /일반형|중간형|중간\s*예산/),
@@ -369,10 +406,15 @@ export function repairBlogGenerationResearchStructure(input: {
     FOOD_BUDGET_STRUCTURE_END_MARKER,
   ].join('\n');
 
+  const tableMarkdown = `${markdown}\n\n${tableBlock}`.trim();
+  const policyRepair = appendFoodBudgetFeesBookingGuidance(tableMarkdown, claims);
   return {
-    markdown: `${markdown}\n\n${tableBlock}`.trim(),
+    markdown: policyRepair.markdown,
     changed: true,
-    changes: ['food_budget_verified_research_tables'],
+    changes: [
+      'food_budget_verified_research_tables',
+      ...(policyRepair.changed ? ['food_budget_fees_booking_evidence_gap'] : []),
+    ],
     approvedClaims,
   };
 }
