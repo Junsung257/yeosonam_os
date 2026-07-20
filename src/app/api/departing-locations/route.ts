@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { successResponse, ApiErrors } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 const DEFAULT_LOCATIONS = ['부산', '인천', '청주', '대구', '무안', '기타']
   .map((name, i) => ({ id: `default-${i}`, name, is_active: true }));
 
 // GET /api/departing-locations
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   try {
     if (!isSupabaseConfigured) return successResponse({ locations: DEFAULT_LOCATIONS }, 200, 60);
 
@@ -31,6 +35,9 @@ export async function GET() {
 
 // POST /api/departing-locations — 신규 추가
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   try {
     const { name } = await req.json() as { name: string };
     if (!name?.trim()) return ApiErrors.badRequest('이름이 필요합니다.');
@@ -57,6 +64,9 @@ export async function POST(req: NextRequest) {
 // PATCH /api/departing-locations — 이름 수정 또는 is_active 토글
 // Body: { id, name } | { id, is_active }
 export async function PATCH(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
   const { id, is_active, name } = await req.json() as {
