@@ -21,7 +21,7 @@
  */
 export const BLOG_PROMPT_VERSION = 'v1.5';
 /** Information-only writer contract, intentionally decoupled from sales prompts. */
-export const BLOG_INFORMATION_PROMPT_VERSION = 'v2.0';
+export const BLOG_INFORMATION_PROMPT_VERSION = 'v2.1';
 export const BLOG_AI_MODEL = process.env.BLOG_AI_MODEL ?? 'deepseek-v4-flash';
 export const BLOG_AI_TEMPERATURE = 0.7; // 단일 생성
 export const BLOG_AI_TEMPERATURE_BULK = 0.8; // 일괄 생성 (다양성↑)

@@ -29,6 +29,7 @@ import { fetchLatestPublicPackageSnapshot } from '@/lib/package-publication/repo
 import { fetchAndMergeCurrentPublicPackageCardSnapshots } from '@/lib/package-publication/snapshot-projection';
 import { isPublicPublicationState } from '@/lib/package-publication/types';
 import { isCustomerPubliclyOpenable } from '@/lib/package-public-eligibility';
+import { serializeJsonLdForScript } from '@/lib/json-ld';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -982,7 +983,7 @@ export default async function PackageDetailPage({
         <script
           type="application/ld+json"
           suppressHydrationWarning
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(pkgJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLdForScript(pkgJsonLd) }}
         />
       )}
       <DetailClient

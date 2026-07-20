@@ -51,15 +51,16 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   assert.match(source, /logBlogListDegraded/);
   assert.match(source, /console\.info\(`\[blog\/list\]\[degraded\]/);
   assert.doesNotMatch(source, /console\.warn\(`\\\[blog\/list\\\]/);
-  assert.match(source, /range\(offset, offset \+ PER_PAGE\)/);
-  assert.doesNotMatch(source, /count:\s*['"]exact['"]/);
+  assert.match(source, /range\(offset, offset \+ PER_PAGE - 1\)/);
+  assert.match(source, /\.select\(BLOG_LIST_SELECT, \{ count: ['"]exact['"] \}\)/);
   assert.doesNotMatch(source, /runBlogQuery\(['"]destinations['"]/);
   assert.doesNotMatch(source, /runBlogQuery\(['"]angleCounts['"]/);
   assert.match(source, /connection timeout/i);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답 지연/);
   assert.match(source, /totalLabel = unavailable \? '확인 중' : total\.toLocaleString\(\)/);
-  assert.match(source, /numberOfItems: unavailable \? undefined : total/);
+  assert.match(source, /const jsonLdItemCount = fallback \? jsonLdPosts\.length : total/);
+  assert.match(source, /numberOfItems: unavailable \? undefined : jsonLdItemCount/);
   assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
 });
 
@@ -92,12 +93,12 @@ test('/api/blog returns stale or Korean fallback for list DB timeout instead of 
   assert.match(source, /Promise\.race/);
   assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
-  assert.match(source, /shouldSkipPublicDbReadsForResourceSaver/);
-  assert.match(source, /Public blog DB reads are slow while resource saver mode is active/);
-  assert.match(source, /degradedBlogListResponse/);
+  assert.match(source, /lastGoodBlogLists/);
+  assert.match(source, /staleBlogListResponse/);
+  assert.match(source, /unavailableBlogResponse/);
   assert.match(source, /stale-if-error=86400/);
   assert.match(source, /status: 503/);
-  assert.match(source, /range\(offset, offset \+ limit\)/);
+  assert.match(source, /range\(offset, offset \+ limit - 1\)/);
   assert.doesNotMatch(source, /BLOG_LIST_COUNT_SELECT/);
 });
 
@@ -133,7 +134,6 @@ test('public blog publish paths invalidate list and detail data caches', () => {
   for (const file of [
     ['src', 'app', 'api', 'blog', 'route.ts'],
     ['src', 'app', 'api', 'blog', 'from-card-news', 'route.ts'],
-    ['src', 'app', 'api', 'blog', 'mrt-hotel-ranking', 'route.ts'],
     ['src', 'app', 'api', 'content-queue', 'route.ts'],
     ['src', 'app', 'api', 'content-hub', 'publish', 'route.ts'],
     ['src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts'],
@@ -141,6 +141,11 @@ test('public blog publish paths invalidate list and detail data caches', () => {
   ]) {
     assert.match(read(...file), /revalidatePublicBlogCache/);
   }
+
+  const hotelRanking = read('src', 'app', 'api', 'blog', 'mrt-hotel-ranking', 'route.ts');
+  assert.match(hotelRanking, /body\.publish === true/);
+  assert.match(hotelRanking, /정보성 검토·승인 절차/);
+  assert.match(hotelRanking, /status:\s*'draft'/);
 });
 
 test('blog destination and angle tabs do not cache unavailable empty states', () => {
@@ -263,8 +268,12 @@ test('open readiness rejects blog detail not-found bodies even when HTTP status 
   const source = read('scripts', 'open-readiness-check.mjs');
 
   assert.match(source, /BLOG_DETAIL_NOT_FOUND_PATTERN/);
+  assert.match(source, /BLOG_DETAIL_NOINDEX_PATTERN/);
+  assert.match(source, /blogDetailLooksRenderable/);
   assert.match(source, /public:blog-runtime/);
   assert.match(source, /OPEN_CHECK_BLOG_SLUG/);
-  assert.match(source, /!BLOG_DETAIL_NOT_FOUND_PATTERN\.test\(body\)/);
-  assert.match(source, /blog detail rendered a not-found state/);
+  assert.match(source, /HAS_EXPLICIT_BLOG_SLUG/);
+  assert.match(source, /OPEN_CHECK_BLOG_SLUG not provided/);
+  assert.match(source, /blogDetailLooksRenderable\(body\)/);
+  assert.match(source, /blog detail rendered a not-found or noindex state/);
 });

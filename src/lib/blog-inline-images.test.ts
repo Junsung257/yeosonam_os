@@ -152,4 +152,63 @@ describe('ensureBlogInlineImages', () => {
     expect(result.markdown).toContain('![AI 생성 참고 이미지: 삿포로 끼니별 예산]');
     expect(result.markdown).toContain('AI 생성 참고 이미지 · 실제 현장 기록이나 최신 운영 상황의 증거로 사용하지 않습니다.');
   });
+
+  it('reuses reviewed draft images without external image calls for private regeneration', async () => {
+    const result = await ensureBlogInlineImages({
+      markdown: '# 삿포로 식비\n\n## 하루 예산\n본문\n\n## 끼니별 예산\n본문\n\n## 지역별 차이\n본문',
+      destination: '삿포로',
+      primaryKeyword: '삿포로 식비',
+      fallbackImageUrls: [
+        'https://cdn.test/sapporo-1.jpg',
+        'https://cdn.test/sapporo-2.jpg',
+        'https://cdn.test/sapporo-3.jpg',
+      ],
+      preferFallbackImages: true,
+      allowPexelsSearch: false,
+      allowGeneratedFallback: false,
+      minImages: 3,
+    });
+
+    expect(result.imageCount).toBe(3);
+    expect(result.markdown).toContain('sapporo-1.jpg');
+    expect(result.markdown).toContain('sapporo-2.jpg');
+    expect(result.markdown).toContain('sapporo-3.jpg');
+    expect(searchPexelsPhotos).not.toHaveBeenCalled();
+    expect(generateSectionImage).not.toHaveBeenCalled();
+  });
+
+  it('fills exactly one private image shortfall with one relevant Pexels lookup', async () => {
+    vi.mocked(searchPexelsPhotos).mockResolvedValueOnce([{
+      id: 202,
+      width: 1200,
+      height: 627,
+      alt: 'Sapporo Japan local food market and restaurant street',
+      src: {
+        landscape: 'https://images.pexels.com/photos/sapporo-section.jpg',
+        large2x: '', large: '', original: '', medium: '', small: '', portrait: '', tiny: '',
+      },
+      url: '', photographer: '', photographer_url: '',
+    }]);
+    const result = await ensureBlogInlineImages({
+      markdown: '# 삿포로 식비\n\n## 하루 예산\n본문\n\n## 끼니별 예산\n본문\n\n## 지역별 차이\n본문',
+      destination: '삿포로',
+      primaryKeyword: '삿포로 식비',
+      fallbackImageUrls: [
+        'https://cdn.test/sapporo-1.jpg',
+        'https://cdn.test/sapporo-2.jpg',
+      ],
+      preferFallbackImages: true,
+      allowPexelsSearch: true,
+      allowGeneratedFallback: true,
+      maxExternalAssetAttempts: 1,
+      minImages: 3,
+    });
+
+    expect(result.imageCount).toBe(3);
+    expect(result.markdown).toContain('sapporo-1.jpg');
+    expect(result.markdown).toContain('sapporo-2.jpg');
+    expect(result.markdown).toContain('sapporo-section.jpg');
+    expect(searchPexelsPhotos).toHaveBeenCalledTimes(1);
+    expect(generateSectionImage).not.toHaveBeenCalled();
+  });
 });

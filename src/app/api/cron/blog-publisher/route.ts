@@ -27,10 +27,15 @@ import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
 import { repairPublisherSeoSlug, strengthenPublisherIntroHook } from '@/lib/blog-publisher-repair';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
-import { ensureBlogInlineImages, findRelevantBlogPexelsImage } from '@/lib/blog-inline-images';
+import {
+  ensureBlogInlineImages,
+  extractBlogInlineImageUrls,
+  findRelevantBlogPexelsImage,
+} from '@/lib/blog-inline-images';
 import { generateSectionImage, isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { repairBlogImageQuality } from '@/lib/blog-image-quality';
+import { repairBlogAiReadableStructure } from '@/lib/blog-ai-readable-repair';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
@@ -554,23 +559,21 @@ function itemSafePronoun(keyword: string): string {
 
 function repairAiReadableStructure(markdown: string, item: any, primaryKeyword?: string | null): string {
   const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || '여행 정보';
-  const lines = markdown.split('\n');
-  const h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
-  const definition = `${keyword}은 여행 전 비용, 이동 시간, 현지 결제 조건을 먼저 확인해야 시행착오를 줄일 수 있는 핵심 준비 항목입니다.`;
-  if (h1Index >= 0) {
-    lines.splice(h1Index + 1, 0, '', definition);
-  }
-  let repaired = lines.join('\n');
-
-  if (!/^##\s+.+[?？]\s*$/m.test(repaired)) {
-    repaired += `\n\n## ${keyword}에서 가장 먼저 확인할 것은?\n\n1. 현지 결제 가능 수단\n2. 공항·호텔 이동 시간\n3. 예약 전 추가 비용 여부\n`;
-  }
-
-  if (!/##\s*(자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)/i.test(repaired)) {
-    repaired += `\n\n## 자주 묻는 질문\n\nQ. ${keyword}은 언제 준비하면 좋나요?\nA. 출발 2주 전에는 결제 수단, 여권 정보, 이동 동선을 함께 확인하는 편이 좋습니다.\n\nQ. 현지에서 바로 바꿔도 되나요?\nA. 가능하지만 공항·호텔 환율 차이가 있을 수 있어 최소 2곳 이상 비교하는 것이 안전합니다.\n\nQ. 여소남 상담은 어떤 점을 확인해주나요?\nA. 상품 포함사항, 일정 동선, 현지 추가 비용을 예약 전 기준으로 함께 점검합니다.\n`;
-  }
-
-  return repaired;
+  const contentBrief = buildQueueContentBrief(item);
+  const researchReadiness = evaluateBlogGenerationResearchReadiness({
+    meta: item.meta,
+    expectedContentKey: buildQueueSlug(item),
+    destination: item.destination,
+    intent: contentBrief.intentType,
+    locale: contentBrief.plan.locale,
+    sourcePolicy: contentBrief.sourcePolicy,
+  });
+  return repairBlogAiReadableStructure({
+    markdown,
+    keyword,
+    intent: contentBrief.intentType,
+    approvedClaims: researchReadiness.passed ? researchReadiness.bundle?.claims : undefined,
+  }).markdown;
 }
 
 function buildQualityGateInput(
@@ -1524,23 +1527,8 @@ async function runBlogPublisher(request: NextRequest) {
         }
       }
 
-      let result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
-      let targetedAttempts = 1;
-      while (
-        result.status === 'gate_failed'
-        && targetedAttempts < 2
-        && publisherRemainingMs(startTime) >= BLOG_PUBLISHER_MIN_ITEM_START_MS
-      ) {
-        const { data: retryItem, error: retryError } = await supabaseAdmin
-          .from('blog_topic_queue')
-          .select('*')
-          .eq('id', privateQueueId)
-          .eq('status', 'queued')
-          .maybeSingle();
-        if (retryError || !retryItem || !hasPrivateBlogRegenerationIntent(retryItem)) break;
-        targetedAttempts += 1;
-        result = await processQueueItem(retryItem, new Map(), { startedAtMs: startTime });
-      }
+      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      const targetedAttempts = 1;
       results.push(result);
       const completedPrivately = result.status === 'pending_review' || result.status === 'done';
       return {
@@ -2145,6 +2133,7 @@ async function processQueueItem(
     const privateRegenerationIntent = hasPrivateBlogRegenerationIntent(item);
     const privateRegenerationRequest = readPrivateBlogRegenerationRequest(item);
     let privateReplacementDraftId: string | null = null;
+    let privateReplacementAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
     if (privateRegenerationIntent && !privateRegenerationRequest) {
       const reason = 'private_regeneration_request_invalid';
       await handleFailure(item, reason, null, true, {
@@ -2155,11 +2144,12 @@ async function processQueueItem(
     if (privateRegenerationRequest) {
       const { data: replacementTarget, error: replacementTargetError } = await supabaseAdmin
         .from('content_creatives')
-        .select('id,channel,status,generation_meta')
+        .select('id,channel,status,generation_meta,og_image_url,blog_html')
         .eq('id', privateRegenerationRequest.contentCreativeId)
         .maybeSingle();
       if (
         replacementTargetError
+        || !replacementTarget
         || !isEligiblePrivateBlogRegenerationTarget(replacementTarget, privateRegenerationRequest)
       ) {
         const reason = 'private_regeneration_target_not_eligible';
@@ -2170,6 +2160,12 @@ async function processQueueItem(
         return { id: item.id, topic: item.topic, status: 'skipped', reason };
       }
       privateReplacementDraftId = privateRegenerationRequest.contentCreativeId;
+      privateReplacementAssets = {
+        ogImageUrl: typeof replacementTarget.og_image_url === 'string' ? replacementTarget.og_image_url : null,
+        inlineImageUrls: extractBlogInlineImageUrls(
+          typeof replacementTarget.blog_html === 'string' ? replacementTarget.blog_html : null,
+        ),
+      };
     }
 
     if (await isRecentInfoDuplicateCandidate(item)) {
@@ -2308,6 +2304,18 @@ async function processQueueItem(
       };
     }
 
+    if (privateReplacementAssets?.ogImageUrl && !generated.og_image_url) {
+      generated.og_image_url = privateReplacementAssets.ogImageUrl;
+    }
+    const privateReusableImageCount = privateReplacementAssets
+      ? new Set([
+          ...privateReplacementAssets.inlineImageUrls,
+          ...(privateReplacementAssets.ogImageUrl ? [privateReplacementAssets.ogImageUrl] : []),
+        ].filter((url) => /^https:\/\//i.test(url))).size
+      : 0;
+    const mayFillSinglePrivateImageShortfall = privateReplacementAssets !== null
+      && privateReusableImageCount === 2;
+
     const slugNormalized = normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
       await supabaseAdmin
@@ -2409,6 +2417,13 @@ async function processQueueItem(
         ogImageUrl: generated.og_image_url,
         minImages: item.card_news_id ? 2 : 3,
         maxImages: item.card_news_id ? 3 : 4,
+        fallbackImageUrls: privateReplacementAssets?.inlineImageUrls,
+        preferFallbackImages: privateReplacementAssets !== null,
+        allowPexelsSearch: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall,
+        allowGeneratedFallback: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall,
+        maxExternalAssetAttempts: privateReplacementAssets === null
+          ? undefined
+          : mayFillSinglePrivateImageShortfall ? 1 : 0,
       });
       if (imageResult.inserted > 0) {
         generated.blog_html = imageResult.markdown;
@@ -3551,6 +3566,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     version: promptVersion,
     source: promptSource,
   } = await getActiveBlogInformationWriterGuide();
+  const privateRegeneration = hasPrivateBlogRegenerationIntent(item);
   const queueSlug = buildQueueSlug(item);
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
@@ -3601,7 +3617,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   let serpBlock = '';
   let serpGapBlock = '';
   let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
-  const shouldAnalyzeSerp = Boolean(
+  const shouldAnalyzeSerp = !privateRegeneration && Boolean(
     primaryKw &&
     (
       tier === 'head' ||
@@ -3682,7 +3698,9 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
     .replace(/^```\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
-  blog_html = await maybeApplyChainOfDensity(blog_html);
+  if (!privateRegeneration) {
+    blog_html = await maybeApplyChainOfDensity(blog_html);
+  }
   const researchStructureRepair = repairBlogGenerationResearchStructure({
     markdown: blog_html,
     intent: contentBrief.intentType,
@@ -3727,7 +3745,7 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
   // og_image_url 자동 할당 — 목적지와 검색 의도에 맞는 상위 후보만 사용
   let og_image_url: string | null = null;
   const destForImage = item.destination || extractDestination(item.topic);
-  if (destForImage) {
+  if (destForImage && !privateRegeneration) {
     try {
       og_image_url = await findOrGenerateBlogCover({
         destination: destForImage,
