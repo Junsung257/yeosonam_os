@@ -269,6 +269,52 @@ function escapeMarkdownTableCell(value: string): string {
   return value.replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 }
 
+interface FoodBudgetImageBlock {
+  url: string;
+  markdown: string;
+}
+
+function extractFoodBudgetImageBlocks(markdown: string): FoodBudgetImageBlock[] {
+  const lines = markdown.split(/\r?\n/);
+  const blocks: FoodBudgetImageBlock[] = [];
+  const seenUrls = new Set<string>();
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index]?.trim().match(/^!\[[^\]]*]\((https:\/\/[^)\s]+)(?:\s+"[^"]*")?\)$/i);
+    const url = match?.[1]?.trim();
+    if (!url || seenUrls.has(url)) continue;
+    seenUrls.add(url);
+    const blockLines = [lines[index]!.trim()];
+    const caption = lines[index + 1]?.trim() ?? '';
+    if (/^<figcaption>[\s\S]*<\/figcaption>$/i.test(caption)) {
+      blockLines.push(caption);
+      index += 1;
+    }
+    blocks.push({ url, markdown: blockLines.join('\n') });
+  }
+  return blocks;
+}
+
+function distributeFoodBudgetImageBlocks(
+  markdown: string,
+  imageBlocks: FoodBudgetImageBlock[],
+): string {
+  if (imageBlocks.length === 0) return markdown;
+  const targetHeadings = new Set(FOOD_BUDGET_DETERMINISTIC_HEADINGS.slice(0, 3).map(normalize));
+  const remaining = [...imageBlocks];
+  const output: string[] = [];
+  for (const line of markdown.split(/\r?\n/)) {
+    if (line === FOOD_BUDGET_STRUCTURE_END_MARKER && remaining.length > 0) {
+      output.push('', ...remaining.splice(0).flatMap((block) => block.markdown.split('\n')), '');
+    }
+    output.push(line);
+    const h2 = line.match(/^##\s+(.+?)\s*$/);
+    if (h2 && targetHeadings.has(normalize(h2[1])) && remaining.length > 0) {
+      output.push('', ...remaining.shift()!.markdown.split('\n'));
+    }
+  }
+  return output.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
 function formatExtractedPrice(claim: BlogInformationResearchBundle['claims'][number]): string {
   const normalizedValue = clean(claim.extractedValue?.normalizedValue);
   const currency = clean(claim.extractedValue?.currency);
@@ -412,6 +458,7 @@ export function repairBlogGenerationResearchStructure(input: {
   }
 
   const approvedClaims = Object.values(rows) as BlogInformationResearchBundle['claims'];
+  const preservedImageBlocks = extractFoodBudgetImageBlocks(input.markdown);
   let markdown = removeExistingFoodBudgetStructure(input.markdown);
   for (const claim of approvedClaims) {
     markdown = markdown.split(claim.claimText).join('');
@@ -422,7 +469,9 @@ export function repairBlogGenerationResearchStructure(input: {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-  const tableBlock = [
+  const missingPreservedImageBlocks = preservedImageBlocks.filter((block) =>
+    !markdown.includes(`](${block.url})`));
+  const tableBlock = distributeFoodBudgetImageBlocks([
     FOOD_BUDGET_STRUCTURE_MARKER,
     '## 근거로 확인한 1인 하루 식비',
     '',
@@ -446,7 +495,7 @@ export function repairBlogGenerationResearchStructure(input: {
     '삿포로의 지역별 가격 차이는 상권·업장·메뉴에 따라 달라집니다. 이 자료는 도시 전체 평균이므로 구체적인 지역별 차액을 단정하지 않습니다. 방문할 지역의 메뉴판과 공식 예약 화면에서 비용 차이를 다시 확인하세요.',
     '',
     FOOD_BUDGET_STRUCTURE_END_MARKER,
-  ].join('\n');
+  ].join('\n'), missingPreservedImageBlocks);
 
   const tableMarkdown = `${markdown}\n\n${tableBlock}`.trim();
   const policyRepair = appendFoodBudgetFeesBookingGuidance(tableMarkdown, claims);
