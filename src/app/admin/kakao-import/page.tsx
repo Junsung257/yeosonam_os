@@ -527,8 +527,9 @@ export default function KakaoImportPage() {
                       {/* 정보 입력 필드 */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-admin-muted mb-0.5">이름</label>
+                          <label htmlFor={`kakao-import-${p.id}-name`} className="block text-[10px] text-admin-muted mb-0.5">이름</label>
                           <input
+                            id={`kakao-import-${p.id}-name`}
                             type="text"
                             value={p.name}
                             onChange={e => updateRow(p.id, 'name', e.target.value)}
@@ -537,8 +538,9 @@ export default function KakaoImportPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-admin-muted mb-0.5">전화번호</label>
+                          <label htmlFor={`kakao-import-${p.id}-phone`} className="block text-[10px] text-admin-muted mb-0.5">전화번호</label>
                           <input
+                            id={`kakao-import-${p.id}-phone`}
                             type="tel"
                             value={p.phone}
                             onChange={e => updateRow(p.id, 'phone', e.target.value)}
@@ -547,8 +549,9 @@ export default function KakaoImportPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-admin-muted mb-0.5">생년월일</label>
+                          <label htmlFor={`kakao-import-${p.id}-birth-date`} className="block text-[10px] text-admin-muted mb-0.5">생년월일</label>
                           <input
+                            id={`kakao-import-${p.id}-birth-date`}
                             type="text"
                             value={p.birth_date}
                             onChange={e => updateRow(p.id, 'birth_date', e.target.value)}
@@ -557,8 +560,9 @@ export default function KakaoImportPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-admin-muted mb-0.5">여권번호</label>
+                          <label htmlFor={`kakao-import-${p.id}-passport-no`} className="block text-[10px] text-admin-muted mb-0.5">여권번호</label>
                           <input
+                            id={`kakao-import-${p.id}-passport-no`}
                             type="text"
                             value={p.passport_no}
                             onChange={e => updateRow(p.id, 'passport_no', e.target.value)}
@@ -568,8 +572,9 @@ export default function KakaoImportPage() {
                         </div>
                         {p.passport_no && (
                           <div className="col-span-2">
-                            <label className="block text-[10px] text-admin-muted mb-0.5">여권만료일</label>
+                            <label htmlFor={`kakao-import-${p.id}-passport-expiry`} className="block text-[10px] text-admin-muted mb-0.5">여권만료일</label>
                             <input
+                              id={`kakao-import-${p.id}-passport-expiry`}
                               type="text"
                               value={p.passport_expiry}
                               onChange={e => updateRow(p.id, 'passport_expiry', e.target.value)}
