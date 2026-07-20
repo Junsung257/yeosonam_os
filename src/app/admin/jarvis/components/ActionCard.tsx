@@ -65,14 +65,14 @@ export function ActionCard({ action, onApprove, onReject }: ActionCardProps) {
       </div>
 
       <div className="flex gap-2">
-        <button
+        <button type="button"
           onClick={handleApprove}
           disabled={loading !== null}
           className="flex-1 rounded-lg bg-purple-700 py-2 text-sm font-semibold text-white transition hover:bg-purple-800 disabled:opacity-50"
         >
           {loading === 'approve' ? 'Processing...' : 'Approve'}
         </button>
-        <button
+        <button type="button"
           onClick={handleReject}
           disabled={loading !== null}
           className="flex-1 rounded-lg border border-admin-border-strong bg-white py-2 text-sm font-semibold text-admin-text-2 transition hover:bg-admin-bg disabled:opacity-50"

@@ -79,7 +79,7 @@ export default function PerformanceTrend({
         </p>
         <div className="flex gap-1">
           {RANGE_OPTIONS.map((opt) => (
-            <button
+            <button type="button"
               key={opt.value}
               onClick={() => handleDaysChange(opt.value)}
               className={[

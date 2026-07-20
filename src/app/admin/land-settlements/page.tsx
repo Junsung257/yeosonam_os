@@ -158,7 +158,7 @@ export default function LandSettlementsPage() {
           <div className="flex items-center gap-2">
             <div className="flex gap-1">
               {(['all', 'pending', 'confirmed', 'reversed'] as StatusFilter[]).map(s => (
-                <button
+                <button type="button"
                   key={s}
                   onClick={() => setStatusFilter(s)}
                   className={`h-8 px-3 text-admin-sm rounded-admin-sm font-medium transition-colors ${
@@ -273,7 +273,7 @@ function SettlementRow({
           {fmtKRW(s.fee_amount)}
         </td>
         <td className="text-center">
-          <button onClick={onToggle} className="text-brand hover:text-brand-dark text-admin-xs font-medium">
+          <button type="button" onClick={onToggle} className="text-brand hover:text-brand-dark text-admin-xs font-medium">
             <span className="admin-num">{s.bookings.length}</span>건 {expanded ? '▴' : '▾'}
           </button>
         </td>

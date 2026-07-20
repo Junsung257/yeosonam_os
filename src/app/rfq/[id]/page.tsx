@@ -389,7 +389,7 @@ export default function RfqDetailPage() {
                   </div>
 
                   {!isContracted && (
-                    <button
+                    <button type="button"
                       onClick={() => selectProposal(p.id)}
                       disabled={selecting === p.id || isContracted}
                       className="w-full bg-brand hover:bg-[#1B64DA] disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"

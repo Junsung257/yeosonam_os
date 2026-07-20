@@ -126,7 +126,7 @@ export default function KeywordStatsPage() {
         <h1 className="text-xl font-semibold text-admin-text">키워드 성과 대시보드</h1>
         <div className="flex gap-2">
           {['all', 'naver', 'google', 'meta'].map(p => (
-            <button
+            <button type="button"
               key={p}
               onClick={() => setPlatform(p)}
               className={`px-3 py-1.5 rounded-admin-md text-admin-sm transition-colors ${
@@ -158,7 +158,7 @@ export default function KeywordStatsPage() {
       {/* 탭 내비게이션 */}
       <div className="flex gap-1 border-b border-admin-border">
         {(['overview', 'top', 'search-terms'] as const).map(t => (
-          <button
+          <button type="button"
             key={t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-admin-sm border-b-2 transition-colors ${

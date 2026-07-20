@@ -240,7 +240,7 @@ export default function InfluencerDashboard() {
               />
             </div>
             {pinError && <p className="text-red-500 text-sm text-center">{pinError}</p>}
-            <button
+            <button type="button"
               onClick={() => handlePinLogin(pin)}
               disabled={pin.length !== 4 || loading}
               className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"

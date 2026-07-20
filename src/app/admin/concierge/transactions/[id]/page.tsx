@@ -150,7 +150,7 @@ export default function TransactionDetailPage() {
     return (
       <div className="p-8 text-center">
         <p className="text-red-500">{error || '트랜잭션을 찾을 수 없습니다.'}</p>
-        <button onClick={() => router.back()} className="mt-4 text-indigo-600 hover:underline text-sm">← 돌아가기</button>
+        <button type="button" onClick={() => router.back()} className="mt-4 text-indigo-600 hover:underline text-sm">← 돌아가기</button>
       </div>
     );
   }
@@ -167,7 +167,7 @@ export default function TransactionDetailPage() {
           </span>
         </div>
         {(txn.status === 'PARTIAL_FAIL' || txn.status === 'COMPLETED' || txn.status === 'CUSTOMER_PAID') && (
-          <button
+          <button type="button"
             onClick={handleRefund}
             disabled={refunding}
             className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"

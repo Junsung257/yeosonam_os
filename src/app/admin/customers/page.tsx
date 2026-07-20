@@ -550,7 +550,7 @@ export default function CustomersPage() {
         <p className="text-[11px] font-semibold text-amber-700 mb-2">다음 추천 액션</p>
         <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-200">
           <span className="text-admin-sm text-admin-text-2">{action.label}</span>
-          <button onClick={() => showToast(`${action.label} 실행됨`)}
+          <button type="button" onClick={() => showToast(`${action.label} 실행됨`)}
             className="text-[11px] bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 font-medium">
             실행
           </button>
@@ -573,7 +573,7 @@ export default function CustomersPage() {
             <h1 className="text-admin-lg font-bold text-admin-text-2">고객 관리</h1>
             <p className="text-admin-sm text-admin-muted mt-0.5">전체 {totalCount.toLocaleString()}명</p>
           </div>
-          <button onClick={() => { setShowForm(true); setPhoneDupe(null); }}
+          <button type="button" onClick={() => { setShowForm(true); setPhoneDupe(null); }}
             className="bg-blue-600 text-white px-4 py-2 rounded text-admin-sm font-medium hover:bg-blue-700">
             + 고객 등록
           </button>
@@ -583,7 +583,7 @@ export default function CustomersPage() {
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <div className="flex border border-admin-border-mid rounded overflow-hidden bg-white">
             {(['active', 'trash'] as const).map(t => (
-              <button key={t} onClick={() => { setTab(t); setPage(1); }}
+              <button type="button" key={t} onClick={() => { setTab(t); setPage(1); }}
                 className={`px-4 py-2 text-admin-sm font-medium ${tab === t ? 'bg-blue-600 text-white' : 'text-admin-muted hover:bg-admin-bg'}`}>
                 {t === 'active' ? '활성' : '휴지통'}
               </button>
@@ -781,7 +781,7 @@ export default function CustomersPage() {
                     {/* More 메뉴 */}
                     <td className="pr-3 pl-2 py-2" onClick={e => e.stopPropagation()}>
                       <div className="relative flex justify-end">
-                        <button
+                        <button type="button"
                           onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === c.id ? null : c.id); }}
                           className="w-7 h-7 rounded flex items-center justify-center text-lg leading-none
                             text-admin-muted-2 hover:text-admin-muted hover:bg-admin-surface-2 transition
@@ -793,12 +793,12 @@ export default function CustomersPage() {
                         {openMenuId === c.id && (
                           <div className="absolute right-0 top-8 bg-white border border-admin-border-mid
                             rounded z-20 min-w-[120px] overflow-hidden">
-                            <button
+                            <button type="button"
                               onClick={e => { e.stopPropagation(); openDrawer(c); }}
                               className="w-full px-3 py-2 text-left text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2">
                               수정
                             </button>
-                            <button
+                            <button type="button"
                               onClick={e => { e.stopPropagation(); handleDelete(c.id); }}
                               className="w-full px-3 py-2 text-left text-admin-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
                               삭제
@@ -817,10 +817,10 @@ export default function CustomersPage() {
         {/* 페이지네이션 */}
         {totalPages > 1 && (
           <div className="flex justify-center gap-2 mt-4">
-            <button disabled={page <= 1} onClick={() => setPage(page - 1)}
+            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}
               className="px-4 py-1.5 rounded border border-admin-border-strong text-admin-sm text-admin-text-2 disabled:opacity-40 hover:bg-admin-bg bg-white">이전</button>
             <span className="px-3 py-1.5 text-admin-sm text-admin-muted">{page} / {totalPages}</span>
-            <button disabled={page >= totalPages} onClick={() => setPage(page + 1)}
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)}
               className="px-4 py-1.5 rounded border border-admin-border-strong text-admin-sm text-admin-text-2 disabled:opacity-40 hover:bg-admin-bg bg-white">다음</button>
           </div>
         )}
@@ -840,25 +840,25 @@ export default function CustomersPage() {
             {selectedIds.size}명 선택됨
           </span>
           <div className="w-px h-5 bg-slate-500 flex-shrink-0" />
-          <button
+          <button type="button"
             onClick={() => setConfirmModal({ type: 'mileage-reset', count: selectedIds.size })}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400
               text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
             마일리지 초기화
           </button>
-          <button
+          <button type="button"
             onClick={() => setConfirmModal({ type: 'bulk-grant-mileage', count: selectedIds.size, grantAmount: 1000, grantReason: '프로모션 지급' })}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
               text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
             마일리지 지급
           </button>
-          <button
+          <button type="button"
             onClick={() => setConfirmModal({ type: 'bulk-delete', count: selectedIds.size })}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-400
               text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
             일괄 삭제
           </button>
-          <button
+          <button type="button"
             onClick={() => setSelectedIds(new Set())}
             className="text-admin-muted-2 hover:text-white ml-1 text-lg leading-none transition">
             ✕
@@ -944,11 +944,11 @@ export default function CustomersPage() {
             )}
 
             <div className="flex gap-3">
-              <button onClick={() => setConfirmModal(null)}
+              <button type="button" onClick={() => setConfirmModal(null)}
                 className="flex-1 border border-admin-border-strong text-admin-text-2 py-2.5 rounded text-admin-sm font-medium hover:bg-admin-bg transition bg-white">
                 취소
               </button>
-              <button
+              <button type="button"
                 onClick={confirmModal.type === 'mileage-reset' ? handleBulkMileageReset
                   : confirmModal.type === 'bulk-grant-mileage' ? handleBulkMileageGrant
                   : handleBulkDelete}
@@ -995,7 +995,7 @@ export default function CustomersPage() {
                   </p>
                 </div>
               </div>
-              <button onClick={() => setDrawer(null)} className="text-admin-muted-2 hover:text-admin-muted text-lg p-1">✕</button>
+              <button type="button" onClick={() => setDrawer(null)} className="text-admin-muted-2 hover:text-admin-muted text-lg p-1">✕</button>
             </div>
 
             {/* 생애주기 프로세스 바 */}
@@ -1008,7 +1008,7 @@ export default function CustomersPage() {
                   const isDone     = i <  currentIdx;
                   const isActive   = stage === current;
                   return (
-                    <button key={stage} onClick={() => handleStatusChange(stage)}
+                    <button type="button" key={stage} onClick={() => handleStatusChange(stage)}
                       title={stage}
                       className={`flex-1 py-1.5 text-[11px] rounded font-semibold transition-all border ${
                         isActive ? 'bg-blue-600 text-white border-blue-600'
@@ -1031,7 +1031,7 @@ export default function CustomersPage() {
                 ['mileage',       '마일리지'],
                 ['activity',      '활동'],
               ] as const).map(([key, label]) => (
-                <button key={key} onClick={() => handleDrawerTabChange(key)}
+                <button type="button" key={key} onClick={() => handleDrawerTabChange(key)}
                   className={`flex-1 py-2.5 text-admin-sm font-semibold transition-colors ${drawerTab === key ? 'text-blue-600 border-b-2 border-blue-600' : 'text-admin-muted hover:text-admin-text-2'}`}>
                   {label}
                   {key === 'bookings' && drawerBookings.length > 0 && (
@@ -1110,7 +1110,7 @@ export default function CustomersPage() {
                           className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
                         />
                       </div>
-                      <button onClick={handleSaveInfo} disabled={savingInfo}
+                      <button type="button" onClick={handleSaveInfo} disabled={savingInfo}
                         className="w-full bg-blue-600 text-white py-2.5 rounded text-admin-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
                         {savingInfo ? '저장 중...' : '저장'}
                       </button>
@@ -1161,7 +1161,7 @@ export default function CustomersPage() {
                       <div className="border-t border-admin-border-mid p-4 space-y-2 bg-white">
                         <div className="flex gap-1 flex-wrap">
                           {Object.entries(CHANNEL_LABEL).map(([ch, label]) => (
-                            <button key={ch} onClick={() => setNoteChannel(ch)}
+                            <button type="button" key={ch} onClick={() => setNoteChannel(ch)}
                               className={`px-2 py-1 rounded text-[11px] font-medium ${noteChannel === ch ? 'bg-blue-50 text-blue-700' : 'bg-admin-bg text-admin-muted hover:bg-admin-surface-2'}`}>
                               {label}
                             </button>
@@ -1175,7 +1175,7 @@ export default function CustomersPage() {
                             onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleAddNote(); }}
                             className="flex-1 border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
                           />
-                          <button onClick={handleAddNote} disabled={addingNote || !noteInput.trim()}
+                          <button type="button" onClick={handleAddNote} disabled={addingNote || !noteInput.trim()}
                             className="bg-blue-600 text-white px-4 rounded text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                             저장
                           </button>
@@ -1256,7 +1256,7 @@ export default function CustomersPage() {
                             ))}
                           </select>
                         </div>
-                        <button onClick={handleMileageAdjust} disabled={adjustingMileage || !mileageInput}
+                        <button type="button" onClick={handleMileageAdjust} disabled={adjustingMileage || !mileageInput}
                           className="w-full bg-blue-600 text-white py-2 rounded text-admin-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
                           {adjustingMileage ? '처리 중...' : '조정 적용'}
                         </button>
@@ -1305,7 +1305,7 @@ export default function CustomersPage() {
           <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-admin-border-mid">
             <div className="px-6 py-4 border-b border-admin-border-mid flex items-center justify-between">
               <h2 className="text-admin-lg font-bold text-admin-text-2">신규 고객 등록</h2>
-              <button onClick={() => { setShowForm(false); setPhoneDupe(null); }} className="text-admin-muted-2 hover:text-admin-muted text-xl">✕</button>
+              <button type="button" onClick={() => { setShowForm(false); setPhoneDupe(null); }} className="text-admin-muted-2 hover:text-admin-muted text-xl">✕</button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4 flex-1 overflow-y-auto">
               <div>

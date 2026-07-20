@@ -71,7 +71,7 @@ export default function PosterStudio({
           </div>
           <div className="flex items-center gap-2">
             {isA4 && (
-              <button
+              <button type="button"
                 onClick={onDownload}
                 disabled={downloading}
                 className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition"
@@ -79,7 +79,7 @@ export default function PosterStudio({
                 {downloading ? '생성 중...' : '다운로드 (JPG/ZIP)'}
               </button>
             )}
-            <button
+            <button type="button"
               onClick={onClose}
               className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition"
             >

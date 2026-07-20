@@ -143,7 +143,7 @@ export default function AutoSuggestChip({ transactionId, onMatched }: Props) {
   if (top.kind === 'booking_match') {
     const pct = Math.round(top.score * 100);
     return (
-      <button
+      <button type="button"
         onClick={() => handleConfirmInflow(top)}
         disabled={confirming}
         className="px-2 py-1 text-[11px] bg-emerald-50 border border-emerald-300 text-emerald-700 rounded hover:bg-emerald-100 disabled:opacity-40 transition whitespace-nowrap"
@@ -156,7 +156,7 @@ export default function AutoSuggestChip({ transactionId, onMatched }: Props) {
 
   if (top.kind === 'settlement_bundle') {
     return (
-      <button
+      <button type="button"
         onClick={() => handleConfirmBundle(top)}
         disabled={confirming}
         className="px-2 py-1 text-[11px] bg-blue-50 border border-blue-300 text-blue-700 rounded hover:bg-blue-100 disabled:opacity-40 transition whitespace-nowrap"

@@ -78,7 +78,7 @@ export default function BlendedTrendChart({ data, loading }: BlendedTrendChartPr
         <h3 className="text-admin-sm font-semibold text-admin-text-2">통합 트렌드</h3>
         <div className="flex gap-1 bg-admin-surface-2 rounded-md p-0.5">
           {(['daily', 'weekly', 'monthly'] as Granularity[]).map(g => (
-            <button
+            <button type="button"
               key={g}
               onClick={() => setGranularity(g)}
               className={`px-2.5 py-1 text-[11px] font-medium rounded ${
