@@ -358,13 +358,13 @@ function SearchAdsContent() {
           <p className="text-[11px] text-admin-muted mt-0.5">키워드 자동 추출 · 입찰가 최적화 · 여행 빅데이터 학습</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setExtractorOpen(true)} className="px-3 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
+          <button type="button" onClick={() => setExtractorOpen(true)} className="px-3 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
             키워드 추출
           </button>
-          <button onClick={handleOptimize} disabled={filtered.length === 0} className="px-3 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition font-medium">
+          <button type="button" onClick={handleOptimize} disabled={filtered.length === 0} className="px-3 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:bg-slate-300 transition font-medium">
             AI 최적화
           </button>
-          <button onClick={handleSync} disabled={syncing} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg disabled:opacity-50 transition">
+          <button type="button" onClick={handleSync} disabled={syncing} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {syncing ? '동기화 중...' : '성과 동기화'}
           </button>
         </div>
@@ -387,7 +387,7 @@ function SearchAdsContent() {
               <option value="">상품 선택...</option>
               {packages.map(p => <option key={p.id} value={p.id}>{p.title || p.display_name} ({p.destination})</option>)}
             </select>
-            <button onClick={handleAutoPlan} disabled={!selectedPkg || planning}
+            <button type="button" onClick={handleAutoPlan} disabled={!selectedPkg || planning}
               className="px-3 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:opacity-50 transition font-medium">
               {planning ? '생성 중...' : '자동 광고 준비'}
             </button>
@@ -408,17 +408,17 @@ function SearchAdsContent() {
         </div>
         <div className="px-3 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button onClick={() => handlePlanStatus('approve')} disabled={selectedPlanIds.size === 0}
+            <button type="button" onClick={() => handlePlanStatus('approve')} disabled={selectedPlanIds.size === 0}
               className="px-2.5 py-1 text-[11px] bg-blue-600 text-white rounded disabled:opacity-50">
               발행 준비
             </button>
-            <button onClick={() => handlePlanStatus('archive')} disabled={selectedPlanIds.size === 0}
+            <button type="button" onClick={() => handlePlanStatus('archive')} disabled={selectedPlanIds.size === 0}
               className="px-2.5 py-1 text-[11px] bg-white border border-admin-border-strong text-admin-text-2 rounded disabled:opacity-50">
               보관
             </button>
             {selectedPlanIds.size > 0 && <span className="text-[11px] text-admin-muted">{selectedPlanIds.size}개 선택</span>}
           </div>
-          <button onClick={refreshPlans} disabled={plansLoading}
+          <button type="button" onClick={refreshPlans} disabled={plansLoading}
             className="px-2.5 py-1 text-[11px] bg-white border border-admin-border-mid text-admin-muted rounded disabled:opacity-50">
             {plansLoading ? '불러오는 중...' : '새로고침'}
           </button>
@@ -466,7 +466,7 @@ function SearchAdsContent() {
       <div className="flex gap-3 items-start">
         <div className="flex border border-admin-border-mid rounded overflow-hidden">
           {(['naver', 'google'] as Platform[]).map(p => (
-            <button key={p} onClick={() => setPlatform(p)}
+            <button type="button" key={p} onClick={() => setPlatform(p)}
               className={`px-4 py-1.5 text-admin-sm font-medium transition ${platform === p ? 'bg-blue-600 text-white' : 'bg-white text-admin-muted hover:bg-admin-bg'}`}>
               {p === 'naver' ? '네이버' : '구글'}
             </button>
@@ -491,9 +491,9 @@ function SearchAdsContent() {
       {/* ── Tier 필터 + 일괄 조작 ─────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
-          <button onClick={() => setTierFilter('all')} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>전체</button>
+          <button type="button" onClick={() => setTierFilter('all')} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>전체</button>
           {(Object.keys(TIER_LABELS) as KeywordTier[]).map(t => (
-            <button key={t} onClick={() => setTierFilter(t)} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === t ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
+            <button type="button" key={t} onClick={() => setTierFilter(t)} className={`px-2.5 py-1 text-[11px] rounded transition ${tierFilter === t ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
               {TIER_LABELS[t]}
             </button>
           ))}
@@ -501,10 +501,10 @@ function SearchAdsContent() {
         {selectedIds.size > 0 && (
           <div className="flex gap-1">
             <span className="text-[11px] text-admin-muted mr-1">{selectedIds.size}개 선택</span>
-            <button onClick={() => bulkAdjust(10)} className="px-2 py-1 text-[10px] bg-emerald-50 text-emerald-700 rounded border border-emerald-200 hover:bg-emerald-100">+10%</button>
-            <button onClick={() => bulkAdjust(-10)} className="px-2 py-1 text-[10px] bg-amber-50 text-amber-700 rounded border border-amber-200 hover:bg-amber-100">-10%</button>
-            <button onClick={() => bulkAdjust(20)} className="px-2 py-1 text-[10px] bg-blue-50 text-blue-700 rounded border border-blue-200 hover:bg-blue-100">+20%</button>
-            <button onClick={bulkDelete} className="px-2 py-1 text-[10px] bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100">삭제</button>
+            <button type="button" onClick={() => bulkAdjust(10)} className="px-2 py-1 text-[10px] bg-emerald-50 text-emerald-700 rounded border border-emerald-200 hover:bg-emerald-100">+10%</button>
+            <button type="button" onClick={() => bulkAdjust(-10)} className="px-2 py-1 text-[10px] bg-amber-50 text-amber-700 rounded border border-amber-200 hover:bg-amber-100">-10%</button>
+            <button type="button" onClick={() => bulkAdjust(20)} className="px-2 py-1 text-[10px] bg-blue-50 text-blue-700 rounded border border-blue-200 hover:bg-blue-100">+20%</button>
+            <button type="button" onClick={bulkDelete} className="px-2 py-1 text-[10px] bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100">삭제</button>
           </div>
         )}
       </div>
@@ -558,7 +558,7 @@ function SearchAdsContent() {
                         onBlur={() => handleBidSave(k.id)} onKeyDown={e => e.key === 'Enter' && handleBidSave(k.id)}
                         autoFocus className="w-16 px-1 py-0.5 border border-[#005d90] rounded text-admin-xs text-right" />
                     ) : (
-                      <button onClick={() => { setEditingBid(k.id); setEditBidValue(String(k.bid)); }}
+                      <button type="button" onClick={() => { setEditingBid(k.id); setEditBidValue(String(k.bid)); }}
                         className="hover:bg-blue-50 px-1 rounded transition">₩{k.bid.toLocaleString()}</button>
                     )}
                   </td>
@@ -568,7 +568,7 @@ function SearchAdsContent() {
                   <td className="text-admin-xs text-admin-muted py-1.5 px-2 text-right tabular-nums">{k.cpc > 0 ? `₩${k.cpc.toLocaleString()}` : '-'}</td>
                   <td className="text-admin-xs text-admin-muted py-1.5 px-2 text-right tabular-nums">{k.spend > 0 ? `₩${k.spend.toLocaleString()}` : '-'}</td>
                   <td className="py-1.5 px-2 text-center">
-                    <button onClick={() => toggleStatus(k.id)}
+                    <button type="button" onClick={() => toggleStatus(k.id)}
                       className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition ${k.status === 'active' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-admin-surface-2 text-admin-muted-2 hover:bg-slate-200'}`}>
                       {k.status === 'active' ? 'ON' : 'OFF'}
                     </button>
@@ -587,7 +587,7 @@ function SearchAdsContent() {
           <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
               <h2 className="text-admin-lg font-semibold text-admin-text-2">키워드 추출기</h2>
-              <button onClick={() => setExtractorOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+              <button type="button" onClick={() => setExtractorOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* 상품 선택 */}
@@ -640,15 +640,15 @@ function SearchAdsContent() {
                   })()}
 
                   <div className="flex gap-2">
-                    <button onClick={() => handleAddExtracted(extractedPreview.filter(k => k.tier !== 'negative'))}
+                    <button type="button" onClick={() => handleAddExtracted(extractedPreview.filter(k => k.tier !== 'negative'))}
                       className="flex-1 py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                       키워드 등록 ({extractedPreview.filter(k => k.tier !== 'negative').length}개)
                     </button>
-                    <button onClick={handleAutoPlan} disabled={planning}
+                    <button type="button" onClick={handleAutoPlan} disabled={planning}
                       className="px-4 py-2 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:opacity-50 transition">
                       {planning ? 'Draft 생성 중...' : '광고 Draft'}
                     </button>
-                    <button onClick={() => handleAddExtracted(extractedPreview)}
+                    <button type="button" onClick={() => handleAddExtracted(extractedPreview)}
                       className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
                       제외 키워드 포함
                     </button>
@@ -667,7 +667,7 @@ function SearchAdsContent() {
           <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
               <h2 className="text-admin-lg font-semibold text-admin-text-2">AI 입찰 최적화</h2>
-              <button onClick={() => setOptimizerOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+              <button type="button" onClick={() => setOptimizerOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {recommendations.length === 0 ? (
@@ -704,7 +704,7 @@ function SearchAdsContent() {
             </div>
             {recommendations.length > 0 && (
               <div className="bg-white border-t border-admin-border-mid px-5 py-3 flex-shrink-0">
-                <button onClick={applyRecommendations} className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
+                <button type="button" onClick={applyRecommendations} className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                   {recommendations.filter(r => r.action !== 'maintain').length}개 추천 일괄 적용
                 </button>
               </div>
