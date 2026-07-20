@@ -139,9 +139,11 @@ function removeEmptyHeadingSections(markdown: string): { markdown: string; chang
       candidate.index > heading.index && candidate.depth <= heading.depth)?.index ?? lines.length;
     const hasContent = lines.slice(heading.index + 1, boundary).some((line) => {
       const value = line.trim();
-      return Boolean(value)
-        && !/^#{2,6}\s+\S/.test(value)
-        && !/^<!--(?:[\s\S]*?)-->$/.test(value);
+      if (!value || /^#{2,6}\s+\S/.test(value) || /^<!--(?:[\s\S]*?)-->$/.test(value)) return false;
+      if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(value)) return false;
+      if (/^(?:!\[[^\]]*]\([^)]+\)|[-*+]\s+\S|\d+[.)]\s+\S|>\s+\S|\|.*\|)$/.test(value)) return true;
+      if (/<(?:img|table|ul|ol|blockquote)\b/i.test(value)) return true;
+      return value.replace(/<[^>]+>/g, '').trim().length > 0;
     });
     if (!hasContent) remove.add(heading.index);
   }
