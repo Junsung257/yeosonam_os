@@ -220,7 +220,7 @@ export default function AffiliatesPageClient({
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-admin-h2 text-admin-text">파트너 신규 등록</h2>
-                <button
+                <button type="button"
                   onClick={() => { setShowPanel(false); setError(''); }}
                   className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
                   aria-label="닫기"
