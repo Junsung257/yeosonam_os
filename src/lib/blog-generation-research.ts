@@ -335,17 +335,24 @@ function removeGeneratedFoodBudgetConflicts(markdown: string): string {
   const normalizedHeadings = new Set(FOOD_BUDGET_DETERMINISTIC_HEADINGS.map(normalize));
   const lines = markdown.replace(/\\n/g, '\n').split(/\r?\n/);
   const kept: string[] = [];
-  let skippingConflictingSection = false;
+  let conflictingHeadingDepth: number | null = null;
 
   for (const line of lines) {
-    const h2 = line.match(/^##\s+(.+?)\s*$/);
-    if (h2) {
-      skippingConflictingSection = normalizedHeadings.has(normalize(h2[1]));
-      if (skippingConflictingSection) continue;
-    } else if (skippingConflictingSection && /^<!--\s*(?:prompt_|blog_)/i.test(line.trim())) {
-      skippingConflictingSection = false;
+    const heading = line.match(/^(#{2,6})\s+(.+?)\s*$/);
+    if (heading) {
+      const depth = heading[1]!.length;
+      if (conflictingHeadingDepth !== null && depth > conflictingHeadingDepth) continue;
+      if (conflictingHeadingDepth !== null && depth <= conflictingHeadingDepth) {
+        conflictingHeadingDepth = null;
+      }
+      if (normalizedHeadings.has(normalize(heading[2]))) {
+        conflictingHeadingDepth = depth;
+        continue;
+      }
+    } else if (conflictingHeadingDepth !== null && /^<!--\s*(?:prompt_|blog_)/i.test(line.trim())) {
+      conflictingHeadingDepth = null;
     }
-    if (skippingConflictingSection) continue;
+    if (conflictingHeadingDepth !== null) continue;
 
     // These tables are rebuilt exclusively from preflight-approved claims below.
     // Removing model-authored pipe rows also drops malformed one-cell rows that

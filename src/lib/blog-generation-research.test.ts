@@ -251,7 +251,7 @@ describe('blog generation research preflight', () => {
       markdown: [
         '# 삿포로 식비 예산',
         '여행 전 예산 범위를 먼저 확인하세요.',
-        '## 근거로 확인한 1인 하루 식비',
+        '### 근거로 확인한 1인 하루 식비',
         modelClaimRows,
         '![삿포로 식비 예산 표](https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg)',
         '<figcaption>삿포로 식비 예산 참고 이미지</figcaption>',
@@ -267,7 +267,7 @@ describe('blog generation research preflight', () => {
       readiness: result,
     });
 
-    expect(repaired.markdown.match(/^## 근거로 확인한 1인 하루 식비$/gm)).toHaveLength(1);
+    expect(repaired.markdown.match(/^#{2,6}\s+근거로 확인한 1인 하루 식비$/gm)).toHaveLength(1);
     expect(repaired.markdown).not.toContain('\\n');
     expect(repaired.markdown).not.toMatch(/^\s*#{1,6}\s*$/m);
     expect(checkMarkdownTableIntegrity(repaired.markdown).passed).toBe(true);
