@@ -407,3 +407,6 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - Generation is wrapped by a dynamic timeout that preserves `BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS` for gates, DB writes, and the final cron summary.
 - Optional post-publish work such as keyword enrichment, RAG indexing, and inline indexing-worker draining runs only when `BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS` remains. Durable `blog_indexing_jobs` enqueue still happens before this optional split, so independent indexing workers can finish provider submission later.
 - Publisher summaries include a `time_budget` object so operators can distinguish a graceful time-budget stop from a hard wrapper timeout.
+### Information writer v2.1 private canary check
+
+The Sapporo food-budget canary reports queue failure evidence, stored prompt manifest, H2/question/FAQ counts, and image count in dry-run mode. A private regeneration may proceed only when the target remains a draft, the research preflight passes, and the route is called once. The AI-readable repair keeps the final article within nine H2 headings, preserves a natural question H2, and builds the food-budget FAQ only from approved claims. Missing `CRON_SECRET` must fail before `--apply --run` changes the queue; operators without that secret use `--apply` and invoke the protected production route separately.

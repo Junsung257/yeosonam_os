@@ -62,6 +62,8 @@ const cases = BLOG_INFORMATION_INTENTS.map((intent) => {
     result.prompt.includes('## People-first search presentation'),
     result.prompt.includes('## Structured factual claim ledger'),
     result.prompt.includes('The renderer adds verified contextual actions'),
+    result.prompt.includes('At least one natural H2 phrased as a real reader question'),
+    result.prompt.includes('Every answer must reuse approved claims only'),
     result.prompt.length <= 30_000,
     /^[a-f0-9]{64}$/.test(result.manifest.digest),
   ];

@@ -35,6 +35,7 @@ import {
 import { generateSectionImage, isGeneratedBlogImageUrl } from '@/lib/blog-image-gen';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { repairBlogImageQuality } from '@/lib/blog-image-quality';
+import { repairBlogAiReadableStructure } from '@/lib/blog-ai-readable-repair';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildBlogPackageCtaUrl, buildStandardBlogCtaMarkdown, sanitizeBlogCtaLinks } from '@/lib/blog-cta';
@@ -558,23 +559,21 @@ function itemSafePronoun(keyword: string): string {
 
 function repairAiReadableStructure(markdown: string, item: any, primaryKeyword?: string | null): string {
   const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || '여행 정보';
-  const lines = markdown.split('\n');
-  const h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
-  const definition = `${keyword}은 여행 전 비용, 이동 시간, 현지 결제 조건을 먼저 확인해야 시행착오를 줄일 수 있는 핵심 준비 항목입니다.`;
-  if (h1Index >= 0) {
-    lines.splice(h1Index + 1, 0, '', definition);
-  }
-  let repaired = lines.join('\n');
-
-  if (!/^##\s+.+[?？]\s*$/m.test(repaired)) {
-    repaired += `\n\n## ${keyword}에서 가장 먼저 확인할 것은?\n\n1. 현지 결제 가능 수단\n2. 공항·호텔 이동 시간\n3. 예약 전 추가 비용 여부\n`;
-  }
-
-  if (!/##\s*(자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)/i.test(repaired)) {
-    repaired += `\n\n## 자주 묻는 질문\n\nQ. ${keyword}은 언제 준비하면 좋나요?\nA. 출발 2주 전에는 결제 수단, 여권 정보, 이동 동선을 함께 확인하는 편이 좋습니다.\n\nQ. 현지에서 바로 바꿔도 되나요?\nA. 가능하지만 공항·호텔 환율 차이가 있을 수 있어 최소 2곳 이상 비교하는 것이 안전합니다.\n\nQ. 여소남 상담은 어떤 점을 확인해주나요?\nA. 상품 포함사항, 일정 동선, 현지 추가 비용을 예약 전 기준으로 함께 점검합니다.\n`;
-  }
-
-  return repaired;
+  const contentBrief = buildQueueContentBrief(item);
+  const researchReadiness = evaluateBlogGenerationResearchReadiness({
+    meta: item.meta,
+    expectedContentKey: buildQueueSlug(item),
+    destination: item.destination,
+    intent: contentBrief.intentType,
+    locale: contentBrief.plan.locale,
+    sourcePolicy: contentBrief.sourcePolicy,
+  });
+  return repairBlogAiReadableStructure({
+    markdown,
+    keyword,
+    intent: contentBrief.intentType,
+    approvedClaims: researchReadiness.passed ? researchReadiness.bundle?.claims : undefined,
+  }).markdown;
 }
 
 function buildQualityGateInput(
