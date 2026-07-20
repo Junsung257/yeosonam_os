@@ -124,6 +124,35 @@ function capTotalHeadings(markdown: string, maxHeadings: number): { markdown: st
   return { markdown: lines.join('\n'), changed: excess < originalExcess };
 }
 
+function removeEmptyHeadingSections(markdown: string): { markdown: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const headings = lines
+    .map((line, index) => {
+      const match = line.trim().match(/^(#{2,6})\s+\S/);
+      return match ? { index, depth: match[1]!.length } : null;
+    })
+    .filter((heading): heading is { index: number; depth: number } => heading !== null);
+  const remove = new Set<number>();
+
+  for (const heading of headings) {
+    const boundary = headings.find((candidate) =>
+      candidate.index > heading.index && candidate.depth <= heading.depth)?.index ?? lines.length;
+    const hasContent = lines.slice(heading.index + 1, boundary).some((line) => {
+      const value = line.trim();
+      return Boolean(value)
+        && !/^#{2,6}\s+\S/.test(value)
+        && !/^<!--(?:[\s\S]*?)-->$/.test(value);
+    });
+    if (!hasContent) remove.add(heading.index);
+  }
+
+  if (remove.size === 0) return { markdown, changed: false };
+  return {
+    markdown: lines.filter((_, index) => !remove.has(index)).join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+    changed: true,
+  };
+}
+
 /**
  * Repairs AI-readable structure without inventing facts. Evidence-backed FAQ answers
  * are emitted only for an intent whose required claims have already passed preflight.
@@ -158,6 +187,12 @@ export function repairBlogAiReadableStructure(input: BlogAiReadableRepairInput):
   if (totalCapRepair.changed) {
     markdown = totalCapRepair.markdown;
     changes.push('capped_total_heading_count');
+  }
+
+  const emptyHeadingRepair = removeEmptyHeadingSections(markdown);
+  if (emptyHeadingRepair.changed) {
+    markdown = emptyHeadingRepair.markdown;
+    changes.push('removed_empty_heading_sections');
   }
 
   return {
