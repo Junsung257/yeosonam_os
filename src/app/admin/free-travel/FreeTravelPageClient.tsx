@@ -319,7 +319,7 @@ export default function FreeTravelPageClient({
       {/* 탭 */}
       <div className="flex border-b border-admin-border-mid mb-6 gap-1">
         {(['leads', 'revenues', 'reservations', 'experiments'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
+          <button type="button" key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${tab === t ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-admin-muted hover:text-admin-text-2'}`}>
             {t === 'leads' ? `리드 (${sessions.length})` : t === 'revenues' ? `수익 현황 ${totalCommission > 0 ? '(' + fmt만(totalCommission) + ')' : ''}` : t === 'reservations' ? '예약 내역' : '실험 · 가이드북'}
           </button>
@@ -445,7 +445,7 @@ export default function FreeTravelPageClient({
                     <option value="cancelled">취소</option>
                   </select>
                   {!s.mrt_booking_ref && (
-                    <button
+                    <button type="button"
                       onClick={() => { setBookingModal(s); setMrtRef(''); setBookedBy(''); setNotes(''); }}
                       className="text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700"
                     >
@@ -811,8 +811,8 @@ export default function FreeTravelPageClient({
             </div>
 
             <div className="flex gap-2 mt-5">
-              <button onClick={() => setBookingModal(null)} className="flex-1 border border-admin-border-strong rounded-lg py-2 text-sm hover:bg-admin-bg">취소</button>
-              <button onClick={handleBookManual} disabled={!mrtRef.trim() || saving}
+              <button type="button" onClick={() => setBookingModal(null)} className="flex-1 border border-admin-border-strong rounded-lg py-2 text-sm hover:bg-admin-bg">취소</button>
+              <button type="button" onClick={handleBookManual} disabled={!mrtRef.trim() || saving}
                 className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                 {saving ? '저장 중...' : '예약 기록'}
               </button>

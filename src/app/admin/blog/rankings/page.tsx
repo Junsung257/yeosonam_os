@@ -149,7 +149,7 @@ export default function BlogRankingsPage() {
 
       <div className="flex flex-wrap gap-1 rounded-admin-sm bg-admin-surface-2 p-1 w-fit">
         {RANK_SOURCES.map((item) => (
-          <button
+          <button type="button"
             key={item.id}
             onClick={() => setSource(item.id)}
             className={`min-w-24 rounded-admin-xs px-3 py-1.5 text-left transition-colors ${source === item.id ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}
@@ -162,7 +162,7 @@ export default function BlogRankingsPage() {
 
       <div className="flex gap-1 rounded-admin-sm bg-admin-surface-2 p-1 w-fit">
         {[7, 14, 30].map((value) => (
-          <button
+          <button type="button"
             key={value}
             onClick={() => setDays(value)}
             className={`h-8 rounded-admin-xs px-3 text-admin-sm font-medium transition-colors admin-num ${days === value ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}

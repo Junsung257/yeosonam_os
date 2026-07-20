@@ -236,7 +236,7 @@ export function DetailDrawer({
             <h2 className="text-admin-h3 text-admin-text truncate">{title}</h2>
             {subtitle && <p className="text-admin-xs text-admin-muted truncate">{subtitle}</p>}
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors duration-160 shrink-0"
             aria-label="닫기"

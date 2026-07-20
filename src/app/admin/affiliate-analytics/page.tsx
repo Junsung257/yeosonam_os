@@ -240,7 +240,7 @@ export default function AffiliateAnalyticsPage() {
         <div className="bg-white rounded-admin-md border border-admin-border-mid p-4 flex flex-wrap items-center gap-2">
           <span className="text-xs text-admin-muted">멀티터치 귀속 모델</span>
           {(['last_touch', 'first_touch', 'linear'] as AttributionModel[]).map((m) => (
-            <button
+            <button type="button"
               key={m}
               disabled={savingModel}
               onClick={() => void saveAttributionModel(m)}

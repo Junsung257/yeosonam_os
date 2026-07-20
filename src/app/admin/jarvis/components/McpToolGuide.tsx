@@ -58,7 +58,7 @@ export default function McpToolGuide() {
   return (
     <div className={`border-l border-admin-border-mid bg-admin-surface/50 transition-all duration-200 ${collapsed ? 'w-10' : 'w-72'}`}>
       {collapsed ? (
-        <button
+        <button type="button"
           onClick={() => setCollapsed(false)}
           className="w-10 h-full flex items-center justify-center hover:bg-admin-surface-hover transition-colors"
           title="도구 목록 열기"
@@ -77,7 +77,7 @@ export default function McpToolGuide() {
               <span className="text-[13px] font-semibold text-admin-text">MCP 도구</span>
               <span className="text-[10px] text-admin-muted-2">({MCP_TOOL_COUNT}개)</span>
             </div>
-            <button
+            <button type="button"
               onClick={() => setCollapsed(true)}
               className="text-admin-muted hover:text-admin-text transition-colors"
             >

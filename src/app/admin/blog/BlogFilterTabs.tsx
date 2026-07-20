@@ -23,7 +23,7 @@ export default function BlogFilterTabs({ currentStatus }: { currentStatus: strin
   return (
     <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
       {STATUS_TABS.map(tab => (
-        <button
+        <button type="button"
           key={tab.key}
           onClick={() => setStatus(tab.key)}
           className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors ${

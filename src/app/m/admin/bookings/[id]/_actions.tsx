@@ -228,7 +228,7 @@ export default function BookingActions({
           style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}
         >
           {error}
-          <button
+          <button type="button"
             onClick={() => setError(null)}
             className="ml-2 opacity-80"
             aria-label="닫기"

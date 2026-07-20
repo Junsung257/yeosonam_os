@@ -657,7 +657,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
                 {/* 접힌 상태에서 더보기 버튼 */}
                 {isCollapsed && (
-                  <button
+                  <button type="button"
                     onClick={() => {
                       setCollapsedGroups((prev) => {
                         const next = new Set(prev);
@@ -692,7 +692,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         {/* 하단 — Density Toggle + 로그아웃 */}
         {sidebarMode === 'slim' ? (
           <div className="border-t border-admin-border px-1 py-3 flex flex-col items-center gap-1">
-            <button
+            <button type="button"
               onClick={handleLogout}
               title="로그아웃"
               className="p-2 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors duration-160"
@@ -705,7 +705,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             <div className="px-1">
               <DensityToggle className="!text-admin-muted hover:!text-admin-text hover:!bg-admin-surface-2 w-full justify-center" />
             </div>
-            <button
+            <button type="button"
               onClick={handleLogout}
               className="w-full flex items-center gap-2 px-3 py-1.5 rounded-admin-sm text-admin-sm text-admin-text-2 hover:text-admin-text hover:bg-admin-surface-2 transition-colors duration-160"
             >
@@ -725,7 +725,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         {/* 상단바 */}
         <header className="sticky top-0 z-30 bg-admin-surface border-b border-admin-border h-14 px-3 md:px-4 flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
-            <button
+            <button type="button"
               onClick={() => {
                 if (typeof window !== 'undefined' && window.innerWidth < 768) {
                   setMobileSidebarOpen(true);

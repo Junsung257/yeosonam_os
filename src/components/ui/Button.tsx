@@ -72,7 +72,7 @@ export default function Button({
   ...props
 }: ButtonProps) {
   return (
-    <button
+    <button type="button"
       {...props}
       disabled={disabled || loading}
       className={`inline-flex items-center justify-center font-medium transition-colors duration-160 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 [.admin-scope_&]:focus-visible:shadow-admin-focus [.admin-scope_&]:focus-visible:ring-0 ${VARIANT[variant]} ${SIZE[size]} ${className}`}

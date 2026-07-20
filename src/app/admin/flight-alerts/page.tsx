@@ -170,14 +170,14 @@ export default function FlightAlertsAdminPage() {
           <p className="text-admin-xs text-admin-muted-2 mt-0.5">오늘·내일 출발 항공편 상태 관리</p>
         </div>
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={() => void fetchFlights()}
             disabled={loading}
             className="px-3 py-2 bg-white border border-admin-border-strong text-admin-muted text-admin-xs rounded-lg hover:bg-admin-bg transition disabled:opacity-50"
           >
             새로고침
           </button>
-          <button
+          <button type="button"
             onClick={() => setShowAddForm(v => !v)}
             className="px-3 py-2 bg-blue-600 text-white text-admin-xs rounded-lg hover:bg-blue-700 transition"
           >
@@ -380,7 +380,7 @@ function FlightSection({
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1">
                         {f.status !== 'scheduled' && (
-                          <button
+                          <button type="button"
                             onClick={() => onStatusChange(f.id, 'scheduled')}
                             disabled={isUpdating}
                             className="px-2 py-1 bg-emerald-50 text-emerald-700 text-[11px] rounded hover:bg-emerald-100 disabled:opacity-40"
@@ -389,7 +389,7 @@ function FlightSection({
                           </button>
                         )}
                         {f.status !== 'delayed' && (
-                          <button
+                          <button type="button"
                             onClick={() => onDelayClick(f)}
                             disabled={isUpdating}
                             className="px-2 py-1 bg-amber-50 text-amber-700 text-[11px] rounded hover:bg-amber-100 disabled:opacity-40"
@@ -398,7 +398,7 @@ function FlightSection({
                           </button>
                         )}
                         {f.status !== 'cancelled' && (
-                          <button
+                          <button type="button"
                             onClick={() => {
                               if (window.confirm(`${f.flight_number} 취소 처리하시겠습니까?`)) {
                                 onStatusChange(f.id, 'cancelled');
@@ -411,7 +411,7 @@ function FlightSection({
                           </button>
                         )}
                         {f.status !== 'departed' && (
-                          <button
+                          <button type="button"
                             onClick={() => onStatusChange(f.id, 'departed')}
                             disabled={isUpdating}
                             className="px-2 py-1 bg-admin-surface-2 text-admin-muted text-[11px] rounded hover:bg-slate-200 disabled:opacity-40"
