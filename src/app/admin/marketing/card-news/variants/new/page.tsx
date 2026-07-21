@@ -180,8 +180,9 @@ export default function CardNewsVariantsNewPage() {
 
       <section className="space-y-4 rounded-admin-md border bg-white p-6 shadow-admin-xs">
         <div>
-          <label className="mb-1 block text-sm font-semibold">제목</label>
+          <label htmlFor="card-news-variant-title" className="mb-1 block text-sm font-semibold">제목</label>
           <input
+            id="card-news-variant-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -192,8 +193,9 @@ export default function CardNewsVariantsNewPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-semibold">상품 (자동 원문 채움)</label>
+          <label htmlFor="card-news-variant-package" className="mb-1 block text-sm font-semibold">상품 (자동 원문 채움)</label>
           <select
+            id="card-news-variant-package"
             value={packageId}
             onChange={(e) => setPackageId(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm"
@@ -213,7 +215,7 @@ export default function CardNewsVariantsNewPage() {
 
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-sm font-semibold">
+            <label htmlFor="card-news-variant-raw-text" className="text-sm font-semibold">
               원문 텍스트 <span className="text-red-500">*</span>
             </label>
             {rawSource === 'normalized_intakes' && (
@@ -228,6 +230,7 @@ export default function CardNewsVariantsNewPage() {
             )}
           </div>
           <textarea
+            id="card-news-variant-raw-text"
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             placeholder="상품 원문을 붙여넣거나 상품 선택 시 자동 채움"
@@ -266,8 +269,9 @@ export default function CardNewsVariantsNewPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-semibold">톤 힌트 (선택)</label>
+          <label htmlFor="card-news-variant-tone-hint" className="mb-1 block text-sm font-semibold">톤 힌트 (선택)</label>
           <input
+            id="card-news-variant-tone-hint"
             type="text"
             value={toneHint}
             onChange={(e) => setToneHint(e.target.value)}
