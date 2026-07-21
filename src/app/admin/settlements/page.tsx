@@ -330,14 +330,18 @@ export default function SettlementsPage() {
         subtitle="월간 파트너 수수료 정산과 지급 증빙 관리"
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="settlement-search" className="sr-only">정산 검색</label>
             <input
+              id="settlement-search"
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="파트너, 코드, 증빙 검색"
               className="h-9 w-56 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-base text-admin-text transition-colors focus:border-brand focus:outline-none focus:shadow-admin-focus"
             />
+            <label htmlFor="settlement-period" className="sr-only">정산 기간</label>
             <select
+              id="settlement-period"
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
               className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-base text-admin-text admin-num transition-colors focus:border-brand focus:outline-none focus:shadow-admin-focus"
@@ -377,7 +381,7 @@ export default function SettlementsPage() {
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
                   {[100, 40, 80, 80, 60, 80, 56, 120, 160].map((w, j) => (
-                    <td key={j}>
+                    <td key={j} aria-label={`정산 로딩 셀 ${j + 1}`}>
                       <div className="h-3 animate-pulse rounded bg-admin-surface-2" style={{ width: w }} />
                     </td>
                   ))}
@@ -385,7 +389,7 @@ export default function SettlementsPage() {
               ))
             ) : visibleSettlements.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-14 text-center" style={{ height: 'auto' }}>
+                <td colSpan={9} aria-label="정산 데이터 없음" className="py-14 text-center" style={{ height: 'auto' }}>
                   <div className="flex flex-col items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-admin-surface-2 text-admin-muted">
                       <Coins size={20} strokeWidth={1.75} />
