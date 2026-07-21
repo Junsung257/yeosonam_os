@@ -791,20 +791,20 @@ export default function FreeTravelPageClient({
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-admin-muted">MRT 예약번호 *</label>
-                <input value={mrtRef} onChange={e => setMrtRef(e.target.value)}
+                <label htmlFor="free-travel-mrt-ref" className="text-xs font-medium text-admin-muted">MRT 예약번호 *</label>
+                <input id="free-travel-mrt-ref" value={mrtRef} onChange={e => setMrtRef(e.target.value)}
                   placeholder="예) MRT-2026-XXXXX"
                   className="mt-1 w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
               <div>
-                <label className="text-xs font-medium text-admin-muted">담당자</label>
-                <input value={bookedBy} onChange={e => setBookedBy(e.target.value)}
+                <label htmlFor="free-travel-booked-by" className="text-xs font-medium text-admin-muted">담당자</label>
+                <input id="free-travel-booked-by" value={bookedBy} onChange={e => setBookedBy(e.target.value)}
                   placeholder="이름"
                   className="mt-1 w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
               <div>
-                <label className="text-xs font-medium text-admin-muted">메모</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                <label htmlFor="free-travel-booking-notes" className="text-xs font-medium text-admin-muted">메모</label>
+                <textarea id="free-travel-booking-notes" value={notes} onChange={e => setNotes(e.target.value)}
                   rows={2} placeholder="특이사항"
                   className="mt-1 w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
               </div>
