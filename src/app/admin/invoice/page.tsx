@@ -114,7 +114,9 @@ export default function InvoiceParsePage() {
       <div style={styles.card}>
         <h2 style={styles.sectionTitle}>파일 업로드</h2>
 
-        <div
+        <button
+          type="button"
+          aria-label="인보이스 이미지 선택"
           style={styles.dropzone}
           onClick={() => fileInputRef.current?.click()}
         >
@@ -127,7 +129,7 @@ export default function InvoiceParsePage() {
               <p style={styles.dropzoneHint}>JPG, PNG, WEBP 지원</p>
             </div>
           )}
-        </div>
+        </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -141,8 +143,9 @@ export default function InvoiceParsePage() {
         )}
 
         <div style={styles.optionRow}>
-          <label style={styles.label}>랜드사 ID (선택)</label>
+          <label htmlFor="invoice-land-operator-id" style={styles.label}>랜드사 ID (선택)</label>
           <input
+            id="invoice-land-operator-id"
             type="text"
             placeholder="UUID 입력 시 해당 랜드사 원장과 대조"
             value={landOperatorId}
@@ -338,10 +341,15 @@ const styles: Record<string, React.CSSProperties> = {
   dropzone: {
     border: '2px dashed #CBD5E1',
     borderRadius: 8,
+    width: '100%',
     minHeight: 160,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 0,
+    background: '#FFFFFF',
+    color: 'inherit',
+    font: 'inherit',
     cursor: 'pointer',
     overflow: 'hidden',
     marginBottom: 12,
