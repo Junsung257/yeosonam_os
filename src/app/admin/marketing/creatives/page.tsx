@@ -249,16 +249,16 @@ export default function CreativesPage() {
           <h2 className="text-sm font-semibold text-admin-text-2">소재 생성 설정</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-medium text-admin-muted block mb-1">상품 선택 *</label>
-              <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)}
+              <label htmlFor="creative-generator-package" className="text-xs font-medium text-admin-muted block mb-1">상품 선택 *</label>
+              <select id="creative-generator-package" value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)}
                 className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-sm">
                 <option value="">상품 선택...</option>
                 {packages.map(p => <option key={p.id} value={p.id}>{p.title} ({p.destination})</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-admin-muted block mb-1">채널</label>
-              <div className="flex gap-2">
+              <p id="creative-generator-channel-label" className="text-xs font-medium text-admin-muted block mb-1">채널</p>
+              <div className="flex gap-2" aria-labelledby="creative-generator-channel-label">
                 {['meta', 'naver', 'google'].map(ch => (
                   <button type="button" key={ch} onClick={() => toggleChannel(ch)}
                     className={`px-3 py-1.5 text-xs rounded-lg border transition ${channels.includes(ch) ? 'bg-violet-50 border-violet-300 text-violet-700' : 'border-admin-border-mid text-admin-muted'}`}>
@@ -271,8 +271,8 @@ export default function CreativesPage() {
           {channels.includes('meta') && (
             <div className="flex gap-6">
               <div>
-                <label className="text-xs text-admin-muted">캐러셀 변형 수</label>
-                <div className="flex items-center gap-2 mt-1">
+                <p id="creative-generator-carousel-count-label" className="text-xs text-admin-muted">캐러셀 변형 수</p>
+                <div className="flex items-center gap-2 mt-1" aria-labelledby="creative-generator-carousel-count-label">
                   {[1,2,3].map(n => (
                     <button type="button" key={n} onClick={() => setCarouselCount(n)}
                       className={`w-8 h-8 rounded-lg text-xs font-medium transition ${carouselCount === n ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted'}`}>{n}</button>
@@ -280,8 +280,8 @@ export default function CreativesPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-admin-muted">단일이미지 변형 수</label>
-                <div className="flex items-center gap-2 mt-1">
+                <p id="creative-generator-single-count-label" className="text-xs text-admin-muted">단일이미지 변형 수</p>
+                <div className="flex items-center gap-2 mt-1" aria-labelledby="creative-generator-single-count-label">
                   {[1,2,3].map(n => (
                     <button type="button" key={n} onClick={() => setSingleCount(n)}
                       className={`w-8 h-8 rounded-lg text-xs font-medium transition ${singleCount === n ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted'}`}>{n}</button>
