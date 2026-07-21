@@ -710,6 +710,7 @@ export default function CardNewsV2Studio() {
             {FAMILY_OPTIONS.map((f) => (
               <label
                 key={f.value}
+                aria-label={`${f.label} 패밀리 선택`}
                 className={`flex items-start gap-3 p-3 rounded border cursor-pointer ${
                   family === f.value ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid'
                 }`}
@@ -737,6 +738,7 @@ export default function CardNewsV2Studio() {
             {FORMAT_OPTIONS.map((f) => (
               <label
                 key={f.value}
+                aria-label={`${f.label} 출력 포맷 선택`}
                 className={`flex items-center gap-3 p-3 rounded border cursor-pointer ${
                   formats.includes(f.value) ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid'
                 }`}
