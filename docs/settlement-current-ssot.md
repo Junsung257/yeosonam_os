@@ -50,6 +50,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Bulk bank import may auto-allocate deposits only after a valid travel memo key resolves to one booking. Outflows must remain review/manual-confirmed even when the memo key resolves.
 - Non-travel pasted bank rows without a valid travel memo key should be skipped by default instead of becoming unmatched finance evidence.
 - Clobe bank sync must normalize provider rows into the same bank import contract before touching `bank_transactions`.
+- Clobe MCP authentication is an admin OAuth connection stored in `tenant_api_tokens` with encrypted access/refresh tokens. Do not require operators to paste a static Clobe bearer token into Vercel.
 - Clobe sync dedupe order is provider transaction id first (`external_provider`, `external_transaction_id`), then local `transaction_fingerprint`.
 - Clobe-sourced outflows must stay review/manual-confirmed. Do not auto-confirm land operator payouts from provider sync.
 - If Clobe memo changes after a transaction is financially matched, do not move ledger allocation automatically. Record an open `ops_events` warning for manual review.
