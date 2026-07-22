@@ -42,7 +42,7 @@ export async function normalizeImageBuffer(
   const h = meta.height ?? 630;
   const usePng = meta.format === 'png' || meta.hasAlpha;
 
-  let pipeline: sharp.Sharp = rotated;
+  let pipeline: ReturnType<typeof sharp> = rotated;
   if (process.env.BLOG_OG_WATERMARK === '1') {
     const label = opts.watermarkLabel || '여소남';
     pipeline = rotated.composite([{ input: watermarkSvg(w, h, label), top: 0, left: 0 }]);
