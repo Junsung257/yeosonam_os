@@ -943,6 +943,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.code === 'clobe_connection_required' && typeof data.connectUrl === 'string') {
+          showToast('Clobe 연결이 필요합니다. 외부 플랫폼 연동 화면으로 이동합니다.', 'err');
+          window.location.href = data.connectUrl;
+          return;
+        }
         showToast(data.error || 'Clobe sync failed', 'err');
         return;
       }

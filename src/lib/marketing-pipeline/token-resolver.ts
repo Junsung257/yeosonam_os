@@ -9,12 +9,13 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { decrypt, encrypt } from '@/lib/encryption';
 import { getSecret } from '@/lib/secret-registry';
 
-export type OAuthProvider = 'google_ads' | 'meta' | 'naver' | 'google_analytics' | 'twitter';
+export type OAuthProvider = 'google_ads' | 'meta' | 'naver' | 'google_analytics' | 'twitter' | 'clobe';
 
 export interface OAuthTokens {
   accessToken: string;
   refreshToken?: string;
   expiresAt?: Date;
+  metadata?: Record<string, unknown>;
 }
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // 만료 5분 전에 갱신 시도
@@ -31,7 +32,7 @@ export async function resolveOAuthToken(
 
   let query = supabaseAdmin
     .from('tenant_api_tokens')
-    .select('encrypted_access_token, encrypted_refresh_token, expires_at')
+    .select('encrypted_access_token, encrypted_refresh_token, expires_at, metadata')
     .eq('provider', provider)
     .eq('is_active', true)
     .order('updated_at', { ascending: false })
@@ -58,18 +59,19 @@ export async function resolveOAuthToken(
   const refreshToken = row.encrypted_refresh_token
     ? tryDecrypt(row.encrypted_refresh_token)
     : undefined;
+  const metadata = asMetadata(row.metadata);
 
   // 만료 임박 시 refresh 시도
   // Meta는 refresh_token을 발급하지 않으므로 access_token으로 fb_exchange_token 재교환
   if (expiresAt && expiresAt.getTime() - Date.now() < REFRESH_BUFFER_MS) {
     const tokenForRefresh = provider === 'meta' ? accessToken : refreshToken;
     if (tokenForRefresh) {
-      const refreshed = await tryRefreshToken(tenantId, provider, tokenForRefresh);
+      const refreshed = await tryRefreshToken(tenantId, provider, tokenForRefresh, metadata);
       if (refreshed) return refreshed;
     }
   }
 
-  return { accessToken, refreshToken, expiresAt };
+  return { accessToken, refreshToken, expiresAt, metadata };
 }
 
 /**
@@ -83,6 +85,7 @@ export async function saveOAuthToken(
     refreshToken?: string;
     expiresIn?: number; // 초 단위
     scopes?: string[];
+    metadata?: Record<string, unknown>;
   },
 ): Promise<void> {
   const expiresAt = tokens.expiresIn
@@ -97,6 +100,7 @@ export async function saveOAuthToken(
       encrypted_refresh_token: tokens.refreshToken ? encrypt(tokens.refreshToken) : null,
       expires_at: expiresAt,
       scopes: tokens.scopes ?? [],
+      metadata: tokens.metadata ?? {},
       is_active: true,
     },
     { onConflict: 'tenant_id,provider' },
@@ -111,13 +115,24 @@ async function saveRefreshedToken(
   provider: OAuthProvider,
   accessToken: string,
   expiresAt: Date | undefined,
+  refreshToken?: string,
 ): Promise<void> {
+  const values: {
+    encrypted_access_token: string;
+    encrypted_refresh_token?: string;
+    expires_at: string | null;
+  } = {
+    encrypted_access_token: encrypt(accessToken),
+    expires_at: expiresAt?.toISOString() ?? null,
+  };
+
+  if (refreshToken) {
+    values.encrypted_refresh_token = encrypt(refreshToken);
+  }
+
   let query = supabaseAdmin
     .from('tenant_api_tokens')
-    .update({
-      encrypted_access_token: encrypt(accessToken),
-      expires_at: expiresAt?.toISOString() ?? null,
-    })
+    .update(values)
     .eq('provider', provider);
 
   if (tenantId.trim()) {
@@ -135,10 +150,17 @@ function tryDecrypt(ciphertext: string): string | undefined {
   }
 }
 
+function asMetadata(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 async function tryRefreshToken(
   tenantId: string,
   provider: OAuthProvider,
   refreshToken: string,
+  metadata: Record<string, unknown> = {},
 ): Promise<OAuthTokens | null> {
   try {
     if (provider === 'google_ads' || provider === 'google_analytics') {
@@ -146,6 +168,9 @@ async function tryRefreshToken(
     }
     if (provider === 'meta') {
       return await refreshMetaToken(tenantId, refreshToken);
+    }
+    if (provider === 'clobe') {
+      return await refreshClobeToken(tenantId, refreshToken, metadata);
     }
     return null;
   } catch (err) {
@@ -207,4 +232,49 @@ async function refreshMetaToken(tenantId: string, shortToken: string): Promise<O
   await saveRefreshedToken(tenantId, 'meta', json.access_token, expiresAt);
 
   return { accessToken: json.access_token, expiresAt };
+}
+
+async function refreshClobeToken(
+  tenantId: string,
+  refreshToken: string,
+  metadata: Record<string, unknown>,
+): Promise<OAuthTokens | null> {
+  const clientId = typeof metadata.client_id === 'string' ? metadata.client_id : null;
+  if (!clientId) return null;
+
+  const tokenEndpoint = typeof metadata.token_endpoint === 'string'
+    ? metadata.token_endpoint
+    : 'https://api.clobe.ai/oauth/token';
+
+  const res = await fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!res.ok) return null;
+  const json = await res.json() as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+  };
+  if (!json.access_token) return null;
+
+  const expiresAt = json.expires_in
+    ? new Date(Date.now() + json.expires_in * 1000)
+    : undefined;
+
+  await saveRefreshedToken(tenantId, 'clobe', json.access_token, expiresAt, json.refresh_token);
+
+  return {
+    accessToken: json.access_token,
+    refreshToken: json.refresh_token ?? refreshToken,
+    expiresAt,
+    metadata,
+  };
 }
