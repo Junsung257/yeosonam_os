@@ -84,6 +84,7 @@ scratch/
 /data/product-registration/manual-ticketing-mobile-*/
 /data/product-registration/sjw-*/
 /data/exports/
+/data/attractions/publishable-pollution-audit/
 
 # Playwright 실패 덤프 (재현용)
 test-results/
@@ -169,6 +170,7 @@ migration-safety-report.json
 
 # 사용자 생성 PPT/브리핑 산출물 (한글 파일명, 루트에 떨어진 것)
 *.pptx
+*.zip
 /창*.pptx
 /청*.json
 

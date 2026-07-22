@@ -15,7 +15,7 @@ import { destinationToIsoSet, extractDestinationTokens } from '@/lib/destination
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
 import { POSTPROCESS_VERSION, postProcessPackageRow } from '@/lib/package-post-process';
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
-import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { CUSTOMER_VISIBLE_STATUSES, isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { isUuid } from '@/lib/uuid';
@@ -704,7 +704,7 @@ export default async function PackageDetailPage({
               .from('travel_packages')
               .select('id, title, display_title, destination, status, publication_state, package_revision, audit_status, audit_report, updated_at, optional_tours, itinerary_data')
               .in('id', rivalPackageIds)
-              .in('status', ['active', 'approved'])
+              .in('status', [...CUSTOMER_VISIBLE_STATUSES])
               .in('publication_state', ['approved', 'published']),
             { data: [] as Array<Record<string, unknown>> },
             { label: 'package.score-rival-packages', timeoutMs: 1200 },
