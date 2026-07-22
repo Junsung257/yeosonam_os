@@ -38,6 +38,7 @@ Repeated failures belong in `docs/errors/settlement.md`.
 - Ledger is the evidence layer. Any payment, refund, settlement, reversal, or manual adjustment must create or reference a ledger entry.
 - Do not directly update `bookings.paid_amount` or `bookings.total_paid_out` from a new path. Use the established RPC/service path so ledger and booking totals remain reconcilable.
 - Every ledger write must be idempotent with a stable `idempotency_key` such as `<source>:<external_id>`.
+- Checkout completion must not trust customer-supplied payment, price, cost, voucher, or PII fields. `POST /api/checkout/complete` may only advance a server-created `transactions` row after a service-role-only `checkout_payment_confirmations` row proves verified payment and the amount equals `transactions.total_price`. Duplicate completion must be blocked by `checkout_completion_claims`.
 - Settlement approval must be based on reconciled booking/payment state, not UI text, exported spreadsheet totals, or inferred partner claims.
 - Reversal must create compensating evidence. Do not delete historical settlement or ledger rows to "fix" a payout.
 - Customer-visible payment status and internal finance status may differ, but the difference must be explicit in data, not hidden in UI-only labels.
