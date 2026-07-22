@@ -9,11 +9,13 @@ const PLATFORM_ICONS: Record<string, string> = {
   meta: '🟣',
   naver: '🟢',
   google_analytics: '📊',
+  clobe: 'CB',
 };
 
 const PLATFORM_OAUTH_START: Record<string, string> = {
   google_ads: '/api/auth/google-oauth-start',
   meta: '/api/auth/meta-oauth-start',
+  clobe: '/api/auth/clobe-oauth-start',
 };
 
 type AiProvider = 'deepseek' | 'claude' | 'gemini';
