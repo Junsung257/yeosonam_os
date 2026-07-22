@@ -24,7 +24,7 @@ const postHandler = async (request: NextRequest): Promise<NextResponse> => {
       return apiResponse({ error: 'tenant_id, platform 필수' }, { status: 400 });
     }
 
-    const ALLOWED = ['google_ads', 'meta', 'naver', 'google_analytics'];
+    const ALLOWED = ['google_ads', 'meta', 'naver', 'google_analytics', 'clobe'];
     if (!ALLOWED.includes(platform)) {
       return apiResponse({ error: '지원하지 않는 플랫폼' }, { status: 400 });
     }

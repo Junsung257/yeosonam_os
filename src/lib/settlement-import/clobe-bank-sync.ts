@@ -12,6 +12,7 @@ export interface ClobeMcpFetchOptions {
   to?: string;
   accountNumber?: string;
   limit?: number;
+  accessToken?: string;
 }
 
 export interface ClobeMcpFetchResult {
@@ -295,9 +296,9 @@ function buildToolArguments(options: ClobeMcpFetchOptions): Record<string, unkno
 }
 
 export async function fetchClobeMcpBankTransactions(options: ClobeMcpFetchOptions = {}): Promise<ClobeMcpFetchResult> {
-  const token = getSecret('CLOBE_MCP_BEARER_TOKEN') || getSecret('CLOBE_API_TOKEN');
+  const token = options.accessToken || getSecret('CLOBE_MCP_BEARER_TOKEN') || getSecret('CLOBE_API_TOKEN');
   if (!token) {
-    throw new Error('CLOBE_MCP_BEARER_TOKEN or CLOBE_API_TOKEN is required');
+    throw new Error('Clobe OAuth connection is required');
   }
 
   const ctx: McpCallContext = {
