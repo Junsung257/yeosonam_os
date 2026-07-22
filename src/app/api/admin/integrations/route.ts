@@ -5,7 +5,7 @@ import { isNaverAdsConfigured } from '@/lib/search-ads-api';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 
-export type Platform = 'google_ads' | 'meta' | 'naver' | 'google_analytics';
+export type Platform = 'google_ads' | 'meta' | 'naver' | 'google_analytics' | 'clobe';
 
 export interface IntegrationStatus {
   platform: Platform;
@@ -19,11 +19,12 @@ export interface IntegrationStatus {
 const PLATFORM_LABELS: Record<Platform, string> = {
   google_ads: 'Google Ads',
   meta: 'Meta (Facebook/Instagram)',
-  naver: '네이버 검색광고',
+  naver: 'Naver Search Ads',
   google_analytics: 'Google Analytics',
+  clobe: 'Clobe AI',
 };
 
-const SUPPORTED_PLATFORMS: Platform[] = ['google_ads', 'meta', 'naver'];
+const SUPPORTED_PLATFORMS: Platform[] = ['google_ads', 'meta', 'naver', 'clobe'];
 
 function emptyIntegrations(): IntegrationStatus[] {
   return SUPPORTED_PLATFORMS.map((p) => ({
@@ -36,12 +37,6 @@ function emptyIntegrations(): IntegrationStatus[] {
   }));
 }
 
-/**
- * GET /api/admin/integrations?tenant_id={uuid}
- *
- * 테넌트의 OAuth 플랫폼 연결 현황 반환.
- * tenant_id 미전달 시 첫 번째 활성 테넌트를 자동으로 사용 (단일 운영자 어드민 구조).
- */
 const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   let tenantId = request.nextUrl.searchParams.get('tenant_id');
 
@@ -69,7 +64,13 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
 
     if (error) throw error;
 
-    type TokenRow = { provider: string; is_active: boolean; expires_at: string | null; scopes: string[]; updated_at: string | null };
+    type TokenRow = {
+      provider: string;
+      is_active: boolean;
+      expires_at: string | null;
+      scopes: string[];
+      updated_at: string | null;
+    };
     const tokenMap = new Map<Platform, TokenRow>((data ?? []).map((r: TokenRow) => [r.provider as Platform, r]));
 
     const integrations: IntegrationStatus[] = SUPPORTED_PLATFORMS.map((p) => {
@@ -97,10 +98,10 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
     return apiResponse({ integrations, resolvedTenantId: tenantId });
   } catch (err) {
     return apiResponse(
-      { error: sanitizeDbError(err, '처리 실패') },
+      { error: sanitizeDbError(err, 'Failed to load integrations') },
       { status: 500 },
     );
   }
-}
+};
 
 export const GET = withAdminGuard(getHandler);
