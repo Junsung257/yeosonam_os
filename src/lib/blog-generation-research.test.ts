@@ -361,6 +361,35 @@ describe('blog generation research preflight', () => {
     })).toMatchObject({ passed: true, issues: [] });
     expect(second.changed).toBe(false);
     expect(second.markdown).toBe(first.markdown);
+
+    const regressedMarkdown = first.markdown.replace(
+      '<!-- /blog_research_structure:monthly_weather:v2 -->',
+      '',
+    );
+    expect(regressedMarkdown).not.toContain(
+      '<!-- /blog_research_structure:monthly_weather:v2 -->',
+    );
+
+    const repairedAfterLaterRegression = repairBlogGenerationResearchStructure({
+      markdown: regressedMarkdown,
+      intent: 'monthly_weather',
+      readiness: result,
+    });
+    expect(repairedAfterLaterRegression.changed).toBe(true);
+    expect(repairedAfterLaterRegression.markdown).toContain(
+      'https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg',
+    );
+    expect(repairedAfterLaterRegression.markdown).toContain(
+      'https://images.pexels.com/photos/1002/pexels-photo-1002.jpeg',
+    );
+    expect(repairedAfterLaterRegression.markdown).toContain(
+      'https://images.pexels.com/photos/1003/pexels-photo-1003.jpeg',
+    );
+    expect(inspectBlogImageQuality(repairedAfterLaterRegression.markdown, {
+      destination: '괌',
+      primaryKeyword: '괌 7월 날씨',
+      blogType: 'info',
+    }).passed).toBe(true);
   });
 
   it('injects exact approved evidence and claims without copying snapshots into compact metadata', () => {

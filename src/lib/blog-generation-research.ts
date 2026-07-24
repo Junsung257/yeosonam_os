@@ -652,9 +652,11 @@ function repairMonthlyWeatherResearchStructure(input: {
     candidate.claimTypes.includes('climate') && Boolean(candidate.sourceUrl));
   if (!source?.sourceUrl) return unchanged();
   const sourceLabel = escapeMarkdownTableCell(source.publisher || '공식 기후 자료');
-  const originalWithoutPreviousBlock = removeExistingMonthlyWeatherStructure(input.markdown);
   const verifiedArticle = buildDeterministicMonthlyWeatherArticle({
-    originalMarkdown: originalWithoutPreviousBlock,
+    // The deterministic block can be rebuilt after later editorial repairs.
+    // Read the title and reusable images before replacing that block, otherwise
+    // a second repair silently drops every inline image from the final article.
+    originalMarkdown: input.markdown,
     approvedClaims,
     sourceLabel,
     sourceUrl: source.sourceUrl,
