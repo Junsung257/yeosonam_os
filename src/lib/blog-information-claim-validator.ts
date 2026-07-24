@@ -263,6 +263,16 @@ function extractClaimValue(segment: string, kind: BlogInformationFactualCandidat
 
 const FOOD_BUDGET_RESEARCH_BLOCK_START = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_RESEARCH_BLOCK_END = '<!-- /blog_research_structure:food_budget:v1 -->';
+const MONTHLY_WEATHER_RESEARCH_BLOCKS = [
+  [
+    '<!-- blog_research_structure:monthly_weather:v2 -->',
+    '<!-- /blog_research_structure:monthly_weather:v2 -->',
+  ],
+  [
+    '<!-- blog_research_structure:monthly_weather:v1 -->',
+    '<!-- /blog_research_structure:monthly_weather:v1 -->',
+  ],
+] as const;
 
 function sameExtractedValue(
   left: BlogInformationExtractedValue,
@@ -276,10 +286,38 @@ function sameExtractedValue(
 function expandDeterministicResearchRowsForValidation(
   markdown: string,
   persistedClaims: PersistedBlogInformationClaimRecord[],
+  claimLedger?: BlogInformationClaimLedgerEntry[],
 ): string {
+  if (persistedClaims.length === 0) return markdown;
+  const declaredFingerprints = claimLedger
+    ? new Set(claimLedger.map((claim) => claim.claimFingerprint))
+    : null;
+  const eligibleClaims = declaredFingerprints
+    ? persistedClaims.filter((claim) => declaredFingerprints.has(claim.claimFingerprint))
+    : persistedClaims;
+
+  const weatherMarkers = MONTHLY_WEATHER_RESEARCH_BLOCKS.find(([startMarker, endMarker]) => {
+    const start = markdown.indexOf(startMarker);
+    return start >= 0 && markdown.indexOf(endMarker, start) >= 0;
+  });
+  if (weatherMarkers) {
+    const [startMarker, endMarker] = weatherMarkers;
+    const weatherStart = markdown.indexOf(startMarker);
+    const weatherEnd = markdown.indexOf(endMarker, weatherStart);
+    const contentStart = weatherStart + startMarker.length;
+    const block = markdown.slice(contentStart, weatherEnd);
+    const expanded = block.split(/\r?\n/).map((line) => {
+      if (!/^\s*\|.*\|\s*$/.test(line) || /^\s*\|\s*:?-{3,}/.test(line)) return line;
+      const matches = eligibleClaims.filter((claim) =>
+        claim.claimText && line.includes(claim.claimText));
+      return matches.length === 1 ? matches[0].claimText! : line;
+    }).join('\n');
+    return `${markdown.slice(0, contentStart)}${expanded}${markdown.slice(weatherEnd)}`;
+  }
+
   const start = markdown.indexOf(FOOD_BUDGET_RESEARCH_BLOCK_START);
   const end = markdown.indexOf(FOOD_BUDGET_RESEARCH_BLOCK_END, start);
-  if (start < 0 || end < 0 || persistedClaims.length === 0) return markdown;
+  if (start < 0 || end < 0) return markdown;
 
   const contentStart = start + FOOD_BUDGET_RESEARCH_BLOCK_START.length;
   const block = markdown.slice(contentStart, end);
@@ -288,7 +326,7 @@ function expandDeterministicResearchRowsForValidation(
     const classification = classifyBlogInformationStatement(line).factualClassification;
     if (!classification) return line;
     const extractedValue = extractClaimValue(line, classification.candidateKind);
-    const matches = persistedClaims.filter((claim) =>
+    const matches = eligibleClaims.filter((claim) =>
       claim.claimText
       && claim.claimType === classification.claimType
       && claim.extractedValue
@@ -347,6 +385,7 @@ export function validateBlogInformationClaims(input: {
     const validationMarkdown = expandDeterministicResearchRowsForValidation(
       input.markdown,
       input.persistedClaims,
+      input.claimLedger,
     );
     const claims = extractBlogInformationClaims(validationMarkdown);
     const persistedByFingerprint = new Map(

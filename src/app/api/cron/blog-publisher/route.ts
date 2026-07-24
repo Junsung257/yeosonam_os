@@ -88,7 +88,10 @@ import {
   repairBlogGenerationResearchStructure,
   summarizeBlogGenerationResearch,
 } from '@/lib/blog-generation-research';
-import { persistBlogInformationResearch } from '@/lib/blog-information-evidence-repository';
+import {
+  markBlogInformationResearchClaimsSupported,
+  persistBlogInformationResearch,
+} from '@/lib/blog-information-evidence-repository';
 import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
@@ -1505,6 +1508,12 @@ async function runBlogPublisher(request: NextRequest) {
             creativeId: privateRegenerationRequest.contentCreativeId,
             tenantId: item.tenant_id ?? researchReadiness.bundle.tenantId ?? null,
           });
+          await markBlogInformationResearchClaimsSupported({
+            contentKey: researchReadiness.bundle.contentKey,
+            claimFingerprints: researchReadiness.bundle.claims.map(
+              (claim) => claim.claimFingerprint,
+            ),
+          });
         } catch (error) {
           const persistenceIssue = error instanceof Error ? error.message : String(error);
           const reason = `private_regeneration_research_persistence:${persistenceIssue}`;
@@ -2602,12 +2611,17 @@ async function processQueueItem(
         claimType: claim.claimType,
         riskLevel: claim.riskLevel,
       }));
+      const replacedWithDeterministicWeatherArticle = finalResearchRepair.changes
+        .includes('monthly_weather_deterministic_evidence_article');
       generated.generation_meta = {
         ...currentMeta,
         writer_claim_ledger: {
           ...writerLedger,
-          claims: [...new Map([...currentClaims, ...approvedClaims]
-            .map((claim) => [claim.claimFingerprint, claim])).values()],
+          claims: replacedWithDeterministicWeatherArticle
+            ? approvedClaims
+            : [...new Map([...currentClaims, ...approvedClaims]
+                .map((claim) => [claim.claimFingerprint, claim])).values()],
+          ...(replacedWithDeterministicWeatherArticle ? { issues: [] } : {}),
         },
         information_research_structure_repair: {
           applied: true,
@@ -2985,9 +2999,7 @@ async function processQueueItem(
             destination: item.destination ?? undefined,
             applicableTo: typeof generatedPlanBriefRecord?.traveler_nationality === 'string'
               ? generatedPlanBriefRecord.traveler_nationality
-              : typeof generatedPlanBriefRecord?.audience === 'string'
-                ? generatedPlanBriefRecord.audience
-                : undefined,
+              : undefined,
             locale: typeof generatedPlanBriefRecord?.locale === 'string'
               ? generatedPlanBriefRecord.locale
               : undefined,
@@ -3147,6 +3159,14 @@ async function processQueueItem(
         identity: representativeIdentity,
         reservationOwner: representativeOwner,
       });
+      const { error: staleReviewQueueError } = await supabaseAdmin
+        .from('content_review_queue')
+        .update({ status: 'skipped' })
+        .eq('creative_id', creativeId)
+        .in('status', ['queued', 'assigned']);
+      if (staleReviewQueueError) {
+        logWarning('[cron/blog-publisher] stale review queue cleanup failed', staleReviewQueueError);
+      }
     }
     if (representativeDecision && requiresHumanReview) {
       await attachBlogInformationRepresentativeDraft({
@@ -3692,10 +3712,6 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
         `evidence_insufficient:auto_research_failed:${autoResearch.issues.slice(0, 8).join(',')}`,
       );
     }
-    await persistBlogInformationResearch({
-      ...autoResearch.bundle,
-      tenantId: item.tenant_id ?? autoResearch.bundle.tenantId ?? null,
-    });
     item.meta = {
       ...(item.meta || {}),
       [BLOG_INFORMATION_RESEARCH_META_KEY]: autoResearch.bundle,
@@ -3728,6 +3744,16 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
       `evidence_insufficient:research_preflight:${researchReadiness.issues.slice(0, 8).join(',')}`,
     );
   }
+  await persistBlogInformationResearch({
+    ...researchReadiness.bundle,
+    tenantId: item.tenant_id ?? researchReadiness.bundle.tenantId ?? null,
+  });
+  await markBlogInformationResearchClaimsSupported({
+    contentKey: researchReadiness.bundle.contentKey,
+    claimFingerprints: researchReadiness.bundle.claims.map(
+      (claim) => claim.claimFingerprint,
+    ),
+  });
   const researchPromptBlock = buildBlogGenerationResearchPromptBlock(researchReadiness);
   const infoGuideBrief = buildInfoGuideBrief(contentBrief);
   const effectiveTopic = contentBrief.title;

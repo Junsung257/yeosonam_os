@@ -215,6 +215,61 @@ describe('blog information claim validator', () => {
     expect(report.claims).toEqual([expect.objectContaining({ claimText })]);
   });
 
+  it('maps a deterministic monthly-weather row back to its exact persisted climate claim', () => {
+    const claimText =
+      '1981~2010 평년값: 7월 최고기온 30.6°C, 최저기온 24.8°C, 강수량 308.4mm, 강수일수 26.2일';
+    const markdown = [
+      '<!-- blog_research_structure:monthly_weather:v2 -->',
+      '## 1~12월 기온·강수·옷차림',
+      '| 월 | 검증된 평년값 | 옷차림 준비 |',
+      '| --- | --- | --- |',
+      `| 7월 | ${claimText} | 반팔·방수 겉옷·우산 |`,
+      '<!-- /blog_research_structure:monthly_weather:v2 -->',
+    ].join('\n');
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [supportedRecord(claimText)],
+      claimLedger: ledgerFor(claimText),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.claims).toEqual([
+      expect.objectContaining({ claimText, claimType: 'climate' }),
+    ]);
+  });
+
+  it('uses the declared weather claim when stale persisted fragments also match the row', () => {
+    const claimText =
+      '1981~2010 평년값: 7월 최고기온 30.6°C, 최저기온 24.8°C, 강수량 308.4mm, 강수일수 26.2일';
+    const staleFragment = '7월 최고기온 30.6°C, 최저기온 24.8°C';
+    const markdown = [
+      '<!-- blog_research_structure:monthly_weather:v2 -->',
+      '## 1~12월 기온·강수·옷차림',
+      '| 월 | 검증된 평년값 | 옷차림 준비 |',
+      '| --- | --- | --- |',
+      `| 7월 | ${claimText} | 반팔·방수 겉옷·우산 |`,
+      '<!-- /blog_research_structure:monthly_weather:v2 -->',
+    ].join('\n');
+    const report = validateBlogInformationClaims({
+      markdown,
+      persistedClaims: [
+        supportedRecord(claimText, { validationStatus: 'pending' }),
+        supportedRecord(staleFragment),
+      ],
+      claimLedger: ledgerFor(claimText),
+      now: NOW,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.claims).toEqual([
+      expect.objectContaining({ claimText, claimType: 'climate' }),
+    ]);
+    expect(report.issues).toEqual([
+      expect.objectContaining({ code: 'claim_not_supported' }),
+    ]);
+  });
+
   it('fails closed when a compact deterministic value matches more than one persisted claim', () => {
     const first = '삿포로 일반 여행자의 절약형 하루 예산 기준값은 3000 JPY입니다.';
     const second = '삿포로 일반 여행자의 평일 하루 예산 기준값은 3000 JPY입니다.';

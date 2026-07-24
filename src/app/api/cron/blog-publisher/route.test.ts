@@ -181,8 +181,21 @@ describe('blog publisher quota recovery contract', () => {
     expect(writer).toBeGreaterThan(persistence);
     expect(source).toContain('private_regeneration_research_preflight:');
     expect(source).toContain('private_regeneration_research_persistence:');
+    expect(source).toContain('markBlogInformationResearchClaimsSupported({');
     expect(source).toContain("delete safeMeta[BLOG_INFORMATION_RESEARCH_META_KEY]");
     expect(source).toContain('researchPromptBlock,');
+  });
+
+  it('promotes only a passed research bundle and does not treat audience labels as evidence scope', () => {
+    const source = routeSource();
+    const finalPreflight = source.indexOf('if (!researchReadiness.passed || !researchReadiness.bundle)');
+    const promotion = source.indexOf('markBlogInformationResearchClaimsSupported({', finalPreflight);
+    const writerPrompt = source.indexOf('const researchPromptBlock', promotion);
+
+    expect(finalPreflight).toBeGreaterThan(-1);
+    expect(promotion).toBeGreaterThan(finalPreflight);
+    expect(writerPrompt).toBeGreaterThan(promotion);
+    expect(source).not.toContain(': typeof generatedPlanBriefRecord?.audience');
   });
 
   it('reconciles the final informational body with a bounded writer claim ledger', () => {
@@ -209,6 +222,9 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain("claimLedgerIssues: contentBoundary.lane === 'informational'");
     expect(source).toContain('auto_regeneration_attempts: 0');
     expect(source).toContain('auto_regeneration_limit: 0');
+    expect(source).toContain("from('content_review_queue')");
+    expect(source).toContain(".update({ status: 'skipped' })");
+    expect(source).toContain(".in('status', ['queued', 'assigned'])");
   });
 
   it('repairs common article-quality failures instead of treating them as terminal blockers', () => {

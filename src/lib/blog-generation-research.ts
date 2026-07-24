@@ -91,8 +91,10 @@ export interface BlogGenerationResearchStructureRepair {
 
 const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:food_budget:v1 -->';
-const MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v1 -->';
-const MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v1 -->';
+const MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v2 -->';
+const MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v2 -->';
+const LEGACY_MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v1 -->';
+const LEGACY_MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v1 -->';
 const FOOD_BUDGET_POLICY_GAP_MARKER = '<!-- blog_research_policy_gap:food_budget:v1 -->';
 const FOOD_BUDGET_DETERMINISTIC_HEADINGS = [
   '근거로 확인한 1인 하루 식비',
@@ -472,18 +474,24 @@ function appendFoodBudgetFeesBookingGuidance(
 }
 
 function removeExistingMonthlyWeatherStructure(markdown: string): string {
-  const start = markdown.indexOf(MONTHLY_WEATHER_STRUCTURE_MARKER);
-  if (start < 0) return markdown.trim();
-  const end = markdown.indexOf(MONTHLY_WEATHER_STRUCTURE_END_MARKER, start);
-  if (end >= 0) {
-    return `${markdown.slice(0, start)}${markdown.slice(end + MONTHLY_WEATHER_STRUCTURE_END_MARKER.length)}`
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+  let next = markdown;
+  for (const [startMarker, endMarker] of [
+    [MONTHLY_WEATHER_STRUCTURE_MARKER, MONTHLY_WEATHER_STRUCTURE_END_MARKER],
+    [LEGACY_MONTHLY_WEATHER_STRUCTURE_MARKER, LEGACY_MONTHLY_WEATHER_STRUCTURE_END_MARKER],
+  ] as const) {
+    const start = next.indexOf(startMarker);
+    if (start < 0) continue;
+    const end = next.indexOf(endMarker, start);
+    if (end >= 0) {
+      next = `${next.slice(0, start)}${next.slice(end + endMarker.length)}`;
+      continue;
+    }
+    const promptVersion = next.indexOf('<!-- prompt_version:', start);
+    next = promptVersion >= 0
+      ? `${next.slice(0, start)}${next.slice(promptVersion)}`
+      : next.slice(0, start);
   }
-  const promptVersion = markdown.indexOf('<!-- prompt_version:', start);
-  return (promptVersion >= 0
-    ? `${markdown.slice(0, start)}${markdown.slice(promptVersion)}`
-    : markdown.slice(0, start))
+  return next
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -501,6 +509,97 @@ function monthlyWeatherClothing(claimText: string): string {
   if (Number.isFinite(rainfall) && rainfall >= 250) return '반팔·방수 겉옷·우산';
   if (Number.isFinite(rainfall) && rainfall >= 150) return '반팔·얇은 방수 겉옷';
   return '반팔·얇은 겉옷';
+}
+
+function buildDeterministicMonthlyWeatherArticle(input: {
+  originalMarkdown: string;
+  approvedClaims: BlogInformationResearchBundle['claims'];
+  sourceLabel: string;
+  sourceUrl: string;
+}): string {
+  const title = input.originalMarkdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
+    || '월별 날씨와 옷차림 준비';
+  const imageBlocks = extractFoodBudgetImageBlocks(input.originalMarkdown)
+    .slice(0, 3)
+    .map((block) => block.markdown.split('\n')[0]!)
+    .filter(Boolean);
+  const imageAt = (index: number) => imageBlocks[index] ? ['', imageBlocks[index]!] : [];
+  const climateRows = input.approvedClaims.map((claim, index) =>
+    `| ${index + 1}월 | ${escapeMarkdownTableCell(claim.claimText)} | ${monthlyWeatherClothing(claim.claimText)} |`);
+  const clothingRows = input.approvedClaims.map((claim, index) =>
+    `| ${index + 1}월 | ${monthlyWeatherClothing(claim.claimText)} | 기온·강수·단기예보 함께 확인 |`);
+
+  return [
+    MONTHLY_WEATHER_STRUCTURE_MARKER,
+    `# ${title}`,
+    '',
+    '월별 기온과 강수 자료를 먼저 확인하고, 옷차림과 비 대비 준비를 같은 순서로 점검해 보세요.',
+    '장기 평년자료와 실제 출발일 예보를 같은 값으로 보지 말고, 표는 준비 기준으로 활용한 뒤 단기예보를 다시 확인하세요.',
+    ...imageAt(0),
+    '',
+    '## 먼저 확인할 핵심',
+    '',
+    '- 여행하는 달의 행에서 기온과 강수량, 강수일수를 함께 확인하세요.',
+    '- 옷차림 준비 열을 기본값으로 삼고 실내 냉방용 얇은 겉옷을 더해 보세요.',
+    '- 비 예보가 보이면 우산, 방수 겉옷, 젖은 옷을 담을 팩을 한 묶음으로 챙기세요.',
+    '- 장기 평년자료를 본 뒤 실제 출발일의 단기예보를 다시 확인하세요.',
+    '',
+    '## 1~12월 기온·강수·옷차림',
+    '',
+    `자료 원문: [${input.sourceLabel}](${input.sourceUrl})`,
+    '',
+    '| 월 | 검증된 평년값 | 옷차림 준비 |',
+    '| --- | --- | --- |',
+    ...climateRows,
+    ...imageAt(1),
+    '',
+    '## 월별 옷차림 준비표',
+    '',
+    '| 월 | 기본 옷차림 | 출발 전 조정 기준 |',
+    '| --- | --- | --- |',
+    ...clothingRows,
+    '',
+    '표의 옷차림은 짐을 고르는 출발점으로만 활용하고, 출발 직전 체감기온과 비 예보에 맞춰 더하거나 빼세요.',
+    '',
+    '## 비·바람·습도와 이상기후 대비',
+    '',
+    '- 작은 우산과 방수 겉옷을 함께 두고, 손이 자유로워야 하는 일정에는 우비도 비교해 보세요.',
+    '- 휴대전화와 여권 사본, 충전기처럼 젖으면 곤란한 물품은 방수 파우치에 나눠 담으세요.',
+    '- 젖은 옷과 마른 옷을 분리할 가벼운 팩을 준비 목록에 넣어 보세요.',
+    '- 바람과 습도, 갑작스러운 비는 장기 표만으로 결정하지 말고 단기예보에서 다시 확인하세요.',
+    ...imageAt(2),
+    '',
+    '## 여행 목적별 추천 시기 확인법',
+    '',
+    '- 해변 일정은 여행하는 달의 강수량과 강수일수를 먼저 비교해 보세요.',
+    '- 걷는 일정은 낮과 저녁의 옷차림을 나누고, 비가 올 때 쉴 실내 동선도 함께 확인하세요.',
+    '- 아이 동반 일정은 갈아입을 옷과 방수팩, 얇은 겉옷을 한 묶음으로 준비해 보세요.',
+    '- 사진 촬영이나 야외 일정은 원하는 달의 표와 출발 직전 예보를 함께 비교해 보세요.',
+    '',
+    '## 출발 직전 예보 확인 순서',
+    '',
+    '- 여행하는 달의 평년값 행을 다시 확인하세요.',
+    '- 출발일과 귀국일의 단기예보를 각각 확인하세요.',
+    '- 비가 예상되는 시간대와 실내 이동 동선을 함께 확인하세요.',
+    '- 옷차림, 우산, 방수 겉옷, 여벌옷 목록을 마지막으로 확인하세요.',
+    '',
+    '## 자주 묻는 질문',
+    '',
+    '### Q1. 월별 평년값을 실제 출발일 예보로 봐도 되나요?',
+    'A. 같은 값으로 보지 말고, 월별 표는 준비 기준으로 활용한 뒤 실제 출발일의 단기예보를 다시 확인하세요.',
+    '',
+    '### Q2. 비가 많은 달에는 무엇을 챙기면 좋나요?',
+    'A. 월별 표의 강수량과 옷차림 준비 열을 함께 보고, 방수 겉옷과 우산, 젖은 물품을 나눌 팩을 확인하세요.',
+    '',
+    '### Q3. 옷차림은 기온만 보고 정해도 되나요?',
+    'A. 기온과 강수량, 강수일수를 함께 보고, 실내 냉방과 단기예보까지 확인하세요.',
+    '',
+    '## 공식 출처',
+    '',
+    `- [${input.sourceLabel} 월별 기후자료](${input.sourceUrl})`,
+    `- [출발 전 다시 여는 ${input.sourceLabel} 자료](${input.sourceUrl})`,
+    MONTHLY_WEATHER_STRUCTURE_END_MARKER,
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function repairMonthlyWeatherResearchStructure(input: {
@@ -531,59 +630,30 @@ function repairMonthlyWeatherResearchStructure(input: {
     return unchanged();
   }
 
+  const hasCompleteBlock = input.markdown.includes(MONTHLY_WEATHER_STRUCTURE_MARKER)
+    && input.markdown.includes(MONTHLY_WEATHER_STRUCTURE_END_MARKER);
   const existingReport = validateBlogInformationStructure({
     intent: 'monthly_weather',
     markdown: input.markdown,
   });
-  const hasCompleteBlock = input.markdown.includes(MONTHLY_WEATHER_STRUCTURE_MARKER)
-    && input.markdown.includes(MONTHLY_WEATHER_STRUCTURE_END_MARKER);
   if (hasCompleteBlock && existingReport.passed) return unchanged();
-
-  let markdown = removeExistingMonthlyWeatherStructure(input.markdown);
-  for (const claim of approvedClaims) {
-    markdown = markdown.split(claim.claimText).join('');
-  }
-  markdown = markdown
-    .replace(/^\s*(?:[-*+]\s*)?$/gm, '')
-    .replace(/[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 
   const source = input.readiness.bundle.sources.find((candidate) =>
     candidate.claimTypes.includes('climate') && Boolean(candidate.sourceUrl));
   if (!source?.sourceUrl) return unchanged();
   const sourceLabel = escapeMarkdownTableCell(source.publisher || '공식 기후 자료');
-  const rows = approvedClaims.map((claim, index) =>
-    `| ${index + 1}월 | ${escapeMarkdownTableCell(claim.claimText)} | ${monthlyWeatherClothing(claim.claimText)} |`);
-  const verifiedBlock = [
-    MONTHLY_WEATHER_STRUCTURE_MARKER,
-    '## 1~12월 기온·강수·옷차림',
-    '',
-    `아래 값은 [${sourceLabel}](${source.sourceUrl})의 공식 기후 평년자료를 월별로 옮긴 것입니다.`,
-    '',
-    '| 월 | 검증된 평년값 | 옷차림 준비 |',
-    '| --- | --- | --- |',
-    ...rows,
-    '',
-    '옷차림은 평년 기온과 강수량을 바탕으로 한 준비 가이드입니다. 실제 출발 전에는 단기예보를 다시 확인하세요.',
-    '',
-    '## 자주 묻는 질문',
-    '',
-    '### Q1. 월별 평년값은 실제 출발일 예보와 같은가요?',
-    'A. 월별 표는 1981~2010 장기 평년자료입니다. 실제 출발일의 비와 기온은 단기예보를 별도로 확인하세요.',
-    '',
-    '### Q2. 비가 많은 달에는 무엇을 챙기면 좋나요?',
-    'A. 월별 표의 강수량과 옷차림 준비 열을 함께 보고, 강수량이 높은 달에는 방수 겉옷과 우산을 준비하세요.',
-    '',
-    '### Q3. 옷차림은 기온만 보고 정해도 되나요?',
-    'A. 최고·최저기온과 강수량을 함께 확인하세요. 실내 냉방과 갑작스러운 비에 대비할 얇은 겉옷도 준비하면 좋습니다.',
-    MONTHLY_WEATHER_STRUCTURE_END_MARKER,
-  ].join('\n');
+  const originalWithoutPreviousBlock = removeExistingMonthlyWeatherStructure(input.markdown);
+  const verifiedArticle = buildDeterministicMonthlyWeatherArticle({
+    originalMarkdown: originalWithoutPreviousBlock,
+    approvedClaims,
+    sourceLabel,
+    sourceUrl: source.sourceUrl,
+  });
 
   return {
-    markdown: `${markdown}\n\n${verifiedBlock}`.trim(),
+    markdown: verifiedArticle,
     changed: true,
-    changes: ['monthly_weather_verified_research_table'],
+    changes: ['monthly_weather_deterministic_evidence_article'],
     approvedClaims,
   };
 }

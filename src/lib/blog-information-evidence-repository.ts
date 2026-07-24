@@ -18,6 +18,42 @@ export interface PersistedBlogInformationResearch {
   claimIds: Record<string, string>;
 }
 
+export async function markBlogInformationResearchClaimsSupported(input: {
+  contentKey: string;
+  claimFingerprints: string[];
+}): Promise<void> {
+  const contentKey = input.contentKey.trim();
+  const claimFingerprints = [...new Set(
+    input.claimFingerprints.map((fingerprint) => fingerprint.trim()).filter(Boolean),
+  )];
+  if (!contentKey || claimFingerprints.length === 0) {
+    throw new Error('blog_information_evidence_claim_support_invalid_input');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('blog_information_claims')
+    .update({
+      validation_status: 'supported',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('content_key', contentKey)
+    .in('claim_fingerprint', claimFingerprints)
+    .select('claim_fingerprint');
+  if (error) throwPersistenceError('claim_support', error);
+
+  const updatedFingerprints = new Set(
+    (data ?? []).map((claim) => String(claim.claim_fingerprint)),
+  );
+  const missingFingerprints = claimFingerprints.filter(
+    (fingerprint) => !updatedFingerprints.has(fingerprint),
+  );
+  if (missingFingerprints.length > 0) {
+    throwPersistenceError('claim_support_lookup', {
+      message: `missing_claims:${missingFingerprints.join(',')}`,
+    });
+  }
+}
+
 function throwPersistenceError(stage: string, error: { message?: string } | null): never {
   throw new Error(`blog_information_evidence_${stage}_failed:${error?.message || 'unknown'}`);
 }
