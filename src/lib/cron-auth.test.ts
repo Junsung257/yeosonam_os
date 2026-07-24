@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isCronAuthorized, withCronGuard } from './cron-auth';
+import { isCronAuthorized, isCronOrVercelAuthorized, withCronGuard } from './cron-auth';
 
 describe('withCronGuard resource saver', () => {
   afterEach(() => {
@@ -53,5 +53,30 @@ describe('withCronGuard resource saver', () => {
     const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher');
 
     expect(isCronAuthorized(request)).toBe(false);
+  });
+
+  it('rejects a spoofed Vercel cron header without the configured bearer secret', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CRON_SECRET', 'secret');
+
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher', {
+      headers: { 'x-vercel-cron': '1' },
+    });
+
+    expect(isCronOrVercelAuthorized(request)).toBe(false);
+  });
+
+  it('accepts Vercel cron calls only when the configured bearer secret matches', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CRON_SECRET', 'secret');
+
+    const request = new NextRequest('https://www.yeosonam.com/api/cron/blog-publisher', {
+      headers: {
+        authorization: 'Bearer secret',
+        'x-vercel-cron': '1',
+      },
+    });
+
+    expect(isCronOrVercelAuthorized(request)).toBe(true);
   });
 });
