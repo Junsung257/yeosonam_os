@@ -19,12 +19,10 @@ export function isCronAuthorized(request: NextRequest | Request): boolean {
 }
 
 /**
- * Vercel 스케줄(`x-vercel-cron: 1`) 또는 CRON_SECRET(Bearer·?secret=) 일치 시 허용.
- * CRON_SECRET 미설정 시 Vercel 헤더 없으면 거부 — 일부 엔드포인트는 수동 호출을 막기 위함.
+ * Legacy compatibility name. The scheduling marker header is not authentication:
+ * Vercel Cron must present the configured CRON_SECRET bearer like every other caller.
  */
 export function isCronOrVercelAuthorized(request: NextRequest | Request): boolean {
-  if (request.headers.get('x-vercel-cron') === '1') return true;
-  if (!getSecret('CRON_SECRET')) return false;
   return isCronAuthorized(request);
 }
 
