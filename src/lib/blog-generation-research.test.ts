@@ -19,6 +19,8 @@ import {
 import { validateBlogInformationStructure } from './blog-information-structure';
 import { checkMarkdownTableIntegrity } from './blog-quality-gate';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
+import { extractFaqItems } from './blog-jsonld';
+import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
 
 const CONTENT_KEY = 'sapporo-food-budget';
 const CHECKED_AT = '2026-07-19T00:00:00.000Z';
@@ -317,6 +319,14 @@ describe('blog generation research preflight', () => {
     expect(first.markdown).toContain('| 1월 | 1981~2010 평년값: 1월 최고기온 29.0°C');
     expect(first.markdown).toContain('| 12월 | 1981~2010 평년값: 12월 최고기온 30.1°C');
     expect(first.markdown).toContain('반팔·방수 겉옷·우산');
+    expect(extractFaqItems(first.markdown)).toHaveLength(3);
+    expect(first.markdown).toContain('월별 표는 1981~2010 장기 평년자료입니다.');
+    const publicSurface = repairBlogFinalCustomerSurface({
+      destination: '괌',
+      primaryKeyword: '괌 월별 날씨',
+      markdown: first.markdown,
+    });
+    expect(extractFaqItems(publicSurface.markdown)).toHaveLength(3);
     expect(validateBlogInformationStructure({
       intent: 'monthly_weather',
       markdown: first.markdown,

@@ -23,6 +23,7 @@ import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { extractFaqItems } from '@/lib/blog-jsonld';
 import { evaluateBlogPublishQuality, type BlogPublishQualityReport } from '@/lib/blog-publish-quality';
 import { buildBlogQueueSuccessMeta } from '@/lib/blog-queue-success-meta';
 import { withPersistedBlogReadingTime } from '@/lib/blog-reading-time';
@@ -2713,7 +2714,7 @@ async function processQueueItem(
       imagesWithAlt: imgWithAlt,
       hasJsonLd: {
         blogPosting: true,
-        faqPage: generated.blog_html.includes('**Q.') || generated.blog_html.includes('Q. '),
+        faqPage: extractFaqItems(generated.blog_html).length > 0,
         howTo: generated.blog_html.includes('Day ') || generated.blog_html.includes('일차'),
         breadcrumbList: true,
       },

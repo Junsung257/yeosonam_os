@@ -491,6 +491,32 @@ describe('inspectBlogCustomerQuality', () => {
     expect(report.issues.map((issue) => issue.code)).toContain('mobile_readability_wall');
   });
 
+  it('does not mistake a long, scannable markdown table for a mobile paragraph wall', () => {
+    const report = inspectBlogCustomerQuality({
+      blogType: 'info',
+      primaryKeyword: '괌 월별 날씨',
+      destination: '괌',
+      blogHtml: [
+        '# 괌 월별 날씨',
+        '',
+        '괌 월별 날씨는 장기 평년값과 출발 직전 단기예보를 나눠 확인하면 준비가 쉽습니다.',
+        '',
+        '## 1~12월 기온과 강수',
+        '',
+        '| 월 | 최고기온 | 최저기온 | 강수량 | 강수일수 |',
+        '| --- | --- | --- | --- | --- |',
+        ...Array.from({ length: 12 }, (_, index) =>
+          `| ${index + 1}월 | ${(29 + index / 10).toFixed(1)}°C | ${(24 + index / 10).toFixed(1)}°C | ${100 + index * 20}mm | ${(18 + index / 10).toFixed(1)}일 |`),
+        '',
+        '## 공식 확인 링크',
+        '',
+        '- [세계기상기구 괌 기후자료](https://worldweather.wmo.int/kr/json/1954_kr.xml)',
+      ].join('\n'),
+    });
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain('mobile_readability_wall');
+  });
+
   it('blocks leftover generic destination and generated product-name residue', () => {
     const report = inspectBlogCustomerQuality({
       blogType: 'info',
