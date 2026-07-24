@@ -147,8 +147,11 @@ const postHandler = async (request: NextRequest) => {
         seo_description: finalDescription,
         destination,
         angle_type: row.angle_type ?? null,
+        category: row.category ?? null,
+        content_type: row.content_type ?? null,
         product_id: row.product_id ?? null,
-        primary_keyword: destination || finalTitle || slug,
+        primary_keyword: finalTitle || destination || slug,
+        generation_meta: row.generation_meta ?? null,
         excludeContentCreativeId: creative_id,
       });
       const qaReport = prepared.report;

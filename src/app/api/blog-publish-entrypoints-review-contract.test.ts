@@ -25,6 +25,7 @@ describe('informational review policy across publish-capable entrypoints', () =>
     expect(route).toContain('evaluateBlogInformationClaimPublishGate');
     expect(route).toContain('intentType:');
     expect(route).toContain('expectedScope:');
+    expect(route).toContain('generation_meta:');
     expect(route).toContain('Informational claim evidence gate failed');
   });
 
@@ -46,6 +47,7 @@ describe('informational review policy across publish-capable entrypoints', () =>
     expect(route).toContain('evaluateBlogInformationClaimPublishGate({');
     expect(route).toContain('intentType:');
     expect(route).toContain('expectedScope:');
+    expect(route).toContain('generation_meta:');
     expect(route).toContain("status: 'claim_gate_failed'");
   });
 });

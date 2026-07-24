@@ -122,8 +122,11 @@ export async function POST(request: NextRequest) {
         seo_description: row.seo_description ?? null,
         destination,
         angle_type: row.angle_type ?? null,
+        category: row.category ?? null,
+        content_type: row.content_type ?? null,
         product_id: row.product_id ?? null,
-        primary_keyword: destination || row.seo_title || row.slug,
+        primary_keyword: row.seo_title || destination || row.slug,
+        generation_meta: row.generation_meta ?? null,
         excludeContentCreativeId: creative_id,
       });
       const qaReport = prepared.report;
