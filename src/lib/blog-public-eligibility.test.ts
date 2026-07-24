@@ -15,6 +15,7 @@ function v2(overrides: Partial<BlogPublicEligibilityRow> = {}): BlogPublicEligib
     contentType: 'guide',
     topic: '오사카 공항 교통',
     createdAt: '2026-07-15T12:00:00+09:00',
+    publishedAt: '2026-07-15T12:00:00+09:00',
     generationMeta: {
       engine_version: 'blog-engine-v2',
       content_brief: {
@@ -81,19 +82,33 @@ describe('evaluateBlogPublicEligibility', () => {
     }))).toMatchObject({ eligible: true, lane: 'product' });
   });
 
-  it('allows legacy information only through the explicit cutoff policy', () => {
+  it('restores quality-passed pre-contract publications through the explicit cutoff policy', () => {
     expect(evaluateBlogPublicEligibility(v2({
-      createdAt: '2026-07-14T23:59:59+09:00',
-      generationMeta: null,
-      qualityGate: null,
+      publishedAt: '2026-07-14T23:59:59+09:00',
       representative: null,
     }))).toMatchObject({ eligible: true, lane: 'information_legacy' });
     expect(evaluateBlogPublicEligibility(v2({
-      createdAt: '2026-07-15T12:00:00+09:00',
+      publishedAt: '2026-07-15T12:00:00+09:00',
       generationMeta: null,
       qualityGate: null,
       representative: null,
     }))).toMatchObject({ eligible: false, reason: 'information_contract_missing' });
+  });
+
+  it('does not restore a pre-contract publication without its passed quality record', () => {
+    expect(evaluateBlogPublicEligibility(v2({
+      publishedAt: '2026-07-14T23:59:59+09:00',
+      qualityGate: null,
+      representative: null,
+    }))).toMatchObject({ eligible: false, reason: 'quality_gate_missing_or_failed' });
+  });
+
+  it('does not restore a pre-contract publication in a blocked review state', () => {
+    expect(evaluateBlogPublicEligibility(v2({
+      publishedAt: '2026-07-14T23:59:59+09:00',
+      reviewStatus: 'changes_requested',
+      representative: null,
+    }))).toMatchObject({ eligible: false, reason: 'review_blocked' });
   });
 
   it.each([

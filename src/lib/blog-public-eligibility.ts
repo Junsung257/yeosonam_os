@@ -22,6 +22,7 @@ export interface BlogPublicEligibilityRow {
   contentType?: string | null;
   topic?: string | null;
   createdAt?: string | null;
+  publishedAt?: string | null;
   generationMeta?: Record<string, unknown> | null;
   qualityGate?: Record<string, unknown> | null;
   representative?: BlogPublicRepresentativeTruth | null;
@@ -59,11 +60,14 @@ function nestedRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function isExplicitLegacyInformation(row: BlogPublicEligibilityRow): boolean {
-  if (nestedRecord(row.generationMeta?.content_brief)) return false;
-  if (row.generationMeta?.engine_version === 'blog-engine-v2') return false;
-  if (typeof row.createdAt !== 'string') return false;
-  const createdAt = Date.parse(row.createdAt);
-  return Number.isFinite(createdAt) && createdAt < Date.parse(BLOG_INFORMATION_LEGACY_CUTOFF_AT);
+  if (typeof row.publishedAt !== 'string') return false;
+  const publishedAt = Date.parse(row.publishedAt);
+  const reviewBlocked = ['pending_review', 'in_review', 'rejected', 'changes_requested']
+    .includes(row.reviewStatus ?? '');
+  return Number.isFinite(publishedAt)
+    && publishedAt < Date.parse(BLOG_INFORMATION_LEGACY_CUTOFF_AT)
+    && row.qualityGate?.passed === true
+    && !reviewBlocked;
 }
 
 function hasNoindex(meta: Record<string, unknown> | null | undefined): boolean {
