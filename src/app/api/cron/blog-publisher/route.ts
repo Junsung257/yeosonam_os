@@ -2654,8 +2654,29 @@ async function processQueueItem(
       };
       console.log(`[blog-publisher] final research structure repair: ${finalResearchRepair.changes.join(', ')}`);
     };
+    const restoreFinalReusableImages = async (): Promise<void> => {
+      if (!replacementAssets) return;
+      const imageResult = await ensureBlogInlineImages({
+        markdown: generated.blog_html,
+        destination: item.destination,
+        primaryKeyword,
+        ogImageUrl: replacementAssets.ogImageUrl,
+        minImages: item.card_news_id ? 2 : 3,
+        maxImages: item.card_news_id ? 3 : 4,
+        fallbackImageUrls: replacementAssets.inlineImageUrls,
+        preferFallbackImages: true,
+        allowPexelsSearch: false,
+        allowGeneratedFallback: false,
+        maxExternalAssetAttempts: 0,
+      });
+      if (imageResult.inserted > 0) {
+        generated.blog_html = imageResult.markdown;
+        console.log(`[blog-publisher] final reusable images restored: ${imageResult.inserted}`);
+      }
+    };
     const runQualityWithResearchStructure = async (): Promise<QualityGateReport> => {
       applyFinalResearchStructureRepair();
+      await restoreFinalReusableImages();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
     const runQualityAfterAiReadableRepair = async (): Promise<QualityGateReport> => {
@@ -2665,6 +2686,7 @@ async function processQueueItem(
       applyFinalResearchStructureRepair();
       generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
       generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+      await restoreFinalReusableImages();
       return runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
     };
 
