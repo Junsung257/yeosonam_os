@@ -15,7 +15,7 @@ export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
   Partial<Record<BlogInformationClaimType, number>>
 >> = {
   food_budget: { price: 7 },
-  monthly_weather: { climate: 3 },
+  monthly_weather: { climate: 12 },
   airport_transport: { price: 2, duration: 2 },
   hotel_areas: { price: 3, factual: 3 },
   family_budget: { price: 4 },
@@ -91,6 +91,8 @@ export interface BlogGenerationResearchStructureRepair {
 
 const FOOD_BUDGET_STRUCTURE_MARKER = '<!-- blog_research_structure:food_budget:v1 -->';
 const FOOD_BUDGET_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:food_budget:v1 -->';
+const MONTHLY_WEATHER_STRUCTURE_MARKER = '<!-- blog_research_structure:monthly_weather:v1 -->';
+const MONTHLY_WEATHER_STRUCTURE_END_MARKER = '<!-- /blog_research_structure:monthly_weather:v1 -->';
 const FOOD_BUDGET_POLICY_GAP_MARKER = '<!-- blog_research_policy_gap:food_budget:v1 -->';
 const FOOD_BUDGET_DETERMINISTIC_HEADINGS = [
   '근거로 확인한 1인 하루 식비',
@@ -116,6 +118,28 @@ function clean(value: unknown): string {
 
 function normalize(value: unknown): string {
   return clean(value).normalize('NFKC').toLowerCase();
+}
+
+function monthlyWeatherClaimCoverageIssues(claimText: string): string[] {
+  const issues: string[] = [];
+  for (let month = 1; month <= 12; month += 1) {
+    if (!new RegExp(`(?:^|\\s)${month}월(?:\\s|$)`).test(claimText)) {
+      issues.push(`claim_semantic_coverage_missing:monthly_weather:month_${month}`);
+    }
+  }
+  const requiredPatterns: Array<[string, RegExp]> = [
+    ['high_temperature', /최고기온\s*-?\d+(?:\.\d+)?\s*°?c/i],
+    ['low_temperature', /최저기온\s*-?\d+(?:\.\d+)?\s*°?c/i],
+    ['rainfall', /강수량\s*\d+(?:\.\d+)?\s*mm/i],
+    ['rain_days', /강수일수\s*\d+(?:\.\d+)?\s*일/],
+    ['climate_period', /(?:19|20)\d{2}\s*[~-]\s*(?:19|20)\d{2}\s*평년값/],
+  ];
+  for (const [key, pattern] of requiredPatterns) {
+    if (!pattern.test(claimText)) {
+      issues.push(`claim_semantic_coverage_missing:monthly_weather:${key}`);
+    }
+  }
+  return issues;
 }
 
 function isResearchBundleShape(value: unknown): value is BlogInformationResearchBundle {
@@ -245,6 +269,9 @@ export function evaluateBlogGenerationResearchReadiness(input: {
     if (!semantic.pattern.test(supportedClaimText)) {
       issues.push(`claim_semantic_coverage_missing:${input.intent}:${semantic.key}`);
     }
+  }
+  if (input.intent === 'monthly_weather') {
+    issues.push(...monthlyWeatherClaimCoverageIssues(supportedClaimText));
   }
 
   const distinctNormalizedValues = new Set(bundle.evidence
@@ -444,6 +471,112 @@ function appendFoodBudgetFeesBookingGuidance(
   };
 }
 
+function removeExistingMonthlyWeatherStructure(markdown: string): string {
+  const start = markdown.indexOf(MONTHLY_WEATHER_STRUCTURE_MARKER);
+  if (start < 0) return markdown.trim();
+  const end = markdown.indexOf(MONTHLY_WEATHER_STRUCTURE_END_MARKER, start);
+  if (end >= 0) {
+    return `${markdown.slice(0, start)}${markdown.slice(end + MONTHLY_WEATHER_STRUCTURE_END_MARKER.length)}`
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+  const promptVersion = markdown.indexOf('<!-- prompt_version:', start);
+  return (promptVersion >= 0
+    ? `${markdown.slice(0, start)}${markdown.slice(promptVersion)}`
+    : markdown.slice(0, start))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function monthlyWeatherClaimMonth(
+  claim: BlogInformationResearchBundle['claims'][number],
+): number | null {
+  const match = normalize(claim.claimText).match(/(?:^|\s)(1[0-2]|[1-9])월(?:\s|$)/);
+  const month = Number(match?.[1]);
+  return Number.isInteger(month) && month >= 1 && month <= 12 ? month : null;
+}
+
+function monthlyWeatherClothing(claimText: string): string {
+  const rainfall = Number(claimText.match(/강수량\s*(\d+(?:\.\d+)?)\s*mm/i)?.[1]);
+  if (Number.isFinite(rainfall) && rainfall >= 250) return '반팔·방수 겉옷·우산';
+  if (Number.isFinite(rainfall) && rainfall >= 150) return '반팔·얇은 방수 겉옷';
+  return '반팔·얇은 겉옷';
+}
+
+function repairMonthlyWeatherResearchStructure(input: {
+  markdown: string;
+  readiness: BlogGenerationResearchReadiness;
+}): BlogGenerationResearchStructureRepair {
+  const unchanged = (approvedClaims: BlogInformationResearchBundle['claims'] = []) => ({
+    markdown: input.markdown,
+    changed: false,
+    changes: [],
+    approvedClaims,
+  });
+  if (!input.readiness.passed || !input.readiness.bundle) return unchanged();
+
+  const claimsByMonth = new Map<number, BlogInformationResearchBundle['claims'][number]>();
+  for (const claim of input.readiness.bundle.claims) {
+    if (claim.claimType !== 'climate') continue;
+    const month = monthlyWeatherClaimMonth(claim);
+    if (month && !claimsByMonth.has(month)) claimsByMonth.set(month, claim);
+  }
+  if (claimsByMonth.size !== 12) return unchanged();
+  const approvedClaims = Array.from({ length: 12 }, (_, index) => claimsByMonth.get(index + 1)!);
+  if (approvedClaims.some((claim) =>
+    !/최고기온\s*-?\d+(?:\.\d+)?\s*°?C/i.test(claim.claimText)
+    || !/최저기온\s*-?\d+(?:\.\d+)?\s*°?C/i.test(claim.claimText)
+    || !/강수량\s*\d+(?:\.\d+)?\s*mm/i.test(claim.claimText)
+    || !/강수일수\s*\d+(?:\.\d+)?\s*일/.test(claim.claimText))) {
+    return unchanged();
+  }
+
+  const existingReport = validateBlogInformationStructure({
+    intent: 'monthly_weather',
+    markdown: input.markdown,
+  });
+  const hasCompleteBlock = input.markdown.includes(MONTHLY_WEATHER_STRUCTURE_MARKER)
+    && input.markdown.includes(MONTHLY_WEATHER_STRUCTURE_END_MARKER);
+  if (hasCompleteBlock && existingReport.passed) return unchanged();
+
+  let markdown = removeExistingMonthlyWeatherStructure(input.markdown);
+  for (const claim of approvedClaims) {
+    markdown = markdown.split(claim.claimText).join('');
+  }
+  markdown = markdown
+    .replace(/^\s*(?:[-*+]\s*)?$/gm, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const source = input.readiness.bundle.sources.find((candidate) =>
+    candidate.claimTypes.includes('climate') && Boolean(candidate.sourceUrl));
+  if (!source?.sourceUrl) return unchanged();
+  const sourceLabel = escapeMarkdownTableCell(source.publisher || '공식 기후 자료');
+  const rows = approvedClaims.map((claim, index) =>
+    `| ${index + 1}월 | ${escapeMarkdownTableCell(claim.claimText)} | ${monthlyWeatherClothing(claim.claimText)} |`);
+  const verifiedBlock = [
+    MONTHLY_WEATHER_STRUCTURE_MARKER,
+    '## 1~12월 기온·강수·옷차림',
+    '',
+    `아래 값은 [${sourceLabel}](${source.sourceUrl})의 공식 기후 평년자료를 월별로 옮긴 것입니다.`,
+    '',
+    '| 월 | 검증된 평년값 | 옷차림 준비 |',
+    '| --- | --- | --- |',
+    ...rows,
+    '',
+    '옷차림은 평년 기온과 강수량을 바탕으로 한 준비 가이드입니다. 실제 출발 전에는 단기예보를 다시 확인하세요.',
+    MONTHLY_WEATHER_STRUCTURE_END_MARKER,
+  ].join('\n');
+
+  return {
+    markdown: `${markdown}\n\n${verifiedBlock}`.trim(),
+    changed: true,
+    changes: ['monthly_weather_verified_research_table'],
+    approvedClaims,
+  };
+}
+
 /**
  * Reuses only preflight-approved claims to make required food-budget tables deterministic.
  * It never calculates a total, converts currencies, or introduces a value outside the bundle.
@@ -459,6 +592,9 @@ export function repairBlogGenerationResearchStructure(input: {
     changes: [],
     approvedClaims,
   });
+  if (input.intent === 'monthly_weather') {
+    return repairMonthlyWeatherResearchStructure(input);
+  }
   if (input.intent !== 'food_budget' || !input.readiness.passed || !input.readiness.bundle) {
     return unchanged();
   }

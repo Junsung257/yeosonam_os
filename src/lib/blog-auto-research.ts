@@ -202,10 +202,32 @@ function urlMatchesRegistryEntry(
   });
 }
 
-type ReviewedDirectPage = {
+export type ReviewedDirectPage = {
   url: string;
   title: string;
   text: string;
+};
+
+type WmoClimateMonth = {
+  month?: number;
+  maxTemp?: string | number | null;
+  minTemp?: string | number | null;
+  raindays?: string | number | null;
+  rainfall?: string | number | null;
+};
+
+type WmoClimateDocument = {
+  city?: {
+    member?: {
+      memName?: string;
+      orgName?: string;
+    };
+    climate?: {
+      datab?: string | number | null;
+      datae?: string | number | null;
+      climateMonth?: WmoClimateMonth[];
+    };
+  };
 };
 
 function boundedReviewedPageText(value: string): string {
@@ -1068,6 +1090,97 @@ function parseJsonPayload(raw: string): GroundedBlogResearchPayload {
   return JSON.parse(cleaned) as GroundedBlogResearchPayload;
 }
 
+export function buildWmoMonthlyWeatherPayload(
+  pages: ReviewedDirectPage[],
+): GroundedBlogResearchPayload | null {
+  const candidateIndexes = pages.flatMap((page, index) => {
+    try {
+      return new URL(page.url).hostname.toLowerCase() === 'worldweather.wmo.int' ? [index] : [];
+    } catch {
+      return [];
+    }
+  });
+  let pageIndex = -1;
+  let document: WmoClimateDocument | null = null;
+  for (const candidateIndex of candidateIndexes) {
+    try {
+      const candidate = JSON.parse(pages[candidateIndex]!.text) as WmoClimateDocument;
+      if (Array.isArray(candidate.city?.climate?.climateMonth)) {
+        pageIndex = candidateIndex;
+        document = candidate;
+        break;
+      }
+    } catch {
+      // A reviewed WMO host may also expose an HTML city page before its JSON feed.
+    }
+  }
+  if (pageIndex < 0 || !document) return null;
+  const climate = document.city?.climate;
+  const months = Array.isArray(climate?.climateMonth)
+    ? [...climate.climateMonth].sort((left, right) => Number(left.month) - Number(right.month))
+    : [];
+  const periodStart = clean(climate?.datab);
+  const periodEnd = clean(climate?.datae);
+  if (months.length !== 12 || !periodStart || !periodEnd) return null;
+
+  const rows = months.flatMap((month) => {
+    const monthNumber = Number(month.month);
+    const maxTemp = clean(month.maxTemp);
+    const minTemp = clean(month.minTemp);
+    const rainfall = clean(month.rainfall);
+    const rainDays = clean(month.raindays);
+    if (!Number.isInteger(monthNumber)
+      || monthNumber < 1
+      || monthNumber > 12
+      || !maxTemp
+      || !minTemp
+      || !rainfall
+      || !rainDays) {
+      return [];
+    }
+    const statement = `${periodStart}~${periodEnd} 평년값: ${monthNumber}월 최고기온 ${maxTemp}°C, 최저기온 ${minTemp}°C, 강수량 ${rainfall}mm, 강수일수 ${rainDays}일`;
+    return [{
+      monthNumber,
+      maxTemp,
+      statement,
+    }];
+  });
+  if (rows.length !== 12 || new Set(rows.map((row) => row.monthNumber)).size !== 12) return null;
+
+  const sourceKeyValue = 'wmo-climate';
+  return {
+    sources: [{
+      sourceKey: sourceKeyValue,
+      groundingChunkIndex: pageIndex,
+      publisher: clean(document.city?.member?.orgName) || '세계기상기구 회원 기상기관',
+      sourceType: 'meteorological_agency',
+      claimTypes: ['climate'],
+      country: clean(document.city?.member?.memName) || '미국',
+    }],
+    evidence: rows.map((row) => ({
+      evidenceKey: `wmo-month-${row.monthNumber}`,
+      sourceKey: sourceKeyValue,
+      excerpt: row.statement,
+      sourceLocator: `city.climate.climateMonth[month=${row.monthNumber}]`,
+      claimType: 'climate',
+      riskLevel: 'LOW',
+      country: clean(document.city?.member?.memName) || '미국',
+      applicableTo: '괌 여행자',
+      normalizedValue: row.maxTemp,
+      unit: '°C',
+      conditions: [`${row.monthNumber}월`, `${periodStart}~${periodEnd} 평년값`],
+    })),
+    claims: rows.map((row) => ({
+      claimText: row.statement,
+      claimType: 'climate',
+      riskLevel: 'LOW',
+      evidenceKeys: [`wmo-month-${row.monthNumber}`],
+      normalizedValue: row.maxTemp,
+      unit: '°C',
+    })),
+  };
+}
+
 async function loadOfficialRegistry(intent: string): Promise<BlogInformationOfficialSourceRegistryEntry[]> {
   const { data, error } = await supabaseAdmin
     .from('blog_information_official_source_registry')
@@ -1225,48 +1338,56 @@ export async function researchBlogInformationAutomatically(input: {
     if (!groundedDigest || eligibleWebChunks.length === 0) {
       throw new Error('BLOG_RESEARCH_GROUNDING_EMPTY');
     }
-    const structuredResponse = await geminiClient().models.generateContent({
-      model: AUTO_RESEARCH_MODEL,
-      contents: structuredResearchPrompt({
-        ...input,
-        digest: groundedDigest,
-        sourceCatalog: eligibleWebChunks
-          .slice(0, MAX_SOURCE_CATALOG)
-          .map((chunk) => ({
-            groundingChunkIndex: chunk.chunkIndex,
-            title: chunk.title,
-            uri: chunk.uri,
-            reviewedSourceTypes: allowedSourceTypes.filter((sourceType) =>
-              Boolean(resolveBlogInformationOfficialSourceTrust({
-                sourceUrl: chunk.uri,
-                sourceType,
-                registry,
-              }))
-              || Boolean(resolveReputableSourceTrust({
-                sourceUrl: chunk.uri,
-                sourceType,
-                intent: input.brief.intentType,
-                registry: reputableRegistry,
-              }))),
-          })),
-        now,
-      }),
-      config: {
-        temperature: 0,
-        maxOutputTokens: 16_384,
-        thinkingConfig: { thinkingBudget: 0 },
-        responseMimeType: 'application/json',
-        responseJsonSchema: COMPACT_RESEARCH_SCHEMA,
-        abortSignal: AbortSignal.timeout(remainingTimeout()),
-        httpOptions: { timeout: remainingTimeout() },
-      },
-    });
-    finishReason = structuredResponse.candidates?.[0]?.finishReason
-      ? String(structuredResponse.candidates[0].finishReason)
+    let payload = input.brief.intentType === 'monthly_weather'
+      ? buildWmoMonthlyWeatherPayload(reviewedPages)
       : null;
-    const rawText = structuredResponse.text ?? '';
-    responseTextLength = rawText.length;
-    const payload = parseJsonPayload(rawText);
+    if (payload) {
+      finishReason = 'DETERMINISTIC_WMO_CLIMATE';
+      responseTextLength = JSON.stringify(payload).length;
+    } else {
+      const structuredResponse = await geminiClient().models.generateContent({
+        model: AUTO_RESEARCH_MODEL,
+        contents: structuredResearchPrompt({
+          ...input,
+          digest: groundedDigest,
+          sourceCatalog: eligibleWebChunks
+            .slice(0, MAX_SOURCE_CATALOG)
+            .map((chunk) => ({
+              groundingChunkIndex: chunk.chunkIndex,
+              title: chunk.title,
+              uri: chunk.uri,
+              reviewedSourceTypes: allowedSourceTypes.filter((sourceType) =>
+                Boolean(resolveBlogInformationOfficialSourceTrust({
+                  sourceUrl: chunk.uri,
+                  sourceType,
+                  registry,
+                }))
+                || Boolean(resolveReputableSourceTrust({
+                  sourceUrl: chunk.uri,
+                  sourceType,
+                  intent: input.brief.intentType,
+                  registry: reputableRegistry,
+                }))),
+            })),
+          now,
+        }),
+        config: {
+          temperature: 0,
+          maxOutputTokens: 16_384,
+          thinkingConfig: { thinkingBudget: 0 },
+          responseMimeType: 'application/json',
+          responseJsonSchema: COMPACT_RESEARCH_SCHEMA,
+          abortSignal: AbortSignal.timeout(remainingTimeout()),
+          httpOptions: { timeout: remainingTimeout() },
+        },
+      });
+      finishReason = structuredResponse.candidates?.[0]?.finishReason
+        ? String(structuredResponse.candidates[0].finishReason)
+        : null;
+      const rawText = structuredResponse.text ?? '';
+      responseTextLength = rawText.length;
+      payload = parseJsonPayload(rawText);
+    }
     const webChunkByOriginalIndex = new Map(webChunks.map((chunk) => [chunk.chunkIndex, chunk]));
     const observedSources = (payload.sources ?? []).map((source) => {
       const index = Number(source.groundingChunkIndex);

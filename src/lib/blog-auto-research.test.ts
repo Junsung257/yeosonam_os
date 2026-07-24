@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GroundingChunk } from '@google/genai';
-import { buildBlogResearchBundleFromGrounding } from '@/lib/blog-auto-research';
+import {
+  buildBlogResearchBundleFromGrounding,
+  buildWmoMonthlyWeatherPayload,
+} from '@/lib/blog-auto-research';
 import { evaluateBlogGenerationResearchReadiness } from '@/lib/blog-generation-research';
 
 const sourcePolicy = {
@@ -366,5 +369,64 @@ describe('buildBlogResearchBundleFromGrounding', () => {
     });
 
     expect(result.bundle?.sources[0]?.authorityLevel).toBe('official_primary');
+  });
+});
+
+describe('buildWmoMonthlyWeatherPayload', () => {
+  it('extracts all 12 monthly climate rows without model truncation', () => {
+    const climateMonth = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      maxTemp: String(29 + index / 10),
+      minTemp: String(24 + index / 10),
+      raindays: String(18 + index / 10),
+      rainfall: String(100 + index * 20),
+    }));
+    const payload = buildWmoMonthlyWeatherPayload([
+      {
+        url: 'https://worldweather.wmo.int/kr/city.html?cityId=1954',
+        title: 'WMO Guam city page',
+        text: '괌의 공식 기후 페이지입니다.',
+      },
+      {
+        url: 'https://worldweather.wmo.int/kr/json/1954_kr.xml',
+        title: 'WMO Guam climate',
+        text: JSON.stringify({
+          city: {
+            member: { memName: '미국', orgName: '미국기상청' },
+            climate: {
+              datab: 1981,
+              datae: 2010,
+              climateMonth,
+            },
+          },
+        }),
+      },
+    ]);
+
+    expect(payload?.evidence).toHaveLength(12);
+    expect(payload?.claims).toHaveLength(12);
+    expect(payload?.claims?.[0]?.claimText).toContain(
+      '1981~2010 평년값: 1월 최고기온 29°C, 최저기온 24°C, 강수량 100mm, 강수일수 18일',
+    );
+    expect(payload?.claims?.[11]?.claimText).toContain('12월');
+  });
+
+  it('refuses an incomplete monthly source', () => {
+    const payload = buildWmoMonthlyWeatherPayload([{
+      url: 'https://worldweather.wmo.int/kr/json/1954_kr.xml',
+      title: 'WMO Guam climate',
+      text: JSON.stringify({
+        city: {
+          member: { memName: '미국', orgName: '미국기상청' },
+          climate: {
+            datab: 1981,
+            datae: 2010,
+            climateMonth: [{ month: 1, maxTemp: '29', minTemp: '24', raindays: '18', rainfall: '100' }],
+          },
+        },
+      }),
+    }]);
+
+    expect(payload).toBeNull();
   });
 });
