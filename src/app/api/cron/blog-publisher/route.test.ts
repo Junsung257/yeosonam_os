@@ -161,12 +161,24 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain('const privateRegeneration = hasPrivateBlogRegenerationIntent(item)');
     expect(source).toContain('const shouldAnalyzeSerp = !privateRegeneration && Boolean(');
     expect(source).toContain('if (!privateRegeneration) {\n    blog_html = await maybeApplyChainOfDensity(blog_html);');
-    expect(source).toContain('fallbackImageUrls: privateReplacementAssets?.inlineImageUrls');
-    expect(source).toContain('preferFallbackImages: privateReplacementAssets !== null');
-    expect(source).toContain('const mayFillSinglePrivateImageShortfall = privateReplacementAssets !== null');
-    expect(source).toContain('allowPexelsSearch: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall');
-    expect(source).toContain('allowGeneratedFallback: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall');
-    expect(source).toContain('mayFillSinglePrivateImageShortfall ? 1 : 0');
+    expect(source).toContain('const replacementAssets = privateReplacementAssets ?? queueReusableAssets');
+    expect(source).toContain('fallbackImageUrls: replacementAssets?.inlineImageUrls');
+    expect(source).toContain('preferFallbackImages: replacementAssets !== null');
+    expect(source).toContain('const mayFillSingleReplacementImageShortfall = replacementAssets !== null');
+    expect(source).toContain('allowPexelsSearch: replacementAssets === null || mayFillSingleReplacementImageShortfall');
+    expect(source).toContain('allowGeneratedFallback: replacementAssets === null || mayFillSingleReplacementImageShortfall');
+    expect(source).toContain('mayFillSingleReplacementImageShortfall ? 1 : 0');
+  });
+
+  it('reuses a queue-linked draft image set during an evidence-backed retry', () => {
+    const source = routeSource();
+
+    expect(source).toContain("typeof item.content_creative_id === 'string'");
+    expect(source).toContain(".eq('id', item.content_creative_id)");
+    expect(source).toContain("queueCreative.channel === 'naver_blog'");
+    expect(source).toContain("queueCreative.status === 'draft'");
+    expect(source).toContain('queueReusableAssets = {');
+    expect(source).toContain('extractBlogInlineImageUrls(');
   });
 
   it('requires persisted research before targeted private regeneration calls the writer', () => {

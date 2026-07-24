@@ -11,6 +11,7 @@ const OFFICIAL_HOST_PATTERNS = [
   /(?:^|\.)korea\.kr$/i,
   /(?:^|\.)travel\.state\.gov$/i,
   /(?:^|\.)japan\.travel$/i,
+  /(?:^|\.)wmo\.int$/i,
 ];
 
 function isPrivateOrLocalHostname(hostname: string): boolean {

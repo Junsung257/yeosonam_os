@@ -2235,6 +2235,29 @@ async function processQueueItem(
         ),
       };
     }
+    let queueReusableAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
+    if (!privateRegenerationRequest && typeof item.content_creative_id === 'string') {
+      const { data: queueCreative, error: queueCreativeError } = await supabaseAdmin
+        .from('content_creatives')
+        .select('id,channel,status,og_image_url,blog_html')
+        .eq('id', item.content_creative_id)
+        .maybeSingle();
+      if (queueCreativeError) {
+        logWarning('[cron/blog-publisher] queue draft asset lookup failed', queueCreativeError);
+      } else if (
+        queueCreative
+        && queueCreative.channel === 'naver_blog'
+        && queueCreative.status === 'draft'
+      ) {
+        queueReusableAssets = {
+          ogImageUrl: typeof queueCreative.og_image_url === 'string' ? queueCreative.og_image_url : null,
+          inlineImageUrls: extractBlogInlineImageUrls(
+            typeof queueCreative.blog_html === 'string' ? queueCreative.blog_html : null,
+          ),
+        };
+      }
+    }
+    const replacementAssets = privateReplacementAssets ?? queueReusableAssets;
 
     if (await isRecentInfoDuplicateCandidate(item)) {
       const reason = `recent_info_duplicate_before_generation: 최근 14일 내 ${item.destination ?? '동일 목적지'} + ${item.angle_type ?? 'value'} 정보성 글 이미 발행됨`;
@@ -2372,17 +2395,17 @@ async function processQueueItem(
       };
     }
 
-    if (privateReplacementAssets?.ogImageUrl && !generated.og_image_url) {
-      generated.og_image_url = privateReplacementAssets.ogImageUrl;
+    if (replacementAssets?.ogImageUrl && !generated.og_image_url) {
+      generated.og_image_url = replacementAssets.ogImageUrl;
     }
-    const privateReusableImageCount = privateReplacementAssets
+    const reusableImageCount = replacementAssets
       ? new Set([
-          ...privateReplacementAssets.inlineImageUrls,
-          ...(privateReplacementAssets.ogImageUrl ? [privateReplacementAssets.ogImageUrl] : []),
+          ...replacementAssets.inlineImageUrls,
+          ...(replacementAssets.ogImageUrl ? [replacementAssets.ogImageUrl] : []),
         ].filter((url) => /^https:\/\//i.test(url))).size
       : 0;
-    const mayFillSinglePrivateImageShortfall = privateReplacementAssets !== null
-      && privateReusableImageCount === 2;
+    const mayFillSingleReplacementImageShortfall = replacementAssets !== null
+      && reusableImageCount === 2;
 
     const slugNormalized = normalizeGeneratedSlug(generated, item);
     if (slugNormalized && promoteDraftId) {
@@ -2485,13 +2508,13 @@ async function processQueueItem(
         ogImageUrl: generated.og_image_url,
         minImages: item.card_news_id ? 2 : 3,
         maxImages: item.card_news_id ? 3 : 4,
-        fallbackImageUrls: privateReplacementAssets?.inlineImageUrls,
-        preferFallbackImages: privateReplacementAssets !== null,
-        allowPexelsSearch: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall,
-        allowGeneratedFallback: privateReplacementAssets === null || mayFillSinglePrivateImageShortfall,
-        maxExternalAssetAttempts: privateReplacementAssets === null
+        fallbackImageUrls: replacementAssets?.inlineImageUrls,
+        preferFallbackImages: replacementAssets !== null,
+        allowPexelsSearch: replacementAssets === null || mayFillSingleReplacementImageShortfall,
+        allowGeneratedFallback: replacementAssets === null || mayFillSingleReplacementImageShortfall,
+        maxExternalAssetAttempts: replacementAssets === null
           ? undefined
-          : mayFillSinglePrivateImageShortfall ? 1 : 0,
+          : mayFillSingleReplacementImageShortfall ? 1 : 0,
       });
       if (imageResult.inserted > 0) {
         generated.blog_html = imageResult.markdown;

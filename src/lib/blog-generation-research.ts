@@ -519,11 +519,17 @@ function buildDeterministicMonthlyWeatherArticle(input: {
 }): string {
   const title = input.originalMarkdown.match(/^#\s+(.+?)\s*$/m)?.[1]?.trim()
     || '월별 날씨와 옷차림 준비';
-  const imageBlocks = extractFoodBudgetImageBlocks(input.originalMarkdown)
+  const imageUrls = extractFoodBudgetImageBlocks(input.originalMarkdown)
     .slice(0, 3)
-    .map((block) => block.markdown.split('\n')[0]!)
-    .filter(Boolean);
-  const imageAt = (index: number) => imageBlocks[index] ? ['', imageBlocks[index]!] : [];
+    .map((block) => block.url);
+  const imageAlts = [
+    `${title} 월별 날씨 확인`,
+    `${title} 옷차림 준비`,
+    `${title} 비 대비 준비`,
+  ];
+  const imageAt = (index: number) => imageUrls[index]
+    ? ['', `![${imageAlts[index]}](${imageUrls[index]})`]
+    : [];
   const climateRows = input.approvedClaims.map((claim, index) =>
     `| ${index + 1}월 | ${escapeMarkdownTableCell(claim.claimText)} | ${monthlyWeatherClothing(claim.claimText)} |`);
   const clothingRows = input.approvedClaims.map((claim, index) =>
@@ -533,7 +539,8 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     MONTHLY_WEATHER_STRUCTURE_MARKER,
     `# ${title}`,
     '',
-    '월별 기온과 강수 자료를 먼저 확인하고, 옷차림과 비 대비 준비를 같은 순서로 점검해 보세요.',
+    '1~12월 기온과 강수 자료에서 무엇을 먼저 비교해야 할까요?',
+    '여행하는 달의 기온·강수량·강수일수를 확인하고, 옷차림과 비 대비 준비를 같은 순서로 점검해 보세요.',
     '장기 평년자료와 실제 출발일 예보를 같은 값으로 보지 말고, 표는 준비 기준으로 활용한 뒤 단기예보를 다시 확인하세요.',
     ...imageAt(0),
     '',
@@ -543,6 +550,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '- 옷차림 준비 열을 기본값으로 삼고 실내 냉방용 얇은 겉옷을 더해 보세요.',
     '- 비 예보가 보이면 우산, 방수 겉옷, 젖은 옷을 담을 팩을 한 묶음으로 챙기세요.',
     '- 장기 평년자료를 본 뒤 실제 출발일의 단기예보를 다시 확인하세요.',
+    '- [여소남 여행지 가이드](/destinations)에서 목적지별 준비 정보도 함께 확인하세요.',
     '',
     '## 1~12월 기온·강수·옷차림',
     '',
@@ -561,8 +569,10 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '',
     '표의 옷차림은 짐을 고르는 출발점으로만 활용하고, 출발 직전 체감기온과 비 예보에 맞춰 더하거나 빼세요.',
     '',
-    '## 비·바람·습도와 이상기후 대비',
+    '## 우기·건기 및 태풍 위험 확인',
     '',
+    '- 이 표만으로 우기·건기의 경계나 태풍 발생 여부를 단정하지 마세요.',
+    '- 이상기후 위험은 출발 직전 공식 특보와 단기예보에서 별도로 확인하세요.',
     '- 작은 우산과 방수 겉옷을 함께 두고, 손이 자유로워야 하는 일정에는 우비도 비교해 보세요.',
     '- 휴대전화와 여권 사본, 충전기처럼 젖으면 곤란한 물품은 방수 파우치에 나눠 담으세요.',
     '- 젖은 옷과 마른 옷을 분리할 가벼운 팩을 준비 목록에 넣어 보세요.',
@@ -576,7 +586,7 @@ function buildDeterministicMonthlyWeatherArticle(input: {
     '- 아이 동반 일정은 갈아입을 옷과 방수팩, 얇은 겉옷을 한 묶음으로 준비해 보세요.',
     '- 사진 촬영이나 야외 일정은 원하는 달의 표와 출발 직전 예보를 함께 비교해 보세요.',
     '',
-    '## 출발 직전 예보 확인 순서',
+    '## 출발 전 체크리스트',
     '',
     '- 여행하는 달의 평년값 행을 다시 확인하세요.',
     '- 출발일과 귀국일의 단기예보를 각각 확인하세요.',
