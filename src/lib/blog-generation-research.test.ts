@@ -25,6 +25,7 @@ import {
 } from './blog-quality-gate';
 import { inspectBlogImageQuality } from './blog-image-quality';
 import { computeReadability } from './blog-readability';
+import { computeSeoScore } from './blog-seo-scorer';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { extractFaqItems } from './blog-jsonld';
 import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
@@ -345,6 +346,26 @@ describe('blog generation research preflight', () => {
       blog_type: 'info',
     }).passed).toBe(true);
     expect(computeReadability(first.markdown).duplicate_phrases).toEqual([]);
+    expect(computeSeoScore({
+      blogHtml: first.markdown,
+      slug: WEATHER_CONTENT_KEY,
+      seoTitle: '괌 7월 날씨와 옷차림',
+      seoDescription: '괌 월별 기온, 강수량, 옷차림과 준비물을 공식 자료로 확인합니다.',
+      primaryKeyword: '괌 7월 날씨',
+      destination: '괌',
+      blogType: 'info',
+      hasRenderedPageH1: true,
+      hasRuntimeInformationalCta: true,
+      hasJsonLd: {
+        blogPosting: true,
+        faqPage: true,
+        howTo: false,
+        breadcrumbList: true,
+      },
+    }).details.find((detail) => detail.name === 'semantic_longtail_coverage')).toMatchObject({
+      status: 'pass',
+      score: 6,
+    });
     expect(inspectBlogImageQuality(first.markdown, {
       destination: '괌',
       primaryKeyword: '괌 7월 날씨',
