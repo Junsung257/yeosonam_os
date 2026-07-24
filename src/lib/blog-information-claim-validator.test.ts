@@ -135,6 +135,18 @@ describe('blog information claim validator', () => {
     expect(extractBlogInformationClaims('1. 준비\n2. 출발\n첫 번째로 동선을 정하세요.')).toEqual([]);
   });
 
+  it('does not turn reading guidance and freshness reminders into unsupported claims', () => {
+    const guidance = [
+      '낮과 밤 기온, 비 예보, 일교차를 먼저 봐야 옷차림 실수를 줄일 수 있습니다.',
+      '처음 읽는 분은 표와 체크리스트를 먼저 보고, 세부 설명은 필요한 부분만 골라 읽으면 됩니다.',
+      '먼저 3줄 요약을 보고, 표에서 비용과 이동 시간을 확인한 뒤, 마지막 체크리스트만 저장해도 됩니다.',
+      '숫자는 확정값이 아니라 비교 기준입니다.',
+      '출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.',
+    ].join('\n');
+
+    expect(extractBlogInformationClaims(guidance)).toEqual([]);
+  });
+
   it.each([
     ['공항에서 시내까지 거리는 42km입니다.', 'distance'],
     ['영업은 매일 09:00~18:00입니다.', 'time_schedule'],

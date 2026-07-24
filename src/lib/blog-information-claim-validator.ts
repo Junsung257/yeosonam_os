@@ -183,12 +183,16 @@ export type BlogInformationStatementCategory =
 
 const NAVIGATION_OR_BOILERPLATE_RE = /(?:^|\s)(?:목차|FAQ|가이드|체크리스트|요약|마무리|공식 사이트|자세히 보기)(?:$|\s)|(?:비교|확인|참고|선택|살펴|알아|둘러|정)해?\s*보세요|(?:확인|참고)하세요/i;
 const SUBJECTIVE_EDITORIAL_RE = /(?:저는|개인적으로|제 생각|느낌|취향|여행 스타일|선호).*(?:생각|느끼|좋|달라|추천)|(?:매력적|인상적|낭만적|즐겁|좋다고 생각)/i;
+const EDITORIAL_READING_GUIDANCE_RE = /(?:(?:먼저|우선).*(?:봐야|확인해야).*(?:실수|혼선|누락).*(?:줄일|피할)\s*수\s*있)|(?:(?:처음 읽는 분|먼저).*(?:표|요약|체크리스트).*(?:골라 읽|저장해도|보면 됩니다|확인))|(?:숫자는\s*(?:확정값|실시간값)이\s*아니라\s*(?:비교|참고)\s*기준)|(?:출발\s*\d+\s*(?:일|시간)\s*전.*(?:공식 안내|예약 조건).*다시\s*확인)/i;
 const ASSERTIVE_STATEMENT_RE = /(?:입니다|합니다|됩니다|있습니다|없습니다|않습니다|필요합니다|가능합니다|불가능합니다|안전합니다|빠릅니다|느립니다|마칩니다|종료됩니다|중단합니다|사용할 수|운행|영업|예약|재고|현금만|대기 시간)/i;
 
 export function classifyBlogInformationStatement(segment: string): {
   category: BlogInformationStatementCategory;
   factualClassification: Pick<ExtractedBlogInformationClaim, 'claimType' | 'riskLevel' | 'candidateKind'> | null;
 } {
+  if (EDITORIAL_READING_GUIDANCE_RE.test(segment)) {
+    return { category: 'navigation_boilerplate', factualClassification: null };
+  }
   const factualClassification = classifyClaim(segment);
   if (factualClassification) return { category: 'verified_factual', factualClassification };
   if (SUBJECTIVE_EDITORIAL_RE.test(segment)) {

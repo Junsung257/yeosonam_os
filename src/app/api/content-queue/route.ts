@@ -164,12 +164,16 @@ const postHandler = async (request: NextRequest) => {
         }, { status: 422 });
       }
 
+      const identity = row.product_id
+        ? null
+        : readBlogInformationRepresentativeIdentity(row.generation_meta ?? null);
       const claimReport = await evaluateBlogInformationClaimPublishGate({
         creativeId: creative_id,
         contentKey: slug,
         markdown: prepared.blogHtml,
         productId: row.product_id ?? null,
         reviewStatus: row.review_status ?? null,
+        intentType: identity?.intent ?? null,
         expectedScope: { destination: row.destination ?? undefined },
       });
       if (!claimReport.passed) {
@@ -178,9 +182,6 @@ const postHandler = async (request: NextRequest) => {
           claim_validation: claimReport,
         }, { status: 422 });
       }
-      const identity = row.product_id
-        ? null
-        : readBlogInformationRepresentativeIdentity(row.generation_meta ?? null);
       if (!row.product_id && !identity) {
         throw new Error('blog_information_representative_identity_missing');
       }
