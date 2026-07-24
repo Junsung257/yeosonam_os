@@ -3,6 +3,7 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { blogDetailLooksRenderable } from './lib/open-readiness-html.mjs';
 
 const argv = process.argv.slice(2);
 
@@ -48,8 +49,6 @@ const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_
 const ALLOW_LOCAL_MISSING_DATA = hasFlag('--allow-local-missing-data') || process.env.OPEN_CHECK_ALLOW_LOCAL_MISSING_DATA === '1' || LOCAL_MODE;
 const LOCAL_DATA_UNAVAILABLE_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|local blog data unavailable|production\/staging data is required|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|command_failed|runtime_errors/i;
 const PACKAGE_NOT_FOUND_PATTERN = /NOT_FOUND|패키지를 찾을 수 없습니다|패키지가 존재하지 않거나 삭제되었습니다/i;
-const BLOG_DETAIL_NOT_FOUND_PATTERN = /E1401|블로그 글을 찾을 수 없습니다|페이지를 찾을 수 없습니다|page not found|blog post not found/i;
-const BLOG_DETAIL_NOINDEX_PATTERN = /<meta\s+name=["']robots["'][^>]*content=["'][^"']*noindex/i;
 const TRANSIENT_BLOG_DATA_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|timeout|timed out|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|블로그 데이터를|데이터를 불러올 수 없습니다/i;
 const INCLUDE_MARKETING_RUNTIME = hasFlag('--include-marketing-runtime') || process.env.OPEN_CHECK_INCLUDE_MARKETING_RUNTIME === '1';
 const MARKETING_RUNTIME_ISOLATED = hasFlag('--marketing-runtime-isolated') || process.env.OPEN_CHECK_MARKETING_RUNTIME_ISOLATED === '1';
@@ -79,10 +78,6 @@ function missingImportantEnvVars() {
 
 function htmlTitle(body) {
   return String(body || '').match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '';
-}
-
-function blogDetailLooksRenderable(body) {
-  return !BLOG_DETAIL_NOT_FOUND_PATTERN.test(body) && !BLOG_DETAIL_NOINDEX_PATTERN.test(body);
 }
 
 function packageDetailLooksRenderable(body) {
