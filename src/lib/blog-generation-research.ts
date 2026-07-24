@@ -10,7 +10,10 @@ import { validateBlogInformationStructure } from './blog-information-structure';
 
 export const BLOG_INFORMATION_RESEARCH_META_KEY = 'information_research_bundle';
 
-const MINIMUM_CLAIMS_BY_INTENT: Partial<Record<BlogInformationIntent, Partial<Record<BlogInformationClaimType, number>>>> = {
+export const BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT: Partial<Record<
+  BlogInformationIntent,
+  Partial<Record<BlogInformationClaimType, number>>
+>> = {
   food_budget: { price: 7 },
   monthly_weather: { climate: 3 },
   airport_transport: { price: 2, duration: 2 },
@@ -21,6 +24,19 @@ const MINIMUM_CLAIMS_BY_INTENT: Partial<Record<BlogInformationIntent, Partial<Re
   currency_payment: { currency: 1, factual: 3 },
   entry_requirements: { entry_visa: 2, policy: 2 },
   travel_insurance: { insurance: 4, policy: 2 },
+};
+
+const BLOG_INFORMATION_MINIMUM_SOURCE_DOMAINS: Partial<Record<BlogInformationIntent, number>> = {
+  food_budget: 1,
+  monthly_weather: 1,
+  airport_transport: 1,
+  hotel_areas: 2,
+  family_budget: 2,
+  itinerary: 2,
+  shopping_souvenirs: 2,
+  currency_payment: 1,
+  entry_requirements: 2,
+  travel_insurance: 2,
 };
 
 const REQUIRED_CLAIM_SEMANTICS_BY_INTENT: Partial<Record<BlogInformationIntent, Array<{
@@ -137,6 +153,15 @@ function sourceTypeIsAllowed(
   return false;
 }
 
+function sourceDomain(source: BlogInformationResearchBundle['sources'][number]): string {
+  if (!source.sourceUrl) return source.internalIdentifier || source.sourceKey;
+  try {
+    return new URL(source.sourceUrl).hostname.toLowerCase();
+  } catch {
+    return source.sourceKey;
+  }
+}
+
 export function evaluateBlogGenerationResearchReadiness(input: {
   meta: unknown;
   expectedContentKey: string;
@@ -195,6 +220,11 @@ export function evaluateBlogGenerationResearchReadiness(input: {
     && !bundle.sources.some((source) => isPrimaryInformationAuthority(source.authorityLevel))) {
     issues.push('official_primary_source_required');
   }
+  const minimumSourceDomains = BLOG_INFORMATION_MINIMUM_SOURCE_DOMAINS[input.intent] ?? 1;
+  const sourceDomainCount = new Set(bundle.sources.map(sourceDomain).filter(Boolean)).size;
+  if (sourceDomainCount < minimumSourceDomains) {
+    issues.push(`source_domain_diversity_below_minimum:${sourceDomainCount}/${minimumSourceDomains}`);
+  }
 
   const evidenceKeys = new Set(bundle.evidence.map((evidence) => evidence.evidenceKey));
   const supportedClaims = bundle.claims.filter((claim) =>
@@ -204,7 +234,7 @@ export function evaluateBlogGenerationResearchReadiness(input: {
     issues.push(`claim_source_coverage_below_minimum:${coverage.toFixed(2)}`);
   }
 
-  const minimums = MINIMUM_CLAIMS_BY_INTENT[input.intent] ?? { factual: 3 };
+  const minimums = BLOG_INFORMATION_MINIMUM_CLAIMS_BY_INTENT[input.intent] ?? { factual: 3 };
   for (const [claimType, minimum] of Object.entries(minimums)) {
     const count = supportedClaims.filter((claim) => claim.claimType === claimType).length;
     if (count < Number(minimum)) issues.push(`claim_type_below_minimum:${claimType}:${count}/${minimum}`);

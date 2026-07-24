@@ -9,6 +9,7 @@ export interface BlogInformationOfficialSourceRegistryEntry {
   sourceType: BlogInformationSourceType;
   authorityLevel: Extract<BlogInformationAuthorityLevel, 'official_primary' | 'official_secondary'>;
   allowSubdomains: boolean;
+  researchUrls?: string[];
 }
 
 export function canonicalizeBlogInformationSourceHostname(value?: string | null): string | null {

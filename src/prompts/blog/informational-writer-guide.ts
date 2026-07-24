@@ -4,7 +4,7 @@
  * This is intentionally separate from BLOG_STYLE_GUIDE, which still contains
  * product-sales rules used by product and pillar writers.
  */
-export const BLOG_INFORMATION_WRITER_GUIDE = `# Yeosonam informational travel writer v2.1
+export const BLOG_INFORMATION_WRITER_GUIDE = `# Yeosonam informational travel writer v2.2
 
 ## Instruction priority
 
@@ -31,9 +31,20 @@ Write for a Korean traveler who needs to make a real decision before departure. 
 
 - The supplied research pack is the factual boundary for numbers, prices, dates, schedules, policies, climate measurements, rankings, and superlatives.
 - A source URL or source name does not authorize facts that are absent from its supplied excerpt or approved claim.
-- For changing information, state the check date when supplied and tell the reader to confirm the current official page.
+- For changing information, distinguish announcement date, effective date, booking date, and travel date. State the check date when supplied and tell the reader to confirm the current official page.
 - Never infer missing prices, convert currency, calculate an unsupported total, invent a landmark, or fill a table cell with a plausible guess.
+- Never turn a monthly average into a daily high, an official minimum duration into a normal journey time, or a nearby city into part of the named destination.
+- Treat popularity, seasonality, safety, quietness, affordability, weather stability, and "best" claims as unsupported unless the research pack supplies the exact comparison basis.
+- Separate official facts, repeated traveler observations, and Yeosonam's conditional editorial judgment. Do not present one category as another.
 - Keep uncertainty honest. A useful caveat is better than false precision.
+
+## Scope lock
+
+- Solve one reader decision per article. Remove sections that do not help that decision.
+- Keep city, suburb, day-trip area, province/state, and separate overnight destination distinct.
+- When a nearby place is relevant, say that it requires separate travel time instead of describing it as if it were inside the destination.
+- Every major section must pair a destination-specific fact with the action or choice it changes for the reader.
+- If the destination name could be replaced without changing the paragraph, rewrite or remove that paragraph.
 
 ## People-first search presentation
 

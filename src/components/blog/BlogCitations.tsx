@@ -1,9 +1,11 @@
 import { ExternalLink } from 'lucide-react';
+import type { BlogPublicCitation } from '@/lib/blog-public-citations';
 
 interface Citation {
   label: string;
   url: string;
   source: string;
+  retrievedAt?: string | null;
 }
 
 /**
@@ -50,27 +52,33 @@ const AIRLINE_CITATIONS: Record<string, Citation> = {
 interface Props {
   destination?: string;
   airline?: string;
+  citations?: BlogPublicCitation[];
 }
 
-export default function BlogCitations({ destination, airline }: Props) {
+export default function BlogCitations({ destination, airline, citations: researchCitations }: Props) {
   const destCitations = destination ? DESTINATION_CITATIONS[destination] ?? [] : [];
   const airlineCitation = airline ? AIRLINE_CITATIONS[airline] : null;
-  const citations: Citation[] = [...destCitations];
-  if (airlineCitation) citations.push(airlineCitation);
+  const citations: Citation[] = researchCitations?.length
+    ? researchCitations
+    : [...destCitations];
+  if (!researchCitations?.length && airlineCitation) citations.push(airlineCitation);
 
   if (citations.length === 0) return null;
 
   return (
     <section
-      className="not-prose my-10 rounded-2xl border border-slate-100 bg-white p-5 md:p-6"
+      className="not-prose my-12 border-t border-slate-200 pt-6"
       aria-label="참고 자료"
     >
-      <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-slate-500">
-        참고 · 출처
+      <h2 className="mb-2 text-base font-bold text-slate-800">
+        확인한 자료
       </h2>
+      <p className="mb-4 text-sm leading-6 text-slate-600">
+        글 작성 시 확인한 원문입니다. 가격·운영시간·정책은 여행 전에 다시 확인해 주세요.
+      </p>
       <ul className="space-y-2 text-sm">
         {citations.map((c, i) => (
-          <li key={i}>
+          <li key={`${c.url}-${i}`}>
             <a
               href={c.url}
               target="_blank"
@@ -84,6 +92,11 @@ export default function BlogCitations({ destination, airline }: Props) {
               />
               <span className="font-medium">{c.label}</span>
               <span className="text-xs text-slate-400">— {c.source}</span>
+              {c.retrievedAt && (
+                <span className="text-xs text-slate-500">
+                  {c.retrievedAt.slice(0, 10)} 확인
+                </span>
+              )}
             </a>
           </li>
         ))}
