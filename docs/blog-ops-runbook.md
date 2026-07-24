@@ -156,7 +156,7 @@ The blog system is complete only when the admin UI can answer these questions wi
 - `src/lib/blog-canary-preflight.ts` now labels every selected canary with `quality_contract='customer_surface_100'` and writer-specific expectations, so operators can see whether the canary proves info-guide quality or product-consult quality.
 - `src/lib/blog-canary-generated-quality.ts` checks an actual generated sample across engine score, customer quality, and rendered Markdown integrity. This is the canary to run after changing prompts, product writer structure, final repair, or renderer behavior.
 - Product generated canary must not rely only on recently published rows. If recent rows are all information posts, `src/lib/blog-product-generated-canary.ts` builds a non-publishing dry-run article from the queued `product_id` and the registered `travel_packages` row, then sends it through the same engine/customer/render checks.
-- Generated canary volume follows the daily publish target, capped at five samples per run. With the current 4/day policy, the operating proof should show four generated samples, not only the old three-sample minimum.
+- Generated canary volume follows the daily publish target, capped at five samples per run. With the current 5/day policy, the operating proof must show five generated samples.
 - Product commercial copy is now `product-template-v4`: price/from-city/duration opening, included/excluded, fit/not-fit, risk notes, consult questions, official checks, and bottom CTA. It must use product DB facts only and must not invent hotel names, benefits, scarcity, or confirmed schedules.
 - Customer quality now fails visible mojibake/encoding residue. A body containing broken Korean such as `�`, `媛`, `諛`, or `留` cannot pass as a "near 100" post.
 - Verification on 2026-07-08:
@@ -266,7 +266,9 @@ The blog system is complete only when the admin UI can answer these questions wi
 
 ## 2026-06-23 Daily Summary Timing Evidence
 
-- The live `blog-publisher` schedule runs at 12:05, 15:05, 18:05, 21:05, and 22:05 KST. The 22:05 slot is a same-day catch-up run before the 22:45 daily summary.
+- The live policy assigns five posts at 09:00, 12:00, 15:00, 18:00, and 21:00 KST. `blog-publisher` runs five minutes after each slot, while 22:05 is a quota-only catch-up before the 22:45 daily summary.
+- `blog-scheduler` runs at 08:50 KST after the 07:30 product-proof refresh. It must report at least ten research-ready information candidates before slot assignment; ordinary queued rows without a current research bundle do not count.
+- The primary trend miner runs at 06:00 KST and the external fallback runs at 06:10 KST. Trend signals prioritize candidate research but never serve as factual evidence.
 - `blog-daily-summary` previously ran at 09:10 KST, before the daily publish windows, so it was not a true post-publish operating report.
 - The daily summary cron now runs at 22:45 KST (`45 13 * * *` UTC) and summarizes the current KST day after the final 22:05 catch-up publisher slot, the external 22:07 publisher retry window, the normal 22:27 indexing-worker backup, and the final 22:40 indexing drain. The GitHub daily-summary workflow also triggers `blog-publisher?force=true` with the same quota-fill retry contract immediately before the indexing drain, then triggers `blog-indexing-worker?force=true` before calling `blog-daily-summary`. This makes daily summary the last automatic recovery line, not just a passive report.
 - The daily summary uses the global publishing policy target instead of a hardcoded minimum, and duplicate unresolved `admin_alerts` for the same report date/type are suppressed.
@@ -295,14 +297,14 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Use `--write` when `write_recommended=true`, especially when `write_reasons` includes `requeue_recovered_product_rows` or `skip_duplicate_product_rows`. Passing product rows are requeued; duplicate product candidates are moved to `skipped` so they stop inflating failed evidence work.
 - If `write_recommended=false` but `metadata_refresh_available=true`, the remaining rows are still blocked by current product evidence. Do not keep rewriting them just to refresh timestamps; fix the linked package proof, then rerun the dry-run.
 - Do not requeue these rows until the linked package has fresh customer mobile proof and its customer-open contract passes.
-- `Blog Product Proof Refresh` (`.github/workflows/blog-mobile-proof-refresh.yml`) runs daily at 10:30 KST, at least 60 minutes before the 11:50 scheduler. It refreshes stale/missing `/packages` + `/lp` mobile proof for active products, then runs `recheck:blog-product-evidence -- --write` so recovered product-backed blog candidates can publish instead of staying blocked.
+- `Blog Product Proof Refresh` (`.github/workflows/blog-mobile-proof-refresh.yml`) runs daily at 07:30 KST, 80 minutes before the 08:50 scheduler. It refreshes stale/missing `/packages` + `/lp` mobile proof for active products, then runs `recheck:blog-product-evidence -- --write` so recovered product-backed blog candidates can publish instead of staying blocked.
 - If published product-backed blog posts fail `product_customer_open_contract_failed:mobile_proof stale`, run the same workflow manually or run `npm run prove:hwp-mobile -- --package-ids=... --base=https://www.yeosonam.com --apply-pass-only --continue-on-fail --json`, then rerun `npm run audit:blog-quality -- --limit=300`. Do not archive the posts before attempting proof refresh when the linked product is still active.
 
 ## Vercel Cron Bypass Fallback
 
 - `.github/workflows/blog-external-cron.yml` is the Vercel-Cron-independent scheduler.
 - It calls the custom domain, not the protected `*.vercel.app` deployment URL:
-  - `https://www.yeosonam.com/api/cron/blog-scheduler?force=true` at 11:50 KST to replenish publishable queue candidates.
+  - `https://www.yeosonam.com/api/cron/blog-scheduler?force=true` at 08:50 KST to replenish and research publishable queue candidates.
   - `https://www.yeosonam.com/api/cron/blog-publisher` at 12:07, 15:07, 18:07, 21:07, and 22:07 KST.
   - `https://www.yeosonam.com/api/cron/blog-indexing-worker?force=true` at 12:27, 15:27, 18:27, 21:27, 22:27, and 22:40 KST to drain pending indexing jobs even when publisher quality gates fail or late publisher retries finish after 22:27.
   - `https://www.yeosonam.com/api/cron/blog-daily-summary` at 22:45 KST.

@@ -392,6 +392,7 @@ describe('buildWmoMonthlyWeatherPayload', () => {
         title: 'WMO Guam climate',
         text: JSON.stringify({
           city: {
+            cityName: '아가냐, 괌',
             member: { memName: '미국', orgName: '미국기상청' },
             climate: {
               datab: 1981,
@@ -401,7 +402,7 @@ describe('buildWmoMonthlyWeatherPayload', () => {
           },
         }),
       },
-    ]);
+    ], '괌');
 
     expect(payload?.evidence).toHaveLength(12);
     expect(payload?.claims).toHaveLength(12);
@@ -417,6 +418,7 @@ describe('buildWmoMonthlyWeatherPayload', () => {
       title: 'WMO Guam climate',
       text: JSON.stringify({
         city: {
+          cityName: '아가냐, 괌',
           member: { memName: '미국', orgName: '미국기상청' },
           climate: {
             datab: 1981,
@@ -425,7 +427,60 @@ describe('buildWmoMonthlyWeatherPayload', () => {
           },
         },
       }),
-    }]);
+    }], '괌');
+
+    expect(payload).toBeNull();
+  });
+
+  it('selects only the WMO feed that matches the requested destination', () => {
+    const climateMonth = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      maxTemp: String(10 + index),
+      minTemp: String(2 + index),
+      raindays: String(5 + index),
+      rainfall: String(30 + index),
+    }));
+    const page = (cityName: string, cityId: number) => ({
+      url: `https://worldweather.wmo.int/kr/json/${cityId}_kr.xml`,
+      title: `WMO ${cityName} climate`,
+      text: JSON.stringify({
+        city: {
+          cityName,
+          member: { memName: cityName === '도쿄' ? '일본' : '태국', orgName: '공식 기상기관' },
+          climate: { datab: 1991, datae: 2020, climateMonth },
+        },
+      }),
+    });
+
+    const payload = buildWmoMonthlyWeatherPayload([
+      page('방콕', 233),
+      page('도쿄', 183),
+    ], '도쿄');
+
+    expect(payload?.sources?.[0]?.destination).toBe('도쿄');
+    expect(payload?.sources?.[0]?.country).toBe('일본');
+    expect(payload?.evidence?.every((evidence) => evidence.destination === '도쿄')).toBe(true);
+  });
+
+  it('refuses a complete WMO feed for a different destination', () => {
+    const climateMonth = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      maxTemp: '30',
+      minTemp: '24',
+      raindays: '12',
+      rainfall: '100',
+    }));
+    const payload = buildWmoMonthlyWeatherPayload([{
+      url: 'https://worldweather.wmo.int/kr/json/233_kr.xml',
+      title: 'WMO Bangkok climate',
+      text: JSON.stringify({
+        city: {
+          cityName: '방콕',
+          member: { memName: '태국', orgName: '태국 기상청' },
+          climate: { datab: 1961, datae: 1990, climateMonth },
+        },
+      }),
+    }], '도쿄');
 
     expect(payload).toBeNull();
   });

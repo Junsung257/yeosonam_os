@@ -82,24 +82,6 @@ const MICRO_ANGLE_TEMPLATES: MicroAngleTemplate[] = [
   },
 ];
 
-const MICRO_ANGLE_DESTINATIONS = [
-  '괌',
-  '세부',
-  '보홀',
-  '발리',
-  '나트랑',
-  '다낭',
-  '방콕',
-  '오사카',
-  '싱가포르',
-  '마닐라',
-  '클락',
-  '푸꾸옥',
-  '대만',
-  '홍콩',
-  '삿포로',
-];
-
 function microAngleKey(destination: string | null | undefined, microAngle: string | null | undefined): string | null {
   const dest = destination?.trim();
   const angle = microAngle?.trim();
@@ -205,6 +187,7 @@ export function countPublishableQueueCandidates(input: {
   productOpenContractBlocked: number;
   destinationlessInfoBlocked: number;
   candidateContractBlocked: number;
+  researchNotReady: number;
 } {
   const recentKeys = new Set<string>();
   for (const row of input.recentPublished) {
@@ -213,12 +196,14 @@ export function countPublishableQueueCandidates(input: {
   }
 
   const publishableKeys = new Set<string>();
+  const candidateKeys = new Set<string>();
   let blockedRecentDuplicate = 0;
   let duplicateQueued = 0;
   let evidenceInsufficient = 0;
   let productOpenContractBlocked = 0;
   let destinationlessInfoBlocked = 0;
   let candidateContractBlocked = 0;
+  let researchNotReady = 0;
 
   for (const row of input.activeQueue) {
     if (row.source === 'pillar') continue;
@@ -244,8 +229,13 @@ export function countPublishableQueueCandidates(input: {
       blockedRecentDuplicate += 1;
       continue;
     }
-    if (publishableKeys.has(key)) {
+    if (candidateKeys.has(key)) {
       duplicateQueued += 1;
+      continue;
+    }
+    candidateKeys.add(key);
+    if (readWriterType(row) === 'info_writer' && !evaluateQueuedInformationResearch(row).passed) {
+      researchNotReady += 1;
       continue;
     }
     publishableKeys.add(key);
@@ -259,6 +249,7 @@ export function countPublishableQueueCandidates(input: {
     productOpenContractBlocked,
     destinationlessInfoBlocked,
     candidateContractBlocked,
+    researchNotReady,
   };
 }
 
@@ -281,7 +272,8 @@ async function quarantineDuplicatePublishableCandidates(input: {
       hasEvidenceInsufficientFlag(row) ||
       hasProductOpenContractBlock(row) ||
       destinationlessInfoBlocksPublishability(row) ||
-      !inspectBlogCandidatePrepublishContract(row).passed
+      !inspectBlogCandidatePrepublishContract(row).passed ||
+      (readWriterType(row) === 'info_writer' && !evaluateQueuedInformationResearch(row).passed)
     ) continue;
     const key = publishableQueueKey(row);
     if (!key) continue;
@@ -338,7 +330,7 @@ export async function ensureDailyPublishableQueue(opts?: {
 }> {
   const policy = await getBlogPublishingPolicy('global');
   const postsPerDay = normalizeDailyPostTarget(opts?.postsPerDay ?? policy.posts_per_day);
-  const targetCandidates = Math.max(opts?.minCandidates ?? 0, postsPerDay * 3, 8);
+  const targetCandidates = Math.max(opts?.minCandidates ?? 0, postsPerDay * 2, 10);
 
   const since = new Date();
   since.setDate(since.getDate() - Math.max(14, policy.multi_angle_gap_days ?? 14));
@@ -368,11 +360,15 @@ export async function ensureDailyPublishableQueue(opts?: {
     queued_total: queuedTotal,
     publishable_count: queueCandidateStats.publishableCount,
     duplicate_count: duplicateCount,
-    evidence_insufficient_count: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
+    evidence_insufficient_count: queueCandidateStats.evidenceInsufficient
+      + queueCandidateStats.productOpenContractBlocked
+      + queueCandidateStats.researchNotReady,
     destinationless_info_count: queueCandidateStats.destinationlessInfoBlocked,
     candidate_contract_blocked_count: queueCandidateStats.candidateContractBlocked,
     candidate_shortage: queueCandidateStats.publishableCount < targetCandidates,
-    next_action: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked > 0
+    next_action: queueCandidateStats.evidenceInsufficient
+      + queueCandidateStats.productOpenContractBlocked
+      + queueCandidateStats.researchNotReady > 0
       ? 'collect_evidence'
       : queueCandidateStats.destinationlessInfoBlocked > 0
         ? 'repair_destinationless_info'
@@ -396,7 +392,9 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate: queueCandidateStats.blockedRecentDuplicate,
       skippedQueuedDuplicate: queueCandidateStats.duplicateQueued,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient
+        + queueCandidateStats.productOpenContractBlocked
+        + queueCandidateStats.researchNotReady,
       quarantinedDuplicateCandidates,
       publishabilitySnapshot,
       rejectedByTopicFit: 0,
@@ -422,8 +420,11 @@ export async function ensureDailyPublishableQueue(opts?: {
     .map(row => row.destination)
     .filter((destination): destination is string => typeof destination === 'string' && destination.trim().length > 0);
   const recentDestinationSet = new Set(recentDestinations);
-  const freshDestinations = MICRO_ANGLE_DESTINATIONS.filter(destination => !recentDestinationSet.has(destination));
-  const destinations = Array.from(new Set([...freshDestinations, ...MICRO_ANGLE_DESTINATIONS])).slice(0, 24);
+  const freshDestinations = REVIEWED_WMO_FALLBACK_DESTINATIONS
+    .filter(destination => !recentDestinationSet.has(destination));
+  const destinations = Array.from(
+    new Set([...freshDestinations, ...REVIEWED_WMO_FALLBACK_DESTINATIONS]),
+  );
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
@@ -434,7 +435,7 @@ export async function ensureDailyPublishableQueue(opts?: {
   const rowsRaw: Array<Record<string, unknown>> = [];
 
   for (const destination of destinations) {
-    for (const template of MICRO_ANGLE_TEMPLATES) {
+    for (const template of MICRO_ANGLE_TEMPLATES.filter((candidate) => candidate.id === 'weather_packing')) {
       if (rowsRaw.length >= deficit * 2) break;
       const key = microAngleKey(destination, template.id);
       const topic = template.topic(destination, year, month);
@@ -473,6 +474,7 @@ export async function ensureDailyPublishableQueue(opts?: {
           season_month: month,
           expected_slug: expectedMicroSlug(destination, template.id),
           generated_by: 'micro_angle_refill',
+          research_fallback: 'reviewed_wmo_climate',
         },
       });
     }
@@ -480,7 +482,7 @@ export async function ensureDailyPublishableQueue(opts?: {
   }
 
   const { rows, rejected } = filterTopicFitPassed(rowsRaw as any[]);
-  const rowsToInsert = rows.slice(0, deficit);
+  const rowsToInsert = rows.slice(0, Math.min(rows.length, deficit + postsPerDay));
   if (rowsToInsert.length === 0) {
     return {
       added: 0,
@@ -488,7 +490,9 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate,
       skippedQueuedDuplicate,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient
+        + queueCandidateStats.productOpenContractBlocked
+        + queueCandidateStats.researchNotReady,
       quarantinedDuplicateCandidates,
       publishabilitySnapshot,
       rejectedByTopicFit: rejected.length,
@@ -509,7 +513,9 @@ export async function ensureDailyPublishableQueue(opts?: {
       targetCandidates,
       skippedRecentDuplicate,
       skippedQueuedDuplicate,
-      evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
+      evidenceInsufficient: queueCandidateStats.evidenceInsufficient
+        + queueCandidateStats.productOpenContractBlocked
+        + queueCandidateStats.researchNotReady,
       quarantinedDuplicateCandidates,
       publishabilitySnapshot,
       rejectedByTopicFit: rejected.length,
@@ -527,13 +533,15 @@ export async function ensureDailyPublishableQueue(opts?: {
     targetCandidates,
     skippedRecentDuplicate,
     skippedQueuedDuplicate,
-    evidenceInsufficient: queueCandidateStats.evidenceInsufficient + queueCandidateStats.productOpenContractBlocked,
+    evidenceInsufficient: queueCandidateStats.evidenceInsufficient
+      + queueCandidateStats.productOpenContractBlocked
+      + queueCandidateStats.researchNotReady,
     quarantinedDuplicateCandidates,
     publishabilitySnapshot: {
       ...publishabilitySnapshot,
-      publishable_count: existingQueued + insertedTopics.length,
-      candidate_shortage: existingQueued + insertedTopics.length < targetCandidates,
-      next_action: existingQueued + insertedTopics.length < targetCandidates ? 'refill_candidates' : 'publish_ready',
+      publishable_count: existingQueued,
+      candidate_shortage: existingQueued < targetCandidates,
+      next_action: insertedTopics.length > 0 ? 'collect_evidence' : 'refill_candidates',
     },
     rejectedByTopicFit: rejected.length,
     insertedTopics,
@@ -545,10 +553,10 @@ export async function ensureDailyPublishableQueue(opts?: {
  *
  * 책임:
  *   1) 매주 월 0시: 이번 주 토픽 N개 큐 충전 (시즌 + 갭 + 상품신규)
- *   2) 매일 0시: 오늘 발행할 6개 슬롯에 큐 항목 배정 (target_publish_at 설정)
+ *   2) 매일 첫 슬롯 전: 오늘 발행할 5개 슬롯에 큐 항목 배정 (target_publish_at 설정)
  *
- * 발행 스케줄: 하루 6개, 08/11/13/15/17/20 KST
- * 비율: 상품 30% + 정보성 70% (주간 기준)
+ * 발행 스케줄: 하루 5개, 09/12/15/18/21 KST
+ * 비율: 상품 40% + 정보성 60% (주간 기준)
  *
  * Priority 규칙:
  *   user_seed = 90 (최우선)
@@ -567,13 +575,15 @@ import { buildProductDedupKey, resolveProductDepartureDate, resolveProductSuppli
 import type { BlogPublishabilitySnapshot } from './blog-engine-v2';
 import { destinationlessInfoBlocksPublishability } from './blog-destinationless-info';
 import { inspectBlogCandidatePrepublishContract } from './blog-candidate-prepublish-contract';
+import { evaluateQueuedInformationResearch } from './blog-queue-research';
+import { REVIEWED_WMO_FALLBACK_DESTINATIONS } from './blog-research-fallback-catalog';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
-export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];
+export const DAILY_PUBLISH_SLOTS = ['09:00', '12:00', '15:00', '18:00', '21:00'];
 
-export const MIN_POSTS_PER_DAY = 3;
-export const MAX_POSTS_PER_DAY = 4;
-export const DEFAULT_POSTS_PER_DAY = 4;
+export const MIN_POSTS_PER_DAY = 5;
+export const MAX_POSTS_PER_DAY = 5;
+export const DEFAULT_POSTS_PER_DAY = 5;
 export const PRODUCT_RATIO = 0.4; // 40% — multi-angle drip 도입으로 상품 비중 상향
 
 export interface PublishingPolicy {
@@ -613,7 +623,9 @@ export async function getBlogPublishingPolicy(scope: string = 'global'): Promise
       return {
         ...policy,
         posts_per_day: normalizeDailyPostTarget(policy.posts_per_day),
-        slot_times: (policy.slot_times?.length ? policy.slot_times : DAILY_PUBLISH_SLOTS).slice(0, MAX_POSTS_PER_DAY),
+        slot_times: policy.slot_times?.length === MAX_POSTS_PER_DAY
+          ? policy.slot_times.slice(0, MAX_POSTS_PER_DAY)
+          : DAILY_PUBLISH_SLOTS,
       };
     }
   } catch { /* fallback */ }
@@ -634,6 +646,10 @@ function kstToUtcIso(yyyyMmDd: string, hhmm: string): string {
   const [hh, mm] = hhmm.split(':').map(Number);
   const kstDate = new Date(Date.UTC(y, m - 1, d, hh - 9, mm, 0));
   return kstDate.toISOString();
+}
+
+function kstDateString(date: Date): string {
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().split('T')[0]!;
 }
 
 /**
@@ -909,13 +925,23 @@ export async function assignPublishSlots(postsPerDay?: number): Promise<{ assign
 
   const { data: queued } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id, priority, destination, primary_keyword, angle_type')
+    .select('id, product_id, priority, destination, primary_keyword, angle_type, topic, category, source, meta')
     .eq('status', 'queued')
     .is('target_publish_at', null)
     .order('priority', { ascending: false })
     .order('created_at', { ascending: true });
 
-  if (!queued || queued.length === 0) return { assigned: 0 };
+  const publishableQueued = (queued ?? []).filter((row: QueueCandidateLike) => {
+    if (
+      row.source === 'pillar'
+      || hasEvidenceInsufficientFlag(row)
+      || hasProductOpenContractBlock(row)
+      || destinationlessInfoBlocksPublishability(row)
+      || !inspectBlogCandidatePrepublishContract(row).passed
+    ) return false;
+    return readWriterType(row) !== 'info_writer' || evaluateQueuedInformationResearch(row).passed;
+  });
+  if (publishableQueued.length === 0) return { assigned: 0 };
 
   // 미래 14일 내 이미 스케줄된 슬롯 + destination별 카운트
   const { data: scheduled } = await supabaseAdmin
@@ -939,13 +965,14 @@ export async function assignPublishSlots(postsPerDay?: number): Promise<{ assign
 
   let assigned = 0;
   const today = new Date();
-  const remaining = [...queued];
+  const todayKst = kstDateString(today);
+  const remaining = [...publishableQueued];
 
   // 향후 21일까지 (multi-angle drip 12-15일 분산 수용)
   for (let dayOffset = 0; dayOffset < 21 && remaining.length > 0; dayOffset++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + dayOffset);
-    const yyyyMmDd = d.toISOString().split('T')[0];
+    const d = new Date(`${todayKst}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + dayOffset);
+    const yyyyMmDd = d.toISOString().split('T')[0]!;
 
     for (let slotIdx = 0; slotIdx < ppd && remaining.length > 0; slotIdx++) {
       const slotIso = kstToUtcIso(yyyyMmDd, slots[slotIdx % slots.length]);

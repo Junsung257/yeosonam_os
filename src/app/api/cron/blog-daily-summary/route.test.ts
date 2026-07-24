@@ -63,21 +63,23 @@ describe('blog daily summary report day', () => {
 
     expect(workflowDoc.jobs.trigger['timeout-minutes']).toBe(45);
     expect(workflowDoc.on.schedule.map(item => item.cron)).toEqual([
-      '50 2 * * *',
-      '7 3,6,9,12,13 * * *',
-      '27 3,6,9,12,13 * * *',
+      '10 21 * * *',
+      '50 23 * * *',
+      '7 0,3,6,9,12,13 * * *',
+      '27 0,3,6,9,12,13 * * *',
       '40 13 * * *',
       '45 13 * * *',
     ]);
     expect((triggerStep.match(/node <<'NODE'/g) ?? []).length).toBe(3);
     expect((triggerStep.match(/^NODE$/gm) ?? []).length).toBe(3);
-    expect(selectStep).toContain('"27 3,6,9,12,13 * * *"|"40 13 * * *")');
-    expect(publisher?.schedule).toBe('5 3,6,9,12,13 * * *');
+    expect(selectStep).toContain('"27 0,3,6,9,12,13 * * *"|"40 13 * * *")');
+    expect(selectStep).toContain('endpoint="trend-topic-miner"');
+    expect(publisher?.schedule).toBe('5 0,3,6,9,12,13 * * *');
     expect(summary?.schedule).toBe('45 13 * * *');
-    expect(workflow).toContain("cron: '7 3,6,9,12,13 * * *'");
-    expect(workflow).toContain("cron: '27 3,6,9,12,13 * * *'");
+    expect(workflow).toContain("cron: '7 0,3,6,9,12,13 * * *'");
+    expect(workflow).toContain("cron: '27 0,3,6,9,12,13 * * *'");
     expect(workflow).toContain("cron: '40 13 * * *'");
-    expect(workflow).toContain('"27 3,6,9,12,13 * * *"|"40 13 * * *")');
+    expect(workflow).toContain('"27 0,3,6,9,12,13 * * *"|"40 13 * * *")');
     expect(workflow).toContain("cron: '45 13 * * *'");
     expect(workflow).toContain('MAX_PUBLISHER_ATTEMPTS: 4');
     expect(workflow).toContain('private_queue_id:');
@@ -117,11 +119,11 @@ describe('blog daily summary report day', () => {
       'utf8',
     );
 
-    expect(proofRefreshWorkflow).toContain("cron: '30 1 * * *'");
-    expect(externalCronWorkflow).toContain("cron: '50 2 * * *'");
+    expect(proofRefreshWorkflow).toContain("cron: '30 22 * * *'");
+    expect(externalCronWorkflow).toContain("cron: '50 23 * * *'");
 
-    const proofRefreshMinuteUtc = 1 * 60 + 30;
-    const schedulerMinuteUtc = 2 * 60 + 50;
+    const proofRefreshMinuteUtc = 22 * 60 + 30;
+    const schedulerMinuteUtc = 23 * 60 + 50;
     expect(schedulerMinuteUtc - proofRefreshMinuteUtc).toBeGreaterThanOrEqual(60);
   });
 
