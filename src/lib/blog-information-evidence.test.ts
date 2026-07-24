@@ -182,5 +182,8 @@ describe('blog informational evidence contract', () => {
     expect(repositorySource).toContain("from('blog_information_evidence')");
     expect(repositorySource).toContain("from('blog_information_claims')");
     expect(repositorySource).toContain('scope: evidence.scope');
+    expect(repositorySource).toContain('markBlogInformationResearchClaimsSupported');
+    expect(repositorySource).toContain("validation_status: 'supported'");
+    expect(repositorySource).toContain("throwPersistenceError('claim_support_lookup'");
   });
 });
