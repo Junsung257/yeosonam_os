@@ -177,8 +177,10 @@ describe('blog publisher quota recovery contract', () => {
     expect(source).toContain(".eq('id', item.content_creative_id)");
     expect(source).toContain("queueCreative.channel === 'naver_blog'");
     expect(source).toContain("queueCreative.status === 'draft'");
+    expect(source).toContain('queueReusableDraftId = queueCreative.id');
     expect(source).toContain('queueReusableAssets = {');
     expect(source).toContain('extractBlogInlineImageUrls(');
+    expect(source).toContain('promoteDraftId = privateReplacementDraftId ?? queueReusableDraftId');
   });
 
   it('requires persisted research before targeted private regeneration calls the writer', () => {

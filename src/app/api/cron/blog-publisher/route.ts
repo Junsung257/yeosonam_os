@@ -2235,6 +2235,7 @@ async function processQueueItem(
         ),
       };
     }
+    let queueReusableDraftId: string | null = null;
     let queueReusableAssets: { ogImageUrl: string | null; inlineImageUrls: string[] } | null = null;
     if (!privateRegenerationRequest && typeof item.content_creative_id === 'string') {
       const { data: queueCreative, error: queueCreativeError } = await supabaseAdmin
@@ -2249,6 +2250,7 @@ async function processQueueItem(
         && queueCreative.channel === 'naver_blog'
         && queueCreative.status === 'draft'
       ) {
+        queueReusableDraftId = queueCreative.id;
         queueReusableAssets = {
           ogImageUrl: typeof queueCreative.og_image_url === 'string' ? queueCreative.og_image_url : null,
           inlineImageUrls: extractBlogInlineImageUrls(
@@ -2270,7 +2272,7 @@ async function processQueueItem(
     let generated: GeneratedBlog;
     /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
     let promoteDraftId: string | null = null;
-    promoteDraftId = privateReplacementDraftId;
+    promoteDraftId = privateReplacementDraftId ?? queueReusableDraftId;
 
     if (item.source === 'pillar' && item.destination) {
       const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
