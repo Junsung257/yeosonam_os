@@ -553,6 +553,7 @@ export async function PATCH(request: NextRequest) {
         markdown: target.blog_html ?? '',
         productId: target.product_id ?? null,
         reviewStatus: target.review_status ?? null,
+        intentType: readBlogInformationRepresentativeIdentity(target.generation_meta ?? null)?.intent ?? null,
         expectedScope: { destination: target.destination ?? undefined },
       });
       if (!claimReport.passed) {
@@ -701,12 +702,16 @@ export async function PATCH(request: NextRequest) {
         publishingProduct = Boolean(row?.product_id);
         updateData.status = publishingProduct ? 'published' : 'draft';
         updateData.published_at = publishingProduct ? requestedPublishedAt : null;
+        const identity = row?.product_id
+          ? null
+          : readBlogInformationRepresentativeIdentity(row?.generation_meta ?? null);
         const claimReport = await evaluateBlogInformationClaimPublishGate({
           creativeId: id,
           contentKey: finalSlug,
           markdown: prepared.blogHtml,
           productId: row?.product_id ?? null,
           reviewStatus: row?.review_status ?? null,
+          intentType: identity?.intent ?? null,
           expectedScope: { destination: destination || undefined },
         });
         if (!claimReport.passed) {
@@ -715,9 +720,6 @@ export async function PATCH(request: NextRequest) {
             claim_validation: claimReport,
           }, { status: 422 });
         }
-        const identity = row?.product_id
-          ? null
-          : readBlogInformationRepresentativeIdentity(row?.generation_meta ?? null);
         if (!row?.product_id && !identity) {
           throw new Error('blog_information_representative_identity_missing');
         }

@@ -32,6 +32,7 @@ import {
   evaluateBlogInformationClaimPublishGate,
   toBlogInformationClaimValidationMeta,
 } from '@/lib/blog-information-claim-publish-gate';
+import { readBlogInformationRepresentativeIdentity } from '@/lib/blog-information-representative';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -266,6 +267,7 @@ async function runRegenerator(request: NextRequest) {
           contentKey: slug,
           markdown: prepared.blogHtml,
           reviewStatus: post.review_status ?? null,
+          intentType: readBlogInformationRepresentativeIdentity(post.generation_meta ?? null)?.intent ?? null,
           expectedScope: { destination: post.destination ?? undefined },
         });
         if (!claimReport.passed) {

@@ -127,11 +127,16 @@ async function applyDurableReviewStateGate(input: {
 
 async function loadPersistedClaimRecords(
   contentKey: string,
+  creativeId?: string | null,
 ): Promise<{ records: PersistedBlogInformationClaimRecord[]; error?: string }> {
-  const { data: claims, error: claimsError } = await supabaseAdmin
+  let claimsQuery = supabaseAdmin
     .from('blog_information_claims')
     .select('id, claim_fingerprint, claim_text, claim_type, extracted_value, validation_status')
     .eq('content_key', contentKey);
+  if (creativeId) {
+    claimsQuery = claimsQuery.eq('creative_id', creativeId);
+  }
+  const { data: claims, error: claimsError } = await claimsQuery;
   if (claimsError) return { records: [], error: claimsError.message };
   if (!claims || claims.length === 0) return { records: [] };
 
@@ -253,19 +258,13 @@ export async function evaluateBlogInformationClaimPublishGate(
   }
 
   try {
-    const loaded = await loadPersistedClaimRecords(input.contentKey);
-    const inferredIntent = input.intentType
-      ?? (/여행자?\s*보험|보험\s*(?:보장|면책|가입|청구)/i.test(input.markdown)
-        ? 'travel_insurance'
-        : /입국|출입국|비자|여권|세관|면세|전자여행허가|ETA|ESTA/i.test(input.markdown)
-          ? 'entry_requirements'
-          : null);
+    const loaded = await loadPersistedClaimRecords(input.contentKey, input.creativeId);
     const report = validateBlogInformationClaims({
       markdown: input.markdown,
       persistedClaims: loaded.records,
       claimLedger: input.claimLedger,
       claimLedgerIssues: input.claimLedgerIssues,
-      intentType: inferredIntent,
+      intentType: input.intentType ?? null,
       expectedScope: input.expectedScope,
       reviewStatus: input.reviewStatus,
       now: input.now,
