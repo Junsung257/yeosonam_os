@@ -243,4 +243,43 @@ describe('blog publish quality', () => {
     expect(result.blogHtml).toContain('## 맞는 사람과 안 맞는 사람');
     expect(result.blogHtml).toContain('## 문의 전 질문');
   });
+
+  it('keeps a verified body unchanged for metadata-only republishing and uses the brief keyword', async () => {
+    const blogHtml = [
+      '# 괌 7월 날씨',
+      '',
+      '1~12월 기온과 강수량을 확인하세요.',
+      '',
+      '## 공식 출처',
+      '',
+      '[세계기상기구](https://worldweather.wmo.int/)',
+    ].join('\n');
+
+    const result = await prepareBlogForPublish({
+      blog_html: blogHtml,
+      slug: 'guam-weather-packing',
+      seo_title: '괌 7월 날씨 옷차림 여행 준비물 체크리스트',
+      seo_description: '괌 7월 날씨와 옷차림 준비물을 공식 기후 자료로 확인하세요.',
+      destination: '괌',
+      primary_keyword: '잘못 전달된 전체 제목',
+      generation_meta: {
+        content_brief: {
+          primary_keyword: '괌 7월 날씨',
+        },
+      },
+      preserveBody: true,
+    });
+
+    expect(result).toMatchObject({
+      blogHtml,
+      changed: false,
+      changes: ['preserved_verified_body_for_metadata_update'],
+    });
+    expect(runQualityGatesMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ primary_keyword: '괌 7월 날씨' }),
+    );
+    expect(computeSeoScoreMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ primaryKeyword: '괌 7월 날씨' }),
+    );
+  });
 });

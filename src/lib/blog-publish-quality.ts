@@ -36,6 +36,7 @@ export interface BlogPublishQualityInput {
   generation_meta?: Record<string, unknown> | null;
   excludeContentCreativeId?: string | null;
   skipFuzzyDuplicate?: boolean;
+  preserveBody?: boolean;
 }
 
 export type BlogPublishContractIssueCode =
@@ -76,6 +77,18 @@ export function resolveBlogDestination(row: {
     ? travelPackages[0]?.destination
     : travelPackages?.destination;
   return packageDestination ?? row.destination ?? null;
+}
+
+function resolveBlogPrimaryKeyword(input: BlogPublishQualityInput): string {
+  const contentBrief = input.generation_meta?.content_brief;
+  const briefPrimaryKeyword = contentBrief && typeof contentBrief === 'object' && !Array.isArray(contentBrief)
+    ? (contentBrief as Record<string, unknown>).primary_keyword
+    : null;
+  return (typeof briefPrimaryKeyword === 'string' ? briefPrimaryKeyword.trim() : '')
+    || input.primary_keyword
+    || input.destination
+    || input.seo_title
+    || input.slug;
 }
 
 function extractImages(markdownOrHtml: string): Array<{ alt: string; src: string }> {
@@ -159,7 +172,7 @@ export async function evaluateBlogPublishQuality(
   const blogType = input.product_id ? 'product' : 'info';
   const publishContractIssues = inspectBlogPublishContract(input);
   const destination = input.destination ?? null;
-  const primaryKeyword = input.primary_keyword || destination || input.seo_title || input.slug;
+  const primaryKeyword = resolveBlogPrimaryKeyword(input);
   const images = extractImages(input.blog_html);
   const qualityGate = await runQualityGates({
     blog_html: input.blog_html,
@@ -253,8 +266,21 @@ export async function prepareBlogForPublish(
 ): Promise<PreparedBlogPublishResult> {
   const changes: string[] = [];
   let blogHtml = input.blog_html;
-  const primaryKeyword = input.primary_keyword || input.destination || input.seo_title || input.slug;
+  const primaryKeyword = resolveBlogPrimaryKeyword(input);
   const contentType = input.content_type ?? (input.product_id ? 'package_intro' : 'guide');
+  if (input.preserveBody) {
+    const report = await evaluateBlogPublishQuality({
+      ...input,
+      primary_keyword: primaryKeyword,
+      content_type: contentType,
+    });
+    return {
+      blogHtml,
+      changed: false,
+      changes: ['preserved_verified_body_for_metadata_update'],
+      report,
+    };
+  }
   if (!input.product_id) {
     const normalized = stripBlogInformationalBodyCtas(blogHtml);
     if (normalized !== blogHtml) {
