@@ -30,7 +30,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/blog-publisher
 ```
-→ 1시간 안 기다리고 즉시 6개까지 생성 시도
+→ 한 번에 한 슬롯을 처리하며, 실패하면 같은 실행 안에서 연구 완료 대체 후보를 찾음
 
 ### 5. 검증
 - `/admin/blog/queue` 접속 → 큐 항목들 발행 상태 확인
@@ -48,8 +48,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://www.yeosonam.com/api/cron/b
 
 2. **Vercel Cron 로그**
    - Vercel Dashboard > Project > Crons 탭
-   - `blog-publisher` 는 `vercel.json` 기준 **UTC 03:05, 06:05, 09:05, 12:05, 13:05** 실행 (KST 12:05, 15:05, 18:05, 21:05, 22:05 catch-up)
-   - `blog-scheduler` 는 `vercel.json` 기준 **UTC 일요일 15:00** 실행 (KST 월요일 00:00)
+   - `blog-publisher` 는 `vercel.json` 기준 **UTC 00:05, 03:05, 06:05, 09:05, 12:05, 13:05** 실행 (KST 09:05, 12:05, 15:05, 18:05, 21:05 + 22:05 catch-up)
+   - `blog-scheduler` 는 매일 **UTC 23:50** 실행 (KST 08:50)
+   - 일일 정책은 **09:00, 12:00, 15:00, 18:00, 21:00 KST에 신규 글 5개**이며 22:05는 실패분 복구 전용
    - `blog-lifecycle` 이 매일 KST 01:30 실행 확인
 
 3. **알림 체크**

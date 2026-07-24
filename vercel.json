@@ -87,7 +87,7 @@
     },
     {
       "path": "/api/cron/blog-scheduler",
-      "schedule": "50 2 * * *"
+      "schedule": "50 23 * * *"
     },
     {
       "path": "/api/cron/blog-learn",
@@ -103,7 +103,7 @@
     },
     {
       "path": "/api/cron/blog-publisher",
-      "schedule": "5 3,6,9,12,13 * * *"
+      "schedule": "5 0,3,6,9,12,13 * * *"
     },
     {
       "path": "/api/cron/trend-topic-miner",

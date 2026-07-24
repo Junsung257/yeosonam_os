@@ -1,8 +1,69 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildBlogResearchBundleFromGrounding,
+  buildWmoMonthlyWeatherPayload,
+} from './blog-auto-research';
+import { buildBlogContentBrief } from './blog-content-brief';
+import {
   buildMicroAnglePrimaryKeyword,
   countPublishableQueueCandidates,
 } from './blog-scheduler';
+
+function researchedTokyoWeatherMeta() {
+  const destination = '도쿄';
+  const contentKey = 'tokyo-weather-packing';
+  const sourceUrl = 'https://worldweather.wmo.int/kr/json/183_kr.xml';
+  const climateMonth = Array.from({ length: 12 }, (_, index) => ({
+    month: index + 1,
+    maxTemp: String(10 + index),
+    minTemp: String(2 + index),
+    raindays: String(5 + index),
+    rainfall: String(30 + index),
+  }));
+  const pages = [{
+    url: sourceUrl,
+    title: 'WMO Tokyo climate',
+    text: JSON.stringify({
+      city: {
+        cityName: destination,
+        member: { memName: '일본', orgName: '일본 기상청' },
+        climate: { datab: 1991, datae: 2020, climateMonth },
+      },
+    }),
+  }];
+  const payload = buildWmoMonthlyWeatherPayload(pages, destination);
+  const brief = buildBlogContentBrief({
+    topic: '도쿄 7월 날씨와 옷차림 준비물 체크',
+    destination,
+    primaryKeyword: '도쿄 날씨 옷차림 준비물',
+    category: 'preparation',
+    microAngle: 'weather_packing',
+  });
+  const result = buildBlogResearchBundleFromGrounding({
+    contentKey,
+    destination,
+    locale: brief.plan.locale,
+    brief,
+    payload: payload!,
+    groundingChunks: [{ web: { uri: sourceUrl, title: 'WMO Tokyo climate' } }],
+    directSourceUrls: [sourceUrl],
+    officialRegistry: [{
+      id: 'wmo',
+      hostname: 'worldweather.wmo.int',
+      sourceType: 'meteorological_agency',
+      authorityLevel: 'official_primary',
+      allowSubdomains: false,
+    }],
+    now: new Date(),
+  });
+  if (!result.bundle) throw new Error(result.issues.join(','));
+  return {
+    writer_type: 'info_writer',
+    micro_angle: 'weather_packing',
+    expected_slug: contentKey,
+    information_research_bundle: result.bundle,
+  };
+}
 
 describe('blog scheduler queue refill helpers', () => {
   it('keeps English micro-angle ids out of reader-facing keywords', () => {
@@ -26,13 +87,14 @@ describe('blog scheduler queue refill helpers', () => {
     });
 
     expect(stats).toEqual({
-      publishableCount: 1,
+      publishableCount: 0,
       blockedRecentDuplicate: 1,
       duplicateQueued: 1,
       evidenceInsufficient: 0,
       productOpenContractBlocked: 0,
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 0,
+      researchNotReady: 1,
     });
   });
 
@@ -48,13 +110,14 @@ describe('blog scheduler queue refill helpers', () => {
     });
 
     expect(stats).toEqual({
-      publishableCount: 2,
+      publishableCount: 1,
       blockedRecentDuplicate: 0,
       duplicateQueued: 1,
       evidenceInsufficient: 1,
       productOpenContractBlocked: 0,
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 0,
+      researchNotReady: 1,
     });
   });
 
@@ -76,6 +139,7 @@ describe('blog scheduler queue refill helpers', () => {
       productOpenContractBlocked: 2,
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 0,
+      researchNotReady: 0,
     });
   });
 
@@ -93,9 +157,10 @@ describe('blog scheduler queue refill helpers', () => {
       ],
     });
 
-    expect(stats.publishableCount).toBe(4);
+    expect(stats.publishableCount).toBe(0);
     expect(stats.productOpenContractBlocked).toBe(3);
     expect(stats.evidenceInsufficient).toBe(0);
+    expect(stats.researchNotReady).toBe(4);
   });
 
   it('excludes destinationless info candidates unless they are explicitly generic', () => {
@@ -116,13 +181,14 @@ describe('blog scheduler queue refill helpers', () => {
     });
 
     expect(stats).toEqual({
-      publishableCount: 1,
+      publishableCount: 0,
       blockedRecentDuplicate: 0,
       duplicateQueued: 0,
       evidenceInsufficient: 0,
       productOpenContractBlocked: 0,
       destinationlessInfoBlocked: 1,
       candidateContractBlocked: 0,
+      researchNotReady: 1,
     });
   });
 
@@ -144,13 +210,51 @@ describe('blog scheduler queue refill helpers', () => {
     });
 
     expect(stats).toEqual({
-      publishableCount: 1,
+      publishableCount: 0,
       blockedRecentDuplicate: 0,
       duplicateQueued: 0,
       evidenceInsufficient: 0,
       productOpenContractBlocked: 0,
       destinationlessInfoBlocked: 0,
       candidateContractBlocked: 1,
+      researchNotReady: 1,
     });
+  });
+
+  it('does not count an unresearched information seed as publish ready', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeQueue: [{
+        destination: '도쿄',
+        topic: '도쿄 7월 날씨와 옷차림 준비물 체크',
+        category: 'preparation',
+        angle_type: 'value',
+        meta: {
+          writer_type: 'info_writer',
+          micro_angle: 'weather_packing',
+          expected_slug: 'tokyo-weather-packing',
+        },
+      }],
+    });
+
+    expect(stats.publishableCount).toBe(0);
+    expect(stats.researchNotReady).toBe(1);
+  });
+
+  it('counts an exact, current research bundle as publish ready', () => {
+    const stats = countPublishableQueueCandidates({
+      recentPublished: [],
+      activeQueue: [{
+        destination: '도쿄',
+        topic: '도쿄 7월 날씨와 옷차림 준비물 체크',
+        primary_keyword: '도쿄 날씨 옷차림 준비물',
+        category: 'preparation',
+        angle_type: 'value',
+        meta: researchedTokyoWeatherMeta(),
+      }],
+    });
+
+    expect(stats.publishableCount).toBe(1);
+    expect(stats.researchNotReady).toBe(0);
   });
 });

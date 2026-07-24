@@ -1,11 +1,18 @@
 import { NextRequest } from 'next/server';
-import { assignPublishSlots, getBlogPublishingPolicy, normalizeDailyPostTarget, refillWeeklyQueue } from '@/lib/blog-scheduler';
+import {
+  assignPublishSlots,
+  ensureDailyPublishableQueue,
+  getBlogPublishingPolicy,
+  normalizeDailyPostTarget,
+  refillWeeklyQueue,
+} from '@/lib/blog-scheduler';
 import { ensureAllDestinationsHavePillar } from '@/lib/blog-pillar-generator';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { logError } from '@/lib/sentry-logger';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { prepareDailyInformationResearch } from '@/lib/blog-queue-research';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,15 +27,22 @@ const handleSchedule = async (request: NextRequest) => {
   try {
     const policy = await getBlogPublishingPolicy('global');
     const postsPerDay = normalizeDailyPostTarget(policy.posts_per_day);
+    const queuePreparation = await ensureDailyPublishableQueue({ postsPerDay });
+    const researchPreparation = await prepareDailyInformationResearch({
+      targetReady: postsPerDay * 2,
+      maxResearch: postsPerDay * 2 + 2,
+    });
+    const slotAssignment = await assignPublishSlots(postsPerDay);
     const pillarResult = await ensureAllDestinationsHavePillar();
     const result = await refillWeeklyQueue({ postsPerDay });
-    const slotAssignment = await assignPublishSlots(postsPerDay);
 
     return {
       ok: true,
       postsPerDay,
+      queue_preparation: queuePreparation,
       pillars: pillarResult,
       refill: result,
+      research_preparation: researchPreparation,
       slot_assignment: slotAssignment,
       ranAt: new Date().toISOString(),
     };

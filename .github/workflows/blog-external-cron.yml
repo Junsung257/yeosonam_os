@@ -2,12 +2,14 @@ name: Blog External Cron
 
 on:
   schedule:
-    # KST 11:50, replenish publishable micro-angle queue before publisher slots.
-    - cron: '50 2 * * *'
-    # KST 12:07, 15:07, 18:07, 21:07, 22:07 catch-up.
-    - cron: '7 3,6,9,12,13 * * *'
-    # KST 12:27, 15:27, 18:27, 21:27, 22:27, decouple indexing from publisher success.
-    - cron: '27 3,6,9,12,13 * * *'
+    # KST 06:10, retry the primary trend miner before queue preparation.
+    - cron: '10 21 * * *'
+    # KST 08:50, prepare researched candidates before the first publisher slot.
+    - cron: '50 23 * * *'
+    # KST 09:07, 12:07, 15:07, 18:07, 21:07 plus 22:07 quota catch-up.
+    - cron: '7 0,3,6,9,12,13 * * *'
+    # KST 09:27, 12:27, 15:27, 18:27, 21:27, 22:27.
+    - cron: '27 0,3,6,9,12,13 * * *'
     # KST 22:40, final indexing drain after late publisher retries.
     - cron: '40 13 * * *'
     # KST 22:45, after the final publisher retries and indexing worker slots.
@@ -24,6 +26,7 @@ on:
           - blog-publisher
           - blog-indexing-worker
           - blog-daily-summary
+          - trend-topic-miner
       force:
         description: Add force=true for manual publisher checks.
         required: true
@@ -64,10 +67,13 @@ jobs:
 
           if [ -z "$endpoint" ]; then
             case "${{ github.event.schedule }}" in
-              "50 2 * * *")
+              "10 21 * * *")
+                endpoint="trend-topic-miner"
+                ;;
+              "50 23 * * *")
                 endpoint="blog-scheduler"
                 ;;
-              "27 3,6,9,12,13 * * *"|"40 13 * * *")
+              "27 0,3,6,9,12,13 * * *"|"40 13 * * *")
                 endpoint="blog-indexing-worker"
                 ;;
               "45 13 * * *")

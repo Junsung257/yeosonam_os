@@ -218,6 +218,7 @@ type WmoClimateMonth = {
 
 type WmoClimateDocument = {
   city?: {
+    cityName?: string;
     member?: {
       memName?: string;
       orgName?: string;
@@ -1092,7 +1093,23 @@ function parseJsonPayload(raw: string): GroundedBlogResearchPayload {
 
 export function buildWmoMonthlyWeatherPayload(
   pages: ReviewedDirectPage[],
+  destination: string,
 ): GroundedBlogResearchPayload | null {
+  const destinationAliases: Record<string, string[]> = {
+    괌: ['괌', '아가냐괌'],
+    나트랑: ['나트랑', '냐짱'],
+    발리: ['발리', '덴파사르'],
+    오키나와: ['오키나와', '나하'],
+    호치민: ['호치민', '호찌민시'],
+  };
+  const normalizePlace = (value: unknown): string => clean(value)
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[,\s-]+/g, '');
+  const expectedDestination = normalizePlace(destination);
+  const acceptedCityNames = new Set(
+    [destination, ...(destinationAliases[destination] ?? [])].map(normalizePlace),
+  );
   const candidateIndexes = pages.flatMap((page, index) => {
     try {
       return new URL(page.url).hostname.toLowerCase() === 'worldweather.wmo.int' ? [index] : [];
@@ -1105,7 +1122,14 @@ export function buildWmoMonthlyWeatherPayload(
   for (const candidateIndex of candidateIndexes) {
     try {
       const candidate = JSON.parse(pages[candidateIndex]!.text) as WmoClimateDocument;
-      if (Array.isArray(candidate.city?.climate?.climateMonth)) {
+      const cityName = normalizePlace(candidate.city?.cityName);
+      const cityMatchesDestination = cityName.length > 0
+        && (
+          acceptedCityNames.has(cityName)
+          || cityName.includes(expectedDestination)
+          || expectedDestination.includes(cityName)
+        );
+      if (cityMatchesDestination && Array.isArray(candidate.city?.climate?.climateMonth)) {
         pageIndex = candidateIndex;
         document = candidate;
         break;
@@ -1147,7 +1171,7 @@ export function buildWmoMonthlyWeatherPayload(
   });
   if (rows.length !== 12 || new Set(rows.map((row) => row.monthNumber)).size !== 12) return null;
 
-  const sourceKeyValue = 'wmo-climate';
+  const sourceKeyValue = `wmo-climate-${normalizePlace(destination)}`;
   return {
     sources: [{
       sourceKey: sourceKeyValue,
@@ -1155,7 +1179,8 @@ export function buildWmoMonthlyWeatherPayload(
       publisher: clean(document.city?.member?.orgName) || '세계기상기구 회원 기상기관',
       sourceType: 'meteorological_agency',
       claimTypes: ['climate'],
-      country: clean(document.city?.member?.memName) || '미국',
+      country: clean(document.city?.member?.memName) || undefined,
+      destination,
     }],
     evidence: rows.map((row) => ({
       evidenceKey: `wmo-month-${row.monthNumber}`,
@@ -1164,8 +1189,9 @@ export function buildWmoMonthlyWeatherPayload(
       sourceLocator: `city.climate.climateMonth[month=${row.monthNumber}]`,
       claimType: 'climate',
       riskLevel: 'LOW',
-      country: clean(document.city?.member?.memName) || '미국',
-      applicableTo: '괌 여행자',
+      country: clean(document.city?.member?.memName) || undefined,
+      destination,
+      applicableTo: `${destination} 여행자`,
       normalizedValue: row.maxTemp,
       unit: '°C',
       conditions: [`${row.monthNumber}월`, `${periodStart}~${periodEnd} 평년값`],
@@ -1181,7 +1207,10 @@ export function buildWmoMonthlyWeatherPayload(
   };
 }
 
-async function loadOfficialRegistry(intent: string): Promise<BlogInformationOfficialSourceRegistryEntry[]> {
+async function loadOfficialRegistry(
+  intent: string,
+  destination: string,
+): Promise<BlogInformationOfficialSourceRegistryEntry[]> {
   const { data, error } = await supabaseAdmin
     .from('blog_information_official_source_registry')
     .select('id, hostname, source_type, authority_level, allow_subdomains')
@@ -1189,12 +1218,16 @@ async function loadOfficialRegistry(intent: string): Promise<BlogInformationOffi
   if (error) throw new Error(`blog_auto_research_registry:${error.message}`);
   const { data: documentRows, error: documentError } = await supabaseAdmin
     .from('blog_information_official_research_documents')
-    .select('official_source_registry_id, source_url, intents')
+    .select('official_source_registry_id, source_url, intents, destinations')
     .eq('status', 'active')
     .contains('intents', [intent]);
   if (documentError) throw new Error(`blog_auto_research_documents:${documentError.message}`);
   const urlsByRegistryId = new Map<string, string[]>();
   for (const row of documentRows ?? []) {
+    const destinations = Array.isArray(row.destinations)
+      ? row.destinations.map((value: unknown) => clean(value))
+      : [];
+    if (destinations.length > 0 && !destinations.includes(clean(destination))) continue;
     const registryId = String(row.official_source_registry_id);
     urlsByRegistryId.set(registryId, [
       ...(urlsByRegistryId.get(registryId) ?? []),
@@ -1269,7 +1302,7 @@ export async function researchBlogInformationAutomatically(input: {
     return remaining;
   };
   try {
-    const registry = await loadOfficialRegistry(input.brief.intentType);
+    const registry = await loadOfficialRegistry(input.brief.intentType, input.destination);
     const reputableRegistry = await loadReputableRegistry();
     const allowedSourceTypes = allowedPersistedSourceTypes(input.brief.sourcePolicy.sourceTypes);
     const reviewedRegistry = registry.filter((entry) => allowedSourceTypes.includes(entry.sourceType));
@@ -1339,7 +1372,7 @@ export async function researchBlogInformationAutomatically(input: {
       throw new Error('BLOG_RESEARCH_GROUNDING_EMPTY');
     }
     let payload = input.brief.intentType === 'monthly_weather'
-      ? buildWmoMonthlyWeatherPayload(reviewedPages)
+      ? buildWmoMonthlyWeatherPayload(reviewedPages, input.destination)
       : null;
     if (payload) {
       finishReason = 'DETERMINISTIC_WMO_CLIMATE';

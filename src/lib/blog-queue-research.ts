@@ -1,0 +1,294 @@
+import { researchBlogInformationAutomatically } from './blog-auto-research';
+import { buildBlogContentBrief } from './blog-content-brief';
+import {
+  BLOG_INFORMATION_RESEARCH_META_KEY,
+  evaluateBlogGenerationResearchReadiness,
+} from './blog-generation-research';
+import {
+  REVIEWED_WMO_FALLBACK_DESTINATION_SET,
+} from './blog-research-fallback-catalog';
+import { supabaseAdmin } from './supabase';
+
+type QueueResearchCandidate = {
+  id?: string | null;
+  product_id?: string | null;
+  topic?: string | null;
+  destination?: string | null;
+  primary_keyword?: string | null;
+  category?: string | null;
+  source?: string | null;
+  angle_type?: string | null;
+  meta?: any;
+};
+
+function cleanMeta(meta: unknown): Record<string, unknown> {
+  return meta && typeof meta === 'object' && !Array.isArray(meta)
+    ? { ...(meta as Record<string, unknown>) }
+    : {};
+}
+
+function queueMicroAngle(row: QueueResearchCandidate): string | null {
+  const value = row.meta?.micro_angle;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+export function buildQueuedInformationBrief(row: QueueResearchCandidate) {
+  const keywords = Array.isArray(row.meta?.keywords)
+    ? row.meta.keywords.filter((value: unknown): value is string => typeof value === 'string')
+    : [];
+  return buildBlogContentBrief({
+    topic: row.topic,
+    destination: row.destination,
+    primaryKeyword: row.primary_keyword || row.destination || row.topic,
+    category: row.category,
+    source: row.source,
+    keywords,
+    microAngle: queueMicroAngle(row),
+    audience: typeof row.meta?.audience === 'string' ? row.meta.audience : null,
+    locale: typeof row.meta?.locale === 'string' ? row.meta.locale : null,
+    travelerNationality: typeof row.meta?.traveler_nationality === 'string'
+      ? row.meta.traveler_nationality
+      : null,
+  });
+}
+
+function expectedContentKey(row: QueueResearchCandidate): string | null {
+  const value = row.meta?.expected_slug ?? row.meta?.spun_slug;
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
+}
+
+export function evaluateQueuedInformationResearch(row: QueueResearchCandidate) {
+  if (row.product_id) return { passed: true, issues: [] as string[] };
+  const contentKey = expectedContentKey(row);
+  const destination = row.destination?.trim();
+  if (!contentKey || !destination) {
+    return {
+      passed: false,
+      issues: [
+        ...(!contentKey ? ['research_expected_content_key_missing'] : []),
+        ...(!destination ? ['research_destination_missing'] : []),
+      ],
+    };
+  }
+  const brief = buildQueuedInformationBrief(row);
+  const readiness = evaluateBlogGenerationResearchReadiness({
+    meta: row.meta,
+    expectedContentKey: contentKey,
+    destination,
+    intent: brief.intentType,
+    locale: brief.plan.locale,
+    sourcePolicy: brief.sourcePolicy,
+  });
+  return { passed: readiness.passed, issues: readiness.issues };
+}
+
+export async function prepareDailyInformationResearch(input: {
+  targetReady: number;
+  maxResearch?: number;
+}): Promise<{
+  readyBefore: number;
+  readyAfter: number;
+  researched: number;
+  blockedAndReplaced: number;
+  failedResearch: number;
+  issues: string[];
+}> {
+  const maxResearch = Math.max(1, Math.min(12, input.maxResearch ?? input.targetReady));
+  const { data, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id, product_id, topic, destination, primary_keyword, category, source, angle_type, meta, priority, created_at')
+    .eq('status', 'queued')
+    .is('product_id', null)
+    .neq('source', 'pillar')
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(250);
+  if (error) throw new Error(`blog_queue_research_load:${error.message}`);
+
+  const rows = (data ?? []) as QueueResearchCandidate[];
+  const readyRows = rows.filter((row) => evaluateQueuedInformationResearch(row).passed);
+  let readyAfter = readyRows.length;
+  let researched = 0;
+  let blockedAndReplaced = 0;
+  let failedResearch = 0;
+  const issues: string[] = [];
+  if (readyAfter >= input.targetReady) {
+    return {
+      readyBefore: readyRows.length,
+      readyAfter,
+      researched,
+      blockedAndReplaced,
+      failedResearch,
+      issues,
+    };
+  }
+
+  const pendingRows = rows.filter((row) => !evaluateQueuedInformationResearch(row).passed);
+  const deterministicRows = pendingRows.filter((row) => {
+    const destination = row.destination?.trim() || '';
+    const brief = buildQueuedInformationBrief(row);
+    return brief.intentType === 'monthly_weather'
+      && REVIEWED_WMO_FALLBACK_DESTINATION_SET.has(destination)
+      && Boolean(expectedContentKey(row));
+  });
+
+  for (const row of deterministicRows) {
+    if (readyAfter >= input.targetReady || researched + failedResearch >= maxResearch) break;
+    const id = row.id;
+    const destination = row.destination?.trim();
+    const contentKey = expectedContentKey(row);
+    if (!id || !destination || !contentKey) continue;
+    const brief = buildQueuedInformationBrief(row);
+    try {
+      const result = await researchBlogInformationAutomatically({
+        contentKey,
+        destination,
+        locale: brief.plan.locale,
+        brief,
+      });
+      const nextMeta = cleanMeta(row.meta);
+      if (!result.passed || !result.bundle) {
+        failedResearch += 1;
+        const failureIssues = result.issues.slice(0, 12);
+        issues.push(`${id}:${failureIssues.join(',') || 'research_failed'}`);
+        await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'skipped',
+            last_error: 'evidence_insufficient',
+            meta: {
+              ...nextMeta,
+              evidence_insufficient: true,
+              failure_code: 'evidence_insufficient',
+              self_heal_blocked: true,
+              replacement_required: true,
+              research_issues: failureIssues,
+              research_failed_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq('id', id)
+          .eq('status', 'queued');
+        continue;
+      }
+
+      delete nextMeta.failure_code;
+      delete nextMeta.quarantine_reason;
+      delete nextMeta.self_heal_blocked;
+      delete nextMeta.replacement_required;
+      delete nextMeta.research_issues;
+      delete nextMeta.research_failed_at;
+      const candidateMeta = {
+        ...nextMeta,
+        [BLOG_INFORMATION_RESEARCH_META_KEY]: result.bundle,
+        evidence_insufficient: false,
+        research_preflight: {
+          passed: true,
+          model: result.model,
+          source_count: result.directSourceCount,
+          claim_count: result.bundle.claims.length,
+          checked_at: new Date().toISOString(),
+        },
+      };
+      const readiness = evaluateBlogGenerationResearchReadiness({
+        meta: candidateMeta,
+        expectedContentKey: contentKey,
+        destination,
+        intent: brief.intentType,
+        locale: brief.plan.locale,
+        sourcePolicy: brief.sourcePolicy,
+      });
+      if (!readiness.passed) {
+        failedResearch += 1;
+        issues.push(`${id}:${readiness.issues.slice(0, 12).join(',')}`);
+        await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'skipped',
+            last_error: 'evidence_insufficient',
+            meta: {
+              ...nextMeta,
+              evidence_insufficient: true,
+              failure_code: 'evidence_insufficient',
+              self_heal_blocked: true,
+              replacement_required: true,
+              research_issues: readiness.issues.slice(0, 12),
+              research_failed_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq('id', id)
+          .eq('status', 'queued');
+        continue;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .update({
+          meta: candidateMeta,
+          last_error: null,
+          updated_at: new Date().toISOString(),
+        } as never)
+        .eq('id', id)
+        .eq('status', 'queued');
+      if (updateError) throw new Error(updateError.message);
+      researched += 1;
+      readyAfter += 1;
+    } catch (researchError) {
+      failedResearch += 1;
+      const message = researchError instanceof Error ? researchError.message : 'research_exception';
+      issues.push(`${id}:${message}`);
+      await supabaseAdmin
+        .from('blog_topic_queue')
+        .update({
+          status: 'skipped',
+          last_error: 'research_exception',
+          meta: {
+            ...cleanMeta(row.meta),
+            evidence_insufficient: true,
+            failure_code: 'research_exception',
+            self_heal_blocked: true,
+            replacement_required: true,
+            research_issues: [message],
+            research_failed_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        } as never)
+        .eq('id', id)
+        .eq('status', 'queued');
+    }
+  }
+
+  const unsafeRows = pendingRows.filter((row) => !deterministicRows.some((safe) => safe.id === row.id));
+  for (const row of unsafeRows.slice(0, 50)) {
+    if (!row.id) continue;
+    const { error: quarantineError } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update({
+        status: 'skipped',
+        last_error: 'research_not_prepared_replaced',
+        meta: {
+          ...cleanMeta(row.meta),
+          evidence_insufficient: true,
+          failure_code: 'research_not_prepared',
+          self_heal_blocked: true,
+          replacement_required: true,
+          replaced_by: 'reviewed_research_fallback',
+          replaced_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq('id', row.id)
+      .eq('status', 'queued');
+    if (!quarantineError) blockedAndReplaced += 1;
+  }
+
+  return {
+    readyBefore: readyRows.length,
+    readyAfter,
+    researched,
+    blockedAndReplaced,
+    failedResearch,
+    issues,
+  };
+}
