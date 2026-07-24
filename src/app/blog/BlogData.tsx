@@ -429,7 +429,7 @@ const getCachedBlogData = unstable_cache(
     }
     return data;
   },
-  ['blog-list-v3-public-eligibility'],
+  ['blog-list-v4-precontract-restore'],
   { revalidate: 300, tags: [BLOG_LIST_CACHE_TAG] },
 );
 
