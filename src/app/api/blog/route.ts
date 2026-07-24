@@ -692,8 +692,11 @@ export async function PATCH(request: NextRequest) {
           seo_description: finalDescription,
           destination,
           angle_type: row?.angle_type ?? null,
+          category: category ?? row?.category ?? null,
+          content_type: row?.content_type ?? null,
           product_id: row?.product_id ?? null,
-          primary_keyword: destination || finalTitle || finalSlug,
+          primary_keyword: finalTitle || destination || finalSlug,
+          generation_meta: row?.generation_meta ?? null,
           excludeContentCreativeId: id,
         });
         qaReport = prepared.report;

@@ -245,7 +245,10 @@ async function runRegenerator(request: NextRequest) {
           seo_description: post.seo_description ?? null,
           destination: dest,
           angle_type: post.angle_type ?? null,
-          primary_keyword: dest,
+          category: post.category ?? null,
+          content_type: post.content_type ?? null,
+          primary_keyword: post.seo_title || dest || slug,
+          generation_meta: post.generation_meta ?? null,
           excludeContentCreativeId: post.id,
         });
         const qa = prepared.report;
