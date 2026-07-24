@@ -299,10 +299,37 @@ export async function persistBlogInformationClaimFindings(input: {
   report: BlogInformationClaimValidationReport;
 }): Promise<void> {
   if (input.report.claims.length === 0) return;
+  const activeFingerprints = new Set(
+    input.report.claims.map((claim) => claim.claimFingerprint),
+  );
   const issueByFingerprint = new Map(
     input.report.issues.map((issue) => [issue.claimFingerprint, issue]),
   );
   const now = new Date().toISOString();
+  const { data: linkedClaims, error: linkedClaimsError } = await supabaseAdmin
+    .from('blog_information_claims')
+    .select('id,claim_fingerprint')
+    .eq('creative_id', input.creativeId);
+  if (linkedClaimsError) {
+    throw new Error(`blog_information_claim_findings_linked_lookup_failed:${linkedClaimsError.message}`);
+  }
+  const supersededClaimIds = (linkedClaims ?? [])
+    .filter((claim) => !activeFingerprints.has(String(claim.claim_fingerprint)))
+    .map((claim) => String(claim.id))
+    .filter(Boolean);
+  if (supersededClaimIds.length > 0) {
+    const { error: supersededClaimsError } = await supabaseAdmin
+      .from('blog_information_claims')
+      .update({
+        creative_id: null,
+        validation_reason: 'superseded_content_version',
+        updated_at: now,
+      })
+      .in('id', supersededClaimIds);
+    if (supersededClaimsError) {
+      throw new Error(`blog_information_claim_findings_supersede_failed:${supersededClaimsError.message}`);
+    }
+  }
   const rows = input.report.claims.map((claim) => {
     const issue = issueByFingerprint.get(claim.claimFingerprint);
     return {
