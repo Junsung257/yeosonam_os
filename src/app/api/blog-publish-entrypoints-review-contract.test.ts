@@ -50,4 +50,11 @@ describe('informational review policy across publish-capable entrypoints', () =>
     expect(route).toContain('generation_meta:');
     expect(route).toContain("status: 'claim_gate_failed'");
   });
+
+  it('preserves a verified published body for metadata-only republishing', () => {
+    const route = source('src/app/api/blog/route.ts');
+    expect(route).toContain("row?.status === 'published'");
+    expect(route).toContain('blog_html === undefined');
+    expect(route).toContain('preserveBody:');
+  });
 });

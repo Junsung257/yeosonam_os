@@ -629,7 +629,7 @@ export async function PATCH(request: NextRequest) {
       try {
         const { data: existing, error: existingError } = await supabaseAdmin
           .from('content_creatives')
-          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id, review_status, topic_source, category, content_type, generation_meta')
+          .select('blog_html, slug, seo_title, seo_description, destination, angle_type, product_id, review_status, topic_source, category, content_type, generation_meta, status')
           .eq('id', id)
           .limit(1);
         if (existingError) throw existingError;
@@ -646,6 +646,7 @@ export async function PATCH(request: NextRequest) {
           category?: string | null;
           content_type?: string | null;
           generation_meta?: Record<string, unknown> | null;
+          status?: string | null;
         } | undefined;
         const finalHtml = (blog_html as string | undefined) ?? row?.blog_html ?? '';
         const finalSlug = (updateData.slug as string | undefined) ?? row?.slug ?? '';
@@ -698,6 +699,10 @@ export async function PATCH(request: NextRequest) {
           primary_keyword: finalTitle || destination || finalSlug,
           generation_meta: row?.generation_meta ?? null,
           excludeContentCreativeId: id,
+          preserveBody: row?.status === 'published'
+            && blog_html === undefined
+            && slug === undefined
+            && category === undefined,
         });
         qaReport = prepared.report;
         updateData.blog_html = prepared.blogHtml;
