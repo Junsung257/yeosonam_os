@@ -6,6 +6,7 @@ describe('blog official source URL candidates', () => {
     'https://www.0404.go.kr/',
     'https://kemlu.go.id/',
     'https://travel.state.gov/content/travel.html',
+    'https://worldweather.wmo.int/kr/json/1954_kr.xml',
   ])('accepts a conservative official host candidate: %s', (url) => {
     expect(isLikelyOfficialBlogSourceUrl(url)).toBe(true);
   });

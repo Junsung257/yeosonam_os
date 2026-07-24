@@ -17,7 +17,8 @@ import {
   summarizeBlogGenerationResearch,
 } from './blog-generation-research';
 import { validateBlogInformationStructure } from './blog-information-structure';
-import { checkMarkdownTableIntegrity } from './blog-quality-gate';
+import { checkHook, checkLinks, checkMarkdownTableIntegrity } from './blog-quality-gate';
+import { inspectBlogImageQuality } from './blog-image-quality';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { extractFaqItems } from './blog-jsonld';
 import { repairBlogFinalCustomerSurface } from './blog-final-customer-surface';
@@ -304,8 +305,14 @@ describe('blog generation research preflight', () => {
       '# 괌 7월 날씨와 옷차림',
       '괌 여행 전에는 기후 평년값과 단기예보를 나눠 확인하세요.',
     ].join('\n\n');
+    const originalWithImages = [
+      original,
+      '![괌 7월 날씨 참고 1](https://images.pexels.com/photos/1001/pexels-photo-1001.jpeg)',
+      '![괌 7월 날씨 참고 2](https://images.pexels.com/photos/1002/pexels-photo-1002.jpeg)',
+      '![괌 7월 날씨 참고 3](https://images.pexels.com/photos/1003/pexels-photo-1003.jpeg)',
+    ].join('\n\n');
     const first = repairBlogGenerationResearchStructure({
-      markdown: original,
+      markdown: originalWithImages,
       intent: 'monthly_weather',
       readiness: result,
     });
@@ -324,6 +331,24 @@ describe('blog generation research preflight', () => {
     expect(first.markdown.length).toBeGreaterThanOrEqual(2500);
     expect(extractBlogInformationClaims(first.markdown)).toHaveLength(12);
     expect(extractBlogInformationClaims(first.markdown).every((claim) => claim.claimType === 'climate')).toBe(true);
+    expect(checkHook(first.markdown).passed).toBe(true);
+    expect(checkLinks(first.markdown, 'https://www.yeosonam.com').passed).toBe(true);
+    expect(inspectBlogImageQuality(first.markdown, {
+      destination: '괌',
+      primaryKeyword: '괌 7월 날씨',
+      blogType: 'info',
+    }).passed).toBe(true);
+    expect(inspectBlogInformationMarkdown({
+      markdown: first.markdown,
+      contract: buildBlogInformationContract({
+        intentType: 'monthly_weather',
+        destination: '괌',
+        topic: '괌 7월 날씨와 옷차림',
+        primaryKeyword: '괌 7월 날씨',
+        category: 'weather',
+        microAngle: 'weather_packing',
+      }),
+    }).missingSlots).not.toContain('season_risk');
     const publicSurface = repairBlogFinalCustomerSurface({
       destination: '괌',
       primaryKeyword: '괌 월별 날씨',
