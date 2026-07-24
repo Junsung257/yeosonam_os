@@ -1,6 +1,6 @@
 # Audit Archive Index
 
-Last updated: 2026-07-20
+Last updated: 2026-07-24
 
 This folder is an evidence archive, not the current operating playbook.
 
@@ -79,6 +79,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-07-24 | `2026-07-24-blog-autopublish-live-evidence-audit.md` | Live end-to-end blog audit, ten-intent direct-source verification, public fail-closed baseline, and publish/update release gates. |
 | 2026-07-20 | `2026-07-20-meta-publisher-boundary.md` | Meta publisher external-write boundary audit: disabled incomplete deploy context, guarded mutation routes, and aligned PAUSED ad copy with the marketing SSOT. |
 | 2026-07-22 | `2026-07-22-npm-audit-dependency-cleanup.md` | Dependency-only audit cleanup for high severity npm audit findings, including sharp/libvips and blog image normalize type compatibility evidence. |
 | 2026-07-09 | `2026-07-09-blog-writing-engine-research.md` | Blog writing-engine research: competitor patterns, customer-language scorecard, open-source eval/observability adoption priorities, and remaining hardening backlog. |

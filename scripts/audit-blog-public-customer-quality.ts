@@ -237,6 +237,24 @@ async function main() {
   }
 
   const targets = await collectTargets();
+  if (targets.length === 0) {
+    const summary = {
+      baseUrl,
+      checked: 0,
+      passed: 0,
+      failed: 1,
+      averageScore: 0,
+      issueCounts: { no_public_blog_targets: 1 },
+      rows: [],
+    };
+    if (outputJson) console.log(JSON.stringify(summary, null, 2));
+    else {
+      console.log('Blog public customer quality: 0/100 (no discoverable public blog posts)');
+      console.log('Issues={"no_public_blog_targets":1}');
+    }
+    process.exitCode = 1;
+    return;
+  }
   const rows: AuditedPublicBlogTarget[] = [];
   for (const target of targets) {
     rows.push(await auditTarget(target));

@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-07-20
+Last updated: 2026-07-24
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -15,6 +15,7 @@ A day is healthy only when all of these are true:
 - `/admin/blog/queue` has no failed, overdue, or stale generating rows in `운영 필요`.
 - `/admin/blog/system` shows `blog-publisher`, `blog-scheduler`, `blog-daily-summary`, `blog-indexing-worker`, `gsc-index-rank`, and `serp-rank-snapshot` as successful or explainably skipped.
 - Published posts have current `quality_gate`, `seo_score`, `readability_score`, `generation_meta.content_brief`, final slug, title, description, and image evidence.
+- New information candidates have `meta.auto_research.version='reviewed-source-direct-fetch-v2'`, a validated `information_research_bundle`, and persisted source/evidence/claim rows before the writer starts. Search discovers candidate URLs; only directly downloaded, intent-approved official or reputable source pages may become evidence. `evidence_insufficient:auto_research_*` is a research blocker, not a reason to publish fallback prose.
 - Public blog sections (`/blog`, `/blog/[slug]`, `/blog/destination/[dest]`, `/blog/angle/[angle]`, sitemap, blog API) return healthy titles, canonical URLs, indexability signals, and non-empty collection evidence.
 
 ## Prompt Change Standard
@@ -81,11 +82,14 @@ Run these after code changes that affect blog generation, rendering, indexing, o
 ```bash
 npm run type-check
 npx vitest run src/lib/blog-editorial-repair.test.ts src/lib/blog-seo-scorer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-topic-fit-gate.test.ts
+npm run verify:blog-auto-research:live
 npm run audit:blog-quality -- --limit=50
 npm run audit:blog-public-customer-quality -- --base=https://www.yeosonam.com --limit=10 --strict
 npm run audit:blog-public-surfaces -- --base=https://www.yeosonam.com --strict
 npm run audit:blog-search-daily:strict
 ```
+
+For a controlled public proof, mark exactly one low-risk informational queue row with `meta.controlled_publish_canary=true`, then call the authorized publisher with `targetQueueId=<queue UUID>`. Do not select entry/visa or insurance. Verify the queue, creative, persisted source/evidence/claims, active representative, publication record, indexing outbox, public API, public page, canonical, citations, and images. Then update the same creative through authenticated blog PATCH with `status='published'` and verify a new publication fingerprint and indexing job without a new URL. Never invoke the unrestricted publisher merely to test one candidate.
 
 If local Supabase environment variables are unavailable, use `/admin/blog` and `/api/admin/blog/ops-summary` against the authenticated deployed admin surface as the source of truth.
 
@@ -407,7 +411,7 @@ npm run run:blog-indexing-worker -- --json --limit=15
 - Generation is wrapped by a dynamic timeout that preserves `BLOG_PUBLISHER_ITEM_FINISH_RESERVE_MS` for gates, DB writes, and the final cron summary.
 - Optional post-publish work such as keyword enrichment, RAG indexing, and inline indexing-worker draining runs only when `BLOG_PUBLISHER_OPTIONAL_WORK_MIN_MS` remains. Durable `blog_indexing_jobs` enqueue still happens before this optional split, so independent indexing workers can finish provider submission later.
 - Publisher summaries include a `time_budget` object so operators can distinguish a graceful time-budget stop from a hard wrapper timeout.
-### Information writer v2.1 private canary check
+### Information writer v2.2 private canary check
 
 The Sapporo food-budget canary reports queue failure evidence, stored prompt manifest, H2/question/FAQ counts, and image count in dry-run mode. A private regeneration may proceed only when the target remains a draft, the research preflight passes, and the route is called once. The AI-readable repair keeps the final article within nine H2 headings, preserves a natural question H2, and builds the food-budget FAQ only from approved claims. Missing `CRON_SECRET` must fail before `--apply --run` changes the queue; operators without that secret use `--apply` and invoke the protected production route separately.
 

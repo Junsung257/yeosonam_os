@@ -91,6 +91,7 @@ export async function findRelevantBlogPexelsImage(input: {
   primaryKeyword?: string | null;
   sectionTitle?: string | null;
   usedUrls?: Set<string>;
+  minimumScore?: number;
 }): Promise<string | null> {
   if (!isPexelsConfigured()) return null;
   try {
@@ -108,6 +109,7 @@ export async function findRelevantBlogPexelsImage(input: {
       primaryKeyword: input.primaryKeyword,
       sectionTitle: input.sectionTitle,
       usedUrls: input.usedUrls,
+      minimumScore: input.minimumScore,
     });
     return photo
       ? photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original

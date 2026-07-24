@@ -88,6 +88,7 @@ import {
   summarizeBlogGenerationResearch,
 } from '@/lib/blog-generation-research';
 import { persistBlogInformationResearch } from '@/lib/blog-information-evidence-repository';
+import { researchBlogInformationAutomatically } from '@/lib/blog-auto-research';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
   normalizeBlogVisualAccents,
@@ -179,7 +180,7 @@ const MAX_BATCH = readBoundedIntEnv('BLOG_PUBLISHER_MAX_BATCH', 1, 1, 4);
 const CLAIM_POOL_MULTIPLIER = readBoundedIntEnv('BLOG_PUBLISHER_CLAIM_POOL_MULTIPLIER', 4, 1, 5);
 const MAX_CANDIDATE_POOL = readBoundedIntEnv('BLOG_PUBLISHER_MAX_CANDIDATE_POOL', 12, MAX_BATCH, 20);
 const MAX_EXTRA_CLAIM_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_EXTRA_CLAIM_ROUNDS', 4, 1, 8);
-const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 2, 0, 3);
+const MAX_QUALITY_REPAIR_ROUNDS = readBoundedIntEnv('BLOG_PUBLISHER_MAX_QUALITY_REPAIR_ROUNDS', 3, 0, 3);
 const BLOG_PUBLISHER_AI_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_AI_TIMEOUT_MS', 90_000, 30_000, 180_000);
 const BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_BRIDGE_TIMEOUT_MS', 60_000, 10_000, 120_000);
 const BLOG_PUBLISHER_GENERATION_TIMEOUT_MS = readBoundedIntEnv('BLOG_PUBLISHER_GENERATION_TIMEOUT_MS', 120_000, 30_000, 180_000);
@@ -228,7 +229,10 @@ async function findOrGenerateBlogCover(input: {
 }): Promise<string | null> {
   let url: string | null = null;
   if (isPexelsConfigured()) {
-    url = await findRelevantBlogPexelsImage(input);
+    url = await findRelevantBlogPexelsImage({
+      ...input,
+      minimumScore: 70,
+    });
   }
   if (url) return url;
   return generateSectionImage(
@@ -1541,6 +1545,59 @@ async function runBlogPublisher(request: NextRequest) {
         queueId: privateQueueId,
         results,
         errors: completedPrivately ? errors : [...errors, result.reason || result.status],
+        ranAt: new Date().toISOString(),
+      };
+    }
+
+    const targetQueueId = request.nextUrl.searchParams.get('targetQueueId')?.trim();
+    if (targetQueueId) {
+      const { data: item, error: itemError } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .select('*')
+        .eq('id', targetQueueId)
+        .eq('status', 'queued')
+        .maybeSingle();
+      const targetMeta = item?.meta && typeof item.meta === 'object' && !Array.isArray(item.meta)
+        ? item.meta as Record<string, unknown>
+        : {};
+      if (itemError || !item) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedCanaryPublication: true,
+          reason: itemError?.message || 'target_queue_item_not_found',
+          results,
+          errors,
+        };
+      }
+      if (item.product_id || targetMeta.controlled_publish_canary !== true) {
+        return {
+          ok: false,
+          processed: 0,
+          published: 0,
+          targetedCanaryPublication: true,
+          reason: item.product_id
+            ? 'target_queue_item_must_be_informational'
+            : 'controlled_publish_canary_flag_required',
+          results,
+          errors,
+        };
+      }
+
+      const result = await processQueueItem(item, new Map(), { startedAtMs: startTime });
+      results.push(result);
+      const published = result.status === 'published' ? 1 : 0;
+      return {
+        ok: published === 1 || result.status === 'pending_review',
+        processed: 1,
+        published,
+        targetedCanaryPublication: true,
+        queueId: targetQueueId,
+        results,
+        errors: published === 1 || result.status === 'pending_review'
+          ? errors
+          : [...errors, result.reason || result.status],
         ranAt: new Date().toISOString(),
       };
     }
@@ -3614,7 +3671,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
   }
-  const researchReadiness = evaluateBlogGenerationResearchReadiness({
+  let researchReadiness = evaluateBlogGenerationResearchReadiness({
     meta: item.meta,
     expectedContentKey: queueSlug,
     destination: item.destination,
@@ -3622,6 +3679,54 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     locale: contentBrief.plan.locale,
     sourcePolicy: contentBrief.sourcePolicy,
   });
+  if (!privateRegeneration && !researchReadiness.passed) {
+    const autoResearch = await researchBlogInformationAutomatically({
+      contentKey: queueSlug,
+      destination: item.destination,
+      locale: contentBrief.plan.locale,
+      brief: contentBrief,
+    });
+    if (!autoResearch.passed || !autoResearch.bundle) {
+      throw new Error(
+        `evidence_insufficient:auto_research_failed:${autoResearch.issues.slice(0, 8).join(',')}`,
+      );
+    }
+    await persistBlogInformationResearch({
+      ...autoResearch.bundle,
+      tenantId: item.tenant_id ?? autoResearch.bundle.tenantId ?? null,
+    });
+    item.meta = {
+      ...(item.meta || {}),
+      [BLOG_INFORMATION_RESEARCH_META_KEY]: autoResearch.bundle,
+      auto_research: {
+        version: 'reviewed-source-direct-fetch-v2',
+        model: autoResearch.model,
+        completed_at: new Date().toISOString(),
+        grounding_source_count: autoResearch.groundingSourceCount,
+        search_query_count: autoResearch.searchQueries.length,
+      },
+    };
+    const { error: researchQueueUpdateError } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update({ meta: item.meta })
+      .eq('id', item.id);
+    if (researchQueueUpdateError) {
+      throw new Error(`evidence_insufficient:auto_research_queue_persist:${researchQueueUpdateError.message}`);
+    }
+    researchReadiness = evaluateBlogGenerationResearchReadiness({
+      meta: item.meta,
+      expectedContentKey: queueSlug,
+      destination: item.destination,
+      intent: contentBrief.intentType,
+      locale: contentBrief.plan.locale,
+      sourcePolicy: contentBrief.sourcePolicy,
+    });
+  }
+  if (!researchReadiness.passed || !researchReadiness.bundle) {
+    throw new Error(
+      `evidence_insufficient:research_preflight:${researchReadiness.issues.slice(0, 8).join(',')}`,
+    );
+  }
   const researchPromptBlock = buildBlogGenerationResearchPromptBlock(researchReadiness);
   const infoGuideBrief = buildInfoGuideBrief(contentBrief);
   const effectiveTopic = contentBrief.title;
