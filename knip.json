@@ -37,6 +37,7 @@
   ],
   "ignoreDependencies": [
     "autoprefixer",
+    "brace-expansion-secure",
     "postcss",
     "tailwindcss",
     "@tailwindcss/typography",
